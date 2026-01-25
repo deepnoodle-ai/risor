@@ -261,10 +261,6 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileMap(node); err != nil {
 			return err
 		}
-	case *ast.Set:
-		if err := c.compileSet(node); err != nil {
-			return err
-		}
 	case *ast.Index:
 		if err := c.compileIndex(node); err != nil {
 			return err
@@ -329,12 +325,12 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileMultiVar(node); err != nil {
 			return err
 		}
-	case *ast.SetAttr:
-		if err := c.compileSetAttr(node); err != nil {
+	case *ast.ObjectDestructure:
+		if err := c.compileObjectDestructure(node); err != nil {
 			return err
 		}
-	case *ast.Defer:
-		if err := c.compileDeferStmt(node); err != nil {
+	case *ast.SetAttr:
+		if err := c.compileSetAttr(node); err != nil {
 			return err
 		}
 	default:
@@ -526,6 +522,49 @@ func (c *Compiler) compileMultiVar(node *ast.MultiVar) error {
 			c.emit(op.StoreFast, sym.Index())
 		}
 	}
+	return nil
+}
+
+func (c *Compiler) compileObjectDestructure(node *ast.ObjectDestructure) error {
+	bindings := node.Bindings()
+	if len(bindings) > math.MaxUint16 {
+		return c.formatError("too many bindings in object destructuring", node.Token().StartPosition)
+	}
+
+	// Compile the source object
+	if err := c.compile(node.Value()); err != nil {
+		return err
+	}
+
+	// For each binding, load the property and store it in a variable
+	for _, binding := range bindings {
+		// Duplicate the object on the stack (we need it for each property access)
+		c.emit(op.Copy, 0)
+
+		// Load the property using LoadAttr
+		c.emit(op.LoadAttr, c.current.addName(binding.Key))
+
+		// Determine the variable name (alias if provided, otherwise key)
+		varName := binding.Alias
+		if varName == "" {
+			varName = binding.Key
+		}
+
+		// Insert the variable and store the value
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
+		}
+		if c.current.parent == nil {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
+		}
+	}
+
+	// Pop the remaining object from the stack
+	c.emit(op.PopTop)
+
 	return nil
 }
 
@@ -929,25 +968,69 @@ func (c *Compiler) compileCall(node *ast.Call) error {
 	if argc > MaxArgs {
 		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
 	}
+
+	// Check if any arguments are spread expressions
+	hasSpread := false
+	for _, arg := range args {
+		if _, ok := arg.(*ast.Spread); ok {
+			hasSpread = true
+			break
+		}
+	}
+
 	if err := c.compile(node.Function()); err != nil {
 		return err
 	}
+
+	if !hasSpread {
+		// Fast path: no spread, use regular Call
+		for _, arg := range args {
+			if err := c.compile(arg); err != nil {
+				return err
+			}
+		}
+		if c.current.pipeActive {
+			c.emit(op.Partial, uint16(argc))
+		} else {
+			c.emit(op.Call, uint16(argc))
+		}
+		return nil
+	}
+
+	// Slow path: has spread, build args list then use CallSpread
+	c.emit(op.BuildList, 0) // Start with empty list
 	for _, arg := range args {
-		if err := c.compile(arg); err != nil {
-			return err
+		if spread, ok := arg.(*ast.Spread); ok {
+			// Spread: extend the args list with the iterable
+			if err := c.compile(spread.Value()); err != nil {
+				return err
+			}
+			c.emit(op.ListExtend)
+		} else {
+			// Normal arg: append to the args list
+			if err := c.compile(arg); err != nil {
+				return err
+			}
+			c.emit(op.ListAppend)
 		}
 	}
 	if c.current.pipeActive {
-		c.emit(op.Partial, uint16(argc))
-	} else {
-		c.emit(op.Call, uint16(argc))
+		// For pipe, we can't easily support spread (would need PartialSpread)
+		return fmt.Errorf("compile error: spread arguments not supported in pipe expressions")
 	}
+	c.emit(op.CallSpread)
 	return nil
 }
 
 func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 	if err := c.compile(node.Object()); err != nil {
 		return err
+	}
+	// Handle optional chaining (?.)
+	var jumpPos int
+	if node.IsOptional() {
+		c.emit(op.Copy, 0)
+		jumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
 	}
 	expr := node.Call()
 	method, ok := expr.(*ast.Call)
@@ -971,6 +1054,11 @@ func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 	} else {
 		c.emit(op.Call, uint16(len(args)))
 	}
+	if node.IsOptional() {
+		c.emit(op.Nop)
+		delta, _ := c.calculateDelta(jumpPos)
+		c.changeOperand(jumpPos, delta)
+	}
 	return nil
 }
 
@@ -978,8 +1066,19 @@ func (c *Compiler) compileGetAttr(node *ast.GetAttr) error {
 	if err := c.compile(node.Object()); err != nil {
 		return err
 	}
+	// Handle optional chaining (?.)
+	var jumpPos int
+	if node.IsOptional() {
+		c.emit(op.Copy, 0)
+		jumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
+	}
 	idx := c.current.addName(node.Name())
 	c.emit(op.LoadAttr, idx)
+	if node.IsOptional() {
+		c.emit(op.Nop)
+		delta, _ := c.calculateDelta(jumpPos)
+		c.changeOperand(jumpPos, delta)
+	}
 	return nil
 }
 
@@ -1000,12 +1099,46 @@ func (c *Compiler) compileList(node *ast.List) error {
 	if count > math.MaxUint16 {
 		return fmt.Errorf("compile error: list literal exceeds max size")
 	}
+
+	// Check if any items are spread expressions
+	hasSpread := false
 	for _, expr := range items {
-		if err := c.compile(expr); err != nil {
-			return err
+		if _, ok := expr.(*ast.Spread); ok {
+			hasSpread = true
+			break
 		}
 	}
-	c.emit(op.BuildList, uint16(count))
+
+	if !hasSpread {
+		// Fast path: no spread, use simple BuildList
+		for _, expr := range items {
+			if err := c.compile(expr); err != nil {
+				return err
+			}
+		}
+		c.emit(op.BuildList, uint16(count))
+		return nil
+	}
+
+	// Slow path: has spread, build incrementally
+	// Start with an empty list
+	c.emit(op.BuildList, 0)
+
+	for _, expr := range items {
+		if spread, ok := expr.(*ast.Spread); ok {
+			// Spread: extend the list with the iterable
+			if err := c.compile(spread.Value()); err != nil {
+				return err
+			}
+			c.emit(op.ListExtend)
+		} else {
+			// Normal item: append to the list
+			if err := c.compile(expr); err != nil {
+				return err
+			}
+			c.emit(op.ListAppend)
+		}
+	}
 	return nil
 }
 
@@ -1028,18 +1161,6 @@ func (c *Compiler) compileMap(node *ast.Map) error {
 		}
 	}
 	c.emit(op.BuildMap, uint16(count))
-	return nil
-}
-
-func (c *Compiler) compileSet(node *ast.Set) error {
-	items := node.Items()
-	count := len(items)
-	for _, expr := range items {
-		if err := c.compile(expr); err != nil {
-			return err
-		}
-	}
-	c.emit(op.BuildSet, uint16(count))
 	return nil
 }
 
@@ -1125,6 +1246,15 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		}
 	}
 
+	// Add rest parameter to symbol table if present
+	var restParamName string
+	if restParam := node.RestParam(); restParam != nil {
+		restParamName = restParam.Literal()
+		if _, err := code.symbols.InsertVariable(restParamName); err != nil {
+			return err
+		}
+	}
+
 	// Add the function's own name to its symbol table. This supports recursive
 	// calls to the function. Later when we create the function object, we'll
 	// add the object value to the table.
@@ -1148,6 +1278,7 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		Name:       functionName,
 		Parameters: params,
 		Defaults:   defaults,
+		RestParam:  restParamName,
 		Code:       code,
 	})
 
@@ -1813,6 +1944,8 @@ func (c *Compiler) compileInfix(node *ast.Infix) error {
 		return c.compileAnd(node)
 	} else if operator == "||" {
 		return c.compileOr(node)
+	} else if operator == "??" {
+		return c.compileNullish(node)
 	}
 	// Non-short-circuit operators
 	if err := c.compile(node.Left()); err != nil {
@@ -1898,22 +2031,24 @@ func (c *Compiler) compileOr(node *ast.Infix) error {
 	return nil
 }
 
-func (c *Compiler) compileDeferStmt(node *ast.Defer) error {
-	if c.current.parent == nil {
-		return c.formatError("defer statement outside of a function", node.Token().StartPosition)
+func (c *Compiler) compileNullish(node *ast.Infix) error {
+	// The "??" nullish coalescing operator returns the RHS only if LHS is nil
+	// Unlike ||, it doesn't treat falsy values (0, "", false) as triggering the default
+	if err := c.compile(node.Left()); err != nil {
+		return err
 	}
-	expr := node.Call()
-	switch expr := expr.(type) {
-	case *ast.Call:
-		if err := c.compilePartial(expr); err != nil {
-			return err
-		}
-	case *ast.ObjectCall:
-		if err := c.compilePartialObjectCall(expr); err != nil {
-			return err
-		}
+	c.emit(op.Copy, 0) // Duplicate LHS
+	jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+	c.emit(op.PopTop) // Pop the nil value
+	if err := c.compile(node.Right()); err != nil {
+		return err
 	}
-	c.emit(op.Defer)
+	c.emit(op.Nop) // Jump target
+	delta, err := c.calculateDelta(jumpPos)
+	if err != nil {
+		return err
+	}
+	c.changeOperand(jumpPos, delta)
 	return nil
 }
 

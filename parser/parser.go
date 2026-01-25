@@ -124,7 +124,6 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	// Register prefix-functions
 	p.registerPrefix(token.TEMPLATE, p.parseString)
 	p.registerPrefix(token.BANG, p.parsePrefixExpr)
-	p.registerPrefix(token.DEFER, p.parseDefer)
 	p.registerPrefix(token.EOF, p.illegalToken)
 	p.registerPrefix(token.FALSE, p.parseBoolean)
 	p.registerPrefix(token.FLOAT, p.parseFloat)
@@ -149,6 +148,7 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.SWITCH, p.parseSwitch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.SEND, p.parseReserved)
+	p.registerPrefix(token.SPREAD, p.parseSpread)
 
 	// Register infix functions
 	p.registerInfix(token.AND, p.parseInfixExpr)
@@ -171,8 +171,10 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerInfix(token.MOD, p.parseInfixExpr)
 	p.registerInfix(token.NOT_EQ, p.parseInfixExpr)
 	p.registerInfix(token.NOT, p.parseNotIn)
+	p.registerInfix(token.NULLISH, p.parseInfixExpr)
 	p.registerInfix(token.OR, p.parseInfixExpr)
 	p.registerInfix(token.PERIOD, p.parseGetAttr)
+	p.registerInfix(token.QUESTION_DOT, p.parseOptionalChain)
 	p.registerInfix(token.PIPE, p.parsePipe)
 	p.registerInfix(token.PLUS_EQUALS, p.parseAssign)
 	p.registerInfix(token.PLUS, p.parseInfixExpr)
@@ -338,6 +340,12 @@ func (p *Parser) parseStatement() ast.Node {
 
 func (p *Parser) parseLet() ast.Node {
 	tok := p.curToken
+
+	// Check for object destructuring: let { a, b } = obj
+	if p.peekTokenIs(token.LBRACE) {
+		return p.parseObjectDestructure(tok)
+	}
+
 	if !p.expectPeek("let statement", token.IDENT) {
 		return nil
 	}
@@ -361,6 +369,68 @@ func (p *Parser) parseLet() ast.Node {
 		return ast.NewMultiVar(tok, idents, value)
 	}
 	return ast.NewVar(tok, idents[0], value)
+}
+
+func (p *Parser) parseObjectDestructure(letToken token.Token) ast.Node {
+	p.nextToken() // Move to '{'
+	p.nextToken() // Move past '{'
+
+	bindings := []ast.DestructureBinding{}
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if !p.curTokenIs(token.IDENT) {
+			p.setTokenError(p.curToken, "expected identifier in destructuring pattern")
+			return nil
+		}
+
+		key := p.curToken.Literal
+		alias := "" // By default, alias is empty (use key as variable name)
+
+		// Check for alias: { a: x }
+		if p.peekTokenIs(token.COLON) {
+			p.nextToken() // Move to ':'
+			if !p.expectPeek("destructuring alias", token.IDENT) {
+				return nil
+			}
+			alias = p.curToken.Literal
+		}
+
+		bindings = append(bindings, ast.DestructureBinding{Key: key, Alias: alias})
+
+		// Check for comma or end
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken() // Move to ','
+			p.nextToken() // Move past ','
+		} else if p.peekTokenIs(token.RBRACE) {
+			p.nextToken() // Move to '}'
+		} else {
+			p.setTokenError(p.peekToken, "expected ',' or '}' in destructuring pattern")
+			return nil
+		}
+	}
+
+	if !p.curTokenIs(token.RBRACE) {
+		p.setTokenError(p.curToken, "expected '}' to close destructuring pattern")
+		return nil
+	}
+
+	if len(bindings) == 0 {
+		p.setTokenError(p.curToken, "destructuring pattern cannot be empty")
+		return nil
+	}
+
+	// Expect '='
+	if !p.expectPeek("destructuring assignment", token.ASSIGN) {
+		return nil
+	}
+
+	p.nextToken()
+	value := p.parseAssignmentValue()
+	if value == nil {
+		return nil
+	}
+
+	return ast.NewObjectDestructure(letToken, bindings, value)
 }
 
 func (p *Parser) parseConst() *ast.Const {
@@ -1026,6 +1096,20 @@ func (p *Parser) parsePrefixExpr() ast.Node {
 	return ast.NewPrefix(operator, right)
 }
 
+func (p *Parser) parseSpread() ast.Node {
+	spreadToken := p.curToken
+	if err := p.nextToken(); err != nil {
+		return nil
+	}
+	// Parse the expression to be spread
+	value := p.parseExpression(PREFIX)
+	if value == nil {
+		p.setTokenError(p.curToken, "expected expression after spread operator")
+		return nil
+	}
+	return ast.NewSpread(spreadToken, value)
+}
+
 func (p *Parser) parseNewline() ast.Node {
 	p.nextToken()
 	return nil
@@ -1204,7 +1288,8 @@ func (p *Parser) parseArrowBody(arrowToken token.Token, params []*ast.Ident, def
 		defaults = make(map[string]ast.Expression)
 	}
 
-	return ast.NewFunc(arrowToken, nil, params, defaults, body)
+	// Arrow functions currently don't support rest parameters (nil)
+	return ast.NewFunc(arrowToken, nil, params, defaults, nil, body)
 }
 
 // Parses an entire if, else if, else block. Else-ifs are handled recursively.
@@ -1434,42 +1519,65 @@ func (p *Parser) parseFunc() ast.Node {
 	if !p.expectPeek("function", token.LPAREN) { // Move to the "("
 		return nil
 	}
-	defaults, params := p.parseFuncParams()
+	defaults, params, restParam := p.parseFuncParams()
 	if !p.expectPeek("function", token.LBRACE) { // move to the "{"
 		return nil
 	}
-	return ast.NewFunc(funcToken, ident, params, defaults, p.parseBlock())
+	return ast.NewFunc(funcToken, ident, params, defaults, restParam, p.parseBlock())
 }
 
-func (p *Parser) parseFuncParams() (map[string]ast.Expression, []*ast.Ident) {
+func (p *Parser) parseFuncParams() (map[string]ast.Expression, []*ast.Ident, *ast.Ident) {
 	// If the next parameter is ")", then there are no parameters
 	if p.peekTokenIs(token.RPAREN) {
 		p.nextToken()
-		return map[string]ast.Expression{}, nil
+		return map[string]ast.Expression{}, nil, nil
 	}
 	defaults := map[string]ast.Expression{}
 	params := make([]*ast.Ident, 0)
+	var restParam *ast.Ident
 	p.nextToken()
 	for !p.curTokenIs(token.RPAREN) { // Keep going until we find a ")"
 		if p.curTokenIs(token.EOF) {
 			p.setTokenError(p.prevToken, "unterminated function parameters")
-			return nil, nil
+			return nil, nil, nil
 		}
+
+		// Check for rest parameter: ...ident
+		if p.curTokenIs(token.SPREAD) {
+			if restParam != nil {
+				p.setTokenError(p.curToken, "only one rest parameter is allowed")
+				return nil, nil, nil
+			}
+			p.nextToken() // Move past ...
+			if !p.curTokenIs(token.IDENT) {
+				p.setTokenError(p.curToken, "expected identifier after ... in rest parameter")
+				return nil, nil, nil
+			}
+			restParam = ast.NewIdent(p.curToken)
+			p.nextToken()
+			// Rest parameter must be last
+			if !p.curTokenIs(token.RPAREN) {
+				p.setTokenError(p.curToken, "rest parameter must be the last parameter")
+				return nil, nil, nil
+			}
+			continue
+		}
+
 		if !p.curTokenIs(token.IDENT) {
 			p.setTokenError(p.curToken, "expected an identifier (got %s)", p.curToken.Literal)
-			return nil, nil
+			return nil, nil, nil
 		}
 		ident := ast.NewIdent(p.curToken)
 		params = append(params, ident)
 		if err := p.nextToken(); err != nil {
-			return nil, nil
+			return nil, nil, nil
 		}
 		// If there is "=expr" after the name then expr is a default value
 		if p.curTokenIs(token.ASSIGN) {
 			p.nextToken()
 			expr := p.parseExpression(LOWEST)
 			if expr == nil {
-				return nil, nil
+				return nil, nil, nil
 			}
 			defaults[ident.String()] = expr
 			p.nextToken()
@@ -1478,7 +1586,7 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expression, []*ast.Ident) {
 			p.nextToken()
 		}
 	}
-	return defaults, params
+	return defaults, params, restParam
 }
 
 func (p *Parser) parseReserved() ast.Node {
@@ -1489,31 +1597,6 @@ func (p *Parser) parseReserved() ast.Node {
 func (p *Parser) parseReservedInfix(_ ast.Node) ast.Node {
 	p.setTokenError(p.curToken, fmt.Sprintf("reserved operator: %s", p.curToken.Literal))
 	return nil
-}
-
-func (p *Parser) parseDefer() ast.Node {
-	deferToken := p.curToken
-	if err := p.nextToken(); err != nil {
-		return nil
-	}
-	if !p.curTokenIs(token.FUNCTION) && !p.curTokenIs(token.IDENT) {
-		p.setTokenError(p.curToken, "invalid defer statement")
-		return nil
-	}
-	expr := p.parseExpression(PREFIX)
-	if expr == nil {
-		p.setTokenError(p.curToken, "invalid defer statement")
-		return nil
-	}
-	switch expr := expr.(type) {
-	case *ast.Call:
-		return ast.NewDefer(deferToken, expr)
-	case *ast.ObjectCall:
-		return ast.NewDefer(deferToken, expr)
-	default:
-		p.setTokenError(p.curToken, "invalid defer statement")
-		return nil
-	}
 }
 
 func (p *Parser) parseString() ast.Node {
@@ -1901,42 +1984,10 @@ func (p *Parser) parseMapOrSet() ast.Node {
 			return nil
 		}
 		return ast.NewMap(firstToken, pairs)
-	} else { // This is a set
-		items := []ast.Expression{firstKey}
-		if p.peekTokenIs(token.COMMA) {
-			p.nextToken()
-		} else if p.peekTokenIs(token.RBRACE) {
-			p.nextToken()
-			return ast.NewSet(firstToken, items)
-		} else {
-			p.setTokenError(p.peekToken, "invalid syntax in set expression")
-			return nil
-		}
-		for p.peekTokenIs(token.NEWLINE) {
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-		}
-		for !p.peekTokenIs(token.RBRACE) {
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-			key := p.parseExpression(LOWEST)
-			items = append(items, key)
-			if !p.peekTokenIs(token.COMMA) {
-				break
-			}
-			p.nextToken() // move to the comma
-			for p.peekTokenIs(token.NEWLINE) {
-				if err := p.nextToken(); err != nil {
-					return nil
-				}
-			}
-		}
-		if !p.expectPeek("set", token.RBRACE) {
-			return nil
-		}
-		return ast.NewSet(firstToken, items)
+	} else {
+		// Set literals are not supported - require colon for map entries
+		p.setTokenError(p.peekToken, "expected ':' for map entry (set literals are not supported)")
+		return nil
 	}
 }
 
@@ -1990,6 +2041,34 @@ func (p *Parser) parseGetAttr(objNode ast.Node) ast.Node {
 		return ast.NewSetAttr(operator, obj, name, right)
 	}
 	return ast.NewGetAttr(period, obj, name)
+}
+
+func (p *Parser) parseOptionalChain(objNode ast.Node) ast.Node {
+	obj, ok := objNode.(ast.Expression)
+	if !ok {
+		p.setTokenError(p.curToken, "invalid optional chain expression")
+		return nil
+	}
+	tok := p.curToken
+	p.nextToken()
+	p.eatNewlines()
+	if !p.curTokenIs(token.IDENT) {
+		p.setTokenError(p.curToken, "expected an identifier after %q", "?.")
+		return nil
+	}
+	name := p.parseIdent().(*ast.Ident)
+	if p.peekTokenIs(token.LPAREN) {
+		p.nextToken()
+		callNode := p.parseCall(name)
+		call, ok := callNode.(ast.Expression)
+		if !ok {
+			p.setTokenError(p.curToken, "invalid optional chain expression")
+			return nil
+		}
+		return ast.NewOptionalObjectCall(tok, obj, call)
+	}
+	// Optional chaining does not support assignment
+	return ast.NewOptionalGetAttr(tok, obj, name)
 }
 
 // curTokenIs returns true if the current token has the given type.

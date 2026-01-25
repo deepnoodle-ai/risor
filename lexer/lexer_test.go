@@ -288,8 +288,7 @@ func TestString(t *testing.T) {
 func TestSimpleComment(t *testing.T) {
 	input := `=+// This is a comment
 // This is still a comment
-# I like comments
-let a = 1; # This is a comment too.
+let a = 1;
 // This is a final
 // comment on two-lines`
 
@@ -299,7 +298,6 @@ let a = 1; # This is a comment too.
 	}{
 		{token.ASSIGN, "="},
 		{token.PLUS, "+"},
-		{token.NEWLINE, "\n"},
 		{token.NEWLINE, "\n"},
 		{token.NEWLINE, "\n"},
 		{token.LET, "let"},

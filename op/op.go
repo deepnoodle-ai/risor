@@ -12,14 +12,17 @@ const (
 	Halt        Code = 2
 	Call        Code = 3
 	ReturnValue Code = 4
-	Defer       Code = 5
+	// Defer (removed in v2)    Code = 5
 	// Go (removed in v2)       Code = 6
+	CallSpread  Code = 7  // Call with args from list on stack
 
 	// Jump
-	JumpBackward          Code = 10
-	JumpForward           Code = 11
-	PopJumpForwardIfFalse Code = 12
-	PopJumpForwardIfTrue  Code = 13
+	JumpBackward            Code = 10
+	JumpForward             Code = 11
+	PopJumpForwardIfFalse   Code = 12
+	PopJumpForwardIfTrue    Code = 13
+	PopJumpForwardIfNotNil  Code = 14
+	PopJumpForwardIfNil     Code = 15
 
 	// Load
 	LoadAttr   Code = 20
@@ -45,6 +48,8 @@ const (
 	BuildMap    Code = 51
 	BuildSet    Code = 52
 	BuildString Code = 53
+	ListAppend  Code = 54  // Append TOS to list at TOS-1
+	ListExtend  Code = 55  // Extend list at TOS-1 with iterable at TOS
 
 	// Containers
 	BinarySubscr Code = 60
@@ -197,10 +202,10 @@ func init() {
 		{BuildSet, "BUILD_SET", 1},
 		{BuildString, "BUILD_STRING", 1},
 		{Call, "CALL", 1},
+		{CallSpread, "CALL_SPREAD", 0},
 		{CompareOp, "COMPARE_OP", 1},
 		{ContainsOp, "CONTAINS_OP", 1},
 		{Copy, "COPY", 1},
-		{Defer, "DEFER", 0},
 		{False, "FALSE", 0},
 		{ForIter, "FOR_ITER", 2},
 		{FromImport, "FROM_IMPORT", 2},
@@ -210,6 +215,8 @@ func init() {
 		{JumpBackward, "JUMP_BACKWARD", 1},
 		{JumpForward, "JUMP_FORWARD", 1},
 		{Length, "LENGTH", 0},
+		{ListAppend, "LIST_APPEND", 0},
+		{ListExtend, "LIST_EXTEND", 0},
 		{LoadAttr, "LOAD_ATTR", 1},
 		{LoadClosure, "LOAD_CLOSURE", 2},
 		{LoadConst, "LOAD_CONST", 1},
@@ -221,6 +228,8 @@ func init() {
 		{Nop, "NOP", 0},
 		{Partial, "PARTIAL", 1},
 		{PopJumpForwardIfFalse, "POP_JUMP_FORWARD_IF_FALSE", 1},
+		{PopJumpForwardIfNil, "POP_JUMP_FORWARD_IF_NIL", 1},
+		{PopJumpForwardIfNotNil, "POP_JUMP_FORWARD_IF_NOT_NIL", 1},
 		{PopJumpForwardIfTrue, "POP_JUMP_FORWARD_IF_TRUE", 1},
 		{PopTop, "POP_TOP", 0},
 		{Range, "RANGE", 0},

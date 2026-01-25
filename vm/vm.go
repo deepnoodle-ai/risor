@@ -418,6 +418,18 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			obj := vm.pop()
 			partial := object.NewPartial(obj, args)
 			vm.push(partial)
+		case op.CallSpread:
+			// Call with arguments from a list on the stack
+			argList := vm.pop()
+			list, ok := argList.(*object.List)
+			if !ok {
+				return errz.TypeErrorf("type error: spread call requires list of arguments (got %s)", argList.Type())
+			}
+			args := list.Value()
+			obj := vm.pop()
+			if err := vm.callObject(ctx, obj, args); err != nil {
+				return err
+			}
 		case op.ReturnValue:
 			activeFrame := vm.activeFrame
 			returnAddr := activeFrame.returnAddr
@@ -439,6 +451,18 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			tos := vm.pop()
 			delta := int(vm.fetch()) - 2
 			if !tos.IsTruthy() {
+				vm.ip += delta
+			}
+		case op.PopJumpForwardIfNotNil:
+			tos := vm.pop()
+			delta := int(vm.fetch()) - 2
+			if tos != object.Nil {
+				vm.ip += delta
+			}
+		case op.PopJumpForwardIfNil:
+			tos := vm.pop()
+			delta := int(vm.fetch()) - 2
+			if tos == object.Nil {
 				vm.ip += delta
 			}
 		case op.JumpForward:
@@ -472,6 +496,39 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				items[i] = vm.pop()
 			}
 			vm.push(object.NewSet(items))
+		case op.ListAppend:
+			// Append TOS to list at TOS-1
+			item := vm.pop()
+			listObj := vm.pop()
+			list, ok := listObj.(*object.List)
+			if !ok {
+				return errz.TypeErrorf("type error: cannot append to non-list (got %s)", listObj.Type())
+			}
+			newItems := append(list.Value(), item)
+			vm.push(object.NewList(newItems))
+		case op.ListExtend:
+			// Extend list at TOS-1 with iterable at TOS
+			iterableObj := vm.pop()
+			listObj := vm.pop()
+			list, ok := listObj.(*object.List)
+			if !ok {
+				return errz.TypeErrorf("type error: cannot extend non-list (got %s)", listObj.Type())
+			}
+			// Get items from the iterable
+			iterable, ok := iterableObj.(object.Iterable)
+			if !ok {
+				return errz.TypeErrorf("type error: spread requires an iterable (got %s)", iterableObj.Type())
+			}
+			iter := iterable.Iter()
+			newItems := list.Value()
+			for {
+				item, ok := iter.Next(ctx)
+				if !ok {
+					break
+				}
+				newItems = append(newItems, item)
+			}
+			vm.push(object.NewList(newItems))
 		case op.BinarySubscr:
 			idx := vm.pop()
 			lhs := vm.pop()
@@ -686,13 +743,6 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 					return errz.EvalErrorf("eval error: invalid iteration")
 				}
 			}
-		case op.Defer:
-			obj := vm.pop()
-			partial, ok := obj.(*object.Partial)
-			if !ok {
-				return errz.TypeErrorf("type error: object is not a partial (got %s)", obj.Type())
-			}
-			vm.activeFrame.Defer(partial)
 		case op.Halt:
 			return nil
 		default:
@@ -806,20 +856,55 @@ func (vm *VirtualMachine) callFunction(
 
 	// Assemble frame local variables in vm.tmp. The local variable order is:
 	// 1. Function parameters
-	// 2. Function name (if the function is named)
-	copy(vm.tmp[:argc], args)
-	if argc < paramsCount {
-		defaults := fn.Defaults()
-		for i := argc; i < len(defaults); i++ {
-			vm.tmp[i] = defaults[i]
+	// 2. Rest parameter (if any)
+	// 3. Function name (if the function is named)
+
+	localCount := paramsCount
+	hasRestParam := fn.HasRestParam()
+
+	if hasRestParam {
+		// Copy regular parameters
+		copyCount := argc
+		if copyCount > paramsCount {
+			copyCount = paramsCount
 		}
-		argc = paramsCount
+		copy(vm.tmp[:copyCount], args[:copyCount])
+
+		// Fill in defaults for missing regular params
+		if copyCount < paramsCount {
+			defaults := fn.Defaults()
+			for i := copyCount; i < len(defaults); i++ {
+				vm.tmp[i] = defaults[i]
+			}
+		}
+
+		// Collect remaining args into rest param list
+		var restArgs []object.Object
+		if argc > paramsCount {
+			restArgs = args[paramsCount:]
+		} else {
+			restArgs = []object.Object{}
+		}
+		vm.tmp[paramsCount] = object.NewList(restArgs)
+		localCount = paramsCount + 1
+	} else {
+		// No rest param - original behavior
+		copy(vm.tmp[:argc], args)
+		if argc < paramsCount {
+			defaults := fn.Defaults()
+			for i := argc; i < len(defaults); i++ {
+				vm.tmp[i] = defaults[i]
+			}
+		}
+		localCount = paramsCount
 	}
+
 	code := fn.Code()
 	if code.IsNamed() {
-		vm.tmp[paramsCount] = fn
-		argc++
+		vm.tmp[localCount] = fn
+		localCount++
 	}
+	argc = localCount
 
 	// Activate a frame for the function call
 	vm.activateFunction(vm.fp+1, 0, fn, vm.tmp[:argc])
@@ -827,21 +912,6 @@ func (vm *VirtualMachine) callFunction(
 	// Setting StopSignal as the return address will cause the eval function to
 	// stop execution when it reaches the end of the active code.
 	vm.activeFrame.returnAddr = StopSignal
-
-	// Set up deferred function calls
-	callFrame := vm.activeFrame
-	defer func() {
-		for _, partial := range callFrame.defers {
-			if err := vm.callObject(ctx, partial.Function(), partial.Args()); err != nil {
-				result = nil
-				resultErr = err
-			} else {
-				// Discard the result of the deferred function call, which is
-				// guaranteed to have pushed a single value onto the stack.
-				vm.pop()
-			}
-		}
-	}()
 
 	// Evaluate the function code then return the result from TOS
 	if err := vm.eval(ctx); err != nil {

@@ -2,7 +2,6 @@ package vm
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -212,8 +211,6 @@ func TestForRange7(t *testing.T) {
 func TestIterator(t *testing.T) {
 	tests := []testCase{
 		{`(range [ 33, 44, 55 ]).next()`, object.NewInt(33)},
-		{`let c = { 33, 44, 55 }; let i = range c; i.next(); i.entry().value`, object.True},
-		{`let c = { 33, 44, 55 }; let i = range c; i.next(); i.entry().key`, object.NewInt(33)},
 		{`(range [ 33, 44, 55 ]).next()`, object.NewInt(33)},
 		{`let i = range "abcd"; i.next(); i.entry().key`, object.NewInt(0)},
 		{`let i = range "abcd"; i.next(); i.entry().value`, object.NewString("a")},
@@ -230,8 +227,6 @@ func TestIndexing(t *testing.T) {
 		{`let x = [1, 2]; x[-1] = 9; x[1]`, object.NewInt(9)},
 		{`let x = {a: 1}; x["a"] = 9; x["a"]`, object.NewInt(9)},
 		{`let x = {a: 1}; x["b"] = 9; x["b"]`, object.NewInt(9)},
-		{`let x = { 1 }; x[1]`, object.True},
-		{`let x = { 1 }; x[2]`, object.False},
 	}
 	runTests(t, tests)
 }
@@ -460,17 +455,6 @@ func TestMap(t *testing.T) {
 	require.Equal(t, object.NewMap(map[string]object.Object{
 		"a": object.NewInt(1),
 		"b": object.NewInt(2),
-	}), result)
-}
-
-func TestSet(t *testing.T) {
-	result, err := run(context.Background(), `
-	{"a", 4-1}
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewSet([]object.Object{
-		object.NewString("a"),
-		object.NewInt(3),
 	}), result)
 }
 
@@ -739,7 +723,6 @@ func TestTruthiness(t *testing.T) {
 		{`![]`, object.True},
 		{`![1]`, object.False},
 		{`!{}`, object.True},
-		{`!{1}`, object.False},
 		{`!""`, object.True},
 		{`!"a"`, object.False},
 		{`bool(0)`, object.False},
@@ -747,7 +730,6 @@ func TestTruthiness(t *testing.T) {
 		{`bool([])`, object.False},
 		{`bool([1])`, object.True},
 		{`bool({})`, object.False},
-		{`bool({1})`, object.True},
 		{`bool({foo: 1})`, object.True},
 	}
 	runTests(t, tests)
@@ -787,7 +769,6 @@ func TestLength(t *testing.T) {
 		{`len("hello")`, object.NewInt(5)},
 		{`len([1, 2, 3])`, object.NewInt(3)},
 		{`len({"abc": 1})`, object.NewInt(1)},
-		{`len({"abc"})`, object.NewInt(1)},
 		{`len("ᛛᛥ")`, object.NewInt(2)},
 		{`len(string(byte_slice([0, 1, 2])))`, object.NewInt(3)},
 	}
@@ -963,46 +944,6 @@ func TestTryWithClosure(t *testing.T) {
 	require.Equal(t, expected, result)
 }
 
-func TestTryWithDefer(t *testing.T) {
-	code := `
-	let result = []
-	function operation() {
-		try(
-			function() {
-				defer result.append("deferred")
-				result.append("start")
-				error("operation failed")
-			},
-			function(e) { result.append("caught: " + e.message()) }
-		)
-	}
-	operation()
-	result
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	expected := object.NewList([]object.Object{
-		object.NewString("start"),
-		object.NewString("deferred"),
-		object.NewString("caught: operation failed"),
-	})
-	require.Equal(t, expected, result)
-}
-
-func TestDeferWithError(t *testing.T) {
-	code := `
-	function operation() {
-		defer function() {
-			error("AGH")
-		}()
-	}
-	operation()
-	`
-	_, err := run(context.Background(), code)
-	require.Error(t, err)
-	require.Equal(t, fmt.Errorf("AGH"), err)
-}
-
 func TestStringTemplateWithRaisedError(t *testing.T) {
 	code := "`the err string is: ${error(\"oops\")}. sad!`"
 	_, err := run(context.Background(), code)
@@ -1026,8 +967,6 @@ func TestMultiVarAssignment(t *testing.T) {
 		{`let a, b, c = [3, 4, 5]; c`, object.NewInt(5)},
 		{`let a, b = "ᛛᛥ"; a`, object.NewString("ᛛ")},
 		{`let a, b = "ᛛᛥ"; b`, object.NewString("ᛥ")},
-		{`let a, b = {42, 43}; a`, object.NewInt(42)},
-		{`let a, b = {42, 43}; b`, object.NewInt(43)},
 		{`let a, b = {foo: 1, bar: 2}; a`, object.NewString("bar")},
 		{`let a, b = {foo: 1, bar: 2}; b`, object.NewString("foo")},
 	}
@@ -1206,6 +1145,112 @@ func TestOrShortCircuit(t *testing.T) {
 	`)
 	require.Nil(t, err)
 	require.Equal(t, object.NewString("worked!"), result)
+}
+
+func TestNullishCoalescing(t *testing.T) {
+	tests := []testCase{
+		// Basic nil case
+		{`nil ?? "default"`, object.NewString("default")},
+		// Non-nil value
+		{`"value" ?? "default"`, object.NewString("value")},
+		// Falsy but non-nil values should NOT trigger default
+		{`0 ?? 42`, object.NewInt(0)},
+		{`false ?? true`, object.False},
+		{`"" ?? "default"`, object.NewString("")},
+		// Chained nullish coalescing
+		{`nil ?? nil ?? "final"`, object.NewString("final")},
+		{`nil ?? "first" ?? "second"`, object.NewString("first")},
+		// With expressions
+		{`let x = nil; x ?? 10`, object.NewInt(10)},
+		{`let x = 5; x ?? 10`, object.NewInt(5)},
+		// Comparison with OR (different behavior)
+		{`0 || 42`, object.NewInt(42)},   // OR uses truthiness
+		{`0 ?? 42`, object.NewInt(0)},    // ?? only checks nil
+	}
+	runTests(t, tests)
+}
+
+func TestSpreadOperator(t *testing.T) {
+	tests := []testCase{
+		// Array spread
+		{`let a = [1, 2]; [...a]`, object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)})},
+		{`let a = [1, 2]; [0, ...a, 3]`, object.NewList([]object.Object{
+			object.NewInt(0), object.NewInt(1), object.NewInt(2), object.NewInt(3),
+		})},
+		{`let a = [1]; let b = [2]; [...a, ...b]`, object.NewList([]object.Object{
+			object.NewInt(1), object.NewInt(2),
+		})},
+		// Function call spread
+		{`function sum(a, b, c) { return a + b + c }; let args = [1, 2, 3]; sum(...args)`, object.NewInt(6)},
+		{`function foo(a, b, c, d) { return [a, b, c, d] }; let x = [2, 3]; foo(1, ...x, 4)`,
+			object.NewList([]object.Object{
+				object.NewInt(1), object.NewInt(2), object.NewInt(3), object.NewInt(4),
+			})},
+		{`let items = ["a", "b"]; print(...items)`, object.Nil},
+	}
+	runTests(t, tests)
+}
+
+func TestRestParameter(t *testing.T) {
+	tests := []testCase{
+		// Basic rest parameter
+		{`function sum(...nums) { let t = 0; for n in nums { t = t + n }; return t }; sum(1, 2, 3)`, object.NewInt(6)},
+		// Rest with regular params
+		{`function foo(a, ...rest) { return [a, rest] }; foo(1, 2, 3)`,
+			object.NewList([]object.Object{
+				object.NewInt(1),
+				object.NewList([]object.Object{object.NewInt(2), object.NewInt(3)}),
+			})},
+		// Rest with no extra args
+		{`function test(...args) { return args }; test()`, object.NewList([]object.Object{})},
+		// Rest collects all remaining
+		{`function test(a, b, ...rest) { return len(rest) }; test(1, 2, 3, 4, 5)`, object.NewInt(3)},
+	}
+	runTests(t, tests)
+}
+
+func TestObjectDestructuring(t *testing.T) {
+	tests := []testCase{
+		// Basic destructuring
+		{`let obj = { a: 1, b: 2 }; let { a, b } = obj; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)})},
+		// With aliases
+		{`let obj = { name: "Alice", age: 30 }; let { name: n, age: a } = obj; [n, a]`,
+			object.NewList([]object.Object{object.NewString("Alice"), object.NewInt(30)})},
+		// Single property
+		{`let obj = { x: 42 }; let { x } = obj; x`, object.NewInt(42)},
+		// From function return
+		{`function getUser() { return { id: 1, active: true } }; let { id, active } = getUser(); [id, active]`,
+			object.NewList([]object.Object{object.NewInt(1), object.True})},
+		// Mixed aliases and non-aliases
+		{`let obj = { a: 1, b: 2, c: 3 }; let { a, b: x, c } = obj; [a, x, c]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2), object.NewInt(3)})},
+	}
+	runTests(t, tests)
+}
+
+func TestOptionalChaining(t *testing.T) {
+	tests := []testCase{
+		// Property access on non-nil
+		{`let obj = { name: "test" }; obj?.name`, object.NewString("test")},
+		// Property access on nil
+		{`let obj = nil; obj?.name`, object.Nil},
+		// Method call on non-nil
+		{`let s = "hello"; s?.to_upper()`, object.NewString("HELLO")},
+		// Method call on nil
+		{`let s = nil; s?.to_upper()`, object.Nil},
+		// Chained optional access
+		{`let obj = { inner: { value: 42 } }; obj?.inner?.value`, object.NewInt(42)},
+		{`let obj = { inner: nil }; obj?.inner?.value`, object.Nil},
+		{`let obj = nil; obj?.inner?.value`, object.Nil},
+		// Mixed with regular access
+		{`let obj = { a: { b: 1 } }; obj.a?.b`, object.NewInt(1)},
+		{`let obj = { a: nil }; obj.a?.b`, object.Nil},
+		// With nullish coalescing
+		{`let obj = nil; obj?.name ?? "default"`, object.NewString("default")},
+		{`let obj = { name: "test" }; obj?.name ?? "default"`, object.NewString("test")},
+	}
+	runTests(t, tests)
 }
 
 func TestLoopBreak(t *testing.T) {
@@ -1884,109 +1929,6 @@ main()
 	require.Equal(t, object.NewList([]object.Object{
 		object.NewString("result"),
 		object.NewString("result"),
-	}), result)
-}
-
-func TestDeferStatementGlobalClosure(t *testing.T) {
-	code := `
-	let x = 0
-	function foo(value) { defer function() { x = value }() }
-	foo(4)
-	x
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
-}
-
-func TestDeferStatementOrdering(t *testing.T) {
-	code := `
-	let l = []
-	function foo(value) {
-		defer l.append(value+1) // 3
-		defer l.append(value)   // 2
-		l.append(1)             // 1
-	}
-	foo(2)
-	l
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
-}
-
-func TestDeferStatementAnon(t *testing.T) {
-	code := `
-	function() {
-		let x = 42
-		defer function() { x = 1 }()
-		defer function() { x = 2 }()
-		return x
-	}()
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(42), result)
-}
-
-func TestDeferStatementBuiltin(t *testing.T) {
-	code := `
-	let m = {one: 1, two: 2}
-	function test() {
-		function() {
-			m["three"] = 3
-			defer delete(m, "one")
-		}()
-	}
-	test()
-	m
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewMap(map[string]object.Object{
-		"two":   object.NewInt(2),
-		"three": object.NewInt(3),
-	}), result)
-}
-
-func TestDeferFileClose(t *testing.T) {
-	code := `
-	function get_lines(path) {
-		let f = os.open(path)
-		defer f.close()
-		return string(f.read()).split("\n")
-	}
-	let lines = get_lines("fixtures/jabberwocky.txt")
-	lines[0]
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("'Twas brillig, and the slithy toves"), result)
-}
-
-func TestDeferNoStackPollution(t *testing.T) {
-	code := `
-	let result = []
-	function append_value(v) {
-		defer function(v) {
-			result.append(v)
-		}(v)
-	}
-	for let _, v = range [1, 2, 3] {
-		append_value(v)
-	}
-	result
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
 	}), result)
 }
 
@@ -3156,23 +3098,6 @@ func TestForInWithMaps(t *testing.T) {
 		object.NewInt(2),
 		object.NewInt(3),
 	}), result)
-}
-
-func TestForInWithSets(t *testing.T) {
-	result, err := run(context.Background(), `
-	let data = {1, 2, 3}
-	let result = []
-	for item in data {
-		result.append(item)
-	}
-	result.sort()
-	result
-	`)
-	require.Nil(t, err)
-	// Sets might return the values (not keys) for iteration, let's check what we get
-	list, ok := result.(*object.List)
-	require.True(t, ok)
-	require.Equal(t, 3, len(list.Value()))
 }
 
 func TestForInWithRangeFunction(t *testing.T) {

@@ -2,7 +2,6 @@ package ast
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 
 	"github.com/risor-io/risor/token"
@@ -85,6 +84,56 @@ func (s *MultiVar) String() string {
 	out.WriteString(namesStr)
 	out.WriteString(" = ")
 	out.WriteString(expr.String())
+	return out.String()
+}
+
+// DestructureBinding represents a single binding in object destructuring.
+// It has a key (property name to extract) and an optional alias (local variable name).
+type DestructureBinding struct {
+	Key   string // Property name to extract from object
+	Alias string // Local variable name (empty means use Key as name)
+}
+
+// ObjectDestructure is a statement that extracts properties from an object.
+// This is used for "let { a, b } = obj" or "let { a: x, b: y } = obj" statements.
+type ObjectDestructure struct {
+	token    token.Token
+	bindings []DestructureBinding
+	value    Expression
+}
+
+// NewObjectDestructure creates a new ObjectDestructure node.
+func NewObjectDestructure(token token.Token, bindings []DestructureBinding, value Expression) *ObjectDestructure {
+	return &ObjectDestructure{token: token, bindings: bindings, value: value}
+}
+
+func (s *ObjectDestructure) StatementNode() {}
+
+func (s *ObjectDestructure) IsExpression() bool { return false }
+
+func (s *ObjectDestructure) Token() token.Token { return s.token }
+
+func (s *ObjectDestructure) Literal() string { return s.token.Literal }
+
+func (s *ObjectDestructure) Bindings() []DestructureBinding { return s.bindings }
+
+func (s *ObjectDestructure) Value() Expression { return s.value }
+
+func (s *ObjectDestructure) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Literal() + " { ")
+	for i, b := range s.bindings {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(b.Key)
+		if b.Alias != "" && b.Alias != b.Key {
+			out.WriteString(": ")
+			out.WriteString(b.Alias)
+		}
+	}
+	out.WriteString(" } = ")
+	out.WriteString(s.value.String())
 	return out.String()
 }
 
@@ -622,27 +671,3 @@ func (e *SetAttr) String() string {
 	return out.String()
 }
 
-// A Defer statement node represents a defer statement.
-type Defer struct {
-	token token.Token
-	call  Expression
-}
-
-// NewDefer creates a new Defer node.
-func NewDefer(token token.Token, call Expression) *Defer {
-	return &Defer{token: token, call: call}
-}
-
-func (d *Defer) StatementNode() {}
-
-func (d *Defer) IsExpression() bool { return false }
-
-func (d *Defer) Token() token.Token { return d.token }
-
-func (d *Defer) Literal() string { return d.token.Literal }
-
-func (d *Defer) Call() Expression { return d.call }
-
-func (d *Defer) String() string {
-	return fmt.Sprintf("defer %s", d.call.String())
-}

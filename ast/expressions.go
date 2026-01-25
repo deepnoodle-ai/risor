@@ -66,6 +66,37 @@ func (p *Prefix) String() string {
 	return out.String()
 }
 
+// Spread represents a spread expression (...expr) used in array literals,
+// object literals, and function calls. Also used for rest parameters.
+type Spread struct {
+	token token.Token
+	value Expression
+}
+
+// NewSpread creates a new Spread node.
+func NewSpread(token token.Token, value Expression) *Spread {
+	return &Spread{token: token, value: value}
+}
+
+func (s *Spread) ExpressionNode() {}
+
+func (s *Spread) IsExpression() bool { return true }
+
+func (s *Spread) Token() token.Token { return s.token }
+
+func (s *Spread) Literal() string { return s.token.Literal }
+
+func (s *Spread) Value() Expression { return s.value }
+
+func (s *Spread) String() string {
+	var out bytes.Buffer
+	out.WriteString("...")
+	if s.value != nil {
+		out.WriteString(s.value.String())
+	}
+	return out.String()
+}
+
 // Infix is an operator expression where the operator is between the operands.
 // Examples include "x + y" and "5 - 1".
 type Infix struct {
@@ -244,12 +275,23 @@ type GetAttr struct {
 
 	// The attribute itself
 	attribute *Ident
+
+	// optional indicates this is optional chaining (?.)
+	optional bool
 }
 
 // NewGetAttr creates a new GetAttr node.
 func NewGetAttr(token token.Token, object Expression, attribute *Ident) *GetAttr {
-	return &GetAttr{token: token, object: object, attribute: attribute}
+	return &GetAttr{token: token, object: object, attribute: attribute, optional: false}
 }
+
+// NewOptionalGetAttr creates a new GetAttr node for optional chaining (?.).
+func NewOptionalGetAttr(token token.Token, object Expression, attribute *Ident) *GetAttr {
+	return &GetAttr{token: token, object: object, attribute: attribute, optional: true}
+}
+
+// IsOptional returns true if this is optional chaining (?.).
+func (e *GetAttr) IsOptional() bool { return e.optional }
 
 func (e *GetAttr) ExpressionNode() {}
 
@@ -266,7 +308,11 @@ func (e *GetAttr) Name() string { return e.attribute.value }
 func (e *GetAttr) String() string {
 	var out bytes.Buffer
 	out.WriteString(e.object.String())
-	out.WriteString(".")
+	if e.optional {
+		out.WriteString("?.")
+	} else {
+		out.WriteString(".")
+	}
 	out.WriteString(e.attribute.value)
 	return out.String()
 }
@@ -310,14 +356,20 @@ func (p *Pipe) String() string {
 // ObjectCall is an expression node that describes the invocation of a method
 // on an object.
 type ObjectCall struct {
-	token  token.Token
-	object Expression
-	call   Expression
+	token    token.Token
+	object   Expression
+	call     Expression
+	optional bool
 }
 
 // NewObjectCall creates a new ObjectCall node.
 func NewObjectCall(token token.Token, object Expression, call Expression) *ObjectCall {
-	return &ObjectCall{token: token, object: object, call: call}
+	return &ObjectCall{token: token, object: object, call: call, optional: false}
+}
+
+// NewOptionalObjectCall creates a new ObjectCall node for optional chaining (?.).
+func NewOptionalObjectCall(token token.Token, object Expression, call Expression) *ObjectCall {
+	return &ObjectCall{token: token, object: object, call: call, optional: true}
 }
 
 func (c *ObjectCall) ExpressionNode() {}
@@ -332,10 +384,16 @@ func (c *ObjectCall) Object() Expression { return c.object }
 
 func (c *ObjectCall) Call() Expression { return c.call }
 
+func (c *ObjectCall) IsOptional() bool { return c.optional }
+
 func (c *ObjectCall) String() string {
 	var out bytes.Buffer
 	out.WriteString(c.object.String())
-	out.WriteString(".")
+	if c.optional {
+		out.WriteString("?.")
+	} else {
+		out.WriteString(".")
+	}
 	out.WriteString(c.call.String())
 	return out.String()
 }

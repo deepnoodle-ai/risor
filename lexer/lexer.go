@@ -107,9 +107,14 @@ func (l *Lexer) Next() (token.Token, error) {
 	l.skipTabsAndSpaces()
 	l.tokenStartPosition = l.Position()
 
+	// skip shebang line (only at start of file)
+	if l.ch == rune('#') && l.peekChar() == rune('!') && l.line == 0 && l.position <= 1 {
+		l.skipComment()
+		return l.Next()
+	}
+
 	// skip single-line comments
-	if l.ch == rune('#') ||
-		(l.ch == rune('/') && l.peekChar() == rune('/')) {
+	if l.ch == rune('/') && l.peekChar() == rune('/') {
 		l.skipComment()
 		return l.Next()
 	}
@@ -174,7 +179,13 @@ func (l *Lexer) Next() (token.Token, error) {
 	case rune(','):
 		tok = l.newToken(token.COMMA, string(l.ch))
 	case rune('.'):
-		tok = l.newToken(token.PERIOD, string(l.ch))
+		if l.peekChar() == rune('.') && l.peekCharN(2) == rune('.') {
+			l.readChar() // consume second '.'
+			l.readChar() // consume third '.'
+			tok = l.newToken(token.SPREAD, "...")
+		} else {
+			tok = l.newToken(token.PERIOD, string(l.ch))
+		}
 	case rune('+'):
 		if l.peekChar() == rune('+') {
 			ch := l.ch
@@ -633,6 +644,16 @@ func (l *Lexer) peekChar() rune {
 		return rune(0)
 	}
 	return l.characters[l.nextPosition]
+}
+
+// peekCharN returns the character at the given offset from the current position.
+// peekCharN(1) is equivalent to peekChar().
+func (l *Lexer) peekCharN(n int) rune {
+	pos := l.position + n
+	if pos >= len(l.characters) {
+		return rune(0)
+	}
+	return l.characters[pos]
 }
 
 // GetLineText returns the text of the line containing the given token.

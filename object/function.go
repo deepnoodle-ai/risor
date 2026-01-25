@@ -123,6 +123,14 @@ func (f *Function) RequiredArgsCount() int {
 	return len(f.parameters) - f.defaultsCount
 }
 
+func (f *Function) RestParam() string {
+	return f.fn.RestParam()
+}
+
+func (f *Function) HasRestParam() bool {
+	return f.fn.HasRestParam()
+}
+
 func (f *Function) LocalsCount() int {
 	return int(f.code.LocalsCount())
 }
@@ -173,6 +181,7 @@ func NewFunction(fn *compiler.Function) *Function {
 	return &Function{
 		name:          fn.Name(),
 		code:          fn.Code(),
+		fn:            fn,
 		parameters:    parameters,
 		defaults:      defaults,
 		defaultsCount: defaultsCount,
@@ -180,15 +189,16 @@ func NewFunction(fn *compiler.Function) *Function {
 }
 
 func NewClosure(
-	fn *Function,
+	f *Function,
 	freeVars []*Cell,
 ) *Function {
 	return &Function{
-		name:          fn.name,
-		parameters:    fn.parameters,
-		defaults:      fn.defaults,
-		defaultsCount: fn.defaultsCount,
-		code:          fn.Code(),
+		name:          f.name,
+		parameters:    f.parameters,
+		defaults:      f.defaults,
+		defaultsCount: f.defaultsCount,
+		code:          f.Code(),
+		fn:            f.fn,
 		freeVars:      freeVars,
 	}
 }

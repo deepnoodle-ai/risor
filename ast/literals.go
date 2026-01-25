@@ -113,20 +113,28 @@ type Func struct {
 	// defaults holds any default values for arguments which aren't specified.
 	defaults map[string]Expression
 
+	// restParam is the rest parameter (e.g., ...args) that collects remaining arguments.
+	// Nil if the function doesn't have a rest parameter.
+	restParam *Ident
+
 	// body contains the set of statements within the function.
 	body *Block
 }
 
 // NewFunc creates a new Func node.
-func NewFunc(token token.Token, name *Ident, parameters []*Ident, defaults map[string]Expression, body *Block) *Func {
+func NewFunc(token token.Token, name *Ident, parameters []*Ident, defaults map[string]Expression, restParam *Ident, body *Block) *Func {
 	return &Func{
 		token:      token,
 		name:       name,
 		parameters: parameters,
 		defaults:   defaults,
+		restParam:  restParam,
 		body:       body,
 	}
 }
+
+// RestParam returns the rest parameter if one exists, otherwise nil.
+func (f *Func) RestParam() *Ident { return f.restParam }
 
 func (f *Func) ExpressionNode() {}
 

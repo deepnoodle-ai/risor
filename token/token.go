@@ -46,7 +46,6 @@ const (
 	COMMA           = ","
 	CONST           = "CONST"
 	DEFAULT         = "DEFAULT"
-	DEFER           = "DEFER"
 	FUNCTION        = "FUNCTION"
 	ELSE            = "ELSE"
 	EOF             = "EOF"
@@ -92,6 +91,7 @@ const (
 	RETURN          = "RETURN"
 	RPAREN          = ")"
 	SEMICOLON       = ";"
+	SPREAD          = "..."
 	SEND            = "<-"
 	SLASH           = "/"
 	SLASH_EQUALS    = "/="
@@ -118,7 +118,6 @@ var keywords = map[string]Type{
 	"const":    CONST,
 	"continue": CONTINUE,
 	"default":  DEFAULT,
-	"defer":    DEFER,
 	"else":     ELSE,
 	"false":    FALSE,
 	"for":      FOR,

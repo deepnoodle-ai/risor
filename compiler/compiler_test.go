@@ -85,11 +85,6 @@ func TestCompileErrors(t *testing.T) {
 			input:  "\nfor x in undefined_list {}",
 			errMsg: "compile error: undefined variable \"undefined_list\"\n\nlocation: t.risor:2:10 (line 2, column 10)",
 		},
-		{
-			name:   "unknown operator",
-			input:  "\n defer function() {}()",
-			errMsg: "compile error: defer statement outside of a function\n\nlocation: t.risor:2:2 (line 2, column 2)",
-		},
 	}
 	for _, tt := range testCase {
 		t.Run(tt.name, func(t *testing.T) {

@@ -636,10 +636,10 @@ func TestIncompleThings(t *testing.T) {
 		{`function foo() {`, "parse error: unterminated block statement"},
 		{`switch (foo) { `, "parse error: unterminated switch statement"},
 		{`for let i = 0; i < 5; i++ {`, "parse error: unterminated block statement"},
-		{`{`, "parse error: invalid syntax in set expression"},
+		{`{`, "parse error: expected ':' for map entry (set literals are not supported)"},
 		{`[`, "parse error: invalid syntax in list expression"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
-		{`{ "a", "b", "c"`, "parse error: unexpected end of file while parsing set (expected })"},
+		{`{ "a", "b", "c"`, "parse error: expected ':' for map entry (set literals are not supported)"},
 		{`foo |`, "parse error: invalid pipe expression"},
 		{`(1, 2`, "parse error: unexpected end of file while parsing grouped expression or arrow function (expected ))"},
 	}
@@ -766,23 +766,6 @@ func TestMapExpressionWithoutComma(t *testing.T) {
 	m, ok := expr.(*ast.Map)
 	require.True(t, ok)
 	require.Len(t, m.Items(), 2)
-}
-
-func TestSetExpression(t *testing.T) {
-	input := `{
-		"a",
-		1, 2,
-		"c",
-	}
-	`
-	program, err := Parse(context.Background(), input)
-	require.Nil(t, err)
-	require.Len(t, program.Statements(), 1)
-	expr := program.First()
-	set, ok := expr.(*ast.Set)
-	require.True(t, ok)
-	require.Len(t, set.Items(), 4)
-	require.Equal(t, `{"a", 1, 2, "c"}`, set.String())
 }
 
 func TestCallExpression(t *testing.T) {
@@ -1263,32 +1246,6 @@ func TestGoIsReservedKeyword(t *testing.T) {
 	require.Contains(t, err.Error(), "reserved keyword: go")
 }
 
-func TestDeferStatement(t *testing.T) {
-	input := "defer function() { 42 }()"
-	result, err := Parse(context.Background(), input)
-	require.Nil(t, err)
-	require.Equal(t, "defer function() { 42 }()", result.String())
-	require.Len(t, result.Statements(), 1)
-	stmt := result.Statements()[0]
-	require.IsType(t, &ast.Defer{}, stmt)
-}
-
-func TestInvalidDeferStatements(t *testing.T) {
-	tests := []string{
-		"defer",
-		"defer;",
-		"defer 42",
-		"defer []",
-		"defer {}",
-		"defer ()",
-	}
-	for _, tt := range tests {
-		_, err := Parse(context.Background(), tt)
-		require.NotNil(t, err)
-		require.Equal(t, "parse error: invalid defer statement", err.Error())
-	}
-}
-
 func TestFromImport(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -1451,6 +1408,25 @@ func TestBadESImport(t *testing.T) {
 		_, err := Parse(context.Background(), tt.input)
 		require.NotNil(t, err, "expected error for: %s", tt.input)
 		require.Contains(t, err.Error(), tt.expected, "input: %s", tt.input)
+	}
+}
+
+func TestOptionalChaining(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`obj?.name`, `obj?.name`},
+		{`obj?.inner?.value`, `obj?.inner?.value`},
+		{`obj?.method()`, `obj?.method()`},
+		{`obj?.method(1, 2)`, `obj?.method(1, 2)`},
+		{`obj.a?.b`, `obj.a?.b`},
+		{`obj?.a.b`, `obj?.a.b`},
+	}
+	for _, tt := range tests {
+		result, err := Parse(context.Background(), tt.input)
+		require.Nil(t, err, "input: %s", tt.input)
+		require.Equal(t, tt.expected, result.String(), "input: %s", tt.input)
 	}
 }
 
