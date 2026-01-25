@@ -14,22 +14,23 @@ const (
 	ReturnValue Code = 4
 	// Defer (removed in v2)    Code = 5
 	// Go (removed in v2)       Code = 6
-	CallSpread  Code = 7  // Call with args from list on stack
+	CallSpread Code = 7 // Call with args from list on stack
 
 	// Jump
-	JumpBackward            Code = 10
-	JumpForward             Code = 11
-	PopJumpForwardIfFalse   Code = 12
-	PopJumpForwardIfTrue    Code = 13
-	PopJumpForwardIfNotNil  Code = 14
-	PopJumpForwardIfNil     Code = 15
+	JumpBackward           Code = 10
+	JumpForward            Code = 11
+	PopJumpForwardIfFalse  Code = 12
+	PopJumpForwardIfTrue   Code = 13
+	PopJumpForwardIfNotNil Code = 14
+	PopJumpForwardIfNil    Code = 15
 
 	// Load
-	LoadAttr   Code = 20
-	LoadFast   Code = 21
-	LoadFree   Code = 22
-	LoadGlobal Code = 23
-	LoadConst  Code = 24
+	LoadAttr      Code = 20
+	LoadFast      Code = 21
+	LoadFree      Code = 22
+	LoadGlobal    Code = 23
+	LoadConst     Code = 24
+	LoadAttrOrNil Code = 25 // Like LoadAttr but returns nil instead of error for missing attrs
 
 	// Store
 	StoreAttr   Code = 30
@@ -48,8 +49,10 @@ const (
 	BuildMap    Code = 51
 	BuildSet    Code = 52
 	BuildString Code = 53
-	ListAppend  Code = 54  // Append TOS to list at TOS-1
-	ListExtend  Code = 55  // Extend list at TOS-1 with iterable at TOS
+	ListAppend  Code = 54 // Append TOS to list at TOS-1
+	ListExtend  Code = 55 // Extend list at TOS-1 with iterable at TOS
+	MapMerge    Code = 56 // Merge map at TOS into map at TOS-1
+	MapSet      Code = 57 // Set key (TOS-1) to value (TOS) in map at TOS-2
 
 	// Containers
 	BinarySubscr Code = 60
@@ -217,7 +220,10 @@ func init() {
 		{Length, "LENGTH", 0},
 		{ListAppend, "LIST_APPEND", 0},
 		{ListExtend, "LIST_EXTEND", 0},
+		{MapMerge, "MAP_MERGE", 0},
+		{MapSet, "MAP_SET", 0},
 		{LoadAttr, "LOAD_ATTR", 1},
+		{LoadAttrOrNil, "LOAD_ATTR_OR_NIL", 1},
 		{LoadClosure, "LOAD_CLOSURE", 2},
 		{LoadConst, "LOAD_CONST", 1},
 		{LoadFast, "LOAD_FAST", 1},

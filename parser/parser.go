@@ -176,6 +176,7 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerInfix(token.PERIOD, p.parseGetAttr)
 	p.registerInfix(token.QUESTION_DOT, p.parseOptionalChain)
 	p.registerInfix(token.PIPE, p.parsePipe)
+	p.registerInfix(token.PIPE_GT, p.parsePipeForward)
 	p.registerInfix(token.PLUS_EQUALS, p.parseAssign)
 	p.registerInfix(token.PLUS, p.parseInfixExpr)
 	p.registerInfix(token.POW, p.parseInfixExpr)
@@ -346,6 +347,11 @@ func (p *Parser) parseLet() ast.Node {
 		return p.parseObjectDestructure(tok)
 	}
 
+	// Check for array destructuring: let [a, b] = arr
+	if p.peekTokenIs(token.LBRACKET) {
+		return p.parseArrayDestructure(tok)
+	}
+
 	if !p.expectPeek("let statement", token.IDENT) {
 		return nil
 	}
@@ -385,6 +391,7 @@ func (p *Parser) parseObjectDestructure(letToken token.Token) ast.Node {
 
 		key := p.curToken.Literal
 		alias := "" // By default, alias is empty (use key as variable name)
+		var defaultValue ast.Expression
 
 		// Check for alias: { a: x }
 		if p.peekTokenIs(token.COLON) {
@@ -395,7 +402,17 @@ func (p *Parser) parseObjectDestructure(letToken token.Token) ast.Node {
 			alias = p.curToken.Literal
 		}
 
-		bindings = append(bindings, ast.DestructureBinding{Key: key, Alias: alias})
+		// Check for default value: { a = 10 } or { a: x = 10 }
+		if p.peekTokenIs(token.ASSIGN) {
+			p.nextToken() // Move to '='
+			p.nextToken() // Move past '='
+			defaultValue = p.parseExpression(LOWEST)
+			if defaultValue == nil {
+				return nil
+			}
+		}
+
+		bindings = append(bindings, ast.DestructureBinding{Key: key, Alias: alias, Default: defaultValue})
 
 		// Check for comma or end
 		if p.peekTokenIs(token.COMMA) {
@@ -431,6 +448,70 @@ func (p *Parser) parseObjectDestructure(letToken token.Token) ast.Node {
 	}
 
 	return ast.NewObjectDestructure(letToken, bindings, value)
+}
+
+func (p *Parser) parseArrayDestructure(letToken token.Token) ast.Node {
+	p.nextToken() // Move to '['
+	p.nextToken() // Move past '['
+
+	elements := []ast.ArrayDestructureElement{}
+
+	for !p.curTokenIs(token.RBRACKET) && !p.curTokenIs(token.EOF) {
+		if !p.curTokenIs(token.IDENT) {
+			p.setTokenError(p.curToken, "expected identifier in array destructuring pattern")
+			return nil
+		}
+
+		elem := ast.ArrayDestructureElement{
+			Name: ast.NewIdent(p.curToken),
+		}
+
+		// Check for default value
+		if p.peekTokenIs(token.ASSIGN) {
+			p.nextToken() // Move to '='
+			p.nextToken() // Move past '='
+			elem.Default = p.parseExpression(LOWEST)
+			if elem.Default == nil {
+				return nil
+			}
+		}
+
+		elements = append(elements, elem)
+
+		// Check for comma or end
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken() // Move to ','
+			p.nextToken() // Move past ','
+		} else if p.peekTokenIs(token.RBRACKET) {
+			p.nextToken() // Move to ']'
+		} else {
+			p.setTokenError(p.peekToken, "expected ',' or ']' in array destructuring pattern")
+			return nil
+		}
+	}
+
+	if !p.curTokenIs(token.RBRACKET) {
+		p.setTokenError(p.curToken, "expected ']' to close array destructuring pattern")
+		return nil
+	}
+
+	if len(elements) == 0 {
+		p.setTokenError(p.curToken, "array destructuring pattern cannot be empty")
+		return nil
+	}
+
+	// Expect '='
+	if !p.expectPeek("array destructuring assignment", token.ASSIGN) {
+		return nil
+	}
+
+	p.nextToken()
+	value := p.parseAssignmentValue()
+	if value == nil {
+		return nil
+	}
+
+	return ast.NewArrayDestructure(letToken, elements, value)
 }
 
 func (p *Parser) parseConst() *ast.Const {
@@ -1862,6 +1943,48 @@ func (p *Parser) parsePipe(firstNode ast.Node) ast.Node {
 	return ast.NewPipe(pipeToken, exprs)
 }
 
+func (p *Parser) parsePipeForward(leftNode ast.Node) ast.Node {
+	left, ok := leftNode.(ast.Expression)
+	if !ok {
+		p.setTokenError(p.curToken, "invalid pipe forward expression")
+		return nil
+	}
+	pipeToken := p.curToken
+
+	// Move past the |> operator
+	if err := p.nextToken(); err != nil {
+		return nil
+	}
+
+	// Advance across any newlines
+	p.eatNewlines()
+
+	// Parse the right-hand side (the function)
+	right := p.parseExpression(PIPE)
+	if right == nil {
+		p.setTokenError(p.curToken, "invalid pipe forward expression")
+		return nil
+	}
+
+	result := ast.NewPipeForward(pipeToken, left, right)
+
+	// Check for chained |> operators
+	for p.peekTokenIs(token.PIPE_GT) {
+		p.nextToken() // move to the next |>
+		pipeToken = p.curToken
+		p.nextToken() // move past |>
+		p.eatNewlines()
+		right = p.parseExpression(PIPE)
+		if right == nil {
+			p.setTokenError(p.curToken, "invalid pipe forward expression")
+			return nil
+		}
+		result = ast.NewPipeForward(pipeToken, result, right)
+	}
+
+	return result
+}
+
 func (p *Parser) parseIn(leftNode ast.Node) ast.Node {
 	left, ok := leftNode.(ast.Expression)
 	if !ok {
@@ -1943,63 +2066,81 @@ func (p *Parser) parseMapOrSet() ast.Node {
 		p.nextToken()
 		return ast.NewMap(firstToken, nil)
 	}
-	p.nextToken() // move to the first key
-	firstKey := p.parseExpression(LOWEST)
-	if p.peekTokenIs(token.COLON) { // This is a map
-		p.nextToken() // move to the ":"
-		p.nextToken() // move to the first value
-		firstValue := p.parseExpression(LOWEST)
-		pairs := map[ast.Expression]ast.Expression{firstKey: firstValue}
-		for !p.peekTokenIs(token.RBRACE) {
-			if p.peekTokenIs(token.NEWLINE) {
-				p.nextToken()
-				break
-			}
-			if !p.expectPeek("map", token.COMMA) {
-				return nil
-			}
-			for p.peekTokenIs(token.NEWLINE) {
-				if err := p.nextToken(); err != nil {
-					return nil
-				}
-			}
-			if p.peekTokenIs(token.RBRACE) {
-				break
-			}
-			key, value := p.parseKeyValue()
-			if key == nil || value == nil {
-				return nil
-			}
-			pairs[key] = value
-			if !p.peekTokenIs(token.COMMA) {
-				break
-			}
+	p.nextToken() // move to the first key or spread
+
+	items := []ast.MapItem{}
+
+	// Parse first item (could be spread or key-value)
+	item := p.parseMapItem()
+	if item == nil {
+		return nil
+	}
+	items = append(items, *item)
+
+	// Parse remaining items
+	for !p.peekTokenIs(token.RBRACE) {
+		if p.peekTokenIs(token.NEWLINE) {
+			p.nextToken()
+			break
+		}
+		if !p.expectPeek("map", token.COMMA) {
+			return nil
 		}
 		for p.peekTokenIs(token.NEWLINE) {
 			if err := p.nextToken(); err != nil {
 				return nil
 			}
 		}
-		if !p.expectPeek("map", token.RBRACE) {
+		if p.peekTokenIs(token.RBRACE) {
+			break
+		}
+		p.nextToken() // move to the key or spread
+
+		item := p.parseMapItem()
+		if item == nil {
 			return nil
 		}
-		return ast.NewMap(firstToken, pairs)
-	} else {
-		// Set literals are not supported - require colon for map entries
-		p.setTokenError(p.peekToken, "expected ':' for map entry (set literals are not supported)")
+		items = append(items, *item)
+
+		if !p.peekTokenIs(token.COMMA) {
+			break
+		}
+	}
+	for p.peekTokenIs(token.NEWLINE) {
+		if err := p.nextToken(); err != nil {
+			return nil
+		}
+	}
+	if !p.expectPeek("map", token.RBRACE) {
 		return nil
 	}
+	return ast.NewMap(firstToken, items)
 }
 
-func (p *Parser) parseKeyValue() (ast.Expression, ast.Expression) {
-	p.nextToken()
-	key := p.parseExpression(LOWEST)
-	if !p.expectPeek("hash value", token.COLON) {
-		return nil, nil
+// parseMapItem parses a single map item: either a spread (...obj) or a key-value pair.
+func (p *Parser) parseMapItem() *ast.MapItem {
+	// Check for spread expression
+	if p.curTokenIs(token.SPREAD) {
+		spreadNode := p.parseSpread()
+		if spreadNode == nil {
+			return nil
+		}
+		spread, ok := spreadNode.(ast.Expression)
+		if !ok {
+			p.setTokenError(p.curToken, "invalid spread expression")
+			return nil
+		}
+		return &ast.MapItem{Key: nil, Value: spread}
 	}
-	p.nextToken()
+
+	// Regular key-value pair
+	key := p.parseExpression(LOWEST)
+	if !p.expectPeek("map", token.COLON) {
+		return nil
+	}
+	p.nextToken() // move to the value
 	value := p.parseExpression(LOWEST)
-	return key, value
+	return &ast.MapItem{Key: key, Value: value}
 }
 
 func (p *Parser) parseGetAttr(objNode ast.Node) ast.Node {

@@ -254,14 +254,21 @@ func (l *List) String() string {
 	return out.String()
 }
 
+// MapItem represents a single key-value pair in a map literal.
+// For spread expressions (...obj), Key is nil and Value is the spread expression.
+type MapItem struct {
+	Key   Expression // nil for spread expressions
+	Value Expression
+}
+
 // Map is an expression node that builds a map data structure.
 type Map struct {
-	token token.Token               // the '{' token
-	items map[Expression]Expression // items in the map
+	token token.Token // the '{' token
+	items []MapItem   // ordered items in the map (key-value pairs or spreads)
 }
 
 // NewMap creates a new Map node.
-func NewMap(token token.Token, items map[Expression]Expression) *Map {
+func NewMap(token token.Token, items []MapItem) *Map {
 	return &Map{token: token, items: items}
 }
 
@@ -273,13 +280,27 @@ func (m *Map) Token() token.Token { return m.token }
 
 func (m *Map) Literal() string { return m.token.Literal }
 
-func (m *Map) Items() map[Expression]Expression { return m.items }
+func (m *Map) Items() []MapItem { return m.items }
+
+// HasSpread returns true if any items are spread expressions
+func (m *Map) HasSpread() bool {
+	for _, item := range m.items {
+		if item.Key == nil {
+			return true
+		}
+	}
+	return false
+}
 
 func (m *Map) String() string {
 	var out bytes.Buffer
 	pairs := make([]string, 0)
-	for key, value := range m.items {
-		pairs = append(pairs, key.String()+":"+value.String())
+	for _, item := range m.items {
+		if item.Key == nil {
+			pairs = append(pairs, "..."+item.Value.String())
+		} else {
+			pairs = append(pairs, item.Key.String()+":"+item.Value.String())
+		}
 	}
 	out.WriteString("{")
 	out.WriteString(strings.Join(pairs, ", "))

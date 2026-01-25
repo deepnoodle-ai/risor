@@ -77,6 +77,7 @@ const (
 	NOT             = "NOT"
 	NULLISH         = "??"
 	PIPE            = "|"
+	PIPE_GT         = "|>"
 	OR              = "||"
 	PERIOD          = "."
 	PLUS            = "+"

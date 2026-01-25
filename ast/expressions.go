@@ -686,3 +686,42 @@ func (r *Range) String() string {
 	out.WriteString(r.container.String())
 	return out.String()
 }
+
+// PipeForward is an expression node that represents the |> operator.
+// It evaluates x |> f as f(x), enabling left-to-right function composition.
+type PipeForward struct {
+	token token.Token
+
+	// left side expression (the value to pass)
+	left Expression
+
+	// right side expression (the function to call)
+	right Expression
+}
+
+// NewPipeForward creates a new PipeForward node.
+func NewPipeForward(token token.Token, left Expression, right Expression) *PipeForward {
+	return &PipeForward{token: token, left: left, right: right}
+}
+
+func (p *PipeForward) ExpressionNode() {}
+
+func (p *PipeForward) IsExpression() bool { return true }
+
+func (p *PipeForward) Token() token.Token { return p.token }
+
+func (p *PipeForward) Literal() string { return p.token.Literal }
+
+func (p *PipeForward) Left() Expression { return p.left }
+
+func (p *PipeForward) Right() Expression { return p.right }
+
+func (p *PipeForward) String() string {
+	var out bytes.Buffer
+	out.WriteString("(")
+	out.WriteString(p.left.String())
+	out.WriteString(" |> ")
+	out.WriteString(p.right.String())
+	out.WriteString(")")
+	return out.String()
+}

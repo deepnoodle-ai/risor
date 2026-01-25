@@ -297,6 +297,10 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compilePipe(node); err != nil {
 			return err
 		}
+	case *ast.PipeForward:
+		if err := c.compilePipeForward(node); err != nil {
+			return err
+		}
 	case *ast.Ternary:
 		if err := c.compileTernary(node); err != nil {
 			return err
@@ -327,6 +331,10 @@ func (c *Compiler) compile(node ast.Node) error {
 		}
 	case *ast.ObjectDestructure:
 		if err := c.compileObjectDestructure(node); err != nil {
+			return err
+		}
+	case *ast.ArrayDestructure:
+		if err := c.compileArrayDestructure(node); err != nil {
 			return err
 		}
 	case *ast.SetAttr:
@@ -541,8 +549,30 @@ func (c *Compiler) compileObjectDestructure(node *ast.ObjectDestructure) error {
 		// Duplicate the object on the stack (we need it for each property access)
 		c.emit(op.Copy, 0)
 
-		// Load the property using LoadAttr
-		c.emit(op.LoadAttr, c.current.addName(binding.Key))
+		// Load the property - use LoadAttrOrNil if there's a default to avoid errors
+		if binding.Default != nil {
+			c.emit(op.LoadAttrOrNil, c.current.addName(binding.Key))
+		} else {
+			c.emit(op.LoadAttr, c.current.addName(binding.Key))
+		}
+
+		// Handle default value if present
+		if binding.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(binding.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(jumpPos, delta)
+		}
 
 		// Determine the variable name (alias if provided, otherwise key)
 		varName := binding.Alias
@@ -565,6 +595,65 @@ func (c *Compiler) compileObjectDestructure(node *ast.ObjectDestructure) error {
 	// Pop the remaining object from the stack
 	c.emit(op.PopTop)
 
+	return nil
+}
+
+func (c *Compiler) compileArrayDestructure(node *ast.ArrayDestructure) error {
+	elements := node.Elements()
+	if len(elements) > math.MaxUint16 {
+		return c.formatError("too many elements in array destructuring", node.Token().StartPosition)
+	}
+
+	// Check if any elements have defaults
+	hasDefaults := false
+	for _, elem := range elements {
+		if elem.Default != nil {
+			hasDefaults = true
+			break
+		}
+	}
+
+	// Compile the source array
+	if err := c.compile(node.Value()); err != nil {
+		return err
+	}
+
+	// Emit the Unpack opcode to unpack the array onto the stack
+	c.emit(op.Unpack, uint16(len(elements)))
+
+	// Store each value in reverse order (like MultiVar)
+	for i := len(elements) - 1; i >= 0; i-- {
+		element := elements[i]
+		varName := element.Name.Literal()
+
+		// Handle default value if present
+		if hasDefaults && element.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(element.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(jumpPos, delta)
+		}
+
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
+		}
+		if c.current.parent == nil {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
+		}
+	}
 	return nil
 }
 
@@ -870,6 +959,21 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 	return nil
 }
 
+func (c *Compiler) compilePipeForward(node *ast.PipeForward) error {
+	// Compile left side (the value to pass)
+	if err := c.compile(node.Left()); err != nil {
+		return err
+	}
+	// Compile right side (the function to call)
+	if err := c.compile(node.Right()); err != nil {
+		return err
+	}
+	// Swap so function is below the argument, then call with 1 argument
+	c.emit(op.Swap, 1)
+	c.emit(op.Call, 1)
+	return nil
+}
+
 func (c *Compiler) compilePostfix(node *ast.Postfix) error {
 	name := node.Literal()
 	resolution, found := c.current.symbols.Resolve(name)
@@ -1144,23 +1248,64 @@ func (c *Compiler) compileList(node *ast.List) error {
 
 func (c *Compiler) compileMap(node *ast.Map) error {
 	items := node.Items()
-	count := len(items)
-	for k, v := range items {
-		switch k := k.(type) {
-		case *ast.String:
-			if err := c.compile(k); err != nil {
+
+	// Check if any items are spread expressions (key is nil)
+	hasSpread := node.HasSpread()
+
+	if !hasSpread {
+		// Fast path: no spread, use simple BuildMap
+		for _, item := range items {
+			switch k := item.Key.(type) {
+			case *ast.String:
+				if err := c.compile(k); err != nil {
+					return err
+				}
+			case *ast.Ident:
+				c.emit(op.LoadConst, c.constant(k.String()))
+			default:
+				return fmt.Errorf("compile error: invalid map key type: %v", item.Key)
+			}
+			if err := c.compile(item.Value); err != nil {
 				return err
 			}
-		case *ast.Ident:
-			c.emit(op.LoadConst, c.constant(k.String()))
-		default:
-			return fmt.Errorf("compile error: invalid map key type: %v", k)
 		}
-		if err := c.compile(v); err != nil {
-			return err
+		c.emit(op.BuildMap, uint16(len(items)))
+		return nil
+	}
+
+	// Slow path: has spread, build incrementally
+	c.emit(op.BuildMap, 0) // Start with empty map
+
+	for _, item := range items {
+		if item.Key == nil {
+			// Spread: merge the map with the existing one
+			// The Value is a Spread node, we need to compile its inner value
+			spread, ok := item.Value.(*ast.Spread)
+			if !ok {
+				return fmt.Errorf("compile error: expected spread expression in map")
+			}
+			if err := c.compile(spread.Value()); err != nil {
+				return err
+			}
+			c.emit(op.MapMerge)
+		} else {
+			// Normal key-value: set in the map
+			switch k := item.Key.(type) {
+			case *ast.String:
+				if err := c.compile(k); err != nil {
+					return err
+				}
+			case *ast.Ident:
+				c.emit(op.LoadConst, c.constant(k.String()))
+			default:
+				return fmt.Errorf("compile error: invalid map key type: %v", item.Key)
+			}
+			if err := c.compile(item.Value); err != nil {
+				return err
+			}
+			c.emit(op.MapSet)
 		}
 	}
-	c.emit(op.BuildMap, uint16(count))
 	return nil
 }
 

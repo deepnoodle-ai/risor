@@ -547,11 +547,11 @@ func TestParsingMap(t *testing.T) {
 		"two":   2,
 		"three": 3,
 	}
-	for key, value := range m.Items() {
-		literal, ok := key.(*ast.String)
+	for _, item := range m.Items() {
+		literal, ok := item.Key.(*ast.String)
 		require.True(t, ok)
 		expectedValue := expected[literal.Value()]
-		testIntegerLiteral(t, value, expectedValue)
+		testIntegerLiteral(t, item.Value, expectedValue)
 	}
 }
 
@@ -584,12 +584,12 @@ func TestParsingMapLiteralWithExpression(t *testing.T) {
 			testInfixExpression(t, e, 15, "/", 5)
 		},
 	}
-	for key, value := range m.Items() {
-		literal, ok := key.(*ast.String)
+	for _, item := range m.Items() {
+		literal, ok := item.Key.(*ast.String)
 		require.True(t, ok)
 		testFunc, ok := tests[literal.Value()]
 		require.True(t, ok, literal.Value())
-		testFunc(value)
+		testFunc(item.Value)
 	}
 }
 
@@ -636,10 +636,10 @@ func TestIncompleThings(t *testing.T) {
 		{`function foo() {`, "parse error: unterminated block statement"},
 		{`switch (foo) { `, "parse error: unterminated switch statement"},
 		{`for let i = 0; i < 5; i++ {`, "parse error: unterminated block statement"},
-		{`{`, "parse error: expected ':' for map entry (set literals are not supported)"},
+		{`{`, "parse error: unexpected end of file while parsing map (expected :)"},
 		{`[`, "parse error: invalid syntax in list expression"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
-		{`{ "a", "b", "c"`, "parse error: expected ':' for map entry (set literals are not supported)"},
+		{`{ "a", "b", "c"`, "parse error: unexpected , while parsing map (expected :)"},
 		{`foo |`, "parse error: invalid pipe expression"},
 		{`(1, 2`, "parse error: unexpected end of file while parsing grouped expression or arrow function (expected ))"},
 	}
@@ -1083,9 +1083,9 @@ func TestMapIdentifierKey(t *testing.T) {
 	m, ok := program.First().(*ast.Map)
 	require.True(t, ok)
 	require.Len(t, m.Items(), 1)
-	for key := range m.Items() {
-		ident, ok := key.(*ast.Ident)
-		require.True(t, ok, fmt.Sprintf("%T", key))
+	for _, item := range m.Items() {
+		ident, ok := item.Key.(*ast.Ident)
+		require.True(t, ok, fmt.Sprintf("%T", item.Key))
 		require.Equal(t, "one", ident.String())
 	}
 }

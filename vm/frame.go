@@ -70,4 +70,3 @@ func (f *frame) CaptureLocals() []object.Object {
 	f.locals = newStorage
 	return newStorage
 }
-

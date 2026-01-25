@@ -88,10 +88,12 @@ func (s *MultiVar) String() string {
 }
 
 // DestructureBinding represents a single binding in object destructuring.
-// It has a key (property name to extract) and an optional alias (local variable name).
+// It has a key (property name to extract), an optional alias (local variable name),
+// and an optional default value.
 type DestructureBinding struct {
-	Key   string // Property name to extract from object
-	Alias string // Local variable name (empty means use Key as name)
+	Key     string     // Property name to extract from object
+	Alias   string     // Local variable name (empty means use Key as name)
+	Default Expression // Default value if property is nil (optional)
 }
 
 // ObjectDestructure is a statement that extracts properties from an object.
@@ -131,8 +133,61 @@ func (s *ObjectDestructure) String() string {
 			out.WriteString(": ")
 			out.WriteString(b.Alias)
 		}
+		if b.Default != nil {
+			out.WriteString(" = ")
+			out.WriteString(b.Default.String())
+		}
 	}
 	out.WriteString(" } = ")
+	out.WriteString(s.value.String())
+	return out.String()
+}
+
+// ArrayDestructureElement represents a single element binding in array destructuring.
+type ArrayDestructureElement struct {
+	Name    *Ident     // Variable name to bind
+	Default Expression // Default value if element is nil (optional)
+}
+
+// ArrayDestructure is a statement that extracts elements from an array.
+// This is used for "let [a, b] = arr" or "let [a = 1, b = 2] = arr" statements.
+type ArrayDestructure struct {
+	token    token.Token
+	elements []ArrayDestructureElement // elements to destructure
+	value    Expression                // the array to destructure
+}
+
+// NewArrayDestructure creates a new ArrayDestructure node.
+func NewArrayDestructure(token token.Token, elements []ArrayDestructureElement, value Expression) *ArrayDestructure {
+	return &ArrayDestructure{token: token, elements: elements, value: value}
+}
+
+func (s *ArrayDestructure) StatementNode() {}
+
+func (s *ArrayDestructure) IsExpression() bool { return false }
+
+func (s *ArrayDestructure) Token() token.Token { return s.token }
+
+func (s *ArrayDestructure) Literal() string { return s.token.Literal }
+
+func (s *ArrayDestructure) Elements() []ArrayDestructureElement { return s.elements }
+
+func (s *ArrayDestructure) Value() Expression { return s.value }
+
+func (s *ArrayDestructure) String() string {
+	var out bytes.Buffer
+	out.WriteString(s.Literal() + " [")
+	for i, e := range s.elements {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(e.Name.String())
+		if e.Default != nil {
+			out.WriteString(" = ")
+			out.WriteString(e.Default.String())
+		}
+	}
+	out.WriteString("] = ")
 	out.WriteString(s.value.String())
 	return out.String()
 }
@@ -670,4 +725,3 @@ func (e *SetAttr) String() string {
 	out.WriteString(e.value.String())
 	return out.String()
 }
-

@@ -1041,6 +1041,28 @@ func TestPipes(t *testing.T) {
 	runTests(t, tests)
 }
 
+func TestPipeForward(t *testing.T) {
+	tests := []testCase{
+		// Basic pipe forward
+		{`"hello" |> strings.to_upper`, object.NewString("HELLO")},
+		{`"hello" |> len`, object.NewInt(5)},
+		{`[1, 2, 3] |> len`, object.NewInt(3)},
+		// Chained pipe forward
+		{`"hello" |> strings.to_upper |> len`, object.NewInt(5)},
+		// With functions
+		{`function() { "hello" }() |> len`, object.NewInt(5)},
+		{`"abc" |> strings.to_upper`, object.NewString("ABC")},
+		// With lambdas
+		{`5 |> (x => x * 2)`, object.NewInt(10)},
+		{`5 |> (x => x * 2) |> (x => x + 1)`, object.NewInt(11)},
+		// With math functions
+		{`[1, 2, 3] |> math.sum`, object.NewFloat(6)},
+		// Combining with lambdas for multi-arg functions
+		{`[1, 2, 3] |> (x => x.filter(y => y > 1)) |> len`, object.NewInt(2)},
+	}
+	runTests(t, tests)
+}
+
 func TestQuicksort(t *testing.T) {
 	result, err := run(context.Background(), `
 	function quicksort(arr) {
@@ -1164,8 +1186,8 @@ func TestNullishCoalescing(t *testing.T) {
 		{`let x = nil; x ?? 10`, object.NewInt(10)},
 		{`let x = 5; x ?? 10`, object.NewInt(5)},
 		// Comparison with OR (different behavior)
-		{`0 || 42`, object.NewInt(42)},   // OR uses truthiness
-		{`0 ?? 42`, object.NewInt(0)},    // ?? only checks nil
+		{`0 || 42`, object.NewInt(42)}, // OR uses truthiness
+		{`0 ?? 42`, object.NewInt(0)},  // ?? only checks nil
 	}
 	runTests(t, tests)
 }
@@ -1182,10 +1204,12 @@ func TestSpreadOperator(t *testing.T) {
 		})},
 		// Function call spread
 		{`function sum(a, b, c) { return a + b + c }; let args = [1, 2, 3]; sum(...args)`, object.NewInt(6)},
-		{`function foo(a, b, c, d) { return [a, b, c, d] }; let x = [2, 3]; foo(1, ...x, 4)`,
+		{
+			`function foo(a, b, c, d) { return [a, b, c, d] }; let x = [2, 3]; foo(1, ...x, 4)`,
 			object.NewList([]object.Object{
 				object.NewInt(1), object.NewInt(2), object.NewInt(3), object.NewInt(4),
-			})},
+			}),
+		},
 		{`let items = ["a", "b"]; print(...items)`, object.Nil},
 	}
 	runTests(t, tests)
@@ -1196,11 +1220,13 @@ func TestRestParameter(t *testing.T) {
 		// Basic rest parameter
 		{`function sum(...nums) { let t = 0; for n in nums { t = t + n }; return t }; sum(1, 2, 3)`, object.NewInt(6)},
 		// Rest with regular params
-		{`function foo(a, ...rest) { return [a, rest] }; foo(1, 2, 3)`,
+		{
+			`function foo(a, ...rest) { return [a, rest] }; foo(1, 2, 3)`,
 			object.NewList([]object.Object{
 				object.NewInt(1),
 				object.NewList([]object.Object{object.NewInt(2), object.NewInt(3)}),
-			})},
+			}),
+		},
 		// Rest with no extra args
 		{`function test(...args) { return args }; test()`, object.NewList([]object.Object{})},
 		// Rest collects all remaining
@@ -1212,19 +1238,117 @@ func TestRestParameter(t *testing.T) {
 func TestObjectDestructuring(t *testing.T) {
 	tests := []testCase{
 		// Basic destructuring
-		{`let obj = { a: 1, b: 2 }; let { a, b } = obj; [a, b]`,
-			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)})},
+		{
+			`let obj = { a: 1, b: 2 }; let { a, b } = obj; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)}),
+		},
 		// With aliases
-		{`let obj = { name: "Alice", age: 30 }; let { name: n, age: a } = obj; [n, a]`,
-			object.NewList([]object.Object{object.NewString("Alice"), object.NewInt(30)})},
+		{
+			`let obj = { name: "Alice", age: 30 }; let { name: n, age: a } = obj; [n, a]`,
+			object.NewList([]object.Object{object.NewString("Alice"), object.NewInt(30)}),
+		},
 		// Single property
 		{`let obj = { x: 42 }; let { x } = obj; x`, object.NewInt(42)},
 		// From function return
-		{`function getUser() { return { id: 1, active: true } }; let { id, active } = getUser(); [id, active]`,
-			object.NewList([]object.Object{object.NewInt(1), object.True})},
+		{
+			`function getUser() { return { id: 1, active: true } }; let { id, active } = getUser(); [id, active]`,
+			object.NewList([]object.Object{object.NewInt(1), object.True}),
+		},
 		// Mixed aliases and non-aliases
-		{`let obj = { a: 1, b: 2, c: 3 }; let { a, b: x, c } = obj; [a, x, c]`,
-			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2), object.NewInt(3)})},
+		{
+			`let obj = { a: 1, b: 2, c: 3 }; let { a, b: x, c } = obj; [a, x, c]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2), object.NewInt(3)}),
+		},
+	}
+	runTests(t, tests)
+}
+
+func TestArrayDestructuring(t *testing.T) {
+	tests := []testCase{
+		// Basic array destructuring
+		{
+			`let [a, b] = [1, 2]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)}),
+		},
+		// Three elements
+		{`let [x, y, z] = [10, 20, 30]; x + y + z`, object.NewInt(60)},
+		// With string (unpacks characters)
+		{
+			`let [a, b, c] = "xyz"; [a, b, c]`,
+			object.NewList([]object.Object{object.NewString("x"), object.NewString("y"), object.NewString("z")}),
+		},
+		// From function return
+		{
+			`function getCoords() { return [100, 200] }; let [x, y] = getCoords(); [x, y]`,
+			object.NewList([]object.Object{object.NewInt(100), object.NewInt(200)}),
+		},
+		// Single element
+		{`let [a] = [42]; a`, object.NewInt(42)},
+		// Mixed types
+		{
+			`let [s, n, b] = ["hello", 42, true]; [s, n, b]`,
+			object.NewList([]object.Object{object.NewString("hello"), object.NewInt(42), object.True}),
+		},
+	}
+	runTests(t, tests)
+}
+
+func TestDestructuringDefaults(t *testing.T) {
+	tests := []testCase{
+		// Array destructuring with defaults - empty array
+		{
+			`let [a = 10, b = 20] = []; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(10), object.NewInt(20)}),
+		},
+		// Array destructuring with defaults - partial array
+		{
+			`let [a = 10, b = 20] = [5]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(20)}),
+		},
+		// Array destructuring with defaults - full array
+		{
+			`let [a = 10, b = 20] = [5, 6]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(6)}),
+		},
+		// Object destructuring with defaults - empty object
+		{
+			`let { x = 10, y = 20 } = {}; [x, y]`,
+			object.NewList([]object.Object{object.NewInt(10), object.NewInt(20)}),
+		},
+		// Object destructuring with defaults - partial object
+		{
+			`let { x = 10, y = 20 } = { x: 5 }; [x, y]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(20)}),
+		},
+		// Object destructuring with alias and default
+		{`let { name: n = "default" } = {}; n`, object.NewString("default")},
+		{`let { name: n = "default" } = { name: "Alice" }; n`, object.NewString("Alice")},
+		// Mixed - some with defaults, some without
+		{
+			`let [a, b = 20] = [5]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(20)}),
+		},
+	}
+	runTests(t, tests)
+}
+
+func TestObjectSpread(t *testing.T) {
+	tests := []testCase{
+		// Basic object spread
+		{`let a = {x: 1}; let b = {...a}; b.x`, object.NewInt(1)},
+		// Spread with additional properties
+		{`let a = {x: 1}; let b = {...a, y: 2}; b.y`, object.NewInt(2)},
+		// Property override
+		{`let a = {x: 1, y: 2}; let b = {...a, y: 99}; b.y`, object.NewInt(99)},
+		// Multiple spreads
+		{
+			`let a = {x: 1}; let c = {y: 2}; let d = {...a, ...c}; [d.x, d.y]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)}),
+		},
+		// Later spread overrides earlier
+		{`let a = {x: 1}; let c = {x: 99}; let d = {...a, ...c}; d.x`, object.NewInt(99)},
+		// Spread with computed properties
+		{`let a = {x: 1}; let b = {...a, y: 2 + 3}; b.y`, object.NewInt(5)},
 	}
 	runTests(t, tests)
 }
@@ -1857,14 +1981,16 @@ func TestFromImport(t *testing.T) {
 func TestESStyleImport(t *testing.T) {
 	tests := []testCase{
 		{`import { min } from "math"; min(3, -7)`, object.NewFloat(-7)},
-		{`import { min, max } from "math"; [min(1,2), max(1,2)]`,
+		{
+			`import { min, max } from "math"; [min(1,2), max(1,2)]`,
 			object.NewList([]object.Object{
 				object.NewFloat(1),
 				object.NewFloat(2),
 			}),
 		},
 		{`import { min as m } from "math"; m(3, -7)`, object.NewFloat(-7)},
-		{`import { min as a, max as b } from "math"; [a(1,2), b(1,2)]`,
+		{
+			`import { min as a, max as b } from "math"; [a(1,2), b(1,2)]`,
 			object.NewList([]object.Object{
 				object.NewFloat(1),
 				object.NewFloat(2),

@@ -316,6 +316,26 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			default:
 				vm.push(value)
 			}
+		case op.LoadAttrOrNil:
+			// Like LoadAttr but returns nil instead of error for missing attributes
+			obj := vm.pop()
+			name := vm.activeCode.Names[vm.fetch()]
+			value, found := obj.GetAttr(name)
+			if !found {
+				vm.push(object.Nil)
+			} else {
+				switch value := value.(type) {
+				case object.AttrResolver:
+					attr, err := value.ResolveAttr(ctx, name)
+					if err != nil {
+						vm.push(object.Nil)
+					} else {
+						vm.push(attr)
+					}
+				default:
+					vm.push(value)
+				}
+			}
 		case op.LoadConst:
 			vm.push(vm.activeCode.Constants[vm.fetch()])
 		case op.LoadFast:
@@ -529,6 +549,47 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				newItems = append(newItems, item)
 			}
 			vm.push(object.NewList(newItems))
+		case op.MapMerge:
+			// Merge map at TOS into map at TOS-1
+			sourceObj := vm.pop()
+			targetObj := vm.pop()
+			target, ok := targetObj.(*object.Map)
+			if !ok {
+				return errz.TypeErrorf("type error: cannot merge into non-map (got %s)", targetObj.Type())
+			}
+			source, ok := sourceObj.(*object.Map)
+			if !ok {
+				return errz.TypeErrorf("type error: spread requires a map (got %s)", sourceObj.Type())
+			}
+			// Merge source into target (creating a new map)
+			newItems := make(map[string]object.Object)
+			for k, v := range target.Value() {
+				newItems[k] = v
+			}
+			for k, v := range source.Value() {
+				newItems[k] = v
+			}
+			vm.push(object.NewMap(newItems))
+		case op.MapSet:
+			// Set key (TOS-1) to value (TOS) in map at TOS-2
+			value := vm.pop()
+			keyObj := vm.pop()
+			targetObj := vm.pop()
+			target, ok := targetObj.(*object.Map)
+			if !ok {
+				return errz.TypeErrorf("type error: cannot set key in non-map (got %s)", targetObj.Type())
+			}
+			key, ok := keyObj.(*object.String)
+			if !ok {
+				return errz.TypeErrorf("type error: map key must be string (got %s)", keyObj.Type())
+			}
+			// Create a new map with the key-value pair
+			newItems := make(map[string]object.Object)
+			for k, v := range target.Value() {
+				newItems[k] = v
+			}
+			newItems[key.Value()] = value
+			vm.push(object.NewMap(newItems))
 		case op.BinarySubscr:
 			idx := vm.pop()
 			lhs := vm.pop()
@@ -700,16 +761,24 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 					containerObj.Type())
 			}
 			containerSize := container.Len().Value()
-			if containerSize != nameCount {
-				return fmt.Errorf("unpack count mismatch: %d != %d", containerSize, nameCount)
+			// Allow fewer elements than expected (for destructuring with defaults)
+			if containerSize > nameCount {
+				return fmt.Errorf("unpack count mismatch: %d > %d", containerSize, nameCount)
 			}
 			iter := container.Iter()
+			count := int64(0)
 			for {
 				val, ok := iter.Next(ctx)
 				if !ok {
 					break
 				}
 				vm.push(val)
+				count++
+			}
+			// Pad with nil for missing elements (allows defaults to work)
+			for count < nameCount {
+				vm.push(object.Nil)
+				count++
 			}
 		case op.GetIter:
 			obj := vm.pop()
