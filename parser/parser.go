@@ -358,7 +358,7 @@ func (p *Parser) parseLet() ast.Node {
 		return nil
 	}
 	if len(idents) > 1 {
-		return ast.NewMultiVar(tok, idents, value, true) // let is a declaration, not assignment
+		return ast.NewMultiVar(tok, idents, value)
 	}
 	return ast.NewVar(tok, idents[0], value)
 }
@@ -507,7 +507,16 @@ func (p *Parser) parseIdent() ast.Node {
 		p.setTokenError(p.curToken, "invalid identifier")
 		return nil
 	}
-	return ast.NewIdent(p.curToken)
+	ident := ast.NewIdent(p.curToken)
+
+	// Check for single-param arrow function: x => expr
+	if p.peekTokenIs(token.ARROW) {
+		arrowToken := p.curToken
+		p.nextToken() // move to '=>'
+		return p.parseArrowBody(arrowToken, []*ast.Ident{ident}, nil)
+	}
+
+	return ident
 }
 
 func (p *Parser) parseInt() ast.Node {
@@ -698,6 +707,11 @@ func validateImportPath(path string) error {
 func (p *Parser) parseImport() ast.Node {
 	importToken := p.curToken
 
+	// Check for ES-style import: import { x, y } from 'm'
+	if p.peekTokenIs(token.LBRACE) {
+		return p.parseESImport(importToken)
+	}
+
 	// Support both identifier and string formats for module names
 	if !p.peekTokenIs(token.IDENT) && !p.peekTokenIs(token.STRING) {
 		p.peekError("an import statement", token.IDENT, p.peekToken)
@@ -748,6 +762,100 @@ func (p *Parser) parseImport() ast.Node {
 	}
 
 	return ast.NewImport(importToken, pathStr, alias)
+}
+
+// parseESImport parses ES-style imports: import { x, y } from 'm'
+func (p *Parser) parseESImport(importToken token.Token) ast.Node {
+	p.nextToken() // Move to '{'
+
+	// Parse the list of imports inside braces
+	imports := []*ast.Import{}
+	p.nextToken() // Move past '{'
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if !p.curTokenIs(token.IDENT) {
+			p.setTokenError(p.curToken, "expected identifier in import list")
+			return nil
+		}
+
+		importName := p.curToken.Literal
+		importNameToken := p.curToken
+
+		var alias *ast.Ident
+		if p.peekTokenIs(token.AS) {
+			p.nextToken() // Move to 'as'
+			if !p.expectPeek("import alias", token.IDENT) {
+				return nil
+			}
+			alias = ast.NewIdent(p.curToken)
+		}
+
+		// Create an Import node for this name
+		pathStr := ast.NewString(token.Token{
+			Type:          token.STRING,
+			Literal:       importName,
+			StartPosition: importNameToken.StartPosition,
+			EndPosition:   importNameToken.EndPosition,
+		})
+		imports = append(imports, ast.NewImport(importNameToken, pathStr, alias))
+
+		// Check for comma or end of list
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken() // Move to ','
+			p.nextToken() // Move past ','
+		} else if p.peekTokenIs(token.RBRACE) {
+			p.nextToken() // Move to '}'
+		} else {
+			p.setTokenError(p.peekToken, "expected ',' or '}' in import list")
+			return nil
+		}
+	}
+
+	if !p.curTokenIs(token.RBRACE) {
+		p.setTokenError(p.curToken, "expected '}' to close import list")
+		return nil
+	}
+
+	// Validate we have at least one import
+	if len(imports) == 0 {
+		p.setTokenError(p.curToken, "import list cannot be empty")
+		return nil
+	}
+
+	// Expect 'from' keyword
+	if !p.expectPeek("ES import", token.FROM) {
+		return nil
+	}
+
+	// Parse the module path
+	if !p.peekTokenIs(token.STRING) && !p.peekTokenIs(token.IDENT) {
+		p.peekError("ES import", token.STRING, p.peekToken)
+		return nil
+	}
+	p.nextToken()
+
+	var modulePath string
+	if p.curTokenIs(token.STRING) {
+		modulePath = strings.Trim(p.curToken.Literal, "\"'")
+	} else {
+		modulePath = p.curToken.Literal
+	}
+
+	// Validate the path
+	if err := validateImportPath(modulePath); err != nil {
+		p.setTokenError(p.curToken, "invalid import path: %s", err.Error())
+		return nil
+	}
+
+	// Create parent module identifier
+	parentIdent := ast.NewIdent(token.Token{
+		Type:          token.IDENT,
+		Literal:       modulePath,
+		StartPosition: p.curToken.StartPosition,
+		EndPosition:   p.curToken.EndPosition,
+	})
+
+	return ast.NewFromImport(importToken, []*ast.Ident{parentIdent}, imports, true)
 }
 
 func (p *Parser) parseFromImport() ast.Node {
@@ -981,12 +1089,122 @@ func (p *Parser) parseTernary(conditionNode ast.Node) ast.Node {
 }
 
 func (p *Parser) parseGroupedExpr() ast.Node {
-	p.nextToken()
-	exp := p.parseExpression(LOWEST)
-	if !p.expectPeek("grouped expression", token.RPAREN) {
+	openParen := p.curToken
+	p.nextToken() // move past '('
+
+	// Check for empty params arrow function: () => ...
+	if p.curTokenIs(token.RPAREN) {
+		if p.peekTokenIs(token.ARROW) {
+			p.nextToken() // move to '=>'
+			return p.parseArrowBody(openParen, nil, nil)
+		}
+		p.setTokenError(openParen, "empty parentheses require arrow function syntax")
 		return nil
 	}
-	return exp
+
+	// Parse first item - could be expression or arrow param with default
+	// Use parseNode instead of parseExpression to allow Assign nodes for defaults
+	firstItem := p.parseNode(LOWEST)
+	if firstItem == nil {
+		return nil
+	}
+
+	// Check if we have a comma (multiple items = must be arrow function)
+	var items []ast.Node
+	items = append(items, firstItem)
+
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken() // move to ','
+		p.nextToken() // move past ','
+		item := p.parseNode(LOWEST)
+		if item == nil {
+			return nil
+		}
+		items = append(items, item)
+	}
+
+	if !p.expectPeek("grouped expression or arrow function", token.RPAREN) {
+		return nil
+	}
+
+	// Check for arrow function
+	if p.peekTokenIs(token.ARROW) {
+		p.nextToken() // move to '=>'
+		return p.parseArrowParams(openParen, items)
+	}
+
+	// Not an arrow function - must be a single grouped expression
+	if len(items) > 1 {
+		p.setTokenError(openParen, "comma-separated expressions require arrow function syntax: (x, y) => ...")
+		return nil
+	}
+
+	// Ensure the single item is an expression
+	expr, ok := firstItem.(ast.Expression)
+	if !ok {
+		p.setTokenError(openParen, "expected expression in grouped expression")
+		return nil
+	}
+
+	return expr
+}
+
+// parseArrowParams validates items as arrow function parameters and parses the body
+func (p *Parser) parseArrowParams(arrowToken token.Token, items []ast.Node) ast.Node {
+	params := make([]*ast.Ident, 0, len(items))
+	defaults := make(map[string]ast.Expression)
+
+	for _, item := range items {
+		switch v := item.(type) {
+		case *ast.Ident:
+			params = append(params, v)
+		case *ast.Assign:
+			// Handle default parameter: x = value
+			ident := v.NameIdent()
+			if ident == nil {
+				p.setTokenError(arrowToken, "invalid arrow function parameter")
+				return nil
+			}
+			params = append(params, ident)
+			defaults[ident.Literal()] = v.Value()
+		default:
+			p.setTokenError(arrowToken, "invalid arrow function parameter: expected identifier")
+			return nil
+		}
+	}
+
+	return p.parseArrowBody(arrowToken, params, defaults)
+}
+
+// parseArrowBody parses the body of an arrow function (expression or block)
+func (p *Parser) parseArrowBody(arrowToken token.Token, params []*ast.Ident, defaults map[string]ast.Expression) ast.Node {
+	p.nextToken() // move past '=>'
+
+	var body *ast.Block
+
+	if p.curTokenIs(token.LBRACE) {
+		// Block body: (x) => { ... }
+		body = p.parseBlock()
+		if body == nil {
+			return nil
+		}
+	} else {
+		// Expression body: (x) => x + 1
+		// Wrap in implicit return
+		expr := p.parseExpression(LOWEST)
+		if expr == nil {
+			p.setTokenError(arrowToken, "invalid arrow function body")
+			return nil
+		}
+		returnStmt := ast.NewReturn(arrowToken, expr)
+		body = ast.NewBlock(arrowToken, []ast.Node{returnStmt})
+	}
+
+	if defaults == nil {
+		defaults = make(map[string]ast.Expression)
+	}
+
+	return ast.NewFunc(arrowToken, nil, params, defaults, body)
 }
 
 // Parses an entire if, else if, else block. Else-ifs are handled recursively.
@@ -1038,31 +1256,54 @@ func (p *Parser) parseFor() ast.Node {
 		return ast.NewSimpleFor(forToken, consequence)
 	}
 
-	// Check for Python-style "for x in iterable" form
-	if p.curTokenIs(token.IDENT) && p.peekTokenIs(token.IN) {
-		// Parse variable identifier
-		variable := ast.NewIdent(p.curToken)
-		p.nextToken() // Move to 'in'
-		p.nextToken() // Move past 'in'
+	// Check for "for x in iterable" or "for i, v in iterable" form
+	if p.curTokenIs(token.IDENT) {
+		// Collect variable identifiers
+		variables := []*ast.Ident{ast.NewIdent(p.curToken)}
 
-		// Parse the iterable expression
-		iterable := p.parseExpression(LOWEST)
-		if iterable == nil {
-			p.setTokenError(p.curToken, "invalid iterable in for-in loop")
-			return nil
+		// Check for comma-separated variables: "for i, v in ..."
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken() // Move to ','
+			if !p.expectPeek("for-in loop", token.IDENT) {
+				return nil
+			}
+			variables = append(variables, ast.NewIdent(p.curToken))
 		}
 
-		// Expect opening brace directly (no colon)
-		if !p.expectPeek("for-in loop", token.LBRACE) {
-			return nil
+		// Now check for 'in' keyword
+		if p.peekTokenIs(token.IN) {
+			p.nextToken() // Move to 'in'
+			p.nextToken() // Move past 'in'
+
+			// Parse the iterable expression
+			iterable := p.parseExpression(LOWEST)
+			if iterable == nil {
+				p.setTokenError(p.curToken, "invalid iterable in for-in loop")
+				return nil
+			}
+
+			// Expect opening brace directly
+			if !p.expectPeek("for-in loop", token.LBRACE) {
+				return nil
+			}
+
+			consequence := p.parseBlock()
+			if consequence == nil {
+				return nil
+			}
+
+			return ast.NewForIn(forToken, variables, iterable, consequence)
 		}
 
-		consequence := p.parseBlock()
-		if consequence == nil {
+		// Not a for-in loop, need to backtrack and continue with regular for loop parsing
+		// But we've consumed tokens... we need a different approach
+		// Actually, if we got here with multiple variables but no 'in', it's a syntax error
+		if len(variables) > 1 {
+			p.setTokenError(p.curToken, "expected 'in' keyword after comma-separated variables in for loop")
 			return nil
 		}
-
-		return ast.NewForIn(forToken, variable, iterable, consequence)
+		// Single variable without 'in' - fall through to regular for loop parsing
+		// We need to "undo" by treating the identifier as part of init statement
 	}
 
 	// Parse the initialization or condition

@@ -8,29 +8,21 @@ import (
 	"github.com/risor-io/risor/token"
 )
 
-// Var is a statement that assigns a value to a variable. It may be a
-// declaration or an assignment. If it's a declaration, isWalrus is true.
+// Var is a statement that declares a new variable with an initial value.
+// This is used for "let x = value" statements.
 type Var struct {
 	token token.Token
 
-	// name is the name of the variable to which we're assigning
+	// name is the name of the variable being declared
 	name *Ident
 
-	// value is the thing we're storing in the variable.
+	// value is the initial value of the variable
 	value Expression
-
-	// isWalrus is true if this is a ":=" statement.
-	isWalrus bool
 }
 
-// NewVar creates a new Var node.
+// NewVar creates a new Var node for a variable declaration.
 func NewVar(token token.Token, name *Ident, value Expression) *Var {
 	return &Var{token: token, name: name, value: value}
-}
-
-// NewDeclaration creates a new Var node that is a declaration.
-func NewDeclaration(token token.Token, name *Ident, value Expression) *Var {
-	return &Var{token: token, name: name, value: value, isWalrus: true}
 }
 
 func (s *Var) StatementNode() {}
@@ -43,15 +35,8 @@ func (s *Var) Literal() string { return s.token.Literal }
 
 func (s *Var) Value() (string, Expression) { return s.name.value, s.value }
 
-func (s *Var) IsWalrus() bool { return s.isWalrus }
-
 func (s *Var) String() string {
 	var out bytes.Buffer
-	if s.isWalrus {
-		out.WriteString(s.name.Literal() + " := ")
-		out.WriteString(s.value.String())
-		return out.String()
-	}
 	out.WriteString(s.Literal() + " ")
 	out.WriteString(s.name.Literal())
 	out.WriteString(" = ")
@@ -61,18 +46,18 @@ func (s *Var) String() string {
 	return out.String()
 }
 
-// MultiVar is a statement that assigns values to more than one variable.
-// The right hand side must be a container type, with the same number of
-// elements as the number of variables on the left hand side.
+// MultiVar is a statement that declares multiple variables at once.
+// This is used for "let x, y = [1, 2]" statements where the right-hand side
+// is unpacked into multiple variables.
 type MultiVar struct {
-	token    token.Token
-	names    []*Ident   // names being assigned
-	value    Expression // value is the thing we're storing in the variable.
-	isWalrus bool       // isWalrus is true if this is a ":=" statement.
+	token token.Token
+	names []*Ident   // names being declared
+	value Expression // value to unpack into the variables
 }
 
-func NewMultiVar(token token.Token, names []*Ident, value Expression, isWalrus bool) *MultiVar {
-	return &MultiVar{token: token, names: names, value: value, isWalrus: isWalrus}
+// NewMultiVar creates a new MultiVar node for a multi-variable declaration.
+func NewMultiVar(token token.Token, names []*Ident, value Expression) *MultiVar {
+	return &MultiVar{token: token, names: names, value: value}
 }
 
 func (s *MultiVar) StatementNode() {}
@@ -90,8 +75,6 @@ func (s *MultiVar) Value() ([]string, Expression) {
 	}
 	return names, s.value
 }
-
-func (s *MultiVar) IsWalrus() bool { return s.isWalrus }
 
 func (s *MultiVar) String() string {
 	names, expr := s.Value()
@@ -351,12 +334,13 @@ func (f *For) String() string {
 	return out.String()
 }
 
-// ForIn is a statement node that defines a Python-style for-in loop.
+// ForIn is a statement node that defines a for-in loop.
+// Supports both single variable (for x in arr) and multiple variables (for i, v in arr).
 type ForIn struct {
 	token token.Token
 
-	// variable is the identifier that holds the current iteration value
-	variable *Ident
+	// variables holds the loop variable identifiers (one or two)
+	variables []*Ident
 
 	// iterable is the expression that provides the values to iterate over
 	iterable Node
@@ -365,9 +349,9 @@ type ForIn struct {
 	consequence *Block
 }
 
-// NewForIn creates a new ForIn node.
-func NewForIn(token token.Token, variable *Ident, iterable Node, consequence *Block) *ForIn {
-	return &ForIn{token: token, variable: variable, iterable: iterable, consequence: consequence}
+// NewForIn creates a new ForIn node with one or more loop variables.
+func NewForIn(token token.Token, variables []*Ident, iterable Node, consequence *Block) *ForIn {
+	return &ForIn{token: token, variables: variables, iterable: iterable, consequence: consequence}
 }
 
 func (f *ForIn) StatementNode() {}
@@ -378,7 +362,16 @@ func (f *ForIn) Token() token.Token { return f.token }
 
 func (f *ForIn) Literal() string { return f.token.Literal }
 
-func (f *ForIn) Variable() *Ident { return f.variable }
+// Variable returns the first loop variable (for backward compatibility).
+func (f *ForIn) Variable() *Ident {
+	if len(f.variables) > 0 {
+		return f.variables[0]
+	}
+	return nil
+}
+
+// Variables returns all loop variables.
+func (f *ForIn) Variables() []*Ident { return f.variables }
 
 func (f *ForIn) Iterable() Node { return f.iterable }
 
@@ -387,7 +380,11 @@ func (f *ForIn) Consequence() *Block { return f.consequence }
 func (f *ForIn) String() string {
 	var out bytes.Buffer
 	out.WriteString("for ")
-	out.WriteString(f.variable.String())
+	varNames := make([]string, len(f.variables))
+	for i, v := range f.variables {
+		varNames[i] = v.String()
+	}
+	out.WriteString(strings.Join(varNames, ", "))
 	out.WriteString(" in ")
 	out.WriteString(f.iterable.String())
 	out.WriteString(" ")
@@ -423,6 +420,8 @@ func (a *Assign) Token() token.Token { return a.token }
 func (a *Assign) Literal() string { return a.token.Literal }
 
 func (a *Assign) Name() string { return a.name.value }
+
+func (a *Assign) NameIdent() *Ident { return a.name }
 
 func (a *Assign) Index() *Index { return a.index }
 

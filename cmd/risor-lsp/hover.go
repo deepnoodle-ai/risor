@@ -166,16 +166,9 @@ func findIdentInNodeRecursive(node ast.Node, line, column int) string {
 		varPos := n.Token().StartPosition
 
 		if varPos.LineNumber() == line {
-			var identStartCol, identEndCol int
-			if n.IsWalrus() {
-				// For walrus operator "y := value", the token position is at the identifier
-				identStartCol = varPos.ColumnNumber()
-				identEndCol = identStartCol + len(name)
-			} else {
-				// For "var x = value", the identifier 'x' should be after 'var '
-				identStartCol = varPos.ColumnNumber() + 4 // after "var "
-				identEndCol = identStartCol + len(name)
-			}
+			// For "let x = value", the identifier 'x' is after "let "
+			identStartCol := varPos.ColumnNumber() + 4 // after "let "
+			identEndCol := identStartCol + len(name)
 			if identStartCol <= column && column <= identEndCol {
 				return name
 			}

@@ -1,9 +1,0 @@
-#!/usr/bin/env risor --
-
-let client = vault.connect("http://127.0.0.1:8200")
-client.token = "hvs.AJ71UUKBsv1jiW7pJljTz4BN"
-
-client.write({"data": {"password1": "t0p$ecret", "password2": "cl@$$ified"}}, "/secret/data/foo")
-client.read("/secret/data/foo")
-# client.list("secret/metadata")
-

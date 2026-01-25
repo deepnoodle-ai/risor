@@ -43,7 +43,7 @@ func TestForInNode(t *testing.T) {
 	}
 
 	// Create ForIn node
-	forIn := NewForIn(forToken, variable, iterable, block)
+	forIn := NewForIn(forToken, []*Ident{variable}, iterable, block)
 
 	// Test all methods
 	if forIn.Token().Type != token.FOR {
@@ -107,7 +107,7 @@ func TestForInNodeComplexCase(t *testing.T) {
 		},
 	}
 
-	forIn := NewForIn(forToken, variable, list, block)
+	forIn := NewForIn(forToken, []*Ident{variable}, list, block)
 
 	// Test String output
 	result := forIn.String()
@@ -126,7 +126,7 @@ func TestForInNodeMethods(t *testing.T) {
 	iterable := NewIdent(token.Token{Type: token.IDENT, Literal: "items"})
 	block := &Block{token: token.Token{Type: token.LBRACE, Literal: "{"}}
 
-	forIn := NewForIn(forToken, variable, iterable, block)
+	forIn := NewForIn(forToken, []*Ident{variable}, iterable, block)
 
 	// Test that it implements Node interface
 	var node Node = forIn

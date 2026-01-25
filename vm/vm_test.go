@@ -1809,6 +1809,27 @@ func TestFromImport(t *testing.T) {
 	runTests(t, tests)
 }
 
+func TestESStyleImport(t *testing.T) {
+	tests := []testCase{
+		{`import { min } from "math"; min(3, -7)`, object.NewFloat(-7)},
+		{`import { min, max } from "math"; [min(1,2), max(1,2)]`,
+			object.NewList([]object.Object{
+				object.NewFloat(1),
+				object.NewFloat(2),
+			}),
+		},
+		{`import { min as m } from "math"; m(3, -7)`, object.NewFloat(-7)},
+		{`import { min as a, max as b } from "math"; [a(1,2), b(1,2)]`,
+			object.NewList([]object.Object{
+				object.NewFloat(1),
+				object.NewFloat(2),
+			}),
+		},
+		{`import { round } from "math"; round(3.7)`, object.NewFloat(4)},
+	}
+	runTests(t, tests)
+}
+
 func TestBadImports(t *testing.T) {
 	ctx := context.Background()
 	type testCase struct {
@@ -3348,6 +3369,140 @@ func TestForInErrorConditions(t *testing.T) {
 			} else {
 				require.Nil(t, err)
 			}
+		})
+	}
+}
+
+func TestArrowFunctions(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected object.Object
+	}{
+		{
+			name:     "simple arrow function",
+			input:    `let add = (x, y) => x + y; add(2, 3)`,
+			expected: object.NewInt(5),
+		},
+		{
+			name:     "arrow function no params",
+			input:    `let f = () => 42; f()`,
+			expected: object.NewInt(42),
+		},
+		{
+			name:     "arrow function single param",
+			input:    `let double = (x) => x * 2; double(5)`,
+			expected: object.NewInt(10),
+		},
+		{
+			name:     "arrow function with block body",
+			input:    `let f = (x) => { return x + 1 }; f(10)`,
+			expected: object.NewInt(11),
+		},
+		{
+			name:     "arrow function with default parameter",
+			input:    `let greet = (name = "world") => "hello " + name; greet()`,
+			expected: object.NewString("hello world"),
+		},
+		{
+			name:     "arrow function default parameter override",
+			input:    `let greet = (name = "world") => "hello " + name; greet("claude")`,
+			expected: object.NewString("hello claude"),
+		},
+		{
+			name:     "arrow function as callback",
+			input:    `[1, 2, 3].map((x) => x * 2)`,
+			expected: object.NewList([]object.Object{object.NewInt(2), object.NewInt(4), object.NewInt(6)}),
+		},
+		{
+			name:     "arrow function filter",
+			input:    `[1, 2, 3, 4, 5].filter((x) => x > 2)`,
+			expected: object.NewList([]object.Object{object.NewInt(3), object.NewInt(4), object.NewInt(5)}),
+		},
+		{
+			name:     "immediately invoked arrow function",
+			input:    `((x) => x + 1)(5)`,
+			expected: object.NewInt(6),
+		},
+		{
+			name:     "single param no parens",
+			input:    `let double = x => x * 2; double(5)`,
+			expected: object.NewInt(10),
+		},
+		{
+			name:     "single param no parens as callback",
+			input:    `[1, 2, 3].map(x => x * 10)`,
+			expected: object.NewList([]object.Object{object.NewInt(10), object.NewInt(20), object.NewInt(30)}),
+		},
+		{
+			name:     "arrow function returning arrow function",
+			input:    `let makeAdder = (x) => (y) => x + y; let add5 = makeAdder(5); add5(3)`,
+			expected: object.NewInt(8),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.input)
+			require.Nil(t, err, "unexpected error: %v", err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestMultiVariableForIn(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected object.Object
+	}{
+		{
+			name: "for i, v in array",
+			input: `
+			let result = []
+			for i, v in [10, 20, 30] {
+				result.append([i, v])
+			}
+			result
+			`,
+			expected: object.NewList([]object.Object{
+				object.NewList([]object.Object{object.NewInt(0), object.NewInt(10)}),
+				object.NewList([]object.Object{object.NewInt(1), object.NewInt(20)}),
+				object.NewList([]object.Object{object.NewInt(2), object.NewInt(30)}),
+			}),
+		},
+		{
+			name: "for k, v in map",
+			input: `
+			let m = {"a": 1, "b": 2}
+			let mapKeys = []
+			let mapVals = []
+			for k, v in m {
+				mapKeys.append(k)
+				mapVals.append(v)
+			}
+			[len(mapKeys), len(mapVals)]
+			`,
+			expected: object.NewList([]object.Object{object.NewInt(2), object.NewInt(2)}),
+		},
+		{
+			name: "single variable for-in still works",
+			input: `
+			let sum = 0
+			for v in [1, 2, 3] {
+				sum = sum + v
+			}
+			sum
+			`,
+			expected: object.NewInt(6),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.input)
+			require.Nil(t, err, "unexpected error: %v", err)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

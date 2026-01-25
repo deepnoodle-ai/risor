@@ -513,36 +513,17 @@ func (c *Compiler) compileMultiVar(node *ast.MultiVar) error {
 	}
 	// Emit the Unpack opcode to unpack the tuple-like object onto the stack
 	c.emit(op.Unpack, uint16(len(names)))
-	// Iterate through the names in reverse order and assign the values
-	if node.IsWalrus() {
-		for i := len(names) - 1; i >= 0; i-- {
-			name := names[i]
-			sym, err := c.current.symbols.InsertVariable(name)
-			if err != nil {
-				return err
-			}
-			if c.current.parent == nil {
-				c.emit(op.StoreGlobal, sym.Index())
-			} else {
-				c.emit(op.StoreFast, sym.Index())
-			}
-		}
-		return nil
-	}
+	// Iterate through the names in reverse order and declare the variables
 	for i := len(names) - 1; i >= 0; i-- {
 		name := names[i]
-		resolution, found := c.current.symbols.Resolve(name)
-		if !found {
-			return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Token().StartPosition)
+		sym, err := c.current.symbols.InsertVariable(name)
+		if err != nil {
+			return err
 		}
-		symbolIndex := resolution.symbol.Index()
-		switch resolution.scope {
-		case Global:
-			c.emit(op.StoreGlobal, symbolIndex)
-		case Local:
-			c.emit(op.StoreFast, symbolIndex)
-		case Free:
-			c.emit(op.StoreFree, uint16(resolution.freeIndex))
+		if c.current.parent == nil {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
 		}
 	}
 	return nil
@@ -1697,20 +1678,30 @@ func (c *Compiler) compileForIn(node *ast.ForIn) error {
 		code.symbols = code.symbols.parent
 	}()
 
-	// ForIter instruction: pop iterator, advance it, push current values
-	// Use 3 to indicate Python-style single variable (gets value, not key)
-	iterPos := c.emit(op.ForIter, 0, 3) // 3 indicates Python-style single variable (gets value)
+	variables := node.Variables()
+	numVars := len(variables)
 
-	// Assign the current value of the iterator to the loop variable
-	varName := node.Variable().Literal()
-	sym, err := code.symbols.InsertVariable(varName)
-	if err != nil {
-		return err
+	// ForIter instruction: pop iterator, advance it, push current values
+	// numVars == 1 with value 3: Python-style single variable (gets value only)
+	// numVars == 2: gets both key/index and value
+	iterMode := uint16(numVars)
+	if numVars == 1 {
+		iterMode = 3 // Python-style: single variable gets value only
 	}
-	if code.symbols.IsGlobal() {
-		c.emit(op.StoreGlobal, sym.Index())
-	} else {
-		c.emit(op.StoreFast, sym.Index())
+	iterPos := c.emit(op.ForIter, 0, iterMode)
+
+	// Assign iteration values to loop variables
+	for _, variable := range variables {
+		varName := variable.Literal()
+		sym, err := code.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
+		}
+		if code.symbols.IsGlobal() {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
+		}
 	}
 
 	// Compile the body of the loop

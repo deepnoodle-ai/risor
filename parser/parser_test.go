@@ -102,7 +102,6 @@ func TestMultiDeclareStatements(t *testing.T) {
 	require.Equal(t, "y", names[1])
 	require.Equal(t, "z", names[2])
 	require.Equal(t, "[1, 2, 3]", expr.String())
-	require.Equal(t, true, stmt1.IsWalrus()) // let is a declaration
 }
 
 func TestBadVarConstStatement(t *testing.T) {
@@ -394,6 +393,98 @@ func TestFuncParams(t *testing.T) {
 	}
 }
 
+func TestArrowFunction(t *testing.T) {
+	tests := []struct {
+		input         string
+		expectedParam []string
+		bodyType      string // "return" for expression body, "block" for block body
+	}{
+		// No params
+		{"() => 42", []string{}, "return"},
+		{"() => { return 42 }", []string{}, "block"},
+		// Single param
+		{"(x) => x", []string{"x"}, "return"},
+		{"(x) => { return x }", []string{"x"}, "block"},
+		// Multiple params
+		{"(x, y) => x + y", []string{"x", "y"}, "return"},
+		{"(a, b, c) => a", []string{"a", "b", "c"}, "return"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input)
+			require.Nil(t, err, "parse error for %q", tt.input)
+			require.Len(t, program.Statements(), 1)
+			function, ok := program.First().(*ast.Func)
+			require.True(t, ok, "expected Func, got %T", program.First())
+			require.Nil(t, function.Name(), "arrow functions should not have names")
+			params := function.Parameters()
+			require.Len(t, params, len(tt.expectedParam))
+			for i, ident := range tt.expectedParam {
+				testLiteralExpression(t, params[i], ident)
+			}
+		})
+	}
+}
+
+func TestArrowFunctionWithDefaults(t *testing.T) {
+	program, err := Parse(context.Background(), "(x, y = 5) => x + y")
+	require.Nil(t, err)
+	require.Len(t, program.Statements(), 1)
+	function, ok := program.First().(*ast.Func)
+	require.True(t, ok)
+	params := function.Parameters()
+	require.Len(t, params, 2)
+	testLiteralExpression(t, params[0], "x")
+	testLiteralExpression(t, params[1], "y")
+	defaults := function.Defaults()
+	require.Len(t, defaults, 1)
+	require.Contains(t, defaults, "y")
+}
+
+func TestArrowFunctionNoParens(t *testing.T) {
+	tests := []struct {
+		input         string
+		expectedParam string
+	}{
+		{"x => x", "x"},
+		{"y => y + 1", "y"},
+		{"item => item * 2", "item"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input)
+			require.Nil(t, err, "parse error for %q", tt.input)
+			require.Len(t, program.Statements(), 1)
+			function, ok := program.First().(*ast.Func)
+			require.True(t, ok, "expected Func, got %T", program.First())
+			require.Nil(t, function.Name(), "arrow functions should not have names")
+			params := function.Parameters()
+			require.Len(t, params, 1)
+			testLiteralExpression(t, params[0], tt.expectedParam)
+		})
+	}
+}
+
+func TestArrowFunctionErrors(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"() =>", "parse error: invalid arrow function body"},
+		{"(1, 2) => x", "parse error: invalid arrow function parameter: expected identifier"},
+		{"(x + 1) => x", "parse error: invalid arrow function parameter: expected identifier"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input)
+			require.NotNil(t, err)
+			pe, ok := err.(ParserError)
+			require.True(t, ok)
+			require.Equal(t, tt.expected, pe.Error())
+		})
+	}
+}
+
 func TestCall(t *testing.T) {
 	program, err := Parse(context.Background(), "add(1, 2*3, 4+5)")
 	require.Nil(t, err)
@@ -550,7 +641,7 @@ func TestIncompleThings(t *testing.T) {
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
 		{`{ "a", "b", "c"`, "parse error: unexpected end of file while parsing set (expected })"},
 		{`foo |`, "parse error: invalid pipe expression"},
-		{`(1, 2`, "parse error: unexpected , while parsing grouped expression (expected ))"},
+		{`(1, 2`, "parse error: unexpected end of file while parsing grouped expression or arrow function (expected ))"},
 	}
 	for _, tt := range tests {
 		_, err := Parse(context.Background(), tt.input)
@@ -1322,6 +1413,44 @@ func TestStringFromImport(t *testing.T) {
 		require.Nil(t, err)
 		require.Equal(t, tt.expected, result.String())
 		require.IsType(t, &ast.FromImport{}, result.Statements()[0])
+	}
+}
+
+func TestESImport(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`import { get } from "http"`, `import "http" import ("get")`},
+		{`import { get, post } from "http"`, `import "http" import ("get", "post")`},
+		{`import { get as httpGet } from "http"`, `import "http" import ("get" as httpGet)`},
+		{`import { min, max as maximum } from "math"`, `import "math" import ("min", "max" as maximum)`},
+		{`import { read } from "os"`, `import "os" import ("read")`},
+		// Trailing comma is allowed
+		{`import { get, } from "http"`, `import "http" import ("get")`},
+	}
+	for _, tt := range tests {
+		result, err := Parse(context.Background(), tt.input)
+		require.Nil(t, err, "input: %s", tt.input)
+		require.Equal(t, tt.expected, result.String(), "input: %s", tt.input)
+		require.IsType(t, &ast.FromImport{}, result.Statements()[0], "input: %s", tt.input)
+	}
+}
+
+func TestBadESImport(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`import { } from "http"`, "parse error: import list cannot be empty"},
+		{`import { get from "http"`, "parse error: expected ',' or '}' in import list"},
+		{`import { get }`, "parse error: unexpected end of file while parsing ES import (expected FROM)"},
+		{`import { get } from`, "parse error: unexpected end of file while parsing ES import (expected STRING)"},
+	}
+	for _, tt := range tests {
+		_, err := Parse(context.Background(), tt.input)
+		require.NotNil(t, err, "expected error for: %s", tt.input)
+		require.Contains(t, err.Error(), tt.expected, "input: %s", tt.input)
 	}
 }
 
