@@ -821,48 +821,6 @@ func Hash(ctx context.Context, args ...object.Object) object.Object {
 	return object.NewByteSlice(h.Sum(nil))
 }
 
-func Spawn(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("spawn", 1, 64, args); err != nil {
-		return err
-	}
-	thread, err := object.Spawn(ctx, args[0], args[1:])
-	if err != nil {
-		return object.NewError(err)
-	}
-	return thread
-}
-
-func Chan(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("chan", 0, 1, args); err != nil {
-		return err
-	}
-	size := 0
-	if len(args) == 1 {
-		switch arg := args[0].(type) {
-		case *object.Int:
-			size = int(arg.Value())
-		default:
-			return object.TypeErrorf("type error: chan() expected an int (%s given)", arg.Type())
-		}
-	}
-	return object.NewChan(size)
-}
-
-func Close(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("close", 1, args); err != nil {
-		return err
-	}
-	switch obj := args[0].(type) {
-	case *object.Chan:
-		if err := obj.Close(); err != nil {
-			return object.NewError(err)
-		}
-		return object.Nil
-	default:
-		return object.TypeErrorf("type error: close() expected a chan (%s given)", obj.Type())
-	}
-}
-
 func Make(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.RequireRange("make", 1, 2, args); err != nil {
 		return err
@@ -890,8 +848,6 @@ func Make(ctx context.Context, args ...object.Object) object.Object {
 	case *object.Builtin:
 		name := typ.Name()
 		switch name {
-		case "chan":
-			return object.NewChan(size)
 		case "list":
 			return object.NewList(make([]object.Object, 0, size))
 		case "map":
@@ -972,10 +928,8 @@ func Builtins() map[string]object.Object {
 		"byte_slice":  object.NewBuiltin("byte_slice", ByteSlice),
 		"byte":        object.NewBuiltin("byte", Byte),
 		"call":        object.NewBuiltin("call", Call),
-		"chan":        object.NewBuiltin("chan", Chan),
 		"chr":         object.NewBuiltin("chr", Chr),
 		"chunk":       object.NewBuiltin("chunk", Chunk),
-		"close":       object.NewBuiltin("close", Close),
 		"coalesce":    object.NewBuiltin("coalesce", Coalesce),
 		"decode":      object.NewBuiltin("decode", Decode),
 		"delete":      object.NewBuiltin("delete", Delete),
@@ -997,7 +951,6 @@ func Builtins() map[string]object.Object {
 		"reversed":    object.NewBuiltin("reversed", Reversed),
 		"set":         object.NewBuiltin("set", Set),
 		"sorted":      object.NewBuiltin("sorted", Sorted),
-		"spawn":       object.NewBuiltin("spawn", Spawn),
 		"sprintf":     object.NewBuiltin("sprintf", Sprintf),
 		"string":      object.NewBuiltin("string", String),
 		"try":         object.NewBuiltin("try", Try),

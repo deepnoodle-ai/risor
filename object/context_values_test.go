@@ -28,26 +28,6 @@ func TestContextCallFunc(t *testing.T) {
 	require.Equal(t, NewInt(42), result)
 }
 
-func TestContextSpawnFunc(t *testing.T) {
-	fn, ok := GetSpawnFunc(context.Background())
-	require.False(t, ok)
-	require.Nil(t, fn)
-
-	ctx := WithSpawnFunc(context.Background(),
-		func(ctx context.Context, fn Callable, args []Object) (*Thread, error) {
-			return &Thread{}, nil
-		})
-	fn, ok = GetSpawnFunc(ctx)
-	require.True(t, ok)
-	require.NotNil(t, fn)
-
-	result, err := fn(context.Background(),
-		NewFunction(compiler.NewFunction(compiler.FunctionOpts{})),
-		[]Object{})
-	require.Nil(t, err)
-	require.IsType(t, &Thread{}, result)
-}
-
 func TestContextCloneCallFunc(t *testing.T) {
 	fn, ok := GetCloneCallFunc(context.Background())
 	require.False(t, ok)

@@ -122,7 +122,7 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.nextToken() // makes curToken=token[0], peekToken=token[1]
 
 	// Register prefix-functions
-	p.registerPrefix(token.BACKTICK, p.parseString)
+	p.registerPrefix(token.TEMPLATE, p.parseString)
 	p.registerPrefix(token.BANG, p.parsePrefixExpr)
 	p.registerPrefix(token.DEFER, p.parseDefer)
 	p.registerPrefix(token.EOF, p.illegalToken)
@@ -130,9 +130,8 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.FLOAT, p.parseFloat)
 	p.registerPrefix(token.FOR, p.parseFor)
 	p.registerPrefix(token.FROM, p.parseFromImport)
-	p.registerPrefix(token.FSTRING, p.parseString)
-	p.registerPrefix(token.FUNC, p.parseFunc)
-	p.registerPrefix(token.GO, p.parseGo)
+	p.registerPrefix(token.FUNCTION, p.parseFunc)
+	p.registerPrefix(token.GO, p.parseReserved)
 	p.registerPrefix(token.IDENT, p.parseIdent)
 	p.registerPrefix(token.IF, p.parseIf)
 	p.registerPrefix(token.ILLEGAL, p.illegalToken)
@@ -149,7 +148,7 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.STRING, p.parseString)
 	p.registerPrefix(token.SWITCH, p.parseSwitch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
-	p.registerPrefix(token.SEND, p.parseReceive)
+	p.registerPrefix(token.SEND, p.parseReserved)
 
 	// Register infix functions
 	p.registerInfix(token.AND, p.parseInfixExpr)
@@ -179,7 +178,7 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerInfix(token.PLUS, p.parseInfixExpr)
 	p.registerInfix(token.POW, p.parseInfixExpr)
 	p.registerInfix(token.QUESTION, p.parseTernary)
-	p.registerInfix(token.SEND, p.parseSend)
+	p.registerInfix(token.SEND, p.parseReservedInfix)
 	p.registerInfix(token.SLASH_EQUALS, p.parseAssign)
 	p.registerInfix(token.SLASH, p.parseInfixExpr)
 
@@ -315,8 +314,8 @@ func (p *Parser) parseStatementStrict() ast.Node {
 func (p *Parser) parseStatement() ast.Node {
 	var stmt ast.Node
 	switch p.curToken.Type {
-	case token.VAR:
-		stmt = p.parseVar()
+	case token.LET:
+		stmt = p.parseLet()
 	case token.CONST:
 		stmt = p.parseConst()
 	case token.RETURN:
@@ -327,12 +326,6 @@ func (p *Parser) parseStatement() ast.Node {
 		stmt = p.parseContinue()
 	case token.NEWLINE:
 		stmt = nil
-	case token.IDENT:
-		if p.peekTokenIs(token.DECLARE) || p.peekTokenIs(token.COMMA) {
-			stmt = p.parseDeclaration()
-		} else {
-			stmt = p.parseExpressionStatement()
-		}
 	default:
 		stmt = p.parseExpressionStatement()
 	}
@@ -343,20 +336,20 @@ func (p *Parser) parseStatement() ast.Node {
 	return stmt
 }
 
-func (p *Parser) parseVar() ast.Node {
+func (p *Parser) parseLet() ast.Node {
 	tok := p.curToken
-	if !p.expectPeek("var statement", token.IDENT) {
+	if !p.expectPeek("let statement", token.IDENT) {
 		return nil
 	}
 	idents := []*ast.Ident{ast.NewIdent(p.curToken)}
 	for p.peekTokenIs(token.COMMA) {
 		p.nextToken()
-		if !p.expectPeek("var statement", token.IDENT) {
+		if !p.expectPeek("let statement", token.IDENT) {
 			return nil
 		}
 		idents = append(idents, ast.NewIdent(p.curToken))
 	}
-	if !p.expectPeek("var statement", token.ASSIGN) {
+	if !p.expectPeek("let statement", token.ASSIGN) {
 		return nil
 	}
 	p.nextToken()
@@ -365,41 +358,9 @@ func (p *Parser) parseVar() ast.Node {
 		return nil
 	}
 	if len(idents) > 1 {
-		return ast.NewMultiVar(tok, idents, value, false)
+		return ast.NewMultiVar(tok, idents, value, true) // let is a declaration, not assignment
 	}
 	return ast.NewVar(tok, idents[0], value)
-}
-
-func (p *Parser) parseDeclaration() ast.Node {
-	tok := p.curToken
-	idents := []*ast.Ident{ast.NewIdent(p.curToken)}
-	for p.peekTokenIs(token.COMMA) {
-		p.nextToken()
-		if !p.expectPeek("declaration statement", token.IDENT) {
-			return nil
-		}
-		idents = append(idents, ast.NewIdent(p.curToken))
-	}
-	var isWalrus bool
-	switch p.peekToken.Type {
-	case token.ASSIGN:
-		isWalrus = false
-	case token.DECLARE:
-		isWalrus = true
-	default:
-		p.expectPeek("declaration statement", token.ASSIGN)
-		return nil
-	}
-	p.nextToken() // move to the assignment operator
-	p.nextToken() // move to the value
-	value := p.parseAssignmentValue()
-	if value == nil {
-		return nil
-	}
-	if len(idents) > 1 {
-		return ast.NewMultiVar(tok, idents, value, isWalrus)
-	}
-	return ast.NewDeclaration(tok, idents[0], value)
 }
 
 func (p *Parser) parseConst() *ast.Const {
@@ -1279,29 +1240,14 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expression, []*ast.Ident) {
 	return defaults, params
 }
 
-func (p *Parser) parseGo() ast.Node {
-	goToken := p.curToken
-	if err := p.nextToken(); err != nil {
-		return nil
-	}
-	if !p.curTokenIs(token.FUNC) && !p.curTokenIs(token.IDENT) {
-		p.setTokenError(p.curToken, "invalid go statement")
-		return nil
-	}
-	expr := p.parseExpression(PREFIX)
-	if expr == nil {
-		p.setTokenError(p.curToken, "invalid go statement")
-		return nil
-	}
-	switch expr := expr.(type) {
-	case *ast.Call:
-		return ast.NewGo(goToken, expr)
-	case *ast.ObjectCall:
-		return ast.NewGo(goToken, expr)
-	default:
-		p.setTokenError(p.curToken, "invalid go statement")
-		return nil
-	}
+func (p *Parser) parseReserved() ast.Node {
+	p.setTokenError(p.curToken, fmt.Sprintf("reserved keyword: %s", p.curToken.Literal))
+	return nil
+}
+
+func (p *Parser) parseReservedInfix(_ ast.Node) ast.Node {
+	p.setTokenError(p.curToken, fmt.Sprintf("reserved operator: %s", p.curToken.Literal))
+	return nil
 }
 
 func (p *Parser) parseDefer() ast.Node {
@@ -1309,7 +1255,7 @@ func (p *Parser) parseDefer() ast.Node {
 	if err := p.nextToken(); err != nil {
 		return nil
 	}
-	if !p.curTokenIs(token.FUNC) && !p.curTokenIs(token.IDENT) {
+	if !p.curTokenIs(token.FUNCTION) && !p.curTokenIs(token.IDENT) {
 		p.setTokenError(p.curToken, "invalid defer statement")
 		return nil
 	}
@@ -1331,13 +1277,15 @@ func (p *Parser) parseDefer() ast.Node {
 
 func (p *Parser) parseString() ast.Node {
 	strToken := p.curToken
-	if strToken.Type == token.BACKTICK || strToken.Type == token.STRING {
+	// STRING (single or double quotes) - plain strings, no interpolation
+	if strToken.Type == token.STRING {
 		return ast.NewString(strToken)
 	}
-	if !strings.Contains(strToken.Literal, "{") {
+	// TEMPLATE (backticks) - check for ${expr} interpolation
+	if !strings.Contains(strToken.Literal, "${") {
 		return ast.NewString(strToken)
 	}
-	// Template string with interpolation
+	// Template string with ${expr} interpolation
 	tmpl, err := tmpl.Parse(strToken.Literal)
 	if err != nil {
 		p.setTokenError(strToken, err.Error())
@@ -1524,7 +1472,7 @@ func (p *Parser) parseAssign(name ast.Node) ast.Node {
 	}
 	switch operator.Type {
 	case token.PLUS_EQUALS, token.MINUS_EQUALS, token.SLASH_EQUALS,
-		token.ASTERISK_EQUALS, token.DECLARE, token.ASSIGN:
+		token.ASTERISK_EQUALS, token.ASSIGN:
 		// this is a valid operator
 	default:
 		p.setTokenError(operator, "unsupported operator for assignment: %s", operator.Literal)
@@ -1801,35 +1749,6 @@ func (p *Parser) parseGetAttr(objNode ast.Node) ast.Node {
 		return ast.NewSetAttr(operator, obj, name, right)
 	}
 	return ast.NewGetAttr(period, obj, name)
-}
-
-func (p *Parser) parseSend(channel ast.Node) ast.Node {
-	chanExpr, ok := channel.(ast.Expression)
-	if !ok {
-		p.setTokenError(p.curToken, "invalid send statement channel")
-		return nil
-	}
-	operator := p.curToken
-	p.nextToken() // move to the RHS value
-	value := p.parseExpression(CALL)
-	if value == nil {
-		p.setTokenError(operator, "invalid send statement value")
-		return nil
-	}
-	return ast.NewSend(operator, chanExpr, value)
-}
-
-func (p *Parser) parseReceive() ast.Node {
-	sendToken := p.curToken
-	if err := p.nextToken(); err != nil {
-		return nil
-	}
-	expr := p.parseExpression(LOWEST)
-	if expr == nil {
-		p.setTokenError(p.curToken, "invalid receive statement")
-		return nil
-	}
-	return ast.NewReceive(sendToken, expr)
 }
 
 // curTokenIs returns true if the current token has the given type.

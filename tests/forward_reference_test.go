@@ -12,11 +12,11 @@ func TestForwardReference(t *testing.T) {
 	t.Run("forward reference now works", func(t *testing.T) {
 		// This should now work with forward references
 		code := `
-func say() {
+function say() {
     print(hello())
 }
 
-func hello() {
+function hello() {
     return "hello"
 }
 
@@ -34,11 +34,11 @@ say()
 	t.Run("forward reference returns correct value", func(t *testing.T) {
 		// This should work and return "hello"
 		code := `
-func say() {
+function say() {
     return hello()
 }
 
-func hello() {
+function hello() {
     return "hello"
 }
 

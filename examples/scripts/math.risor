@@ -1,8 +1,8 @@
 #!/usr/bin/env risor --
 
-func square(n) { n * n }
+function square(n) { n * n }
 
-ints := [0, 1, 2, 3, 4]
+let ints = [0, 1, 2, 3, 4]
 
 print("integers:", ints)
 

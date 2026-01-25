@@ -21,8 +21,6 @@ type Config struct {
 	os                    os.OS
 	localImportPath       string
 	withoutDefaultGlobals bool
-	withConcurrency       bool
-	listenersAllowed      bool
 	initialized           bool
 	filename              string
 	vm                    *vm.VirtualMachine
@@ -98,9 +96,7 @@ func (cfg *Config) applyDefaultGlobals() {
 	if cfg.withoutDefaultGlobals {
 		return
 	}
-	for k, v := range DefaultGlobals(DefaultGlobalsOpts{
-		ListenersAllowed: cfg.listenersAllowed,
-	}) {
+	for k, v := range DefaultGlobals(DefaultGlobalsOpts{}) {
 		cfg.globals[k] = v
 	}
 }
@@ -183,9 +179,6 @@ func (cfg *Config) VMOpts() []vm.Option {
 	}
 	if cfg.os != nil {
 		opts = append(opts, vm.WithOS(cfg.os))
-	}
-	if cfg.withConcurrency {
-		opts = append(opts, vm.WithConcurrency())
 	}
 	return opts
 }

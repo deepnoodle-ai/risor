@@ -1,4 +1,4 @@
 
-func bar() {
+function bar() {
     return 987
 }

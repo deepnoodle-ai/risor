@@ -25,8 +25,8 @@ func compileSource(source string) (*Code, error) {
 
 func TestMarshalCode1(t *testing.T) {
 	codeA, err := compileSource(`
-	x := 1.0
-	y := 2.0
+	let x = 1.0
+	let y = 2.0
 	x + y
 	`)
 	require.Nil(t, err)
@@ -39,7 +39,7 @@ func TestMarshalCode1(t *testing.T) {
 
 func TestMarshalCode2(t *testing.T) {
 	codeA, err := compileSource(`
-	func test(a, b=2) {
+	function test(a, b=2) {
 		if a > b {
 			return a
 		} else {
@@ -58,15 +58,15 @@ func TestMarshalCode2(t *testing.T) {
 
 func TestMarshalCode3(t *testing.T) {
 	codeA, err := compileSource(`
-	start := 10
-	func counter(a) {
-		current := a
-		return func() {
+	let start = 10
+	function counter(a) {
+		let current = a
+		return function() {
 			current++
 			return current
 		}
 	}
-	c := counter(start)
+	let c = counter(start)
 	c()
 	`)
 	require.Nil(t, err)
@@ -80,16 +80,18 @@ func TestMarshalCode3(t *testing.T) {
 
 func TestMarshalCode4(t *testing.T) {
 	codeA, err := compileSource(`
-	func mergesort(arr) {
-		length := len(arr)
+	function mergesort(arr) {
+		let length = len(arr)
 		if length <= 1 {
 			return arr
 		}
-		mid := length / 2
-		left := mergesort(arr[:mid])
-		right := mergesort(arr[mid:])
-		output := list(length)
-		i, j, k := [0, 0, 0]
+		let mid = length / 2
+		let left = mergesort(arr[:mid])
+		let right = mergesort(arr[mid:])
+		let output = list(length)
+		let i = 0
+		let j = 0
+		let k = 0
 		for i < len(left) {
 			for j < len(right) && right[j] <= left[i] {
 				output[k] = right[j]

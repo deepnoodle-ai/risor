@@ -74,19 +74,6 @@ func (f *Function) Interface() interface{} {
 }
 
 func (f *Function) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "spawn":
-		return &Builtin{
-			name: "function.spawn",
-			fn: func(ctx context.Context, args ...Object) Object {
-				thread, err := Spawn(ctx, f, args)
-				if err != nil {
-					return NewError(err)
-				}
-				return thread
-			},
-		}, true
-	}
 	return nil, false
 }
 

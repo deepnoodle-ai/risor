@@ -1,8 +1,8 @@
 #!/usr/bin/env risor --
 
-key := "test_key"
-value := "test_value"
+let key = "test_key"
+let value = "test_value"
 
-rdb := redis.client("redis://localhost:6379")
+let rdb = redis.client("redis://localhost:6379")
 print(rdb.set(key, value))
 print(rdb.get(key))

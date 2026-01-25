@@ -14,13 +14,13 @@ func TestFSImporter_Import(t *testing.T) {
 	testFS := fstest.MapFS{
 		"foo/bar.risor": &fstest.MapFile{
 			Data: []byte(`
-func test_function() {
+function test_function() {
     return 765
 }
 `),
 		},
 		"example.rriissoorr": &fstest.MapFile{
-			Data: []byte(`func hello() { return "world" }`),
+			Data: []byte(`function hello() { return "world" }`),
 		},
 	}
 

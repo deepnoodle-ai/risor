@@ -2,5 +2,5 @@
 // expected error line: 6
 // expected error column: 9
 
-var x = 42
-var y = 
+let x = 42
+let y = 

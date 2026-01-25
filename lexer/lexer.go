@@ -146,13 +146,27 @@ func (l *Lexer) Next() (token.Token, error) {
 			ch := l.ch
 			l.readChar()
 			tok = l.newToken(token.EQ, string(ch)+string(l.ch))
+		} else if l.peekChar() == rune('>') {
+			ch := l.ch
+			l.readChar()
+			tok = l.newToken(token.ARROW, string(ch)+string(l.ch))
 		} else {
 			tok = l.newToken(token.ASSIGN, string(l.ch))
 		}
 	case rune(';'):
 		tok = l.newToken(token.SEMICOLON, string(l.ch))
 	case rune('?'):
-		tok = l.newToken(token.QUESTION, string(l.ch))
+		if l.peekChar() == rune('.') {
+			ch := l.ch
+			l.readChar()
+			tok = l.newToken(token.QUESTION_DOT, string(ch)+string(l.ch))
+		} else if l.peekChar() == rune('?') {
+			ch := l.ch
+			l.readChar()
+			tok = l.newToken(token.NULLISH, string(ch)+string(l.ch))
+		} else {
+			tok = l.newToken(token.QUESTION, string(l.ch))
+		}
 	case rune('('):
 		tok = l.newToken(token.LPAREN, string(l.ch))
 	case rune(')'):
@@ -252,12 +266,12 @@ func (l *Lexer) Next() (token.Token, error) {
 	case rune('\''):
 		s, err := l.readString('\'')
 		if err != nil {
-			tok = l.newToken(token.FSTRING, s)
+			tok = l.newToken(token.STRING, s)
 			l.readChar()
 			l.prevToken = tok
 			return tok, err
 		}
-		tok = l.newToken(token.FSTRING, s)
+		tok = l.newToken(token.STRING, s)
 	case rune('"'):
 		s, err := l.readString('"')
 		if err != nil {
@@ -270,23 +284,18 @@ func (l *Lexer) Next() (token.Token, error) {
 	case rune('`'):
 		s, err := l.readBacktick()
 		if err != nil {
-			tok = l.newToken(token.BACKTICK, s)
+			tok = l.newToken(token.TEMPLATE, s)
 			l.readChar()
 			l.prevToken = tok
 			return tok, err
 		}
-		tok = l.newToken(token.BACKTICK, s)
+		tok = l.newToken(token.TEMPLATE, s)
 	case rune('['):
 		tok = l.newToken(token.LBRACKET, string(l.ch))
 	case rune(']'):
 		tok = l.newToken(token.RBRACKET, string(l.ch))
 	case rune(':'):
-		if l.peekChar() == rune('=') {
-			l.readChar()
-			tok = l.newToken(token.DECLARE, ":=")
-		} else {
-			tok = l.newToken(token.COLON, string(l.ch))
-		}
+		tok = l.newToken(token.COLON, string(l.ch))
 	case rune('\r'):
 		if l.peekChar() == rune('\n') {
 			ch := l.ch

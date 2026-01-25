@@ -35,20 +35,19 @@ type Token struct {
 // Token types
 const (
 	AND             = "&&"
+	ARROW           = "=>"
 	ASSIGN          = "="
 	ASTERISK        = "*"
 	ASTERISK_EQUALS = "*="
 	BACKTICK        = "`"
-	FSTRING         = "'"
 	BANG            = "!"
 	CASE            = "case"
 	COLON           = ":"
 	COMMA           = ","
 	CONST           = "CONST"
-	DECLARE         = ":="
 	DEFAULT         = "DEFAULT"
 	DEFER           = "DEFER"
-	FUNC            = "FUNC"
+	FUNCTION        = "FUNCTION"
 	ELSE            = "ELSE"
 	EOF             = "EOF"
 	EQ              = "=="
@@ -69,6 +68,7 @@ const (
 	LT              = "<"
 	LT_LT           = "<<"
 	LT_EQUALS       = "<="
+	LET             = "LET"
 	MINUS           = "-"
 	MINUS_EQUALS    = "-="
 	MINUS_MINUS     = "--"
@@ -76,6 +76,7 @@ const (
 	NOT_EQ          = "!="
 	NIL             = "nil"
 	NOT             = "NOT"
+	NULLISH         = "??"
 	PIPE            = "|"
 	OR              = "||"
 	PERIOD          = "."
@@ -85,6 +86,7 @@ const (
 	PLUS_PLUS       = "++"
 	POW             = "**"
 	QUESTION        = "?"
+	QUESTION_DOT    = "?."
 	RBRACE          = "}"
 	RBRACKET        = "]"
 	RETURN          = "RETURN"
@@ -96,12 +98,12 @@ const (
 	STRING          = "STRING"
 	STRUCT          = "STRUCT"
 	SWITCH          = "switch"
+	TEMPLATE        = "TEMPLATE"
 	TRUE            = "TRUE"
 	NEWLINE         = "EOL"
 	IMPORT          = "IMPORT"
 	BREAK           = "BREAK"
 	CONTINUE        = "CONTINUE"
-	VAR             = "VAR"
 	IN              = "IN"
 	RANGE           = "RANGE"
 	FROM            = "FROM"
@@ -121,11 +123,12 @@ var keywords = map[string]Type{
 	"false":    FALSE,
 	"for":      FOR,
 	"from":     FROM,
-	"func":     FUNC,
-	"go":       GO,
+	"function": FUNCTION,
+	"go":       GO, // Reserved keyword (concurrency removed but kept for future)
 	"if":       IF,
 	"import":   IMPORT,
 	"in":       IN,
+	"let":      LET,
 	"nil":      NIL,
 	"not":      NOT,
 	"range":    RANGE,
@@ -133,7 +136,6 @@ var keywords = map[string]Type{
 	"struct":   STRUCT,
 	"switch":   SWITCH,
 	"true":     TRUE,
-	"var":      VAR,
 }
 
 // LookupIdentifier used to determinate whether identifier is keyword nor not

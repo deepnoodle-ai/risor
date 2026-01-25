@@ -23,19 +23,12 @@ import (
 )
 
 // DefaultGlobalsOpts are options for the DefaultGlobals function.
-type DefaultGlobalsOpts struct {
-	ListenersAllowed bool
-}
+type DefaultGlobalsOpts struct{}
 
 // DefaultGlobals returns a map of standard globals for Risor scripts. This
 // includes only the builtins and modules that are always available, without
 // pulling in additional Go modules.
 func DefaultGlobals(opts ...DefaultGlobalsOpts) map[string]any {
-	var opt DefaultGlobalsOpts
-	if len(opts) > 0 {
-		opt = opts[0]
-	}
-
 	globals := map[string]any{}
 
 	// Add default builtin functions as globals
@@ -60,7 +53,7 @@ func DefaultGlobals(opts ...DefaultGlobalsOpts) map[string]any {
 		"exec":     modExec.Module(),
 		"filepath": modFilepath.Module(),
 		"fmt":      modFmt.Module(),
-		"http":     modHTTP.Module(modHTTP.ModuleOpts{ListenersAllowed: opt.ListenersAllowed}),
+		"http":     modHTTP.Module(),
 		"json":     modJSON.Module(),
 		"math":     modMath.Module(),
 		"net":      modNet.Module(),

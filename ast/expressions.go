@@ -628,35 +628,3 @@ func (r *Range) String() string {
 	out.WriteString(r.container.String())
 	return out.String()
 }
-
-// Receive is an expression node that describes receiving from a channel
-type Receive struct {
-	// the "<-" token
-	token token.Token
-
-	// the channel to receive from
-	channel Node
-}
-
-// NewReceive creates a new Receive node.
-func NewReceive(token token.Token, channel Node) *Receive {
-	return &Receive{token: token, channel: channel}
-}
-
-func (r *Receive) ExpressionNode() {}
-
-func (r *Receive) IsExpression() bool { return true }
-
-func (r *Receive) Token() token.Token { return r.token }
-
-func (r *Receive) Literal() string { return r.token.Literal }
-
-func (r *Receive) Channel() Node { return r.channel }
-
-func (r *Receive) String() string {
-	var out bytes.Buffer
-	out.WriteString(r.Literal())
-	out.WriteString(" ")
-	out.WriteString(r.channel.String())
-	return out.String()
-}

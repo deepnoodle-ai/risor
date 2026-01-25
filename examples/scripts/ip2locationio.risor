@@ -1,7 +1,7 @@
 #!/usr/bin/env risor --
 
-req := http.get("http://api.ip2location.io")
+let req = http.get("http://api.ip2location.io")
 
-res := req.send()
+let res = req.send()
 
 print(res.json().ip)

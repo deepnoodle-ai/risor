@@ -13,31 +13,31 @@ import (
 func TestLanguageServerIntegration(t *testing.T) {
 	// Sample Risor code that demonstrates various language features
 	risorCode := `// Example Risor program
-var config = {
+let config = {
     "host": "localhost",
     "port": 8080,
     "debug": true
 }
 
 // Function to process user data
-process_user := func(user_id, name) {
+let process_user = function(user_id, name) {
     if user_id <= 0 {
         return "Invalid user ID"
     }
-    
-    user_data := {
+
+    let user_data = {
         "id": user_id,
         "name": name,
         "status": "active"
     }
-    
+
     return user_data
 }
 
 // Main processing logic
-users := []
-for i := 0; i < 5; i++ {
-    user := process_user(i, sprintf("User_%d", i))
+let users = []
+for let i = 0; i < 5; i++ {
+    let user = process_user(i, sprintf("User_%d", i))
     users = append(users, user)
 }
 
@@ -199,9 +199,9 @@ func TestLanguageServerWithErrors(t *testing.T) {
 	}
 
 	// Code with syntax errors
-	invalidCode := `var x = 42
-func incomplete(
-y := "missing closing brace"
+	invalidCode := `let x = 42
+function incomplete(
+let y = "missing closing brace"
 if true {
     // missing closing brace`
 
@@ -239,32 +239,33 @@ if true {
 // TestRisorCodeExamples tests the language server with various Risor code patterns
 func TestRisorCodeExamples(t *testing.T) {
 	examples := map[string]string{
-		"variables": `var name = "Risor"
-age := 25
-is_valid = true`,
+		"variables": `let name = "Risor"
+let age = 25
+let is_valid = true`,
 
-		"functions": `add := func(a, b) { return a + b }
-greet := func(name) {
+		"functions": `let add = function(a, b) { return a + b }
+let greet = function(name) {
     return sprintf("Hello, %s!", name)
 }`,
 
-		"control_flow": `if age >= 18 {
-    status := "adult"
+		"control_flow": `let age = 18
+if age >= 18 {
+    let status = "adult"
 } else {
-    status := "minor"
+    let status = "minor"
 }
 
 for i in range(10) {
     println(i)
 }`,
 
-		"data_structures": `person := {
+		"data_structures": `let person = {
     "name": "Alice",
     "age": 30,
     "hobbies": ["reading", "coding"]
 }
 
-numbers := [1, 2, 3, 4, 5]`,
+let numbers = [1, 2, 3, 4, 5]`,
 	}
 
 	server := &Server{

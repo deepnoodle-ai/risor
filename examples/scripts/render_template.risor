@@ -1,5 +1,5 @@
 #!/usr/bin/env risor --
 
-res := fetch("http://ipinfo.io").json() | render("You are in {{ .Values.city }}, region {{ .Values.region }} in {{ .Values.timezone }}")
+let res = fetch("http://ipinfo.io").json() | render("You are in {{ .Values.city }}, region {{ .Values.region }} in {{ .Values.timezone }}")
 
 print(res)

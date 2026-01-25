@@ -52,7 +52,7 @@ func TestNextToken1(t *testing.T) {
 		{token.QUESTION, "?"},
 		{token.OR, "||"},
 		{token.AND, "&&"},
-		{token.BACKTICK, "/foo"},
+		{token.TEMPLATE, "/foo"},
 		{token.PLUS_PLUS, "++"},
 		{token.MINUS_MINUS, "--"},
 		{token.POW, "**"},
@@ -76,12 +76,12 @@ func TestNextToken1(t *testing.T) {
 }
 
 func TestNextToken2(t *testing.T) {
-	input := `var five=5;
-var ten =10;
-var add = func(x, y){
+	input := `let five=5;
+let ten =10;
+let add = function(x, y){
   x+y
 };
-var result = add(five, ten);
+let result = add(five, ten);
 !- *5;
 5<10>5;
 
@@ -109,22 +109,22 @@ break
 		expectedType    token.Type
 		expectedLiteral string
 	}{
-		{token.VAR, "var"},
+		{token.LET, "let"},
 		{token.IDENT, "five"},
 		{token.ASSIGN, "="},
 		{token.INT, "5"},
 		{token.SEMICOLON, ";"},
 		{token.NEWLINE, "\n"},
-		{token.VAR, "var"},
+		{token.LET, "let"},
 		{token.IDENT, "ten"},
 		{token.ASSIGN, "="},
 		{token.INT, "10"},
 		{token.SEMICOLON, ";"},
 		{token.NEWLINE, "\n"},
-		{token.VAR, "var"},
+		{token.LET, "let"},
 		{token.IDENT, "add"},
 		{token.ASSIGN, "="},
-		{token.FUNC, "func"},
+		{token.FUNCTION, "function"},
 		{token.LPAREN, "("},
 		{token.IDENT, "x"},
 		{token.COMMA, ","},
@@ -139,7 +139,7 @@ break
 		{token.RBRACE, "}"},
 		{token.SEMICOLON, ";"},
 		{token.NEWLINE, "\n"},
-		{token.VAR, "var"},
+		{token.LET, "let"},
 		{token.IDENT, "result"},
 		{token.ASSIGN, "="},
 		{token.IDENT, "add"},
@@ -289,7 +289,7 @@ func TestSimpleComment(t *testing.T) {
 	input := `=+// This is a comment
 // This is still a comment
 # I like comments
-var a = 1; # This is a comment too.
+let a = 1; # This is a comment too.
 // This is a final
 // comment on two-lines`
 
@@ -302,7 +302,7 @@ var a = 1; # This is a comment too.
 		{token.NEWLINE, "\n"},
 		{token.NEWLINE, "\n"},
 		{token.NEWLINE, "\n"},
-		{token.VAR, "var"},
+		{token.LET, "let"},
 		{token.IDENT, "a"},
 		{token.ASSIGN, "="},
 		{token.INT, "1"},
@@ -328,8 +328,8 @@ func TestMultiLineComment(t *testing.T) {
 	input := `=+/* This is a comment
 
 We're still in a comment
-var c = 2; */
-var a = 1;
+let c = 2; */
+let a = 1;
 // This isa comment
 // This is still a comment.
 /* Now a multi-line again
@@ -343,7 +343,7 @@ var a = 1;
 		{token.ASSIGN, "="},
 		{token.PLUS, "+"},
 		{token.NEWLINE, "\n"},
-		{token.VAR, "var"},
+		{token.LET, "let"},
 		{token.IDENT, "a"},
 		{token.ASSIGN, "="},
 		{token.INT, "1"},
@@ -612,7 +612,7 @@ func TestTokenLengths(t *testing.T) {
 		{"1.1", token.FLOAT, "1.1", 0, 0, 2},
 		{`"b"`, token.STRING, "b", 0, 0, 2},
 		{"for", token.FOR, "for", 0, 0, 2},
-		{"var", token.VAR, "var", 0, 0, 2},
+		{"let", token.LET, "let", 0, 0, 2},
 		{"false", token.FALSE, "false", 0, 0, 4},
 		{"import", token.IMPORT, "import", 0, 0, 5},
 		{">=", token.GT_EQUALS, ">=", 0, 0, 1},
@@ -641,8 +641,8 @@ func TestStringTypes(t *testing.T) {
 		expectedLiteral string
 	}{
 		{`"\"foo'"`, token.STRING, "\"foo'"},
-		{`'"foo\''`, token.FSTRING, "\"foo'"},
-		{"`foo`", token.BACKTICK, "foo"},
+		{`'"foo\''`, token.STRING, "\"foo'"},
+		{"`foo`", token.TEMPLATE, "foo"},
 		{"\"\\nhey\"", token.STRING, "\nhey"},
 	}
 	for i, tt := range tests {

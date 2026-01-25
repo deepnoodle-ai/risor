@@ -333,20 +333,8 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileSetAttr(node); err != nil {
 			return err
 		}
-	case *ast.Go:
-		if err := c.compileGoStmt(node); err != nil {
-			return err
-		}
 	case *ast.Defer:
 		if err := c.compileDeferStmt(node); err != nil {
-			return err
-		}
-	case *ast.Send:
-		if err := c.compileSend(node); err != nil {
-			return err
-		}
-	case *ast.Receive:
-		if err := c.compileReceive(node); err != nil {
 			return err
 		}
 	default:
@@ -1059,25 +1047,6 @@ func (c *Compiler) compileMap(node *ast.Map) error {
 		}
 	}
 	c.emit(op.BuildMap, uint16(count))
-	return nil
-}
-
-func (c *Compiler) compileSend(node *ast.Send) error {
-	if err := c.compile(node.Channel()); err != nil {
-		return err
-	}
-	if err := c.compile(node.Value()); err != nil {
-		return err
-	}
-	c.emit(op.Send)
-	return nil
-}
-
-func (c *Compiler) compileReceive(node *ast.Receive) error {
-	if err := c.compile(node.Channel()); err != nil {
-		return err
-	}
-	c.emit(op.Receive)
 	return nil
 }
 
@@ -1935,22 +1904,6 @@ func (c *Compiler) compileOr(node *ast.Infix) error {
 		return err
 	}
 	c.changeOperand(jumpPos, delta)
-	return nil
-}
-
-func (c *Compiler) compileGoStmt(node *ast.Go) error {
-	expr := node.Call()
-	switch expr := expr.(type) {
-	case *ast.Call:
-		if err := c.compilePartial(expr); err != nil {
-			return err
-		}
-	case *ast.ObjectCall:
-		if err := c.compilePartialObjectCall(expr); err != nil {
-			return err
-		}
-	}
-	c.emit(op.Go)
 	return nil
 }
 

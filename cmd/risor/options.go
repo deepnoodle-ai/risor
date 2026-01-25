@@ -6,35 +6,9 @@ import (
 	"os"
 
 	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/modules/aws"
 	"github.com/risor-io/risor/modules/bcrypt"
-	"github.com/risor-io/risor/modules/cli"
-	"github.com/risor-io/risor/modules/color"
-	"github.com/risor-io/risor/modules/echarts"
-	"github.com/risor-io/risor/modules/gha"
-	"github.com/risor-io/risor/modules/github"
-	"github.com/risor-io/risor/modules/goquery"
-	"github.com/risor-io/risor/modules/htmltomarkdown"
-	"github.com/risor-io/risor/modules/image"
-	"github.com/risor-io/risor/modules/isatty"
-	"github.com/risor-io/risor/modules/jmespath"
-	k8s "github.com/risor-io/risor/modules/kubernetes"
 	"github.com/risor-io/risor/modules/net"
-	"github.com/risor-io/risor/modules/pgx"
-	"github.com/risor-io/risor/modules/playwright"
-	"github.com/risor-io/risor/modules/qrcode"
-	"github.com/risor-io/risor/modules/redis"
-	"github.com/risor-io/risor/modules/sched"
-	"github.com/risor-io/risor/modules/semver"
-	"github.com/risor-io/risor/modules/shlex"
-	"github.com/risor-io/risor/modules/slack"
-	"github.com/risor-io/risor/modules/sql"
 	"github.com/risor-io/risor/modules/ssh"
-	"github.com/risor-io/risor/modules/tablewriter"
-	"github.com/risor-io/risor/modules/template"
-	"github.com/risor-io/risor/modules/uuid"
-	"github.com/risor-io/risor/modules/vault"
-	"github.com/risor-io/risor/modules/yaml"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -45,62 +19,11 @@ func getGlobals() risor.Option {
 		return risor.WithoutDefaultGlobals()
 	}
 
-	//************************************************************************//
-	// Default modules
-	//************************************************************************//
-
+	// Modules that extend the standard library (using x/crypto)
 	globals := map[string]any{
-		"bcrypt":         bcrypt.Module(),
-		"cli":            cli.Module(),
-		"color":          color.Module(),
-		"echarts":        echarts.Module(),
-		"gha":            gha.Module(),
-		"github":         github.Module(),
-		"goquery":        goquery.Module(),
-		"htmltomarkdown": htmltomarkdown.Module(),
-		"image":          image.Module(),
-		"isatty":         isatty.Module(),
-		"net":            net.Module(),
-		"pgx":            pgx.Module(),
-		"playwright":     playwright.Module(),
-		"qrcode":         qrcode.Module(),
-		"redis":          redis.Module(),
-		"sched":          sched.Module(),
-		"semver":         semver.Module(),
-		"shlex":          shlex.Module(),
-		"slack":          slack.Module(),
-		"sql":            sql.Module(),
-		"ssh":            ssh.Module(),
-		"tablewriter":    tablewriter.Module(),
-		"template":       template.Module(),
-		"uuid":           uuid.Module(),
-		"yaml":           yaml.Module(),
-	}
-
-	//************************************************************************//
-	// Modules that contribute top-level built-in functions
-	//************************************************************************//
-
-	for k, v := range jmespath.Builtins() {
-		globals[k] = v
-	}
-	for k, v := range template.Builtins() {
-		globals[k] = v
-	}
-
-	//************************************************************************//
-	// Modules which are optionally present (depending on build tags).
-	// If the build tag is not set then the returned module is nil.
-	//************************************************************************//
-
-	if mod := aws.Module(); mod != nil {
-		globals["aws"] = mod
-	}
-	if mod := k8s.Module(); mod != nil {
-		globals["k8s"] = mod
-	}
-	if mod := vault.Module(); mod != nil {
-		globals["vault"] = mod
+		"bcrypt": bcrypt.Module(),
+		"net":    net.Module(),
+		"ssh":    ssh.Module(),
 	}
 
 	return risor.WithGlobals(globals)
@@ -108,8 +31,6 @@ func getGlobals() risor.Option {
 
 func getRisorOptions() []risor.Option {
 	opts := []risor.Option{
-		risor.WithConcurrency(),
-		risor.WithListenersAllowed(),
 		getGlobals(),
 	}
 	if modulesDir := viper.GetString("modules"); modulesDir != "" {

@@ -13,8 +13,8 @@ import (
 
 func TestTokenLineCol(t *testing.T) {
 	code := `
-var x = 5;
-var y = 10;
+let x = 5;
+let y = 10;
 	`
 	program, err := Parse(context.Background(), code)
 	require.Nil(t, err)
@@ -29,7 +29,7 @@ var y = 10;
 	start := t1.StartPosition
 	end := t1.EndPosition
 
-	// Position of the "var" token
+	// Position of the "let" token
 	require.Equal(t, 2, start.LineNumber())
 	require.Equal(t, 1, start.ColumnNumber())
 	require.Equal(t, 2, end.LineNumber())
@@ -39,7 +39,7 @@ var y = 10;
 	start = t2.StartPosition
 	end = t2.EndPosition
 
-	// Position of the "var" token
+	// Position of the "let" token
 	require.Equal(t, 3, start.LineNumber())
 	require.Equal(t, 1, start.ColumnNumber())
 	require.Equal(t, 3, end.LineNumber())
@@ -52,10 +52,10 @@ func TestVarStatements(t *testing.T) {
 		ident string
 		value interface{}
 	}{
-		{"var x =5;", "x", 5},
-		{"var z =1.3;", "z", 1.3},
-		{"var y_ = true;", "y_", true},
-		{"var foobar=y;", "foobar", "y"},
+		{"let x =5;", "x", 5},
+		{"let z =1.3;", "z", 1.3},
+		{"let y_ = true;", "y_", true},
+		{"let foobar=y;", "foobar", "y"},
 	}
 	for _, tt := range tests {
 		program, err := Parse(context.Background(), tt.input)
@@ -73,8 +73,8 @@ func TestVarStatements(t *testing.T) {
 
 func TestDeclareStatements(t *testing.T) {
 	input := `
-	var x = foo.bar()
-	y := foo.bar()
+	let x = foo.bar()
+	let y = foo.bar()
 	`
 	program, err := Parse(context.Background(), input)
 	require.Nil(t, err)
@@ -89,14 +89,11 @@ func TestDeclareStatements(t *testing.T) {
 }
 
 func TestMultiDeclareStatements(t *testing.T) {
-	input := `
-	x, y, z := [1, 2, 3]
-	x, y, z = [8, 9, 10]
-	`
+	input := `let x, y, z = [1, 2, 3]`
 	program, err := Parse(context.Background(), input)
 	require.Nil(t, err)
 	statements := program.Statements()
-	require.Len(t, statements, 2)
+	require.Len(t, statements, 1)
 	stmt1, ok := statements[0].(*ast.MultiVar)
 	require.True(t, ok)
 	names, expr := stmt1.Value()
@@ -105,17 +102,7 @@ func TestMultiDeclareStatements(t *testing.T) {
 	require.Equal(t, "y", names[1])
 	require.Equal(t, "z", names[2])
 	require.Equal(t, "[1, 2, 3]", expr.String())
-	require.Equal(t, true, stmt1.IsWalrus())
-
-	stmt2, ok := statements[1].(*ast.MultiVar)
-	require.True(t, ok)
-	names, expr = stmt2.Value()
-	require.Len(t, names, 3)
-	require.Equal(t, "x", names[0])
-	require.Equal(t, "y", names[1])
-	require.Equal(t, "z", names[2])
-	require.Equal(t, "[8, 9, 10]", expr.String())
-	require.Equal(t, false, stmt2.IsWalrus())
+	require.Equal(t, true, stmt1.IsWalrus()) // let is a declaration
 }
 
 func TestBadVarConstStatement(t *testing.T) {
@@ -123,7 +110,7 @@ func TestBadVarConstStatement(t *testing.T) {
 		input string
 		err   string
 	}{
-		{"var", "parse error: unexpected end of file while parsing var statement (expected identifier)"},
+		{"let", "parse error: unexpected end of file while parsing let statement (expected identifier)"},
 		{"const", "parse error: unexpected end of file while parsing const statement (expected identifier)"},
 		{"const x;", "parse error: unexpected ; while parsing const statement (expected =)"},
 	}
@@ -369,7 +356,7 @@ func TestIf(t *testing.T) {
 }
 
 func TestFunc(t *testing.T) {
-	program, err := Parse(context.Background(), "func f(x, y=3) { x + y; }")
+	program, err := Parse(context.Background(), "function f(x, y=3) { x + y; }")
 	require.Nil(t, err)
 	require.Len(t, program.Statements(), 1)
 	function, ok := program.First().(*ast.Func)
@@ -389,9 +376,9 @@ func TestFuncParams(t *testing.T) {
 		input         string
 		expectedParam []string
 	}{
-		{"func(){}", []string{}},
-		{"func(x){}", []string{"x"}},
-		{"func(x,y){}", []string{"x", "y"}},
+		{"function(){}", []string{}},
+		{"function(x){}", []string{"x"}},
+		{"function(x,y){}", []string{"x", "y"}},
 	}
 	for _, tt := range tests {
 		program, err := Parse(context.Background(), tt.input)
@@ -518,13 +505,13 @@ func TestParsingMapLiteralWithExpression(t *testing.T) {
 // Test operators: +=, -=, /=, and *=.
 func TestMutators(t *testing.T) {
 	inputs := []string{
-		"var w = 5; w *= 3;",
-		"var x = 15; x += 3;",
-		"var y = 10; y /= 2;",
-		"var z = 10; y -= 2;",
-		"var z = 1; z++;",
-		"var z = 1; z--;",
-		"var z = 10; var a = 3; y = a;",
+		"let w = 5; w *= 3;",
+		"let x = 15; x += 3;",
+		"let y = 10; y /= 2;",
+		"let z = 10; y -= 2;",
+		"let z = 1; z++;",
+		"let z = 1; z--;",
+		"let z = 10; let a = 3; y = a;",
 	}
 	for _, input := range inputs {
 		_, err := Parse(context.Background(), input)
@@ -536,7 +523,7 @@ func TestMutators(t *testing.T) {
 func TestObjectMethodCall(t *testing.T) {
 	inputs := []string{
 		"\"steve\".len()",
-		"var x = 15; x.string();",
+		"let x = 15; x.string();",
 	}
 	for _, input := range inputs {
 		_, err := Parse(context.Background(), input)
@@ -552,12 +539,12 @@ func TestIncompleThings(t *testing.T) {
 	}{
 		{`if ( true ) { `, "parse error: unterminated block statement"},
 		{`if ( true ) { puts( "OK" ) ; } else { `, "parse error: unterminated block statement"},
-		{`var x = `, "parse error: assignment is missing a value"},
+		{`let x = `, "parse error: assignment is missing a value"},
 		{`const x =`, "parse error: assignment is missing a value"},
-		{`func foo( a, b ="steve", `, "parse error: unterminated function parameters"},
-		{`func foo() {`, "parse error: unterminated block statement"},
+		{`function foo( a, b ="steve", `, "parse error: unterminated function parameters"},
+		{`function foo() {`, "parse error: unterminated block statement"},
 		{`switch (foo) { `, "parse error: unterminated switch statement"},
-		{`for i := 0; i < 5; i++ {`, "parse error: unterminated block statement"},
+		{`for let i = 0; i < 5; i++ {`, "parse error: unterminated block statement"},
 		{`{`, "parse error: invalid syntax in set expression"},
 		{`[`, "parse error: invalid syntax in list expression"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
@@ -624,9 +611,9 @@ func TestPipe(t *testing.T) {
 		exprType       string
 		expectedIdents []string
 	}{
-		{"var x = foo | bar;", "ident", []string{"foo", "bar"}},
-		{`var x = foo() | bar(name="foo") | baz(y=4);`, "call", []string{"foo", "bar", "baz"}},
-		{`var x = a() | b();`, "call", []string{"a", "b"}},
+		{"let x = foo | bar;", "ident", []string{"foo", "bar"}},
+		{`let x = foo() | bar(name="foo") | baz(y=4);`, "call", []string{"foo", "bar", "baz"}},
+		{`let x = a() | b();`, "call", []string{"a", "b"}},
 	}
 	for _, tt := range tests {
 		program, err := Parse(context.Background(), tt.input)
@@ -899,7 +886,7 @@ func TestForInLoopParseErrorCases(t *testing.T) {
 }
 
 func TestMultiVar(t *testing.T) {
-	program, err := Parse(context.Background(), "x, y := [1, 2]")
+	program, err := Parse(context.Background(), "let x, y = [1, 2]")
 	require.Nil(t, err)
 	require.Len(t, program.Statements(), 1)
 	mvar, ok := program.First().(*ast.MultiVar)
@@ -979,7 +966,7 @@ func TestUnterminatedBacktickString(t *testing.T) {
 
 func TestUnterminatedString(t *testing.T) {
 	input := `42
-x := "a`
+let x = "a`
 	ctx := context.Background()
 	_, err := Parse(ctx, input, WithFile("main.tm"))
 	require.NotNil(t, err)
@@ -995,22 +982,22 @@ x := "a`
 		Cause:   syntaxErr.Cause(),
 		StartPosition: token.Position{
 			Value:     rune('"'),
-			Column:    5,
+			Column:    8,
 			Line:      1,
 			LineStart: 3,
-			Char:      8,
+			Char:      11,
 			File:      "main.tm",
 		},
 		EndPosition: token.Position{
 			Value:     rune('a'),
-			Column:    6,
+			Column:    9,
 			Line:      1,
 			LineStart: 3,
-			Char:      9,
+			Char:      12,
 			File:      "main.tm",
 		},
 		File:       "main.tm",
-		SourceCode: "x := \"a",
+		SourceCode: `let x = "a`,
 	}), syntaxErr)
 }
 
@@ -1034,21 +1021,21 @@ func FuzzParse(f *testing.F) {
 		"1/2+4+=5-[1,2,{}]",
 		" ",
 		"!12345",
-		"var x = [1,2,3];",
+		"let x = [1,2,3];",
 		`; const z = {"foo"}`,
 		`"foo_" + 1.34 /= 2.0`,
 		`{hey: {there: 1}}`,
-		`'foo {x + 1}'`,
+		`'foo bar'`,
 		`x.func(x=1, y=2).bar`,
 		`0A=`,
 		`"hi" | strings.to_lower | strings.to_upper`,
 		`math.PI * 2.0`,
 		`{x: 1, y: 2, z: 3} | keys`,
 		`{1, "hi"} | len`,
-		`for i := 0; i < 10; i++ { x += i }`,
-		`x := 1; for i := range [1, 2, 3] { print(x + i) }`,
+		`for let i = 0; i < 10; i++ { x += i }`,
+		`let x = 1; for i in [1, 2, 3] { print(x + i) }`,
 		`[1] in {1, 2, 3}`,
-		`f := func(x) { func() { x + 1 } }; f(1)`,
+		`let f = function(x) { function() { x + 1 } }; f(1)`,
 		`switch x { case 1: 1 case 2: 2 default: 3 }`,
 		`x["foo"][1:3]`,
 	}
@@ -1162,13 +1149,13 @@ func TestNakedReturns(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{`func test() { return }; test()`, "func test() { return }\ntest()"},
-		{`func test() {
+		{`function test() { return }; test()`, "function test() { return }\ntest()"},
+		{`function test() {
 			return
 		}
-		test()`, "func test() { return }\ntest()"},
-		{`func test() { return; }; test()`, "func test() { return }\ntest()"},
-		{`func test() { continue; }; test()`, "func test() { continue }\ntest()"},
+		test()`, "function test() { return }\ntest()"},
+		{`function test() { return; }; test()`, "function test() { return }\ntest()"},
+		{`function test() { continue; }; test()`, "function test() { continue }\ntest()"},
 	}
 	for _, tt := range tests {
 		result, err := Parse(context.Background(), tt.input)
@@ -1177,37 +1164,19 @@ func TestNakedReturns(t *testing.T) {
 	}
 }
 
-func TestGoStatement(t *testing.T) {
-	input := "go func() { 42 }()"
-	result, err := Parse(context.Background(), input)
-	require.Nil(t, err)
-	require.Equal(t, "go func() { 42 }()", result.String())
-	require.Len(t, result.Statements(), 1)
-	stmt := result.Statements()[0]
-	require.IsType(t, &ast.Go{}, stmt)
-}
-
-func TestInvalidGoStatements(t *testing.T) {
-	tests := []string{
-		"go",
-		"go;",
-		"go 42",
-		"go []",
-		"go {}",
-		"go ()",
-	}
-	for _, tt := range tests {
-		_, err := Parse(context.Background(), tt)
-		require.NotNil(t, err)
-		require.Equal(t, "parse error: invalid go statement", err.Error())
-	}
+func TestGoIsReservedKeyword(t *testing.T) {
+	// go statement was removed in v2 but keyword is reserved
+	input := "go function() { 42 }()"
+	_, err := Parse(context.Background(), input)
+	require.NotNil(t, err)
+	require.Contains(t, err.Error(), "reserved keyword: go")
 }
 
 func TestDeferStatement(t *testing.T) {
-	input := "defer func() { 42 }()"
+	input := "defer function() { 42 }()"
 	result, err := Parse(context.Background(), input)
 	require.Nil(t, err)
-	require.Equal(t, "defer func() { 42 }()", result.String())
+	require.Equal(t, "defer function() { 42 }()", result.String())
 	require.Len(t, result.Statements(), 1)
 	stmt := result.Statements()[0]
 	require.IsType(t, &ast.Defer{}, stmt)
@@ -1371,27 +1340,27 @@ func TestForLoop(t *testing.T) {
 		postStr string
 	}{
 		{
-			"for var i = 0; i < 5; i++ { }",
-			"var i = 0",
+			"for let i = 0; i < 5; i++ { }",
+			"let i = 0",
 			"(i < 5)",
 			"(i++)",
 		},
 		{
-			"for i := 2+2; x < i; x-- { }",
-			"i := (2 + 2)",
+			"for let i = 2+2; x < i; x-- { }",
+			"let i = (2 + 2)",
 			"(x < i)",
 			"(x--)",
 		},
 		{
-			"for i := range mymap { }",
+			"for let i = range mymap { }",
 			"",
-			"i := range mymap",
+			"let i = range mymap",
 			"",
 		},
 		{
-			"for k,v := range [1,2,3,4] { }",
+			"for let k, v = range [1,2,3,4] { }",
 			"",
-			"k, v := range [1, 2, 3, 4]",
+			"let k, v = range [1, 2, 3, 4]",
 			"",
 		},
 	}

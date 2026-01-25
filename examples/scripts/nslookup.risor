@@ -1,6 +1,6 @@
 #!/usr/bin/env risor --
 
-res := nslookup("www.google.com")
+let res = nslookup("www.google.com")
 
 print(res)
 

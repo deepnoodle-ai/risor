@@ -1,6 +1,6 @@
 // expected value: "foo 21 bar \"ab\""
 // expected type: string
 
-a := 10
+let a = 10
 
-'foo {a+11} bar "ab"'
+`foo ${a+11} bar "ab"`

@@ -1,12 +1,12 @@
 
 // Connect to server
-client := ssh(getenv("USER"), getenv("HOST"), {
+let client = ssh(getenv("USER"), getenv("HOST"), {
     password: getenv("PASSWORD"),
     port: 22,
     timeout: 30
 })
 
-result := client.execute("uname -a")
+let result = client.execute("uname -a")
 print("System info:", result)
 
 client.close()

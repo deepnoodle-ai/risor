@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,14 +9,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/fatih/color"
 	"github.com/hokaccha/go-prettyjson"
 	"github.com/mattn/go-isatty"
 	"github.com/risor-io/risor/object"
-	ros "github.com/risor-io/risor/os"
-	"github.com/risor-io/risor/os/s3fs"
 	"github.com/spf13/viper"
 )
 
@@ -103,58 +98,6 @@ func getOutputJSON(result object.Object) ([]byte, error) {
 		return json.MarshalIndent(result, "", "  ")
 	} else {
 		return prettyjson.Marshal(result)
-	}
-}
-
-func mountFromSpec(ctx context.Context, spec string) (ros.FS, string, error) {
-	parts := strings.Split(spec, ",")
-	items := map[string]string{}
-	for _, part := range parts {
-		kv := strings.SplitN(part, "=", 2)
-		if len(kv) != 2 {
-			return nil, "", fmt.Errorf("invalid mount spec: %s (expected k=v format)", spec)
-		}
-		items[kv[0]] = kv[1]
-	}
-	typ, ok := items["type"]
-	if !ok || typ == "" {
-		return nil, "", fmt.Errorf("invalid mount spec: %q (missing type)", spec)
-	}
-	src, ok := items["src"]
-	if !ok || src == "" {
-		return nil, "", fmt.Errorf("invalid mount spec: %q (missing src)", spec)
-	}
-	dst, ok := items["dst"]
-	if !ok || dst == "" {
-		return nil, "", fmt.Errorf("invalid mount spec: %q (missing dst)", spec)
-	}
-	switch typ {
-	case "s3":
-		var awsOpts []func(*config.LoadOptions) error
-		if r, ok := items["region"]; ok {
-			awsOpts = append(awsOpts, config.WithRegion(r))
-		}
-		if p, ok := items["profile"]; ok {
-			awsOpts = append(awsOpts, config.WithSharedConfigProfile(p))
-		}
-		cfg, err := config.LoadDefaultConfig(ctx, awsOpts...)
-		if err != nil {
-			return nil, "", err
-		}
-		s3Opts := []s3fs.Option{
-			s3fs.WithBucket(src),
-			s3fs.WithClient(s3.NewFromConfig(cfg)),
-		}
-		if p, ok := items["prefix"]; ok && p != "" {
-			s3Opts = append(s3Opts, s3fs.WithBase(p))
-		}
-		fs, err := s3fs.New(ctx, s3Opts...)
-		if err != nil {
-			return nil, "", err
-		}
-		return fs, dst, nil
-	default:
-		return nil, "", fmt.Errorf("unsupported source: %s", src)
 	}
 }
 

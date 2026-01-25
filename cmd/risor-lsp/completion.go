@@ -11,17 +11,17 @@ import (
 // Risor keywords for completion
 var risorKeywords = []string{
 	"as", "break", "case", "const", "continue", "default", "defer", "else",
-	"false", "for", "from", "func", "go", "if", "import", "in", "nil", "not",
-	"range", "return", "struct", "switch", "true", "var",
+	"false", "for", "from", "function", "if", "import", "in", "let", "nil", "not",
+	"range", "return", "struct", "switch", "true",
 }
 
 // Common built-in functions
 var risorBuiltins = []string{
 	"all", "any", "assert", "bool", "buffer", "byte_slice", "byte", "call",
-	"chan", "chr", "chunk", "close", "coalesce", "decode", "delete", "encode",
+	"chr", "chunk", "coalesce", "decode", "delete", "encode",
 	"error", "float_slice", "float", "getattr", "hash", "int", "is_hashable",
-	"iter", "jmespath", "keys", "len", "list", "make", "map", "ord", "reversed",
-	"set", "sorted", "spawn", "sprintf", "string", "try", "type",
+	"iter", "jmespath", "keys", "len", "list", "make", "map", "ord", "print", "println",
+	"reversed", "set", "sorted", "sprintf", "string", "try", "type",
 }
 
 // Common modules

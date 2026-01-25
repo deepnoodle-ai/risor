@@ -12,7 +12,7 @@ func TestParseString(t *testing.T) {
 		want  []*Fragment
 	}{
 		{
-			"Hello {name}!",
+			"Hello ${name}!",
 			[]*Fragment{
 				{value: "Hello ", isVariable: false},
 				{value: "name", isVariable: true},
@@ -20,28 +20,32 @@ func TestParseString(t *testing.T) {
 			},
 		},
 		{
-			"ab{{c}} {foo} $bar baz\t",
+			"ab ${foo} $bar baz\t",
 			[]*Fragment{
-				{value: "ab{c} ", isVariable: false},
+				{value: "ab ", isVariable: false},
 				{value: "foo", isVariable: true},
 				{value: " $bar baz\t", isVariable: false},
 			},
 		},
 		{
-			"{ hi + 3 }{h[0]+foo.bar()}X{}${}",
+			"${ hi + 3 }${h[0]+foo.bar()}X${}",
 			[]*Fragment{
 				{value: " hi + 3 ", isVariable: true},
 				{value: "h[0]+foo.bar()", isVariable: true},
 				{value: "X", isVariable: false},
 				{value: "", isVariable: true},
-				{value: "$", isVariable: false},
-				{value: "", isVariable: true},
 			},
 		},
 		{
-			`{{1}}`,
+			`plain text without interpolation`,
 			[]*Fragment{
-				{value: "{1}", isVariable: false},
+				{value: "plain text without interpolation", isVariable: false},
+			},
+		},
+		{
+			`{not interpolation}`,
+			[]*Fragment{
+				{value: "{not interpolation}", isVariable: false},
 			},
 		},
 	}
@@ -58,11 +62,8 @@ func TestParseStringErrors(t *testing.T) {
 		input   string
 		wantErr string
 	}{
-		{"{", `missing '}' in template: {`},
-		{"a{0} {cd", `missing '}' in template: a{0} {cd`},
-		{`{ x.update({"foo": 1}) }`, `invalid '{' in template: { x.update({"foo": 1}) }`},
-		{"{a}}", `invalid '}' in template: {a}}`},
-		{"}a", `invalid '}' in template: }a`},
+		{"${", `missing '}' in template: ${`},
+		{"a${0} ${cd", `missing '}' in template: a${0} ${cd`},
 	}
 	for _, tc := range tests {
 		_, err := Parse(tc.input)

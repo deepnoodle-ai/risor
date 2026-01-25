@@ -1,13 +1,13 @@
 // Create a bar chart
-bar_data := {"Sales": [120, 200, 150, 80, 70]}
-bar_chart := echarts.bar(bar_data, {
+let bar_data = {"Sales": [120, 200, 150, 80, 70]}
+let bar_chart = echarts.bar(bar_data, {
   title: "Sales and Trends",
   xlabels: ["Q1", "Q2", "Q3", "Q4", "Q5"]
 })
 
 // Create a line chart
-line_data := {"Trend": [100, 180, 160, 90, 85]}
-line_chart := echarts.line(line_data)
+let line_data = {"Trend": [100, 180, 160, 90, 85]}
+let line_chart = echarts.line(line_data)
 
 // Overlap the line chart onto the bar chart
 bar_chart.overlap(line_chart)
@@ -16,7 +16,7 @@ bar_chart.overlap(line_chart)
 bar_chart.render("combined_chart.html")
 
 
-data := {
+let data = {
   values: [
     [0, 0, 5], [0, 1, 1], [0, 2, 0],
     [1, 0, 300], [1, 1, 3], [1, 2, 0],
@@ -24,14 +24,14 @@ data := {
   ]
 }
 
-options := {
+let options = {
   title: "Correlation Matrix",
   subtitle: "Feature relationships",
   xlabels: ["Feature A", "Feature B", "Feature C"],
   ylabels: ["Metric X", "Metric Y", "Metric Z"]
 }
 
-heatmap := echarts.heatmap(data, options)
+let heatmap = echarts.heatmap(data, options)
 heatmap.render("heatmap.html")
 
 data = {
@@ -44,7 +44,7 @@ options = {
   subtitle: "Correlation study"
 }
 
-chart := echarts.scatter(data, options)
+let chart = echarts.scatter(data, options)
 chart.render("scatter.html")
 chart.overlap(line_chart)
 chart.render("scatter_overlap.html")
@@ -61,5 +61,5 @@ options = {
   subtitle: "2024 Statistics"
 }
 
-pie := echarts.pie(data, options)
+let pie = echarts.pie(data, options)
 pie.render("browser_share.html")

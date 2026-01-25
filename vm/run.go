@@ -89,7 +89,7 @@ func newVM(ctx context.Context, source string, opts ...runOpts) (*VirtualMachine
 		Extensions:  []string{".risor", ".rsr"},
 		GlobalNames: globalNames,
 	})
-	return New(main, WithImporter(im), WithGlobals(globals), WithConcurrency()), nil
+	return New(main, WithImporter(im), WithGlobals(globals)), nil
 }
 
 // Builtins to be used in VM tests.

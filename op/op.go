@@ -13,7 +13,7 @@ const (
 	Call        Code = 3
 	ReturnValue Code = 4
 	Defer       Code = 5
-	Go          Code = 6
+	// Go (removed in v2)       Code = 6
 
 	// Jump
 	JumpBackward          Code = 10
@@ -73,9 +73,9 @@ const (
 	FromImport Code = 100
 	Import     Code = 101
 
-	// Channels
-	Receive Code = 110
-	Send    Code = 111
+	// Channels (removed in v2)
+	// Receive Code = 110
+	// Send    Code = 111
 
 	// Closures
 	LoadClosure Code = 120
@@ -205,7 +205,6 @@ func init() {
 		{ForIter, "FOR_ITER", 2},
 		{FromImport, "FROM_IMPORT", 2},
 		{GetIter, "GET_ITER", 0},
-		{Go, "GO", 0},
 		{Halt, "HALT", 0},
 		{Import, "IMPORT", 0},
 		{JumpBackward, "JUMP_BACKWARD", 1},
@@ -225,9 +224,7 @@ func init() {
 		{PopJumpForwardIfTrue, "POP_JUMP_FORWARD_IF_TRUE", 1},
 		{PopTop, "POP_TOP", 0},
 		{Range, "RANGE", 0},
-		{Receive, "RECEIVE", 0},
 		{ReturnValue, "RETURN_VALUE", 0},
-		{Send, "SEND", 0},
 		{Slice, "SLICE", 0},
 		{StoreAttr, "STORE_ATTR", 1},
 		{StoreFast, "STORE_FAST", 1},

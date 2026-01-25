@@ -3,5 +3,5 @@
 
 
 
-a :=  'abc'
+let a = 'abc'
 a

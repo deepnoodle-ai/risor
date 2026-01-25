@@ -1,16 +1,16 @@
 import sched
 import time
 
-once := sched.once("1s", func(){
+let once = sched.once("1s", function(){
   print("once")
 })
 
-cron := sched.cron("*/1 * * * * *", func(){
+let cron = sched.cron("*/1 * * * * *", function(){
   print("hola")
 })
 print(cron.is_running())
 
-every := sched.every("1m", func() {
+let every = sched.every("1m", function() {
   print("every 1 minute")
 })
 

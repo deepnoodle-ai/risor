@@ -71,7 +71,7 @@ Build the CLI from source as follows:
 ```bash
 git clone git@github.com:risor-io/risor.git
 cd risor/cmd/risor
-go install -tags aws,k8s,vault .
+go install .
 ```
 
 ### Go Library
@@ -115,9 +115,6 @@ there is direct correspondence between `base64`, `bytes`, `filepath`, `json`, `m
 `rand`, `regexp`, `strconv`, `strings`, and `time` Risor modules and
 the Go standard library.
 
-Risor modules that are beyond the Go standard library currently include
-`aws`, `color`, `cli`, `jmespath`, `pgx`, `playwright`, `qrcode`, `uuid`, `vault`, `k8s`, and more.
-
 ## Go Interface
 
 It is trivial to embed Risor in your Go program in order to evaluate scripts
@@ -153,62 +150,30 @@ result, err := risor.Eval(ctx, "len(ex.Message)", risor.WithGlobal("ex", example
 ## Optional Modules
 
 Risor is designed to have minimal external dependencies in its core libraries.
-You can choose to opt into various add-on modules if they are of value in your
-application. The modules are present in this same Git repository, but must be
-installed with `go get` as separate dependencies:
+Two optional modules are available that use `golang.org/x/crypto`:
 
-| Name           | Path                                               | Go Get Command                                            |
-| -------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| aws            | [modules/aws](./modules/aws)                       | `go get github.com/risor-io/risor/modules/aws`            |
-| bcrypt         | [modules/bcrypt](./modules/bcrypt)                 | `go get github.com/risor-io/risor/modules/bcrypt`         |
-| cli            | [modules/cli](./modules/cli)                       | `go get github.com/risor-io/risor/modules/cli`            |
-| color          | [modules/color](./modules/color)                   | `go get github.com/risor-io/risor/modules/color`          |
-| echarts        | [modules/echarts](./modules/echarts)               | `go get github.com/risor-io/risor/modules/echarts`        |
-| gha            | [modules/gha](./modules/gha)                       | `go get github.com/risor-io/risor/modules/gha`            |
-| github         | [modules/github](./modules/github)                 | `go get github.com/risor-io/risor/modules/github`         |
-| goquery        | [modules/goquery](./modules/goquery)               | `go get github.com/risor-io/risor/modules/goquery`        |
-| htmltomarkdown | [modules/htmltomarkdown](./modules/htmltomarkdown) | `go get github.com/risor-io/risor/modules/htmltomarkdown` |
-| image          | [modules/image](./modules/image)                   | `go get github.com/risor-io/risor/modules/image`          |
-| isatty         | [modules/isatty](./modules/isatty)                 | `go get github.com/risor-io/risor/modules/isatty`         |
-| jmespath       | [modules/jmespath](./modules/jmespath)             | `go get github.com/risor-io/risor/modules/jmespath`       |
-| k8s            | [modules/kubernetes](./modules/kubernetes)         | `go get github.com/risor-io/risor/modules/kubernetes`     |
-| pgx            | [modules/pgx](./modules/pgx)                       | `go get github.com/risor-io/risor/modules/pgx`            |
-| playwright     | [modules/playwright](./modules/playwright)         | `go get github.com/risor-io/risor/modules/playwright`     |
-| qrcode         | [modules/qrcode](./modules/qrcode)                 | `go get github.com/risor-io/risor/modules/qrcode`         |
-| redis          | [modules/redis](./modules/redis)                   | `go get github.com/risor-io/risor/modules/redis`          |
-| s3fs           | [os/s3fs](./os/s3fs)                               | `go get github.com/risor-io/risor/os/s3fs`                |
-| sched          | [modules/sched](./modules/sched)                   | `go get github.com/risor-io/risor/modules/sched`          |
-| semver         | [modules/semver](./modules/semver)                 | `go get github.com/risor-io/risor/modules/semver`         |
-| shlex          | [modules/shlex](./modules/shlex)                   | `go get github.com/risor-io/risor/modules/shlex`          |
-| slack          | [modules/slack](./modules/slack)                   | `go get github.com/risor-io/risor/modules/slack`          |
-| sql            | [modules/sql](./modules/sql)                       | `go get github.com/risor-io/risor/modules/sql`            |
-| tablewriter    | [modules/tablewriter](./modules/tablewriter)       | `go get github.com/risor-io/risor/modules/tablewriter`    |
-| template       | [modules/template](./modules/template)             | `go get github.com/risor-io/risor/modules/template`       |
-| uuid           | [modules/uuid](./modules/uuid)                     | `go get github.com/risor-io/risor/modules/uuid`           |
-| yaml           | [modules/yaml](./modules/yaml)                     | `go get github.com/risor-io/risor/modules/yaml`           |
-| vault          | [modules/vault](./modules/vault)                   | `go get github.com/risor-io/risor/modules/vault`          |
+| Name   | Path                               | Go Get Command                                    |
+| ------ | ---------------------------------- | ------------------------------------------------- |
+| bcrypt | [modules/bcrypt](./modules/bcrypt) | `go get github.com/risor-io/risor/modules/bcrypt` |
+| ssh    | [modules/ssh](./modules/ssh)       | `go get github.com/risor-io/risor/modules/ssh`    |
 
-These add-ons are included by default when using the Risor CLI. However, when
-building Risor into your own program, you'll need to opt-in using `go get` as
-described above and then add the modules as globals in Risor scripts as follows:
+These modules are included by default when using the Risor CLI. When building
+Risor into your own program, you'll need to opt-in using `go get` and then add
+the modules as globals:
 
 ```go
 import (
     "github.com/risor-io/risor"
-    "github.com/risor-io/risor/modules/aws"
-    "github.com/risor-io/risor/modules/image"
-    "github.com/risor-io/risor/modules/pgx"
-    "github.com/risor-io/risor/modules/uuid"
+    "github.com/risor-io/risor/modules/bcrypt"
+    "github.com/risor-io/risor/modules/ssh"
 )
 
 func main() {
-    source := `"nice modules!"`
+    source := `bcrypt.hash("secret")`
     result, err := risor.Eval(ctx, source,
         risor.WithGlobals(map[string]any{
-            "aws":   aws.Module(),
-            "image": image.Module(),
-            "pgx":   pgx.Module(),
-            "uuid":  uuid.Module(),
+            "bcrypt": bcrypt.Module(),
+            "ssh":    ssh.Module(),
         }))
     // ...
 }

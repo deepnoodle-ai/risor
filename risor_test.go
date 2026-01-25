@@ -60,7 +60,7 @@ func TestDefaultGlobals(t *testing.T) {
 			expected: object.True,
 		},
 		{
-			input:    "try(func() { error(\"boom\") }, 42)",
+			input:    "try(function() { error(\"boom\") }, 42)",
 			expected: object.NewInt(42),
 		},
 		{
@@ -225,10 +225,10 @@ func TestEvalCode(t *testing.T) {
 	ctx := context.Background()
 
 	source := `
-	x := 2
-	y := 3
-	func add(a, b) { a + b }
-	result := add(x, y)
+	let x = 2
+	let y = 3
+	function add(a, b) { a + b }
+	let result = add(x, y)
 	x = 99
 	result
 	`
@@ -249,7 +249,7 @@ func TestEvalCode(t *testing.T) {
 func TestCall(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	func add(a, b) { a + b }
+	function add(a, b) { a + b }
 	`
 	ast, err := parser.Parse(ctx, source)
 	require.Nil(t, err)
@@ -359,18 +359,6 @@ func TestWithLocalImporter(t *testing.T) {
 	require.Equal(t, object.NewInt(1), result)
 }
 
-func TestWithConcurrency(t *testing.T) {
-	script := `c := chan(); go func() { c <- 33 }(); <-c`
-
-	result, err := Eval(context.Background(), script, WithConcurrency())
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(33), result)
-
-	_, err = Eval(context.Background(), script)
-	require.NotNil(t, err)
-	require.Equal(t, "eval error: context did not contain a spawn function", err.Error())
-}
-
 func TestStructFieldModification(t *testing.T) {
 	type Object struct {
 		A int
@@ -420,9 +408,7 @@ func TestWithExistingVM(t *testing.T) {
 }
 
 func TestDefaultGlobalsFunc(t *testing.T) {
-	globals := DefaultGlobals(DefaultGlobalsOpts{
-		ListenersAllowed: true,
-	})
+	globals := DefaultGlobals(DefaultGlobalsOpts{})
 	expectedNames := []string{ // non-exhaustive
 		"base64",
 		"bytes",

@@ -34,9 +34,9 @@ func TestCache_ParseValidRisorCode(t *testing.T) {
 	c := newCache()
 
 	// Test valid Risor code
-	validCode := `var x = 42
-y := "hello"
-func add(a, b) {
+	validCode := `let x = 42
+let y = "hello"
+function add(a, b) {
     return a + b
 }`
 
@@ -60,8 +60,8 @@ func TestCache_ParseInvalidRisorCode(t *testing.T) {
 	c := newCache()
 
 	// Test invalid Risor code
-	invalidCode := `var x = 
-func incomplete(`
+	invalidCode := `let x =
+function incomplete(`
 
 	uri := protocol.DocumentURI("file:///test_invalid.risor")
 	err := setTestDocument(c, uri, invalidCode)
@@ -76,9 +76,9 @@ func incomplete(`
 
 func TestCompletionProvider_ExtractVariables(t *testing.T) {
 	// Create a test program
-	code := `var x = 42
-y := "hello"
-z = [1, 2, 3]`
+	code := `let x = 42
+let y = "hello"
+let z = [1, 2, 3]`
 
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, code)
@@ -102,8 +102,8 @@ z = [1, 2, 3]`
 
 func TestCompletionProvider_ExtractFunctions(t *testing.T) {
 	// Create a test program with function assignments
-	code := `add := func(a, b) { return a + b }
-subtract = func(x, y) { return x - y }`
+	code := `let add = function(a, b) { return a + b }
+let subtract = function(x, y) { return x - y }`
 
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, code)
@@ -127,8 +127,8 @@ subtract = func(x, y) { return x - y }`
 
 func TestHoverProvider_FindSymbolAtPosition(t *testing.T) {
 	// Create a test program
-	code := `var x = 42
-y := "hello"`
+	code := `let x = 42
+let y = "hello"`
 
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, code)
@@ -138,8 +138,8 @@ y := "hello"`
 	symbol := findSymbolAtPosition(prog, 1, 5)
 	require.Equal(t, "x", symbol)
 
-	// Test finding symbol at position of variable 'y' (line 2, around column 1)
-	symbol = findSymbolAtPosition(prog, 2, 1)
+	// Test finding symbol at position of variable 'y' (line 2, around column 5)
+	symbol = findSymbolAtPosition(prog, 2, 5)
 	require.Equal(t, "y", symbol)
 
 	// Test position with no symbol
@@ -149,7 +149,7 @@ y := "hello"`
 
 func TestKeywordsAndBuiltins(t *testing.T) {
 	// Test that our keyword list contains expected Risor keywords
-	expectedKeywords := []string{"var", "func", "if", "else", "for", "return", "true", "false", "nil"}
+	expectedKeywords := []string{"let", "function", "if", "else", "for", "return", "true", "false", "nil"}
 
 	for _, keyword := range expectedKeywords {
 		found := false
@@ -179,8 +179,8 @@ func TestKeywordsAndBuiltins(t *testing.T) {
 
 func TestDiagnostics_WithParseError(t *testing.T) {
 	// Test code with syntax error
-	invalidCode := `var x = 
-func incomplete(`
+	invalidCode := `let x =
+function incomplete(`
 
 	// Parse the code to get a parse error
 	ctx := context.Background()
@@ -210,7 +210,7 @@ func TestServer_QueueDiagnostics(t *testing.T) {
 	uri := protocol.DocumentURI("file:///test.risor")
 
 	// Set a document with an error
-	err := setTestDocument(server.cache, uri, "var x = \nfunc incomplete(")
+	err := setTestDocument(server.cache, uri, "let x =\nfunction incomplete(")
 	require.NoError(t, err)
 
 	// This should not panic
@@ -219,16 +219,16 @@ func TestServer_QueueDiagnostics(t *testing.T) {
 
 func TestHoverProvider_FullHover(t *testing.T) {
 	// Create a test program with various constructs
-	code := `var config = {
+	code := `let config = {
     "host": "localhost",
     "port": 8080
 }
 
-greet := func(name) {
+let greet = function(name) {
     return sprintf("Hello, %s!", name)
 }
 
-message := "test"
+let message = "test"
 print(message)`
 
 	ctx := context.Background()
@@ -335,8 +335,8 @@ func TestServer_DidSave_ClearsDiagnosticsOnFix(t *testing.T) {
 	ctx := context.Background()
 
 	// First, set a document with a syntax error
-	invalidCode := `var x = 
-func incomplete(`
+	invalidCode := `let x =
+function incomplete(`
 
 	err := setTestDocument(server.cache, uri, invalidCode)
 	require.NoError(t, err)
@@ -347,8 +347,8 @@ func incomplete(`
 	require.Error(t, doc.err)
 
 	// Now simulate saving the file with the error fixed
-	fixedCode := `var x = 42
-func complete() {
+	fixedCode := `let x = 42
+function complete() {
     return x
 }`
 

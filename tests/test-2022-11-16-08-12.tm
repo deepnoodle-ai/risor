@@ -2,9 +2,9 @@
 // expected value: 11
 // expected type: int
 
-s := "\ntest\t\"str\\"
+let s = "\ntest\t\"str\\"
 
-raw := `
+let raw = `
 test	"str\`
 
 assert(s == raw)

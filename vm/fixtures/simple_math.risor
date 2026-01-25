@@ -1,4 +1,4 @@
 
-func add(x, y) { x + y }
+function add(x, y) { x + y }
 
-pi := math.PI
+let pi = math.PI

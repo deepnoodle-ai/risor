@@ -1,10 +1,10 @@
 // expected value: "101"
 // expected type: string
 
-inc := func(x) {
+let inc = function(x) {
     x + 1
 }
 
-i := 100
+let i = 100
 
-'{inc(i)}'
+`${inc(i)}`

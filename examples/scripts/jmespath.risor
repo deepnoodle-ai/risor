@@ -1,6 +1,6 @@
 #!/usr/bin/env risor --
 
-data := {
+let data = {
   "locations": [
     {"name": "Seattle", "state": "WA"},
     {"name": "New York", "state": "NY"},

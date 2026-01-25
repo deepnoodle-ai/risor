@@ -2,8 +2,8 @@
 // expected value: '"hello"'
 // expected type: string
 
-var s = "\"hello\""
-var j = json.unmarshal(s)
+let s = "\"hello\""
+let j = json.unmarshal(s)
 assert(type(j) == "string")
 assert(j == "hello")
 

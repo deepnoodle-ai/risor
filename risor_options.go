@@ -73,20 +73,6 @@ func WithLocalImporter(path string) Option {
 	}
 }
 
-// WithConcurrency enables the use of concurrency in Risor evaluations.
-func WithConcurrency() Option {
-	return func(cfg *Config) {
-		cfg.withConcurrency = true
-	}
-}
-
-// WithListenersAllowed allows opening sockets for listening.
-func WithListenersAllowed() Option {
-	return func(cfg *Config) {
-		cfg.listenersAllowed = true
-	}
-}
-
 // WithFilename sets the filename for the source code being evaluated.
 func WithFilename(filename string) Option {
 	return func(cfg *Config) {

@@ -1,15 +1,15 @@
 import htmltomarkdown
 
 // Simple example
-html := "<strong>Bold Text</strong>"
-md := htmltomarkdown.convert(html)
+let html = "<strong>Bold Text</strong>"
+let md = htmltomarkdown.convert(html)
 print("Simple example:")
 print("HTML:", html)
 print("Markdown:", md)
 print()
 
 // More complex example
-complex_html := `
+let complex_html = `
 <h1>HTML to Markdown Example</h1>
 <p>This is a <strong>complex</strong> example with various HTML elements:</p>
 <ul>
@@ -22,7 +22,7 @@ complex_html := `
 </blockquote>
 `
 
-complex_md := htmltomarkdown.convert(complex_html)
+let complex_md = htmltomarkdown.convert(complex_html)
 print("Complex example:")
 print("HTML:", complex_html)
 print("Markdown:", complex_md)

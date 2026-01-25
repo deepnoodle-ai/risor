@@ -97,11 +97,7 @@ func (s *MultiVar) String() string {
 	names, expr := s.Value()
 	namesStr := strings.Join(names, ", ")
 	var out bytes.Buffer
-	if s.isWalrus {
-		out.WriteString(namesStr + " := ")
-		out.WriteString(expr.String())
-		return out.String()
-	}
+	// Use the token literal (e.g., "let") for declarations
 	out.WriteString(s.Literal() + " ")
 	out.WriteString(namesStr)
 	out.WriteString(" = ")
@@ -627,31 +623,6 @@ func (e *SetAttr) String() string {
 	return out.String()
 }
 
-// A Go statement node represents a go statement.
-type Go struct {
-	token token.Token
-	call  Expression
-}
-
-// NewGo creates a new Go statement node.
-func NewGo(token token.Token, call Expression) *Go {
-	return &Go{token: token, call: call}
-}
-
-func (g *Go) StatementNode() {}
-
-func (g *Go) IsExpression() bool { return false }
-
-func (g *Go) Token() token.Token { return g.token }
-
-func (g *Go) Literal() string { return g.token.Literal }
-
-func (g *Go) Call() Expression { return g.call }
-
-func (g *Go) String() string {
-	return fmt.Sprintf("go %s", g.call.String())
-}
-
 // A Defer statement node represents a defer statement.
 type Defer struct {
 	token token.Token
@@ -675,32 +646,4 @@ func (d *Defer) Call() Expression { return d.call }
 
 func (d *Defer) String() string {
 	return fmt.Sprintf("defer %s", d.call.String())
-}
-
-// A Send statement node represents a channel send operation.
-type Send struct {
-	token   token.Token
-	channel Expression
-	value   Expression
-}
-
-// NewSend creates a new Send node.
-func NewSend(token token.Token, channel, value Expression) *Send {
-	return &Send{token: token, channel: channel, value: value}
-}
-
-func (s *Send) StatementNode() {}
-
-func (s *Send) IsExpression() bool { return false }
-
-func (s *Send) Token() token.Token { return s.token }
-
-func (s *Send) Literal() string { return s.token.Literal }
-
-func (s *Send) Channel() Expression { return s.channel }
-
-func (s *Send) Value() Expression { return s.value }
-
-func (s *Send) String() string {
-	return fmt.Sprintf("%s <- %s", s.channel.String(), s.value.String())
 }

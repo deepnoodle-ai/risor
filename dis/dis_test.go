@@ -13,7 +13,7 @@ import (
 
 func TestFunctionDissasembly(t *testing.T) {
 	src := `
-	func f() {
+	function f() {
 		42
 		error("kaboom")
 	}`

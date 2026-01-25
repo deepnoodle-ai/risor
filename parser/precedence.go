@@ -6,10 +6,10 @@ import "github.com/risor-io/risor/token"
 const (
 	_ int = iota
 	LOWEST
+	NULLISH     // ??
 	PIPE        // |
 	COND        // OR or AND
 	ASSIGN      // =
-	DECLARE     // :=
 	TERNARY     // ? :
 	EQUALS      // == or !=
 	LESSGREATER // > or <
@@ -20,14 +20,15 @@ const (
 	PREFIX      // -X or !X
 	CALL        // myFunction(X)
 	INDEX       // array[index], map[key]
+	OPTCHAIN    // ?.
 	HIGHEST
 )
 
 // Precedences for each token type
 var precedences = map[token.Type]int{
 	token.QUESTION:        TERNARY,
+	token.NULLISH:         NULLISH,
 	token.ASSIGN:          ASSIGN,
-	token.DECLARE:         DECLARE,
 	token.EQ:              EQUALS,
 	token.NOT_EQ:          EQUALS,
 	token.LT:              LESSGREATER,
@@ -52,6 +53,7 @@ var precedences = map[token.Type]int{
 	token.PIPE:            PIPE,
 	token.LPAREN:          CALL,
 	token.PERIOD:          INDEX,
+	token.QUESTION_DOT:    OPTCHAIN,
 	token.LBRACKET:        INDEX,
 	token.IN:              PREFIX,
 	token.NOT:             PREFIX,

@@ -2,22 +2,22 @@
 playwright.install()
 
 // Launch a new Playwright page
-pw := playwright.run()
-browser := pw.chromium.launch()
-page := browser.new_page()
+let pw = playwright.run()
+let browser = pw.chromium.launch()
+let page = browser.new_page()
 
 // Navigate to Hacker News
 page.goto("https://news.ycombinator.com")
 
 // Find all story entries
-entries := page.locator(".athing").all()
+let entries = page.locator(".athing").all()
 
 print("Top Hacker News Headlines:")
 print("-------------------------")
 
-for i, entry := range entries {
+for i, let entry = range entries {
     // Get the title of each entry
-    title := entry.locator("td.title > span > a")
+    let title = entry.locator("td.title > span > a")
     printf("%d: %s\n", i+1, title.text_content())
 }
 

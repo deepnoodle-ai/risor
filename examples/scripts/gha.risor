@@ -9,8 +9,8 @@ gha.log_notice("Hello world", {title: "Risor", file: "somefile.txt", line: 5})
 gha.log_error("Oh no an error", {title: "Risor", file: "somefile.txt", line: 123, column: 30})
 gha.end_group()
 
-gha.set_output("my-output-var", "some value")
-gha.set_output("my-other-var", `My multiline string
+gha.set_output("my-output-let", "some value")
+gha.set_output("my-other-let", `My multiline string
 that also contains
 the text "EOF" :)`)
 

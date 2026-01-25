@@ -1,8 +1,8 @@
 #!/usr/bin/env risor --
 
 // Returns a list of stargazers for a Github repository
-func get_stargazers(owner='golang', repo='go') {
-    url := 'https://api.github.com/repos/{owner}/{repo}/stargazers'
+function get_stargazers(owner='golang', repo='go') {
+    let url = 'https://api.github.com/repos/{owner}/{repo}/stargazers'
     return fetch(url, {
         headers: {
             'Accept': 'application/vnd.github+json',
@@ -12,6 +12,6 @@ func get_stargazers(owner='golang', repo='go') {
 }
 
 // Print the login and url for stargazers of github.com/golang/go
-get_stargazers().each(func(item) {
+get_stargazers().each(function(item) {
     print('login: {item["login"]} url: {item["url"]}')
 })

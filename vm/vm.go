@@ -44,7 +44,6 @@ type VirtualMachine struct {
 	globals      map[string]object.Object
 	loadedCode   map[*compiler.Code]*code
 	running      bool
-	concAllowed  bool
 	runMutex     sync.Mutex
 	cloneMutex   sync.Mutex
 	tmp          [MaxArgs]object.Object
@@ -687,15 +686,6 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 					return errz.EvalErrorf("eval error: invalid iteration")
 				}
 			}
-		case op.Go:
-			obj := vm.pop()
-			partial, ok := obj.(*object.Partial)
-			if !ok {
-				return errz.TypeErrorf("type error: object is not a partial (got %s)", obj.Type())
-			}
-			if _, err := object.Spawn(ctx, partial.Function(), partial.Args()); err != nil {
-				return err
-			}
 		case op.Defer:
 			obj := vm.pop()
 			partial, ok := obj.(*object.Partial)
@@ -703,27 +693,6 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				return errz.TypeErrorf("type error: object is not a partial (got %s)", obj.Type())
 			}
 			vm.activeFrame.Defer(partial)
-		case op.Send:
-			value := vm.pop()
-			channel := vm.pop()
-			ch, ok := channel.(*object.Chan)
-			if !ok {
-				return errz.TypeErrorf("type error: object is not a channel (got %s)", channel.Type())
-			}
-			if err := ch.Send(ctx, value); err != nil {
-				return err
-			}
-		case op.Receive:
-			channel := vm.pop()
-			ch, ok := channel.(*object.Chan)
-			if !ok {
-				return errz.TypeErrorf("type error: object is not a channel (got %s)", channel.Type())
-			}
-			value, err := ch.Receive(ctx)
-			if err != nil {
-				return err
-			}
-			vm.push(value)
 		case op.Halt:
 			return nil
 		default:
@@ -1087,7 +1056,6 @@ func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
 		globals:      vm.globals,
 		modules:      modules,
 		loadedCode:   loadedCode,
-		concAllowed:  vm.concAllowed,
 	}
 
 	// Only activate main code if it exists
@@ -1096,21 +1064,6 @@ func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
 	}
 
 	return clone, nil
-}
-
-// Clones the VM and then calls the function asynchronously in the clone. A
-// thread object is returned that can be used to wait for the result of the
-// function call.
-func (vm *VirtualMachine) cloneCallAsync(
-	ctx context.Context,
-	fn object.Callable,
-	args []object.Object,
-) (*object.Thread, error) {
-	clone, err := vm.Clone()
-	if err != nil {
-		return nil, err
-	}
-	return object.NewThread(clone.initContext(ctx), fn, args), nil
 }
 
 // Clones the VM and then calls the function synchronously in the clone.
@@ -1130,10 +1083,7 @@ func (vm *VirtualMachine) initContext(ctx context.Context) context.Context {
 	oss := vm.getOS(ctx)
 	ctx = os.WithOS(ctx, oss)
 	ctx = object.WithCallFunc(ctx, vm.callFunction)
-	if vm.concAllowed {
-		ctx = object.WithSpawnFunc(ctx, vm.cloneCallAsync)
-		ctx = object.WithCloneCallFunc(ctx, vm.cloneCallSync)
-	}
+	ctx = object.WithCloneCallFunc(ctx, vm.cloneCallSync)
 	return ctx
 }
 

@@ -1,20 +1,20 @@
 
-client := slack.client(getenv("SLACK_TOKEN"))
+let client = slack.client(getenv("SLACK_TOKEN"))
 
 // Iterating through users
 print("Users:")
-for _, user := range client.get_users() {
+for _, let user = range client.get_users() {
     print("User:", user)
 }
 
 // Get user groups
-groups := client.get_user_groups()
+let groups = client.get_user_groups()
 print("Number of user groups:", len(groups))
 
 // Iterating through conversations (channels)
-channels_by_name := {}
+let channels_by_name = {}
 print("\nChannels:")
-for _, channel := range client.get_conversations() {
+for _, let channel = range client.get_conversations() {
     print("Channel:", channel)
     channels_by_name[channel.name] = channel
 }
@@ -24,21 +24,21 @@ if !("general" in channels_by_name) {
     os.exit(1)
 }
 
-general := channels_by_name["general"]
+let general = channels_by_name["general"]
 
 // Iterating through members of a conversation
 print("\nMembers of #general:")
-for _, member := range client.get_conversation_members(general.id) {
+for _, let member = range client.get_conversation_members(general.id) {
     print("Member:", member)
 }
 
 // Get conversation info
 print("\n#general info:")
-conversation := client.get_conversation_info(general.id)
+let conversation = client.get_conversation_info(general.id)
 print(conversation.json)
 
 print("\nMessages:")
-for _, message := range client.get_conversation_history(general.id) {
+for _, let message = range client.get_conversation_history(general.id) {
     print("Message:", message)
 }
 

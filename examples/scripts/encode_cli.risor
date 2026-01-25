@@ -27,18 +27,18 @@ app({
     commands: [
         command({
             name: "base64",
-            action: func(ctx) {
+            action: function(ctx) {
                 // Print the base64 encoded text
-                for _, text := range ctx.args() {
+                for _, let text = range ctx.args() {
                     print(encode(text, "base64"))
                 }
             }
         }),
         command({
             name: "hex",
-            action: func(ctx) {
+            action: function(ctx) {
                 // Print the hex encoded text
-                for _, text := range ctx.args() {
+                for _, let text = range ctx.args() {
                     print(encode(text, "hex"))
                 }
             }
@@ -54,16 +54,16 @@ app({
                     value: false,
                 }),
             ],
-            action: func(ctx) {
-                codecs := ["base64", "hex"]
+            action: function(ctx) {
+                let codecs = ["base64", "hex"]
                 if ctx.bool("verbose") {
                     // Print all available codecs
-                    for i, codec := range codecs {
+                    for i, let codec = range codecs {
                         print('Codec {i+1}: {codec}')
                     }
                 } else {
                     // Print only the codec names
-                    for _, codec := range codecs {
+                    for _, let codec = range codecs {
                         print(codec)
                     }
                 }

@@ -2,7 +2,7 @@
 // expected value: 10
 // expected type: int
 
-i := 0
+let i = 0
 
 for {
     i++

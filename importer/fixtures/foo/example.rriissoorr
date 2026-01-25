@@ -1,2 +1,2 @@
 
-func hello() { return "world" }
+function hello() { return "world" }

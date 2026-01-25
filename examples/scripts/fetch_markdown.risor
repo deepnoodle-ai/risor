@@ -3,8 +3,8 @@
 cli.app({
     name: "fetch_markdown",
     description: "Fetch markdown from a URL",
-    action: func(ctx) {
-        args := ctx.args()
+    action: function(ctx) {
+        let args = ctx.args()
         if len(args) < 1 { error('expected a url') }
         fetch(args[0]).text() | htmltomarkdown.convert | print
     }

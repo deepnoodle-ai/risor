@@ -52,8 +52,8 @@ func TestCompileErrors(t *testing.T) {
 		},
 		{
 			name:   "undefined variable y",
-			input:  "x := 1;\nx, y = [1, 2]",
-			errMsg: "compile error: undefined variable \"y\"\n\nlocation: t.risor:2:1 (line 2, column 1)",
+			input:  "let x = 1;\ny = x + 1",
+			errMsg: "compile error: undefined variable \"y\"\n\nlocation: t.risor:2:3 (line 2, column 3)",
 		},
 		{
 			name:   "undefined variable z",
@@ -62,17 +62,17 @@ func TestCompileErrors(t *testing.T) {
 		},
 		{
 			name:   "invalid argument defaults",
-			input:  "func bad(a=1, b) {}",
+			input:  "function bad(a=1, b) {}",
 			errMsg: "compile error: invalid argument defaults for function \"bad\"\n\nlocation: t.risor:1:1 (line 1, column 1)",
 		},
 		{
 			name:   "invalid argument defaults for anonymous function",
-			input:  "func(a=1, b) {}()",
+			input:  "function(a=1, b) {}()",
 			errMsg: "compile error: invalid argument defaults for anonymous function\n\nlocation: t.risor:1:1 (line 1, column 1)",
 		},
 		{
 			name:   "unsupported default value",
-			input:  "func(a, b=[1,2,3]) {}()",
+			input:  "function(a, b=[1,2,3]) {}()",
 			errMsg: "compile error: unsupported default value (got [1, 2, 3], line 1)",
 		},
 		{
@@ -81,13 +81,13 @@ func TestCompileErrors(t *testing.T) {
 			errMsg: "compile error: cannot assign to constant \"a\"\n\nlocation: t.risor:1:16 (line 1, column 16)",
 		},
 		{
-			name:   "invalid for loop",
-			input:  "\nfor a, b, c := range [1, 2, 3] {}",
-			errMsg: "compile error: invalid for loop\n\nlocation: t.risor:2:1 (line 2, column 1)",
+			name:   "undefined in for loop",
+			input:  "\nfor x in undefined_list {}",
+			errMsg: "compile error: undefined variable \"undefined_list\"\n\nlocation: t.risor:2:10 (line 2, column 10)",
 		},
 		{
 			name:   "unknown operator",
-			input:  "\n defer func() {}()",
+			input:  "\n defer function() {}()",
 			errMsg: "compile error: defer statement outside of a function\n\nlocation: t.risor:2:2 (line 2, column 2)",
 		},
 	}
@@ -106,8 +106,8 @@ func TestCompileErrors(t *testing.T) {
 
 func TestCompilerLoopError(t *testing.T) {
 	input := `
-for _, v := range [1, 2, 3] {
-	func() {
+for v in [1, 2, 3] {
+	function() {
 		undefined_var
 	}()
 }
@@ -123,7 +123,7 @@ for _, v := range [1, 2, 3] {
 
 func TestCompoundAssignmentWithIndex(t *testing.T) {
 	// test[0] *= 3
-	input := "test := [1, 2]; test[0] *= 3"
+	input := "let test = [1, 2]; test[0] *= 3"
 	expected := [][]op.Code{
 		{op.LoadConst, 0}, // 1
 		{op.LoadConst, 1}, // 2
@@ -279,11 +279,11 @@ func TestFunctionRedefinition(t *testing.T) {
 		{
 			name: "duplicate function definition",
 			input: `
-func bar() {
+function bar() {
     print("first bar")
 }
 
-func bar() {
+function bar() {
     print("second bar")
 }
 `,
@@ -292,15 +292,15 @@ func bar() {
 		{
 			name: "multiple duplicate function definitions",
 			input: `
-func foo() {
+function foo() {
     print("first foo")
 }
 
-func foo() {
+function foo() {
     print("second foo")
 }
 
-func foo() {
+function foo() {
     print("third foo")
 }
 `,
@@ -335,11 +335,11 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 		{
 			name: "basic forward declaration",
 			input: `
-			func main() {
+			function main() {
 				return helper()
 			}
 			
-			func helper() {
+			function helper() {
 				return 42
 			}
 			`,
@@ -348,14 +348,14 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 		{
 			name: "mutual recursion",
 			input: `
-			func is_even(n) {
+			function is_even(n) {
 				if n == 0 {
 					return true
 				}
 				return is_odd(n - 1)
 			}
 			
-			func is_odd(n) {
+			function is_odd(n) {
 				if n == 0 {
 					return false
 				}
@@ -367,19 +367,19 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 		{
 			name: "multiple forward declarations",
 			input: `
-			func a() {
+			function a() {
 				return b() + c()
 			}
 			
-			func b() {
+			function b() {
 				return d()
 			}
 			
-			func c() {
+			function c() {
 				return 10
 			}
 			
-			func d() {
+			function d() {
 				return 20
 			}
 			`,
@@ -388,14 +388,14 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 		{
 			name: "forward declaration with closures",
 			input: `
-			func outer() {
-				x := 10
-				return func() {
+			function outer() {
+				let x = 10
+				return function() {
 					return inner() + x
 				}
 			}
 			
-			func inner() {
+			function inner() {
 				return 5
 			}
 			`,
@@ -404,18 +404,18 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 		{
 			name: "forward declaration with default parameters",
 			input: `
-			func caller(op="add") {
+			function caller(op="add") {
 				if op == "add" {
 					return adder(5, 3)
 				}
 				return multiplier(5, 3)
 			}
 			
-			func adder(a, b) {
+			function adder(a, b) {
 				return a + b
 			}
 			
-			func multiplier(a, b) {
+			function multiplier(a, b) {
 				return a * b
 			}
 			`,
@@ -424,7 +424,7 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 		{
 			name: "undefined function should error",
 			input: `
-			func caller() {
+			function caller() {
 				return undefined_function()
 			}
 			`,
@@ -433,11 +433,11 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 		{
 			name: "function redefinition should error",
 			input: `
-			func duplicate() {
+			function duplicate() {
 				return 1
 			}
 			
-			func duplicate() {
+			function duplicate() {
 				return 2
 			}
 			`,
@@ -466,11 +466,11 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 func TestForwardDeclarationInstructionGeneration(t *testing.T) {
 	// Test that forward declarations generate correct instructions
 	input := `
-	func main() {
+	function main() {
 		return helper(5)
 	}
 	
-	func helper(x) {
+	function helper(x) {
 		return x * 2
 	}
 	

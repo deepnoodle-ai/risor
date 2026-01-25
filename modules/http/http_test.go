@@ -16,13 +16,7 @@ func TestModule(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "http.request", req.Name())
 
+	// Web server functionality removed in v2
 	_, ok = m.GetAttr("listen_and_serve")
 	require.False(t, ok)
-}
-
-func TestModuleWithListeners(t *testing.T) {
-	m := Module(ModuleOpts{ListenersAllowed: true})
-	require.NotNil(t, m)
-	_, ok := m.GetAttr("listen_and_serve")
-	require.True(t, ok)
 }

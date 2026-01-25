@@ -1,4 +1,4 @@
-db := sql.connect("sqlite://risor-example.db", {"stream": true})
+let db = sql.connect("sqlite://risor-example.db", {"stream": true})
 db.exec("PRAGMA foreign_keys=ON")
 db.exec(`PRAGMA journal_mode=WAL`)
 
@@ -21,7 +21,7 @@ db.exec(`
 `)
 
 // Query the users
-results := db.query("SELECT * FROM users ORDER BY created_at DESC")
-for _, row := range results {
+let results = db.query("SELECT * FROM users ORDER BY created_at DESC")
+for _, let row = range results {
     print("User:", row.id, row.name, row.email, row.created_at)
 }

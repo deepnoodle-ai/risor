@@ -1,15 +1,15 @@
 #!/usr/bin/env risor --
 
-func incrementer(value=0) {
-    func inner() {
-        result := value
+function incrementer(value=0) {
+    function inner() {
+        let result = value
         value++
         return result
     }
     return inner
 }
 
-inc := incrementer()
+let inc = incrementer()
 print(inc())
 print(inc())
 print(inc())

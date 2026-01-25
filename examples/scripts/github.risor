@@ -2,31 +2,31 @@
 // This example shows how to use the GitHub API to fetch repository information
 
 // Create an unauthenticated client (limited access)
-client := github.client()
+let client = github.client()
 
 // Get public repository information
-repo := client.get_repo("octocat", "Hello-World")
+let repo = client.get_repo("octocat", "Hello-World")
 print("Repository name:", repo.name)
 print("Description:", repo.description)
 print("Stars:", repo.stargazers_count)
 print("Open issues:", repo.open_issues_count)
 
 // List recent commits
-commits := client.list_commits("octocat", "Hello-World")
+let commits = client.list_commits("octocat", "Hello-World")
 print("\nRecent commits:")
-for i, commit := range commits {
+for i, let commit = range commits {
     print('{i+1}. {commit.sha[:7]} - {commit.commit.message}')
 }
 
 // List repository contents
 print("\nRepository contents:")
-contents := client.list_repo_contents("octocat", "Hello-World", "")
-for _, item := range contents {
+let contents = client.list_repo_contents("octocat", "Hello-World", "")
+for _, let item = range contents {
     print('{item.name} {item.type}')
 }
 
 // Get user information
-user := client.get_user("octocat")
+let user = client.get_user("octocat")
 print("\nUser information:")
 print("Name:", user.name)
 print("Company:", user.company)

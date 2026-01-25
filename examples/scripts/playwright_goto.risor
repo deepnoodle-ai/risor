@@ -5,16 +5,16 @@
 playwright.install()
 
 // Use goto with URL as first argument and callback as second argument
-playwright.goto("https://news.ycombinator.com", func(page) {
+playwright.goto("https://news.ycombinator.com", function(page) {
     // Find all story entries
-    entries := page.locator(".athing").all()
+    let entries = page.locator(".athing").all()
 
     print("Top Hacker News Headlines:")
     print("-------------------------")
 
-    for i, entry := range entries {
+    for i, let entry = range entries {
         // Get the title of each entry
-        title := entry.locator("td.title > span > a")
+        let title = entry.locator("td.title > span > a")
         printf("%d: %s\n", i+1, title.text_content())
     }
 })

@@ -48,14 +48,6 @@ func TestMake(t *testing.T) {
 	}
 }
 
-func TestMakeChan(t *testing.T) {
-	ctx := context.Background()
-	result := Make(ctx, object.NewBuiltin("chan", nil), object.NewInt(4))
-	require.IsType(t, &object.Chan{}, result)
-	ch, _ := result.(*object.Chan)
-	require.Equal(t, 4, ch.Capacity())
-}
-
 func TestSorted(t *testing.T) {
 	ctx := context.Background()
 	tests := []testCase{

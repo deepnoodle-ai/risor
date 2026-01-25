@@ -10,7 +10,7 @@ func TestString(t *testing.T) {
 	program := &Program{
 		statements: []Node{
 			&Var{
-				token: token.Token{Type: token.VAR, Literal: "var"},
+				token: token.Token{Type: token.LET, Literal: "var"},
 				name: &Ident{
 					token: token.Token{Type: token.IDENT, Literal: "myVar"},
 					value: "myVar",

@@ -35,7 +35,7 @@ func TestRunEmpty(t *testing.T) {
 
 func TestRunError(t *testing.T) {
 	ctx := context.Background()
-	ast, err := parser.Parse(ctx, "foo := 42; foo.bar")
+	ast, err := parser.Parse(ctx, "let foo = 42; foo.bar")
 	require.Nil(t, err)
 	code, err := compiler.Compile(ast)
 	require.Nil(t, err)

@@ -16,8 +16,8 @@ import (
 
 func TestAddCompilationAndExecution(t *testing.T) {
 	program, err := parser.Parse(context.Background(), `
-	x := 11
-	y := 12
+	let x = 11
+	let y = 12
 	x + y
 	`)
 	require.Nil(t, err)
@@ -49,7 +49,7 @@ func TestAddCompilationAndExecution(t *testing.T) {
 
 func TestConditional(t *testing.T) {
 	program, err := parser.Parse(context.Background(), `
-	x := 20
+	let x = 20
 	if x > 10 {
 		x = 99
 	}
@@ -70,8 +70,8 @@ func TestConditional(t *testing.T) {
 
 func TestConditional3(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 5
-	y := 10
+	let x = 5
+	let y = 10
 	if x > 1 {
 		y
 	} else {
@@ -84,9 +84,9 @@ func TestConditional3(t *testing.T) {
 
 func TestConditional4(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 5
-	y := 22
-	z := 33
+	let x = 5
+	let y = 22
+	let z = 33
 	if x < 1 {
 		x = y
 	} else {
@@ -100,7 +100,7 @@ func TestConditional4(t *testing.T) {
 
 func TestLoop(t *testing.T) {
 	result, err := run(context.Background(), `
-	y := 0
+	let y = 0
 	for {
 		y = y + 1
 		if y > 10 {
@@ -115,22 +115,22 @@ func TestLoop(t *testing.T) {
 
 func TestForLoop2(t *testing.T) {
 	result, err := run(context.Background(),
-		`x := 0; for y := 0; y < 5; y++ { x = y }; x`)
+		`let x = 0; for let y = 0; y < 5; y++ { x = y }; x`)
 	require.Nil(t, err)
 	require.Equal(t, object.NewInt(4), result)
 }
 
 func TestForLoop3(t *testing.T) {
-	result, err := run(context.Background(), `x := 0; for x < 10 { x++ }; x`)
+	result, err := run(context.Background(), `let x = 0; for x < 10 { x++ }; x`)
 	require.Nil(t, err)
 	require.Equal(t, object.NewInt(10), result)
 }
 
 func TestForRange1(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := [1, 2.3, "hello", true]
-	output := []
-	for i := range x {
+	let x = [1, 2.3, "hello", true]
+	let output = []
+	for let i = range x {
 		1 + 2
 		3 + 4
 	}
@@ -142,8 +142,8 @@ func TestForRange1(t *testing.T) {
 
 func TestForRange2(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
-	for _, value := range [5,6,7] {
+	let x = 0
+	for let _, value = range [5,6,7] {
 		x = value
 	}
 	x
@@ -154,8 +154,8 @@ func TestForRange2(t *testing.T) {
 
 func TestForRange3(t *testing.T) {
 	result, err := run(context.Background(), `
-	x, y := [0, 0]
-	for i, value := range [5, 6, 7] {
+	let x, y = [0, 0]
+	for let i, value = range [5, 6, 7] {
 		x = i      // should go up to 2
 		y = value  // should go up to 7
 	}
@@ -170,8 +170,8 @@ func TestForRange3(t *testing.T) {
 
 func TestForRange4(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
-	for i := range ["a", "b", "c"] { x = i }
+	let x = 0
+	for let i = range ["a", "b", "c"] { x = i }
 	x
 	`)
 	require.Nil(t, err)
@@ -180,7 +180,7 @@ func TestForRange4(t *testing.T) {
 
 func TestForRange5(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
+	let x = 0
 	for range ["a", "b", "c"] { x++ }
 	x
 	`)
@@ -190,11 +190,11 @@ func TestForRange5(t *testing.T) {
 
 func TestForRange7(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := nil
-	y := nil
-	count := 0
-	f := func() { range [ "a", "b", "c" ] }
-	for i, value := f() {
+	let x = nil
+	let y = nil
+	let count = 0
+	let f = function() { range [ "a", "b", "c" ] }
+	for let i, value = f() {
 		x = i      // should count 0, 1, 2
 		y = value  // should go "a", "b", "c"
 		count++
@@ -212,34 +212,34 @@ func TestForRange7(t *testing.T) {
 func TestIterator(t *testing.T) {
 	tests := []testCase{
 		{`(range [ 33, 44, 55 ]).next()`, object.NewInt(33)},
-		{`c := { 33, 44, 55 }; i := range c; i.next(); i.entry().value`, object.True},
-		{`c := { 33, 44, 55 }; i := range c; i.next(); i.entry().key`, object.NewInt(33)},
+		{`let c = { 33, 44, 55 }; let i = range c; i.next(); i.entry().value`, object.True},
+		{`let c = { 33, 44, 55 }; let i = range c; i.next(); i.entry().key`, object.NewInt(33)},
 		{`(range [ 33, 44, 55 ]).next()`, object.NewInt(33)},
-		{`i := range "abcd"; i.next(); i.entry().key`, object.NewInt(0)},
-		{`i := range "abcd"; i.next(); i.entry().value`, object.NewString("a")},
-		{`c := { a: 33, b: 44 }; (range c).next()`, object.NewString("a")},
-		{`c := { a: 33, b: 44 }; i := range c; i.next(); i.entry().key`, object.NewString("a")},
-		{`c := { a: 33, b: 44 }; i := range c; i.next(); i.entry().value`, object.NewInt(33)},
+		{`let i = range "abcd"; i.next(); i.entry().key`, object.NewInt(0)},
+		{`let i = range "abcd"; i.next(); i.entry().value`, object.NewString("a")},
+		{`let c = { a: 33, b: 44 }; (range c).next()`, object.NewString("a")},
+		{`let c = { a: 33, b: 44 }; let i = range c; i.next(); i.entry().key`, object.NewString("a")},
+		{`let c = { a: 33, b: 44 }; let i = range c; i.next(); i.entry().value`, object.NewInt(33)},
 	}
 	runTests(t, tests)
 }
 
 func TestIndexing(t *testing.T) {
 	tests := []testCase{
-		{`x := [1, 2]; x[0] = 9; x[0]`, object.NewInt(9)},
-		{`x := [1, 2]; x[-1] = 9; x[1]`, object.NewInt(9)},
-		{`x := {a: 1}; x["a"] = 9; x["a"]`, object.NewInt(9)},
-		{`x := {a: 1}; x["b"] = 9; x["b"]`, object.NewInt(9)},
-		{`x := { 1 }; x[1]`, object.True},
-		{`x := { 1 }; x[2]`, object.False},
+		{`let x = [1, 2]; x[0] = 9; x[0]`, object.NewInt(9)},
+		{`let x = [1, 2]; x[-1] = 9; x[1]`, object.NewInt(9)},
+		{`let x = {a: 1}; x["a"] = 9; x["a"]`, object.NewInt(9)},
+		{`let x = {a: 1}; x["b"] = 9; x["b"]`, object.NewInt(9)},
+		{`let x = { 1 }; x[1]`, object.True},
+		{`let x = { 1 }; x[2]`, object.False},
 	}
 	runTests(t, tests)
 }
 
 func TestStackPopping1(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := []
-	for i := 0; i < 4; i++ {
+	let x = []
+	for let i = 0; i < 4; i++ {
 		1
 		2
 		3
@@ -259,7 +259,7 @@ func TestStackPopping1(t *testing.T) {
 
 func TestStackPopping2(t *testing.T) {
 	result, err := run(context.Background(), `
-	for i := range [1, 2, 3] {
+	for let i = range [1, 2, 3] {
 		1
 		2
 		3
@@ -272,8 +272,8 @@ func TestStackPopping2(t *testing.T) {
 
 func TestStackBehavior1(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 99
-	for i := 0; i < 4; x {
+	let x = 99
+	for let i = 0; i < 4; x {
 		i++
 		1
 		2
@@ -286,8 +286,8 @@ func TestStackBehavior1(t *testing.T) {
 
 func TestStackBehavior2(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 77
-	for i := 0; i < 4; x {
+	let x = 77
+	for let i = 0; i < 4; x {
 		i++
 		1
 		2
@@ -304,7 +304,7 @@ func TestStackBehavior2(t *testing.T) {
 
 func TestStackBehavior3(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 77
+	let x = 77
 	if x > 0 {
 		99 
 	}
@@ -315,7 +315,7 @@ func TestStackBehavior3(t *testing.T) {
 
 func TestStackBehavior4(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := -1
+	let x = -1
 	if x > 0 {
 		99 
 	}
@@ -326,7 +326,7 @@ func TestStackBehavior4(t *testing.T) {
 
 func TestAssignmentOperators(t *testing.T) {
 	result, err := run(context.Background(), `
-	y := 99
+	let y = 99
 	y  = 3
 	y += 6
 	y /= 9
@@ -339,8 +339,8 @@ func TestAssignmentOperators(t *testing.T) {
 
 func TestFunctionCall(t *testing.T) {
 	result, err := run(context.Background(), `
-	f := func(x) { 42 + x }
-	v := f(1)
+	let f = function(x) { 42 + x }
+	let v = f(1)
 	v + 10
 	`)
 	require.Nil(t, err)
@@ -349,7 +349,7 @@ func TestFunctionCall(t *testing.T) {
 
 func TestSwitch1(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
+	let x = 3
 	switch x {
 		case 1:
 		case 2:
@@ -364,7 +364,7 @@ func TestSwitch1(t *testing.T) {
 
 func TestSwitch2(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 1
+	let x = 1
 	switch x {
 		case 1:
 			99
@@ -378,7 +378,7 @@ func TestSwitch2(t *testing.T) {
 
 func TestSwitch3(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
+	let x = 3
 	switch x {
 		case 1:
 			99
@@ -392,7 +392,7 @@ func TestSwitch3(t *testing.T) {
 
 func TestSwitch4(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
+	let x = 3
 	switch x { default: 99 }
 	`)
 	require.Nil(t, err)
@@ -401,7 +401,7 @@ func TestSwitch4(t *testing.T) {
 
 func TestSwitch5(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
+	let x = 3
 	switch x { default: 99 case 3: x; x-1 }
 	`)
 	require.Nil(t, err)
@@ -410,7 +410,7 @@ func TestSwitch5(t *testing.T) {
 
 func TestStr(t *testing.T) {
 	result, err := run(context.Background(), `
-	s := "hello"
+	let s = "hello"
 	s
 	`)
 	require.Nil(t, err)
@@ -419,7 +419,7 @@ func TestStr(t *testing.T) {
 
 func TestStrLen(t *testing.T) {
 	result, err := run(context.Background(), `
-	s := "hello"
+	let s = "hello"
 	len(s)
 	`)
 	require.Nil(t, err)
@@ -428,7 +428,7 @@ func TestStrLen(t *testing.T) {
 
 func TestList1(t *testing.T) {
 	result, err := run(context.Background(), `
-	l := [1, 2, 3]
+	let l = [1, 2, 3]
 	l
 	`)
 	require.Nil(t, err)
@@ -441,7 +441,7 @@ func TestList1(t *testing.T) {
 
 func TestList2(t *testing.T) {
 	result, err := run(context.Background(), `
-	plusOne := func(x) { x + 1 }
+	let plusOne = function(x) { x + 1 }
 	[plusOne(0), 4-2, plusOne(2)]
 	`)
 	require.Nil(t, err)
@@ -476,9 +476,9 @@ func TestSet(t *testing.T) {
 
 func TestNonLocal(t *testing.T) {
 	result, err := run(context.Background(), `
-	y := 3
-	z := 99
-	f := func() { y = 4 }
+	let y = 3
+	let z = 99
+	let f = function() { y = 4 }
 	f()
 	y
 	`)
@@ -488,8 +488,8 @@ func TestNonLocal(t *testing.T) {
 
 func TestFrameLocals1(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 1
-	f := func(x) { x = 99 }
+	let x = 1
+	let f = function(x) { x = 99 }
 	f(4)
 	x
 	`)
@@ -499,8 +499,8 @@ func TestFrameLocals1(t *testing.T) {
 
 func TestFrameLocals2(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 1
-	f := func(y) { x = 99 }
+	let x = 1
+	let f = function(y) { x = 99 }
 	f(4)
 	x
 	`)
@@ -510,7 +510,7 @@ func TestFrameLocals2(t *testing.T) {
 
 func TestMapKeys(t *testing.T) {
 	result, err := run(context.Background(), `
-	m := {"a": 1, "b": 2}
+	let m = {"a": 1, "b": 2}
 	keys(m)
 	`)
 	require.Nil(t, err)
@@ -522,8 +522,8 @@ func TestMapKeys(t *testing.T) {
 
 func TestClosure(t *testing.T) {
 	result, err := run(context.Background(), `
-	f := func(x) { func() { x } }
-	closure := f(22)
+	let f = function(x) { function() { x } }
+	let closure = f(22)
 	closure()
 	`)
 	require.Nil(t, err)
@@ -532,10 +532,10 @@ func TestClosure(t *testing.T) {
 
 func TestClosureIncrementer(t *testing.T) {
 	result, err := run(context.Background(), `
-	f := func(x) {
-		func() { x++; x }
+	let f = function(x) {
+		function() { x++; x }
 	}
-	incrementer := f(0)
+	let incrementer = f(0)
 	incrementer() // 1
 	incrementer() // 2
 	incrementer() // 3
@@ -546,10 +546,10 @@ func TestClosureIncrementer(t *testing.T) {
 
 func TestClosureOverLocal(t *testing.T) {
 	result, err := run(context.Background(), `
-	var testValue = 100
-	func getint() {
-		var foo = testValue + 1
-		func inner() {
+	let testValue = 100
+	function getint() {
+		let foo = testValue + 1
+		function inner() {
 			foo
 		}
 		return inner
@@ -562,8 +562,8 @@ func TestClosureOverLocal(t *testing.T) {
 
 func TestClosureManyVariables(t *testing.T) {
 	result, err := run(context.Background(), `
-	func foo(a, b, c) {
-		return func(d) {
+	function foo(a, b, c) {
+		return function(d) {
 			return [a, b, c, d]
 		}
 	}
@@ -575,7 +575,7 @@ func TestClosureManyVariables(t *testing.T) {
 
 func TestRecursiveExample1(t *testing.T) {
 	result, err := run(context.Background(), `
-	func twoexp(n) {
+	function twoexp(n) {
 		if n == 0 {
 			return 1
 		} else {
@@ -590,10 +590,10 @@ func TestRecursiveExample1(t *testing.T) {
 
 func TestRecursiveExample2(t *testing.T) {
 	result, err := run(context.Background(), `
-	func twoexp(n) {
-		a := 1
-		b := 2
-		c := a * b
+	function twoexp(n) {
+		let a = 1
+		let b = 2
+		let c = a * b
 		if n == 0 {
 			return 1
 		} else {
@@ -614,7 +614,7 @@ func TestConstant(t *testing.T) {
 
 func TestConstantFunction(t *testing.T) {
 	_, err := run(context.Background(), `
-	func add(x, y) { x + y }
+	function add(x, y) { x + y }
 	add = "bloop"
 	`)
 	require.NotNil(t, err)
@@ -624,17 +624,17 @@ func TestConstantFunction(t *testing.T) {
 func TestStatementsNilValue(t *testing.T) {
 	// The result value of a statement is always nil
 	tests := []testCase{
-		{`x := 0`, object.Nil},
-		{`x := 0; x++`, object.Nil},
-		{`x := 0; x--`, object.Nil},
-		{`x := 0; x += 1`, object.Nil},
-		{`x := 0; x -= 1`, object.Nil},
+		{`let x = 0`, object.Nil},
+		{`let x = 0; x++`, object.Nil},
+		{`let x = 0; x--`, object.Nil},
+		{`let x = 0; x += 1`, object.Nil},
+		{`let x = 0; x -= 1`, object.Nil},
 		{`const x = 0`, object.Nil},
-		{`var x = 0`, object.Nil},
-		{`x, y := [0, 0]`, object.Nil},
-		{`x := [1]; x[0] = 2`, object.Nil},
-		{`for i := 0; i < 10; i++ { 42 }`, object.Nil},
-		{`x := 0; for i := 0; i < 10; i++ { x = i }`, object.Nil},
+		{`let x = 0`, object.Nil},
+		{`let x, y = [0, 0]`, object.Nil},
+		{`let x = [1]; x[0] = 2`, object.Nil},
+		{`for let i = 0; i < 10; i++ { 42 }`, object.Nil},
+		{`let x = 0; for let i = 0; i < 10; i++ { x = i }`, object.Nil},
 	}
 	runTests(t, tests)
 }
@@ -657,7 +657,7 @@ func TestArithmetic(t *testing.T) {
 		{`3 % 3`, object.NewInt(0)},
 		{`11 % 3`, object.NewInt(2)},
 		{`-11`, object.NewInt(-11)},
-		{`x := -11; -x`, object.NewInt(11)},
+		{`let x = -11; -x`, object.NewInt(11)},
 		{`-1.5`, object.NewFloat(-1.5)},
 		{`3 & 1`, object.NewInt(1)},
 		{`3 & 3`, object.NewInt(3)},
@@ -762,19 +762,19 @@ func TestControlFlow(t *testing.T) {
 		{`if false { 3 } else if false { 4 } else { 5 }`, object.NewInt(5)},
 		{`if true { 3 } else if false { 4 } else { 5 }`, object.NewInt(3)},
 		{`if false { 3 } else if true { 4 } else { 5 }`, object.NewInt(4)},
-		{`x := 1; if x > 5 { 99 } else { 100 }`, object.NewInt(100)},
-		{`x := 1; if x > 0 { 99 } else { 100 }`, object.NewInt(99)},
-		{`x := 1; y := x > 0 ? 77 : 88; y`, object.NewInt(77)},
-		{`x := (1 > 2) ? 77 : 88; x`, object.NewInt(88)},
-		{`x := (2 > 1) ? 77 : 88; x`, object.NewInt(77)},
-		{`x := 1; switch x { case 1: 99; case 2: 100 }`, object.NewInt(99)},
+		{`let x = 1; if x > 5 { 99 } else { 100 }`, object.NewInt(100)},
+		{`let x = 1; if x > 0 { 99 } else { 100 }`, object.NewInt(99)},
+		{`let x = 1; let y = x > 0 ? 77 : 88; y`, object.NewInt(77)},
+		{`let x = (1 > 2) ? 77 : 88; x`, object.NewInt(88)},
+		{`let x = (2 > 1) ? 77 : 88; x`, object.NewInt(77)},
+		{`let x = 1; switch x { case 1: 99; case 2: 100 }`, object.NewInt(99)},
 		{`switch 2 { case 1: 99; case 2: 100 }`, object.NewInt(100)},
 		{`switch 3 { case 1: 99; default: 42 case 2: 100 }`, object.NewInt(42)},
 		{`switch 3 { case 1: 99; case 2: 100 }`, object.Nil},
 		{`switch 3 { case 1, 3: 99; case 2: 100 }`, object.NewInt(99)},
 		{`switch 3 { case 1: 99; case 2, 4-1: 100 }`, object.NewInt(100)},
-		{`x := 3; switch bool(x) { case true: "wow" }`, object.NewString("wow")},
-		{`x := 0; switch bool(x) { case true: "wow" }`, object.Nil},
+		{`let x = 3; switch bool(x) { case true: "wow" }`, object.NewString("wow")},
+		{`let x = 0; switch bool(x) { case true: "wow" }`, object.Nil},
 	}
 	runTests(t, tests)
 }
@@ -815,8 +815,8 @@ func TestBuiltins(t *testing.T) {
 		{`encode("hi", "hex")`, object.NewString("6869")},
 		{`encode("hi", "base64")`, object.NewString("aGk=")},
 		{`iter("abc").next()`, object.NewString("a")},
-		{`i := iter("abc"); i.next(); i.entry().key`, object.NewInt(0)},
-		{`i := iter("abc"); i.next(); i.entry().value`, object.NewString("a")},
+		{`let i = iter("abc"); i.next(); i.entry().key`, object.NewInt(0)},
+		{`let i = iter("abc"); i.next(); i.entry().value`, object.NewString("a")},
 		{`reversed("abc")`, object.NewString("cba")},
 		{`reversed([1, 2, 3])`, object.NewList([]object.Object{
 			object.NewInt(3),
@@ -842,15 +842,15 @@ func TestTry(t *testing.T) {
 	tests := []testCase{
 		{`try(1)`, object.NewInt(1)},
 		{`try(1, 2)`, object.NewInt(1)},
-		{`try(func() { error("oops") }, "nope")`, object.NewString("nope")},
-		{`try(func() { error("oops") }, func(e) { e })`, object.Errorf("oops").WithRaised(false)},
-		{`try(func() { error("oops") }, func(e) { e.error() })`, object.NewString("oops")},
-		{`try(func() { error("oops") }, func() { error("oops") }, 1)`, object.NewInt(1)},
-		{`x := 0; y := 0; z := try(func() {
+		{`try(function() { error("oops") }, "nope")`, object.NewString("nope")},
+		{`try(function() { error("oops") }, function(e) { e })`, object.Errorf("oops").WithRaised(false)},
+		{`try(function() { error("oops") }, function(e) { e.error() })`, object.NewString("oops")},
+		{`try(function() { error("oops") }, function() { error("oops") }, 1)`, object.NewInt(1)},
+		{`let x = 0; let y = 0; let z = try(function() {
 			x = 11
 			error("oops1")
 			x = 12
-		  }, func() {
+		  }, function() {
 			y = 21
 			error("oops2")
 			y = 22
@@ -865,7 +865,7 @@ func TestTry(t *testing.T) {
 
 func TestTryEvalError(t *testing.T) {
 	code := `
-	try(func() { error(errors.eval_error("oops")) }, 1)
+	try(function() { error(errors.eval_error("oops")) }, 1)
 	`
 	_, err := run(context.Background(), code)
 	require.NotNil(t, err)
@@ -875,8 +875,8 @@ func TestTryEvalError(t *testing.T) {
 
 func TestTryTypeError(t *testing.T) {
 	code := `
-	i := 0
-	try(func() { i.append("x") }, func(e) { e.message() })
+	let i = 0
+	try(function() { i.append("x") }, function(e) { e.message() })
 	`
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
@@ -885,8 +885,8 @@ func TestTryTypeError(t *testing.T) {
 
 func TestTryUnsupportedOperation(t *testing.T) {
 	code := `
-	i := []
-	try(func() { i + 3 }, func(e) { e.message() })
+	let i = []
+	try(function() { i + 3 }, function(e) { e.message() })
 	`
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
@@ -896,10 +896,10 @@ func TestTryUnsupportedOperation(t *testing.T) {
 func TestTryWithErrorValues(t *testing.T) {
 	code := `
 	const myerr = errors.new("errno == 1")
-	try(func() {
+	try(function() {
 		print("testing 1 2 3")
 		error(myerr)
-	}, func(e) {
+	}, function(e) {
 		return e == myerr ? "YES" : "NO"
 	})`
 	result, err := run(context.Background(), code)
@@ -909,11 +909,11 @@ func TestTryWithErrorValues(t *testing.T) {
 
 func TestTryWithLoop(t *testing.T) {
 	code := `
-	result := []
-	for i := 0; i < 5; i++ {
-		value := try(
-			func() { if i % 2 == 0 { error("Even number") } else { return i } },
-			func(e) { return e.message() }
+	let result = []
+	for let i = 0; i < 5; i++ {
+		let value = try(
+			function() { if i % 2 == 0 { error("Even number") } else { return i } },
+			function(e) { return e.message() }
 		)
 		result.append(value)
 	}
@@ -933,9 +933,9 @@ func TestTryWithLoop(t *testing.T) {
 
 func TestTryWithClosure(t *testing.T) {
 	code := `
-	func makeCounter() {
-		count := 0
-		return func() {
+	function makeCounter() {
+		let count = 0
+		return function() {
 			count++
 			if count > 3 {
 				error("Count exceeded")
@@ -943,10 +943,10 @@ func TestTryWithClosure(t *testing.T) {
 			return count
 		}
 	}
-	counter := makeCounter()
-	result := []
-	for i := 0; i < 5; i++ {
-		value := try(counter, func(e) { return e.message() })
+	let counter = makeCounter()
+	let result = []
+	for let i = 0; i < 5; i++ {
+		let value = try(counter, function(e) { return e.message() })
 		result.append(value)
 	}
 	result
@@ -965,15 +965,15 @@ func TestTryWithClosure(t *testing.T) {
 
 func TestTryWithDefer(t *testing.T) {
 	code := `
-	result := []
-	func operation() {
+	let result = []
+	function operation() {
 		try(
-			func() {
+			function() {
 				defer result.append("deferred")
 				result.append("start")
 				error("operation failed")
 			},
-			func(e) { result.append("caught: " + e.message()) }
+			function(e) { result.append("caught: " + e.message()) }
 		)
 	}
 	operation()
@@ -991,8 +991,8 @@ func TestTryWithDefer(t *testing.T) {
 
 func TestDeferWithError(t *testing.T) {
 	code := `
-	func operation() {
-		defer func() {
+	function operation() {
+		defer function() {
 			error("AGH")
 		}()
 	}
@@ -1004,14 +1004,14 @@ func TestDeferWithError(t *testing.T) {
 }
 
 func TestStringTemplateWithRaisedError(t *testing.T) {
-	code := "'the err string is: {error(`oops`)}. sad!'"
+	code := "`the err string is: ${error(\"oops\")}. sad!`"
 	_, err := run(context.Background(), code)
 	require.NotNil(t, err)
 	require.Equal(t, "oops", err.Error())
 }
 
 func TestStringTemplateWithNonRaisedError(t *testing.T) {
-	code := "'the err string is: {errors.new(`oops`)}. sad!'"
+	code := "`the err string is: ${errors.new(\"oops\")}. sad!`"
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
 	require.Equal(t, object.NewString("the err string is: oops. sad!"), result)
@@ -1019,35 +1019,35 @@ func TestStringTemplateWithNonRaisedError(t *testing.T) {
 
 func TestMultiVarAssignment(t *testing.T) {
 	tests := []testCase{
-		{`a, b := [3, 4]; a`, object.NewInt(3)},
-		{`a, b := [3, 4]; b`, object.NewInt(4)},
-		{`a, b, c := [3, 4, 5]; a`, object.NewInt(3)},
-		{`a, b, c := [3, 4, 5]; b`, object.NewInt(4)},
-		{`a, b, c := [3, 4, 5]; c`, object.NewInt(5)},
-		{`a, b := "ᛛᛥ"; a`, object.NewString("ᛛ")},
-		{`a, b := "ᛛᛥ"; b`, object.NewString("ᛥ")},
-		{`a, b := {42, 43}; a`, object.NewInt(42)},
-		{`a, b := {42, 43}; b`, object.NewInt(43)},
-		{`a, b := {foo: 1, bar: 2}; a`, object.NewString("bar")},
-		{`a, b := {foo: 1, bar: 2}; b`, object.NewString("foo")},
+		{`let a, b = [3, 4]; a`, object.NewInt(3)},
+		{`let a, b = [3, 4]; b`, object.NewInt(4)},
+		{`let a, b, c = [3, 4, 5]; a`, object.NewInt(3)},
+		{`let a, b, c = [3, 4, 5]; b`, object.NewInt(4)},
+		{`let a, b, c = [3, 4, 5]; c`, object.NewInt(5)},
+		{`let a, b = "ᛛᛥ"; a`, object.NewString("ᛛ")},
+		{`let a, b = "ᛛᛥ"; b`, object.NewString("ᛥ")},
+		{`let a, b = {42, 43}; a`, object.NewInt(42)},
+		{`let a, b = {42, 43}; b`, object.NewInt(43)},
+		{`let a, b = {foo: 1, bar: 2}; a`, object.NewString("bar")},
+		{`let a, b = {foo: 1, bar: 2}; b`, object.NewString("foo")},
 	}
 	runTests(t, tests)
 }
 
 func TestFunctions(t *testing.T) {
 	tests := []testCase{
-		{`func add(x, y) { x + y }; add(3, 4)`, object.NewInt(7)},
-		{`func add(x, y) { x + y }; add(3, 4) + 5`, object.NewInt(12)},
-		{`func inc(x, amount=1) { x + amount }; inc(3)`, object.NewInt(4)},
-		{`func factorial(n) { if (n == 1) { return 1 } else { return n * factorial(n - 1) } }; factorial(5)`, object.NewInt(120)},
-		{`z := 10; y := func(x, inc=100) { x + z + inc }; y(3)`, object.NewInt(113)},
-		{`func(x="a", y="b") { x + y }()`, object.NewString("ab")},
-		{`func(x="a", y="b") { x + y + "c" }()`, object.NewString("abc")},
-		{`func(x="a", y="b") { x + y + "c" }("W")`, object.NewString("Wbc")},
-		{`func(x="a", y="b") { x + y + "c" }("W", "X")`, object.NewString("WXc")},
-		{`func(x="a", y="b") { return "X"; x + y + "c" }()`, object.NewString("X")},
-		{`x := 1; func() { y := 10; x + y }()`, object.NewInt(11)},
-		{`x := 1; func() { func() { y := 10; x + y } }()()`, object.NewInt(11)},
+		{`function add(x, y) { x + y }; add(3, 4)`, object.NewInt(7)},
+		{`function add(x, y) { x + y }; add(3, 4) + 5`, object.NewInt(12)},
+		{`function inc(x, amount=1) { x + amount }; inc(3)`, object.NewInt(4)},
+		{`function factorial(n) { if (n == 1) { return 1 } else { return n * factorial(n - 1) } }; factorial(5)`, object.NewInt(120)},
+		{`let z = 10; let y = function(x, inc=100) { x + z + inc }; y(3)`, object.NewInt(113)},
+		{`function(x="a", y="b") { x + y }()`, object.NewString("ab")},
+		{`function(x="a", y="b") { x + y + "c" }()`, object.NewString("abc")},
+		{`function(x="a", y="b") { x + y + "c" }("W")`, object.NewString("Wbc")},
+		{`function(x="a", y="b") { x + y + "c" }("W", "X")`, object.NewString("WXc")},
+		{`function(x="a", y="b") { return "X"; x + y + "c" }()`, object.NewString("X")},
+		{`let x = 1; function() { let y = 10; x + y }()`, object.NewInt(11)},
+		{`let x = 1; function() { function() { let y = 10; x + y } }()()`, object.NewInt(11)},
 	}
 	runTests(t, tests)
 }
@@ -1062,7 +1062,7 @@ func TestContainers(t *testing.T) {
 		{`4 in [1, 2, 3]`, object.False},
 		{`{"foo": "bar"}["foo"]`, object.NewString("bar")},
 		{`{foo: "bar"}["foo"]`, object.NewString("bar")},
-		{`[1, 2, 3, 4, 5].filter(func(x) { x > 3 })`, object.NewList(
+		{`[1, 2, 3, 4, 5].filter(function(x) { x > 3 })`, object.NewList(
 			[]object.Object{object.NewInt(4), object.NewInt(5)})},
 		{`range [1]`, object.NewListIter(object.NewList([]object.Object{object.NewInt(1)}))},
 	}
@@ -1081,8 +1081,8 @@ func TestStrings(t *testing.T) {
 		{`"hello"[1]`, object.NewString("e")},
 		{`"hello"[-1]`, object.NewString("o")},
 		{`"hello"[-2]`, object.NewString("l")},
-		{`a := 1; b := "ok"; '{a + 1}-{b | strings.to_upper}'`, object.NewString("2-OK")},
-		{`func(a, b) { return 'A: {a} B: {b}' }("hi", "bye")`, object.NewString("A: hi B: bye")},
+		{"let a = 1; let b = \"ok\"; `${a + 1}-${b | strings.to_upper}`", object.NewString("2-OK")},
+		{"function(a, b) { return `A: ${a} B: ${b}` }(\"hi\", \"bye\")", object.NewString("A: hi B: bye")},
 	}
 	runTests(t, tests)
 }
@@ -1091,11 +1091,11 @@ func TestPipes(t *testing.T) {
 	tests := []testCase{
 		{`"hello" | strings.to_upper`, object.NewString("HELLO")},
 		{`"hello" | len`, object.NewInt(5)},
-		{`func() { "hello" }() | len`, object.NewInt(5)},
+		{`function() { "hello" }() | len`, object.NewInt(5)},
 		{`["a", "b"] | strings.join(",") | strings.to_upper`, object.NewString("A,B")},
-		{`func() { "a" } | call`, object.NewString("a")},
+		{`function() { "a" } | call`, object.NewString("a")},
 		{`"abc" | getattr("to_upper") | call`, object.NewString("ABC")},
-		{`"abc" | func(s) { s.to_upper() }`, object.NewString("ABC")},
+		{`"abc" | function(s) { s.to_upper() }`, object.NewString("ABC")},
 		{`[11, 12, 3] | math.sum`, object.NewFloat(26)},
 		{`"42" | json.unmarshal`, object.NewFloat(42)},
 	}
@@ -1104,13 +1104,13 @@ func TestPipes(t *testing.T) {
 
 func TestQuicksort(t *testing.T) {
 	result, err := run(context.Background(), `
-	func quicksort(arr) {
+	function quicksort(arr) {
 		if len(arr) < 2 {
 			return arr
 		} else {
-			pivot := arr[0]
-			less := arr[1:].filter(func(x) { x <= pivot })
-			more := arr[1:].filter(func(x) { x > pivot })
+			let pivot = arr[0]
+			let less = arr[1:].filter(function(x) { x <= pivot })
+			let more = arr[1:].filter(function(x) { x > pivot })
 			return quicksort(less) + [pivot] + quicksort(more)
 		}
 	}
@@ -1128,16 +1128,16 @@ func TestQuicksort(t *testing.T) {
 
 func TestMergesort(t *testing.T) {
 	result, err := run(context.Background(), `
-	func mergesort(arr) {
-		length := len(arr)
+	function mergesort(arr) {
+		let length = len(arr)
 		if length <= 1 {
 			return arr
 		}
-		mid := length / 2
-		left := mergesort(arr[:mid])
-		right := mergesort(arr[mid:])
-		output := list(length)
-		i, j, k := [0, 0, 0]
+		let mid = length / 2
+		let left = mergesort(arr[:mid])
+		let right = mergesort(arr[mid:])
+		let output = list(length)
+		let i, j, k = [0, 0, 0]
 		for i < len(left) {
 			for j < len(right) && right[j] <= left[i] {
 				output[k] = right[j]
@@ -1163,7 +1163,7 @@ func TestMergesort(t *testing.T) {
 
 func TestRecursiveIsPrime(t *testing.T) {
 	result, err := run(context.Background(), `
-	func is_prime(n, i=2) {
+	function is_prime(n, i=2) {
 		// Base cases
 		if (n <= 2) { return n == 2 }
 		if (n % i == 0) { return false }
@@ -1171,9 +1171,9 @@ func TestRecursiveIsPrime(t *testing.T) {
 		// Check for next divisor
     	return is_prime(n, i + 1);
 	}
-	ints := []
-	for i := 1; i < 30; i++ { ints.append(i) }
-	primes := ints.filter(is_prime)
+	let ints = []
+	for let i = 1; i < 30; i++ { ints.append(i) }
+	let primes = ints.filter(is_prime)
 	", ".join(primes.map(string))
 	`)
 	require.Nil(t, err)
@@ -1183,7 +1183,7 @@ func TestRecursiveIsPrime(t *testing.T) {
 func TestAndShortCircuit(t *testing.T) {
 	// AND should short-circuit, so data[5] should not be evaluated
 	result, err := run(context.Background(), `
-	data := []
+	let data = []
 	if len(data) && data[5] {
 		"nope!"
 	} else {
@@ -1197,7 +1197,7 @@ func TestAndShortCircuit(t *testing.T) {
 func TestOrShortCircuit(t *testing.T) {
 	// OR should short-circuit, so data[5] should not be evaluated
 	result, err := run(context.Background(), `
-	data := [1]
+	let data = [1]
 	if len(data) || data[5] {
 		"worked!"
 	} else {
@@ -1210,8 +1210,8 @@ func TestOrShortCircuit(t *testing.T) {
 
 func TestLoopBreak(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
-	for i := 0; i < 10; i++ {
+	let x = 0
+	for let i = 0; i < 10; i++ {
 		if i == 3 { break }
 		x = i
 	}
@@ -1223,8 +1223,8 @@ func TestLoopBreak(t *testing.T) {
 
 func TestLoopContinue(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
-	for i := 0; i < 10; i++ {
+	let x = 0
+	for let i = 0; i < 10; i++ {
 		if i > 3 { continue }
 		x = i
 	}
@@ -1236,8 +1236,8 @@ func TestLoopContinue(t *testing.T) {
 
 func TestRangeLoopBreak(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
-	for i := range [0, 1, 2, 3, 4] {
+	let x = 0
+	for let i = range [0, 1, 2, 3, 4] {
 		if i == 3 { break }
 		x = i
 	}
@@ -1249,8 +1249,8 @@ func TestRangeLoopBreak(t *testing.T) {
 
 func TestRangeLoopContinue(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
-	for i := range [0, 1, 2, 3, 4] {
+	let x = 0
+	for let i = range [0, 1, 2, 3, 4] {
 		if i > 3 { continue }
 		x = i
 	}
@@ -1262,8 +1262,8 @@ func TestRangeLoopContinue(t *testing.T) {
 
 func TestForCondition(t *testing.T) {
 	result, err := run(context.Background(), `
-	c := true
-	count := 0
+	let c = true
+	let count = 0
 	for c {
 		count++
 		if count == 10 {
@@ -1278,7 +1278,7 @@ func TestForCondition(t *testing.T) {
 
 func TestForIntCondition(t *testing.T) {
 	result, err := run(context.Background(), `
-	count := 10
+	let count = 10
 	for count { count-- }
 	count
 	`)
@@ -1288,7 +1288,7 @@ func TestForIntCondition(t *testing.T) {
 
 func TestForExprCondition(t *testing.T) {
 	result, err := run(context.Background(), `
-	count := 10
+	let count = 10
 	for (count >= 5) { count-- }
 	count
 	`)
@@ -1298,8 +1298,8 @@ func TestForExprCondition(t *testing.T) {
 
 func TestInvalidForCondition(t *testing.T) {
 	result, err := run(context.Background(), `
-	count := 10
-	for x := 2 { count-- }
+	let count = 10
+	for let x = 2 { count-- }
 	count
 	`)
 	require.NoError(t, err)
@@ -1308,11 +1308,11 @@ func TestInvalidForCondition(t *testing.T) {
 
 func TestSimpleLoopBreak(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
+	let x = 0
 	for {
 		x++
 		if x == 2 { break }
-		max := math.max(1, 2) // inject some extra instructions
+		let max = math.max(1, 2) // inject some extra instructions
 	}
 	x
 	`)
@@ -1322,16 +1322,16 @@ func TestSimpleLoopBreak(t *testing.T) {
 
 func TestNestedLoops(t *testing.T) {
 	result, err := run(context.Background(), `
-	x, y, z := [0, 0, 0]
+	let x, y, z = [0, 0, 0]
 	for {
 		x++ // This should execute 3 times total
 		if x == 3 { break }
 		// We should reach this point twice, with x as 1 then 2
-		for i := range [0, 1, 2, 3] {
+		for let i = range [0, 1, 2, 3] {
 			y++ // This should execute 8 times total
 			if i > 1 { continue }
 			// We should reach this point 4 times total
-			for h := 0; h < 10; h++ {
+			for let h = 0; h < 10; h++ {
 				z++ // This should execute 16 times total (4 times per inner loop)
 				if h == 3 { break }
 			}
@@ -1349,8 +1349,8 @@ func TestNestedLoops(t *testing.T) {
 
 func TestSimpleLoopContinue(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 0
-	y := 0
+	let x = 0
+	let y = 0
 	for {
 		x++
 		if x < 2 { continue }
@@ -1358,7 +1358,7 @@ func TestSimpleLoopContinue(t *testing.T) {
 		if x > 5 { break }
 		// We'll reach here on x in [2, 3, 4, 5]; so y should increment 4 times
 		y++
-		max := math.max(1, 2) // inject some extra instructions
+		let max = math.max(1, 2) // inject some extra instructions
 	}
 	y
 	`)
@@ -1368,19 +1368,19 @@ func TestSimpleLoopContinue(t *testing.T) {
 
 func TestManyLocals(t *testing.T) {
 	result, err := run(context.Background(), `
-	func example(x) {
-		a := x + 1
-		b := a + 1
-		c := b + 1
-		d := c + 1
-		e := d + 1
-		f := e + 1
-		g := f + 1
-		h := g + 1
-		i := h + 1
-		j := i + 1
-		k := j + 1
-		l := k + 1
+	function example(x) {
+		let a = x + 1
+		let b = a + 1
+		let c = b + 1
+		let d = c + 1
+		let e = d + 1
+		let f = e + 1
+		let g = f + 1
+		let h = g + 1
+		let i = h + 1
+		let j = i + 1
+		let k = j + 1
+		let l = k + 1
 		return l
 	}
 	example(0)
@@ -1395,14 +1395,14 @@ func TestIncorrectArgCount(t *testing.T) {
 		expectedErr string
 	}
 	tests := []testCase{
-		{`func ex() { 1 }; ex(1)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`func ex(x) { x }; ex()`, "args error: function \"ex\" takes 1 argument (0 given)"},
-		{`func ex(x) { x }; ex(1, 2)`, "args error: function \"ex\" takes 1 argument (2 given)"},
-		{`func ex(x, y) { 1 }; ex()`, "args error: function \"ex\" takes 2 arguments (0 given)"},
-		{`func ex(x, y) { 1 }; ex(0)`, "args error: function \"ex\" takes 2 arguments (1 given)"},
-		{`func ex(x, y) { 1 }; ex(1, 2, 3)`, "args error: function \"ex\" takes 2 arguments (3 given)"},
-		{`func ex() { 1 }; [1, 2].filter(ex)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`func ex() { 1 }; "foo" | ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`function ex() { 1 }; ex(1)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`function ex(x) { x }; ex()`, "args error: function \"ex\" takes 1 argument (0 given)"},
+		{`function ex(x) { x }; ex(1, 2)`, "args error: function \"ex\" takes 1 argument (2 given)"},
+		{`function ex(x, y) { 1 }; ex()`, "args error: function \"ex\" takes 2 arguments (0 given)"},
+		{`function ex(x, y) { 1 }; ex(0)`, "args error: function \"ex\" takes 2 arguments (1 given)"},
+		{`function ex(x, y) { 1 }; ex(1, 2, 3)`, "args error: function \"ex\" takes 2 arguments (3 given)"},
+		{`function ex() { 1 }; [1, 2].filter(ex)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`function ex() { 1 }; "foo" | ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
 		{`"foo" | "bar"`, "type error: object is not callable (got string)"},
 	}
 	for _, tt := range tests {
@@ -1475,7 +1475,7 @@ func TestCallHalt(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
 	defer cancel()
 
-	vm, err := newVM(context.Background(), "func block() { for {} }")
+	vm, err := newVM(context.Background(), "function block() { for {} }")
 	require.NoError(t, err)
 	require.NoError(t, vm.Run(context.Background()))
 
@@ -1492,8 +1492,8 @@ func TestCallHalt(t *testing.T) {
 
 func TestReturnGlobalVariable(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
-	func test() { x }
+	let x = 3
+	function test() { x }
 	test()
 	`)
 	require.Nil(t, err)
@@ -1501,7 +1501,7 @@ func TestReturnGlobalVariable(t *testing.T) {
 }
 
 func TestNakedReturn(t *testing.T) {
-	result, err := run(context.Background(), `func test(a) { return }; test(15)`)
+	result, err := run(context.Background(), `function test(a) { return }; test(15)`)
 	require.Nil(t, err)
 	require.Equal(t, object.Nil, result)
 }
@@ -1509,10 +1509,10 @@ func TestNakedReturn(t *testing.T) {
 func TestGlobalNames(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	count := 1
-	func inc(a, b) { a + b }
-	m := {one: 1}
-	foo := func() { "bar" }
+	let count = 1
+	function inc(a, b) { a + b }
+	let m = {one: 1}
+	let foo = function() { "bar" }
 	`
 	vm, err := newVM(ctx, source)
 	require.Nil(t, err)
@@ -1531,7 +1531,7 @@ func TestGlobalNames(t *testing.T) {
 
 func TestGetGlobal(t *testing.T) {
 	ctx := context.Background()
-	source := `func inc(a, b) { a + b }`
+	source := `function inc(a, b) { a + b }`
 	vm, err := newVM(ctx, source)
 	require.Nil(t, err)
 	require.Nil(t, vm.Run(ctx))
@@ -1545,7 +1545,7 @@ func TestGetGlobal(t *testing.T) {
 
 func TestCall(t *testing.T) {
 	ctx := context.Background()
-	source := `func inc(a, b) { a + b }`
+	source := `function inc(a, b) { a + b }`
 	vm, err := newVM(ctx, source)
 	require.Nil(t, err)
 	require.Nil(t, vm.Run(ctx))
@@ -1566,14 +1566,14 @@ func TestCall(t *testing.T) {
 func TestCallWithClosure(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	func get_counter() {
-		count := 10
-		return func() {
+	function get_counter() {
+		let count = 10
+		return function() {
 			count++
 			return count
 		}
 	}
-	counter := get_counter()
+	let counter = get_counter()
 	`
 	vm, err := newVM(ctx, source)
 	require.Nil(t, err)
@@ -1595,25 +1595,25 @@ func TestCallWithClosure(t *testing.T) {
 func TestFreeVariableAssignment(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	func get_counters() {
-		a := 0
-		b := 0
-		c := 0
-		func incA() {
+	function get_counters() {
+		let a = 0
+		let b = 0
+		let c = 0
+		function incA() {
 			a++
 			return a
 		}
-		func incB() {
+		function incB() {
 			b++
 			return b
 		}
-		func incC() {
+		function incC() {
 			c++
 			return c
 		}
 		return [incA, incB, incC]
 	}
-	incA, incB, incC := get_counters()
+	let incA, incB, incC = get_counters()
 	incA(); incA()                 // 1, 2
 	incB(); incB(); incB()         // 1, 2, 3
 	incC(); incC(); incC(); incC() // 1, 2, 3, 4
@@ -1633,14 +1633,12 @@ func TestFreeVariableAssignment(t *testing.T) {
 
 func TestInterpolatedStringClosures1(t *testing.T) {
 	ctx := context.Background()
-	source := `
-	func foo(a, b, c) {
-		return func(d) {
-			return '{strings.to_upper(a)}-{b}-{c}-{d}'
-		}
-	}
-	foo("foo", "bar", "baz")("go")
-	`
+	source := "function foo(a, b, c) {\n" +
+		"	return function(d) {\n" +
+		"		return `${strings.to_upper(a)}-${b}-${c}-${d}`\n" +
+		"	}\n" +
+		"}\n" +
+		"foo(\"foo\", \"bar\", \"baz\")(\"go\")"
 	vm, err := newVM(ctx, source)
 	require.Nil(t, err)
 	require.Nil(t, vm.Run(ctx))
@@ -1651,16 +1649,14 @@ func TestInterpolatedStringClosures1(t *testing.T) {
 
 func TestInterpolatedStringClosures2(t *testing.T) {
 	ctx := context.Background()
-	source := `
-	x := 3
-	func foo(a, b="bar") {
-		count := 42
-		return func(a) {
-			return 'a: {a} b: {b} count: {count-2} x: {x+1}'
-		}
-	}
-	foo("IGNORED")("HEY")
-	`
+	source := "let x = 3\n" +
+		"function foo(a, b=\"bar\") {\n" +
+		"	let count = 42\n" +
+		"	return function(a) {\n" +
+		"		return `a: ${a} b: ${b} count: ${count-2} x: ${x+1}`\n" +
+		"	}\n" +
+		"}\n" +
+		"foo(\"IGNORED\")(\"HEY\")"
 	vm, err := newVM(ctx, source)
 	require.Nil(t, err)
 	require.Nil(t, vm.Run(ctx))
@@ -1672,8 +1668,8 @@ func TestInterpolatedStringClosures2(t *testing.T) {
 func TestClone(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	x := 3
-	func inc() {
+	let x = 3
+	function inc() {
 		x++
 	}
 	inc()
@@ -1707,8 +1703,8 @@ func TestCloneWithAnonymousFunc(t *testing.T) {
 
 	ctx := context.Background()
 	source := `
-	x := 3
-	register("inc", func() {
+	let x = 3
+	register("inc", function() {
 		x++
 		return x
 	})
@@ -1754,7 +1750,7 @@ func TestCloneWithAnonymousFunc(t *testing.T) {
 
 func TestIncrementalEvaluation(t *testing.T) {
 	ctx := context.Background()
-	ast, err := parser.Parse(ctx, "x := 3")
+	ast, err := parser.Parse(ctx, "let x = 3")
 	require.Nil(t, err)
 
 	comp, err := compiler.New()
@@ -1797,9 +1793,9 @@ func TestImports(t *testing.T) {
 func TestFromImport(t *testing.T) {
 	tests := []testCase{
 		{`from a.data import mapValue; mapValue["3"]`, object.NewInt(3)},
-		{`from a.function import plusOne; plusOne(1)`, object.NewInt(2)},
-		{`from a import function; function.plusOne(1)`, object.NewInt(2)},
-		{`from a.b import data as b_data; from a.function import plusOne; plusOne(b_data.mapValue["1"]) `, object.NewInt(2)},
+		{`from a.funcs import plusOne; plusOne(1)`, object.NewInt(2)},
+		{`from a import funcs; funcs.plusOne(1)`, object.NewInt(2)},
+		{`from a.b import data as b_data; from a.funcs import plusOne; plusOne(b_data.mapValue["1"]) `, object.NewInt(2)},
 		{`from math import min; min(3,-7)`, object.NewFloat(-7)},
 		{`from math import min as m; m(3,-7)`, object.NewFloat(-7)},
 		{
@@ -1846,16 +1842,16 @@ func TestModifyModule(t *testing.T) {
 
 func TestEarlyForRangeReturn(t *testing.T) {
 	code := `
-func operation(c) {
+function operation(c) {
 	for range [1, 2, 3] {
 		return "result"
 	}
 }
-func main() {
-	items := ['ab', 'cd']
-	results := []
-	for _, item := range items {
-		value := operation(item)
+function main() {
+	let items = ['ab', 'cd']
+	let results = []
+	for let _, item = range items {
+		let value = operation(item)
 		results.append(value)
 	}
 	return results
@@ -1872,8 +1868,8 @@ main()
 
 func TestDeferStatementGlobalClosure(t *testing.T) {
 	code := `
-	x := 0
-	func foo(value) { defer func() { x = value }() }
+	let x = 0
+	function foo(value) { defer function() { x = value }() }
 	foo(4)
 	x
 	`
@@ -1884,8 +1880,8 @@ func TestDeferStatementGlobalClosure(t *testing.T) {
 
 func TestDeferStatementOrdering(t *testing.T) {
 	code := `
-	l := []
-	func foo(value) {
+	let l = []
+	function foo(value) {
 		defer l.append(value+1) // 3
 		defer l.append(value)   // 2
 		l.append(1)             // 1
@@ -1904,10 +1900,10 @@ func TestDeferStatementOrdering(t *testing.T) {
 
 func TestDeferStatementAnon(t *testing.T) {
 	code := `
-	func() {
-		x := 42
-		defer func() { x = 1 }()
-		defer func() { x = 2 }()
+	function() {
+		let x = 42
+		defer function() { x = 1 }()
+		defer function() { x = 2 }()
 		return x
 	}()
 	`
@@ -1918,9 +1914,9 @@ func TestDeferStatementAnon(t *testing.T) {
 
 func TestDeferStatementBuiltin(t *testing.T) {
 	code := `
-	m := {one: 1, two: 2}
-	func test() {
-		func() {
+	let m = {one: 1, two: 2}
+	function test() {
+		function() {
 			m["three"] = 3
 			defer delete(m, "one")
 		}()
@@ -1938,12 +1934,12 @@ func TestDeferStatementBuiltin(t *testing.T) {
 
 func TestDeferFileClose(t *testing.T) {
 	code := `
-	func get_lines(path) {
-		f := os.open(path)
+	function get_lines(path) {
+		let f = os.open(path)
 		defer f.close()
 		return string(f.read()).split("\n")
 	}
-	lines := get_lines("fixtures/jabberwocky.txt")
+	let lines = get_lines("fixtures/jabberwocky.txt")
 	lines[0]
 	`
 	result, err := run(context.Background(), code)
@@ -1951,44 +1947,15 @@ func TestDeferFileClose(t *testing.T) {
 	require.Equal(t, object.NewString("'Twas brillig, and the slithy toves"), result)
 }
 
-func TestDeferBehavior(t *testing.T) {
-	code := `
-	func work(count) {
-		c := chan(count)
-		spawn(func() {
-			defer close(c)
-			for i := 0; i < count; i++ {
-				c <- i
-			}
-		})
-		return c
-	}
-	results := []
-	for _, value := range work(5) {
-		results.append(value)
-	}
-	results
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(0),
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-		object.NewInt(4),
-	}), result)
-}
-
 func TestDeferNoStackPollution(t *testing.T) {
 	code := `
-	result := []
-	func append_value(v) {
-		defer func(v) {
+	let result = []
+	function append_value(v) {
+		defer function(v) {
 			result.append(v)
 		}(v)
 	}
-	for _, v := range [1, 2, 3] {
+	for let _, v = range [1, 2, 3] {
 		append_value(v)
 	}
 	result
@@ -2004,10 +1971,10 @@ func TestDeferNoStackPollution(t *testing.T) {
 
 func TestFreeVariables(t *testing.T) {
 	code := `
-	func test(count) {
-		l := []
-		func() {
-			y := count
+	function test(count) {
+		let l = []
+		function() {
+			let y = count
 			if true {
 				l.append(y)
 			}
@@ -2019,86 +1986,6 @@ func TestFreeVariables(t *testing.T) {
 	result, err := run(context.Background(), code)
 	require.Nil(t, err)
 	require.Equal(t, object.NewList([]object.Object{object.NewInt(5)}), result)
-}
-
-func TestChannels(t *testing.T) {
-	tests := []testCase{
-		{`c := chan(1); c <- 1; <-c`, object.NewInt(1)},
-		{`c := make(chan, 1); c <- 1; <-c`, object.NewInt(1)},
-		{`c := chan(2); c <- 1; c <- 2; [<-c, <-c]`, object.NewList([]object.Object{
-			object.NewInt(1), object.NewInt(2),
-		})},
-		{`c := chan(1); c <- 1; close(c); <-c`, object.NewInt(1)},
-		{`c := chan(); close(c); <-c`, object.Nil},
-		{`c := chan(1); c <- "ok"; close(c); [<-c, <-c]`, object.NewList([]object.Object{
-			object.NewString("ok"), object.Nil,
-		})},
-		{`c := chan(2); c <- "a"; c <- "b"; close(c);
-		  results := []
-		  for _, value := range c { results.append(value) }
-		  results`, object.NewList([]object.Object{
-			object.NewString("a"),
-			object.NewString("b"),
-		})},
-	}
-	runTests(t, tests)
-}
-
-func TestChannelErrors(t *testing.T) {
-	ctx := context.Background()
-	type testCase struct {
-		input     string
-		expectErr string
-	}
-	tests := []testCase{
-		{`c := chan(1); close(c); c <- 1`, "exec error: send on closed channel"},
-		{`c := chan(1); close(c); close(c)`, "exec error: close of closed channel"},
-		{`c := chan(1); c <- 1; close(c); c <- 2`, "exec error: send on closed channel"},
-	}
-	for _, tt := range tests {
-		_, err := run(ctx, tt.input)
-		require.NotNil(t, err)
-		require.Equal(t, tt.expectErr, err.Error())
-	}
-}
-
-func TestGoStatement(t *testing.T) {
-	tests := []testCase{
-		{`go func() { 1 }()`, object.Nil},
-		{`x := 0; go func() { x = 1 }(); time.sleep(0.1); x`, object.NewInt(1)},
-		{`c := chan(1); go func() { c <- 1 }(); <-c`, object.NewInt(1)},
-		{`func dowork() {
-			c := make(chan)
-			go func() { defer close(c); c <- 98765 }();
-			return c
-		  }
-		  rxchan := dowork()
-		  <-rxchan`, object.NewInt(98765)},
-	}
-	runTests(t, tests)
-}
-
-func TestSpawn(t *testing.T) {
-	tests := []testCase{
-		{`func test(x) { return x + 1 }; spawn(test, 33).wait()`, object.NewInt(34)},
-		{`spawn(func(x=10) { x }).wait()`, object.NewInt(10)},
-		{`x := 0; spawn(func() { x = 34 }).wait(); x`, object.NewInt(34)},
-		{`l := []; spawn(func() { l.append(1) }).wait(); l`, object.NewList([]object.Object{object.NewInt(1)})},
-		{`l := []; spawn(func(x) { x.append(1) }, l).wait(); l`, object.NewList([]object.Object{object.NewInt(1)})},
-		{`
-		func work(x) { return x ** 2 }
-		threads := []
-		for i := 0; i < 5; i++ { threads.append(spawn(work, i))	}
-		threads.map(func(t) { t.wait() })
-		`, object.NewList([]object.Object{
-			object.NewInt(0),
-			object.NewInt(1),
-			object.NewInt(4),
-			object.NewInt(9),
-			object.NewInt(16),
-		})},
-	}
-	runTests(t, tests)
 }
 
 func TestMaps(t *testing.T) {
@@ -2124,7 +2011,7 @@ func TestMaps(t *testing.T) {
 			"a": object.NewInt(1),
 			"b": object.NewInt(2),
 		})},
-		{`m := {"a": 1, "b": 2}; m["a"] *= 8; m`, object.NewMap(map[string]object.Object{
+		{`let m = {"a": 1, "b": 2}; m["a"] *= 8; m`, object.NewMap(map[string]object.Object{
 			"a": object.NewInt(8),
 			"b": object.NewInt(2),
 		})},
@@ -2157,7 +2044,7 @@ func TestLists(t *testing.T) {
 			object.NewInt(1),
 			object.NewInt(2),
 		})},
-		{`l := [1, 2]; for k := range l { l[k] *= 2 }; l`, object.NewList([]object.Object{
+		{`let l = [1, 2]; for let k = range l { l[k] *= 2 }; l`, object.NewList([]object.Object{
 			object.NewInt(2),
 			object.NewInt(4),
 		})},
@@ -2167,8 +2054,8 @@ func TestLists(t *testing.T) {
 
 func TestFunctionStack(t *testing.T) {
 	code := `
-	for i := range 1 {
-		try(func() {
+	for let i = range 1 {
+		try(function() {
 		  42
 		  error("kaboom")
 		})
@@ -2181,10 +2068,10 @@ func TestFunctionStack(t *testing.T) {
 
 func TestFunctionStackNewErr(t *testing.T) {
 	code := `
-	for i := range 1 {
-		try(func() {
+	for let i = range 1 {
+		try(function() {
 		  42
-		}, func(e) {
+		}, function(e) {
 		  error("kaboom")
 		})
 	  }
@@ -2196,15 +2083,14 @@ func TestFunctionStackNewErr(t *testing.T) {
 
 func TestMultivar(t *testing.T) {
 	code := `
-	x, y := [1, 2]
-	x, y = [98, 99]
+	let x, y = [1, 2]
 	[x, y]
 	`
 	result, err := run(context.Background(), code)
 	require.Nil(t, err)
 	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(98),
-		object.NewInt(99),
+		object.NewInt(1),
+		object.NewInt(2),
 	}), result)
 }
 
@@ -2224,12 +2110,12 @@ func TestExecOldWayWithDir(t *testing.T) {
 
 func TestReturnNamedFunction(t *testing.T) {
 	code := `
-	func test() {
-		return func foo() {
+	function test() {
+		return function foo() {
 			return "FOO"
 		}
 	}
-	f := test()
+	let f = test()
 	f()
 	`
 	result, err := run(context.Background(), code)
@@ -2286,9 +2172,9 @@ func TestNestedRangeLoopBreak(t *testing.T) {
 		{
 			name: "Basic case with single iteration",
 			input: `
-				items1 := [1]
-				items2 := [1, 2]
-				count := 0
+				let items1 = [1]
+				let items2 = [1, 2]
+				let count = 0
 				for range items1 {
 					for range items2 {
 						count += 1
@@ -2302,9 +2188,9 @@ func TestNestedRangeLoopBreak(t *testing.T) {
 		{
 			name: "Multiple iterations in outer loop",
 			input: `
-				items1 := [1, 2, 3]
-				items2 := [1, 2]
-				count := 0
+				let items1 = [1, 2, 3]
+				let items2 = [1, 2]
+				let count = 0
 				for range items1 {
 					for range items2 {
 						count += 1
@@ -2318,11 +2204,11 @@ func TestNestedRangeLoopBreak(t *testing.T) {
 		{
 			name: "Multiple iterations with indexed loop",
 			input: `
-				items1 := [1, 2, 3]
-				items2 := [1, 2, 3]
-				result := []
-				for i, _ := range items1 {
-					for j, _ := range items2 {
+				let items1 = [1, 2, 3]
+				let items2 = [1, 2, 3]
+				let result = []
+				for let i, _ = range items1 {
+					for let j, _ = range items2 {
 						result = result + [[i, j]]
 						break
 					}
@@ -2338,7 +2224,7 @@ func TestNestedRangeLoopBreak(t *testing.T) {
 		{
 			name: "Many iterations to ensure no stack overflow",
 			input: `
-				count := 0
+				let count = 0
 				for range 100 {
 					for range 33 {
 						count += 1
@@ -2352,11 +2238,11 @@ func TestNestedRangeLoopBreak(t *testing.T) {
 		{
 			name: "Break from single loop",
 			input: `
-				count := 0
+				let count = 0
 				for range 100 {
 					count += 77
 					break
-					x := "should not be here"
+					let x = "should not be here"
 				}
 				count
 			`,
@@ -2380,14 +2266,14 @@ func TestDeeplyNestedRangeLoopBreak(t *testing.T) {
 	// This test creates a deeply nested set of for-range loops (3 levels)
 	// with break statements at each level
 	input := `
-		count := 0
+		let count = 0
 		// Create a more complex nesting case with multiple breaks
-		for i := range 5 {
-			for j := range 5 {
+		for let i = range 5 {
+			for let j = range 5 {
 				if j == 3 {
 					break  // Break from j loop
 				}
-				for k := range 5 {
+				for let k = range 5 {
 					count += 1
 					if k == 2 {
 						break  // Break from k loop
@@ -2438,11 +2324,11 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 	tests := []testCase{
 		// Basic forward declaration - function called before definition
 		{`
-		func main() {
+		function main() {
 			return helper(5)
 		}
 		
-		func helper(x) {
+		function helper(x) {
 			return x * 2
 		}
 		
@@ -2451,15 +2337,15 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 
 		// Forward declaration with multiple functions
 		{`
-		func start() {
+		function start() {
 			return first() + second()
 		}
 		
-		func first() {
+		function first() {
 			return 10
 		}
 		
-		func second() {
+		function second() {
 			return 20
 		}
 		
@@ -2468,15 +2354,15 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 
 		// Forward declaration with nested calls
 		{`
-		func outer() {
+		function outer() {
 			return inner() + 5
 		}
 		
-		func inner() {
+		function inner() {
 			return deepest() * 2
 		}
 		
-		func deepest() {
+		function deepest() {
 			return 7
 		}
 		
@@ -2485,7 +2371,7 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 
 		// Forward declaration with default parameters
 		{`
-		func calculator(op="add") {
+		function calculator(op="add") {
 			if op == "add" {
 				return adder(5, 3)
 			} else {
@@ -2493,11 +2379,11 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 			}
 		}
 		
-		func adder(a, b) {
+		function adder(a, b) {
 			return a + b
 		}
 		
-		func multiplier(a, b) {
+		function multiplier(a, b) {
 			return a * b
 		}
 		
@@ -2506,19 +2392,19 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 
 		// Forward declaration with closures
 		{`
-		func makeCounter() {
-			count := 0
-			return func() {
+		function makeCounter() {
+			let count = 0
+			return function() {
 				count++
 				return incrementHelper(count)
 			}
 		}
 		
-		func incrementHelper(n) {
+		function incrementHelper(n) {
 			return n * 10
 		}
 		
-		counter := makeCounter()
+		let counter = makeCounter()
 		counter()
 		`, object.NewInt(10)},
 	}
@@ -2529,14 +2415,14 @@ func TestMutualRecursion(t *testing.T) {
 	tests := []testCase{
 		// Basic mutual recursion - even/odd
 		{`
-		func is_even(n) {
+		function is_even(n) {
 			if n == 0 {
 				return true
 			}
 			return is_odd(n - 1)
 		}
 		
-		func is_odd(n) {
+		function is_odd(n) {
 			if n == 0 {
 				return false
 			}
@@ -2553,14 +2439,14 @@ func TestMutualRecursion(t *testing.T) {
 
 		// Mutual recursion with return values
 		{`
-		func countdown_a(n) {
+		function countdown_a(n) {
 			if n <= 0 {
 				return 0
 			}
 			return n + countdown_b(n - 1)
 		}
 		
-		func countdown_b(n) {
+		function countdown_b(n) {
 			if n <= 0 {
 				return 0
 			}
@@ -2572,14 +2458,14 @@ func TestMutualRecursion(t *testing.T) {
 
 		// More complex mutual recursion
 		{`
-		func fibonacci_a(n) {
+		function fibonacci_a(n) {
 			if n <= 1 {
 				return n
 			}
 			return fibonacci_b(n - 1) + fibonacci_a(n - 2)
 		}
 		
-		func fibonacci_b(n) {
+		function fibonacci_b(n) {
 			if n <= 1 {
 				return n
 			}
@@ -2596,7 +2482,7 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 	tests := []testCase{
 		// Forward declaration with if statements
 		{`
-		func process(x) {
+		function process(x) {
 			if x > 10 {
 				return big_handler(x)
 			} else {
@@ -2604,11 +2490,11 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 			}
 		}
 		
-		func big_handler(x) {
+		function big_handler(x) {
 			return x * 2
 		}
 		
-		func small_handler(x) {
+		function small_handler(x) {
 			return x + 10
 		}
 		
@@ -2620,7 +2506,7 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 
 		// Forward declaration with switch
 		{`
-		func router(op) {
+		function router(op) {
 			switch op {
 				case "add":
 					return op_add(5, 3)
@@ -2631,15 +2517,15 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 			}
 		}
 		
-		func op_add(a, b) {
+		function op_add(a, b) {
 			return a + b
 		}
 		
-		func op_sub(a, b) {
+		function op_sub(a, b) {
 			return a - b
 		}
 		
-		func op_default() {
+		function op_default() {
 			return 0
 		}
 		
@@ -2657,15 +2543,15 @@ func TestForwardDeclarationWithLoops(t *testing.T) {
 	tests := []testCase{
 		// Forward declaration with for loops
 		{`
-		func sum_with_helper(n) {
-			total := 0
-			for i := 1; i <= n; i++ {
+		function sum_with_helper(n) {
+			let total = 0
+			for let i = 1; i <= n; i++ {
 				total += process_number(i)
 			}
 			return total
 		}
 		
-		func process_number(x) {
+		function process_number(x) {
 			return x * 2
 		}
 		
@@ -2674,15 +2560,15 @@ func TestForwardDeclarationWithLoops(t *testing.T) {
 
 		// Forward declaration with range loops
 		{`
-		func process_list(items) {
-			result := []
-			for _, item := range items {
+		function process_list(items) {
+			let result = []
+			for let _, item = range items {
 				result.append(transform_item(item))
 			}
 			return result
 		}
 		
-		func transform_item(x) {
+		function transform_item(x) {
 			return x + 10
 		}
 		
@@ -2700,39 +2586,39 @@ func TestComplexForwardDeclarationScenarios(t *testing.T) {
 	tests := []testCase{
 		// Multiple forward declarations with dependencies
 		{`
-		func main_processor() {
-			data := prepare_data()
-			processed := process_data(data)
+		function main_processor() {
+			let data = prepare_data()
+			let processed = process_data(data)
 			return finalize_data(processed)
 		}
 		
-		func prepare_data() {
+		function prepare_data() {
 			return [1, 2, 3, 4, 5]
 		}
 		
-		func process_data(items) {
-			result := []
-			for _, item := range items {
+		function process_data(items) {
+			let result = []
+			for let _, item = range items {
 				result.append(transform_value(item))
 			}
 			return result
 		}
 		
-		func transform_value(x) {
+		function transform_value(x) {
 			return multiply_by_factor(x, 3)
 		}
 		
-		func multiply_by_factor(value, factor) {
+		function multiply_by_factor(value, factor) {
 			return value * factor
 		}
 		
-		func finalize_data(items) {
+		function finalize_data(items) {
 			return calculate_sum(items)
 		}
 		
-		func calculate_sum(items) {
-			total := 0
-			for _, item := range items {
+		function calculate_sum(items) {
+			let total = 0
+			for let _, item = range items {
 				total += item
 			}
 			return total
@@ -2743,22 +2629,22 @@ func TestComplexForwardDeclarationScenarios(t *testing.T) {
 
 		// Forward declaration with error handling
 		{`
-		func safe_processor(x) {
-			result := try(
-				func() { return risky_operation(x) },
-				func(e) { return fallback_operation(x) }
+		function safe_processor(x) {
+			let result = try(
+				function() { return risky_operation(x) },
+				function(e) { return fallback_operation(x) }
 			)
 			return result
 		}
 		
-		func risky_operation(x) {
+		function risky_operation(x) {
 			if x < 0 {
 				error("negative number")
 			}
 			return x * 2
 		}
 		
-		func fallback_operation(x) {
+		function fallback_operation(x) {
 			return 0
 		}
 		
@@ -2775,15 +2661,15 @@ func TestForwardDeclarationEdgeCases(t *testing.T) {
 	tests := []testCase{
 		// Forward declaration with nested function returning global function
 		{`
-		func outer() {
-			func inner() {
+		function outer() {
+			function inner() {
 				return "inner"
 			}
 			
 			return inner() + " " + global_helper()
 		}
 		
-		func global_helper() {
+		function global_helper() {
 			return "outer"
 		}
 		
@@ -2792,31 +2678,31 @@ func TestForwardDeclarationEdgeCases(t *testing.T) {
 
 		// Forward declaration with anonymous functions
 		{`
-		func factory() {
-			return func() {
+		function factory() {
+			return function() {
 				return delayed_function()
 			}
 		}
 		
-		func delayed_function() {
+		function delayed_function() {
 			return "delayed"
 		}
 		
-		fn := factory()
+		let fn = factory()
 		fn()
 		`, object.NewString("delayed")},
 
 		// Forward declaration with function as parameter
 		{`
-		func processor(fn) {
+		function processor(fn) {
 			return fn(5)
 		}
 		
-		func main() {
+		function main() {
 			return processor(multiplier)
 		}
 		
-		func multiplier(x) {
+		function multiplier(x) {
 			return x * 3
 		}
 		
@@ -2838,7 +2724,7 @@ func TestForwardDeclarationErrors(t *testing.T) {
 		{
 			name: "undefined function call",
 			input: `
-			func caller() {
+			function caller() {
 				return nonexistent_function()
 			}
 			caller()
@@ -2848,11 +2734,11 @@ func TestForwardDeclarationErrors(t *testing.T) {
 		{
 			name: "function redefinition error",
 			input: `
-			func duplicate() {
+			function duplicate() {
 				return 1
 			}
 			
-			func duplicate() {
+			function duplicate() {
 				return 2
 			}
 			
@@ -2863,11 +2749,11 @@ func TestForwardDeclarationErrors(t *testing.T) {
 		{
 			name: "circular dependency with undefined function",
 			input: `
-			func a() {
+			function a() {
 				return b() + c()  // c() is never defined
 			}
 			
-			func b() {
+			function b() {
 				return a()
 			}
 			
@@ -2890,7 +2776,7 @@ func TestRunCode(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a VM with initial code
-	vm, err := newVM(ctx, "x := 10; y := 20; x + y")
+	vm, err := newVM(ctx, "let x = 10; let y = 20; x + y")
 	require.NoError(t, err)
 
 	// Run the initial code
@@ -2901,7 +2787,7 @@ func TestRunCode(t *testing.T) {
 	require.Equal(t, result.(*object.Int).Value(), int64(30))
 
 	// Compile and run different code on the same VM
-	ast2, err := parser.Parse(ctx, "a := 5; b := 15; a * b")
+	ast2, err := parser.Parse(ctx, "let a = 5; let b = 15; a * b")
 	require.NoError(t, err)
 
 	globals := basicBuiltins()
@@ -2922,8 +2808,8 @@ func TestRunCode(t *testing.T) {
 
 	// Run a third piece of code
 	source3 := `
-		name := "Risor"
-		greeting := "Hello, " + name + "!"
+		let name = "Risor"
+		let greeting = "Hello, " + name + "!"
 		greeting
 	`
 	ast3, err := parser.Parse(ctx, source3)
@@ -2948,7 +2834,7 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 	}
 
 	source1 := `
-		result := baseValue * multiplier
+		let result = baseValue * multiplier
 		result
 	`
 	vm, err := newVM(ctx, source1, runOpts{Globals: customGlobals})
@@ -2961,7 +2847,7 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 
 	// Run different code that also uses globals
 	source2 := `
-		newResult := baseValue + multiplier
+		let newResult = baseValue + multiplier
 		newResult
 	`
 	ast2, err := parser.Parse(ctx, source2)
@@ -2986,7 +2872,7 @@ func TestRunCodeFunctions(t *testing.T) {
 
 	// Test that functions work correctly when running multiple code objects
 	source1 := `
-		func add(a, b) {
+		function add(a, b) {
 			return a + b
 		}
 		add(10, 20)
@@ -3001,7 +2887,7 @@ func TestRunCodeFunctions(t *testing.T) {
 
 	// Run code with a different function
 	source2 := `
-		func multiply(x, y) {
+		function multiply(x, y) {
 			return x * y
 		}
 		multiply(6, 7)
@@ -3028,12 +2914,12 @@ func TestRunCodeOnVM(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a VM with initial code
-	vm, err := newVM(ctx, "x := 42; x")
+	vm, err := newVM(ctx, "let x = 42; x")
 	require.NoError(t, err)
 	require.NoError(t, vm.Run(ctx))
 
 	// Compile a different piece of code
-	ast2, err := parser.Parse(ctx, "y := 100; z := 200; y + z")
+	ast2, err := parser.Parse(ctx, "let y = 100; let z = 200; y + z")
 	require.NoError(t, err)
 
 	globals := basicBuiltins()
@@ -3052,7 +2938,7 @@ func TestRunCodeOnVM(t *testing.T) {
 func TestRunCodeFirst(t *testing.T) {
 	ctx := context.Background()
 	vm, err := newVM(ctx, `
-		func add(a, b) { return a + b }
+		function add(a, b) { return a + b }
 		add(10, 20)
 	`)
 	require.NoError(t, err)
@@ -3082,7 +2968,7 @@ func TestNewEmpty(t *testing.T) {
 	require.ErrorContains(t, err, "no main code available")
 
 	// Test that RunCode() works with specific code
-	code := compile(`x := 42; x`)
+	code := compile(`let x = 42; x`)
 	err = vm.RunCode(ctx, code)
 	require.NoError(t, err)
 
@@ -3094,7 +2980,7 @@ func TestNewEmpty(t *testing.T) {
 	require.Equal(t, intResult.Value(), int64(42))
 
 	// Test that Call() works with functions
-	fnCode := compile(`func add(a, b) { return a + b }`)
+	fnCode := compile(`function add(a, b) { return a + b }`)
 	err = vm.RunCode(ctx, fnCode)
 	require.NoError(t, err)
 
@@ -3127,7 +3013,7 @@ func TestNewEmptyClone(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run some code to set up state
-	code := compile(`x := 100`)
+	code := compile(`let x = 100`)
 	err = vm.RunCode(ctx, code)
 	require.NoError(t, err)
 
@@ -3144,7 +3030,7 @@ func TestNewEmptyClone(t *testing.T) {
 	require.ErrorContains(t, err, "no main code available")
 
 	// Verify RunCode() works on clone
-	newCode := compile(`y := 200; y`)
+	newCode := compile(`let y = 200; y`)
 	err = clone.RunCode(ctx, newCode)
 	require.NoError(t, err)
 
@@ -3158,7 +3044,7 @@ func TestNewEmptyClone(t *testing.T) {
 
 func TestForIn1(t *testing.T) {
 	result, err := run(context.Background(), `
-	sum := 0
+	let sum = 0
 	for x in [1, 2, 3] {
 		sum = sum + x
 	}
@@ -3170,8 +3056,8 @@ func TestForIn1(t *testing.T) {
 
 func TestForIn2(t *testing.T) {
 	result, err := run(context.Background(), `
-	fruits := ["apple", "banana", "cherry"]
-	last := ""
+	let fruits = ["apple", "banana", "cherry"]
+	let last = ""
 	for fruit in fruits {
 		last = fruit
 	}
@@ -3183,7 +3069,7 @@ func TestForIn2(t *testing.T) {
 
 func TestForIn3(t *testing.T) {
 	result, err := run(context.Background(), `
-	items := []
+	let items = []
 	for x in [10, 20, 30] {
 		items.append(x * 2)
 	}
@@ -3199,7 +3085,7 @@ func TestForIn3(t *testing.T) {
 
 func TestForInString(t *testing.T) {
 	result, err := run(context.Background(), `
-	chars := []
+	let chars = []
 	for c in "hello" {
 		chars.append(c)
 	}
@@ -3217,7 +3103,7 @@ func TestForInString(t *testing.T) {
 
 func TestForInBreakContinue(t *testing.T) {
 	result, err := run(context.Background(), `
-	sum := 0
+	let sum = 0
 	for x in [1, 2, 3, 4, 5] {
 		if x == 3 {
 			continue
@@ -3235,8 +3121,8 @@ func TestForInBreakContinue(t *testing.T) {
 
 func TestForInWithMaps(t *testing.T) {
 	result, err := run(context.Background(), `
-	data := {a: 1, b: 2, c: 3}
-	result := []
+	let data = {a: 1, b: 2, c: 3}
+	let result = []
 	for key in data {
 		result.append(key)
 	}
@@ -3253,8 +3139,8 @@ func TestForInWithMaps(t *testing.T) {
 
 func TestForInWithSets(t *testing.T) {
 	result, err := run(context.Background(), `
-	data := {1, 2, 3}
-	result := []
+	let data = {1, 2, 3}
+	let result = []
 	for item in data {
 		result.append(item)
 	}
@@ -3270,7 +3156,7 @@ func TestForInWithSets(t *testing.T) {
 
 func TestForInWithRangeFunction(t *testing.T) {
 	result, err := run(context.Background(), `
-	total := 0
+	let total = 0
 	for i in range(5) {
 		total = total + i
 	}
@@ -3282,7 +3168,7 @@ func TestForInWithRangeFunction(t *testing.T) {
 
 func TestForInNestedLoops(t *testing.T) {
 	result, err := run(context.Background(), `
-	pairs := []
+	let pairs = []
 	for x in [1, 2] {
 		for y in [3, 4] {
 			pairs.append([x, y])
@@ -3302,8 +3188,8 @@ func TestForInNestedLoops(t *testing.T) {
 
 func TestForInWithComplexExpressions(t *testing.T) {
 	result, err := run(context.Background(), `
-	data := [[1, 2], [3, 4], [5, 6]]
-	sum := 0
+	let data = [[1, 2], [3, 4], [5, 6]]
+	let sum = 0
 	for row in data {
 		for val in row {
 			sum = sum + val
@@ -3317,10 +3203,10 @@ func TestForInWithComplexExpressions(t *testing.T) {
 
 func TestForInWithFunctionCalls(t *testing.T) {
 	result, err := run(context.Background(), `
-	getData := func() { 
+	let getData = function() { 
 		return [10, 20, 30] 
 	}
-	sum := 0
+	let sum = 0
 	for val in getData() {
 		sum = sum + val
 	}
@@ -3332,8 +3218,8 @@ func TestForInWithFunctionCalls(t *testing.T) {
 
 func TestForInWithMethodChaining(t *testing.T) {
 	result, err := run(context.Background(), `
-	getData := func() { return [1, 2, 3] }
-	sum := 0
+	let getData = function() { return [1, 2, 3] }
+	let sum = 0
 	for val in getData() {
 		sum = sum + val
 	}
@@ -3345,7 +3231,7 @@ func TestForInWithMethodChaining(t *testing.T) {
 
 func TestForInEmptyIterable(t *testing.T) {
 	result, err := run(context.Background(), `
-	count := 0
+	let count = 0
 	for x in [] {
 		count++
 	}
@@ -3357,7 +3243,7 @@ func TestForInEmptyIterable(t *testing.T) {
 
 func TestForInSingleElement(t *testing.T) {
 	result, err := run(context.Background(), `
-	value := nil
+	let value = nil
 	for x in [42] {
 		value = x
 	}
@@ -3369,7 +3255,7 @@ func TestForInSingleElement(t *testing.T) {
 
 func TestForInVariableScoping(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := "outer"
+	let x = "outer"
 	for x in ["inner"] {
 		// x is now "inner" in loop scope
 	}
@@ -3388,7 +3274,7 @@ func TestForInWithDifferentTypes(t *testing.T) {
 		{
 			name: "iterate over mixed types",
 			input: `
-			result := []
+			let result = []
 			for item in [1, "hello", true, 3.14] {
 				result.append(item)
 			}
@@ -3404,7 +3290,7 @@ func TestForInWithDifferentTypes(t *testing.T) {
 		{
 			name: "iterate over string bytes",
 			input: `
-			result := []
+			let result = []
 			for b in "abc" {
 				result.append(b)
 			}
@@ -3445,7 +3331,7 @@ func TestForInErrorConditions(t *testing.T) {
 		{
 			name: "nil iterable",
 			input: `
-			data := nil
+			let data = nil
 			for x in data {
 				x
 			}

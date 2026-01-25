@@ -1,15 +1,15 @@
 #!/usr/bin/env risor --
 
-func connect(user="root", pass="root", host="localhost", port=3306, db="mysql") {
+function connect(user="root", pass="root", host="localhost", port=3306, db="mysql") {
     return sql.connect('mysql+tcp://{user}:{pass}@{host}:{port}/{db}', {"stream": true})
 }
 
-db := connect("root", "root")
+let db = connect("root", "root")
 
-data := fetch('https://raw.githubusercontent.com/bbrumm/databasestar/main/sample_databases/sample_db_superheroes/mysql/01_reference_data.sql')
+let data = fetch('https://raw.githubusercontent.com/bbrumm/databasestar/main/sample_databases/sample_db_superheroes/mysql/01_reference_data.sql')
 
 data.text().split(';').
-    each(func(row) {
+    each(function(row) {
         row = row.trim_space()
         if row != "" && !row.has_prefix('#') {
             db.exec(row)
@@ -17,6 +17,6 @@ data.text().split(';').
     })
 
 db.query("select full_name from superhero.superhero where superhero_name like 'Batman%'").
-    each(func(row) {
+    each(function(row) {
         print(row["full_name"])
     })

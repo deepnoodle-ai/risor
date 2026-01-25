@@ -62,36 +62,19 @@ func Parse(s string) (*Template, error) {
 	for i := 0; i < len(runes); i++ {
 		char := getChar(i)
 		peekChar := getChar(i + 1)
-		if char == '{' && peekChar == '{' {
-			// Escaped { literal
-			char = '{'
-			i++
-		} else if char == '}' {
+		if char == '$' && peekChar == '{' {
+			// Start of an expression ${...}
 			if curFragment != nil && curFragment.IsVariable() {
-				// Closed expression
-				curFragment = nil
-				continue
-			}
-			if peekChar == '}' {
-				// Escaped } literal
-				char = '}'
-				i++
-			} else {
-				// Unescaped } literal is illegal
-				return nil, fmt.Errorf("invalid '}' in template: %v", s)
-			}
-		} else if char == '{' {
-			// Start of an expression. Error if we're already in an expression.
-			if curFragment != nil && curFragment.IsVariable() {
-				return nil, fmt.Errorf("invalid '{' in template: %v", s)
+				return nil, fmt.Errorf("invalid '${' in template: %v", s)
 			}
 			curFragment = &Fragment{
 				isVariable: true,
 				value:      "",
 			}
 			template.fragments = append(template.fragments, curFragment)
+			i++ // Skip the '{' as well
 			continue
-		} else if curFragment != nil && curFragment.IsVariable() && char == '}' {
+		} else if char == '}' && curFragment != nil && curFragment.IsVariable() {
 			// End of an expression
 			curFragment = nil
 			continue

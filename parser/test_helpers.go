@@ -9,8 +9,8 @@ import (
 
 func testVarStatement(t *testing.T, s *ast.Var, name string) bool {
 	t.Helper()
-	if s.Literal() != "var" {
-		t.Errorf("s.Literal not 'var'. got %q", s.Literal())
+	if s.Literal() != "let" {
+		t.Errorf("s.Literal not 'let'. got %q", s.Literal())
 		return false
 	}
 	varName, _ := s.Value()
