@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/risor-io/risor/ast"
+	"github.com/risor-io/risor/internal/token"
 	"github.com/risor-io/risor/op"
 	"github.com/risor-io/risor/parser"
-	"github.com/risor-io/risor/internal/token"
 	"github.com/stretchr/testify/require"
 )
 

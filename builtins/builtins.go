@@ -70,19 +70,20 @@ func Set(ctx context.Context, args ...object.Object) object.Object {
 	if len(args) == 0 {
 		return set
 	}
-	arg := args[0]
-	iter, err := object.AsIterator(arg)
-	if err != nil {
-		return err
+	enumerable, ok := args[0].(object.Enumerable)
+	if !ok {
+		return object.TypeErrorf("type error: set() expected an enumerable (%s given)", args[0].Type())
 	}
-	for {
-		val, ok := iter.Next(ctx)
-		if !ok {
-			break
+	var addErr object.Object
+	enumerable.Enumerate(ctx, func(key, value object.Object) bool {
+		if res := set.Add(value); object.IsError(res) {
+			addErr = res
+			return false
 		}
-		if res := set.Add(val); object.IsError(res) {
-			return res
-		}
+		return true
+	})
+	if addErr != nil {
+		return addErr
 	}
 	return set
 }
@@ -105,19 +106,15 @@ func List(ctx context.Context, args ...object.Object) object.Object {
 		}
 		return object.NewList(arr)
 	}
-	arg := args[0]
-	iter, err := object.AsIterator(arg)
-	if err != nil {
-		return err
+	enumerable, ok := args[0].(object.Enumerable)
+	if !ok {
+		return object.TypeErrorf("type error: list() expected an enumerable (%s given)", args[0].Type())
 	}
 	var items []object.Object
-	for {
-		val, ok := iter.Next(ctx)
-		if !ok {
-			break
-		}
-		items = append(items, val)
-	}
+	enumerable.Enumerate(ctx, func(key, value object.Object) bool {
+		items = append(items, value)
+		return true
+	})
 	return object.NewList(items)
 }
 
@@ -129,8 +126,7 @@ func Map(ctx context.Context, args ...object.Object) object.Object {
 	if len(args) == 0 {
 		return result
 	}
-	arg := args[0]
-	list, ok := arg.(*object.List)
+	list, ok := args[0].(*object.List)
 	if ok {
 		for _, obj := range list.Value() {
 			subListObj, ok := obj.(*object.List)
@@ -146,23 +142,19 @@ func Map(ctx context.Context, args ...object.Object) object.Object {
 		}
 		return result
 	}
-	iter, err := object.AsIterator(arg)
-	if err != nil {
-		return err
+	enumerable, ok := args[0].(object.Enumerable)
+	if !ok {
+		return object.TypeErrorf("type error: map() expected a list or enumerable (%s given)", args[0].Type())
 	}
-	for {
-		if _, ok := iter.Next(ctx); !ok {
-			break
-		}
-		entry, _ := iter.Entry()
-		k, v := entry.Key(), entry.Value()
-		switch k := k.(type) {
+	enumerable.Enumerate(ctx, func(key, value object.Object) bool {
+		switch k := key.(type) {
 		case *object.String:
-			result.Set(k.Value(), v)
+			result.Set(k.Value(), value)
 		default:
-			result.Set(k.Inspect(), v)
+			result.Set(key.Inspect(), value)
 		}
-	}
+		return true
+	})
 	return result
 }
 
@@ -358,26 +350,17 @@ func Any(ctx context.Context, args ...object.Object) object.Object {
 				return object.True
 			}
 		}
-	case object.Iterable:
-		iter := arg.Iter()
-		for {
-			val, ok := iter.Next(ctx)
-			if !ok {
-				break
+	case object.Enumerable:
+		found := false
+		arg.Enumerate(ctx, func(key, value object.Object) bool {
+			if value.IsTruthy() {
+				found = true
+				return false
 			}
-			if val.IsTruthy() {
-				return object.True
-			}
-		}
-	case object.Iterator:
-		for {
-			val, ok := arg.Next(ctx)
-			if !ok {
-				break
-			}
-			if val.IsTruthy() {
-				return object.True
-			}
+			return true
+		})
+		if found {
+			return object.True
 		}
 	default:
 		return object.TypeErrorf("type error: any() argument must be a container (%s given)", args[0].Type())
@@ -414,26 +397,17 @@ func All(ctx context.Context, args ...object.Object) object.Object {
 				return object.False
 			}
 		}
-	case object.Iterable:
-		iter := arg.Iter()
-		for {
-			val, ok := iter.Next(ctx)
-			if !ok {
-				break
+	case object.Enumerable:
+		allTruthy := true
+		arg.Enumerate(ctx, func(key, value object.Object) bool {
+			if !value.IsTruthy() {
+				allTruthy = false
+				return false
 			}
-			if !val.IsTruthy() {
-				return object.False
-			}
-		}
-	case object.Iterator:
-		for {
-			val, ok := arg.Next(ctx)
-			if !ok {
-				break
-			}
-			if !val.IsTruthy() {
-				return object.False
-			}
+			return true
+		})
+		if !allTruthy {
+			return object.False
 		}
 	default:
 		return object.TypeErrorf("type error: all() argument must be a container (%s given)", args[0].Type())
@@ -568,33 +542,23 @@ func Keys(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.Require("keys", 1, args); err != nil {
 		return err
 	}
-	arg := args[0]
-	switch arg := arg.(type) {
+	switch arg := args[0].(type) {
 	case *object.Map:
 		return arg.Keys()
 	case *object.List:
 		return arg.Keys()
 	case *object.Set:
 		return arg.List()
-	case object.Iterable:
-		return iterKeys(ctx, arg.Iter())
-	case object.Iterator:
-		return iterKeys(ctx, arg)
+	case object.Enumerable:
+		var keys []object.Object
+		arg.Enumerate(ctx, func(key, value object.Object) bool {
+			keys = append(keys, key)
+			return true
+		})
+		return object.NewList(keys)
 	default:
-		return object.TypeErrorf("type error: keys() unsupported argument (%s given)", arg.Type())
+		return object.TypeErrorf("type error: keys() unsupported argument (%s given)", args[0].Type())
 	}
-}
-
-func iterKeys(ctx context.Context, iter object.Iterator) object.Object {
-	var keys []object.Object
-	for {
-		if _, ok := iter.Next(ctx); !ok {
-			break
-		}
-		entry, _ := iter.Entry()
-		keys = append(keys, entry.Key())
-	}
-	return object.NewList(keys)
 }
 
 func Byte(ctx context.Context, args ...object.Object) object.Object {
@@ -667,17 +631,6 @@ func Float(ctx context.Context, args ...object.Object) object.Object {
 	default:
 		return object.TypeErrorf("type error: float() unsupported argument (%s given)", args[0].Type())
 	}
-}
-
-func Iter(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("iter", 1, args); err != nil {
-		return err
-	}
-	container, ok := args[0].(object.Iterable)
-	if !ok {
-		return object.TypeErrorf("type error: iter() expected an iterable (%s given)", args[0].Type())
-	}
-	return container.Iter()
 }
 
 func Hash(ctx context.Context, args ...object.Object) object.Object {

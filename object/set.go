@@ -276,8 +276,12 @@ func (s *Set) Len() *Int {
 	return NewInt(int64(len(s.items)))
 }
 
-func (s *Set) Iter() Iterator {
-	return NewSetIter(s)
+func (s *Set) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for _, v := range s.items {
+		if !fn(v, v) {
+			return
+		}
+	}
 }
 
 func (s *Set) Keys() []HashKey {

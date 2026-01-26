@@ -27,4 +27,3 @@ func TestContextCallFunc(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, NewInt(42), result)
 }
-

@@ -28,4 +28,3 @@ func GetCallFunc(ctx context.Context) (CallFunc, bool) {
 	}
 	return nil, false
 }
-

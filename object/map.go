@@ -379,8 +379,12 @@ func (m *Map) Len() *Int {
 	return NewInt(int64(len(m.items)))
 }
 
-func (m *Map) Iter() Iterator {
-	return NewMapIter(m)
+func (m *Map) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for _, k := range m.SortedKeys() {
+		if !fn(NewString(k), m.items[k]) {
+			return
+		}
+	}
 }
 
 func (m *Map) StringKeys() []string {

@@ -423,13 +423,11 @@ func (s *String) Len() *Int {
 	return NewInt(int64(len([]rune(s.value))))
 }
 
-func (s *String) Iter() Iterator {
-	runes := []rune(s.value)
-	return &SliceIter{
-		s:         runes,
-		size:      len(runes),
-		pos:       -1,
-		converter: &RuneConverter{},
+func (s *String) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for i, r := range s.value {
+		if !fn(NewInt(int64(i)), NewString(string(r))) {
+			return
+		}
 	}
 }
 

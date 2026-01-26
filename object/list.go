@@ -562,8 +562,12 @@ func (ls *List) Size() int {
 	return len(ls.items)
 }
 
-func (ls *List) Iter() Iterator {
-	return NewListIter(ls)
+func (ls *List) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for i, item := range ls.items {
+		if !fn(NewInt(int64(i)), item) {
+			return
+		}
+	}
 }
 
 func (ls *List) RunOperation(opType op.BinaryOpType, right Object) Object {

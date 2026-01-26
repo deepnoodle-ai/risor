@@ -45,11 +45,11 @@ type VirtualMachine struct {
 	inputGlobals map[string]any
 	globals      map[string]object.Object
 	loadedCode   map[*compiler.Code]*code
-	running  bool
-	runMutex sync.Mutex
-	tmp      [MaxArgs]object.Object
-	stack  [MaxStackDepth]object.Object
-	frames []frame // Dynamically sized, grows up to MaxFrameDepth
+	running      bool
+	runMutex     sync.Mutex
+	tmp          [MaxArgs]object.Object
+	stack        [MaxStackDepth]object.Object
+	frames       []frame // Dynamically sized, grows up to MaxFrameDepth
 
 	// contextCheckInterval is the number of instructions between deterministic
 	// checks of ctx.Done(). A value of 0 disables deterministic checking,
@@ -68,10 +68,10 @@ type VirtualMachine struct {
 // exceptionFrame represents an active exception handler on the exception stack.
 type exceptionFrame struct {
 	handler      *compiler.ExceptionHandler
-	code         *code           // The code object containing this handler
-	fp           int             // Frame pointer when handler was pushed
-	pendingError *object.Error   // Error to re-throw after finally (if any)
-	inFinally    bool            // Are we currently executing a finally block?
+	code         *code         // The code object containing this handler
+	fp           int           // Frame pointer when handler was pushed
+	pendingError *object.Error // Error to re-throw after finally (if any)
+	inFinally    bool          // Are we currently executing a finally block?
 }
 
 // New creates a new Virtual Machine.
@@ -646,6 +646,16 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				continue
 			}
 			// Get items from the enumerable
+			// For maps, spread yields keys; for other containers, spread yields values
+			if m, ok := iterableObj.(*object.Map); ok {
+				newItems := list.Value()
+				m.Enumerate(ctx, func(key, value object.Object) bool {
+					newItems = append(newItems, key)
+					return true
+				})
+				vm.push(object.NewList(newItems))
+				continue
+			}
 			enumerable, ok := iterableObj.(object.Enumerable)
 			if !ok {
 				if herr := vm.tryHandleError(vm.typeError("spread requires an enumerable (got %s)", iterableObj.Type())); herr != nil {
@@ -865,11 +875,20 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				continue
 			}
 			count := int64(0)
-			container.Enumerate(ctx, func(key, value object.Object) bool {
-				vm.push(value)
-				count++
-				return true
-			})
+			// For maps, unpack yields keys; for other containers, unpack yields values
+			if m, ok := containerObj.(*object.Map); ok {
+				m.Enumerate(ctx, func(key, value object.Object) bool {
+					vm.push(key)
+					count++
+					return true
+				})
+			} else {
+				container.Enumerate(ctx, func(key, value object.Object) bool {
+					vm.push(value)
+					count++
+					return true
+				})
+			}
 			// Pad with nil for missing elements (allows defaults to work)
 			for count < nameCount {
 				vm.push(object.Nil)

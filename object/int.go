@@ -1,6 +1,7 @@
 package object
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -158,8 +159,20 @@ func (i *Int) MarshalJSON() ([]byte, error) {
 	return json.Marshal(i.value)
 }
 
-func (i *Int) Iter() Iterator {
-	return NewIntIter(i)
+func (i *Int) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	if i.value >= 0 {
+		for j := int64(0); j < i.value; j++ {
+			if !fn(NewInt(j), NewInt(j)) {
+				return
+			}
+		}
+	} else {
+		for j := int64(0); j > i.value; j-- {
+			if !fn(NewInt(-j), NewInt(j)) {
+				return
+			}
+		}
+	}
 }
 
 func NewInt(value int64) *Int {

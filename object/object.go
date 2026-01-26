@@ -49,22 +49,15 @@ const (
 	GO_METHOD     Type = "go_method"
 	GO_TYPE       Type = "go_type"
 	INT           Type = "int"
-	INT_ITER      Type = "int_iter"
-	ITER_ENTRY    Type = "iter_entry"
 	LIST          Type = "list"
-	LIST_ITER     Type = "list_iter"
 	MAP           Type = "map"
-	MAP_ITER      Type = "map_iter"
 	MODULE        Type = "module"
 	NIL           Type = "nil"
 	PARTIAL       Type = "partial"
 	PROXY         Type = "proxy"
 	RESULT        Type = "result"
 	SET           Type = "set"
-	SET_ITER      Type = "set_iter"
-	SLICE_ITER    Type = "slice_iter"
 	STRING        Type = "string"
-	STRING_ITER   Type = "string_iter"
 	TIME          Type = "time"
 )
 
@@ -111,35 +104,14 @@ type Slice struct {
 	Stop  Object
 }
 
-// IteratorEntry is a single item returned by an iterator.
-type IteratorEntry interface {
-	Object
-	Key() Object
-	Value() Object
-	Primary() Object
-}
-
-// Iterator is an interface used to iterate over a container.
-type Iterator interface {
-	Object
-
-	// Next advances the iterator and then returns the current object and a
-	// bool indicating whether the returned item is valid. Once Next() has been
-	// called, the Entry() method can be used to get an IteratorEntry.
-	Next(context.Context) (Object, bool)
-
-	// Entry returns the current entry in the iterator and a bool indicating
-	// whether the returned item is valid.
-	Entry() (IteratorEntry, bool)
-}
-
-// Iterable is an interface that exposes an iterator for an Object.
-type Iterable interface {
-	Iter() Iterator
+// Enumerable is an interface for types that can be iterated with a callback.
+// The callback receives the key and value for each element. Return false to stop.
+type Enumerable interface {
+	Enumerate(ctx context.Context, fn func(key, value Object) bool)
 }
 
 type Container interface {
-	Iterable
+	Enumerable
 
 	// GetItem implements the [key] operator for a container type.
 	GetItem(key Object) (Object, *Error)

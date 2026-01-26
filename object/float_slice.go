@@ -1,6 +1,7 @@
 package object
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -109,12 +110,11 @@ func (f *FloatSlice) Len() *Int {
 	return NewInt(int64(len(f.value)))
 }
 
-func (f *FloatSlice) Iter() Iterator {
-	return &SliceIter{
-		s:         f.value,
-		size:      len(f.value),
-		pos:       -1,
-		converter: &Float64Converter{},
+func (f *FloatSlice) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for i, v := range f.value {
+		if !fn(NewInt(int64(i)), NewFloat(v)) {
+			return
+		}
 	}
 }
 

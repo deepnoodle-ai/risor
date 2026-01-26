@@ -209,17 +209,6 @@ func AsWriter(obj Object) (io.Writer, *Error) {
 	}
 }
 
-func AsIterator(obj Object) (Iterator, *Error) {
-	switch obj := obj.(type) {
-	case Iterator:
-		return obj, nil
-	case Iterable:
-		return obj.Iter(), nil
-	default:
-		return nil, TypeErrorf("type error: expected an iterable object (%s given)", obj.Type())
-	}
-}
-
 func AsError(obj Object) (*Error, *Error) {
 	err, ok := obj.(*Error)
 	if !ok {

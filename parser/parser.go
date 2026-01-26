@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/risor-io/risor/ast"
-	"github.com/risor-io/risor/internal/tmpl"
 	"github.com/risor-io/risor/internal/lexer"
+	"github.com/risor-io/risor/internal/tmpl"
 	"github.com/risor-io/risor/internal/token"
 )
 

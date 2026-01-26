@@ -320,12 +320,11 @@ func (b *ByteSlice) Len() *Int {
 	return NewInt(int64(len(b.value)))
 }
 
-func (b *ByteSlice) Iter() Iterator {
-	return &SliceIter{
-		s:         b.value,
-		size:      len(b.value),
-		pos:       -1,
-		converter: &ByteConverter{},
+func (b *ByteSlice) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for i, v := range b.value {
+		if !fn(NewInt(int64(i)), NewByte(v)) {
+			return
+		}
 	}
 }
 
