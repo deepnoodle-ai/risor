@@ -154,7 +154,16 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 	if err != nil {
 		return nil, err
 	}
-	return result.Interface(), nil
+	// Convert to Go value
+	interfaceVal := result.Interface()
+	// For objects that don't have a Go equivalent (modules, closures),
+	// return their string representation
+	if interfaceVal == nil {
+		if _, isNil := result.(*object.NilType); !isNil {
+			return result.Inspect(), nil
+		}
+	}
+	return interfaceVal, nil
 }
 
 // Eval is a convenience function that compiles and runs source code.

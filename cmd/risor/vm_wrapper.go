@@ -97,7 +97,18 @@ func (v *replVM) Eval(ctx context.Context, source string) (any, error) {
 		return nil, errObj.Value()
 	}
 
-	return result.Interface(), nil
+	// Convert to Go value
+	interfaceVal := result.Interface()
+
+	// For objects that don't have a Go equivalent (modules, closures),
+	// return their string representation so the REPL can display them
+	if interfaceVal == nil {
+		if _, isNil := result.(*object.NilType); !isNil {
+			return result.Inspect(), nil
+		}
+	}
+
+	return interfaceVal, nil
 }
 
 // Run executes compiled bytecode within this VM's context.

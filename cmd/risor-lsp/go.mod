@@ -1,6 +1,6 @@
 module github.com/risor-io/risor/cmd/risor-lsp
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/jdbaldry/go-language-server-protocol v0.0.0-20211013214444-3022da0884b2
