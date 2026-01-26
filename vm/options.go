@@ -1,9 +1,5 @@
 package vm
 
-import (
-	"github.com/risor-io/risor/importer"
-)
-
 // Option is a configuration function for a Virtual Machine.
 type Option func(*VirtualMachine)
 
@@ -11,13 +7,6 @@ type Option func(*VirtualMachine)
 func WithInstructionOffset(offset int) Option {
 	return func(vm *VirtualMachine) {
 		vm.ip = offset
-	}
-}
-
-// WithImporter is used to supply an Importer to the Virtual Machine.
-func WithImporter(importer importer.Importer) Option {
-	return func(vm *VirtualMachine) {
-		vm.importer = importer
 	}
 }
 

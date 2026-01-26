@@ -22,7 +22,7 @@ func checkCallArgs(fn *object.Function, argc int) error {
 				msg = fmt.Sprintf("%s %q", msg, name)
 			}
 			msg = fmt.Sprintf("%s requires at least %d argument(s) (%d given)", msg, requiredArgsCount, argc)
-			return errz.ArgsErrorf(msg)
+			return errz.ArgsErrorf("%s", msg)
 		}
 		return nil
 	}
@@ -41,7 +41,7 @@ func checkCallArgs(fn *object.Function, argc int) error {
 		default:
 			msg = fmt.Sprintf("%s takes %d arguments (%d given)", msg, paramsCount, argc)
 		}
-		return errz.ArgsErrorf(msg)
+		return errz.ArgsErrorf("%s", msg)
 	}
 	return nil
 }

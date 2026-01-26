@@ -322,14 +322,6 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileSlice(node); err != nil {
 			return err
 		}
-	case *ast.Import:
-		if err := c.compileImport(node); err != nil {
-			return err
-		}
-	case *ast.FromImport:
-		if err := c.compileFromImport(node); err != nil {
-			return err
-		}
 	case *ast.Switch:
 		if err := c.compileSwitch(node); err != nil {
 			return err
@@ -348,6 +340,14 @@ func (c *Compiler) compile(node ast.Node) error {
 		}
 	case *ast.SetAttr:
 		if err := c.compileSetAttr(node); err != nil {
+			return err
+		}
+	case *ast.Try:
+		if err := c.compileTry(node); err != nil {
+			return err
+		}
+	case *ast.Throw:
+		if err := c.compileThrow(node); err != nil {
 			return err
 		}
 	default:
@@ -754,76 +754,6 @@ func (c *Compiler) compileSwitch(node *ast.Switch) error {
 
 	// Remove the duplicated switch value from the stack
 	c.emit(op.PopTop)
-	return nil
-}
-
-func (c *Compiler) compileImport(node *ast.Import) error {
-	moduleName := node.Path().Value()
-	c.emit(op.LoadConst, c.constant(moduleName))
-	c.emit(op.Import)
-
-	// Determine the variable name to store the imported module
-	var name string
-	if node.Alias() != nil {
-		name = node.Alias().String()
-	} else {
-		name = node.ModuleName()
-	}
-
-	var sym *Symbol
-	var found bool
-	sym, found = c.current.symbols.Get(name)
-	if !found {
-		var err error
-		sym, err = c.current.symbols.InsertConstant(name)
-		if err != nil {
-			return err
-		}
-	}
-	if c.current.parent == nil {
-		c.emit(op.StoreGlobal, sym.Index())
-	} else {
-		c.emit(op.StoreFast, sym.Index())
-	}
-	return nil
-}
-
-func (c *Compiler) compileFromImport(node *ast.FromImport) error {
-	if len(node.Parents()) > 255 {
-		return fmt.Errorf("compile error: too many parents in from-import")
-	}
-	for _, parent := range node.Parents() {
-		c.emit(op.LoadConst, c.constant(parent.String()))
-	}
-	aliases := map[string]string{}
-	for _, im := range node.Imports() {
-		name := im.Path().Value()
-		alias := name
-		if im.Alias() != nil {
-			alias = im.Alias().String()
-		}
-		c.emit(op.LoadConst, c.constant(name))
-		aliases[name] = alias
-	}
-	c.emit(op.FromImport, uint16(len(node.Parents())), uint16(len(node.Imports())))
-	for _, im := range node.Imports() {
-		alias := aliases[im.Path().Value()]
-		var sym *Symbol
-		var found bool
-		sym, found = c.current.symbols.Get(alias)
-		if !found {
-			var err error
-			sym, err = c.current.symbols.InsertConstant(alias)
-			if err != nil {
-				return err
-			}
-		}
-		if c.current.parent == nil {
-			c.emit(op.StoreGlobal, sym.Index())
-		} else {
-			c.emit(op.StoreFast, sym.Index())
-		}
-	}
 	return nil
 }
 
@@ -2265,6 +2195,14 @@ func (c *Compiler) emit(opcode op.Code, operands ...uint16) int {
 	pos := len(code.instructions)
 	code.instructions = append(code.instructions, inst...)
 
+	// Track maximum call arguments for VM optimization
+	if opcode == op.Call && len(operands) > 0 {
+		argc := operands[0]
+		if argc > code.maxCallArgs {
+			code.maxCallArgs = argc
+		}
+	}
+
 	// Record source location for each instruction byte
 	loc := c.getCurrentLocation()
 	for range inst {
@@ -2352,4 +2290,146 @@ func (c *Compiler) formatError(msg string, pos token.Position) error {
 	b.WriteString(fmt.Sprintf("%s:%d:%d", filename, pos.LineNumber(), pos.ColumnNumber()))
 	b.WriteString(fmt.Sprintf(" (%s)", lineCol))
 	return fmt.Errorf("%s", b.String())
+}
+
+func (c *Compiler) compileTry(node *ast.Try) error {
+	// Record the start of the try block
+	tryStart := c.currentPosition()
+
+	// Emit PushExcept with placeholders for catch/finally offsets
+	pushExceptPos := c.emit(op.PushExcept, Placeholder, Placeholder)
+
+	// Compile the try body
+	if err := c.compileBlock(node.Body()); err != nil {
+		return err
+	}
+
+	// Pop the result of the try block (we'll push the final result later)
+	c.emit(op.PopTop)
+
+	// Emit PopExcept (normal completion - removes exception handler)
+	c.emit(op.PopExcept)
+
+	// Jump to finally if we have one, otherwise past catch block
+	jumpAfterTryPos := c.emit(op.JumpForward, Placeholder)
+
+	// Record where catch block starts (or where an exception would land if no catch)
+	catchStart := c.currentPosition()
+
+	// Compile catch block if present
+	catchBlock := node.CatchBlock()
+	catchVarIdx := -1
+	if catchBlock != nil {
+		// Create a new scope for the catch block
+		code := c.current
+		code.symbols = code.symbols.NewBlock()
+
+		// If there's a catch identifier, create a variable for it
+		// The error value will be on the stack when we enter the catch block
+		catchIdent := node.CatchIdent()
+		if catchIdent != nil {
+			sym, err := code.symbols.InsertVariable(catchIdent.Literal())
+			if err != nil {
+				code.symbols = code.symbols.parent
+				return err
+			}
+			catchVarIdx = int(sym.Index())
+			// Store the error from the stack into the catch variable
+			if code.parent == nil {
+				c.emit(op.StoreGlobal, sym.Index())
+			} else {
+				c.emit(op.StoreFast, sym.Index())
+			}
+		} else {
+			// No catch identifier, just pop the error
+			c.emit(op.PopTop)
+		}
+
+		// Compile the catch block body
+		if err := c.compileBlock(catchBlock); err != nil {
+			code.symbols = code.symbols.parent
+			return err
+		}
+
+		// Pop the result of the catch block
+		c.emit(op.PopTop)
+
+		// Exit scope
+		code.symbols = code.symbols.parent
+	}
+
+	// After catch, we fall through to finally (if present) or to end
+	// No jump needed here - execution flows naturally to finally
+
+	// Record where finally block starts
+	finallyStart := c.currentPosition()
+
+	// Compile finally block if present
+	finallyBlock := node.FinallyBlock()
+	if finallyBlock != nil {
+		// Compile the finally block body
+		if err := c.compileBlock(finallyBlock); err != nil {
+			return err
+		}
+
+		// Pop the result of the finally block
+		c.emit(op.PopTop)
+
+		// EndFinally will re-raise any pending exception
+		c.emit(op.EndFinally)
+	}
+
+	// Record the end position
+	endPos := c.currentPosition()
+
+	// Patch the PushExcept instruction with actual offsets
+	catchOffset := uint16(catchStart - pushExceptPos)
+	finallyOffset := uint16(0)
+	if finallyBlock != nil {
+		finallyOffset = uint16(finallyStart - pushExceptPos)
+	}
+	c.changeOperand(pushExceptPos, catchOffset)
+	c.changeOperand(pushExceptPos+1, finallyOffset)
+
+	// Patch jump after try:
+	// - If we have finally, jump to finally
+	// - If we only have catch, jump past catch to the end
+	var jumpTarget int
+	if finallyBlock != nil {
+		jumpTarget = finallyStart
+	} else {
+		jumpTarget = endPos
+	}
+	jumpDelta := jumpTarget - jumpAfterTryPos
+	if jumpDelta > int(Placeholder) {
+		return c.formatError("try block too large", node.Token().StartPosition)
+	}
+	c.changeOperand(jumpAfterTryPos, uint16(jumpDelta))
+
+	// Record the exception handler
+	handler := &ExceptionHandler{
+		TryStart:     tryStart,
+		TryEnd:       endPos,
+		CatchStart:   catchStart,
+		FinallyStart: finallyStart,
+		CatchVarIdx:  catchVarIdx,
+	}
+	c.current.AddExceptionHandler(handler)
+
+	// Try is an expression that evaluates to nil by default
+	// (the actual value handling is more complex and done at runtime)
+	c.emit(op.Nil)
+
+	return nil
+}
+
+func (c *Compiler) compileThrow(node *ast.Throw) error {
+	// Compile the expression to throw
+	if err := c.compile(node.Value()); err != nil {
+		return err
+	}
+
+	// Emit Throw opcode
+	c.emit(op.Throw)
+	return nil
 }

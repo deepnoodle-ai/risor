@@ -26,13 +26,9 @@ func getGlobals() risor.Option {
 }
 
 func getRisorOptions() []risor.Option {
-	opts := []risor.Option{
+	return []risor.Option{
 		getGlobals(),
 	}
-	if modulesDir := viper.GetString("modules"); modulesDir != "" {
-		opts = append(opts, risor.WithLocalImporter(modulesDir))
-	}
-	return opts
 }
 
 func shouldRunRepl(cmd *cobra.Command, args []string) bool {

@@ -612,7 +612,6 @@ func TestTokenLengths(t *testing.T) {
 		{"for", token.FOR, "for", 0, 0, 2},
 		{"let", token.LET, "let", 0, 0, 2},
 		{"false", token.FALSE, "false", 0, 0, 4},
-		{"import", token.IMPORT, "import", 0, 0, 5},
 		{">=", token.GT_EQUALS, ">=", 0, 0, 1},
 		{" \n", token.NEWLINE, "\n", 0, 1, 1},
 		{" {", token.LBRACE, "{", 0, 1, 1},

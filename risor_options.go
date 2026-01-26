@@ -1,7 +1,6 @@
 package risor
 
 import (
-	"github.com/risor-io/risor/importer"
 	"github.com/risor-io/risor/vm"
 )
 
@@ -55,20 +54,6 @@ func WithGlobalOverride(name string, value any) Option {
 func WithoutDefaultGlobals() Option {
 	return func(cfg *config) {
 		cfg.withoutDefaultGlobals = true
-	}
-}
-
-// WithImporter supplies an Importer that will be used to execute import statements.
-func WithImporter(i importer.Importer) Option {
-	return func(cfg *config) {
-		cfg.importer = i
-	}
-}
-
-// WithLocalImporter enables importing Risor modules from the given directory.
-func WithLocalImporter(path string) Option {
-	return func(cfg *config) {
-		cfg.localImportPath = path
 	}
 }
 

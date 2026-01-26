@@ -21,6 +21,15 @@ func (l *loop) end() {
 	code.loops = code.loops[:len(code.loops)-1]
 }
 
+// ExceptionHandler describes a try/catch/finally block for exception handling.
+type ExceptionHandler struct {
+	TryStart     int // IP where try block starts
+	TryEnd       int // IP where try block ends (points to PopExcept)
+	CatchStart   int // IP of catch block (0 if none)
+	FinallyStart int // IP of finally block (0 if none)
+	CatchVarIdx  int // Local index for catch var (-1 if none)
+}
+
 type Code struct {
 	id           string
 	name         string
@@ -37,6 +46,12 @@ type Code struct {
 
 	// Source map: one location per instruction for error reporting
 	locations []errz.SourceLocation
+
+	// Metadata for VM optimizations (computed during compilation)
+	maxCallArgs uint16 // Maximum argument count from any Call opcode in this code
+
+	// Exception handlers for try/catch/finally
+	exceptionHandlers []*ExceptionHandler
 
 	// Used during compilation only
 	loops      []*loop
@@ -113,6 +128,12 @@ func (c *Code) Source() string {
 
 func (c *Code) LocalsCount() int {
 	return int(c.symbols.Count())
+}
+
+// MaxCallArgs returns the maximum argument count from any Call opcode in this code.
+// This is used by the VM for optimization purposes.
+func (c *Code) MaxCallArgs() int {
+	return int(c.maxCallArgs)
 }
 
 func (c *Code) Local(index int) *Symbol {
@@ -195,4 +216,14 @@ func (c *Code) GetSourceLine(lineNum int) string {
 		return ""
 	}
 	return lines[lineNum-1]
+}
+
+// ExceptionHandlers returns all exception handlers in this code.
+func (c *Code) ExceptionHandlers() []*ExceptionHandler {
+	return c.exceptionHandlers
+}
+
+// AddExceptionHandler adds an exception handler to this code.
+func (c *Code) AddExceptionHandler(handler *ExceptionHandler) {
+	c.exceptionHandlers = append(c.exceptionHandlers, handler)
 }

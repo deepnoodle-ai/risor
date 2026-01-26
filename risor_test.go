@@ -248,14 +248,6 @@ func TestWithGlobalOverride(t *testing.T) {
 	}, cfg.Globals())
 }
 
-func TestWithLocalImporter(t *testing.T) {
-	result, err := Eval(context.Background(),
-		`import data; data.mydata.count`,
-		WithLocalImporter("./vm/fixtures"))
-	require.Nil(t, err)
-	require.Equal(t, int64(1), result)
-}
-
 func TestStructFieldModification(t *testing.T) {
 	type Object struct {
 		A int

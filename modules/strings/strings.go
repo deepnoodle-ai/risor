@@ -1,97 +1,315 @@
 package strings
 
 import (
+	"context"
+	"math"
 	"strings"
+
+	"github.com/risor-io/risor/object"
 )
 
-//risor:generate
-
-//risor:export
-func contains(s, substr string) bool {
-	return strings.Contains(s, substr)
+// Contains checks if substr is within s.
+func Contains(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.contains", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	substr, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewBool(strings.Contains(s, substr))
 }
 
-//risor:export has_prefix
-func hasPrefix(s, prefix string) bool {
-	return strings.HasPrefix(s, prefix)
+// HasPrefix tests whether the string s begins with prefix.
+func HasPrefix(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.has_prefix", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	prefix, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewBool(strings.HasPrefix(s, prefix))
 }
 
-//risor:export has_suffix
-func hasSuffix(s, suffix string) bool {
-	return strings.HasSuffix(s, suffix)
+// HasSuffix tests whether the string s ends with suffix.
+func HasSuffix(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.has_suffix", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	suffix, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewBool(strings.HasSuffix(s, suffix))
 }
 
-//risor:export
-func count(s, substr string) int {
-	return strings.Count(s, substr)
+// Count counts the number of non-overlapping instances of substr in s.
+func Count(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.count", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	substr, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewInt(int64(strings.Count(s, substr)))
 }
 
-//risor:export
-func compare(a, b string) int {
-	return strings.Compare(a, b)
+// Compare returns an integer comparing two strings lexicographically.
+func Compare(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.compare", 2, len(args))
+	}
+	a, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	b, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewInt(int64(strings.Compare(a, b)))
 }
 
-//risor:export
-func repeat(s string, count int) string {
-	return strings.Repeat(s, count)
+// Repeat returns a new string consisting of count copies of the string s.
+func Repeat(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.repeat", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	countRaw, err := object.AsInt(args[1])
+	if err != nil {
+		return err
+	}
+	if countRaw > math.MaxInt {
+		return object.TypeErrorf("type error: strings.repeat argument 'count' (index 1) cannot be > %v", math.MaxInt)
+	}
+	if countRaw < math.MinInt {
+		return object.TypeErrorf("type error: strings.repeat argument 'count' (index 1) cannot be < %v", math.MinInt)
+	}
+	return object.NewString(strings.Repeat(s, int(countRaw)))
 }
 
-//risor:export
-func join(list []string, sep string) string {
-	return strings.Join(list, sep)
+// Join concatenates the elements of its first argument to create a single string.
+func Join(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.join", 2, len(args))
+	}
+	list, err := object.AsStringSlice(args[0])
+	if err != nil {
+		return err
+	}
+	sep, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.Join(list, sep))
 }
 
-//risor:export
-func split(s, sep string) []string {
-	return strings.Split(s, sep)
+// Split slices s into all substrings separated by sep.
+func Split(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.split", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	sep, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewStringList(strings.Split(s, sep))
 }
 
-//risor:export
-func fields(s string) []string {
-	return strings.Fields(s)
+// Fields splits the string s around each instance of one or more consecutive white space characters.
+func Fields(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 1 {
+		return object.NewArgsError("strings.fields", 1, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	return object.NewStringList(strings.Fields(s))
 }
 
-//risor:export
-func index(s, substr string) int {
-	return strings.Index(s, substr)
+// Index returns the index of the first instance of substr in s, or -1 if not present.
+func Index(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.index", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	substr, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewInt(int64(strings.Index(s, substr)))
 }
 
-//risor:export last_index
-func lastIndex(s, substr string) int {
-	return strings.LastIndex(s, substr)
+// LastIndex returns the index of the last instance of substr in s, or -1 if not present.
+func LastIndex(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.last_index", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	substr, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewInt(int64(strings.LastIndex(s, substr)))
 }
 
-//risor:export replace_all
-func replaceAll(s, old, new string) string {
-	return strings.ReplaceAll(s, old, new)
+// ReplaceAll returns a copy of the string s with all non-overlapping instances of old replaced by new.
+func ReplaceAll(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 3 {
+		return object.NewArgsError("strings.replace_all", 3, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	old, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	new, err := object.AsString(args[2])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.ReplaceAll(s, old, new))
 }
 
-//risor:export to_lower
-func toLower(s string) string {
-	return strings.ToLower(s)
+// ToLower returns s with all Unicode letters mapped to their lower case.
+func ToLower(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 1 {
+		return object.NewArgsError("strings.to_lower", 1, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.ToLower(s))
 }
 
-//risor:export to_upper
-func toUpper(s string) string {
-	return strings.ToUpper(s)
+// ToUpper returns s with all Unicode letters mapped to their upper case.
+func ToUpper(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 1 {
+		return object.NewArgsError("strings.to_upper", 1, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.ToUpper(s))
 }
 
-//risor:export
-func trim(s, cutset string) string {
-	return strings.Trim(s, cutset)
+// Trim returns a slice of the string s with all leading and trailing Unicode code points contained in cutset removed.
+func Trim(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.trim", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	cutset, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.Trim(s, cutset))
 }
 
-//risor:export trim_prefix
-func trimPrefix(s, prefix string) string {
-	return strings.TrimPrefix(s, prefix)
+// TrimPrefix returns s without the provided leading prefix string.
+func TrimPrefix(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.trim_prefix", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	prefix, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.TrimPrefix(s, prefix))
 }
 
-//risor:export trim_suffix
-func trimSuffix(s, prefix string) string {
-	return strings.TrimSuffix(s, prefix)
+// TrimSuffix returns s without the provided trailing suffix string.
+func TrimSuffix(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 2 {
+		return object.NewArgsError("strings.trim_suffix", 2, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	suffix, err := object.AsString(args[1])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.TrimSuffix(s, suffix))
 }
 
-//risor:export trim_space
-func trimSpace(s string) string {
-	return strings.TrimSpace(s)
+// TrimSpace returns a slice of the string s, with all leading and trailing white space removed.
+func TrimSpace(ctx context.Context, args ...object.Object) object.Object {
+	if len(args) != 1 {
+		return object.NewArgsError("strings.trim_space", 1, len(args))
+	}
+	s, err := object.AsString(args[0])
+	if err != nil {
+		return err
+	}
+	return object.NewString(strings.TrimSpace(s))
+}
+
+// Module returns the Risor module object with all the associated builtin functions.
+func Module() *object.Module {
+	return object.NewBuiltinsModule("strings", map[string]object.Object{
+		"contains":    object.NewBuiltin("contains", Contains),
+		"has_prefix":  object.NewBuiltin("has_prefix", HasPrefix),
+		"has_suffix":  object.NewBuiltin("has_suffix", HasSuffix),
+		"count":       object.NewBuiltin("count", Count),
+		"compare":     object.NewBuiltin("compare", Compare),
+		"repeat":      object.NewBuiltin("repeat", Repeat),
+		"join":        object.NewBuiltin("join", Join),
+		"split":       object.NewBuiltin("split", Split),
+		"fields":      object.NewBuiltin("fields", Fields),
+		"index":       object.NewBuiltin("index", Index),
+		"last_index":  object.NewBuiltin("last_index", LastIndex),
+		"replace_all": object.NewBuiltin("replace_all", ReplaceAll),
+		"to_lower":    object.NewBuiltin("to_lower", ToLower),
+		"to_upper":    object.NewBuiltin("to_upper", ToUpper),
+		"trim":        object.NewBuiltin("trim", Trim),
+		"trim_prefix": object.NewBuiltin("trim_prefix", TrimPrefix),
+		"trim_suffix": object.NewBuiltin("trim_suffix", TrimSuffix),
+		"trim_space":  object.NewBuiltin("trim_space", TrimSpace),
+	})
 }

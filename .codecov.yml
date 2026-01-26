@@ -19,7 +19,6 @@ ignore:
   - "cmd/risor-api/*"
   - "cmd/risor-docs/*"
   - "cmd/risor-lsp/*"
-  - "cmd/risor-modgen/*"
   - "vscode/**/*"
   - "tests/**/*"
   - "terraform/**/*"

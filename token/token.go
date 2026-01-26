@@ -98,20 +98,20 @@ const (
 	STRUCT          = "STRUCT"
 	SWITCH          = "switch"
 	TEMPLATE        = "TEMPLATE"
-	TRUE            = "TRUE"
-	NEWLINE         = "EOL"
-	IMPORT          = "IMPORT"
-	BREAK           = "BREAK"
-	CONTINUE        = "CONTINUE"
-	IN              = "IN"
-	RANGE           = "RANGE"
-	FROM            = "FROM"
-	AS              = "AS"
+	TRUE     = "TRUE"
+	NEWLINE  = "EOL"
+	BREAK    = "BREAK"
+	CONTINUE = "CONTINUE"
+	IN       = "IN"
+	RANGE    = "RANGE"
+	TRY      = "TRY"
+	CATCH           = "CATCH"
+	FINALLY         = "FINALLY"
+	THROW           = "THROW"
 )
 
 // Reserved keywords
 var keywords = map[string]Type{
-	"as":       AS,
 	"break":    BREAK,
 	"case":     CASE,
 	"const":    CONST,
@@ -120,10 +120,8 @@ var keywords = map[string]Type{
 	"else":     ELSE,
 	"false":    FALSE,
 	"for":      FOR,
-	"from":     FROM,
 	"function": FUNCTION,
 	"if":       IF,
-	"import":   IMPORT,
 	"in":       IN,
 	"let":      LET,
 	"nil":      NIL,
@@ -132,7 +130,11 @@ var keywords = map[string]Type{
 	"return":   RETURN,
 	"struct":   STRUCT,
 	"switch":   SWITCH,
+	"throw":    THROW,
 	"true":     TRUE,
+	"try":      TRY,
+	"catch":    CATCH,
+	"finally":  FINALLY,
 }
 
 // LookupIdentifier used to determinate whether identifier is keyword nor not

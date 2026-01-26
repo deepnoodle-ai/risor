@@ -1238,48 +1238,6 @@ func TestNakedReturns(t *testing.T) {
 	}
 }
 
-func TestFromImport(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"from math import min", `from "math" import "min"`},
-		{"from math import min, max", `from "math" import "min", "max"`},
-		{"from math import min as a, max as b", `from "math" import "min" as a, "max" as b`},
-		{`from math import (
-			min as a,
-			max as b,
-		  )`, `from "math" import ("min" as a, "max" as b)`},
-	}
-	for _, tt := range tests {
-		result, err := Parse(context.Background(), tt.input)
-		require.Nil(t, err)
-		require.Equal(t, tt.expected, result.String())
-		require.IsType(t, &ast.FromImport{}, result.Statements()[0])
-	}
-}
-
-func TestBadFromImport(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"from math import", "parse error: unexpected end of file while parsing a from-import statement (expected identifier)"},
-		{"from math import min,", "parse error: unexpected end of file while parsing a from-import statement (expected identifier)"},
-		{"from math import min as a,", "parse error: unexpected end of file while parsing a from-import statement (expected identifier)"},
-		{"from math import ", "parse error: unexpected end of file while parsing a from-import statement (expected identifier)"},
-		{"from math", "parse error: from-import is missing import statement"},
-		{"from math import (a", "parse error: unexpected end of file while parsing a from-import statement (expected ))"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
-			require.NotNil(t, err)
-			require.Equal(t, tt.expected, err.Error())
-		})
-	}
-}
-
 func TestInvalidListTermination(t *testing.T) {
 	input := `
 	{ data: { blocks: [ { type: "divider" },
@@ -1328,79 +1286,6 @@ func TestInvalidMultipleExpressions2(t *testing.T) {
 	_, err := Parse(context.Background(), input)
 	require.Error(t, err)
 	require.Equal(t, "parse error: unexpected token \"oops\" following statement", err.Error())
-}
-
-func TestStringImport(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{`import "foo"`, `import "foo"`},
-		{`import "mydir/foo"`, `import "mydir/foo"`},
-		{`import "mydir/foo" as bar`, `import "mydir/foo" as bar`},
-	}
-	for _, tt := range tests {
-		result, err := Parse(context.Background(), tt.input)
-		require.Nil(t, err)
-		require.Equal(t, tt.expected, result.String())
-		require.IsType(t, &ast.Import{}, result.Statements()[0])
-	}
-}
-
-func TestStringFromImport(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{`from mydir.foo import bar`, `from "mydir.foo" import "bar"`},
-		{`from "mydir/foo" import bar`, `from "mydir/foo" import "bar"`},
-		{`from "mydir/foo" import bar as baz`, `from "mydir/foo" import "bar" as baz`},
-		{`from "mydir/foo" import (bar, baz)`, `from "mydir/foo" import ("bar", "baz")`},
-	}
-	for _, tt := range tests {
-		result, err := Parse(context.Background(), tt.input)
-		require.Nil(t, err)
-		require.Equal(t, tt.expected, result.String())
-		require.IsType(t, &ast.FromImport{}, result.Statements()[0])
-	}
-}
-
-func TestESImport(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{`import { get } from "http"`, `import "http" import ("get")`},
-		{`import { get, post } from "http"`, `import "http" import ("get", "post")`},
-		{`import { get as httpGet } from "http"`, `import "http" import ("get" as httpGet)`},
-		{`import { min, max as maximum } from "math"`, `import "math" import ("min", "max" as maximum)`},
-		{`import { read } from "os"`, `import "os" import ("read")`},
-		// Trailing comma is allowed
-		{`import { get, } from "http"`, `import "http" import ("get")`},
-	}
-	for _, tt := range tests {
-		result, err := Parse(context.Background(), tt.input)
-		require.Nil(t, err, "input: %s", tt.input)
-		require.Equal(t, tt.expected, result.String(), "input: %s", tt.input)
-		require.IsType(t, &ast.FromImport{}, result.Statements()[0], "input: %s", tt.input)
-	}
-}
-
-func TestBadESImport(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{`import { } from "http"`, "parse error: import list cannot be empty"},
-		{`import { get from "http"`, "parse error: expected ',' or '}' in import list"},
-		{`import { get }`, "parse error: unexpected end of file while parsing ES import (expected FROM)"},
-		{`import { get } from`, "parse error: unexpected end of file while parsing ES import (expected STRING)"},
-	}
-	for _, tt := range tests {
-		_, err := Parse(context.Background(), tt.input)
-		require.NotNil(t, err, "expected error for: %s", tt.input)
-		require.Contains(t, err.Error(), tt.expected, "input: %s", tt.input)
-	}
 }
 
 func TestOptionalChaining(t *testing.T) {

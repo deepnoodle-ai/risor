@@ -109,6 +109,7 @@ type codeDef struct {
 	Names         []string          `json:"names,omitempty"`
 	Source        string            `json:"source,omitempty"`
 	Locations     []locationDef     `json:"locations,omitempty"`
+	MaxCallArgs   uint16            `json:"max_call_args,omitempty"`
 }
 
 // A representation of a Code object that can be marshalled more easily.
@@ -151,6 +152,7 @@ func codeFromState(state *state) (*Code, error) {
 			names:        copyStrings(c.Names),
 			source:       c.Source,
 			locations:    locationsFromDefs(c.Locations),
+			maxCallArgs:  c.MaxCallArgs,
 		}
 		codesByID[code.id] = code
 		codes = append(codes, code)
@@ -356,6 +358,7 @@ func stateFromCode(code *Code) (*state, error) {
 			Names:         copyStrings(code.names),
 			Source:        code.source,
 			Locations:     locationsToDefs(code.locations),
+			MaxCallArgs:   code.maxCallArgs,
 		}
 		if code.parent != nil {
 			cdef.ParentID = code.parent.id

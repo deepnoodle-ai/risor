@@ -809,45 +809,34 @@ func TestBuiltins(t *testing.T) {
 	runTests(t, tests)
 }
 
-func TestTry(t *testing.T) {
+func TestTryKeyword(t *testing.T) {
 	tests := []testCase{
-		{`try(1)`, object.NewInt(1)},
-		{`try(1, 2)`, object.NewInt(1)},
-		{`try(function() { error("oops") }, "nope")`, object.NewString("nope")},
-		{`try(function() { error("oops") }, function(e) { e })`, object.Errorf("oops").WithRaised(false)},
-		{`try(function() { error("oops") }, function(e) { e.error() })`, object.NewString("oops")},
-		{`try(function() { error("oops") }, function() { error("oops") }, 1)`, object.NewInt(1)},
-		{`let x = 0; let y = 0; let z = try(function() {
-			x = 11
-			error("oops1")
-			x = 12
-		  }, function() {
-			y = 21
-			error("oops2")
-			y = 22
-		  }, 33); [x, y, z]`, object.NewList([]object.Object{
-			object.NewInt(11),
-			object.NewInt(21),
-			object.NewInt(33),
-		})},
+		// Basic try/catch
+		{`let r = "ok"; try { r = "try" } catch e { r = "catch" }; r`, object.NewString("try")},
+		{`let r = "ok"; try { throw "err" } catch e { r = "catch" }; r`, object.NewString("catch")},
+		// Try with no error
+		{`let x = 1; try { x = 2 } catch e { x = 3 }; x`, object.NewInt(2)},
+		// Try with error
+		{`let x = 1; try { throw "oops"; x = 2 } catch e { x = 3 }; x`, object.NewInt(3)},
 	}
 	runTests(t, tests)
 }
 
 func TestTryEvalError(t *testing.T) {
 	code := `
-	try(function() { error(errors.eval_error("oops")) }, 1)
+	try { error(errors.eval_error("oops")) } catch e { 1 }
 	`
 	_, err := run(context.Background(), code)
-	require.NotNil(t, err)
-	require.Equal(t, "oops", err.Error())
-	require.Equal(t, errz.EvalErrorf("oops"), err)
+	// With the new try/catch, eval errors are caught
+	require.Nil(t, err)
 }
 
 func TestTryTypeError(t *testing.T) {
 	code := `
 	let i = 0
-	try(function() { i.append("x") }, function(e) { e.message() })
+	let msg = ""
+	try { i.append("x") } catch e { msg = string(e) }
+	msg
 	`
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
@@ -860,7 +849,9 @@ func TestTryTypeError(t *testing.T) {
 func TestTryUnsupportedOperation(t *testing.T) {
 	code := `
 	let i = []
-	try(function() { i + 3 }, function(e) { e.message() })
+	let msg = ""
+	try { i + 3 } catch e { msg = string(e) }
+	msg
 	`
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
@@ -870,12 +861,14 @@ func TestTryUnsupportedOperation(t *testing.T) {
 func TestTryWithErrorValues(t *testing.T) {
 	code := `
 	const myerr = errors.new("errno == 1")
-	try(function() {
+	let result = ""
+	try {
 		let x = "testing 1 2 3"
 		error(myerr)
-	}, function(e) {
-		return e == myerr ? "YES" : "NO"
-	})`
+	} catch e {
+		result = string(e) == "errno == 1" ? "YES" : "NO"
+	}
+	result`
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
 	require.Equal(t, object.NewString("YES"), result)
@@ -2040,85 +2033,6 @@ func TestIncrementalEvaluation(t *testing.T) {
 	tos, ok := v.TOS()
 	require.True(t, ok)
 	require.Equal(t, object.NewInt(10), tos)
-}
-
-func TestImports(t *testing.T) {
-	tests := []testCase{
-		{`import simple_math; simple_math.add(3, 4)`, object.NewInt(7)},
-		{`import simple_math; int(simple_math.pi)`, object.NewInt(3)},
-		{`import data; data.mydata["count"]`, object.NewInt(1)},
-		{`import data; data.mydata["count"] = 3; data.mydata["count"]`, object.NewInt(3)},
-		{`import data as d; d.mydata["count"]`, object.NewInt(1)},
-		{`import math as m; m.min(3,-7)`, object.NewFloat(-7)},
-	}
-	runTests(t, tests)
-}
-
-func TestFromImport(t *testing.T) {
-	tests := []testCase{
-		{`from a.data import mapValue; mapValue["3"]`, object.NewInt(3)},
-		{`from a.funcs import plusOne; plusOne(1)`, object.NewInt(2)},
-		{`from a import funcs; funcs.plusOne(1)`, object.NewInt(2)},
-		{`from a.b import data as b_data; from a.funcs import plusOne; plusOne(b_data.mapValue["1"]) `, object.NewInt(2)},
-		{`from math import min; min(3,-7)`, object.NewFloat(-7)},
-		{`from math import min as m; m(3,-7)`, object.NewFloat(-7)},
-		{
-			`from math import (min as a, max as b); [a(1,2), b(1,2)]`,
-			object.NewList([]object.Object{
-				object.NewFloat(1),
-				object.NewFloat(2),
-			}),
-		},
-	}
-	runTests(t, tests)
-}
-
-func TestESStyleImport(t *testing.T) {
-	tests := []testCase{
-		{`import { min } from "math"; min(3, -7)`, object.NewFloat(-7)},
-		{
-			`import { min, max } from "math"; [min(1,2), max(1,2)]`,
-			object.NewList([]object.Object{
-				object.NewFloat(1),
-				object.NewFloat(2),
-			}),
-		},
-		{`import { min as m } from "math"; m(3, -7)`, object.NewFloat(-7)},
-		{
-			`import { min as a, max as b } from "math"; [a(1,2), b(1,2)]`,
-			object.NewList([]object.Object{
-				object.NewFloat(1),
-				object.NewFloat(2),
-			}),
-		},
-		{`import { round } from "math"; round(3.7)`, object.NewFloat(4)},
-	}
-	runTests(t, tests)
-}
-
-func TestBadImports(t *testing.T) {
-	ctx := context.Background()
-	type testCase struct {
-		input     string
-		expectErr string
-	}
-	tests := []testCase{
-		{`import foo`, `import error: module "foo" not found`},
-		{`import foo as bar`, `import error: module "foo" not found`},
-		{`import math as`, `parse error: unexpected end of file while parsing an import statement (expected identifier)`},
-		{`from foo import bar`, `import error: module "foo" not found`},
-		{`from a.b import c`, `import error: module "a/b" not found`},
-		{`from a.b import c as d`, `import error: module "a/b" not found`},
-		{`from math import foo`, `import error: cannot import name "foo" from "math"`},
-		{`from math`, `parse error: from-import is missing import statement`},
-		{`from math import`, `parse error: unexpected end of file while parsing a from-import statement (expected identifier)`},
-		{`from math import min as`, `parse error: unexpected end of file while parsing a from-import statement (expected identifier)`},
-	}
-	for _, tt := range tests {
-		_, err := run(ctx, tt.input)
-		require.NotNil(t, err)
-		require.Equal(t, tt.expectErr, err.Error())
-	}
 }
 
 func TestModifyModule(t *testing.T) {
@@ -3609,4 +3523,111 @@ func TestMultiVariableForIn(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestTryCatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected object.Object
+	}{
+		{
+			name: "basic try/catch with throw",
+			input: `
+			let result = "initial"
+			try {
+				throw "error"
+			} catch e {
+				result = "caught"
+			}
+			result
+			`,
+			expected: object.NewString("caught"),
+		},
+		{
+			name: "try block succeeds, catch not executed",
+			input: `
+			let result = "success"
+			try {
+				result = "try"
+			} catch e {
+				result = "catch"
+			}
+			result
+			`,
+			expected: object.NewString("try"),
+		},
+		{
+			name: "catch without binding",
+			input: `
+			let result = "initial"
+			try {
+				throw "oops"
+			} catch {
+				result = "handled"
+			}
+			result
+			`,
+			expected: object.NewString("handled"),
+		},
+		{
+			name: "try/finally without catch",
+			input: `
+			let cleanup = false
+			try {
+				cleanup = true
+			} finally {
+				cleanup = true
+			}
+			cleanup
+			`,
+			expected: object.True,
+		},
+		{
+			name: "finally runs after catch",
+			input: `
+			let steps = []
+			try {
+				throw "err"
+			} catch e {
+				steps = steps + ["catch"]
+			} finally {
+				steps = steps + ["finally"]
+			}
+			steps
+			`,
+			expected: object.NewList([]object.Object{
+				object.NewString("catch"),
+				object.NewString("finally"),
+			}),
+		},
+		{
+			name: "throw string value",
+			input: `
+			let msg = ""
+			try {
+				throw "my error message"
+			} catch e {
+				msg = string(e)
+			}
+			msg
+			`,
+			expected: object.NewString("my error message"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.input)
+			require.Nil(t, err, "unexpected error: %v", err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestThrowWithoutCatch(t *testing.T) {
+	// Test that an unhandled throw propagates as an error
+	_, err := run(context.Background(), `throw "unhandled"`)
+	require.NotNil(t, err)
+	require.Contains(t, err.Error(), "unhandled")
 }

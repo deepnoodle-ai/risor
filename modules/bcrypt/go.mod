@@ -1,6 +1,6 @@
 module github.com/risor-io/risor/modules/bcrypt
 
-go 1.23.0
+go 1.25
 
 replace github.com/risor-io/risor => ../..
 

@@ -75,10 +75,6 @@ generate:
 docs-dev:
 	find . -name "*.md" | entr go run ./cmd/risor-docs
 
-.PHONY: modgen
-modgen:
-	find modules -name '*.go' -not -name '*_test.go' -not -name '*_gen.go' | entr go run ./cmd/risor-modgen
-
 .PHONY: docker-build-init
 docker-build-init:
 	docker buildx create --use --name builder --platform linux/arm64,linux/amd64

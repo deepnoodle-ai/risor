@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/importer"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/vm"
 )
@@ -17,8 +16,6 @@ type config struct {
 	globals               map[string]any
 	overrides             map[string]any
 	denylist              map[string]bool
-	importer              importer.Importer
-	localImportPath       string
 	withoutDefaultGlobals bool
 	initialized           bool
 	filename              string
@@ -152,26 +149,7 @@ func (cfg *config) VMOpts() []vm.Option {
 	if len(globals) > 0 {
 		opts = append(opts, vm.WithGlobals(globals))
 	}
-	importer := cfg.importer
-	if importer == nil && cfg.localImportPath != "" {
-		var names []string
-		for name := range globals {
-			names = append(names, name)
-		}
-		importer = newLocalImporter(names, cfg.localImportPath)
-	}
-	if importer != nil {
-		opts = append(opts, vm.WithImporter(importer))
-	}
 	return opts
-}
-
-func newLocalImporter(globalNames []string, sourceDir string) importer.Importer {
-	return importer.NewLocalImporter(importer.LocalImporterOptions{
-		GlobalNames: globalNames,
-		SourceDir:   sourceDir,
-		Extensions:  []string{".risor", ".rsr"},
-	})
 }
 
 func resolveModule(m *object.Module, attr []string) (*object.Module, bool) {

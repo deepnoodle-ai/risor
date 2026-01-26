@@ -193,76 +193,24 @@ for range [1, 2] {
 		"Expected PopTop before JumpForward for break in range loop")
 }
 
-func TestStringImport(t *testing.T) {
-	tests := []struct {
-		input             string
-		expectedCode      []op.Code
-		expectedConstants []interface{}
-	}{
-		{
-			input: `import "foo"`,
-			expectedCode: []op.Code{
-				op.LoadConst, 0, // "foo"
-				op.Import,
-				op.StoreGlobal, 0,
-				op.Nil,
-			},
-			expectedConstants: []interface{}{"foo"},
-		},
-		{
-			input: `import foo`,
-			expectedCode: []op.Code{
-				op.LoadConst, 0, // "foo"
-				op.Import,
-				op.StoreGlobal, 0,
-				op.Nil,
-			},
-			expectedConstants: []interface{}{"foo"},
-		},
-		{
-			input: `import "path/to/foo"`,
-			expectedCode: []op.Code{
-				op.LoadConst, 0, // "path/to/foo"
-				op.Import,
-				op.StoreGlobal, 0,
-				op.Nil,
-			},
-			expectedConstants: []interface{}{"path/to/foo"},
-		},
-		{
-			input: `import "path/to/foo" as bar`,
-			expectedCode: []op.Code{
-				op.LoadConst, 0, // "path/to/foo"
-				op.Import,
-				op.StoreGlobal, 0,
-				op.Nil,
-			},
-			expectedConstants: []interface{}{"path/to/foo"},
-		},
-		{
-			input: `3 & 1`,
-			expectedCode: []op.Code{
-				op.LoadConst, 0, // 3
-				op.LoadConst, 1, // 1
-				op.BinaryOp,
-				op.Code(op.BitwiseAnd),
-			},
-			expectedConstants: []interface{}{int64(3), int64(1)},
-		},
+func TestBitwiseAnd(t *testing.T) {
+	input := `3 & 1`
+	expectedCode := []op.Code{
+		op.LoadConst, 0, // 3
+		op.LoadConst, 1, // 1
+		op.BinaryOp,
+		op.Code(op.BitwiseAnd),
 	}
+	expectedConstants := []interface{}{int64(3), int64(1)}
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			astNode, err := parser.Parse(context.Background(), tt.input)
-			require.NoError(t, err)
+	astNode, err := parser.Parse(context.Background(), input)
+	require.NoError(t, err)
 
-			code, err := Compile(astNode)
-			require.NoError(t, err)
+	code, err := Compile(astNode)
+	require.NoError(t, err)
 
-			require.Equal(t, tt.expectedCode, code.instructions)
-			require.Equal(t, tt.expectedConstants, code.constants)
-		})
-	}
+	require.Equal(t, expectedCode, code.instructions)
+	require.Equal(t, expectedConstants, code.constants)
 }
 
 func TestFunctionRedefinition(t *testing.T) {

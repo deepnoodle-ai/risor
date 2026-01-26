@@ -24,16 +24,34 @@ func (f *frame) ActivateCode(code *code) {
 	f.returnAddr = 0
 	f.localsCount = uint16(code.LocalsCount())
 	f.capturedLocals = nil
-	for i := 0; i < DefaultFrameLocals; i++ {
-		f.storage[i] = nil
-	}
+
 	// Decide where to store local variables. If the frame storage has enough
-	// space, use that. Otherwise, allocate a new slice as extendedLocals.
-	// After this, f.locals will always point to the correct storage.
+	// space, use that. Otherwise, reuse extendedLocals if large enough, or
+	// allocate a new slice. After this, f.locals will always point to the
+	// correct storage.
 	if f.localsCount > DefaultFrameLocals {
-		f.extendedLocals = make([]object.Object, f.localsCount)
+		// Need extended storage - reuse existing slice if large enough
+		if cap(f.extendedLocals) >= int(f.localsCount) {
+			// Reuse existing slice, just resize and clear
+			f.extendedLocals = f.extendedLocals[:f.localsCount]
+			for i := range f.extendedLocals {
+				f.extendedLocals[i] = nil
+			}
+		} else {
+			// Need to allocate - size with some headroom for future calls
+			// to reduce allocation churn for functions with varying local counts
+			allocSize := int(f.localsCount)
+			if allocSize < 32 {
+				allocSize = 32 // Minimum allocation to reduce churn
+			}
+			f.extendedLocals = make([]object.Object, f.localsCount, allocSize)
+		}
 		f.locals = f.extendedLocals
 	} else {
+		// Use stack-allocated storage - clear only the needed slots
+		for i := uint16(0); i < f.localsCount; i++ {
+			f.storage[i] = nil
+		}
 		f.extendedLocals = nil
 		f.locals = f.storage[:f.localsCount]
 	}

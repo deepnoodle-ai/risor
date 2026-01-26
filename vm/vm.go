@@ -5,14 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/errz"
-	"github.com/risor-io/risor/importer"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/op"
 )
@@ -23,6 +21,10 @@ const (
 	MaxStackDepth = 1024
 	StopSignal    = -1
 	MB            = 1024 * 1024
+
+	// InitialFrameCapacity is the initial size of the frame stack.
+	// It grows dynamically up to MaxFrameDepth as needed.
+	InitialFrameCapacity = 16
 
 	// DefaultContextCheckInterval is the number of instructions between
 	// deterministic checks of ctx.Done(). Set to 0 to disable.
@@ -40,17 +42,15 @@ type VirtualMachine struct {
 	activeFrame  *frame
 	activeCode   *code
 	main         *compiler.Code
-	importer     importer.Importer
-	modules      map[string]*object.Module
 	inputGlobals map[string]any
 	globals      map[string]object.Object
 	loadedCode   map[*compiler.Code]*code
 	running      bool
 	runMutex     sync.Mutex
 	cloneMutex   sync.Mutex
-	tmp          [MaxArgs]object.Object
-	stack        [MaxStackDepth]object.Object
-	frames       [MaxFrameDepth]frame
+	tmp    [MaxArgs]object.Object
+	stack  [MaxStackDepth]object.Object
+	frames []frame // Dynamically sized, grows up to MaxFrameDepth
 
 	// contextCheckInterval is the number of instructions between deterministic
 	// checks of ctx.Done(). A value of 0 disables deterministic checking,
@@ -60,6 +60,19 @@ type VirtualMachine struct {
 	// observer receives callbacks for VM execution events (steps, calls, returns).
 	// If nil, no callbacks are made.
 	observer Observer
+
+	// Exception handling state
+	excStack     []exceptionFrame
+	excStackSize int
+}
+
+// exceptionFrame represents an active exception handler on the exception stack.
+type exceptionFrame struct {
+	handler      *compiler.ExceptionHandler
+	code         *code           // The code object containing this handler
+	fp           int             // Frame pointer when handler was pushed
+	pendingError *object.Error   // Error to re-throw after finally (if any)
+	inFinally    bool            // Are we currently executing a finally block?
 }
 
 // New creates a new Virtual Machine.
@@ -87,11 +100,12 @@ func NewEmpty() (*VirtualMachine, error) {
 func createVM(options []Option) (*VirtualMachine, error) {
 	vm := &VirtualMachine{
 		sp:                   -1,
-		modules:              map[string]*object.Module{},
 		inputGlobals:         map[string]any{},
 		globals:              map[string]object.Object{},
 		loadedCode:           map[*compiler.Code]*code{},
 		contextCheckInterval: DefaultContextCheckInterval,
+		frames:               make([]frame, InitialFrameCapacity),
+		excStack:             make([]exceptionFrame, 8), // Small initial exception stack
 	}
 	if err := vm.applyOptions(options); err != nil {
 		return nil, err
@@ -117,14 +131,6 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 	vm.globals, err = object.AsObjects(vm.inputGlobals)
 	if err != nil {
 		return fmt.Errorf("invalid global provided: %v", err)
-	}
-
-	// Add any globals that are modules to a cache to make them available
-	// to import statements
-	for name, value := range vm.globals {
-		if module, ok := value.(*object.Module); ok {
-			vm.modules[name] = module
-		}
 	}
 	return nil
 }
@@ -238,15 +244,17 @@ func (vm *VirtualMachine) resetForNewCode() {
 	vm.activeFrame = nil
 	vm.activeCode = nil
 	vm.loadedCode = map[*compiler.Code]*code{}
-	vm.modules = map[string]*object.Module{}
+	vm.excStackSize = 0
 
-	// Clear arrays
+	// Clear stack (only used portion would be cleaner but this ensures GC)
 	for i := 0; i < MaxStackDepth; i++ {
 		vm.stack[i] = nil
 	}
-	for i := 0; i < MaxFrameDepth; i++ {
+	// Clear frames - only clear used frames, keep capacity
+	for i := range vm.frames {
 		vm.frames[i] = frame{}
 	}
+	// Clear tmp array
 	for i := 0; i < MaxArgs; i++ {
 		vm.tmp[i] = nil
 	}
@@ -764,57 +772,6 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 		case op.Copy:
 			offset := vm.fetch()
 			vm.push(vm.stack[vm.sp-int(offset)])
-		case op.Import:
-			name, ok := vm.pop().(*object.String)
-			if !ok {
-				return vm.typeError("object is not a string (got %s)", name.Type())
-			}
-			module, err := vm.importModule(ctx, name.Value())
-			if err != nil {
-				return err
-			}
-			vm.push(module)
-		case op.FromImport:
-			parentLen := vm.fetch()
-			importsCount := vm.fetch()
-			if importsCount > 255 {
-				return vm.evalError("invalid imports count: %d", importsCount)
-			}
-			var names []string
-			for i := uint16(0); i < importsCount; i++ {
-				name, ok := vm.pop().(*object.String)
-				if !ok {
-					return vm.typeError("object is not a string (got %s)", name.Type())
-				}
-				names = append(names, name.Value())
-			}
-			from := make([]string, parentLen)
-			for i := int(parentLen - 1); i >= 0; i-- {
-				val, ok := vm.pop().(*object.String)
-				if !ok {
-					return vm.typeError("object is not a string (got %s)", val.Type())
-				}
-				from[i] = val.Value()
-			}
-			for _, name := range names {
-				// check if the name matches a module
-				module, err := vm.importModule(ctx, filepath.Join(filepath.Join(from...), name))
-				if err == nil {
-					vm.push(module)
-				} else {
-					// otherwise, the name is a symbol inside a module
-					module, err := vm.importModule(ctx, filepath.Join(from...))
-					if err != nil {
-						return err
-					}
-					attr, found := module.GetAttr(name)
-					if !found {
-						return fmt.Errorf("import error: cannot import name %q from %q",
-							name, module.Name())
-					}
-					vm.push(attr)
-				}
-			}
 		case op.PopTop:
 			vm.pop()
 		case op.Unpack:
@@ -879,6 +836,82 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			}
 		case op.Halt:
 			return nil
+		case op.PushExcept:
+			// Push an exception handler onto the exception stack
+			catchOffset := vm.fetch()
+			finallyOffset := vm.fetch()
+			baseIP := vm.ip - 3 // Position of the PushExcept instruction
+
+			// Find the handler for this position in the current code
+			var handler *compiler.ExceptionHandler
+			for _, h := range vm.activeCode.ExceptionHandlers {
+				if h.TryStart <= baseIP && baseIP < h.TryEnd {
+					handler = h
+					break
+				}
+			}
+
+			if handler == nil {
+				// Create a temporary handler based on offsets
+				handler = &compiler.ExceptionHandler{
+					TryStart:     baseIP,
+					CatchStart:   baseIP + int(catchOffset),
+					FinallyStart: baseIP + int(finallyOffset),
+					CatchVarIdx:  -1,
+				}
+			}
+
+			vm.excStack[vm.excStackSize] = exceptionFrame{
+				handler: handler,
+				code:    vm.activeCode,
+				fp:      vm.fp,
+			}
+			vm.excStackSize++
+		case op.PopExcept:
+			// Pop exception handler (normal completion of try block)
+			if vm.excStackSize > 0 {
+				vm.excStackSize--
+			}
+		case op.Throw:
+			// Throw the value on TOS as an exception
+			tosObj := vm.pop()
+
+			// Convert to error if needed
+			var errObj *object.Error
+			switch v := tosObj.(type) {
+			case *object.Error:
+				errObj = v
+			case *object.String:
+				errObj = object.NewError(fmt.Errorf("%s", v.Value()))
+			default:
+				errObj = object.NewError(fmt.Errorf("%s", tosObj.Inspect()))
+			}
+
+			// Handle the exception
+			if err := vm.handleException(errObj); err != nil {
+				return err
+			}
+		case op.EndFinally:
+			// End of finally block - re-raise pending exception if any
+			if vm.excStackSize > 0 {
+				excFrame := &vm.excStack[vm.excStackSize-1]
+				if excFrame.inFinally && excFrame.pendingError != nil {
+					// Re-raise the pending error
+					pendingErr := excFrame.pendingError
+					excFrame.pendingError = nil
+					excFrame.inFinally = false
+					vm.excStackSize-- // Pop this handler
+
+					// Try to find another handler
+					if err := vm.handleException(pendingErr); err != nil {
+						return err
+					}
+				} else if excFrame.inFinally {
+					// No pending error, just clear the finally flag
+					excFrame.inFinally = false
+					vm.excStackSize--
+				}
+			}
 		default:
 			return vm.evalError("unknown opcode: %d", opcode)
 		}
@@ -1132,9 +1165,36 @@ func (vm *VirtualMachine) resumeFrame(fp, ip, sp int) *frame {
 	return vm.activeFrame
 }
 
+// ensureFrameCapacity grows the frames slice if needed to accommodate the given frame index.
+// Returns an error if the frame index exceeds MaxFrameDepth.
+func (vm *VirtualMachine) ensureFrameCapacity(fp int) error {
+	if fp >= MaxFrameDepth {
+		return fmt.Errorf("stack overflow: frame depth %d exceeds maximum %d", fp, MaxFrameDepth)
+	}
+	if fp >= len(vm.frames) {
+		// Grow the slice - double capacity or grow to fit, whichever is larger
+		newCap := len(vm.frames) * 2
+		if newCap < fp+1 {
+			newCap = fp + 1
+		}
+		if newCap > MaxFrameDepth {
+			newCap = MaxFrameDepth
+		}
+		newFrames := make([]frame, newCap)
+		copy(newFrames, vm.frames)
+		vm.frames = newFrames
+	}
+	return nil
+}
+
 // Activate a frame with the given code. This is typically used to begin
 // running the entrypoint for a module or script.
 func (vm *VirtualMachine) activateCode(fp, ip int, code *code) *frame {
+	// Ensure we have capacity for this frame (panics on overflow for now,
+	// matching the previous fixed-array behavior)
+	if err := vm.ensureFrameCapacity(fp); err != nil {
+		panic(err)
+	}
 	vm.fp = fp
 	vm.ip = ip
 	vm.activeFrame = &vm.frames[fp]
@@ -1145,6 +1205,11 @@ func (vm *VirtualMachine) activateCode(fp, ip int, code *code) *frame {
 
 // Activate a frame with the given function, to implement a function call.
 func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Function, locals []object.Object) *frame {
+	// Ensure we have capacity for this frame (panics on overflow for now,
+	// matching the previous fixed-array behavior)
+	if err := vm.ensureFrameCapacity(fp); err != nil {
+		panic(err)
+	}
 	code := vm.loadCode(fn.Code())
 	returnAddr := vm.ip
 	returnSp := vm.sp
@@ -1192,46 +1257,14 @@ func (vm *VirtualMachine) reloadCode(main *compiler.Code) *code {
 	return newWrappedMain
 }
 
-func (vm *VirtualMachine) importModule(ctx context.Context, name string) (*object.Module, error) {
-	if module, ok := vm.modules[name]; ok {
-		return module, nil
-	}
-	if vm.importer == nil {
-		return nil, fmt.Errorf("imports are disabled")
-	}
-	module, err := vm.importer.Import(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	// Activate a new frame to evaluate the module code
-	baseFP := vm.fp
-	baseIP := vm.ip
-	baseSP := vm.sp
-	code := vm.loadCode(module.Code())
-	vm.activateCode(vm.fp+1, 0, code)
-	// Restore the previous frame when done
-	defer vm.resumeFrame(baseFP, baseIP, baseSP)
-	// Evaluate the module code
-	if err := vm.eval(ctx); err != nil {
-		return nil, err
-	}
-	module.UseGlobals(code.Globals)
-	// Store the loaded module but ensure we don't modify the map during a clone
-	vm.cloneMutex.Lock()
-	defer vm.cloneMutex.Unlock()
-	vm.modules[name] = module
-	return module, nil
-}
-
 // Clone the Virtual Machine. The returned clone has its own independent
-// frame stack and data stack, but shares the loaded modules and global
-// variables with the original VM.
+// frame stack and data stack, but shares global variables with the original VM.
 //
 // Clone is designed to be safe to call from any goroutine.
 //
 // The caller and the user code that runs are responsible for thread safety when
-// using modules and global variables, since concurrently executing cloned VMs
-// can modify the same objects.
+// using global variables, since concurrently executing cloned VMs can modify
+// the same objects.
 //
 // The returned clone has an empty frame stack and data stack, which makes this
 // most useful for cloning a VM then using vm.Call() to call a function, rather
@@ -1239,21 +1272,10 @@ func (vm *VirtualMachine) importModule(ctx context.Context, name string) (*objec
 // beginning of the main entrypoint.
 //
 // Do not use Clone if you want a strict guarantee of isolation between VMs.
-//
-// If an OS was provided to the original VM via the WithOS option, it will be
-// copied into the clone. Otherwise, the clone will use the standard OS fallback
-// behavior of using any OS present in the context or NewSimpleOS as a default.
 func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
 	// Locking cloneMutex is done to prevent clones while code is being loaded
-	// or modules are being imported
 	vm.cloneMutex.Lock()
 	defer vm.cloneMutex.Unlock()
-
-	// Snapshot the loaded modules
-	modules := make(map[string]*object.Module, len(vm.modules))
-	for name, module := range vm.modules {
-		modules[name] = module
-	}
 
 	// Snapshot the loaded code
 	loadedCode := make(map[*compiler.Code]*code, len(vm.loadedCode))
@@ -1266,14 +1288,14 @@ func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
 		ip:                   0,
 		fp:                   0,
 		running:              false,
-		importer:             vm.importer,
 		main:                 vm.main,
 		inputGlobals:         vm.inputGlobals,
 		globals:              vm.globals,
-		modules:              modules,
 		loadedCode:           loadedCode,
 		contextCheckInterval: vm.contextCheckInterval,
 		observer:             vm.observer,
+		frames:               make([]frame, InitialFrameCapacity),
+		excStack:             make([]exceptionFrame, 8),
 	}
 
 	// Only activate main code if it exists
@@ -1376,4 +1398,51 @@ func (vm *VirtualMachine) typeError(format string, args ...any) *errz.Structured
 // evalError creates an evaluation error with location and stack trace.
 func (vm *VirtualMachine) evalError(format string, args ...any) *errz.StructuredError {
 	return vm.runtimeError(errz.ErrRuntime, format, args...)
+}
+
+// handleException handles a thrown exception by finding an appropriate handler.
+// If no handler is found, the error is returned to propagate up the call stack.
+func (vm *VirtualMachine) handleException(errObj *object.Error) error {
+	// Look for an exception handler on the exception stack
+	for vm.excStackSize > 0 {
+		excFrame := &vm.excStack[vm.excStackSize-1]
+
+		// Check if this handler is for the current frame
+		if excFrame.fp != vm.fp || excFrame.code != vm.activeCode {
+			// Handler is for a different frame, pop it and continue
+			vm.excStackSize--
+			continue
+		}
+
+		handler := excFrame.handler
+
+		// If we have a catch block, it handles the exception
+		// When catch completes normally, exception is considered handled
+		if handler.CatchStart > 0 && handler.CatchStart != handler.FinallyStart {
+			// Pop the exception handler since catch will handle it
+			vm.excStackSize--
+
+			// Push error onto stack for catch block
+			vm.push(errObj)
+			vm.ip = handler.CatchStart
+			return nil
+		}
+
+		// No catch block, but we have finally - run finally with pending error
+		if handler.FinallyStart > 0 && !excFrame.inFinally {
+			// Store the pending error for re-raising after finally
+			excFrame.pendingError = errObj
+			excFrame.inFinally = true
+
+			// Go to finally
+			vm.ip = handler.FinallyStart
+			return nil
+		}
+
+		// No handler available, pop and try next
+		vm.excStackSize--
+	}
+
+	// No handler found, return the error to propagate up
+	return errObj.Value()
 }

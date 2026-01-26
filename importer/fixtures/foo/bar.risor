@@ -1,4 +1,0 @@
-
-function bar() {
-    return 987
-}

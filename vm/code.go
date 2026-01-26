@@ -11,21 +11,27 @@ import (
 
 type code struct {
 	*compiler.Code
-	Instructions []op.Code
-	Constants    []object.Object
-	Globals      []object.Object
-	Names        []string
-	Locations    []errz.SourceLocation
+	Instructions      []op.Code
+	Constants         []object.Object
+	Globals           []object.Object
+	Names             []string
+	Locations         []errz.SourceLocation
+	ExceptionHandlers []*compiler.ExceptionHandler
+
+	// Optimization metadata from compiler
+	MaxCallArgs int // Maximum argument count from any Call opcode
 }
 
 func wrapCode(cc *compiler.Code) *code {
 	// Note that this does NOT set the Globals field.
 	c := &code{
-		Code:         cc,
-		Instructions: make([]op.Code, cc.InstructionCount()),
-		Constants:    make([]object.Object, cc.ConstantsCount()),
-		Names:        make([]string, cc.NameCount()),
-		Locations:    make([]errz.SourceLocation, cc.LocationsCount()),
+		Code:              cc,
+		Instructions:      make([]op.Code, cc.InstructionCount()),
+		Constants:         make([]object.Object, cc.ConstantsCount()),
+		Names:             make([]string, cc.NameCount()),
+		Locations:         make([]errz.SourceLocation, cc.LocationsCount()),
+		ExceptionHandlers: cc.ExceptionHandlers(),
+		MaxCallArgs:       cc.MaxCallArgs(),
 	}
 	for i := 0; i < cc.InstructionCount(); i++ {
 		c.Instructions[i] = cc.Instruction(i)

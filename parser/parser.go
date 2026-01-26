@@ -7,7 +7,6 @@ package parser
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -128,12 +127,10 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.FALSE, p.parseBoolean)
 	p.registerPrefix(token.FLOAT, p.parseFloat)
 	p.registerPrefix(token.FOR, p.parseFor)
-	p.registerPrefix(token.FROM, p.parseFromImport)
 	p.registerPrefix(token.FUNCTION, p.parseFunc)
 	p.registerPrefix(token.IDENT, p.parseIdent)
 	p.registerPrefix(token.IF, p.parseIf)
 	p.registerPrefix(token.ILLEGAL, p.illegalToken)
-	p.registerPrefix(token.IMPORT, p.parseImport)
 	p.registerPrefix(token.INT, p.parseInt)
 	p.registerPrefix(token.LBRACE, p.parseMapOrSet)
 	p.registerPrefix(token.LBRACKET, p.parseList)
@@ -147,6 +144,7 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.SWITCH, p.parseSwitch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.SPREAD, p.parseSpread)
+	p.registerPrefix(token.TRY, p.parseTry)
 
 	// Register infix functions
 	p.registerInfix(token.AND, p.parseInfixExpr)
@@ -324,6 +322,8 @@ func (p *Parser) parseStatement() ast.Node {
 		stmt = p.parseBreak()
 	case token.CONTINUE:
 		stmt = p.parseContinue()
+	case token.THROW:
+		stmt = p.parseThrow()
 	case token.NEWLINE:
 		stmt = nil
 	default:
@@ -817,340 +817,6 @@ func (p *Parser) parseSwitch() ast.Node {
 		}
 	}
 	return ast.NewSwitch(switchToken, switchValue, cases)
-}
-
-// validateImportPath ensures that a given path string only contains valid identifiers
-// separated by slash characters. Returns error if invalid.
-func validateImportPath(path string) error {
-	// Remove quotes if present - these are added when we convert an
-	// identifier to a string in parseImport
-	path = strings.Trim(path, "\"")
-
-	// Valid path pattern: one or more valid identifiers separated by forward slashes
-	// An identifier must start with a letter or underscore and can contain letters, digits, or underscores
-	validPath := regexp.MustCompile(`^([a-zA-Z_][a-zA-Z0-9_]*)(\/[a-zA-Z_][a-zA-Z0-9_]*)*$`)
-
-	if !validPath.MatchString(path) {
-		// If path doesn't match pattern, provide a more specific error
-		if strings.HasPrefix(path, "/") || strings.HasSuffix(path, "/") {
-			return fmt.Errorf("path cannot begin or end with a slash")
-		}
-		if strings.Contains(path, "//") {
-			return fmt.Errorf("path cannot contain empty components")
-		}
-		// Check individual components to provide better error messages
-		for _, part := range strings.Split(path, "/") {
-			if part == "" {
-				return fmt.Errorf("empty path component")
-			}
-			if len(part) > 0 && !regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`).MatchString(part) {
-				return fmt.Errorf("invalid identifier '%s' in path", part)
-			}
-		}
-		return fmt.Errorf("invalid import path format")
-	}
-	return nil
-}
-
-func (p *Parser) parseImport() ast.Node {
-	importToken := p.curToken
-
-	// Check for ES-style import: import { x, y } from 'm'
-	if p.peekTokenIs(token.LBRACE) {
-		return p.parseESImport(importToken)
-	}
-
-	// Support both identifier and string formats for module names
-	if !p.peekTokenIs(token.IDENT) && !p.peekTokenIs(token.STRING) {
-		p.peekError("an import statement", token.IDENT, p.peekToken)
-		return nil
-	}
-	p.nextToken() // Move to the module name or path
-
-	var pathStr *ast.String
-
-	if p.curTokenIs(token.IDENT) {
-		// Create a string from identifier without adding quotes
-		identName := p.curToken.Literal
-		pathStr = ast.NewString(token.Token{
-			Type:          token.STRING,
-			Literal:       identName,
-			StartPosition: p.curToken.StartPosition,
-			EndPosition:   p.curToken.EndPosition,
-		})
-	} else if p.curTokenIs(token.STRING) {
-		// Handle string literal module path (e.g., "mydir/foo")
-		path := p.parseString()
-		if path == nil {
-			p.setTokenError(p.curToken, "invalid module path in import statement")
-			return nil
-		}
-		var ok bool
-		pathStr, ok = path.(*ast.String)
-		if !ok {
-			p.setTokenError(p.curToken, "expected string literal for module path")
-			return nil
-		}
-	}
-
-	// Validate the path format
-	pathValue := pathStr.Value()
-	if err := validateImportPath(pathValue); err != nil {
-		p.setTokenError(p.curToken, "invalid import path: %s", err.Error())
-		return nil
-	}
-
-	var alias *ast.Ident
-	if p.peekTokenIs(token.AS) {
-		p.nextToken()
-		if !p.expectPeek("an import statement", token.IDENT) {
-			return nil
-		}
-		alias = ast.NewIdent(p.curToken)
-	}
-
-	return ast.NewImport(importToken, pathStr, alias)
-}
-
-// parseESImport parses ES-style imports: import { x, y } from 'm'
-func (p *Parser) parseESImport(importToken token.Token) ast.Node {
-	p.nextToken() // Move to '{'
-
-	// Parse the list of imports inside braces
-	imports := []*ast.Import{}
-	p.nextToken() // Move past '{'
-
-	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
-		if !p.curTokenIs(token.IDENT) {
-			p.setTokenError(p.curToken, "expected identifier in import list")
-			return nil
-		}
-
-		importName := p.curToken.Literal
-		importNameToken := p.curToken
-
-		var alias *ast.Ident
-		if p.peekTokenIs(token.AS) {
-			p.nextToken() // Move to 'as'
-			if !p.expectPeek("import alias", token.IDENT) {
-				return nil
-			}
-			alias = ast.NewIdent(p.curToken)
-		}
-
-		// Create an Import node for this name
-		pathStr := ast.NewString(token.Token{
-			Type:          token.STRING,
-			Literal:       importName,
-			StartPosition: importNameToken.StartPosition,
-			EndPosition:   importNameToken.EndPosition,
-		})
-		imports = append(imports, ast.NewImport(importNameToken, pathStr, alias))
-
-		// Check for comma or end of list
-		if p.peekTokenIs(token.COMMA) {
-			p.nextToken() // Move to ','
-			p.nextToken() // Move past ','
-		} else if p.peekTokenIs(token.RBRACE) {
-			p.nextToken() // Move to '}'
-		} else {
-			p.setTokenError(p.peekToken, "expected ',' or '}' in import list")
-			return nil
-		}
-	}
-
-	if !p.curTokenIs(token.RBRACE) {
-		p.setTokenError(p.curToken, "expected '}' to close import list")
-		return nil
-	}
-
-	// Validate we have at least one import
-	if len(imports) == 0 {
-		p.setTokenError(p.curToken, "import list cannot be empty")
-		return nil
-	}
-
-	// Expect 'from' keyword
-	if !p.expectPeek("ES import", token.FROM) {
-		return nil
-	}
-
-	// Parse the module path
-	if !p.peekTokenIs(token.STRING) && !p.peekTokenIs(token.IDENT) {
-		p.peekError("ES import", token.STRING, p.peekToken)
-		return nil
-	}
-	p.nextToken()
-
-	var modulePath string
-	if p.curTokenIs(token.STRING) {
-		modulePath = strings.Trim(p.curToken.Literal, "\"'")
-	} else {
-		modulePath = p.curToken.Literal
-	}
-
-	// Validate the path
-	if err := validateImportPath(modulePath); err != nil {
-		p.setTokenError(p.curToken, "invalid import path: %s", err.Error())
-		return nil
-	}
-
-	// Create parent module identifier
-	parentIdent := ast.NewIdent(token.Token{
-		Type:          token.IDENT,
-		Literal:       modulePath,
-		StartPosition: p.curToken.StartPosition,
-		EndPosition:   p.curToken.EndPosition,
-	})
-
-	return ast.NewFromImport(importToken, []*ast.Ident{parentIdent}, imports, true)
-}
-
-func (p *Parser) parseFromImport() ast.Node {
-	fromToken := p.curToken
-
-	// Support both identifier and string formats for module names
-	if !p.peekTokenIs(token.IDENT) && !p.peekTokenIs(token.STRING) {
-		p.peekError("a from-import statement", token.IDENT, p.peekToken)
-		return nil
-	}
-
-	p.nextToken() // Move to the first module part (identifier or string)
-
-	parentModule := make([]*ast.Ident, 0)
-
-	if p.curTokenIs(token.STRING) {
-		// Handle string literal module path (e.g., "mydir/foo")
-		path := p.parseString()
-		if path == nil {
-			p.setTokenError(p.curToken, "invalid module path in from-import statement")
-			return nil
-		}
-
-		strPath, ok := path.(*ast.String)
-		if !ok {
-			p.setTokenError(p.curToken, "expected string literal for module path")
-			return nil
-		}
-
-		// Validate the path format
-		pathValue := strPath.Value()
-		if err := validateImportPath(pathValue); err != nil {
-			p.setTokenError(p.curToken, "invalid import path: %s", err.Error())
-			return nil
-		}
-
-		// Convert the path to an identifier for compatibility with existing code
-		pathValue = strPath.Value()
-
-		// Use the whole string as a single parent module
-		pathIdent := ast.NewIdent(token.Token{
-			Type:          token.IDENT,
-			Literal:       pathValue,
-			StartPosition: p.curToken.StartPosition,
-			EndPosition:   p.curToken.EndPosition,
-		})
-		parentModule = append(parentModule, pathIdent)
-
-		p.nextToken()
-	} else {
-		// Handle the traditional dot-separated format for module paths
-		for p.curTokenIs(token.IDENT) {
-			parentModule = append(parentModule, ast.NewIdent(p.curToken))
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-			if !p.curTokenIs(token.PERIOD) {
-				break
-			}
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-		}
-	}
-
-	if !p.curTokenIs(token.IMPORT) {
-		p.setError(NewParserError(ErrorOpts{
-			ErrType:       "parse error",
-			Message:       "from-import is missing import statement",
-			File:          p.l.Filename(),
-			StartPosition: p.prevToken.EndPosition,
-			EndPosition:   p.prevToken.EndPosition,
-			SourceCode:    p.l.GetLineText(p.prevToken),
-		}))
-		return nil
-	}
-
-	importToken := p.curToken
-
-	// If the imports are surrounded by parentheses, we are in a grouped import
-	// which may span multiple lines
-	isGrouped := false
-	if p.peekTokenIs(token.LPAREN) {
-		isGrouped = true
-		p.nextToken()
-		for p.peekTokenIs(token.NEWLINE) {
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-		}
-	}
-
-	// Move to the first identifier
-	if !p.expectPeek("a from-import statement", token.IDENT) {
-		return nil
-	}
-
-	var imports []*ast.Import
-	for {
-		ident := p.curToken
-		// Create a string from identifier without adding quotes
-		pathStr := ast.NewString(token.Token{
-			Type:          token.STRING,
-			Literal:       ident.Literal,
-			StartPosition: ident.StartPosition,
-			EndPosition:   ident.EndPosition,
-		})
-
-		var alias *ast.Ident
-		if p.peekTokenIs(token.AS) {
-			p.nextToken()
-			if !p.expectPeek("a from-import statement", token.IDENT) {
-				return nil
-			}
-			alias = ast.NewIdent(p.curToken)
-		}
-		thisImport := ast.NewImport(importToken, pathStr, alias)
-		imports = append(imports, thisImport)
-
-		if p.peekTokenIs(token.COMMA) {
-			p.nextToken()
-			if isGrouped {
-				for p.peekTokenIs(token.NEWLINE) {
-					if err := p.nextToken(); err != nil {
-						return nil
-					}
-				}
-				if p.peekTokenIs(token.RPAREN) {
-					break
-				}
-			}
-			// Advance to the next identifier
-			if !p.expectPeek("a from-import statement", token.IDENT) {
-				return nil
-			}
-		} else {
-			break
-		}
-	}
-
-	if isGrouped {
-		if !p.expectPeek("a from-import statement", token.RPAREN) {
-			return nil
-		}
-	}
-
-	return ast.NewFromImport(fromToken, parentModule, imports, isGrouped)
 }
 
 func (p *Parser) parseBoolean() ast.Node {
@@ -2252,4 +1918,88 @@ func (p *Parser) eatNewlines() {
 			return
 		}
 	}
+}
+
+func (p *Parser) parseTry() ast.Node {
+	tryToken := p.curToken
+
+	// Expect opening brace for try block
+	if !p.expectPeek("try statement", token.LBRACE) {
+		return nil
+	}
+
+	// Parse try block
+	tryBlock := p.parseBlock()
+	if tryBlock == nil {
+		return nil
+	}
+
+	var catchIdent *ast.Ident
+	var catchBlock *ast.Block
+	var finallyBlock *ast.Block
+
+	// Check for catch
+	if p.peekTokenIs(token.CATCH) {
+		p.nextToken() // move to "catch"
+
+		// Check for optional catch identifier
+		if p.peekTokenIs(token.IDENT) {
+			p.nextToken() // move to identifier
+			catchIdent = ast.NewIdent(p.curToken)
+		}
+
+		// Expect opening brace for catch block
+		if !p.expectPeek("catch block", token.LBRACE) {
+			return nil
+		}
+
+		catchBlock = p.parseBlock()
+		if catchBlock == nil {
+			return nil
+		}
+	}
+
+	// Check for finally
+	if p.peekTokenIs(token.FINALLY) {
+		p.nextToken() // move to "finally"
+
+		// Expect opening brace for finally block
+		if !p.expectPeek("finally block", token.LBRACE) {
+			return nil
+		}
+
+		finallyBlock = p.parseBlock()
+		if finallyBlock == nil {
+			return nil
+		}
+	}
+
+	// Require at least one of catch or finally
+	if catchBlock == nil && finallyBlock == nil {
+		p.setTokenError(tryToken, "try statement requires at least one of catch or finally")
+		return nil
+	}
+
+	return ast.NewTry(tryToken, tryBlock, catchIdent, catchBlock, finallyBlock)
+}
+
+func (p *Parser) parseThrow() ast.Node {
+	throwToken := p.curToken
+
+	// Check if throw has a value
+	if p.peekTokenIs(token.SEMICOLON) ||
+		p.peekTokenIs(token.NEWLINE) ||
+		p.peekTokenIs(token.RBRACE) ||
+		p.peekTokenIs(token.EOF) {
+		p.setTokenError(throwToken, "throw statement requires a value")
+		return nil
+	}
+
+	p.nextToken()
+	value := p.parseExpression(LOWEST)
+	if value == nil {
+		return nil
+	}
+
+	return ast.NewThrow(throwToken, value)
 }

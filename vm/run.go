@@ -5,7 +5,6 @@ import (
 
 	"github.com/risor-io/risor/builtins"
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/importer"
 	modBytes "github.com/risor-io/risor/modules/bytes"
 	modErrors "github.com/risor-io/risor/modules/errors"
 	modFmt "github.com/risor-io/risor/modules/fmt"
@@ -82,12 +81,7 @@ func newVM(ctx context.Context, source string, opts ...runOpts) (*VirtualMachine
 	if err != nil {
 		return nil, err
 	}
-	im := importer.NewLocalImporter(importer.LocalImporterOptions{
-		SourceDir:   "./fixtures",
-		Extensions:  []string{".risor", ".rsr"},
-		GlobalNames: globalNames,
-	})
-	return New(main, WithImporter(im), WithGlobals(globals)), nil
+	return New(main, WithGlobals(globals)), nil
 }
 
 // Builtins to be used in VM tests.

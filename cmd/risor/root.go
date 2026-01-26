@@ -35,7 +35,6 @@ func init() {
 	rootCmd.PersistentFlags().String("cpu-profile", "", "Capture a CPU profile")
 	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colored output")
 	rootCmd.PersistentFlags().Bool("no-default-globals", false, "Disable the default globals")
-	rootCmd.PersistentFlags().String("modules", ".", "Path to library modules")
 	rootCmd.PersistentFlags().BoolP("help", "h", false, "Help for Risor")
 
 	viper.BindPFlag("code", rootCmd.PersistentFlags().Lookup("code"))
@@ -43,7 +42,6 @@ func init() {
 	viper.BindPFlag("cpu-profile", rootCmd.PersistentFlags().Lookup("cpu-profile"))
 	viper.BindPFlag("no-color", rootCmd.PersistentFlags().Lookup("no-color"))
 	viper.BindPFlag("no-default-globals", rootCmd.PersistentFlags().Lookup("no-default-globals"))
-	viper.BindPFlag("modules", rootCmd.PersistentFlags().Lookup("modules"))
 	viper.BindPFlag("help", rootCmd.PersistentFlags().Lookup("help"))
 
 	// Root command flags

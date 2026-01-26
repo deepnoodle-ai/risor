@@ -10,8 +10,6 @@ import (
 	"github.com/risor-io/risor/vm"
 )
 
-//go:generate go run ./cmd/risor-modgen
-
 // Compile parses and compiles source code into an executable Program.
 // The returned Program is immutable and safe for concurrent use.
 // Multiple goroutines can execute the same Program simultaneously.

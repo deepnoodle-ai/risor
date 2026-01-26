@@ -8,7 +8,6 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
-	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -16,7 +15,6 @@ import (
 	"strconv"
 
 	"github.com/risor-io/risor/arg"
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
 )
 
@@ -693,53 +691,6 @@ func Error(ctx context.Context, args ...object.Object) object.Object {
 	}
 }
 
-func Try(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("try", 1, 64, args); err != nil {
-		return err
-	}
-	var lastErr *object.Error
-	try := func(arg object.Object) (object.Object, error) {
-		switch obj := arg.(type) {
-		case *object.Function:
-			var callArgs []object.Object
-			if len(obj.Parameters()) > 0 && lastErr != nil {
-				callArgs = append(callArgs, lastErr)
-			}
-			callFunc, found := object.GetCallFunc(ctx)
-			if !found {
-				return nil, errz.EvalErrorf("eval error: context did not contain a call function")
-			}
-			return callFunc(ctx, obj, callArgs)
-		case object.Callable:
-			var callArgs []object.Object
-			if lastErr != nil {
-				callArgs = append(callArgs, lastErr)
-			}
-			result := obj.Call(ctx, callArgs...)
-			if err, ok := result.(*object.Error); ok && err.IsRaised() {
-				return nil, err
-			}
-			return result, nil
-		default:
-			return obj, nil
-		}
-	}
-	for _, arg := range args {
-		result, err := try(arg)
-		if err != nil {
-			var tmpErr errz.Error
-			if errors.As(err, &tmpErr) && tmpErr.IsFatal() {
-				// This indicates an unrecoverable evaluation error
-				return object.NewError(err)
-			}
-			lastErr = object.NewError(err).WithRaised(false)
-			continue
-		}
-		return result
-	}
-	return object.Nil
-}
-
 func Iter(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.Require("iter", 1, args); err != nil {
 		return err
@@ -910,7 +861,6 @@ func Builtins() map[string]object.Object {
 		"sorted":   object.NewBuiltin("sorted", Sorted),
 		"sprintf":  object.NewBuiltin("sprintf", Sprintf),
 		"string":   object.NewBuiltin("string", String),
-		"try":      object.NewBuiltin("try", Try),
 		"type":     object.NewBuiltin("type", Type),
 	}
 }

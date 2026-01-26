@@ -77,10 +77,6 @@ const (
 	GetIter Code = 91
 	Range   Code = 92
 
-	// Import
-	FromImport Code = 100
-	Import     Code = 101
-
 	// Channels (removed in v2)
 	// Receive Code = 110
 	// Send    Code = 111
@@ -91,6 +87,12 @@ const (
 
 	// Partials
 	Partial Code = 130
+
+	// Exception handling
+	PushExcept Code = 140 // Push exception handler: operand1=catch offset, operand2=finally offset
+	PopExcept  Code = 141 // Pop exception handler (normal try completion)
+	Throw      Code = 142 // Throw TOS as exception
+	EndFinally Code = 143 // End finally block, re-raise pending exception if any
 )
 
 // BinaryOpType describes a type of binary operation, as in an operation that
@@ -211,10 +213,8 @@ func init() {
 		{Copy, "COPY", 1},
 		{False, "FALSE", 0},
 		{ForIter, "FOR_ITER", 2},
-		{FromImport, "FROM_IMPORT", 2},
 		{GetIter, "GET_ITER", 0},
 		{Halt, "HALT", 0},
-		{Import, "IMPORT", 0},
 		{JumpBackward, "JUMP_BACKWARD", 1},
 		{JumpForward, "JUMP_FORWARD", 1},
 		{Length, "LENGTH", 0},
@@ -251,6 +251,10 @@ func init() {
 		{UnaryNegative, "UNARY_NEGATIVE", 0},
 		{UnaryNot, "UNARY_NOT", 0},
 		{Unpack, "UNPACK", 1},
+		{PushExcept, "PUSH_EXCEPT", 2},
+		{PopExcept, "POP_EXCEPT", 0},
+		{Throw, "THROW", 0},
+		{EndFinally, "END_FINALLY", 0},
 	}
 	for _, o := range ops {
 		infos[o.op] = Info{

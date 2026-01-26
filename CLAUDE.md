@@ -63,7 +63,6 @@ Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (
 - `object/` - Type system (67 files) - all Risor values implement `Object` interface
 - `builtins/` - Built-in functions (len, print, type conversions, hash functions)
 - `modules/` - 48+ modules wrapping Go packages and additional functionality
-- `importer/` - Module importing system
 
 ### Entry Points
 - **CLI**: `cmd/risor/` - Uses Cobra framework, includes REPL
@@ -113,7 +112,6 @@ risor.WithGlobal(name, value)     // Add single global
 risor.WithGlobals(map[string]any) // Add multiple globals
 risor.WithoutDefaultGlobals()     // Disable standard library
 risor.WithConcurrency()           // Enable goroutines/channels
-risor.WithImporter(importer)      // Custom module importer
 ```
 
 ## Go Workspace

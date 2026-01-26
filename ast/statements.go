@@ -545,113 +545,6 @@ func (a *Assign) String() string {
 	return out.String()
 }
 
-// Import is a statement node that describes a module import statement.
-type Import struct {
-	token token.Token // the "import" token
-	path  *String     // path of the module to import
-	alias *Ident      // alias for the module
-}
-
-// NewImport creates a new Import node.
-func NewImport(token token.Token, path *String, alias *Ident) *Import {
-	return &Import{token: token, path: path, alias: alias}
-}
-
-func (i *Import) StatementNode() {}
-
-func (i *Import) IsExpression() bool { return false }
-
-func (i *Import) Token() token.Token { return i.token }
-
-func (i *Import) Literal() string { return i.token.Literal }
-
-func (i *Import) Path() *String { return i.path }
-
-func (i *Import) Alias() *Ident { return i.alias }
-
-// ModuleName returns the name to use for the imported module
-// (either alias or last part of path)
-func (i *Import) ModuleName() string {
-	if i.alias != nil {
-		return i.alias.String()
-	}
-	parts := strings.Split(i.path.Value(), "/")
-	return parts[len(parts)-1]
-}
-
-func (i *Import) String() string {
-	var out bytes.Buffer
-	out.WriteString(i.Literal() + " ")
-	out.WriteString(i.path.String())
-	if i.alias != nil {
-		out.WriteString(" as " + i.alias.Literal())
-	}
-	return out.String()
-}
-
-// FromImport is a statement node that describes a module import statement.
-type FromImport struct {
-	token     token.Token // the "from" token
-	parents   []*Ident    // parent modules
-	imports   []*Import   // the imports, each with optional alias
-	isGrouped bool
-}
-
-// NewFromImport creates a new FromImport node.
-func NewFromImport(
-	token token.Token,
-	parents []*Ident,
-	imports []*Import,
-	isGrouped bool,
-) *FromImport {
-	return &FromImport{
-		token:     token,
-		parents:   parents,
-		imports:   imports,
-		isGrouped: isGrouped,
-	}
-}
-
-func (i *FromImport) StatementNode() {}
-
-func (i *FromImport) IsExpression() bool { return false }
-
-func (i *FromImport) Token() token.Token { return i.token }
-
-func (i *FromImport) Literal() string { return i.token.Literal }
-
-func (i *FromImport) Parents() []*Ident { return i.parents }
-
-func (i *FromImport) Imports() []*Import { return i.imports }
-
-func (i *FromImport) String() string {
-	var out bytes.Buffer
-	out.WriteString(i.Literal() + " \"")
-	for i, parent := range i.parents {
-		if i > 0 {
-			out.WriteString(".")
-		}
-		out.WriteString(parent.Literal())
-	}
-	out.WriteString("\" import ")
-	if i.isGrouped {
-		out.WriteString("(")
-	}
-	for idx, im := range i.imports {
-		if idx > 0 {
-			out.WriteString(", ")
-		}
-		out.WriteString(im.Path().String())
-		if im.Alias() != nil {
-			out.WriteString(" as " + im.Alias().Literal())
-		}
-	}
-	if i.isGrouped {
-		out.WriteString(")")
-	}
-	return out.String()
-}
-
 // Postfix is a statement node that describes a postfix expression like "x++".
 type Postfix struct {
 	token token.Token
@@ -723,5 +616,90 @@ func (e *SetAttr) String() string {
 	out.WriteString(e.attribute.value)
 	out.WriteString(" = ")
 	out.WriteString(e.value.String())
+	return out.String()
+}
+
+// Try represents a try/catch/finally statement.
+type Try struct {
+	token        token.Token // "try" token
+	body         *Block      // try block
+	catchIdent   *Ident      // catch variable (nil if `catch { }`)
+	catchBlock   *Block      // catch block (nil if no catch)
+	finallyBlock *Block      // finally block (nil if no finally)
+}
+
+// NewTry creates a new Try node.
+func NewTry(token token.Token, body *Block, catchIdent *Ident, catchBlock *Block, finallyBlock *Block) *Try {
+	return &Try{
+		token:        token,
+		body:         body,
+		catchIdent:   catchIdent,
+		catchBlock:   catchBlock,
+		finallyBlock: finallyBlock,
+	}
+}
+
+func (t *Try) StatementNode() {}
+
+func (t *Try) IsExpression() bool { return true }
+
+func (t *Try) Token() token.Token { return t.token }
+
+func (t *Try) Literal() string { return t.token.Literal }
+
+func (t *Try) Body() *Block { return t.body }
+
+func (t *Try) CatchIdent() *Ident { return t.catchIdent }
+
+func (t *Try) CatchBlock() *Block { return t.catchBlock }
+
+func (t *Try) FinallyBlock() *Block { return t.finallyBlock }
+
+func (t *Try) String() string {
+	var out bytes.Buffer
+	out.WriteString("try ")
+	out.WriteString(t.body.String())
+	if t.catchBlock != nil {
+		out.WriteString(" catch ")
+		if t.catchIdent != nil {
+			out.WriteString(t.catchIdent.String())
+			out.WriteString(" ")
+		}
+		out.WriteString(t.catchBlock.String())
+	}
+	if t.finallyBlock != nil {
+		out.WriteString(" finally ")
+		out.WriteString(t.finallyBlock.String())
+	}
+	return out.String()
+}
+
+// Throw represents a throw statement.
+type Throw struct {
+	token token.Token
+	value Expression
+}
+
+// NewThrow creates a new Throw node.
+func NewThrow(token token.Token, value Expression) *Throw {
+	return &Throw{token: token, value: value}
+}
+
+func (t *Throw) StatementNode() {}
+
+func (t *Throw) IsExpression() bool { return false }
+
+func (t *Throw) Token() token.Token { return t.token }
+
+func (t *Throw) Literal() string { return t.token.Literal }
+
+func (t *Throw) Value() Expression { return t.value }
+
+func (t *Throw) String() string {
+	var out bytes.Buffer
+	out.WriteString("throw ")
+	if t.value != nil {
+		out.WriteString(t.value.String())
+	}
 	return out.String()
 }

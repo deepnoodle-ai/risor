@@ -1,8 +1,0 @@
-
-let mydata = {
-    count: 1,
-}
-
-function get_count() {
-    return mydata["count"]
-}
