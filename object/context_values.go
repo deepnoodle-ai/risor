@@ -29,25 +29,3 @@ func GetCallFunc(ctx context.Context) (CallFunc, bool) {
 	return nil, false
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-const cloneCallKey = contextKey("risor:clone-call")
-
-// WithCloneCallFunc returns a context with a "clone-call" function
-// associated. This function can be used to clone a Risor VM and then call a
-// function on it synchronously.
-func WithCloneCallFunc(ctx context.Context, fn CallFunc) context.Context {
-	return context.WithValue(ctx, cloneCallKey, fn)
-}
-
-// GetCloneCallFunc returns the "clone-call" function from the context,
-// if it exists. This function can be used to clone a Risor VM and then call a
-// function on it synchronously.
-func GetCloneCallFunc(ctx context.Context) (CallFunc, bool) {
-	if fn, ok := ctx.Value(cloneCallKey).(CallFunc); ok {
-		if fn != nil {
-			return fn, ok
-		}
-	}
-	return nil, false
-}

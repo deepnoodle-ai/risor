@@ -45,10 +45,9 @@ type VirtualMachine struct {
 	inputGlobals map[string]any
 	globals      map[string]object.Object
 	loadedCode   map[*compiler.Code]*code
-	running      bool
-	runMutex     sync.Mutex
-	cloneMutex   sync.Mutex
-	tmp    [MaxArgs]object.Object
+	running  bool
+	runMutex sync.Mutex
+	tmp      [MaxArgs]object.Object
 	stack  [MaxStackDepth]object.Object
 	frames []frame // Dynamically sized, grows up to MaxFrameDepth
 
@@ -646,23 +645,19 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				}
 				continue
 			}
-			// Get items from the iterable
-			iterable, ok := iterableObj.(object.Iterable)
+			// Get items from the enumerable
+			enumerable, ok := iterableObj.(object.Enumerable)
 			if !ok {
-				if herr := vm.tryHandleError(vm.typeError("spread requires an iterable (got %s)", iterableObj.Type())); herr != nil {
+				if herr := vm.tryHandleError(vm.typeError("spread requires an enumerable (got %s)", iterableObj.Type())); herr != nil {
 					return herr
 				}
 				continue
 			}
-			iter := iterable.Iter()
 			newItems := list.Value()
-			for {
-				item, ok := iter.Next(ctx)
-				if !ok {
-					break
-				}
-				newItems = append(newItems, item)
-			}
+			enumerable.Enumerate(ctx, func(key, value object.Object) bool {
+				newItems = append(newItems, value)
+				return true
+			})
 			vm.push(object.NewList(newItems))
 		case op.MapMerge:
 			// Merge map at TOS into map at TOS-1
@@ -869,16 +864,12 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				}
 				continue
 			}
-			iter := container.Iter()
 			count := int64(0)
-			for {
-				val, ok := iter.Next(ctx)
-				if !ok {
-					break
-				}
-				vm.push(val)
+			container.Enumerate(ctx, func(key, value object.Object) bool {
+				vm.push(value)
 				count++
-			}
+				return true
+			})
 			// Pad with nil for missing elements (allows defaults to work)
 			for count < nameCount {
 				vm.push(object.Nil)
@@ -1289,9 +1280,6 @@ func (vm *VirtualMachine) loadCode(cc *compiler.Code) *code {
 	} else {
 		c = loadChildCode(vm.loadedCode[rootCompiled], cc)
 	}
-	// Store the loaded code but ensure we don't modify the map during a clone
-	vm.cloneMutex.Lock()
-	defer vm.cloneMutex.Unlock()
 	vm.loadedCode[cc] = c
 	return c
 }
@@ -1310,72 +1298,8 @@ func (vm *VirtualMachine) reloadCode(main *compiler.Code) *code {
 	return newWrappedMain
 }
 
-// Clone the Virtual Machine. The returned clone has its own independent
-// frame stack and data stack, but shares global variables with the original VM.
-//
-// Clone is designed to be safe to call from any goroutine.
-//
-// The caller and the user code that runs are responsible for thread safety when
-// using global variables, since concurrently executing cloned VMs can modify
-// the same objects.
-//
-// The returned clone has an empty frame stack and data stack, which makes this
-// most useful for cloning a VM then using vm.Call() to call a function, rather
-// than calling vm.Run() on the clone, which would start execution at the
-// beginning of the main entrypoint.
-//
-// Do not use Clone if you want a strict guarantee of isolation between VMs.
-func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
-	// Locking cloneMutex is done to prevent clones while code is being loaded
-	vm.cloneMutex.Lock()
-	defer vm.cloneMutex.Unlock()
-
-	// Snapshot the loaded code
-	loadedCode := make(map[*compiler.Code]*code, len(vm.loadedCode))
-	for cc, c := range vm.loadedCode {
-		loadedCode[cc] = c
-	}
-
-	clone := &VirtualMachine{
-		sp:                   -1,
-		ip:                   0,
-		fp:                   0,
-		running:              false,
-		main:                 vm.main,
-		inputGlobals:         vm.inputGlobals,
-		globals:              vm.globals,
-		loadedCode:           loadedCode,
-		contextCheckInterval: vm.contextCheckInterval,
-		observer:             vm.observer,
-		frames:               make([]frame, InitialFrameCapacity),
-		excStack:             make([]exceptionFrame, 8),
-	}
-
-	// Only activate main code if it exists
-	if clone.main != nil {
-		clone.activateCode(clone.fp, clone.ip, clone.loadCode(clone.main))
-	}
-
-	return clone, nil
-}
-
-// Clones the VM and then calls the function synchronously in the clone.
-func (vm *VirtualMachine) cloneCallSync(
-	ctx context.Context,
-	fn *object.Function,
-	args []object.Object,
-) (object.Object, error) {
-	clone, err := vm.Clone()
-	if err != nil {
-		return nil, err
-	}
-	return clone.callFunction(clone.initContext(ctx), fn, args)
-}
-
 func (vm *VirtualMachine) initContext(ctx context.Context) context.Context {
-	ctx = object.WithCallFunc(ctx, vm.callFunction)
-	ctx = object.WithCloneCallFunc(ctx, vm.cloneCallSync)
-	return ctx
+	return object.WithCallFunc(ctx, vm.callFunction)
 }
 
 // captureStack builds a stack trace from the current call frames.
