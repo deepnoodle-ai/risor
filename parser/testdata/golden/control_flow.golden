@@ -1,0 +1,10 @@
+if ((x > 0)) print("positive") else if ((x < 0)) print("negative") else print("zero")
+switch (val) {
+case 1:
+	"one"
+case 2, 3:
+	"two or three"
+default:
+	"other"
+}
+try risky() catch e handle(e) finally cleanup()
