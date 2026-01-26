@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 	"github.com/stretchr/testify/require"
 )
 

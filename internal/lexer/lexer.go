@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 )
 
 // NumberType describes the type of a number that is being lexed.

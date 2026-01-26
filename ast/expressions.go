@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"strings"
 
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 )
 
 // Ident is an expression node that refers to a variable by name.

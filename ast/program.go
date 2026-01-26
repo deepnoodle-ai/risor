@@ -3,7 +3,7 @@ package ast
 import (
 	"bytes"
 
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 )
 
 // Program represents a complete Risor program, which consists of a series of

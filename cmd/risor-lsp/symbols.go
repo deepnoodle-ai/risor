@@ -5,7 +5,7 @@ import (
 
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
 	"github.com/risor-io/risor/ast"
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 	"github.com/rs/zerolog/log"
 )
 

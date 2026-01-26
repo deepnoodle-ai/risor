@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"strings"
 
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 )
 
 // Var is a statement that declares a new variable with an initial value.

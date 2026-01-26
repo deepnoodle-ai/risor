@@ -11,7 +11,7 @@ import (
 	"github.com/risor-io/risor/ast"
 	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 )
 
 // SourceLocation is an alias to errz.SourceLocation for convenience.

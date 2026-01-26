@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/risor-io/risor/internal/tmpl"
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 )
 
 // Int is an expression node that holds an integer literal.

@@ -11,7 +11,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/op"
-	"github.com/risor-io/risor/table"
+	"github.com/risor-io/risor/internal/table"
 )
 
 // Instruction represents a single bytecode instruction and its operands.
