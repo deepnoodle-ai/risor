@@ -348,7 +348,7 @@ func (p *Parser) parseBlock() *ast.Block {
 
 func (p *Parser) parseSwitch() ast.Node {
 	switchPos := p.curToken.StartPosition
-	if !p.expectPeek("switch statement", token.LPAREN) { // move to the "("
+	if !p.expectPeek("switch statement", token.LPAREN) {
 		return nil
 	}
 	lparen := p.curToken.StartPosition
@@ -357,7 +357,7 @@ func (p *Parser) parseSwitch() ast.Node {
 	if switchValue == nil {
 		return nil
 	}
-	if !p.expectPeek("switch statement", token.RPAREN) { // move to the ")"
+	if !p.expectPeek("switch statement", token.RPAREN) {
 		return nil
 	}
 	rparen := p.curToken.StartPosition
@@ -367,10 +367,11 @@ func (p *Parser) parseSwitch() ast.Node {
 	lbrace := p.curToken.StartPosition
 	p.nextToken()
 	p.eatNewlines()
+
 	// Process the switch case statements
 	var cases []*ast.Case
 	var defaultCaseCount int
-	// Each time through this loop we process one case statement
+
 	for !p.curTokenIs(token.RBRACE) {
 		if p.cancelled() {
 			return nil
@@ -379,129 +380,20 @@ func (p *Parser) parseSwitch() ast.Node {
 			p.setTokenError(p.prevToken, "unterminated switch statement")
 			return nil
 		}
-		if p.curToken.Literal != "case" && p.curToken.Literal != "default" {
-			p.setTokenError(p.curToken, "expected 'case' or 'default' (got %s)", p.curToken.Literal)
+		caseNode, isDefault := p.parseSwitchCase()
+		if caseNode == nil {
 			return nil
 		}
-		casePos := p.curToken.StartPosition
-		var isDefaultCase bool
-		var caseExprs []ast.Expr
-		if p.curTokenIs(token.DEFAULT) {
-			isDefaultCase = true
-		} else if p.curTokenIs(token.CASE) {
-			p.nextToken() // move to the token following "case"
-			expr := p.parseExpression(LOWEST)
-			if expr == nil {
-				return nil
-			}
-			caseExprs = append(caseExprs, expr)
-			for p.peekTokenIs(token.COMMA) {
-				p.nextToken() // move to the comma
-				p.nextToken() // move to the following expression
-				expr = p.parseExpression(LOWEST)
-				if expr == nil {
-					return nil
-				}
-				caseExprs = append(caseExprs, expr)
-			}
-		} else {
-			p.setTokenError(p.curToken, "expected 'case' or 'default' (got %s)", p.curToken.Literal)
-			return nil
-		}
-		if !p.expectPeek("switch statement", token.COLON) {
-			return nil
-		}
-		colonPos := p.curToken.StartPosition
-		// Now we are at the block of code to be executed for this case
-		p.nextToken()
-		p.eatNewlines()
-		// An empty case statement is valid
-		if p.curTokenIs(token.CASE) || p.curTokenIs(token.DEFAULT) || p.curTokenIs(token.RBRACE) {
-			if isDefaultCase {
-				defaultCaseCount++
-				if defaultCaseCount > 1 {
-					p.setTokenError(p.curToken, "switch statement has multiple default blocks")
-					return nil
-				}
-				cases = append(cases, &ast.Case{
-					Case:    casePos,
-					Exprs:   nil,
-					Colon:   colonPos,
-					Body:    nil,
-					Default: true,
-				})
-			} else {
-				cases = append(cases, &ast.Case{
-					Case:    casePos,
-					Exprs:   caseExprs,
-					Colon:   colonPos,
-					Body:    nil,
-					Default: false,
-				})
-			}
-			continue
-		}
-		blockLbrace := p.curToken.StartPosition
-		var blockStatements []ast.Node
-		for {
-			if p.cancelled() {
-				return nil
-			}
-			// Skip over newlines and semicolons
-			for p.curTokenIs(token.NEWLINE) || p.curTokenIs(token.SEMICOLON) {
-				if err := p.nextToken(); err != nil {
-					return nil
-				}
-			}
-			// Any of these tokens indicate the end of the current case
-			if p.curTokenIs(token.CASE) ||
-				p.curTokenIs(token.DEFAULT) ||
-				p.curTokenIs(token.RBRACE) ||
-				p.curTokenIs(token.EOF) {
-				break
-			}
-			// Parse one statement
-			if s := p.parseStatement(); s != nil {
-				blockStatements = append(blockStatements, s)
-			}
-			if !p.curTokenIs(token.SEMICOLON) &&
-				!statementTerminators[p.peekToken.Type] &&
-				!p.peekTokenIs(token.CASE) &&
-				!p.peekTokenIs(token.DEFAULT) &&
-				!p.peekTokenIs(token.RBRACE) {
-				p.peekError("case statement", token.SEMICOLON, p.peekToken)
-				return nil
-			}
-			// Move to the token just beyond the statement
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-		}
-		// For case blocks we use the same position for both braces since there are no actual braces
-		block := &ast.Block{Lbrace: blockLbrace, Stmts: blockStatements, Rbrace: blockLbrace}
-		if isDefaultCase {
+		if isDefault {
 			defaultCaseCount++
 			if defaultCaseCount > 1 {
 				p.setTokenError(p.curToken, "switch statement has multiple default blocks")
 				return nil
 			}
-			cases = append(cases, &ast.Case{
-				Case:    casePos,
-				Exprs:   nil,
-				Colon:   colonPos,
-				Body:    block,
-				Default: true,
-			})
-		} else {
-			cases = append(cases, &ast.Case{
-				Case:    casePos,
-				Exprs:   caseExprs,
-				Colon:   colonPos,
-				Body:    block,
-				Default: false,
-			})
 		}
+		cases = append(cases, caseNode)
 	}
+
 	rbrace := p.curToken.StartPosition
 	return &ast.Switch{
 		Switch: switchPos,
@@ -512,6 +404,104 @@ func (p *Parser) parseSwitch() ast.Node {
 		Cases:  cases,
 		Rbrace: rbrace,
 	}
+}
+
+// parseSwitchCase parses a single case or default clause in a switch statement.
+// Returns the Case node and whether it's a default case.
+func (p *Parser) parseSwitchCase() (*ast.Case, bool) {
+	if p.curToken.Literal != "case" && p.curToken.Literal != "default" {
+		p.setTokenError(p.curToken, "expected 'case' or 'default' (got %s)", p.curToken.Literal)
+		return nil, false
+	}
+
+	casePos := p.curToken.StartPosition
+	isDefault := p.curTokenIs(token.DEFAULT)
+	var caseExprs []ast.Expr
+
+	if !isDefault {
+		// Parse case expressions (comma-separated)
+		p.nextToken()
+		expr := p.parseExpression(LOWEST)
+		if expr == nil {
+			return nil, false
+		}
+		caseExprs = append(caseExprs, expr)
+		for p.peekTokenIs(token.COMMA) {
+			p.nextToken() // move to comma
+			p.nextToken() // move to expression
+			expr = p.parseExpression(LOWEST)
+			if expr == nil {
+				return nil, false
+			}
+			caseExprs = append(caseExprs, expr)
+		}
+	}
+
+	if !p.expectPeek("switch case", token.COLON) {
+		return nil, false
+	}
+	colonPos := p.curToken.StartPosition
+	p.nextToken()
+	p.eatNewlines()
+
+	// Parse the case body
+	body := p.parseCaseBody()
+	if body == nil && p.hadNewError() {
+		return nil, false
+	}
+
+	return &ast.Case{
+		Case:    casePos,
+		Exprs:   caseExprs,
+		Colon:   colonPos,
+		Body:    body,
+		Default: isDefault,
+	}, isDefault
+}
+
+// parseCaseBody parses the statements in a switch case until the next case/default/rbrace.
+// Returns nil for empty case bodies (which are valid).
+func (p *Parser) parseCaseBody() *ast.Block {
+	// Empty case body is valid
+	if p.curTokenIs(token.CASE) || p.curTokenIs(token.DEFAULT) || p.curTokenIs(token.RBRACE) {
+		return nil
+	}
+
+	blockPos := p.curToken.StartPosition
+	var statements []ast.Node
+
+	for {
+		if p.cancelled() {
+			return nil
+		}
+		// Skip newlines and semicolons
+		for p.curTokenIs(token.NEWLINE) || p.curTokenIs(token.SEMICOLON) {
+			if err := p.nextToken(); err != nil {
+				return nil
+			}
+		}
+		// End of case body?
+		if p.curTokenIs(token.CASE) || p.curTokenIs(token.DEFAULT) ||
+			p.curTokenIs(token.RBRACE) || p.curTokenIs(token.EOF) {
+			break
+		}
+		// Parse one statement
+		if s := p.parseStatement(); s != nil {
+			statements = append(statements, s)
+		}
+		// Check for proper statement termination
+		if !p.curTokenIs(token.SEMICOLON) && !statementTerminators[p.peekToken.Type] &&
+			!p.peekTokenIs(token.CASE) && !p.peekTokenIs(token.DEFAULT) && !p.peekTokenIs(token.RBRACE) {
+			p.peekError("case statement", token.SEMICOLON, p.peekToken)
+			return nil
+		}
+		if err := p.nextToken(); err != nil {
+			return nil
+		}
+	}
+
+	// Case blocks use same position for both braces (no actual braces in source)
+	return &ast.Block{Lbrace: blockPos, Stmts: statements, Rbrace: blockPos}
 }
 
 func (p *Parser) parseIndex(leftNode ast.Node) ast.Node {

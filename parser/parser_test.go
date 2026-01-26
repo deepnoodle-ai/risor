@@ -722,7 +722,7 @@ func TestIncompleThings(t *testing.T) {
 		{`function foo() {`, "parse error: unterminated block statement"},
 		{`switch (foo) { `, "parse error: unterminated switch statement"},
 		{`{`, "parse error: invalid syntax"},
-		{`[`, "parse error: invalid syntax in list expression"},
+		{`[`, "parse error: invalid syntax in list"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
 		{`{ "a", "b", "c"`, "parse error: unexpected , while parsing map (expected :)"},
 		{`foo |`, "parse error: invalid pipe expression"},
@@ -1145,7 +1145,7 @@ func TestBadInputs(t *testing.T) {
 		{"if", `parse error: unexpected end of file while parsing an if expression (expected ()`},
 		{"else", `parse error: invalid syntax (unexpected "else")`},
 		{"&&", `parse error: invalid syntax (unexpected "&&")`},
-		{"[", `parse error: invalid syntax in list expression`},
+		{"[", `parse error: invalid syntax in list`},
 		{"[1,", `parse error: invalid syntax`},
 		{"0?if", `parse error: unexpected end of file while parsing an if expression (expected ()`},
 		{"0?0:", `parse error: invalid syntax in ternary if false expression`},
@@ -1155,7 +1155,7 @@ func TestBadInputs(t *testing.T) {
 		{"switch (x) { case 1: 1 case 2: 2 defaultIIIIIII: 3 }", "parse error: unexpected defaultIIIIIII while parsing case statement (expected ;)"},
 		{`{ one: 1
 			two: 2}`, "parse error: unexpected two while parsing map (expected })"},
-		{`[1 2]`, "parse error: unexpected 2 while parsing an expression list (expected ])"},
+		{`[1 2]`, "parse error: unexpected 2 while parsing list (expected ])"},
 		{`[1, 2, ,]`, "parse error: invalid syntax (unexpected \",\")"},
 	}
 	for _, tt := range tests {

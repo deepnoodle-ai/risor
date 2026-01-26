@@ -144,109 +144,80 @@ func (p *Parser) parseList() ast.Node {
 	return &ast.List{Lbrack: lbrack, Items: items, Rbrack: rbrack}
 }
 
+// parseExprList parses a comma-separated list of expressions until the end token.
+// It wraps parseNodeList and ensures all items are expressions.
 func (p *Parser) parseExprList(end token.Type) []ast.Expr {
-	list := make([]ast.Expr, 0)
-	if p.peekTokenIs(end) {
-		p.nextToken()
-		return list
-	}
-	for p.peekTokenIs(token.NEWLINE) {
-		if err := p.nextToken(); err != nil {
-			return nil
-		}
-	}
-	p.nextToken()
-	expr := p.parseExpression(LOWEST)
-	if expr == nil {
-		p.setTokenError(p.curToken, "invalid syntax in list expression")
+	nodes := p.parseNodeList(end)
+	if nodes == nil {
 		return nil
 	}
-	list = append(list, expr)
-	for p.peekTokenIs(token.COMMA) {
-		// move to the comma
-		if err := p.nextToken(); err != nil {
+	exprs := make([]ast.Expr, len(nodes))
+	for i, node := range nodes {
+		expr, ok := node.(ast.Expr)
+		if !ok {
+			p.setTokenError(p.curToken, "expected expression in list")
 			return nil
 		}
-		// advance across any extra newlines
-		for p.peekTokenIs(token.NEWLINE) {
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-		}
-		// check if the list has ended after the newlines
-		if p.peekTokenIs(end) {
-			break
-		}
-		// move to the next expression
-		if err := p.nextToken(); err != nil {
-			return nil
-		}
-		expr = p.parseExpression(LOWEST)
-		if expr == nil {
-			return nil
-		}
-		list = append(list, expr)
+		exprs[i] = expr
 	}
-	for p.peekTokenIs(token.NEWLINE) {
-		if err := p.nextToken(); err != nil {
-			return nil
-		}
-	}
-	if !p.expectPeek("an expression list", end) {
-		return nil
-	}
-	return list
+	return exprs
 }
 
+// parseNodeList parses a comma-separated list of nodes until the end token.
+// Supports trailing commas and newlines between elements.
 func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 	list := make([]ast.Node, 0)
 	if p.peekTokenIs(end) {
 		p.nextToken()
 		return list
 	}
+	// Skip leading newlines
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
 	}
 	p.nextToken()
-	expr := p.parseNode(LOWEST)
-	if expr == nil {
-		p.setTokenError(p.curToken, "invalid syntax in list expression")
+	node := p.parseNode(LOWEST)
+	if node == nil {
+		if !p.hadNewError() {
+			p.setTokenError(p.curToken, "invalid syntax in list")
+		}
 		return nil
 	}
-	list = append(list, expr)
+	list = append(list, node)
 	for p.peekTokenIs(token.COMMA) {
-		// move to the comma
+		// Move to the comma
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
-		// advance across any extra newlines
+		// Skip newlines after comma
 		for p.peekTokenIs(token.NEWLINE) {
 			if err := p.nextToken(); err != nil {
 				return nil
 			}
 		}
-		// check if the list has ended after the newlines
+		// Check for trailing comma (list ended after newlines)
 		if p.peekTokenIs(end) {
 			break
 		}
-		// move to the next expression
+		// Move to the next element
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
-		expr = p.parseNode(LOWEST)
-		if expr == nil {
+		node = p.parseNode(LOWEST)
+		if node == nil {
 			return nil
 		}
-		list = append(list, expr)
+		list = append(list, node)
 	}
+	// Skip trailing newlines
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
 	}
-	if !p.expectPeek("a node list", end) {
+	if !p.expectPeek("list", end) {
 		return nil
 	}
 	return list
