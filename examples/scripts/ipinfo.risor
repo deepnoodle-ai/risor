@@ -1,7 +1,0 @@
-#!/usr/bin/env risor --
-
-let req = http.get("http://ipinfo.io")
-
-let res = req.send()
-
-print(res.json().ip)

@@ -1153,7 +1153,7 @@ func TestBadInputs(t *testing.T) {
 
 func TestRangePrecedence(t *testing.T) {
 	// This confirms the correct precedence of the "range" vs. "call" operators
-	input := `range byte_slice(99)`
+	input := `range list(99)`
 
 	// Parse the program, which should be 1 statement in length
 	program, err := Parse(context.Background(), input)
@@ -1169,10 +1169,10 @@ func TestRangePrecedence(t *testing.T) {
 	require.IsType(t, &ast.Call{}, rangeStmt.Container())
 	callStmt := rangeStmt.Container().(*ast.Call)
 
-	// The function of the call expression should be an identifier (byte_slice)
+	// The function of the call expression should be an identifier (list)
 	require.IsType(t, &ast.Ident{}, callStmt.Function())
 	ident := callStmt.Function().(*ast.Ident)
-	require.Equal(t, "byte_slice", ident.String())
+	require.Equal(t, "list", ident.String())
 
 	// The argument of the call expression should be an integer
 	require.IsType(t, &ast.Int{}, callStmt.Arguments()[0])
@@ -1182,7 +1182,7 @@ func TestRangePrecedence(t *testing.T) {
 
 func TestInPrecedence(t *testing.T) {
 	// This confirms the correct precedence of the "in" vs. "call" operators
-	input := `2 in float_slice([1,2,3])`
+	input := `2 in sorted([1,2,3])`
 
 	// Parse the program, which should be 1 statement in length
 	program, err := Parse(context.Background(), input)
@@ -1196,12 +1196,12 @@ func TestInPrecedence(t *testing.T) {
 	fmt.Println(inStmt.String())
 
 	require.Equal(t, "2", inStmt.Left().String())
-	require.Equal(t, "float_slice([1, 2, 3])", inStmt.Right().String())
+	require.Equal(t, "sorted([1, 2, 3])", inStmt.Right().String())
 }
 
 func TestNotInPrecedence(t *testing.T) {
 	// This confirms the correct precedence of the "not in" vs. "call" operators
-	input := `2 not in float_slice([1,2,3])`
+	input := `2 not in sorted([1,2,3])`
 
 	// Parse the program, which should be 1 statement in length
 	program, err := Parse(context.Background(), input)
@@ -1215,7 +1215,7 @@ func TestNotInPrecedence(t *testing.T) {
 	fmt.Println(notInStmt.String())
 
 	require.Equal(t, "2", notInStmt.Left().String())
-	require.Equal(t, "float_slice([1, 2, 3])", notInStmt.Right().String())
+	require.Equal(t, "sorted([1, 2, 3])", notInStmt.Right().String())
 }
 
 func TestNakedReturns(t *testing.T) {

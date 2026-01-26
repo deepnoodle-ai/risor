@@ -10,5 +10,4 @@ use (
 	./examples/go/struct
 	./examples/go/tetra3d
 	./modules/bcrypt
-	./modules/ssh
 )

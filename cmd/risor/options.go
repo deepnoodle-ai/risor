@@ -7,8 +7,6 @@ import (
 
 	"github.com/risor-io/risor"
 	"github.com/risor-io/risor/modules/bcrypt"
-	"github.com/risor-io/risor/modules/net"
-	"github.com/risor-io/risor/modules/ssh"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -22,8 +20,6 @@ func getGlobals() risor.Option {
 	// Modules that extend the standard library (using x/crypto)
 	globals := map[string]any{
 		"bcrypt": bcrypt.Module(),
-		"net":    net.Module(),
-		"ssh":    ssh.Module(),
 	}
 
 	return risor.WithGlobals(globals)

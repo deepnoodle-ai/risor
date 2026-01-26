@@ -8,7 +8,6 @@ import (
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
-	ros "github.com/risor-io/risor/os"
 	"github.com/risor-io/risor/parser"
 	"github.com/stretchr/testify/require"
 )
@@ -770,7 +769,6 @@ func TestLength(t *testing.T) {
 		{`len([1, 2, 3])`, object.NewInt(3)},
 		{`len({"abc": 1})`, object.NewInt(1)},
 		{`len("ᛛᛥ")`, object.NewInt(2)},
-		{`len(string(byte_slice([0, 1, 2])))`, object.NewInt(3)},
 	}
 	runTests(t, tests)
 }
@@ -781,9 +779,6 @@ func TestBuiltins(t *testing.T) {
 		{`keys({"a": 1})`, object.NewList([]object.Object{
 			object.NewString("a"),
 		})},
-		{`byte(9)`, object.NewByte(9)},
-		{`byte_slice([9])`, object.NewByteSlice([]byte{9})},
-		{`float_slice([9])`, object.NewFloatSlice([]float64{9})},
 		{`type(3.14159)`, object.NewString("float")},
 		{`type("hi".contains)`, object.NewString("builtin")},
 		{`sprintf("%d-%d", 1, 2)`, object.NewString("1-2")},
@@ -795,9 +790,6 @@ func TestBuiltins(t *testing.T) {
 		{`chr(97)`, object.NewString("a")},
 		{`encode("hi", "hex")`, object.NewString("6869")},
 		{`encode("hi", "base64")`, object.NewString("aGk=")},
-		{`iter("abc").next()`, object.NewString("a")},
-		{`let i = iter("abc"); i.next(); i.entry().key`, object.NewInt(0)},
-		{`let i = iter("abc"); i.next(); i.entry().value`, object.NewString("a")},
 		{`reversed("abc")`, object.NewString("cba")},
 		{`reversed([1, 2, 3])`, object.NewList([]object.Object{
 			object.NewInt(3),
@@ -878,7 +870,7 @@ func TestTryWithErrorValues(t *testing.T) {
 	code := `
 	const myerr = errors.new("errno == 1")
 	try(function() {
-		print("testing 1 2 3")
+		let x = "testing 1 2 3"
 		error(myerr)
 	}, function(e) {
 		return e == myerr ? "YES" : "NO"
@@ -1210,7 +1202,8 @@ func TestSpreadOperator(t *testing.T) {
 				object.NewInt(1), object.NewInt(2), object.NewInt(3), object.NewInt(4),
 			}),
 		},
-		{`let items = ["a", "b"]; print(...items)`, object.Nil},
+		// Spread with string concatenation
+		{`function join(a, b) { return a + b }; let items = ["a", "b"]; join(...items)`, object.NewString("ab")},
 	}
 	runTests(t, tests)
 }
@@ -2183,20 +2176,6 @@ func TestMultivar(t *testing.T) {
 	}), result)
 }
 
-func TestExecWithDir(t *testing.T) {
-	code := `exec(["cat", "jabberwocky.txt"], {dir: "fixtures"}).stdout.split("\n")[0]`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("'Twas brillig, and the slithy toves"), result)
-}
-
-func TestExecOldWayWithDir(t *testing.T) {
-	code := `exec("cat", ["jabberwocky.txt"], {dir: "fixtures"}).stdout.split("\n")[0]`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("'Twas brillig, and the slithy toves"), result)
-}
-
 func TestReturnNamedFunction(t *testing.T) {
 	code := `
 	function test() {
@@ -2379,34 +2358,6 @@ func TestDeeplyNestedRangeLoopBreak(t *testing.T) {
 
 	// We should get 5 (outer loops) * 3 (middle loops before break) * 3 (inner loops before break) = 45
 	require.Equal(t, object.NewInt(45), result)
-}
-
-func TestClonedVMOS(t *testing.T) {
-	code := `os.stdout.write("hello\n")`
-	ctx := context.Background()
-	ast, err := parser.Parse(ctx, code)
-	require.Nil(t, err)
-
-	globals := basicBuiltins()
-	var globalNames []string
-	for k := range globals {
-		globalNames = append(globalNames, k)
-	}
-
-	main, err := compiler.Compile(ast, compiler.WithGlobalNames(globalNames))
-	require.Nil(t, err)
-
-	stdout := ros.NewBufferFile([]byte{})
-	vos := ros.NewVirtualOS(ctx, ros.WithStdout(stdout))
-
-	vm1 := New(main, WithOS(vos), WithGlobals(globals))
-	require.Nil(t, vm1.Run(ctx))
-	require.Equal(t, "hello\n", string(stdout.Bytes()))
-
-	vm2, err := vm1.Clone()
-	require.Nil(t, err)
-	require.Nil(t, vm2.Run(ctx))
-	require.Equal(t, "hello\nhello\n", string(stdout.Bytes()))
 }
 
 func TestFunctionForwardDeclaration(t *testing.T) {

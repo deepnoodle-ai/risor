@@ -5,7 +5,6 @@ go 1.24.0
 replace (
 	github.com/risor-io/risor => ../..
 	github.com/risor-io/risor/modules/bcrypt => ../../modules/bcrypt
-	github.com/risor-io/risor/modules/ssh => ../../modules/ssh
 )
 
 require (
@@ -16,7 +15,6 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/risor-io/risor v1.8.0
 	github.com/risor-io/risor/modules/bcrypt v0.0.0-00010101000000-000000000000
-	github.com/risor-io/risor/modules/ssh v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0

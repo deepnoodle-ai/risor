@@ -17,22 +17,16 @@ var risorKeywords = []string{
 
 // Common built-in functions
 var risorBuiltins = []string{
-	"all", "any", "assert", "bool", "buffer", "byte_slice", "byte", "call",
-	"chr", "chunk", "coalesce", "decode", "delete", "encode",
-	"error", "float_slice", "float", "getattr", "hash", "int", "is_hashable",
-	"iter", "jmespath", "keys", "len", "list", "make", "map", "ord", "print", "println",
-	"reversed", "set", "sorted", "sprintf", "string", "try", "type",
+	"all", "any", "assert", "bool", "call", "chr", "chunk", "coalesce",
+	"decode", "delete", "encode", "error", "errorf", "float", "getattr",
+	"hash", "int", "keys", "len", "list", "map", "ord", "reversed",
+	"set", "sorted", "sprintf", "string", "try", "type",
 }
 
 // Common modules
 var risorModules = []string{
-	"aws", "base64", "bcrypt", "bytes", "cli", "color", "dns", "echarts",
-	"errors", "exec", "filepath", "fmt", "gha", "github", "goquery",
-	"htmltomarkdown", "http", "image", "isatty", "jmespath", "json",
-	"kubernetes", "math", "net", "os", "pgx", "playwright", "qrcode",
-	"rand", "redis", "regexp", "sched", "semver", "shlex", "slack",
-	"sql", "ssh", "strconv", "strings", "tablewriter", "template",
-	"time", "uuid", "vault", "yaml",
+	"base64", "bcrypt", "bytes", "errors", "filepath", "fmt", "json",
+	"math", "rand", "regexp", "strconv", "strings", "time",
 }
 
 func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {

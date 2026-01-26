@@ -8,11 +8,9 @@ import (
 	"github.com/risor-io/risor/importer"
 	modBytes "github.com/risor-io/risor/modules/bytes"
 	modErrors "github.com/risor-io/risor/modules/errors"
-	modExec "github.com/risor-io/risor/modules/exec"
 	modFmt "github.com/risor-io/risor/modules/fmt"
 	modJSON "github.com/risor-io/risor/modules/json"
 	modMath "github.com/risor-io/risor/modules/math"
-	modOS "github.com/risor-io/risor/modules/os"
 	modRand "github.com/risor-io/risor/modules/rand"
 	modStrconv "github.com/risor-io/risor/modules/strconv"
 	modStrings "github.com/risor-io/risor/modules/strings"
@@ -96,7 +94,6 @@ func newVM(ctx context.Context, source string, opts ...runOpts) (*VirtualMachine
 func basicBuiltins() map[string]any {
 	globals := map[string]any{
 		"bytes":   modBytes.Module(),
-		"exec":    modExec.Module(),
 		"json":    modJSON.Module(),
 		"errors":  modErrors.Module(),
 		"math":    modMath.Module(),
@@ -104,7 +101,6 @@ func basicBuiltins() map[string]any {
 		"strconv": modStrconv.Module(),
 		"strings": modStrings.Module(),
 		"time":    modTime.Module(),
-		"os":      modOS.Module(),
 	}
 	for k, v := range builtins.Builtins() {
 		globals[k] = v

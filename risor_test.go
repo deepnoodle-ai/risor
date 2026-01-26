@@ -7,7 +7,6 @@ import (
 
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/object"
-	ros "github.com/risor-io/risor/os"
 	"github.com/risor-io/risor/parser"
 	"github.com/risor-io/risor/vm"
 	"github.com/stretchr/testify/require"
@@ -97,26 +96,9 @@ func TestWithDenyList(t *testing.T) {
 			input:       "json.marshal(42)",
 			expectedErr: errors.New("compile error: undefined variable \"json\"\n\nlocation: unknown:1:1 (line 1, column 1)"),
 		},
-		{
-			input:       `os.getenv("USER")`,
-			expectedErr: nil,
-		},
-		{
-			input:       "os.exit(1)",
-			expectedErr: errors.New(`type error: attribute "exit" not found on module object`),
-		},
-		{
-			input: `from os import exit
-exit(1)`,
-			expectedErr: errors.New(`import error: cannot import name "exit" from "os"`),
-		},
-		{
-			input:       "cat /etc/issue",
-			expectedErr: errors.New("compile error: undefined variable \"cat\"\n\nlocation: unknown:1:1 (line 1, column 1)"),
-		},
 	}
 	for _, tc := range testCases {
-		_, err := Eval(context.Background(), tc.input, WithoutGlobals("any", "os.exit", "json", "cat"))
+		_, err := Eval(context.Background(), tc.input, WithoutGlobals("any", "json"))
 		// t.Logf("want: %q; got: %v", tc.expectedErr, err)
 		if tc.expectedErr != nil {
 			require.NotNil(t, err)
@@ -137,88 +119,6 @@ func TestWithoutDefaultGlobal(t *testing.T) {
 	_, err := Eval(context.Background(), "json.marshal(42)", WithoutGlobal("json"))
 	require.NotNil(t, err)
 	require.Equal(t, errors.New("compile error: undefined variable \"json\"\n\nlocation: unknown:1:1 (line 1, column 1)"), err)
-}
-
-func TestWithVirtualOSStdinBuffer(t *testing.T) {
-	ctx := context.Background()
-	stdinBuf := ros.NewBufferFile([]byte("hello"))
-	vos := ros.NewVirtualOS(ctx, ros.WithStdin(stdinBuf))
-
-	result, err := Eval(ctx, "os.stdin.read()", WithOS(vos))
-	require.Nil(t, err)
-	require.Equal(t, object.NewByteSlice([]byte("hello")), result)
-}
-
-func TestWithVirtualOSStdinBufferViaContext(t *testing.T) {
-	ctx := context.Background()
-	stdinBuf := ros.NewBufferFile([]byte("hello"))
-	vos := ros.NewVirtualOS(ctx, ros.WithStdin(stdinBuf))
-	ctx = ros.WithOS(ctx, vos)
-
-	result, err := Eval(ctx, "os.stdin.read()")
-	require.Nil(t, err)
-	require.Equal(t, object.NewByteSlice([]byte("hello")), result)
-}
-
-func TestWithVirtualOSStdoutBuffer(t *testing.T) {
-	ctx := context.Background()
-	stdoutBuf := ros.NewBufferFile(nil)
-	vos := ros.NewVirtualOS(ctx, ros.WithStdout(stdoutBuf))
-
-	result, err := Eval(ctx, "os.stdout.write('foo')", WithOS(vos))
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(int64(len("foo"))), result)
-
-	require.Equal(t, "foo", string(stdoutBuf.Bytes()))
-}
-
-func TestStdinListBuffer(t *testing.T) {
-	ctx := context.Background()
-	stdinBuf := ros.NewBufferFile([]byte("foo\nbar!"))
-	vos := ros.NewVirtualOS(ctx, ros.WithStdin(stdinBuf))
-
-	result, err := Eval(ctx, "list(os.stdin)", WithOS(vos))
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewString("foo"),
-		object.NewString("bar!"),
-	}), result)
-}
-
-func TestWithVirtualOSStdin(t *testing.T) {
-	ctx := context.Background()
-	stdinBuf := ros.NewInMemoryFile([]byte("hello"))
-	vos := ros.NewVirtualOS(ctx, ros.WithStdin(stdinBuf))
-
-	result, err := Eval(ctx, "os.stdin.read()", WithOS(vos))
-	require.Nil(t, err)
-	require.Equal(t, object.NewByteSlice([]byte("hello")), result)
-}
-
-func TestWithVirtualOSStdout(t *testing.T) {
-	ctx := context.Background()
-	stdoutBuf := ros.NewInMemoryFile(nil)
-	vos := ros.NewVirtualOS(ctx, ros.WithStdout(stdoutBuf))
-
-	result, err := Eval(ctx, "os.stdout.write('foo')", WithOS(vos))
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(int64(len("foo"))), result)
-
-	stdoutBuf.Rewind()
-	require.Equal(t, "foo", string(stdoutBuf.Bytes()))
-}
-
-func TestStdinList(t *testing.T) {
-	ctx := context.Background()
-	stdinBuf := ros.NewInMemoryFile([]byte("foo\nbar!"))
-	vos := ros.NewVirtualOS(ctx, ros.WithStdin(stdinBuf))
-
-	result, err := Eval(ctx, "list(os.stdin)", WithOS(vos))
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewString("foo"),
-		object.NewString("bar!"),
-	}), result)
 }
 
 func TestEvalCode(t *testing.T) {
@@ -413,13 +313,15 @@ func TestDefaultGlobalsFunc(t *testing.T) {
 		"base64",
 		"bytes",
 		"errors",
-		"exec",
 		"filepath",
 		"fmt",
-		"http",
-		"cat",
-		"ls",
-		"print",
+		"json",
+		"math",
+		"rand",
+		"regexp",
+		"strconv",
+		"strings",
+		"time",
 	}
 	for _, name := range expectedNames {
 		_, ok := globals[name]

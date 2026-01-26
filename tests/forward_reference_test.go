@@ -13,7 +13,7 @@ func TestForwardReference(t *testing.T) {
 		// This should now work with forward references
 		code := `
 function say() {
-    print(hello())
+    return hello()
 }
 
 function hello() {
@@ -25,10 +25,11 @@ say()
 		ctx := context.Background()
 
 		// Now this should work without error
-		_, err := risor.Eval(ctx, code)
+		result, err := risor.Eval(ctx, code)
 
-		// It should not error
+		// It should not error and return the correct value
 		require.Nil(t, err)
+		require.Equal(t, "\"hello\"", result.Inspect())
 	})
 
 	t.Run("forward reference returns correct value", func(t *testing.T) {
