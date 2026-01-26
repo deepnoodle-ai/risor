@@ -8,19 +8,10 @@ import (
 	"io"
 	"strings"
 
+	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/internal/color"
-	"github.com/risor-io/risor/internal/table"
 	"github.com/risor-io/risor/op"
-)
-
-var (
-	bold      = color.New(color.Bold)
-	yellow    = color.New(color.FgYellow)
-	green     = color.New(color.FgGreen)
-	magenta   = color.New(color.FgMagenta)
-	italic    = color.New(color.Italic)
-	nameColor = color.New(color.FgHiCyan)
+	"github.com/risor-io/risor/table"
 )
 
 // Instruction represents a single bytecode instruction and its operands.
@@ -89,36 +80,52 @@ func Disassemble(code *compiler.Code) ([]Instruction, error) {
 	return instructions, nil
 }
 
+// italic applies italic formatting (ANSI code 3) if colors are enabled.
+func italic(s string) string {
+	if !color.Enabled {
+		return s
+	}
+	return "\033[3m" + s + "\033[0m"
+}
+
+// bold applies bold formatting if colors are enabled.
+func bold(s string) string {
+	if !color.Enabled {
+		return s
+	}
+	return color.ApplyBold(s)
+}
+
 // Print a string representation of the given instructions to the given writer.
 func Print(instructions []Instruction, writer io.Writer) {
 	var lines [][]string
 	for _, instr := range instructions {
 		var values []string
 		values = append(values, fmt.Sprintf("%d", instr.Offset))
-		values = append(values, bold.Sprint(instr.Name))
+		values = append(values, bold(instr.Name))
 		values = append(values, formatOperands(instr.Operands))
 		if instr.Constant != nil {
 			switch c := instr.Constant.(type) {
 			case int64:
-				values = append(values, yellow.Sprintf("%d", c))
+				values = append(values, color.Colorize(color.Yellow, fmt.Sprintf("%d", c)))
 			case float64:
-				values = append(values, yellow.Sprintf("%f", c))
+				values = append(values, color.Colorize(color.Yellow, fmt.Sprintf("%f", c)))
 			case string:
 				if len(c) > 80 {
 					c = c[:77] + "..."
 				}
-				values = append(values, green.Sprintf("%q", c))
+				values = append(values, color.Colorize(color.Green, fmt.Sprintf("%q", c)))
 			case *compiler.Function:
 				name := c.Name()
 				if name == "" {
-					name = italic.Sprint("<anonymous>")
+					name = italic("<anonymous>")
 				}
-				values = append(values, magenta.Sprintf("func:%s", name))
+				values = append(values, color.Colorize(color.Magenta, fmt.Sprintf("func:%s", name)))
 			default:
-				values = append(values, bold.Sprintf("%v", c))
+				values = append(values, bold(fmt.Sprintf("%v", c)))
 			}
 		} else if instr.Annotation != "" {
-			values = append(values, nameColor.Sprintf("%v", instr.Annotation))
+			values = append(values, color.Colorize(color.BrightCyan, fmt.Sprintf("%v", instr.Annotation)))
 		} else {
 			values = append(values, "")
 		}

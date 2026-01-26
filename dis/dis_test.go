@@ -6,12 +6,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/parser"
 	"github.com/stretchr/testify/require"
 )
 
 func TestFunctionDissasembly(t *testing.T) {
+	// Disable colors for consistent test output
+	color.Enabled = false
+	defer func() { color.Enabled = true }()
 	src := `
 	function f() {
 		42

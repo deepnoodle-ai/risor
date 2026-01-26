@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/risor-io/risor/internal/color"
+	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,19 +40,16 @@ func TestColoredTable(t *testing.T) {
 	table.WithHeaderAlignment([]Alignment{AlignCenter, AlignCenter, AlignCenter})
 
 	// Add rows with colored content
-	bold := color.New(color.Bold)
-	green := color.New(color.FgGreen)
-
 	table.Append([]string{
-		bold.Sprint("Bold text"),
+		color.ApplyBold("Bold text"),
 		"12345",
-		green.Sprint("Green text"),
+		color.Green.Sprint("Green text"),
 	})
 
 	table.Append([]string{
 		"Normal",
-		bold.Sprintf("%d", 999),
-		green.Sprint("More color"),
+		color.ApplyBold("999"),
+		color.Green.Sprint("More color"),
 	})
 
 	// Render the table
