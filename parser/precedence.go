@@ -51,7 +51,6 @@ var precedences = map[token.Type]int{
 	token.AND:             COND,
 	token.OR:              COND,
 	token.PIPE:            PIPE,
-	token.PIPE_GT:         PIPE,
 	token.LPAREN:          CALL,
 	token.PERIOD:          INDEX,
 	token.QUESTION_DOT:    OPTCHAIN,

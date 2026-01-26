@@ -229,13 +229,6 @@ func Walk(v Visitor, node Node) {
 		if n.Y != nil {
 			Walk(v, n.Y)
 		}
-	case *PipeForward:
-		if n.X != nil {
-			Walk(v, n.X)
-		}
-		if n.Y != nil {
-			Walk(v, n.Y)
-		}
 	case *List:
 		for _, item := range n.Items {
 			Walk(v, item)
@@ -490,13 +483,6 @@ func Preorder(root Node) iter.Seq[Node] {
 					return false
 				}
 			case *NotIn:
-				if node.X != nil && !visit(node.X) {
-					return false
-				}
-				if node.Y != nil && !visit(node.Y) {
-					return false
-				}
-			case *PipeForward:
 				if node.X != nil && !visit(node.X) {
 					return false
 				}

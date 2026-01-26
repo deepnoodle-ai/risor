@@ -784,28 +784,6 @@ func TestPipes(t *testing.T) {
 	runTests(t, tests)
 }
 
-func TestPipeForward(t *testing.T) {
-	tests := []testCase{
-		// Basic pipe forward
-		{`"hello" |> (s => s.to_upper())`, object.NewString("HELLO")},
-		{`"hello" |> len`, object.NewInt(5)},
-		{`[1, 2, 3] |> len`, object.NewInt(3)},
-		// Chained pipe forward
-		{`"hello" |> (s => s.to_upper()) |> len`, object.NewInt(5)},
-		// With functions
-		{`function() { "hello" }() |> len`, object.NewInt(5)},
-		{`"abc" |> (s => s.to_upper())`, object.NewString("ABC")},
-		// With lambdas
-		{`5 |> (x => x * 2)`, object.NewInt(10)},
-		{`5 |> (x => x * 2) |> (x => x + 1)`, object.NewInt(11)},
-		// With math functions
-		{`[1, 2, 3] |> math.sum`, object.NewFloat(6)},
-		// Combining with lambdas for multi-arg functions
-		{`[1, 2, 3] |> (x => x.filter(y => y > 1)) |> len`, object.NewInt(2)},
-	}
-	runTests(t, tests)
-}
-
 func TestQuicksort(t *testing.T) {
 	result, err := run(context.Background(), `
 	function quicksort(arr) {

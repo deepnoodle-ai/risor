@@ -347,13 +347,13 @@ func (x *Case) String() string {
 
 // Switch is an expression node that describes a switch between multiple cases.
 type Switch struct {
-	Switch  token.Position // position of "switch" keyword
-	Lparen  token.Position // position of "("
-	Value   Expr           // switch value
-	Rparen  token.Position // position of ")"
-	Lbrace  token.Position // position of "{"
-	Cases   []*Case        // case clauses
-	Rbrace  token.Position // position of "}"
+	Switch token.Position // position of "switch" keyword
+	Lparen token.Position // position of "("
+	Value  Expr           // switch value
+	Rparen token.Position // position of ")"
+	Lbrace token.Position // position of "{"
+	Cases  []*Case        // case clauses
+	Rbrace token.Position // position of "}"
 }
 
 func (x *Switch) exprNode() {}
@@ -412,28 +412,5 @@ func (x *NotIn) String() string {
 	out.WriteString(x.X.String())
 	out.WriteString(" not in ")
 	out.WriteString(x.Y.String())
-	return out.String()
-}
-
-// PipeForward is an expression node that represents the |> operator.
-// It evaluates x |> f as f(x), enabling left-to-right function composition.
-type PipeForward struct {
-	X     Expr           // left operand
-	OpPos token.Position // position of "|>"
-	Y     Expr           // right operand (function)
-}
-
-func (x *PipeForward) exprNode() {}
-
-func (x *PipeForward) Pos() token.Position { return x.X.Pos() }
-func (x *PipeForward) End() token.Position { return x.Y.End() }
-
-func (x *PipeForward) String() string {
-	var out bytes.Buffer
-	out.WriteString("(")
-	out.WriteString(x.X.String())
-	out.WriteString(" |> ")
-	out.WriteString(x.Y.String())
-	out.WriteString(")")
 	return out.String()
 }

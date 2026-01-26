@@ -302,10 +302,6 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compilePipe(node); err != nil {
 			return err
 		}
-	case *ast.PipeForward:
-		if err := c.compilePipeForward(node); err != nil {
-			return err
-		}
 	case *ast.Ternary:
 		if err := c.compileTernary(node); err != nil {
 			return err
@@ -865,21 +861,6 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 		c.emit(op.Swap, 1)
 		c.emit(op.Call, 1)
 	}
-	return nil
-}
-
-func (c *Compiler) compilePipeForward(node *ast.PipeForward) error {
-	// Compile left side (the value to pass)
-	if err := c.compile(node.X); err != nil {
-		return err
-	}
-	// Compile right side (the function to call)
-	if err := c.compile(node.Y); err != nil {
-		return err
-	}
-	// Swap so function is below the argument, then call with 1 argument
-	c.emit(op.Swap, 1)
-	c.emit(op.Call, 1)
 	return nil
 }
 

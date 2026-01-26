@@ -170,7 +170,6 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerInfix(token.PERIOD, p.parseGetAttr)
 	p.registerInfix(token.QUESTION_DOT, p.parseOptionalChain)
 	p.registerInfix(token.PIPE, p.parsePipe)
-	p.registerInfix(token.PIPE_GT, p.parsePipeForward)
 	p.registerInfix(token.PLUS_EQUALS, p.parseAssign)
 	p.registerInfix(token.PLUS, p.parseInfixExpr)
 	p.registerInfix(token.POW, p.parseInfixExpr)
@@ -1579,48 +1578,6 @@ func (p *Parser) parsePipe(firstNode ast.Node) ast.Node {
 		}
 	}
 	return &ast.Pipe{Exprs: exprs}
-}
-
-func (p *Parser) parsePipeForward(leftNode ast.Node) ast.Node {
-	left, ok := leftNode.(ast.Expr)
-	if !ok {
-		p.setTokenError(p.curToken, "invalid pipe forward expression")
-		return nil
-	}
-	opPos := p.curToken.StartPosition
-
-	// Move past the |> operator
-	if err := p.nextToken(); err != nil {
-		return nil
-	}
-
-	// Advance across any newlines
-	p.eatNewlines()
-
-	// Parse the right-hand side (the function)
-	right := p.parseExpression(PIPE)
-	if right == nil {
-		p.setTokenError(p.curToken, "invalid pipe forward expression")
-		return nil
-	}
-
-	result := &ast.PipeForward{X: left, OpPos: opPos, Y: right}
-
-	// Check for chained |> operators
-	for p.peekTokenIs(token.PIPE_GT) {
-		p.nextToken() // move to the next |>
-		opPos = p.curToken.StartPosition
-		p.nextToken() // move past |>
-		p.eatNewlines()
-		right = p.parseExpression(PIPE)
-		if right == nil {
-			p.setTokenError(p.curToken, "invalid pipe forward expression")
-			return nil
-		}
-		result = &ast.PipeForward{X: result, OpPos: opPos, Y: right}
-	}
-
-	return result
 }
 
 func (p *Parser) parseIn(leftNode ast.Node) ast.Node {
