@@ -12,7 +12,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/hokaccha/go-prettyjson"
 	"github.com/mattn/go-isatty"
-	"github.com/risor-io/risor/object"
 	"github.com/spf13/viper"
 )
 
@@ -65,14 +64,14 @@ func getScriptArgs(positionalArgs []string) ([]string, []string) {
 
 var outputFormatsCompletion = []string{"json", "text"}
 
-func getOutput(result object.Object, format string) (string, error) {
+func getOutput(result any, format string) (string, error) {
 	switch strings.ToLower(format) {
 	case "":
 		// With an unspecified format, we'll try to do the most helpful thing:
 		//  1. If the result is nil, we want to print nothing
 		//  2. If the result marshals to JSON, we'll print that
 		//  3. Otherwise, we'll print the result's string representation
-		if result == object.Nil {
+		if result == nil {
 			return "", nil
 		}
 		output, err := getOutputJSON(result)
@@ -93,7 +92,7 @@ func getOutput(result object.Object, format string) (string, error) {
 	}
 }
 
-func getOutputJSON(result object.Object) ([]byte, error) {
+func getOutputJSON(result any) ([]byte, error) {
 	if viper.GetBool("no-color") {
 		return json.MarshalIndent(result, "", "  ")
 	} else {

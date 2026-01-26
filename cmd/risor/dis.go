@@ -1,14 +1,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/risor-io/risor"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/dis"
-	"github.com/risor-io/risor/parser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -25,7 +23,6 @@ var disCmd = &cobra.Command{
 	Example: disExample,
 	Args:    cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ctx := context.Background()
 		processGlobalFlags()
 		opts := getRisorOptions()
 		code, err := getRisorCode(cmd, args)
@@ -33,16 +30,12 @@ var disCmd = &cobra.Command{
 			fatal(err)
 		}
 
-		// Parse then compile the input code
-		ast, err := parser.Parse(ctx, code)
+		// Compile the input code using the new Compile API
+		program, err := risor.Compile(code, opts...)
 		if err != nil {
 			fatal(err)
 		}
-		cfg := risor.NewConfig(opts...)
-		compiledCode, err := compiler.Compile(ast, cfg.CompilerOpts()...)
-		if err != nil {
-			fatal(err)
-		}
+		compiledCode := program.Code()
 		targetCode := compiledCode
 
 		// If a function name was provided, disassemble its code only

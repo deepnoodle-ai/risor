@@ -11,8 +11,9 @@ import (
 	"github.com/risor-io/risor/vm"
 )
 
-// Config assists in configuring Risor evaluations.
-type Config struct {
+// config assists in configuring Risor evaluations.
+// This type is unexported; use Option functions to configure Risor.
+type config struct {
 	globals               map[string]any
 	overrides             map[string]any
 	denylist              map[string]bool
@@ -24,10 +25,10 @@ type Config struct {
 	vm                    *vm.VirtualMachine
 }
 
-// NewConfig returns a new Risor Config. Use the Risor options functions
+// newConfig returns a new Risor config. Use the Risor options functions
 // to customize the configuration.
-func NewConfig(opts ...Option) *Config {
-	cfg := &Config{
+func newConfig(opts ...Option) *config {
+	cfg := &config{
 		globals:   map[string]any{},
 		overrides: map[string]any{},
 		denylist:  map[string]bool{},
@@ -43,20 +44,7 @@ func NewConfig(opts ...Option) *Config {
 
 // Globals returns a map of all global variables that should be available in a
 // Risor evaluation.
-func (cfg *Config) Globals() map[string]any {
-	cfg.init()
-	globalsCopy := map[string]any{}
-	for k, v := range cfg.globals {
-		globalsCopy[k] = v
-	}
-	return globalsCopy
-}
-
-// CombinedGlobals returns a map of all global variables that should be
-// available in a Risor evaluation.
-//
-// Deprecated: Use Globals instead.
-func (cfg *Config) CombinedGlobals() map[string]any {
+func (cfg *config) Globals() map[string]any {
 	cfg.init()
 	globalsCopy := map[string]any{}
 	for k, v := range cfg.globals {
@@ -67,7 +55,7 @@ func (cfg *Config) CombinedGlobals() map[string]any {
 
 // GlobalNames returns a list of all global variables names that should be
 // available in a Risor evaluation.
-func (cfg *Config) GlobalNames() []string {
+func (cfg *config) GlobalNames() []string {
 	cfg.init()
 	var names []string
 	for name := range cfg.globals {
@@ -77,7 +65,7 @@ func (cfg *Config) GlobalNames() []string {
 	return names
 }
 
-func (cfg *Config) init() error {
+func (cfg *config) init() error {
 	if cfg.initialized {
 		return nil
 	}
@@ -90,7 +78,7 @@ func (cfg *Config) init() error {
 	return nil
 }
 
-func (cfg *Config) applyDefaultGlobals() {
+func (cfg *config) applyDefaultGlobals() {
 	if cfg.withoutDefaultGlobals {
 		return
 	}
@@ -99,7 +87,7 @@ func (cfg *Config) applyDefaultGlobals() {
 	}
 }
 
-func (cfg *Config) applyDenylist() {
+func (cfg *config) applyDenylist() {
 	for name := range cfg.denylist {
 		parts := strings.SplitN(name, ".", 2)
 		if len(parts) == 1 {
@@ -117,7 +105,7 @@ func (cfg *Config) applyDenylist() {
 	}
 }
 
-func (cfg *Config) applyOverrides() error {
+func (cfg *config) applyOverrides() error {
 	for name, value := range cfg.overrides {
 		parts := strings.Split(name, ".")
 		if len(parts) == 1 {
@@ -143,7 +131,7 @@ func (cfg *Config) applyOverrides() error {
 }
 
 // CompilerOpts returns compiler options derived from this configuration.
-func (cfg *Config) CompilerOpts() []compiler.Option {
+func (cfg *config) CompilerOpts() []compiler.Option {
 	cfg.init()
 	globalNames := cfg.GlobalNames()
 	var opts []compiler.Option
@@ -157,7 +145,7 @@ func (cfg *Config) CompilerOpts() []compiler.Option {
 }
 
 // VMOpts returns virtual machine options derived from this configuration.
-func (cfg *Config) VMOpts() []vm.Option {
+func (cfg *config) VMOpts() []vm.Option {
 	cfg.init()
 	var opts []vm.Option
 	globals := cfg.globals

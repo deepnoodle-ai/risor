@@ -12,10 +12,6 @@ import (
 	"atomicgo.dev/keyboard/keys"
 	"github.com/fatih/color"
 	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/parser"
-	"github.com/risor-io/risor/vm"
 )
 
 const (
@@ -61,12 +57,35 @@ func Run(ctx context.Context, options []risor.Option) error {
 		return clearLine + ">>> " + accumulate
 	}
 
-	r := risor.NewConfig()
-	for _, opt := range options {
-		opt(r)
+	// Create a new VM with the provided options
+	vm, err := risor.NewVM(options...)
+	if err != nil {
+		return err
 	}
 
-	evalFunc := getEvaluator(r)
+	evalFunc := func(ctx context.Context, source string) {
+		result, err := vm.Eval(ctx, source)
+		if err != nil {
+			color.Red(err.Error())
+			return
+		}
+
+		if result == nil {
+			return
+		}
+
+		// Format output based on Go type
+		switch v := result.(type) {
+		case error:
+			color.Red(v.Error())
+		case int64, float64, bool:
+			color.Yellow(fmt.Sprintf("%v", v))
+		case string:
+			color.Green(fmt.Sprintf("%q", v))
+		default:
+			fmt.Printf("%v\n", v)
+		}
+	}
 
 	// This could certainly use a refactor! But it works for now.
 	return keyboard.Listen(func(key keys.Key) (stop bool, err error) {
@@ -166,67 +185,4 @@ func Run(ctx context.Context, options []risor.Option) error {
 		}
 		return false, nil
 	})
-}
-
-func getEvaluator(cfg *risor.Config) func(ctx context.Context, source string) (object.Object, error) {
-	var c *compiler.Compiler
-	var v *vm.VirtualMachine
-
-	return func(ctx context.Context, source string) (object.Object, error) {
-		if c == nil {
-			var err error
-			c, err = compiler.New(cfg.CompilerOpts()...)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		ast, err := parser.Parse(ctx, source)
-		if err != nil {
-			color.Red(err.Error())
-			return nil, err
-		}
-
-		code, err := c.Compile(ast)
-		if err != nil {
-			color.Red(err.Error())
-			return nil, err
-		}
-
-		if v == nil {
-			v = vm.New(code, cfg.VMOpts()...)
-		}
-		if err := v.Run(ctx); err != nil {
-			// Update the IP to be after the last instruction, so that next
-			// time around we start in the right location.
-			v.SetIP(code.InstructionCount())
-			color.Red(err.Error())
-			return nil, err
-		}
-
-		result, ok := v.TOS()
-		if !ok || result == nil {
-			return object.Nil, nil
-		}
-
-		switch result := result.(type) {
-		case *object.Error:
-			errStr := result.Value().Error()
-			if result.IsRaised() {
-				color.Red(errStr)
-			} else {
-				color.Magenta(errStr)
-			}
-		case *object.Int, *object.Float, *object.Bool:
-			color.Yellow(result.Inspect())
-		case *object.String:
-			color.Green(result.Inspect())
-		case *object.Builtin, *object.Module:
-			color.New(color.Bold).Println(result.Inspect())
-		case *object.NilType:
-		default:
-			fmt.Println(result.Inspect())
-		}
-		return result, nil
-	}
 }

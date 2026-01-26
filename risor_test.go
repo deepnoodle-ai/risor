@@ -3,6 +3,7 @@ package risor
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/risor-io/risor/compiler"
@@ -15,7 +16,7 @@ import (
 func TestBasicUsage(t *testing.T) {
 	result, err := Eval(context.Background(), "1 + 1")
 	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	require.Equal(t, int64(2), result)
 }
 
 func TestConfirmNoBuiltins(t *testing.T) {
@@ -47,28 +48,28 @@ func TestConfirmNoBuiltins(t *testing.T) {
 func TestDefaultGlobals(t *testing.T) {
 	type testCase struct {
 		input    string
-		expected object.Object
+		expected any
 	}
 	testCases := []testCase{
 		{
 			input:    "keys({foo: 1})",
-			expected: object.NewList([]object.Object{object.NewString("foo")}),
+			expected: []any{"foo"},
 		},
 		{
 			input:    "any([0, 0, 1])",
-			expected: object.True,
+			expected: true,
 		},
 		{
 			input:    "try(function() { error(\"boom\") }, 42)",
-			expected: object.NewInt(42),
+			expected: int64(42),
 		},
 		{
 			input:    "string(42)",
-			expected: object.NewString("42"),
+			expected: "42",
 		},
 		{
 			input:    "json.marshal(42)",
-			expected: object.NewString("42"),
+			expected: "42",
 		},
 	}
 	for _, tc := range testCases {
@@ -165,7 +166,7 @@ func TestCall(t *testing.T) {
 }
 
 func TestWithoutGlobal1(t *testing.T) {
-	cfg := NewConfig(
+	cfg := newConfig(
 		WithoutDefaultGlobals(),
 		WithGlobals(map[string]any{
 			"foo": object.NewInt(1),
@@ -176,14 +177,10 @@ func TestWithoutGlobal1(t *testing.T) {
 	require.Equal(t, map[string]any{
 		"foo": object.NewInt(1),
 	}, cfg.Globals())
-
-	require.Equal(t, map[string]any{
-		"foo": object.NewInt(1),
-	}, cfg.CombinedGlobals())
 }
 
 func TestWithoutGlobal2(t *testing.T) {
-	cfg := NewConfig(
+	cfg := newConfig(
 		WithoutDefaultGlobals(),
 		WithGlobals(map[string]any{
 			"foo": object.NewInt(1),
@@ -198,7 +195,7 @@ func TestWithoutGlobal2(t *testing.T) {
 }
 
 func TestWithoutGlobal3(t *testing.T) {
-	cfg := NewConfig(
+	cfg := newConfig(
 		WithGlobal("foo", object.NewInt(1)),
 		WithoutGlobal("foo"),
 	)
@@ -207,7 +204,7 @@ func TestWithoutGlobal3(t *testing.T) {
 }
 
 func TestWithoutGlobal4(t *testing.T) {
-	cfg := NewConfig(
+	cfg := newConfig(
 		WithoutDefaultGlobals(),
 		WithGlobals(map[string]any{
 			"foo": object.NewBuiltinsModule("foo", map[string]object.Object{
@@ -229,7 +226,7 @@ func TestWithoutGlobal4(t *testing.T) {
 }
 
 func TestWithGlobalOverride(t *testing.T) {
-	cfg := NewConfig(
+	cfg := newConfig(
 		WithoutDefaultGlobals(),
 		WithGlobals(map[string]any{
 			"foo": object.NewInt(1),
@@ -256,7 +253,7 @@ func TestWithLocalImporter(t *testing.T) {
 		`import data; data.mydata.count`,
 		WithLocalImporter("./vm/fixtures"))
 	require.Nil(t, err)
-	require.Equal(t, object.NewInt(1), result)
+	require.Equal(t, int64(1), result)
 }
 
 func TestStructFieldModification(t *testing.T) {
@@ -280,7 +277,7 @@ func TestStructFieldModification(t *testing.T) {
 			WithGlobal("Object", &Object{}))
 
 		require.Nil(t, err, "script: %s", tc.script)
-		require.Equal(t, object.NewInt(tc.expected), result, "script: %s", tc.script)
+		require.Equal(t, tc.expected, result, "script: %s", tc.script)
 	}
 }
 
@@ -296,7 +293,7 @@ func TestWithExistingVM(t *testing.T) {
 		WithGlobals(map[string]any{"foo": object.NewInt(3)}),
 	)
 	require.Nil(t, err)
-	require.Equal(t, int64(3), result.Interface())
+	require.Equal(t, int64(3), result)
 
 	result, err = Eval(ctx,
 		"bar",
@@ -304,7 +301,7 @@ func TestWithExistingVM(t *testing.T) {
 		WithGlobals(map[string]any{"bar": object.NewInt(4)}),
 	)
 	require.Nil(t, err)
-	require.Equal(t, int64(4), result.Interface())
+	require.Equal(t, int64(4), result)
 }
 
 func TestDefaultGlobalsFunc(t *testing.T) {
@@ -327,4 +324,81 @@ func TestDefaultGlobalsFunc(t *testing.T) {
 		_, ok := globals[name]
 		require.True(t, ok, "expected global %s", name)
 	}
+}
+
+// Test the new Compile/Run API
+func TestCompileRun(t *testing.T) {
+	program, err := Compile("1 + 2")
+	require.Nil(t, err)
+	require.NotNil(t, program)
+
+	result, err := Run(context.Background(), program)
+	require.Nil(t, err)
+	require.Equal(t, int64(3), result)
+}
+
+// Test that the same Program can be run multiple times
+func TestProgramReuse(t *testing.T) {
+	program, err := Compile("x + 1", WithGlobal("x", int64(0)))
+	require.Nil(t, err)
+
+	for i := int64(0); i < 10; i++ {
+		result, err := Run(context.Background(), program, WithGlobal("x", i))
+		require.Nil(t, err)
+		require.Equal(t, i+1, result)
+	}
+}
+
+// Test concurrent execution of the same Program
+func TestConcurrentExecution(t *testing.T) {
+	program, err := Compile("x + 1", WithGlobal("x", int64(0)))
+	require.Nil(t, err)
+
+	var wg sync.WaitGroup
+	results := make([]int64, 10)
+	errors := make([]error, 10)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			result, err := Run(context.Background(), program, WithGlobal("x", int64(id)))
+			if err != nil {
+				errors[id] = err
+				return
+			}
+			results[id] = result.(int64)
+		}(i)
+	}
+	wg.Wait()
+
+	// Verify all goroutines succeeded with correct results
+	for i := 0; i < 10; i++ {
+		require.Nil(t, errors[i], "goroutine %d had an error", i)
+		require.Equal(t, int64(i+1), results[i], "goroutine %d had wrong result", i)
+	}
+}
+
+// Test the VM wrapper for REPL-style execution
+func TestVMWrapper(t *testing.T) {
+	vm, err := NewVM()
+	require.Nil(t, err)
+
+	// Define a function
+	_, err = vm.Eval(context.Background(), "function add(a, b) { a + b }")
+	require.Nil(t, err)
+
+	// Call the function
+	result, err := vm.Call(context.Background(), "add", int64(2), int64(3))
+	require.Nil(t, err)
+	require.Equal(t, int64(5), result)
+
+	// Define a variable
+	_, err = vm.Eval(context.Background(), "let x = 10")
+	require.Nil(t, err)
+
+	// Get the variable
+	x, err := vm.Get("x")
+	require.Nil(t, err)
+	require.Equal(t, int64(10), x)
 }

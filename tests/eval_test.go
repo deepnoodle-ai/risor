@@ -78,8 +78,16 @@ func getTestCase(name string) (TestCase, error) {
 	return testCase, err
 }
 
+// execute runs the input and returns the result as an object.Object
+// This uses the internal VM to get the raw object for test comparison
 func execute(ctx context.Context, input string) (object.Object, error) {
-	return risor.Eval(ctx, input)
+	// Use the internal vm.Run to get object.Object for accurate test comparison
+	program, err := risor.Compile(input)
+	if err != nil {
+		return nil, err
+	}
+	// Use the internal function to get object.Object
+	return risor.EvalCode(ctx, program.Code())
 }
 
 func listTestFiles() []string {

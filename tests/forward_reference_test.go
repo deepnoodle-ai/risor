@@ -29,7 +29,7 @@ say()
 
 		// It should not error and return the correct value
 		require.Nil(t, err)
-		require.Equal(t, "\"hello\"", result.Inspect())
+		require.Equal(t, "hello", result)
 	})
 
 	t.Run("forward reference returns correct value", func(t *testing.T) {
@@ -50,6 +50,6 @@ say()
 
 		// This should work without error and return the correct value
 		require.Nil(t, err)
-		require.Equal(t, "\"hello\"", result.Inspect())
+		require.Equal(t, "hello", result)
 	})
 }
