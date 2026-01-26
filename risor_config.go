@@ -32,7 +32,9 @@ func newConfig(opts ...Option) *config {
 	}
 	if len(opts) > 0 {
 		for _, opt := range opts {
-			opt(cfg)
+			if opt != nil {
+				opt(cfg)
+			}
 		}
 		cfg.init()
 	}

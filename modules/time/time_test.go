@@ -50,16 +50,6 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestSleep(t *testing.T) {
-	start := time.Now()
-	got := Sleep(context.Background(), object.NewFloat(0.1)) // Sleep for 100ms
-	elapsed := time.Since(start)
-
-	require.Equal(t, object.Nil, got)
-	require.True(t, elapsed >= 100*time.Millisecond)
-	require.True(t, elapsed < 250*time.Millisecond) // Allow some margin for error
-}
-
 func TestSince(t *testing.T) {
 	now := time.Now()
 	time.Sleep(100 * time.Millisecond)

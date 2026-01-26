@@ -49,23 +49,6 @@ func Parse(ctx context.Context, args ...object.Object) object.Object {
 	return object.NewTime(t)
 }
 
-func Sleep(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("time.sleep", 1, args); err != nil {
-		return err
-	}
-	d, err := object.AsFloat(args[0])
-	if err != nil {
-		return err
-	}
-	timer := time.NewTimer(time.Duration(d*1000) * time.Millisecond)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-	case <-timer.C:
-	}
-	return object.Nil
-}
-
 func Since(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.Require("time.since", 1, args); err != nil {
 		return err
@@ -81,7 +64,6 @@ func Module() *object.Module {
 	return object.NewBuiltinsModule("time", map[string]object.Object{
 		"now":         object.NewBuiltin("now", Now),
 		"parse":       object.NewBuiltin("parse", Parse),
-		"sleep":       object.NewBuiltin("sleep", Sleep),
 		"since":       object.NewBuiltin("since", Since),
 		"unix":        object.NewBuiltin("unix", Unix),
 		"ANSIC":       object.NewString(time.ANSIC),

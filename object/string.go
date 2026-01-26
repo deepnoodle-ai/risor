@@ -205,6 +205,30 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				return s.TrimSuffix(args[0])
 			},
 		}, true
+	case "compare":
+		return &Builtin{
+			name: "string.compare",
+			fn: func(ctx context.Context, args ...Object) Object {
+				if len(args) != 1 {
+					return NewArgsError("string.compare", 1, len(args))
+				}
+				result, err := s.Compare(args[0])
+				if err != nil {
+					return NewError(err)
+				}
+				return NewInt(int64(result))
+			},
+		}, true
+	case "repeat":
+		return &Builtin{
+			name: "string.repeat",
+			fn: func(ctx context.Context, args ...Object) Object {
+				if len(args) != 1 {
+					return NewArgsError("string.repeat", 1, len(args))
+				}
+				return s.Repeat(args[0])
+			},
+		}, true
 	}
 	return nil, false
 }
@@ -417,6 +441,17 @@ func (s *String) TrimSuffix(obj Object) Object {
 
 func (s *String) TrimSpace() Object {
 	return NewString(strings.TrimSpace(s.value))
+}
+
+func (s *String) Repeat(obj Object) Object {
+	count, err := AsInt(obj)
+	if err != nil {
+		return err
+	}
+	if count < 0 {
+		return Errorf("value error: negative repeat count")
+	}
+	return NewString(strings.Repeat(s.value, int(count)))
 }
 
 func (s *String) Len() *Int {

@@ -631,10 +631,10 @@ func TestTryKeyword(t *testing.T) {
 
 func TestTryEvalError(t *testing.T) {
 	code := `
-	try { throw errors.eval_error("oops") } catch e { 1 }
+	try { throw "oops" } catch e { 1 }
 	`
 	_, err := run(context.Background(), code)
-	// With the new try/catch, eval errors are caught
+	// With the new try/catch, thrown errors are caught
 	require.Nil(t, err)
 }
 
@@ -667,7 +667,7 @@ func TestTryUnsupportedOperation(t *testing.T) {
 
 func TestTryWithErrorValues(t *testing.T) {
 	code := `
-	const myerr = errors.new("errno == 1")
+	const myerr = "errno == 1"
 	let result = ""
 	try {
 		let x = "testing 1 2 3"
@@ -690,11 +690,11 @@ func TestStringTemplateWithRaisedError(t *testing.T) {
 	require.Equal(t, "oops", err.Error())
 }
 
-func TestStringTemplateWithNonRaisedError(t *testing.T) {
-	code := "`the err string is: ${errors.new(\"oops\")}. sad!`"
+func TestStringTemplateWithValue(t *testing.T) {
+	code := "`the message is: ${\"oops\"}. sad!`"
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
-	require.Equal(t, object.NewString("the err string is: oops. sad!"), result)
+	require.Equal(t, object.NewString("the message is: oops. sad!"), result)
 }
 
 func TestMultiVarAssignment(t *testing.T) {
@@ -758,7 +758,7 @@ func TestStrings(t *testing.T) {
 		{`"hello"[1]`, object.NewString("e")},
 		{`"hello"[-1]`, object.NewString("o")},
 		{`"hello"[-2]`, object.NewString("l")},
-		{"let a = 1; let b = \"ok\"; `${a + 1}-${b | strings.to_upper}`", object.NewString("2-OK")},
+		{"let a = 1; let b = \"ok\"; `${a + 1}-${b.to_upper()}`", object.NewString("2-OK")},
 		{"function(a, b) { return `A: ${a} B: ${b}` }(\"hi\", \"bye\")", object.NewString("A: hi B: bye")},
 	}
 	runTests(t, tests)
@@ -766,15 +766,14 @@ func TestStrings(t *testing.T) {
 
 func TestPipes(t *testing.T) {
 	tests := []testCase{
-		{`"hello" | strings.to_upper`, object.NewString("HELLO")},
+		{`"hello".to_upper()`, object.NewString("HELLO")},
 		{`"hello" | len`, object.NewInt(5)},
 		{`function() { "hello" }() | len`, object.NewInt(5)},
-		{`["a", "b"] | strings.join(",") | strings.to_upper`, object.NewString("A,B")},
+		{`",".join(["a", "b"]).to_upper()`, object.NewString("A,B")},
 		{`function() { "a" } | call`, object.NewString("a")},
 		{`"abc" | getattr("to_upper") | call`, object.NewString("ABC")},
 		{`"abc" | function(s) { s.to_upper() }`, object.NewString("ABC")},
 		{`[11, 12, 3] | math.sum`, object.NewFloat(26)},
-		{`"42" | json.unmarshal`, object.NewFloat(42)},
 	}
 	runTests(t, tests)
 }
@@ -782,14 +781,14 @@ func TestPipes(t *testing.T) {
 func TestPipeForward(t *testing.T) {
 	tests := []testCase{
 		// Basic pipe forward
-		{`"hello" |> strings.to_upper`, object.NewString("HELLO")},
+		{`"hello" |> (s => s.to_upper())`, object.NewString("HELLO")},
 		{`"hello" |> len`, object.NewInt(5)},
 		{`[1, 2, 3] |> len`, object.NewInt(3)},
 		// Chained pipe forward
-		{`"hello" |> strings.to_upper |> len`, object.NewInt(5)},
+		{`"hello" |> (s => s.to_upper()) |> len`, object.NewInt(5)},
 		// With functions
 		{`function() { "hello" }() |> len`, object.NewInt(5)},
-		{`"abc" |> strings.to_upper`, object.NewString("ABC")},
+		{`"abc" |> (s => s.to_upper())`, object.NewString("ABC")},
 		// With lambdas
 		{`5 |> (x => x * 2)`, object.NewInt(10)},
 		{`5 |> (x => x * 2) |> (x => x + 1)`, object.NewInt(11)},
@@ -1323,7 +1322,7 @@ func TestInterpolatedStringClosures1(t *testing.T) {
 	ctx := context.Background()
 	source := "function foo(a, b, c) {\n" +
 		"	return function(d) {\n" +
-		"		return `${strings.to_upper(a)}-${b}-${c}-${d}`\n" +
+		"		return `${a.to_upper()}-${b}-${c}-${d}`\n" +
 		"	}\n" +
 		"}\n" +
 		"foo(\"foo\", \"bar\", \"baz\")(\"go\")"

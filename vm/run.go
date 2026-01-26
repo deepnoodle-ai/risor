@@ -5,13 +5,8 @@ import (
 
 	"github.com/risor-io/risor/builtins"
 	"github.com/risor-io/risor/compiler"
-	modBytes "github.com/risor-io/risor/modules/bytes"
-	modFmt "github.com/risor-io/risor/modules/fmt"
-	modJSON "github.com/risor-io/risor/modules/json"
 	modMath "github.com/risor-io/risor/modules/math"
 	modRand "github.com/risor-io/risor/modules/rand"
-	modStrconv "github.com/risor-io/risor/modules/strconv"
-	modStrings "github.com/risor-io/risor/modules/strings"
 	modTime "github.com/risor-io/risor/modules/time"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
@@ -86,18 +81,11 @@ func newVM(ctx context.Context, source string, opts ...runOpts) (*VirtualMachine
 // Builtins to be used in VM tests.
 func basicBuiltins() map[string]any {
 	globals := map[string]any{
-		"bytes":   modBytes.Module(),
-		"json":    modJSON.Module(),
-		"math":    modMath.Module(),
-		"rand":    modRand.Module(),
-		"strconv": modStrconv.Module(),
-		"strings": modStrings.Module(),
-		"time":    modTime.Module(),
+		"math": modMath.Module(),
+		"rand": modRand.Module(),
+		"time": modTime.Module(),
 	}
 	for k, v := range builtins.Builtins() {
-		globals[k] = v
-	}
-	for k, v := range modFmt.Builtins() {
 		globals[k] = v
 	}
 	return globals

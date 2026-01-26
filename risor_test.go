@@ -67,10 +67,6 @@ func TestDefaultGlobals(t *testing.T) {
 			input:    "string(42)",
 			expected: "42",
 		},
-		{
-			input:    "json.marshal(42)",
-			expected: "42",
-		},
 	}
 	for _, tc := range testCases {
 		result, err := Eval(context.Background(), tc.input)
@@ -94,12 +90,12 @@ func TestWithDenyList(t *testing.T) {
 			expectedErr: errors.New("compile error: undefined variable \"any\"\n\nlocation: unknown:1:1 (line 1, column 1)"),
 		},
 		{
-			input:       "json.marshal(42)",
-			expectedErr: errors.New("compile error: undefined variable \"json\"\n\nlocation: unknown:1:1 (line 1, column 1)"),
+			input:       "math.abs(-1)",
+			expectedErr: errors.New("compile error: undefined variable \"math\"\n\nlocation: unknown:1:1 (line 1, column 1)"),
 		},
 	}
 	for _, tc := range testCases {
-		_, err := Eval(context.Background(), tc.input, WithoutGlobals("any", "json"))
+		_, err := Eval(context.Background(), tc.input, WithoutGlobals("any", "math"))
 		// t.Logf("want: %q; got: %v", tc.expectedErr, err)
 		if tc.expectedErr != nil {
 			require.NotNil(t, err)
@@ -299,17 +295,9 @@ func TestWithExistingVM(t *testing.T) {
 func TestDefaultGlobalsFunc(t *testing.T) {
 	globals := DefaultGlobals(DefaultGlobalsOpts{})
 	expectedNames := []string{ // non-exhaustive
-		"base64",
-		"bytes",
-		"errors",
-		"filepath",
-		"fmt",
-		"json",
 		"math",
 		"rand",
 		"regexp",
-		"strconv",
-		"strings",
 		"time",
 	}
 	for _, name := range expectedNames {

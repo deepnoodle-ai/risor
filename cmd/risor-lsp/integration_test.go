@@ -34,17 +34,14 @@ let process_user = function(user_id, name) {
     return user_data
 }
 
-// Main processing logic
-let users = []
-for let i = 0; i < 5; i++ {
-    let user = process_user(i, sprintf("User_%d", i))
-    users = append(users, user)
-}
+// Main processing logic using functional style
+let users = [0, 1, 2, 3, 4].map(i => process_user(i, "User_" + string(i)))
 
-// Print results
-for user in users {
-    println(sprintf("User: %s (ID: %d)", user["name"], user["id"]))
-}`
+// Filter active users
+let active_users = users.filter(u => u["status"] == "active")
+
+// Print count
+println("Total users: " + string(len(active_users)))`
 
 	// Create a server instance
 	server := &Server{
@@ -75,11 +72,11 @@ for user in users {
 
 	// Test 2: Completion at various positions
 	t.Run("Completion", func(t *testing.T) {
-		// Test completion at line 23 (after "for user in")
+		// Test completion at line 26 (in the active_users line where users is in scope)
 		params := &protocol.CompletionParams{
 			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 				TextDocument: protocol.TextDocumentIdentifier{URI: uri},
-				Position:     protocol.Position{Line: 22, Character: 15}, // After "for user in "
+				Position:     protocol.Position{Line: 25, Character: 20}, // In "let active_users = users..."
 			},
 		}
 
@@ -98,7 +95,7 @@ for user in users {
 			switch item.Label {
 			case "users":
 				hasUsers = true
-			case "range", "if", "for":
+			case "let", "if", "const":
 				hasKeywords = true
 			case "len", "print", "println":
 				hasBuiltins = true
@@ -245,7 +242,7 @@ let is_valid = true`,
 
 		"functions": `let add = function(a, b) { return a + b }
 let greet = function(name) {
-    return sprintf("Hello, %s!", name)
+    return "Hello, " + name + "!"
 }`,
 
 		"control_flow": `let age = 18
@@ -255,9 +252,7 @@ if (age >= 18) {
     let status = "minor"
 }
 
-for i in range(10) {
-    println(i)
-}`,
+let items = [1, 2, 3, 4, 5].map(i => i * 2)`,
 
 		"data_structures": `let person = {
     "name": "Alice",

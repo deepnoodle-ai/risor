@@ -13,7 +13,6 @@ func TestBinaryCodecs(t *testing.T) {
 		"base64",
 		"base32",
 		"hex",
-		"gzip",
 	}
 	ctx := context.Background()
 	value := "Farfalle"

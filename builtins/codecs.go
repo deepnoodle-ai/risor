@@ -2,7 +2,6 @@ package builtins
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/base32"
 	"encoding/base64"
@@ -10,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/url"
 	"sort"
 	"sync"
@@ -37,7 +35,6 @@ func init() {
 	RegisterCodec("json", &Codec{Encode: encodeJSON, Decode: decodeJSON})
 	RegisterCodec("csv", &Codec{Encode: encodeCsv, Decode: decodeCsv})
 	RegisterCodec("urlquery", &Codec{Encode: encodeUrlQuery, Decode: decodeUrlQuery})
-	RegisterCodec("gzip", &Codec{Encode: encodeGzip, Decode: decodeGzip})
 }
 
 // RegisterCodec registers a new codec
@@ -77,22 +74,6 @@ func Encode(ctx context.Context, args ...object.Object) object.Object {
 		return object.NewError(codecErr)
 	}
 	return codec.Encode(ctx, args[0])
-}
-
-func encodeGzip(ctx context.Context, obj object.Object) object.Object {
-	data, err := object.AsBytes(obj)
-	if err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	writer := gzip.NewWriter(&buf)
-	if _, err := writer.Write(data); err != nil {
-		return object.NewError(err)
-	}
-	if err := writer.Close(); err != nil {
-		return object.NewError(err)
-	}
-	return object.NewByteSlice(buf.Bytes())
 }
 
 func encodeBase64(ctx context.Context, obj object.Object) object.Object {
@@ -234,23 +215,6 @@ func Decode(ctx context.Context, args ...object.Object) object.Object {
 		return object.NewError(codecErr)
 	}
 	return codec.Decode(ctx, args[0])
-}
-
-func decodeGzip(ctx context.Context, obj object.Object) object.Object {
-	data, errObj := object.AsBytes(obj)
-	if errObj != nil {
-		return errObj
-	}
-	reader := bytes.NewReader(data)
-	gzreader, err := gzip.NewReader(reader)
-	if err != nil {
-		return object.NewError(err)
-	}
-	output, err := io.ReadAll(gzreader)
-	if err != nil {
-		return object.NewError(err)
-	}
-	return object.NewByteSlice(output)
 }
 
 func decodeBase64(ctx context.Context, obj object.Object) object.Object {

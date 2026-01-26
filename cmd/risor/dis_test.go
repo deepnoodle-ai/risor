@@ -6,10 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDisassembly(t *testing.T) {
+	// Disable colors for consistent test output
+	color.Enabled = false
+	defer func() { color.Enabled = true }()
+
 	// Capture stdout
 	old := os.Stdout
 	r, w, _ := os.Pipe()

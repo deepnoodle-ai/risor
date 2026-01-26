@@ -4,12 +4,7 @@ package builtins
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/sha512"
 	"fmt"
-	"hash"
 	"io"
 	"sort"
 	"strconv"
@@ -184,84 +179,6 @@ func String(ctx context.Context, args ...object.Object) object.Object {
 			return object.NewString(s.String())
 		}
 		return object.NewString(args[0].Inspect())
-	}
-}
-
-func FloatSlice(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("float_slice", 0, 1, args); err != nil {
-		return err
-	}
-	if len(args) == 0 {
-		return object.NewFloatSlice(nil)
-	}
-	arg := args[0]
-	switch arg := arg.(type) {
-	case *object.FloatSlice:
-		return arg.Clone()
-	case *object.Int:
-		val := arg.Value()
-		return object.NewFloatSlice(make([]float64, val))
-	case *object.List:
-		items := arg.Value()
-		floats := make([]float64, len(items))
-		for i, item := range items {
-			switch item := item.(type) {
-			case *object.Byte:
-				floats[i] = float64(item.Value())
-			case *object.Int:
-				floats[i] = float64(item.Value())
-			case *object.Float:
-				floats[i] = item.Value()
-			default:
-				return object.TypeErrorf(
-					"type error: float_slice() list item unsupported (%s given)",
-					item.Type())
-			}
-		}
-		return object.NewFloatSlice(floats)
-	default:
-		return object.TypeErrorf("type error: float_slice() unsupported argument (%s given)",
-			args[0].Type())
-	}
-}
-
-func ByteSlice(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("byte_slice", 0, 1, args); err != nil {
-		return err
-	}
-	if len(args) == 0 {
-		return object.NewByteSlice(nil)
-	}
-	arg := args[0]
-	switch arg := arg.(type) {
-	case *object.Buffer:
-		return object.NewByteSlice(arg.Value().Bytes())
-	case *object.ByteSlice:
-		return arg.Clone()
-	case *object.String:
-		return object.NewByteSlice([]byte(arg.Value()))
-	case *object.Int:
-		val := arg.Value()
-		return object.NewByteSlice(make([]byte, val))
-	case *object.List:
-		items := arg.Value()
-		bytes := make([]byte, len(items))
-		for i, item := range items {
-			switch item := item.(type) {
-			case *object.Int:
-				bytes[i] = byte(item.Value())
-			case *object.Byte:
-				bytes[i] = item.Value()
-			default:
-				return object.TypeErrorf(
-					"type error: byte_slice() list item unsupported (%s given)",
-					item.Type())
-			}
-		}
-		return object.NewByteSlice(bytes)
-	default:
-		return object.TypeErrorf("type error: byte_slice() unsupported argument (%s given)",
-			args[0].Type())
 	}
 }
 
@@ -633,42 +550,6 @@ func Float(ctx context.Context, args ...object.Object) object.Object {
 	}
 }
 
-func Hash(ctx context.Context, args ...object.Object) object.Object {
-	nArgs := len(args)
-	if nArgs < 1 || nArgs > 2 {
-		return object.ArgsErrorf("args error: hash() takes 1 or 2 arguments (%d given)", nArgs)
-	}
-	data, err := object.AsBytes(args[0])
-	if err != nil {
-		return err
-	}
-	alg := "sha256"
-	if nArgs == 2 {
-		var err *object.Error
-		alg, err = object.AsString(args[1])
-		if err != nil {
-			return err
-		}
-	}
-	var h hash.Hash
-	// Hash `data` using the algorithm specified by `alg` and return the result as a byte_slice.
-	// Support `alg` values: sha256, sha512, sha1, md5
-	switch alg {
-	case "sha256":
-		h = sha256.New()
-	case "sha512":
-		h = sha512.New()
-	case "sha1":
-		h = sha1.New()
-	case "md5":
-		h = md5.New()
-	default:
-		return object.Errorf("value error: hash() algorithm must be one of sha256, sha512, sha1, md5")
-	}
-	h.Write(data)
-	return object.NewByteSlice(h.Sum(nil))
-}
-
 func Make(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.RequireRange("make", 1, 2, args); err != nil {
 		return err
@@ -772,6 +653,7 @@ func Builtins() map[string]object.Object {
 		"any":      object.NewBuiltin("any", Any),
 		"assert":   object.NewBuiltin("assert", Assert),
 		"bool":     object.NewBuiltin("bool", Bool),
+		"byte":     object.NewBuiltin("byte", Byte),
 		"call":     object.NewBuiltin("call", Call),
 		"chunk":    object.NewBuiltin("chunk", Chunk),
 		"coalesce": object.NewBuiltin("coalesce", Coalesce),
@@ -780,7 +662,6 @@ func Builtins() map[string]object.Object {
 		"encode":   object.NewBuiltin("encode", Encode),
 		"float":    object.NewBuiltin("float", Float),
 		"getattr":  object.NewBuiltin("getattr", GetAttr),
-		"hash":     object.NewBuiltin("hash", Hash),
 		"int":      object.NewBuiltin("int", Int),
 		"keys":     object.NewBuiltin("keys", Keys),
 		"len":      object.NewBuiltin("len", Len),
