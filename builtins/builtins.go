@@ -495,7 +495,7 @@ func Sorted(ctx context.Context, args ...object.Object) object.Object {
 			return result.IsTruthy()
 		})
 		if sortErr != nil {
-			return object.TypeErrorf(sortErr.Error())
+			return object.TypeErrorf("%s", sortErr.Error())
 		}
 	} else {
 		if err := object.Sort(resultItems); err != nil {
@@ -669,28 +669,6 @@ func Float(ctx context.Context, args ...object.Object) object.Object {
 	}
 }
 
-func Error(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("error", 1, 64, args); err != nil {
-		return err
-	}
-	switch arg := args[0].(type) {
-	case *object.Error:
-		// Return a copy of the error that has its raised flag set.
-		// It's possible an error was passed that did not have raised set.
-		return object.NewError(arg.Value()).WithRaised(true)
-	case *object.String:
-		msg := arg
-		var msgArgs []interface{}
-		for _, arg := range args[1:] {
-			msgArgs = append(msgArgs, arg.Interface())
-		}
-		return object.Errorf(msg.Value(), msgArgs...)
-	default:
-		return object.TypeErrorf("type error: error() expected a string or error (%s given)",
-			args[0].Type())
-	}
-}
-
 func Iter(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.Require("iter", 1, args); err != nil {
 		return err
@@ -847,7 +825,6 @@ func Builtins() map[string]object.Object {
 		"decode":   object.NewBuiltin("decode", Decode),
 		"delete":   object.NewBuiltin("delete", Delete),
 		"encode":   object.NewBuiltin("encode", Encode),
-		"error":    object.NewBuiltin("error", Error),
 		"float":    object.NewBuiltin("float", Float),
 		"getattr":  object.NewBuiltin("getattr", GetAttr),
 		"hash":     object.NewBuiltin("hash", Hash),

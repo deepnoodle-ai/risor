@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
 	"github.com/stretchr/testify/require"
@@ -824,7 +823,7 @@ func TestTryKeyword(t *testing.T) {
 
 func TestTryEvalError(t *testing.T) {
 	code := `
-	try { error(errors.eval_error("oops")) } catch e { 1 }
+	try { throw errors.eval_error("oops") } catch e { 1 }
 	`
 	_, err := run(context.Background(), code)
 	// With the new try/catch, eval errors are caught
@@ -864,7 +863,7 @@ func TestTryWithErrorValues(t *testing.T) {
 	let result = ""
 	try {
 		let x = "testing 1 2 3"
-		error(myerr)
+		throw myerr
 	} catch e {
 		result = string(e) == "errno == 1" ? "YES" : "NO"
 	}
@@ -880,7 +879,7 @@ func TestTryWithLoop(t *testing.T) {
 	for let i = 0; i < 5; i++ {
 		let value = 0
 		try {
-			if i % 2 == 0 { error("Even number") } else { value = i }
+			if i % 2 == 0 { throw "Even number" } else { value = i }
 		} catch e {
 			value = string(e)
 		}
@@ -907,7 +906,7 @@ func TestTryWithClosure(t *testing.T) {
 		return function() {
 			count++
 			if count > 3 {
-				error("Count exceeded")
+				throw "Count exceeded"
 			}
 			return count
 		}
@@ -938,7 +937,9 @@ func TestTryWithClosure(t *testing.T) {
 }
 
 func TestStringTemplateWithRaisedError(t *testing.T) {
-	code := "`the err string is: ${error(\"oops\")}. sad!`"
+	code := `
+	function raise(msg) { throw msg }
+	` + "`the err string is: ${raise(\"oops\")}. sad!`"
 	_, err := run(context.Background(), code)
 	require.NotNil(t, err)
 	require.Equal(t, "oops", err.Error())
@@ -2162,7 +2163,7 @@ func TestFunctionStack(t *testing.T) {
 	for let i = range 1 {
 		try {
 		  42
-		  error("kaboom")
+		  throw "kaboom"
 		} catch e {
 		}
 	  }
@@ -2176,15 +2177,16 @@ func TestFunctionStackNewErr(t *testing.T) {
 	code := `
 	for let i = range 1 {
 		try {
-		  42
+		  throw "first"
 		} catch e {
-		  error("kaboom")
+		  throw "kaboom"
 		}
 	  }
 	`
-	// Now that error() in catch is a throw, it propagates
+	// throw in catch propagates out
 	_, err := run(context.Background(), code)
 	require.NotNil(t, err)
+	require.Equal(t, "kaboom", err.Error())
 }
 
 func TestMultivar(t *testing.T) {
@@ -2694,24 +2696,26 @@ func TestComplexForwardDeclarationScenarios(t *testing.T) {
 		// Forward declaration with error handling
 		{`
 		function safe_processor(x) {
-			let result = try(
-				function() { return risky_operation(x) },
-				function(e) { return fallback_operation(x) }
-			)
+			let result = 0
+			try {
+				result = risky_operation(x)
+			} catch e {
+				result = fallback_operation(x)
+			}
 			return result
 		}
-		
+
 		function risky_operation(x) {
 			if x < 0 {
-				error("negative number")
+				throw "negative number"
 			}
 			return x * 2
 		}
-		
+
 		function fallback_operation(x) {
 			return 0
 		}
-		
+
 		[safe_processor(5), safe_processor(-5)]
 		`, object.NewList([]object.Object{
 			object.NewInt(10),

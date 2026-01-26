@@ -60,7 +60,7 @@ func TestDefaultGlobals(t *testing.T) {
 			expected: true,
 		},
 		{
-			input:    "try(function() { error(\"boom\") }, 42)",
+			input:    "let x = 0; try { throw \"boom\" } catch e { x = 42 }; x",
 			expected: int64(42),
 		},
 		{

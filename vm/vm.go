@@ -359,14 +359,20 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			name := vm.activeCode.Names[vm.fetch()]
 			value, found := obj.GetAttr(name)
 			if !found {
-				return vm.typeError("attribute %q not found on %s object",
-					name, obj.Type())
+				if herr := vm.tryHandleError(vm.typeError("attribute %q not found on %s object",
+					name, obj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			switch value := value.(type) {
 			case object.AttrResolver:
 				attr, err := value.ResolveAttr(ctx, name)
 				if err != nil {
-					return err
+					if herr := vm.tryHandleError(err); herr != nil {
+						return herr
+					}
+					continue
 				}
 				vm.push(attr)
 			default:
@@ -420,7 +426,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			value := vm.pop()
 			name := vm.activeCode.Names[idx]
 			if err := obj.SetAttr(name, value); err != nil {
-				return err
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 		case op.LoadClosure:
 			constIndex := vm.fetch()
@@ -432,7 +441,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				case *object.Cell:
 					free[freeCount-i-1] = obj
 				default:
-					return vm.evalError("expected cell")
+					if herr := vm.tryHandleError(vm.evalError("expected cell")); herr != nil {
+						return herr
+					}
+					continue
 				}
 			}
 			fn := vm.activeCode.Constants[constIndex].(*object.Function)
@@ -442,7 +454,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			framesBack := int(vm.fetch())
 			frameIndex := vm.fp - framesBack
 			if frameIndex < 0 {
-				return vm.evalError("no frame at depth %d", framesBack)
+				if herr := vm.tryHandleError(vm.evalError("no frame at depth %d", framesBack)); herr != nil {
+					return herr
+				}
+				continue
 			}
 			frame := &vm.frames[frameIndex]
 			locals := frame.CaptureLocals()
@@ -459,7 +474,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			a := vm.pop()
 			result, err := object.Compare(opType, a, b)
 			if err != nil {
-				return err
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(result)
 		case op.BinaryOp:
@@ -468,14 +486,20 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			a := vm.pop()
 			result, err := object.BinaryOp(opType, a, b)
 			if err != nil {
-				return err
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(result)
 		case op.Call:
 			argc := int(vm.fetch())
 			if argc > MaxArgs {
-				return vm.evalError("max args limit of %d exceeded (got %d)",
-					MaxArgs, argc)
+				if herr := vm.tryHandleError(vm.evalError("max args limit of %d exceeded (got %d)",
+					MaxArgs, argc)); herr != nil {
+					return herr
+				}
+				continue
 			}
 			args := make([]object.Object, argc)
 			for argIndex := argc - 1; argIndex >= 0; argIndex-- {
@@ -483,7 +507,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			}
 			obj := vm.pop()
 			if err := vm.callObject(ctx, obj, args); err != nil {
-				return err
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 		case op.Partial:
 			argc := int(vm.fetch())
@@ -499,12 +526,18 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			argList := vm.pop()
 			list, ok := argList.(*object.List)
 			if !ok {
-				return vm.typeError("spread call requires list of arguments (got %s)", argList.Type())
+				if herr := vm.tryHandleError(vm.typeError("spread call requires list of arguments (got %s)", argList.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			args := list.Value()
 			obj := vm.pop()
 			if err := vm.callObject(ctx, obj, args); err != nil {
-				return err
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 		case op.ReturnValue:
 			activeFrame := vm.activeFrame
@@ -595,7 +628,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			listObj := vm.pop()
 			list, ok := listObj.(*object.List)
 			if !ok {
-				return vm.typeError("cannot append to non-list (got %s)", listObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("cannot append to non-list (got %s)", listObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			newItems := append(list.Value(), item)
 			vm.push(object.NewList(newItems))
@@ -605,12 +641,18 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			listObj := vm.pop()
 			list, ok := listObj.(*object.List)
 			if !ok {
-				return vm.typeError("cannot extend non-list (got %s)", listObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("cannot extend non-list (got %s)", listObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			// Get items from the iterable
 			iterable, ok := iterableObj.(object.Iterable)
 			if !ok {
-				return vm.typeError("spread requires an iterable (got %s)", iterableObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("spread requires an iterable (got %s)", iterableObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			iter := iterable.Iter()
 			newItems := list.Value()
@@ -628,11 +670,17 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			targetObj := vm.pop()
 			target, ok := targetObj.(*object.Map)
 			if !ok {
-				return vm.typeError("cannot merge into non-map (got %s)", targetObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("cannot merge into non-map (got %s)", targetObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			source, ok := sourceObj.(*object.Map)
 			if !ok {
-				return vm.typeError("spread requires a map (got %s)", sourceObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("spread requires a map (got %s)", sourceObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			// Merge source into target (creating a new map)
 			newItems := make(map[string]object.Object)
@@ -650,11 +698,17 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			targetObj := vm.pop()
 			target, ok := targetObj.(*object.Map)
 			if !ok {
-				return vm.typeError("cannot set key in non-map (got %s)", targetObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("cannot set key in non-map (got %s)", targetObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			key, ok := keyObj.(*object.String)
 			if !ok {
-				return vm.typeError("map key must be string (got %s)", keyObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("map key must be string (got %s)", keyObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			// Create a new map with the key-value pair
 			newItems := make(map[string]object.Object)
@@ -668,11 +722,17 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			lhs := vm.pop()
 			container, ok := lhs.(object.Container)
 			if !ok {
-				return vm.typeError("object is not a container (got %s)", lhs.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not a container (got %s)", lhs.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			result, err := container.GetItem(idx)
 			if err != nil {
-				return err.Value()
+				if herr := vm.handleException(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(result)
 		case op.StoreSubscr:
@@ -681,10 +741,16 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			rhs := vm.pop()
 			container, ok := lhs.(object.Container)
 			if !ok {
-				return vm.typeError("object is not a container (got %s)", lhs.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not a container (got %s)", lhs.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			if err := container.SetItem(idx, rhs); err != nil {
-				return err.Value()
+				if herr := vm.handleException(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 		case op.UnaryNegative:
 			obj := vm.pop()
@@ -694,7 +760,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			case *object.Float:
 				vm.push(object.NewFloat(-obj.Value()))
 			default:
-				return vm.typeError("object is not a number (got %s)", obj.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not a number (got %s)", obj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 		case op.UnaryNot:
 			obj := vm.pop()
@@ -714,8 +783,11 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				}
 				vm.push(value)
 			} else {
-				return vm.typeError("object is not a container (got %s)",
-					containerObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not a container (got %s)",
+					containerObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 		case op.Swap:
 			vm.swap(int(vm.fetch()))
@@ -728,7 +800,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				switch obj := obj.(type) {
 				case *object.Error:
 					if obj.IsRaised() {
-						return obj.Value()
+						if herr := vm.handleException(obj); herr != nil {
+							return herr
+						}
+						continue
 					}
 					items[dst] = obj.Value().Error()
 				case *object.String:
@@ -742,8 +817,11 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			iterableObj := vm.pop()
 			iterable, ok := iterableObj.(object.Iterable)
 			if !ok {
-				return vm.typeError("object is not an iterable (got %s)",
-					iterableObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not an iterable (got %s)",
+					iterableObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(iterable.Iter())
 		case op.Slice:
@@ -752,21 +830,30 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			containerObj := vm.pop()
 			container, ok := containerObj.(object.Container)
 			if !ok {
-				return vm.typeError("object is not a container (got %s)",
-					containerObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not a container (got %s)",
+					containerObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			slice := object.Slice{Start: start, Stop: stop}
 			result, err := container.GetSlice(slice)
 			if err != nil {
-				return err.Value()
+				if herr := vm.handleException(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(result)
 		case op.Length:
 			containerObj := vm.pop()
 			container, ok := containerObj.(object.Container)
 			if !ok {
-				return vm.typeError("object is not a container (got %s)",
-					containerObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not a container (got %s)",
+					containerObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(container.Len())
 		case op.Copy:
@@ -779,13 +866,19 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			nameCount := int64(vm.fetch())
 			container, ok := containerObj.(object.Container)
 			if !ok {
-				return vm.typeError("object is not a container (got %s)",
-					containerObj.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not a container (got %s)",
+					containerObj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 			containerSize := container.Len().Value()
 			// Allow fewer elements than expected (for destructuring with defaults)
 			if containerSize > nameCount {
-				return fmt.Errorf("unpack count mismatch: %d > %d", containerSize, nameCount)
+				if herr := vm.tryHandleError(fmt.Errorf("unpack count mismatch: %d > %d", containerSize, nameCount)); herr != nil {
+					return herr
+				}
+				continue
 			}
 			iter := container.Iter()
 			count := int64(0)
@@ -810,7 +903,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			case object.Iterator:
 				vm.push(obj)
 			default:
-				return vm.typeError("object is not iterable (got %s)", obj.Type())
+				if herr := vm.tryHandleError(vm.typeError("object is not iterable (got %s)", obj.Type())); herr != nil {
+					return herr
+				}
+				continue
 			}
 		case op.ForIter:
 			base := vm.ip - 1
@@ -831,7 +927,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 					// Python-style for-in: single variable gets the value
 					vm.push(obj.Value())
 				} else if nameCount != 0 {
-					return vm.evalError("invalid iteration")
+					if herr := vm.tryHandleError(vm.evalError("invalid iteration")); herr != nil {
+						return herr
+					}
+					continue
 				}
 			}
 		case op.Halt:
@@ -913,7 +1012,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				}
 			}
 		default:
-			return vm.evalError("unknown opcode: %d", opcode)
+			if herr := vm.tryHandleError(vm.evalError("unknown opcode: %d", opcode)); herr != nil {
+				return herr
+			}
+			continue
 		}
 	}
 	return nil
@@ -1409,9 +1511,15 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 
 		// Check if this handler is for the current frame
 		if excFrame.fp != vm.fp || excFrame.code != vm.activeCode {
-			// Handler is for a different frame, pop it and continue
-			vm.excStackSize--
-			continue
+			// Handler is for a different frame
+			if excFrame.fp > vm.fp {
+				// Handler is for a deeper frame we've returned from - pop it as stale
+				vm.excStackSize--
+				continue
+			}
+			// Handler is for a caller frame - let error propagate up
+			// The caller's tryHandleError will find this handler after frame is restored
+			return errObj.Value()
 		}
 
 		handler := excFrame.handler
@@ -1445,4 +1553,13 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 
 	// No handler found, return the error to propagate up
 	return errObj.Value()
+}
+
+// tryHandleError attempts to handle an error via exception handling.
+// If a handler is found and jumped to, returns nil (exception was handled).
+// If no handler is found, returns the error to propagate up.
+func (vm *VirtualMachine) tryHandleError(err error) error {
+	// Convert error to object.Error
+	errObj := object.NewError(err)
+	return vm.handleException(errObj)
 }

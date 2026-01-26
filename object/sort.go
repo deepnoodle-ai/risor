@@ -28,7 +28,7 @@ func Sort(items []Object) *Error {
 		return result == -1
 	})
 	if comparableErr != "" {
-		return TypeErrorf(comparableErr)
+		return TypeErrorf("%s", comparableErr)
 	}
 	return nil
 }

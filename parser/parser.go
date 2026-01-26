@@ -12,8 +12,8 @@ import (
 
 	"github.com/risor-io/risor/ast"
 	"github.com/risor-io/risor/internal/tmpl"
-	"github.com/risor-io/risor/lexer"
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/lexer"
+	"github.com/risor-io/risor/internal/token"
 )
 
 type (
@@ -1334,12 +1334,12 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expression, []*ast.Ident, *as
 }
 
 func (p *Parser) parseReserved() ast.Node {
-	p.setTokenError(p.curToken, fmt.Sprintf("reserved keyword: %s", p.curToken.Literal))
+	p.setTokenError(p.curToken, "reserved keyword: %s", p.curToken.Literal)
 	return nil
 }
 
 func (p *Parser) parseReservedInfix(_ ast.Node) ast.Node {
-	p.setTokenError(p.curToken, fmt.Sprintf("reserved operator: %s", p.curToken.Literal))
+	p.setTokenError(p.curToken, "reserved operator: %s", p.curToken.Literal)
 	return nil
 }
 
@@ -1356,7 +1356,7 @@ func (p *Parser) parseString() ast.Node {
 	// Template string with ${expr} interpolation
 	tmpl, err := tmpl.Parse(strToken.Literal)
 	if err != nil {
-		p.setTokenError(strToken, err.Error())
+		p.setTokenError(strToken, "%s", err.Error())
 		return nil
 	}
 	var exprs []ast.Expression
@@ -1366,7 +1366,7 @@ func (p *Parser) parseString() ast.Node {
 		}
 		tmplAst, err := Parse(p.ctx, e.Value())
 		if err != nil {
-			p.setTokenError(strToken, err.Error())
+			p.setTokenError(strToken, "%s", err.Error())
 			return nil
 		}
 		statements := tmplAst.Statements()

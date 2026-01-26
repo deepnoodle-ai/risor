@@ -11,7 +11,7 @@ import (
 func TestBuiltins(t *testing.T) {
 	m := Builtins()
 	count := len(m)
-	require.Greater(t, count, 25)
+	require.Greater(t, count, 23) // Reduced from 25 after removing try() and error() builtins
 }
 
 type testCase struct {
