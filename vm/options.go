@@ -43,3 +43,17 @@ func WithContextCheckInterval(interval int) Option {
 		vm.contextCheckInterval = interval
 	}
 }
+
+// WithObserver sets an observer for VM execution events.
+// The observer receives callbacks for instruction steps, function calls,
+// and function returns. This enables profilers, debuggers, code coverage
+// tools, and execution tracers without modifying Risor's core.
+//
+// Observer methods are called synchronously during execution, so
+// implementations should be fast to avoid impacting performance.
+// Returning false from any observer method halts execution immediately.
+func WithObserver(observer Observer) Option {
+	return func(vm *VirtualMachine) {
+		vm.observer = observer
+	}
+}

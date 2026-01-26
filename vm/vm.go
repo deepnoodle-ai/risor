@@ -56,6 +56,10 @@ type VirtualMachine struct {
 	// checks of ctx.Done(). A value of 0 disables deterministic checking,
 	// relying only on the background goroutine. Default is DefaultContextCheckInterval.
 	contextCheckInterval int
+
+	// observer receives callbacks for VM execution events (steps, calls, returns).
+	// If nil, no callbacks are made.
+	observer Observer
 }
 
 // New creates a new Virtual Machine.
@@ -319,6 +323,21 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 
 		// fmt.Println("ip", vm.ip, op.GetInfo(opcode).Name, "sp", vm.sp)
 
+		// Call observer if present
+		if vm.observer != nil {
+			event := StepEvent{
+				IP:         vm.ip,
+				Opcode:     opcode,
+				OpcodeName: op.GetInfo(opcode).Name,
+				Location:   vm.activeCode.LocationAt(vm.ip),
+				StackDepth: vm.sp + 1,
+				FrameDepth: vm.fp + 1,
+			}
+			if !vm.observer.OnStep(event) {
+				return fmt.Errorf("execution halted by observer")
+			}
+		}
+
 		// Advance the instruction pointer to the next instruction. Note that
 		// this is done before we actually execute the current instruction, so
 		// relative jump instructions will need to take this into account.
@@ -481,6 +500,23 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			}
 		case op.ReturnValue:
 			activeFrame := vm.activeFrame
+
+			// Call observer if present (before we lose the frame info)
+			if vm.observer != nil {
+				funcName := ""
+				if activeFrame.fn != nil {
+					funcName = activeFrame.fn.Name()
+				}
+				event := ReturnEvent{
+					FunctionName: funcName,
+					Location:     vm.getCurrentLocation(),
+					FrameDepth:   vm.fp,
+				}
+				if !vm.observer.OnReturn(event) {
+					return fmt.Errorf("execution halted by observer")
+				}
+			}
+
 			returnAddr := activeFrame.returnAddr
 			returnSp := activeFrame.returnSp
 			returnFp := vm.fp - 1
@@ -1007,6 +1043,19 @@ func (vm *VirtualMachine) callFunction(
 	// Activate a frame for the function call
 	vm.activateFunction(vm.fp+1, 0, fn, vm.tmp[:argc])
 
+	// Call observer if present
+	if vm.observer != nil {
+		event := CallEvent{
+			FunctionName: fn.Name(),
+			ArgCount:     len(args),
+			Location:     vm.getCurrentLocation(),
+			FrameDepth:   vm.fp + 1,
+		}
+		if !vm.observer.OnCall(event) {
+			return nil, fmt.Errorf("execution halted by observer")
+		}
+	}
+
 	// Setting StopSignal as the return address will cause the eval function to
 	// stop execution when it reaches the end of the active code.
 	vm.activeFrame.returnAddr = StopSignal
@@ -1213,16 +1262,18 @@ func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
 	}
 
 	clone := &VirtualMachine{
-		sp:           -1,
-		ip:           0,
-		fp:           0,
-		running:      false,
-		importer:     vm.importer,
-		main:         vm.main,
-		inputGlobals: vm.inputGlobals,
-		globals:      vm.globals,
-		modules:      modules,
-		loadedCode:   loadedCode,
+		sp:                   -1,
+		ip:                   0,
+		fp:                   0,
+		running:              false,
+		importer:             vm.importer,
+		main:                 vm.main,
+		inputGlobals:         vm.inputGlobals,
+		globals:              vm.globals,
+		modules:              modules,
+		loadedCode:           loadedCode,
+		contextCheckInterval: vm.contextCheckInterval,
+		observer:             vm.observer,
 	}
 
 	// Only activate main code if it exists
