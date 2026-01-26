@@ -177,6 +177,11 @@ func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 			return nil
 		}
 	}
+	// Allow empty lists/calls with only newlines before the closing token
+	if p.peekTokenIs(end) {
+		p.nextToken()
+		return list
+	}
 	p.nextToken()
 	node := p.parseNode(LOWEST)
 	if node == nil {

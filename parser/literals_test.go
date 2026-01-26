@@ -297,6 +297,16 @@ func TestListEmpty(t *testing.T) {
 	assert.Len(t, list.Items, 0)
 }
 
+func TestListEmptyWithNewlines(t *testing.T) {
+	program, err := Parse(context.Background(), "[\n]")
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	list, ok := program.First().(*ast.List)
+	assert.True(t, ok)
+	assert.Len(t, list.Items, 0)
+}
+
 func TestListWithTrailingComma(t *testing.T) {
 	program, err := Parse(context.Background(), "[1, 2, 3,]")
 	assert.Nil(t, err)

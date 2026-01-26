@@ -2,7 +2,8 @@ package parser
 
 import "github.com/risor-io/risor/internal/token"
 
-// Precedence order for operators
+// Precedence order for operators (from lowest to highest)
+// Note: Higher numbers = higher precedence (binds tighter)
 const (
 	_ int = iota
 	LOWEST
@@ -14,9 +15,8 @@ const (
 	EQUALS      // == or !=
 	LESSGREATER // > or <
 	SUM         // + or -
-	PRODUCT     // * or /
-	POWER       // **
-	MOD         // %
+	PRODUCT     // * / %
+	POWER       // ** (highest arithmetic precedence, right-associative)
 	PREFIX      // -X or !X
 	CALL        // myFunction(X)
 	INDEX       // array[index], map[key]
@@ -47,7 +47,7 @@ var precedences = map[token.Type]int{
 	token.GT_GT:           PRODUCT,
 	token.LT_LT:           PRODUCT,
 	token.POW:             POWER,
-	token.MOD:             MOD,
+	token.MOD:             PRODUCT, // % has same precedence as * and /
 	token.AND:             COND,
 	token.OR:              COND,
 	token.PIPE:            PIPE,

@@ -500,6 +500,16 @@ func TestCallAST(t *testing.T) {
 	assert.Equal(t, int64(42), arg.Value)
 }
 
+func TestCallEmptyWithNewlines(t *testing.T) {
+	program, err := Parse(context.Background(), "noop(\n)")
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	call, ok := program.First().(*ast.Call)
+	assert.True(t, ok)
+	assert.Len(t, call.Args, 0)
+}
+
 func TestCallWithKeywordArgs(t *testing.T) {
 	input := `foo(a=1, b=2)`
 	program, err := Parse(context.Background(), input)
@@ -618,6 +628,20 @@ func TestNotIn(t *testing.T) {
 	assert.Equal(t, "x", node.X.String())
 	assert.Equal(t, "[1, 2]", node.Y.String())
 	assert.Equal(t, "x not in [1, 2]", node.String())
+}
+
+func TestInWithNewline(t *testing.T) {
+	program, err := Parse(context.Background(), "x in\n[1, 2]")
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+	assert.Equal(t, "x in [1, 2]", program.First().String())
+}
+
+func TestNotInWithNewline(t *testing.T) {
+	program, err := Parse(context.Background(), "x not in\n[1, 2]")
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+	assert.Equal(t, "x not in [1, 2]", program.First().String())
 }
 
 func TestNotInAST(t *testing.T) {

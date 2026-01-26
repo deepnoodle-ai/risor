@@ -625,6 +625,7 @@ func (p *Parser) parseIn(leftNode ast.Node) (ast.Node, bool) {
 	if err := p.nextToken(); err != nil {
 		return nil, false
 	}
+	p.eatNewlines()
 	right := p.parseExpression(precedence)
 	if right == nil {
 		p.setTokenError(p.curToken, "invalid in expression")
@@ -659,6 +660,7 @@ func (p *Parser) parseNotIn(leftNode ast.Node) (ast.Node, bool) {
 		return nil, false
 	}
 
+	p.eatNewlines()
 	right := p.parseExpression(precedence)
 	if right == nil {
 		p.setTokenError(p.curToken, "invalid not in expression")
@@ -703,6 +705,7 @@ func (p *Parser) parseGetAttr(objNode ast.Node) (ast.Node, bool) {
 		opPos := p.curToken.StartPosition
 		opLiteral := p.curToken.Literal
 		p.nextToken() // move to the value
+		p.eatNewlines()
 		right := p.parseExpression(LOWEST)
 		if right == nil {
 			p.setTokenError(p.curToken, "invalid assignment statement value")

@@ -248,6 +248,7 @@ func (p *Parser) parseConst() *ast.Const {
 
 // parseAssignmentValue parses the right hand side of an assignment statement.
 func (p *Parser) parseAssignmentValue() ast.Expr {
+	p.eatNewlines()
 	result := p.parseExpression(LOWEST)
 	if result == nil {
 		// Only add error if none was added during parsing
@@ -317,6 +318,7 @@ func (p *Parser) parseAssign(name ast.Node) (ast.Node, bool) {
 		return nil, false
 	}
 	p.nextToken() // move to the RHS value
+	p.eatNewlines()
 	right := p.parseExpression(LOWEST)
 	if right == nil {
 		p.setTokenError(p.curToken, "invalid assignment statement value")
