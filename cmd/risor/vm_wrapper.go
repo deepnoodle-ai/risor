@@ -1,8 +1,10 @@
-package risor
+package main
 
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
@@ -11,15 +13,13 @@ import (
 	"github.com/risor-io/risor/vm"
 )
 
-// VM provides stateful execution for REPL and incremental evaluation.
-// Unlike the Eval and Run functions which create fresh state on each call,
-// the VM maintains state across multiple executions, allowing for interactive
+// replVM provides stateful execution for REPL and incremental evaluation.
+// It maintains state across multiple executions, allowing for interactive
 // sessions where variables and functions persist.
-type VM struct {
+type replVM struct {
 	machine  *vm.VirtualMachine
 	compiler *compiler.Compiler
 	env      map[string]any
-	observer vm.Observer
 
 	// nextIP tracks where to start execution for the next Eval call.
 	// This allows incremental compilation where new code is appended
@@ -27,15 +27,12 @@ type VM struct {
 	nextIP int
 }
 
-// NewVM creates a new VM with the given options.
-// The VM can be used for REPL-style incremental evaluation or for calling
-// functions defined in previously run code.
-func NewVM(opts ...Option) (*VM, error) {
-	o := collectOptions(opts...)
-
+// newReplVM creates a new REPL VM with the given environment.
+func newReplVM(env map[string]any) (*replVM, error) {
 	var compilerOpts []compiler.Option
-	if len(o.env) > 0 {
-		compilerOpts = append(compilerOpts, compiler.WithGlobalNames(envNames(o.env)))
+	if len(env) > 0 {
+		names := slices.Sorted(maps.Keys(env))
+		compilerOpts = append(compilerOpts, compiler.WithGlobalNames(names))
 	}
 
 	c, err := compiler.New(compilerOpts...)
@@ -48,21 +45,17 @@ func NewVM(opts ...Option) (*VM, error) {
 		return nil, err
 	}
 
-	return &VM{
+	return &replVM{
 		machine:  machine,
 		compiler: c,
-		env:      o.env,
-		observer: o.observer,
+		env:      env,
 	}, nil
 }
 
-func (v *VM) vmOpts() []vm.Option {
+func (v *replVM) vmOpts() []vm.Option {
 	var opts []vm.Option
 	if len(v.env) > 0 {
 		opts = append(opts, vm.WithGlobals(v.env))
-	}
-	if v.observer != nil {
-		opts = append(opts, vm.WithObserver(v.observer))
 	}
 	if v.nextIP > 0 {
 		opts = append(opts, vm.WithInstructionOffset(v.nextIP))
@@ -72,8 +65,7 @@ func (v *VM) vmOpts() []vm.Option {
 
 // Eval evaluates source code within this VM's context.
 // Variables and functions defined in previous Eval calls remain accessible.
-// This is the primary method for REPL-style interaction.
-func (v *VM) Eval(ctx context.Context, source string) (any, error) {
+func (v *replVM) Eval(ctx context.Context, source string) (any, error) {
 	ast, err := parser.Parse(ctx, source)
 	if err != nil {
 		return nil, err
@@ -109,8 +101,7 @@ func (v *VM) Eval(ctx context.Context, source string) (any, error) {
 }
 
 // Run executes compiled bytecode within this VM's context.
-// Unlike the top-level Run function, this maintains state across calls.
-func (v *VM) Run(ctx context.Context, code *bytecode.Code) (any, error) {
+func (v *replVM) Run(ctx context.Context, code *bytecode.Code) (any, error) {
 	if err := v.machine.RunCode(ctx, code, v.vmOpts()...); err != nil {
 		return nil, err
 	}
@@ -124,9 +115,7 @@ func (v *VM) Run(ctx context.Context, code *bytecode.Code) (any, error) {
 }
 
 // Call invokes a function defined in the VM's context by name.
-// The function must have been defined in a previous Eval or Run call.
-// Arguments are converted from Go types to Risor objects automatically.
-func (v *VM) Call(ctx context.Context, name string, args ...any) (any, error) {
+func (v *replVM) Call(ctx context.Context, name string, args ...any) (any, error) {
 	obj, err := v.machine.Get(name)
 	if err != nil {
 		return nil, err
@@ -154,8 +143,7 @@ func (v *VM) Call(ctx context.Context, name string, args ...any) (any, error) {
 }
 
 // Get retrieves a global variable by name from the VM's context.
-// The value is returned as a native Go type.
-func (v *VM) Get(name string) (any, error) {
+func (v *replVM) Get(name string) (any, error) {
 	obj, err := v.machine.Get(name)
 	if err != nil {
 		return nil, err
@@ -163,19 +151,7 @@ func (v *VM) Get(name string) (any, error) {
 	return obj.Interface(), nil
 }
 
-// GetObject retrieves a global variable by name as a Risor object.
-// This is useful when you need to work with the object's methods directly.
-func (v *VM) GetObject(name string) (object.Object, error) {
-	return v.machine.Get(name)
-}
-
 // GlobalNames returns the names of all global variables in the VM's context.
-func (v *VM) GlobalNames() []string {
+func (v *replVM) GlobalNames() []string {
 	return v.machine.GlobalNames()
-}
-
-// InternalVM returns the underlying vm.VirtualMachine.
-// This is primarily for advanced use cases and testing.
-func (v *VM) InternalVM() *vm.VirtualMachine {
-	return v.machine
 }

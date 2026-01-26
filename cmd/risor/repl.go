@@ -9,8 +9,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/risor-io/risor"
-
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
@@ -18,7 +16,7 @@ import (
 type replApp struct {
 	runner      *tui.InlineApp
 	ctx         context.Context
-	vm          *risor.VM
+	vm          *replVM
 	input       string
 	cursorPos   int
 	history     []string
@@ -28,12 +26,12 @@ type replApp struct {
 	multiLine   bool // true when input contains newlines
 }
 
-func runRepl(ctx context.Context, opts []risor.Option) error {
+func runRepl(ctx context.Context, env map[string]any) error {
 	// Load history
 	history, historyPath := loadHistory()
 
-	// Create VM with options
-	vm, err := risor.NewVM(opts...)
+	// Create VM with environment
+	vm, err := newReplVM(env)
 	if err != nil {
 		return err
 	}

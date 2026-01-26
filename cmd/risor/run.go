@@ -34,7 +34,7 @@ func runHandler(ctx *cli.Context) error {
 
 	// Check if we should run REPL
 	if shouldRunRepl(ctx) {
-		return runRepl(ctx.Context(), opts)
+		return runRepl(ctx.Context(), getReplEnv(ctx))
 	}
 
 	// Get the code to execute
@@ -99,6 +99,13 @@ func getRisorOptions(ctx *cli.Context) []risor.Option {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
 	}
 	return opts
+}
+
+func getReplEnv(ctx *cli.Context) map[string]any {
+	if ctx.Bool("no-default-globals") {
+		return nil
+	}
+	return risor.Builtins()
 }
 
 func shouldRunRepl(ctx *cli.Context) bool {
