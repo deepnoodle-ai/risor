@@ -368,9 +368,15 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 	params := make([]*ast.Ident, 0)
 	var restParam *ast.Ident
 	p.nextToken()
+	p.eatNewlines()
 	for !p.curTokenIs(token.RPAREN) { // Keep going until we find a ")"
 		if p.cancelled() {
 			return nil, nil, nil
+		}
+		for p.curTokenIs(token.NEWLINE) {
+			if err := p.nextToken(); err != nil {
+				return nil, nil, nil
+			}
 		}
 		if p.curTokenIs(token.EOF) {
 			p.setTokenError(p.prevToken, "unterminated function parameters")
@@ -390,6 +396,7 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 			}
 			restParam = p.newIdent(p.curToken)
 			p.nextToken()
+			p.eatNewlines()
 			// Rest parameter must be last
 			if !p.curTokenIs(token.RPAREN) {
 				p.setTokenError(p.curToken, "rest parameter must be the last parameter")
@@ -410,6 +417,7 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 		// If there is "=expr" after the name then expr is a default value
 		if p.curTokenIs(token.ASSIGN) {
 			p.nextToken()
+			p.eatNewlines()
 			expr := p.parseExpression(LOWEST)
 			if expr == nil {
 				return nil, nil, nil
@@ -419,6 +427,7 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 		}
 		if p.curTokenIs(token.COMMA) {
 			p.nextToken()
+			p.eatNewlines()
 		}
 	}
 	return defaults, params, restParam

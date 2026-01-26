@@ -511,6 +511,28 @@ func TestFuncParams(t *testing.T) {
 	}
 }
 
+func TestFuncParamsWithNewlines(t *testing.T) {
+	input := `function f(
+		a,
+		b =
+			2,
+		...rest
+	) { return a }`
+	program, err := Parse(context.Background(), input)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	function, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, function.Params, 2)
+	assert.Equal(t, "a", function.Params[0].Name)
+	assert.Equal(t, "b", function.Params[1].Name)
+	assert.Len(t, function.Defaults, 1)
+	assert.Contains(t, function.Defaults, "b")
+	assert.NotNil(t, function.RestParam)
+	assert.Equal(t, "rest", function.RestParam.Name)
+}
+
 func TestFuncAnonymous(t *testing.T) {
 	program, err := Parse(context.Background(), "function(x) { x }")
 	assert.Nil(t, err)

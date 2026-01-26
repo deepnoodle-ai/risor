@@ -389,6 +389,24 @@ func TestObjectDestructureTrailingComma(t *testing.T) {
 	assert.Equal(t, "a", destruct.Bindings[0].Key)
 }
 
+func TestObjectDestructureWithNewlines(t *testing.T) {
+	input := `let {
+		a,
+		b: c = 2,
+	} = obj`
+	program, err := Parse(context.Background(), input)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	destruct, ok := program.First().(*ast.ObjectDestructure)
+	assert.True(t, ok)
+	assert.Len(t, destruct.Bindings, 2)
+	assert.Equal(t, "a", destruct.Bindings[0].Key)
+	assert.Equal(t, "b", destruct.Bindings[1].Key)
+	assert.Equal(t, "c", destruct.Bindings[1].Alias)
+	assert.NotNil(t, destruct.Bindings[1].Default)
+}
+
 func TestArrayDestructure(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -455,6 +473,23 @@ func TestArrayDestructure(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestArrayDestructureWithNewlines(t *testing.T) {
+	input := `let [
+		first,
+		second = 2,
+	] = items`
+	program, err := Parse(context.Background(), input)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	destruct, ok := program.First().(*ast.ArrayDestructure)
+	assert.True(t, ok)
+	assert.Len(t, destruct.Elements, 2)
+	assert.Equal(t, "first", destruct.Elements[0].Name.Name)
+	assert.Equal(t, "second", destruct.Elements[1].Name.Name)
+	assert.NotNil(t, destruct.Elements[1].Default)
 }
 
 func TestArrayDestructureAST(t *testing.T) {

@@ -661,6 +661,26 @@ func TestNotInPrecedence(t *testing.T) {
 	assert.Equal(t, "sorted([1, 2, 3])", notInStmt.Y.String())
 }
 
+func TestInNotInWithArithmetic(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`1 in 2 + 3`, "1 in (2 + 3)"},
+		{`1 + 2 in [1, 2]`, "(1 + 2) in [1, 2]"},
+		{`1 not in 2 + 3`, "1 not in (2 + 3)"},
+		{`1 + 2 not in [1, 2]`, "(1 + 2) not in [1, 2]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input)
+			assert.Nil(t, err)
+			assert.Len(t, program.Stmts, 1)
+			assert.Equal(t, tt.expected, program.First().String())
+		})
+	}
+}
+
 func TestGetAttr(t *testing.T) {
 	program, err := Parse(context.Background(), "foo.bar")
 	assert.Nil(t, err)

@@ -55,6 +55,6 @@ var precedences = map[token.Type]int{
 	token.PERIOD:          INDEX,
 	token.QUESTION_DOT:    OPTCHAIN,
 	token.LBRACKET:        INDEX,
-	token.IN:              PREFIX,
-	token.NOT:             PREFIX,
+	token.IN:              LESSGREATER,
+	token.NOT:             LESSGREATER,
 }

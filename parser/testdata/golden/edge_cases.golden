@@ -1,0 +1,21 @@
+(-(2 ** 3))
+(a ?? (b && c))
+(1 + 2) in [3]
+(1 + 2) not in [3]
+(a | b | c)
+f(1, 2, 3)
+[1, 2, 3]
+{a:1, b:2}
+(x ? y : z)
+obj?.field
+obj?.method()
+a?.b?.c
+obj.field += 1
+(arr[0]++)
+function(x) { return (x + 1) }
+function() { return 42 }
+function(a, b) { return (a + b) }
+function(a, b) { return (a + b) }
+function(x) { return (x * 2) }
+[1, ...arr, 2]
+f(a, ...args, b)

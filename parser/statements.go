@@ -56,12 +56,17 @@ func (p *Parser) parseObjectDestructure(letPos token.Position) ast.Node {
 	p.nextToken() // Move to '{'
 	lbrace := p.curToken.StartPosition
 	p.nextToken() // Move past '{'
+	p.eatNewlines()
 
 	bindings := []ast.DestructureBinding{}
 
 	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
 		if p.cancelled() {
 			return nil
+		}
+		if p.curTokenIs(token.NEWLINE) {
+			p.nextToken()
+			continue
 		}
 		if !p.curTokenIs(token.IDENT) {
 			p.setTokenError(p.curToken, "expected identifier in destructuring pattern")
@@ -94,9 +99,13 @@ func (p *Parser) parseObjectDestructure(letPos token.Position) ast.Node {
 		bindings = append(bindings, ast.DestructureBinding{Key: key, Alias: alias, Default: defaultValue})
 
 		// Check for comma or end
+		for p.peekTokenIs(token.NEWLINE) {
+			p.nextToken()
+		}
 		if p.peekTokenIs(token.COMMA) {
 			p.nextToken() // Move to ','
 			p.nextToken() // Move past ','
+			p.eatNewlines()
 		} else if p.peekTokenIs(token.RBRACE) {
 			p.nextToken() // Move to '}'
 		} else {
@@ -140,12 +149,17 @@ func (p *Parser) parseArrayDestructure(letPos token.Position) ast.Node {
 	p.nextToken() // Move to '['
 	lbrack := p.curToken.StartPosition
 	p.nextToken() // Move past '['
+	p.eatNewlines()
 
 	elements := []ast.ArrayDestructureElement{}
 
 	for !p.curTokenIs(token.RBRACKET) && !p.curTokenIs(token.EOF) {
 		if p.cancelled() {
 			return nil
+		}
+		if p.curTokenIs(token.NEWLINE) {
+			p.nextToken()
+			continue
 		}
 		if !p.curTokenIs(token.IDENT) {
 			p.setTokenError(p.curToken, "expected identifier in array destructuring pattern")
@@ -169,9 +183,13 @@ func (p *Parser) parseArrayDestructure(letPos token.Position) ast.Node {
 		elements = append(elements, elem)
 
 		// Check for comma or end
+		for p.peekTokenIs(token.NEWLINE) {
+			p.nextToken()
+		}
 		if p.peekTokenIs(token.COMMA) {
 			p.nextToken() // Move to ','
 			p.nextToken() // Move past ','
+			p.eatNewlines()
 		} else if p.peekTokenIs(token.RBRACKET) {
 			p.nextToken() // Move to ']'
 		} else {

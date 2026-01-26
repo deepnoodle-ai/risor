@@ -40,10 +40,25 @@ func (p *Parser) parsePrefixExpr() (ast.Node, bool) {
 	if err := p.nextToken(); err != nil {
 		return nil, false
 	}
+	// Parse the operand. For unary minus/plus, if followed by **, we need
+	// special handling to match Python semantics: -2**2 = -(2**2), not (-2)**2.
+	// The ** operator is unique in binding tighter than unary minus on its left.
 	right := p.parseExpression(PREFIX)
 	if right == nil {
 		p.setTokenError(p.curToken, "invalid prefix expression")
 		return nil, false
+	}
+	// Check if we should extend to include ** chain (Python semantics)
+	// Loop to handle: -2 ** 2 ** 3 = -(2 ** (2 ** 3))
+	for (op == "-" || op == "+") && p.peekTokenIs(token.POW) {
+		// The right operand is the base of a power expression.
+		// Parse the ** and its exponent, making right the full power expr.
+		p.nextToken() // move to **
+		powNode, ok := p.parseInfixExpr(right)
+		if !ok {
+			return nil, false
+		}
+		right, _ = powNode.(ast.Expr)
 	}
 	return &ast.Prefix{OpPos: opPos, Op: op, X: right}, true
 }
@@ -57,6 +72,10 @@ func (p *Parser) parseInfixExpr(leftNode ast.Node) (ast.Node, bool) {
 	opPos := p.curToken.StartPosition
 	op := p.curToken.Literal
 	precedence := p.currentPrecedence()
+	// Power operator ** is right-associative (like Python): 2**2**3 = 2**(2**3)
+	if p.curTokenIs(token.POW) {
+		precedence--
+	}
 	p.nextToken()
 	for p.curTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
@@ -602,10 +621,11 @@ func (p *Parser) parseIn(leftNode ast.Node) (ast.Node, bool) {
 		return nil, false
 	}
 	inPos := p.curToken.StartPosition
+	precedence := p.currentPrecedence()
 	if err := p.nextToken(); err != nil {
 		return nil, false
 	}
-	right := p.parseExpression(PREFIX)
+	right := p.parseExpression(precedence)
 	if right == nil {
 		p.setTokenError(p.curToken, "invalid in expression")
 		return nil, false
@@ -621,6 +641,7 @@ func (p *Parser) parseNotIn(leftNode ast.Node) (ast.Node, bool) {
 	}
 
 	notInPos := p.curToken.StartPosition
+	precedence := p.currentPrecedence()
 
 	// Check if the next token is IN
 	if !p.peekTokenIs(token.IN) {
@@ -638,7 +659,7 @@ func (p *Parser) parseNotIn(leftNode ast.Node) (ast.Node, bool) {
 		return nil, false
 	}
 
-	right := p.parseExpression(PREFIX)
+	right := p.parseExpression(precedence)
 	if right == nil {
 		p.setTokenError(p.curToken, "invalid not in expression")
 		return nil, false
