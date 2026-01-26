@@ -50,6 +50,11 @@ type VirtualMachine struct {
 	stack        [MaxStackDepth]object.Object
 	frames       []frame // Dynamically sized, grows up to MaxFrameDepth
 
+	// requestedIP stores the starting instruction pointer requested via
+	// WithInstructionOffset. This survives resetForNewCode() and is applied
+	// when activating code. Used by REPL to skip past previously executed code.
+	requestedIP int
+
 	// contextCheckInterval is the number of instructions between deterministic
 	// checks of ctx.Done(). A value of 0 disables deterministic checking,
 	// relying only on the background goroutine. Default is DefaultContextCheckInterval.
@@ -226,11 +231,17 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 		}
 	}
 
-	// Activate the entrypoint code in frame zero
-	// Use vm.ip for Run (preserving existing behavior), 0 for RunCode
+	// Activate the entrypoint code in frame zero.
+	// For Run() (resetState=false), use vm.ip to continue from where we left off.
+	// For RunCode() (resetState=true), use requestedIP if set (via WithInstructionOffset),
+	// otherwise start from 0. The REPL uses WithInstructionOffset to skip past
+	// previously executed (or errored) code in incremental compilation.
 	startIP := 0
 	if !resetState {
 		startIP = vm.ip
+	} else if vm.requestedIP > 0 {
+		startIP = vm.requestedIP
+		vm.requestedIP = 0 // Clear after use
 	}
 	vm.activateCode(0, startIP, codeObj)
 

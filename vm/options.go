@@ -3,10 +3,12 @@ package vm
 // Option is a configuration function for a Virtual Machine.
 type Option func(*VirtualMachine)
 
-// WithInstructionOffset sets the initial instruction offset.
+// WithInstructionOffset sets the starting instruction offset for the next
+// RunCode call. This survives resetForNewCode() and is used by the REPL to
+// skip past previously executed (or errored) code in incremental compilation.
 func WithInstructionOffset(offset int) Option {
 	return func(vm *VirtualMachine) {
-		vm.ip = offset
+		vm.requestedIP = offset
 	}
 }
 

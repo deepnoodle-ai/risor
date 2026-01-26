@@ -20,6 +20,11 @@ type VM struct {
 	compiler *compiler.Compiler
 	env      map[string]any
 	observer vm.Observer
+
+	// nextIP tracks where to start execution for the next Eval call.
+	// This allows incremental compilation where new code is appended
+	// and we skip past previously executed (or errored) code.
+	nextIP int
 }
 
 // NewVM creates a new VM with the given options.
@@ -59,6 +64,9 @@ func (v *VM) vmOpts() []vm.Option {
 	if v.observer != nil {
 		opts = append(opts, vm.WithObserver(v.observer))
 	}
+	if v.nextIP > 0 {
+		opts = append(opts, vm.WithInstructionOffset(v.nextIP))
+	}
 	return opts
 }
 
@@ -80,9 +88,13 @@ func (v *VM) Eval(ctx context.Context, source string) (any, error) {
 	bc := code.ToBytecode()
 
 	if err := v.machine.RunCode(ctx, bc, v.vmOpts()...); err != nil {
-		v.machine.SetIP(bc.InstructionCount())
+		// Advance past the erroring code so subsequent Eval calls skip it
+		v.nextIP = bc.InstructionCount()
 		return nil, err
 	}
+
+	// Advance past executed code for next Eval call
+	v.nextIP = bc.InstructionCount()
 
 	result, ok := v.machine.TOS()
 	if !ok || result == nil {
