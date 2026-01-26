@@ -8,5 +8,4 @@ use (
 	./cmd/risor-lsp
 	./examples/go/struct
 	./examples/go/tetra3d
-	./modules/bcrypt
 )

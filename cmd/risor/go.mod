@@ -2,10 +2,7 @@ module github.com/risor-io/risor/cmd/risor
 
 go 1.25
 
-replace (
-	github.com/risor-io/risor => ../..
-	github.com/risor-io/risor/modules/bcrypt => ../../modules/bcrypt
-)
+replace github.com/risor-io/risor => ../..
 
 require (
 	atomicgo.dev/keyboard v0.2.9
@@ -14,7 +11,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/risor-io/risor v1.8.0
-	github.com/risor-io/risor/modules/bcrypt v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
@@ -38,7 +34,6 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/modules/bcrypt"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -16,13 +15,7 @@ func getGlobals() risor.Option {
 	if viper.GetBool("no-default-globals") {
 		return risor.WithoutDefaultGlobals()
 	}
-
-	// Modules that extend the standard library (using x/crypto)
-	globals := map[string]any{
-		"bcrypt": bcrypt.Module(),
-	}
-
-	return risor.WithGlobals(globals)
+	return nil
 }
 
 func getRisorOptions() []risor.Option {

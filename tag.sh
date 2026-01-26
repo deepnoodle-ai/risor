@@ -11,10 +11,8 @@ fi
 
 git tag $VERSION
 git tag cmd/risor/$VERSION
-git tag modules/bcrypt/$VERSION
 git tag modules/ssh/$VERSION
 
 git push origin $VERSION
 git push origin cmd/risor/$VERSION
-git push origin modules/bcrypt/$VERSION
 git push origin modules/ssh/$VERSION

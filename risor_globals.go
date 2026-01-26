@@ -4,8 +4,6 @@ import (
 	"github.com/risor-io/risor/builtins"
 	modBase64 "github.com/risor-io/risor/modules/base64"
 	modBytes "github.com/risor-io/risor/modules/bytes"
-	modErrors "github.com/risor-io/risor/modules/errors"
-	modFilepath "github.com/risor-io/risor/modules/filepath"
 	modFmt "github.com/risor-io/risor/modules/fmt"
 	modJSON "github.com/risor-io/risor/modules/json"
 	modMath "github.com/risor-io/risor/modules/math"
@@ -39,18 +37,16 @@ func DefaultGlobals(opts ...DefaultGlobalsOpts) map[string]any {
 
 	// Add default modules as globals
 	modules := map[string]object.Object{
-		"base64":   modBase64.Module(),
-		"bytes":    modBytes.Module(),
-		"errors":   modErrors.Module(),
-		"filepath": modFilepath.Module(),
-		"fmt":      modFmt.Module(),
-		"json":     modJSON.Module(),
-		"math":     modMath.Module(),
-		"rand":     modRand.Module(),
-		"regexp":   modRegexp.Module(),
-		"strconv":  modStrconv.Module(),
-		"strings":  modStrings.Module(),
-		"time":     modTime.Module(),
+		"base64":  modBase64.Module(),
+		"bytes":   modBytes.Module(),
+		"fmt":     modFmt.Module(),
+		"json":    modJSON.Module(),
+		"math":    modMath.Module(),
+		"rand":    modRand.Module(),
+		"regexp":  modRegexp.Module(),
+		"strconv": modStrconv.Module(),
+		"strings": modStrings.Module(),
+		"time":    modTime.Module(),
 	}
 	for k, v := range modules {
 		globals[k] = v

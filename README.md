@@ -150,30 +150,26 @@ result, err := risor.Eval(ctx, "len(ex.Message)", risor.WithGlobal("ex", example
 ## Optional Modules
 
 Risor is designed to have minimal external dependencies in its core libraries.
-Two optional modules are available that use `golang.org/x/crypto`:
+An optional ssh module is available that uses `golang.org/x/crypto`:
 
-| Name   | Path                               | Go Get Command                                    |
-| ------ | ---------------------------------- | ------------------------------------------------- |
-| bcrypt | [modules/bcrypt](./modules/bcrypt) | `go get github.com/risor-io/risor/modules/bcrypt` |
-| ssh    | [modules/ssh](./modules/ssh)       | `go get github.com/risor-io/risor/modules/ssh`    |
+| Name | Path                         | Go Get Command                                  |
+| ---- | ---------------------------- | ----------------------------------------------- |
+| ssh  | [modules/ssh](./modules/ssh) | `go get github.com/risor-io/risor/modules/ssh`  |
 
-These modules are included by default when using the Risor CLI. When building
-Risor into your own program, you'll need to opt-in using `go get` and then add
-the modules as globals:
+When building Risor into your own program, you'll need to opt-in using `go get`
+and then add the modules as globals:
 
 ```go
 import (
     "github.com/risor-io/risor"
-    "github.com/risor-io/risor/modules/bcrypt"
     "github.com/risor-io/risor/modules/ssh"
 )
 
 func main() {
-    source := `bcrypt.hash("secret")`
+    source := `ssh.dial("user@host")`
     result, err := risor.Eval(ctx, source,
         risor.WithGlobals(map[string]any{
-            "bcrypt": bcrypt.Module(),
-            "ssh":    ssh.Module(),
+            "ssh": ssh.Module(),
         }))
     // ...
 }
