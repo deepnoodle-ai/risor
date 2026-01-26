@@ -17,29 +17,51 @@ import (
 )
 
 type (
-	prefixParseFn  func() ast.Node
-	infixParseFn   func(ast.Node) ast.Node
-	postfixParseFn func() ast.Stmt
+	prefixParseFn func() ast.Node
+	infixParseFn  func(ast.Node) ast.Node
 )
 
+// statementTerminators defines tokens that can end a statement.
+//
+// NEWLINE HANDLING POLICY:
+//  1. Trailing operators continue expressions: "x +\ny" parses as one expression
+//  2. Newlines at start of line terminate expressions: "x\ny" parses as two statements
+//  3. Inside parentheses: leading/trailing newlines allowed: "(\nx + y\n)"
+//  4. Inside brackets/braces: newlines after commas allowed: "[1,\n2]"
+//  5. Ternary expressions: newlines allowed around ? and : operators
+//  6. Postfix operators (++, --) must be on same line as operand
+//
+// This policy follows "trailing operator continues" semantics common in many
+// languages, avoiding ambiguity about whether "x\n+ y" means one expression
+// or two statements (it's the latter, and produces an error since +y is invalid).
 var statementTerminators = map[token.Type]bool{
-	token.SEMICOLON:   true,
-	token.NEWLINE:     true,
-	token.RBRACE:      true,
-	token.EOF:         true,
-	token.PLUS_PLUS:   true,
-	token.MINUS_MINUS: true,
+	token.SEMICOLON: true,
+	token.NEWLINE:   true,
+	token.RBRACE:    true,
+	token.EOF:       true,
 }
 
 // Parse the provided input as Risor source code and return the AST. This is
 // shorthand way to create a Lexer and Parser and then call Parse on that.
 func Parse(ctx context.Context, input string, options ...Option) (*ast.Program, error) {
-	l := lexer.New(input)
-	p := New(l, options...)
-	if p.filename != "" {
-		// If an option specified a filename, pass that through to the lexer.
-		l.SetFilename(p.filename)
+	// Extract filename from options before creating the parser, so that lexer
+	// errors in the first tokens have proper location context.
+	var filename string
+	for _, opt := range options {
+		var probe Parser
+		opt(&probe)
+		if probe.filename != "" {
+			filename = probe.filename
+			break
+		}
 	}
+
+	l := lexer.New(input)
+	if filename != "" {
+		l.SetFilename(filename)
+	}
+
+	p := New(l, options...)
 	return p.Parse(ctx)
 }
 
@@ -62,6 +84,18 @@ func WithFilename(filename string) Option {
 	}
 }
 
+// WithMaxDepth sets the maximum nesting depth for the parser.
+// This prevents stack overflow on deeply nested input.
+// The default is 500.
+func WithMaxDepth(depth int) Option {
+	return func(p *Parser) {
+		p.maxDepth = depth
+	}
+}
+
+// DefaultMaxDepth is the default maximum nesting depth for parsing.
+const DefaultMaxDepth = 500
+
 // Parser object
 type Parser struct {
 	// the Context supplied in the Parse() call
@@ -79,8 +113,12 @@ type Parser struct {
 	// peekToken holds the next token from the lexer.
 	peekToken token.Token
 
-	// the parsing error, if any
-	err ParserError
+	// parsing errors collected during parsing
+	errors []ParserError
+
+	// stmtErrorCount tracks error count at start of current statement.
+	// Used by inner methods to detect if an error was added during this statement.
+	stmtErrorCount int
 
 	// prefixParseFns holds a map of parsing methods for
 	// prefix-based syntax.
@@ -90,10 +128,6 @@ type Parser struct {
 	// infix-based syntax.
 	infixParseFns map[token.Type]infixParseFn
 
-	// postfixParseFns holds a map of parsing methods for
-	// postfix-based syntax.
-	postfixParseFns map[token.Type]postfixParseFn
-
 	// are we inside a ternary expression?
 	//
 	// Nested ternary expressions are illegal :)
@@ -101,16 +135,22 @@ type Parser struct {
 
 	// The filename of the input
 	filename string
+
+	// Current recursion depth
+	depth int
+
+	// Maximum allowed recursion depth
+	maxDepth int
 }
 
 // New returns a Parser for the program provided by the given Lexer.
 func New(l *lexer.Lexer, options ...Option) *Parser {
 	// Create the parser and apply any provided options
 	p := &Parser{
-		l:               l,
-		prefixParseFns:  map[token.Type]prefixParseFn{},
-		infixParseFns:   map[token.Type]infixParseFn{},
-		postfixParseFns: map[token.Type]postfixParseFn{},
+		l:              l,
+		prefixParseFns: map[token.Type]prefixParseFn{},
+		infixParseFns:  map[token.Type]infixParseFn{},
+		maxDepth:       DefaultMaxDepth,
 	}
 	for _, opt := range options {
 		opt(p)
@@ -177,19 +217,20 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerInfix(token.SLASH_EQUALS, p.parseAssign)
 	p.registerInfix(token.SLASH, p.parseInfixExpr)
 
-	// Register postfix functions
-	p.registerPostfix(token.MINUS_MINUS, p.parsePostfix)
-	p.registerPostfix(token.PLUS_PLUS, p.parsePostfix)
 	return p
+}
+
+// advanceToken moves to the next token from the lexer without error checking.
+// Used internally by synchronize() during error recovery.
+func (p *Parser) advanceToken() {
+	p.prevToken = p.curToken
+	p.curToken = p.peekToken
+	p.peekToken, _ = p.l.Next()
 }
 
 // nextToken moves to the next token from the lexer, updating all of
 // prevToken, curToken, and peekToken.
 func (p *Parser) nextToken() error {
-	// If we have an error, we can't move forward
-	if p.err != nil {
-		return p.err
-	}
 	var err error
 	p.prevToken = p.curToken
 	p.curToken = p.peekToken
@@ -199,26 +240,28 @@ func (p *Parser) nextToken() error {
 	}
 	// The lexer encountered an error. We consider all lexer errors
 	// "syntax errors" and parsing will now be considered broken.
-	p.err = NewSyntaxError(ErrorOpts{
+	p.addError(NewSyntaxError(ErrorOpts{
 		Cause:         err,
 		File:          p.l.Filename(),
 		StartPosition: p.peekToken.StartPosition,
 		EndPosition:   p.peekToken.EndPosition,
 		SourceCode:    p.l.GetLineText(p.peekToken),
-	})
-	return p.err
+	}))
+	return err
 }
 
 // Parse the program that is provided via the lexer.
+// Returns the AST and any errors encountered. If there are errors, the AST
+// may be partial (containing only successfully parsed statements).
 func (p *Parser) Parse(ctx context.Context) (*ast.Program, error) {
 	p.ctx = ctx
-	// It's possible for an error to already exist because we read tokens from
-	// the lexer in the constructor. Parsing is already broken if so.
-	if p.err != nil {
-		return nil, p.err
+	// It's possible for errors to already exist because we read tokens from
+	// the lexer in the constructor.
+	if p.hasErrors() {
+		return nil, NewErrors(p.errors)
 	}
 	// Parse the entire input program as a series of statements.
-	// Parsing stops on the first occurrence of an error.
+	// When a statement fails, we synchronize and continue to collect more errors.
 	var statements []ast.Node
 	for p.curToken.Type != token.EOF {
 		// Check for context timeout
@@ -227,15 +270,25 @@ func (p *Parser) Parse(ctx context.Context) (*ast.Program, error) {
 			return nil, ctx.Err()
 		default:
 		}
+		// Stop if we've collected too many errors
+		if p.tooManyErrors() {
+			break
+		}
+		// Track error count for this statement so inner methods can detect new errors
+		p.stmtErrorCount = len(p.errors)
 		stmt := p.parseStatementStrict()
 		if stmt != nil {
 			statements = append(statements, stmt)
+		} else if p.hadNewError() {
+			// Statement failed - synchronize and continue
+			p.synchronize()
 		}
-		if err := p.nextToken(); err != nil {
-			return nil, err
-		}
+		p.nextToken()
 	}
-	return &ast.Program{Stmts: statements}, p.err
+	if p.hasErrors() {
+		return &ast.Program{Stmts: statements}, NewErrors(p.errors)
+	}
+	return &ast.Program{Stmts: statements}, nil
 }
 
 // registerPrefix registers a function for handling a prefix-based statement.
@@ -248,33 +301,68 @@ func (p *Parser) registerInfix(tokenType token.Type, fn infixParseFn) {
 	p.infixParseFns[tokenType] = fn
 }
 
-// registerPostfix registers a function for handling a postfix-based statement.
-func (p *Parser) registerPostfix(tokenType token.Type, fn postfixParseFn) {
-	p.postfixParseFns[tokenType] = fn
+// MaxErrors is the maximum number of errors to collect before stopping.
+const MaxErrors = 10
+
+// addError appends an error to the errors slice.
+func (p *Parser) addError(err ParserError) {
+	p.errors = append(p.errors, err)
+}
+
+// hasErrors returns true if any errors have been recorded.
+func (p *Parser) hasErrors() bool {
+	return len(p.errors) > 0
+}
+
+// tooManyErrors returns true if error limit has been reached.
+func (p *Parser) tooManyErrors() bool {
+	return len(p.errors) >= MaxErrors
+}
+
+// hadNewError returns true if an error was added during the current statement.
+func (p *Parser) hadNewError() bool {
+	return len(p.errors) > p.stmtErrorCount
+}
+
+// synchronize skips tokens until a statement boundary is reached.
+// This is used for error recovery to continue parsing after an error.
+func (p *Parser) synchronize() {
+	for !p.curTokenIs(token.EOF) {
+		// Stop at statement terminators
+		if statementTerminators[p.curToken.Type] {
+			return
+		}
+		// Stop at statement-starting keywords
+		switch p.curToken.Type {
+		case token.LET, token.CONST, token.RETURN, token.IF,
+			token.FUNCTION, token.SWITCH, token.TRY, token.THROW:
+			return
+		}
+		prevPos := p.curToken.StartPosition
+		p.advanceToken()
+		// Safety: if we didn't advance (lexer stuck), bail out
+		if p.curToken.StartPosition == prevPos {
+			return
+		}
+	}
 }
 
 func (p *Parser) noPrefixParseFnError(t token.Token) {
-	if p.err != nil {
-		return
-	}
-	p.err = NewParserError(ErrorOpts{
+	p.addError(NewParserError(ErrorOpts{
 		ErrType:       "parse error",
 		Message:       fmt.Sprintf("invalid syntax (unexpected %q)", t.Literal),
 		File:          p.l.Filename(),
 		StartPosition: t.StartPosition,
 		EndPosition:   t.EndPosition,
 		SourceCode:    p.l.GetLineText(t),
-	})
+	}))
 }
 
 // peekError raises an error if the next token is not the expected type.
 func (p *Parser) peekError(context string, expected token.Type, got token.Token) {
-	if p.err != nil {
-		return
-	}
 	gotDesc := tokenDescription(got)
 	expDesc := tokenTypeDescription(expected)
-	p.err = NewParserError(ErrorOpts{
+	p.addError(NewParserError(ErrorOpts{
 		ErrType: "parse error",
 		Message: fmt.Sprintf("unexpected %s while parsing %s (expected %s)",
 			gotDesc, context, expDesc),
@@ -282,14 +370,29 @@ func (p *Parser) peekError(context string, expected token.Type, got token.Token)
 		StartPosition: got.StartPosition,
 		EndPosition:   got.EndPosition,
 		SourceCode:    p.l.GetLineText(got),
-	})
+	}))
 }
 
 func (p *Parser) setError(err ParserError) {
-	if p.err != nil {
-		return
+	p.addError(err)
+}
+
+// cancelled checks if the parsing context has been cancelled.
+// Returns true if cancelled, in which case parsing should stop.
+func (p *Parser) cancelled() bool {
+	if p.ctx == nil {
+		return false
 	}
-	p.err = err
+	select {
+	case <-p.ctx.Done():
+		p.setError(NewParserError(ErrorOpts{
+			ErrType: "context error",
+			Message: p.ctx.Err().Error(),
+		}))
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) parseStatementStrict() ast.Node {
@@ -375,6 +478,9 @@ func (p *Parser) parseObjectDestructure(letPos token.Position) ast.Node {
 	bindings := []ast.DestructureBinding{}
 
 	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if p.cancelled() {
+			return nil
+		}
 		if !p.curTokenIs(token.IDENT) {
 			p.setTokenError(p.curToken, "expected identifier in destructuring pattern")
 			return nil
@@ -456,6 +562,9 @@ func (p *Parser) parseArrayDestructure(letPos token.Position) ast.Node {
 	elements := []ast.ArrayDestructureElement{}
 
 	for !p.curTokenIs(token.RBRACKET) && !p.curTokenIs(token.EOF) {
+		if p.cancelled() {
+			return nil
+		}
 		if !p.curTokenIs(token.IDENT) {
 			p.setTokenError(p.curToken, "expected identifier in array destructuring pattern")
 			return nil
@@ -541,14 +650,17 @@ func (p *Parser) parseConst() *ast.Const {
 func (p *Parser) parseAssignmentValue() ast.Expr {
 	result := p.parseExpression(LOWEST)
 	if result == nil {
-		p.setError(NewParserError(ErrorOpts{
-			ErrType:       "parse error",
-			Message:       "assignment is missing a value",
-			File:          p.l.Filename(),
-			StartPosition: p.prevToken.EndPosition,
-			EndPosition:   p.prevToken.EndPosition,
-			SourceCode:    p.l.GetLineText(p.prevToken),
-		}))
+		// Only add error if none was added during parsing
+		if !p.hadNewError() {
+			p.setError(NewParserError(ErrorOpts{
+				ErrType:       "parse error",
+				Message:       "assignment is missing a value",
+				File:          p.l.Filename(),
+				StartPosition: p.prevToken.EndPosition,
+				EndPosition:   p.prevToken.EndPosition,
+				SourceCode:    p.l.GetLineText(p.prevToken),
+			}))
+		}
 		return nil
 	}
 	return result
@@ -573,27 +685,35 @@ func (p *Parser) parseReturn() *ast.Return {
 func (p *Parser) parseExpressionStatement() ast.Node {
 	expr := p.parseNode(LOWEST)
 	if expr == nil {
-		p.setTokenError(p.curToken, "invalid syntax")
+		// Only add error if none was added during parsing
+		if !p.hadNewError() {
+			p.setTokenError(p.curToken, "invalid syntax")
+		}
 		return nil
 	}
 	return expr
 }
 
 func (p *Parser) parseNode(precedence int) ast.Node {
-	if p.curToken.Type == token.EOF || p.err != nil {
+	if p.curToken.Type == token.EOF || p.hadNewError() {
 		return nil
 	}
-	postfix := p.postfixParseFns[p.curToken.Type]
-	if postfix != nil {
-		return postfix()
+	// Check recursion depth
+	p.depth++
+	if p.depth > p.maxDepth {
+		p.setTokenError(p.curToken, "maximum nesting depth exceeded")
+		p.depth--
+		return nil
 	}
+	defer func() { p.depth-- }()
+
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
 		p.noPrefixParseFnError(p.curToken)
 		return nil
 	}
 	leftExp := prefix()
-	if p.err != nil || leftExp == nil {
+	if p.hadNewError() || leftExp == nil {
 		return nil
 	}
 	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
@@ -605,9 +725,14 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 			return nil
 		}
 		leftExp = infix(leftExp)
-		if p.err != nil {
+		if p.hadNewError() {
 			break
 		}
+	}
+	// Check for postfix operators (++ or --)
+	if p.peekTokenIs(token.PLUS_PLUS) || p.peekTokenIs(token.MINUS_MINUS) {
+		p.nextToken()
+		return p.parsePostfix(leftExp)
 	}
 	return leftExp
 }
@@ -617,7 +742,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 	if node == nil {
 		return nil
 	}
-	if p.err != nil {
+	if p.hadNewError() {
 		return nil
 	}
 	if expr, ok := node.(ast.Expr); ok {
@@ -741,6 +866,9 @@ func (p *Parser) parseSwitch() ast.Node {
 	var defaultCaseCount int
 	// Each time through this loop we process one case statement
 	for !p.curTokenIs(token.RBRACE) {
+		if p.cancelled() {
+			return nil
+		}
 		if p.curTokenIs(token.EOF) {
 			p.setTokenError(p.prevToken, "unterminated switch statement")
 			return nil
@@ -756,11 +884,19 @@ func (p *Parser) parseSwitch() ast.Node {
 			isDefaultCase = true
 		} else if p.curTokenIs(token.CASE) {
 			p.nextToken() // move to the token following "case"
-			caseExprs = append(caseExprs, p.parseExpression(LOWEST))
+			expr := p.parseExpression(LOWEST)
+			if expr == nil {
+				return nil
+			}
+			caseExprs = append(caseExprs, expr)
 			for p.peekTokenIs(token.COMMA) {
 				p.nextToken() // move to the comma
 				p.nextToken() // move to the following expression
-				caseExprs = append(caseExprs, p.parseExpression(LOWEST))
+				expr = p.parseExpression(LOWEST)
+				if expr == nil {
+					return nil
+				}
+				caseExprs = append(caseExprs, expr)
 			}
 		} else {
 			p.setTokenError(p.curToken, "expected 'case' or 'default' (got %s)", p.curToken.Literal)
@@ -802,6 +938,9 @@ func (p *Parser) parseSwitch() ast.Node {
 		blockLbrace := p.curToken.StartPosition
 		var blockStatements []ast.Node
 		for {
+			if p.cancelled() {
+				return nil
+			}
 			// Skip over newlines and semicolons
 			for p.curTokenIs(token.NEWLINE) || p.curTokenIs(token.SEMICOLON) {
 				if err := p.nextToken(); err != nil {
@@ -914,9 +1053,22 @@ func (p *Parser) parseNewline() ast.Node {
 	return nil
 }
 
-func (p *Parser) parsePostfix() ast.Stmt {
+func (p *Parser) parsePostfix(leftNode ast.Node) ast.Node {
+	// Validate that the operand is assignable (Ident, Index, or GetAttr)
+	expr, ok := leftNode.(ast.Expr)
+	if !ok {
+		p.setTokenError(p.curToken, "invalid operand for postfix operator")
+		return nil
+	}
+	switch expr.(type) {
+	case *ast.Ident, *ast.Index, *ast.GetAttr:
+		// Valid assignable expressions
+	default:
+		p.setTokenError(p.curToken, "cannot apply postfix operator to this expression")
+		return nil
+	}
 	return &ast.Postfix{
-		X:     p.newIdent(p.prevToken),
+		X:     expr,
 		OpPos: p.curToken.StartPosition,
 		Op:    p.curToken.Literal,
 	}
@@ -960,19 +1112,32 @@ func (p *Parser) parseTernary(conditionNode ast.Node) ast.Node {
 
 	questionPos := p.curToken.StartPosition
 	p.nextToken() // move past the '?'
+	// Skip newlines after '?'
+	p.eatNewlines()
 	precedence := p.currentPrecedence()
 	ifTrue := p.parseExpression(precedence)
 	if ifTrue == nil {
-		p.setTokenError(p.curToken, "invalid syntax in ternary if true expression")
-	}
-	if !p.expectPeek("ternary expression", token.COLON) { // moves to the ":"
+		if !p.hadNewError() {
+			p.setTokenError(p.curToken, "invalid syntax in ternary if true expression")
+		}
 		return nil
 	}
+	// Allow newlines before the colon
+	if !p.skipNewlinesAndPeek(token.COLON) {
+		p.peekError("ternary expression", token.COLON, p.peekToken)
+		return nil
+	}
+	p.nextToken() // move to the ":"
 	colonPos := p.curToken.StartPosition
-	p.nextToken() // moves after the ":"
+	p.nextToken() // move past the ":"
+	// Skip newlines after colon
+	p.eatNewlines()
 	ifFalse := p.parseExpression(precedence)
 	if ifFalse == nil {
-		p.setTokenError(p.curToken, "invalid syntax in ternary if false expression")
+		if !p.hadNewError() {
+			p.setTokenError(p.curToken, "invalid syntax in ternary if false expression")
+		}
+		return nil
 	}
 	return &ast.Ternary{
 		Cond:     condition,
@@ -986,6 +1151,9 @@ func (p *Parser) parseTernary(conditionNode ast.Node) ast.Node {
 func (p *Parser) parseGroupedExpr() ast.Node {
 	openParen := p.curToken.StartPosition
 	p.nextToken() // move past '('
+
+	// Skip newlines after opening paren - newlines are allowed inside parens
+	p.eatNewlines()
 
 	// Check for empty params arrow function: () => ...
 	if p.curTokenIs(token.RPAREN) {
@@ -1011,6 +1179,8 @@ func (p *Parser) parseGroupedExpr() ast.Node {
 	for p.peekTokenIs(token.COMMA) {
 		p.nextToken() // move to ','
 		p.nextToken() // move past ','
+		// Skip newlines after comma
+		p.eatNewlines()
 		item := p.parseNode(LOWEST)
 		if item == nil {
 			return nil
@@ -1018,9 +1188,12 @@ func (p *Parser) parseGroupedExpr() ast.Node {
 		items = append(items, item)
 	}
 
-	if !p.expectPeek("grouped expression or arrow function", token.RPAREN) {
+	// Skip newlines before closing paren
+	if !p.skipNewlinesAndPeek(token.RPAREN) {
+		p.peekError("grouped expression or arrow function", token.RPAREN, p.peekToken)
 		return nil
 	}
+	p.nextToken() // move to ')'
 
 	// Check for arrow function
 	if p.peekTokenIs(token.ARROW) {
@@ -1180,6 +1353,9 @@ func (p *Parser) parseBlock() *ast.Block {
 		return nil
 	}
 	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if p.cancelled() {
+			return nil
+		}
 		stmt := p.parseStatementStrict()
 		if stmt != nil {
 			statements = append(statements, stmt)
@@ -1208,6 +1384,9 @@ func (p *Parser) parseFunc() ast.Node {
 	}
 	lparen := p.curToken.StartPosition
 	defaults, params, restParam := p.parseFuncParams()
+	if defaults == nil { // parseFuncParams encountered an error
+		return nil
+	}
 	rparen := p.curToken.StartPosition
 	if !p.expectPeek("function", token.LBRACE) { // move to the "{"
 		return nil
@@ -1236,6 +1415,9 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 	var restParam *ast.Ident
 	p.nextToken()
 	for !p.curTokenIs(token.RPAREN) { // Keep going until we find a ")"
+		if p.cancelled() {
+			return nil, nil, nil
+		}
 		if p.curTokenIs(token.EOF) {
 			p.setTokenError(p.prevToken, "unterminated function parameters")
 			return nil, nil, nil
@@ -1327,9 +1509,9 @@ func (p *Parser) parseString() ast.Node {
 		if !e.IsVariable() {
 			continue
 		}
-		tmplAst, err := Parse(p.ctx, e.Value())
+		tmplAst, err := Parse(p.ctx, e.Value(), WithFilename(p.l.Filename()))
 		if err != nil {
-			p.setTokenError(strToken, "%s", err.Error())
+			p.setTokenError(strToken, "in template interpolation: %s", err.Error())
 			return nil
 		}
 		statements := tmplAst.Stmts
@@ -1360,6 +1542,9 @@ func (p *Parser) parseString() ast.Node {
 func (p *Parser) parseList() ast.Node {
 	lbrack := p.curToken.StartPosition
 	items := p.parseExprList(token.RBRACKET)
+	if items == nil {
+		return nil
+	}
 	rbrack := p.curToken.StartPosition
 	return &ast.List{Lbrack: lbrack, Items: items, Rbrack: rbrack}
 }
@@ -1401,7 +1586,11 @@ func (p *Parser) parseExprList(end token.Type) []ast.Expr {
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
-		list = append(list, p.parseExpression(LOWEST))
+		expr = p.parseExpression(LOWEST)
+		if expr == nil {
+			return nil
+		}
+		list = append(list, expr)
 	}
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
@@ -1451,7 +1640,11 @@ func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
-		list = append(list, p.parseNode(LOWEST))
+		expr = p.parseNode(LOWEST)
+		if expr == nil {
+			return nil
+		}
+		list = append(list, expr)
 	}
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
@@ -1475,6 +1668,9 @@ func (p *Parser) parseIndex(leftNode ast.Node) ast.Node {
 	if !p.peekTokenIs(token.COLON) {
 		p.nextToken() // move to the first index
 		firstIndex = p.parseExpression(LOWEST)
+		if firstIndex == nil {
+			return nil
+		}
 		if p.peekTokenIs(token.RBRACKET) {
 			p.nextToken() // move to the "]"
 			rbrack := p.curToken.StartPosition
@@ -1490,6 +1686,9 @@ func (p *Parser) parseIndex(leftNode ast.Node) ast.Node {
 		}
 		p.nextToken() // move to the second index
 		secondIndex = p.parseExpression(LOWEST)
+		if secondIndex == nil {
+			return nil
+		}
 	}
 	if !p.expectPeek("an index expression", token.RBRACKET) {
 		return nil
@@ -1658,6 +1857,9 @@ func (p *Parser) parseMapOrSet() ast.Node {
 
 	// Parse remaining items
 	for !p.peekTokenIs(token.RBRACE) {
+		if p.cancelled() {
+			return nil
+		}
 		if p.peekTokenIs(token.NEWLINE) {
 			p.nextToken()
 			break
@@ -1715,11 +1917,17 @@ func (p *Parser) parseMapItem() *ast.MapItem {
 
 	// Regular key-value pair
 	key := p.parseExpression(LOWEST)
+	if key == nil {
+		return nil
+	}
 	if !p.expectPeek("map", token.COLON) {
 		return nil
 	}
 	p.nextToken() // move to the value
 	value := p.parseExpression(LOWEST)
+	if value == nil {
+		return nil
+	}
 	return &ast.MapItem{Key: key, Value: value}
 }
 
@@ -1838,6 +2046,48 @@ func (p *Parser) eatNewlines() {
 	}
 }
 
+// skipNewlinesAndPeek checks if the given token type appears after optional
+// newlines. If found, it skips the newlines and returns true (with peekToken
+// now being the target). If not found, it returns false without consuming
+// any tokens.
+func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
+	// If peek is already the target, no newlines to skip
+	if p.peekTokenIs(targetType) {
+		return true
+	}
+	// If peek is not a newline, target doesn't follow
+	if !p.peekTokenIs(token.NEWLINE) {
+		return false
+	}
+	// Save parser and lexer state
+	savedCur := p.curToken
+	savedPeek := p.peekToken
+	savedLexer := p.l.SaveState()
+
+	// Skip through newlines
+	for p.peekTokenIs(token.NEWLINE) {
+		if err := p.nextToken(); err != nil {
+			// Restore state on error
+			p.curToken = savedCur
+			p.peekToken = savedPeek
+			p.l.RestoreState(savedLexer)
+			return false
+		}
+	}
+
+	// Check if we found the target
+	if p.peekTokenIs(targetType) {
+		// Success - keep the new state (newlines consumed)
+		return true
+	}
+
+	// Target not found - restore state
+	p.curToken = savedCur
+	p.peekToken = savedPeek
+	p.l.RestoreState(savedLexer)
+	return false
+}
+
 func (p *Parser) parseTry() ast.Node {
 	tryPos := p.curToken.StartPosition
 
@@ -1858,8 +2108,8 @@ func (p *Parser) parseTry() ast.Node {
 	var finallyPos token.Position
 	var finallyBlock *ast.Block
 
-	// Check for catch
-	if p.peekTokenIs(token.CATCH) {
+	// Check for catch (allow newlines before it)
+	if p.skipNewlinesAndPeek(token.CATCH) {
 		p.nextToken() // move to "catch"
 		catchPos = p.curToken.StartPosition
 
@@ -1880,8 +2130,8 @@ func (p *Parser) parseTry() ast.Node {
 		}
 	}
 
-	// Check for finally
-	if p.peekTokenIs(token.FINALLY) {
+	// Check for finally (allow newlines before it)
+	if p.skipNewlinesAndPeek(token.FINALLY) {
 		p.nextToken() // move to "finally"
 		finallyPos = p.curToken.StartPosition
 

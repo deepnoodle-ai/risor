@@ -778,3 +778,94 @@ func TestInvalids(t *testing.T) {
 		})
 	}
 }
+
+func TestStateSaveRestore(t *testing.T) {
+	input := "let x = 1 + 2"
+	l := New(input)
+
+	// Read first two tokens
+	tok1, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok1.Type == token.LET)
+
+	tok2, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok2.Type == token.IDENT)
+	assert.Equal(t, tok2.Literal, "x")
+
+	// Save state
+	state := l.SaveState()
+
+	// Read more tokens
+	tok3, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok3.Type == token.ASSIGN)
+
+	tok4, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok4.Type == token.INT)
+	assert.Equal(t, tok4.Literal, "1")
+
+	// Restore state
+	l.RestoreState(state)
+
+	// Should read the same tokens again
+	tok3Again, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok3Again.Type == token.ASSIGN)
+	assert.Equal(t, tok3Again.Literal, tok3.Literal)
+
+	tok4Again, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok4Again.Type == token.INT)
+	assert.Equal(t, tok4Again.Literal, "1")
+
+	// Continue reading
+	tok5, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok5.Type == token.PLUS)
+
+	tok6, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok6.Type == token.INT)
+	assert.Equal(t, tok6.Literal, "2")
+}
+
+func TestStateSaveRestoreWithNewlines(t *testing.T) {
+	input := "x\n\n\ny"
+	l := New(input)
+
+	// Read x
+	tok1, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok1.Type == token.IDENT)
+	assert.Equal(t, tok1.Literal, "x")
+
+	// Save state before newlines
+	state := l.SaveState()
+
+	// Read newlines and y
+	tok2, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok2.Type == token.NEWLINE)
+
+	tok3, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok3.Type == token.NEWLINE)
+
+	tok4, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok4.Type == token.NEWLINE)
+
+	tok5, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok5.Type == token.IDENT)
+	assert.Equal(t, tok5.Literal, "y")
+
+	// Restore and verify we can read the same sequence
+	l.RestoreState(state)
+
+	tok2Again, err := l.Next()
+	assert.Nil(t, err)
+	assert.True(t, tok2Again.Type == token.NEWLINE)
+}

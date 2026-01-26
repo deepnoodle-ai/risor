@@ -865,26 +865,76 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 }
 
 func (c *Compiler) compilePostfix(node *ast.Postfix) error {
-	name := node.X.Name
-	resolution, found := c.current.symbols.Resolve(name)
-	if !found {
-		return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Pos())
+	// Determine the increment/decrement amount
+	var amount int64
+	switch node.Op {
+	case "++":
+		amount = 1
+	case "--":
+		amount = -1
+	default:
+		return c.formatError(fmt.Sprintf("unknown postfix operator %q", node.Op), node.Pos())
 	}
-	// Push the named variable onto the stack
-	c.emitLoad(resolution)
-	// Push the integer amount to the stack (1 or -1)
-	operator := node.Op
-	if operator == "++" {
-		c.emit(op.LoadConst, c.constant(int64(1)))
-	} else if operator == "--" {
-		c.emit(op.LoadConst, c.constant(int64(-1)))
-	} else {
-		return c.formatError(fmt.Sprintf("unknown postfix operator %q", operator), node.Pos())
+
+	switch x := node.X.(type) {
+	case *ast.Ident:
+		// Simple variable: x++
+		name := x.Name
+		resolution, found := c.current.symbols.Resolve(name)
+		if !found {
+			return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Pos())
+		}
+		// Push the named variable onto the stack
+		c.emitLoad(resolution)
+		// Push the increment amount
+		c.emit(op.LoadConst, c.constant(amount))
+		// Add
+		c.emit(op.BinaryOp, uint16(op.Add))
+		// Store back
+		c.emitStore(resolution)
+
+	case *ast.Index:
+		// Index expression: arr[i]++
+		// 1. Load the current value
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		if err := c.compile(x.Index); err != nil {
+			return err
+		}
+		c.emit(op.BinarySubscr)
+		// 2. Add the increment amount
+		c.emit(op.LoadConst, c.constant(amount))
+		c.emit(op.BinaryOp, uint16(op.Add))
+		// 3. Store back
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		if err := c.compile(x.Index); err != nil {
+			return err
+		}
+		c.emit(op.StoreSubscr)
+
+	case *ast.GetAttr:
+		// Attribute expression: obj.x++
+		idx := c.current.addName(x.Attr.Name)
+		// 1. Load the current attribute value
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		c.emit(op.LoadAttr, idx)
+		// 2. Add the increment amount
+		c.emit(op.LoadConst, c.constant(amount))
+		c.emit(op.BinaryOp, uint16(op.Add))
+		// 3. Store back
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		c.emit(op.StoreAttr, idx)
+
+	default:
+		return c.formatError("cannot apply postfix operator to this expression", node.Pos())
 	}
-	// Run increment or decrement as an Add BinaryOp
-	c.emit(op.BinaryOp, uint16(op.Add))
-	// Store TOS in LHS
-	c.emitStore(resolution)
 	return nil
 }
 

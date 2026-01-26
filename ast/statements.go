@@ -259,8 +259,9 @@ func (x *Assign) String() string {
 }
 
 // Postfix is a statement node that describes a postfix expression like "x++".
+// The operand X can be an Ident, Index, or GetAttr expression.
 type Postfix struct {
-	X     *Ident         // operand
+	X     Expr           // operand (must be assignable: Ident, Index, or GetAttr)
 	OpPos token.Position // position of operator
 	Op    string         // operator: "++", "--"
 }
@@ -273,7 +274,7 @@ func (x *Postfix) End() token.Position { return x.OpPos.Advance(2) } // len("++"
 func (x *Postfix) String() string {
 	var out bytes.Buffer
 	out.WriteString("(")
-	out.WriteString(x.X.Name)
+	out.WriteString(x.X.String())
 	out.WriteString(x.Op)
 	out.WriteString(")")
 	return out.String()

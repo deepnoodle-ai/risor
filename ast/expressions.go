@@ -268,11 +268,10 @@ func (x *Index) End() token.Position { return x.Rbrack.Advance(1) }
 
 func (x *Index) String() string {
 	var out bytes.Buffer
-	out.WriteString("(")
 	out.WriteString(x.X.String())
 	out.WriteString("[")
 	out.WriteString(x.Index.String())
-	out.WriteString("])")
+	out.WriteString("]")
 	return out.String()
 }
 
@@ -292,7 +291,6 @@ func (x *Slice) End() token.Position { return x.Rbrack.Advance(1) }
 
 func (x *Slice) String() string {
 	var out bytes.Buffer
-	out.WriteString("(")
 	out.WriteString(x.X.String())
 	out.WriteString("[")
 	if x.Low != nil {
@@ -302,7 +300,7 @@ func (x *Slice) String() string {
 	if x.High != nil {
 		out.WriteString(x.High.String())
 	}
-	out.WriteString("])")
+	out.WriteString("]")
 	return out.String()
 }
 

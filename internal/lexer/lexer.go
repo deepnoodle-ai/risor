@@ -84,6 +84,44 @@ func (l *Lexer) Filename() string {
 	return l.file
 }
 
+// State captures the lexer state for save/restore operations.
+type State struct {
+	position           int
+	nextPosition       int
+	ch                 rune
+	prevToken          token.Token
+	line               int
+	lineStart          int
+	column             int
+	tokenStartPosition token.Position
+}
+
+// SaveState returns the current lexer state for later restoration.
+func (l *Lexer) SaveState() State {
+	return State{
+		position:           l.position,
+		nextPosition:       l.nextPosition,
+		ch:                 l.ch,
+		prevToken:          l.prevToken,
+		line:               l.line,
+		lineStart:          l.lineStart,
+		column:             l.column,
+		tokenStartPosition: l.tokenStartPosition,
+	}
+}
+
+// RestoreState restores the lexer to a previously saved state.
+func (l *Lexer) RestoreState(s State) {
+	l.position = s.position
+	l.nextPosition = s.nextPosition
+	l.ch = s.ch
+	l.prevToken = s.prevToken
+	l.line = s.line
+	l.lineStart = s.lineStart
+	l.column = s.column
+	l.tokenStartPosition = s.tokenStartPosition
+}
+
 // SetFilename sets the name of the file being read.
 func (l *Lexer) SetFilename(file string) {
 	l.file = file

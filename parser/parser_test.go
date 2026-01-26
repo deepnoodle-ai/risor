@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -56,7 +57,6 @@ func TestVarStatements(t *testing.T) {
 	}
 	for _, tt := range tests {
 		program, err := Parse(context.Background(), tt.input)
-		fmt.Println(err)
 		assert.Nil(t, err)
 		assert.Len(t, program.Stmts, 1)
 		stmt, ok := program.First().(*ast.Var)
@@ -80,8 +80,8 @@ func TestDeclareStatements(t *testing.T) {
 	assert.True(t, ok)
 	stmt2, ok := statements[1].(*ast.Var)
 	assert.True(t, ok)
-	fmt.Println(stmt1)
-	fmt.Println(stmt2)
+	_ = stmt1 // use variables to avoid unused warnings
+	_ = stmt2
 }
 
 func TestMultiDeclareStatements(t *testing.T) {
@@ -300,11 +300,11 @@ func TestOperatorPrecedence(t *testing.T) {
 		{"-(5+5)", "(-(5 + 5))"},
 		{"!(true==true)", "(!(true == true))"},
 		{"a + add(b*c)+d", "((a + add((b * c))) + d)"},
-		{"a*[1,2,3,4][b*c]*d", "((a * ([1, 2, 3, 4][(b * c)])) * d)"},
-		{"add(a*b[2], b[1], 2 * [1,2][1])", "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))"},
+		{"a*[1,2,3,4][b*c]*d", "((a * [1, 2, 3, 4][(b * c)]) * d)"},
+		{"add(a*b[2], b[1], 2 * [1,2][1])", "add((a * b[2]), b[1], (2 * [1, 2][1]))"},
 		{"1 - (2 - 3);", "(1 - (2 - 3))"},
 		{"return 1 - (2 - 3)", "return (1 - (2 - 3))"},
-		{"return foo[0];\n -3;", "return (foo[0])\n(-3)"},
+		{"return foo[0];\n -3;", "return foo[0]\n(-3)"},
 	}
 	for _, tt := range tests {
 		program, err := Parse(context.Background(), tt.input)
@@ -579,10 +579,52 @@ func TestMutators(t *testing.T) {
 		"let z = 1; z++;",
 		"let z = 1; z--;",
 		"let z = 10; let a = 3; y = a;",
+		// New postfix tests for index and attribute expressions
+		"let arr = [1, 2, 3]; arr[0]++;",
+		"let arr = [1, 2, 3]; arr[0]--;",
+		"let m = {a: 1}; m[\"a\"]++;",
+		"let obj = {x: 5}; obj.x++;",
+		"let obj = {x: 5}; obj.x--;",
 	}
 	for _, input := range inputs {
 		_, err := Parse(context.Background(), input)
 		assert.Nil(t, err)
+	}
+}
+
+func TestPostfixErrors(t *testing.T) {
+	// These should produce parser errors
+	errorCases := []string{
+		"1++;",          // cannot apply postfix to literal
+		"(1 + 2)++;",    // cannot apply postfix to expression result
+		"\"hello\"++;",  // cannot apply postfix to string literal
+		"true++;",       // cannot apply postfix to boolean
+		"nil++;",        // cannot apply postfix to nil
+		"[1, 2, 3]++;",  // cannot apply postfix to list literal
+		"func() {}++;",  // cannot apply postfix to function
+	}
+	for _, input := range errorCases {
+		_, err := Parse(context.Background(), input)
+		assert.NotNil(t, err, "expected error for: %s", input)
+	}
+}
+
+func TestPostfixAST(t *testing.T) {
+	// Test that postfix expressions produce correct AST structure
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"x++", "(x++)"},
+		{"x--", "(x--)"},
+		{"arr[0]++", "(arr[0]++)"},
+		{"obj.x++", "(obj.x++)"},
+	}
+	for _, tt := range tests {
+		program, err := Parse(context.Background(), tt.input)
+		assert.Nil(t, err, "failed to parse: %s", tt.input)
+		assert.Len(t, program.Stmts, 1)
+		assert.Equal(t, program.Stmts[0].String(), tt.expected)
 	}
 }
 
@@ -595,6 +637,74 @@ func TestObjectMethodCall(t *testing.T) {
 	for _, input := range inputs {
 		_, err := Parse(context.Background(), input)
 		assert.Nil(t, err)
+	}
+}
+
+func TestTryCatchFinally(t *testing.T) {
+	validInputs := []string{
+		// Basic try/catch on same line
+		`try { throw "err" } catch e { e }`,
+		// Try/catch with newlines between them
+		`try { throw "err" }
+catch e { e }`,
+		// Try/catch/finally with newlines
+		`try { throw "err" }
+catch e { e }
+finally { "done" }`,
+		// Try/finally without catch
+		`try { "ok" }
+finally { "cleanup" }`,
+		// Multiple newlines between try and catch
+		`try { "ok" }
+
+
+catch e { e }`,
+		// Multiple newlines between catch and finally
+		`try { "ok" }
+catch e { e }
+
+
+finally { "done" }`,
+		// Try/catch followed by more code
+		`try { 1 }
+catch e { 2 }
+let x = 3`,
+		// Try/finally followed by more code
+		`try { 1 }
+finally { 2 }
+let x = 3`,
+		// Nested try/catch
+		`try {
+	try { throw "inner" }
+	catch e { throw "outer" }
+}
+catch e { e }`,
+		// Try/catch in function
+		`function foo() {
+	try { throw "err" }
+	catch e { return e }
+}`,
+		// Catch without binding (no error variable)
+		`try { throw "err" }
+catch { "handled" }`,
+	}
+	for _, input := range validInputs {
+		_, err := Parse(context.Background(), input)
+		assert.Nil(t, err, "failed to parse: %s", input)
+	}
+
+	// Error cases
+	errorCases := []string{
+		// Try without catch or finally
+		`try { 1 }`,
+		// Catch without try
+		`catch e { 1 }`,
+		// Finally without try
+		`finally { 1 }`,
+	}
+	for _, input := range errorCases {
+		_, err := Parse(context.Background(), input)
+		assert.NotNil(t, err, "expected error for: %s", input)
 	}
 }
 
@@ -611,7 +721,7 @@ func TestIncompleThings(t *testing.T) {
 		{`function foo( a, b ="steve", `, "parse error: unterminated function parameters"},
 		{`function foo() {`, "parse error: unterminated block statement"},
 		{`switch (foo) { `, "parse error: unterminated switch statement"},
-		{`{`, "parse error: unexpected end of file while parsing map (expected :)"},
+		{`{`, "parse error: invalid syntax"},
 		{`[`, "parse error: invalid syntax in list expression"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
 		{`{ "a", "b", "c"`, "parse error: unexpected , while parsing map (expected :)"},
@@ -625,6 +735,137 @@ func TestIncompleThings(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, pe.Error(), tt.expected)
 	}
+}
+
+func TestFilenameInErrors(t *testing.T) {
+	// Test that the filename is included in parse errors
+	_, err := Parse(context.Background(), `@@@`, WithFilename("test.risor"))
+	assert.NotNil(t, err)
+	pe, ok := err.(ParserError)
+	assert.True(t, ok)
+	assert.Equal(t, pe.File(), "test.risor")
+
+	// Test that filename is set even for errors in the first token
+	_, err = Parse(context.Background(), `#invalid`, WithFilename("early.risor"))
+	assert.NotNil(t, err)
+	pe, ok = err.(ParserError)
+	assert.True(t, ok)
+	assert.Equal(t, pe.File(), "early.risor")
+}
+
+func TestMaxDepth(t *testing.T) {
+	// Test 1: Deeply nested parentheses
+	var sb strings.Builder
+	for i := 0; i < 600; i++ {
+		sb.WriteString("(")
+	}
+	sb.WriteString("1")
+	for i := 0; i < 600; i++ {
+		sb.WriteString(")")
+	}
+	parenInput := sb.String()
+
+	// Default depth limit should reject this
+	_, err := Parse(context.Background(), parenInput)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "maximum nesting depth")
+
+	// With a higher limit, it should succeed
+	_, err = Parse(context.Background(), parenInput, WithMaxDepth(1000))
+	assert.Nil(t, err)
+
+	// Test 2: Deeply nested lists
+	sb.Reset()
+	for i := 0; i < 600; i++ {
+		sb.WriteString("[")
+	}
+	sb.WriteString("1")
+	for i := 0; i < 600; i++ {
+		sb.WriteString("]")
+	}
+	listInput := sb.String()
+	_, err = Parse(context.Background(), listInput)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "maximum nesting depth")
+
+	// Test 3: Deeply nested function calls
+	sb.Reset()
+	for i := 0; i < 600; i++ {
+		sb.WriteString("f(")
+	}
+	sb.WriteString("1")
+	for i := 0; i < 600; i++ {
+		sb.WriteString(")")
+	}
+	callInput := sb.String()
+	_, err = Parse(context.Background(), callInput)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "maximum nesting depth")
+
+	// Test 4: Custom lower depth limit
+	_, err = Parse(context.Background(), `((((((1))))))`, WithMaxDepth(5))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "maximum nesting depth")
+
+	// Test 5: Just under the custom limit should succeed
+	_, err = Parse(context.Background(), `((((1))))`, WithMaxDepth(10))
+	assert.Nil(t, err)
+
+	// Test 6: Normal code with moderate nesting works with default limit
+	_, err = Parse(context.Background(), `let x = ((((1 + 2) * 3) - 4) / 5)`)
+	assert.Nil(t, err)
+
+	// Test 7: Nested blocks (function/if/switch)
+	_, err = Parse(context.Background(), `
+		function a() {
+			function b() {
+				function c() {
+					if (true) {
+						switch (1) {
+							case 1:
+								[1, 2, 3]
+						}
+					}
+				}
+			}
+		}
+	`)
+	assert.Nil(t, err)
+}
+
+func TestContextCancellation(t *testing.T) {
+	// Create an already cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Test 1: Main parse loop respects cancellation
+	_, err := Parse(ctx, `let x = 1; let y = 2; let z = 3`)
+	assert.NotNil(t, err)
+	assert.True(t, errors.Is(err, context.Canceled))
+
+	// Test 2: Block parsing respects cancellation
+	_, err = Parse(ctx, `{ let x = 1 }`)
+	assert.NotNil(t, err)
+
+	// Test 3: Switch parsing respects cancellation
+	_, err = Parse(ctx, `switch (x) { case 1: y }`)
+	assert.NotNil(t, err)
+
+	// Test 4: Function params parsing respects cancellation
+	_, err = Parse(ctx, `function f(a, b, c) { }`)
+	assert.NotNil(t, err)
+
+	// Test 5: Map parsing respects cancellation
+	_, err = Parse(ctx, `{a: 1, b: 2, c: 3}`)
+	assert.NotNil(t, err)
+
+	// Test 6: Destructuring respects cancellation
+	_, err = Parse(ctx, `let {a, b, c} = obj`)
+	assert.NotNil(t, err)
+
+	// Test 7: Array destructuring respects cancellation
+	_, err = Parse(ctx, `let [a, b, c] = arr`)
+	assert.NotNil(t, err)
 }
 
 func TestSwitch(t *testing.T) {
@@ -838,7 +1079,6 @@ let x = "a`
 	ctx := context.Background()
 	_, err := Parse(ctx, input, WithFile("main.tm"))
 	assert.NotNil(t, err)
-	fmt.Printf("%+v\n", err.(*SyntaxError).StartPosition())
 	assert.Equal(t, err.Error(), "syntax error: unterminated string literal")
 	var syntaxErr *SyntaxError
 	ok := errors.As(err, &syntaxErr)
@@ -906,7 +1146,7 @@ func TestBadInputs(t *testing.T) {
 		{"else", `parse error: invalid syntax (unexpected "else")`},
 		{"&&", `parse error: invalid syntax (unexpected "&&")`},
 		{"[", `parse error: invalid syntax in list expression`},
-		{"[1,", `parse error: unexpected end of file while parsing an expression list (expected ])`},
+		{"[1,", `parse error: invalid syntax`},
 		{"0?if", `parse error: unexpected end of file while parsing an if expression (expected ()`},
 		{"0?0:", `parse error: invalid syntax in ternary if false expression`},
 		{"in", `parse error: invalid syntax (unexpected "in")`},
@@ -919,10 +1159,14 @@ func TestBadInputs(t *testing.T) {
 		{`[1, 2, ,]`, "parse error: invalid syntax (unexpected \",\")"},
 	}
 	for _, tt := range tests {
-		program, err := Parse(context.Background(), tt.input)
-		fmt.Println(program)
+		_, err := Parse(context.Background(), tt.input)
 		assert.NotNil(t, err)
-		assert.Equal(t, err.Error(), tt.expected)
+		// With multi-error support, check the first error's message
+		if errs, ok := err.(*Errors); ok {
+			assert.Equal(t, errs.First().Error(), tt.expected)
+		} else {
+			assert.Equal(t, err.Error(), tt.expected)
+		}
 	}
 }
 
@@ -939,8 +1183,6 @@ func TestInPrecedence(t *testing.T) {
 	// The top-level of the AST should be an in statement
 	inStmt, ok := stmt.(*ast.In)
 	assert.True(t, ok)
-	fmt.Println(inStmt.String())
-
 	assert.Equal(t, inStmt.X.String(), "2")
 	assert.Equal(t, inStmt.Y.String(), "sorted([1, 2, 3])")
 }
@@ -958,10 +1200,101 @@ func TestNotInPrecedence(t *testing.T) {
 	// The top-level of the AST should be a not in statement
 	notInStmt, ok := stmt.(*ast.NotIn)
 	assert.True(t, ok)
-	fmt.Println(notInStmt.String())
-
 	assert.Equal(t, notInStmt.X.String(), "2")
 	assert.Equal(t, notInStmt.Y.String(), "sorted([1, 2, 3])")
+}
+
+// TestNewlineHandling documents and tests the parser's newline behavior:
+//
+// POLICY:
+//  1. Trailing operators continue expressions: "x +\ny" parses as one expression
+//  2. Newlines at start of line terminate expressions: "x\n+ y" parses as two statements
+//  3. Inside parentheses: leading/trailing newlines are allowed: "(\nx + y\n)"
+//  4. Inside brackets/braces: newlines after commas are allowed: "[1,\n2]"
+//  5. Ternary expressions: newlines allowed around ? and : operators
+//  6. Postfix operators (++, --) must be on same line as operand
+func TestNewlineHandling(t *testing.T) {
+	// Cases that SHOULD parse as single expressions
+	validCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Trailing operator continues expression
+		{"trailing +", "x +\ny", "(x + y)"},
+		{"trailing &&", "x &&\ny", "(x && y)"},
+		{"trailing ||", "x ||\ny", "(x || y)"},
+		{"chained trailing ops", "x +\ny +\nz", "((x + y) + z)"},
+		{"trailing * with paren", "x *\n(y + z)", "(x * (y + z))"},
+
+		// Newlines inside parentheses
+		{"grouped with leading newline", "(\nx + y)", "(x + y)"},
+		{"grouped with trailing newline", "(x + y\n)", "(x + y)"},
+		{"grouped with both newlines", "(\nx + y\n)", "(x + y)"},
+
+		// Ternary expressions
+		{"ternary newline after ?", "x ?\ny : z", "(x ? y : z)"},
+		{"ternary newline after :", "x ? y :\nz", "(x ? y : z)"},
+		{"ternary newlines both", "x ?\ny\n: z", "(x ? y : z)"},
+
+		// Lists and maps
+		{"list with newlines", "[1,\n2,\n3]", "[1, 2, 3]"},
+		{"map with newlines", "{a: 1,\nb: 2}", "{a:1, b:2}"},
+		{"function args with newlines", "f(x,\ny,\nz)", "f(x, y, z)"},
+	}
+
+	for _, tt := range validCases {
+		t.Run(tt.name, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input)
+			assert.Nil(t, err, "unexpected error for %q: %v", tt.name, err)
+			if err == nil {
+				assert.Len(t, program.Stmts, 1, "expected 1 statement for %q", tt.name)
+				if len(program.Stmts) == 1 {
+					assert.Equal(t, program.First().String(), tt.expected, "mismatch for %q", tt.name)
+				}
+			}
+		})
+	}
+
+	// Cases that SHOULD parse as multiple statements
+	multiStmtCases := []struct {
+		name     string
+		input    string
+		numStmts int
+	}{
+		{"newline before [", "arr\n[0]", 2},
+		{"newline before |", "x\n| y", 2},
+		{"two assignments", "x = 1\ny = 2", 2},
+		{"two idents", "x\ny", 2},
+	}
+
+	for _, tt := range multiStmtCases {
+		t.Run(tt.name, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input)
+			assert.Nil(t, err, "unexpected error for %q: %v", tt.name, err)
+			if err == nil {
+				assert.Len(t, program.Stmts, tt.numStmts, "expected %d statements for %q", tt.numStmts, tt.name)
+			}
+		})
+	}
+
+	// Cases that SHOULD produce errors
+	errorCases := []struct {
+		name  string
+		input string
+	}{
+		{"newline before + (no unary plus)", "x\n+ y"},
+		{"newline before postfix ++", "x\n++"},
+		{"newline before postfix --", "x\n--"},
+		{"newline before . method call", "obj\n.method()"},
+	}
+
+	for _, tt := range errorCases {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input)
+			assert.NotNil(t, err, "expected error for %q", tt.name)
+		})
+	}
 }
 
 func TestNakedReturns(t *testing.T) {
@@ -991,7 +1324,12 @@ func TestInvalidListTermination(t *testing.T) {
 	}`
 	_, err := Parse(context.Background(), input)
 	assert.Error(t, err)
-	assert.Equal(t, err.Error(), `parse error: invalid syntax (unexpected "}")`)
+	// With multi-error support, check the first error's message
+	if errs, ok := err.(*Errors); ok {
+		assert.Equal(t, errs.First().Error(), `parse error: invalid syntax (unexpected "}")`)
+	} else {
+		assert.Equal(t, err.Error(), `parse error: invalid syntax (unexpected "}")`)
+	}
 }
 
 func TestMultilineInfixExprs(t *testing.T) {
@@ -1058,4 +1396,90 @@ func TestBitwiseAnd(t *testing.T) {
 	result, err := Parse(context.Background(), input)
 	assert.Nil(t, err)
 	assert.Equal(t, result.String(), "(1 & 2)")
+}
+
+func TestMultiErrorReporting(t *testing.T) {
+	// Test that the parser collects multiple errors with recovery
+	t.Run("multiple statement errors", func(t *testing.T) {
+		// Three statements, each with an error
+		input := `let x =
+let y =
+let z =`
+		program, err := Parse(context.Background(), input)
+		assert.NotNil(t, err)
+
+		errs, ok := err.(*Errors)
+		assert.True(t, ok, "expected *Errors type")
+		assert.GreaterOrEqual(t, errs.Count(), 2, "expected multiple errors")
+
+		// We should still get a partial AST (may be empty due to errors)
+		assert.NotNil(t, program)
+	})
+
+	t.Run("errors implement ParserError", func(t *testing.T) {
+		input := "let x ="
+		_, err := Parse(context.Background(), input)
+		assert.NotNil(t, err)
+
+		// *Errors implements ParserError interface
+		pe, ok := err.(ParserError)
+		assert.True(t, ok, "expected ParserError interface")
+		assert.NotEmpty(t, pe.Error())
+		assert.NotEmpty(t, pe.Type())
+	})
+
+	t.Run("errors.As works for SyntaxError", func(t *testing.T) {
+		input := "`unterminated"
+		_, err := Parse(context.Background(), input)
+		assert.NotNil(t, err)
+
+		var syntaxErr *SyntaxError
+		ok := errors.As(err, &syntaxErr)
+		assert.True(t, ok, "expected errors.As to find SyntaxError")
+		assert.NotNil(t, syntaxErr.Cause())
+	})
+
+	t.Run("First returns first error", func(t *testing.T) {
+		input := `let x =
+let y =`
+		_, err := Parse(context.Background(), input)
+		assert.NotNil(t, err)
+
+		errs, ok := err.(*Errors)
+		assert.True(t, ok)
+
+		first := errs.First()
+		assert.NotNil(t, first)
+		assert.Contains(t, first.Error(), "missing a value")
+	})
+
+	t.Run("partial AST returned on error", func(t *testing.T) {
+		// First statement is valid, second has error
+		input := `let x = 1
+let y =`
+		program, err := Parse(context.Background(), input)
+		assert.NotNil(t, err)
+		assert.NotNil(t, program)
+
+		// Should have at least the valid first statement
+		assert.GreaterOrEqual(t, len(program.Stmts), 1)
+		stmt, ok := program.Stmts[0].(*ast.Var)
+		assert.True(t, ok)
+		assert.Equal(t, stmt.Name.Name, "x")
+	})
+
+	t.Run("error limit prevents infinite collection", func(t *testing.T) {
+		// Generate many errors
+		var sb strings.Builder
+		for i := 0; i < 20; i++ {
+			sb.WriteString("@@@\n") // illegal tokens
+		}
+		_, err := Parse(context.Background(), sb.String())
+		assert.NotNil(t, err)
+
+		errs, ok := err.(*Errors)
+		assert.True(t, ok)
+		// Should be limited by MaxErrors
+		assert.LessOrEqual(t, errs.Count(), MaxErrors+1)
+	})
 }

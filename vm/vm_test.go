@@ -435,6 +435,47 @@ func TestStatementsNilValue(t *testing.T) {
 	runTests(t, tests)
 }
 
+func TestPostfixOperators(t *testing.T) {
+	tests := []testCase{
+		// Simple variable postfix
+		{`let x = 5; x++; x`, object.NewInt(6)},
+		{`let x = 5; x--; x`, object.NewInt(4)},
+		// Index postfix with literal index
+		{`let arr = [1, 2, 3]; arr[0]++; arr[0]`, object.NewInt(2)},
+		{`let arr = [10, 20, 30]; arr[1]--; arr[1]`, object.NewInt(19)},
+		{`let arr = [1, 2, 3]; arr[0]++; arr[1]++; arr[2]++; arr`, object.NewList([]object.Object{
+			object.NewInt(2), object.NewInt(3), object.NewInt(4),
+		})},
+		// Index postfix with variable index
+		{`let arr = [1, 2, 3]; let i = 1; arr[i]++; arr[i]`, object.NewInt(3)},
+		{`let arr = [10, 20, 30]; let i = 2; arr[i]--; arr`, object.NewList([]object.Object{
+			object.NewInt(10), object.NewInt(20), object.NewInt(29),
+		})},
+		// Index postfix with expression index
+		{`let arr = [1, 2, 3, 4]; arr[1 + 1]++; arr[2]`, object.NewInt(4)},
+		// Map index postfix
+		{`let m = {"a": 1}; m["a"]++; m["a"]`, object.NewInt(2)},
+		{`let m = {"x": 10}; m["x"]--; m["x"]`, object.NewInt(9)},
+		// Map with variable key
+		{`let m = {"key": 5}; let k = "key"; m[k]++; m["key"]`, object.NewInt(6)},
+		// Attribute postfix
+		{`let obj = {x: 5}; obj.x++; obj.x`, object.NewInt(6)},
+		{`let obj = {value: 10}; obj.value--; obj.value`, object.NewInt(9)},
+		// Nested attribute postfix
+		{`let obj = {inner: {count: 0}}; obj.inner.count++; obj.inner.count`, object.NewInt(1)},
+		// Multiple operations
+		{`let arr = [0]; arr[0]++; arr[0]++; arr[0]++; arr[0]`, object.NewInt(3)},
+		{`let obj = {n: 0}; obj.n++; obj.n++; obj.n`, object.NewInt(2)},
+		// Multiple postfix operations on different indices
+		{`let arr = [0, 0, 0]; arr[0]++; arr[1]++; arr[2]++; arr`, object.NewList([]object.Object{
+			object.NewInt(1), object.NewInt(1), object.NewInt(1),
+		})},
+		// Postfix with float (should work with numeric addition)
+		{`let obj = {f: 1.5}; obj.f++; obj.f`, object.NewFloat(2.5)},
+	}
+	runTests(t, tests)
+}
+
 func TestArithmetic(t *testing.T) {
 	tests := []testCase{
 		{`1 + 2`, object.NewInt(3)},

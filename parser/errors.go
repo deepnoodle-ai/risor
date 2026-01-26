@@ -179,3 +179,131 @@ func tokenDescription(t token.Token) string {
 		return t.Literal
 	}
 }
+
+// Errors wraps multiple parser errors for multi-error reporting.
+// It implements the error interface so it can be returned from Parse().
+type Errors struct {
+	errs []ParserError
+}
+
+// NewErrors creates an Errors from a slice of ParserError.
+func NewErrors(errs []ParserError) *Errors {
+	if len(errs) == 0 {
+		return nil
+	}
+	return &Errors{errs: errs}
+}
+
+// Error implements the error interface. Returns the first error message.
+func (e *Errors) Error() string {
+	if len(e.errs) == 0 {
+		return ""
+	}
+	if len(e.errs) == 1 {
+		return e.errs[0].Error()
+	}
+	return fmt.Sprintf("%s (and %d more errors)", e.errs[0].Error(), len(e.errs)-1)
+}
+
+// Errors returns the underlying slice of parser errors.
+func (e *Errors) Errors() []ParserError {
+	return e.errs
+}
+
+// Count returns the number of errors.
+func (e *Errors) Count() int {
+	return len(e.errs)
+}
+
+// First returns the first error, or nil if empty.
+func (e *Errors) First() ParserError {
+	if len(e.errs) == 0 {
+		return nil
+	}
+	return e.errs[0]
+}
+
+// FriendlyErrorMessage returns a formatted message showing all errors.
+func (e *Errors) FriendlyErrorMessage() string {
+	if len(e.errs) == 0 {
+		return ""
+	}
+	var buf bytes.Buffer
+	for i, err := range e.errs {
+		if i > 0 {
+			buf.WriteString("\n\n")
+		}
+		fmt.Fprintf(&buf, "Error %d of %d:\n", i+1, len(e.errs))
+		buf.WriteString(err.FriendlyErrorMessage())
+	}
+	return buf.String()
+}
+
+// The following methods implement ParserError interface by delegating to first error.
+// This provides backwards compatibility for code that type-asserts to ParserError.
+
+// Type returns the error type of the first error.
+func (e *Errors) Type() string {
+	if len(e.errs) == 0 {
+		return ""
+	}
+	return e.errs[0].Type()
+}
+
+// Message returns the message of the first error.
+func (e *Errors) Message() string {
+	if len(e.errs) == 0 {
+		return ""
+	}
+	return e.errs[0].Message()
+}
+
+// Cause returns the cause of the first error.
+func (e *Errors) Cause() error {
+	if len(e.errs) == 0 {
+		return nil
+	}
+	return e.errs[0].Cause()
+}
+
+// File returns the file of the first error.
+func (e *Errors) File() string {
+	if len(e.errs) == 0 {
+		return ""
+	}
+	return e.errs[0].File()
+}
+
+// StartPosition returns the start position of the first error.
+func (e *Errors) StartPosition() token.Position {
+	if len(e.errs) == 0 {
+		return token.Position{}
+	}
+	return e.errs[0].StartPosition()
+}
+
+// EndPosition returns the end position of the first error.
+func (e *Errors) EndPosition() token.Position {
+	if len(e.errs) == 0 {
+		return token.Position{}
+	}
+	return e.errs[0].EndPosition()
+}
+
+// SourceCode returns the source code of the first error.
+func (e *Errors) SourceCode() string {
+	if len(e.errs) == 0 {
+		return ""
+	}
+	return e.errs[0].SourceCode()
+}
+
+// Unwrap returns the underlying errors for use with errors.Is/As.
+// This implements the Go 1.20+ multi-error interface.
+func (e *Errors) Unwrap() []error {
+	result := make([]error, len(e.errs))
+	for i, err := range e.errs {
+		result[i] = err
+	}
+	return result
+}
