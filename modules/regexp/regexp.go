@@ -4,12 +4,11 @@ import (
 	"context"
 	"regexp"
 
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
 func Compile(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("regexp.compile", 1, args); err != nil {
+	if err := object.Require("regexp.compile", 1, args); err != nil {
 		return err
 	}
 	pattern, err := object.AsString(args[0])
@@ -24,7 +23,7 @@ func Compile(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Match(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("regexp.match", 2, args); err != nil {
+	if err := object.Require("regexp.match", 2, args); err != nil {
 		return err
 	}
 	pattern, err := object.AsString(args[0])

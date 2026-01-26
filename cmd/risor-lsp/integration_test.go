@@ -64,7 +64,7 @@ println("Total users: " + string(len(active_users)))`
 
 		assert.NotNil(t, doc.ast, "Expected AST to be parsed")
 
-		statements := doc.ast.Statements()
+		statements := doc.ast.Stmts
 		assert.NotEmpty(t, statements, "Expected statements in AST")
 
 		t.Logf("Successfully parsed %d statements", len(statements))
@@ -283,7 +283,7 @@ let numbers = [1, 2, 3, 4, 5]`,
 
 			assert.NotNil(t, doc.ast, "No AST parsed for %s", name)
 
-			statements := doc.ast.Statements()
+			statements := doc.ast.Stmts
 			assert.NotEmpty(t, statements, "No statements found in %s", name)
 
 			t.Logf("Example '%s': parsed %d statements successfully", name, len(statements))

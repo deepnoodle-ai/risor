@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"math/rand"
 
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
@@ -19,21 +18,21 @@ func Seed() {
 }
 
 func Float(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("rand.float", 0, args); err != nil {
+	if err := object.Require("rand.float", 0, args); err != nil {
 		return err
 	}
 	return object.NewFloat(rand.Float64())
 }
 
 func Int(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("rand.int", 0, args); err != nil {
+	if err := object.Require("rand.int", 0, args); err != nil {
 		return err
 	}
 	return object.NewInt(rand.Int63())
 }
 
 func IntN(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("rand.intn", 1, args); err != nil {
+	if err := object.Require("rand.intn", 1, args); err != nil {
 		return err
 	}
 	n, err := object.AsInt(args[0])
@@ -44,21 +43,21 @@ func IntN(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func NormFloat(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("rand.norm_float", 0, args); err != nil {
+	if err := object.Require("rand.norm_float", 0, args); err != nil {
 		return err
 	}
 	return object.NewFloat(rand.NormFloat64())
 }
 
 func ExpFloat(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("rand.exp_float", 0, args); err != nil {
+	if err := object.Require("rand.exp_float", 0, args); err != nil {
 		return err
 	}
 	return object.NewFloat(rand.ExpFloat64())
 }
 
 func Shuffle(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("rand.shuffle", 1, args); err != nil {
+	if err := object.Require("rand.shuffle", 1, args); err != nil {
 		return err
 	}
 	ls, err := object.AsList(args[0])

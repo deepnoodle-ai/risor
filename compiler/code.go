@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/errz"
+	"github.com/risor-io/risor/errors"
 	"github.com/risor-io/risor/op"
 )
 
@@ -33,7 +33,7 @@ type Code struct {
 	filename     string // The source file this code came from
 
 	// Source map: one location per instruction for error reporting
-	locations []errz.SourceLocation
+	locations []errors.SourceLocation
 
 	// Metadata for VM optimizations (computed during compilation)
 	maxCallArgs uint16 // Maximum argument count from any Call opcode in this code
@@ -180,9 +180,9 @@ func (c *Code) Filename() string {
 
 // LocationAt returns the source location for the instruction at the given index.
 // If no location is recorded, an empty SourceLocation is returned.
-func (c *Code) LocationAt(ip int) errz.SourceLocation {
+func (c *Code) LocationAt(ip int) errors.SourceLocation {
 	if ip < 0 || ip >= len(c.locations) {
-		return errz.SourceLocation{}
+		return errors.SourceLocation{}
 	}
 	return c.locations[ip]
 }

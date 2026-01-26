@@ -243,4 +243,3 @@ func TestVMWrapper(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, x, int64(10))
 }
-

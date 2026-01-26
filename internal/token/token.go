@@ -6,12 +6,11 @@ type Type string
 
 // Position points to a particular location in an input string.
 type Position struct {
-	Value     rune
-	Char      int
-	LineStart int
-	Line      int
-	Column    int
-	File      string
+	Char      int    // byte offset within the file
+	LineStart int    // byte offset of the start of the current line
+	Line      int    // 0-indexed line number
+	Column    int    // 0-indexed column number
+	File      string // filename
 }
 
 // LineNumber returns the 1-indexed line number for this position in the input.
@@ -23,6 +22,27 @@ func (p Position) LineNumber() int {
 func (p Position) ColumnNumber() int {
 	return p.Column + 1
 }
+
+// Advance returns a new Position advanced by n bytes.
+// Used for computing End positions from a start position.
+// Note: This assumes the advance does not cross line boundaries.
+func (p Position) Advance(n int) Position {
+	return Position{
+		Char:      p.Char + n,
+		LineStart: p.LineStart,
+		Line:      p.Line,
+		Column:    p.Column + n,
+		File:      p.File,
+	}
+}
+
+// IsValid returns true if this position has been set.
+func (p Position) IsValid() bool {
+	return p.File != "" || p.Line > 0 || p.Column > 0 || p.Char > 0
+}
+
+// NoPos is the zero value Position, representing an invalid/unset position.
+var NoPos = Position{}
 
 // Token represents one token lexed from the input source code.
 type Token struct {

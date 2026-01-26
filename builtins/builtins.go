@@ -9,12 +9,11 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
 func Len(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("len", 1, args); err != nil {
+	if err := object.Require("len", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -28,7 +27,7 @@ func Len(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Sprintf(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("sprintf", 1, 64, args); err != nil {
+	if err := object.RequireRange("sprintf", 1, 64, args); err != nil {
 		return err
 	}
 	fs, err := object.AsString(args[0])
@@ -44,7 +43,7 @@ func Sprintf(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Delete(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("delete", 2, args); err != nil {
+	if err := object.Require("delete", 2, args); err != nil {
 		return err
 	}
 	container, ok := args[0].(object.Container)
@@ -58,7 +57,7 @@ func Delete(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Set(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("set", 0, 1, args); err != nil {
+	if err := object.RequireRange("set", 0, 1, args); err != nil {
 		return err
 	}
 	set := object.NewSetWithSize(0)
@@ -84,7 +83,7 @@ func Set(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func List(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("list", 0, 1, args); err != nil {
+	if err := object.RequireRange("list", 0, 1, args); err != nil {
 		return err
 	}
 	if len(args) == 0 {
@@ -114,7 +113,7 @@ func List(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func String(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("string", 0, 1, args); err != nil {
+	if err := object.RequireRange("string", 0, 1, args); err != nil {
 		return err
 	}
 	if len(args) == 0 {
@@ -143,7 +142,7 @@ func String(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Buffer(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("buffer", 0, 1, args); err != nil {
+	if err := object.RequireRange("buffer", 0, 1, args); err != nil {
 		return err
 	}
 	if len(args) == 0 {
@@ -174,14 +173,14 @@ func Buffer(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Type(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("type", 1, args); err != nil {
+	if err := object.Require("type", 1, args); err != nil {
 		return err
 	}
 	return object.NewString(string(args[0].Type()))
 }
 
 func Assert(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("assert", 1, 2, args); err != nil {
+	if err := object.RequireRange("assert", 1, 2, args); err != nil {
 		return err
 	}
 	if !args[0].IsTruthy() {
@@ -199,7 +198,7 @@ func Assert(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Any(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("any", 1, args); err != nil {
+	if err := object.Require("any", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -246,7 +245,7 @@ func Any(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func All(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("all", 1, args); err != nil {
+	if err := object.Require("all", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -293,7 +292,7 @@ func All(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Filter(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("filter", 2, args); err != nil {
+	if err := object.Require("filter", 2, args); err != nil {
 		return err
 	}
 	fn, ok := args[1].(object.Callable)
@@ -367,7 +366,7 @@ func Filter(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Bool(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("bool", 0, 1, args); err != nil {
+	if err := object.RequireRange("bool", 0, 1, args); err != nil {
 		return err
 	}
 	if len(args) == 0 {
@@ -380,7 +379,7 @@ func Bool(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Sorted(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("sorted", 1, 2, args); err != nil {
+	if err := object.RequireRange("sorted", 1, 2, args); err != nil {
 		return err
 	}
 	arg := args[0]
@@ -431,7 +430,7 @@ func Sorted(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Reversed(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("reversed", 1, args); err != nil {
+	if err := object.Require("reversed", 1, args); err != nil {
 		return err
 	}
 	arg := args[0]
@@ -449,7 +448,7 @@ func Reversed(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func GetAttr(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("getattr", 2, 3, args); err != nil {
+	if err := object.RequireRange("getattr", 2, 3, args); err != nil {
 		return err
 	}
 	attrName, err := object.AsString(args[1])
@@ -467,7 +466,7 @@ func GetAttr(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Call(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("call", 1, 64, args); err != nil {
+	if err := object.RequireRange("call", 1, 64, args); err != nil {
 		return err
 	}
 	switch fn := args[0].(type) {
@@ -490,7 +489,7 @@ func Call(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Keys(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("keys", 1, args); err != nil {
+	if err := object.Require("keys", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -513,7 +512,7 @@ func Keys(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Byte(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("byte", 0, 1, args); err != nil {
+	if err := object.RequireRange("byte", 0, 1, args); err != nil {
 		return err
 	}
 	if len(args) == 0 {
@@ -537,7 +536,7 @@ func Byte(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Int(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("int", 0, 1, args); err != nil {
+	if err := object.RequireRange("int", 0, 1, args); err != nil {
 		return err
 	}
 	if len(args) == 0 {
@@ -561,7 +560,7 @@ func Int(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Float(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("float", 0, 1, args); err != nil {
+	if err := object.RequireRange("float", 0, 1, args); err != nil {
 		return err
 	}
 	if len(args) == 0 {
@@ -585,7 +584,7 @@ func Float(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Make(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("make", 1, 2, args); err != nil {
+	if err := object.RequireRange("make", 1, 2, args); err != nil {
 		return err
 	}
 	typ := args[0]
@@ -626,7 +625,7 @@ func Make(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Coalesce(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("coalesce", 0, 64, args); err != nil {
+	if err := object.RequireRange("coalesce", 0, 64, args); err != nil {
 		return err
 	}
 	for _, arg := range args {
@@ -638,7 +637,7 @@ func Coalesce(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Chunk(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("chunk", 2, args); err != nil {
+	if err := object.Require("chunk", 2, args); err != nil {
 		return err
 	}
 	list, ok := args[0].(*object.List)
@@ -674,7 +673,7 @@ func Chunk(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func IsHashable(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("is_hashable", 1, args); err != nil {
+	if err := object.Require("is_hashable", 1, args); err != nil {
 		return err
 	}
 	_, ok := args[0].(object.Hashable)

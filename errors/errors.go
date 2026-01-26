@@ -1,6 +1,5 @@
-// Package errz defines a FriendlyError interface for errors that have a human
-// friendly message in addition to the default error message.
-package errz
+// Package errors defines error types with source locations and stack traces.
+package errors
 
 import (
 	"fmt"
@@ -66,7 +65,8 @@ type FriendlyError interface {
 	FriendlyErrorMessage() string
 }
 
-type Error interface {
+// FatalError is an interface for errors that may or may not be fatal.
+type FatalError interface {
 	Error() string
 	IsFatal() bool
 }

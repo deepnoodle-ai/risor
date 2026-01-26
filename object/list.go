@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -477,7 +476,7 @@ func (ls *List) String() string {
 func (ls *List) Compare(other Object) (int, error) {
 	otherList, ok := other.(*List)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare list and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare list and %s", other.Type())
 	}
 	if len(ls.items) > len(otherList.items) {
 		return 1, nil
@@ -487,7 +486,7 @@ func (ls *List) Compare(other Object) (int, error) {
 	for i := 0; i < len(ls.items); i++ {
 		comparable, ok := ls.items[i].(Comparable)
 		if !ok {
-			return 0, errz.TypeErrorf("type error: %s object is not comparable", ls.items[i].Type())
+			return 0, TypeErrorf("type error: %s object is not comparable", ls.items[i].Type())
 		}
 		comp, err := comparable.Compare(otherList.items[i])
 		if err != nil {
@@ -688,7 +687,7 @@ func ResolveIntSlice(slice Slice, size int64) (start int64, stop int64, err erro
 	if slice.Start != nil {
 		startObj, ok := slice.Start.(*Int)
 		if !ok {
-			err = errz.TypeErrorf("type error: slice start index must be an int (got %s)", slice.Start.Type())
+			err = TypeErrorf("type error: slice start index must be an int (got %s)", slice.Start.Type())
 			return
 		}
 		start = startObj.value
@@ -696,7 +695,7 @@ func ResolveIntSlice(slice Slice, size int64) (start int64, stop int64, err erro
 	if slice.Stop != nil {
 		stopObj, ok := slice.Stop.(*Int)
 		if !ok {
-			err = errz.TypeErrorf("type error: slice stop index must be an int (got %s)", slice.Stop.Type())
+			err = TypeErrorf("type error: slice stop index must be an int (got %s)", slice.Stop.Type())
 			return
 		}
 		stop = stopObj.value

@@ -52,7 +52,7 @@ function add(a, b) {
 	assert.NotNil(t, doc.ast)
 
 	// Verify we have statements
-	statements := doc.ast.Statements()
+	statements := doc.ast.Stmts
 	assert.NotEmpty(t, statements)
 }
 
@@ -368,6 +368,6 @@ function complete() {
 
 	// Verify the AST was updated
 	assert.NotNil(t, doc.ast)
-	statements := doc.ast.Statements()
+	statements := doc.ast.Stmts
 	assert.NotEmpty(t, statements)
 }

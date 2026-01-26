@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/op"
 )
@@ -15,7 +14,7 @@ type code struct {
 	Constants         []object.Object
 	Globals           []object.Object
 	Names             []string
-	Locations         []errz.SourceLocation
+	Locations         []object.SourceLocation
 	ExceptionHandlers []*compiler.ExceptionHandler
 
 	// Optimization metadata from compiler
@@ -29,7 +28,7 @@ func wrapCode(cc *compiler.Code) *code {
 		Instructions:      make([]op.Code, cc.InstructionCount()),
 		Constants:         make([]object.Object, cc.ConstantsCount()),
 		Names:             make([]string, cc.NameCount()),
-		Locations:         make([]errz.SourceLocation, cc.LocationsCount()),
+		Locations:         make([]object.SourceLocation, cc.LocationsCount()),
 		ExceptionHandlers: cc.ExceptionHandlers(),
 		MaxCallArgs:       cc.MaxCallArgs(),
 	}
@@ -71,9 +70,9 @@ func (c *code) GlobalsCount() int {
 }
 
 // LocationAt returns the source location for the instruction at the given index.
-func (c *code) LocationAt(ip int) errz.SourceLocation {
+func (c *code) LocationAt(ip int) object.SourceLocation {
 	if ip < 0 || ip >= len(c.Locations) {
-		return errz.SourceLocation{}
+		return object.SourceLocation{}
 	}
 	return c.Locations[ip]
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -240,7 +239,7 @@ func (s *String) Interface() interface{} {
 func (s *String) Compare(other Object) (int, error) {
 	otherStr, ok := other.(*String)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare string and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare string and %s", other.Type())
 	}
 	if s.value == otherStr.value {
 		return 0, nil

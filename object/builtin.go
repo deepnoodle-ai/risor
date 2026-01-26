@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -105,7 +104,7 @@ func (b *Builtin) RunOperation(opType op.BinaryOpType, right Object) Object {
 }
 
 func (b *Builtin) MarshalJSON() ([]byte, error) {
-	return nil, errz.TypeErrorf("type error: unable to marshal builtin")
+	return nil, TypeErrorf("type error: unable to marshal builtin")
 }
 
 // NewNoopBuiltin creates a builtin function that has no effect.

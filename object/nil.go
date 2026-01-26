@@ -1,7 +1,6 @@
 package object
 
 import (
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -33,7 +32,7 @@ func (n *NilType) Compare(other Object) (int, error) {
 	if _, ok := other.(*NilType); ok {
 		return 0, nil
 	}
-	return 0, errz.TypeErrorf("type error: unable to compare nil and %s", other.Type())
+	return 0, TypeErrorf("type error: unable to compare nil and %s", other.Type())
 }
 
 func (n *NilType) Equals(other Object) Object {

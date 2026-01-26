@@ -23,20 +23,14 @@ You might also want to try evaluating Risor scripts [from your browser](https://
 ## Syntax Example
 
 Here's a short example of how Risor feels like a hybrid of Go and Python. This
-demonstrates using Risor's pipe expressions to apply a series of transformations:
+demonstrates using string methods and chained calls:
 
 ```go
 array := ["gophers", "are", "burrowing", "rodents"]
 
-sentence := array | strings.join(" ") | strings.to_upper
+sentence := " ".join(array).to_upper()
 
-print(sentence)
-```
-
-Output:
-
-```
-GOPHERS ARE BURROWING RODENTS
+// sentence is "GOPHERS ARE BURROWING RODENTS"
 ```
 
 ## Getting Started
@@ -113,12 +107,15 @@ func main() {
 
 ## Built-in Functions and Modules
 
-30+ built-in functions are included and are documented [here](https://risor.io/docs/builtins).
+24 built-in functions are included and are documented [here](https://risor.io/docs/builtins).
+These include type conversions (`int`, `float`, `string`, `list`, `set`, etc.),
+container operations (`len`, `keys`, `delete`, `chunk`), and utilities like
+`filter`, `sorted`, `encode`, and `decode`.
 
-Modules are included that generally wrap the equivalent Go package. For example,
-there is direct correspondence between `base64`, `bytes`, `filepath`, `json`, `math`, `os`,
-`rand`, `regexp`, `strconv`, `strings`, and `time` Risor modules and
-the Go standard library.
+The `encode` and `decode` builtins support multiple formats: `base64`, `base32`,
+`hex`, `json`, `csv`, and `urlquery`.
+
+Four modules are included: `math`, `rand`, `regexp`, and `time`.
 
 ## Go Interface
 
@@ -137,9 +134,9 @@ Provide input to the script using `WithEnv`:
 
 ```go
 env := risor.Builtins()
-env["input"] = "hello"
-result, err := risor.Eval(ctx, "input | strings.to_upper", risor.WithEnv(env))
-// result is "HELLO"
+env["input"] = 16
+result, err := risor.Eval(ctx, "input | math.sqrt", risor.WithEnv(env))
+// result is 4.0
 ```
 
 Use the same mechanism to inject a struct. You can then access fields or call
@@ -156,28 +153,22 @@ result, err := risor.Eval(ctx, "len(ex.Message)", risor.WithEnv(env))
 // result is 3
 ```
 
-## Optional Modules
+## Adding Custom Modules
 
 Risor is designed to have minimal external dependencies in its core libraries.
-An optional ssh module is available that uses `golang.org/x/crypto`:
-
-| Name | Path                         | Go Get Command                                  |
-| ---- | ---------------------------- | ----------------------------------------------- |
-| ssh  | [modules/ssh](./modules/ssh) | `go get github.com/risor-io/risor/modules/ssh`  |
-
-When building Risor into your own program, you'll need to opt-in using `go get`
-and then add the modules to your environment:
+You can add custom modules to the environment when embedding Risor:
 
 ```go
 import (
     "github.com/risor-io/risor"
-    "github.com/risor-io/risor/modules/ssh"
+    "github.com/risor-io/risor/object"
 )
 
 func main() {
-    source := `ssh.dial("user@host")`
     env := risor.Builtins()
-    env["ssh"] = ssh.Module()
+    env["custom"] = object.NewBuiltinsModule("custom", map[string]object.Object{
+        "hello": object.NewBuiltin("hello", myHelloFunc),
+    })
     result, err := risor.Eval(ctx, source, risor.WithEnv(env))
     // ...
 }

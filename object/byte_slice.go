@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -202,7 +201,7 @@ func (b *ByteSlice) Compare(other Object) (int, error) {
 	case *String:
 		return bytes.Compare(b.value, []byte(other.value)), nil
 	default:
-		return 0, errz.TypeErrorf("type error: unable to compare byte_slice and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare byte_slice and %s", other.Type())
 	}
 }
 

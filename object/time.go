@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -57,7 +56,7 @@ func (t *Time) String() string {
 func (t *Time) Compare(other Object) (int, error) {
 	otherStr, ok := other.(*Time)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare time and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare time and %s", other.Type())
 	}
 	if t.value == otherStr.value {
 		return 0, nil

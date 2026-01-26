@@ -9,38 +9,35 @@ import (
 // Program represents a complete Risor program, which consists of a series of
 // statements.
 type Program struct {
-	// The list of statements which comprise the program.
-	statements []Node
+	Stmts []Node // statements in the program
 }
 
-func NewProgram(statements []Node) *Program {
-	return &Program{statements: statements}
-}
-
-func (p *Program) Token() token.Token {
-	if len(p.statements) > 0 {
-		return p.statements[0].Token()
+func (p *Program) Pos() token.Position {
+	if len(p.Stmts) > 0 {
+		return p.Stmts[0].Pos()
 	}
-	return token.Token{}
+	return token.NoPos
 }
 
-func (p *Program) IsExpression() bool { return false }
+func (p *Program) End() token.Position {
+	if len(p.Stmts) > 0 {
+		return p.Stmts[len(p.Stmts)-1].End()
+	}
+	return token.NoPos
+}
 
-func (p *Program) Literal() string { return p.Token().Literal }
-
-func (p *Program) Statements() []Node { return p.statements }
-
+// First returns the first statement in the program, or nil if empty.
 func (p *Program) First() Node {
-	if len(p.statements) > 0 {
-		return p.statements[0]
+	if len(p.Stmts) > 0 {
+		return p.Stmts[0]
 	}
 	return nil
 }
 
 func (p *Program) String() string {
 	var out bytes.Buffer
-	stmtCount := len(p.statements)
-	for i, stmt := range p.statements {
+	stmtCount := len(p.Stmts)
+	for i, stmt := range p.Stmts {
 		out.WriteString(stmt.String())
 		if i < stmtCount-1 {
 			out.WriteString("\n")

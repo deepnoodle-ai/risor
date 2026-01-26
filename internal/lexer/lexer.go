@@ -92,7 +92,6 @@ func (l *Lexer) SetFilename(file string) {
 // Position returns the current read position of the Lexer as a Position object.
 func (l *Lexer) Position() token.Position {
 	return token.Position{
-		Value:     l.ch,
 		Char:      l.position,
 		LineStart: l.lineStart,
 		Line:      l.line,

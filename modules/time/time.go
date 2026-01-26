@@ -4,19 +4,18 @@ import (
 	"context"
 	"time"
 
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
 func Now(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("time.now", 0, args); err != nil {
+	if err := object.Require("time.now", 0, args); err != nil {
 		return err
 	}
 	return object.NewTime(time.Now())
 }
 
 func Unix(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("time.unix", 2, args); err != nil {
+	if err := object.Require("time.unix", 2, args); err != nil {
 		return err
 	}
 	sec, err := object.AsInt(args[0])
@@ -31,7 +30,7 @@ func Unix(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Parse(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("time.parse", 2, args); err != nil {
+	if err := object.Require("time.parse", 2, args); err != nil {
 		return err
 	}
 	layout, err := object.AsString(args[0])
@@ -50,7 +49,7 @@ func Parse(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Since(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("time.since", 1, args); err != nil {
+	if err := object.Require("time.since", 1, args); err != nil {
 		return err
 	}
 	t, err := object.AsTime(args[0])

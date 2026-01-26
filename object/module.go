@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -42,7 +41,7 @@ func (m *Module) GetAttr(name string) (Object, bool) {
 }
 
 func (m *Module) SetAttr(name string, value Object) error {
-	return errz.TypeErrorf("type error: cannot modify module attributes")
+	return TypeErrorf("type error: cannot modify module attributes")
 }
 
 // Override provides a mechanism to modify module attributes after loading.
@@ -91,7 +90,7 @@ func (m *Module) Code() *compiler.Code {
 func (m *Module) Compare(other Object) (int, error) {
 	otherMod, ok := other.(*Module)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare module and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare module and %s", other.Type())
 	}
 	if m.name == otherMod.name {
 		return 0, nil
@@ -114,7 +113,7 @@ func (m *Module) Equals(other Object) Object {
 }
 
 func (m *Module) MarshalJSON() ([]byte, error) {
-	return nil, errz.TypeErrorf("type error: unable to marshal module")
+	return nil, TypeErrorf("type error: unable to marshal module")
 }
 
 func (m *Module) UseGlobals(globals []Object) {

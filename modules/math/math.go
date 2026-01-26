@@ -4,12 +4,11 @@ import (
 	"context"
 	"math"
 
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
 func Abs(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.abs", 1, args); err != nil {
+	if err := object.Require("math.abs", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -31,7 +30,7 @@ func Abs(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Atan2(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.atan2", 2, args); err != nil {
+	if err := object.Require("math.atan2", 2, args); err != nil {
 		return err
 	}
 	y, err := object.AsFloat(args[0])
@@ -47,7 +46,7 @@ func Atan2(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Sqrt(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.sqrt", 1, args); err != nil {
+	if err := object.Require("math.sqrt", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -63,7 +62,7 @@ func Sqrt(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Max(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.max", 2, args); err != nil {
+	if err := object.Require("math.max", 2, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -78,7 +77,7 @@ func Max(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Min(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.min", 2, args); err != nil {
+	if err := object.Require("math.min", 2, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -93,7 +92,7 @@ func Min(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Sum(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.sum", 1, args); err != nil {
+	if err := object.Require("math.sum", 1, args); err != nil {
 		return err
 	}
 	arg := args[0]
@@ -124,7 +123,7 @@ func Sum(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Ceil(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.ceil", 1, args); err != nil {
+	if err := object.Require("math.ceil", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -138,7 +137,7 @@ func Ceil(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Floor(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.floor", 1, args); err != nil {
+	if err := object.Require("math.floor", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -152,7 +151,7 @@ func Floor(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Sin(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.sin", 1, args); err != nil {
+	if err := object.Require("math.sin", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -166,7 +165,7 @@ func Sin(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Cos(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.cos", 1, args); err != nil {
+	if err := object.Require("math.cos", 1, args); err != nil {
 		return err
 	}
 	switch arg := args[0].(type) {
@@ -180,7 +179,7 @@ func Cos(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Tan(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.tan", 1, args); err != nil {
+	if err := object.Require("math.tan", 1, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -191,7 +190,7 @@ func Tan(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Mod(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.mod", 2, args); err != nil {
+	if err := object.Require("math.mod", 2, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -206,7 +205,7 @@ func Mod(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Log(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.log", 1, args); err != nil {
+	if err := object.Require("math.log", 1, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -217,7 +216,7 @@ func Log(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Log10(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.log10", 1, args); err != nil {
+	if err := object.Require("math.log10", 1, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -228,7 +227,7 @@ func Log10(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Log2(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.log2", 1, args); err != nil {
+	if err := object.Require("math.log2", 1, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -239,7 +238,7 @@ func Log2(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Pow(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.pow", 2, args); err != nil {
+	if err := object.Require("math.pow", 2, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -254,7 +253,7 @@ func Pow(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Pow10(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.pow10", 1, args); err != nil {
+	if err := object.Require("math.pow10", 1, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -265,7 +264,7 @@ func Pow10(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func IsInf(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.is_inf", 1, args); err != nil {
+	if err := object.Require("math.is_inf", 1, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -276,7 +275,7 @@ func IsInf(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Round(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("math.round", 1, args); err != nil {
+	if err := object.Require("math.round", 1, args); err != nil {
 		return err
 	}
 	x, err := object.AsFloat(args[0])
@@ -287,7 +286,7 @@ func Round(ctx context.Context, args ...object.Object) object.Object {
 }
 
 func Inf(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("math.inf", 0, 1, args); err != nil {
+	if err := object.RequireRange("math.inf", 0, 1, args); err != nil {
 		return err
 	}
 	sign := 1

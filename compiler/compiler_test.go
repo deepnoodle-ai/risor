@@ -25,11 +25,10 @@ func TestNil(t *testing.T) {
 func TestUndefinedVariable(t *testing.T) {
 	c, err := New()
 	assert.Nil(t, err)
-	_, err = c.Compile(ast.NewIdent(token.Token{
-		Type:          token.IDENT,
-		Literal:       "foo",
-		StartPosition: token.Position{Line: 1, Column: 1},
-	}))
+	_, err = c.Compile(&ast.Ident{
+		NamePos: token.Position{Line: 1, Column: 1},
+		Name:    "foo",
+	})
 	assert.NotNil(t, err)
 	assert.Equal(t, err.Error(), "compile error: undefined variable \"foo\"\n\nlocation: unknown:2:2 (line 2, column 2)")
 }
@@ -48,12 +47,12 @@ func TestCompileErrors(t *testing.T) {
 		{
 			name:   "undefined variable x",
 			input:  "x = 1",
-			errMsg: "compile error: undefined variable \"x\"\n\nlocation: t.risor:1:3 (line 1, column 3)",
+			errMsg: "compile error: undefined variable \"x\"\n\nlocation: t.risor:1:1 (line 1, column 1)",
 		},
 		{
 			name:   "undefined variable y",
 			input:  "let x = 1;\ny = x + 1",
-			errMsg: "compile error: undefined variable \"y\"\n\nlocation: t.risor:2:3 (line 2, column 3)",
+			errMsg: "compile error: undefined variable \"y\"\n\nlocation: t.risor:2:1 (line 2, column 1)",
 		},
 		{
 			name:   "undefined variable z",
@@ -78,7 +77,7 @@ func TestCompileErrors(t *testing.T) {
 		{
 			name:   "cannot assign to constant",
 			input:  "const a = 1; a = 2",
-			errMsg: "compile error: cannot assign to constant \"a\"\n\nlocation: t.risor:1:16 (line 1, column 16)",
+			errMsg: "compile error: cannot assign to constant \"a\"\n\nlocation: t.risor:1:14 (line 1, column 14)",
 		},
 	}
 	for _, tt := range testCase {
@@ -92,6 +91,93 @@ func TestCompileErrors(t *testing.T) {
 			assert.Equal(t, err.Error(), tt.errMsg)
 		})
 	}
+}
+
+func TestBadExprCompilation(t *testing.T) {
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+
+	// Create a program with a BadExpr
+	badExpr := &ast.BadExpr{
+		From: token.Position{Line: 0, Column: 4, File: "test.risor"},
+		To:   token.Position{Line: 0, Column: 10, File: "test.risor"},
+	}
+
+	_, err = c.Compile(badExpr)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "syntax error in expression"))
+}
+
+func TestBadStmtCompilation(t *testing.T) {
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+
+	// Create a program with a BadStmt
+	badStmt := &ast.BadStmt{
+		From: token.Position{Line: 0, Column: 0, File: "test.risor"},
+		To:   token.Position{Line: 0, Column: 15, File: "test.risor"},
+	}
+
+	_, err = c.Compile(badStmt)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "syntax error in statement"))
+}
+
+func TestBadExprInVarCompilation(t *testing.T) {
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+
+	// Create a var statement with a BadExpr as value
+	program := &ast.Program{
+		Stmts: []ast.Node{
+			&ast.Var{
+				Let: token.Position{Line: 0, Column: 0},
+				Name: &ast.Ident{
+					NamePos: token.Position{Line: 0, Column: 4},
+					Name:    "x",
+				},
+				Value: &ast.BadExpr{
+					From: token.Position{Line: 0, Column: 8},
+					To:   token.Position{Line: 0, Column: 15},
+				},
+			},
+		},
+	}
+
+	_, err = c.Compile(program)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "syntax error in expression"))
+}
+
+func TestBadStmtInProgramCompilation(t *testing.T) {
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+
+	// Create a program with a BadStmt followed by valid code
+	program := &ast.Program{
+		Stmts: []ast.Node{
+			&ast.BadStmt{
+				From: token.Position{Line: 0, Column: 0},
+				To:   token.Position{Line: 0, Column: 10},
+			},
+			&ast.Var{
+				Let: token.Position{Line: 1, Column: 0},
+				Name: &ast.Ident{
+					NamePos: token.Position{Line: 1, Column: 4},
+					Name:    "x",
+				},
+				Value: &ast.Int{
+					ValuePos: token.Position{Line: 1, Column: 8},
+					Value:    42,
+				},
+			},
+		},
+	}
+
+	// Compilation should fail on the BadStmt
+	_, err = c.Compile(program)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "syntax error in statement"))
 }
 
 func TestCompoundAssignmentWithIndex(t *testing.T) {
@@ -382,4 +468,138 @@ func TestForwardDeclarationInstructionGeneration(t *testing.T) {
 
 	// The main verification is that compilation succeeded without errors
 	// indicating that forward declarations were properly resolved
+}
+
+func TestLocationTracking(t *testing.T) {
+	// Test that locations are recorded for each instruction
+	input := `let x = 42`
+
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	// Verify locations are recorded
+	assert.Greater(t, code.LocationsCount(), 0)
+	assert.Equal(t, code.LocationsCount(), code.InstructionCount())
+
+	// Verify location at instruction 0 has correct info
+	loc := code.LocationAt(0)
+	assert.Equal(t, loc.Filename, "test.risor")
+	assert.Equal(t, loc.Line, 1)
+	assert.Greater(t, loc.Column, 0)
+}
+
+func TestLocationTracking_MultiLine(t *testing.T) {
+	input := `let x = 1
+let y = 2
+x + y`
+
+	c, err := New(WithFilename("multi.risor"))
+	assert.Nil(t, err)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	// Collect unique line numbers from locations
+	lines := make(map[int]bool)
+	for i := 0; i < code.LocationsCount(); i++ {
+		loc := code.LocationAt(i)
+		if loc.Line > 0 {
+			lines[loc.Line] = true
+		}
+	}
+
+	// Should have instructions from multiple lines
+	assert.GreaterOrEqual(t, len(lines), 2, "should have locations from multiple lines")
+}
+
+func TestLocationTracking_OutOfBounds(t *testing.T) {
+	input := `42`
+
+	c, err := New()
+	assert.Nil(t, err)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	// Test out-of-bounds access returns zero location
+	loc := code.LocationAt(-1)
+	assert.True(t, loc.IsZero())
+
+	loc = code.LocationAt(code.LocationsCount() + 100)
+	assert.True(t, loc.IsZero())
+}
+
+func TestLocationTracking_Function(t *testing.T) {
+	input := `function add(a, b) {
+	return a + b
+}
+add(1, 2)`
+
+	c, err := New(WithFilename("func.risor"))
+	assert.Nil(t, err)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	// Main code should have locations
+	assert.Greater(t, code.LocationsCount(), 0)
+
+	// Flatten returns all code objects including nested functions
+	allCode := code.Flatten()
+	assert.Greater(t, len(allCode), 1, "should have function code")
+
+	// Find a non-root code (the function)
+	var funcCode *Code
+	for _, c := range allCode {
+		if !c.IsRoot() {
+			funcCode = c
+			break
+		}
+	}
+	assert.NotNil(t, funcCode, "should find function code")
+	assert.Greater(t, funcCode.LocationsCount(), 0)
+
+	// Function code should have filename inherited from parent
+	funcLoc := funcCode.LocationAt(0)
+	assert.Equal(t, funcLoc.Filename, "func.risor")
+}
+
+func TestGetSourceLine(t *testing.T) {
+	input := `let x = 1
+let y = 2
+let z = x + y`
+
+	c, err := New()
+	assert.Nil(t, err)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	// Test getting source lines (1-indexed)
+	// Note: The source is stored from the AST's String() representation
+	assert.Contains(t, code.GetSourceLine(1), "let x = 1")
+	assert.Contains(t, code.GetSourceLine(2), "let y = 2")
+	assert.Contains(t, code.GetSourceLine(3), "let z =")
+
+	// Out of bounds
+	assert.Equal(t, code.GetSourceLine(0), "")
+	assert.Equal(t, code.GetSourceLine(100), "")
 }

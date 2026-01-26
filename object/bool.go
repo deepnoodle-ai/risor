@@ -3,7 +3,6 @@ package object
 import (
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -46,7 +45,7 @@ func (b *Bool) String() string {
 func (b *Bool) Compare(other Object) (int, error) {
 	otherBool, ok := other.(*Bool)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare bool and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare bool and %s", other.Type())
 	}
 	if b.value == otherBool.value {
 		return 0, nil

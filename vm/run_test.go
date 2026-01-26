@@ -6,7 +6,6 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
 )
@@ -44,7 +43,151 @@ func TestRunError(t *testing.T) {
 	// Check that the error message contains the expected content
 	assert.Contains(t, err.Error(), "type error: attribute \"bar\" not found on int object")
 	// Check that it's a structured error with location info
-	structuredErr, ok := err.(*errz.StructuredError)
+	structuredErr, ok := err.(*object.StructuredError)
 	assert.True(t, ok)
-	assert.Equal(t, structuredErr.Kind, errz.ErrType)
+	assert.Equal(t, structuredErr.Kind, object.ErrType)
+}
+
+func TestRunError_WithLocation(t *testing.T) {
+	ctx := context.Background()
+	// Error on line 2, column 1 (accessing .bar on int)
+	source := `let foo = 42
+foo.bar`
+
+	ast, err := parser.Parse(ctx, source)
+	assert.Nil(t, err)
+
+	c, err := compiler.New(compiler.WithFilename("test.risor"))
+	assert.Nil(t, err)
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	_, err = Run(ctx, code)
+	assert.NotNil(t, err)
+
+	structuredErr, ok := err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+
+	// Verify location is set
+	loc := structuredErr.Location
+	assert.False(t, loc.IsZero(), "location should not be zero")
+	assert.Equal(t, loc.Filename, "test.risor")
+	assert.Equal(t, loc.Line, 2, "error should be on line 2")
+}
+
+func TestRunError_StackTrace(t *testing.T) {
+	ctx := context.Background()
+	// Error in nested function call
+	source := `function inner() {
+	let x = 42
+	return x.bad_attr
+}
+
+function outer() {
+	return inner()
+}
+
+outer()`
+
+	ast, err := parser.Parse(ctx, source)
+	assert.Nil(t, err)
+
+	c, err := compiler.New(compiler.WithFilename("stack.risor"))
+	assert.Nil(t, err)
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	_, err = Run(ctx, code)
+	assert.NotNil(t, err)
+
+	structuredErr, ok := err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+
+	// Verify stack trace is populated
+	stack := structuredErr.Stack
+	assert.GreaterOrEqual(t, len(stack), 2, "stack should have at least 2 frames")
+
+	// First frame should be inner function (where error occurred)
+	assert.Equal(t, stack[0].Function, "inner")
+
+	// Second frame should be outer function (the caller)
+	assert.Equal(t, stack[1].Function, "outer")
+}
+
+func TestRunError_NestedAttributeAccess(t *testing.T) {
+	ctx := context.Background()
+	// Type error: accessing attribute on wrong type inside nested structure
+	source := `let data = {
+	"value": 42
+}
+data.value.bad`
+
+	ast, err := parser.Parse(ctx, source)
+	assert.Nil(t, err)
+
+	c, err := compiler.New(compiler.WithFilename("nested.risor"))
+	assert.Nil(t, err)
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	_, err = Run(ctx, code)
+	assert.NotNil(t, err)
+
+	structuredErr, ok := err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+	assert.Equal(t, structuredErr.Kind, object.ErrType)
+
+	// Verify location points to the nested access line
+	loc := structuredErr.Location
+	assert.Equal(t, loc.Line, 4, "error should be on line 4")
+	assert.Equal(t, loc.Filename, "nested.risor")
+}
+
+func TestRunError_UndefinedMethod(t *testing.T) {
+	ctx := context.Background()
+	source := `let items = [1, 2, 3]
+items.nonexistent()`
+
+	ast, err := parser.Parse(ctx, source)
+	assert.Nil(t, err)
+
+	code, err := compiler.Compile(ast)
+	assert.Nil(t, err)
+
+	_, err = Run(ctx, code)
+	assert.NotNil(t, err)
+
+	structuredErr, ok := err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+
+	// Error should have location
+	assert.False(t, structuredErr.Location.IsZero())
+}
+
+func TestRunError_FriendlyMessage(t *testing.T) {
+	ctx := context.Background()
+	source := `let x = 42
+x.missing`
+
+	ast, err := parser.Parse(ctx, source)
+	assert.Nil(t, err)
+
+	c, err := compiler.New(compiler.WithFilename("friendly.risor"))
+	assert.Nil(t, err)
+	code, err := c.Compile(ast)
+	assert.Nil(t, err)
+
+	_, err = Run(ctx, code)
+	assert.NotNil(t, err)
+
+	structuredErr, ok := err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+
+	// Get friendly message
+	friendly := structuredErr.FriendlyErrorMessage()
+
+	// Should contain the error type and message
+	assert.Contains(t, friendly, "type error")
+	// Should contain location info
+	assert.Contains(t, friendly, "2:")
 }

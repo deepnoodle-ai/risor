@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -106,13 +105,13 @@ func (p *Proxy) GetAttr(name string) (Object, bool) {
 func (p *Proxy) SetAttr(name string, value Object) error {
 	attr, found := p.typ.GetAttribute(name)
 	if !found {
-		return errz.TypeErrorf("type error: %s has no attribute %s", p.typ.Name(), name)
+		return TypeErrorf("type error: %s has no attribute %s", p.typ.Name(), name)
 	}
 	switch attr := attr.(type) {
 	case *GoField:
 		conv, ok := attr.Converter()
 		if !ok {
-			return errz.TypeErrorf("type error: no converter for field %s", name)
+			return TypeErrorf("type error: no converter for field %s", name)
 		}
 		result, err := conv.To(value)
 		if err != nil {
@@ -134,12 +133,12 @@ func (p *Proxy) SetAttr(name string, value Object) error {
 			}
 			return nil
 		} else {
-			return errz.TypeErrorf("type error: cannot set field %s", name)
+			return TypeErrorf("type error: cannot set field %s", name)
 		}
 	case *GoMethod:
-		return errz.TypeErrorf("type error: cannot set method %s", name)
+		return TypeErrorf("type error: cannot set method %s", name)
 	}
-	return errz.TypeErrorf("type error: unknown attribute type")
+	return TypeErrorf("type error: unknown attribute type")
 }
 
 func (p *Proxy) Equals(other Object) Object {
@@ -269,7 +268,7 @@ func NewProxy(obj interface{}) (*Proxy, error) {
 
 	// Is this type proxyable?
 	if !IsProxyableType(typ) {
-		return nil, errz.TypeErrorf("type error: unable to proxy type (%T given)", obj)
+		return nil, TypeErrorf("type error: unable to proxy type (%T given)", obj)
 	}
 
 	// If it's a struct value, convert to a pointer to make it mutable

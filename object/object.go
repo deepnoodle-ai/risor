@@ -22,7 +22,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -228,15 +227,15 @@ func PrintableValue(obj Object) interface{} {
 
 // EvalErrorf returns a Risor Error object containing an eval error.
 func EvalErrorf(format string, args ...interface{}) *Error {
-	return NewError(errz.EvalErrorf(format, args...))
+	return NewError(newEvalErrorf(format, args...))
 }
 
 // ArgsErrorf returns a Risor Error object containing an arguments error.
 func ArgsErrorf(format string, args ...interface{}) *Error {
-	return NewError(errz.ArgsErrorf(format, args...))
+	return NewError(newArgsErrorf(format, args...))
 }
 
 // TypeErrorf returns a Risor Error object containing a type error.
 func TypeErrorf(format string, args ...interface{}) *Error {
-	return NewError(errz.TypeErrorf(format, args...))
+	return NewError(newTypeErrorf(format, args...))
 }

@@ -25,13 +25,13 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 
 	var symbols []protocol.DocumentSymbol
 
-	for _, stmt := range doc.ast.Statements() {
+	for _, stmt := range doc.ast.Stmts {
 		switch stmt := stmt.(type) {
 		case *ast.Var:
-			name, _ := stmt.Value()
+			name := stmt.Name.Name
 			if name != "" {
-				pos := stmt.Token().StartPosition
-				endPos := stmt.Token().EndPosition
+				pos := stmt.Pos()
+				endPos := stmt.End()
 
 				symbols = append(symbols, protocol.DocumentSymbol{
 					Name: name,
@@ -63,10 +63,10 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 		// We could enhance this to traverse into expressions to find function literals
 
 		case *ast.Assign:
-			name := stmt.Name()
+			name := stmt.Name.Name
 			if name != "" {
-				pos := stmt.Token().StartPosition
-				endPos := stmt.Token().EndPosition
+				pos := stmt.Pos()
+				endPos := stmt.End()
 
 				symbols = append(symbols, protocol.DocumentSymbol{
 					Name: name,
@@ -106,7 +106,7 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 }
 
 // getLastToken attempts to get the last token from a statement
-func getLastToken(stmt ast.Statement) token.Token {
+func getLastToken(stmt ast.Stmt) token.Token {
 	// This is a simplified approach - in a real implementation,
 	// you'd want to traverse the AST to find the actual last token
 	return token.Token{} // Return empty token as fallback

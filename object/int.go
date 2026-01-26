@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -68,7 +67,7 @@ func (i *Int) Compare(other Object) (int, error) {
 		}
 		return -1, nil
 	default:
-		return 0, errz.TypeErrorf("type error: unable to compare int and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare int and %s", other.Type())
 	}
 }
 

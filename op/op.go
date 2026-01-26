@@ -47,7 +47,6 @@ const (
 	// Build
 	BuildList   Code = 50
 	BuildMap    Code = 51
-	BuildSet    Code = 52
 	BuildString Code = 53
 	ListAppend  Code = 54 // Append TOS to list at TOS-1
 	ListExtend  Code = 55 // Extend list at TOS-1 with iterable at TOS
@@ -204,7 +203,6 @@ func init() {
 		{BinarySubscr, "BINARY_SUBSCR", 0},
 		{BuildList, "BUILD_LIST", 1},
 		{BuildMap, "BUILD_MAP", 1},
-		{BuildSet, "BUILD_SET", 1},
 		{BuildString, "BUILD_STRING", 1},
 		{Call, "CALL", 1},
 		{CallSpread, "CALL_SPREAD", 0},

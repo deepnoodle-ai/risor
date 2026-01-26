@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/errz"
 )
 
 func TestObjectString(t *testing.T) {
@@ -62,17 +61,17 @@ func TestComparisons(t *testing.T) {
 		{True, False, 1, nil},
 		{False, True, -1, nil},
 		{Nil, Nil, 0, nil},
-		{Nil, True, 0, errz.TypeErrorf("type error: unable to compare nil and bool")},
+		{Nil, True, 0, TypeErrorf("type error: unable to compare nil and bool")},
 		{NewInt(1), NewFloat(1.0), 0, nil},
 		{NewInt(1), NewFloat(2.0), -1, nil},
 		{NewInt(1), NewFloat(0.0), 1, nil},
 		{NewFloat(1.0), NewInt(1), 0, nil},
 		{NewFloat(1.0), NewInt(2), -1, nil},
 		{NewFloat(1.0), NewInt(0), 1, nil},
-		{NewInt(1), NewString("1"), 0, errz.TypeErrorf("type error: unable to compare int and string")},
-		{NewString("1"), NewInt(1), 0, errz.TypeErrorf("type error: unable to compare string and int")},
-		{NewFloat(1.0), NewString("1"), 0, errz.TypeErrorf("type error: unable to compare float and string")},
-		{NewString("1"), NewFloat(1.0), 0, errz.TypeErrorf("type error: unable to compare string and float")},
+		{NewInt(1), NewString("1"), 0, TypeErrorf("type error: unable to compare int and string")},
+		{NewString("1"), NewInt(1), 0, TypeErrorf("type error: unable to compare string and int")},
+		{NewFloat(1.0), NewString("1"), 0, TypeErrorf("type error: unable to compare float and string")},
+		{NewString("1"), NewFloat(1.0), 0, TypeErrorf("type error: unable to compare string and float")},
 		{NewByte(1), NewByte(1), 0, nil},
 		{NewByte(1), NewByte(2), -1, nil},
 		{NewByte(2), NewByte(1), 1, nil},

@@ -1,24 +1,23 @@
-package arg_test
+package object_test
 
 import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
 func TestRequire(t *testing.T) {
 	var err *object.Error
 
-	err = arg.Require(
+	err = object.Require(
 		"foo",
 		1,
 		[]object.Object{object.NewInt(1)},
 	)
 	assert.Nil(t, err)
 
-	err = arg.Require(
+	err = object.Require(
 		"foo",
 		1,
 		[]object.Object{
@@ -30,7 +29,7 @@ func TestRequire(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Equal(t, err.Message().Value(), "args error: foo() takes exactly 1 argument (3 given)")
 
-	err = arg.Require(
+	err = object.Require(
 		"bar",
 		2,
 		[]object.Object{object.NewInt(1)},
@@ -42,7 +41,7 @@ func TestRequire(t *testing.T) {
 func TestRequireRange(t *testing.T) {
 	var err *object.Error
 
-	err = arg.RequireRange(
+	err = object.RequireRange(
 		"foo",
 		1,
 		3,
@@ -50,7 +49,7 @@ func TestRequireRange(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	err = arg.RequireRange(
+	err = object.RequireRange(
 		"foo",
 		1,
 		3,
@@ -64,7 +63,7 @@ func TestRequireRange(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Equal(t, err.Message().Value(), "args error: foo() takes at most 3 arguments (4 given)")
 
-	err = arg.RequireRange(
+	err = object.RequireRange(
 		"foo",
 		1,
 		3,

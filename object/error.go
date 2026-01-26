@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -13,7 +12,7 @@ type Error struct {
 	*base
 	err        error
 	raised     bool
-	structured *errz.StructuredError
+	structured *StructuredError
 }
 
 func (e *Error) Type() Type {
@@ -39,7 +38,7 @@ func (e *Error) Interface() interface{} {
 func (e *Error) Compare(other Object) (int, error) {
 	otherErr, ok := other.(*Error)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare error and %s", other.Type())
+		return 0, TypeErrorf("type error: unable to compare error and %s", other.Type())
 	}
 	thisMsg := e.Message().Value()
 	otherMsg := otherErr.Message().Value()
@@ -161,7 +160,7 @@ func (e *Error) Unwrap() error {
 }
 
 func (e *Error) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for error: %v", opType)
+	return NewError(newTypeErrorf("type error: unsupported operation for error: %v", opType))
 }
 
 func Errorf(format string, a ...interface{}) *Error {
@@ -177,27 +176,27 @@ func Errorf(format string, a ...interface{}) *Error {
 }
 
 func (e *Error) MarshalJSON() ([]byte, error) {
-	return nil, errz.TypeErrorf("type error: unable to marshal error")
+	return nil, TypeErrorf("type error: unable to marshal error")
 }
 
 func NewError(err error) *Error {
 	switch err := err.(type) {
 	case *Error: // unwrap to get the inner error, to avoid unhelpful nesting
 		return &Error{err: err.Unwrap(), raised: true, structured: err.structured}
-	case *errz.StructuredError:
+	case *StructuredError:
 		return &Error{err: err, raised: true, structured: err}
 	default:
 		return &Error{err: err, raised: true}
 	}
 }
 
-// NewStructuredError creates a new Error from a StructuredError.
-func NewStructuredError(se *errz.StructuredError) *Error {
+// NewErrorFromStructured creates a new Error from a StructuredError.
+func NewErrorFromStructured(se *StructuredError) *Error {
 	return &Error{err: se, raised: true, structured: se}
 }
 
 // Structured returns the underlying StructuredError if present.
-func (e *Error) Structured() *errz.StructuredError {
+func (e *Error) Structured() *StructuredError {
 	return e.structured
 }
 

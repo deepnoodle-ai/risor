@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -57,7 +56,7 @@ func (d *DynamicAttr) GetAttr(name string) (Object, bool) {
 }
 
 func (d *DynamicAttr) SetAttr(name string, value Object) error {
-	return errz.TypeErrorf("type error: unable to set attribute on dynamic_attr")
+	return TypeErrorf("type error: unable to set attribute on dynamic_attr")
 }
 
 func (d *DynamicAttr) Cost() int {

@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -181,7 +180,7 @@ func newGoMethod(typ reflect.Type, m reflect.Method) (*GoMethod, error) {
 		inputGoType, err := newGoType(inputType)
 		if err != nil {
 			errMsg := strings.TrimPrefix(err.Error(), "type error: ")
-			return nil, errz.TypeErrorf("type error: (%s).%s has input parameter of type %s; \n%s",
+			return nil, TypeErrorf("type error: (%s).%s has input parameter of type %s; \n%s",
 				typ, m.Name, inputType, errMsg)
 		}
 		method.inputTypes[i] = inputGoType
@@ -196,7 +195,7 @@ func newGoMethod(typ reflect.Type, m reflect.Method) (*GoMethod, error) {
 		outputGoType, err := newGoType(outputType)
 		if err != nil {
 			errMsg := strings.TrimPrefix(err.Error(), "type error: ")
-			return nil, errz.TypeErrorf("type error: (%s).%s has output parameter of type %s; \n%s",
+			return nil, TypeErrorf("type error: (%s).%s has output parameter of type %s; \n%s",
 				typ, m.Name, outputType, errMsg)
 		}
 		method.outputTypes[i] = outputGoType

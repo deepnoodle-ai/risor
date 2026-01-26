@@ -3,7 +3,6 @@ package object
 import (
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -57,7 +56,7 @@ func (c *Cell) RunOperation(opType op.BinaryOpType, right Object) Object {
 }
 
 func (c *Cell) MarshalJSON() ([]byte, error) {
-	return nil, errz.TypeErrorf("type error: unable to marshal cell")
+	return nil, TypeErrorf("type error: unable to marshal cell")
 }
 
 func NewCell(value *Object) *Cell {

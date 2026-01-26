@@ -34,13 +34,9 @@ calculate := func(operation, a, b) {
     return "Unknown operation"
 }
 
-// Array operations
+// Array operations using functional style
 numbers := [1, 2, 3, 4, 5]
-doubled := []
-
-for num in numbers {
-    doubled = append(doubled, num * 2)
-}
+doubled := numbers | map(func(n) { n * 2 })
 
 // Object manipulation
 person := {
@@ -52,6 +48,7 @@ person := {
 // Test various builtins
 println("Config:", config)
 println("Numbers length:", len(numbers))
+println("Doubled:", doubled)
 println("Greeting:", greet("Developer"))
 println("Calculation:", calculate("add", 10, 5))
 
@@ -76,23 +73,26 @@ if (err != nil) {
     println("Result:", result)
 }
 
-// Range operations
-for i in range(3) {
-    println("Index:", i)
-}
-
-for i in range(1, 4) {
-    println("Range 1-4:", i)
-}
-
-// List comprehension style
-squares := []
-for i in range(1, 6) {
-    squares = append(squares, i * i)
-}
+// Functional operations on lists
+squares := [1, 2, 3, 4, 5] | map(func(i) { i * i })
 println("Squares:", squares)
+
+evens := numbers | filter(func(n) { n % 2 == 0 })
+println("Evens:", evens)
 
 // Dictionary access examples
 name := person["name"]
 age := person["age"]
 println("Person info:", name, age)
+
+// Switch expression
+get_day_type := func(day) {
+    switch (day) {
+    case "Saturday", "Sunday":
+        return "weekend"
+    default:
+        return "weekday"
+    }
+}
+println("Monday is a:", get_day_type("Monday"))
+println("Saturday is a:", get_day_type("Saturday"))

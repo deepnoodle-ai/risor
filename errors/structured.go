@@ -1,4 +1,4 @@
-package errz
+package errors
 
 import (
 	"bytes"

@@ -1,7 +1,7 @@
 package vm
 
 import (
-	"github.com/risor-io/risor/errz"
+	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/op"
 )
 
@@ -40,7 +40,7 @@ type StepEvent struct {
 	OpcodeName string
 
 	// Location is the source location of the instruction.
-	Location errz.SourceLocation
+	Location object.SourceLocation
 
 	// StackDepth is the current depth of the value stack.
 	StackDepth int
@@ -59,7 +59,7 @@ type CallEvent struct {
 	ArgCount int
 
 	// Location is the source location of the call site.
-	Location errz.SourceLocation
+	Location object.SourceLocation
 
 	// FrameDepth is the call stack depth after the call.
 	FrameDepth int
@@ -71,7 +71,7 @@ type ReturnEvent struct {
 	FunctionName string
 
 	// Location is the source location of the return.
-	Location errz.SourceLocation
+	Location object.SourceLocation
 
 	// FrameDepth is the call stack depth after returning.
 	FrameDepth int

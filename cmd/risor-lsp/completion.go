@@ -10,9 +10,9 @@ import (
 
 // Risor keywords for completion
 var risorKeywords = []string{
-	"as", "break", "case", "const", "continue", "default", "else",
-	"false", "for", "from", "function", "if", "import", "in", "let", "nil", "not",
-	"range", "return", "struct", "switch", "true",
+	"case", "catch", "const", "default", "else", "false", "finally",
+	"function", "if", "in", "let", "nil", "not", "return", "struct",
+	"switch", "throw", "true", "try",
 }
 
 // Common built-in functions
@@ -25,8 +25,7 @@ var risorBuiltins = []string{
 
 // Common modules
 var risorModules = []string{
-	"base64", "bcrypt", "bytes", "errors", "filepath", "fmt", "json",
-	"math", "rand", "regexp", "strconv", "strings", "time",
+	"math", "rand", "regexp", "strings", "time",
 }
 
 func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
@@ -100,16 +99,16 @@ func extractVariables(program *ast.Program) []string {
 	var variables []string
 	variableSet := make(map[string]bool)
 
-	for _, stmt := range program.Statements() {
+	for _, stmt := range program.Stmts {
 		switch s := stmt.(type) {
 		case *ast.Var:
-			name, _ := s.Value()
+			name := s.Name.Name
 			if name != "" && !variableSet[name] {
 				variables = append(variables, name)
 				variableSet[name] = true
 			}
 		case *ast.Assign:
-			name := s.Name()
+			name := s.Name.Name
 			if name != "" && !variableSet[name] {
 				variables = append(variables, name)
 				variableSet[name] = true
@@ -125,12 +124,12 @@ func extractFunctions(program *ast.Program) []string {
 	var functions []string
 	functionSet := make(map[string]bool)
 
-	for _, stmt := range program.Statements() {
+	for _, stmt := range program.Stmts {
 		switch s := stmt.(type) {
 		case *ast.Assign:
 			// Check if we're assigning a function to a variable
-			if _, ok := s.Value().(*ast.Func); ok {
-				name := s.Name()
+			if _, ok := s.Value.(*ast.Func); ok {
+				name := s.Name.Name
 				if name != "" && !functionSet[name] {
 					functions = append(functions, name)
 					functionSet[name] = true
@@ -138,8 +137,8 @@ func extractFunctions(program *ast.Program) []string {
 			}
 		case *ast.Var:
 			// Check if we're declaring a variable with a function value
-			name, value := s.Value()
-			if _, ok := value.(*ast.Func); ok && name != "" {
+			name := s.Name.Name
+			if _, ok := s.Value.(*ast.Func); ok && name != "" {
 				if !functionSet[name] {
 					functions = append(functions, name)
 					functionSet[name] = true

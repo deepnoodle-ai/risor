@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
+	"github.com/risor-io/risor/errors"
 	"github.com/risor-io/risor/op"
 )
 
@@ -435,13 +435,13 @@ func copyStrings(src []string) []string {
 	return dst
 }
 
-func locationsFromDefs(defs []locationDef) []errz.SourceLocation {
+func locationsFromDefs(defs []locationDef) []errors.SourceLocation {
 	if defs == nil {
 		return nil
 	}
-	locs := make([]errz.SourceLocation, len(defs))
+	locs := make([]errors.SourceLocation, len(defs))
 	for i, def := range defs {
-		locs[i] = errz.SourceLocation{
+		locs[i] = errors.SourceLocation{
 			Filename: def.Filename,
 			Line:     def.Line,
 			Column:   def.Column,
@@ -451,7 +451,7 @@ func locationsFromDefs(defs []locationDef) []errz.SourceLocation {
 	return locs
 }
 
-func locationsToDefs(locs []errz.SourceLocation) []locationDef {
+func locationsToDefs(locs []errors.SourceLocation) []locationDef {
 	if locs == nil {
 		return nil
 	}

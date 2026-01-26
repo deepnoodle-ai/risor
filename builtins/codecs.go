@@ -13,7 +13,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
@@ -62,7 +61,7 @@ func GetCodec(name string) (*Codec, error) {
 }
 
 func Encode(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("encode", 2, args); err != nil {
+	if err := object.Require("encode", 2, args); err != nil {
 		return err
 	}
 	encoding, err := object.AsString(args[1])
@@ -203,7 +202,7 @@ func encodeCsv(ctx context.Context, obj object.Object) object.Object {
 }
 
 func Decode(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("decode", 2, args); err != nil {
+	if err := object.Require("decode", 2, args); err != nil {
 		return err
 	}
 	encoding, err := object.AsString(args[1])

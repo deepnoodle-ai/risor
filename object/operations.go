@@ -1,7 +1,6 @@
 package object
 
 import (
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -17,7 +16,7 @@ func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 
 	comparable, ok := a.(Comparable)
 	if !ok {
-		return nil, errz.TypeErrorf("type error: expected a comparable object (got %s)", a.Type())
+		return nil, TypeErrorf("type error: expected a comparable object (got %s)", a.Type())
 	}
 	value, err := comparable.Compare(b)
 	if err != nil {
@@ -34,7 +33,7 @@ func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 	case op.GreaterThanOrEqual:
 		return NewBool(value >= 0), nil
 	default:
-		return nil, errz.EvalErrorf("eval error: unknown object comparison operator: %d", opType)
+		return nil, EvalErrorf("eval error: unknown object comparison operator: %d", opType)
 	}
 }
 

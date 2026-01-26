@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -290,7 +289,7 @@ func (s *Set) Keys() []HashKey {
 	for _, item := range items {
 		hashable, ok := item.(Hashable)
 		if !ok {
-			panic(errz.TypeErrorf("type error: %s object is unhashable", item.Type()))
+			panic(TypeErrorf("type error: %s object is unhashable", item.Type()))
 		}
 		keys = append(keys, hashable.HashKey())
 	}

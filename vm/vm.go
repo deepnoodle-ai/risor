@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/op"
 )
@@ -614,13 +613,6 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				items[k.(*object.String).Value()] = v
 			}
 			vm.push(object.NewMap(items))
-		case op.BuildSet:
-			count := vm.fetch()
-			items := make([]object.Object, count)
-			for i := uint16(0); i < count; i++ {
-				items[i] = vm.pop()
-			}
-			vm.push(object.NewSet(items))
 		case op.ListAppend:
 			// Append TOS to list at TOS-1
 			item := vm.pop()
@@ -1322,8 +1314,8 @@ func (vm *VirtualMachine) initContext(ctx context.Context) context.Context {
 }
 
 // captureStack builds a stack trace from the current call frames.
-func (vm *VirtualMachine) captureStack() []errz.StackFrame {
-	var frames []errz.StackFrame
+func (vm *VirtualMachine) captureStack() []object.StackFrame {
+	var frames []object.StackFrame
 
 	// Walk through all active frames
 	for i := vm.fp; i >= 0; i-- {
@@ -1361,7 +1353,7 @@ func (vm *VirtualMachine) captureStack() []errz.StackFrame {
 
 		loc := frame.code.LocationAt(ip)
 
-		frames = append(frames, errz.StackFrame{
+		frames = append(frames, object.StackFrame{
 			Function: funcName,
 			Location: loc,
 		})
@@ -1370,9 +1362,9 @@ func (vm *VirtualMachine) captureStack() []errz.StackFrame {
 }
 
 // getCurrentLocation returns the source location of the current instruction.
-func (vm *VirtualMachine) getCurrentLocation() errz.SourceLocation {
+func (vm *VirtualMachine) getCurrentLocation() object.SourceLocation {
 	if vm.activeCode == nil {
-		return errz.SourceLocation{}
+		return object.SourceLocation{}
 	}
 	ip := vm.ip - 1 // Current instruction (ip was already incremented)
 	if ip < 0 {
@@ -1382,18 +1374,18 @@ func (vm *VirtualMachine) getCurrentLocation() errz.SourceLocation {
 }
 
 // runtimeError creates a StructuredError with source location and stack trace.
-func (vm *VirtualMachine) runtimeError(kind errz.ErrorKind, format string, args ...any) *errz.StructuredError {
-	return errz.NewStructuredErrorf(kind, vm.getCurrentLocation(), vm.captureStack(), format, args...)
+func (vm *VirtualMachine) runtimeError(kind object.ErrorKind, format string, args ...any) *object.StructuredError {
+	return object.NewStructuredErrorf(kind, vm.getCurrentLocation(), vm.captureStack(), format, args...)
 }
 
 // typeError creates a type error with location and stack trace.
-func (vm *VirtualMachine) typeError(format string, args ...any) *errz.StructuredError {
-	return vm.runtimeError(errz.ErrType, format, args...)
+func (vm *VirtualMachine) typeError(format string, args ...any) *object.StructuredError {
+	return vm.runtimeError(object.ErrType, format, args...)
 }
 
 // evalError creates an evaluation error with location and stack trace.
-func (vm *VirtualMachine) evalError(format string, args ...any) *errz.StructuredError {
-	return vm.runtimeError(errz.ErrRuntime, format, args...)
+func (vm *VirtualMachine) evalError(format string, args ...any) *object.StructuredError {
+	return vm.runtimeError(object.ErrRuntime, format, args...)
 }
 
 // handleException handles a thrown exception by finding an appropriate handler.

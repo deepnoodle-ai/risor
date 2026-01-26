@@ -40,12 +40,12 @@ func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionPara
 
 // findDefinition finds the definition location of a symbol
 func findDefinition(program *ast.Program, symbol string) *protocol.Location {
-	for _, stmt := range program.Statements() {
+	for _, stmt := range program.Stmts {
 		switch s := stmt.(type) {
 		case *ast.Var:
-			name, _ := s.Value()
+			name := s.Name.Name
 			if name == symbol {
-				pos := s.Token().StartPosition
+				pos := s.Pos()
 				return &protocol.Location{
 					URI: "", // Will be filled in by caller
 					Range: protocol.Range{
@@ -61,8 +61,9 @@ func findDefinition(program *ast.Program, symbol string) *protocol.Location {
 				}
 			}
 		case *ast.Assign:
-			if s.Name() == symbol {
-				pos := s.Token().StartPosition
+			name := s.Name.Name
+			if name == symbol {
+				pos := s.Pos()
 				return &protocol.Location{
 					URI: "", // Will be filled in by caller
 					Range: protocol.Range{
@@ -72,7 +73,7 @@ func findDefinition(program *ast.Program, symbol string) *protocol.Location {
 						},
 						End: protocol.Position{
 							Line:      uint32(pos.LineNumber() - 1),
-							Character: uint32(pos.ColumnNumber() + len(s.Name()) - 1),
+							Character: uint32(pos.ColumnNumber() + len(name) - 1),
 						},
 					},
 				}

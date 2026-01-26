@@ -30,8 +30,8 @@ make update-deps
 # Generate coverage report
 make cover
 
-# Build and install CLI from source (with optional modules)
-cd cmd/risor && go install -tags aws,k8s,vault .
+# Build and install CLI from source
+cd cmd/risor && go install .
 
 # Install VSCode extension locally
 make extension-install
@@ -60,9 +60,9 @@ Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (
 - `parser/` - AST construction (recursive descent parser)
 - `compiler/` - Bytecode generation with symbol table for scope tracking
 - `vm/` - Virtual machine execution
-- `object/` - Type system (67 files) - all Risor values implement `Object` interface
-- `builtins/` - Built-in functions (len, print, type conversions, hash functions)
-- `modules/` - 48+ modules wrapping Go packages and additional functionality
+- `object/` - Type system (~47 files) - all Risor values implement `Object` interface
+- `builtins/` - Built-in functions (type conversions, container ops, encode/decode)
+- `modules/` - 4 modules: math, rand, regexp, time
 
 ### Entry Points
 - **CLI**: `cmd/risor/` - Uses Cobra framework, includes REPL
@@ -71,7 +71,7 @@ Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (
 
 ### Module System
 
-Modules either wrap Go standard library packages (e.g., `base64`, `strings`, `json`) or provide additional functionality (e.g., `aws`, `k8s`, `vault`).
+Modules wrap Go standard library packages (e.g., `math`, `rand`, `regexp`, `time`).
 
 **Module pattern:**
 ```go
@@ -95,13 +95,15 @@ func FunctionName(ctx context.Context, args ...object.Object) object.Object {
 - Return errors with `object.NewError()`
 - Each module should include a `.md` documentation file
 
-### Optional Modules
+### Adding Custom Modules
 
-Optional modules have their own `go.mod` and require separate `go get`. The CLI builds with `-tags aws,k8s,vault` by default. When embedding Risor, add optional modules via:
+When embedding Risor, add custom modules via:
 
 ```go
 env := risor.Builtins()
-env["aws"] = aws.Module()
+env["custom"] = object.NewBuiltinsModule("custom", map[string]object.Object{
+    "myfunc": object.NewBuiltin("myfunc", MyFunc),
+})
 risor.Eval(ctx, source, risor.WithEnv(env))
 ```
 
@@ -121,7 +123,7 @@ risor.Eval(ctx, source, risor.WithEnv(map[string]any{"x": 42}))
 
 // Customized standard library
 env := risor.Builtins()
-delete(env, "os")           // remove module
+delete(env, "math")         // remove module
 env["custom"] = myModule    // add custom module
 risor.Eval(ctx, source, risor.WithEnv(env))
 ```
@@ -140,7 +142,7 @@ risor.Builtins()                 // Returns standard library as map[string]any
 
 ## Go Workspace
 
-This is a monorepo using Go workspaces (`go.work`) with 22 modules. Core module requires Go 1.23.0+.
+This is a monorepo using Go workspaces (`go.work`). Core module requires Go 1.23.0+.
 
 ## CI/CD
 
