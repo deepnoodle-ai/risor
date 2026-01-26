@@ -14,8 +14,8 @@ import (
 )
 
 type (
-	prefixParseFn func() ast.Node
-	infixParseFn  func(ast.Node) ast.Node
+	prefixParseFn func() (ast.Node, bool)
+	infixParseFn  func(ast.Node) (ast.Node, bool)
 )
 
 // statementTerminators defines tokens that can end a statement.
@@ -447,8 +447,8 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 		p.noPrefixParseFnError(p.curToken)
 		return nil
 	}
-	leftExp := prefix()
-	if p.hadNewError() || leftExp == nil {
+	leftExp, ok := prefix()
+	if !ok || leftExp == nil {
 		return nil
 	}
 	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
@@ -459,9 +459,9 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
-		leftExp = infix(leftExp)
-		if p.hadNewError() {
-			break
+		leftExp, ok = infix(leftExp)
+		if !ok {
+			return nil
 		}
 	}
 	// Check for postfix operators (++ or --)
@@ -487,7 +487,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 	return nil
 }
 
-func (p *Parser) illegalToken() ast.Node {
+func (p *Parser) illegalToken() (ast.Node, bool) {
 	p.setError(NewParserError(ErrorOpts{
 		ErrType:       "parse error",
 		Message:       fmt.Sprintf("illegal token %s", p.curToken.Literal),
@@ -496,7 +496,7 @@ func (p *Parser) illegalToken() ast.Node {
 		EndPosition:   p.curToken.EndPosition,
 		SourceCode:    p.l.GetLineText(p.curToken),
 	}))
-	return nil
+	return nil, false
 }
 
 func (p *Parser) setTokenError(t token.Token, msg string, args ...interface{}) ast.Node {

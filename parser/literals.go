@@ -21,7 +21,7 @@ import (
 // - Spread expressions
 // - Reserved keyword handling
 
-func (p *Parser) parseInt() ast.Node {
+func (p *Parser) parseInt() (ast.Node, bool) {
 	tok, lit := p.curToken, p.curToken.Literal
 	var value int64
 	var err error
@@ -41,12 +41,12 @@ func (p *Parser) parseInt() ast.Node {
 			EndPosition:   tok.EndPosition,
 			SourceCode:    p.l.GetLineText(tok),
 		}))
-		return nil
+		return nil, false
 	}
-	return &ast.Int{ValuePos: tok.StartPosition, Literal: lit, Value: value}
+	return &ast.Int{ValuePos: tok.StartPosition, Literal: lit, Value: value}, true
 }
 
-func (p *Parser) parseFloat() ast.Node {
+func (p *Parser) parseFloat() (ast.Node, bool) {
 	tok, lit := p.curToken, p.curToken.Literal
 	value, err := strconv.ParseFloat(lit, 64)
 	if err != nil {
@@ -58,24 +58,24 @@ func (p *Parser) parseFloat() ast.Node {
 			EndPosition:   p.curToken.EndPosition,
 			SourceCode:    p.l.GetLineText(p.curToken),
 		}))
-		return nil
+		return nil, false
 	}
-	return &ast.Float{ValuePos: tok.StartPosition, Literal: lit, Value: value}
+	return &ast.Float{ValuePos: tok.StartPosition, Literal: lit, Value: value}, true
 }
 
-func (p *Parser) parseBoolean() ast.Node {
+func (p *Parser) parseBoolean() (ast.Node, bool) {
 	return &ast.Bool{
 		ValuePos: p.curToken.StartPosition,
 		Literal:  p.curToken.Literal,
 		Value:    p.curTokenIs(token.TRUE),
-	}
+	}, true
 }
 
-func (p *Parser) parseNil() ast.Node {
-	return &ast.Nil{NilPos: p.curToken.StartPosition}
+func (p *Parser) parseNil() (ast.Node, bool) {
+	return &ast.Nil{NilPos: p.curToken.StartPosition}, true
 }
 
-func (p *Parser) parseString() ast.Node {
+func (p *Parser) parseString() (ast.Node, bool) {
 	strToken := p.curToken
 	// STRING (single or double quotes) - plain strings, no interpolation
 	if strToken.Type == token.STRING {
@@ -83,7 +83,7 @@ func (p *Parser) parseString() ast.Node {
 			ValuePos: strToken.StartPosition,
 			Literal:  strToken.Literal,
 			Value:    strToken.Literal,
-		}
+		}, true
 	}
 	// TEMPLATE (backticks) - check for ${expr} interpolation
 	if !strings.Contains(strToken.Literal, "${") {
@@ -91,13 +91,13 @@ func (p *Parser) parseString() ast.Node {
 			ValuePos: strToken.StartPosition,
 			Literal:  strToken.Literal,
 			Value:    strToken.Literal,
-		}
+		}, true
 	}
 	// Template string with ${expr} interpolation
 	tmpl, err := tmpl.Parse(strToken.Literal)
 	if err != nil {
 		p.setTokenError(strToken, "%s", err.Error())
-		return nil
+		return nil, false
 	}
 	var exprs []ast.Expr
 	for _, e := range tmpl.Fragments() {
@@ -107,20 +107,20 @@ func (p *Parser) parseString() ast.Node {
 		tmplAst, err := Parse(p.ctx, e.Value(), WithFilename(p.l.Filename()))
 		if err != nil {
 			p.setTokenError(strToken, "in template interpolation: %s", err.Error())
-			return nil
+			return nil, false
 		}
 		statements := tmplAst.Stmts
 		if len(statements) == 0 {
 			exprs = append(exprs, nil)
 		} else if len(statements) > 1 {
 			p.setTokenError(strToken, "template contains more than one expression")
-			return nil
+			return nil, false
 		} else {
 			stmt := statements[0]
 			expr, ok := stmt.(ast.Expr)
 			if !ok {
 				p.setTokenError(strToken, "template contains an unexpected statement type")
-				return nil
+				return nil, false
 			}
 			exprs = append(exprs, expr)
 		}
@@ -131,17 +131,17 @@ func (p *Parser) parseString() ast.Node {
 		Value:    strToken.Literal,
 		Template: tmpl,
 		Exprs:    exprs,
-	}
+	}, true
 }
 
-func (p *Parser) parseList() ast.Node {
+func (p *Parser) parseList() (ast.Node, bool) {
 	lbrack := p.curToken.StartPosition
 	items := p.parseExprList(token.RBRACKET)
 	if items == nil {
-		return nil
+		return nil, false
 	}
 	rbrack := p.curToken.StartPosition
-	return &ast.List{Lbrack: lbrack, Items: items, Rbrack: rbrack}
+	return &ast.List{Lbrack: lbrack, Items: items, Rbrack: rbrack}, true
 }
 
 // parseExprList parses a comma-separated list of expressions until the end token.
@@ -223,18 +223,18 @@ func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 	return list
 }
 
-func (p *Parser) parseMapOrSet() ast.Node {
+func (p *Parser) parseMapOrSet() (ast.Node, bool) {
 	lbrace := p.curToken.StartPosition
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
-			return nil
+			return nil, false
 		}
 	}
 	// Empty {} turns into an empty map (not a set)
 	if p.peekTokenIs(token.RBRACE) {
 		p.nextToken()
 		rbrace := p.curToken.StartPosition
-		return &ast.Map{Lbrace: lbrace, Items: nil, Rbrace: rbrace}
+		return &ast.Map{Lbrace: lbrace, Items: nil, Rbrace: rbrace}, true
 	}
 	p.nextToken() // move to the first key or spread
 
@@ -243,25 +243,25 @@ func (p *Parser) parseMapOrSet() ast.Node {
 	// Parse first item (could be spread or key-value)
 	item := p.parseMapItem()
 	if item == nil {
-		return nil
+		return nil, false
 	}
 	items = append(items, *item)
 
 	// Parse remaining items
 	for !p.peekTokenIs(token.RBRACE) {
 		if p.cancelled() {
-			return nil
+			return nil, false
 		}
 		if p.peekTokenIs(token.NEWLINE) {
 			p.nextToken()
 			break
 		}
 		if !p.expectPeek("map", token.COMMA) {
-			return nil
+			return nil, false
 		}
 		for p.peekTokenIs(token.NEWLINE) {
 			if err := p.nextToken(); err != nil {
-				return nil
+				return nil, false
 			}
 		}
 		if p.peekTokenIs(token.RBRACE) {
@@ -271,7 +271,7 @@ func (p *Parser) parseMapOrSet() ast.Node {
 
 		item := p.parseMapItem()
 		if item == nil {
-			return nil
+			return nil, false
 		}
 		items = append(items, *item)
 
@@ -281,22 +281,22 @@ func (p *Parser) parseMapOrSet() ast.Node {
 	}
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
-			return nil
+			return nil, false
 		}
 	}
 	if !p.expectPeek("map", token.RBRACE) {
-		return nil
+		return nil, false
 	}
 	rbrace := p.curToken.StartPosition
-	return &ast.Map{Lbrace: lbrace, Items: items, Rbrace: rbrace}
+	return &ast.Map{Lbrace: lbrace, Items: items, Rbrace: rbrace}, true
 }
 
 // parseMapItem parses a single map item: either a spread (...obj) or a key-value pair.
 func (p *Parser) parseMapItem() *ast.MapItem {
 	// Check for spread expression
 	if p.curTokenIs(token.SPREAD) {
-		spreadNode := p.parseSpread()
-		if spreadNode == nil {
+		spreadNode, ok := p.parseSpread()
+		if !ok {
 			return nil
 		}
 		spread, ok := spreadNode.(ast.Expr)
@@ -323,7 +323,7 @@ func (p *Parser) parseMapItem() *ast.MapItem {
 	return &ast.MapItem{Key: key, Value: value}
 }
 
-func (p *Parser) parseFunc() ast.Node {
+func (p *Parser) parseFunc() (ast.Node, bool) {
 	funcPos := p.curToken.StartPosition
 	var ident *ast.Ident
 	if p.peekTokenIs(token.IDENT) { // Read optional function name
@@ -331,18 +331,21 @@ func (p *Parser) parseFunc() ast.Node {
 		ident = p.newIdent(p.curToken)
 	}
 	if !p.expectPeek("function", token.LPAREN) { // Move to the "("
-		return nil
+		return nil, false
 	}
 	lparen := p.curToken.StartPosition
 	defaults, params, restParam := p.parseFuncParams()
 	if defaults == nil { // parseFuncParams encountered an error
-		return nil
+		return nil, false
 	}
 	rparen := p.curToken.StartPosition
 	if !p.expectPeek("function", token.LBRACE) { // move to the "{"
-		return nil
+		return nil, false
 	}
 	body := p.parseBlock()
+	if body == nil {
+		return nil, false
+	}
 	return &ast.Func{
 		Func:      funcPos,
 		Name:      ident,
@@ -352,7 +355,7 @@ func (p *Parser) parseFunc() ast.Node {
 		RestParam: restParam,
 		Rparen:    rparen,
 		Body:      body,
-	}
+	}, true
 }
 
 func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Ident) {
@@ -421,31 +424,31 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 	return defaults, params, restParam
 }
 
-func (p *Parser) parseSpread() ast.Node {
+func (p *Parser) parseSpread() (ast.Node, bool) {
 	ellipsis := p.curToken.StartPosition
 	if err := p.nextToken(); err != nil {
-		return nil
+		return nil, false
 	}
 	// Parse the expression to be spread
 	value := p.parseExpression(PREFIX)
 	if value == nil {
 		p.setTokenError(p.curToken, "expected expression after spread operator")
-		return nil
+		return nil, false
 	}
-	return &ast.Spread{Ellipsis: ellipsis, X: value}
+	return &ast.Spread{Ellipsis: ellipsis, X: value}, true
 }
 
-func (p *Parser) parseNewline() ast.Node {
+func (p *Parser) parseNewline() (ast.Node, bool) {
 	p.nextToken()
-	return nil
+	return nil, true
 }
 
-func (p *Parser) parseReserved() ast.Node {
+func (p *Parser) parseReserved() (ast.Node, bool) {
 	p.setTokenError(p.curToken, "reserved keyword: %s", p.curToken.Literal)
-	return nil
+	return nil, false
 }
 
-func (p *Parser) parseReservedInfix(_ ast.Node) ast.Node {
+func (p *Parser) parseReservedInfix(_ ast.Node) (ast.Node, bool) {
 	p.setTokenError(p.curToken, "reserved operator: %s", p.curToken.Literal)
-	return nil
+	return nil, false
 }

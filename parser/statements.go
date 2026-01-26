@@ -276,7 +276,7 @@ func (p *Parser) parseExpressionStatement() ast.Node {
 	return expr
 }
 
-func (p *Parser) parseAssign(name ast.Node) ast.Node {
+func (p *Parser) parseAssign(name ast.Node) (ast.Node, bool) {
 	opPos := p.curToken.StartPosition
 	op := p.curToken.Literal
 	var ident *ast.Ident
@@ -288,7 +288,7 @@ func (p *Parser) parseAssign(name ast.Node) ast.Node {
 		index = node
 	default:
 		p.setTokenError(p.curToken, "unexpected token for assignment: %s", name.String())
-		return nil
+		return nil, false
 	}
 	switch p.curToken.Type {
 	case token.PLUS_EQUALS, token.MINUS_EQUALS, token.SLASH_EQUALS,
@@ -296,18 +296,18 @@ func (p *Parser) parseAssign(name ast.Node) ast.Node {
 		// this is a valid operator
 	default:
 		p.setTokenError(p.curToken, "unsupported operator for assignment: %s", op)
-		return nil
+		return nil, false
 	}
 	p.nextToken() // move to the RHS value
 	right := p.parseExpression(LOWEST)
 	if right == nil {
 		p.setTokenError(p.curToken, "invalid assignment statement value")
-		return nil
+		return nil, false
 	}
 	if index != nil {
-		return &ast.Assign{Name: nil, Index: index, OpPos: opPos, Op: op, Value: right}
+		return &ast.Assign{Name: nil, Index: index, OpPos: opPos, Op: op, Value: right}, true
 	}
-	return &ast.Assign{Name: ident, Index: nil, OpPos: opPos, Op: op, Value: right}
+	return &ast.Assign{Name: ident, Index: nil, OpPos: opPos, Op: op, Value: right}, true
 }
 
 func (p *Parser) parsePostfix(leftNode ast.Node) ast.Node {
@@ -331,18 +331,18 @@ func (p *Parser) parsePostfix(leftNode ast.Node) ast.Node {
 	}
 }
 
-func (p *Parser) parseTry() ast.Node {
+func (p *Parser) parseTry() (ast.Node, bool) {
 	tryPos := p.curToken.StartPosition
 
 	// Expect opening brace for try block
 	if !p.expectPeek("try statement", token.LBRACE) {
-		return nil
+		return nil, false
 	}
 
 	// Parse try block
 	tryBlock := p.parseBlock()
 	if tryBlock == nil {
-		return nil
+		return nil, false
 	}
 
 	var catchPos token.Position
@@ -364,12 +364,12 @@ func (p *Parser) parseTry() ast.Node {
 
 		// Expect opening brace for catch block
 		if !p.expectPeek("catch block", token.LBRACE) {
-			return nil
+			return nil, false
 		}
 
 		catchBlock = p.parseBlock()
 		if catchBlock == nil {
-			return nil
+			return nil, false
 		}
 	}
 
@@ -380,19 +380,19 @@ func (p *Parser) parseTry() ast.Node {
 
 		// Expect opening brace for finally block
 		if !p.expectPeek("finally block", token.LBRACE) {
-			return nil
+			return nil, false
 		}
 
 		finallyBlock = p.parseBlock()
 		if finallyBlock == nil {
-			return nil
+			return nil, false
 		}
 	}
 
 	// Require at least one of catch or finally
 	if catchBlock == nil && finallyBlock == nil {
 		p.setTokenError(p.curToken, "try statement requires at least one of catch or finally")
-		return nil
+		return nil, false
 	}
 
 	return &ast.Try{
@@ -403,7 +403,7 @@ func (p *Parser) parseTry() ast.Node {
 		CatchBlock:   catchBlock,
 		Finally:      finallyPos,
 		FinallyBlock: finallyBlock,
-	}
+	}, true
 }
 
 func (p *Parser) parseThrow() ast.Node {
