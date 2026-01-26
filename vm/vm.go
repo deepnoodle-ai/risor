@@ -813,17 +813,6 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				}
 			}
 			vm.push(object.NewString(strings.Join(items, "")))
-		case op.Range:
-			iterableObj := vm.pop()
-			iterable, ok := iterableObj.(object.Iterable)
-			if !ok {
-				if herr := vm.tryHandleError(vm.typeError("object is not an iterable (got %s)",
-					iterableObj.Type())); herr != nil {
-					return herr
-				}
-				continue
-			}
-			vm.push(iterable.Iter())
 		case op.Slice:
 			start := vm.pop()
 			stop := vm.pop()
@@ -894,44 +883,6 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			for count < nameCount {
 				vm.push(object.Nil)
 				count++
-			}
-		case op.GetIter:
-			obj := vm.pop()
-			switch obj := obj.(type) {
-			case object.Iterable:
-				vm.push(obj.Iter())
-			case object.Iterator:
-				vm.push(obj)
-			default:
-				if herr := vm.tryHandleError(vm.typeError("object is not iterable (got %s)", obj.Type())); herr != nil {
-					return herr
-				}
-				continue
-			}
-		case op.ForIter:
-			base := vm.ip - 1
-			jumpAmount := vm.fetch()
-			nameCount := vm.fetch()
-			iter := vm.pop().(object.Iterator)
-			if _, ok := iter.Next(ctx); !ok {
-				vm.ip = base + int(jumpAmount)
-			} else {
-				obj, _ := iter.Entry()
-				vm.push(iter)
-				if nameCount == 1 {
-					vm.push(obj.Key())
-				} else if nameCount == 2 {
-					vm.push(obj.Value())
-					vm.push(obj.Key())
-				} else if nameCount == 3 {
-					// Python-style for-in: single variable gets the value
-					vm.push(obj.Value())
-				} else if nameCount != 0 {
-					if herr := vm.tryHandleError(vm.evalError("invalid iteration")); herr != nil {
-						return herr
-					}
-					continue
-				}
 			}
 		case op.Halt:
 			return nil

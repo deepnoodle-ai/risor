@@ -78,53 +78,6 @@ func TestMarshalCode3(t *testing.T) {
 	require.Equal(t, codeA, codeB)
 }
 
-func TestMarshalCode4(t *testing.T) {
-	codeA, err := compileSource(`
-	function mergesort(arr) {
-		let length = len(arr)
-		if length <= 1 {
-			return arr
-		}
-		let mid = length / 2
-		let left = mergesort(arr[:mid])
-		let right = mergesort(arr[mid:])
-		let output = list(length)
-		let i = 0
-		let j = 0
-		let k = 0
-		for i < len(left) {
-			for j < len(right) && right[j] <= left[i] {
-				output[k] = right[j]
-				k++
-				j++
-			}
-			output[k] = left[i]
-			k++
-			i++
-		}
-		for j < len(right) {
-			output[k] = right[j]
-			k++
-			j++
-		}
-		return output
-	}
-	", ".join(mergesort([1, 9, -1, 4, 3, 2, 7, 8, 5, 6, 0]).map(string))
-	`)
-	require.Nil(t, err)
-	data, err := MarshalCode(codeA)
-	require.Nil(t, err)
-	fmt.Println(string(data))
-	codeB, err := UnmarshalCode(data)
-	require.Nil(t, err)
-	// Loops state should not factor in
-	codeA.loops = nil
-	for _, child := range codeA.children {
-		child.loops = nil
-	}
-	require.Equal(t, codeA, codeB)
-}
-
 func TestSymbolTableDefinition(t *testing.T) {
 	table := NewSymbolTable()
 	table.InsertVariable("x")

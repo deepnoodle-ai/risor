@@ -655,38 +655,6 @@ func (n *NotIn) String() string {
 	return out.String()
 }
 
-// Range is an expression node that describes iterating over a container.
-type Range struct {
-	// the "range" token
-	token token.Token
-
-	// the container to iterate over
-	container Node
-}
-
-// NewRange creates a new Range node.
-func NewRange(token token.Token, container Node) *Range {
-	return &Range{token: token, container: container}
-}
-
-func (r *Range) ExpressionNode() {}
-
-func (r *Range) IsExpression() bool { return true }
-
-func (r *Range) Token() token.Token { return r.token }
-
-func (r *Range) Literal() string { return r.token.Literal }
-
-func (r *Range) Container() Node { return r.container }
-
-func (r *Range) String() string {
-	var out bytes.Buffer
-	out.WriteString(r.Literal())
-	out.WriteString(" ")
-	out.WriteString(r.container.String())
-	return out.String()
-}
-
 // PipeForward is an expression node that represents the |> operator.
 // It evaluates x |> f as f(x), enabling left-to-right function composition.
 type PipeForward struct {

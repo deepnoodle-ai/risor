@@ -52,7 +52,6 @@ const (
 	EQ              = "=="
 	FALSE           = "FALSE"
 	FLOAT           = "FLOAT"
-	FOR             = "FOR"
 	GT              = ">"
 	GT_GT           = ">>"
 	GT_EQUALS       = ">="
@@ -98,13 +97,10 @@ const (
 	STRUCT          = "STRUCT"
 	SWITCH          = "switch"
 	TEMPLATE        = "TEMPLATE"
-	TRUE     = "TRUE"
-	NEWLINE  = "EOL"
-	BREAK    = "BREAK"
-	CONTINUE = "CONTINUE"
-	IN       = "IN"
-	RANGE    = "RANGE"
-	TRY      = "TRY"
+	TRUE    = "TRUE"
+	NEWLINE = "EOL"
+	IN      = "IN"
+	TRY     = "TRY"
 	CATCH           = "CATCH"
 	FINALLY         = "FINALLY"
 	THROW           = "THROW"
@@ -112,21 +108,17 @@ const (
 
 // Reserved keywords
 var keywords = map[string]Type{
-	"break":    BREAK,
 	"case":     CASE,
 	"const":    CONST,
-	"continue": CONTINUE,
 	"default":  DEFAULT,
 	"else":     ELSE,
 	"false":    FALSE,
-	"for":      FOR,
 	"function": FUNCTION,
 	"if":       IF,
 	"in":       IN,
 	"let":      LET,
 	"nil":      NIL,
 	"not":      NOT,
-	"range":    RANGE,
 	"return":   RETURN,
 	"struct":   STRUCT,
 	"switch":   SWITCH,

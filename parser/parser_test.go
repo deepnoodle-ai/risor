@@ -150,24 +150,6 @@ func TestConst(t *testing.T) {
 	}
 }
 
-func TestControl(t *testing.T) {
-	tests := []struct {
-		input   string
-		keyword string
-	}{
-		{"continue;", "continue"},
-		{"break;", "break"},
-	}
-	for _, tt := range tests {
-		program, err := Parse(context.Background(), tt.input)
-		require.Nil(t, err)
-		require.Len(t, program.Statements(), 1)
-		control, ok := program.First().(*ast.Control)
-		require.True(t, ok)
-		require.Equal(t, tt.keyword, control.Literal())
-	}
-}
-
 func TestReturn(t *testing.T) {
 	tests := []struct {
 		input   string
@@ -635,7 +617,6 @@ func TestIncompleThings(t *testing.T) {
 		{`function foo( a, b ="steve", `, "parse error: unterminated function parameters"},
 		{`function foo() {`, "parse error: unterminated block statement"},
 		{`switch (foo) { `, "parse error: unterminated switch statement"},
-		{`for let i = 0; i < 5; i++ {`, "parse error: unterminated block statement"},
 		{`{`, "parse error: unexpected end of file while parsing map (expected :)"},
 		{`[`, "parse error: invalid syntax in list expression"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
@@ -800,165 +781,6 @@ func TestGetAttr(t *testing.T) {
 	require.Equal(t, "foo.bar", getAttr.String())
 }
 
-func TestForInLoop(t *testing.T) {
-	tests := []struct {
-		input    string
-		variable string
-		iterable string
-	}{
-		{
-			"for x in [1, 2, 3] { }",
-			"x",
-			"[1, 2, 3]",
-		},
-		{
-			"for item in items { print(item) }",
-			"item",
-			"items",
-		},
-		{
-			"for fruit in fruits { print(fruit) }",
-			"fruit",
-			"fruits",
-		},
-	}
-	for _, tt := range tests {
-		program, err := Parse(context.Background(), tt.input)
-		require.Nil(t, err)
-		require.Len(t, program.Statements(), 1)
-		expr, ok := program.First().(*ast.ForIn)
-		require.True(t, ok)
-		require.Equal(t, tt.variable, expr.Variable().String())
-		require.Equal(t, tt.iterable, expr.Iterable().String())
-	}
-}
-
-func TestForInLoopErrors(t *testing.T) {
-	tests := []struct {
-		name        string
-		input       string
-		expectedErr string
-	}{
-		{
-			name:        "missing iterable",
-			input:       "for x in { }",
-			expectedErr: "unexpected end of file",
-		},
-		{
-			name:        "missing opening brace",
-			input:       "for x in items",
-			expectedErr: "unexpected end of file",
-		},
-		{
-			name:        "missing variable",
-			input:       "for in items { }",
-			expectedErr: "unexpected \"in\"",
-		},
-		{
-			name:        "invalid token after in",
-			input:       "for x in { }",
-			expectedErr: "unexpected end of file",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
-			require.NotNil(t, err)
-			require.Contains(t, err.Error(), tt.expectedErr)
-		})
-	}
-}
-
-func TestForInLoopAST(t *testing.T) {
-	input := "for item in collection { print(item) }"
-	program, err := Parse(context.Background(), input)
-	require.Nil(t, err)
-	require.Len(t, program.Statements(), 1)
-
-	forIn, ok := program.First().(*ast.ForIn)
-	require.True(t, ok)
-
-	// Test all AST node methods
-	require.Equal(t, "for", forIn.Literal())
-	require.Equal(t, "FOR", string(forIn.Token().Type))
-	require.False(t, forIn.IsExpression())
-	require.Equal(t, "item", forIn.Variable().Literal())
-	require.Equal(t, "collection", forIn.Iterable().String())
-	require.NotNil(t, forIn.Consequence())
-
-	// Test String() method
-	expected := "for item in collection print(item)"
-	require.Equal(t, expected, forIn.String())
-}
-
-func TestForInLoopEdgeCases(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		variable string
-		iterable string
-	}{
-		{
-			name:     "nested array access",
-			input:    "for val in arr[0] { }",
-			variable: "val",
-			iterable: "(arr[0])",
-		},
-		{
-			name:     "map access",
-			input:    "for item in data.items { }",
-			variable: "item",
-			iterable: "data.items",
-		},
-		{
-			name:     "complex expression chain",
-			input:    "for x in obj.method().field[0] { }",
-			variable: "x",
-			iterable: "(obj.method().field[0])",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
-			require.Nil(t, err)
-			require.Len(t, program.Statements(), 1)
-			expr, ok := program.First().(*ast.ForIn)
-			require.True(t, ok)
-			require.Equal(t, tt.variable, expr.Variable().String())
-			require.Equal(t, tt.iterable, expr.Iterable().String())
-		})
-	}
-}
-
-func TestForInLoopParseErrorCases(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
-		{
-			name:  "missing variable name",
-			input: "for in items { }",
-		},
-		{
-			name:  "missing 'in' keyword",
-			input: "for x items { }",
-		},
-		{
-			name:  "unterminated - missing brace",
-			input: "for x in items",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
-			require.NotNil(t, err, "Expected parse error for input: %s", tt.input)
-		})
-	}
-}
-
 func TestMultiVar(t *testing.T) {
 	program, err := Parse(context.Background(), "let x, y = [1, 2]")
 	require.Nil(t, err)
@@ -992,14 +814,6 @@ func TestNotIn(t *testing.T) {
 	require.Equal(t, "x", node.Left().String())
 	require.Equal(t, "[1, 2]", node.Right().String())
 	require.Equal(t, "x not in [1, 2]", node.String())
-}
-
-func TestBreak(t *testing.T) {
-	program, err := Parse(context.Background(), "break")
-	require.Nil(t, err)
-	require.Len(t, program.Statements(), 1)
-	_, ok := program.First().(*ast.Control)
-	require.True(t, ok)
 }
 
 func TestBacktick(t *testing.T) {
@@ -1133,7 +947,6 @@ func TestBadInputs(t *testing.T) {
 		{"[1,", `parse error: unexpected end of file while parsing an expression list (expected ])`},
 		{"0?if", `parse error: invalid syntax in ternary if true expression`},
 		{"0?0:", `parse error: invalid syntax in ternary if false expression`},
-		{"range", `parse error: invalid range expression`},
 		{"in", `parse error: invalid syntax (unexpected "in")`},
 		{"x in", `parse error: invalid in expression`},
 		{"switch x { case 1: \xf5\xf51 case 2: 2 default: 3 }", `syntax error: invalid identifier: �`},
@@ -1149,35 +962,6 @@ func TestBadInputs(t *testing.T) {
 		require.NotNil(t, err)
 		require.Equal(t, tt.expected, err.Error())
 	}
-}
-
-func TestRangePrecedence(t *testing.T) {
-	// This confirms the correct precedence of the "range" vs. "call" operators
-	input := `range list(99)`
-
-	// Parse the program, which should be 1 statement in length
-	program, err := Parse(context.Background(), input)
-	require.Nil(t, err)
-	require.Len(t, program.Statements(), 1)
-	stmt := program.First()
-
-	// The top-level of the AST should be a range statement
-	require.IsType(t, &ast.Range{}, stmt)
-	rangeStmt := stmt.(*ast.Range)
-
-	// The container of the range statement should be a call expression
-	require.IsType(t, &ast.Call{}, rangeStmt.Container())
-	callStmt := rangeStmt.Container().(*ast.Call)
-
-	// The function of the call expression should be an identifier (list)
-	require.IsType(t, &ast.Ident{}, callStmt.Function())
-	ident := callStmt.Function().(*ast.Ident)
-	require.Equal(t, "list", ident.String())
-
-	// The argument of the call expression should be an integer
-	require.IsType(t, &ast.Int{}, callStmt.Arguments()[0])
-	intVal := callStmt.Arguments()[0].(*ast.Int)
-	require.Equal(t, int64(99), intVal.Value())
 }
 
 func TestInPrecedence(t *testing.T) {
@@ -1312,56 +1096,4 @@ func TestBitwiseAnd(t *testing.T) {
 	result, err := Parse(context.Background(), input)
 	require.Nil(t, err)
 	require.Equal(t, "(1 & 2)", result.String())
-}
-
-func TestForLoop(t *testing.T) {
-	tests := []struct {
-		input   string
-		initStr string
-		condStr string
-		postStr string
-	}{
-		{
-			"for let i = 0; i < 5; i++ { }",
-			"let i = 0",
-			"(i < 5)",
-			"(i++)",
-		},
-		{
-			"for let i = 2+2; x < i; x-- { }",
-			"let i = (2 + 2)",
-			"(x < i)",
-			"(x--)",
-		},
-		{
-			"for let i = range mymap { }",
-			"",
-			"let i = range mymap",
-			"",
-		},
-		{
-			"for let k, v = range [1,2,3,4] { }",
-			"",
-			"let k, v = range [1, 2, 3, 4]",
-			"",
-		},
-	}
-	for _, tt := range tests {
-		program, err := Parse(context.Background(), tt.input)
-		require.Nil(t, err)
-		require.Len(t, program.Statements(), 1)
-		expr, ok := program.First().(*ast.For)
-		require.True(t, ok)
-		require.Equal(t, tt.condStr, expr.Condition().String())
-		if tt.initStr != "" {
-			require.Equal(t, tt.initStr, expr.Init().String())
-		} else if expr.Init() != nil {
-			t.Fatalf("expected no init statement. got='%v'", expr.Init().String())
-		}
-		if tt.postStr != "" {
-			require.Equal(t, tt.postStr, expr.Post().String())
-		} else if expr.Post() != nil {
-			t.Fatalf("expected no post statement. got='%v'", expr.Post().String())
-		}
-	}
 }

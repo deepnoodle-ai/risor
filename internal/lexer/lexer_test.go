@@ -100,10 +100,8 @@ if(5<10){
 0.5
 0.3
 世界
-for
 2 >= 1
 1 <= 3
-break
 `
 	tests := []struct {
 		expectedType    token.Type
@@ -221,8 +219,6 @@ break
 		{token.NEWLINE, "\n"},
 		{token.IDENT, "世界"},
 		{token.NEWLINE, "\n"},
-		{token.FOR, "for"},
-		{token.NEWLINE, "\n"},
 		{token.INT, "2"},
 		{token.GT_EQUALS, ">="},
 		{token.INT, "1"},
@@ -230,8 +226,6 @@ break
 		{token.INT, "1"},
 		{token.LT_EQUALS, "<="},
 		{token.INT, "3"},
-		{token.NEWLINE, "\n"},
-		{token.BREAK, "break"},
 		{token.NEWLINE, "\n"},
 		{token.EOF, ""},
 	}
@@ -609,7 +603,6 @@ func TestTokenLengths(t *testing.T) {
 		{"111", token.INT, "111", 0, 0, 2},
 		{"1.1", token.FLOAT, "1.1", 0, 0, 2},
 		{`"b"`, token.STRING, "b", 0, 0, 2},
-		{"for", token.FOR, "for", 0, 0, 2},
 		{"let", token.LET, "let", 0, 0, 2},
 		{"false", token.FALSE, "false", 0, 0, 4},
 		{">=", token.GT_EQUALS, ">=", 0, 0, 1},

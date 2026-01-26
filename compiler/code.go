@@ -9,18 +9,6 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
-type loop struct {
-	code        *Code
-	continuePos []int
-	breakPos    []int
-	isRangeLoop bool
-}
-
-func (l *loop) end() {
-	code := l.code
-	code.loops = code.loops[:len(code.loops)-1]
-}
-
 // ExceptionHandler describes a try/catch/finally block for exception handling.
 type ExceptionHandler struct {
 	TryStart     int // IP where try block starts
@@ -54,7 +42,6 @@ type Code struct {
 	exceptionHandlers []*ExceptionHandler
 
 	// Used during compilation only
-	loops      []*loop
 	pipeActive bool
 }
 

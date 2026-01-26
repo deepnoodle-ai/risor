@@ -72,10 +72,10 @@ const (
 	False Code = 81
 	True  Code = 82
 
-	// Iteration
-	ForIter Code = 90
-	GetIter Code = 91
-	Range   Code = 92
+	// Iteration (for loops removed in v2)
+	// ForIter Code = 90
+	// GetIter Code = 91
+	// Range   Code = 92
 
 	// Channels (removed in v2)
 	// Receive Code = 110
@@ -212,8 +212,6 @@ func init() {
 		{ContainsOp, "CONTAINS_OP", 1},
 		{Copy, "COPY", 1},
 		{False, "FALSE", 0},
-		{ForIter, "FOR_ITER", 2},
-		{GetIter, "GET_ITER", 0},
 		{Halt, "HALT", 0},
 		{JumpBackward, "JUMP_BACKWARD", 1},
 		{JumpForward, "JUMP_FORWARD", 1},
@@ -238,7 +236,6 @@ func init() {
 		{PopJumpForwardIfNotNil, "POP_JUMP_FORWARD_IF_NOT_NIL", 1},
 		{PopJumpForwardIfTrue, "POP_JUMP_FORWARD_IF_TRUE", 1},
 		{PopTop, "POP_TOP", 0},
-		{Range, "RANGE", 0},
 		{ReturnValue, "RETURN_VALUE", 0},
 		{Slice, "SLICE", 0},
 		{StoreAttr, "STORE_ATTR", 1},

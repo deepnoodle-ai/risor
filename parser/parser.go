@@ -126,7 +126,6 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.EOF, p.illegalToken)
 	p.registerPrefix(token.FALSE, p.parseBoolean)
 	p.registerPrefix(token.FLOAT, p.parseFloat)
-	p.registerPrefix(token.FOR, p.parseFor)
 	p.registerPrefix(token.FUNCTION, p.parseFunc)
 	p.registerPrefix(token.IDENT, p.parseIdent)
 	p.registerPrefix(token.IF, p.parseIf)
@@ -139,7 +138,6 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.NEWLINE, p.parseNewline)
 	p.registerPrefix(token.NIL, p.parseNil)
 	p.registerPrefix(token.PIPE, p.parsePrefixExpr)
-	p.registerPrefix(token.RANGE, p.parseRange)
 	p.registerPrefix(token.STRING, p.parseString)
 	p.registerPrefix(token.SWITCH, p.parseSwitch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
@@ -318,10 +316,6 @@ func (p *Parser) parseStatement() ast.Node {
 		stmt = p.parseConst()
 	case token.RETURN:
 		stmt = p.parseReturn()
-	case token.BREAK:
-		stmt = p.parseBreak()
-	case token.CONTINUE:
-		stmt = p.parseContinue()
 	case token.THROW:
 		stmt = p.parseThrow()
 	case token.NEWLINE:
@@ -559,14 +553,6 @@ func (p *Parser) parseReturn() *ast.Return {
 		return nil
 	}
 	return ast.NewReturn(returnToken, value)
-}
-
-func (p *Parser) parseBreak() *ast.Control {
-	return ast.NewControl(p.curToken, nil)
-}
-
-func (p *Parser) parseContinue() *ast.Control {
-	return ast.NewControl(p.curToken, nil)
 }
 
 func (p *Parser) parseExpressionStatement() ast.Node {
@@ -1072,165 +1058,6 @@ func (p *Parser) parseIf() ast.Node {
 	return ast.NewIf(ifToken, cond, consequence, alternative)
 }
 
-func (p *Parser) parseFor() ast.Node {
-	forToken := p.curToken
-	p.nextToken() // Move past 'for'
-
-	// Check for simple form: "for { ... }"
-	if p.curTokenIs(token.LBRACE) {
-		consequence := p.parseBlock()
-		if consequence == nil {
-			return nil
-		}
-		return ast.NewSimpleFor(forToken, consequence)
-	}
-
-	// Check for "for x in iterable" or "for i, v in iterable" form
-	if p.curTokenIs(token.IDENT) {
-		// Collect variable identifiers
-		variables := []*ast.Ident{ast.NewIdent(p.curToken)}
-
-		// Check for comma-separated variables: "for i, v in ..."
-		for p.peekTokenIs(token.COMMA) {
-			p.nextToken() // Move to ','
-			if !p.expectPeek("for-in loop", token.IDENT) {
-				return nil
-			}
-			variables = append(variables, ast.NewIdent(p.curToken))
-		}
-
-		// Now check for 'in' keyword
-		if p.peekTokenIs(token.IN) {
-			p.nextToken() // Move to 'in'
-			p.nextToken() // Move past 'in'
-
-			// Parse the iterable expression
-			iterable := p.parseExpression(LOWEST)
-			if iterable == nil {
-				p.setTokenError(p.curToken, "invalid iterable in for-in loop")
-				return nil
-			}
-
-			// Expect opening brace directly
-			if !p.expectPeek("for-in loop", token.LBRACE) {
-				return nil
-			}
-
-			consequence := p.parseBlock()
-			if consequence == nil {
-				return nil
-			}
-
-			return ast.NewForIn(forToken, variables, iterable, consequence)
-		}
-
-		// Not a for-in loop, need to backtrack and continue with regular for loop parsing
-		// But we've consumed tokens... we need a different approach
-		// Actually, if we got here with multiple variables but no 'in', it's a syntax error
-		if len(variables) > 1 {
-			p.setTokenError(p.curToken, "expected 'in' keyword after comma-separated variables in for loop")
-			return nil
-		}
-		// Single variable without 'in' - fall through to regular for loop parsing
-		// We need to "undo" by treating the identifier as part of init statement
-	}
-
-	// Parse the initialization or condition
-	var init, condition, post ast.Node
-	if !p.curTokenIs(token.SEMICOLON) {
-		init = p.parseStatement()
-		if init == nil {
-			p.setTokenError(p.curToken, "invalid for loop expression")
-			return nil
-		}
-	}
-
-	// Check for condition-only form: "for condition { ... }"
-	if p.peekTokenIs(token.LBRACE) {
-		p.nextToken()
-		consequence := p.parseBlock()
-		if consequence == nil {
-			return nil
-		}
-		return ast.NewFor(forToken, init, consequence, nil, nil)
-	}
-
-	// Check if the init statement is a range statement
-	var isRangeLoop bool
-	switch initNode := init.(type) {
-	case *ast.Var:
-		_, expr := initNode.Value()
-		if _, ok := expr.(*ast.Range); ok {
-			isRangeLoop = true
-		}
-	case *ast.MultiVar:
-		_, expr := initNode.Value()
-		if _, ok := expr.(*ast.Range); ok {
-			isRangeLoop = true
-		}
-	}
-
-	if isRangeLoop {
-		// This is a range-based for loop
-		if !p.expectPeek("for range loopx", token.LBRACE) {
-			return nil
-		}
-		consequence := p.parseBlock()
-		if consequence == nil {
-			return nil
-		}
-		// Use the init node (which contains the range expression) as the condition
-		return ast.NewFor(forToken, init, consequence, nil, nil)
-	}
-
-	// If we've reached here, we're dealing with a three-part for loop
-	if !p.curTokenIs(token.SEMICOLON) {
-		p.setTokenError(p.curToken, "expected semicolon after for loop initialization")
-		return nil
-	}
-	p.nextToken() // Move past the first semicolon
-
-	// Parse the condition
-	if !p.curTokenIs(token.SEMICOLON) {
-		condition = p.parseExpression(LOWEST)
-		if condition == nil {
-			p.setTokenError(p.curToken, "invalid for loop condition")
-			return nil
-		}
-	}
-	if !p.expectPeek("for loop", token.SEMICOLON) {
-		return nil
-	}
-	p.nextToken() // Move past the second semicolon
-
-	// Parse the post statement
-	if !p.curTokenIs(token.LBRACE) {
-		if p.curTokenIs(token.IDENT) && (p.peekTokenIs(token.PLUS_PLUS) || p.peekTokenIs(token.MINUS_MINUS)) {
-			identToken := p.curToken
-			p.nextToken()
-			post = ast.NewPostfix(identToken, p.curToken.Literal)
-		} else {
-			post = p.parseStatement()
-		}
-		if post == nil {
-			p.setTokenError(p.curToken, "invalid for loop post statement")
-			return nil
-		}
-	}
-
-	// Expect the opening brace of the loop body
-	if !p.expectPeek("for loop", token.LBRACE) {
-		return nil
-	}
-
-	consequence := p.parseBlock()
-	if consequence == nil {
-		return nil
-	}
-
-	return ast.NewFor(forToken, condition, consequence, init, post)
-}
-
 func (p *Parser) parseBlock() *ast.Block {
 	blockToken := p.curToken // Should be '{'
 	statements := []ast.Node{}
@@ -1698,23 +1525,6 @@ func (p *Parser) parseNotIn(leftNode ast.Node) ast.Node {
 	}
 
 	return ast.NewNotIn(notToken, left, right)
-}
-
-func (p *Parser) parseRange() ast.Node {
-	rangeToken := p.curToken
-	if err := p.nextToken(); err != nil {
-		return nil
-	}
-	if p.curTokenIs(token.LBRACE) {
-		p.setTokenError(p.curToken, "invalid range expression (unexpected \"{\")")
-		return nil
-	}
-	container := p.parseExpression(PREFIX)
-	if container == nil {
-		p.setTokenError(p.curToken, "invalid range expression")
-		return nil
-	}
-	return ast.NewRange(rangeToken, container)
 }
 
 func (p *Parser) parseMapOrSet() ast.Node {
