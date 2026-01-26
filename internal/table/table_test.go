@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/stretchr/testify/require"
 )
 
 func TestTable(t *testing.T) {
@@ -27,7 +27,7 @@ func TestTable(t *testing.T) {
 | a       |    b | c       |
 +---------+------+---------+
 `
-	require.Equal(t, strings.TrimSpace(expected)+"\n", buf.String())
+	assert.Equal(t, buf.String(), strings.TrimSpace(expected)+"\n")
 }
 
 func TestColoredTable(t *testing.T) {
@@ -61,12 +61,12 @@ func TestColoredTable(t *testing.T) {
 
 	// Simple validation that color codes don't break alignment
 	lines := strings.Split(result, "\n")
-	require.True(t, len(lines) >= 5, "Table should have at least 5 lines")
+	assert.True(t, len(lines) >= 5, "Table should have at least 5 lines")
 
 	// Check all lines have the same length
 	expectedLength := len(lines[0])
 	for i := 1; i < len(lines)-1; i++ { // Skip last line which might be empty
-		require.Equal(t, expectedLength, len(stripAnsi(lines[i])),
+		assert.Equal(t, len(stripAnsi(lines[i])), expectedLength,
 			"Line %d has incorrect length after stripping ANSI codes", i)
 	}
 }

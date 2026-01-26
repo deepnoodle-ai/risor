@@ -214,6 +214,16 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 				return ls.Each(ctx, args[0])
 			},
 		}, true
+	case "reduce":
+		return &Builtin{
+			name: "list.reduce",
+			fn: func(ctx context.Context, args ...Object) Object {
+				if len(args) != 2 {
+					return NewArgsError("list.reduce", 2, len(args))
+				}
+				return ls.Reduce(ctx, args[0], args[1])
+			},
+		}, true
 	}
 	return nil, false
 }
@@ -321,6 +331,43 @@ func (ls *List) Each(ctx context.Context, fn Object) Object {
 		}
 	}
 	return Nil
+}
+
+func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) Object {
+	callFunc, found := GetCallFunc(ctx)
+	if !found {
+		return EvalErrorf("eval error: list.reduce() context did not contain a call function")
+	}
+	switch obj := fn.(type) {
+	case *Builtin:
+		accumulator := initial
+		for _, value := range ls.items {
+			result := obj.fn(ctx, accumulator, value)
+			if IsError(result) {
+				return result
+			}
+			accumulator = result
+		}
+		return accumulator
+	case *Function:
+		accumulator := initial
+		reduceArgs := make([]Object, 2)
+		for _, value := range ls.items {
+			reduceArgs[0] = accumulator
+			reduceArgs[1] = value
+			result, err := callFunc(ctx, obj, reduceArgs)
+			if err != nil {
+				return Errorf(err.Error())
+			}
+			if IsError(result) {
+				return result
+			}
+			accumulator = result
+		}
+		return accumulator
+	default:
+		return TypeErrorf("type error: list.reduce() expected a function (%s given)", obj.Type())
+	}
 }
 
 // Append adds an item at the end of the list.

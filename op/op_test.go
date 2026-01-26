@@ -3,12 +3,12 @@ package op
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestGetInfo(t *testing.T) {
 	info := GetInfo(LoadClosure)
-	require.Equal(t, "LOAD_CLOSURE", info.Name)
-	require.Equal(t, 2, info.OperandCount)
-	require.Equal(t, LoadClosure, info.Code)
+	assert.Equal(t, info.Name, "LOAD_CLOSURE")
+	assert.Equal(t, info.OperandCount, 2)
+	assert.Equal(t, info.Code, LoadClosure)
 }

@@ -11,7 +11,12 @@ import (
 func main() {
 	ctx := context.Background()
 	script := "math.sqrt(input)"
-	result, err := risor.Eval(ctx, script, risor.WithGlobal("input", 4))
+
+	// Start with the standard library and add custom variables
+	env := risor.Builtins()
+	env["input"] = 4
+
+	result, err := risor.Eval(ctx, script, risor.WithEnv(env))
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -3,7 +3,7 @@ package object
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestListInsert(t *testing.T) {
@@ -14,16 +14,16 @@ func TestListInsert(t *testing.T) {
 	list := NewList([]Object{one})
 
 	list.Insert(5, two)
-	require.Equal(t, []Object{one, two}, list.Value())
+	assert.Equal(t, list.Value(), []Object{one, two})
 
 	list.Insert(-10, thr)
-	require.Equal(t, []Object{thr, one, two}, list.Value())
+	assert.Equal(t, list.Value(), []Object{thr, one, two})
 
 	list.Insert(1, two)
-	require.Equal(t, []Object{thr, two, one, two}, list.Value())
+	assert.Equal(t, list.Value(), []Object{thr, two, one, two})
 
 	list.Insert(0, two)
-	require.Equal(t, []Object{two, thr, two, one, two}, list.Value())
+	assert.Equal(t, list.Value(), []Object{two, thr, two, one, two})
 }
 
 func TestListPop(t *testing.T) {
@@ -34,14 +34,14 @@ func TestListPop(t *testing.T) {
 	list := NewList([]Object{zero, one, two})
 
 	val, ok := list.Pop(1).(*String)
-	require.True(t, ok)
-	require.Equal(t, "1", val.Value())
+	assert.True(t, ok)
+	assert.Equal(t, val.Value(), "1")
 
 	val, ok = list.Pop(1).(*String)
-	require.True(t, ok)
-	require.Equal(t, "2", val.Value())
+	assert.True(t, ok)
+	assert.Equal(t, val.Value(), "2")
 
 	err, ok := list.Pop(1).(*Error)
-	require.True(t, ok)
-	require.Equal(t, "index error: index out of range: 1", err.Message().Value())
+	assert.True(t, ok)
+	assert.Equal(t, err.Message().Value(), "index error: index out of range: 1")
 }

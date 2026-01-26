@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func hasModuleFunc(dir string) bool {
@@ -50,7 +50,7 @@ func TestModuleDocs(t *testing.T) {
 	// All modules that have a Module() function should also have a markdown
 	// documentation file in the same directory
 	mods, err := os.ReadDir("../../modules")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	for _, mod := range mods {
 		if mod.IsDir() {
 			name := mod.Name()
@@ -62,11 +62,11 @@ func TestModuleDocs(t *testing.T) {
 				filename := fmt.Sprintf("%s.md", name)
 				docPath := filepath.Join("../..", "modules", name, filename)
 				md, err := readMarkdown(docPath)
-				require.Nil(t, err, "Expected module markdown doc to exist at %s", docPath)
+				assert.Nil(t, err, "Expected module markdown doc to exist at %s", docPath)
 				mdText := string(md)
 				mdLines := strings.Split(mdText, "\n")
-				require.True(t, len(mdLines) > 1, "Expected module markdown to have more content")
-				require.Equal(t, "# "+name, mdLines[0], "Expected module markdown to start with '# %s'", name)
+				assert.True(t, len(mdLines) > 1, "Expected module markdown to have more content")
+				assert.Equal(t, mdLines[0], "# "+name, "Expected module markdown to start with '# %s'", name)
 			})
 		}
 	}

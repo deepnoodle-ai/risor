@@ -100,18 +100,42 @@ func FunctionName(ctx context.Context, args ...object.Object) object.Object {
 Optional modules have their own `go.mod` and require separate `go get`. The CLI builds with `-tags aws,k8s,vault` by default. When embedding Risor, add optional modules via:
 
 ```go
-risor.Eval(ctx, source, risor.WithGlobals(map[string]any{
-    "aws": aws.Module(),
-}))
+env := risor.Builtins()
+env["aws"] = aws.Module()
+risor.Eval(ctx, source, risor.WithEnv(env))
 ```
 
 ### Configuration Options
 
+By default, the Risor environment is empty (secure by default). Use `Builtins()` for the standard library:
+
 ```go
-risor.WithGlobal(name, value)     // Add single global
-risor.WithGlobals(map[string]any) // Add multiple globals
-risor.WithoutDefaultGlobals()     // Disable standard library
-risor.WithConcurrency()           // Enable goroutines/channels
+// Empty environment (default)
+risor.Eval(ctx, "1 + 2")
+
+// With standard library
+risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
+
+// Custom environment
+risor.Eval(ctx, source, risor.WithEnv(map[string]any{"x": 42}))
+
+// Customized standard library
+env := risor.Builtins()
+delete(env, "os")           // remove module
+env["custom"] = myModule    // add custom module
+risor.Eval(ctx, source, risor.WithEnv(env))
+```
+
+**Options:**
+```go
+risor.WithEnv(map[string]any)    // Provide environment variables
+risor.WithFilename(string)       // Set filename for error messages
+risor.WithObserver(Observer)     // Set execution observer for profiling/debugging
+```
+
+**Helpers:**
+```go
+risor.Builtins()                 // Returns standard library as map[string]any
 ```
 
 ## Go Workspace

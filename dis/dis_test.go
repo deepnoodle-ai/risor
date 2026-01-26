@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
 )
 
 func TestFunctionDissasembly(t *testing.T) {
@@ -22,15 +22,16 @@ func TestFunctionDissasembly(t *testing.T) {
 		error("kaboom")
 	}`
 	ast, err := parser.Parse(context.Background(), src)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	code, err := compiler.Compile(ast, compiler.WithGlobalNames([]string{"try", "error"}))
-	require.Nil(t, err)
-	require.Equal(t, 1, code.ConstantsCount())
+	assert.Nil(t, err)
+	assert.Equal(t, code.ConstantsCount(), 1)
 
-	f := code.Constant(0)
-	require.IsType(t, &compiler.Function{}, f)
-	instructions, err := Disassemble(f.(*compiler.Function).Code())
-	require.Nil(t, err)
+	c := code.Constant(0)
+	f, ok := c.(*compiler.Function)
+	assert.True(t, ok)
+	instructions, err := Disassemble(f.Code())
+	assert.Nil(t, err)
 
 	var buf bytes.Buffer
 	Print(instructions, &buf)
@@ -48,5 +49,5 @@ func TestFunctionDissasembly(t *testing.T) {
 |      9 | RETURN_VALUE |          |          |
 +--------+--------------+----------+----------+
 `)
-	require.Equal(t, expected+"\n", result)
+	assert.Equal(t, result, expected+"\n")
 }

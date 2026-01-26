@@ -23,7 +23,7 @@ func main() {
 	// Return the result (print not available in sandboxed mode)
 	{"x": c.X, "vector": c}
 	`
-	_, err := risor.Eval(context.Background(), src, risor.WithGlobal("Engine", &Engine{}))
+	_, err := risor.Eval(context.Background(), src, risor.WithEnv(map[string]any{"Engine": &Engine{}}))
 	if err != nil {
 		log.Fatal(err)
 	}

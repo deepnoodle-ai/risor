@@ -3,7 +3,6 @@ go 1.25
 use (
 	.
 	./cmd/risor
-	./cmd/risor-api
 	./cmd/risor-docs
 	./cmd/risor-lsp
 	./examples/go/struct

@@ -3,7 +3,7 @@ package object
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestIntCompare(t *testing.T) {
@@ -25,8 +25,8 @@ func TestIntCompare(t *testing.T) {
 	}
 	for _, tc := range tests {
 		result, err := tc.first.Compare(tc.second)
-		require.Nil(t, err)
-		require.Equal(t, tc.expected, result,
+		assert.Nil(t, err)
+		assert.Equal(t, result, tc.expected,
 			"first: %v, second: %v", tc.first, tc.second)
 	}
 }
@@ -49,17 +49,17 @@ func TestIntEquals(t *testing.T) {
 	}
 	for _, tc := range tests {
 		result, ok := tc.first.Equals(tc.second).(*Bool)
-		require.True(t, ok)
-		require.Equal(t, tc.expected, result.Value(),
+		assert.True(t, ok)
+		assert.Equal(t, result.Value(), tc.expected,
 			"first: %v, second: %v", tc.first, tc.second)
 	}
 }
 
 func TestIntBasics(t *testing.T) {
 	value := NewInt(-3)
-	require.Equal(t, INT, value.Type())
-	require.Equal(t, int64(-3), value.Value())
-	require.Equal(t, "-3", value.String())
-	require.Equal(t, "-3", value.Inspect())
-	require.Equal(t, int64(-3), value.Interface())
+	assert.Equal(t, value.Type(), INT)
+	assert.Equal(t, value.Value(), int64(-3))
+	assert.Equal(t, value.String(), "-3")
+	assert.Equal(t, value.Inspect(), "-3")
+	assert.Equal(t, value.Interface(), int64(-3))
 }

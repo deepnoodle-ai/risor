@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // Test looking up values succeeds, then fails
@@ -34,6 +34,6 @@ func TestPosition(t *testing.T) {
 		},
 	}
 	// Switches to 1-indexed
-	require.Equal(t, 3, tok.StartPosition.LineNumber())
-	require.Equal(t, 1, tok.StartPosition.ColumnNumber())
+	assert.Equal(t, tok.StartPosition.LineNumber(), 3)
+	assert.Equal(t, tok.StartPosition.ColumnNumber(), 1)
 }

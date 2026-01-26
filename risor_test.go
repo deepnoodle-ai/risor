@@ -2,29 +2,25 @@ package risor
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 
-	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/parser"
-	"github.com/risor-io/risor/vm"
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestBasicUsage(t *testing.T) {
+	// By default, the environment is empty
 	result, err := Eval(context.Background(), "1 + 1")
-	require.Nil(t, err)
-	require.Equal(t, int64(2), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(2))
 }
 
-func TestConfirmNoBuiltins(t *testing.T) {
-	type testCase struct {
+func TestEmptyEnvByDefault(t *testing.T) {
+	// Verify that the environment is empty by default (no builtins available)
+	testCases := []struct {
 		input       string
 		expectedErr string
-	}
-	testCases := []testCase{
+	}{
 		{
 			input:       "keys({foo: 1})",
 			expectedErr: "compile error: undefined variable \"keys\"\n\nlocation: unknown:1:1 (line 1, column 1)",
@@ -37,20 +33,24 @@ func TestConfirmNoBuiltins(t *testing.T) {
 			input:       "string(42)",
 			expectedErr: "compile error: undefined variable \"string\"\n\nlocation: unknown:1:1 (line 1, column 1)",
 		},
+		{
+			input:       "math.abs(-1)",
+			expectedErr: "compile error: undefined variable \"math\"\n\nlocation: unknown:1:1 (line 1, column 1)",
+		},
 	}
 	for _, tc := range testCases {
-		_, err := Eval(context.Background(), tc.input, WithoutDefaultGlobals())
-		require.NotNil(t, err)
-		require.Equal(t, tc.expectedErr, err.Error())
+		_, err := Eval(context.Background(), tc.input)
+		assert.NotNil(t, err)
+		assert.Equal(t, err.Error(), tc.expectedErr)
 	}
 }
 
-func TestDefaultGlobals(t *testing.T) {
-	type testCase struct {
+func TestWithBuiltins(t *testing.T) {
+	// Test that Builtins() provides the standard library
+	testCases := []struct {
 		input    string
 		expected any
-	}
-	testCases := []testCase{
+	}{
 		{
 			input:    "keys({foo: 1})",
 			expected: []any{"foo"},
@@ -67,181 +67,62 @@ func TestDefaultGlobals(t *testing.T) {
 			input:    "string(42)",
 			expected: "42",
 		},
-	}
-	for _, tc := range testCases {
-		result, err := Eval(context.Background(), tc.input)
-		require.Nil(t, err)
-		require.Equal(t, tc.expected, result)
-	}
-}
-
-func TestWithDenyList(t *testing.T) {
-	type testCase struct {
-		input       string
-		expectedErr error
-	}
-	testCases := []testCase{
 		{
-			input:       "keys({foo: 1})",
-			expectedErr: nil,
-		},
-		{
-			input:       "any([0, 0, 1])",
-			expectedErr: errors.New("compile error: undefined variable \"any\"\n\nlocation: unknown:1:1 (line 1, column 1)"),
-		},
-		{
-			input:       "math.abs(-1)",
-			expectedErr: errors.New("compile error: undefined variable \"math\"\n\nlocation: unknown:1:1 (line 1, column 1)"),
+			input:    "math.abs(-1)",
+			expected: int64(1),
 		},
 	}
 	for _, tc := range testCases {
-		_, err := Eval(context.Background(), tc.input, WithoutGlobals("any", "math"))
-		// t.Logf("want: %q; got: %v", tc.expectedErr, err)
-		if tc.expectedErr != nil {
-			require.NotNil(t, err)
-			require.Equal(t, tc.expectedErr.Error(), err.Error())
-			continue
-		}
-		require.Nil(t, err)
+		result, err := Eval(context.Background(), tc.input, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		assert.Equal(t, result, tc.expected)
 	}
 }
 
-func TestWithoutDefaultGlobals(t *testing.T) {
-	_, err := Eval(context.Background(), "json.marshal(42)", WithoutDefaultGlobals())
-	require.NotNil(t, err)
-	require.Equal(t, errors.New("compile error: undefined variable \"json\"\n\nlocation: unknown:1:1 (line 1, column 1)"), err)
+func TestWithEnv(t *testing.T) {
+	// Test providing custom environment
+	result, err := Eval(context.Background(), "x + y", WithEnv(map[string]any{
+		"x": int64(10),
+		"y": int64(20),
+	}))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(30))
 }
 
-func TestWithoutDefaultGlobal(t *testing.T) {
-	_, err := Eval(context.Background(), "json.marshal(42)", WithoutGlobal("json"))
-	require.NotNil(t, err)
-	require.Equal(t, errors.New("compile error: undefined variable \"json\"\n\nlocation: unknown:1:1 (line 1, column 1)"), err)
-}
-
-func TestEvalCode(t *testing.T) {
-	ctx := context.Background()
-
-	source := `
-	let x = 2
-	let y = 3
-	function add(a, b) { a + b }
-	let result = add(x, y)
-	x = 99
-	result
-	`
-
-	ast, err := parser.Parse(ctx, source)
-	require.Nil(t, err)
-	code, err := compiler.Compile(ast)
-	require.Nil(t, err)
-
-	// Should be able to evaluate the precompiled code any number of times
-	for i := 0; i < 100; i++ {
-		result, err := EvalCode(ctx, code)
-		require.Nil(t, err)
-		require.Equal(t, object.NewInt(5), result)
-	}
-}
-
-func TestCall(t *testing.T) {
-	ctx := context.Background()
-	source := `
-	function add(a, b) { a + b }
-	`
-	ast, err := parser.Parse(ctx, source)
-	require.Nil(t, err)
-	code, err := compiler.Compile(ast)
-	require.Nil(t, err)
-
-	result, err := Call(ctx, code, "add", []object.Object{
-		object.NewInt(9),
-		object.NewInt(1),
-	})
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result)
-}
-
-func TestWithoutGlobal1(t *testing.T) {
-	cfg := newConfig(
-		WithoutDefaultGlobals(),
-		WithGlobals(map[string]any{
-			"foo": object.NewInt(1),
-			"bar": object.NewInt(2),
-		}),
-		WithoutGlobal("bar"),
+func TestWithEnvAdditive(t *testing.T) {
+	// Test that multiple WithEnv calls are additive
+	result, err := Eval(context.Background(), "x + y",
+		WithEnv(map[string]any{"x": int64(10)}),
+		WithEnv(map[string]any{"y": int64(20)}),
 	)
-	require.Equal(t, map[string]any{
-		"foo": object.NewInt(1),
-	}, cfg.Globals())
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(30))
 }
 
-func TestWithoutGlobal2(t *testing.T) {
-	cfg := newConfig(
-		WithoutDefaultGlobals(),
-		WithGlobals(map[string]any{
-			"foo": object.NewInt(1),
-			"bar": object.NewInt(2),
-		}),
-		WithoutGlobal("xyz"),
+func TestWithEnvOverride(t *testing.T) {
+	// Test that later WithEnv calls override earlier ones
+	result, err := Eval(context.Background(), "x",
+		WithEnv(map[string]any{"x": int64(10)}),
+		WithEnv(map[string]any{"x": int64(99)}),
 	)
-	require.Equal(t, map[string]any{
-		"foo": object.NewInt(1),
-		"bar": object.NewInt(2),
-	}, cfg.Globals())
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(99))
 }
 
-func TestWithoutGlobal3(t *testing.T) {
-	cfg := newConfig(
-		WithGlobal("foo", object.NewInt(1)),
-		WithoutGlobal("foo"),
-	)
-	_, hasFoo := cfg.Globals()["foo"]
-	require.False(t, hasFoo)
-}
+func TestCustomizeBuiltins(t *testing.T) {
+	// Test that users can customize the standard library
+	env := Builtins()
+	delete(env, "math") // Remove a module
+	env["custom"] = int64(42)
 
-func TestWithoutGlobal4(t *testing.T) {
-	cfg := newConfig(
-		WithoutDefaultGlobals(),
-		WithGlobals(map[string]any{
-			"foo": object.NewBuiltinsModule("foo", map[string]object.Object{
-				"bar": object.NewBuiltinsModule("bar", map[string]object.Object{
-					"baz": object.NewInt(1),
-					"qux": object.NewInt(2),
-				}),
-			}),
-		}),
-		WithoutGlobal("foo.bar.baz"),
-	)
-	require.Equal(t, map[string]any{
-		"foo": object.NewBuiltinsModule("foo", map[string]object.Object{
-			"bar": object.NewBuiltinsModule("bar", map[string]object.Object{
-				"qux": object.NewInt(2),
-			}),
-		}),
-	}, cfg.Globals())
-}
+	// math should not be available
+	_, err := Eval(context.Background(), "math.abs(-1)", WithEnv(env))
+	assert.NotNil(t, err)
 
-func TestWithGlobalOverride(t *testing.T) {
-	cfg := newConfig(
-		WithoutDefaultGlobals(),
-		WithGlobals(map[string]any{
-			"foo": object.NewInt(1),
-			"bar": object.NewBuiltinsModule("bar", map[string]object.Object{
-				"baz": object.NewInt(1),
-				"qux": object.NewInt(2),
-			}),
-		}),
-		WithGlobalOverride("foo", object.NewString("FOO")),
-		WithGlobalOverride("bar.baz", object.NewString("BAZ")),
-	)
-
-	require.Equal(t, map[string]any{
-		"foo": object.NewString("FOO"),
-		"bar": object.NewBuiltinsModule("bar", map[string]object.Object{
-			"baz": object.NewString("BAZ"),
-			"qux": object.NewInt(2),
-		}),
-	}, cfg.Globals())
+	// custom should be available
+	result, err := Eval(context.Background(), "custom", WithEnv(env))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(42))
 }
 
 func TestStructFieldModification(t *testing.T) {
@@ -262,77 +143,57 @@ func TestStructFieldModification(t *testing.T) {
 	for _, tc := range testCases {
 		result, err := Eval(context.Background(),
 			tc.script,
-			WithGlobal("Object", &Object{}))
+			WithEnv(map[string]any{"Object": &Object{}}))
 
-		require.Nil(t, err, "script: %s", tc.script)
-		require.Equal(t, tc.expected, result, "script: %s", tc.script)
+		assert.Nil(t, err, "script: %s", tc.script)
+		assert.Equal(t, result, tc.expected, "script: %s", tc.script)
 	}
 }
 
-func TestWithExistingVM(t *testing.T) {
-	ctx := context.Background()
-
-	vm, err := vm.NewEmpty()
-	require.Nil(t, err)
-
-	result, err := Eval(ctx,
-		"foo",
-		WithVM(vm),
-		WithGlobals(map[string]any{"foo": object.NewInt(3)}),
-	)
-	require.Nil(t, err)
-	require.Equal(t, int64(3), result)
-
-	result, err = Eval(ctx,
-		"bar",
-		WithVM(vm),
-		WithGlobals(map[string]any{"bar": object.NewInt(4)}),
-	)
-	require.Nil(t, err)
-	require.Equal(t, int64(4), result)
-}
-
-func TestDefaultGlobalsFunc(t *testing.T) {
-	globals := DefaultGlobals(DefaultGlobalsOpts{})
-	expectedNames := []string{ // non-exhaustive
+func TestBuiltinsFunc(t *testing.T) {
+	env := Builtins()
+	expectedNames := []string{
 		"math",
 		"rand",
 		"regexp",
 		"time",
+		"keys",
+		"len",
+		"string",
 	}
 	for _, name := range expectedNames {
-		_, ok := globals[name]
-		require.True(t, ok, "expected global %s", name)
+		_, ok := env[name]
+		assert.True(t, ok, "expected builtin %s", name)
 	}
 }
 
-// Test the new Compile/Run API
+// Test the Compile/Run API
 func TestCompileRun(t *testing.T) {
 	program, err := Compile("1 + 2")
-	require.Nil(t, err)
-	require.NotNil(t, program)
+	assert.Nil(t, err)
+	assert.NotNil(t, program)
 
 	result, err := Run(context.Background(), program)
-	require.Nil(t, err)
-	require.Equal(t, int64(3), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(3))
 }
 
-// Test that the same Program can be run multiple times
+// Test that the same Program can be run multiple times with different env
 func TestProgramReuse(t *testing.T) {
-	program, err := Compile("x + 1", WithGlobal("x", int64(0)))
-	require.Nil(t, err)
+	program, err := Compile("x + 1", WithEnv(map[string]any{"x": int64(0)}))
+	assert.Nil(t, err)
 
 	for i := int64(0); i < 10; i++ {
-		result, err := Run(context.Background(), program, WithGlobal("x", i))
-		require.Nil(t, err)
-		require.Equal(t, i+1, result)
+		result, err := Run(context.Background(), program, WithEnv(map[string]any{"x": i}))
+		assert.Nil(t, err)
+		assert.Equal(t, result, i+1)
 	}
 }
 
 // Test concurrent execution of the same Program
 func TestConcurrentExecution(t *testing.T) {
-	program, err := Compile("x + 1", WithGlobal("x", int64(0)))
-	require.Nil(t, err)
+	program, err := Compile("x + 1", WithEnv(map[string]any{"x": int64(0)}))
+	assert.Nil(t, err)
 
 	var wg sync.WaitGroup
 	results := make([]int64, 10)
@@ -342,7 +203,7 @@ func TestConcurrentExecution(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			result, err := Run(context.Background(), program, WithGlobal("x", int64(id)))
+			result, err := Run(context.Background(), program, WithEnv(map[string]any{"x": int64(id)}))
 			if err != nil {
 				errors[id] = err
 				return
@@ -354,31 +215,32 @@ func TestConcurrentExecution(t *testing.T) {
 
 	// Verify all goroutines succeeded with correct results
 	for i := 0; i < 10; i++ {
-		require.Nil(t, errors[i], "goroutine %d had an error", i)
-		require.Equal(t, int64(i+1), results[i], "goroutine %d had wrong result", i)
+		assert.Nil(t, errors[i], "goroutine %d had an error", i)
+		assert.Equal(t, results[i], int64(i+1), "goroutine %d had wrong result", i)
 	}
 }
 
 // Test the VM wrapper for REPL-style execution
 func TestVMWrapper(t *testing.T) {
 	vm, err := NewVM()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Define a function
 	_, err = vm.Eval(context.Background(), "function add(a, b) { a + b }")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Call the function
 	result, err := vm.Call(context.Background(), "add", int64(2), int64(3))
-	require.Nil(t, err)
-	require.Equal(t, int64(5), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(5))
 
 	// Define a variable
 	_, err = vm.Eval(context.Background(), "let x = 10")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Get the variable
 	x, err := vm.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, int64(10), x)
+	assert.Nil(t, err)
+	assert.Equal(t, x, int64(10))
 }
+

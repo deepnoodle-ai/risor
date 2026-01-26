@@ -10,17 +10,19 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Returns a Risor option for global variable configuration.
-func getGlobals() risor.Option {
+// Returns a Risor option for environment configuration.
+// By default, the CLI provides the standard builtins.
+// Use --no-default-globals to start with an empty environment.
+func getEnv() risor.Option {
 	if viper.GetBool("no-default-globals") {
-		return risor.WithoutDefaultGlobals()
+		return nil // empty environment
 	}
-	return nil
+	return risor.WithEnv(risor.Builtins())
 }
 
 func getRisorOptions() []risor.Option {
 	return []risor.Option{
-		getGlobals(),
+		getEnv(),
 	}
 }
 

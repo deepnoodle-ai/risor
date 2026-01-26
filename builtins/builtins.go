@@ -113,46 +113,6 @@ func List(ctx context.Context, args ...object.Object) object.Object {
 	return object.NewList(items)
 }
 
-func Map(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.RequireRange("map", 0, 1, args); err != nil {
-		return err
-	}
-	result := object.NewMap(nil)
-	if len(args) == 0 {
-		return result
-	}
-	list, ok := args[0].(*object.List)
-	if ok {
-		for _, obj := range list.Value() {
-			subListObj, ok := obj.(*object.List)
-			if !ok || len(subListObj.Value()) != 2 {
-				return object.Errorf("value error: map() received a list with an unsupported structure")
-			}
-			subList := subListObj.Value()
-			key, ok := subList[0].(*object.String)
-			if !ok {
-				return object.Errorf("value error: map() received a list with an unsupported structure")
-			}
-			result.Set(key.Value(), subList[1])
-		}
-		return result
-	}
-	enumerable, ok := args[0].(object.Enumerable)
-	if !ok {
-		return object.TypeErrorf("type error: map() expected a list or enumerable (%s given)", args[0].Type())
-	}
-	enumerable.Enumerate(ctx, func(key, value object.Object) bool {
-		switch k := key.(type) {
-		case *object.String:
-			result.Set(k.Value(), value)
-		default:
-			result.Set(key.Inspect(), value)
-		}
-		return true
-	})
-	return result
-}
-
 func String(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.RequireRange("string", 0, 1, args); err != nil {
 		return err
@@ -330,6 +290,80 @@ func All(ctx context.Context, args ...object.Object) object.Object {
 		return object.TypeErrorf("type error: all() argument must be a container (%s given)", args[0].Type())
 	}
 	return object.True
+}
+
+func Filter(ctx context.Context, args ...object.Object) object.Object {
+	if err := arg.Require("filter", 2, args); err != nil {
+		return err
+	}
+	fn, ok := args[1].(object.Callable)
+	if !ok {
+		return object.TypeErrorf("type error: filter() expected a callable (%s given)", args[1].Type())
+	}
+	var result []object.Object
+	switch container := args[0].(type) {
+	case *object.List:
+		for _, val := range container.Value() {
+			decision := fn.Call(ctx, val)
+			if object.IsError(decision) {
+				return decision
+			}
+			if decision.IsTruthy() {
+				result = append(result, val)
+			}
+		}
+	case *object.Set:
+		for _, val := range container.Value() {
+			decision := fn.Call(ctx, val)
+			if object.IsError(decision) {
+				return decision
+			}
+			if decision.IsTruthy() {
+				result = append(result, val)
+			}
+		}
+	case *object.ByteSlice:
+		for _, val := range container.Value() {
+			byteObj := object.NewByte(val)
+			decision := fn.Call(ctx, byteObj)
+			if object.IsError(decision) {
+				return decision
+			}
+			if decision.IsTruthy() {
+				result = append(result, byteObj)
+			}
+		}
+	case *object.Buffer:
+		for _, val := range container.Value().Bytes() {
+			byteObj := object.NewByte(val)
+			decision := fn.Call(ctx, byteObj)
+			if object.IsError(decision) {
+				return decision
+			}
+			if decision.IsTruthy() {
+				result = append(result, byteObj)
+			}
+		}
+	case object.Enumerable:
+		var filterErr object.Object
+		container.Enumerate(ctx, func(key, value object.Object) bool {
+			decision := fn.Call(ctx, value)
+			if object.IsError(decision) {
+				filterErr = decision
+				return false
+			}
+			if decision.IsTruthy() {
+				result = append(result, value)
+			}
+			return true
+		})
+		if filterErr != nil {
+			return filterErr
+		}
+	default:
+		return object.TypeErrorf("type error: filter() argument must be a container (%s given)", args[0].Type())
+	}
+	return object.NewList(result)
 }
 
 func Bool(ctx context.Context, args ...object.Object) object.Object {
@@ -660,13 +694,13 @@ func Builtins() map[string]object.Object {
 		"decode":   object.NewBuiltin("decode", Decode),
 		"delete":   object.NewBuiltin("delete", Delete),
 		"encode":   object.NewBuiltin("encode", Encode),
+		"filter":   object.NewBuiltin("filter", Filter),
 		"float":    object.NewBuiltin("float", Float),
 		"getattr":  object.NewBuiltin("getattr", GetAttr),
 		"int":      object.NewBuiltin("int", Int),
 		"keys":     object.NewBuiltin("keys", Keys),
 		"len":      object.NewBuiltin("len", Len),
 		"list":     object.NewBuiltin("list", List),
-		"map":      object.NewBuiltin("map", Map),
 		"reversed": object.NewBuiltin("reversed", Reversed),
 		"set":      object.NewBuiltin("set", Set),
 		"sorted":   object.NewBuiltin("sorted", Sorted),

@@ -3,9 +3,9 @@ package arg_test
 import (
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRequire(t *testing.T) {
@@ -16,7 +16,7 @@ func TestRequire(t *testing.T) {
 		1,
 		[]object.Object{object.NewInt(1)},
 	)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	err = arg.Require(
 		"foo",
@@ -27,18 +27,16 @@ func TestRequire(t *testing.T) {
 			object.NewInt(1),
 		},
 	)
-	require.NotNil(t, err)
-	require.Equal(t, "args error: foo() takes exactly 1 argument (3 given)",
-		err.Message().Value())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Message().Value(), "args error: foo() takes exactly 1 argument (3 given)")
 
 	err = arg.Require(
 		"bar",
 		2,
 		[]object.Object{object.NewInt(1)},
 	)
-	require.NotNil(t, err)
-	require.Equal(t, "args error: bar() takes exactly 2 arguments (1 given)",
-		err.Message().Value())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Message().Value(), "args error: bar() takes exactly 2 arguments (1 given)")
 }
 
 func TestRequireRange(t *testing.T) {
@@ -50,7 +48,7 @@ func TestRequireRange(t *testing.T) {
 		3,
 		[]object.Object{object.NewInt(1)},
 	)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	err = arg.RequireRange(
 		"foo",
@@ -63,9 +61,8 @@ func TestRequireRange(t *testing.T) {
 			object.NewInt(1),
 		},
 	)
-	require.NotNil(t, err)
-	require.Equal(t, "args error: foo() takes at most 3 arguments (4 given)",
-		err.Message().Value())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Message().Value(), "args error: foo() takes at most 3 arguments (4 given)")
 
 	err = arg.RequireRange(
 		"foo",
@@ -73,7 +70,6 @@ func TestRequireRange(t *testing.T) {
 		3,
 		[]object.Object{},
 	)
-	require.NotNil(t, err)
-	require.Equal(t, "args error: foo() takes at least 1 argument (0 given)",
-		err.Message().Value())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Message().Value(), "args error: foo() takes at least 1 argument (0 given)")
 }

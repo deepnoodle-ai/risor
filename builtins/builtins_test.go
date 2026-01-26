@@ -4,14 +4,19 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/object"
-	"github.com/stretchr/testify/require"
 )
+
+func assertObjectEqual(t *testing.T, got, want object.Object) {
+	t.Helper()
+	assert.True(t, object.Equals(got, want), "got %s, want %s", got.Inspect(), want.Inspect())
+}
 
 func TestBuiltins(t *testing.T) {
 	m := Builtins()
 	count := len(m)
-	require.Greater(t, count, 23) // Reduced from 25 after removing try() and error() builtins
+	assert.Greater(t, count, 23) // Reduced from 25 after removing try() and error() builtins
 }
 
 type testCase struct {
@@ -43,7 +48,7 @@ func TestMake(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input.Inspect(), func(t *testing.T) {
 			result := Make(ctx, tt.input)
-			require.Equal(t, tt.expected, result)
+			assertObjectEqual(t, result, tt.expected)
 		})
 	}
 }
@@ -87,7 +92,7 @@ func TestSorted(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input.Inspect(), func(t *testing.T) {
 			result := Sorted(ctx, tt.input)
-			require.Equal(t, tt.expected, result)
+			assertObjectEqual(t, result, tt.expected)
 		})
 	}
 }
@@ -104,7 +109,7 @@ func TestSortedWithFunc(t *testing.T) {
 	})
 	// This function will be called for each comparison
 	callFn := func(ctx context.Context, fn *object.Function, args []object.Object) (object.Object, error) {
-		require.Len(t, args, 2)
+		assert.Len(t, args, 2)
 		a := args[0].(*object.Int).Value()
 		b := args[1].(*object.Int).Value()
 		return object.NewBool(b < a), nil // descending order
@@ -117,13 +122,15 @@ func TestSortedWithFunc(t *testing.T) {
 
 	// Confirm Sorted returns the expected sorted list
 	result := Sorted(ctx, input, sortFn)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(99),
-		object.NewInt(3),
-		object.NewInt(2),
-		object.NewInt(1),
-		object.NewInt(0),
-	}), result)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(99),
+			object.NewInt(3),
+			object.NewInt(2),
+			object.NewInt(1),
+			object.NewInt(0),
+		}))
 }
 
 func TestCoalesce(t *testing.T) {
@@ -153,7 +160,7 @@ func TestCoalesce(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input.Inspect(), func(t *testing.T) {
 			result := Coalesce(ctx, tt.input.(*object.List).Value()...)
-			require.Equal(t, tt.expected, result)
+			assertObjectEqual(t, result, tt.expected)
 		})
 	}
 }
@@ -215,7 +222,7 @@ func TestChunk(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input.Inspect(), func(t *testing.T) {
 			result := Chunk(ctx, tt.input, object.NewInt(tt.size))
-			require.Equal(t, tt.expected, result)
+			assertObjectEqual(t, result, tt.expected)
 		})
 	}
 }

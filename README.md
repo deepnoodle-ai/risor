@@ -98,7 +98,12 @@ import (
 func main() {
 	ctx := context.Background()
 	script := "math.sqrt(input)"
-	result, err := risor.Eval(ctx, script, risor.WithGlobal("input", 4))
+
+	// Start with the standard library and add custom variables
+	env := risor.Builtins()
+	env["input"] = 4
+
+	result, err := risor.Eval(ctx, script, risor.WithEnv(env))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -121,18 +126,20 @@ It is trivial to embed Risor in your Go program in order to evaluate scripts
 that have access to arbitrary Go structs and other types.
 
 The simplest way to use Risor is to call the `Eval` function and provide the script source code.
-The result is returned as a Risor object:
+By default, the environment is empty. Use `risor.Builtins()` to get the standard library:
 
 ```go
-result, err := risor.Eval(ctx, "math.min([5, 2, 7])")
-// result is 2, as an *object.Int
+result, err := risor.Eval(ctx, "math.min([5, 2, 7])", risor.WithEnv(risor.Builtins()))
+// result is 2
 ```
 
-Provide input to the script using Risor options:
+Provide input to the script using `WithEnv`:
 
 ```go
-result, err := risor.Eval(ctx, "input | strings.to_upper", risor.WithGlobal("input", "hello"))
-// result is "HELLO", as an *object.String
+env := risor.Builtins()
+env["input"] = "hello"
+result, err := risor.Eval(ctx, "input | strings.to_upper", risor.WithEnv(env))
+// result is "HELLO"
 ```
 
 Use the same mechanism to inject a struct. You can then access fields or call
@@ -143,8 +150,10 @@ type Example struct {
     Message string
 }
 example := &Example{"abc"}
-result, err := risor.Eval(ctx, "len(ex.Message)", risor.WithGlobal("ex", example))
-// result is 3, as an *object.Int
+env := risor.Builtins()
+env["ex"] = example
+result, err := risor.Eval(ctx, "len(ex.Message)", risor.WithEnv(env))
+// result is 3
 ```
 
 ## Optional Modules
@@ -157,7 +166,7 @@ An optional ssh module is available that uses `golang.org/x/crypto`:
 | ssh  | [modules/ssh](./modules/ssh) | `go get github.com/risor-io/risor/modules/ssh`  |
 
 When building Risor into your own program, you'll need to opt-in using `go get`
-and then add the modules as globals:
+and then add the modules to your environment:
 
 ```go
 import (
@@ -167,10 +176,9 @@ import (
 
 func main() {
     source := `ssh.dial("user@host")`
-    result, err := risor.Eval(ctx, source,
-        risor.WithGlobals(map[string]any{
-            "ssh": ssh.Module(),
-        }))
+    env := risor.Builtins()
+    env["ssh"] = ssh.Module()
+    result, err := risor.Eval(ctx, source, risor.WithEnv(env))
     // ...
 }
 ```

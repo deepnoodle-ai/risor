@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/object"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNow(t *testing.T) {
 	got := Now(context.Background())
-	require.IsType(t, &object.Time{}, got)
+	_, ok := got.(*object.Time)
+	assert.True(t, ok)
 }
 
 func TestUnix(t *testing.T) {
@@ -29,7 +30,7 @@ func TestUnix(t *testing.T) {
 		got, _ := object.AsTime(
 			Unix(context.Background(), object.NewInt(tt.sec), object.NewInt(tt.nsec)),
 		)
-		require.Equal(t, tt.want.UTC(), got.UTC())
+		assert.Equal(t, got.UTC(), tt.want.UTC())
 	}
 }
 
@@ -46,7 +47,7 @@ func TestParse(t *testing.T) {
 
 	for _, tt := range tests {
 		got := Parse(context.Background(), object.NewString(tt.layout), object.NewString(tt.value))
-		require.Equal(t, object.NewTime(tt.want), got)
+		assert.Equal(t, got, object.NewTime(tt.want))
 	}
 }
 
@@ -55,9 +56,10 @@ func TestSince(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	got := Since(context.Background(), object.NewTime(now))
-	require.IsType(t, &object.Float{}, got)
+	f, ok := got.(*object.Float)
+	assert.True(t, ok)
 
-	elapsed := got.(*object.Float).Value()
-	require.True(t, elapsed >= 0.1)
-	require.True(t, elapsed < 0.25) // Allow some margin for error
+	elapsed := f.Value()
+	assert.True(t, elapsed >= 0.1)
+	assert.True(t, elapsed < 0.25) // Allow some margin for error
 }

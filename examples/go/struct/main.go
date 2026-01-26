@@ -84,7 +84,7 @@ func main() {
 	svc := &Service{}
 
 	// Run the Risor code which can access the service as `svc`
-	result, err := risor.Eval(ctx, code, risor.WithGlobal("svc", svc))
+	result, err := risor.Eval(ctx, code, risor.WithEnv(map[string]any{"svc": svc}))
 	if err != nil {
 		fmt.Println(red(err.Error()))
 		os.Exit(1)

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/op"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
 )
 
 func compileSource(source string) (*Code, error) {
@@ -29,12 +29,12 @@ func TestMarshalCode1(t *testing.T) {
 	let y = 2.0
 	x + y
 	`)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	data, err := MarshalCode(codeA)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	codeB, err := UnmarshalCode(data)
-	require.Nil(t, err)
-	require.Equal(t, codeA, codeB)
+	assert.Nil(t, err)
+	assert.Equal(t, codeB, codeA)
 }
 
 func TestMarshalCode2(t *testing.T) {
@@ -48,12 +48,12 @@ func TestMarshalCode2(t *testing.T) {
 	}
 	test(1) + test(2, 3)
 	`)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	data, err := MarshalCode(codeA)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	codeB, err := UnmarshalCode(data)
-	require.Nil(t, err)
-	require.Equal(t, codeA, codeB)
+	assert.Nil(t, err)
+	assert.Equal(t, codeB, codeA)
 }
 
 func TestMarshalCode3(t *testing.T) {
@@ -69,13 +69,13 @@ func TestMarshalCode3(t *testing.T) {
 	let c = counter(start)
 	c()
 	`)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	data, err := MarshalCode(codeA)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	fmt.Println(string(data))
 	codeB, err := UnmarshalCode(data)
-	require.Nil(t, err)
-	require.Equal(t, codeA, codeB)
+	assert.Nil(t, err)
+	assert.Equal(t, codeB, codeA)
 }
 
 func TestSymbolTableDefinition(t *testing.T) {
@@ -85,53 +85,57 @@ func TestSymbolTableDefinition(t *testing.T) {
 
 	def := definitionFromSymbolTable(table)
 	symbols := def.Symbols
-	require.Len(t, symbols, 2)
+	assert.Len(t, symbols, 2)
 
 	symbol := symbols[0]
-	require.Equal(t, "x", symbol.Name)
-	require.Equal(t, false, symbol.IsConstant)
-	require.Equal(t, uint16(0), symbol.Index)
+	assert.Equal(t, symbol.Name, "x")
+	assert.Equal(t, symbol.IsConstant, false)
+	assert.Equal(t, symbol.Index, uint16(0))
 
 	symbol = symbols[1]
-	require.Equal(t, "c", symbol.Name)
-	require.Equal(t, true, symbol.IsConstant)
-	require.Equal(t, uint16(1), symbol.Index)
+	assert.Equal(t, symbol.Name, "c")
+	assert.Equal(t, symbol.IsConstant, true)
+	assert.Equal(t, symbol.Index, uint16(1))
 
 	newTable, err := symbolTableFromDefinition(def)
-	require.Nil(t, err)
-	require.Equal(t, table, newTable)
+	assert.Nil(t, err)
+	assert.Equal(t, newTable, table)
 }
 
 func TestCodeConstants(t *testing.T) {
 	c := Code{symbols: NewSymbolTable()}
 	c.constants = append(c.constants, int64(1), 2.0, "three", true, nil)
 	data, err := MarshalCode(&c)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	c2, err := UnmarshalCode(data)
-	require.Nil(t, err)
-	require.Equal(t, c.constants, c2.constants)
+	assert.Nil(t, err)
+	assert.Equal(t, c2.constants, c.constants)
 }
 
 func TestCompiledInstructions(t *testing.T) {
 	code, err := compileSource(`1 + 2`)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	instrs := NewInstructionIter(code).All()
-	require.Equal(t, [][]op.Code{
-		{op.LoadConst, 0},
-		{op.LoadConst, 1},
-		{op.BinaryOp, op.Code(op.Add)},
-	}, instrs)
+	assert.Equal(t,
+
+		instrs, [][]op.Code{
+			{op.LoadConst, 0},
+			{op.LoadConst, 1},
+			{op.BinaryOp, op.Code(op.Add)},
+		})
 
 	data, err := MarshalCode(code)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	code2, err := UnmarshalCode(data)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	instrs = NewInstructionIter(code2).All()
-	require.Equal(t, [][]op.Code{
-		{op.LoadConst, 0},
-		{op.LoadConst, 1},
-		{op.BinaryOp, op.Code(op.Add)},
-	}, instrs)
+	assert.Equal(t,
+
+		instrs, [][]op.Code{
+			{op.LoadConst, 0},
+			{op.LoadConst, 1},
+			{op.BinaryOp, op.Code(op.Add)},
+		})
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/stretchr/testify/require"
 )
 
 // TestLanguageServerIntegration demonstrates testing the language server
@@ -55,17 +55,17 @@ println("Total users: " + string(len(active_users)))`
 	// Test 1: Document parsing and caching
 	t.Run("DocumentParsing", func(t *testing.T) {
 		err := setTestDocument(server.cache, uri, risorCode)
-		require.NoError(t, err, "Failed to cache document")
+		assert.NoError(t, err, "Failed to cache document")
 
 		doc, err := server.cache.get(uri)
-		require.NoError(t, err, "Failed to retrieve document")
+		assert.NoError(t, err, "Failed to retrieve document")
 
-		require.NoError(t, doc.err, "Document parsing failed")
+		assert.NoError(t, doc.err, "Document parsing failed")
 
-		require.NotNil(t, doc.ast, "Expected AST to be parsed")
+		assert.NotNil(t, doc.ast, "Expected AST to be parsed")
 
 		statements := doc.ast.Statements()
-		require.NotEmpty(t, statements, "Expected statements in AST")
+		assert.NotEmpty(t, statements, "Expected statements in AST")
 
 		t.Logf("Successfully parsed %d statements", len(statements))
 	})
@@ -81,10 +81,10 @@ println("Total users: " + string(len(active_users)))`
 		}
 
 		result, err := server.Completion(context.Background(), params)
-		require.NoError(t, err, "Completion failed")
+		assert.NoError(t, err, "Completion failed")
 
-		require.NotNil(t, result, "Expected completion result")
-		require.NotEmpty(t, result.Items, "Expected completion items")
+		assert.NotNil(t, result, "Expected completion result")
+		assert.NotEmpty(t, result.Items, "Expected completion items")
 
 		// Should include variables like "users", keywords, and builtins
 		hasUsers := false
@@ -102,9 +102,9 @@ println("Total users: " + string(len(active_users)))`
 			}
 		}
 
-		require.True(t, hasUsers, "Expected 'users' variable in completion")
-		require.True(t, hasKeywords, "Expected keywords in completion")
-		require.True(t, hasBuiltins, "Expected builtin functions in completion")
+		assert.True(t, hasUsers, "Expected 'users' variable in completion")
+		assert.True(t, hasKeywords, "Expected keywords in completion")
+		assert.True(t, hasBuiltins, "Expected builtin functions in completion")
 
 		t.Logf("Completion returned %d items", len(result.Items))
 	})
@@ -120,7 +120,7 @@ println("Total users: " + string(len(active_users)))`
 		}
 
 		result, err := server.Hover(context.Background(), params)
-		require.NoError(t, err, "Hover failed")
+		assert.NoError(t, err, "Hover failed")
 
 		// Note: hover might not find anything with our simple position-based implementation
 		// This is expected for this test
@@ -138,10 +138,10 @@ println("Total users: " + string(len(active_users)))`
 		}
 
 		result, err := server.DocumentSymbol(context.Background(), params)
-		require.NoError(t, err, "DocumentSymbol failed")
+		assert.NoError(t, err, "DocumentSymbol failed")
 
-		require.NotNil(t, result, "Expected document symbols result")
-		require.NotEmpty(t, result, "Expected document symbols")
+		assert.NotNil(t, result, "Expected document symbols result")
+		assert.NotEmpty(t, result, "Expected document symbols")
 
 		// Should find variables like "config", "process_user", "users"
 		symbolNames := []string{}
@@ -160,7 +160,7 @@ println("Total users: " + string(len(active_users)))`
 					break
 				}
 			}
-			require.True(t, found, "Expected symbol '%s' not found in %v", expected, symbolNames)
+			assert.True(t, found, "Expected symbol '%s' not found in %v", expected, symbolNames)
 		}
 
 		t.Logf("Found symbols: %v", symbolNames)
@@ -177,7 +177,7 @@ println("Total users: " + string(len(active_users)))`
 		}
 
 		result, err := server.Definition(context.Background(), params)
-		require.NoError(t, err, "Definition failed")
+		assert.NoError(t, err, "Definition failed")
 
 		// This might not find anything with our simple implementation,
 		// but shouldn't error
@@ -205,13 +205,13 @@ if (true) {
 	uri := protocol.DocumentURI("file:///invalid.risor")
 
 	err := setTestDocument(server.cache, uri, invalidCode)
-	require.NoError(t, err, "Failed to cache document")
+	assert.NoError(t, err, "Failed to cache document")
 
 	doc, err := server.cache.get(uri)
-	require.NoError(t, err, "Failed to retrieve document")
+	assert.NoError(t, err, "Failed to retrieve document")
 
 	// Should have a parse error
-	require.Error(t, doc.err, "Expected parse error for invalid code")
+	assert.Error(t, doc.err, "Expected parse error for invalid code")
 
 	t.Logf("Parse error (as expected): %v", doc.err)
 
@@ -224,11 +224,11 @@ if (true) {
 	}
 
 	result, err := server.Completion(context.Background(), params)
-	require.NoError(t, err, "Completion failed")
+	assert.NoError(t, err, "Completion failed")
 
 	// Should still provide keywords and builtins even with syntax errors
-	require.NotNil(t, result, "Expected completion result")
-	require.NotEmpty(t, result.Items, "Expected completion items even with syntax errors")
+	assert.NotNil(t, result, "Expected completion result")
+	assert.NotEmpty(t, result.Items, "Expected completion items even with syntax errors")
 
 	t.Logf("Completion with errors returned %d items", len(result.Items))
 }
@@ -274,17 +274,17 @@ let numbers = [1, 2, 3, 4, 5]`,
 			uri := protocol.DocumentURI("file:///" + name + ".risor")
 
 			err := setTestDocument(server.cache, uri, code)
-			require.NoError(t, err, "Failed to cache document")
+			assert.NoError(t, err, "Failed to cache document")
 
 			doc, err := server.cache.get(uri)
-			require.NoError(t, err, "Failed to retrieve document")
+			assert.NoError(t, err, "Failed to retrieve document")
 
-			require.NoError(t, doc.err, "Parse error in %s", name)
+			assert.NoError(t, doc.err, "Parse error in %s", name)
 
-			require.NotNil(t, doc.ast, "No AST parsed for %s", name)
+			assert.NotNil(t, doc.ast, "No AST parsed for %s", name)
 
 			statements := doc.ast.Statements()
-			require.NotEmpty(t, statements, "No statements found in %s", name)
+			assert.NotEmpty(t, statements, "No statements found in %s", name)
 
 			t.Logf("Example '%s': parsed %d statements successfully", name, len(statements))
 
@@ -297,10 +297,10 @@ let numbers = [1, 2, 3, 4, 5]`,
 			}
 
 			result, err := server.Completion(context.Background(), params)
-			require.NoError(t, err, "Completion failed for %s", name)
+			assert.NoError(t, err, "Completion failed for %s", name)
 
-			require.NotNil(t, result, "No completion result for %s", name)
-			require.NotEmpty(t, result.Items, "No completion items for %s", name)
+			assert.NotNil(t, result, "No completion result for %s", name)
+			assert.NotEmpty(t, result.Items, "No completion items for %s", name)
 
 			t.Logf("Example '%s': completion returned %d items", name, len(result.Items))
 		})

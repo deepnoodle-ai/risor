@@ -17,16 +17,22 @@ import (
 type VM struct {
 	machine  *vm.VirtualMachine
 	compiler *compiler.Compiler
-	cfg      *config
+	env      map[string]any
+	observer vm.Observer
 }
 
 // NewVM creates a new VM with the given options.
 // The VM can be used for REPL-style incremental evaluation or for calling
 // functions defined in previously run code.
-func NewVM(options ...Option) (*VM, error) {
-	cfg := newConfig(options...)
+func NewVM(opts ...Option) (*VM, error) {
+	o := collectOptions(opts...)
 
-	c, err := compiler.New(cfg.CompilerOpts()...)
+	var compilerOpts []compiler.Option
+	if len(o.env) > 0 {
+		compilerOpts = append(compilerOpts, compiler.WithGlobalNames(envNames(o.env)))
+	}
+
+	c, err := compiler.New(compilerOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -39,8 +45,20 @@ func NewVM(options ...Option) (*VM, error) {
 	return &VM{
 		machine:  machine,
 		compiler: c,
-		cfg:      cfg,
+		env:      o.env,
+		observer: o.observer,
 	}, nil
+}
+
+func (v *VM) vmOpts() []vm.Option {
+	var opts []vm.Option
+	if len(v.env) > 0 {
+		opts = append(opts, vm.WithGlobals(v.env))
+	}
+	if v.observer != nil {
+		opts = append(opts, vm.WithObserver(v.observer))
+	}
+	return opts
 }
 
 // Eval evaluates source code within this VM's context.
@@ -57,9 +75,7 @@ func (v *VM) Eval(ctx context.Context, source string) (any, error) {
 		return nil, err
 	}
 
-	if err := v.machine.RunCode(ctx, code, v.cfg.VMOpts()...); err != nil {
-		// Update the IP to be after the last instruction, so that next
-		// time around we start in the right location.
+	if err := v.machine.RunCode(ctx, code, v.vmOpts()...); err != nil {
 		v.machine.SetIP(code.InstructionCount())
 		return nil, err
 	}
@@ -69,7 +85,6 @@ func (v *VM) Eval(ctx context.Context, source string) (any, error) {
 		return nil, nil
 	}
 
-	// Handle error objects specially
 	if errObj, isErr := result.(*object.Error); isErr && errObj.IsRaised() {
 		return nil, errObj.Value()
 	}
@@ -80,7 +95,7 @@ func (v *VM) Eval(ctx context.Context, source string) (any, error) {
 // Run executes a compiled Program within this VM's context.
 // Unlike the top-level Run function, this maintains state across calls.
 func (v *VM) Run(ctx context.Context, p *Program) (any, error) {
-	if err := v.machine.RunCode(ctx, p.code, v.cfg.VMOpts()...); err != nil {
+	if err := v.machine.RunCode(ctx, p.code, v.vmOpts()...); err != nil {
 		return nil, err
 	}
 
@@ -106,7 +121,6 @@ func (v *VM) Call(ctx context.Context, name string, args ...any) (any, error) {
 		return nil, fmt.Errorf("object is not a function (got: %s)", obj.Type())
 	}
 
-	// Convert Go args to Risor objects
 	risorArgs := make([]object.Object, len(args))
 	for i, arg := range args {
 		risorArgs[i] = object.FromGoType(arg)

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 type fooStruct struct{}
@@ -18,20 +18,20 @@ func TestGoMethod(t *testing.T) {
 	typ := reflect.TypeOf(f)
 
 	m, ok := typ.MethodByName("Inc")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	method, err := newGoMethod(typ, m)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Inc", method.Name())
-	require.Equal(t, 2, method.NumIn())
-	require.Equal(t, 1, method.NumOut())
+	assert.Equal(t, method.Name(), "Inc")
+	assert.Equal(t, method.NumIn(), 2)
+	assert.Equal(t, method.NumOut(), 1)
 
 	in1 := method.InType(1)
-	require.Equal(t, "int", in1.Name())
+	assert.Equal(t, in1.Name(), "int")
 
 	out0 := method.OutType(0)
-	require.Equal(t, "error", out0.Name())
+	assert.Equal(t, out0.Name(), "error")
 }
 
 type reflectService struct{}
@@ -45,10 +45,10 @@ func TestGoMethodError(t *testing.T) {
 	typ := reflect.TypeOf(svc)
 
 	m, ok := typ.MethodByName("Test")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	_, err := newGoMethod(typ, m)
-	require.NotNil(t, err)
+	assert.NotNil(t, err)
 
 	expectedErr := `type error: (*object.reflectService).Test has input parameter of type *object.reflectService; 
 (*object.reflectService).Test has output parameter of type *reflect.Value; 
@@ -56,5 +56,5 @@ func TestGoMethodError(t *testing.T) {
 (reflect.Type).Field has output parameter of type reflect.StructField; 
 unsupported kind: uintptr`
 
-	require.Equal(t, expectedErr, err.Error())
+	assert.Equal(t, err.Error(), expectedErr)
 }

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
 )
 
 // Helper function to set a document in the cache for testing
@@ -42,18 +42,18 @@ function add(a, b) {
 
 	uri := protocol.DocumentURI("file:///test.risor")
 	err := setTestDocument(c, uri, validCode)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	doc, err := c.get(uri)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.NoError(t, doc.err)
+	assert.NoError(t, doc.err)
 
-	require.NotNil(t, doc.ast)
+	assert.NotNil(t, doc.ast)
 
 	// Verify we have statements
 	statements := doc.ast.Statements()
-	require.NotEmpty(t, statements)
+	assert.NotEmpty(t, statements)
 }
 
 func TestCache_ParseInvalidRisorCode(t *testing.T) {
@@ -65,13 +65,13 @@ function incomplete(`
 
 	uri := protocol.DocumentURI("file:///test_invalid.risor")
 	err := setTestDocument(c, uri, invalidCode)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	doc, err := c.get(uri)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Should have a parse error
-	require.Error(t, doc.err)
+	assert.Error(t, doc.err)
 }
 
 func TestCompletionProvider_ExtractVariables(t *testing.T) {
@@ -82,12 +82,12 @@ let z = [1, 2, 3]`
 
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, code)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	variables := extractVariables(prog)
 
 	expectedVars := []string{"x", "y", "z"}
-	require.Equal(t, len(expectedVars), len(variables))
+	assert.Equal(t, len(variables), len(expectedVars))
 
 	// Check that all expected variables are found
 	varMap := make(map[string]bool)
@@ -96,7 +96,7 @@ let z = [1, 2, 3]`
 	}
 
 	for _, expected := range expectedVars {
-		require.True(t, varMap[expected], "Expected variable %s not found in %v", expected, variables)
+		assert.True(t, varMap[expected], "Expected variable %s not found in %v", expected, variables)
 	}
 }
 
@@ -107,12 +107,12 @@ let subtract = function(x, y) { return x - y }`
 
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, code)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	functions := extractFunctions(prog)
 
 	expectedFuncs := []string{"add", "subtract"}
-	require.Equal(t, len(expectedFuncs), len(functions))
+	assert.Equal(t, len(functions), len(expectedFuncs))
 
 	// Check that all expected functions are found
 	funcMap := make(map[string]bool)
@@ -121,7 +121,7 @@ let subtract = function(x, y) { return x - y }`
 	}
 
 	for _, expected := range expectedFuncs {
-		require.True(t, funcMap[expected], "Expected function %s not found in %v", expected, functions)
+		assert.True(t, funcMap[expected], "Expected function %s not found in %v", expected, functions)
 	}
 }
 
@@ -132,19 +132,19 @@ let y = "hello"`
 
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, code)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Test finding symbol at position of variable 'x' (line 1, around column 5)
 	symbol := findSymbolAtPosition(prog, 1, 5)
-	require.Equal(t, "x", symbol)
+	assert.Equal(t, symbol, "x")
 
 	// Test finding symbol at position of variable 'y' (line 2, around column 5)
 	symbol = findSymbolAtPosition(prog, 2, 5)
-	require.Equal(t, "y", symbol)
+	assert.Equal(t, symbol, "y")
 
 	// Test position with no symbol
 	symbol = findSymbolAtPosition(prog, 1, 15)
-	require.Empty(t, symbol)
+	assert.Empty(t, symbol)
 }
 
 func TestKeywordsAndBuiltins(t *testing.T) {
@@ -159,7 +159,7 @@ func TestKeywordsAndBuiltins(t *testing.T) {
 				break
 			}
 		}
-		require.True(t, found, "Expected keyword '%s' not found in risorKeywords", keyword)
+		assert.True(t, found, "Expected keyword '%s' not found in risorKeywords", keyword)
 	}
 
 	// Test that our builtin list contains expected functions
@@ -173,7 +173,7 @@ func TestKeywordsAndBuiltins(t *testing.T) {
 				break
 			}
 		}
-		require.True(t, found, "Expected builtin '%s' not found in risorBuiltins", builtin)
+		assert.True(t, found, "Expected builtin '%s' not found in risorBuiltins", builtin)
 	}
 }
 
@@ -185,16 +185,16 @@ function incomplete(`
 	// Parse the code to get a parse error
 	ctx := context.Background()
 	_, err := parser.Parse(ctx, invalidCode)
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	// Verify it's a parse error we can handle
 	parseErr, ok := err.(parser.ParserError)
-	require.True(t, ok, "Expected parser.ParseError type, got %T", err)
+	assert.True(t, ok, "Expected parser.ParseError type, got %T", err)
 
-	require.NotEmpty(t, parseErr.Message())
+	assert.NotEmpty(t, parseErr.Message())
 
 	startPos := parseErr.StartPosition()
-	require.Greater(t, startPos.LineNumber(), 0)
+	assert.Greater(t, startPos.LineNumber(), 0)
 }
 
 func TestServer_QueueDiagnostics(t *testing.T) {
@@ -211,7 +211,7 @@ func TestServer_QueueDiagnostics(t *testing.T) {
 
 	// Set a document with an error
 	err := setTestDocument(server.cache, uri, "let x =\nfunction incomplete(")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// This should not panic
 	server.queueDiagnostics(uri)
@@ -233,7 +233,7 @@ print(message)`
 
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, code)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Create a test server
 	server := &Server{
@@ -253,7 +253,7 @@ print(message)`
 		err: nil,
 	}
 	err = server.cache.put(doc)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Test 1: Hover over variable 'config' (line 1, column 5)
 	hoverParams := &protocol.HoverParams{
@@ -264,10 +264,10 @@ print(message)`
 	}
 
 	result, err := server.Hover(ctx, hoverParams)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	if result != nil {
 		t.Logf("Hover result for 'config': %s", result.Contents.Value)
-		require.Contains(t, result.Contents.Value, "config")
+		assert.Contains(t, result.Contents.Value, "config")
 	} else {
 		t.Log("No hover result for 'config' (checking if this is expected)")
 	}
@@ -281,7 +281,7 @@ print(message)`
 	}
 
 	result, err = server.Hover(ctx, hoverParams)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	if result != nil {
 		t.Logf("Hover result for 'greet': %s", result.Contents.Value)
 	} else {
@@ -297,11 +297,11 @@ print(message)`
 	}
 
 	result, err = server.Hover(ctx, hoverParams)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	if result != nil {
 		t.Logf("Hover result for 'print': %s", result.Contents.Value)
-		require.Contains(t, result.Contents.Value, "print")
-		require.Contains(t, result.Contents.Value, "Built-in function")
+		assert.Contains(t, result.Contents.Value, "print")
+		assert.Contains(t, result.Contents.Value, "Built-in function")
 	} else {
 		t.Log("No hover result for 'print' - this indicates an issue")
 	}
@@ -315,7 +315,7 @@ print(message)`
 	}
 
 	result, err = server.Hover(ctx, hoverParams)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	if result != nil {
 		t.Logf("Hover result for 'message': %s", result.Contents.Value)
 	} else {
@@ -339,12 +339,12 @@ func TestServer_DidSave_ClearsDiagnosticsOnFix(t *testing.T) {
 function incomplete(`
 
 	err := setTestDocument(server.cache, uri, invalidCode)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify the document has a parse error
 	doc, err := server.cache.get(uri)
-	require.NoError(t, err)
-	require.Error(t, doc.err)
+	assert.NoError(t, err)
+	assert.Error(t, doc.err)
 
 	// Now simulate saving the file with the error fixed
 	fixedCode := `let x = 42
@@ -359,15 +359,15 @@ function complete() {
 
 	// Call DidSave with the fixed code
 	err = server.DidSave(ctx, saveParams)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify the document now parses without error
 	doc, err = server.cache.get(uri)
-	require.NoError(t, err)
-	require.NoError(t, doc.err, "Document should parse without error after fix")
+	assert.NoError(t, err)
+	assert.NoError(t, doc.err, "Document should parse without error after fix")
 
 	// Verify the AST was updated
-	require.NotNil(t, doc.ast)
+	assert.NotNil(t, doc.ast)
 	statements := doc.ast.Statements()
-	require.NotEmpty(t, statements)
+	assert.NotEmpty(t, statements)
 }

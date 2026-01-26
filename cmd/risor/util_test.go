@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestGetScriptArguments(t *testing.T) {
@@ -59,8 +59,8 @@ func TestGetScriptArguments(t *testing.T) {
 			os.Args = testArgs
 			defer func() { os.Args = origArgs }()
 			osArgs, scriptArgs := getScriptArgs(tt.args)
-			require.Equal(t, tt.expOS, osArgs)
-			require.Equal(t, tt.expScript, scriptArgs)
+			assert.Equal(t, osArgs, tt.expOS)
+			assert.Equal(t, scriptArgs, tt.expScript)
 		})
 	}
 }

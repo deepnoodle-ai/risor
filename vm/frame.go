@@ -67,7 +67,7 @@ func (f *frame) ActivateFunction(fn *object.Function, code *code, returnAddr, re
 	// Initialize any local variables that were provided
 	for i := 0; i < len(localValues); i++ {
 		f.locals[i] = localValues[i]
-	} //lint:ignore S1001 - this loop is faster than using copy
+	}
 }
 
 func (f *frame) Locals() []object.Object {

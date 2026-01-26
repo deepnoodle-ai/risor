@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor"
-	"github.com/stretchr/testify/require"
 )
 
 func TestForwardReference(t *testing.T) {
@@ -28,8 +28,8 @@ say()
 		result, err := risor.Eval(ctx, code)
 
 		// It should not error and return the correct value
-		require.Nil(t, err)
-		require.Equal(t, "hello", result)
+		assert.Nil(t, err)
+		assert.Equal(t, result, "hello")
 	})
 
 	t.Run("forward reference returns correct value", func(t *testing.T) {
@@ -49,7 +49,7 @@ say()
 		result, err := risor.Eval(ctx, code)
 
 		// This should work without error and return the correct value
-		require.Nil(t, err)
-		require.Equal(t, "hello", result)
+		assert.Nil(t, err)
+		assert.Equal(t, result, "hello")
 	})
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/internal/token"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNil(t *testing.T) {
@@ -23,7 +23,7 @@ func TestNil(t *testing.T) {
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -65,7 +65,7 @@ func TestNextToken1(t *testing.T) {
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -232,7 +232,7 @@ if(5<10){
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			fmt.Println(tok.Literal)
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
@@ -247,7 +247,7 @@ func TestUnicodeLexer(t *testing.T) {
 	input := `世界`
 	l := New(input)
 	tok, err := l.Next()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	if tok.Type != token.IDENT {
 		t.Fatalf("token type wrong, expected=%q, got=%q", token.IDENT, tok.Type)
 	}
@@ -269,7 +269,7 @@ func TestString(t *testing.T) {
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -306,7 +306,7 @@ let a = 1;
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -348,7 +348,7 @@ let a = 1;
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -379,7 +379,7 @@ func TestIntegers(t *testing.T) {
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -403,8 +403,8 @@ func TestInvalidIntegers(t *testing.T) {
 		l := New(tt.input)
 		tok, err := l.Next()
 		fmt.Println(tok, err)
-		require.NotNil(t, err)
-		require.Equal(t, tt.expected, err.Error())
+		assert.NotNil(t, err)
+		assert.Equal(t, err.Error(), tt.expected)
 	}
 }
 
@@ -425,7 +425,7 @@ func TestShebang(t *testing.T) {
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -512,7 +512,7 @@ baz.qux();
 	l := New(input)
 	for i, tt := range tests {
 		tok, err := l.Next()
-		require.Nil(t, err)
+		assert.Nil(t, err)
 		if tok.Type != tt.expectedType {
 			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
 		}
@@ -580,12 +580,12 @@ func TestLineNumbers(t *testing.T) {
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			tok, err := l.Next()
-			require.Nil(t, err)
-			require.Equal(t, tt.expectedType, tok.Type)
-			require.Equal(t, tt.expectedLiteral, tok.Literal)
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, tt.expectedType)
+			assert.Equal(t, tok.Literal, tt.expectedLiteral)
 			// require.Equal(t, tt.expectedLine, tok.Line) // FIXME
-			require.Equal(t, tt.expectedStartPos, tok.StartPosition.Column)
-			require.Equal(t, tt.expectedEndPos, tok.EndPosition.Column)
+			assert.Equal(t, tok.StartPosition.Column, tt.expectedStartPos)
+			assert.Equal(t, tok.EndPosition.Column, tt.expectedEndPos)
 		})
 	}
 }
@@ -614,12 +614,12 @@ func TestTokenLengths(t *testing.T) {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
 			l := New(tt.input)
 			tok, err := l.Next()
-			require.Nil(t, err)
-			require.Equal(t, tt.expectedType, tok.Type)
-			require.Equal(t, tt.expectedLiteral, tok.Literal)
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, tt.expectedType)
+			assert.Equal(t, tok.Literal, tt.expectedLiteral)
 			// require.Equal(t, tt.expectedLine, tok.Line) // FIXME
-			require.Equal(t, tt.expectedStartPos, tok.StartPosition.Column)
-			require.Equal(t, tt.expectedEndPos, tok.EndPosition.Column)
+			assert.Equal(t, tok.StartPosition.Column, tt.expectedStartPos)
+			assert.Equal(t, tok.EndPosition.Column, tt.expectedEndPos)
 		})
 	}
 }
@@ -639,9 +639,9 @@ func TestStringTypes(t *testing.T) {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
 			l := New(tt.input)
 			tok, err := l.Next()
-			require.Nil(t, err)
-			require.Equal(t, tt.expectedType, tok.Type)
-			require.Equal(t, tt.expectedLiteral, tok.Literal)
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, tt.expectedType)
+			assert.Equal(t, tok.Literal, tt.expectedLiteral)
 		})
 	}
 }
@@ -663,9 +663,9 @@ func TestIdentifiers(t *testing.T) {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
 			l := New(tt.input)
 			tok, err := l.Next()
-			require.Nil(t, err)
-			require.Equal(t, tt.expectedType, tok.Type)
-			require.Equal(t, tt.expectedLiteral, tok.Literal)
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, tt.expectedType)
+			assert.Equal(t, tok.Literal, tt.expectedLiteral)
 		})
 	}
 }
@@ -682,8 +682,8 @@ func TestInvalidIdentifiers(t *testing.T) {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
 			l := New(tt.input)
 			_, err := l.Next()
-			require.NotNil(t, err)
-			require.Equal(t, tt.err, err.Error())
+			assert.NotNil(t, err)
+			assert.Equal(t, err.Error(), tt.err)
 		})
 	}
 }
@@ -716,9 +716,9 @@ func TestEscapeSequences(t *testing.T) {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.name), func(t *testing.T) {
 			l := New(tt.input)
 			tok, err := l.Next()
-			require.Nil(t, err)
-			require.Equal(t, token.Type(token.STRING), tok.Type)
-			require.Equal(t, tt.expectedLiteral, tok.Literal)
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, token.Type(token.STRING))
+			assert.Equal(t, tok.Literal, tt.expectedLiteral)
 		})
 	}
 }
@@ -736,7 +736,7 @@ func TestInvalidEscapeSequences(t *testing.T) {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
 			l := New(tt.input)
 			tok, err := l.Next()
-			require.Errorf(t, err, "Unexpected result: token=%s, literal=%q", tok.Type, tok.Literal)
+			assert.Error(t, err, "Unexpected result: token=%s, literal=%q", tok.Type, tok.Literal)
 		})
 	}
 }
@@ -746,11 +746,11 @@ func TestTokenLineText(t *testing.T) {
 bar = baz
 `)
 	tok, err := l.Next()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	fmt.Println(tok)
 
 	line := l.GetLineText(tok)
-	require.Equal(t, " var x = 32; foo = bar", line)
+	assert.Equal(t, line, " var x = 32; foo = bar")
 }
 
 func TestInvalids(t *testing.T) {
@@ -773,8 +773,8 @@ func TestInvalids(t *testing.T) {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
 			l := New(tt.input)
 			_, err := l.Next()
-			require.NotNil(t, err)
-			require.Equal(t, tt.err, err.Error())
+			assert.NotNil(t, err)
+			assert.Equal(t, err.Error(), tt.err)
 		})
 	}
 }

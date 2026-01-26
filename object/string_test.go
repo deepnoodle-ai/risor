@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestStringBasics(t *testing.T) {
 	value := NewString("abcd")
-	require.Equal(t, STRING, value.Type())
-	require.Equal(t, "abcd", value.Value())
-	require.Equal(t, "abcd", value.String())
-	require.Equal(t, `"abcd"`, value.Inspect())
-	require.Equal(t, "abcd", value.Interface())
-	require.True(t, value.Equals(NewString("abcd")).(*Bool).value)
+	assert.Equal(t, value.Type(), STRING)
+	assert.Equal(t, value.Value(), "abcd")
+	assert.Equal(t, value.String(), "abcd")
+	assert.Equal(t, value.Inspect(), `"abcd"`)
+	assert.Equal(t, value.Interface(), "abcd")
+	assert.True(t, value.Equals(NewString("abcd")).(*Bool).value)
 }
 
 func TestStringCompare(t *testing.T) {
@@ -34,8 +34,8 @@ func TestStringCompare(t *testing.T) {
 	}
 	for _, tc := range tests {
 		result, err := tc.first.Compare(tc.second)
-		require.Nil(t, err)
-		require.Equal(t, tc.expected, result,
+		assert.Nil(t, err)
+		assert.Equal(t, result, tc.expected,
 			"first: %v, second: %v", tc.first, tc.second)
 	}
 }
@@ -52,7 +52,7 @@ func TestStringReverse(t *testing.T) {
 	}
 	for _, tc := range tests {
 		result := NewString(tc.s).Reversed().Value()
-		require.Equal(t, tc.expected, result, "s: %v", tc.s)
+		assert.Equal(t, result, tc.expected, "s: %v", tc.s)
 	}
 }
 
@@ -75,12 +75,12 @@ func TestStringGetItem(t *testing.T) {
 		msg := fmt.Sprintf("%v[%d]", tc.s, tc.index)
 		result, err := NewString(tc.s).GetItem(NewInt(tc.index))
 		if tc.expectedErr != "" {
-			require.NotNil(t, err, msg)
-			require.Equal(t, tc.expectedErr, err.Message().value, msg)
+			assert.NotNil(t, err, msg)
+			assert.Equal(t, err.Message().value, tc.expectedErr, msg)
 		} else {
 			resultStr, ok := result.(*String)
-			require.True(t, ok, msg)
-			require.Equal(t, tc.expected, resultStr.Value(), msg)
+			assert.True(t, ok, msg)
+			assert.Equal(t, resultStr.Value(), tc.expected, msg)
 		}
 	}
 }
@@ -91,9 +91,9 @@ func TestStringHashKey(t *testing.T) {
 	c := NewString("goodbye")
 	d := NewString("goodbye")
 
-	require.Equal(t, a.HashKey(), b.HashKey())
-	require.Equal(t, c.HashKey(), d.HashKey())
-	require.NotEqual(t, a.HashKey(), c.HashKey())
+	assert.Equal(t, b.HashKey(), a.HashKey())
+	assert.Equal(t, d.HashKey(), c.HashKey())
+	assert.NotEqual(t, c.HashKey(), a.HashKey())
 
-	require.Equal(t, HashKey{Type: STRING, StrValue: "hello"}, a.HashKey())
+	assert.Equal(t, a.HashKey(), HashKey{Type: STRING, StrValue: "hello"})
 }

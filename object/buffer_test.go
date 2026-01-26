@@ -5,41 +5,41 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestBuffer(t *testing.T) {
 	t.Run("Inspect", func(t *testing.T) {
 		b := &Buffer{value: bytes.NewBufferString("hello")}
-		require.Equal(t, "buffer(\"hello\")", b.Inspect())
+		assert.Equal(t, b.Inspect(), "buffer(\"hello\")")
 	})
 
 	t.Run("Type", func(t *testing.T) {
 		b := &Buffer{value: bytes.NewBufferString("hello")}
-		require.Equal(t, BUFFER, b.Type())
+		assert.Equal(t, b.Type(), BUFFER)
 	})
 
 	t.Run("Value", func(t *testing.T) {
 		b := &Buffer{value: bytes.NewBufferString("hello")}
-		require.Equal(t, bytes.NewBufferString("hello"), b.Value())
+		assert.Equal(t, b.Value(), bytes.NewBufferString("hello"))
 	})
 
 	t.Run("Interface", func(t *testing.T) {
 		b := &Buffer{value: bytes.NewBufferString("hello")}
-		require.Equal(t, bytes.NewBufferString("hello"), b.Interface())
+		assert.Equal(t, b.Interface(), bytes.NewBufferString("hello"))
 	})
 
 	t.Run("String", func(t *testing.T) {
 		b := &Buffer{value: bytes.NewBufferString("hello")}
-		require.Equal(t, "buffer(\"hello\")", b.String())
+		assert.Equal(t, b.String(), "buffer(\"hello\")")
 	})
 
 	t.Run("IsTruthy", func(t *testing.T) {
 		b := &Buffer{value: bytes.NewBufferString("hello")}
-		require.True(t, b.IsTruthy())
+		assert.True(t, b.IsTruthy())
 
 		b = &Buffer{value: bytes.NewBuffer([]byte{})}
-		require.False(t, b.IsTruthy())
+		assert.False(t, b.IsTruthy())
 	})
 }
 
@@ -97,11 +97,11 @@ func TestBufferMethods(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := NewBuffer(tc.b)
 			methodObj, ok := buf.GetAttr(tc.name)
-			require.True(t, ok, "method not found")
+			assert.True(t, ok, "method not found")
 			method, ok := methodObj.(*Builtin)
-			require.True(t, ok, "method is not a builtin")
+			assert.True(t, ok, "method is not a builtin")
 			result := method.Call(context.Background(), tc.args...)
-			require.Equal(t, tc.result, result)
+			assert.Equal(t, result, tc.result)
 		})
 	}
 }

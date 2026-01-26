@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/errz"
-	"github.com/stretchr/testify/require"
 )
 
 func TestObjectString(t *testing.T) {
@@ -92,10 +92,15 @@ func TestComparisons(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s %s", tt.left.Type(), tt.right.Type()), func(t *testing.T) {
 			comparable, ok := tt.left.(Comparable)
-			require.True(t, ok)
+			assert.True(t, ok)
 			cmp, cmpErr := comparable.Compare(tt.right)
-			require.Equal(t, tt.expected, cmp)
-			require.Equal(t, tt.expectedErr, cmpErr)
+			assert.Equal(t, cmp, tt.expected)
+			if tt.expectedErr == nil {
+				assert.Nil(t, cmpErr)
+			} else {
+				assert.Error(t, cmpErr)
+				assert.Equal(t, cmpErr.Error(), tt.expectedErr.Error())
+			}
 		})
 	}
 }
@@ -107,7 +112,7 @@ func TestPrintableValue(t *testing.T) {
 	}
 
 	testTime, err := time.Parse("2006-01-02", "2021-01-01")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	builtin := func(ctx context.Context, args ...Object) Object {
 		return nil
@@ -120,7 +125,7 @@ func TestPrintableValue(t *testing.T) {
 		{NewFloat(42.42), 42.42},
 		{NewBool(true), true},
 		{NewBool(false), false},
-		{Errorf("error"), errors.New("error")},
+		{Errorf("error"), "error"}, // PrintableValue returns error message as string
 		{obj: Nil, expected: "nil"},
 		{obj: NewTime(testTime), expected: "2021-01-01T00:00:00Z"},
 		{obj: NewBuiltin("foo", builtin), expected: "builtin(foo)"},
@@ -150,7 +155,14 @@ func TestPrintableValue(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%v", tc.expected), func(t *testing.T) {
 			got := PrintableValue(tc.obj)
-			require.Equal(t, tc.expected, got)
+			// Handle error comparison specially since error pointers differ
+			if gotErr, ok := got.(error); ok {
+				expectedErr, ok := tc.expected.(string)
+				assert.True(t, ok)
+				assert.Equal(t, gotErr.Error(), expectedErr)
+				return
+			}
+			assert.Equal(t, got, tc.expected)
 		})
 	}
 }

@@ -8,10 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
+	"github.com/risor-io/risor/vm"
 )
 
 type TestCase struct {
@@ -82,12 +83,12 @@ func getTestCase(name string) (TestCase, error) {
 // This uses the internal VM to get the raw object for test comparison
 func execute(ctx context.Context, input string) (object.Object, error) {
 	// Use the internal vm.Run to get object.Object for accurate test comparison
-	program, err := risor.Compile(input)
+	program, err := risor.Compile(input, risor.WithEnv(risor.Builtins()))
 	if err != nil {
 		return nil, err
 	}
-	// Use the internal function to get object.Object
-	return risor.EvalCode(ctx, program.Code())
+	// Use vm.Run directly to get object.Object
+	return vm.Run(ctx, program.Code(), vm.WithGlobals(risor.Builtins()))
 }
 
 func listTestFiles() []string {
@@ -115,7 +116,7 @@ func TestFiles(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			tc, err := getTestCase(name)
-			require.Nil(t, err)
+			assert.Nil(t, err)
 			ctx := context.Background()
 			result, err := execute(ctx, tc.Text)
 			expectedType := object.Type(tc.ExpectedType)
@@ -124,42 +125,44 @@ func TestFiles(t *testing.T) {
 				if result == nil {
 					t.Fatalf("expected value %q, got nil", tc.ExpectedValue)
 				} else {
-					require.Equal(t, tc.ExpectedValue, result.Inspect())
+					assert.Equal(t, result.Inspect(), tc.ExpectedValue)
 				}
 			}
 			if tc.ExpectedType != "" {
 				if result == nil {
 					t.Fatalf("expected type %q, got nil", tc.ExpectedType)
 				} else {
-					require.Equal(t, expectedType, result.Type())
+					assert.Equal(t, result.Type(), expectedType)
 				}
 			}
 			if tc.ExpectedErr != "" {
-				require.NotNil(t, err)
-				require.Equal(t, tc.ExpectedErr, err.Error())
+				assert.NotNil(t, err)
+				assert.Equal(t, err.Error(), tc.ExpectedErr)
 			}
 			if tc.ExpectedErrColumn != 0 {
-				require.NotNil(t, err)
+				assert.NotNil(t, err)
 				parserErr, ok := err.(parser.ParserError)
-				require.True(t, ok)
+				assert.True(t, ok)
 				fmt.Println("--- Friendly error output for", name)
 				fmt.Println(parserErr.FriendlyErrorMessage())
 				fmt.Println("---")
-				require.Equal(t,
-					tc.ExpectedErrColumn,
-					parserErr.StartPosition().ColumnNumber(),
+				assert.Equal(t,
+
+					parserErr.StartPosition().ColumnNumber(), tc.ExpectedErrColumn,
+
 					"The column number is incorrect")
 			}
 			if tc.ExpectedErrLine != 0 {
-				require.NotNil(t, err)
+				assert.NotNil(t, err)
 				parserErr, ok := err.(parser.ParserError)
-				require.True(t, ok)
+				assert.True(t, ok)
 				fmt.Println("--- Friendly error output for", name)
 				fmt.Println(parserErr.FriendlyErrorMessage())
 				fmt.Println("---")
-				require.Equal(t,
-					tc.ExpectedErrLine,
-					parserErr.StartPosition().LineNumber(),
+				assert.Equal(t,
+
+					parserErr.StartPosition().LineNumber(), tc.ExpectedErrLine,
+
 					"The line number is incorrect")
 			}
 		})

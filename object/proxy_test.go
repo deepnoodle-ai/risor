@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/object"
-	"github.com/stretchr/testify/require"
 )
 
 // Used to confirm we can proxy method calls that use complex types.
@@ -56,29 +56,29 @@ func (p proxyTestType1) Len() int {
 
 func TestProxyNonStruct(t *testing.T) {
 	proxy, err := object.NewProxy(proxyTestType1{"a", "b", "c"})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	fmt.Println(proxy)
 
 	goType := proxy.GoType()
 	fmt.Println("goType:", goType)
 
-	require.Equal(t, []string{"Len"}, goType.AttributeNames())
+	assert.Equal(t, goType.AttributeNames(), []string{"Len"})
 	attr, ok := goType.GetAttribute("Len")
-	require.True(t, ok)
-	require.Equal(t, "Len", attr.Name())
+	assert.True(t, ok)
+	assert.Equal(t, attr.Name(), "Len")
 
 	method, ok := attr.(*object.GoMethod)
-	require.True(t, ok)
-	require.Equal(t, "Len", method.Name())
-	require.Equal(t, 1, method.NumIn())
-	require.Equal(t, 1, method.NumOut())
+	assert.True(t, ok)
+	assert.Equal(t, method.Name(), "Len")
+	assert.Equal(t, method.NumIn(), 1)
+	assert.Equal(t, method.NumOut(), 1)
 
 	m, ok := proxy.GetAttr("Len")
-	require.True(t, ok)
+	assert.True(t, ok)
 	lenBuiltin, ok := m.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 	res := lenBuiltin.Call(context.Background())
-	require.Equal(t, int64(3), res.(*object.Int).Value())
+	assert.Equal(t, res.(*object.Int).Value(), int64(3))
 }
 
 type proxyTestType2 struct {
@@ -109,117 +109,116 @@ func TestProxyTestType2(t *testing.T) {
 			"qux",
 		},
 	})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	fmt.Println(proxy)
 
 	goType := proxy.GoType()
-	require.Equal(t, "*object_test.proxyTestType2", goType.Name())
+	assert.Equal(t, goType.Name(), "*object_test.proxyTestType2")
 	fmt.Println("goType:", goType)
 
-	require.Equal(t, []string{"A", "Anon", "B", "D", "Nested"},
-		goType.AttributeNames())
+	assert.Equal(t, goType.AttributeNames(), []string{"A", "Anon", "B", "D", "Nested"})
 
 	aAttr, ok := goType.GetAttribute("A")
-	require.True(t, ok)
-	require.Equal(t, "A", aAttr.Name())
+	assert.True(t, ok)
+	assert.Equal(t, aAttr.Name(), "A")
 	field, ok := aAttr.(*object.GoField)
-	require.True(t, ok)
-	require.Equal(t, "A", field.Name())
-	require.Equal(t, "int", field.ReflectType().Name())
+	assert.True(t, ok)
+	assert.Equal(t, field.Name(), "A")
+	assert.Equal(t, field.ReflectType().Name(), "int")
 
 	anonAttr, ok := goType.GetAttribute("Anon")
-	require.True(t, ok)
-	require.Equal(t, "Anon", anonAttr.Name())
+	assert.True(t, ok)
+	assert.Equal(t, anonAttr.Name(), "Anon")
 	field, ok = anonAttr.(*object.GoField)
-	require.True(t, ok)
-	require.Equal(t, "Anon", field.Name())
-	require.Equal(t, "", field.ReflectType().Name())
-	require.Equal(t, []string{"X"}, field.GoType().AttributeNames())
+	assert.True(t, ok)
+	assert.Equal(t, field.Name(), "Anon")
+	assert.Equal(t, field.ReflectType().Name(), "")
+	assert.Equal(t, field.GoType().AttributeNames(), []string{"X"})
 
 	attr, ok := goType.GetAttribute("D")
-	require.True(t, ok)
-	require.Equal(t, "D", attr.Name())
+	assert.True(t, ok)
+	assert.Equal(t, attr.Name(), "D")
 
 	method, ok := attr.(*object.GoMethod)
-	require.True(t, ok)
-	require.Equal(t, "D", method.Name())
-	require.Equal(t, 3, method.NumIn())
-	require.Equal(t, 2, method.NumOut())
+	assert.True(t, ok)
+	assert.Equal(t, method.Name(), "D")
+	assert.Equal(t, method.NumIn(), 3)
+	assert.Equal(t, method.NumOut(), 2)
 
 	in0 := method.InType(0)
-	require.Equal(t, "*object_test.proxyTestType2", in0.Name())
+	assert.Equal(t, in0.Name(), "*object_test.proxyTestType2")
 	in1 := method.InType(1)
-	require.Equal(t, "int", in1.Name())
+	assert.Equal(t, in1.Name(), "int")
 	in2 := method.InType(2)
-	require.Equal(t, "float32", in2.Name())
+	assert.Equal(t, in2.Name(), "float32")
 
 	out0 := method.OutType(0)
-	require.Equal(t, "int", out0.Name())
+	assert.Equal(t, out0.Name(), "int")
 	out1 := method.OutType(1)
-	require.Equal(t, "error", out1.Name())
+	assert.Equal(t, out1.Name(), "error")
 
-	require.True(t, method.ProducesError())
-	require.Equal(t, []int{1}, method.ErrorIndices())
+	assert.True(t, method.ProducesError())
+	assert.Equal(t, method.ErrorIndices(), []int{1})
 
 	nestedAttr, ok := goType.GetAttribute("Nested")
-	require.True(t, ok)
-	require.Equal(t, "Nested", nestedAttr.Name())
+	assert.True(t, ok)
+	assert.Equal(t, nestedAttr.Name(), "Nested")
 	field, ok = nestedAttr.(*object.GoField)
-	require.True(t, ok)
-	require.Equal(t, "Nested", field.Name())
-	require.Equal(t, "proxyTestType1", field.ReflectType().Name())
-	require.Equal(t, []string{"Len"}, field.GoType().AttributeNames())
+	assert.True(t, ok)
+	assert.Equal(t, field.Name(), "Nested")
+	assert.Equal(t, field.ReflectType().Name(), "proxyTestType1")
+	assert.Equal(t, field.GoType().AttributeNames(), []string{"Len"})
 
 	ptt1, err := object.NewGoType(reflect.TypeOf(proxyTestType1{}))
-	require.Nil(t, err)
-	require.Equal(t, ptt1, field.GoType())
+	assert.Nil(t, err)
+	assert.True(t, object.Equals(field.GoType(), ptt1))
 
 	aValue, getOk := proxy.GetAttr("A")
-	require.True(t, getOk)
-	require.Equal(t, object.NewInt(99), aValue)
+	assert.True(t, getOk)
+	assert.Equal(t, aValue, object.NewInt(99))
 }
 
 func TestProxyCall(t *testing.T) {
 	proxy, err := object.NewProxy(&proxyTestType2{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	m, ok := proxy.GetAttr("D")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := m.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	result := b.Call(context.Background(),
 		object.NewInt(1),
 		object.NewFloat(2.0))
 
-	require.Equal(t, object.NewInt(3), result)
+	assert.Equal(t, result, object.NewInt(3))
 }
 
 func TestProxySetGetAttr(t *testing.T) {
 	proxy, err := object.NewProxy(&proxyTestType2{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// A starts at 0
 	value, ok := proxy.GetAttr("A")
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(0), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewInt(0))
 
 	// Set to 42
-	require.Nil(t, proxy.SetAttr("A", object.NewInt(42)))
+	assert.Nil(t, proxy.SetAttr("A", object.NewInt(42)))
 
 	// Confirm 42
 	value, ok = proxy.GetAttr("A")
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(42), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewInt(42))
 
 	// Set to -3
-	require.Nil(t, proxy.SetAttr("A", object.NewInt(-3)))
+	assert.Nil(t, proxy.SetAttr("A", object.NewInt(-3)))
 
 	// Confirm -3
 	value, ok = proxy.GetAttr("A")
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(-3), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewInt(-3))
 }
 
 type proxyTestType3 struct {
@@ -232,62 +231,62 @@ type proxyTestType3 struct {
 
 func TestProxySetGetAttrNil(t *testing.T) {
 	proxy, err := object.NewProxy(&proxyTestType3{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// A is not nillable
 	err = proxy.SetAttr("A", object.Nil)
-	require.Error(t, err)
-	require.Equal(t, "type error: expected int (nil given)", err.Error())
+	assert.Error(t, err)
+	assert.Equal(t, err.Error(), "type error: expected int (nil given)")
 
 	// P starts at nil
 	value, ok := proxy.GetAttr("P")
-	require.True(t, ok)
-	require.Equal(t, object.Nil, value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.Nil)
 
 	// Set to "abc"
-	require.Nil(t, proxy.SetAttr("P", object.NewString("abc")))
+	assert.Nil(t, proxy.SetAttr("P", object.NewString("abc")))
 
 	// Confirm "abc"
 	value, ok = proxy.GetAttr("P")
-	require.True(t, ok)
-	require.Equal(t, object.NewString("abc"), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewString("abc"))
 
 	// Set to nil
-	require.Nil(t, proxy.SetAttr("P", object.Nil))
+	assert.Nil(t, proxy.SetAttr("P", object.Nil))
 
 	// Confirm nil
 	value, ok = proxy.GetAttr("P")
-	require.True(t, ok)
-	require.Equal(t, object.Nil, value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.Nil)
 
 	// I starts at nil
 	value, ok = proxy.GetAttr("I")
-	require.True(t, ok)
-	require.Equal(t, object.Nil, value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.Nil)
 
 	// Set to "abc"
-	require.Nil(t, proxy.SetAttr("I", object.NewBuffer(bytes.NewBufferString("abc"))))
+	assert.Nil(t, proxy.SetAttr("I", object.NewBuffer(bytes.NewBufferString("abc"))))
 
 	// Confirm "abc"
 	value, ok = proxy.GetAttr("I")
-	require.True(t, ok)
-	require.Equal(t, object.NewBuffer(bytes.NewBufferString("abc")), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewBuffer(bytes.NewBufferString("abc")))
 
 	// Set to nil
-	require.Nil(t, proxy.SetAttr("I", object.Nil))
+	assert.Nil(t, proxy.SetAttr("I", object.Nil))
 
 	// Confirm nil
 	value, ok = proxy.GetAttr("I")
-	require.True(t, ok)
-	require.Equal(t, object.Nil, value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.Nil)
 
 	// M starts at nil
 	value, ok = proxy.GetAttr("M")
-	require.True(t, ok)
-	require.Equal(t, object.NewMap(map[string]object.Object{}), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewMap(map[string]object.Object{}))
 
 	// Set to {"a": 1, "b": 2, "c": 3}
-	require.Nil(t, proxy.SetAttr("M", object.NewMap(map[string]object.Object{
+	assert.Nil(t, proxy.SetAttr("M", object.NewMap(map[string]object.Object{
 		"a": object.NewInt(1),
 		"b": object.NewInt(2),
 		"c": object.NewInt(3),
@@ -295,50 +294,52 @@ func TestProxySetGetAttrNil(t *testing.T) {
 
 	// Confirm {"a": 1, "b": 2, "c": 3}
 	value, ok = proxy.GetAttr("M")
-	require.True(t, ok)
-	require.Equal(t, object.NewMap(map[string]object.Object{
-		"a": object.NewInt(1),
-		"b": object.NewInt(2),
-		"c": object.NewInt(3),
-	}), value)
+	assert.True(t, ok)
+	assert.Equal(t,
+
+		value, object.NewMap(map[string]object.Object{
+			"a": object.NewInt(1),
+			"b": object.NewInt(2),
+			"c": object.NewInt(3),
+		}))
 
 	// Set to nil
-	require.Nil(t, proxy.SetAttr("M", object.Nil))
+	assert.Nil(t, proxy.SetAttr("M", object.Nil))
 
 	// Confirm nil
 	value, ok = proxy.GetAttr("M")
-	require.True(t, ok)
-	require.Equal(t, object.NewMap(map[string]object.Object{}), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewMap(map[string]object.Object{}))
 
 	// S starts at nil
 	value, ok = proxy.GetAttr("S")
-	require.True(t, ok)
-	require.Equal(t, object.NewList([]object.Object{}), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewList([]object.Object{}))
 
 	// Set to ["a", "b", "c"]
-	require.Nil(t, proxy.SetAttr("S", object.NewStringList([]string{"a", "b", "c"})))
+	assert.Nil(t, proxy.SetAttr("S", object.NewStringList([]string{"a", "b", "c"})))
 
 	// Confirm ["a", "b", "c"]
 	value, ok = proxy.GetAttr("S")
-	require.True(t, ok)
-	require.Equal(t, object.NewStringList([]string{"a", "b", "c"}), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewStringList([]string{"a", "b", "c"}))
 
 	// Set to nil
-	require.Nil(t, proxy.SetAttr("S", object.Nil))
+	assert.Nil(t, proxy.SetAttr("S", object.Nil))
 
 	// Confirm nil
 	value, ok = proxy.GetAttr("S")
-	require.True(t, ok)
-	require.Equal(t, object.NewList([]object.Object{}), value)
+	assert.True(t, ok)
+	assert.Equal(t, value, object.NewList([]object.Object{}))
 }
 
 func TestProxyOnStructValue(t *testing.T) {
 	p, err := object.NewProxy(proxyTestType2{A: 99})
-	require.NoError(t, err)
-	require.Equal(t, "*object_test.proxyTestType2", p.GoType().Name())
+	assert.NoError(t, err)
+	assert.Equal(t, p.GoType().Name(), "*object_test.proxyTestType2")
 	attr, ok := p.GetAttr("A")
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(99), attr)
+	assert.True(t, ok)
+	assert.Equal(t, attr, object.NewInt(99))
 }
 
 func TestProxyBytesBuffer(t *testing.T) {
@@ -349,31 +350,31 @@ func TestProxyBytesBuffer(t *testing.T) {
 	// Creating a proxy on an interface really means creating a proxy on the
 	// underlying concrete type.
 	proxy, err := object.NewProxy(reader)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Confirm the GoType is actually *bytes.Buffer
 	goType := proxy.GoType()
-	require.Equal(t, "*bytes.Buffer", goType.Name())
+	assert.Equal(t, goType.Name(), "*bytes.Buffer")
 
 	// The proxy should have attributes available for all public attributes
 	// on *bytes.Buffer
 	method, ok := proxy.GetAttr("Len")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Confirm we can call a method
 	lenMethod, ok := method.(*object.Builtin)
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(3), lenMethod.Call(ctx))
+	assert.True(t, ok)
+	assert.Equal(t, lenMethod.Call(ctx), object.NewInt(3))
 
 	// Write to the buffer and confirm the length changes
 	buf.WriteString("defg")
-	require.Equal(t, object.NewInt(7), lenMethod.Call(ctx))
+	assert.Equal(t, lenMethod.Call(ctx), object.NewInt(7))
 
 	// Confirm we can call Bytes() and get a byte_slice back
 	getBytes, ok := proxy.GetAttr("Bytes")
-	require.True(t, ok)
+	assert.True(t, ok)
 	bytes := getBytes.(*object.Builtin).Call(ctx)
-	require.Equal(t, object.NewByteSlice([]byte("abcdefg")), bytes)
+	assert.Equal(t, bytes, object.NewByteSlice([]byte("abcdefg")))
 }
 
 func TestProxyMethodError(t *testing.T) {
@@ -386,18 +387,18 @@ func TestProxyMethodError(t *testing.T) {
 	ctx := context.Background()
 	buf := bytes.NewBuffer(nil) // empty buffer!
 	proxy, err := object.NewProxy(buf)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("ReadByte")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	readByte, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	result := readByte.Call(ctx)
 	errObj, ok := result.(*object.Error)
-	require.True(t, ok)
-	require.Equal(t, object.Errorf("EOF"), errObj)
+	assert.True(t, ok)
+	assert.Equal(t, errObj.Value().Error(), "EOF")
 }
 
 func TestProxyHasher(t *testing.T) {
@@ -405,33 +406,33 @@ func TestProxyHasher(t *testing.T) {
 	h := sha256.New()
 
 	proxy, err := object.NewProxy(h)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("Write")
-	require.True(t, ok)
+	assert.True(t, ok)
 	write, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	method, ok = proxy.GetAttr("Sum")
-	require.True(t, ok)
+	assert.True(t, ok)
 	sum, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	result := write.Call(ctx, object.NewByteSlice([]byte("abc")))
-	require.Equal(t, object.NewInt(3), result)
+	assert.Equal(t, result, object.NewInt(3))
 
 	result = write.Call(ctx, object.NewByteSlice([]byte("de")))
-	require.Equal(t, object.NewInt(2), result)
+	assert.Equal(t, result, object.NewInt(2))
 
 	result = sum.Call(ctx, object.NewByteSlice(nil))
 	byte_slice, ok := result.(*object.ByteSlice)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	other := sha256.New()
 	other.Write([]byte("abcde"))
 	expected := other.Sum(nil)
 
-	require.Equal(t, expected, byte_slice.Value())
+	assert.Equal(t, byte_slice.Value(), expected)
 }
 
 type nestedStructA struct {
@@ -445,23 +446,23 @@ type nestedStructConfig struct {
 func TestProxyNestedStruct(t *testing.T) {
 	config := &nestedStructConfig{}
 	proxy, err := object.NewProxy(config)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Get the A field
 	aField, ok := proxy.GetAttr("A")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Verify A is a proxy to nestedStructA
 	aProxy, ok := aField.(*object.Proxy)
-	require.True(t, ok)
-	require.Equal(t, "*object_test.nestedStructA", aProxy.GoType().Name())
+	assert.True(t, ok)
+	assert.Equal(t, aProxy.GoType().Name(), "*object_test.nestedStructA")
 
 	// Set B field directly on the A proxy
 	err = aProxy.SetAttr("B", object.NewString("hello"))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Verify the value was set correctly
-	require.Equal(t, "hello", config.A.B)
+	assert.Equal(t, config.A.B, "hello")
 }
 
 type testNilArg struct{}
@@ -497,123 +498,123 @@ func (t *testNilArg) TestReturnPointer() *string {
 
 func TestProxyNilArg(t *testing.T) {
 	proxy, err := object.NewProxy(&testNilArg{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("Test")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call Test with nil argument
 	result := b.Call(context.Background(), object.Nil)
-	require.Equal(t, object.Nil, result)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestProxyMultipleNilArgs(t *testing.T) {
 	proxy, err := object.NewProxy(&testNilArg{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("TestMultiple")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call TestMultiple with two nil arguments
 	result := b.Call(context.Background(), object.Nil, object.Nil)
-	require.Equal(t, object.Nil, result)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestProxyMixedArgs(t *testing.T) {
 	proxy, err := object.NewProxy(&testNilArg{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("TestMixed")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call TestMixed with a string and nil
 	result := b.Call(context.Background(), object.NewString("hello"), object.Nil)
-	require.Equal(t, object.Nil, result)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestProxyReturnNil(t *testing.T) {
 	proxy, err := object.NewProxy(&testNilArg{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("TestReturnNil")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call TestReturnNil and verify it returns nil
 	result := b.Call(context.Background())
-	require.Equal(t, object.Nil, result)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestProxyReturnValue(t *testing.T) {
 	proxy, err := object.NewProxy(&testNilArg{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("TestReturnValue")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call TestReturnValue and verify it returns the string
 	result := b.Call(context.Background())
 	str, ok := result.(*object.String)
-	require.True(t, ok)
-	require.Equal(t, "hello", str.Value())
+	assert.True(t, ok)
+	assert.Equal(t, str.Value(), "hello")
 }
 
 func TestProxyReturnMultiple(t *testing.T) {
 	proxy, err := object.NewProxy(&testNilArg{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("TestReturnMultiple")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call TestReturnMultiple and verify it returns both values
 	result := b.Call(context.Background())
 	list, ok := result.(*object.List)
-	require.True(t, ok)
-	require.Equal(t, int64(2), list.Len().Value())
+	assert.True(t, ok)
+	assert.Equal(t, list.Len().Value(), int64(2))
 
 	// Check first value (string)
 	str, err := list.GetItem(object.NewInt(0))
-	require.Nil(t, err)
-	require.Equal(t, "hello", str.(*object.String).Value())
+	assert.Nil(t, err)
+	assert.Equal(t, str.(*object.String).Value(), "hello")
 
 	// Check second value (nil)
 	str, err = list.GetItem(object.NewInt(1))
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, str)
+	assert.Nil(t, err)
+	assert.Equal(t, str, object.Nil)
 }
 
 func TestProxyReturnPointer(t *testing.T) {
 	proxy, err := object.NewProxy(&testNilArg{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	method, ok := proxy.GetAttr("TestReturnPointer")
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	b, ok := method.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call TestReturnPointer and verify it returns the pointer
 	result := b.Call(context.Background())
 	str, ok := result.(*object.String)
-	require.True(t, ok)
-	require.Equal(t, "hello", str.Value())
+	assert.True(t, ok)
+	assert.Equal(t, str.Value(), "hello")
 }
 
 // Vector3D is a simple 3D vector type for testing struct field setting
@@ -644,13 +645,13 @@ func (f *VectorFactory) NewVector(x, y, z float64) Vector3D {
 func TestProxyMethodReturnStructValue(t *testing.T) {
 	// Create a proxy for the vector factory
 	factory, err := object.NewProxy(&VectorFactory{})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Get the NewVector method
 	newVectorMethod, ok := factory.GetAttr("NewVector")
-	require.True(t, ok)
+	assert.True(t, ok)
 	newVector, ok := newVectorMethod.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Create a vector using the factory method
 	ctx := context.Background()
@@ -658,16 +659,16 @@ func TestProxyMethodReturnStructValue(t *testing.T) {
 
 	// Verify it's a proxy
 	vectorProxy1, ok := vector1.(*object.Proxy)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Verify the proxy is to a *Vector3D, not a Vector3D
-	require.Equal(t, "*object_test.Vector3D", vectorProxy1.GoType().Name())
+	assert.Equal(t, vectorProxy1.GoType().Name(), "*object_test.Vector3D")
 
 	// Get the Add method from the vector
 	addMethod, ok := vectorProxy1.GetAttr("Add")
-	require.True(t, ok)
+	assert.True(t, ok)
 	add, ok := addMethod.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Create another vector and add them
 	vector2 := newVector.Call(ctx, object.NewFloat(4), object.NewFloat(5), object.NewFloat(6))
@@ -675,33 +676,33 @@ func TestProxyMethodReturnStructValue(t *testing.T) {
 
 	// Verify result is a proxy
 	resultProxy, ok := result.(*object.Proxy)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Verify the result proxy is to a *Vector3D, not a Vector3D. Struct values
 	// should be converted to pointers automatically
-	require.Equal(t, "*object_test.Vector3D", resultProxy.GoType().Name())
+	assert.Equal(t, resultProxy.GoType().Name(), "*object_test.Vector3D")
 
 	// Now test that we can modify fields on the result
 	err = resultProxy.SetAttr("X", object.NewFloat(15))
-	require.Nil(t, err, "Should be able to set field X on the result")
+	assert.Nil(t, err, "Should be able to set field X on the result")
 
 	// Verify the field was updated
 	x, ok := resultProxy.GetAttr("X")
-	require.True(t, ok)
-	require.Equal(t, object.NewFloat(15), x)
+	assert.True(t, ok)
+	assert.Equal(t, x, object.NewFloat(15))
 
 	// Test other fields too
 	err = resultProxy.SetAttr("Y", object.NewFloat(25))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	y, ok := resultProxy.GetAttr("Y")
-	require.True(t, ok)
-	require.Equal(t, object.NewFloat(25), y)
+	assert.True(t, ok)
+	assert.Equal(t, y, object.NewFloat(25))
 
 	err = resultProxy.SetAttr("Z", object.NewFloat(35))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	z, ok := resultProxy.GetAttr("Z")
-	require.True(t, ok)
-	require.Equal(t, object.NewFloat(35), z)
+	assert.True(t, ok)
+	assert.Equal(t, z, object.NewFloat(35))
 }
 
 // TestProxyStructConverterRoundTrip tests that struct values are properly converted
@@ -712,31 +713,31 @@ func TestProxyStructConverterRoundTrip(t *testing.T) {
 
 	// Create a proxy for the struct
 	proxy, err := object.NewProxy(original)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Verify it's a pointer type in the proxy
-	require.Equal(t, "*object_test.Vector3D", proxy.GoType().Name())
+	assert.Equal(t, proxy.GoType().Name(), "*object_test.Vector3D")
 
 	// Modify a field
 	err = proxy.SetAttr("X", object.NewFloat(10))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Convert back to Go type
 	// This should extract the value, not the pointer
 	converter, err := object.NewTypeConverter(reflect.TypeOf(original))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	result, err := converter.To(proxy)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Verify the result is a Vector3D, not a *Vector3D
 	resultVector, ok := result.(Vector3D)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Verify the field was modified
-	require.Equal(t, 10.0, resultVector.X)
-	require.Equal(t, 2.0, resultVector.Y)
-	require.Equal(t, 3.0, resultVector.Z)
+	assert.Equal(t, resultVector.X, 10.0)
+	assert.Equal(t, resultVector.Y, 2.0)
+	assert.Equal(t, resultVector.Z, 3.0)
 }
 
 // TestProxyVectorModificationTracking tests that when a struct value is returned
@@ -748,13 +749,13 @@ func TestProxyVectorModificationTracking(t *testing.T) {
 
 	// Create a proxy for the factory
 	factoryProxy, err := object.NewProxy(factory)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Get the NewVector method
 	newVectorMethod, ok := factoryProxy.GetAttr("NewVector")
-	require.True(t, ok)
+	assert.True(t, ok)
 	newVector, ok := newVectorMethod.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call the NewVector method to create a vector
 	ctx := context.Background()
@@ -762,18 +763,18 @@ func TestProxyVectorModificationTracking(t *testing.T) {
 
 	// Get the Add method
 	vectorProxy, ok := vector.(*object.Proxy)
-	require.True(t, ok)
+	assert.True(t, ok)
 	addMethod, ok := vectorProxy.GetAttr("Add")
-	require.True(t, ok)
+	assert.True(t, ok)
 	add, ok := addMethod.(*object.Builtin)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Call Add to create a result vector
 	otherVector, err := object.NewProxy(Vector3D{X: 4, Y: 5, Z: 6})
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	resultVector := add.Call(ctx, otherVector)
 	resultProxy, ok := resultVector.(*object.Proxy)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Extract the actual Go value from the proxy
 	// We should be able to get the underlying Go object
@@ -781,17 +782,17 @@ func TestProxyVectorModificationTracking(t *testing.T) {
 
 	// Modify the vector through the proxy
 	err = resultProxy.SetAttr("X", object.NewFloat(99))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	err = resultProxy.SetAttr("Y", object.NewFloat(88))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	err = resultProxy.SetAttr("Z", object.NewFloat(77))
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Check that the modifications are reflected in the underlying Go value
 	// This is important - the changes should be visible to Go code
 	underlyingVector, ok := underlyingObj.(*Vector3D)
-	require.True(t, ok)
-	require.Equal(t, 99.0, underlyingVector.X)
-	require.Equal(t, 88.0, underlyingVector.Y)
-	require.Equal(t, 77.0, underlyingVector.Z)
+	assert.True(t, ok)
+	assert.Equal(t, underlyingVector.X, 99.0)
+	assert.Equal(t, underlyingVector.Y, 88.0)
+	assert.Equal(t, underlyingVector.Z, 77.0)
 }

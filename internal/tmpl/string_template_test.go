@@ -3,7 +3,7 @@ package tmpl
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestParseString(t *testing.T) {
@@ -51,9 +51,9 @@ func TestParseString(t *testing.T) {
 	}
 	for _, tc := range tests {
 		res, err := Parse(tc.input)
-		require.Nil(t, err)
-		require.Equal(t, tc.input, res.Value())
-		require.Equal(t, tc.want, res.Fragments())
+		assert.Nil(t, err)
+		assert.Equal(t, res.Value(), tc.input)
+		assert.Equal(t, res.Fragments(), tc.want)
 	}
 }
 
@@ -67,7 +67,7 @@ func TestParseStringErrors(t *testing.T) {
 	}
 	for _, tc := range tests {
 		_, err := Parse(tc.input)
-		require.NotNil(t, err)
-		require.Equal(t, tc.wantErr, err.Error())
+		assert.NotNil(t, err)
+		assert.Equal(t, err.Error(), tc.wantErr)
 	}
 }

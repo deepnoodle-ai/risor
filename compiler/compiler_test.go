@@ -5,33 +5,33 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/ast"
 	"github.com/risor-io/risor/internal/token"
 	"github.com/risor-io/risor/op"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNil(t *testing.T) {
 	c, err := New()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	scope, err := c.Compile(&ast.Nil{})
-	require.Nil(t, err)
-	require.Equal(t, 1, scope.InstructionCount())
+	assert.Nil(t, err)
+	assert.Equal(t, scope.InstructionCount(), 1)
 	instr := scope.Instruction(0)
-	require.Equal(t, op.Nil, op.Code(instr))
+	assert.Equal(t, op.Code(instr), op.Nil)
 }
 
 func TestUndefinedVariable(t *testing.T) {
 	c, err := New()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	_, err = c.Compile(ast.NewIdent(token.Token{
 		Type:          token.IDENT,
 		Literal:       "foo",
 		StartPosition: token.Position{Line: 1, Column: 1},
 	}))
-	require.NotNil(t, err)
-	require.Equal(t, "compile error: undefined variable \"foo\"\n\nlocation: unknown:2:2 (line 2, column 2)", err.Error())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "compile error: undefined variable \"foo\"\n\nlocation: unknown:2:2 (line 2, column 2)")
 }
 
 func TestCompileErrors(t *testing.T) {
@@ -84,12 +84,12 @@ func TestCompileErrors(t *testing.T) {
 	for _, tt := range testCase {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := New(WithFilename("t.risor"))
-			require.Nil(t, err)
+			assert.Nil(t, err)
 			ast, err := parser.Parse(context.Background(), tt.input)
-			require.Nil(t, err)
+			assert.Nil(t, err)
 			_, err = c.Compile(ast)
-			require.NotNil(t, err)
-			require.Equal(t, tt.errMsg, err.Error())
+			assert.NotNil(t, err)
+			assert.Equal(t, err.Error(), tt.errMsg)
 		})
 	}
 }
@@ -114,24 +114,24 @@ func TestCompoundAssignmentWithIndex(t *testing.T) {
 	}
 
 	c, err := New()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	code, err := c.Compile(ast)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Compare the generated instructions
 	actual := NewInstructionIter(code).All()
 
-	require.Equal(t, len(expected), len(actual),
+	assert.Equal(t, len(actual), len(expected),
 		"instruction length mismatch. got=%d, want=%d",
 		len(actual), len(expected))
 
 	for i, want := range expected {
 		got := actual[i]
-		require.Equal(t, want, got,
+		assert.Equal(t, got, want,
 			"wrong instruction at pos %d. got=%v, want=%v",
 			i, got, want)
 	}
@@ -148,13 +148,13 @@ func TestBitwiseAnd(t *testing.T) {
 	expectedConstants := []interface{}{int64(3), int64(1)}
 
 	astNode, err := parser.Parse(context.Background(), input)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	code, err := Compile(astNode)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.Equal(t, expectedCode, code.instructions)
-	require.Equal(t, expectedConstants, code.constants)
+	assert.Equal(t, code.instructions, expectedCode)
+	assert.Equal(t, code.constants, expectedConstants)
 }
 
 func TestFunctionRedefinition(t *testing.T) {
@@ -198,9 +198,9 @@ function foo() {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := New()
-			require.Nil(t, err)
+			assert.Nil(t, err)
 			ast, err := parser.Parse(context.Background(), tt.input)
-			require.Nil(t, err)
+			assert.Nil(t, err)
 			_, err = c.Compile(ast)
 			if err == nil {
 				t.Errorf("Expected error but got none")
@@ -335,16 +335,16 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := New()
-			require.Nil(t, err)
+			assert.Nil(t, err)
 
 			ast, err := parser.Parse(context.Background(), tt.input)
-			require.Nil(t, err)
+			assert.Nil(t, err)
 
 			_, err = c.Compile(ast)
 			if tt.wantErr {
-				require.NotNil(t, err)
+				assert.NotNil(t, err)
 			} else {
-				require.Nil(t, err)
+				assert.Nil(t, err)
 			}
 		})
 	}
@@ -365,20 +365,20 @@ func TestForwardDeclarationInstructionGeneration(t *testing.T) {
 	`
 
 	c, err := New()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	code, err := c.Compile(ast)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Verify that the code compiles successfully and has expected structure
-	require.NotNil(t, code)
-	require.Greater(t, code.InstructionCount(), 0)
+	assert.NotNil(t, code)
+	assert.Greater(t, code.InstructionCount(), 0)
 
 	// Verify that the code compiles successfully and contains expected constants
-	require.Greater(t, code.ConstantsCount(), 0, "should have constants")
+	assert.Greater(t, code.ConstantsCount(), 0, "should have constants")
 
 	// The main verification is that compilation succeeded without errors
 	// indicating that forward declarations were properly resolved

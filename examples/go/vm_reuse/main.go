@@ -7,7 +7,6 @@ import (
 
 	"github.com/risor-io/risor"
 	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/vm"
 )
 
 func getCustomModule() *object.Module {
@@ -36,7 +35,8 @@ func main() {
 	ctx := context.Background()
 	customModule := getCustomModule()
 
-	vm, err := vm.NewEmpty()
+	// Use the VM wrapper for stateful execution across multiple evaluations
+	vm, err := risor.NewVM(risor.WithEnv(map[string]any{"simplemath": customModule}))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,11 +44,7 @@ func main() {
 	for i := 0; i < 3; i++ {
 		fmt.Printf("==== execution %d ====\n", i)
 
-		result, err := risor.Eval(ctx,
-			"simplemath.add(1, 2)",
-			risor.WithVM(vm),
-			risor.WithGlobals(map[string]any{"simplemath": customModule}),
-		)
+		result, err := vm.Eval(ctx, "simplemath.add(1, 2)")
 		if err != nil {
 			log.Fatal(err)
 		}

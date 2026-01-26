@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDisassembly(t *testing.T) {
@@ -37,5 +37,5 @@ func TestDisassembly(t *testing.T) {
 |      4 | BINARY_OP  |        1 | +    |
 +--------+------------+----------+------+
 `
-	require.Equal(t, strings.TrimPrefix(expected, "\n"), capturedOutput)
+	assert.Equal(t, capturedOutput, strings.TrimPrefix(expected, "\n"))
 }

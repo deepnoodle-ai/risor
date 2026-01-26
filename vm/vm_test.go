@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAddCompilationAndExecution(t *testing.T) {
@@ -17,31 +17,31 @@ func TestAddCompilationAndExecution(t *testing.T) {
 	let y = 12
 	x + y
 	`)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	c, err := compiler.New()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	main, err := c.Compile(program)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	constsCount := main.ConstantsCount()
-	require.Equal(t, 2, constsCount)
+	assert.Equal(t, constsCount, 2)
 
 	c1, ok := main.Constant(0).(int64)
-	require.True(t, ok)
-	require.Equal(t, int64(11), c1)
+	assert.True(t, ok)
+	assert.Equal(t, c1, int64(11))
 
 	c2, ok := main.Constant(1).(int64)
-	require.True(t, ok)
-	require.Equal(t, int64(12), c2)
+	assert.True(t, ok)
+	assert.Equal(t, c2, int64(12))
 
 	vm := New(main)
-	require.Nil(t, vm.Run(context.Background()))
+	assert.Nil(t, vm.Run(context.Background()))
 
 	tos, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(23), tos)
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(23))
 }
 
 func TestConditional(t *testing.T) {
@@ -52,17 +52,17 @@ func TestConditional(t *testing.T) {
 	}
 	x
 	`)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	main, err := compiler.Compile(program)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	vm := New(main)
-	require.Nil(t, vm.Run(context.Background()))
+	assert.Nil(t, vm.Run(context.Background()))
 
 	tos, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(99), tos)
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(99))
 }
 
 func TestConditional3(t *testing.T) {
@@ -75,8 +75,8 @@ func TestConditional3(t *testing.T) {
 		99
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(10))
 }
 
 func TestConditional4(t *testing.T) {
@@ -91,8 +91,8 @@ func TestConditional4(t *testing.T) {
 	}
 	x
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(33), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(33))
 }
 
 func TestIndexing(t *testing.T) {
@@ -112,8 +112,8 @@ func TestStackBehavior3(t *testing.T) {
 		99
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestStackBehavior4(t *testing.T) {
@@ -123,8 +123,8 @@ func TestStackBehavior4(t *testing.T) {
 		99
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestAssignmentOperators(t *testing.T) {
@@ -136,8 +136,8 @@ func TestAssignmentOperators(t *testing.T) {
 	y *= 2
 	y
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(2))
 }
 
 func TestFunctionCall(t *testing.T) {
@@ -146,8 +146,8 @@ func TestFunctionCall(t *testing.T) {
 	let v = f(1)
 	v + 10
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(53), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(53))
 }
 
 func TestSwitch1(t *testing.T) {
@@ -161,8 +161,8 @@ func TestSwitch1(t *testing.T) {
 			42
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(42), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(42))
 }
 
 func TestSwitch2(t *testing.T) {
@@ -175,8 +175,8 @@ func TestSwitch2(t *testing.T) {
 			42
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestSwitch3(t *testing.T) {
@@ -189,8 +189,8 @@ func TestSwitch3(t *testing.T) {
 			42
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestSwitch4(t *testing.T) {
@@ -198,8 +198,8 @@ func TestSwitch4(t *testing.T) {
 	let x = 3
 	switch (x) { default: 99 }
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestSwitch5(t *testing.T) {
@@ -207,8 +207,8 @@ func TestSwitch5(t *testing.T) {
 	let x = 3
 	switch (x) { default: 99 case 3: x; x-1 }
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(2))
 }
 
 func TestStr(t *testing.T) {
@@ -216,8 +216,8 @@ func TestStr(t *testing.T) {
 	let s = "hello"
 	s
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("hello"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("hello"))
 }
 
 func TestStrLen(t *testing.T) {
@@ -225,8 +225,8 @@ func TestStrLen(t *testing.T) {
 	let s = "hello"
 	len(s)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(5), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(5))
 }
 
 func TestList1(t *testing.T) {
@@ -234,12 +234,14 @@ func TestList1(t *testing.T) {
 	let l = [1, 2, 3]
 	l
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(1),
+			object.NewInt(2),
+			object.NewInt(3),
+		}))
 }
 
 func TestList2(t *testing.T) {
@@ -247,23 +249,27 @@ func TestList2(t *testing.T) {
 	let plusOne = function(x) { x + 1 }
 	[plusOne(0), 4-2, plusOne(2)]
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(1),
+			object.NewInt(2),
+			object.NewInt(3),
+		}))
 }
 
 func TestMap(t *testing.T) {
 	result, err := run(context.Background(), `
 	{"a": 1, "b": 4-2}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewMap(map[string]object.Object{
-		"a": object.NewInt(1),
-		"b": object.NewInt(2),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewMap(map[string]object.Object{
+			"a": object.NewInt(1),
+			"b": object.NewInt(2),
+		}))
 }
 
 func TestNonLocal(t *testing.T) {
@@ -274,8 +280,8 @@ func TestNonLocal(t *testing.T) {
 	f()
 	y
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(4))
 }
 
 func TestFrameLocals1(t *testing.T) {
@@ -285,8 +291,8 @@ func TestFrameLocals1(t *testing.T) {
 	f(4)
 	x
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(1), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(1))
 }
 
 func TestFrameLocals2(t *testing.T) {
@@ -296,8 +302,8 @@ func TestFrameLocals2(t *testing.T) {
 	f(4)
 	x
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestMapKeys(t *testing.T) {
@@ -305,11 +311,13 @@ func TestMapKeys(t *testing.T) {
 	let m = {"a": 1, "b": 2}
 	keys(m)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewString("a"),
-		object.NewString("b"),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewString("a"),
+			object.NewString("b"),
+		}))
 }
 
 func TestClosure(t *testing.T) {
@@ -318,8 +326,8 @@ func TestClosure(t *testing.T) {
 	let closure = f(22)
 	closure()
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(22), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(22))
 }
 
 func TestClosureIncrementer(t *testing.T) {
@@ -332,8 +340,8 @@ func TestClosureIncrementer(t *testing.T) {
 	incrementer() // 2
 	incrementer() // 3
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(3))
 }
 
 func TestClosureOverLocal(t *testing.T) {
@@ -348,8 +356,8 @@ func TestClosureOverLocal(t *testing.T) {
 	}
 	getint()()
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(101), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(101))
 }
 
 func TestClosureManyVariables(t *testing.T) {
@@ -361,8 +369,8 @@ func TestClosureManyVariables(t *testing.T) {
 	}
 	foo("hello", "world", "risor")("go")
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewStringList([]string{"hello", "world", "risor", "go"}), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewStringList([]string{"hello", "world", "risor", "go"}))
 }
 
 func TestRecursiveExample1(t *testing.T) {
@@ -376,8 +384,8 @@ func TestRecursiveExample1(t *testing.T) {
 	}
 	twoexp(4)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(16), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(16))
 }
 
 func TestRecursiveExample2(t *testing.T) {
@@ -394,14 +402,14 @@ func TestRecursiveExample2(t *testing.T) {
 	}
 	twoexp(4)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(16), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(16))
 }
 
 func TestConstant(t *testing.T) {
 	_, err := run(context.Background(), `const x = 1; x = 2`)
-	require.NotNil(t, err)
-	require.Equal(t, "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:16 (line 1, column 16)", err.Error())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:16 (line 1, column 16)")
 }
 
 func TestConstantFunction(t *testing.T) {
@@ -409,8 +417,8 @@ func TestConstantFunction(t *testing.T) {
 	function add(x, y) { x + y }
 	add = "bloop"
 	`)
-	require.NotNil(t, err)
-	require.Equal(t, "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:6 (line 3, column 6)", err.Error())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:6 (line 3, column 6)")
 }
 
 func TestStatementsNilValue(t *testing.T) {
@@ -635,7 +643,7 @@ func TestTryEvalError(t *testing.T) {
 	`
 	_, err := run(context.Background(), code)
 	// With the new try/catch, thrown errors are caught
-	require.Nil(t, err)
+	assert.Nil(t, err)
 }
 
 func TestTryTypeError(t *testing.T) {
@@ -646,11 +654,11 @@ func TestTryTypeError(t *testing.T) {
 	msg
 	`
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	// Check that the error message contains the expected content (may include location info)
 	resultStr, ok := result.(*object.String)
-	require.True(t, ok)
-	require.Contains(t, resultStr.Value(), "type error: attribute \"append\" not found on int object")
+	assert.True(t, ok)
+	assert.Contains(t, resultStr.Value(), "type error: attribute \"append\" not found on int object")
 }
 
 func TestTryUnsupportedOperation(t *testing.T) {
@@ -661,8 +669,8 @@ func TestTryUnsupportedOperation(t *testing.T) {
 	msg
 	`
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
-	require.Equal(t, object.NewString("type error: unsupported operation for list: + on type int"), result)
+	assert.NoError(t, err)
+	assert.Equal(t, result, object.NewString("type error: unsupported operation for list: + on type int"))
 }
 
 func TestTryWithErrorValues(t *testing.T) {
@@ -677,8 +685,8 @@ func TestTryWithErrorValues(t *testing.T) {
 	}
 	result`
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
-	require.Equal(t, object.NewString("YES"), result)
+	assert.NoError(t, err)
+	assert.Equal(t, result, object.NewString("YES"))
 }
 
 func TestStringTemplateWithRaisedError(t *testing.T) {
@@ -686,15 +694,15 @@ func TestStringTemplateWithRaisedError(t *testing.T) {
 	function raise(msg) { throw msg }
 	` + "`the err string is: ${raise(\"oops\")}. sad!`"
 	_, err := run(context.Background(), code)
-	require.NotNil(t, err)
-	require.Equal(t, "oops", err.Error())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "oops")
 }
 
 func TestStringTemplateWithValue(t *testing.T) {
 	code := "`the message is: ${\"oops\"}. sad!`"
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
-	require.Equal(t, object.NewString("the message is: oops. sad!"), result)
+	assert.NoError(t, err)
+	assert.Equal(t, result, object.NewString("the message is: oops. sad!"))
 }
 
 func TestMultiVarAssignment(t *testing.T) {
@@ -814,14 +822,16 @@ func TestQuicksort(t *testing.T) {
 	}
 	quicksort([10, 5, 2, 3])
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList(
-		[]object.Object{
-			object.NewInt(2),
-			object.NewInt(3),
-			object.NewInt(5),
-			object.NewInt(10),
-		}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList(
+			[]object.Object{
+				object.NewInt(2),
+				object.NewInt(3),
+				object.NewInt(5),
+				object.NewInt(10),
+			}))
 }
 
 func TestAndShortCircuit(t *testing.T) {
@@ -834,8 +844,8 @@ func TestAndShortCircuit(t *testing.T) {
 		"worked!"
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("worked!"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("worked!"))
 }
 
 func TestOrShortCircuit(t *testing.T) {
@@ -848,8 +858,8 @@ func TestOrShortCircuit(t *testing.T) {
 		"nope!"
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("worked!"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("worked!"))
 }
 
 func TestNullishCoalescing(t *testing.T) {
@@ -1078,8 +1088,8 @@ func TestManyLocals(t *testing.T) {
 	}
 	example(0)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(12), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(12))
 }
 
 func TestIncorrectArgCount(t *testing.T) {
@@ -1100,9 +1110,9 @@ func TestIncorrectArgCount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		_, err := run(context.Background(), tt.input)
-		require.NotNil(t, err)
+		assert.NotNil(t, err)
 		// Check that the error message contains the expected content (may include location info)
-		require.Contains(t, err.Error(), tt.expectedErr)
+		assert.Contains(t, err.Error(), tt.expectedErr)
 	}
 }
 
@@ -1139,8 +1149,8 @@ func TestNestedProxies(t *testing.T) {
 	s.C.Increment()
 	s.C.GetCount()
 	`, opts)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(4))
 }
 
 func TestProxy(t *testing.T) {
@@ -1153,28 +1163,28 @@ func TestProxy(t *testing.T) {
 		},
 	}
 	result, err := run(context.Background(), `s.Data`, opts)
-	require.Nil(t, err)
-	require.Equal(t, object.NewByteSlice([]byte("foo")), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewByteSlice([]byte("foo")))
 }
 
 func TestWithContextCheckInterval(t *testing.T) {
 	// Test that WithContextCheckInterval properly sets the interval
 	ast, err := parser.Parse(context.Background(), `1 + 1`)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	main, err := compiler.Compile(ast)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Test with custom interval
 	vm := New(main, WithContextCheckInterval(500))
-	require.Equal(t, 500, vm.contextCheckInterval)
+	assert.Equal(t, vm.contextCheckInterval, 500)
 
 	// Test with zero (disabled)
 	vm2 := New(main, WithContextCheckInterval(0))
-	require.Equal(t, 0, vm2.contextCheckInterval)
+	assert.Equal(t, vm2.contextCheckInterval, 0)
 
 	// Test default value
 	vm3 := New(main)
-	require.Equal(t, DefaultContextCheckInterval, vm3.contextCheckInterval)
+	assert.Equal(t, vm3.contextCheckInterval, DefaultContextCheckInterval)
 }
 
 func TestReturnGlobalVariable(t *testing.T) {
@@ -1183,14 +1193,14 @@ func TestReturnGlobalVariable(t *testing.T) {
 	function test() { x }
 	test()
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(3))
 }
 
 func TestNakedReturn(t *testing.T) {
 	result, err := run(context.Background(), `function test(a) { return }; test(15)`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestGlobalNames(t *testing.T) {
@@ -1202,52 +1212,52 @@ func TestGlobalNames(t *testing.T) {
 	let foo = function() { "bar" }
 	`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	globals := vm.GlobalNames()
 	globalsMap := map[string]bool{}
 	for _, g := range globals {
 		globalsMap[g] = true
 	}
-	require.True(t, globalsMap["count"])
-	require.True(t, globalsMap["inc"])
-	require.True(t, globalsMap["m"])
-	require.True(t, globalsMap["foo"])
+	assert.True(t, globalsMap["count"])
+	assert.True(t, globalsMap["inc"])
+	assert.True(t, globalsMap["m"])
+	assert.True(t, globalsMap["foo"])
 }
 
 func TestGetGlobal(t *testing.T) {
 	ctx := context.Background()
 	source := `function inc(a, b) { a + b }`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	obj, err := vm.Get("inc")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	fn, ok := obj.(*object.Function)
-	require.True(t, ok)
-	require.Equal(t, "inc", fn.Name())
+	assert.True(t, ok)
+	assert.Equal(t, fn.Name(), "inc")
 }
 
 func TestCall(t *testing.T) {
 	ctx := context.Background()
 	source := `function inc(a, b) { a + b }`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	obj, err := vm.Get("inc")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	fn, ok := obj.(*object.Function)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	result, err := vm.Call(ctx, fn, []object.Object{
 		object.NewInt(9),
 		object.NewInt(1),
 	})
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(10))
 }
 
 func TestCallWithClosure(t *testing.T) {
@@ -1263,19 +1273,19 @@ func TestCallWithClosure(t *testing.T) {
 	let counter = get_counter()
 	`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	obj, err := vm.Get("counter")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	counter, ok := obj.(*object.Function)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// The counter's first value will be 11. Confirm it counts up from there.
 	for i := int64(11); i < 100; i++ {
 		obj, err := vm.Call(ctx, counter, []object.Object{})
-		require.Nil(t, err)
-		require.Equal(t, object.NewInt(i), obj)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, object.NewInt(i))
 	}
 }
 
@@ -1307,15 +1317,17 @@ func TestFreeVariableAssignment(t *testing.T) {
 	[incA(), incB(), incC()]       // [3, 4, 5]
 	`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 	result, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(3),
-		object.NewInt(4),
-		object.NewInt(5),
-	}), result)
+	assert.True(t, ok)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(3),
+			object.NewInt(4),
+			object.NewInt(5),
+		}))
 }
 
 func TestInterpolatedStringClosures1(t *testing.T) {
@@ -1327,11 +1339,11 @@ func TestInterpolatedStringClosures1(t *testing.T) {
 		"}\n" +
 		"foo(\"foo\", \"bar\", \"baz\")(\"go\")"
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 	result, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewString("FOO-bar-baz-go"), result)
+	assert.True(t, ok)
+	assert.Equal(t, result, object.NewString("FOO-bar-baz-go"))
 }
 
 func TestInterpolatedStringClosures2(t *testing.T) {
@@ -1345,47 +1357,47 @@ func TestInterpolatedStringClosures2(t *testing.T) {
 		"}\n" +
 		"foo(\"IGNORED\")(\"HEY\")"
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 	result, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewString("a: HEY b: bar count: 40 x: 4"), result)
+	assert.True(t, ok)
+	assert.Equal(t, result, object.NewString("a: HEY b: bar count: 40 x: 4"))
 }
 
 func TestIncrementalEvaluation(t *testing.T) {
 	ctx := context.Background()
 	ast, err := parser.Parse(ctx, "let x = 3")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	comp, err := compiler.New()
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	main, err := comp.Compile(ast)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	v := New(main)
-	require.Nil(t, v.Run(ctx))
+	assert.Nil(t, v.Run(ctx))
 	value, err := v.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), value)
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(3))
 
 	ast, err = parser.Parse(ctx, "x + 7")
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	_, err = comp.Compile(ast)
-	require.Nil(t, err)
-	require.Nil(t, v.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, v.Run(ctx))
 	value, err = v.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), value)
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(3))
 
 	tos, ok := v.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(10), tos)
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(10))
 }
 
 func TestModifyModule(t *testing.T) {
 	_, err := run(context.Background(), `math.max = 123`)
-	require.Error(t, err)
-	require.Equal(t, "type error: cannot modify module attributes", err.Error())
+	assert.Error(t, err)
+	assert.Equal(t, err.Error(), "type error: cannot modify module attributes")
 }
 
 func TestFreeVariables(t *testing.T) {
@@ -1403,8 +1415,8 @@ func TestFreeVariables(t *testing.T) {
 	test(5)
 	`
 	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{object.NewInt(5)}), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewList([]object.Object{object.NewInt(5)}))
 }
 
 func TestMaps(t *testing.T) {
@@ -1473,11 +1485,13 @@ func TestMultivar(t *testing.T) {
 	[x, y]
 	`
 	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(1),
+			object.NewInt(2),
+		}))
 }
 
 func TestReturnNamedFunction(t *testing.T) {
@@ -1491,27 +1505,27 @@ func TestReturnNamedFunction(t *testing.T) {
 	f()
 	`
 	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("FOO"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("FOO"))
 }
 
 func TestContextDone(t *testing.T) {
 	// Context with no deadline does not return a Done channel
 	ctx := context.Background()
 	d := ctx.Done()
-	require.Nil(t, d)
+	assert.Nil(t, d)
 
 	// Context with deadline returns a Done channel
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	d = tctx.Done()
-	require.NotNil(t, d)
+	assert.NotNil(t, d)
 
 	// Context with cancel returns a Done channel
 	cctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	d = cctx.Done()
-	require.NotNil(t, d)
+	assert.NotNil(t, d)
 }
 
 type testCase struct {
@@ -1526,9 +1540,9 @@ func runTests(t *testing.T, tests []testCase) {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Helper()
 			result, err := run(ctx, tt.input)
-			require.Nil(t, err)
-			require.NotNil(t, result)
-			require.Equal(t, tt.expected, result)
+			assert.Nil(t, err)
+			assert.NotNil(t, result)
+			assert.Equal(t, result, tt.expected)
 		})
 	}
 }
@@ -1861,8 +1875,8 @@ func TestForwardDeclarationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := run(ctx, tt.input)
-			require.NotNil(t, err)
-			require.Contains(t, err.Error(), tt.expectedErr)
+			assert.NotNil(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
 		})
 	}
 }
@@ -1872,18 +1886,18 @@ func TestRunCode(t *testing.T) {
 
 	// Create a VM with initial code
 	vm, err := newVM(ctx, "let x = 10; let y = 20; x + y")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Run the initial code
-	require.NoError(t, vm.Run(ctx))
+	assert.NoError(t, vm.Run(ctx))
 
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(30))
+	assert.True(t, exists)
+	assert.Equal(t, int64(30), result.(*object.Int).Value())
 
 	// Compile and run different code on the same VM
 	ast2, err := parser.Parse(ctx, "let a = 5; let b = 15; a * b")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	globals := basicBuiltins()
 	var globalNames []string
@@ -1892,14 +1906,14 @@ func TestRunCode(t *testing.T) {
 	}
 
 	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Run the second code on the same VM
-	require.NoError(t, vm.RunCode(ctx, code2))
+	assert.NoError(t, vm.RunCode(ctx, code2))
 
 	result2, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result2.(*object.Int).Value(), int64(75))
+	assert.True(t, exists)
+	assert.Equal(t, int64(75), result2.(*object.Int).Value())
 
 	// Run a third piece of code
 	source3 := `
@@ -1908,15 +1922,15 @@ func TestRunCode(t *testing.T) {
 		greeting
 	`
 	ast3, err := parser.Parse(ctx, source3)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	code3, err := compiler.Compile(ast3, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, code3))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, code3))
 
 	result3, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result3.(*object.String).Value(), "Hello, Risor!")
+	assert.True(t, exists)
+	assert.Equal(t, "Hello, Risor!", result3.(*object.String).Value())
 }
 
 func TestRunCodeWithGlobalVariables(t *testing.T) {
@@ -1933,12 +1947,12 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 		result
 	`
 	vm, err := newVM(ctx, source1, runOpts{Globals: customGlobals})
-	require.NoError(t, err)
-	require.NoError(t, vm.Run(ctx))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.Run(ctx))
 
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(200))
+	assert.True(t, exists)
+	assert.Equal(t, int64(200), result.(*object.Int).Value())
 
 	// Run different code that also uses globals
 	source2 := `
@@ -1946,7 +1960,7 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 		newResult
 	`
 	ast2, err := parser.Parse(ctx, source2)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	var globalNames []string
 	for k := range customGlobals {
@@ -1954,12 +1968,12 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 	}
 
 	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, code2))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, code2))
 
 	result2, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result2.(*object.Int).Value(), int64(102))
+	assert.True(t, exists)
+	assert.Equal(t, int64(102), result2.(*object.Int).Value())
 }
 
 func TestRunCodeFunctions(t *testing.T) {
@@ -1973,12 +1987,12 @@ func TestRunCodeFunctions(t *testing.T) {
 		add(10, 20)
 	`
 	vm, err := newVM(ctx, source1)
-	require.NoError(t, err)
-	require.NoError(t, vm.Run(ctx))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.Run(ctx))
 
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(30))
+	assert.True(t, exists)
+	assert.Equal(t, int64(30), result.(*object.Int).Value())
 
 	// Run code with a different function
 	source2 := `
@@ -1988,7 +2002,7 @@ func TestRunCodeFunctions(t *testing.T) {
 		multiply(6, 7)
 	`
 	ast2, err := parser.Parse(ctx, source2)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	globals := basicBuiltins()
 	var globalNames []string
@@ -1997,12 +2011,12 @@ func TestRunCodeFunctions(t *testing.T) {
 	}
 
 	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, code2))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, code2))
 
 	result2, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result2.(*object.Int).Value(), int64(42))
+	assert.True(t, exists)
+	assert.Equal(t, int64(42), result2.(*object.Int).Value())
 }
 
 func TestRunCodeOnVM(t *testing.T) {
@@ -2010,12 +2024,12 @@ func TestRunCodeOnVM(t *testing.T) {
 
 	// Create a VM with initial code
 	vm, err := newVM(ctx, "let x = 42; x")
-	require.NoError(t, err)
-	require.NoError(t, vm.Run(ctx))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.Run(ctx))
 
 	// Compile a different piece of code
 	ast2, err := parser.Parse(ctx, "let y = 100; let z = 200; y + z")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	globals := basicBuiltins()
 	var globalNames []string
@@ -2024,10 +2038,10 @@ func TestRunCodeOnVM(t *testing.T) {
 	}
 
 	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	result, err := RunCodeOnVM(ctx, vm, code2)
-	require.NoError(t, err)
-	require.Equal(t, result.(*object.Int).Value(), int64(300))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(300), result.(*object.Int).Value())
 }
 
 func TestRunCodeFirst(t *testing.T) {
@@ -2036,61 +2050,61 @@ func TestRunCodeFirst(t *testing.T) {
 		function add(a, b) { return a + b }
 		add(10, 20)
 	`)
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, vm.main))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, vm.main))
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(30))
+	assert.True(t, exists)
+	assert.Equal(t, int64(30), result.(*object.Int).Value())
 }
 
 func TestNewEmpty(t *testing.T) {
 	ctx := context.Background()
 	compile := func(source string) *compiler.Code {
 		ast, err := parser.Parse(ctx, source)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		code, err := compiler.Compile(ast)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		return code
 	}
 
 	// Test creating a VM without main code
 	vm, err := NewEmpty()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Test that Run() returns an error when no main code is provided
 	err = vm.Run(ctx)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "no main code available")
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "no main code available")
 
 	// Test that RunCode() works with specific code
 	code := compile(`let x = 42; x`)
 	err = vm.RunCode(ctx, code)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify the result is on the stack
 	result, ok := vm.TOS()
-	require.True(t, ok)
+	assert.True(t, ok)
 	intResult, ok := result.(*object.Int)
-	require.True(t, ok)
-	require.Equal(t, intResult.Value(), int64(42))
+	assert.True(t, ok)
+	assert.Equal(t, int64(42), intResult.Value())
 
 	// Test that Call() works with functions
 	fnCode := compile(`function add(a, b) { return a + b }`)
 	err = vm.RunCode(ctx, fnCode)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	addFn, err := vm.Get("add")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	result, err = vm.Call(ctx, addFn.(*object.Function), []object.Object{
 		object.NewInt(10),
 		object.NewInt(20),
 	})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	intResult, ok = result.(*object.Int)
-	require.True(t, ok)
-	require.Equal(t, intResult.Value(), int64(30))
+	assert.True(t, ok)
+	assert.Equal(t, int64(30), intResult.Value())
 }
 
 func TestArrowFunctions(t *testing.T) {
@@ -2164,8 +2178,8 @@ func TestArrowFunctions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := run(context.Background(), tt.input)
-			require.Nil(t, err, "unexpected error: %v", err)
-			require.Equal(t, tt.expected, result)
+			assert.Nil(t, err, "unexpected error: %v", err)
+			assert.Equal(t, result, tt.expected)
 		})
 	}
 }
@@ -2264,8 +2278,8 @@ func TestTryCatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := run(context.Background(), tt.input)
-			require.Nil(t, err, "unexpected error: %v", err)
-			require.Equal(t, tt.expected, result)
+			assert.Nil(t, err, "unexpected error: %v", err)
+			assert.Equal(t, result, tt.expected)
 		})
 	}
 }
@@ -2273,6 +2287,6 @@ func TestTryCatch(t *testing.T) {
 func TestThrowWithoutCatch(t *testing.T) {
 	// Test that an unhandled throw propagates as an error
 	_, err := run(context.Background(), `throw "unhandled"`)
-	require.NotNil(t, err)
-	require.Contains(t, err.Error(), "unhandled")
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "unhandled")
 }

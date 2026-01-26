@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestErrorEquals(t *testing.T) {
@@ -13,9 +13,9 @@ func TestErrorEquals(t *testing.T) {
 	other1 := NewError(errors.New("a"))
 	other2 := NewError(errors.New("b"))
 
-	require.Equal(t, "a", e.Message().Value())
-	require.True(t, e.Equals(other1).Interface().(bool))
-	require.False(t, e.Equals(other2).Interface().(bool))
+	assert.Equal(t, e.Message().Value(), "a")
+	assert.True(t, e.Equals(other1).Interface().(bool))
+	assert.False(t, e.Equals(other2).Interface().(bool))
 }
 
 func TestErrorCompareStr(t *testing.T) {
@@ -24,53 +24,53 @@ func TestErrorCompareStr(t *testing.T) {
 	other2 := NewError(errors.New("b"))
 
 	cmp, err := e.Compare(other1)
-	require.Nil(t, err)
-	require.Equal(t, 0, cmp)
+	assert.Nil(t, err)
+	assert.Equal(t, cmp, 0)
 
 	cmp, err = e.Compare(other2)
-	require.Nil(t, err)
-	require.Equal(t, -1, cmp)
+	assert.Nil(t, err)
+	assert.Equal(t, cmp, -1)
 
 	cmp, err = other2.Compare(e)
-	require.Nil(t, err)
-	require.Equal(t, 1, cmp)
+	assert.Nil(t, err)
+	assert.Equal(t, cmp, 1)
 }
 
 func TestErrorCompareRaised(t *testing.T) {
 	a := NewError(errors.New("a")).WithRaised(true)
 	b := NewError(errors.New("a")) // raised is set by default
 
-	require.True(t, a.IsRaised())
-	require.True(t, b.IsRaised())
+	assert.True(t, a.IsRaised())
+	assert.True(t, b.IsRaised())
 
 	result, err := a.Compare(b)
-	require.Nil(t, err)
-	require.Equal(t, 0, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, 0)
 
 	b.WithRaised(false)
-	require.False(t, b.IsRaised())
+	assert.False(t, b.IsRaised())
 
 	result, err = a.Compare(b)
-	require.Nil(t, err)
-	require.Equal(t, 1, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, 1)
 
 	result, err = b.Compare(a)
-	require.Nil(t, err)
-	require.Equal(t, -1, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, -1)
 }
 
 func TestErrorMessage(t *testing.T) {
 	a := NewError(errors.New("a"))
 
 	attr, ok := a.GetAttr("error")
-	require.True(t, ok)
+	assert.True(t, ok)
 	fn := attr.(*Builtin)
 	result := fn.Call(context.Background())
-	require.Equal(t, "a", result.(*String).Value())
+	assert.Equal(t, result.(*String).Value(), "a")
 
 	attr, ok = a.GetAttr("message")
-	require.True(t, ok)
+	assert.True(t, ok)
 	fn = attr.(*Builtin)
 	result = fn.Call(context.Background())
-	require.Equal(t, "a", result.(*String).Value())
+	assert.Equal(t, result.(*String).Value(), "a")
 }

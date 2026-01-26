@@ -3,14 +3,14 @@ package object
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestFloatBasics(t *testing.T) {
 	value := NewFloat(-2)
-	require.Equal(t, FLOAT, value.Type())
-	require.Equal(t, float64(-2), value.Value())
-	require.Equal(t, "-2", value.String())
-	require.Equal(t, "-2", value.Inspect())
-	require.Equal(t, float64(-2), value.Interface())
+	assert.Equal(t, value.Type(), FLOAT)
+	assert.Equal(t, value.Value(), float64(-2))
+	assert.Equal(t, value.String(), "-2")
+	assert.Equal(t, value.Inspect(), "-2")
+	assert.Equal(t, value.Interface(), float64(-2))
 }

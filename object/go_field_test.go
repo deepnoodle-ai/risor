@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 type testStruct struct {
@@ -20,33 +20,33 @@ func TestGoField(t *testing.T) {
 
 	// Test string field
 	nameField, ok := typ.FieldByName("Name")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err := newGoField(nameField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Name", field.Name())
-	require.Equal(t, "string", field.GoType().Name())
-	require.Equal(t, `json:"name"`, string(field.Tag()))
+	assert.Equal(t, field.Name(), "Name")
+	assert.Equal(t, field.GoType().Name(), "string")
+	assert.Equal(t, string(field.Tag()), `json:"name"`)
 
 	// Test int field
 	ageField, ok := typ.FieldByName("Age")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err = newGoField(ageField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Age", field.Name())
-	require.Equal(t, "int", field.GoType().Name())
-	require.Equal(t, `json:"age"`, string(field.Tag()))
+	assert.Equal(t, field.Name(), "Age")
+	assert.Equal(t, field.GoType().Name(), "int")
+	assert.Equal(t, string(field.Tag()), `json:"age"`)
 
 	// Test bool field
 	enabledField, ok := typ.FieldByName("Enabled")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err = newGoField(enabledField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Enabled", field.Name())
-	require.Equal(t, "bool", field.GoType().Name())
-	require.Equal(t, `json:"enabled"`, string(field.Tag()))
+	assert.Equal(t, field.Name(), "Enabled")
+	assert.Equal(t, field.GoType().Name(), "bool")
+	assert.Equal(t, string(field.Tag()), `json:"enabled"`)
 }
 
 type complexStruct struct {
@@ -61,33 +61,33 @@ func TestGoFieldComplexTypes(t *testing.T) {
 
 	// Test map field
 	dataField, ok := typ.FieldByName("Data")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err := newGoField(dataField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Data", field.Name())
-	require.Equal(t, "map[string]interface {}", field.GoType().Name())
-	require.Equal(t, `json:"data"`, string(field.Tag()))
+	assert.Equal(t, field.Name(), "Data")
+	assert.Equal(t, field.GoType().Name(), "map[string]interface {}")
+	assert.Equal(t, string(field.Tag()), `json:"data"`)
 
 	// Test slice field
 	numbersField, ok := typ.FieldByName("Numbers")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err = newGoField(numbersField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Numbers", field.Name())
-	require.Equal(t, "[]int", field.GoType().Name())
-	require.Equal(t, `json:"numbers"`, string(field.Tag()))
+	assert.Equal(t, field.Name(), "Numbers")
+	assert.Equal(t, field.GoType().Name(), "[]int")
+	assert.Equal(t, string(field.Tag()), `json:"numbers"`)
 
 	// Test pointer field
 	ptrField, ok := typ.FieldByName("Ptr")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err = newGoField(ptrField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Ptr", field.Name())
-	require.Equal(t, "*string", field.GoType().Name())
-	require.Equal(t, `json:"ptr"`, string(field.Tag()))
+	assert.Equal(t, field.Name(), "Ptr")
+	assert.Equal(t, field.GoType().Name(), "*string")
+	assert.Equal(t, string(field.Tag()), `json:"ptr"`)
 }
 
 type nestedStruct struct {
@@ -102,39 +102,39 @@ func TestGoFieldNestedStruct(t *testing.T) {
 
 	// Test nested struct field
 	innerField, ok := typ.FieldByName("Inner")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err := newGoField(innerField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
-	require.Equal(t, "Inner", field.Name())
-	require.Equal(t, "*struct { Value string \"json:\\\"value\\\"\" }", field.GoType().Name())
-	require.Equal(t, `json:"inner"`, string(field.Tag()))
+	assert.Equal(t, field.Name(), "Inner")
+	assert.Equal(t, field.GoType().Name(), "*struct { Value string \"json:\\\"value\\\"\" }")
+	assert.Equal(t, string(field.Tag()), `json:"inner"`)
 }
 
 func TestGoFieldGetAttr(t *testing.T) {
 	s := &testStruct{}
 	typ := reflect.TypeOf(s).Elem()
 	nameField, ok := typ.FieldByName("Name")
-	require.True(t, ok)
+	assert.True(t, ok)
 	field, err := newGoField(nameField)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 
 	// Test GetAttr for name
 	nameAttr, ok := field.GetAttr("name")
-	require.True(t, ok)
-	require.Equal(t, "Name", nameAttr.(*String).value)
+	assert.True(t, ok)
+	assert.Equal(t, nameAttr.(*String).value, "Name")
 
 	// Test GetAttr for type
 	typeAttr, ok := field.GetAttr("type")
-	require.True(t, ok)
-	require.Equal(t, "string", typeAttr.(*GoType).Name())
+	assert.True(t, ok)
+	assert.Equal(t, typeAttr.(*GoType).Name(), "string")
 
 	// Test GetAttr for tag
 	tagAttr, ok := field.GetAttr("tag")
-	require.True(t, ok)
-	require.Equal(t, `json:"name"`, tagAttr.(*String).value)
+	assert.True(t, ok)
+	assert.Equal(t, tagAttr.(*String).value, `json:"name"`)
 
 	// Test GetAttr for non-existent attribute
 	_, ok = field.GetAttr("nonexistent")
-	require.False(t, ok)
+	assert.False(t, ok)
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/object"
-	"github.com/stretchr/testify/require"
 )
 
 func TestBinaryCodecs(t *testing.T) {
@@ -27,7 +27,7 @@ func TestBinaryCodecs(t *testing.T) {
 			if errObj, ok := decoded.(*object.Error); ok {
 				t.Fatalf("decoding error: %v", errObj)
 			}
-			require.Equal(t, object.NewByteSlice([]byte(value)), decoded)
+			assert.Equal(t, decoded, object.NewByteSlice([]byte(value)))
 		})
 	}
 }
@@ -36,8 +36,8 @@ func TestUnknownCodec(t *testing.T) {
 	ctx := context.Background()
 	encoded := Encode(ctx, object.NewString("oops"), object.NewString("unknown"))
 	errObj, ok := encoded.(*object.Error)
-	require.True(t, ok)
-	require.Equal(t, "codec not found: unknown", errObj.Value().Error())
+	assert.True(t, ok)
+	assert.Equal(t, errObj.Value().Error(), "codec not found: unknown")
 }
 
 func TestJsonCodec(t *testing.T) {
@@ -47,10 +47,10 @@ func TestJsonCodec(t *testing.T) {
 	if errObj, ok := encoded.(*object.Error); ok {
 		t.Fatalf("encoding error: %v", errObj)
 	}
-	require.Equal(t, object.NewString("\""+value+"\""), encoded)
+	assert.Equal(t, encoded, object.NewString("\""+value+"\""))
 	decoded := Decode(ctx, encoded, object.NewString("json"))
 	if errObj, ok := decoded.(*object.Error); ok {
 		t.Fatalf("decoding error: %v", errObj)
 	}
-	require.Equal(t, object.NewString(value), decoded)
+	assert.Equal(t, decoded, object.NewString(value))
 }
