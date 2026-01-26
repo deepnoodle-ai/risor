@@ -10,7 +10,7 @@ import (
 
 // Risor keywords for completion
 var risorKeywords = []string{
-	"as", "break", "case", "const", "continue", "default", "defer", "else",
+	"as", "break", "case", "const", "continue", "default", "else",
 	"false", "for", "from", "function", "if", "import", "in", "let", "nil", "not",
 	"range", "return", "struct", "switch", "true",
 }

@@ -56,7 +56,6 @@ const (
 	GT              = ">"
 	GT_GT           = ">>"
 	GT_EQUALS       = ">="
-	GO              = "GO"
 	IDENT           = "IDENT"
 	IF              = "IF"
 	ILLEGAL         = "ILLEGAL"
@@ -93,7 +92,6 @@ const (
 	RPAREN          = ")"
 	SEMICOLON       = ";"
 	SPREAD          = "..."
-	SEND            = "<-"
 	SLASH           = "/"
 	SLASH_EQUALS    = "/="
 	STRING          = "STRING"
@@ -124,7 +122,6 @@ var keywords = map[string]Type{
 	"for":      FOR,
 	"from":     FROM,
 	"function": FUNCTION,
-	"go":       GO, // Reserved keyword (concurrency removed but kept for future)
 	"if":       IF,
 	"import":   IMPORT,
 	"in":       IN,

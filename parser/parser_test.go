@@ -1238,14 +1238,6 @@ func TestNakedReturns(t *testing.T) {
 	}
 }
 
-func TestGoIsReservedKeyword(t *testing.T) {
-	// go statement was removed in v2 but keyword is reserved
-	input := "go function() { 42 }()"
-	_, err := Parse(context.Background(), input)
-	require.NotNil(t, err)
-	require.Contains(t, err.Error(), "reserved keyword: go")
-}
-
 func TestFromImport(t *testing.T) {
 	tests := []struct {
 		input    string

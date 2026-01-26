@@ -130,7 +130,6 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.FOR, p.parseFor)
 	p.registerPrefix(token.FROM, p.parseFromImport)
 	p.registerPrefix(token.FUNCTION, p.parseFunc)
-	p.registerPrefix(token.GO, p.parseReserved)
 	p.registerPrefix(token.IDENT, p.parseIdent)
 	p.registerPrefix(token.IF, p.parseIf)
 	p.registerPrefix(token.ILLEGAL, p.illegalToken)
@@ -147,7 +146,6 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerPrefix(token.STRING, p.parseString)
 	p.registerPrefix(token.SWITCH, p.parseSwitch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
-	p.registerPrefix(token.SEND, p.parseReserved)
 	p.registerPrefix(token.SPREAD, p.parseSpread)
 
 	// Register infix functions
@@ -181,7 +179,6 @@ func New(l *lexer.Lexer, options ...Option) *Parser {
 	p.registerInfix(token.PLUS, p.parseInfixExpr)
 	p.registerInfix(token.POW, p.parseInfixExpr)
 	p.registerInfix(token.QUESTION, p.parseTernary)
-	p.registerInfix(token.SEND, p.parseReservedInfix)
 	p.registerInfix(token.SLASH_EQUALS, p.parseAssign)
 	p.registerInfix(token.SLASH, p.parseInfixExpr)
 

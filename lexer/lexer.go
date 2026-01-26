@@ -249,10 +249,6 @@ func (l *Lexer) Next() (token.Token, error) {
 			ch := l.ch
 			l.readChar()
 			tok = l.newToken(token.LT_EQUALS, string(ch)+string(l.ch))
-		} else if l.peekChar() == rune('-') {
-			ch := l.ch
-			l.readChar()
-			tok = l.newToken(token.SEND, string(ch)+string(l.ch))
 		} else {
 			tok = l.newToken(token.LT, string(l.ch))
 		}
