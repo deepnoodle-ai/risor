@@ -878,10 +878,12 @@ func TestTryWithLoop(t *testing.T) {
 	code := `
 	let result = []
 	for let i = 0; i < 5; i++ {
-		let value = try(
-			function() { if i % 2 == 0 { error("Even number") } else { return i } },
-			function(e) { return e.message() }
-		)
+		let value = 0
+		try {
+			if i % 2 == 0 { error("Even number") } else { value = i }
+		} catch e {
+			value = string(e)
+		}
 		result.append(value)
 	}
 	result
@@ -913,7 +915,12 @@ func TestTryWithClosure(t *testing.T) {
 	let counter = makeCounter()
 	let result = []
 	for let i = 0; i < 5; i++ {
-		let value = try(counter, function(e) { return e.message() })
+		let value = 0
+		try {
+			value = counter()
+		} catch e {
+			value = string(e)
+		}
 		result.append(value)
 	}
 	result
@@ -2153,10 +2160,11 @@ func TestLists(t *testing.T) {
 func TestFunctionStack(t *testing.T) {
 	code := `
 	for let i = range 1 {
-		try(function() {
+		try {
 		  42
 		  error("kaboom")
-		})
+		} catch e {
+		}
 	  }
 	`
 	result, err := run(context.Background(), code)
@@ -2167,16 +2175,16 @@ func TestFunctionStack(t *testing.T) {
 func TestFunctionStackNewErr(t *testing.T) {
 	code := `
 	for let i = range 1 {
-		try(function() {
+		try {
 		  42
-		}, function(e) {
+		} catch e {
 		  error("kaboom")
-		})
+		}
 	  }
 	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
+	// Now that error() in catch is a throw, it propagates
+	_, err := run(context.Background(), code)
+	require.NotNil(t, err)
 }
 
 func TestMultivar(t *testing.T) {
