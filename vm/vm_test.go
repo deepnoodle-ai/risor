@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
@@ -19,20 +20,17 @@ func TestAddCompilationAndExecution(t *testing.T) {
 	`)
 	assert.Nil(t, err)
 
-	c, err := compiler.New()
+	main, err := compiler.Compile(program)
 	assert.Nil(t, err)
 
-	main, err := c.Compile(program)
-	assert.Nil(t, err)
-
-	constsCount := main.ConstantsCount()
+	constsCount := main.ConstantCount()
 	assert.Equal(t, constsCount, 2)
 
-	c1, ok := main.Constant(0).(int64)
+	c1, ok := main.ConstantAt(0).(int64)
 	assert.True(t, ok)
 	assert.Equal(t, c1, int64(11))
 
-	c2, ok := main.Constant(1).(int64)
+	c2, ok := main.ConstantAt(1).(int64)
 	assert.True(t, ok)
 	assert.Equal(t, c2, int64(12))
 
@@ -1235,7 +1233,7 @@ func TestGetGlobal(t *testing.T) {
 
 	obj, err := vm.Get("inc")
 	assert.Nil(t, err)
-	fn, ok := obj.(*object.Function)
+	fn, ok := obj.(*object.Closure)
 	assert.True(t, ok)
 	assert.Equal(t, fn.Name(), "inc")
 }
@@ -1249,7 +1247,7 @@ func TestCall(t *testing.T) {
 
 	obj, err := vm.Get("inc")
 	assert.Nil(t, err)
-	fn, ok := obj.(*object.Function)
+	fn, ok := obj.(*object.Closure)
 	assert.True(t, ok)
 
 	result, err := vm.Call(ctx, fn, []object.Object{
@@ -1278,7 +1276,7 @@ func TestCallWithClosure(t *testing.T) {
 
 	obj, err := vm.Get("counter")
 	assert.Nil(t, err)
-	counter, ok := obj.(*object.Function)
+	counter, ok := obj.(*object.Closure)
 	assert.True(t, ok)
 
 	// The counter's first value will be 11. Confirm it counts up from there.
@@ -1369,9 +1367,7 @@ func TestIncrementalEvaluation(t *testing.T) {
 	ast, err := parser.Parse(ctx, "let x = 3")
 	assert.Nil(t, err)
 
-	comp, err := compiler.New()
-	assert.Nil(t, err)
-	main, err := comp.Compile(ast)
+	main, err := compiler.Compile(ast)
 	assert.Nil(t, err)
 
 	v := New(main)
@@ -1380,11 +1376,13 @@ func TestIncrementalEvaluation(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, value, object.NewInt(3))
 
+	// For incremental evaluation, we need to tell the compiler about globals
+	// that were defined in previous runs
 	ast, err = parser.Parse(ctx, "x + 7")
 	assert.Nil(t, err)
-	_, err = comp.Compile(ast)
+	code2, err := compiler.Compile(ast, compiler.WithGlobalNames([]string{"x"}))
 	assert.Nil(t, err)
-	assert.Nil(t, v.Run(ctx))
+	assert.Nil(t, v.RunCode(ctx, code2))
 	value, err = v.Get("x")
 	assert.Nil(t, err)
 	assert.Equal(t, value, object.NewInt(3))
@@ -2059,7 +2057,7 @@ func TestRunCodeFirst(t *testing.T) {
 
 func TestNewEmpty(t *testing.T) {
 	ctx := context.Background()
-	compile := func(source string) *compiler.Code {
+	compile := func(source string) *bytecode.Code {
 		ast, err := parser.Parse(ctx, source)
 		assert.NoError(t, err)
 		code, err := compiler.Compile(ast)
@@ -2096,7 +2094,7 @@ func TestNewEmpty(t *testing.T) {
 	addFn, err := vm.Get("add")
 	assert.NoError(t, err)
 
-	result, err = vm.Call(ctx, addFn.(*object.Function), []object.Object{
+	result, err = vm.Call(ctx, addFn.(*object.Closure), []object.Object{
 		object.NewInt(10),
 		object.NewInt(20),
 	})

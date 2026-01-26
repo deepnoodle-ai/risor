@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/risor-io/risor/ast"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/errors"
 	"github.com/risor-io/risor/internal/token"
 	"github.com/risor-io/risor/op"
@@ -78,14 +79,18 @@ func WithFilename(filename string) Option {
 	}
 }
 
-// Compile the given AST node and return the compiled code object. This is a
-// shorthand for compiler.New(options).Compile(node).
-func Compile(node ast.Node, options ...Option) (*Code, error) {
+// Compile compiles the given AST node and returns immutable bytecode.
+// This is the standard entry point for compiling code that will be executed.
+func Compile(node ast.Node, options ...Option) (*bytecode.Code, error) {
 	c, err := New(options...)
 	if err != nil {
 		return nil, err
 	}
-	return c.Compile(node)
+	code, err := c.CompileAST(node)
+	if err != nil {
+		return nil, err
+	}
+	return code.ToBytecode(), nil
 }
 
 // New creates and returns a new Compiler. Any supplied options are used to
@@ -125,8 +130,11 @@ func (c *Compiler) Code() *Code {
 	return c.main
 }
 
-// Compile the given AST node and return the compiled code object.
-func (c *Compiler) Compile(node ast.Node) (*Code, error) {
+// CompileAST compiles the given AST node and returns the mutable Code object.
+// This is used for REPL-style incremental compilation where state must be
+// preserved across multiple compilations. For normal compilation, use the
+// package-level Compile function instead.
+func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 	c.failure = nil
 	if c.main.source == "" {
 		c.main.source = node.String()

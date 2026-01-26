@@ -57,9 +57,7 @@ foo.bar`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	c, err := compiler.New(compiler.WithFilename("test.risor"))
-	assert.Nil(t, err)
-	code, err := c.Compile(ast)
+	code, err := compiler.Compile(ast, compiler.WithFilename("test.risor"))
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)
@@ -92,9 +90,7 @@ outer()`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	c, err := compiler.New(compiler.WithFilename("stack.risor"))
-	assert.Nil(t, err)
-	code, err := c.Compile(ast)
+	code, err := compiler.Compile(ast, compiler.WithFilename("stack.risor"))
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)
@@ -125,9 +121,7 @@ data.value.bad`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	c, err := compiler.New(compiler.WithFilename("nested.risor"))
-	assert.Nil(t, err)
-	code, err := c.Compile(ast)
+	code, err := compiler.Compile(ast, compiler.WithFilename("nested.risor"))
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)
@@ -172,9 +166,7 @@ x.missing`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	c, err := compiler.New(compiler.WithFilename("friendly.risor"))
-	assert.Nil(t, err)
-	code, err := c.Compile(ast)
+	code, err := compiler.Compile(ast, compiler.WithFilename("friendly.risor"))
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)

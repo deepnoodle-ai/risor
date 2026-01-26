@@ -401,7 +401,7 @@ func Sorted(ctx context.Context, args ...object.Object) object.Object {
 	resultItems := make([]object.Object, len(items))
 	copy(resultItems, items)
 	if len(args) == 2 {
-		fn, ok := args[1].(*object.Function)
+		fn, ok := args[1].(*object.Closure)
 		if !ok {
 			return object.TypeErrorf("type error: sorted() expected a function as the second argument (%s given)", args[1].Type())
 		}
@@ -470,7 +470,7 @@ func Call(ctx context.Context, args ...object.Object) object.Object {
 		return err
 	}
 	switch fn := args[0].(type) {
-	case *object.Function:
+	case *object.Closure:
 		callFunc, found := object.GetCallFunc(ctx)
 		if !found {
 			return object.EvalErrorf("eval error: context did not contain a call function")

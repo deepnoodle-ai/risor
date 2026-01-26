@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
@@ -70,13 +71,16 @@ func (v *VM) Eval(ctx context.Context, source string) (any, error) {
 		return nil, err
 	}
 
-	code, err := v.compiler.Compile(ast)
+	code, err := v.compiler.CompileAST(ast)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := v.machine.RunCode(ctx, code, v.vmOpts()...); err != nil {
-		v.machine.SetIP(code.InstructionCount())
+	// Convert compiler.Code to bytecode.Code for the VM
+	bc := code.ToBytecode()
+
+	if err := v.machine.RunCode(ctx, bc, v.vmOpts()...); err != nil {
+		v.machine.SetIP(bc.InstructionCount())
 		return nil, err
 	}
 
@@ -92,10 +96,10 @@ func (v *VM) Eval(ctx context.Context, source string) (any, error) {
 	return result.Interface(), nil
 }
 
-// Run executes a compiled Program within this VM's context.
+// Run executes compiled bytecode within this VM's context.
 // Unlike the top-level Run function, this maintains state across calls.
-func (v *VM) Run(ctx context.Context, p *Program) (any, error) {
-	if err := v.machine.RunCode(ctx, p.code, v.vmOpts()...); err != nil {
+func (v *VM) Run(ctx context.Context, code *bytecode.Code) (any, error) {
+	if err := v.machine.RunCode(ctx, code, v.vmOpts()...); err != nil {
 		return nil, err
 	}
 
@@ -116,7 +120,7 @@ func (v *VM) Call(ctx context.Context, name string, args ...any) (any, error) {
 		return nil, err
 	}
 
-	fn, ok := obj.(*object.Function)
+	fn, ok := obj.(*object.Closure)
 	if !ok {
 		return nil, fmt.Errorf("object is not a function (got: %s)", obj.Type())
 	}

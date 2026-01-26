@@ -8,7 +8,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/dis"
 )
 
@@ -22,18 +22,17 @@ func disHandler(ctx *cli.Context) error {
 	}
 
 	// Compile the input code
-	program, err := risor.Compile(code, opts...)
+	compiledCode, err := risor.Compile(code, opts...)
 	if err != nil {
 		return err
 	}
-	compiledCode := program.Code()
 	targetCode := compiledCode
 
 	// If a function name was provided, disassemble its code only
 	if funcName := ctx.String("func"); funcName != "" {
-		var fn *compiler.Function
-		for i := 0; i < compiledCode.ConstantsCount(); i++ {
-			obj, ok := compiledCode.Constant(i).(*compiler.Function)
+		var fn *bytecode.Function
+		for i := 0; i < compiledCode.ConstantCount(); i++ {
+			obj, ok := compiledCode.ConstantAt(i).(*bytecode.Function)
 			if !ok {
 				continue
 			}

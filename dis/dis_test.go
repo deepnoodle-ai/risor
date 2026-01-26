@@ -8,6 +8,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/parser"
 )
@@ -25,10 +26,10 @@ func TestFunctionDissasembly(t *testing.T) {
 	assert.Nil(t, err)
 	code, err := compiler.Compile(ast, compiler.WithGlobalNames([]string{"try", "error"}))
 	assert.Nil(t, err)
-	assert.Equal(t, code.ConstantsCount(), 1)
+	assert.Equal(t, code.ConstantCount(), 1)
 
-	c := code.Constant(0)
-	f, ok := c.(*compiler.Function)
+	c := code.ConstantAt(0)
+	f, ok := c.(*bytecode.Function)
 	assert.True(t, ok)
 	instructions, err := Disassemble(f.Code())
 	assert.Nil(t, err)

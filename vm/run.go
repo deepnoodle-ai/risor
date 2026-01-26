@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/risor-io/risor/builtins"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
 	modMath "github.com/risor-io/risor/modules/math"
 	modRand "github.com/risor-io/risor/modules/rand"
@@ -13,7 +14,7 @@ import (
 )
 
 // Run the given code in a new Virtual Machine and return the result.
-func Run(ctx context.Context, main *compiler.Code, options ...Option) (object.Object, error) {
+func Run(ctx context.Context, main *bytecode.Code, options ...Option) (object.Object, error) {
 	machine := New(main, options...)
 	if err := machine.Run(ctx); err != nil {
 		return nil, err
@@ -26,7 +27,7 @@ func Run(ctx context.Context, main *compiler.Code, options ...Option) (object.Ob
 
 // RunCodeOnVM runs the given compiled code on an existing Virtual Machine and returns the result.
 // This allows reusing a VM instance to run multiple different code objects sequentially.
-func RunCodeOnVM(ctx context.Context, vm *VirtualMachine, code *compiler.Code, opts ...Option) (object.Object, error) {
+func RunCodeOnVM(ctx context.Context, vm *VirtualMachine, code *bytecode.Code, opts ...Option) (object.Object, error) {
 	if err := vm.RunCode(ctx, code, opts...); err != nil {
 		return nil, err
 	}

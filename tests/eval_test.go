@@ -83,12 +83,12 @@ func getTestCase(name string) (TestCase, error) {
 // This uses the internal VM to get the raw object for test comparison
 func execute(ctx context.Context, input string) (object.Object, error) {
 	// Use the internal vm.Run to get object.Object for accurate test comparison
-	program, err := risor.Compile(input, risor.WithEnv(risor.Builtins()))
+	code, err := risor.Compile(input, risor.WithEnv(risor.Builtins()))
 	if err != nil {
 		return nil, err
 	}
 	// Use vm.Run directly to get object.Object
-	return vm.Run(ctx, program.Code(), vm.WithGlobals(risor.Builtins()))
+	return vm.Run(ctx, code, vm.WithGlobals(risor.Builtins()))
 }
 
 func listTestFiles() []string {

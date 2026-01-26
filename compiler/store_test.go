@@ -15,12 +15,11 @@ func compileSource(source string) (*Code, error) {
 	if err != nil {
 		return nil, err
 	}
-	opt := WithGlobalNames([]string{"len", "list", "string", "print"})
-	code, err := Compile(program, opt)
+	c, err := New(WithGlobalNames([]string{"len", "list", "string", "print"}))
 	if err != nil {
 		return nil, err
 	}
-	return code, nil
+	return c.CompileAST(program)
 }
 
 func TestMarshalCode1(t *testing.T) {

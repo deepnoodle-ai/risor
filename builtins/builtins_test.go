@@ -108,7 +108,7 @@ func TestSortedWithFunc(t *testing.T) {
 		object.NewInt(0),
 	})
 	// This function will be called for each comparison
-	callFn := func(ctx context.Context, fn *object.Function, args []object.Object) (object.Object, error) {
+	callFn := func(ctx context.Context, fn *object.Closure, args []object.Object) (object.Object, error) {
 		assert.Len(t, args, 2)
 		a := args[0].(*object.Int).Value()
 		b := args[1].(*object.Int).Value()
@@ -118,7 +118,7 @@ func TestSortedWithFunc(t *testing.T) {
 
 	// This sort function isn't actually used here in the test. This value
 	// will be passed to callFn but we don't use it.
-	var sortFn *object.Function
+	var sortFn *object.Closure
 
 	// Confirm Sorted returns the expected sorted list
 	result := Sorted(ctx, input, sortFn)

@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/bytecode"
 )
 
 var kindConverters = map[reflect.Kind]TypeConverter{
@@ -259,8 +259,8 @@ func FromGoType(obj interface{}) Object {
 		return NewByteSlice(obj)
 	case *bytes.Buffer:
 		return NewBuffer(obj)
-	case *compiler.Function:
-		return NewFunction(obj)
+	case *bytecode.Function:
+		return NewClosure(obj)
 	case bool:
 		if obj {
 			return True

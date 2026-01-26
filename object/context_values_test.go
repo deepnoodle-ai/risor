@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/bytecode"
 )
 
 func TestContextCallFunc(t *testing.T) {
@@ -14,7 +14,7 @@ func TestContextCallFunc(t *testing.T) {
 	assert.Nil(t, callFunc)
 
 	ctx := WithCallFunc(context.Background(),
-		func(ctx context.Context, fn *Function, args []Object) (Object, error) {
+		func(ctx context.Context, fn *Closure, args []Object) (Object, error) {
 			return NewInt(42), nil
 		})
 	callFunc, ok = GetCallFunc(ctx)
@@ -22,7 +22,7 @@ func TestContextCallFunc(t *testing.T) {
 	assert.NotNil(t, callFunc)
 
 	result, err := callFunc(context.Background(),
-		NewFunction(compiler.NewFunction(compiler.FunctionOpts{})),
+		NewClosure(bytecode.NewFunction(bytecode.FunctionParams{})),
 		[]Object{})
 	assert.Nil(t, err)
 	assert.Equal(t, result, NewInt(42))

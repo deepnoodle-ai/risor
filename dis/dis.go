@@ -1,6 +1,6 @@
 // Package dis supports analysis of Risor bytecode by disassembling it.
 // This works with the opcodes defined in the `op` package and uses the
-// InstructionIter type from the `compiler` package.
+// InstructionIter type from the `bytecode` package.
 package dis
 
 import (
@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/internal/table"
 	"github.com/risor-io/risor/op"
 )
@@ -25,10 +25,10 @@ type Instruction struct {
 }
 
 // Disassemble returns a parsed representation of the given bytecode.
-func Disassemble(code *compiler.Code) ([]Instruction, error) {
+func Disassemble(code *bytecode.Code) ([]Instruction, error) {
 	var instructions []Instruction
 	var offset int
-	iter := compiler.NewInstructionIter(code)
+	iter := bytecode.NewInstructionIter(code)
 	for {
 		val, ok := iter.Next()
 		if !ok {
@@ -115,7 +115,7 @@ func Print(instructions []Instruction, writer io.Writer) {
 					c = c[:77] + "..."
 				}
 				values = append(values, color.Colorize(color.Green, fmt.Sprintf("%q", c)))
-			case *compiler.Function:
+			case *bytecode.Function:
 				name := c.Name()
 				if name == "" {
 					name = italic("<anonymous>")
@@ -161,30 +161,35 @@ func formatOperands(ops []op.Code) string {
 	return sb.String()
 }
 
-func getLocalVariableName(code *compiler.Code, index int) (string, error) {
-	if code.LocalsCount() <= index {
+func getLocalVariableName(code *bytecode.Code, index int) (string, error) {
+	if code.LocalCount() <= index {
 		return "", fmt.Errorf("local variable index out of range: %d", index)
 	}
-	return code.Local(index).Name(), nil
+	// Try to get the actual name if available
+	if name := code.LocalNameAt(index); name != "" {
+		return name, nil
+	}
+	// Fall back to showing the index if no name is stored
+	return fmt.Sprintf("local_%d", index), nil
 }
 
-func getGlobalVariableName(code *compiler.Code, index int) (string, error) {
-	if code.GlobalsCount() <= index {
+func getGlobalVariableName(code *bytecode.Code, index int) (string, error) {
+	if code.GlobalCount() <= index {
 		return "", fmt.Errorf("global variable index out of range: %d", index)
 	}
-	return code.Global(index).Name(), nil
+	return code.GlobalNameAt(index), nil
 }
 
-func getConstantValue(code *compiler.Code, index int) (any, error) {
-	if code.ConstantsCount() <= index {
+func getConstantValue(code *bytecode.Code, index int) (any, error) {
+	if code.ConstantCount() <= index {
 		return "", fmt.Errorf("constant index out of range: %d", index)
 	}
-	return code.Constant(index), nil
+	return code.ConstantAt(index), nil
 }
 
-func getName(code *compiler.Code, index int) (string, error) {
+func getName(code *bytecode.Code, index int) (string, error) {
 	if code.NameCount() <= index {
 		return "", fmt.Errorf("name index out of range: %d", index)
 	}
-	return code.Name(index), nil
+	return code.NameAt(index), nil
 }

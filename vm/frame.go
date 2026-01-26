@@ -10,15 +10,15 @@ type frame struct {
 	returnAddr     int
 	returnSp       int
 	localsCount    uint16
-	fn             *object.Function
-	code           *code
+	fn             *object.Closure
+	code           *loadedCode
 	storage        [DefaultFrameLocals]object.Object
 	locals         []object.Object
 	extendedLocals []object.Object
 	capturedLocals []object.Object
 }
 
-func (f *frame) ActivateCode(code *code) {
+func (f *frame) ActivateCode(code *loadedCode) {
 	f.code = code
 	f.fn = nil
 	f.returnAddr = 0
@@ -57,7 +57,7 @@ func (f *frame) ActivateCode(code *code) {
 	}
 }
 
-func (f *frame) ActivateFunction(fn *object.Function, code *code, returnAddr, returnSp int, localValues []object.Object) {
+func (f *frame) ActivateFunction(fn *object.Closure, code *loadedCode, returnAddr, returnSp int, localValues []object.Object) {
 	// Activate the function's code
 	f.ActivateCode(code)
 	f.fn = fn

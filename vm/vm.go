@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/op"
 )
@@ -39,11 +39,11 @@ type VirtualMachine struct {
 	halt         int32
 	startCount   int64
 	activeFrame  *frame
-	activeCode   *code
-	main         *compiler.Code
+	activeCode   *loadedCode
+	main         *bytecode.Code
 	inputGlobals map[string]any
 	globals      map[string]object.Object
-	loadedCode   map[*compiler.Code]*code
+	loadedCode   map[*bytecode.Code]*loadedCode
 	running      bool
 	runMutex     sync.Mutex
 	tmp          [MaxArgs]object.Object
@@ -66,15 +66,15 @@ type VirtualMachine struct {
 
 // exceptionFrame represents an active exception handler on the exception stack.
 type exceptionFrame struct {
-	handler      *compiler.ExceptionHandler
-	code         *code         // The code object containing this handler
+	handler      *bytecode.ExceptionHandler
+	code         *loadedCode   // The code object containing this handler
 	fp           int           // Frame pointer when handler was pushed
 	pendingError *object.Error // Error to re-throw after finally (if any)
 	inFinally    bool          // Are we currently executing a finally block?
 }
 
 // New creates a new Virtual Machine.
-func New(main *compiler.Code, options ...Option) *VirtualMachine {
+func New(main *bytecode.Code, options ...Option) *VirtualMachine {
 	vm, err := createVM(options)
 	if err != nil {
 		// Being unable to convert globals to Risor objects is more likely a
@@ -100,7 +100,7 @@ func createVM(options []Option) (*VirtualMachine, error) {
 		sp:                   -1,
 		inputGlobals:         map[string]any{},
 		globals:              map[string]object.Object{},
-		loadedCode:           map[*compiler.Code]*code{},
+		loadedCode:           map[*bytecode.Code]*loadedCode{},
 		contextCheckInterval: DefaultContextCheckInterval,
 		frames:               make([]frame, InitialFrameCapacity),
 		excStack:             make([]exceptionFrame, 8), // Small initial exception stack
@@ -168,7 +168,7 @@ func (vm *VirtualMachine) Run(ctx context.Context) (err error) {
 // RunCode runs the given compiled code object on the VM. This allows running
 // multiple different code objects on the same VM instance sequentially.
 // The VM must not be currently running when this method is called.
-func (vm *VirtualMachine) RunCode(ctx context.Context, codeToRun *compiler.Code, opts ...Option) (err error) {
+func (vm *VirtualMachine) RunCode(ctx context.Context, codeToRun *bytecode.Code, opts ...Option) (err error) {
 	if err := vm.applyOptions(opts); err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (vm *VirtualMachine) RunCode(ctx context.Context, codeToRun *compiler.Code,
 }
 
 // runCodeInternal is the shared implementation for Run and RunCode
-func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *compiler.Code, resetState bool) (err error) {
+func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *bytecode.Code, resetState bool) (err error) {
 	// Set up some guarantees:
 	// 1. It is an error to call Run on a VM that is already running
 	// 2. The running flag will always be set to false when Run returns
@@ -196,8 +196,13 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *compil
 		vm.resetForNewCode()
 	}
 
+	// Update main if we're running different code (e.g., via RunCode)
+	if resetState && codeToRun != vm.main {
+		vm.main = codeToRun
+	}
+
 	// Load the code to run - unified logic for both paths
-	var codeObj *code
+	var codeObj *loadedCode
 
 	// Check if we already have this code loaded
 	if existingCode, exists := vm.loadedCode[codeToRun]; exists {
@@ -215,8 +220,8 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *compil
 	}
 
 	// Load function constants
-	for i := 0; i < codeToRun.ConstantsCount(); i++ {
-		if fn, ok := codeToRun.Constant(i).(*compiler.Function); ok {
+	for i := 0; i < codeToRun.ConstantCount(); i++ {
+		if fn, ok := codeToRun.ConstantAt(i).(*bytecode.Function); ok {
 			vm.loadCode(fn.Code())
 		}
 	}
@@ -234,14 +239,28 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *compil
 }
 
 // resetForNewCode resets the VM state for running a new code object
+// while preserving any globals that were defined during previous runs.
 func (vm *VirtualMachine) resetForNewCode() {
+	// Preserve globals from the current main code before resetting
+	if vm.activeCode != nil {
+		for i := 0; i < vm.activeCode.GlobalCount(); i++ {
+			name := vm.activeCode.GlobalNameAt(i)
+			if value := vm.activeCode.Globals[i]; value != nil {
+				if vm.globals == nil {
+					vm.globals = make(map[string]object.Object)
+				}
+				vm.globals[name] = value
+			}
+		}
+	}
+
 	vm.sp = -1
 	vm.ip = 0
 	vm.fp = 0
 	vm.halt = 0
 	vm.activeFrame = nil
 	vm.activeCode = nil
-	vm.loadedCode = map[*compiler.Code]*code{}
+	vm.loadedCode = map[*bytecode.Code]*loadedCode{}
 	vm.excStackSize = 0
 
 	// Clear stack (only used portion would be cleaner but this ensures GC)
@@ -264,9 +283,10 @@ func (vm *VirtualMachine) Get(name string) (object.Object, error) {
 	if code == nil {
 		return nil, errors.New("no active code")
 	}
-	for i := 0; i < code.GlobalsCount(); i++ {
-		if g := code.Global(i); g.Name() == name {
-			return code.Globals[g.Index()], nil
+	globalCount := code.GlobalCount()
+	for i := 0; i < globalCount; i++ {
+		if code.GlobalNameAt(i) == name {
+			return code.Globals[i], nil
 		}
 	}
 	return nil, fmt.Errorf("%w: %q", ErrGlobalNotFound, name)
@@ -278,10 +298,10 @@ func (vm *VirtualMachine) GlobalNames() []string {
 	if code == nil {
 		return nil
 	}
-	count := code.GlobalsCount()
+	count := code.GlobalCount()
 	names := make([]string, 0, count)
 	for i := 0; i < count; i++ {
-		names = append(names, code.Global(i).Name())
+		names = append(names, code.GlobalNameAt(i))
 	}
 	return names
 }
@@ -404,8 +424,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			vm.push(vm.activeCode.Globals[vm.fetch()])
 		case op.LoadFree:
 			idx := vm.fetch()
-			freeVars := vm.activeFrame.fn.FreeVars()
-			obj := freeVars[idx].Value()
+			obj := vm.activeFrame.fn.FreeVar(int(idx)).Value()
 			vm.push(obj)
 		case op.StoreFast:
 			idx := vm.fetch()
@@ -416,8 +435,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 		case op.StoreFree:
 			idx := vm.fetch()
 			obj := vm.pop()
-			freeVars := vm.activeFrame.fn.FreeVars()
-			freeVars[idx].Set(obj)
+			vm.activeFrame.fn.FreeVar(int(idx)).Set(obj)
 		case op.StoreAttr:
 			idx := vm.fetch()
 			obj := vm.pop()
@@ -445,8 +463,8 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 					continue
 				}
 			}
-			fn := vm.activeCode.Constants[constIndex].(*object.Function)
-			vm.push(object.NewClosure(fn, free))
+			fn := vm.activeCode.Constants[constIndex].(*object.Closure)
+			vm.push(object.CloneWithCaptures(fn, free))
 		case op.MakeCell:
 			symbolIndex := vm.fetch()
 			framesBack := int(vm.fetch())
@@ -895,8 +913,9 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			baseIP := vm.ip - 3 // Position of the PushExcept instruction
 
 			// Find the handler for this position in the current code
-			var handler *compiler.ExceptionHandler
-			for _, h := range vm.activeCode.ExceptionHandlers {
+			var handler *bytecode.ExceptionHandler
+			for i := range vm.activeCode.ExceptionHandlers {
+				h := &vm.activeCode.ExceptionHandlers[i]
 				if h.TryStart <= baseIP && baseIP < h.TryEnd {
 					handler = h
 					break
@@ -905,7 +924,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 
 			if handler == nil {
 				// Create a temporary handler based on offsets
-				handler = &compiler.ExceptionHandler{
+				handler = &bytecode.ExceptionHandler{
 					TryStart:     baseIP,
 					CatchStart:   baseIP + int(catchOffset),
 					FinallyStart: baseIP + int(finallyOffset),
@@ -1035,7 +1054,7 @@ func (vm *VirtualMachine) fetch() uint16 {
 // running, an error is returned.
 func (vm *VirtualMachine) Call(
 	ctx context.Context,
-	fn *object.Function,
+	fn *object.Closure,
 	args []object.Object,
 ) (result object.Object, err error) {
 	if err := vm.start(ctx); err != nil {
@@ -1054,11 +1073,11 @@ func (vm *VirtualMachine) Call(
 // when a Risor object calls a function, e.g. [1, 2, 3].map(func(x) { x + 1 }).
 func (vm *VirtualMachine) callFunction(
 	ctx context.Context,
-	fn *object.Function,
+	fn *object.Closure,
 	args []object.Object,
 ) (result object.Object, resultErr error) {
 	// Check that the argument count is appropriate
-	paramsCount := len(fn.Parameters())
+	paramsCount := fn.ParameterCount()
 	argc := len(args)
 
 	if argc > MaxArgs {
@@ -1094,9 +1113,8 @@ func (vm *VirtualMachine) callFunction(
 
 		// Fill in defaults for missing regular params
 		if copyCount < paramsCount {
-			defaults := fn.Defaults()
-			for i := copyCount; i < len(defaults); i++ {
-				vm.tmp[i] = defaults[i]
+			for i := copyCount; i < fn.DefaultCount(); i++ {
+				vm.tmp[i] = fn.Default(i)
 			}
 		}
 
@@ -1113,9 +1131,8 @@ func (vm *VirtualMachine) callFunction(
 		// No rest param - original behavior
 		copy(vm.tmp[:argc], args)
 		if argc < paramsCount {
-			defaults := fn.Defaults()
-			for i := argc; i < len(defaults); i++ {
-				vm.tmp[i] = defaults[i]
+			for i := argc; i < fn.DefaultCount(); i++ {
+				vm.tmp[i] = fn.Default(i)
 			}
 		}
 		localCount = paramsCount
@@ -1164,7 +1181,7 @@ func (vm *VirtualMachine) callObject(
 	args []object.Object,
 ) error {
 	switch fn := fn.(type) {
-	case *object.Function:
+	case *object.Closure:
 		result, err := vm.callFunction(ctx, fn, args)
 		if err != nil {
 			return err
@@ -1244,7 +1261,7 @@ func (vm *VirtualMachine) ensureFrameCapacity(fp int) error {
 
 // Activate a frame with the given code. This is typically used to begin
 // running the entrypoint for a module or script.
-func (vm *VirtualMachine) activateCode(fp, ip int, code *code) *frame {
+func (vm *VirtualMachine) activateCode(fp, ip int, code *loadedCode) *frame {
 	// Ensure we have capacity for this frame (panics on overflow for now,
 	// matching the previous fixed-array behavior)
 	if err := vm.ensureFrameCapacity(fp); err != nil {
@@ -1259,7 +1276,7 @@ func (vm *VirtualMachine) activateCode(fp, ip int, code *code) *frame {
 }
 
 // Activate a frame with the given function, to implement a function call.
-func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Function, locals []object.Object) *frame {
+func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Closure, locals []object.Object) *frame {
 	// Ensure we have capacity for this frame (panics on overflow for now,
 	// matching the previous fixed-array behavior)
 	if err := vm.ensureFrameCapacity(fp); err != nil {
@@ -1276,29 +1293,28 @@ func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Function, loca
 	return vm.activeFrame
 }
 
-// Wrap the *compiler.Code in a *vm.code object to make it usable by the VM.
-func (vm *VirtualMachine) loadCode(cc *compiler.Code) *code {
-	if code, ok := vm.loadedCode[cc]; ok {
-		return code
+// Wrap the *bytecode.Code in a *loadedCode object to make it usable by the VM.
+func (vm *VirtualMachine) loadCode(bc *bytecode.Code) *loadedCode {
+	if lc, ok := vm.loadedCode[bc]; ok {
+		return lc
 	}
 	// Loading is slightly different if this is the "root" (entrypoint) code
 	// vs. a child of that. The root code owns the globals array, while the
 	// children will reuse the globals from the root.
-	var c *code
-	rootCompiled := cc.Root()
-	if rootCompiled == cc {
-		c = loadRootCode(cc, vm.globals)
+	var c *loadedCode
+	if vm.main == bc {
+		c = loadRootCode(bc, vm.globals)
 	} else {
-		c = loadChildCode(vm.loadedCode[rootCompiled], cc)
+		c = loadChildCode(vm.loadedCode[vm.main], bc)
 	}
-	vm.loadedCode[cc] = c
+	vm.loadedCode[bc] = c
 	return c
 }
 
 // Reloads the main code while preserving global variables. This happens as
 // part of a typical REPL workflow, where the main code is appended to with
 // each new input.
-func (vm *VirtualMachine) reloadCode(main *compiler.Code) *code {
+func (vm *VirtualMachine) reloadCode(main *bytecode.Code) *loadedCode {
 	oldWrappedMain, ok := vm.loadedCode[main]
 	if !ok {
 		panic("main code not loaded")

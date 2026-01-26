@@ -7,7 +7,7 @@ import (
 type contextKey string
 
 // CallFunc is a type signature for a function that can call a Risor function.
-type CallFunc func(ctx context.Context, fn *Function, args []Object) (Object, error)
+type CallFunc func(ctx context.Context, fn *Closure, args []Object) (Object, error)
 
 ////////////////////////////////////////////////////////////////////////////////
 

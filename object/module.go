@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/op"
 )
 
 type Module struct {
 	*base
 	name         string
-	code         *compiler.Code
+	code         *bytecode.Code
 	builtins     map[string]Object
 	globals      []Object
 	globalsIndex map[string]int
@@ -83,7 +83,7 @@ func (m *Module) Name() *String {
 	return NewString(m.name)
 }
 
-func (m *Module) Code() *compiler.Code {
+func (m *Module) Code() *bytecode.Code {
 	return m.code
 }
 
@@ -131,29 +131,15 @@ func (m *Module) Call(ctx context.Context, args ...Object) Object {
 	return m.callable(ctx, args...)
 }
 
-func NewModule(name string, code *compiler.Code) *Module {
+func NewModule(name string, code *bytecode.Code) *Module {
 	globalsIndex := map[string]int{}
-	globalsCount := code.GlobalsCount()
+	globalsCount := code.GlobalCount()
 	globals := make([]Object, globalsCount)
 	for i := 0; i < globalsCount; i++ {
-		symbol := code.Global(i)
-		globalsIndex[symbol.Name()] = int(i)
-		value := symbol.Value()
-		switch value := value.(type) {
-		case int64:
-			globals[i] = NewInt(value)
-		case float64:
-			globals[i] = NewFloat(value)
-		case string:
-			globals[i] = NewString(value)
-		case bool:
-			globals[i] = NewBool(value)
-		case nil:
-			globals[i] = Nil
-		// TODO: functions, others?
-		default:
-			panic(fmt.Sprintf("unsupported global type: %T", value))
-		}
+		globalName := code.GlobalNameAt(i)
+		globalsIndex[globalName] = i
+		// Initialize all globals to nil - they'll be set during VM execution
+		globals[i] = Nil
 	}
 	return &Module{
 		name:         name,

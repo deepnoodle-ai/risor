@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/risor-io/risor/builtins"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
 	modMath "github.com/risor-io/risor/modules/math"
 	modRand "github.com/risor-io/risor/modules/rand"
@@ -126,10 +127,10 @@ func defaultModules() map[string]object.Object {
 	}
 }
 
-// Compile parses and compiles source code into an executable Program.
-// The returned Program is immutable and safe for concurrent use.
-// Multiple goroutines can execute the same Program simultaneously.
-func Compile(source string, opts ...Option) (*Program, error) {
+// Compile parses and compiles source code into executable bytecode.
+// The returned Code is immutable and safe for concurrent use.
+// Multiple goroutines can execute the same Code simultaneously.
+func Compile(source string, opts ...Option) (*bytecode.Code, error) {
 	o := collectOptions(opts...)
 
 	var parserOpts []parser.Option
@@ -141,24 +142,15 @@ func Compile(source string, opts ...Option) (*Program, error) {
 		return nil, err
 	}
 
-	code, err := compiler.Compile(ast, o.compilerOpts()...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Program{
-		code:     code,
-		source:   source,
-		filename: o.filename,
-	}, nil
+	return compiler.Compile(ast, o.compilerOpts()...)
 }
 
-// Run executes a compiled Program and returns the result as a native Go value.
+// Run executes compiled bytecode and returns the result as a native Go value.
 // Each call creates fresh runtime state, allowing concurrent execution of the
-// same Program.
-func Run(ctx context.Context, p *Program, opts ...Option) (any, error) {
+// same Code.
+func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) {
 	o := collectOptions(opts...)
-	result, err := vm.Run(ctx, p.code, o.vmOpts()...)
+	result, err := vm.Run(ctx, code, o.vmOpts()...)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +161,11 @@ func Run(ctx context.Context, p *Program, opts ...Option) (any, error) {
 // It is equivalent to Compile() followed by Run().
 // Returns the result as a native Go value.
 func Eval(ctx context.Context, source string, opts ...Option) (any, error) {
-	program, err := Compile(source, opts...)
+	code, err := Compile(source, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return Run(ctx, program, opts...)
+	return Run(ctx, code, opts...)
 }
 
 // envNames returns sorted environment variable names (used by VM wrapper).

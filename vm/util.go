@@ -6,9 +6,9 @@ import (
 	"github.com/risor-io/risor/object"
 )
 
-func checkCallArgs(fn *object.Function, argc int) error {
+func checkCallArgs(fn *object.Closure, argc int) error {
 	// Number of parameters in the function signature
-	paramsCount := len(fn.Parameters())
+	paramsCount := fn.ParameterCount()
 
 	// Number of required args when the function is called (those without defaults)
 	requiredArgsCount := fn.RequiredArgsCount()

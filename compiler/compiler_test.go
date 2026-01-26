@@ -15,7 +15,7 @@ import (
 func TestNil(t *testing.T) {
 	c, err := New()
 	assert.Nil(t, err)
-	scope, err := c.Compile(&ast.Nil{})
+	scope, err := c.CompileAST(&ast.Nil{})
 	assert.Nil(t, err)
 	assert.Equal(t, scope.InstructionCount(), 1)
 	instr := scope.Instruction(0)
@@ -25,7 +25,7 @@ func TestNil(t *testing.T) {
 func TestUndefinedVariable(t *testing.T) {
 	c, err := New()
 	assert.Nil(t, err)
-	_, err = c.Compile(&ast.Ident{
+	_, err = c.CompileAST(&ast.Ident{
 		NamePos: token.Position{Line: 1, Column: 1},
 		Name:    "foo",
 	})
@@ -86,7 +86,7 @@ func TestCompileErrors(t *testing.T) {
 			assert.Nil(t, err)
 			ast, err := parser.Parse(context.Background(), tt.input)
 			assert.Nil(t, err)
-			_, err = c.Compile(ast)
+			_, err = c.CompileAST(ast)
 			assert.NotNil(t, err)
 			assert.Equal(t, err.Error(), tt.errMsg)
 		})
@@ -103,7 +103,7 @@ func TestBadExprCompilation(t *testing.T) {
 		To:   token.Position{Line: 0, Column: 10, File: "test.risor"},
 	}
 
-	_, err = c.Compile(badExpr)
+	_, err = c.CompileAST(badExpr)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "syntax error in expression"))
 }
@@ -118,7 +118,7 @@ func TestBadStmtCompilation(t *testing.T) {
 		To:   token.Position{Line: 0, Column: 15, File: "test.risor"},
 	}
 
-	_, err = c.Compile(badStmt)
+	_, err = c.CompileAST(badStmt)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "syntax error in statement"))
 }
@@ -144,7 +144,7 @@ func TestBadExprInVarCompilation(t *testing.T) {
 		},
 	}
 
-	_, err = c.Compile(program)
+	_, err = c.CompileAST(program)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "syntax error in expression"))
 }
@@ -175,7 +175,7 @@ func TestBadStmtInProgramCompilation(t *testing.T) {
 	}
 
 	// Compilation should fail on the BadStmt
-	_, err = c.Compile(program)
+	_, err = c.CompileAST(program)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "syntax error in statement"))
 }
@@ -205,7 +205,7 @@ func TestCompoundAssignmentWithIndex(t *testing.T) {
 	ast, err := parser.Parse(context.Background(), input)
 	assert.Nil(t, err)
 
-	code, err := c.Compile(ast)
+	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Compare the generated instructions
@@ -236,7 +236,9 @@ func TestBitwiseAnd(t *testing.T) {
 	astNode, err := parser.Parse(context.Background(), input)
 	assert.NoError(t, err)
 
-	code, err := Compile(astNode)
+	c, err := New()
+	assert.NoError(t, err)
+	code, err := c.CompileAST(astNode)
 	assert.NoError(t, err)
 
 	assert.Equal(t, code.instructions, expectedCode)
@@ -287,7 +289,7 @@ function foo() {
 			assert.Nil(t, err)
 			ast, err := parser.Parse(context.Background(), tt.input)
 			assert.Nil(t, err)
-			_, err = c.Compile(ast)
+			_, err = c.CompileAST(ast)
 			if err == nil {
 				t.Errorf("Expected error but got none")
 				return
@@ -426,7 +428,7 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 			ast, err := parser.Parse(context.Background(), tt.input)
 			assert.Nil(t, err)
 
-			_, err = c.Compile(ast)
+			_, err = c.CompileAST(ast)
 			if tt.wantErr {
 				assert.NotNil(t, err)
 			} else {
@@ -456,7 +458,7 @@ func TestForwardDeclarationInstructionGeneration(t *testing.T) {
 	ast, err := parser.Parse(context.Background(), input)
 	assert.Nil(t, err)
 
-	code, err := c.Compile(ast)
+	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Verify that the code compiles successfully and has expected structure
@@ -480,7 +482,7 @@ func TestLocationTracking(t *testing.T) {
 	ast, err := parser.Parse(context.Background(), input)
 	assert.Nil(t, err)
 
-	code, err := c.Compile(ast)
+	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Verify locations are recorded
@@ -505,7 +507,7 @@ x + y`
 	ast, err := parser.Parse(context.Background(), input)
 	assert.Nil(t, err)
 
-	code, err := c.Compile(ast)
+	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Collect unique line numbers from locations
@@ -530,7 +532,7 @@ func TestLocationTracking_OutOfBounds(t *testing.T) {
 	ast, err := parser.Parse(context.Background(), input)
 	assert.Nil(t, err)
 
-	code, err := c.Compile(ast)
+	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Test out-of-bounds access returns zero location
@@ -553,7 +555,7 @@ add(1, 2)`
 	ast, err := parser.Parse(context.Background(), input)
 	assert.Nil(t, err)
 
-	code, err := c.Compile(ast)
+	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Main code should have locations
@@ -590,7 +592,7 @@ let z = x + y`
 	ast, err := parser.Parse(context.Background(), input)
 	assert.Nil(t, err)
 
-	code, err := c.Compile(ast)
+	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Test getting source lines (1-indexed)

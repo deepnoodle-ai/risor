@@ -244,15 +244,15 @@ func (ls *List) Map(ctx context.Context, fn Object) Object {
 			result = append(result, outputValue)
 		}
 		return NewList(result)
-	case *Function:
-		numParameters = len(obj.parameters)
+	case *Closure:
+		numParameters = obj.ParameterCount()
 	default:
 		return TypeErrorf("type error: list.map() expected a function (%s given)", obj.Type())
 	}
 	if numParameters < 1 || numParameters > 2 {
 		return TypeErrorf("type error: list.map() received an incompatible function")
 	}
-	compiledFunc := fn.(*Function)
+	compiledFunc := fn.(*Closure)
 	var index Int
 	mapArgs := make([]Object, 2)
 	result := make([]Object, 0, len(ls.items))
@@ -284,7 +284,7 @@ func (ls *List) Filter(ctx context.Context, fn Object) Object {
 		return EvalErrorf("eval error: list.filter() context did not contain a call function")
 	}
 	switch obj := fn.(type) {
-	case *Function, *Builtin:
+	case *Closure, *Builtin:
 		// Nothing do do here
 	default:
 		return TypeErrorf("type error: list.filter() expected a function (%s given)", obj.Type())
@@ -293,7 +293,7 @@ func (ls *List) Filter(ctx context.Context, fn Object) Object {
 	var result []Object
 	for _, value := range ls.items {
 		filterArgs[0] = value
-		decision, err := callFunc(ctx, fn.(*Function), filterArgs)
+		decision, err := callFunc(ctx, fn.(*Closure), filterArgs)
 		if err != nil {
 			return Errorf(err.Error())
 		}
@@ -313,7 +313,7 @@ func (ls *List) Each(ctx context.Context, fn Object) Object {
 		return EvalErrorf("eval error: list.each() context did not contain a call function")
 	}
 	switch obj := fn.(type) {
-	case *Function, *Builtin:
+	case *Closure, *Builtin:
 		// Nothing do do here
 	default:
 		return TypeErrorf("type error: list.each() expected a function (%s given)", obj.Type())
@@ -321,7 +321,7 @@ func (ls *List) Each(ctx context.Context, fn Object) Object {
 	eachArgs := make([]Object, 1)
 	for _, value := range ls.items {
 		eachArgs[0] = value
-		result, err := callFunc(ctx, fn.(*Function), eachArgs)
+		result, err := callFunc(ctx, fn.(*Closure), eachArgs)
 		if err != nil {
 			return Errorf(err.Error())
 		}
@@ -348,7 +348,7 @@ func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) Object {
 			accumulator = result
 		}
 		return accumulator
-	case *Function:
+	case *Closure:
 		accumulator := initial
 		reduceArgs := make([]Object, 2)
 		for _, value := range ls.items {
