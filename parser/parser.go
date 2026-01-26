@@ -410,13 +410,21 @@ func (p *Parser) parseStatement() ast.Node {
 	var stmt ast.Node
 	switch p.curToken.Type {
 	case token.LET:
-		stmt = p.parseLet()
+		if s := p.parseLet(); s != nil {
+			stmt = s
+		}
 	case token.CONST:
-		stmt = p.parseConst()
+		if s := p.parseConst(); s != nil {
+			stmt = s
+		}
 	case token.RETURN:
-		stmt = p.parseReturn()
+		if s := p.parseReturn(); s != nil {
+			stmt = s
+		}
 	case token.THROW:
-		stmt = p.parseThrow()
+		if s := p.parseThrow(); s != nil {
+			stmt = s
+		}
 	case token.NEWLINE:
 		stmt = nil
 	default:
