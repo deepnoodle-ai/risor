@@ -240,8 +240,11 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 
 // resetForNewCode resets the VM state for running a new code object
 // while preserving any globals that were defined during previous runs.
+// Globals provided via WithGlobals take precedence over preserved values.
 func (vm *VirtualMachine) resetForNewCode() {
-	// Preserve globals from the current main code before resetting
+	// Preserve globals from the current main code before resetting.
+	// Only set globals that don't already exist in vm.globals, so that
+	// values provided via WithGlobals take precedence.
 	if vm.activeCode != nil {
 		for i := 0; i < vm.activeCode.GlobalCount(); i++ {
 			name := vm.activeCode.GlobalNameAt(i)
@@ -249,7 +252,9 @@ func (vm *VirtualMachine) resetForNewCode() {
 				if vm.globals == nil {
 					vm.globals = make(map[string]object.Object)
 				}
-				vm.globals[name] = value
+				if _, exists := vm.globals[name]; !exists {
+					vm.globals[name] = value
+				}
 			}
 		}
 	}

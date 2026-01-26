@@ -197,11 +197,17 @@ func NewClosure(fn *bytecode.Function) *Closure {
 
 // CloneWithCaptures creates a new closure from an existing closure with captured variables.
 // The defaults slice is shared (not copied) since it's immutable after construction.
+// The freeVars slice is copied to ensure the closure owns its captures.
 func CloneWithCaptures(c *Closure, freeVars []*Cell) *Closure {
+	var vars []*Cell
+	if len(freeVars) > 0 {
+		vars = make([]*Cell, len(freeVars))
+		copy(vars, freeVars)
+	}
 	return &Closure{
 		fn:            c.fn,
 		defaults:      c.defaults,
 		defaultsCount: c.defaultsCount,
-		freeVars:      freeVars,
+		freeVars:      vars,
 	}
 }

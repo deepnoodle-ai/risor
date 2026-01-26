@@ -207,7 +207,11 @@ func (c *Code) GlobalNameCount() int {
 }
 
 // GlobalNameAt returns the global variable name at the given index.
+// Returns an empty string if the index is out of range.
 func (c *Code) GlobalNameAt(index int) string {
+	if index < 0 || index >= len(c.globalNames) {
+		return ""
+	}
 	return c.globalNames[index]
 }
 
