@@ -21,7 +21,7 @@ let config = {
 
 // Function to process user data
 let process_user = function(user_id, name) {
-    if user_id <= 0 {
+    if (user_id <= 0) {
         return "Invalid user ID"
     }
 
@@ -202,7 +202,7 @@ func TestLanguageServerWithErrors(t *testing.T) {
 	invalidCode := `let x = 42
 function incomplete(
 let y = "missing closing brace"
-if true {
+if (true) {
     // missing closing brace`
 
 	uri := protocol.DocumentURI("file:///invalid.risor")
@@ -249,7 +249,7 @@ let greet = function(name) {
 }`,
 
 		"control_flow": `let age = 18
-if age >= 18 {
+if (age >= 18) {
     let status = "adult"
 } else {
     let status = "minor"

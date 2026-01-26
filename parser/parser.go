@@ -697,9 +697,15 @@ func (p *Parser) parseFloat() ast.Node {
 
 func (p *Parser) parseSwitch() ast.Node {
 	switchToken := p.curToken
-	p.nextToken()
+	if !p.expectPeek("switch statement", token.LPAREN) { // move to the "("
+		return nil
+	}
+	p.nextToken() // move past the "("
 	switchValue := p.parseExpression(LOWEST)
 	if switchValue == nil {
+		return nil
+	}
+	if !p.expectPeek("switch statement", token.RPAREN) { // move to the ")"
 		return nil
 	}
 	if !p.expectPeek("switch statement", token.LBRACE) {
@@ -1025,9 +1031,15 @@ func (p *Parser) parseArrowBody(arrowToken token.Token, params []*ast.Ident, def
 // Parses an entire if, else if, else block. Else-ifs are handled recursively.
 func (p *Parser) parseIf() ast.Node {
 	ifToken := p.curToken
-	p.nextToken() // move past the "if"
+	if !p.expectPeek("an if expression", token.LPAREN) { // move to the "("
+		return nil
+	}
+	p.nextToken() // move past the "("
 	cond := p.parseExpression(LOWEST)
 	if cond == nil {
+		return nil
+	}
+	if !p.expectPeek("an if expression", token.RPAREN) { // move to the ")"
 		return nil
 	}
 	if !p.expectPeek("an if expression", token.LBRACE) { // move to the "{"

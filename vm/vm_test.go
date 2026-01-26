@@ -47,7 +47,7 @@ func TestAddCompilationAndExecution(t *testing.T) {
 func TestConditional(t *testing.T) {
 	program, err := parser.Parse(context.Background(), `
 	let x = 20
-	if x > 10 {
+	if (x > 10) {
 		x = 99
 	}
 	x
@@ -69,7 +69,7 @@ func TestConditional3(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = 5
 	let y = 10
-	if x > 1 {
+	if (x > 1) {
 		y
 	} else {
 		99
@@ -84,7 +84,7 @@ func TestConditional4(t *testing.T) {
 	let x = 5
 	let y = 22
 	let z = 33
-	if x < 1 {
+	if (x < 1) {
 		x = y
 	} else {
 		x = z
@@ -108,8 +108,8 @@ func TestIndexing(t *testing.T) {
 func TestStackBehavior3(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = 77
-	if x > 0 {
-		99 
+	if (x > 0) {
+		99
 	}
 	`)
 	require.Nil(t, err)
@@ -119,8 +119,8 @@ func TestStackBehavior3(t *testing.T) {
 func TestStackBehavior4(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = -1
-	if x > 0 {
-		99 
+	if (x > 0) {
+		99
 	}
 	`)
 	require.Nil(t, err)
@@ -153,7 +153,7 @@ func TestFunctionCall(t *testing.T) {
 func TestSwitch1(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = 3
-	switch x {
+	switch (x) {
 		case 1:
 		case 2:
 			21
@@ -168,7 +168,7 @@ func TestSwitch1(t *testing.T) {
 func TestSwitch2(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = 1
-	switch x {
+	switch (x) {
 		case 1:
 			99
 		case 2:
@@ -182,7 +182,7 @@ func TestSwitch2(t *testing.T) {
 func TestSwitch3(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = 3
-	switch x {
+	switch (x) {
 		case 1:
 			99
 		case 2:
@@ -196,7 +196,7 @@ func TestSwitch3(t *testing.T) {
 func TestSwitch4(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = 3
-	switch x { default: 99 }
+	switch (x) { default: 99 }
 	`)
 	require.Nil(t, err)
 	require.Equal(t, object.NewInt(99), result)
@@ -205,7 +205,7 @@ func TestSwitch4(t *testing.T) {
 func TestSwitch5(t *testing.T) {
 	result, err := run(context.Background(), `
 	let x = 3
-	switch x { default: 99 case 3: x; x-1 }
+	switch (x) { default: 99 case 3: x; x-1 }
 	`)
 	require.Nil(t, err)
 	require.Equal(t, object.NewInt(2), result)
@@ -368,7 +368,7 @@ func TestClosureManyVariables(t *testing.T) {
 func TestRecursiveExample1(t *testing.T) {
 	result, err := run(context.Background(), `
 	function twoexp(n) {
-		if n == 0 {
+		if (n == 0) {
 			return 1
 		} else {
 			return 2 * twoexp(n-1)
@@ -386,7 +386,7 @@ func TestRecursiveExample2(t *testing.T) {
 		let a = 1
 		let b = 2
 		let c = a * b
-		if n == 0 {
+		if (n == 0) {
 			return 1
 		} else {
 			return c * twoexp(n-1)
@@ -543,26 +543,26 @@ func TestTruthiness(t *testing.T) {
 
 func TestControlFlow(t *testing.T) {
 	tests := []testCase{
-		{`if false { 3 }`, object.Nil},
-		{`if true { 3 }`, object.NewInt(3)},
-		{`if false { 3 } else { 4 }`, object.NewInt(4)},
-		{`if true { 3 } else { 4 }`, object.NewInt(3)},
-		{`if false { 3 } else if false { 4 } else { 5 }`, object.NewInt(5)},
-		{`if true { 3 } else if false { 4 } else { 5 }`, object.NewInt(3)},
-		{`if false { 3 } else if true { 4 } else { 5 }`, object.NewInt(4)},
-		{`let x = 1; if x > 5 { 99 } else { 100 }`, object.NewInt(100)},
-		{`let x = 1; if x > 0 { 99 } else { 100 }`, object.NewInt(99)},
+		{`if (false) { 3 }`, object.Nil},
+		{`if (true) { 3 }`, object.NewInt(3)},
+		{`if (false) { 3 } else { 4 }`, object.NewInt(4)},
+		{`if (true) { 3 } else { 4 }`, object.NewInt(3)},
+		{`if (false) { 3 } else if (false) { 4 } else { 5 }`, object.NewInt(5)},
+		{`if (true) { 3 } else if (false) { 4 } else { 5 }`, object.NewInt(3)},
+		{`if (false) { 3 } else if (true) { 4 } else { 5 }`, object.NewInt(4)},
+		{`let x = 1; if (x > 5) { 99 } else { 100 }`, object.NewInt(100)},
+		{`let x = 1; if (x > 0) { 99 } else { 100 }`, object.NewInt(99)},
 		{`let x = 1; let y = x > 0 ? 77 : 88; y`, object.NewInt(77)},
 		{`let x = (1 > 2) ? 77 : 88; x`, object.NewInt(88)},
 		{`let x = (2 > 1) ? 77 : 88; x`, object.NewInt(77)},
-		{`let x = 1; switch x { case 1: 99; case 2: 100 }`, object.NewInt(99)},
-		{`switch 2 { case 1: 99; case 2: 100 }`, object.NewInt(100)},
-		{`switch 3 { case 1: 99; default: 42 case 2: 100 }`, object.NewInt(42)},
-		{`switch 3 { case 1: 99; case 2: 100 }`, object.Nil},
-		{`switch 3 { case 1, 3: 99; case 2: 100 }`, object.NewInt(99)},
-		{`switch 3 { case 1: 99; case 2, 4-1: 100 }`, object.NewInt(100)},
-		{`let x = 3; switch bool(x) { case true: "wow" }`, object.NewString("wow")},
-		{`let x = 0; switch bool(x) { case true: "wow" }`, object.Nil},
+		{`let x = 1; switch (x) { case 1: 99; case 2: 100 }`, object.NewInt(99)},
+		{`switch (2) { case 1: 99; case 2: 100 }`, object.NewInt(100)},
+		{`switch (3) { case 1: 99; default: 42 case 2: 100 }`, object.NewInt(42)},
+		{`switch (3) { case 1: 99; case 2: 100 }`, object.Nil},
+		{`switch (3) { case 1, 3: 99; case 2: 100 }`, object.NewInt(99)},
+		{`switch (3) { case 1: 99; case 2, 4-1: 100 }`, object.NewInt(100)},
+		{`let x = 3; switch (bool(x)) { case true: "wow" }`, object.NewString("wow")},
+		{`let x = 0; switch (bool(x)) { case true: "wow" }`, object.Nil},
 	}
 	runTests(t, tests)
 }
@@ -804,7 +804,7 @@ func TestPipeForward(t *testing.T) {
 func TestQuicksort(t *testing.T) {
 	result, err := run(context.Background(), `
 	function quicksort(arr) {
-		if len(arr) < 2 {
+		if (len(arr) < 2) {
 			return arr
 		} else {
 			let pivot = arr[0]
@@ -829,7 +829,7 @@ func TestAndShortCircuit(t *testing.T) {
 	// AND should short-circuit, so data[5] should not be evaluated
 	result, err := run(context.Background(), `
 	let data = []
-	if len(data) && data[5] {
+	if (len(data) && data[5]) {
 		"nope!"
 	} else {
 		"worked!"
@@ -843,7 +843,7 @@ func TestOrShortCircuit(t *testing.T) {
 	// OR should short-circuit, so data[5] should not be evaluated
 	result, err := run(context.Background(), `
 	let data = [1]
-	if len(data) || data[5] {
+	if (len(data) || data[5]) {
 		"worked!"
 	} else {
 		"nope!"
@@ -1395,7 +1395,7 @@ func TestFreeVariables(t *testing.T) {
 		let l = []
 		function() {
 			let y = count
-			if true {
+			if (true) {
 				l.append(y)
 			}
 		}()
@@ -1586,21 +1586,21 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 		// Forward declaration with default parameters
 		{`
 		function calculator(op="add") {
-			if op == "add" {
+			if (op == "add") {
 				return adder(5, 3)
 			} else {
 				return multiplier(5, 3)
 			}
 		}
-		
+
 		function adder(a, b) {
 			return a + b
 		}
-		
+
 		function multiplier(a, b) {
 			return a * b
 		}
-		
+
 		calculator()
 		`, object.NewInt(8)},
 
@@ -1630,19 +1630,19 @@ func TestMutualRecursion(t *testing.T) {
 		// Basic mutual recursion - even/odd
 		{`
 		function is_even(n) {
-			if n == 0 {
+			if (n == 0) {
 				return true
 			}
 			return is_odd(n - 1)
 		}
-		
+
 		function is_odd(n) {
-			if n == 0 {
+			if (n == 0) {
 				return false
 			}
 			return is_even(n - 1)
 		}
-		
+
 		[is_even(4), is_odd(4), is_even(5), is_odd(5)]
 		`, object.NewList([]object.Object{
 			object.True,
@@ -1654,38 +1654,38 @@ func TestMutualRecursion(t *testing.T) {
 		// Mutual recursion with return values
 		{`
 		function countdown_a(n) {
-			if n <= 0 {
+			if (n <= 0) {
 				return 0
 			}
 			return n + countdown_b(n - 1)
 		}
-		
+
 		function countdown_b(n) {
-			if n <= 0 {
+			if (n <= 0) {
 				return 0
 			}
 			return n + countdown_a(n - 1)
 		}
-		
+
 		countdown_a(5)
 		`, object.NewInt(15)},
 
 		// More complex mutual recursion
 		{`
 		function fibonacci_a(n) {
-			if n <= 1 {
+			if (n <= 1) {
 				return n
 			}
 			return fibonacci_b(n - 1) + fibonacci_a(n - 2)
 		}
-		
+
 		function fibonacci_b(n) {
-			if n <= 1 {
+			if (n <= 1) {
 				return n
 			}
 			return fibonacci_a(n - 1) + fibonacci_b(n - 2)
 		}
-		
+
 		fibonacci_a(6)
 		`, object.NewInt(8)},
 	}
@@ -1697,21 +1697,21 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 		// Forward declaration with if statements
 		{`
 		function process(x) {
-			if x > 10 {
+			if (x > 10) {
 				return big_handler(x)
 			} else {
 				return small_handler(x)
 			}
 		}
-		
+
 		function big_handler(x) {
 			return x * 2
 		}
-		
+
 		function small_handler(x) {
 			return x + 10
 		}
-		
+
 		[process(5), process(15)]
 		`, object.NewList([]object.Object{
 			object.NewInt(15),
@@ -1721,7 +1721,7 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 		// Forward declaration with switch
 		{`
 		function router(op) {
-			switch op {
+			switch (op) {
 				case "add":
 					return op_add(5, 3)
 				case "sub":

@@ -321,7 +321,7 @@ func TestOperatorPrecedence(t *testing.T) {
 }
 
 func TestIf(t *testing.T) {
-	program, err := Parse(context.Background(), "if x < y { x }")
+	program, err := Parse(context.Background(), "if (x < y) { x }")
 	require.Nil(t, err)
 	require.Len(t, program.Statements(), 1)
 	exp, ok := program.First().(*ast.If)
@@ -634,7 +634,7 @@ func TestIncompleThings(t *testing.T) {
 }
 
 func TestSwitch(t *testing.T) {
-	input := `switch val {
+	input := `switch (val) {
 	case 1:
 	default:
       x
@@ -656,7 +656,7 @@ func TestSwitch(t *testing.T) {
 
 func TestMultiDefault(t *testing.T) {
 	input := `
-switch val {
+switch (val) {
 case 1:
     print("1")
 case 2:
@@ -924,7 +924,7 @@ func FuzzParse(f *testing.F) {
 		`let x = 1; for i in [1, 2, 3] { print(x + i) }`,
 		`[1] in {1, 2, 3}`,
 		`let f = function(x) { function() { x + 1 } }; f(1)`,
-		`switch x { case 1: 1 case 2: 2 default: 3 }`,
+		`switch (x) { case 1: 1 case 2: 2 default: 3 }`,
 		`x["foo"][1:3]`,
 	}
 	for _, tc := range testcases {
@@ -940,17 +940,17 @@ func TestBadInputs(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"if", `parse error: invalid syntax`},
+		{"if", `parse error: unexpected end of file while parsing an if expression (expected ()`},
 		{"else", `parse error: invalid syntax (unexpected "else")`},
 		{"&&", `parse error: invalid syntax (unexpected "&&")`},
 		{"[", `parse error: invalid syntax in list expression`},
 		{"[1,", `parse error: unexpected end of file while parsing an expression list (expected ])`},
-		{"0?if", `parse error: invalid syntax in ternary if true expression`},
+		{"0?if", `parse error: unexpected end of file while parsing an if expression (expected ()`},
 		{"0?0:", `parse error: invalid syntax in ternary if false expression`},
 		{"in", `parse error: invalid syntax (unexpected "in")`},
 		{"x in", `parse error: invalid in expression`},
-		{"switch x { case 1: \xf5\xf51 case 2: 2 default: 3 }", `syntax error: invalid identifier: �`},
-		{"switch x { case 1: 1 case 2: 2 defaultIIIIIII: 3 }", "parse error: unexpected defaultIIIIIII while parsing case statement (expected ;)"},
+		{"switch (x) { case 1: \xf5\xf51 case 2: 2 default: 3 }", `syntax error: invalid identifier: �`},
+		{"switch (x) { case 1: 1 case 2: 2 defaultIIIIIII: 3 }", "parse error: unexpected defaultIIIIIII while parsing case statement (expected ;)"},
 		{`{ one: 1
 			two: 2}`, "parse error: unexpected two while parsing map (expected })"},
 		{`[1 2]`, "parse error: unexpected 2 while parsing an expression list (expected ])"},

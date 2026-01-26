@@ -236,14 +236,14 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 			name: "mutual recursion",
 			input: `
 			function is_even(n) {
-				if n == 0 {
+				if (n == 0) {
 					return true
 				}
 				return is_odd(n - 1)
 			}
-			
+
 			function is_odd(n) {
-				if n == 0 {
+				if (n == 0) {
 					return false
 				}
 				return is_even(n - 1)
@@ -292,7 +292,7 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 			name: "forward declaration with default parameters",
 			input: `
 			function caller(op="add") {
-				if op == "add" {
+				if (op == "add") {
 					return adder(5, 3)
 				}
 				return multiplier(5, 3)

@@ -11,7 +11,7 @@ var config = {
 
 // Simple function
 greet := func(name) {
-    if name == "" {
+    if (name == "") {
         return "Hello, World!"
     }
     return sprintf("Hello, %s!", name)
@@ -19,14 +19,14 @@ greet := func(name) {
 
 // Function with multiple parameters
 calculate := func(operation, a, b) {
-    if operation == "add" {
+    if (operation == "add") {
         return a + b
-    } else if operation == "subtract" {
+    } else if (operation == "subtract") {
         return a - b
-    } else if operation == "multiply" {
+    } else if (operation == "multiply") {
         return a * b
-    } else if operation == "divide" {
-        if b == 0 {
+    } else if (operation == "divide") {
+        if (b == 0) {
             return "Division by zero error"
         }
         return a / b
@@ -63,14 +63,14 @@ println("Processed message:", upper)
 
 // Error handling example
 safe_divide := func(a, b) {
-    if b == 0 {
+    if (b == 0) {
         return nil, "cannot divide by zero"
     }
     return a / b, nil
 }
 
 result, err := safe_divide(10, 2)
-if err != nil {
+if (err != nil) {
     println("Error:", err)
 } else {
     println("Result:", result)

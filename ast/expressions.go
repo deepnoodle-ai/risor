@@ -170,9 +170,9 @@ func (i *If) Alternative() *Block { return i.alternative }
 
 func (i *If) String() string {
 	var out bytes.Buffer
-	out.WriteString("if ")
+	out.WriteString("if (")
 	out.WriteString(i.condition.String())
-	out.WriteString(" ")
+	out.WriteString(") ")
 	out.WriteString(i.consequence.String())
 	if i.alternative != nil {
 		out.WriteString(" else ")
@@ -579,9 +579,9 @@ func (s *Switch) Choices() []*Case { return s.choices }
 
 func (s *Switch) String() string {
 	var out bytes.Buffer
-	out.WriteString("\nswitch ")
+	out.WriteString("\nswitch (")
 	out.WriteString(s.value.String())
-	out.WriteString(" {\n")
+	out.WriteString(") {\n")
 	for _, choice := range s.choices {
 		if choice != nil {
 			out.WriteString(choice.String())

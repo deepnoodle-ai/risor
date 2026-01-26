@@ -40,7 +40,7 @@ func TestMarshalCode1(t *testing.T) {
 func TestMarshalCode2(t *testing.T) {
 	codeA, err := compileSource(`
 	function test(a, b=2) {
-		if a > b {
+		if (a > b) {
 			return a
 		} else {
 			return b
