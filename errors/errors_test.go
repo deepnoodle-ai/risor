@@ -268,10 +268,10 @@ func TestStructuredError_IsFatal(t *testing.T) {
 	defer func() { typeErrorsAreFatal = originalSetting }()
 
 	tests := []struct {
-		name           string
-		kind           ErrorKind
+		name             string
+		kind             ErrorKind
 		typeFatalSetting bool
-		expected       bool
+		expected         bool
 	}{
 		{"type error when fatal=true", ErrType, true, true},
 		{"type error when fatal=false", ErrType, false, false},

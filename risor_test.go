@@ -219,4 +219,3 @@ func TestConcurrentExecution(t *testing.T) {
 		assert.Equal(t, results[i], int64(i+1), "goroutine %d had wrong result", i)
 	}
 }
-

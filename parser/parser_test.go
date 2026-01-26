@@ -595,13 +595,13 @@ func TestMutators(t *testing.T) {
 func TestPostfixErrors(t *testing.T) {
 	// These should produce parser errors
 	errorCases := []string{
-		"1++;",          // cannot apply postfix to literal
-		"(1 + 2)++;",    // cannot apply postfix to expression result
-		"\"hello\"++;",  // cannot apply postfix to string literal
-		"true++;",       // cannot apply postfix to boolean
-		"nil++;",        // cannot apply postfix to nil
-		"[1, 2, 3]++;",  // cannot apply postfix to list literal
-		"func() {}++;",  // cannot apply postfix to function
+		"1++;",         // cannot apply postfix to literal
+		"(1 + 2)++;",   // cannot apply postfix to expression result
+		"\"hello\"++;", // cannot apply postfix to string literal
+		"true++;",      // cannot apply postfix to boolean
+		"nil++;",       // cannot apply postfix to nil
+		"[1, 2, 3]++;", // cannot apply postfix to list literal
+		"func() {}++;", // cannot apply postfix to function
 	}
 	for _, input := range errorCases {
 		_, err := Parse(context.Background(), input)

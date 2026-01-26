@@ -65,11 +65,11 @@ func (x *Bool) String() string { return x.Literal }
 
 // String is an expression node that holds a string literal.
 type String struct {
-	ValuePos token.Position   // position of opening quote
-	Literal  string           // the raw literal including quotes
-	Value    string           // the unquoted string value
-	Template *tmpl.Template   // template if this is a template string
-	Exprs    []Expr           // embedded expressions for templates
+	ValuePos token.Position // position of opening quote
+	Literal  string         // the raw literal including quotes
+	Value    string         // the unquoted string value
+	Template *tmpl.Template // template if this is a template string
+	Exprs    []Expr         // embedded expressions for templates
 }
 
 func (x *String) exprNode() {}
@@ -81,14 +81,14 @@ func (x *String) String() string { return fmt.Sprintf("%q", x.Value) }
 
 // Func is an expression node that holds a function literal.
 type Func struct {
-	Func      token.Position        // position of "function" keyword
-	Name      *Ident                // function name; nil for anonymous functions
-	Lparen    token.Position        // position of "("
-	Params    []*Ident              // parameter names
-	Defaults  map[string]Expr       // default values for parameters
-	RestParam *Ident                // rest parameter (e.g., ...args); nil if none
-	Rparen    token.Position        // position of ")"
-	Body      *Block                // function body
+	Func      token.Position  // position of "function" keyword
+	Name      *Ident          // function name; nil for anonymous functions
+	Lparen    token.Position  // position of "("
+	Params    []*Ident        // parameter names
+	Defaults  map[string]Expr // default values for parameters
+	RestParam *Ident          // rest parameter (e.g., ...args); nil if none
+	Rparen    token.Position  // position of ")"
+	Body      *Block          // function body
 }
 
 func (x *Func) exprNode() {}

@@ -73,10 +73,10 @@ func NewCode(params CodeParams) *Code {
 	}
 
 	return &Code{
-		id:       params.ID,
-		name:     params.Name,
-		isNamed:  params.IsNamed,
-		children: children,
+		id:                params.ID,
+		name:              params.Name,
+		isNamed:           params.IsNamed,
+		children:          children,
 		instructions:      copyInstructions(params.Instructions),
 		constants:         copyAny(params.Constants),
 		names:             copyStrings(params.Names),
@@ -293,4 +293,3 @@ func (c *Code) FunctionNames() []string {
 	}
 	return names
 }
-

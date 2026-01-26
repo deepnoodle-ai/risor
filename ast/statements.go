@@ -322,6 +322,7 @@ func (x *Try) stmtNode() {}
 func (x *Try) exprNode() {} // try is also an expression
 
 func (x *Try) Pos() token.Position { return x.Try }
+
 func (x *Try) End() token.Position {
 	if x.FinallyBlock != nil {
 		return x.FinallyBlock.End()
@@ -375,4 +376,3 @@ func (x *Throw) String() string {
 	}
 	return out.String()
 }
-

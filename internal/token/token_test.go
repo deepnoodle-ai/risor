@@ -122,6 +122,6 @@ func TestPositionFields(t *testing.T) {
 	assert.Equal(t, pos.File, "example.risor")
 
 	// Verify 1-indexed accessors
-	assert.Equal(t, pos.LineNumber(), 6)   // Line + 1
+	assert.Equal(t, pos.LineNumber(), 6)    // Line + 1
 	assert.Equal(t, pos.ColumnNumber(), 11) // Column + 1
 }
