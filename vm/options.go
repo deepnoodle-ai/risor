@@ -2,7 +2,6 @@ package vm
 
 import (
 	"github.com/risor-io/risor/importer"
-	"github.com/risor-io/risor/os"
 )
 
 // Option is a configuration function for a Virtual Machine.
@@ -28,14 +27,5 @@ func WithGlobals(globals map[string]any) Option {
 		for name, value := range globals {
 			vm.inputGlobals[name] = value
 		}
-	}
-}
-
-// WithOS sets custom OS implementation in the context. This context is present
-// in the invocation of Risor builtins, this OS will be used for all related
-// functionality.
-func WithOS(os os.OS) Option {
-	return func(vm *VirtualMachine) {
-		vm.os = os
 	}
 }

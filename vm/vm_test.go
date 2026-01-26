@@ -786,8 +786,6 @@ func TestBuiltins(t *testing.T) {
 		{`float("2.5")`, object.NewFloat(2.5)},
 		{`string(99)`, object.NewString("99")},
 		{`string(2.5)`, object.NewString("2.5")},
-		{`ord("a")`, object.NewInt(97)},
-		{`chr(97)`, object.NewString("a")},
 		{`encode("hi", "hex")`, object.NewString("6869")},
 		{`encode("hi", "base64")`, object.NewString("aGk=")},
 		{`reversed("abc")`, object.NewString("cba")},

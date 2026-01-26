@@ -17,7 +17,6 @@ import (
 	"github.com/risor-io/risor"
 	"github.com/risor-io/risor/cmd/risor/repl"
 	"github.com/risor-io/risor/errz"
-	ros "github.com/risor-io/risor/os"
 )
 
 var (
@@ -35,7 +34,6 @@ func init() {
 	rootCmd.PersistentFlags().Bool("stdin", false, "Read code from stdin")
 	rootCmd.PersistentFlags().String("cpu-profile", "", "Capture a CPU profile")
 	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colored output")
-	rootCmd.PersistentFlags().Bool("virtual-os", false, "Enable a virtual operating system")
 	rootCmd.PersistentFlags().Bool("no-default-globals", false, "Disable the default globals")
 	rootCmd.PersistentFlags().String("modules", ".", "Path to library modules")
 	rootCmd.PersistentFlags().BoolP("help", "h", false, "Help for Risor")
@@ -44,7 +42,6 @@ func init() {
 	viper.BindPFlag("stdin", rootCmd.PersistentFlags().Lookup("stdin"))
 	viper.BindPFlag("cpu-profile", rootCmd.PersistentFlags().Lookup("cpu-profile"))
 	viper.BindPFlag("no-color", rootCmd.PersistentFlags().Lookup("no-color"))
-	viper.BindPFlag("virtual-os", rootCmd.PersistentFlags().Lookup("virtual-os"))
 	viper.BindPFlag("no-default-globals", rootCmd.PersistentFlags().Lookup("no-default-globals"))
 	viper.BindPFlag("modules", rootCmd.PersistentFlags().Lookup("modules"))
 	viper.BindPFlag("help", rootCmd.PersistentFlags().Lookup("help"))
@@ -146,15 +143,9 @@ var rootCmd = &cobra.Command{
 		// to be passed to the script.
 		var scriptArgs []string
 		args, scriptArgs = getScriptArgs(args)
-		ros.SetScriptArgs(scriptArgs)
+		_ = scriptArgs // Script args are no longer used without virtual OS
 
 		opts := getRisorOptions()
-
-		// Optional virtual operating system.
-		if viper.GetBool("virtual-os") {
-			vos := ros.NewVirtualOS(ctx, ros.WithArgs(scriptArgs))
-			opts = append(opts, risor.WithOS(vos))
-		}
 
 		// Run the REPL if no code was provided
 		if shouldRunRepl(cmd, args) {

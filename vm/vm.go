@@ -15,7 +15,6 @@ import (
 	"github.com/risor-io/risor/importer"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/op"
-	"github.com/risor-io/risor/os"
 )
 
 const (
@@ -38,7 +37,6 @@ type VirtualMachine struct {
 	activeCode   *code
 	main         *compiler.Code
 	importer     importer.Importer
-	os           os.OS
 	modules      map[string]*object.Module
 	inputGlobals map[string]any
 	globals      map[string]object.Object
@@ -1189,7 +1187,6 @@ func (vm *VirtualMachine) Clone() (*VirtualMachine, error) {
 		fp:           0,
 		running:      false,
 		importer:     vm.importer,
-		os:           vm.os,
 		main:         vm.main,
 		inputGlobals: vm.inputGlobals,
 		globals:      vm.globals,
@@ -1219,25 +1216,7 @@ func (vm *VirtualMachine) cloneCallSync(
 }
 
 func (vm *VirtualMachine) initContext(ctx context.Context) context.Context {
-	oss := vm.getOS(ctx)
-	ctx = os.WithOS(ctx, oss)
 	ctx = object.WithCallFunc(ctx, vm.callFunction)
 	ctx = object.WithCloneCallFunc(ctx, vm.cloneCallSync)
 	return ctx
-}
-
-// getOS retrieves the OS reference for a VM. Before v1.8.0, the OS was passed
-// solely via a context value. Starting with v1.8.0, the WithOS option is the
-// preferred way to set the VM's OS. This getOS method bridges the old and new
-// approaches. If the OS is not provided via context or WithOS, NewSimpleOS is
-// used as a default.
-func (vm *VirtualMachine) getOS(ctx context.Context) os.OS {
-	v, ok := os.GetOS(ctx)
-	if ok {
-		return v
-	}
-	if vm.os != nil {
-		return vm.os
-	}
-	return os.NewSimpleOS(ctx)
 }

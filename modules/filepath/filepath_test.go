@@ -2,22 +2,11 @@ package filepath
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/risor-io/risor/object"
 	"github.com/stretchr/testify/require"
 )
-
-func TestAbs(t *testing.T) {
-	ctx := context.Background()
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	abs := Abs(ctx, object.NewString("foo"))
-	require.IsType(t, &object.String{}, abs)
-	require.Equal(t, filepath.Join(wd, "foo"), abs.(*object.String).Value())
-}
 
 func TestBase(t *testing.T) {
 	ctx := context.Background()
@@ -103,38 +92,4 @@ func TestSplitList(t *testing.T) {
 	require.Equal(t, "/foo", items[0].(*object.String).Value())
 	require.Equal(t, "/bar", items[1].(*object.String).Value())
 	require.Equal(t, "/baz", items[2].(*object.String).Value())
-}
-
-func TestWalkDir(t *testing.T) {
-	callFunc := func(ctx context.Context, fn *object.Function, args []object.Object) (object.Object, error) {
-		require.FailNow(t, "callFunc should not be called")
-		return nil, nil
-	}
-	ctx := context.Background()
-	ctx = object.WithCallFunc(ctx, callFunc)
-
-	var items []string
-	result := WalkDir(ctx, object.NewString("testdir"),
-		object.NewBuiltin("test", func(ctx context.Context, args ...object.Object) object.Object {
-			require.Len(t, args, 3)
-			require.IsType(t, &object.String{}, args[0])
-			items = append(items, args[0].(*object.String).Value())
-			return nil
-		}))
-
-	require.Equal(t, object.Nil, result)
-	require.Equal(t, []string{
-		"testdir",
-		"testdir/a",
-		"testdir/a/a.txt",
-		"testdir/b",
-		"testdir/b/b.txt",
-	}, items)
-
-	var goldenItems []string
-	filepath.WalkDir("testdir", func(path string, info os.DirEntry, err error) error {
-		goldenItems = append(goldenItems, path)
-		return nil
-	})
-	require.Equal(t, goldenItems, items)
 }

@@ -188,8 +188,6 @@ func AsReader(obj Object) (io.Reader, *Error) {
 		return bytes.NewBuffer(obj.value), nil
 	case *String:
 		return bytes.NewBufferString(obj.value), nil
-	case *File:
-		return obj.value, nil
 	case io.Reader:
 		return obj, nil
 	default:
@@ -203,8 +201,6 @@ func AsWriter(obj Object) (io.Writer, *Error) {
 	}
 	switch obj := obj.(type) {
 	case *Buffer:
-		return obj.value, nil
-	case *File:
 		return obj.value, nil
 	case io.Writer:
 		return obj, nil

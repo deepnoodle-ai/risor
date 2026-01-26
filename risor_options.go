@@ -2,7 +2,6 @@ package risor
 
 import (
 	"github.com/risor-io/risor/importer"
-	"github.com/risor-io/risor/os"
 	"github.com/risor-io/risor/vm"
 )
 
@@ -77,15 +76,6 @@ func WithLocalImporter(path string) Option {
 func WithFilename(filename string) Option {
 	return func(cfg *Config) {
 		cfg.filename = filename
-	}
-}
-
-// WithOS sets custom OS implementation in the context. This context is present
-// in the invocation of Risor builtins, this OS will be used for all related
-// functionality.
-func WithOS(os os.OS) Option {
-	return func(cfg *Config) {
-		cfg.os = os
 	}
 }
 

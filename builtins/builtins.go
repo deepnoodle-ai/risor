@@ -14,7 +14,6 @@ import (
 	"io"
 	"sort"
 	"strconv"
-	"unicode"
 
 	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/errz"
@@ -672,39 +671,6 @@ func Float(ctx context.Context, args ...object.Object) object.Object {
 	}
 }
 
-func Ord(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("ord", 1, args); err != nil {
-		return err
-	}
-	switch obj := args[0].(type) {
-	case *object.String:
-		runes := []rune(obj.Value())
-		if len(runes) != 1 {
-			return object.Errorf("value error: ord() expected a character, but string of length %d found", len(obj.Value()))
-		}
-		return object.NewInt(int64(runes[0]))
-	}
-	return object.Errorf("value error: ord() expected a string of length 1 (%s given)", args[0].Type())
-}
-
-func Chr(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("chr", 1, args); err != nil {
-		return err
-	}
-	switch obj := args[0].(type) {
-	case *object.Int:
-		v := obj.Value()
-		if v < 0 {
-			return object.Errorf("value error: chr() argument out of range (%d given)", v)
-		}
-		if v > unicode.MaxRune {
-			return object.Errorf("value error: chr() argument out of range (%d given)", v)
-		}
-		return object.NewString(string(rune(v)))
-	}
-	return object.TypeErrorf("type error: chr() expected an int (%s given)", args[0].Type())
-}
-
 func Error(ctx context.Context, args ...object.Object) object.Object {
 	if err := arg.RequireRange("error", 1, 64, args); err != nil {
 		return err
@@ -925,7 +891,6 @@ func Builtins() map[string]object.Object {
 		"assert":   object.NewBuiltin("assert", Assert),
 		"bool":     object.NewBuiltin("bool", Bool),
 		"call":     object.NewBuiltin("call", Call),
-		"chr":      object.NewBuiltin("chr", Chr),
 		"chunk":    object.NewBuiltin("chunk", Chunk),
 		"coalesce": object.NewBuiltin("coalesce", Coalesce),
 		"decode":   object.NewBuiltin("decode", Decode),
@@ -940,7 +905,6 @@ func Builtins() map[string]object.Object {
 		"len":      object.NewBuiltin("len", Len),
 		"list":     object.NewBuiltin("list", List),
 		"map":      object.NewBuiltin("map", Map),
-		"ord":      object.NewBuiltin("ord", Ord),
 		"reversed": object.NewBuiltin("reversed", Reversed),
 		"set":      object.NewBuiltin("set", Set),
 		"sorted":   object.NewBuiltin("sorted", Sorted),
