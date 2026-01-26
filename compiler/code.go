@@ -3,7 +3,9 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -32,6 +34,9 @@ type Code struct {
 	source       string
 	functionID   string
 	filename     string // The source file this code came from
+
+	// Source map: one location per instruction for error reporting
+	locations []errz.SourceLocation
 
 	// Used during compilation only
 	loops      []*loop
@@ -72,6 +77,7 @@ func (c *Code) newChild(name, source, funcID string) *Code {
 		symbols:    c.symbols.NewChild(),
 		source:     source,
 		functionID: funcID,
+		filename:   c.filename, // Inherit filename from parent
 	}
 	c.children = append(c.children, child)
 	return child
@@ -162,4 +168,31 @@ func (c *Code) Flatten() []*Code {
 
 func (c *Code) Filename() string {
 	return c.filename
+}
+
+// LocationAt returns the source location for the instruction at the given index.
+// If no location is recorded, an empty SourceLocation is returned.
+func (c *Code) LocationAt(ip int) errz.SourceLocation {
+	if ip < 0 || ip >= len(c.locations) {
+		return errz.SourceLocation{}
+	}
+	return c.locations[ip]
+}
+
+// LocationsCount returns the number of recorded source locations.
+func (c *Code) LocationsCount() int {
+	return len(c.locations)
+}
+
+// GetSourceLine returns the source code line at the given 1-based line number.
+// If the line is out of range, an empty string is returned.
+func (c *Code) GetSourceLine(lineNum int) string {
+	if c.source == "" || lineNum < 1 {
+		return ""
+	}
+	lines := strings.Split(c.source, "\n")
+	if lineNum > len(lines) {
+		return ""
+	}
+	return lines[lineNum-1]
 }

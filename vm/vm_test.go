@@ -851,7 +851,10 @@ func TestTryTypeError(t *testing.T) {
 	`
 	result, err := run(context.Background(), code)
 	require.NoError(t, err)
-	require.Equal(t, object.NewString("type error: attribute \"append\" not found on int object"), result)
+	// Check that the error message contains the expected content (may include location info)
+	resultStr, ok := result.(*object.String)
+	require.True(t, ok)
+	require.Contains(t, resultStr.Value(), "type error: attribute \"append\" not found on int object")
 }
 
 func TestTryUnsupportedOperation(t *testing.T) {
@@ -1568,7 +1571,8 @@ func TestIncorrectArgCount(t *testing.T) {
 	for _, tt := range tests {
 		_, err := run(context.Background(), tt.input)
 		require.NotNil(t, err)
-		require.Equal(t, tt.expectedErr, err.Error())
+		// Check that the error message contains the expected content (may include location info)
+		require.Contains(t, err.Error(), tt.expectedErr)
 	}
 }
 
@@ -1648,6 +1652,106 @@ func TestCallHalt(t *testing.T) {
 	_, err = vm.Call(ctx, fn, nil)
 	require.NotNil(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
+}
+
+func TestDeterministicContextCheck(t *testing.T) {
+	// Test that deterministic context checking works with a custom interval
+	t.Run("custom_interval", func(t *testing.T) {
+		// Parse and compile a tight loop
+		ast, err := parser.Parse(context.Background(), `for {}`)
+		require.NoError(t, err)
+		main, err := compiler.Compile(ast)
+		require.NoError(t, err)
+
+		// Create VM with a very small check interval for fast response
+		vm := New(main, WithContextCheckInterval(10))
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
+		defer cancel()
+
+		err = vm.Run(ctx)
+		require.NotNil(t, err)
+		require.Equal(t, context.DeadlineExceeded, err)
+	})
+
+	// Test that disabling deterministic checking (interval=0) still works
+	// via the background goroutine
+	t.Run("disabled_interval", func(t *testing.T) {
+		ast, err := parser.Parse(context.Background(), `for {}`)
+		require.NoError(t, err)
+		main, err := compiler.Compile(ast)
+		require.NoError(t, err)
+
+		// Create VM with deterministic checking disabled
+		vm := New(main, WithContextCheckInterval(0))
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
+		defer cancel()
+
+		err = vm.Run(ctx)
+		require.NotNil(t, err)
+		require.Equal(t, context.DeadlineExceeded, err)
+	})
+
+	// Test that default interval works
+	t.Run("default_interval", func(t *testing.T) {
+		ast, err := parser.Parse(context.Background(), `for {}`)
+		require.NoError(t, err)
+		main, err := compiler.Compile(ast)
+		require.NoError(t, err)
+
+		// Create VM with default settings
+		vm := New(main)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
+		defer cancel()
+
+		err = vm.Run(ctx)
+		require.NotNil(t, err)
+		require.Equal(t, context.DeadlineExceeded, err)
+	})
+
+	// Test that context cancellation (not just timeout) works
+	t.Run("context_cancel", func(t *testing.T) {
+		ast, err := parser.Parse(context.Background(), `for {}`)
+		require.NoError(t, err)
+		main, err := compiler.Compile(ast)
+		require.NoError(t, err)
+
+		vm := New(main, WithContextCheckInterval(10))
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Cancel the context after a short delay
+		go func() {
+			time.Sleep(time.Millisecond * 5)
+			cancel()
+		}()
+
+		err = vm.Run(ctx)
+		require.NotNil(t, err)
+		require.Equal(t, context.Canceled, err)
+	})
+}
+
+func TestWithContextCheckInterval(t *testing.T) {
+	// Test that WithContextCheckInterval properly sets the interval
+	ast, err := parser.Parse(context.Background(), `1 + 1`)
+	require.NoError(t, err)
+	main, err := compiler.Compile(ast)
+	require.NoError(t, err)
+
+	// Test with custom interval
+	vm := New(main, WithContextCheckInterval(500))
+	require.Equal(t, 500, vm.contextCheckInterval)
+
+	// Test with zero (disabled)
+	vm2 := New(main, WithContextCheckInterval(0))
+	require.Equal(t, 0, vm2.contextCheckInterval)
+
+	// Test default value
+	vm3 := New(main)
+	require.Equal(t, DefaultContextCheckInterval, vm3.contextCheckInterval)
 }
 
 func TestReturnGlobalVariable(t *testing.T) {

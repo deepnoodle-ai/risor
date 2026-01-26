@@ -2,7 +2,60 @@
 // friendly message in addition to the default error message.
 package errz
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// SourceLocation represents a position in source code.
+type SourceLocation struct {
+	Filename string
+	Line     int    // 1-based line number
+	Column   int    // 1-based column number
+	Source   string // The line of source code
+}
+
+// String returns a formatted string representation of the source location.
+func (s SourceLocation) String() string {
+	if s.Filename != "" {
+		return fmt.Sprintf("%s:%d:%d", s.Filename, s.Line, s.Column)
+	}
+	return fmt.Sprintf("%d:%d", s.Line, s.Column)
+}
+
+// IsZero returns true if the location has not been set.
+func (s SourceLocation) IsZero() bool {
+	return s.Line == 0 && s.Column == 0
+}
+
+// StackFrame represents a single frame in the call stack.
+type StackFrame struct {
+	Function string
+	Location SourceLocation
+}
+
+// String returns a formatted string representation of the stack frame.
+func (f StackFrame) String() string {
+	if f.Function != "" {
+		return fmt.Sprintf("at %s (%s)", f.Function, f.Location.String())
+	}
+	return fmt.Sprintf("at %s", f.Location.String())
+}
+
+// FormatStackTrace formats a slice of stack frames as a human-readable string.
+func FormatStackTrace(frames []StackFrame) string {
+	if len(frames) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Stack trace:\n")
+	for _, frame := range frames {
+		b.WriteString("  ")
+		b.WriteString(frame.String())
+		b.WriteString("\n")
+	}
+	return b.String()
+}
 
 var typeErrorsAreFatal = false
 

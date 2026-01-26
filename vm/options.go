@@ -29,3 +29,17 @@ func WithGlobals(globals map[string]any) Option {
 		}
 	}
 }
+
+// WithContextCheckInterval sets how often the VM checks ctx.Done() during
+// execution. The interval is specified in number of instructions. A value of 0
+// disables deterministic checking, relying only on the background goroutine
+// that monitors the context. The default is DefaultContextCheckInterval (1000).
+//
+// Lower values provide more responsive cancellation but may slightly impact
+// performance due to more frequent checks. Higher values reduce overhead but
+// delay cancellation detection.
+func WithContextCheckInterval(interval int) Option {
+	return func(vm *VirtualMachine) {
+		vm.contextCheckInterval = interval
+	}
+}

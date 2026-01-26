@@ -23,6 +23,10 @@ const (
 	MaxStackDepth = 1024
 	StopSignal    = -1
 	MB            = 1024 * 1024
+
+	// DefaultContextCheckInterval is the number of instructions between
+	// deterministic checks of ctx.Done(). Set to 0 to disable.
+	DefaultContextCheckInterval = 1000
 )
 
 var ErrGlobalNotFound = errors.New("global not found")
@@ -47,6 +51,11 @@ type VirtualMachine struct {
 	tmp          [MaxArgs]object.Object
 	stack        [MaxStackDepth]object.Object
 	frames       [MaxFrameDepth]frame
+
+	// contextCheckInterval is the number of instructions between deterministic
+	// checks of ctx.Done(). A value of 0 disables deterministic checking,
+	// relying only on the background goroutine. Default is DefaultContextCheckInterval.
+	contextCheckInterval int
 }
 
 // New creates a new Virtual Machine.
@@ -73,11 +82,12 @@ func NewEmpty() (*VirtualMachine, error) {
 
 func createVM(options []Option) (*VirtualMachine, error) {
 	vm := &VirtualMachine{
-		sp:           -1,
-		modules:      map[string]*object.Module{},
-		inputGlobals: map[string]any{},
-		globals:      map[string]object.Object{},
-		loadedCode:   map[*compiler.Code]*code{},
+		sp:                   -1,
+		modules:              map[string]*object.Module{},
+		inputGlobals:         map[string]any{},
+		globals:              map[string]object.Object{},
+		loadedCode:           map[*compiler.Code]*code{},
+		contextCheckInterval: DefaultContextCheckInterval,
 	}
 	if err := vm.applyOptions(options); err != nil {
 		return nil, err
@@ -276,11 +286,32 @@ func (vm *VirtualMachine) GlobalNames() []string {
 // Assuming this function returns without error, the result of the evaluation
 // will be on the top of the stack.
 func (vm *VirtualMachine) eval(ctx context.Context) error {
+	// Instruction counter for deterministic context checking
+	var instructionCount int
+	checkInterval := vm.contextCheckInterval
+	doneChan := ctx.Done()
+
 	// Run to the end of the active code
 	for vm.ip < len(vm.activeCode.Instructions) {
 
 		if atomic.LoadInt32(&vm.halt) == 1 {
 			return ctx.Err()
+		}
+
+		// Deterministic check of ctx.Done() every N instructions.
+		// This guarantees responsiveness regardless of goroutine scheduling.
+		if checkInterval > 0 && doneChan != nil {
+			instructionCount++
+			if instructionCount >= checkInterval {
+				instructionCount = 0
+				select {
+				case <-doneChan:
+					atomic.StoreInt32(&vm.halt, 1)
+					return ctx.Err()
+				default:
+					// Context not cancelled, continue execution
+				}
+			}
 		}
 
 		// The current instruction opcode
@@ -301,7 +332,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			name := vm.activeCode.Names[vm.fetch()]
 			value, found := obj.GetAttr(name)
 			if !found {
-				return errz.TypeErrorf("type error: attribute %q not found on %s object",
+				return vm.typeError("attribute %q not found on %s object",
 					name, obj.Type())
 			}
 			switch value := value.(type) {
@@ -374,7 +405,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				case *object.Cell:
 					free[freeCount-i-1] = obj
 				default:
-					return errz.EvalErrorf("eval error: expected cell")
+					return vm.evalError("expected cell")
 				}
 			}
 			fn := vm.activeCode.Constants[constIndex].(*object.Function)
@@ -384,7 +415,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			framesBack := int(vm.fetch())
 			frameIndex := vm.fp - framesBack
 			if frameIndex < 0 {
-				return errz.EvalErrorf("eval error: no frame at depth %d", framesBack)
+				return vm.evalError("no frame at depth %d", framesBack)
 			}
 			frame := &vm.frames[frameIndex]
 			locals := frame.CaptureLocals()
@@ -416,7 +447,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 		case op.Call:
 			argc := int(vm.fetch())
 			if argc > MaxArgs {
-				return errz.EvalErrorf("eval error: max args limit of %d exceeded (got %d)",
+				return vm.evalError("max args limit of %d exceeded (got %d)",
 					MaxArgs, argc)
 			}
 			args := make([]object.Object, argc)
@@ -441,7 +472,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			argList := vm.pop()
 			list, ok := argList.(*object.List)
 			if !ok {
-				return errz.TypeErrorf("type error: spread call requires list of arguments (got %s)", argList.Type())
+				return vm.typeError("spread call requires list of arguments (got %s)", argList.Type())
 			}
 			args := list.Value()
 			obj := vm.pop()
@@ -520,7 +551,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			listObj := vm.pop()
 			list, ok := listObj.(*object.List)
 			if !ok {
-				return errz.TypeErrorf("type error: cannot append to non-list (got %s)", listObj.Type())
+				return vm.typeError("cannot append to non-list (got %s)", listObj.Type())
 			}
 			newItems := append(list.Value(), item)
 			vm.push(object.NewList(newItems))
@@ -530,12 +561,12 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			listObj := vm.pop()
 			list, ok := listObj.(*object.List)
 			if !ok {
-				return errz.TypeErrorf("type error: cannot extend non-list (got %s)", listObj.Type())
+				return vm.typeError("cannot extend non-list (got %s)", listObj.Type())
 			}
 			// Get items from the iterable
 			iterable, ok := iterableObj.(object.Iterable)
 			if !ok {
-				return errz.TypeErrorf("type error: spread requires an iterable (got %s)", iterableObj.Type())
+				return vm.typeError("spread requires an iterable (got %s)", iterableObj.Type())
 			}
 			iter := iterable.Iter()
 			newItems := list.Value()
@@ -553,11 +584,11 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			targetObj := vm.pop()
 			target, ok := targetObj.(*object.Map)
 			if !ok {
-				return errz.TypeErrorf("type error: cannot merge into non-map (got %s)", targetObj.Type())
+				return vm.typeError("cannot merge into non-map (got %s)", targetObj.Type())
 			}
 			source, ok := sourceObj.(*object.Map)
 			if !ok {
-				return errz.TypeErrorf("type error: spread requires a map (got %s)", sourceObj.Type())
+				return vm.typeError("spread requires a map (got %s)", sourceObj.Type())
 			}
 			// Merge source into target (creating a new map)
 			newItems := make(map[string]object.Object)
@@ -575,11 +606,11 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			targetObj := vm.pop()
 			target, ok := targetObj.(*object.Map)
 			if !ok {
-				return errz.TypeErrorf("type error: cannot set key in non-map (got %s)", targetObj.Type())
+				return vm.typeError("cannot set key in non-map (got %s)", targetObj.Type())
 			}
 			key, ok := keyObj.(*object.String)
 			if !ok {
-				return errz.TypeErrorf("type error: map key must be string (got %s)", keyObj.Type())
+				return vm.typeError("map key must be string (got %s)", keyObj.Type())
 			}
 			// Create a new map with the key-value pair
 			newItems := make(map[string]object.Object)
@@ -593,7 +624,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			lhs := vm.pop()
 			container, ok := lhs.(object.Container)
 			if !ok {
-				return errz.TypeErrorf("type error: object is not a container (got %s)", lhs.Type())
+				return vm.typeError("object is not a container (got %s)", lhs.Type())
 			}
 			result, err := container.GetItem(idx)
 			if err != nil {
@@ -606,7 +637,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			rhs := vm.pop()
 			container, ok := lhs.(object.Container)
 			if !ok {
-				return errz.TypeErrorf("type error: object is not a container (got %s)", lhs.Type())
+				return vm.typeError("object is not a container (got %s)", lhs.Type())
 			}
 			if err := container.SetItem(idx, rhs); err != nil {
 				return err.Value()
@@ -619,7 +650,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			case *object.Float:
 				vm.push(object.NewFloat(-obj.Value()))
 			default:
-				return errz.TypeErrorf("type error: object is not a number (got %s)", obj.Type())
+				return vm.typeError("object is not a number (got %s)", obj.Type())
 			}
 		case op.UnaryNot:
 			obj := vm.pop()
@@ -639,7 +670,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				}
 				vm.push(value)
 			} else {
-				return errz.TypeErrorf("type error: object is not a container (got %s)",
+				return vm.typeError("object is not a container (got %s)",
 					containerObj.Type())
 			}
 		case op.Swap:
@@ -667,7 +698,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			iterableObj := vm.pop()
 			iterable, ok := iterableObj.(object.Iterable)
 			if !ok {
-				return errz.TypeErrorf("type error: object is not an iterable (got %s)",
+				return vm.typeError("object is not an iterable (got %s)",
 					iterableObj.Type())
 			}
 			vm.push(iterable.Iter())
@@ -677,7 +708,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			containerObj := vm.pop()
 			container, ok := containerObj.(object.Container)
 			if !ok {
-				return errz.TypeErrorf("type error: object is not a container (got %s)",
+				return vm.typeError("object is not a container (got %s)",
 					containerObj.Type())
 			}
 			slice := object.Slice{Start: start, Stop: stop}
@@ -690,7 +721,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			containerObj := vm.pop()
 			container, ok := containerObj.(object.Container)
 			if !ok {
-				return errz.TypeErrorf("type error: object is not a container (got %s)",
+				return vm.typeError("object is not a container (got %s)",
 					containerObj.Type())
 			}
 			vm.push(container.Len())
@@ -700,7 +731,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 		case op.Import:
 			name, ok := vm.pop().(*object.String)
 			if !ok {
-				return errz.TypeErrorf("type error: object is not a string (got %s)", name.Type())
+				return vm.typeError("object is not a string (got %s)", name.Type())
 			}
 			module, err := vm.importModule(ctx, name.Value())
 			if err != nil {
@@ -711,13 +742,13 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			parentLen := vm.fetch()
 			importsCount := vm.fetch()
 			if importsCount > 255 {
-				return errz.EvalErrorf("eval error: invalid imports count: %d", importsCount)
+				return vm.evalError("invalid imports count: %d", importsCount)
 			}
 			var names []string
 			for i := uint16(0); i < importsCount; i++ {
 				name, ok := vm.pop().(*object.String)
 				if !ok {
-					return errz.TypeErrorf("type error: object is not a string (got %s)", name.Type())
+					return vm.typeError("object is not a string (got %s)", name.Type())
 				}
 				names = append(names, name.Value())
 			}
@@ -725,7 +756,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			for i := int(parentLen - 1); i >= 0; i-- {
 				val, ok := vm.pop().(*object.String)
 				if !ok {
-					return errz.TypeErrorf("type error: object is not a string (got %s)", val.Type())
+					return vm.typeError("object is not a string (got %s)", val.Type())
 				}
 				from[i] = val.Value()
 			}
@@ -755,7 +786,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			nameCount := int64(vm.fetch())
 			container, ok := containerObj.(object.Container)
 			if !ok {
-				return errz.TypeErrorf("type error: object is not a container (got %s)",
+				return vm.typeError("object is not a container (got %s)",
 					containerObj.Type())
 			}
 			containerSize := container.Len().Value()
@@ -786,7 +817,7 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			case object.Iterator:
 				vm.push(obj)
 			default:
-				return errz.TypeErrorf("type error: object is not iterable (got %s)", obj.Type())
+				return vm.typeError("object is not iterable (got %s)", obj.Type())
 			}
 		case op.ForIter:
 			base := vm.ip - 1
@@ -807,13 +838,13 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 					// Python-style for-in: single variable gets the value
 					vm.push(obj.Value())
 				} else if nameCount != 0 {
-					return errz.EvalErrorf("eval error: invalid iteration")
+					return vm.evalError("invalid iteration")
 				}
 			}
 		case op.Halt:
 			return nil
 		default:
-			return errz.EvalErrorf("eval error: unknown opcode: %d", opcode)
+			return vm.evalError("unknown opcode: %d", opcode)
 		}
 	}
 	return nil
@@ -907,7 +938,7 @@ func (vm *VirtualMachine) callFunction(
 	argc := len(args)
 
 	if argc > MaxArgs {
-		return nil, errz.EvalErrorf("eval error: max args limit of %d exceeded (got %d)",
+		return nil, vm.evalError("max args limit of %d exceeded (got %d)",
 			MaxArgs, argc)
 	}
 	if err := checkCallArgs(fn, argc); err != nil {
@@ -1015,7 +1046,7 @@ func (vm *VirtualMachine) callObject(
 		argc := len(args)
 		expandedCount := argc + len(fn.Args())
 		if expandedCount > MaxArgs {
-			return errz.EvalErrorf("eval error: max arguments limit of %d exceeded (got %d)",
+			return vm.evalError("max arguments limit of %d exceeded (got %d)",
 				MaxArgs, expandedCount)
 		}
 		newArgs := make([]object.Object, expandedCount)
@@ -1024,7 +1055,7 @@ func (vm *VirtualMachine) callObject(
 		// Recursive call with the wrapped function and the combined args
 		return vm.callObject(ctx, fn.Function(), newArgs)
 	default:
-		return errz.TypeErrorf("type error: object is not callable (got %s)", fn.Type())
+		return vm.typeError("object is not callable (got %s)", fn.Type())
 	}
 }
 
@@ -1219,4 +1250,79 @@ func (vm *VirtualMachine) initContext(ctx context.Context) context.Context {
 	ctx = object.WithCallFunc(ctx, vm.callFunction)
 	ctx = object.WithCloneCallFunc(ctx, vm.cloneCallSync)
 	return ctx
+}
+
+// captureStack builds a stack trace from the current call frames.
+func (vm *VirtualMachine) captureStack() []errz.StackFrame {
+	var frames []errz.StackFrame
+
+	// Walk through all active frames
+	for i := vm.fp; i >= 0; i-- {
+		frame := &vm.frames[i]
+		if frame.code == nil {
+			continue
+		}
+
+		// Get the function name
+		funcName := ""
+		if frame.fn != nil {
+			funcName = frame.fn.Name()
+			if funcName == "" {
+				funcName = "<anonymous>"
+			}
+		} else if frame.code.CodeName() != "" {
+			funcName = frame.code.CodeName()
+		} else {
+			funcName = "<main>"
+		}
+
+		// Get the location - use returnAddr for previous frames, current ip for active frame
+		ip := 0
+		if i == vm.fp {
+			ip = vm.ip - 1 // Current instruction (ip was already incremented)
+			if ip < 0 {
+				ip = 0
+			}
+		} else {
+			ip = frame.returnAddr - 1
+			if ip < 0 {
+				ip = 0
+			}
+		}
+
+		loc := frame.code.LocationAt(ip)
+
+		frames = append(frames, errz.StackFrame{
+			Function: funcName,
+			Location: loc,
+		})
+	}
+	return frames
+}
+
+// getCurrentLocation returns the source location of the current instruction.
+func (vm *VirtualMachine) getCurrentLocation() errz.SourceLocation {
+	if vm.activeCode == nil {
+		return errz.SourceLocation{}
+	}
+	ip := vm.ip - 1 // Current instruction (ip was already incremented)
+	if ip < 0 {
+		ip = 0
+	}
+	return vm.activeCode.LocationAt(ip)
+}
+
+// runtimeError creates a StructuredError with source location and stack trace.
+func (vm *VirtualMachine) runtimeError(kind errz.ErrorKind, format string, args ...any) *errz.StructuredError {
+	return errz.NewStructuredErrorf(kind, vm.getCurrentLocation(), vm.captureStack(), format, args...)
+}
+
+// typeError creates a type error with location and stack trace.
+func (vm *VirtualMachine) typeError(format string, args ...any) *errz.StructuredError {
+	return vm.runtimeError(errz.ErrType, format, args...)
+}
+
+// evalError creates an evaluation error with location and stack trace.
+func (vm *VirtualMachine) evalError(format string, args ...any) *errz.StructuredError {
+	return vm.runtimeError(errz.ErrRuntime, format, args...)
 }

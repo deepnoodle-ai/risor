@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/op"
 )
@@ -14,6 +15,7 @@ type code struct {
 	Constants    []object.Object
 	Globals      []object.Object
 	Names        []string
+	Locations    []errz.SourceLocation
 }
 
 func wrapCode(cc *compiler.Code) *code {
@@ -23,12 +25,16 @@ func wrapCode(cc *compiler.Code) *code {
 		Instructions: make([]op.Code, cc.InstructionCount()),
 		Constants:    make([]object.Object, cc.ConstantsCount()),
 		Names:        make([]string, cc.NameCount()),
+		Locations:    make([]errz.SourceLocation, cc.LocationsCount()),
 	}
 	for i := 0; i < cc.InstructionCount(); i++ {
 		c.Instructions[i] = cc.Instruction(i)
 	}
 	for i := 0; i < cc.NameCount(); i++ {
 		c.Names[i] = cc.Name(i)
+	}
+	for i := 0; i < cc.LocationsCount(); i++ {
+		c.Locations[i] = cc.LocationAt(i)
 	}
 	for i := 0; i < cc.ConstantsCount(); i++ {
 		constant := cc.Constant(i)
@@ -56,6 +62,14 @@ func wrapCode(cc *compiler.Code) *code {
 
 func (c *code) GlobalsCount() int {
 	return len(c.Globals)
+}
+
+// LocationAt returns the source location for the instruction at the given index.
+func (c *code) LocationAt(ip int) errz.SourceLocation {
+	if ip < 0 || ip >= len(c.Locations) {
+		return errz.SourceLocation{}
+	}
+	return c.Locations[ip]
 }
 
 func loadChildCode(root *code, cc *compiler.Code) *code {

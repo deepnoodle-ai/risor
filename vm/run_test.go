@@ -41,8 +41,10 @@ func TestRunError(t *testing.T) {
 	require.Nil(t, err)
 	_, err = Run(ctx, code)
 	require.NotNil(t, err)
-	require.Equal(t, "type error: attribute \"bar\" not found on int object", err.Error())
-	errValue, ok := err.(*errz.TypeError)
+	// Check that the error message contains the expected content
+	require.Contains(t, err.Error(), "type error: attribute \"bar\" not found on int object")
+	// Check that it's a structured error with location info
+	structuredErr, ok := err.(*errz.StructuredError)
 	require.True(t, ok)
-	require.Equal(t, "type error: attribute \"bar\" not found on int object", errValue.Error())
+	require.Equal(t, errz.ErrType, structuredErr.Kind)
 }

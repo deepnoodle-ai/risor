@@ -11,8 +11,9 @@ import (
 // Error wraps a Go error interface and implements Object.
 type Error struct {
 	*base
-	err    error
-	raised bool
+	err        error
+	raised     bool
+	structured *errz.StructuredError
 }
 
 func (e *Error) Type() Type {
@@ -82,6 +83,57 @@ func (e *Error) GetAttr(name string) (Object, bool) {
 		return NewBuiltin("message", func(ctx context.Context, args ...Object) Object {
 			return e.Message()
 		}), true
+	case "line":
+		return NewBuiltin("line", func(ctx context.Context, args ...Object) Object {
+			if e.structured != nil {
+				return NewInt(int64(e.structured.Location.Line))
+			}
+			return NewInt(0)
+		}), true
+	case "column":
+		return NewBuiltin("column", func(ctx context.Context, args ...Object) Object {
+			if e.structured != nil {
+				return NewInt(int64(e.structured.Location.Column))
+			}
+			return NewInt(0)
+		}), true
+	case "filename":
+		return NewBuiltin("filename", func(ctx context.Context, args ...Object) Object {
+			if e.structured != nil && e.structured.Location.Filename != "" {
+				return NewString(e.structured.Location.Filename)
+			}
+			return Nil
+		}), true
+	case "source":
+		return NewBuiltin("source", func(ctx context.Context, args ...Object) Object {
+			if e.structured != nil && e.structured.Location.Source != "" {
+				return NewString(e.structured.Location.Source)
+			}
+			return Nil
+		}), true
+	case "stack":
+		return NewBuiltin("stack", func(ctx context.Context, args ...Object) Object {
+			if e.structured != nil && len(e.structured.Stack) > 0 {
+				frames := make([]Object, len(e.structured.Stack))
+				for i, frame := range e.structured.Stack {
+					frames[i] = NewMap(map[string]Object{
+						"function": NewString(frame.Function),
+						"line":     NewInt(int64(frame.Location.Line)),
+						"column":   NewInt(int64(frame.Location.Column)),
+						"filename": NewString(frame.Location.Filename),
+					})
+				}
+				return NewList(frames)
+			}
+			return NewList(nil)
+		}), true
+	case "kind":
+		return NewBuiltin("kind", func(ctx context.Context, args ...Object) Object {
+			if e.structured != nil {
+				return NewString(e.structured.Kind.String())
+			}
+			return NewString("error")
+		}), true
 	default:
 		return nil, false
 	}
@@ -131,10 +183,31 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 func NewError(err error) *Error {
 	switch err := err.(type) {
 	case *Error: // unwrap to get the inner error, to avoid unhelpful nesting
-		return &Error{err: err.Unwrap(), raised: true}
+		return &Error{err: err.Unwrap(), raised: true, structured: err.structured}
+	case *errz.StructuredError:
+		return &Error{err: err, raised: true, structured: err}
 	default:
 		return &Error{err: err, raised: true}
 	}
+}
+
+// NewStructuredError creates a new Error from a StructuredError.
+func NewStructuredError(se *errz.StructuredError) *Error {
+	return &Error{err: se, raised: true, structured: se}
+}
+
+// Structured returns the underlying StructuredError if present.
+func (e *Error) Structured() *errz.StructuredError {
+	return e.structured
+}
+
+// FriendlyErrorMessage returns a human-friendly error message if the error
+// has structured data, otherwise returns the standard error string.
+func (e *Error) FriendlyErrorMessage() string {
+	if e.structured != nil {
+		return e.structured.FriendlyErrorMessage()
+	}
+	return e.err.Error()
 }
 
 func IsError(obj Object) bool {

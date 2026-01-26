@@ -9,9 +9,13 @@ import (
 	"strings"
 
 	"github.com/risor-io/risor/ast"
+	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 	"github.com/risor-io/risor/token"
 )
+
+// SourceLocation is an alias to errz.SourceLocation for convenience.
+type SourceLocation = errz.SourceLocation
 
 const (
 	// MaxArgs is the maximum number of arguments a function can have.
@@ -44,6 +48,9 @@ type Compiler struct {
 
 	// Source filename
 	filename string
+
+	// Current AST node being compiled (used for source map tracking)
+	currentNode ast.Node
 }
 
 // Option is a configuration function for a Compiler.
@@ -180,6 +187,8 @@ func (c *Compiler) collectFunctionDeclarations(node ast.Node) error {
 
 // compile the given AST node and all its children.
 func (c *Compiler) compile(node ast.Node) error {
+	// Track the current node for source location mapping
+	c.currentNode = node
 	switch node := node.(type) {
 	case *ast.Nil:
 		if err := c.compileNil(); err != nil {
@@ -2255,7 +2264,29 @@ func (c *Compiler) emit(opcode op.Code, operands ...uint16) int {
 	code := c.current
 	pos := len(code.instructions)
 	code.instructions = append(code.instructions, inst...)
+
+	// Record source location for each instruction byte
+	loc := c.getCurrentLocation()
+	for range inst {
+		code.locations = append(code.locations, loc)
+	}
 	return pos
+}
+
+// getCurrentLocation returns the source location of the current AST node being compiled.
+func (c *Compiler) getCurrentLocation() SourceLocation {
+	if c.currentNode == nil {
+		return SourceLocation{}
+	}
+	tok := c.currentNode.Token()
+	pos := tok.StartPosition
+	lineNum := pos.LineNumber()
+	return SourceLocation{
+		Filename: c.filename,
+		Line:     lineNum,
+		Column:   pos.ColumnNumber(),
+		Source:   c.current.GetSourceLine(lineNum),
+	}
 }
 
 func makeInstruction(opcode op.Code, operands ...uint16) []op.Code {
