@@ -17,7 +17,7 @@ func TestAddCompilationAndExecution(t *testing.T) {
 	let x = 11
 	let y = 12
 	x + y
-	`)
+	`, nil)
 	assert.Nil(t, err)
 
 	main, err := compiler.Compile(program, nil)
@@ -49,7 +49,7 @@ func TestConditional(t *testing.T) {
 		x = 99
 	}
 	x
-	`)
+	`, nil)
 	assert.Nil(t, err)
 
 	main, err := compiler.Compile(program, nil)
@@ -1149,7 +1149,7 @@ func TestIncorrectArgCount(t *testing.T) {
 
 func TestWithContextCheckInterval(t *testing.T) {
 	// Test that WithContextCheckInterval properly sets the interval
-	ast, err := parser.Parse(context.Background(), `1 + 1`)
+	ast, err := parser.Parse(context.Background(), `1 + 1`, nil)
 	assert.NoError(t, err)
 	main, err := compiler.Compile(ast, nil)
 	assert.NoError(t, err)
@@ -1346,7 +1346,7 @@ func TestInterpolatedStringClosures2(t *testing.T) {
 
 func TestIncrementalEvaluation(t *testing.T) {
 	ctx := context.Background()
-	ast, err := parser.Parse(ctx, "let x = 3")
+	ast, err := parser.Parse(ctx, "let x = 3", nil)
 	assert.Nil(t, err)
 
 	main, err := compiler.Compile(ast, nil)
@@ -1360,7 +1360,7 @@ func TestIncrementalEvaluation(t *testing.T) {
 
 	// For incremental evaluation, we need to tell the compiler about globals
 	// that were defined in previous runs
-	ast, err = parser.Parse(ctx, "x + 7")
+	ast, err = parser.Parse(ctx, "x + 7", nil)
 	assert.Nil(t, err)
 	code2, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"x"}})
 	assert.Nil(t, err)
@@ -1876,7 +1876,7 @@ func TestRunCode(t *testing.T) {
 	assert.Equal(t, int64(30), result.(*object.Int).Value())
 
 	// Compile and run different code on the same VM
-	ast2, err := parser.Parse(ctx, "let a = 5; let b = 15; a * b")
+	ast2, err := parser.Parse(ctx, "let a = 5; let b = 15; a * b", nil)
 	assert.NoError(t, err)
 
 	globals := basicBuiltins()
@@ -1901,7 +1901,7 @@ func TestRunCode(t *testing.T) {
 		let greeting = "Hello, " + name + "!"
 		greeting
 	`
-	ast3, err := parser.Parse(ctx, source3)
+	ast3, err := parser.Parse(ctx, source3, nil)
 	assert.NoError(t, err)
 
 	code3, err := compiler.Compile(ast3, &compiler.Config{GlobalNames: globalNames})
@@ -1939,7 +1939,7 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 		let newResult = baseValue + multiplier
 		newResult
 	`
-	ast2, err := parser.Parse(ctx, source2)
+	ast2, err := parser.Parse(ctx, source2, nil)
 	assert.NoError(t, err)
 
 	var globalNames []string
@@ -1981,7 +1981,7 @@ func TestRunCodeFunctions(t *testing.T) {
 		}
 		multiply(6, 7)
 	`
-	ast2, err := parser.Parse(ctx, source2)
+	ast2, err := parser.Parse(ctx, source2, nil)
 	assert.NoError(t, err)
 
 	globals := basicBuiltins()
@@ -2008,7 +2008,7 @@ func TestRunCodeOnVM(t *testing.T) {
 	assert.NoError(t, vm.Run(ctx))
 
 	// Compile a different piece of code
-	ast2, err := parser.Parse(ctx, "let y = 100; let z = 200; y + z")
+	ast2, err := parser.Parse(ctx, "let y = 100; let z = 200; y + z", nil)
 	assert.NoError(t, err)
 
 	globals := basicBuiltins()
@@ -2040,7 +2040,7 @@ func TestRunCodeFirst(t *testing.T) {
 func TestNewEmpty(t *testing.T) {
 	ctx := context.Background()
 	compile := func(source string) *bytecode.Code {
-		ast, err := parser.Parse(ctx, source)
+		ast, err := parser.Parse(ctx, source, nil)
 		assert.NoError(t, err)
 		code, err := compiler.Compile(ast, nil)
 		assert.NoError(t, err)

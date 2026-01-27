@@ -37,7 +37,7 @@ func (o *TestObserver) OnReturn(event ReturnEvent) bool {
 
 func TestObserverOnStep(t *testing.T) {
 	source := `let x = 1 + 2`
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ function add(a, b) {
 }
 let result = add(1, 2)
 `
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ let result = add(1, 2)
 
 func TestObserverHaltOnStep(t *testing.T) {
 	source := `let x = 1 + 2 + 3 + 4`
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ function add(a, b) {
 }
 let result = add(1, 2)
 `
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestObserverStepOnLine(t *testing.T) {
 	source := `let x = 1
 let y = 2
 let z = x + y`
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ let c = 3
 let d = 4
 let e = 5
 let f = a + b + c + d + e`
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ let f = a + b + c + d + e`
 func TestObserverSampleIntervalZero(t *testing.T) {
 	// Test that SampleInterval <= 0 is normalized to 1 (every instruction)
 	source := `let x = 1 + 2`
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +403,7 @@ function foo() {
 }
 foo()
 `
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +510,7 @@ func TestStepOnLineCrossFunctionCall(t *testing.T) {
 	// or when the code object changes
 	source := `function id(x) { return x }
 let y = id(42)`
-	ast, err := parser.Parse(context.Background(), source)
+	ast, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

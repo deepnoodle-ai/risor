@@ -85,7 +85,7 @@ func TestCompileErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := New(&Config{Filename: "t.risor"})
 			assert.Nil(t, err)
-			ast, err := parser.Parse(context.Background(), tt.input)
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			_, err = c.CompileAST(ast)
 			assert.NotNil(t, err)
@@ -203,7 +203,7 @@ func TestCompoundAssignmentWithIndex(t *testing.T) {
 	c, err := New(nil)
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -234,7 +234,7 @@ func TestBitwiseAnd(t *testing.T) {
 	}
 	expectedConstants := []interface{}{int64(3), int64(1)}
 
-	astNode, err := parser.Parse(context.Background(), input)
+	astNode, err := parser.Parse(context.Background(), input, nil)
 	assert.NoError(t, err)
 
 	c, err := New(nil)
@@ -288,7 +288,7 @@ function foo() {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := New(nil)
 			assert.Nil(t, err)
-			ast, err := parser.Parse(context.Background(), tt.input)
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			_, err = c.CompileAST(ast)
 			if err == nil {
@@ -426,7 +426,7 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 			c, err := New(nil)
 			assert.Nil(t, err)
 
-			ast, err := parser.Parse(context.Background(), tt.input)
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			_, err = c.CompileAST(ast)
@@ -456,7 +456,7 @@ func TestForwardDeclarationInstructionGeneration(t *testing.T) {
 	c, err := New(nil)
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -480,7 +480,7 @@ func TestLocationTracking(t *testing.T) {
 	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -505,7 +505,7 @@ x + y`
 	c, err := New(&Config{Filename: "multi.risor"})
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -530,7 +530,7 @@ func TestLocationTracking_OutOfBounds(t *testing.T) {
 	c, err := New(nil)
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -553,7 +553,7 @@ add(1, 2)`
 	c, err := New(&Config{Filename: "func.risor"})
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -590,7 +590,7 @@ let z = x + y`
 	c, err := New(nil)
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -614,7 +614,7 @@ func TestEndColumn_InLocation(t *testing.T) {
 	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -643,7 +643,7 @@ func TestEndColumn_SpansToken(t *testing.T) {
 	assert.Nil(t, err)
 	c.SetSource(input) // Set source for proper source preservation
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	_, err = c.CompileAST(ast)
@@ -677,7 +677,7 @@ add(1, 2)`
 	assert.Nil(t, err)
 	c.SetSource(input)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -708,7 +708,7 @@ func TestSetSource_ForREPL(t *testing.T) {
 	// Set source before compilation (as REPL would do)
 	c.SetSource(input)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)
@@ -729,7 +729,7 @@ let x = 42  // Error will be on line 3`
 	assert.Nil(t, err)
 	c.SetSource(input)
 
-	ast, err := parser.Parse(context.Background(), input)
+	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	code, err := c.CompileAST(ast)

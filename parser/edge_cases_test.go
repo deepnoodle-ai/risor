@@ -19,7 +19,7 @@ import (
 func TestOperatorPrecedenceUnaryMinusPower(t *testing.T) {
 	// Python-compatible: -2 ** 3 parses as -(2**3), not (-2)**3
 	// The ** operator binds tighter than unary minus on its left
-	program, err := Parse(context.Background(), "-2 ** 3")
+	program, err := Parse(context.Background(), "-2 ** 3", nil)
 	assert.Nil(t, err)
 
 	// Parses as Prefix("-", Infix(2, "**", 3)) => -(2 ** 3)
@@ -34,7 +34,7 @@ func TestOperatorPrecedenceUnaryMinusPower(t *testing.T) {
 
 func TestPowerRightAssociative(t *testing.T) {
 	// ** is right-associative like Python: 2**2**3 = 2**(2**3) = 256
-	program, err := Parse(context.Background(), "2 ** 2 ** 3")
+	program, err := Parse(context.Background(), "2 ** 2 ** 3", nil)
 	assert.Nil(t, err)
 
 	// Outer ** has 2 on left
@@ -52,7 +52,7 @@ func TestPowerRightAssociative(t *testing.T) {
 func TestOperatorPrecedencePipeWithArithmetic(t *testing.T) {
 	// Pipe has lower precedence than arithmetic
 	// a | b + c should parse as a | (b + c) because + binds tighter
-	program, err := Parse(context.Background(), "a | b + c")
+	program, err := Parse(context.Background(), "a | b + c", nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)
@@ -78,7 +78,7 @@ func TestOperatorPrecedenceNullishCoalescing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			// Verify the structure by checking the AST nodes
 			_, ok := program.First().(*ast.Infix)
@@ -91,7 +91,7 @@ func TestOperatorPrecedenceLogicalWithNullish(t *testing.T) {
 	// In Risor, NULLISH < COND, so && and || have HIGHER precedence than ??
 	// This means: a ?? b && c parses as a ?? (b && c)
 	// The && binds tighter, so it's evaluated first
-	program, err := Parse(context.Background(), "a ?? b && c")
+	program, err := Parse(context.Background(), "a ?? b && c", nil)
 	assert.Nil(t, err)
 
 	// Outer operator should be ?? (lower precedence)
@@ -108,7 +108,7 @@ func TestOperatorPrecedenceLogicalWithNullish(t *testing.T) {
 func TestOperatorPrecedenceInOperator(t *testing.T) {
 	// "in" has comparison precedence, lower than SUM
 	// So: 1 + 2 in [3] parses as (1 + 2) in [3]
-	program, err := Parse(context.Background(), "1 + 2 in [3]")
+	program, err := Parse(context.Background(), "1 + 2 in [3]", nil)
 	assert.Nil(t, err)
 
 	inExpr, ok := program.First().(*ast.In)
@@ -123,7 +123,7 @@ func TestOperatorPrecedenceInOperator(t *testing.T) {
 func TestOperatorPrecedenceNotInOperator(t *testing.T) {
 	// Similar to "in", "not in" has comparison precedence lower than SUM
 	// So: 1 + 2 not in [3] parses as (1 + 2) not in [3]
-	program, err := Parse(context.Background(), "1 + 2 not in [3]")
+	program, err := Parse(context.Background(), "1 + 2 not in [3]", nil)
 	assert.Nil(t, err)
 
 	notInExpr, ok := program.First().(*ast.NotIn)
@@ -137,7 +137,7 @@ func TestOperatorPrecedenceNotInOperator(t *testing.T) {
 
 func TestOperatorPrecedenceTernaryWithAssign(t *testing.T) {
 	// Ternary should group properly with assignment
-	program, err := Parse(context.Background(), "x = a ? b : c")
+	program, err := Parse(context.Background(), "x = a ? b : c", nil)
 	assert.Nil(t, err)
 
 	assign, ok := program.First().(*ast.Assign)
@@ -153,7 +153,7 @@ func TestAssignmentChainingNotSupported(t *testing.T) {
 	// So assignment chaining like "x = y = z = 1" parses as separate statements
 	// First statement: "x = y"
 	// Then: "=" is invalid since = requires an identifier on left
-	program, err := Parse(context.Background(), "x = y")
+	program, err := Parse(context.Background(), "x = y", nil)
 	assert.Nil(t, err)
 
 	assign, ok := program.First().(*ast.Assign)
@@ -172,7 +172,7 @@ func TestAssignmentChainingNotSupported(t *testing.T) {
 
 func TestNumberLiteralZero(t *testing.T) {
 	// Single 0 should parse as decimal zero, not octal
-	program, err := Parse(context.Background(), "0")
+	program, err := Parse(context.Background(), "0", nil)
 	assert.Nil(t, err)
 
 	intLit, ok := program.First().(*ast.Int)
@@ -193,7 +193,7 @@ func TestNumberLiteralOctal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			intLit, ok := program.First().(*ast.Int)
@@ -217,7 +217,7 @@ func TestNumberLiteralHex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			intLit, ok := program.First().(*ast.Int)
@@ -240,7 +240,7 @@ func TestNumberLiteralFloatEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			floatLit, ok := program.First().(*ast.Float)
@@ -262,7 +262,7 @@ func TestNumberLiteralFloatUnsupportedFormats(t *testing.T) {
 
 	for _, input := range unsupported {
 		t.Run(input, func(t *testing.T) {
-			_, err := Parse(context.Background(), input)
+			_, err := Parse(context.Background(), input, nil)
 			// These should error because the lexer doesn't recognize them as floats
 			assert.NotNil(t, err, "expected error for unsupported float format: %s", input)
 		})
@@ -274,7 +274,7 @@ func TestNumberLiteralFloatUnsupportedFormats(t *testing.T) {
 // =============================================================================
 
 func TestTemplateStringEmpty(t *testing.T) {
-	program, err := Parse(context.Background(), "``")
+	program, err := Parse(context.Background(), "``", nil)
 	assert.Nil(t, err)
 
 	str, ok := program.First().(*ast.String)
@@ -283,7 +283,7 @@ func TestTemplateStringEmpty(t *testing.T) {
 }
 
 func TestTemplateStringNoInterpolation(t *testing.T) {
-	program, err := Parse(context.Background(), "`hello world`")
+	program, err := Parse(context.Background(), "`hello world`", nil)
 	assert.Nil(t, err)
 
 	str, ok := program.First().(*ast.String)
@@ -293,7 +293,7 @@ func TestTemplateStringNoInterpolation(t *testing.T) {
 }
 
 func TestTemplateStringWithInterpolation(t *testing.T) {
-	program, err := Parse(context.Background(), "`hello ${name}`")
+	program, err := Parse(context.Background(), "`hello ${name}`", nil)
 	assert.Nil(t, err)
 
 	str, ok := program.First().(*ast.String)
@@ -303,7 +303,7 @@ func TestTemplateStringWithInterpolation(t *testing.T) {
 }
 
 func TestTemplateStringMultipleInterpolations(t *testing.T) {
-	program, err := Parse(context.Background(), "`${a} and ${b} and ${c}`")
+	program, err := Parse(context.Background(), "`${a} and ${b} and ${c}`", nil)
 	assert.Nil(t, err)
 
 	str, ok := program.First().(*ast.String)
@@ -312,7 +312,7 @@ func TestTemplateStringMultipleInterpolations(t *testing.T) {
 }
 
 func TestTemplateStringComplexExpression(t *testing.T) {
-	program, err := Parse(context.Background(), "`result: ${a + b * c}`")
+	program, err := Parse(context.Background(), "`result: ${a + b * c}`", nil)
 	assert.Nil(t, err)
 
 	str, ok := program.First().(*ast.String)
@@ -325,14 +325,14 @@ func TestTemplateStringComplexExpression(t *testing.T) {
 }
 
 func TestTemplateStringSyntaxErrorInInterpolation(t *testing.T) {
-	_, err := Parse(context.Background(), "`${1 + }`")
+	_, err := Parse(context.Background(), "`${1 + }`", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "template interpolation")
 }
 
 func TestTemplateStringNestedBraces(t *testing.T) {
 	// Template with map literal inside - use a non-empty map to avoid ambiguity
-	program, err := Parse(context.Background(), "`${{}}`")
+	program, err := Parse(context.Background(), "`${{}}`", nil)
 	// NOTE: Empty map `${{}}` causes parsing issues due to brace matching
 	// This is a known limitation - the template parser struggles with nested braces
 	if err != nil {
@@ -350,7 +350,7 @@ func TestTemplateStringNestedBraces(t *testing.T) {
 
 func TestTemplateStringWithMapLiteral(t *testing.T) {
 	// Non-empty map works
-	program, err := Parse(context.Background(), "`${x}`")
+	program, err := Parse(context.Background(), "`${x}`", nil)
 	assert.Nil(t, err)
 
 	str, ok := program.First().(*ast.String)
@@ -364,7 +364,7 @@ func TestTemplateStringWithMapLiteral(t *testing.T) {
 
 func TestTernaryNestedForbidden(t *testing.T) {
 	// Nested ternary should produce an error
-	_, err := Parse(context.Background(), "a ? b ? c : d : e")
+	_, err := Parse(context.Background(), "a ? b ? c : d : e", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "nested ternary")
 }
@@ -374,7 +374,7 @@ func TestTernaryWithNewlinesAfterOperators(t *testing.T) {
 	input := `a ?
 b :
 c`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	_, ok := program.First().(*ast.Ternary)
@@ -385,14 +385,14 @@ func TestTernaryNewlineBeforeQuestionNotAllowed(t *testing.T) {
 	// Newline before ? causes the expression to be split
 	input := `a
 ? b : c`
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	// This parses as separate statements, second one starts with ?
 	assert.NotNil(t, err, "newline before ? should cause parse error")
 }
 
 func TestTernaryWithComplexExpressions(t *testing.T) {
 	// Ternary with arithmetic expressions
-	program, err := Parse(context.Background(), "a + b ? c * d : e / f")
+	program, err := Parse(context.Background(), "a + b ? c * d : e / f", nil)
 	assert.Nil(t, err)
 
 	ternary, ok := program.First().(*ast.Ternary)
@@ -431,7 +431,7 @@ func TestPostfixOnValidTargets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			if tt.valid {
 				assert.Nil(t, err)
 				_, ok := program.First().(*ast.Postfix)
@@ -454,7 +454,7 @@ func TestPostfixOnInvalidTargets(t *testing.T) {
 
 	for _, input := range tests {
 		t.Run(input, func(t *testing.T) {
-			_, err := Parse(context.Background(), input)
+			_, err := Parse(context.Background(), input, nil)
 			assert.NotNil(t, err, "expected error for: %s", input)
 		})
 	}
@@ -462,7 +462,7 @@ func TestPostfixOnInvalidTargets(t *testing.T) {
 
 func TestPostfixAfterIndex(t *testing.T) {
 	// arr[i]++ - postfix on indexed expression
-	program, err := Parse(context.Background(), "arr[i]++")
+	program, err := Parse(context.Background(), "arr[i]++", nil)
 	assert.Nil(t, err)
 
 	postfix, ok := program.First().(*ast.Postfix)
@@ -479,7 +479,7 @@ func TestPostfixAfterIndex(t *testing.T) {
 // =============================================================================
 
 func TestArrowFunctionSingleParam(t *testing.T) {
-	program, err := Parse(context.Background(), "x => x + 1")
+	program, err := Parse(context.Background(), "x => x + 1", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -489,7 +489,7 @@ func TestArrowFunctionSingleParam(t *testing.T) {
 }
 
 func TestArrowFunctionNoParams(t *testing.T) {
-	program, err := Parse(context.Background(), "() => 42")
+	program, err := Parse(context.Background(), "() => 42", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -498,7 +498,7 @@ func TestArrowFunctionNoParams(t *testing.T) {
 }
 
 func TestArrowFunctionMultipleParams(t *testing.T) {
-	program, err := Parse(context.Background(), "(a, b, c) => a + b + c")
+	program, err := Parse(context.Background(), "(a, b, c) => a + b + c", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -507,7 +507,7 @@ func TestArrowFunctionMultipleParams(t *testing.T) {
 }
 
 func TestArrowFunctionDefaultsAST(t *testing.T) {
-	program, err := Parse(context.Background(), "(a, b = 10) => a + b")
+	program, err := Parse(context.Background(), "(a, b = 10) => a + b", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -517,7 +517,7 @@ func TestArrowFunctionDefaultsAST(t *testing.T) {
 }
 
 func TestArrowFunctionBlockBody(t *testing.T) {
-	program, err := Parse(context.Background(), "(x) => { return x * 2 }")
+	program, err := Parse(context.Background(), "(x) => { return x * 2 }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -527,7 +527,7 @@ func TestArrowFunctionBlockBody(t *testing.T) {
 }
 
 func TestArrowFunctionImmediatelyInvoked(t *testing.T) {
-	program, err := Parse(context.Background(), "(x => x + 1)(5)")
+	program, err := Parse(context.Background(), "(x => x + 1)(5)", nil)
 	assert.Nil(t, err)
 
 	call, ok := program.First().(*ast.Call)
@@ -539,7 +539,7 @@ func TestArrowFunctionImmediatelyInvoked(t *testing.T) {
 }
 
 func TestArrowFunctionNested(t *testing.T) {
-	program, err := Parse(context.Background(), "x => y => x + y")
+	program, err := Parse(context.Background(), "x => y => x + y", nil)
 	assert.Nil(t, err)
 
 	fn1, ok := program.First().(*ast.Func)
@@ -556,14 +556,14 @@ func TestArrowFunctionNested(t *testing.T) {
 
 func TestArrowFunctionCommaWithoutArrow(t *testing.T) {
 	// (1, 2) without arrow should error
-	_, err := Parse(context.Background(), "(1, 2)")
+	_, err := Parse(context.Background(), "(1, 2)", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "comma-separated expressions require arrow function syntax")
 }
 
 func TestEmptyParensWithoutArrow(t *testing.T) {
 	// () without arrow should error
-	_, err := Parse(context.Background(), "()")
+	_, err := Parse(context.Background(), "()", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "empty parentheses require arrow function syntax")
 }
@@ -585,7 +585,7 @@ func TestSliceExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expected, program.First().String())
 		})
@@ -593,7 +593,7 @@ func TestSliceExpressions(t *testing.T) {
 }
 
 func TestIndexChaining(t *testing.T) {
-	program, err := Parse(context.Background(), "a[0][1][2]")
+	program, err := Parse(context.Background(), "a[0][1][2]", nil)
 	assert.Nil(t, err)
 
 	// Should be nested Index nodes
@@ -612,7 +612,7 @@ func TestIndexChaining(t *testing.T) {
 }
 
 func TestIndexWithExpression(t *testing.T) {
-	program, err := Parse(context.Background(), "arr[i + 1]")
+	program, err := Parse(context.Background(), "arr[i + 1]", nil)
 	assert.Nil(t, err)
 
 	idx, ok := program.First().(*ast.Index)
@@ -628,7 +628,7 @@ func TestIndexWithExpression(t *testing.T) {
 // =============================================================================
 
 func TestObjectDestructureTrailingCommaAllowed(t *testing.T) {
-	program, err := Parse(context.Background(), "let { a, b, } = obj")
+	program, err := Parse(context.Background(), "let { a, b, } = obj", nil)
 	assert.Nil(t, err)
 
 	destr, ok := program.First().(*ast.ObjectDestructure)
@@ -637,7 +637,7 @@ func TestObjectDestructureTrailingCommaAllowed(t *testing.T) {
 }
 
 func TestObjectDestructureWithAlias(t *testing.T) {
-	program, err := Parse(context.Background(), "let { a: x, b: y } = obj")
+	program, err := Parse(context.Background(), "let { a: x, b: y } = obj", nil)
 	assert.Nil(t, err)
 
 	destr, ok := program.First().(*ast.ObjectDestructure)
@@ -648,7 +648,7 @@ func TestObjectDestructureWithAlias(t *testing.T) {
 }
 
 func TestObjectDestructureWithDefault(t *testing.T) {
-	program, err := Parse(context.Background(), "let { a = 10, b = 20 } = obj")
+	program, err := Parse(context.Background(), "let { a = 10, b = 20 } = obj", nil)
 	assert.Nil(t, err)
 
 	destr, ok := program.First().(*ast.ObjectDestructure)
@@ -658,7 +658,7 @@ func TestObjectDestructureWithDefault(t *testing.T) {
 }
 
 func TestObjectDestructureWithAliasAndDefault(t *testing.T) {
-	program, err := Parse(context.Background(), "let { a: x = 10 } = obj")
+	program, err := Parse(context.Background(), "let { a: x = 10 } = obj", nil)
 	assert.Nil(t, err)
 
 	destr, ok := program.First().(*ast.ObjectDestructure)
@@ -669,13 +669,13 @@ func TestObjectDestructureWithAliasAndDefault(t *testing.T) {
 }
 
 func TestObjectDestructureEmpty(t *testing.T) {
-	_, err := Parse(context.Background(), "let {} = obj")
+	_, err := Parse(context.Background(), "let {} = obj", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "cannot be empty")
 }
 
 func TestArrayDestructureTrailingComma(t *testing.T) {
-	program, err := Parse(context.Background(), "let [a, b,] = arr")
+	program, err := Parse(context.Background(), "let [a, b,] = arr", nil)
 	assert.Nil(t, err)
 
 	destr, ok := program.First().(*ast.ArrayDestructure)
@@ -684,7 +684,7 @@ func TestArrayDestructureTrailingComma(t *testing.T) {
 }
 
 func TestArrayDestructureWithDefault(t *testing.T) {
-	program, err := Parse(context.Background(), "let [a = 1, b = 2] = arr")
+	program, err := Parse(context.Background(), "let [a = 1, b = 2] = arr", nil)
 	assert.Nil(t, err)
 
 	destr, ok := program.First().(*ast.ArrayDestructure)
@@ -694,7 +694,7 @@ func TestArrayDestructureWithDefault(t *testing.T) {
 }
 
 func TestArrayDestructureEmpty(t *testing.T) {
-	_, err := Parse(context.Background(), "let [] = arr")
+	_, err := Parse(context.Background(), "let [] = arr", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "cannot be empty")
 }
@@ -704,7 +704,7 @@ func TestArrayDestructureEmpty(t *testing.T) {
 // =============================================================================
 
 func TestSpreadInList(t *testing.T) {
-	program, err := Parse(context.Background(), "[1, ...arr, 2]")
+	program, err := Parse(context.Background(), "[1, ...arr, 2]", nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -716,7 +716,7 @@ func TestSpreadInList(t *testing.T) {
 }
 
 func TestSpreadInMap(t *testing.T) {
-	program, err := Parse(context.Background(), "{...obj, a: 1}")
+	program, err := Parse(context.Background(), "{...obj, a: 1}", nil)
 	assert.Nil(t, err)
 
 	m, ok := program.First().(*ast.Map)
@@ -728,7 +728,7 @@ func TestSpreadInMap(t *testing.T) {
 }
 
 func TestSpreadInFunctionCall(t *testing.T) {
-	program, err := Parse(context.Background(), "f(a, ...args, b)")
+	program, err := Parse(context.Background(), "f(a, ...args, b)", nil)
 	assert.Nil(t, err)
 
 	call, ok := program.First().(*ast.Call)
@@ -740,7 +740,7 @@ func TestSpreadInFunctionCall(t *testing.T) {
 }
 
 func TestMultipleSpreadsInList(t *testing.T) {
-	program, err := Parse(context.Background(), "[...a, ...b, ...c]")
+	program, err := Parse(context.Background(), "[...a, ...b, ...c]", nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -762,7 +762,7 @@ func TestPipeWithNewlinesAfterOperator(t *testing.T) {
 	input := `a |
 b |
 c`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)
@@ -774,7 +774,7 @@ func TestPipeNewlineBeforeOperatorNotAllowed(t *testing.T) {
 	// Newlines BEFORE | cause the expression to be split
 	input := `a
 | b`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	// First statement is just "a"
 	assert.Nil(t, err)
 	assert.Equal(t, "a", program.First().String())
@@ -782,7 +782,7 @@ func TestPipeNewlineBeforeOperatorNotAllowed(t *testing.T) {
 }
 
 func TestPipeWithFunctionCalls(t *testing.T) {
-	program, err := Parse(context.Background(), "data | filter(f) | map(g)")
+	program, err := Parse(context.Background(), "data | filter(f) | map(g)", nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)
@@ -795,7 +795,7 @@ func TestPipeWithFunctionCalls(t *testing.T) {
 // =============================================================================
 
 func TestOptionalChainingBasic(t *testing.T) {
-	program, err := Parse(context.Background(), "obj?.field")
+	program, err := Parse(context.Background(), "obj?.field", nil)
 	assert.Nil(t, err)
 
 	getAttr, ok := program.First().(*ast.GetAttr)
@@ -804,7 +804,7 @@ func TestOptionalChainingBasic(t *testing.T) {
 }
 
 func TestOptionalChainingMethodCall(t *testing.T) {
-	program, err := Parse(context.Background(), "obj?.method()")
+	program, err := Parse(context.Background(), "obj?.method()", nil)
 	assert.Nil(t, err)
 
 	objCall, ok := program.First().(*ast.ObjectCall)
@@ -813,7 +813,7 @@ func TestOptionalChainingMethodCall(t *testing.T) {
 }
 
 func TestOptionalChainingChained(t *testing.T) {
-	program, err := Parse(context.Background(), "a?.b?.c")
+	program, err := Parse(context.Background(), "a?.b?.c", nil)
 	assert.Nil(t, err)
 
 	// Should be GetAttr(GetAttr(a, b, optional=true), c, optional=true)
@@ -827,7 +827,7 @@ func TestOptionalChainingChained(t *testing.T) {
 }
 
 func TestOptionalChainingMixed(t *testing.T) {
-	program, err := Parse(context.Background(), "a.b?.c.d")
+	program, err := Parse(context.Background(), "a.b?.c.d", nil)
 	assert.Nil(t, err)
 	assert.Equal(t, "a.b?.c.d", program.First().String())
 }
@@ -837,7 +837,7 @@ func TestOptionalChainingMixed(t *testing.T) {
 // =============================================================================
 
 func TestTryWithCatchOnly(t *testing.T) {
-	program, err := Parse(context.Background(), "try { x } catch { y }")
+	program, err := Parse(context.Background(), "try { x } catch { y }", nil)
 	assert.Nil(t, err)
 
 	tryNode, ok := program.First().(*ast.Try)
@@ -847,7 +847,7 @@ func TestTryWithCatchOnly(t *testing.T) {
 }
 
 func TestTryWithFinallyOnly(t *testing.T) {
-	program, err := Parse(context.Background(), "try { x } finally { y }")
+	program, err := Parse(context.Background(), "try { x } finally { y }", nil)
 	assert.Nil(t, err)
 
 	tryNode, ok := program.First().(*ast.Try)
@@ -857,7 +857,7 @@ func TestTryWithFinallyOnly(t *testing.T) {
 }
 
 func TestTryWithBoth(t *testing.T) {
-	program, err := Parse(context.Background(), "try { x } catch e { y } finally { z }")
+	program, err := Parse(context.Background(), "try { x } catch e { y } finally { z }", nil)
 	assert.Nil(t, err)
 
 	tryNode, ok := program.First().(*ast.Try)
@@ -869,7 +869,7 @@ func TestTryWithBoth(t *testing.T) {
 }
 
 func TestTryWithNeither(t *testing.T) {
-	_, err := Parse(context.Background(), "try { x }")
+	_, err := Parse(context.Background(), "try { x }", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "requires at least one of catch or finally")
 }
@@ -884,7 +884,7 @@ catch e {
 finally {
 	z
 }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	tryNode, ok := program.First().(*ast.Try)
@@ -906,7 +906,7 @@ case 2:
 default:
 	c
 }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	sw, ok := program.First().(*ast.Switch)
@@ -921,7 +921,7 @@ default:
 default:
 	b
 }`
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "multiple default")
 }
@@ -931,7 +931,7 @@ func TestSwitchMultipleCaseExprs(t *testing.T) {
 case 1, 2, 3:
 	a
 }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	sw, ok := program.First().(*ast.Switch)
@@ -945,7 +945,7 @@ case 1:
 case 2:
 	a
 }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	sw, ok := program.First().(*ast.Switch)
@@ -959,7 +959,7 @@ case 2:
 // =============================================================================
 
 func TestReturnWithoutValue(t *testing.T) {
-	program, err := Parse(context.Background(), "return")
+	program, err := Parse(context.Background(), "return", nil)
 	assert.Nil(t, err)
 
 	ret, ok := program.First().(*ast.Return)
@@ -968,7 +968,7 @@ func TestReturnWithoutValue(t *testing.T) {
 }
 
 func TestReturnWithValue(t *testing.T) {
-	program, err := Parse(context.Background(), "return 42")
+	program, err := Parse(context.Background(), "return 42", nil)
 	assert.Nil(t, err)
 
 	ret, ok := program.First().(*ast.Return)
@@ -977,13 +977,13 @@ func TestReturnWithValue(t *testing.T) {
 }
 
 func TestThrowWithoutValue(t *testing.T) {
-	_, err := Parse(context.Background(), "throw")
+	_, err := Parse(context.Background(), "throw", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "throw statement requires a value")
 }
 
 func TestThrowWithValue(t *testing.T) {
-	program, err := Parse(context.Background(), "throw error(\"oops\")")
+	program, err := Parse(context.Background(), "throw error(\"oops\")", nil)
 	assert.Nil(t, err)
 
 	throwNode, ok := program.First().(*ast.Throw)
@@ -996,12 +996,12 @@ func TestThrowWithValue(t *testing.T) {
 // =============================================================================
 
 func TestConstWithoutValue(t *testing.T) {
-	_, err := Parse(context.Background(), "const x")
+	_, err := Parse(context.Background(), "const x", nil)
 	assert.NotNil(t, err)
 }
 
 func TestConstWithValue(t *testing.T) {
-	program, err := Parse(context.Background(), "const x = 42")
+	program, err := Parse(context.Background(), "const x = 42", nil)
 	assert.Nil(t, err)
 
 	constNode, ok := program.First().(*ast.Const)
@@ -1014,7 +1014,7 @@ func TestConstWithValue(t *testing.T) {
 // =============================================================================
 
 func TestLetMultipleVariablesWithValue(t *testing.T) {
-	program, err := Parse(context.Background(), "let a, b = [1, 2]")
+	program, err := Parse(context.Background(), "let a, b = [1, 2]", nil)
 	assert.Nil(t, err)
 
 	multiVar, ok := program.First().(*ast.MultiVar)
@@ -1023,7 +1023,7 @@ func TestLetMultipleVariablesWithValue(t *testing.T) {
 }
 
 func TestLetSingleVariable(t *testing.T) {
-	program, err := Parse(context.Background(), "let x = 1")
+	program, err := Parse(context.Background(), "let x = 1", nil)
 	assert.Nil(t, err)
 
 	varNode, ok := program.First().(*ast.Var)
@@ -1050,7 +1050,7 @@ func TestNewlineAfterInfixOperator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expected, program.First().String())
 		})
@@ -1063,7 +1063,7 @@ func TestNewlineInFunctionCall(t *testing.T) {
 	b,
 	c
 )`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	call, ok := program.First().(*ast.Call)
@@ -1077,7 +1077,7 @@ func TestNewlineInList(t *testing.T) {
 	2,
 	3
 ]`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -1091,7 +1091,7 @@ func TestNewlineInMap(t *testing.T) {
 	b: 2,
 	c: 3
 }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	m, ok := program.First().(*ast.Map)
@@ -1104,19 +1104,19 @@ func TestNewlineInMap(t *testing.T) {
 // =============================================================================
 
 func TestEmptyInput(t *testing.T) {
-	program, err := Parse(context.Background(), "")
+	program, err := Parse(context.Background(), "", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 0)
 }
 
 func TestOnlyWhitespace(t *testing.T) {
-	program, err := Parse(context.Background(), "   \n\n\t  \n  ")
+	program, err := Parse(context.Background(), "   \n\n\t  \n  ", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 0)
 }
 
 func TestOnlyNewlines(t *testing.T) {
-	program, err := Parse(context.Background(), "\n\n\n")
+	program, err := Parse(context.Background(), "\n\n\n", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 0)
 }
@@ -1127,7 +1127,7 @@ func TestOnlyNewlines(t *testing.T) {
 
 func TestDeeplyNestedParentheses(t *testing.T) {
 	input := "((((((((((x))))))))))"
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	// All the parens should just wrap the identifier
@@ -1138,7 +1138,7 @@ func TestDeeplyNestedParentheses(t *testing.T) {
 
 func TestDeeplyNestedLists(t *testing.T) {
 	input := "[[[[[x]]]]]"
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	// Should be nested List nodes
@@ -1159,7 +1159,7 @@ func TestMaxDepthEnforced(t *testing.T) {
 		sb.WriteString(")")
 	}
 
-	_, err := Parse(context.Background(), sb.String(), WithMaxDepth(100))
+	_, err := Parse(context.Background(), sb.String(), &Config{MaxDepth: 100})
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "maximum nesting depth")
 }
@@ -1169,13 +1169,13 @@ func TestMaxDepthEnforced(t *testing.T) {
 // =============================================================================
 
 func TestAttributeChaining(t *testing.T) {
-	program, err := Parse(context.Background(), "a.b.c.d.e")
+	program, err := Parse(context.Background(), "a.b.c.d.e", nil)
 	assert.Nil(t, err)
 	assert.Equal(t, "a.b.c.d.e", program.First().String())
 }
 
 func TestAttributeWithMethodCall(t *testing.T) {
-	program, err := Parse(context.Background(), "obj.method().field")
+	program, err := Parse(context.Background(), "obj.method().field", nil)
 	assert.Nil(t, err)
 
 	// Outermost should be GetAttr
@@ -1203,7 +1203,7 @@ func TestSetAttrCompoundOperators(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			setAttr, ok := program.First().(*ast.SetAttr)
@@ -1218,7 +1218,7 @@ func TestSetAttrCompoundOperators(t *testing.T) {
 // =============================================================================
 
 func TestInExpression(t *testing.T) {
-	program, err := Parse(context.Background(), "x in [1, 2, 3]")
+	program, err := Parse(context.Background(), "x in [1, 2, 3]", nil)
 	assert.Nil(t, err)
 
 	in, ok := program.First().(*ast.In)
@@ -1227,7 +1227,7 @@ func TestInExpression(t *testing.T) {
 }
 
 func TestNotInExpression(t *testing.T) {
-	program, err := Parse(context.Background(), "x not in [1, 2, 3]")
+	program, err := Parse(context.Background(), "x not in [1, 2, 3]", nil)
 	assert.Nil(t, err)
 
 	notIn, ok := program.First().(*ast.NotIn)
@@ -1237,7 +1237,7 @@ func TestNotInExpression(t *testing.T) {
 
 func TestNotWithoutIn(t *testing.T) {
 	// "not" without "in" should error
-	_, err := Parse(context.Background(), "x not y")
+	_, err := Parse(context.Background(), "x not y", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "expected 'in' after 'not'")
 }
@@ -1247,7 +1247,7 @@ func TestNotWithoutIn(t *testing.T) {
 // =============================================================================
 
 func TestRestParameterAtEnd(t *testing.T) {
-	program, err := Parse(context.Background(), "function f(a, b, ...rest) { }")
+	program, err := Parse(context.Background(), "function f(a, b, ...rest) { }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -1257,13 +1257,13 @@ func TestRestParameterAtEnd(t *testing.T) {
 }
 
 func TestRestParameterNotAtEnd(t *testing.T) {
-	_, err := Parse(context.Background(), "function f(...rest, a) { }")
+	_, err := Parse(context.Background(), "function f(...rest, a) { }", nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "rest parameter must be the last parameter")
 }
 
 func TestMultipleRestParameters(t *testing.T) {
-	_, err := Parse(context.Background(), "function f(...a, ...b) { }")
+	_, err := Parse(context.Background(), "function f(...a, ...b) { }", nil)
 	assert.NotNil(t, err)
 }
 
@@ -1272,7 +1272,7 @@ func TestMultipleRestParameters(t *testing.T) {
 // =============================================================================
 
 func TestFunctionWithName(t *testing.T) {
-	program, err := Parse(context.Background(), "function add(a, b) { return a + b }")
+	program, err := Parse(context.Background(), "function add(a, b) { return a + b }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -1282,7 +1282,7 @@ func TestFunctionWithName(t *testing.T) {
 }
 
 func TestFunctionWithoutName(t *testing.T) {
-	program, err := Parse(context.Background(), "function(x) { return x }")
+	program, err := Parse(context.Background(), "function(x) { return x }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -1291,7 +1291,7 @@ func TestFunctionWithoutName(t *testing.T) {
 }
 
 func TestFunctionWithDefaultParams(t *testing.T) {
-	program, err := Parse(context.Background(), "function f(a, b = 10, c = 20) { }")
+	program, err := Parse(context.Background(), "function f(a, b = 10, c = 20) { }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -1303,7 +1303,7 @@ func TestFunctionWithDefaultParams(t *testing.T) {
 }
 
 func TestFunctionEmptyBody(t *testing.T) {
-	program, err := Parse(context.Background(), "function f() { }")
+	program, err := Parse(context.Background(), "function f() { }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -1316,7 +1316,7 @@ func TestFunctionEmptyBody(t *testing.T) {
 // =============================================================================
 
 func TestIfWithoutElse(t *testing.T) {
-	program, err := Parse(context.Background(), "if (x) { y }")
+	program, err := Parse(context.Background(), "if (x) { y }", nil)
 	assert.Nil(t, err)
 
 	ifNode, ok := program.First().(*ast.If)
@@ -1325,7 +1325,7 @@ func TestIfWithoutElse(t *testing.T) {
 }
 
 func TestIfWithElse(t *testing.T) {
-	program, err := Parse(context.Background(), "if (x) { y } else { z }")
+	program, err := Parse(context.Background(), "if (x) { y } else { z }", nil)
 	assert.Nil(t, err)
 
 	ifNode, ok := program.First().(*ast.If)
@@ -1334,7 +1334,7 @@ func TestIfWithElse(t *testing.T) {
 }
 
 func TestIfElseIfChain(t *testing.T) {
-	program, err := Parse(context.Background(), "if (a) { x } else if (b) { y } else { z }")
+	program, err := Parse(context.Background(), "if (a) { x } else if (b) { y } else { z }", nil)
 	assert.Nil(t, err)
 
 	ifNode, ok := program.First().(*ast.If)
@@ -1352,7 +1352,7 @@ func TestIfElseIfChain(t *testing.T) {
 // =============================================================================
 
 func TestEmptyMap(t *testing.T) {
-	program, err := Parse(context.Background(), "{}")
+	program, err := Parse(context.Background(), "{}", nil)
 	assert.Nil(t, err)
 
 	m, ok := program.First().(*ast.Map)
@@ -1361,7 +1361,7 @@ func TestEmptyMap(t *testing.T) {
 }
 
 func TestMapWithStringKeys(t *testing.T) {
-	program, err := Parse(context.Background(), `{"a": 1, "b": 2}`)
+	program, err := Parse(context.Background(), `{"a": 1, "b": 2}`, nil)
 	assert.Nil(t, err)
 
 	m, ok := program.First().(*ast.Map)
@@ -1370,7 +1370,7 @@ func TestMapWithStringKeys(t *testing.T) {
 }
 
 func TestMapWithExpressionKeys(t *testing.T) {
-	program, err := Parse(context.Background(), "{a + b: 1, c * d: 2}")
+	program, err := Parse(context.Background(), "{a + b: 1, c * d: 2}", nil)
 	assert.Nil(t, err)
 
 	m, ok := program.First().(*ast.Map)
@@ -1379,7 +1379,7 @@ func TestMapWithExpressionKeys(t *testing.T) {
 }
 
 func TestMapTrailingComma(t *testing.T) {
-	program, err := Parse(context.Background(), "{a: 1, b: 2,}")
+	program, err := Parse(context.Background(), "{a: 1, b: 2,}", nil)
 	assert.Nil(t, err)
 
 	m, ok := program.First().(*ast.Map)
@@ -1392,7 +1392,7 @@ func TestMapTrailingComma(t *testing.T) {
 // =============================================================================
 
 func TestEmptyList(t *testing.T) {
-	program, err := Parse(context.Background(), "[]")
+	program, err := Parse(context.Background(), "[]", nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -1401,7 +1401,7 @@ func TestEmptyList(t *testing.T) {
 }
 
 func TestListTrailingComma(t *testing.T) {
-	program, err := Parse(context.Background(), "[1, 2, 3,]")
+	program, err := Parse(context.Background(), "[1, 2, 3,]", nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -1410,7 +1410,7 @@ func TestListTrailingComma(t *testing.T) {
 }
 
 func TestListWithMixedTypes(t *testing.T) {
-	program, err := Parse(context.Background(), `[1, "two", true, nil, []]`)
+	program, err := Parse(context.Background(), `[1, "two", true, nil, []]`, nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -1424,7 +1424,7 @@ func TestListWithMixedTypes(t *testing.T) {
 
 func TestComparisonChaining(t *testing.T) {
 	// a < b < c should parse as (a < b) < c (left-associative)
-	program, err := Parse(context.Background(), "a < b < c")
+	program, err := Parse(context.Background(), "a < b < c", nil)
 	assert.Nil(t, err)
 
 	outer, ok := program.First().(*ast.Infix)
@@ -1451,7 +1451,7 @@ func TestComparisonOperatorsAll(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			infix, ok := program.First().(*ast.Infix)
@@ -1477,7 +1477,7 @@ func TestBitwiseOperators(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			infix, ok := program.First().(*ast.Infix)
@@ -1492,29 +1492,29 @@ func TestBitwiseOperators(t *testing.T) {
 // =============================================================================
 
 func TestErrorMessageForUnterminatedString(t *testing.T) {
-	_, err := Parse(context.Background(), `"unterminated`)
+	_, err := Parse(context.Background(), `"unterminated`, nil)
 	assert.NotNil(t, err)
 	// Should have meaningful error message
 	assert.True(t, len(err.Error()) > 10)
 }
 
 func TestErrorMessageForMissingClosingParen(t *testing.T) {
-	_, err := Parse(context.Background(), "(1 + 2")
+	_, err := Parse(context.Background(), "(1 + 2", nil)
 	assert.NotNil(t, err)
 }
 
 func TestErrorMessageForMissingClosingBracket(t *testing.T) {
-	_, err := Parse(context.Background(), "[1, 2, 3")
+	_, err := Parse(context.Background(), "[1, 2, 3", nil)
 	assert.NotNil(t, err)
 }
 
 func TestErrorMessageForMissingClosingBrace(t *testing.T) {
-	_, err := Parse(context.Background(), "{a: 1")
+	_, err := Parse(context.Background(), "{a: 1", nil)
 	assert.NotNil(t, err)
 }
 
 func TestErrorMessageForInvalidOperator(t *testing.T) {
-	_, err := Parse(context.Background(), "a @ b")
+	_, err := Parse(context.Background(), "a @ b", nil)
 	assert.NotNil(t, err)
 }
 
@@ -1536,7 +1536,7 @@ func TestCompoundAssignmentOperators(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			assign, ok := program.First().(*ast.Assign)
@@ -1547,7 +1547,7 @@ func TestCompoundAssignmentOperators(t *testing.T) {
 }
 
 func TestIndexAssignmentFields(t *testing.T) {
-	program, err := Parse(context.Background(), "arr[0] = 42")
+	program, err := Parse(context.Background(), "arr[0] = 42", nil)
 	assert.Nil(t, err)
 
 	assign, ok := program.First().(*ast.Assign)
@@ -1573,7 +1573,7 @@ func TestUnicodeIdentifiers(t *testing.T) {
 
 	for _, input := range tests {
 		t.Run(input, func(t *testing.T) {
-			program, err := Parse(context.Background(), input)
+			program, err := Parse(context.Background(), input, nil)
 			assert.Nil(t, err)
 
 			ident, ok := program.First().(*ast.Ident)
@@ -1593,7 +1593,7 @@ func TestStringWithEscapes(t *testing.T) {
 
 	for _, input := range tests {
 		t.Run(input, func(t *testing.T) {
-			program, err := Parse(context.Background(), input)
+			program, err := Parse(context.Background(), input, nil)
 			assert.Nil(t, err)
 
 			_, ok := program.First().(*ast.String)
@@ -1620,7 +1620,7 @@ func TestOperatorSpacing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expected, program.First().String())
 		})

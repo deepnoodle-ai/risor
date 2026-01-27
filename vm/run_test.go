@@ -12,7 +12,7 @@ import (
 
 func TestRun(t *testing.T) {
 	ctx := context.Background()
-	ast, err := parser.Parse(ctx, "1 + 1")
+	ast, err := parser.Parse(ctx, "1 + 1", nil)
 	assert.Nil(t, err)
 	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
@@ -23,7 +23,7 @@ func TestRun(t *testing.T) {
 
 func TestRunEmpty(t *testing.T) {
 	ctx := context.Background()
-	ast, err := parser.Parse(ctx, "")
+	ast, err := parser.Parse(ctx, "", nil)
 	assert.Nil(t, err)
 	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
@@ -34,7 +34,7 @@ func TestRunEmpty(t *testing.T) {
 
 func TestRunError(t *testing.T) {
 	ctx := context.Background()
-	ast, err := parser.Parse(ctx, "let foo = 42; foo.bar")
+	ast, err := parser.Parse(ctx, "let foo = 42; foo.bar", nil)
 	assert.Nil(t, err)
 	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
@@ -54,7 +54,7 @@ func TestRunError_WithLocation(t *testing.T) {
 	source := `let foo = 42
 foo.bar`
 
-	ast, err := parser.Parse(ctx, source)
+	ast, err := parser.Parse(ctx, source, nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{Filename: "test.risor"})
@@ -87,7 +87,7 @@ function outer() {
 
 outer()`
 
-	ast, err := parser.Parse(ctx, source)
+	ast, err := parser.Parse(ctx, source, nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{Filename: "stack.risor"})
@@ -118,7 +118,7 @@ func TestRunError_NestedAttributeAccess(t *testing.T) {
 }
 data.value.bad`
 
-	ast, err := parser.Parse(ctx, source)
+	ast, err := parser.Parse(ctx, source, nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{Filename: "nested.risor"})
@@ -142,7 +142,7 @@ func TestRunError_UndefinedMethod(t *testing.T) {
 	source := `let items = [1, 2, 3]
 items.nonexistent()`
 
-	ast, err := parser.Parse(ctx, source)
+	ast, err := parser.Parse(ctx, source, nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, nil)
@@ -163,7 +163,7 @@ func TestRunError_FriendlyMessage(t *testing.T) {
 	source := `let x = 42
 x.missing`
 
-	ast, err := parser.Parse(ctx, source)
+	ast, err := parser.Parse(ctx, source, nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{Filename: "friendly.risor"})

@@ -24,7 +24,7 @@ func TestTokenLineCol(t *testing.T) {
 let x = 5;
 let y = 10;
 	`
-	program, err := Parse(context.Background(), code)
+	program, err := Parse(context.Background(), code, nil)
 	assert.Nil(t, err)
 
 	statements := program.Stmts
@@ -51,14 +51,14 @@ let y = 10;
 }
 
 func TestFilenameInErrors(t *testing.T) {
-	_, err := Parse(context.Background(), `@@@`, WithFilename("test.risor"))
+	_, err := Parse(context.Background(), `@@@`, &Config{Filename: "test.risor"})
 	assert.NotNil(t, err)
 
 	pe, ok := err.(ParserError)
 	assert.True(t, ok)
 	assert.Equal(t, "test.risor", pe.File())
 
-	_, err = Parse(context.Background(), `#invalid`, WithFilename("early.risor"))
+	_, err = Parse(context.Background(), `#invalid`, &Config{Filename: "early.risor"})
 	assert.NotNil(t, err)
 
 	pe, ok = err.(ParserError)
@@ -78,11 +78,11 @@ func TestMaxDepth(t *testing.T) {
 	}
 	parenInput := sb.String()
 
-	_, err := Parse(context.Background(), parenInput)
+	_, err := Parse(context.Background(), parenInput, nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "maximum nesting depth")
 
-	_, err = Parse(context.Background(), parenInput, WithMaxDepth(1000))
+	_, err = Parse(context.Background(), parenInput, &Config{MaxDepth: 1000})
 	assert.Nil(t, err)
 
 	// Test 2: Deeply nested lists
@@ -95,7 +95,7 @@ func TestMaxDepth(t *testing.T) {
 		sb.WriteString("]")
 	}
 	listInput := sb.String()
-	_, err = Parse(context.Background(), listInput)
+	_, err = Parse(context.Background(), listInput, nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "maximum nesting depth")
 
@@ -109,21 +109,21 @@ func TestMaxDepth(t *testing.T) {
 		sb.WriteString(")")
 	}
 	callInput := sb.String()
-	_, err = Parse(context.Background(), callInput)
+	_, err = Parse(context.Background(), callInput, nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "maximum nesting depth")
 
 	// Test 4: Custom lower depth limit
-	_, err = Parse(context.Background(), `((((((1))))))`, WithMaxDepth(5))
+	_, err = Parse(context.Background(), `((((((1))))))`, &Config{MaxDepth: 5})
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "maximum nesting depth")
 
 	// Test 5: Just under the custom limit should succeed
-	_, err = Parse(context.Background(), `((((1))))`, WithMaxDepth(10))
+	_, err = Parse(context.Background(), `((((1))))`, &Config{MaxDepth: 10})
 	assert.Nil(t, err)
 
 	// Test 6: Normal code with moderate nesting works with default limit
-	_, err = Parse(context.Background(), `let x = ((((1 + 2) * 3) - 4) / 5)`)
+	_, err = Parse(context.Background(), `let x = ((((1 + 2) * 3) - 4) / 5)`, nil)
 	assert.Nil(t, err)
 
 	// Test 7: Nested blocks (function/if/switch)
@@ -140,7 +140,7 @@ func TestMaxDepth(t *testing.T) {
 				}
 			}
 		}
-	`)
+	`, nil)
 	assert.Nil(t, err)
 }
 
@@ -149,32 +149,32 @@ func TestContextCancellation(t *testing.T) {
 	cancel()
 
 	// Test 1: Main parse loop respects cancellation
-	_, err := Parse(ctx, `let x = 1; let y = 2; let z = 3`)
+	_, err := Parse(ctx, `let x = 1; let y = 2; let z = 3`, nil)
 	assert.NotNil(t, err)
 	assert.True(t, errors.Is(err, context.Canceled))
 
 	// Test 2: Block parsing respects cancellation
-	_, err = Parse(ctx, `{ let x = 1 }`)
+	_, err = Parse(ctx, `{ let x = 1 }`, nil)
 	assert.NotNil(t, err)
 
 	// Test 3: Switch parsing respects cancellation
-	_, err = Parse(ctx, `switch (x) { case 1: y }`)
+	_, err = Parse(ctx, `switch (x) { case 1: y }`, nil)
 	assert.NotNil(t, err)
 
 	// Test 4: Function params parsing respects cancellation
-	_, err = Parse(ctx, `function f(a, b, c) { }`)
+	_, err = Parse(ctx, `function f(a, b, c) { }`, nil)
 	assert.NotNil(t, err)
 
 	// Test 5: Map parsing respects cancellation
-	_, err = Parse(ctx, `{a: 1, b: 2, c: 3}`)
+	_, err = Parse(ctx, `{a: 1, b: 2, c: 3}`, nil)
 	assert.NotNil(t, err)
 
 	// Test 6: Destructuring respects cancellation
-	_, err = Parse(ctx, `let {a, b, c} = obj`)
+	_, err = Parse(ctx, `let {a, b, c} = obj`, nil)
 	assert.NotNil(t, err)
 
 	// Test 7: Array destructuring respects cancellation
-	_, err = Parse(ctx, `let [a, b, c] = arr`)
+	_, err = Parse(ctx, `let [a, b, c] = arr`, nil)
 	assert.NotNil(t, err)
 }
 
@@ -183,7 +183,7 @@ func TestMultiErrorReporting(t *testing.T) {
 		input := `let x =
 let y =
 let z =`
-		program, err := Parse(context.Background(), input)
+		program, err := Parse(context.Background(), input, nil)
 		assert.NotNil(t, err)
 
 		errs, ok := err.(*Errors)
@@ -194,7 +194,7 @@ let z =`
 
 	t.Run("errors implement ParserError", func(t *testing.T) {
 		input := "let x ="
-		_, err := Parse(context.Background(), input)
+		_, err := Parse(context.Background(), input, nil)
 		assert.NotNil(t, err)
 
 		pe, ok := err.(ParserError)
@@ -205,7 +205,7 @@ let z =`
 
 	t.Run("errors.As works for SyntaxError", func(t *testing.T) {
 		input := "`unterminated"
-		_, err := Parse(context.Background(), input)
+		_, err := Parse(context.Background(), input, nil)
 		assert.NotNil(t, err)
 
 		var syntaxErr *SyntaxError
@@ -220,7 +220,7 @@ let z =`
 		// as an expression, which gives "unexpected let" error
 		input := `let x =
 let y =`
-		_, err := Parse(context.Background(), input)
+		_, err := Parse(context.Background(), input, nil)
 		assert.NotNil(t, err)
 
 		errs, ok := err.(*Errors)
@@ -235,7 +235,7 @@ let y =`
 	t.Run("partial AST returned on error", func(t *testing.T) {
 		input := `let x = 1
 let y =`
-		program, err := Parse(context.Background(), input)
+		program, err := Parse(context.Background(), input, nil)
 		assert.NotNil(t, err)
 		assert.NotNil(t, program)
 
@@ -250,7 +250,7 @@ let y =`
 		for i := 0; i < 20; i++ {
 			sb.WriteString("@@@\n")
 		}
-		_, err := Parse(context.Background(), sb.String())
+		_, err := Parse(context.Background(), sb.String(), nil)
 		assert.NotNil(t, err)
 
 		errs, ok := err.(*Errors)
@@ -292,7 +292,7 @@ func TestNewlineHandling(t *testing.T) {
 
 	for _, tt := range validCases {
 		t.Run(tt.name, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "unexpected error for %q: %v", tt.name, err)
 			if err == nil {
 				assert.Len(t, program.Stmts, 1, "expected 1 statement for %q", tt.name)
@@ -316,7 +316,7 @@ func TestNewlineHandling(t *testing.T) {
 
 	for _, tt := range multiStmtCases {
 		t.Run(tt.name, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "unexpected error for %q: %v", tt.name, err)
 			if err == nil {
 				assert.Len(t, program.Stmts, tt.numStmts, "expected %d statements for %q", tt.numStmts, tt.name)
@@ -336,7 +336,7 @@ func TestNewlineHandling(t *testing.T) {
 
 	for _, tt := range errorCases {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.NotNil(t, err, "expected error for %q", tt.name)
 		})
 	}
@@ -354,7 +354,7 @@ func TestMultilineInfixExprs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result, err := Parse(context.Background(), tt.input)
+			result, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expected, result.String())
 		})
@@ -384,7 +384,7 @@ func TestBadInputs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.NotNil(t, err)
 			if errs, ok := err.(*Errors); ok {
 				assert.Equal(t, tt.expected, errs.First().Error())
@@ -416,7 +416,7 @@ func TestIncompleThings(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.NotNil(t, err)
 			pe, ok := err.(ParserError)
 			assert.True(t, ok)
@@ -427,21 +427,21 @@ func TestIncompleThings(t *testing.T) {
 
 func TestDoubleSemicolon(t *testing.T) {
 	input := "42; ;"
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	assert.Error(t, err)
 	assert.Equal(t, "parse error: invalid syntax (unexpected \";\")", err.Error())
 }
 
 func TestInvalidMultipleExpressions(t *testing.T) {
 	input := "42 33"
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	assert.Error(t, err)
 	assert.Equal(t, "parse error: unexpected token \"33\" following statement", err.Error())
 }
 
 func TestInvalidMultipleExpressions2(t *testing.T) {
 	input := "42\n 33 oops"
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	assert.Error(t, err)
 	assert.Equal(t, "parse error: unexpected token \"oops\" following statement", err.Error())
 }
@@ -451,7 +451,7 @@ func TestInvalidListTermination(t *testing.T) {
 	{ data: { blocks: [ { type: "divider" },
 		}
 	}`
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	assert.Error(t, err)
 	if errs, ok := err.(*Errors); ok {
 		assert.Equal(t, `parse error: invalid syntax (unexpected "}")`, errs.First().Error())
@@ -472,7 +472,7 @@ default:
 default:
     print("oh no!")
 }`
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	assert.NotNil(t, err)
 
 	parserErr, ok := err.(ParserError)
@@ -485,7 +485,7 @@ default:
 
 func TestUnterminatedBacktickString(t *testing.T) {
 	input := "`foo"
-	_, err := Parse(context.Background(), input)
+	_, err := Parse(context.Background(), input, nil)
 	assert.NotNil(t, err)
 	assert.Equal(t, "syntax error: unterminated string literal", err.Error())
 
@@ -502,7 +502,7 @@ func TestUnterminatedString(t *testing.T) {
 	input := `42
 let x = "a`
 	ctx := context.Background()
-	_, err := Parse(ctx, input, WithFile("main.tm"))
+	_, err := Parse(ctx, input, &Config{Filename: "main.tm"})
 	assert.NotNil(t, err)
 	assert.Equal(t, "syntax error: unterminated string literal", err.Error())
 
@@ -519,7 +519,7 @@ let x = "a`
 }
 
 func TestProgramAST(t *testing.T) {
-	program, err := Parse(context.Background(), "1; 2; 3")
+	program, err := Parse(context.Background(), "1; 2; 3", nil)
 	assert.Nil(t, err)
 
 	// Verify Program AST
@@ -553,13 +553,13 @@ func FuzzParse(f *testing.F) {
 		f.Add(tc)
 	}
 	f.Fuzz(func(t *testing.T, input string) {
-		Parse(context.Background(), input) // Confirms no panics
+		Parse(context.Background(), input, nil) // Confirms no panics
 	})
 }
 
 // Ensure error interfaces work correctly
 func TestErrorInterface(t *testing.T) {
-	_, err := Parse(context.Background(), "@@@")
+	_, err := Parse(context.Background(), "@@@", nil)
 	assert.NotNil(t, err)
 
 	// Test error string
@@ -582,7 +582,7 @@ func TestErrorInterface(t *testing.T) {
 func TestPositionTracking(t *testing.T) {
 	code := `let x = 1
 let y = 2`
-	program, err := Parse(context.Background(), code)
+	program, err := Parse(context.Background(), code, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 2)
 
@@ -602,9 +602,9 @@ let y = 2`
 	assert.Greater(t, stmt2.End().Column, stmt2.Pos().Column)
 }
 
-// Test WithFilename option alias
-func TestWithFileOption(t *testing.T) {
-	_, err := Parse(context.Background(), "@@@", WithFile("test.risor"))
+// Test Config.Filename option
+func TestConfigFilenameOption(t *testing.T) {
+	_, err := Parse(context.Background(), "@@@", &Config{Filename: "test.risor"})
 	assert.NotNil(t, err)
 
 	pe, ok := err.(ParserError)
@@ -618,7 +618,7 @@ func TestIdentPreservesName(t *testing.T) {
 
 	for _, name := range names {
 		t.Run(name, func(t *testing.T) {
-			program, err := Parse(context.Background(), name)
+			program, err := Parse(context.Background(), name, nil)
 			assert.Nil(t, err)
 
 			ident, ok := program.First().(*ast.Ident)

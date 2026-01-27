@@ -38,56 +38,28 @@ var statementTerminators = map[token.Type]bool{
 	token.EOF:       true,
 }
 
+// Config holds parser configuration options.
+type Config struct {
+	// Filename is the source filename, used for error messages.
+	Filename string
+
+	// MaxDepth is the maximum nesting depth for parsing.
+	// This prevents stack overflow on deeply nested input.
+	// If 0, DefaultMaxDepth (500) is used.
+	MaxDepth int
+}
+
 // Parse the provided input as Risor source code and return the AST. This is
 // shorthand way to create a Lexer and Parser and then call Parse on that.
-func Parse(ctx context.Context, input string, options ...Option) (*ast.Program, error) {
-	// Extract filename from options before creating the parser, so that lexer
-	// errors in the first tokens have proper location context.
-	var filename string
-	for _, opt := range options {
-		var probe Parser
-		opt(&probe)
-		if probe.filename != "" {
-			filename = probe.filename
-			break
-		}
-	}
-
+// Pass nil for cfg to use default settings.
+func Parse(ctx context.Context, input string, cfg *Config) (*ast.Program, error) {
 	l := lexer.New(input)
-	if filename != "" {
-		l.SetFilename(filename)
+	if cfg != nil && cfg.Filename != "" {
+		l.SetFilename(cfg.Filename)
 	}
 
-	p := New(l, options...)
+	p := New(l, cfg)
 	return p.Parse(ctx)
-}
-
-// Option is a configuration function for a Lexer.
-type Option func(*Parser)
-
-// WithFile sets the file name for the Lexer.
-//
-// Deprecated: Use WithFilename instead.
-func WithFile(file string) Option {
-	return func(l *Parser) {
-		l.filename = file
-	}
-}
-
-// WithFilename sets the file name for the Lexer.
-func WithFilename(filename string) Option {
-	return func(l *Parser) {
-		l.filename = filename
-	}
-}
-
-// WithMaxDepth sets the maximum nesting depth for the parser.
-// This prevents stack overflow on deeply nested input.
-// The default is 500.
-func WithMaxDepth(depth int) Option {
-	return func(p *Parser) {
-		p.maxDepth = depth
-	}
 }
 
 // DefaultMaxDepth is the default maximum nesting depth for parsing.
@@ -141,16 +113,19 @@ type Parser struct {
 }
 
 // New returns a Parser for the program provided by the given Lexer.
-func New(l *lexer.Lexer, options ...Option) *Parser {
-	// Create the parser and apply any provided options
+// Pass nil for cfg to use default settings.
+func New(l *lexer.Lexer, cfg *Config) *Parser {
 	p := &Parser{
 		l:              l,
 		prefixParseFns: map[token.Type]prefixParseFn{},
 		infixParseFns:  map[token.Type]infixParseFn{},
 		maxDepth:       DefaultMaxDepth,
 	}
-	for _, opt := range options {
-		opt(p)
+	if cfg != nil {
+		p.filename = cfg.Filename
+		if cfg.MaxDepth > 0 {
+			p.maxDepth = cfg.MaxDepth
+		}
 	}
 
 	// Prime the token pump

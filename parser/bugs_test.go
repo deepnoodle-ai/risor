@@ -21,7 +21,7 @@ import (
 func TestGroupedAssignmentWithoutArrowShouldError(t *testing.T) {
 	// (x = 10) without => should NOT be valid as a grouped expression
 	// It should require arrow function syntax: (x = 10) => ...
-	_, err := Parse(context.Background(), "(x = 10)")
+	_, err := Parse(context.Background(), "(x = 10)", nil)
 
 	// This SHOULD error because (x = 10) looks like it could be:
 	// 1. An arrow function missing the arrow and body
@@ -38,7 +38,7 @@ func TestGroupedAssignmentWithoutArrowShouldError(t *testing.T) {
 
 func TestArrowWithDefaultParamWorks(t *testing.T) {
 	// (x = 10) => x should parse as arrow function with default param
-	program, err := Parse(context.Background(), "(x = 10) => x")
+	program, err := Parse(context.Background(), "(x = 10) => x", nil)
 	assert.Nil(t, err, "Arrow function with default param should parse")
 
 	fn, ok := program.First().(*ast.Func)
@@ -58,7 +58,7 @@ func TestArrowWithDefaultParamWorks(t *testing.T) {
 func TestPrecedenceModVsPower(t *testing.T) {
 	// In Python: 2 ** 3 % 5 = (2 ** 3) % 5 = 8 % 5 = 3
 	// ** should have higher precedence than %
-	program, err := Parse(context.Background(), "2 ** 3 % 5")
+	program, err := Parse(context.Background(), "2 ** 3 % 5", nil)
 	assert.Nil(t, err)
 
 	// Expected structure: (2 ** 3) % 5
@@ -85,7 +85,7 @@ func TestPrecedenceModVsPowerExplicit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 		})
 	}
@@ -106,7 +106,7 @@ func TestModuloSamePrecedenceAsProduct(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expected, program.First().String())
 		})
@@ -135,7 +135,7 @@ func TestNewlineAfterAssignmentOperator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 
 			assign, ok := program.First().(*ast.Assign)
@@ -156,7 +156,7 @@ func TestNewlineAfterAttributeAssignment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 
 			setAttr, ok := program.First().(*ast.SetAttr)
@@ -167,7 +167,7 @@ func TestNewlineAfterAttributeAssignment(t *testing.T) {
 }
 
 func TestNewlineAfterLetAssignment(t *testing.T) {
-	program, err := Parse(context.Background(), "let x =\n42")
+	program, err := Parse(context.Background(), "let x =\n42", nil)
 	assert.Nil(t, err)
 
 	varNode, ok := program.First().(*ast.Var)
@@ -176,7 +176,7 @@ func TestNewlineAfterLetAssignment(t *testing.T) {
 }
 
 func TestNewlineAfterConstAssignment(t *testing.T) {
-	program, err := Parse(context.Background(), "const x =\n42")
+	program, err := Parse(context.Background(), "const x =\n42", nil)
 	assert.Nil(t, err)
 
 	constNode, ok := program.First().(*ast.Const)
@@ -201,7 +201,7 @@ func TestNewlineAfterDot(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 			assert.NotNil(t, program.First())
 		})
@@ -224,7 +224,7 @@ func TestTernaryMultipleNewlines(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			if tt.desc == "newline before ? should fail" {
 				assert.NotNil(t, err, "Newline before ? should cause error")
 			} else {
@@ -250,7 +250,7 @@ func TestArrowFunctionInvalidParams(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.NotNil(t, err, "Should error: %s", tt.input)
 		})
 	}
@@ -272,7 +272,7 @@ func TestArrowFunctionValidParams(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 
 			fn, ok := program.First().(*ast.Func)
@@ -291,7 +291,7 @@ func TestArrowFunctionValidParams(t *testing.T) {
 
 func TestComparisonChainingBehavior(t *testing.T) {
 	// Document that Risor doesn't do Python-style comparison chaining
-	program, err := Parse(context.Background(), "1 < 2 < 3")
+	program, err := Parse(context.Background(), "1 < 2 < 3", nil)
 	assert.Nil(t, err)
 
 	// Should parse as ((1 < 2) < 3) - left associative
@@ -322,7 +322,7 @@ func TestIndexAssignmentComplexIndex(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 
 			assign, ok := program.First().(*ast.Assign)
@@ -351,7 +351,7 @@ func TestEmptyConstructsBehavior(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			if tt.shouldError {
 				assert.NotNil(t, err, "Should error: %s", tt.input)
 			} else {
@@ -382,7 +382,7 @@ func TestOperatorAssociativity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 
 			outer, ok := program.First().(*ast.Infix)
@@ -424,7 +424,7 @@ func TestSpreadOperatorEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			if tt.shouldError {
 				assert.NotNil(t, err, "Should error: %s", tt.input)
 			} else {
@@ -456,7 +456,7 @@ func TestCallExpressionEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 		})
 	}
@@ -484,7 +484,7 @@ func TestPipeAfterExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 
 			pipe, ok := program.First().(*ast.Pipe)
@@ -514,7 +514,7 @@ func TestComplexNestedExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 		})
 	}
@@ -542,7 +542,7 @@ func TestStatementTerminationEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "Should parse: %s", tt.input)
 			assert.Len(t, program.Stmts, tt.stmtCount, "Statement count for: %s", tt.input)
 		})

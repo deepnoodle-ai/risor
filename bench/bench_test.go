@@ -23,7 +23,7 @@ func BenchmarkRisor_Fibonacci35(b *testing.B) {
 
 	ctx := context.Background()
 
-	ast, err := parser.Parse(ctx, script)
+	ast, err := parser.Parse(ctx, script, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

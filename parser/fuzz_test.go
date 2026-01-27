@@ -281,7 +281,7 @@ default:
 				}
 			}()
 
-			program, err := Parse(ctx, input)
+			program, err := Parse(ctx, input, nil)
 
 			// If no error, the program should be non-nil
 			if err == nil && program == nil {
@@ -344,7 +344,7 @@ func FuzzParseStringConsistency(f *testing.F) {
 			}
 		}()
 
-		program, err := Parse(ctx, input)
+		program, err := Parse(ctx, input, nil)
 		if err != nil || program == nil {
 			return
 		}
@@ -398,7 +398,7 @@ func FuzzParseUTF8(f *testing.F) {
 			}
 		}()
 
-		program, _ := Parse(ctx, input)
+		program, _ := Parse(ctx, input, nil)
 
 		if program != nil {
 			// Verify String() produces valid UTF-8
@@ -442,7 +442,7 @@ func FuzzParseDeepNesting(f *testing.F) {
 			}
 		}()
 
-		_, _ = Parse(ctx, input)
+		_, _ = Parse(ctx, input, nil)
 
 		// Test deeply nested lists
 		input = ""
@@ -454,7 +454,7 @@ func FuzzParseDeepNesting(f *testing.F) {
 			input += "]"
 		}
 
-		_, _ = Parse(ctx, input)
+		_, _ = Parse(ctx, input, nil)
 
 		// Test deeply nested maps
 		input = ""
@@ -466,7 +466,7 @@ func FuzzParseDeepNesting(f *testing.F) {
 			input += "}"
 		}
 
-		_, _ = Parse(ctx, input)
+		_, _ = Parse(ctx, input, nil)
 
 		// Test deeply chained attribute access
 		input = "x"
@@ -474,7 +474,7 @@ func FuzzParseDeepNesting(f *testing.F) {
 			input += ".y"
 		}
 
-		_, _ = Parse(ctx, input)
+		_, _ = Parse(ctx, input, nil)
 	})
 }
 
@@ -502,7 +502,7 @@ func FuzzParseOperatorCombinations(f *testing.F) {
 			}
 		}()
 
-		_, _ = Parse(ctx, input)
+		_, _ = Parse(ctx, input, nil)
 	})
 }
 
@@ -594,7 +594,7 @@ func FuzzParseStatementBoundaries(f *testing.F) {
 			}
 		}()
 
-		program, _ := Parse(ctx, input)
+		program, _ := Parse(ctx, input, nil)
 
 		if program != nil {
 			_ = program.String()
@@ -742,7 +742,7 @@ func FuzzParseErrorRecovery(f *testing.F) {
 			}
 		}()
 
-		program, _ := Parse(ctx, input)
+		program, _ := Parse(ctx, input, nil)
 
 		// Even on error, if a program is returned it should be usable
 		if program != nil {
@@ -799,7 +799,7 @@ func FuzzParseRandomBytes(f *testing.F) {
 			}
 		}()
 
-		program, _ := Parse(ctx, string(input))
+		program, _ := Parse(ctx, string(input), nil)
 
 		if program != nil {
 			_ = program.String()

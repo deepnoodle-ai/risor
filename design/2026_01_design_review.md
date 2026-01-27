@@ -949,7 +949,6 @@ Concrete proposals derived from the analysis above, organized by priority.
 | P2-3 | `Builtin` struct has redundant `module` and `moduleName` fields (§4) | Keep only `moduleName string`. Derive module reference when needed via lookup. | Simpler struct. Single source of truth for module association. | Not Started |
 | P2-4 | Public constructors (`NewBuiltin`, `Module.UseGlobals`) panic on invalid inputs (§18.14) | Use builder pattern for `Builtin`: `NewBuiltin(name, fn).InModule(name)`. Validate at build time, not construction. Remove panic paths. | Host processes should not crash due to API misuse. Builder pattern is ergonomic and avoids error handling ceremony. | Done |
 | P2-5 | Map attribute names (`keys`, `values`, `items`) shadow map keys with the same names (§18.11) | Document behavior explicitly. Add `__method__(name)` for unambiguous method access, or reverse priority for maps (keys shadow methods). | Users need a way to access shadowed keys. Behavior should be predictable. | Not Started |
-| P2-6 | Container methods allocated on every `GetAttr` call (§18.5) | Cache methods in a `sync.Map` on the container instance. Lazy-initialize on first access. | Hot path optimization. Reduces allocation pressure for method-heavy code. | Not Started |
 
 ### P3: Clarity (Documentation & Polish)
 

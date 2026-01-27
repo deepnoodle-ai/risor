@@ -104,7 +104,7 @@ func (p *Parser) parseString() (ast.Node, bool) {
 		if !e.IsVariable() {
 			continue
 		}
-		tmplAst, err := Parse(p.ctx, e.Value(), WithFilename(p.l.Filename()))
+		tmplAst, err := Parse(p.ctx, e.Value(), &Config{Filename: p.l.Filename()})
 		if err != nil {
 			p.setTokenError(strToken, "in template interpolation: %s", err.Error())
 			return nil, false

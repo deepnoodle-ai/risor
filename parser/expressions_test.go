@@ -23,7 +23,7 @@ import (
 // - Optional chaining
 
 func TestIdent(t *testing.T) {
-	program, err := Parse(context.Background(), "foobar;")
+	program, err := Parse(context.Background(), "foobar;", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -34,7 +34,7 @@ func TestIdent(t *testing.T) {
 }
 
 func TestIdentAST(t *testing.T) {
-	program, err := Parse(context.Background(), "myVar")
+	program, err := Parse(context.Background(), "myVar", nil)
 	assert.Nil(t, err)
 
 	ident, ok := program.First().(*ast.Ident)
@@ -59,7 +59,7 @@ func TestPrefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -72,7 +72,7 @@ func TestPrefix(t *testing.T) {
 }
 
 func TestPrefixAST(t *testing.T) {
-	program, err := Parse(context.Background(), "-42")
+	program, err := Parse(context.Background(), "-42", nil)
 	assert.Nil(t, err)
 
 	prefix, ok := program.First().(*ast.Prefix)
@@ -110,7 +110,7 @@ func TestInfix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -122,7 +122,7 @@ func TestInfix(t *testing.T) {
 }
 
 func TestInfixAST(t *testing.T) {
-	program, err := Parse(context.Background(), "1 + 2")
+	program, err := Parse(context.Background(), "1 + 2", nil)
 	assert.Nil(t, err)
 
 	infix, ok := program.First().(*ast.Infix)
@@ -177,7 +177,7 @@ func TestOperatorPrecedence(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Equal(t, tt.expected, program.String())
 		})
@@ -185,7 +185,7 @@ func TestOperatorPrecedence(t *testing.T) {
 }
 
 func TestTernary(t *testing.T) {
-	program, err := Parse(context.Background(), "x > 0 ? 1 : -1")
+	program, err := Parse(context.Background(), "x > 0 ? 1 : -1", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -209,7 +209,7 @@ func TestTernary(t *testing.T) {
 }
 
 func TestTernaryAST(t *testing.T) {
-	program, err := Parse(context.Background(), "a ? b : c")
+	program, err := Parse(context.Background(), "a ? b : c", nil)
 	assert.Nil(t, err)
 
 	ternary, ok := program.First().(*ast.Ternary)
@@ -224,24 +224,24 @@ func TestTernaryAST(t *testing.T) {
 
 func TestTernaryEdgeCases(t *testing.T) {
 	t.Run("nested ternary error", func(t *testing.T) {
-		_, err := Parse(context.Background(), `a ? b ? c : d : e`)
+		_, err := Parse(context.Background(), `a ? b ? c : d : e`, nil)
 		assert.NotNil(t, err)
 		assert.Contains(t, err.Error(), "nested ternary")
 	})
 
 	t.Run("missing colon", func(t *testing.T) {
-		_, err := Parse(context.Background(), `a ? b c`)
+		_, err := Parse(context.Background(), `a ? b c`, nil)
 		assert.NotNil(t, err)
 		assert.Contains(t, err.Error(), "expected :")
 	})
 
 	t.Run("missing if-true branch", func(t *testing.T) {
-		_, err := Parse(context.Background(), `a ? : c`)
+		_, err := Parse(context.Background(), `a ? : c`, nil)
 		assert.NotNil(t, err)
 	})
 
 	t.Run("ternary with complex expressions", func(t *testing.T) {
-		program, err := Parse(context.Background(), `x > 0 ? x * 2 : x * -1`)
+		program, err := Parse(context.Background(), `x > 0 ? x * 2 : x * -1`, nil)
 		assert.Nil(t, err)
 		assert.Len(t, program.Stmts, 1)
 
@@ -254,7 +254,7 @@ func TestTernaryEdgeCases(t *testing.T) {
 }
 
 func TestIf(t *testing.T) {
-	program, err := Parse(context.Background(), "if (x < y) { x }")
+	program, err := Parse(context.Background(), "if (x < y) { x }", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -270,7 +270,7 @@ func TestIf(t *testing.T) {
 }
 
 func TestIfAST(t *testing.T) {
-	program, err := Parse(context.Background(), "if (true) { 1 } else { 2 }")
+	program, err := Parse(context.Background(), "if (true) { 1 } else { 2 }", nil)
 	assert.Nil(t, err)
 
 	ifExpr, ok := program.First().(*ast.If)
@@ -301,7 +301,7 @@ func TestIfElseIf(t *testing.T) {
 	} else {
 		"zero"
 	}`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -323,7 +323,7 @@ func TestSwitch(t *testing.T) {
       x
 	  x
 }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -342,7 +342,7 @@ func TestSwitch(t *testing.T) {
 
 func TestSwitchAST(t *testing.T) {
 	input := `switch (x) { case 1: "one" case 2: "two" default: "other" }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	sw, ok := program.First().(*ast.Switch)
@@ -364,7 +364,7 @@ func TestSwitchAST(t *testing.T) {
 
 func TestSwitchMultipleCaseValues(t *testing.T) {
 	input := `switch (x) { case 1, 2, 3: "small" default: "big" }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	sw, ok := program.First().(*ast.Switch)
@@ -377,7 +377,7 @@ func TestSwitchMultipleCaseValues(t *testing.T) {
 
 func TestIndex(t *testing.T) {
 	input := "myArray[1+1]"
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -388,7 +388,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestIndexAST(t *testing.T) {
-	program, err := Parse(context.Background(), "arr[0]")
+	program, err := Parse(context.Background(), "arr[0]", nil)
 	assert.Nil(t, err)
 
 	index, ok := program.First().(*ast.Index)
@@ -423,7 +423,7 @@ func TestSlice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -446,7 +446,7 @@ func TestSlice(t *testing.T) {
 }
 
 func TestSliceAST(t *testing.T) {
-	program, err := Parse(context.Background(), "arr[1:5]")
+	program, err := Parse(context.Background(), "arr[1:5]", nil)
 	assert.Nil(t, err)
 
 	slice, ok := program.First().(*ast.Slice)
@@ -467,7 +467,7 @@ func TestSliceAST(t *testing.T) {
 }
 
 func TestCall(t *testing.T) {
-	program, err := Parse(context.Background(), "add(1, 2*3, 4+5)")
+	program, err := Parse(context.Background(), "add(1, 2*3, 4+5)", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -483,7 +483,7 @@ func TestCall(t *testing.T) {
 }
 
 func TestCallAST(t *testing.T) {
-	program, err := Parse(context.Background(), "print(42)")
+	program, err := Parse(context.Background(), "print(42)", nil)
 	assert.Nil(t, err)
 
 	call, ok := program.First().(*ast.Call)
@@ -501,7 +501,7 @@ func TestCallAST(t *testing.T) {
 }
 
 func TestCallEmptyWithNewlines(t *testing.T) {
-	program, err := Parse(context.Background(), "noop(\n)")
+	program, err := Parse(context.Background(), "noop(\n)", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -512,7 +512,7 @@ func TestCallEmptyWithNewlines(t *testing.T) {
 
 func TestCallWithKeywordArgs(t *testing.T) {
 	input := `foo(a=1, b=2)`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -542,7 +542,7 @@ func TestPipe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -573,7 +573,7 @@ func TestPipe(t *testing.T) {
 }
 
 func TestPipeAST(t *testing.T) {
-	program, err := Parse(context.Background(), "data | filter | sort")
+	program, err := Parse(context.Background(), "data | filter | sort", nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)
@@ -590,7 +590,7 @@ func TestPipeAST(t *testing.T) {
 }
 
 func TestIn(t *testing.T) {
-	program, err := Parse(context.Background(), "x in [1, 2]")
+	program, err := Parse(context.Background(), "x in [1, 2]", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -602,7 +602,7 @@ func TestIn(t *testing.T) {
 }
 
 func TestInAST(t *testing.T) {
-	program, err := Parse(context.Background(), "key in map")
+	program, err := Parse(context.Background(), "key in map", nil)
 	assert.Nil(t, err)
 
 	in, ok := program.First().(*ast.In)
@@ -619,7 +619,7 @@ func TestInAST(t *testing.T) {
 }
 
 func TestNotIn(t *testing.T) {
-	program, err := Parse(context.Background(), "x not in [1, 2]")
+	program, err := Parse(context.Background(), "x not in [1, 2]", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -631,21 +631,21 @@ func TestNotIn(t *testing.T) {
 }
 
 func TestInWithNewline(t *testing.T) {
-	program, err := Parse(context.Background(), "x in\n[1, 2]")
+	program, err := Parse(context.Background(), "x in\n[1, 2]", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 	assert.Equal(t, "x in [1, 2]", program.First().String())
 }
 
 func TestNotInWithNewline(t *testing.T) {
-	program, err := Parse(context.Background(), "x not in\n[1, 2]")
+	program, err := Parse(context.Background(), "x not in\n[1, 2]", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 	assert.Equal(t, "x not in [1, 2]", program.First().String())
 }
 
 func TestNotInAST(t *testing.T) {
-	program, err := Parse(context.Background(), "key not in set")
+	program, err := Parse(context.Background(), "key not in set", nil)
 	assert.Nil(t, err)
 
 	notIn, ok := program.First().(*ast.NotIn)
@@ -663,7 +663,7 @@ func TestNotInAST(t *testing.T) {
 
 func TestInPrecedence(t *testing.T) {
 	input := `2 in sorted([1,2,3])`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -675,7 +675,7 @@ func TestInPrecedence(t *testing.T) {
 
 func TestNotInPrecedence(t *testing.T) {
 	input := `2 not in sorted([1,2,3])`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -697,7 +697,7 @@ func TestInNotInWithArithmetic(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 			assert.Equal(t, tt.expected, program.First().String())
@@ -706,7 +706,7 @@ func TestInNotInWithArithmetic(t *testing.T) {
 }
 
 func TestGetAttr(t *testing.T) {
-	program, err := Parse(context.Background(), "foo.bar")
+	program, err := Parse(context.Background(), "foo.bar", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -717,7 +717,7 @@ func TestGetAttr(t *testing.T) {
 }
 
 func TestGetAttrAST(t *testing.T) {
-	program, err := Parse(context.Background(), "obj.field")
+	program, err := Parse(context.Background(), "obj.field", nil)
 	assert.Nil(t, err)
 
 	getAttr, ok := program.First().(*ast.GetAttr)
@@ -743,7 +743,7 @@ func TestChainedAttributeAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 			assert.Equal(t, tt.expected, program.First().String())
@@ -765,7 +765,7 @@ func TestOptionalChaining(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result, err := Parse(context.Background(), tt.input)
+			result, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "input: %s", tt.input)
 			assert.Equal(t, tt.expected, result.String(), "input: %s", tt.input)
 		})
@@ -773,7 +773,7 @@ func TestOptionalChaining(t *testing.T) {
 }
 
 func TestOptionalChainingAST(t *testing.T) {
-	program, err := Parse(context.Background(), "obj?.field")
+	program, err := Parse(context.Background(), "obj?.field", nil)
 	assert.Nil(t, err)
 
 	// Optional chaining is represented by GetAttr with Optional=true
@@ -801,7 +801,7 @@ func TestMethodChaining(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 			assert.Equal(t, tt.expected, program.First().String())
@@ -815,13 +815,13 @@ func TestObjectMethodCall(t *testing.T) {
 		"let x = 15; x.string();",
 	}
 	for _, input := range inputs {
-		_, err := Parse(context.Background(), input)
+		_, err := Parse(context.Background(), input, nil)
 		assert.Nil(t, err)
 	}
 }
 
 func TestObjectCallAST(t *testing.T) {
-	program, err := Parse(context.Background(), "obj.method(arg)")
+	program, err := Parse(context.Background(), "obj.method(arg)", nil)
 	assert.Nil(t, err)
 
 	objCall, ok := program.First().(*ast.ObjectCall)
@@ -849,7 +849,7 @@ func TestNullishCoalescing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 			assert.Equal(t, tt.expected, program.First().String())
@@ -858,7 +858,7 @@ func TestNullishCoalescing(t *testing.T) {
 }
 
 func TestNullishCoalescingAST(t *testing.T) {
-	program, err := Parse(context.Background(), "x ?? y")
+	program, err := Parse(context.Background(), "x ?? y", nil)
 	assert.Nil(t, err)
 
 	infix, ok := program.First().(*ast.Infix)
@@ -888,7 +888,7 @@ func TestBitShiftOperators(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 			assert.Equal(t, tt.expected, program.First().String())
@@ -898,7 +898,7 @@ func TestBitShiftOperators(t *testing.T) {
 
 func TestBitwiseAnd(t *testing.T) {
 	input := "1 & 2"
-	result, err := Parse(context.Background(), input)
+	result, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Equal(t, "(1 & 2)", result.String())
 }
@@ -918,7 +918,7 @@ func TestComparisonOperators(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 			assert.Equal(t, tt.expected, program.First().String())
@@ -937,7 +937,7 @@ func TestModuloOperator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 			assert.Equal(t, tt.expected, program.First().String())
@@ -960,7 +960,7 @@ func TestArrowFunction(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "parse error for %q", tt.input)
 			assert.Len(t, program.Stmts, 1)
 
@@ -978,7 +978,7 @@ func TestArrowFunction(t *testing.T) {
 }
 
 func TestArrowFunctionWithDefaults(t *testing.T) {
-	program, err := Parse(context.Background(), "(x, y = 5) => x + y")
+	program, err := Parse(context.Background(), "(x, y = 5) => x + y", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -1000,7 +1000,7 @@ func TestArrowFunctionNoParens(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err, "parse error for %q", tt.input)
 			assert.Len(t, program.Stmts, 1)
 
@@ -1024,7 +1024,7 @@ func TestArrowFunctionErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.NotNil(t, err)
 			pe, ok := err.(ParserError)
 			assert.True(t, ok)

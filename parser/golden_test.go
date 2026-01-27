@@ -50,7 +50,7 @@ func TestGolden(t *testing.T) {
 			}
 
 			// Parse the input
-			program, err := Parse(context.Background(), string(input), WithFilename(risorFile))
+			program, err := Parse(context.Background(), string(input), &Config{Filename: risorFile})
 			if err != nil {
 				t.Fatalf("parse error: %v", err)
 			}
@@ -112,7 +112,7 @@ func TestGoldenErrors(t *testing.T) {
 			}
 
 			// Parse the input - expect an error
-			_, parseErr := Parse(context.Background(), string(input), WithFilename(risorFile))
+			_, parseErr := Parse(context.Background(), string(input), &Config{Filename: risorFile})
 			if parseErr == nil {
 				t.Fatalf("expected parse error, but parsing succeeded")
 			}

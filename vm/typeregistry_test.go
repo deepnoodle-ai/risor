@@ -42,7 +42,7 @@ func TestWithTypeRegistryOption(t *testing.T) {
 		Build()
 
 	// Compile a simple program that uses a global
-	ast, err := parser.Parse(context.Background(), "x")
+	ast, err := parser.Parse(context.Background(), "x", nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"x"}})
@@ -79,7 +79,7 @@ func TestTypeRegistryWithGlobalConversion(t *testing.T) {
 		Build()
 
 	// Compile program that accesses point fields
-	ast, err := parser.Parse(context.Background(), "point.x + point.y")
+	ast, err := parser.Parse(context.Background(), "point.x + point.y", nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"point"}})
@@ -112,7 +112,7 @@ func (p customPoint) RisorValue() object.Object {
 
 func TestRisorValuerWithVM(t *testing.T) {
 	// Types implementing RisorValuer should work without custom registry
-	ast, err := parser.Parse(context.Background(), "point.x * point.y")
+	ast, err := parser.Parse(context.Background(), "point.x * point.y", nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"point"}})
@@ -132,7 +132,7 @@ func TestRisorValuerWithVM(t *testing.T) {
 func TestTypeRegistryPreservedAcrossRuns(t *testing.T) {
 	customRegistry := object.NewRegistryBuilder().Build()
 
-	ast, err := parser.Parse(context.Background(), "1 + 2")
+	ast, err := parser.Parse(context.Background(), "1 + 2", nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, nil)
@@ -148,7 +148,7 @@ func TestTypeRegistryPreservedAcrossRuns(t *testing.T) {
 	assert.Equal(t, vm.TypeRegistry(), customRegistry)
 
 	// Second run with new code
-	ast2, err := parser.Parse(context.Background(), "3 + 4")
+	ast2, err := parser.Parse(context.Background(), "3 + 4", nil)
 	assert.Nil(t, err)
 	code2, err := compiler.Compile(ast2, nil)
 	assert.Nil(t, err)
@@ -207,7 +207,7 @@ func TestTypeRegistryWithDifferentGlobalTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ast, err := parser.Parse(context.Background(), tt.code)
+			ast, err := parser.Parse(context.Background(), tt.code, nil)
 			assert.Nil(t, err)
 
 			globalNames := make([]string, 0, len(tt.globals))
@@ -235,7 +235,7 @@ func TestTypeRegistryErrorOnInvalidGlobal(t *testing.T) {
 		"fn": func() {},
 	}
 
-	ast, err := parser.Parse(context.Background(), "fn")
+	ast, err := parser.Parse(context.Background(), "fn", nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"fn"}})

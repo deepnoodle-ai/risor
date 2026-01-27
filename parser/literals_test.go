@@ -40,7 +40,7 @@ func TestInt(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -54,7 +54,7 @@ func TestInt(t *testing.T) {
 }
 
 func TestIntAST(t *testing.T) {
-	program, err := Parse(context.Background(), "42")
+	program, err := Parse(context.Background(), "42", nil)
 	assert.Nil(t, err)
 
 	integer, ok := program.First().(*ast.Int)
@@ -81,7 +81,7 @@ func TestFloat(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -94,7 +94,7 @@ func TestFloat(t *testing.T) {
 }
 
 func TestFloatAST(t *testing.T) {
-	program, err := Parse(context.Background(), "3.14")
+	program, err := Parse(context.Background(), "3.14", nil)
 	assert.Nil(t, err)
 
 	float, ok := program.First().(*ast.Float)
@@ -117,7 +117,7 @@ func TestBool(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -130,7 +130,7 @@ func TestBool(t *testing.T) {
 }
 
 func TestBoolAST(t *testing.T) {
-	program, err := Parse(context.Background(), "true")
+	program, err := Parse(context.Background(), "true", nil)
 	assert.Nil(t, err)
 
 	b, ok := program.First().(*ast.Bool)
@@ -143,7 +143,7 @@ func TestBoolAST(t *testing.T) {
 }
 
 func TestNil(t *testing.T) {
-	program, err := Parse(context.Background(), "nil")
+	program, err := Parse(context.Background(), "nil", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -165,7 +165,7 @@ func TestString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -177,7 +177,7 @@ func TestString(t *testing.T) {
 }
 
 func TestStringAST(t *testing.T) {
-	program, err := Parse(context.Background(), `"hello"`)
+	program, err := Parse(context.Background(), `"hello"`, nil)
 	assert.Nil(t, err)
 
 	str, ok := program.First().(*ast.String)
@@ -192,7 +192,7 @@ func TestStringAST(t *testing.T) {
 
 func TestBacktick(t *testing.T) {
 	input := "`" + `\\n\t foo bar /hey there/` + "`"
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -204,7 +204,7 @@ func TestBacktick(t *testing.T) {
 func TestTemplateStringInterpolation(t *testing.T) {
 	t.Run("simple interpolation", func(t *testing.T) {
 		input := "`hello ${name}`"
-		program, err := Parse(context.Background(), input)
+		program, err := Parse(context.Background(), input, nil)
 		assert.Nil(t, err)
 		assert.Len(t, program.Stmts, 1)
 
@@ -220,7 +220,7 @@ func TestTemplateStringInterpolation(t *testing.T) {
 
 	t.Run("multiple interpolations", func(t *testing.T) {
 		input := "`${a} and ${b}`"
-		program, err := Parse(context.Background(), input)
+		program, err := Parse(context.Background(), input, nil)
 		assert.Nil(t, err)
 
 		str, ok := program.First().(*ast.String)
@@ -231,7 +231,7 @@ func TestTemplateStringInterpolation(t *testing.T) {
 
 	t.Run("expression interpolation", func(t *testing.T) {
 		input := "`result: ${1 + 2}`"
-		program, err := Parse(context.Background(), input)
+		program, err := Parse(context.Background(), input, nil)
 		assert.Nil(t, err)
 
 		str, ok := program.First().(*ast.String)
@@ -245,7 +245,7 @@ func TestTemplateStringInterpolation(t *testing.T) {
 
 	t.Run("no interpolation", func(t *testing.T) {
 		input := "`plain string`"
-		program, err := Parse(context.Background(), input)
+		program, err := Parse(context.Background(), input, nil)
 		assert.Nil(t, err)
 
 		str, ok := program.First().(*ast.String)
@@ -255,7 +255,7 @@ func TestTemplateStringInterpolation(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	program, err := Parse(context.Background(), "[1, 2*2, 3+3]")
+	program, err := Parse(context.Background(), "[1, 2*2, 3+3]", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -269,7 +269,7 @@ func TestList(t *testing.T) {
 }
 
 func TestListAST(t *testing.T) {
-	program, err := Parse(context.Background(), "[1, 2, 3]")
+	program, err := Parse(context.Background(), "[1, 2, 3]", nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -288,7 +288,7 @@ func TestListAST(t *testing.T) {
 }
 
 func TestListEmpty(t *testing.T) {
-	program, err := Parse(context.Background(), "[]")
+	program, err := Parse(context.Background(), "[]", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -298,7 +298,7 @@ func TestListEmpty(t *testing.T) {
 }
 
 func TestListEmptyWithNewlines(t *testing.T) {
-	program, err := Parse(context.Background(), "[\n]")
+	program, err := Parse(context.Background(), "[\n]", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -308,7 +308,7 @@ func TestListEmptyWithNewlines(t *testing.T) {
 }
 
 func TestListWithTrailingComma(t *testing.T) {
-	program, err := Parse(context.Background(), "[1, 2, 3,]")
+	program, err := Parse(context.Background(), "[1, 2, 3,]", nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -322,7 +322,7 @@ func TestListWithNewlines(t *testing.T) {
 		2,
 		3
 	]`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)
@@ -332,7 +332,7 @@ func TestListWithNewlines(t *testing.T) {
 
 func TestMap(t *testing.T) {
 	input := `{"one":1, "two":2, "three":3}`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -354,7 +354,7 @@ func TestMap(t *testing.T) {
 }
 
 func TestMapAST(t *testing.T) {
-	program, err := Parse(context.Background(), `{a: 1, b: 2}`)
+	program, err := Parse(context.Background(), `{a: 1, b: 2}`, nil)
 	assert.Nil(t, err)
 
 	m, ok := program.First().(*ast.Map)
@@ -379,7 +379,7 @@ func TestMapAST(t *testing.T) {
 }
 
 func TestMapEmpty(t *testing.T) {
-	program, err := Parse(context.Background(), "{}")
+	program, err := Parse(context.Background(), "{}", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -390,7 +390,7 @@ func TestMapEmpty(t *testing.T) {
 
 func TestMapIdentifierKey(t *testing.T) {
 	input := "{ one: 1 }"
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -405,7 +405,7 @@ func TestMapIdentifierKey(t *testing.T) {
 
 func TestMapWithExpressionValues(t *testing.T) {
 	input := `{"one":0+1, "two":10 - 8, "three": 15/5}`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -440,7 +440,7 @@ func TestMapWithNewlines(t *testing.T) {
 		"c": "d",
 
 	}`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -450,7 +450,7 @@ func TestMapWithNewlines(t *testing.T) {
 }
 
 func TestFunc(t *testing.T) {
-	program, err := Parse(context.Background(), "function f(x, y=3) { x + y; }")
+	program, err := Parse(context.Background(), "function f(x, y=3) { x + y; }", nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -479,7 +479,7 @@ func TestFunc(t *testing.T) {
 }
 
 func TestFuncAST(t *testing.T) {
-	program, err := Parse(context.Background(), "function add(a, b) { return a + b }")
+	program, err := Parse(context.Background(), "function add(a, b) { return a + b }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -507,7 +507,7 @@ func TestFuncParams(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			program, err := Parse(context.Background(), tt.input)
+			program, err := Parse(context.Background(), tt.input, nil)
 			assert.Nil(t, err)
 			assert.Len(t, program.Stmts, 1)
 
@@ -528,7 +528,7 @@ func TestFuncParamsWithNewlines(t *testing.T) {
 			2,
 		...rest
 	) { return a }`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 	assert.Len(t, program.Stmts, 1)
 
@@ -544,7 +544,7 @@ func TestFuncParamsWithNewlines(t *testing.T) {
 }
 
 func TestFuncAnonymous(t *testing.T) {
-	program, err := Parse(context.Background(), "function(x) { x }")
+	program, err := Parse(context.Background(), "function(x) { x }", nil)
 	assert.Nil(t, err)
 
 	fn, ok := program.First().(*ast.Func)
@@ -555,7 +555,7 @@ func TestFuncAnonymous(t *testing.T) {
 
 func TestRestParameter(t *testing.T) {
 	t.Run("basic rest param", func(t *testing.T) {
-		program, err := Parse(context.Background(), `function f(a, b, ...rest) { rest }`)
+		program, err := Parse(context.Background(), `function f(a, b, ...rest) { rest }`, nil)
 		assert.Nil(t, err)
 		assert.Len(t, program.Stmts, 1)
 
@@ -569,7 +569,7 @@ func TestRestParameter(t *testing.T) {
 	})
 
 	t.Run("rest param only", func(t *testing.T) {
-		program, err := Parse(context.Background(), `function f(...args) { args }`)
+		program, err := Parse(context.Background(), `function f(...args) { args }`, nil)
 		assert.Nil(t, err)
 
 		fn, ok := program.First().(*ast.Func)
@@ -591,7 +591,7 @@ func TestRestParameterErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input)
+			_, err := Parse(context.Background(), tt.input, nil)
 			assert.NotNil(t, err)
 			assert.Contains(t, err.Error(), tt.expected)
 		})
@@ -600,7 +600,7 @@ func TestRestParameterErrors(t *testing.T) {
 
 func TestSpreadOperator(t *testing.T) {
 	t.Run("spread in list", func(t *testing.T) {
-		program, err := Parse(context.Background(), `[1, ...arr, 2]`)
+		program, err := Parse(context.Background(), `[1, ...arr, 2]`, nil)
 		assert.Nil(t, err)
 		assert.Len(t, program.Stmts, 1)
 
@@ -615,7 +615,7 @@ func TestSpreadOperator(t *testing.T) {
 	})
 
 	t.Run("spread in function call", func(t *testing.T) {
-		program, err := Parse(context.Background(), `f(1, ...args, 2)`)
+		program, err := Parse(context.Background(), `f(1, ...args, 2)`, nil)
 		assert.Nil(t, err)
 
 		call, ok := program.First().(*ast.Call)
@@ -628,7 +628,7 @@ func TestSpreadOperator(t *testing.T) {
 	})
 
 	t.Run("spread in map", func(t *testing.T) {
-		program, err := Parse(context.Background(), `{a: 1, ...obj, b: 2}`)
+		program, err := Parse(context.Background(), `{a: 1, ...obj, b: 2}`, nil)
 		assert.Nil(t, err)
 
 		m, ok := program.First().(*ast.Map)
@@ -644,7 +644,7 @@ func TestSpreadOperator(t *testing.T) {
 }
 
 func TestSpreadAST(t *testing.T) {
-	program, err := Parse(context.Background(), "[...items]")
+	program, err := Parse(context.Background(), "[...items]", nil)
 	assert.Nil(t, err)
 
 	list, ok := program.First().(*ast.List)

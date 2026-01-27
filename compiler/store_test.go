@@ -11,7 +11,7 @@ import (
 )
 
 func compileSource(source string) (*Code, error) {
-	program, err := parser.Parse(context.Background(), source)
+	program, err := parser.Parse(context.Background(), source, nil)
 	if err != nil {
 		return nil, err
 	}

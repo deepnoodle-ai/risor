@@ -22,7 +22,7 @@ func TestFunctionDissasembly(t *testing.T) {
 		42
 		error("kaboom")
 	}`
-	ast, err := parser.Parse(context.Background(), src)
+	ast, err := parser.Parse(context.Background(), src, nil)
 	assert.Nil(t, err)
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"try", "error"}})
 	assert.Nil(t, err)

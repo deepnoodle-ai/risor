@@ -58,7 +58,7 @@ func run(ctx context.Context, source string, opts ...runOpts) (object.Object, er
 
 // Return a new VM that's ready to run the given source code. Used for testing.
 func newVM(ctx context.Context, source string, opts ...runOpts) (*VirtualMachine, error) {
-	ast, err := parser.Parse(ctx, source)
+	ast, err := parser.Parse(ctx, source, nil)
 	if err != nil {
 		return nil, err
 	}

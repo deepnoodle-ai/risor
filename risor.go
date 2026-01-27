@@ -172,11 +172,11 @@ func defaultModules() map[string]object.Object {
 func Compile(source string, opts ...Option) (*bytecode.Code, error) {
 	o := collectOptions(opts...)
 
-	var parserOpts []parser.Option
+	var parserCfg *parser.Config
 	if o.filename != "" {
-		parserOpts = append(parserOpts, parser.WithFilename(o.filename))
+		parserCfg = &parser.Config{Filename: o.filename}
 	}
-	ast, err := parser.Parse(context.Background(), source, parserOpts...)
+	ast, err := parser.Parse(context.Background(), source, parserCfg)
 	if err != nil {
 		return nil, err
 	}

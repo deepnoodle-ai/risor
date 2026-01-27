@@ -36,7 +36,7 @@ func TestAssignmentWithNewline(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		program, err := Parse(context.Background(), tt.input)
+		program, err := Parse(context.Background(), tt.input, nil)
 		require.NoError(t, err, "Parse error for input: %s", tt.input)
 		require.NotNil(t, program)
 		require.Len(t, program.Stmts, 1)
@@ -77,7 +77,7 @@ func TestLiteralsWithNewlines(t *testing.T) {
 		b,
 	) { return a + b }
 	`
-	program, err := Parse(context.Background(), input)
+	program, err := Parse(context.Background(), input, nil)
 	if err != nil {
 		t.Log(err.Error())
 	}
