@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/object"
@@ -147,22 +148,24 @@ func TestBuiltinsFunc(t *testing.T) {
 
 // Test the Compile/Run API
 func TestCompileRun(t *testing.T) {
-	program, err := Compile("1 + 2")
+	ctx := context.Background()
+	program, err := Compile(ctx, "1 + 2")
 	assert.Nil(t, err)
 	assert.NotNil(t, program)
 
-	result, err := Run(context.Background(), program)
+	result, err := Run(ctx, program)
 	assert.Nil(t, err)
 	assert.Equal(t, result, int64(3))
 }
 
 // Test that the same Program can be run multiple times with different env
 func TestProgramReuse(t *testing.T) {
-	program, err := Compile("x + 1", WithEnv(map[string]any{"x": int64(0)}))
+	ctx := context.Background()
+	program, err := Compile(ctx, "x + 1", WithEnv(map[string]any{"x": int64(0)}))
 	assert.Nil(t, err)
 
 	for i := int64(0); i < 10; i++ {
-		result, err := Run(context.Background(), program, WithEnv(map[string]any{"x": i}))
+		result, err := Run(ctx, program, WithEnv(map[string]any{"x": i}))
 		assert.Nil(t, err)
 		assert.Equal(t, result, i+1)
 	}
@@ -170,7 +173,8 @@ func TestProgramReuse(t *testing.T) {
 
 // Test concurrent execution of the same Program
 func TestConcurrentExecution(t *testing.T) {
-	program, err := Compile("x + 1", WithEnv(map[string]any{"x": int64(0)}))
+	ctx := context.Background()
+	program, err := Compile(ctx, "x + 1", WithEnv(map[string]any{"x": int64(0)}))
 	assert.Nil(t, err)
 
 	var wg sync.WaitGroup
@@ -277,8 +281,9 @@ func TestWithRawResultClosure(t *testing.T) {
 
 // Test global name validation between compile and run
 func TestGlobalNameValidation(t *testing.T) {
+	ctx := context.Background()
 	// Compile with x, y, z
-	code, err := Compile("x + y + z", WithEnv(map[string]any{
+	code, err := Compile(ctx, "x + y + z", WithEnv(map[string]any{
 		"x": int64(1),
 		"y": int64(2),
 		"z": int64(3),
@@ -286,7 +291,7 @@ func TestGlobalNameValidation(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Run with same keys - should succeed
-	result, err := Run(context.Background(), code, WithEnv(map[string]any{
+	result, err := Run(ctx, code, WithEnv(map[string]any{
 		"x": int64(10),
 		"y": int64(20),
 		"z": int64(30),
@@ -295,7 +300,7 @@ func TestGlobalNameValidation(t *testing.T) {
 	assert.Equal(t, result, int64(60))
 
 	// Run with missing key - should fail with clear error
-	_, err = Run(context.Background(), code, WithEnv(map[string]any{
+	_, err = Run(ctx, code, WithEnv(map[string]any{
 		"x": int64(1),
 		"y": int64(2),
 		// missing "z"
@@ -305,7 +310,7 @@ func TestGlobalNameValidation(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "z"))
 
 	// Run with extra keys is allowed (only missing keys cause errors)
-	result, err = Run(context.Background(), code, WithEnv(map[string]any{
+	result, err = Run(ctx, code, WithEnv(map[string]any{
 		"x":     int64(1),
 		"y":     int64(2),
 		"z":     int64(3),
@@ -313,5 +318,51 @@ func TestGlobalNameValidation(t *testing.T) {
 	}))
 	assert.Nil(t, err)
 	assert.Equal(t, result, int64(6))
+}
+
+// Test resource limits via public API
+func TestResourceLimits(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("step limit exceeded", func(t *testing.T) {
+		// Use list().each() with range to iterate without deep recursion
+		// Need enough iterations to exceed the step limit (checked every 1000 instructions)
+		_, err := Eval(ctx, `let sum = 0; list(range(100000)).each(function(i) { sum = sum + i }); sum`,
+			WithEnv(Builtins()),
+			WithMaxSteps(5000))
+		assert.NotNil(t, err)
+		assert.ErrorIs(t, err, ErrStepLimitExceeded)
+	})
+
+	t.Run("step limit not exceeded", func(t *testing.T) {
+		result, err := Eval(ctx, `let sum = 0; list(range(10)).each(function(i) { sum = sum + i }); sum`,
+			WithEnv(Builtins()),
+			WithMaxSteps(100000))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(45))
+	})
+
+	t.Run("stack overflow", func(t *testing.T) {
+		_, err := Eval(ctx, `function f() { f() }; f()`, WithMaxStackDepth(10))
+		assert.NotNil(t, err)
+		assert.ErrorIs(t, err, ErrStackOverflow)
+	})
+
+	t.Run("timeout exceeded", func(t *testing.T) {
+		// Use list().each() with range to iterate without deep recursion
+		_, err := Eval(ctx, `let sum = 0; list(range(1000000)).each(function(i) { sum = sum + i }); sum`,
+			WithEnv(Builtins()),
+			WithTimeout(5*time.Millisecond))
+		assert.NotNil(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("compile cancellation", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel() // Cancel immediately
+		_, err := Compile(cancelCtx, `1 + 2`)
+		assert.NotNil(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+	})
 }
 

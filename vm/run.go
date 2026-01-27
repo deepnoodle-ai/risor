@@ -15,7 +15,10 @@ import (
 
 // Run the given code in a new Virtual Machine and return the result.
 func Run(ctx context.Context, main *bytecode.Code, options ...Option) (object.Object, error) {
-	machine := New(main, options...)
+	machine, err := New(main, options...)
+	if err != nil {
+		return nil, err
+	}
 	if err := machine.Run(ctx); err != nil {
 		return nil, err
 	}
@@ -76,7 +79,7 @@ func newVM(ctx context.Context, source string, opts ...runOpts) (*VirtualMachine
 	if err != nil {
 		return nil, err
 	}
-	return New(main, WithGlobals(globals)), nil
+	return New(main, WithGlobals(globals))
 }
 
 // Builtins to be used in VM tests.

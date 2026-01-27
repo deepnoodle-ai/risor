@@ -2068,15 +2068,13 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 	// Emit PushExcept with placeholders for catch/finally offsets
 	pushExceptPos := c.emit(op.PushExcept, Placeholder, Placeholder)
 
-	// Compile the try body
+	// Compile the try body - its value stays on stack as the expression result
 	if err := c.compileBlock(node.Body); err != nil {
 		return err
 	}
 
-	// Pop the result of the try block (we'll push the final result later)
-	c.emit(op.PopTop)
-
 	// Emit PopExcept (normal completion - removes exception handler)
+	// The try block's value remains on stack
 	c.emit(op.PopExcept)
 
 	// Jump to finally if we have one, otherwise past catch block
@@ -2114,16 +2112,13 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 			c.emit(op.PopTop)
 		}
 
-		// Compile the catch block body
+		// Compile the catch block body - its value stays on stack as the expression result
 		if err := c.compileBlock(catchBlock); err != nil {
 			code.symbols = code.symbols.parent
 			return err
 		}
 
-		// Pop the result of the catch block
-		c.emit(op.PopTop)
-
-		// Exit scope
+		// Exit scope (catch block's value remains on stack)
 		code.symbols = code.symbols.parent
 	}
 
@@ -2141,10 +2136,12 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 			return err
 		}
 
-		// Pop the result of the finally block
+		// Pop the finally block's value - in Kotlin-style semantics, finally
+		// doesn't contribute to the expression result. The try/catch value
+		// is already on the stack underneath.
 		c.emit(op.PopTop)
 
-		// EndFinally will re-raise any pending exception
+		// EndFinally will re-raise any pending exception or complete pending return
 		c.emit(op.EndFinally)
 	}
 
@@ -2176,18 +2173,25 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 	c.changeOperand(jumpAfterTryPos, uint16(jumpDelta))
 
 	// Record the exception handler
+	// Only set FinallyStart if there's actually a finally block
+	handlerFinallyStart := 0
+	if finallyBlock != nil {
+		handlerFinallyStart = finallyStart
+	}
 	handler := &ExceptionHandler{
 		TryStart:     tryStart,
 		TryEnd:       endPos,
 		CatchStart:   catchStart,
-		FinallyStart: finallyStart,
+		FinallyStart: handlerFinallyStart,
 		CatchVarIdx:  catchVarIdx,
 	}
 	c.current.AddExceptionHandler(handler)
 
-	// Try is an expression that evaluates to nil by default
-	// (the actual value handling is more complex and done at runtime)
-	c.emit(op.Nil)
+	// Try is an expression (Kotlin-style):
+	// - If try succeeds: returns try block's value
+	// - If exception caught: returns catch block's value
+	// - Finally block runs for side effects but doesn't affect return value
+	// The value is already on the stack from try or catch block.
 
 	return nil
 }

@@ -384,7 +384,9 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 		startIP = vm.requestedIP
 		vm.requestedIP = 0 // Clear after use
 	}
-	vm.activateCode(0, startIP, codeObj)
+	if _, err := vm.activateCode(0, startIP, codeObj); err != nil {
+		return err
+	}
 
 	// Run the entrypoint until completion
 	return vm.eval(vm.initContext(ctx))
@@ -1403,7 +1405,9 @@ func (vm *VirtualMachine) callFunction(
 	argc = localCount
 
 	// Activate a frame for the function call
-	vm.activateFunction(vm.fp+1, 0, fn, vm.tmp[:argc])
+	if _, err := vm.activateFunction(vm.fp+1, 0, fn, vm.tmp[:argc]); err != nil {
+		return nil, err
+	}
 
 	// Call observer if present and configured to observe calls
 	if vm.observer != nil && vm.observerConfig.ObserveCalls {
@@ -1522,26 +1526,22 @@ func (vm *VirtualMachine) ensureFrameCapacity(fp int) error {
 
 // Activate a frame with the given code. This is typically used to begin
 // running the entrypoint for a module or script.
-func (vm *VirtualMachine) activateCode(fp, ip int, code *loadedCode) *frame {
-	// Ensure we have capacity for this frame (panics on overflow for now,
-	// matching the previous fixed-array behavior)
+func (vm *VirtualMachine) activateCode(fp, ip int, code *loadedCode) (*frame, error) {
 	if err := vm.ensureFrameCapacity(fp); err != nil {
-		panic(err)
+		return nil, err
 	}
 	vm.fp = fp
 	vm.ip = ip
 	vm.activeFrame = &vm.frames[fp]
 	vm.activeFrame.ActivateCode(code)
 	vm.activeCode = code
-	return vm.activeFrame
+	return vm.activeFrame, nil
 }
 
 // Activate a frame with the given function, to implement a function call.
-func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Closure, locals []object.Object) *frame {
-	// Ensure we have capacity for this frame (panics on overflow for now,
-	// matching the previous fixed-array behavior)
+func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Closure, locals []object.Object) (*frame, error) {
 	if err := vm.ensureFrameCapacity(fp); err != nil {
-		panic(err)
+		return nil, err
 	}
 	code := vm.loadCode(fn.Code())
 	returnAddr := vm.ip
@@ -1551,7 +1551,7 @@ func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Closure, local
 	vm.activeFrame = &vm.frames[fp]
 	vm.activeFrame.ActivateFunction(fn, code, returnAddr, returnSp, locals)
 	vm.activeCode = code
-	return vm.activeFrame
+	return vm.activeFrame, nil
 }
 
 // Wrap the *bytecode.Code in a *loadedCode object to make it usable by the VM.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ func disHandler(ctx *cli.Context) error {
 	}
 
 	// Compile the input code
-	compiledCode, err := risor.Compile(code, opts...)
+	compiledCode, err := risor.Compile(context.Background(), code, opts...)
 	if err != nil {
 		return err
 	}

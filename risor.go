@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/risor-io/risor/builtins"
 	"github.com/risor-io/risor/bytecode"
@@ -18,6 +19,12 @@ import (
 	"github.com/risor-io/risor/vm"
 )
 
+// Sentinel errors for resource limits.
+var (
+	ErrStepLimitExceeded = vm.ErrStepLimitExceeded
+	ErrStackOverflow     = vm.ErrStackOverflow
+)
+
 // Option configures a Risor compilation or execution.
 type Option func(*options)
 
@@ -27,6 +34,10 @@ type options struct {
 	observer     vm.Observer
 	typeRegistry *object.TypeRegistry
 	rawResult    bool
+	// Resource limits
+	maxSteps      int64
+	maxStackDepth int
+	timeout       time.Duration
 }
 
 func collectOptions(opts ...Option) *options {
@@ -60,6 +71,15 @@ func (o *options) vmOpts() []vm.Option {
 	}
 	if o.typeRegistry != nil {
 		opts = append(opts, vm.WithTypeRegistry(o.typeRegistry))
+	}
+	if o.maxSteps > 0 {
+		opts = append(opts, vm.WithMaxSteps(o.maxSteps))
+	}
+	if o.maxStackDepth > 0 {
+		opts = append(opts, vm.WithMaxStackDepth(o.maxStackDepth))
+	}
+	if o.timeout > 0 {
+		opts = append(opts, vm.WithTimeout(o.timeout))
 	}
 	return opts
 }
@@ -159,6 +179,54 @@ func WithRawResult() Option {
 	}
 }
 
+// WithMaxSteps sets the maximum number of instructions the VM will execute.
+// If the limit is exceeded, the VM returns ErrStepLimitExceeded.
+// A value of 0 (default) means unlimited.
+//
+// Example:
+//
+//	result, err := risor.Eval(ctx, source, risor.WithMaxSteps(10000))
+//	if errors.Is(err, risor.ErrStepLimitExceeded) {
+//	    // Handle step limit exceeded
+//	}
+func WithMaxSteps(n int64) Option {
+	return func(o *options) {
+		o.maxSteps = n
+	}
+}
+
+// WithMaxStackDepth sets the maximum stack depth for execution.
+// If exceeded, the VM returns ErrStackOverflow.
+// A value of 0 (default) uses the VM's default limit.
+//
+// Example:
+//
+//	result, err := risor.Eval(ctx, source, risor.WithMaxStackDepth(100))
+//	if errors.Is(err, risor.ErrStackOverflow) {
+//	    // Handle stack overflow
+//	}
+func WithMaxStackDepth(n int) Option {
+	return func(o *options) {
+		o.maxStackDepth = n
+	}
+}
+
+// WithTimeout sets a timeout for script execution.
+// If the timeout is exceeded, the VM returns context.DeadlineExceeded.
+// A value of 0 (default) means no timeout.
+//
+// Example:
+//
+//	ctx := context.Background()
+//	result, err := risor.Eval(ctx, source, risor.WithTimeout(100*time.Millisecond))
+//	if errors.Is(err, context.DeadlineExceeded) {
+//	    // Handle timeout
+//	}
+func WithTimeout(d time.Duration) Option {
+	return func(o *options) {
+		o.timeout = d
+	}
+}
 
 // NewTypeRegistry creates a RegistryBuilder for custom type conversions.
 // Use this to add support for custom Go types in Risor scripts.
@@ -271,7 +339,7 @@ func validateGlobals(code *bytecode.Code, env map[string]any) error {
 // Example:
 //
 //	// Compile with env keys "x" and "y"
-//	code, _ := risor.Compile("x + y", risor.WithEnv(map[string]any{"x": 1, "y": 2}))
+//	code, _ := risor.Compile(ctx, "x + y", risor.WithEnv(map[string]any{"x": 1, "y": 2}))
 //
 //	// OK: same keys, different values
 //	result1, _ := risor.Run(ctx, code, risor.WithEnv(map[string]any{"x": 10, "y": 20}))
@@ -281,14 +349,14 @@ func validateGlobals(code *bytecode.Code, env map[string]any) error {
 //
 //	// Introspect required globals
 //	names := code.GlobalNames() // returns []string{"x", "y"}
-func Compile(source string, opts ...Option) (*bytecode.Code, error) {
+func Compile(ctx context.Context, source string, opts ...Option) (*bytecode.Code, error) {
 	o := collectOptions(opts...)
 
 	var parserCfg *parser.Config
 	if o.filename != "" {
 		parserCfg = &parser.Config{Filename: o.filename}
 	}
-	ast, err := parser.Parse(context.Background(), source, parserCfg)
+	ast, err := parser.Parse(ctx, source, parserCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +434,7 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 // the conversion rules. Use WithRawResult() to receive the object.Object
 // directly.
 func Eval(ctx context.Context, source string, opts ...Option) (any, error) {
-	code, err := Compile(source, opts...)
+	code, err := Compile(ctx, source, opts...)
 	if err != nil {
 		return nil, err
 	}

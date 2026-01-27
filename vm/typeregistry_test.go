@@ -49,10 +49,11 @@ func TestWithTypeRegistryOption(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Run with custom registry - the value should be doubled
-	vm := New(code,
+	vm, err := New(code,
 		WithGlobals(map[string]any{"x": 21}),
 		WithTypeRegistry(customRegistry),
 	)
+	assert.Nil(t, err)
 	err = vm.Run(context.Background())
 	assert.Nil(t, err)
 
@@ -86,10 +87,11 @@ func TestTypeRegistryWithGlobalConversion(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Run with custom registry
-	vm := New(code,
+	vm, err := New(code,
 		WithGlobals(map[string]any{"point": Point{X: 10, Y: 20}}),
 		WithTypeRegistry(registry),
 	)
+	assert.Nil(t, err)
 	err = vm.Run(context.Background())
 	assert.Nil(t, err)
 
@@ -118,9 +120,10 @@ func TestRisorValuerWithVM(t *testing.T) {
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"point"}})
 	assert.Nil(t, err)
 
-	vm := New(code,
+	vm, err := New(code,
 		WithGlobals(map[string]any{"point": customPoint{X: 6, Y: 7}}),
 	)
+	assert.Nil(t, err)
 	err = vm.Run(context.Background())
 	assert.Nil(t, err)
 
@@ -138,7 +141,8 @@ func TestTypeRegistryPreservedAcrossRuns(t *testing.T) {
 	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
 
-	vm := New(code, WithTypeRegistry(customRegistry))
+	vm, err := New(code, WithTypeRegistry(customRegistry))
+	assert.Nil(t, err)
 
 	// First run
 	err = vm.Run(context.Background())
@@ -218,7 +222,8 @@ func TestTypeRegistryWithDifferentGlobalTypes(t *testing.T) {
 			code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: globalNames})
 			assert.Nil(t, err)
 
-			vm := New(code, WithGlobals(tt.globals))
+			vm, err := New(code, WithGlobals(tt.globals))
+			assert.Nil(t, err)
 			err = vm.Run(context.Background())
 			assert.Nil(t, err)
 
@@ -241,14 +246,9 @@ func TestTypeRegistryErrorOnInvalidGlobal(t *testing.T) {
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"fn"}})
 	assert.Nil(t, err)
 
-	// New() should panic because of invalid global
-	defer func() {
-		r := recover()
-		assert.NotNil(t, r)
-	}()
-
-	_ = New(code, WithGlobals(globals))
-	t.Fatal("expected panic")
+	// New() should return an error because of invalid global
+	_, err = New(code, WithGlobals(globals))
+	assert.NotNil(t, err)
 }
 
 func TestNewEmptyWithTypeRegistry(t *testing.T) {

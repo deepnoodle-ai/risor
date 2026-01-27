@@ -55,7 +55,7 @@ Every type implements `Equals(other Object) bool`. Equality is symmetric: if
 
 **Numeric types** (cross-type equality allowed):
 
-```risor
+```ts
 5 == 5.0        // true - int equals float
 5 == byte(5)    // true - int equals byte
 5.0 == byte(5)  // true - float equals byte
@@ -65,7 +65,7 @@ Numeric types are compared by value after converting to a common representation.
 
 **Strings and bytes:**
 
-```risor
+```ts
 "hello" == "hello"               // true
 bytes("hello") == bytes("hello") // true
 bytes("hello") == "hello"        // true - bytes can equal string
@@ -73,7 +73,7 @@ bytes("hello") == "hello"        // true - bytes can equal string
 
 **Containers** (deep equality):
 
-```risor
+```ts
 [1, 2, 3] == [1, 2, 3]          // true - element-wise comparison
 [1, 2] == [1, 2, 3]             // false - different lengths
 {a: 1, b: 2} == {b: 2, a: 1}    // true - key order doesn't matter
@@ -117,7 +117,7 @@ Comparison operators (`<`, `>`, `<=`, `>=`) require types to be comparable.
 
 Comparing incompatible types throws a type error:
 
-```risor
+```ts
 "hello" < 5     // type error
 {} < {}         // type error - maps not comparable
 ```
@@ -130,7 +130,7 @@ Lists are compared lexicographically:
 2. First unequal pair determines the result
 3. If all compared elements are equal, shorter list is less
 
-```risor
+```ts
 [1, 2] < [1, 3]     // true - second element differs
 [1, 2] < [1, 2, 3]  // true - shorter is less
 [1, 2, 3] < [1, 2]  // false
@@ -174,7 +174,7 @@ Truthiness is evaluated in:
 
 **Logical operators return values, not booleans:**
 
-```risor
+```ts
 "" || "default"     // "default" - first truthy value
 "hello" && "world"  // "world" - last value if all truthy
 nil && expensive()  // nil - short-circuits, expensive() not called
@@ -202,7 +202,7 @@ enumeration builtins like `keys()`, `values()`, `list()`, `sorted()`, and
 **Map enumeration is deterministic:** Keys are sorted alphabetically, not in
 insertion order. This ensures reproducible behavior across runs.
 
-```risor
+```ts
 keys({c: 3, a: 1, b: 2})  // ["a", "b", "c"] - sorted order
 ```
 
@@ -210,7 +210,7 @@ keys({c: 3, a: 1, b: 2})  // ["a", "b", "c"] - sorted order
 
 The `range` builtin creates a lazy sequence of integers (like Python 3):
 
-```risor
+```ts
 range(5)           // 0, 1, 2, 3, 4
 range(1, 5)        // 1, 2, 3, 4
 range(0, 10, 2)    // 0, 2, 4, 6, 8
@@ -226,7 +226,7 @@ Attributes: `start`, `stop`, `step`
 
 Spread (`...`) uses enumeration order:
 
-```risor
+```ts
 // Lists spread as values
 [...[1, 2, 3]]  // [1, 2, 3]
 
@@ -236,38 +236,27 @@ Spread (`...`) uses enumeration order:
 
 ## Error Handling
 
-Risor uses a Python-like exception model where errors are values that can be
-created, inspected, and thrown.
+Risor uses a Python-like exception model with `try`, `catch`, `finally`, and
+`throw`. Unlike Python, **`try` is an expression** that returns a value
+(Kotlin-style semantics).
 
-### Error Values vs Exceptions
+> **See [exceptions.md](exceptions.md) for comprehensive documentation.**
 
-**Errors are values:**
+### Quick Overview
 
-```risor
-let err = error("file not found")  // Creates error value, does NOT throw
-print(err.message())               // "file not found"
+```ts
+// Try is an expression - returns a value
+let result = try { riskyOperation() } catch e { defaultValue }
+
+// Returns try value on success, catch value on exception
+let x = try { 42 } catch e { -1 }           // x == 42
+let y = try { throw "err" } catch e { -1 }  // y == -1
+
+// Finally runs but doesn't affect the return value
+let z = try { 42 } finally { 999 }          // z == 42 (not 999)
 ```
 
-**Only `throw` triggers exception handling:**
-
-```risor
-throw error("something went wrong")  // Throws exception
-throw "also works"                   // String converted to error
-```
-
-### Try/Catch/Finally
-
-```risor
-try {
-    might_fail()
-} catch e {
-    print(e.message())  // e is an error value
-} finally {
-    cleanup()           // Always runs
-}
-```
-
-**Catch block receives the error as a value.** You can inspect its attributes:
+### Error Attributes
 
 | Attribute    | Type       | Description                                       |
 | ------------ | ---------- | ------------------------------------------------- |
@@ -278,65 +267,6 @@ try {
 | `filename()` | string/nil | Source filename                                   |
 | `source()`   | string/nil | Source line text                                  |
 | `stack()`    | list       | Stack frames as maps                              |
-
-### Error Propagation
-
-1. **Operations that fail throw automatically:**
-
-   ```risor
-   let x = 1 + "foo"  // Throws type error
-   ```
-
-2. **Uncaught errors propagate up the call stack:**
-
-   ```risor
-   func inner() {
-       throw "oops"
-   }
-   func outer() {
-       inner()  // Error propagates through here
-   }
-   outer()      // Error reaches top level
-   ```
-
-3. **Finally blocks always run:**
-
-   ```risor
-   try {
-       throw "error"
-   } finally {
-       print("runs")  // This prints
-   }
-   // Error re-thrown after finally
-   ```
-
-### Stack Traces
-
-Stack traces capture the call chain from deepest frame to root:
-
-```risor
-try {
-    func a() { b() }
-    func b() { throw "error" }
-    a()
-} catch e {
-    for frame in e.stack() {
-        print(frame.function, frame.line)
-    }
-}
-// Output:
-// b 2
-// a 1
-// __main__ 4
-```
-
-Each stack frame contains:
-
-- `function` - Function name (`"__main__"` for top level, `"<anonymous>"` for
-  lambdas)
-- `line` - Line number
-- `column` - Column number
-- `filename` - Source filename (if known)
 
 ### For Embedders
 

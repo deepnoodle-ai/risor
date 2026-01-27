@@ -2,6 +2,7 @@ package risor
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -23,7 +24,7 @@ function multiply(a, b) {
 
 let result = add(x, y)
 `
-	code, err := Compile(source)
+	code, err := Compile(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ let result = add(x, y)
 
 func TestCodeDisassemble(t *testing.T) {
 	source := `let x = 1 + 2`
-	code, err := Compile(source)
+	code, err := Compile(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +92,7 @@ function subtract(a, b) {
 // Anonymous function
 let f = function(x) { return x * 2 }
 `
-	code, err := Compile(source)
+	code, err := Compile(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +130,7 @@ let x = 1
 let y = 2
 let z = x + y
 `
-	code, err := Compile(source)
+	code, err := Compile(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,10 @@
 package vm
 
-import "github.com/risor-io/risor/object"
+import (
+	"time"
+
+	"github.com/risor-io/risor/object"
+)
 
 // Option is a configuration function for a Virtual Machine.
 type Option func(*VirtualMachine)
@@ -56,5 +60,36 @@ func WithObserver(observer Observer) Option {
 func WithTypeRegistry(registry *object.TypeRegistry) Option {
 	return func(vm *VirtualMachine) {
 		vm.typeRegistry = registry
+	}
+}
+
+// WithMaxSteps sets the maximum number of instructions the VM will execute.
+// If the limit is exceeded, the VM will return ErrStepLimitExceeded.
+// A value of 0 (default) means unlimited.
+//
+// Step counting includes all VM instructions, including those executed in
+// callbacks invoked by methods like list.each() and list.map(). This ensures
+// that resource limits work consistently regardless of code structure.
+func WithMaxSteps(n int64) Option {
+	return func(vm *VirtualMachine) {
+		vm.maxSteps = n
+	}
+}
+
+// WithMaxStackDepth sets the maximum stack depth for the VM.
+// If exceeded, the VM will return ErrStackOverflow.
+// A value of 0 (default) uses the global MaxStackDepth constant.
+func WithMaxStackDepth(n int) Option {
+	return func(vm *VirtualMachine) {
+		vm.maxStackDepth = n
+	}
+}
+
+// WithTimeout sets a timeout for VM execution.
+// If the timeout is exceeded, the VM will return context.DeadlineExceeded.
+// A value of 0 (default) means no timeout.
+func WithTimeout(d time.Duration) Option {
+	return func(vm *VirtualMachine) {
+		vm.timeout = d
 	}
 }

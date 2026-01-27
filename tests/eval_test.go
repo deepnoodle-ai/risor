@@ -83,7 +83,7 @@ func getTestCase(name string) (TestCase, error) {
 // This uses the internal VM to get the raw object for test comparison
 func execute(ctx context.Context, input string) (object.Object, error) {
 	// Use the internal vm.Run to get object.Object for accurate test comparison
-	code, err := risor.Compile(input, risor.WithEnv(risor.Builtins()))
+	code, err := risor.Compile(ctx, input, risor.WithEnv(risor.Builtins()))
 	if err != nil {
 		return nil, err
 	}

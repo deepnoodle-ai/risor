@@ -47,7 +47,10 @@ func TestObserverOnStep(t *testing.T) {
 	}
 
 	observer := &TestObserver{}
-	vm := New(code, WithObserver(observer))
+	vm, err := New(code, WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +85,10 @@ let result = add(1, 2)
 	}
 
 	observer := &TestObserver{}
-	vm := New(code, WithObserver(observer))
+	vm, err := New(code, WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +140,10 @@ func TestObserverHaltOnStep(t *testing.T) {
 	// Create custom observer that halts after N steps
 	haltingObserver := &haltingObserverImpl{haltAfter: haltAfter, stepCount: &stepCount}
 
-	vm := New(code, WithObserver(haltingObserver))
+	vm, err := New(code, WithObserver(haltingObserver))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 
 	if err == nil {
@@ -204,7 +213,10 @@ let result = add(1, 2)
 	}
 
 	observer := &StepNoneObserver{}
-	vm := New(code, WithObserver(observer))
+	vm, err := New(code, WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +264,10 @@ let z = x + y`
 	}
 
 	observer := &StepOnLineObserver{}
-	vm := New(code, WithObserver(observer))
+	vm, err := New(code, WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -315,7 +330,10 @@ let f = a + b + c + d + e`
 
 	// First run with StepAll to count total instructions
 	allObserver := &TestObserver{}
-	vm := New(code, WithObserver(allObserver))
+	vm, err := New(code, WithObserver(allObserver))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -325,7 +343,10 @@ let f = a + b + c + d + e`
 	// Now run with StepSampled at interval of 3
 	interval := 3
 	sampledObserver := &StepSampledObserver{Interval: interval}
-	vm2 := New(code, WithObserver(sampledObserver))
+	vm2, err := New(code, WithObserver(sampledObserver))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm2.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -354,7 +375,10 @@ func TestObserverSampleIntervalZero(t *testing.T) {
 
 	// Create observer with SampleInterval of 0
 	observer := &StepSampledObserver{Interval: 0}
-	vm := New(code, WithObserver(observer))
+	vm, err := New(code, WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -413,7 +437,10 @@ foo()
 	}
 
 	observer := &DisabledCallsReturnsObserver{}
-	vm := New(code, WithObserver(observer))
+	vm, err := New(code, WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -520,7 +547,10 @@ let y = id(42)`
 	}
 
 	observer := &StepOnLineObserver{}
-	vm := New(code, WithObserver(observer))
+	vm, err := New(code, WithObserver(observer))
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = vm.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)

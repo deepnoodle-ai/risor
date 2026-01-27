@@ -34,7 +34,8 @@ func TestAddCompilationAndExecution(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, c2, int64(12))
 
-	vm := New(main)
+	vm, err := New(main)
+	assert.Nil(t, err)
 	assert.Nil(t, vm.Run(context.Background()))
 
 	tos, ok := vm.TOS()
@@ -55,7 +56,8 @@ func TestConditional(t *testing.T) {
 	main, err := compiler.Compile(program, nil)
 	assert.Nil(t, err)
 
-	vm := New(main)
+	vm, err := New(main)
+	assert.Nil(t, err)
 	assert.Nil(t, vm.Run(context.Background()))
 
 	tos, ok := vm.TOS()
@@ -1155,15 +1157,18 @@ func TestWithContextCheckInterval(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test with custom interval
-	vm := New(main, WithContextCheckInterval(500))
+	vm, err := New(main, WithContextCheckInterval(500))
+	assert.Nil(t, err)
 	assert.Equal(t, vm.contextCheckInterval, 500)
 
 	// Test with zero (disabled)
-	vm2 := New(main, WithContextCheckInterval(0))
+	vm2, err := New(main, WithContextCheckInterval(0))
+	assert.Nil(t, err)
 	assert.Equal(t, vm2.contextCheckInterval, 0)
 
 	// Test default value
-	vm3 := New(main)
+	vm3, err := New(main)
+	assert.Nil(t, err)
 	assert.Equal(t, vm3.contextCheckInterval, DefaultContextCheckInterval)
 }
 
@@ -1352,7 +1357,8 @@ func TestIncrementalEvaluation(t *testing.T) {
 	main, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
 
-	v := New(main)
+	v, err := New(main)
+	assert.Nil(t, err)
 	assert.Nil(t, v.Run(ctx))
 	value, err := v.Get("x")
 	assert.Nil(t, err)
@@ -2269,4 +2275,120 @@ func TestThrowWithoutCatch(t *testing.T) {
 	_, err := run(context.Background(), `throw "unhandled"`)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "unhandled")
+}
+
+func TestMaxSteps(t *testing.T) {
+	ctx := context.Background()
+	// Use many arithmetic operations to consume steps
+	source := `
+	let x = 0
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x
+	`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Run with a very low step limit - should hit limit quickly
+	vm, err := New(main, WithMaxSteps(50), WithContextCheckInterval(10))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Equal(t, err, ErrStepLimitExceeded)
+}
+
+func TestMaxStepsNotExceeded(t *testing.T) {
+	ctx := context.Background()
+	// Use list().each() with range to sum numbers
+	source := `
+	let sum = 0
+	list(range(10)).each(function(i) { sum = sum + i })
+	sum
+	`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	globals := basicBuiltins()
+	var globalNames []string
+	for k := range globals {
+		globalNames = append(globalNames, k)
+	}
+
+	main, err := compiler.Compile(ast, &compiler.Config{GlobalNames: globalNames})
+	assert.Nil(t, err)
+
+	// Run with a high step limit that won't be exceeded
+	vm, err := New(main, WithGlobals(globals), WithMaxSteps(100000))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.Nil(t, err)
+
+	tos, ok := vm.TOS()
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(45))
+}
+
+func TestMaxStackDepth(t *testing.T) {
+	ctx := context.Background()
+	// Recursive function that will overflow with a low stack limit
+	source := `
+function recurse(n) {
+	if (n > 0) {
+		return recurse(n - 1) + 1
+	}
+	return 0
+}
+recurse(100)
+`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Run with a stack depth limit that will be exceeded
+	vm, err := New(main, WithMaxStackDepth(10))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "stack overflow")
+}
+
+func TestTimeout(t *testing.T) {
+	ctx := context.Background()
+	// Use list().each() with range to iterate for a long time
+	source := `
+	let sum = 0
+	list(range(1000000)).each(function(i) { sum = sum + i })
+	sum
+	`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	globals := basicBuiltins()
+	var globalNames []string
+	for k := range globals {
+		globalNames = append(globalNames, k)
+	}
+
+	main, err := compiler.Compile(ast, &compiler.Config{GlobalNames: globalNames})
+	assert.Nil(t, err)
+
+	// Run with a very short timeout
+	vm, err := New(main, WithGlobals(globals), WithTimeout(5*time.Millisecond))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Equal(t, err, context.DeadlineExceeded)
 }
