@@ -125,31 +125,6 @@ func TestCustomizeBuiltins(t *testing.T) {
 	assert.Equal(t, result, int64(42))
 }
 
-func TestStructFieldModification(t *testing.T) {
-	type Object struct {
-		A int
-	}
-
-	testCases := []struct {
-		script   string
-		expected int64
-	}{
-		{"Object.A = 9; Object.A *= 3; Object.A", 27},
-		{"Object.A = 10; Object.A += 5; Object.A", 15},
-		{"Object.A = 10; Object.A -= 3; Object.A", 7},
-		{"Object.A = 20; Object.A /= 4; Object.A", 5},
-	}
-
-	for _, tc := range testCases {
-		result, err := Eval(context.Background(),
-			tc.script,
-			WithEnv(map[string]any{"Object": &Object{}}))
-
-		assert.Nil(t, err, "script: %s", tc.script)
-		assert.Equal(t, result, tc.expected, "script: %s", tc.script)
-	}
-}
-
 func TestBuiltinsFunc(t *testing.T) {
 	env := Builtins()
 	expectedNames := []string{

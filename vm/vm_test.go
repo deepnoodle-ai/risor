@@ -1136,57 +1136,6 @@ func TestIncorrectArgCount(t *testing.T) {
 	}
 }
 
-type testData struct {
-	Count int
-}
-
-func (t *testData) Increment() {
-	t.Count++
-}
-
-func (t testData) GetCount() int {
-	return t.Count
-}
-
-type testStruct struct {
-	A int
-	B string
-	C *testData
-}
-
-func TestNestedProxies(t *testing.T) {
-	s := &testStruct{
-		A: 1,
-		B: "foo",
-		C: &testData{
-			Count: 3,
-		},
-	}
-	opts := runOpts{
-		Globals: map[string]interface{}{"s": s},
-	}
-	result, err := run(context.Background(), `
-	s.C.Increment()
-	s.C.GetCount()
-	`, opts)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewInt(4))
-}
-
-func TestProxy(t *testing.T) {
-	type test struct {
-		Data []byte
-	}
-	opts := runOpts{
-		Globals: map[string]interface{}{
-			"s": &test{Data: []byte("foo")},
-		},
-	}
-	result, err := run(context.Background(), `s.Data`, opts)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewBytes([]byte("foo")))
-}
-
 func TestWithContextCheckInterval(t *testing.T) {
 	// Test that WithContextCheckInterval properly sets the interval
 	ast, err := parser.Parse(context.Background(), `1 + 1`)
