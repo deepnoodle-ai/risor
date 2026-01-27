@@ -1,10 +1,38 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
 
 ## Project Overview
 
-Risor is a fast, embeddable scripting language for Go developers. Scripts compile to bytecode and run on a lightweight virtual machine. The language integrates Go standard library functions and supports both CLI usage and embedding as a Go library.
+Risor is a fast, embedded scripting language for Go. Scripts compile to bytecode
+and run on a lightweight virtual machine.
+
+We are making major modifications for a new `v2` version of the library.
+
+## Risor Syntax Examples
+
+```ts
+// Functions and closures
+function makeCounter() {
+    let count = 0
+    return function() {
+        count++
+        return count
+    }
+}
+let counter = makeCounter()
+counter() // 1
+counter() // 2
+
+// Arrow functions with list operations
+let numbers = [1, 2, 3, 4, 5]
+numbers.filter(x => x > 2).map(x => x * 2) // [6, 8, 10]
+
+// Destructuring and spread
+let { name, age } = {name: "Alice", age: 30}
+let merged = {...{a: 1}, ...{b: 2}} // {a: 1, b: 2}
+```
 
 ## Build Commands
 
@@ -17,9 +45,6 @@ make bench
 
 # Format code (uses gofumpt)
 make format
-
-# Run go generate and format
-make generate
 
 # Tidy all module dependencies
 make tidy
@@ -37,26 +62,17 @@ cd cmd/risor && go install .
 make extension-install
 ```
 
-## Running a Single Test
-
-```bash
-# Run a specific test
-go test -v -run TestName ./path/to/package
-
-# Run tests in a specific package
-go test ./vm/...
-go test ./parser/...
-```
-
 ## Architecture
 
 ### Execution Pipeline
+
 ```
 Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (execution)
 ```
 
 ### Core Components
-- `lexer/` - Tokenization
+
+- `internal/lexer/` - Tokenization
 - `parser/` - AST construction (recursive descent parser)
 - `compiler/` - Bytecode generation with symbol table for scope tracking
 - `vm/` - Virtual machine execution
@@ -65,51 +81,15 @@ Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (
 - `modules/` - 4 modules: math, rand, regexp, time
 
 ### Entry Points
+
 - **CLI**: `cmd/risor/` - Uses Cobra framework, includes REPL
 - **Language Server**: `cmd/risor-lsp/` - LSP implementation for IDE support
 - **Library API**: `risor.Eval(ctx, source, options...)` in `risor.go`
 
-### Module System
-
-Modules wrap Go standard library packages (e.g., `math`, `rand`, `regexp`, `time`).
-
-**Module pattern:**
-```go
-func Module() *object.Module {
-    return object.NewBuiltinsModule("name", map[string]object.Object{
-        "function1": object.NewBuiltin("function1", Function1),
-    })
-}
-```
-
-**Function signature:**
-```go
-func FunctionName(ctx context.Context, args ...object.Object) object.Object {
-    // Validate arguments, convert types, return results
-}
-```
-
-**Key practices:**
-- Validate arguments with `arg.Require()` or similar
-- Convert types with `object.AsXXX()` functions (e.g., `object.AsString()`)
-- Return errors with `object.NewError()`
-- Each module should include a `.md` documentation file
-
-### Adding Custom Modules
-
-When embedding Risor, add custom modules via:
-
-```go
-env := risor.Builtins()
-env["custom"] = object.NewBuiltinsModule("custom", map[string]object.Object{
-    "myfunc": object.NewBuiltin("myfunc", MyFunc),
-})
-risor.Eval(ctx, source, risor.WithEnv(env))
-```
-
 ### Configuration Options
 
-By default, the Risor environment is empty (secure by default). Use `Builtins()` for the standard library:
+By default, the Risor environment is empty (secure by default). Use `Builtins()`
+for the standard library:
 
 ```go
 // Empty environment (default)
@@ -129,6 +109,7 @@ risor.Eval(ctx, source, risor.WithEnv(env))
 ```
 
 **Options:**
+
 ```go
 risor.WithEnv(map[string]any)    // Provide environment variables
 risor.WithFilename(string)       // Set filename for error messages
@@ -136,14 +117,38 @@ risor.WithObserver(Observer)     // Set execution observer for profiling/debuggi
 ```
 
 **Helpers:**
+
 ```go
 risor.Builtins()                 // Returns standard library as map[string]any
 ```
 
 ## Go Workspace
 
-This is a monorepo using Go workspaces (`go.work`). Core module requires Go 1.23.0+.
+This is a monorepo using Go workspaces (`go.work`).
+
+## Dependencies
+
+This project uses the [Wonton](https://github.com/deepnoodle-ai/wonton) library for:
+
+- `cli` - CLI framework and utilities
+- `assert` - Test assertions
+
+All tests must use Wonton's `assert` package for assertions:
+
+```go
+import "github.com/deepnoodle-ai/wonton/assert"
+
+func TestExample(t *testing.T) {
+    assert.Equal(t, actual, expected)
+    assert.Nil(t, err)
+    assert.True(t, condition)
+}
+```
 
 ## CI/CD
 
-CircleCI runs three jobs: `test` (with codecov), `generate` (verify code generation), `format` (check gofumpt).
+GitHub Actions runs three jobs:
+
+- `test` (with codecov)
+- `generate` (verify code generation)
+- `format` (check gofumpt)
