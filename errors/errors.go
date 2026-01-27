@@ -57,8 +57,6 @@ func FormatStackTrace(frames []StackFrame) string {
 	return b.String()
 }
 
-var typeErrorsAreFatal = false
-
 // FriendlyError is an interface for errors that have a human friendly message
 // in addition to a the lower level default error message.
 type FriendlyError interface {
@@ -73,14 +71,8 @@ type FormattableError interface {
 	ToFormatted() *FormattedError
 }
 
-// FatalError is an interface for errors that may or may not be fatal.
-type FatalError interface {
-	Error() string
-	IsFatal() bool
-}
-
 // EvalError is used to indicate an unrecoverable error that occurred
-// during program evaluation. All EvalErrors are considered fatal errors.
+// during program evaluation.
 type EvalError struct {
 	Err error
 }
@@ -91,10 +83,6 @@ func (r *EvalError) Error() string {
 
 func (r *EvalError) Unwrap() error {
 	return r.Err
-}
-
-func (r *EvalError) IsFatal() bool {
-	return true
 }
 
 func NewEvalError(err error) *EvalError {
@@ -121,10 +109,6 @@ func (a *ArgsError) Unwrap() error {
 	return a.Err
 }
 
-func (a *ArgsError) IsFatal() bool {
-	return true
-}
-
 func NewArgsError(err error) *ArgsError {
 	return &ArgsError{Err: err}
 }
@@ -133,11 +117,9 @@ func ArgsErrorf(format string, args ...any) *ArgsError {
 	return NewArgsError(fmt.Errorf(format, args...))
 }
 
-// TypeError is used to indicate an invalid type was supplied. These may or may
-// not be fatal errors depending on typeErrorsAreFatal setting.
+// TypeError is used to indicate an invalid type was supplied.
 type TypeError struct {
-	Err     error
-	isFatal bool
+	Err error
 }
 
 func (t *TypeError) Error() string {
@@ -148,24 +130,10 @@ func (t *TypeError) Unwrap() error {
 	return t.Err
 }
 
-func (t *TypeError) IsFatal() bool {
-	return t.isFatal
-}
-
 func NewTypeError(err error) *TypeError {
-	return &TypeError{Err: err, isFatal: typeErrorsAreFatal}
+	return &TypeError{Err: err}
 }
 
 func TypeErrorf(format string, args ...any) *TypeError {
 	return NewTypeError(fmt.Errorf(format, args...))
-}
-
-// AreTypeErrorsFatal returns whether type errors are considered fatal.
-func AreTypeErrorsFatal() bool {
-	return typeErrorsAreFatal
-}
-
-// SetTypeErrorsAreFatal sets whether type errors should be considered fatal.
-func SetTypeErrorsAreFatal(fatal bool) {
-	typeErrorsAreFatal = fatal
 }

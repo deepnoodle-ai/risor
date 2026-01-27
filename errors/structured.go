@@ -67,17 +67,6 @@ func (e *StructuredError) Unwrap() error {
 	return e.Cause
 }
 
-// IsFatal returns whether the error is considered fatal (unrecoverable).
-// Type errors respect the typeErrorsAreFatal setting for backward compatibility.
-func (e *StructuredError) IsFatal() bool {
-	switch e.Kind {
-	case ErrType:
-		return typeErrorsAreFatal
-	default:
-		return true
-	}
-}
-
 // FriendlyErrorMessage returns a human-friendly error message with visual
 // context including source snippets and stack traces.
 func (e *StructuredError) FriendlyErrorMessage() string {

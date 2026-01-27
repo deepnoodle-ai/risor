@@ -262,32 +262,6 @@ func TestStructuredError_FriendlyErrorMessage_ZeroLocation(t *testing.T) {
 	assert.False(t, strings.Contains(result, "(0:0)"))
 }
 
-func TestStructuredError_IsFatal(t *testing.T) {
-	// Save and restore the global setting
-	originalSetting := typeErrorsAreFatal
-	defer func() { typeErrorsAreFatal = originalSetting }()
-
-	tests := []struct {
-		name             string
-		kind             ErrorKind
-		typeFatalSetting bool
-		expected         bool
-	}{
-		{"type error when fatal=true", ErrType, true, true},
-		{"type error when fatal=false", ErrType, false, false},
-		{"runtime error always fatal", ErrRuntime, false, true},
-		{"name error always fatal", ErrName, false, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			typeErrorsAreFatal = tt.typeFatalSetting
-			err := &StructuredError{Kind: tt.kind, Message: "test"}
-			assert.Equal(t, err.IsFatal(), tt.expected)
-		})
-	}
-}
-
 func TestStructuredError_Unwrap(t *testing.T) {
 	cause := NewEvalError(EvalErrorf("underlying error"))
 	err := &StructuredError{
@@ -333,7 +307,6 @@ func TestEvalError(t *testing.T) {
 	err := EvalErrorf("something bad: %s", "details")
 
 	assert.Contains(t, err.Error(), "something bad: details")
-	assert.True(t, err.IsFatal())
 
 	// Test Unwrap
 	underlying := err.Unwrap()
@@ -344,34 +317,12 @@ func TestArgsError(t *testing.T) {
 	err := ArgsErrorf("expected %d args, got %d", 2, 3)
 
 	assert.Contains(t, err.Error(), "expected 2 args, got 3")
-	assert.True(t, err.IsFatal())
 }
 
 func TestTypeError(t *testing.T) {
-	// Save and restore the global setting
-	originalSetting := typeErrorsAreFatal
-	defer func() { typeErrorsAreFatal = originalSetting }()
-
-	typeErrorsAreFatal = false
 	err := TypeErrorf("cannot compare %s and %s", "int", "string")
 
 	assert.Contains(t, err.Error(), "cannot compare int and string")
-	assert.False(t, err.IsFatal())
-
-	typeErrorsAreFatal = true
-	err2 := TypeErrorf("test")
-	assert.True(t, err2.IsFatal())
-}
-
-func TestAreTypeErrorsFatal(t *testing.T) {
-	originalSetting := typeErrorsAreFatal
-	defer func() { typeErrorsAreFatal = originalSetting }()
-
-	SetTypeErrorsAreFatal(true)
-	assert.True(t, AreTypeErrorsFatal())
-
-	SetTypeErrorsAreFatal(false)
-	assert.False(t, AreTypeErrorsFatal())
 }
 
 // Tests for codes.go
@@ -414,7 +365,7 @@ func TestErrorCode_Category(t *testing.T) {
 		{E2010, "compile"},
 		{E3001, "runtime"},
 		{E3010, "runtime"},
-		{ErrorCode("E"), "unknown"},    // Too short
+		{ErrorCode("E"), "unknown"},     // Too short
 		{ErrorCode("E0001"), "unknown"}, // Invalid category
 		{ErrorCode("E4001"), "unknown"}, // Unknown category
 	}
@@ -432,48 +383,48 @@ func TestSuggestSimilar(t *testing.T) {
 	candidates := []string{"print", "printf", "println", "sprint", "sprintf"}
 
 	tests := []struct {
-		name       string
-		target     string
-		candidates []string
+		name        string
+		target      string
+		candidates  []string
 		wantAtLeast int // Min number of expected suggestions
-		wantFirst  string
+		wantFirst   string
 	}{
 		{
-			name:       "close match",
-			target:     "prin",
-			candidates: candidates,
+			name:        "close match",
+			target:      "prin",
+			candidates:  candidates,
 			wantAtLeast: 1,
-			wantFirst:  "print",
+			wantFirst:   "print",
 		},
 		{
-			name:       "exact match excluded",
-			target:     "print",
-			candidates: candidates,
+			name:        "exact match excluded",
+			target:      "print",
+			candidates:  candidates,
 			wantAtLeast: 2, // printf and sprint at least
-			wantFirst:  "printf",
+			wantFirst:   "printf",
 		},
 		{
-			name:       "no close matches",
-			target:     "xyz",
-			candidates: candidates,
+			name:        "no close matches",
+			target:      "xyz",
+			candidates:  candidates,
 			wantAtLeast: 0,
 		},
 		{
-			name:       "empty target",
-			target:     "",
-			candidates: candidates,
+			name:        "empty target",
+			target:      "",
+			candidates:  candidates,
 			wantAtLeast: 0,
 		},
 		{
-			name:       "empty candidates",
-			target:     "print",
-			candidates: []string{},
+			name:        "empty candidates",
+			target:      "print",
+			candidates:  []string{},
 			wantAtLeast: 0,
 		},
 		{
-			name:       "short word threshold",
-			target:     "at",
-			candidates: []string{"as", "is", "it", "an"},
+			name:        "short word threshold",
+			target:      "at",
+			candidates:  []string{"as", "is", "it", "an"},
 			wantAtLeast: 2, // At least "as" and "an" are 1 edit away
 		},
 	}
@@ -739,7 +690,6 @@ func TestNewEvalError(t *testing.T) {
 	err := NewEvalError(cause)
 
 	assert.Contains(t, err.Error(), "underlying cause")
-	assert.True(t, err.IsFatal())
 	assert.Equal(t, err.Unwrap(), cause)
 }
 
@@ -748,19 +698,11 @@ func TestNewArgsError(t *testing.T) {
 	err := NewArgsError(cause)
 
 	assert.Contains(t, err.Error(), "bad args")
-	assert.True(t, err.IsFatal())
 	assert.Equal(t, err.Unwrap(), cause)
 }
 
 func TestNewTypeError(t *testing.T) {
-	originalSetting := typeErrorsAreFatal
-	defer func() { typeErrorsAreFatal = originalSetting }()
-
-	typeErrorsAreFatal = true
 	err := NewTypeError(EvalErrorf("test"))
-	assert.True(t, err.IsFatal())
-
-	typeErrorsAreFatal = false
-	err = NewTypeError(EvalErrorf("test"))
-	assert.False(t, err.IsFatal())
+	assert.Contains(t, err.Error(), "test")
+	assert.Equal(t, err.Unwrap().Error(), "test")
 }

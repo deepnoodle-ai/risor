@@ -12,7 +12,6 @@ type (
 	StructuredError = errors.StructuredError
 	ErrorKind       = errors.ErrorKind
 	FriendlyError   = errors.FriendlyError
-	FatalError      = errors.FatalError
 	EvalError       = errors.EvalError
 	ArgsError       = errors.ArgsError
 	TypeError       = errors.TypeError
@@ -30,14 +29,12 @@ const (
 
 // Re-export functions for convenience
 var (
-	FormatStackTrace      = errors.FormatStackTrace
-	NewEvalError          = errors.NewEvalError
-	NewArgsErrorType      = errors.NewArgsError
-	NewTypeError          = errors.NewTypeError
-	NewStructuredError    = errors.NewStructuredError
-	NewStructuredErrorf   = errors.NewStructuredErrorf
-	AreTypeErrorsFatal    = errors.AreTypeErrorsFatal
-	SetTypeErrorsAreFatal = errors.SetTypeErrorsAreFatal
+	FormatStackTrace    = errors.FormatStackTrace
+	NewEvalError        = errors.NewEvalError
+	NewArgsErrorType    = errors.NewArgsError
+	NewTypeError        = errors.NewTypeError
+	NewStructuredError  = errors.NewStructuredError
+	NewStructuredErrorf = errors.NewStructuredErrorf
 )
 
 // Internal functions used by the wrapper functions in object.go
