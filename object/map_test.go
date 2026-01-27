@@ -48,137 +48,95 @@ func TestMapValue(t *testing.T) {
 }
 
 func TestMapSetAttr(t *testing.T) {
-	m := NewMap(nil)
+	m := NewMap(map[string]Object{"key": NewInt(1)})
+
+	// Update existing key works
 	err := m.SetAttr("key", NewInt(100))
 	assert.Nil(t, err)
 	val := m.Get("key")
 	assert.Equal(t, val.(*Int).Value(), int64(100))
 }
 
-func TestMapGetAttrKeys(t *testing.T) {
-	ctx := context.Background()
+func TestMapSetAttrNewKeyError(t *testing.T) {
+	m := NewMap(map[string]Object{"a": NewInt(1)})
+
+	// Adding new key via SetAttr fails
+	err := m.SetAttr("b", NewInt(2))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+
+	// Key was not added
+	_, exists := m.items["b"]
+	assert.False(t, exists)
+}
+
+func TestMapGetAttrReturnsMapValues(t *testing.T) {
+	m := NewMap(map[string]Object{"key": NewInt(42)})
+
+	// GetAttr returns map values
+	val, ok := m.GetAttr("key")
+	assert.True(t, ok)
+	assert.Equal(t, val.(*Int).Value(), int64(42))
+
+	// Missing key returns false
+	_, ok = m.GetAttr("missing")
+	assert.False(t, ok)
+}
+
+func TestMapKeys(t *testing.T) {
 	m := NewMap(map[string]Object{
 		"b": NewInt(2),
 		"a": NewInt(1),
 	})
 
-	keys, ok := m.GetAttr("keys")
-	assert.True(t, ok)
-	result, err := keys.(*Builtin).Call(ctx)
-	assert.Nil(t, err)
-	list := result.(*List)
-	assert.Len(t, list.Value(), 2)
+	keys := m.Keys()
+	assert.Len(t, keys.Value(), 2)
 	// Keys are sorted
-	assert.Equal(t, list.Value()[0].(*String).Value(), "a")
-	assert.Equal(t, list.Value()[1].(*String).Value(), "b")
+	assert.Equal(t, keys.Value()[0].(*String).Value(), "a")
+	assert.Equal(t, keys.Value()[1].(*String).Value(), "b")
 }
 
-func TestMapGetAttrKeysError(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	keys, _ := m.GetAttr("keys")
-	_, err := keys.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrValues(t *testing.T) {
-	ctx := context.Background()
+func TestMapValues(t *testing.T) {
 	m := NewMap(map[string]Object{
 		"b": NewInt(2),
 		"a": NewInt(1),
 	})
 
-	values, ok := m.GetAttr("values")
-	assert.True(t, ok)
-	result, err := values.(*Builtin).Call(ctx)
-	assert.Nil(t, err)
-	list := result.(*List)
-	assert.Len(t, list.Value(), 2)
+	values := m.Values()
+	assert.Len(t, values.Value(), 2)
 	// Values are in key-sorted order
-	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(1))
-	assert.Equal(t, list.Value()[1].(*Int).Value(), int64(2))
+	assert.Equal(t, values.Value()[0].(*Int).Value(), int64(1))
+	assert.Equal(t, values.Value()[1].(*Int).Value(), int64(2))
 }
 
-func TestMapGetAttrValuesError(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	values, _ := m.GetAttr("values")
-	_, err := values.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
+func TestMapListItems(t *testing.T) {
+	m := NewMap(map[string]Object{
+		"b": NewInt(2),
+		"a": NewInt(1),
+	})
+
+	items := m.ListItems()
+	assert.Len(t, items.Value(), 2)
+
+	// Items are key-sorted pairs
+	pair0 := items.Value()[0].(*List).Value()
+	assert.Equal(t, pair0[0].(*String).Value(), "a")
+	assert.Equal(t, pair0[1].(*Int).Value(), int64(1))
+
+	pair1 := items.Value()[1].(*List).Value()
+	assert.Equal(t, pair1[0].(*String).Value(), "b")
+	assert.Equal(t, pair1[1].(*Int).Value(), int64(2))
 }
 
-func TestMapGetAttrGet(t *testing.T) {
-	ctx := context.Background()
+func TestMapClear(t *testing.T) {
 	m := NewMap(map[string]Object{"key": NewInt(42)})
-
-	get, ok := m.GetAttr("get")
-	assert.True(t, ok)
-
-	// Get existing key
-	result, err := get.(*Builtin).Call(ctx, NewString("key"))
-	assert.Nil(t, err)
-	assert.Equal(t, result.(*Int).Value(), int64(42))
-
-	// Get missing key - returns nil
-	result, err = get.(*Builtin).Call(ctx, NewString("missing"))
-	assert.Nil(t, err)
-	assert.Equal(t, result, Nil)
-
-	// Get missing key with default
-	result, err = get.(*Builtin).Call(ctx, NewString("missing"), NewString("default"))
-	assert.Nil(t, err)
-	assert.Equal(t, result.(*String).Value(), "default")
-}
-
-func TestMapGetAttrGetErrors(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	get, _ := m.GetAttr("get")
-
-	// No args
-	_, err := get.(*Builtin).Call(ctx)
-	assert.NotNil(t, err)
-
-	// Too many args
-	_, err = get.(*Builtin).Call(ctx, NewString("a"), NewString("b"), NewString("c"))
-	assert.NotNil(t, err)
-
-	// Wrong type for key
-	_, err = get.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrClear(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(map[string]Object{"key": NewInt(42)})
-
-	clear, ok := m.GetAttr("clear")
-	assert.True(t, ok)
-
-	result, err := clear.(*Builtin).Call(ctx)
-	assert.Nil(t, err)
-	assert.Equal(t, result, m)
+	m.Clear()
 	assert.Equal(t, m.Size(), 0)
 }
 
-func TestMapGetAttrClearError(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	clear, _ := m.GetAttr("clear")
-	_, err := clear.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrCopy(t *testing.T) {
-	ctx := context.Background()
+func TestMapCopy(t *testing.T) {
 	m := NewMap(map[string]Object{"key": NewInt(42)})
-
-	copyFn, ok := m.GetAttr("copy")
-	assert.True(t, ok)
-
-	result, err := copyFn.(*Builtin).Call(ctx)
-	assert.Nil(t, err)
-	copyMap := result.(*Map)
+	copyMap := m.Copy()
 
 	// Copy has same values
 	assert.Equal(t, copyMap.Get("key").(*Int).Value(), int64(42))
@@ -188,164 +146,45 @@ func TestMapGetAttrCopy(t *testing.T) {
 	assert.Equal(t, copyMap.Get("key").(*Int).Value(), int64(42))
 }
 
-func TestMapGetAttrCopyError(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	copyFn, _ := m.GetAttr("copy")
-	_, err := copyFn.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrItems(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(map[string]Object{
-		"b": NewInt(2),
-		"a": NewInt(1),
-	})
-
-	items, ok := m.GetAttr("items")
-	assert.True(t, ok)
-
-	result, err := items.(*Builtin).Call(ctx)
-	assert.Nil(t, err)
-	list := result.(*List)
-	assert.Len(t, list.Value(), 2)
-
-	// Items are key-sorted pairs
-	pair0 := list.Value()[0].(*List).Value()
-	assert.Equal(t, pair0[0].(*String).Value(), "a")
-	assert.Equal(t, pair0[1].(*Int).Value(), int64(1))
-
-	pair1 := list.Value()[1].(*List).Value()
-	assert.Equal(t, pair1[0].(*String).Value(), "b")
-	assert.Equal(t, pair1[1].(*Int).Value(), int64(2))
-}
-
-func TestMapGetAttrItemsError(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	items, _ := m.GetAttr("items")
-	_, err := items.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrPop(t *testing.T) {
-	ctx := context.Background()
+func TestMapPop(t *testing.T) {
 	m := NewMap(map[string]Object{"key": NewInt(42)})
 
-	pop, ok := m.GetAttr("pop")
-	assert.True(t, ok)
-
 	// Pop existing key
-	result, err := pop.(*Builtin).Call(ctx, NewString("key"))
-	assert.Nil(t, err)
+	result := m.Pop("key", nil)
 	assert.Equal(t, result.(*Int).Value(), int64(42))
 	assert.Equal(t, m.Size(), 0)
 
 	// Pop missing key without default - returns nil
-	result, err = pop.(*Builtin).Call(ctx, NewString("missing"))
-	assert.Nil(t, err)
+	result = m.Pop("missing", nil)
 	assert.Equal(t, result, Nil)
 
 	// Pop missing key with default
-	result, err = pop.(*Builtin).Call(ctx, NewString("missing"), NewString("default"))
-	assert.Nil(t, err)
+	result = m.Pop("missing", NewString("default"))
 	assert.Equal(t, result.(*String).Value(), "default")
 }
 
-func TestMapGetAttrPopErrors(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	pop, _ := m.GetAttr("pop")
-
-	// No args
-	_, err := pop.(*Builtin).Call(ctx)
-	assert.NotNil(t, err)
-
-	// Too many args
-	_, err = pop.(*Builtin).Call(ctx, NewString("a"), NewString("b"), NewString("c"))
-	assert.NotNil(t, err)
-
-	// Wrong type for key
-	_, err = pop.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrSetDefault(t *testing.T) {
-	ctx := context.Background()
+func TestMapSetDefault(t *testing.T) {
 	m := NewMap(map[string]Object{"existing": NewInt(1)})
 
-	setdefault, ok := m.GetAttr("setdefault")
-	assert.True(t, ok)
-
 	// Set default for missing key
-	result, err := setdefault.(*Builtin).Call(ctx, NewString("new"), NewInt(99))
-	assert.Nil(t, err)
+	result := m.SetDefault("new", NewInt(99))
 	assert.Equal(t, result.(*Int).Value(), int64(99))
 	assert.Equal(t, m.Get("new").(*Int).Value(), int64(99))
 
 	// Set default for existing key - returns existing value
-	result, err = setdefault.(*Builtin).Call(ctx, NewString("existing"), NewInt(999))
-	assert.Nil(t, err)
+	result = m.SetDefault("existing", NewInt(999))
 	assert.Equal(t, result.(*Int).Value(), int64(1))
 }
 
-func TestMapGetAttrSetDefaultErrors(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	setdefault, _ := m.GetAttr("setdefault")
-
-	// Wrong arg count
-	_, err := setdefault.(*Builtin).Call(ctx, NewString("key"))
-	assert.NotNil(t, err)
-
-	// Wrong type for key
-	_, err = setdefault.(*Builtin).Call(ctx, NewInt(1), NewInt(2))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrUpdate(t *testing.T) {
-	ctx := context.Background()
+func TestMapUpdate(t *testing.T) {
 	m := NewMap(map[string]Object{"a": NewInt(1)})
-
-	update, ok := m.GetAttr("update")
-	assert.True(t, ok)
-
 	other := NewMap(map[string]Object{"b": NewInt(2), "a": NewInt(10)})
-	result, err := update.(*Builtin).Call(ctx, other)
-	assert.Nil(t, err)
-	assert.Equal(t, result, m)
+
+	m.Update(other)
 
 	// Updated
 	assert.Equal(t, m.Get("a").(*Int).Value(), int64(10))
 	assert.Equal(t, m.Get("b").(*Int).Value(), int64(2))
-}
-
-func TestMapGetAttrUpdateErrors(t *testing.T) {
-	ctx := context.Background()
-	m := NewMap(nil)
-	update, _ := m.GetAttr("update")
-
-	// Wrong arg count
-	_, err := update.(*Builtin).Call(ctx)
-	assert.NotNil(t, err)
-
-	// Wrong type
-	_, err = update.(*Builtin).Call(ctx, NewInt(1))
-	assert.NotNil(t, err)
-}
-
-func TestMapGetAttrFallback(t *testing.T) {
-	m := NewMap(map[string]Object{"key": NewInt(42)})
-
-	// Falls back to getting value from map
-	val, ok := m.GetAttr("key")
-	assert.True(t, ok)
-	assert.Equal(t, val.(*Int).Value(), int64(42))
-
-	// Missing key
-	_, ok = m.GetAttr("missing")
-	assert.False(t, ok)
 }
 
 func TestMapGet(t *testing.T) {

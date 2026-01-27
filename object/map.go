@@ -53,133 +53,17 @@ func (m *Map) Value() map[string]Object {
 }
 
 func (m *Map) SetAttr(name string, value Object) error {
+	// Dot syntax only updates existing keys. Use bracket syntax to add new keys.
+	if _, exists := m.items[name]; !exists {
+		return fmt.Errorf("key error: %q does not exist (use m[%q] = value to add new keys)", name, name)
+	}
 	m.Set(name, value)
 	return nil
 }
 
 func (m *Map) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "keys":
-		return &Builtin{
-			name: "map.keys",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("map.keys: expected 0 arguments, got %d", len(args))
-				}
-				return m.Keys(), nil
-			},
-		}, true
-	case "values":
-		return &Builtin{
-			name: "map.values",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("map.values: expected 0 arguments, got %d", len(args))
-				}
-				return m.Values(), nil
-			},
-		}, true
-	case "get":
-		return &Builtin{
-			name: "map.get",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) < 1 || len(args) > 2 {
-					return nil, fmt.Errorf("map.get: expected 1-2 arguments, got %d", len(args))
-				}
-				key, err := AsString(args[0])
-				if err != nil {
-					return nil, err
-				}
-				value, found := m.items[key]
-				if !found {
-					if len(args) == 2 {
-						return args[1], nil
-					}
-					return Nil, nil
-				}
-				return value, nil
-			},
-		}, true
-	case "clear":
-		return &Builtin{
-			name: "map.clear",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("map.clear: expected 0 arguments, got %d", len(args))
-				}
-				m.Clear()
-				return m, nil
-			},
-		}, true
-	case "copy":
-		return &Builtin{
-			name: "map.copy",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("map.copy: expected 0 arguments, got %d", len(args))
-				}
-				return m.Copy(), nil
-			},
-		}, true
-	case "items":
-		return &Builtin{
-			name: "map.items",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("map.items: expected 0 arguments, got %d", len(args))
-				}
-				return m.ListItems(), nil
-			},
-		}, true
-	case "pop":
-		return &Builtin{
-			name: "map.pop",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				nArgs := len(args)
-				if nArgs < 1 || nArgs > 2 {
-					return nil, fmt.Errorf("map.pop: expected 1-2 arguments, got %d", len(args))
-				}
-				key, err := AsString(args[0])
-				if err != nil {
-					return nil, err
-				}
-				var def Object
-				if nArgs == 2 {
-					def = args[1]
-				}
-				return m.Pop(key, def), nil
-			},
-		}, true
-	case "setdefault":
-		return &Builtin{
-			name: "map.setdefault",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 2 {
-					return nil, fmt.Errorf("map.setdefault: expected 2 arguments, got %d", len(args))
-				}
-				key, err := AsString(args[0])
-				if err != nil {
-					return nil, err
-				}
-				return m.SetDefault(key, args[1]), nil
-			},
-		}, true
-	case "update":
-		return &Builtin{
-			name: "map.update",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("map.update: expected 1 argument, got %d", len(args))
-				}
-				other, err := AsMap(args[0])
-				if err != nil {
-					return nil, err
-				}
-				m.Update(other)
-				return m, nil
-			},
-		}, true
-	}
+	// Map dot syntax only accesses keys. Use keys(m) for key list,
+	// getattr(m, "key", default) for safe access with default.
 	o, ok := m.items[name]
 	return o, ok
 }

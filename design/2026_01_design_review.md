@@ -820,22 +820,36 @@ This simplifies the code and eliminates the panic bug. The `CallFunc` context me
 
 The `sorted()` builtin also uses `Callable`, allowing both builtins and closures as custom comparators.
 
-### 18.11 Attribute Name Collisions in Map
+### 18.11 Map Attribute Access Semantics
 
-**Status: RESOLVED** — Keys now take priority over methods in `Map.GetAttr`.
+**Status: RESOLVED** — Map dot syntax now has clear, predictable semantics.
 
-Map keys are checked first; methods are only returned when no key matches. This means:
+**GetAttr (reading):** Returns map keys only. No methods on maps.
+
+**SetAttr (writing):** Updates existing keys only. Use bracket syntax to add new keys.
 
 ```risor
-let m = {"keys": "my data", "name": "test"}
-m.keys           // "my data" (the key's value)
-m["keys"]        // "my data" (same)
-keys(m)          // ["keys", "name"] (builtin function)
-m.name           // "test"
-m.values()       // method, since no "values" key exists
+let m = {"name": "test"}
+
+// Reading - dot syntax accesses keys only
+m.name              // "test"
+m.missing           // error: key not found
+keys(m)             // ["name"] (use builtin)
+getattr(m, "name")  // "test" (alternative)
+getattr(m, "x", 0)  // 0 (with default)
+
+// Writing - dot only updates, brackets can add
+m.name = "new"      // works (updates existing key)
+m.foo = "bar"       // error: key "foo" does not exist
+m["foo"] = "bar"    // works (adds new key)
 ```
 
-Use `keys(m)`, `getattr(m, "method")`, or bracket syntax to access methods when a key shadows them.
+This design:
+- Treats maps as pure data containers
+- Dot syntax = known structure (read or update existing keys)
+- Bracket syntax = dynamic access (add, computed keys)
+- Prevents typos from silently creating wrong keys
+- No method shadowing issues — use `keys(m)`, `getattr()` builtins
 
 ### 18.12 Conversion Error Signaling
 
