@@ -475,18 +475,18 @@ func TestMapShorthand(t *testing.T) {
 		// First item: key="a", value=ident(a)
 		key0, ok := m.Items[0].Key.(*ast.String)
 		assert.True(t, ok)
-		assert.Equal(t, "a", key0.Value)
+		assert.Equal(t, key0.Value, "a")
 		val0, ok := m.Items[0].Value.(*ast.Ident)
 		assert.True(t, ok)
-		assert.Equal(t, "a", val0.Name)
+		assert.Equal(t, val0.Name, "a")
 
 		// Second item: key="b", value=ident(b)
 		key1, ok := m.Items[1].Key.(*ast.String)
 		assert.True(t, ok)
-		assert.Equal(t, "b", key1.Value)
+		assert.Equal(t, key1.Value, "b")
 		val1, ok := m.Items[1].Value.(*ast.Ident)
 		assert.True(t, ok)
-		assert.Equal(t, "b", val1.Name)
+		assert.Equal(t, val1.Name, "b")
 	})
 
 	t.Run("mixed shorthand and explicit", func(t *testing.T) {
@@ -501,17 +501,17 @@ func TestMapShorthand(t *testing.T) {
 		// Item 0: shorthand a
 		key0, ok := m.Items[0].Key.(*ast.String)
 		assert.True(t, ok)
-		assert.Equal(t, "a", key0.Value)
+		assert.Equal(t, key0.Value, "a")
 
 		// Item 1: explicit b: 2
 		key1, ok := m.Items[1].Key.(*ast.Ident)
 		assert.True(t, ok)
-		assert.Equal(t, "b", key1.Name)
+		assert.Equal(t, key1.Name, "b")
 
 		// Item 2: shorthand c
 		key2, ok := m.Items[2].Key.(*ast.String)
 		assert.True(t, ok)
-		assert.Equal(t, "c", key2.Value)
+		assert.Equal(t, key2.Value, "c")
 	})
 
 	t.Run("shorthand with default", func(t *testing.T) {
@@ -525,11 +525,11 @@ func TestMapShorthand(t *testing.T) {
 
 		key, ok := m.Items[0].Key.(*ast.String)
 		assert.True(t, ok)
-		assert.Equal(t, "a", key.Value)
+		assert.Equal(t, key.Value, "a")
 
 		defaultVal, ok := m.Items[0].Value.(*ast.DefaultValue)
 		assert.True(t, ok)
-		assert.Equal(t, "a", defaultVal.Name.Name)
+		assert.Equal(t, defaultVal.Name.Name, "a")
 	})
 }
 

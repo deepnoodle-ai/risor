@@ -980,8 +980,8 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
 		assert.True(t, ok)
 		assert.Len(t, dp.Bindings, 2)
-		assert.Equal(t, "a", dp.Bindings[0].Key)
-		assert.Equal(t, "b", dp.Bindings[1].Key)
+		assert.Equal(t, dp.Bindings[0].Key, "a")
+		assert.Equal(t, dp.Bindings[1].Key, "b")
 	})
 
 	t.Run("object destructure with alias", func(t *testing.T) {
@@ -995,10 +995,10 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
 		assert.True(t, ok)
 		assert.Len(t, dp.Bindings, 2)
-		assert.Equal(t, "name", dp.Bindings[0].Key)
-		assert.Equal(t, "n", dp.Bindings[0].Alias)
-		assert.Equal(t, "value", dp.Bindings[1].Key)
-		assert.Equal(t, "v", dp.Bindings[1].Alias)
+		assert.Equal(t, dp.Bindings[0].Key, "name")
+		assert.Equal(t, dp.Bindings[0].Alias, "n")
+		assert.Equal(t, dp.Bindings[1].Key, "value")
+		assert.Equal(t, dp.Bindings[1].Alias, "v")
 	})
 
 	t.Run("object destructure with default", func(t *testing.T) {
@@ -1012,12 +1012,12 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
 		assert.True(t, ok)
 		assert.Len(t, dp.Bindings, 1)
-		assert.Equal(t, "a", dp.Bindings[0].Key)
+		assert.Equal(t, dp.Bindings[0].Key, "a")
 		assert.NotNil(t, dp.Bindings[0].Default)
 
 		defaultInt, ok := dp.Bindings[0].Default.(*ast.Int)
 		assert.True(t, ok)
-		assert.Equal(t, int64(10), defaultInt.Value)
+		assert.Equal(t, defaultInt.Value, int64(10))
 	})
 
 	t.Run("object destructure with multiple defaults", func(t *testing.T) {
@@ -1032,7 +1032,7 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		assert.Len(t, dp.Bindings, 3)
 
 		for i, key := range []string{"a", "b", "c"} {
-			assert.Equal(t, key, dp.Bindings[i].Key)
+			assert.Equal(t, dp.Bindings[i].Key, key)
 			assert.NotNil(t, dp.Bindings[i].Default)
 		}
 	})
@@ -1049,15 +1049,15 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		assert.Len(t, dp.Bindings, 3)
 
 		// x - no default
-		assert.Equal(t, "x", dp.Bindings[0].Key)
+		assert.Equal(t, dp.Bindings[0].Key, "x")
 		assert.Nil(t, dp.Bindings[0].Default)
 
 		// y = 10 - has default
-		assert.Equal(t, "y", dp.Bindings[1].Key)
+		assert.Equal(t, dp.Bindings[1].Key, "y")
 		assert.NotNil(t, dp.Bindings[1].Default)
 
 		// z - no default
-		assert.Equal(t, "z", dp.Bindings[2].Key)
+		assert.Equal(t, dp.Bindings[2].Key, "z")
 		assert.Nil(t, dp.Bindings[2].Default)
 	})
 
@@ -1072,8 +1072,8 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
 		assert.True(t, ok)
 		assert.Len(t, dp.Elements, 2)
-		assert.Equal(t, "a", dp.Elements[0].Name.Name)
-		assert.Equal(t, "b", dp.Elements[1].Name.Name)
+		assert.Equal(t, dp.Elements[0].Name.Name, "a")
+		assert.Equal(t, dp.Elements[1].Name.Name, "b")
 	})
 
 	t.Run("mixed regular and destructure params", func(t *testing.T) {

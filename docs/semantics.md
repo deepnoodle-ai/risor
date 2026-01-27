@@ -234,6 +234,140 @@ Spread (`...`) uses enumeration order:
 [...{b: 2, a: 1}]  // ["a", "b"]
 ```
 
+## Map Shorthand Syntax
+
+Maps support shorthand syntax when keys match variable names:
+
+```ts
+let name = "Alice"
+let age = 30
+
+// Shorthand: {name, age} is equivalent to {name: name, age: age}
+let person = {name, age}  // {name: "Alice", age: 30}
+
+// Mixed shorthand and explicit
+let x = 1
+let data = {x, y: 2, z: 3}  // {x: 1, y: 2, z: 3}
+```
+
+**Shorthand with defaults** (destructuring contexts only):
+
+```ts
+// In destructuring, = provides a default value
+let {a, b = 10} = {a: 1}  // a == 1, b == 10
+```
+
+## Destructuring
+
+Destructuring extracts values from maps and lists into variables.
+
+### Object Destructuring
+
+Extract properties from maps by key name:
+
+```ts
+let user = {name: "Alice", age: 30, city: "NYC"}
+
+// Basic destructuring
+let {name, age} = user  // name == "Alice", age == 30
+
+// With alias (rename variable)
+let {name: userName} = user  // userName == "Alice"
+
+// With default value
+let {role = "guest"} = user  // role == "guest" (not in user)
+
+// Combined alias and default
+let {status: userStatus = "active"} = user  // userStatus == "active"
+```
+
+### Array Destructuring
+
+Extract elements from lists by position:
+
+```ts
+let pair = [10, 20]
+
+// Basic destructuring - must match element count
+let [x, y] = pair  // x == 10, y == 20
+
+// Use _ to ignore elements
+let coords = [10, 20, 30]
+let [first, _, third] = coords  // first == 10, third == 30
+let [head, _, _] = coords       // head == 10, ignore rest
+
+// With default value (for missing elements)
+let [a, b, c = 0] = pair  // a == 10, b == 20, c == 0
+```
+
+### Destructuring in Function Parameters
+
+Functions can destructure arguments directly in the parameter list:
+
+```ts
+// Object destructuring parameter
+function greet({name, age}) {
+    return "Hello " + name + ", age " + string(age)
+}
+greet({name: "Alice", age: 30})  // "Hello Alice, age 30"
+
+// With defaults
+function connect({host = "localhost", port = 8080}) {
+    return host + ":" + string(port)
+}
+connect({})                    // "localhost:8080"
+connect({port: 3000})          // "localhost:3000"
+
+// Array destructuring parameter
+function sum([a, b]) {
+    return a + b
+}
+sum([1, 2])  // 3
+
+// Arrow functions with destructuring
+let getX = ({x}) => x
+getX({x: 42, y: 10})  // 42
+
+let first = ([a, b]) => a
+first([1, 2])  // 1
+```
+
+### Destructuring Semantics
+
+**Missing keys:** Accessing a missing key yields `nil` (or the default if provided).
+
+```ts
+let {missing} = {}           // missing == nil
+let {missing = "default"} = {}  // missing == "default"
+```
+
+**Extra keys:** Extra keys in the source are ignored.
+
+```ts
+let {a} = {a: 1, b: 2, c: 3}  // a == 1, b and c ignored
+```
+
+**Type requirements:**
+
+- Object destructuring requires a `map` value
+- Array destructuring requires a `list` value
+- Type mismatch throws a runtime error
+
+```ts
+let {a} = [1, 2]     // runtime error: expected map
+let [x] = {a: 1}     // runtime error: expected list
+```
+
+**Array count matching:** Array destructuring requires patterns to match list
+length (use `_` to ignore elements, or defaults for missing elements).
+
+```ts
+let [a, b] = [1, 2, 3]      // runtime error: count mismatch
+let [a, b, _] = [1, 2, 3]   // ok: a == 1, b == 2
+let [a, b, c] = [1, 2]      // runtime error: count mismatch
+let [a, b, c = 0] = [1, 2]  // ok: c gets default
+```
+
 ## Error Handling
 
 Risor uses a Python-like exception model with `try`, `catch`, `finally`, and

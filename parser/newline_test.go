@@ -145,11 +145,11 @@ func TestMethodChainingDoesNotAffectOtherOperators(t *testing.T) {
 		numStmts int
 	}{
 		// Operators that should NOT chain across newlines
-		{"newline before +", "x\n+y", 2},     // +y is unary plus on y (separate stmt)
-		{"newline before -", "x\n-y", 2},     // -y is unary minus on y (separate stmt)
-		{"newline before [", "arr\n[0]", 2},  // [0] is a list literal
-		{"newline before |", "x\n| y", 2},    // | is pipe operator
-		{"newline before (", "f\n(x)", 2},    // (x) is grouped expression
+		{"newline before +", "x\n+y", 2},    // +y is unary plus on y (separate stmt)
+		{"newline before -", "x\n-y", 2},    // -y is unary minus on y (separate stmt)
+		{"newline before [", "arr\n[0]", 2}, // [0] is a list literal
+		{"newline before |", "x\n| y", 2},   // | is pipe operator
+		{"newline before (", "f\n(x)", 2},   // (x) is grouped expression
 	}
 
 	for _, tt := range tests {
