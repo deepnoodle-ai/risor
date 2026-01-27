@@ -31,16 +31,6 @@ func (b *Bool) Inspect() string {
 	return fmt.Sprintf("%t", b.value)
 }
 
-func (b *Bool) HashKey() HashKey {
-	var value int64
-	if b.value {
-		value = 1
-	} else {
-		value = 0
-	}
-	return HashKey{Type: b.Type(), IntValue: value}
-}
-
 func (b *Bool) Interface() interface{} {
 	return b.value
 }

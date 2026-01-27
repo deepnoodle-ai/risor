@@ -32,10 +32,6 @@ func (n *NilType) Interface() interface{} {
 	return nil
 }
 
-func (n *NilType) HashKey() HashKey {
-	return HashKey{Type: n.Type()}
-}
-
 func (n *NilType) Compare(other Object) (int, error) {
 	if _, ok := other.(*NilType); ok {
 		return 0, nil

@@ -32,10 +32,6 @@ func (b *Byte) Inspect() string {
 	return fmt.Sprintf("%d", b.value)
 }
 
-func (b *Byte) HashKey() HashKey {
-	return HashKey{Type: b.Type(), IntValue: int64(b.value)}
-}
-
 func (b *Byte) Interface() interface{} {
 	return b.value
 }

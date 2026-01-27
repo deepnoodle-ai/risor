@@ -41,10 +41,6 @@ func (s *String) String() string {
 	return s.value
 }
 
-func (s *String) HashKey() HashKey {
-	return HashKey{Type: s.Type(), StrValue: s.value}
-}
-
 func (s *String) GetAttr(name string) (Object, bool) {
 	switch name {
 	case "contains":

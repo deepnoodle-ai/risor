@@ -30,21 +30,6 @@ func TestBoolInspect(t *testing.T) {
 	assert.Equal(t, object.False.Inspect(), "false")
 }
 
-func TestBoolHashKey(t *testing.T) {
-	trueKey := object.True.HashKey()
-	falseKey := object.False.HashKey()
-
-	assert.Equal(t, trueKey.Type, object.BOOL)
-	assert.Equal(t, trueKey.IntValue, int64(1))
-
-	assert.Equal(t, falseKey.Type, object.BOOL)
-	assert.Equal(t, falseKey.IntValue, int64(0))
-
-	// Same values should have same hash
-	assert.Equal(t, object.NewBool(true).HashKey(), trueKey)
-	assert.Equal(t, object.NewBool(false).HashKey(), falseKey)
-}
-
 func TestBoolInterface(t *testing.T) {
 	assert.Equal(t, object.True.Interface(), true)
 	assert.Equal(t, object.False.Interface(), false)

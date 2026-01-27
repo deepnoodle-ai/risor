@@ -31,10 +31,6 @@ func (r *Regexp) Interface() interface{} {
 	return r.value
 }
 
-func (r *Regexp) HashKey() object.HashKey {
-	return object.HashKey{Type: r.Type(), StrValue: r.value.String()}
-}
-
 func (r *Regexp) Compare(other object.Object) (int, error) {
 	typeComp := object.CompareTypes(r, other)
 	if typeComp != 0 {

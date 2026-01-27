@@ -84,16 +84,3 @@ func TestStringGetItem(t *testing.T) {
 		}
 	}
 }
-
-func TestStringHashKey(t *testing.T) {
-	a := NewString("hello")
-	b := NewString("hello")
-	c := NewString("goodbye")
-	d := NewString("goodbye")
-
-	assert.Equal(t, b.HashKey(), a.HashKey())
-	assert.Equal(t, d.HashKey(), c.HashKey())
-	assert.NotEqual(t, c.HashKey(), a.HashKey())
-
-	assert.Equal(t, a.HashKey(), HashKey{Type: STRING, StrValue: "hello"})
-}

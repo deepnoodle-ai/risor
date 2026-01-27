@@ -744,30 +744,6 @@ func TestGetAttrErrors(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestIsHashable(t *testing.T) {
-	ctx := context.Background()
-
-	// Hashable types
-	result, err := IsHashable(ctx, object.NewString("hello"))
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.True)
-
-	result, err = IsHashable(ctx, object.NewInt(42))
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.True)
-
-	// Non-hashable types
-	result, err = IsHashable(ctx, object.NewList([]object.Object{}))
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.False)
-}
-
-func TestIsHashableErrors(t *testing.T) {
-	ctx := context.Background()
-	_, err := IsHashable(ctx)
-	assert.NotNil(t, err)
-}
-
 func TestFilter(t *testing.T) {
 	ctx := context.Background()
 

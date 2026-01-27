@@ -136,12 +136,6 @@ type Callable interface {
 	Call(ctx context.Context, args ...Object) (Object, error)
 }
 
-// Hashable types can be hashed and consequently used in a set.
-type Hashable interface {
-	// Hash returns a hash key for the given object.
-	HashKey() HashKey
-}
-
 // Comparable is an interface used to compare two objects.
 //
 //	-1 if this < other
@@ -161,18 +155,6 @@ func CompareTypes(a, b Object) int {
 		return 1
 	}
 	return 0
-}
-
-// HashKey is used to identify unique values in a set.
-type HashKey struct {
-	// Type of the object being referenced.
-	Type Type
-	// FltValue is used as the key for floats.
-	FltValue float64
-	// IntValue is used as the key for integers.
-	IntValue int64
-	// StrValue is used as the key for strings.
-	StrValue string
 }
 
 // AttrResolver is an interface used to resolve dynamic attributes on an object.

@@ -30,10 +30,6 @@ func (b *Bytes) Value() []byte {
 	return b.value
 }
 
-func (b *Bytes) HashKey() HashKey {
-	return HashKey{Type: b.Type(), StrValue: string(b.value)}
-}
-
 func (b *Bytes) GetAttr(name string) (Object, bool) {
 	switch name {
 	case "clone":

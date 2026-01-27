@@ -34,10 +34,6 @@ func (f *Float) Value() float64 {
 	return f.value
 }
 
-func (f *Float) HashKey() HashKey {
-	return HashKey{Type: f.Type(), FltValue: f.value}
-}
-
 func (f *Float) Interface() interface{} {
 	return f.value
 }

@@ -470,14 +470,6 @@ func Chunk(ctx context.Context, args ...object.Object) (object.Object, error) {
 	return object.NewList(chunks), nil
 }
 
-func IsHashable(ctx context.Context, args ...object.Object) (object.Object, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("is_hashable: expected 1 argument, got %d", len(args))
-	}
-	_, ok := args[0].(object.Hashable)
-	return object.NewBool(ok), nil
-}
-
 func Builtins() map[string]object.Object {
 	return map[string]object.Object{
 		"all":      object.NewBuiltin("all", All),

@@ -24,13 +24,6 @@ func TestBytesValue(t *testing.T) {
 	assert.Equal(t, b.Value(), data)
 }
 
-func TestBytesHashKey(t *testing.T) {
-	b := NewBytes([]byte("hello"))
-	hk := b.HashKey()
-	assert.Equal(t, hk.Type, BYTES)
-	assert.Equal(t, hk.StrValue, "hello")
-}
-
 func TestBytesInterface(t *testing.T) {
 	data := []byte("hello")
 	b := NewBytes(data)

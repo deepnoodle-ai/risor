@@ -35,10 +35,6 @@ func (i *Int) Value() int64 {
 	return i.value
 }
 
-func (i *Int) HashKey() HashKey {
-	return HashKey{Type: i.Type(), IntValue: i.value}
-}
-
 func (i *Int) Interface() interface{} {
 	return i.value
 }

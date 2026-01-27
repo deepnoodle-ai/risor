@@ -332,13 +332,6 @@ func TestRegexpInterface(t *testing.T) {
 	assert.Equal(t, r.Interface(), re)
 }
 
-func TestRegexpHashKey(t *testing.T) {
-	r := NewRegexp(regexp.MustCompile(`foo`))
-	hk := r.HashKey()
-	assert.Equal(t, hk.Type, REGEXP)
-	assert.Equal(t, hk.StrValue, "foo")
-}
-
 func TestRegexpCompare(t *testing.T) {
 	r1 := NewRegexp(regexp.MustCompile(`aaa`))
 	r2 := NewRegexp(regexp.MustCompile(`bbb`))
