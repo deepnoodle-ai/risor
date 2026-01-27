@@ -1,147 +1,17 @@
 // Random Module
-// Demonstrates random number generation
+// Random number generation
 
-// Random float in [0, 1)
+// Random float between 0 and 1
 let randomFloat = rand.float()
 
-// Random int64
-let randomInt = rand.int()
+// Random integer in range
+let dice = rand.intn(6) + 1
 
-// Random int in [0, n)
-let diceRoll = rand.intn(6) + 1       // 1-6
-let coinFlip = if (rand.intn(2) == 0) { "heads" } else { "tails" }
-
-// Statistical distributions
-let normalValue = rand.norm_float()    // Normal distribution (mean=0, stddev=1)
-let expValue = rand.exp_float()        // Exponential distribution
+// Coin flip
+let coin = if (rand.intn(2) == 0) { "heads" } else { "tails" }
 
 // Shuffle a list
-let deck = list(range(1, 53))          // Card deck: 1-52
-rand.shuffle(deck)
-let hand = deck[0:5]                   // Draw 5 cards
+let cards = [1, 2, 3, 4, 5]
+rand.shuffle(cards)
 
-// Practical: random selection
-function randomChoice(items) {
-    return items[rand.intn(len(items))]
-}
-
-let colors = ["red", "green", "blue", "yellow", "purple"]
-let selectedColor = randomChoice(colors)
-
-// Practical: weighted random selection
-function weightedChoice(items, weights) {
-    let total = weights.reduce(0, (a, b) => a + b)
-    let r = rand.float() * total
-    let cumulative = 0.0
-    let result = items[0]
-    list(range(len(items))).each(i => {
-        cumulative = cumulative + weights[i]
-        if (r < cumulative && result == items[0]) {
-            result = items[i]
-        }
-    })
-    return result
-}
-
-let prizes = ["common", "uncommon", "rare", "legendary"]
-let weights = [70.0, 20.0, 8.0, 2.0]
-
-// Practical: generate random string
-function randomString(length, charset) {
-    let chars = charset.split("")
-    let result = []
-    list(range(length)).each(i => {
-        result.append(chars[rand.intn(len(chars))])
-    })
-    return "".join(result)
-}
-
-let alphanumeric = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-let randomId = randomString(8, alphanumeric)
-
-// Practical: generate UUID v4
-function uuid4() {
-    let hex = "0123456789abcdef"
-    function hexChar() {
-        return hex[rand.intn(16)]
-    }
-    function hexGroup(n) {
-        let chars = []
-        list(range(n)).each(i => chars.append(hexChar()))
-        return "".join(chars)
-    }
-    // Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-    // y is one of 8, 9, a, b
-    let variant = "89ab"[rand.intn(4)]
-    return sprintf("%s-%s-4%s-%s%s-%s",
-        hexGroup(8),
-        hexGroup(4),
-        hexGroup(3),
-        variant,
-        hexGroup(3),
-        hexGroup(12)
-    )
-}
-
-// Practical: sample without replacement
-function sample(items, n) {
-    let copy = [...items]
-    rand.shuffle(copy)
-    let limit = int(math.min(n, len(copy)))
-    return copy[0:limit]
-}
-
-let population = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
-let sampled = sample(population, 3)
-
-// Practical: random password generator
-function generatePassword(length) {
-    let lower = "abcdefghijklmnopqrstuvwxyz"
-    let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    let digits = "0123456789"
-    let symbols = "!@#$%^&*"
-    let all = lower + upper + digits + symbols
-
-    // Ensure at least one of each type
-    let password = [
-        lower[rand.intn(len(lower))],
-        upper[rand.intn(len(upper))],
-        digits[rand.intn(len(digits))],
-        symbols[rand.intn(len(symbols))]
-    ]
-
-    // Fill rest randomly
-    list(range(length - 4)).each(i => {
-        password.append(all[rand.intn(len(all))])
-    })
-
-    // Shuffle to randomize positions
-    rand.shuffle(password)
-    return "".join(password)
-}
-
-{
-    basic: {
-        float: randomFloat,
-        int: randomInt,
-        dice: diceRoll,
-        coin: coinFlip
-    },
-    distributions: {
-        normal: normalValue,
-        exponential: expValue
-    },
-    shuffle: {
-        firstFiveCards: hand
-    },
-    selection: {
-        color: selectedColor,
-        weightedPrize: weightedChoice(prizes, weights)
-    },
-    generated: {
-        randomId: randomId,
-        uuid: uuid4(),
-        password: generatePassword(12)
-    },
-    sampled: sampled
-}
+{randomFloat, dice, coin, shuffled: cards}

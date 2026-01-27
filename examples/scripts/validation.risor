@@ -1,207 +1,26 @@
-// Validation Patterns
-// Demonstrates composable validation rules
+// Validation
+// Simple input validation
 
-// Validation result type
-function valid(value) {
-    return {valid: true, value, errors: []}
+function validateUsername(name) {
+    if (len(name) < 3) {
+        return {ok: false, error: "too short"}
+    }
+    if (len(name) > 20) {
+        return {ok: false, error: "too long"}
+    }
+    return {ok: true, error: nil}
 }
 
-function invalid(errors) {
-    let errList = if (type(errors) == "list") { errors } else { [errors] }
-    return {valid: false, value: nil, errors: errList}
-}
-
-// Compose validators (all must pass)
-function allOf(validators) {
-    return function(value) {
-        let errors = []
-        validators.each(validator => {
-            let result = validator(value)
-            if (!result.valid) {
-                errors = [...errors, ...result.errors]
-            }
-        })
-        if (len(errors) == 0) {
-            return valid(value)
-        }
-        return invalid(errors)
+function validateAge(age) {
+    if (age < 0 || age > 150) {
+        return {ok: false, error: "invalid age"}
     }
-}
-
-// Basic validators
-function required() {
-    return function(value) {
-        if (value == nil || value == "") {
-            return invalid("value is required")
-        }
-        return valid(value)
-    }
-}
-
-function minLength(min) {
-    return function(value) {
-        if (len(string(value)) < min) {
-            return invalid(sprintf("must be at least %d characters", min))
-        }
-        return valid(value)
-    }
-}
-
-function maxLength(max) {
-    return function(value) {
-        if (len(string(value)) > max) {
-            return invalid(sprintf("must be at most %d characters", max))
-        }
-        return valid(value)
-    }
-}
-
-function minValue(min) {
-    return function(value) {
-        if (value < min) {
-            return invalid(sprintf("must be at least %v", min))
-        }
-        return valid(value)
-    }
-}
-
-function maxValue(max) {
-    return function(value) {
-        if (value > max) {
-            return invalid(sprintf("must be at most %v", max))
-        }
-        return valid(value)
-    }
-}
-
-function pattern(regex, message) {
-    let re = regexp.compile(regex)
-    return function(value) {
-        if (!re.match(string(value))) {
-            let msg = message ?? sprintf("must match pattern: %s", regex)
-            return invalid(msg)
-        }
-        return valid(value)
-    }
-}
-
-function oneOf(values) {
-    return function(value) {
-        if (!(value in values)) {
-            return invalid(sprintf("must be one of: %v", values))
-        }
-        return valid(value)
-    }
-}
-
-// Email validator
-function email() {
-    return pattern(
-        `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`,
-        "must be a valid email address"
-    )
-}
-
-// Validate a single field
-function validateField(value, validators) {
-    return allOf(validators)(value)
-}
-
-// Custom validator with multiple conditions
-let passwordValidator = allOf([
-    required(),
-    minLength(8),
-    pattern(`[A-Z]`, "must contain at least one uppercase letter"),
-    pattern(`[a-z]`, "must contain at least one lowercase letter"),
-    pattern(`[0-9]`, "must contain at least one digit")
-])
-
-// Test validators
-let passwords = ["short", "alllowercase", "NoDigits!!", "Secure123"]
-
-let passwordResults = {}
-passwords.each(pw => {
-    let result = passwordValidator(pw)
-    if (result.valid) {
-        passwordResults[pw] = "valid"
-    } else {
-        passwordResults[pw] = result.errors
-    }
-})
-
-// User field validators
-let usernameValidator = allOf([
-    required(),
-    minLength(3),
-    maxLength(20),
-    pattern(`^[a-zA-Z][a-zA-Z0-9_]*$`, "must start with a letter")
-])
-
-let emailValidator = allOf([required(), email()])
-
-let ageValidator = allOf([required(), minValue(13), maxValue(120)])
-
-let roleValidator = allOf([required(), oneOf(["user", "admin", "moderator"])])
-
-// Test user validation
-let validUser = {
-    username: "alice_123",
-    email: "alice@example.com",
-    age: 25,
-    role: "user"
-}
-
-let invalidUser = {
-    username: "ab",
-    email: "not-an-email",
-    age: 10,
-    role: "superadmin"
-}
-
-function validateUser(user) {
-    let results = {}
-    let hasErrors = false
-
-    let usernameResult = usernameValidator(getattr(user, "username", nil))
-    if (!usernameResult.valid) {
-        results["username"] = usernameResult.errors
-        hasErrors = true
-    }
-
-    let emailResult = emailValidator(getattr(user, "email", nil))
-    if (!emailResult.valid) {
-        results["email"] = emailResult.errors
-        hasErrors = true
-    }
-
-    let ageResult = ageValidator(getattr(user, "age", nil))
-    if (!ageResult.valid) {
-        results["age"] = ageResult.errors
-        hasErrors = true
-    }
-
-    let roleResult = roleValidator(getattr(user, "role", nil))
-    if (!roleResult.valid) {
-        results["role"] = roleResult.errors
-        hasErrors = true
-    }
-
-    if (hasErrors) {
-        return {valid: false, errors: results}
-    }
-    return {valid: true, errors: {}}
+    return {ok: true, error: nil}
 }
 
 {
-    validUser: validateUser(validUser),
-    invalidUser: validateUser(invalidUser),
-    passwordValidation: passwordResults,
-    simpleValidators: {
-        required: required()(nil),
-        minLength: minLength(5)("abc"),
-        maxLength: maxLength(3)("abcdef"),
-        minValue: minValue(10)(5),
-        email: email()("test@example.com"),
-        oneOf: oneOf(["a", "b", "c"])("d")
-    }
+    name1: validateUsername("alice"),
+    name2: validateUsername("ab"),
+    age1: validateAge(25),
+    age2: validateAge(-5)
 }

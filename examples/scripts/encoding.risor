@@ -1,89 +1,14 @@
 // Encoding and Decoding
-// Demonstrates JSON, Base64, Hex, and other codecs
+// JSON, Base64, and other formats
 
-// JSON encoding/decoding
-let data = {
-    name: "Alice",
-    age: 30,
-    active: true,
-    scores: [95, 87, 92],
-    metadata: {
-        created: "2024-01-15",
-        version: 2
-    }
-}
+// JSON
+let data = {name: "Alice", age: 30}
+let jsonStr = encode(data, "json")
+let decoded = decode(jsonStr, "json")
 
-let jsonString = encode(data, "json")
-let decoded = decode(jsonString, "json")
+// Base64
+let message = "Hello!"
+let b64 = encode(message, "base64")
+let original = decode(b64, "base64")
 
-// Base64 encoding/decoding
-let message = "Hello, World!"
-let base64Encoded = encode(message, "base64")
-let base64Decoded = decode(base64Encoded, "base64")
-
-// Base32 encoding/decoding
-let base32Encoded = encode(message, "base32")
-let base32Decoded = decode(base32Encoded, "base32")
-
-// Hex encoding/decoding
-let hexEncoded = encode(message, "hex")
-let hexDecoded = decode(hexEncoded, "hex")
-
-// CSV encoding/decoding
-let csvData = [
-    ["name", "age", "city"],
-    ["Alice", "30", "Seattle"],
-    ["Bob", "25", "Portland"],
-    ["Charlie", "35", "Denver"]
-]
-let csvString = encode(csvData, "csv")
-let csvDecoded = decode(csvString, "csv")
-
-// Practical example: building an API payload
-function buildApiPayload(user, action) {
-    let payload = {
-        user: user,
-        action: action,
-        timestamp: time.now().unix()
-    }
-    return encode(payload, "json")
-}
-
-// Nested data round-trip
-let complex = {
-    users: [
-        {id: 1, name: "Alice", tags: ["admin", "user"]},
-        {id: 2, name: "Bob", tags: ["user"]}
-    ],
-    config: {
-        maxResults: 100,
-        timeout: 30.5
-    }
-}
-let complexJson = encode(complex, "json")
-let complexRestored = decode(complexJson, "json")
-
-{
-    json: {
-        encoded: jsonString,
-        decoded: decoded
-    },
-    base64: {
-        encoded: base64Encoded,
-        decoded: base64Decoded
-    },
-    base32: {
-        encoded: base32Encoded,
-        decoded: base32Decoded
-    },
-    hex: {
-        encoded: hexEncoded,
-        decoded: hexDecoded
-    },
-    csv: {
-        encoded: csvString,
-        decoded: csvDecoded
-    },
-    apiPayload: buildApiPayload({name: "Alice"}, "login"),
-    roundTrip: complexRestored == complex
-}
+{json: jsonStr, decoded, base64: b64, original}

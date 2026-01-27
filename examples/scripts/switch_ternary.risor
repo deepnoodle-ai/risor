@@ -1,142 +1,27 @@
-// Switch Statements
-// Demonstrates conditional expressions and pattern matching
+// Switch and Conditionals
+// If expressions and switch statements
 
-// Simple conditional
+// If is an expression that returns a value
 let age = 25
 let status = if (age >= 18) { "adult" } else { "minor" }
 
-// Grade calculation
-let score = 85
-function getGrade(s) {
-    if (s >= 90) { return "A" }
-    if (s >= 80) { return "B" }
-    if (s >= 70) { return "C" }
-    if (s >= 60) { return "D" }
-    return "F"
-}
-let grade = getGrade(score)
-
-// Basic switch statement
-function dayName(num) {
-    switch (num) {
+// Switch statement
+function dayName(n) {
+    switch (n) {
         case 0: return "Sunday"
         case 1: return "Monday"
         case 2: return "Tuesday"
-        case 3: return "Wednesday"
-        case 4: return "Thursday"
-        case 5: return "Friday"
-        case 6: return "Saturday"
-        default: return "Unknown"
+        default: return "Other"
     }
 }
 
-// Switch with expressions
-function classify(value) {
-    let t = type(value)
-    switch (t) {
-        case "int": return "integer number"
-        case "float": return "decimal number"
-        case "string": return "text value"
-        case "bool": return "boolean value"
-        case "list": return "collection of items"
-        case "map": return "key-value pairs"
-        default: return sprintf("unknown type: %s", t)
+// Switch on type
+function describe(value) {
+    switch (type(value)) {
+        case "int": return "a number"
+        case "string": return "text"
+        default: return "other"
     }
 }
 
-// Switch with multiple values per case
-function isWeekend(day) {
-    switch (day) {
-        case "Saturday":
-            return true
-        case "Sunday":
-            return true
-        default:
-            return false
-    }
-}
-
-// Practical: HTTP status classification
-function httpStatusCategory(code) {
-    let category = int(code / 100)
-    switch (category) {
-        case 1: return "informational"
-        case 2: return "success"
-        case 3: return "redirect"
-        case 4: return "client error"
-        case 5: return "server error"
-        default: return "unknown"
-    }
-}
-
-// Practical: command dispatcher
-function handleCommand(cmd, args) {
-    switch (cmd) {
-        case "add":
-            return args.reduce(0, (a, b) => a + b)
-        case "multiply":
-            return args.reduce(1, (a, b) => a * b)
-        case "max":
-            return args.reduce(args[0], (a, b) => if (a > b) { a } else { b })
-        case "min":
-            return args.reduce(args[0], (a, b) => if (a < b) { a } else { b })
-        default:
-            return error("unknown command: %s", cmd)
-    }
-}
-
-// Absolute value using if expression
-function abs(n) {
-    return if (n < 0) { -n } else { n }
-}
-
-function clamp(value, min, max) {
-    if (value < min) { return min }
-    if (value > max) { return max }
-    return value
-}
-
-// Conditional assignment pattern
-let config = {debug: true}
-let logLevel = if (config.debug) { "verbose" } else { "minimal" }
-
-// Null-safe conditional
-let user = {name: "Alice"}
-let displayName = user?.name ?? "Anonymous"
-let greeting = if (displayName != "Anonymous") {
-    sprintf("Welcome back, %s!", displayName)
-} else {
-    "Welcome, guest!"
-}
-
-{
-    conditional: {status: status, grade: grade},
-    switchDays: {
-        day0: dayName(0),
-        day3: dayName(3),
-        day7: dayName(7)
-    },
-    classify: {
-        int: classify(42),
-        float: classify(3.14),
-        string: classify("hello"),
-        list: classify([1, 2, 3])
-    },
-    weekend: {
-        saturday: isWeekend("Saturday"),
-        monday: isWeekend("Monday")
-    },
-    httpStatus: {
-        ok: httpStatusCategory(200),
-        notFound: httpStatusCategory(404),
-        serverError: httpStatusCategory(500)
-    },
-    commands: {
-        add: handleCommand("add", [1, 2, 3, 4, 5]),
-        multiply: handleCommand("multiply", [2, 3, 4]),
-        max: handleCommand("max", [3, 1, 4, 1, 5, 9])
-    },
-    abs: abs(-42),
-    clamp: clamp(15, 0, 10),
-    greeting: greeting
-}
+{status, days: [dayName(0), dayName(1)], types: [describe(42), describe("hi")]}

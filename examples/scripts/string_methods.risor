@@ -1,93 +1,26 @@
 // String Methods
-// Demonstrates string manipulation and methods
+// Common string operations
 
-let text = "  Hello, World!  "
-
-// Trimming
-let trimmed = text.trim_space()
-let trimmedChars = "...hello...".trim(".")
+// Trim whitespace
+let trimmed = "  hello  ".trim_space()
 
 // Case conversion
 let upper = "hello".to_upper()
 let lower = "HELLO".to_lower()
 
-// Splitting and joining
-let csv = "apple,banana,cherry"
-let fruits = csv.split(",")
-let rejoined = ", ".join(fruits)
+// Split and join
+let parts = "a,b,c".split(",")
+let joined = "-".join(parts)
 
-// Fields splits on whitespace
-let sentence = "the quick brown fox"
-let words = sentence.fields()
+// Search
+let hasWorld = "hello world".contains("world")
 
-// Search operations
-let haystack = "the quick brown fox jumps over the lazy dog"
-let hasQuick = haystack.contains("quick")
-let foxIndex = haystack.index("fox")
-let lastO = haystack.last_index("o")
-let countO = haystack.count("o")
+// Replace
+let result = "hello".replace_all("l", "L")
 
-// Prefix and suffix checking
-let filename = "document.pdf"
-let isPdf = filename.has_suffix(".pdf")
-let isHidden = filename.has_prefix(".")
+// Indexing
+let word = "hello"
+let first = word[0]
+let slice = word[1:4]
 
-// Replace operations
-let template = "Hello, NAME! Welcome to PLACE."
-let filled = template
-    .replace_all("NAME", "Alice")
-    .replace_all("PLACE", "Risor")
-
-// Repeat
-let separator = "-".repeat(40)
-
-// Comparison
-let cmp1 = "apple".compare("banana")  // -1 (apple < banana)
-let cmp2 = "hello".compare("hello")   // 0 (equal)
-let cmp3 = "zebra".compare("alpha")   // 1 (zebra > alpha)
-
-// String concatenation
-let firstName = "John"
-let lastName = "Doe"
-let fullName = firstName + " " + lastName
-
-// Building strings with sprintf
-let formatted = sprintf("Name: %s, Age: %d, Score: %.2f", "Bob", 25, 98.5)
-
-// Prefix/suffix removal
-let prefixed = "prefix_value"
-let unprefixed = prefixed.trim_prefix("prefix_")
-let suffixed = "value.txt"
-let unsuffixed = suffixed.trim_suffix(".txt")
-
-// Working with string indices
-let s = "hello"
-let firstChar = s[0]
-let lastChar = s[-1]
-let slice = s[1:4]
-
-{
-    trimmed: trimmed,
-    trimmedChars: trimmedChars,
-    upper: upper,
-    lower: lower,
-    fruits: fruits,
-    rejoined: rejoined,
-    words: words,
-    hasQuick: hasQuick,
-    foxIndex: foxIndex,
-    lastO: lastO,
-    countO: countO,
-    isPdf: isPdf,
-    isHidden: isHidden,
-    filled: filled,
-    separator: separator,
-    comparisons: [cmp1, cmp2, cmp3],
-    fullName: fullName,
-    formatted: formatted,
-    unprefixed: unprefixed,
-    unsuffixed: unsuffixed,
-    firstChar: firstChar,
-    lastChar: lastChar,
-    slice: slice
-}
+{trimmed, upper, lower, parts, joined, hasWorld, result, first, slice}

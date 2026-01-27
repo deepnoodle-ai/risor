@@ -1,80 +1,20 @@
 // Math Module
-// Demonstrates mathematical functions and constants
+// Mathematical functions and constants
 
 // Constants
 let pi = math.PI
-let e = math.E
 
-// Basic operations
-let absValue = math.abs(-42)
-let sqrtValue = math.sqrt(144)
-let powValue = math.pow(2, 10)
+// Basic functions
+let abs = math.abs(-42)
+let sqrt = math.sqrt(16)
+let pow = math.pow(2, 8)
 
-// Rounding functions
-let values = [3.2, 3.5, 3.8, -3.2, -3.5, -3.8]
-let floors = values.map(x => math.floor(x))
-let ceils = values.map(x => math.ceil(x))
-let rounds = values.map(x => math.round(x))
+// Rounding
+let floor = math.floor(3.7)
+let ceil = math.ceil(3.2)
 
 // Min and max
-let minimum = math.min(5, 3)
-let maximum = math.max(5, 3)
+let min = math.min(5, 3)
+let max = math.max(5, 3)
 
-// Trigonometric functions (radians)
-let angle = math.PI / 4  // 45 degrees
-let sinValue = math.sin(angle)
-let cosValue = math.cos(angle)
-let tanValue = math.tan(angle)
-
-// Logarithms
-let log10Value = math.log10(1000)    // 3
-let log2Value = math.log2(256)       // 8
-let lnValue = math.log(math.E)       // 1
-
-// Modulo operation
-let modResult = math.mod(17, 5)      // 2
-
-// Powers of 10
-let pow10Result = math.pow10(3)      // 1000
-
-// Sum of a list
-let numbers = [1, 2, 3, 4, 5]
-let total = math.sum(numbers)
-
-// Working with infinity
-let posInf = math.inf()
-let negInf = math.inf(-1)
-let isInfinite = math.is_inf(posInf)
-let isFinite = !math.is_inf(42)
-
-// Practical example: distance calculation
-function distance(x1, y1, x2, y2) {
-    let dx = x2 - x1
-    let dy = y2 - y1
-    return math.sqrt(dx * dx + dy * dy)
-}
-
-// Angle between two points
-function angleBetween(x1, y1, x2, y2) {
-    return math.atan2(y2 - y1, x2 - x1)
-}
-
-// Clamp a value between min and max
-function clamp(value, minVal, maxVal) {
-    return math.max(minVal, math.min(value, maxVal))
-}
-
-{
-    constants: {pi: pi, e: e},
-    basic: {abs: absValue, sqrt: sqrtValue, pow: powValue},
-    rounding: {values: values, floors: floors, ceils: ceils, rounds: rounds},
-    minmax: {min: minimum, max: maximum},
-    trig: {sin: sinValue, cos: cosValue, tan: tanValue},
-    logs: {log10: log10Value, log2: log2Value, ln: lnValue},
-    mod: modResult,
-    sum: total,
-    infinity: {pos: posInf, neg: negInf, isInf: isInfinite},
-    distance: distance(0, 0, 3, 4),
-    angle: angleBetween(0, 0, 1, 1),
-    clamped: clamp(15, 0, 10)
-}
+{pi, abs, sqrt, pow, floor, ceil, min, max}

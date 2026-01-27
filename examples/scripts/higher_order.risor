@@ -1,111 +1,20 @@
-// Higher-Order Functions and Pipes
-// Demonstrates functional programming patterns
+// Higher-Order Functions
+// Functions as values and the pipe operator
 
-// Functions as first-class values
-function add(a, b) { return a + b }
-function multiply(a, b) { return a * b }
-
-function applyOperation(fn, x, y) {
-    return fn(x, y)
+// Pass functions as arguments
+function apply(fn, x) {
+    return fn(x)
 }
 
-let sumResult = applyOperation(add, 5, 3)
-let productResult = applyOperation(multiply, 5, 3)
-
-// Function composition
-function compose(f, g) {
-    return function(x) {
-        return f(g(x))
-    }
-}
-
-let addOne = x => x + 1
 let double = x => x * 2
+let square = x => x * x
 
-let addThenDouble = compose(double, addOne)
-let doubleThenAdd = compose(addOne, double)
+// Pipe operator chains transformations
+let result = 5 | double | square
 
-// Pipe operator
-let result = 5 | addOne | double | addOne
-
-// Pipeline with transformations
+// Use with list methods
 let numbers = [1, 2, 3, 4, 5]
-let processed = numbers
-    | list
-    | (xs => xs.filter(x => x > 2))
-    | (xs => xs.map(x => x * 2))
+let doubled = numbers.map(double)
+let big = numbers.filter(x => x > 2)
 
-// Partial application (currying via partial)
-function partial(fn, firstArg) {
-    return function(secondArg) {
-        return fn(firstArg, secondArg)
-    }
-}
-
-let add10 = partial(add, 10)
-
-// Creating pipeable functions
-function createPipeable(fn) {
-    return x => fn(x)
-}
-
-let toUpper = createPipeable(s => s.to_upper())
-let trim = createPipeable(s => s.trim_space())
-let exclaim = createPipeable(s => s + "!")
-
-let greeting = "  hello world  " | trim | toUpper | exclaim
-
-// any and all functions
-let nums = [1, 2, 3, 4, 5]
-let hasEven = any(nums.map(x => x % 2 == 0))
-let allPositive = all(nums.map(x => x > 0))
-
-// Practical example: data pipeline
-let users = [
-    {name: "Alice", age: 30, active: true},
-    {name: "Bob", age: 25, active: false},
-    {name: "Charlie", age: 35, active: true},
-    {name: "Diana", age: 28, active: true}
-]
-
-let activeNames = users
-    .filter(u => u.active)
-    .map(u => u.name)
-
-let activeUsers = users.filter(u => u.active)
-let totalAge = activeUsers
-    .map(u => u.age)
-    .reduce(0, (acc, age) => acc + age)
-let averageActiveAge = totalAge / len(activeUsers)
-
-// Function factories
-function createValidator(minLen, maxLen) {
-    return function(s) {
-        let l = len(s)
-        return l >= minLen && l <= maxLen
-    }
-}
-
-let validateUsername = createValidator(3, 20)
-let validatePassword = createValidator(8, 128)
-
-{
-    applyOp: {sum: sumResult, product: productResult},
-    compose: {
-        addThenDouble: addThenDouble(5),
-        doubleThenAdd: doubleThenAdd(5)
-    },
-    pipe: result,
-    processed: processed,
-    partial: add10(5),
-    greeting: greeting,
-    checks: {hasEven: hasEven, allPositive: allPositive},
-    activeNames: activeNames,
-    averageActiveAge: averageActiveAge,
-    validation: {
-        validUsername: validateUsername("alice"),
-        invalidUsername: validateUsername("ab"),
-        validPassword: validatePassword("secret123"),
-        invalidPassword: validatePassword("short")
-    }
-}
+{applied: apply(double, 10), pipeResult: result, doubled, big}

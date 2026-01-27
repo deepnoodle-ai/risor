@@ -1,67 +1,23 @@
 // List Operations
-// Demonstrates map, filter, reduce, and other list methods
+// Map, filter, and reduce
 
-let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let numbers = [1, 2, 3, 4, 5]
 
-// Transform with map
-let squares = numbers.map(x => x * x)
+// Transform each element
 let doubled = numbers.map(x => x * 2)
 
-// Filter for specific conditions
+// Keep elements matching a condition
 let evens = numbers.filter(x => x % 2 == 0)
-let odds = numbers.filter(x => x % 2 != 0)
-let greaterThan5 = numbers.filter(x => x > 5)
 
-// Reduce to aggregate values
+// Combine into a single value
 let sum = numbers.reduce(0, (acc, x) => acc + x)
-let product = numbers.reduce(1, (acc, x) => acc * x)
-let max = numbers.reduce(numbers[0], (acc, x) => if (x > acc) { x } else { acc })
 
-// Chaining operations (multiline for readability)
-let sumOfEvenSquares = numbers
-    .filter(x => x % 2 == 0)
-    .map(x => x * x)
-    .reduce(0, (acc, x) => acc + x)
+// Chain operations
+let result = numbers
+    .filter(x => x > 2)
+    .map(x => x * 2)
 
-// Map with index (two-argument form)
-let indexed = ["a", "b", "c"].map((i, v) => sprintf("%d: %s", i, v))
+// Combine lists with spread
+let combined = [...[1, 2], ...[3, 4]]
 
-// Using each for side effects (returns nil)
-let collected = []
-[1, 2, 3].each(x => collected.append(x * 10))
-
-// List manipulation
-let items = [3, 1, 4, 1, 5, 9, 2, 6]
-let sortedItems = sorted(items)
-let reversedItems = reversed(items)
-let uniqueCounts = {}
-items.each(x => {
-    let key = string(x)
-    if (key in uniqueCounts) {
-        uniqueCounts[key] = uniqueCounts[key] + 1
-    } else {
-        uniqueCounts[key] = 1
-    }
-})
-
-// Chunking
-let chunks = chunk([1, 2, 3, 4, 5, 6, 7], 3)
-
-// Spread operator
-let first = [1, 2, 3]
-let second = [4, 5, 6]
-let combined = [...first, ...second]
-
-{
-    squares,
-    evens,
-    sum,
-    product,
-    sumOfEvenSquares,
-    indexed,
-    collected,
-    sorted: sortedItems,
-    reversed: reversedItems,
-    chunks,
-    combined
-}
+{doubled, evens, sum, result, combined}

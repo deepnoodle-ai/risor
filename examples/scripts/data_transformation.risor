@@ -1,118 +1,26 @@
-// Data Transformation Pipelines
-// Demonstrates practical data processing patterns
+// Data Transformation
+// Processing collections of data
 
-// Sample e-commerce order data
-let orders = [
-    {id: "ORD001", customer: "alice", items: [{sku: "A1", qty: 2, price: 10.00}, {sku: "B2", qty: 1, price: 25.00}], status: "shipped"},
-    {id: "ORD002", customer: "bob", items: [{sku: "A1", qty: 5, price: 10.00}], status: "pending"},
-    {id: "ORD003", customer: "alice", items: [{sku: "C3", qty: 1, price: 100.00}, {sku: "A1", qty: 3, price: 10.00}], status: "shipped"},
-    {id: "ORD004", customer: "charlie", items: [{sku: "B2", qty: 2, price: 25.00}], status: "cancelled"},
-    {id: "ORD005", customer: "bob", items: [{sku: "D4", qty: 1, price: 75.00}], status: "shipped"}
+let users = [
+    {name: "Alice", age: 30, active: true},
+    {name: "Bob", age: 25, active: false},
+    {name: "Charlie", age: 35, active: true}
 ]
 
-// Calculate order total
-function orderTotal({items}) {
-    return items.reduce(0.0, (sum, {qty, price}) => sum + qty * price)
-}
+// Filter active users
+let active = users.filter(u => u.active)
 
-// Enrich order with computed fields
-function enrichOrder(order) {
-    return {
-        ...order,
-        total: orderTotal(order),
-        itemCount: order.items.reduce(0, (sum, item) => sum + item.qty)
-    }
-}
+// Extract just names
+let names = users.map(u => u.name)
 
-// Transform all orders
-let enrichedOrders = orders.map(enrichOrder)
+// Sum all ages
+let totalAge = users
+    .map(u => u.age)
+    .reduce(0, (sum, age) => sum + age)
 
-// Aggregate by customer
-function groupByCustomer(orders) {
-    let groups = {}
-    orders.each(order => {
-        let customer = order.customer
-        if (!(customer in groups)) {
-            groups[customer] = []
-        }
-        groups[customer].append(order)
-    })
-    return groups
-}
+// Chain operations: names of active users
+let activeNames = users
+    .filter(u => u.active)
+    .map(u => u.name)
 
-let ordersByCustomer = groupByCustomer(enrichedOrders)
-
-// Customer summary
-function customerSummary(customerOrders) {
-    let shipped = customerOrders.filter(o => o.status == "shipped")
-    return {
-        orderCount: len(customerOrders),
-        totalSpent: shipped.reduce(0.0, (sum, o) => sum + o.total),
-        shippedCount: len(shipped)
-    }
-}
-
-let customerStats = {}
-keys(ordersByCustomer).each(customer => {
-    customerStats[customer] = customerSummary(ordersByCustomer[customer])
-})
-
-// Product popularity
-function productStats(orders) {
-    let stats = {}
-    orders.each(order => {
-        order.items.each(item => {
-            let sku = item.sku
-            if (!(sku in stats)) {
-                stats[sku] = {qty: 0, revenue: 0.0, orderCount: 0}
-            }
-            stats[sku] = {
-                qty: stats[sku].qty + item.qty,
-                revenue: stats[sku].revenue + item.qty * item.price,
-                orderCount: stats[sku].orderCount + 1
-            }
-        })
-    })
-    return stats
-}
-
-let products = productStats(orders.filter(o => o.status != "cancelled"))
-
-// Find top product by quantity
-let topProduct = keys(products).reduce(nil, (best, sku) => {
-    if (best == nil || products[sku].qty > products[best].qty) {
-        return sku
-    }
-    return best
-})
-
-// Pipeline style processing
-let shippedOrders = orders
-    .filter(o => o.status == "shipped")
-    .map(enrichOrder)
-let shippedRevenue = shippedOrders
-    .map(o => o.total)
-    .reduce(0.0, (a, b) => a + b)
-
-// Date-based filtering (if orders had dates)
-function withinDays(orders, days) {
-    // Simulated date filtering
-    return orders.filter(o => o.status != "cancelled")
-}
-
-{
-    summary: {
-        totalOrders: len(orders),
-        shippedOrders: len(orders.filter(o => o.status == "shipped")),
-        pendingOrders: len(orders.filter(o => o.status == "pending")),
-        cancelledOrders: len(orders.filter(o => o.status == "cancelled"))
-    },
-    customerStats: customerStats,
-    productStats: products,
-    topProduct: {
-        sku: topProduct,
-        stats: products[topProduct]
-    },
-    shippedRevenue: shippedRevenue,
-    sampleEnrichedOrder: enrichedOrders[0]
-}
+{active, names, totalAge, activeNames}

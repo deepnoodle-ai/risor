@@ -1,162 +1,22 @@
 // Recursive Algorithms
-// Demonstrates recursion patterns (Risor has no loops)
+// Recursion patterns
 
-// Classic factorial
+// Factorial
 function factorial(n) {
-    if (n <= 1) {
-        return 1
-    }
+    if (n <= 1) { return 1 }
     return n * factorial(n - 1)
 }
 
-// Tail-recursive factorial with accumulator
-function factorialTail(n, acc) {
-    if (n <= 1) {
-        return acc
-    }
-    return factorialTail(n - 1, n * acc)
-}
-
-// Greatest common divisor (Euclidean algorithm)
-function gcd(a, b) {
-    if (b == 0) {
-        return a
-    }
-    return gcd(b, a % b)
-}
-
-// Least common multiple
-function lcm(a, b) {
-    return (a * b) / gcd(a, b)
-}
-
-// Binary search
-function binarySearch(arr, target, low, high) {
-    if (low > high) {
-        return -1
-    }
-    let mid = int((low + high) / 2)
-    if (arr[mid] == target) {
-        return mid
-    }
-    if (arr[mid] > target) {
-        return binarySearch(arr, target, low, mid - 1)
-    }
-    return binarySearch(arr, target, mid + 1, high)
-}
-
-function search(arr, target) {
-    return binarySearch(arr, target, 0, len(arr) - 1)
-}
-
-// Quick sort (using filter instead of slice)
-function quickSort(arr) {
-    if (len(arr) <= 1) {
-        return arr
-    }
-    let pivot = arr[0]
-    let rest = list(range(1, len(arr))).map(i => arr[i])
-    let less = rest.filter(x => x < pivot)
-    let equal = arr.filter(x => x == pivot)
-    let greater = rest.filter(x => x > pivot)
-    return [...quickSort(less), ...equal, ...quickSort(greater)]
-}
-
-// Tree traversal (using maps as tree nodes)
-let tree = {
-    value: 10,
-    left: {
-        value: 5,
-        left: {value: 3, left: nil, right: nil},
-        right: {value: 7, left: nil, right: nil}
-    },
-    right: {
-        value: 15,
-        left: {value: 12, left: nil, right: nil},
-        right: {value: 20, left: nil, right: nil}
-    }
-}
-
-function inorder(node) {
-    if (node == nil) {
-        return []
-    }
-    return [...inorder(node.left), node.value, ...inorder(node.right)]
-}
-
-function preorder(node) {
-    if (node == nil) {
-        return []
-    }
-    return [node.value, ...preorder(node.left), ...preorder(node.right)]
-}
-
-function postorder(node) {
-    if (node == nil) {
-        return []
-    }
-    return [...postorder(node.left), ...postorder(node.right), node.value]
-}
-
-function treeSum(node) {
-    if (node == nil) {
-        return 0
-    }
-    return node.value + treeSum(node.left) + treeSum(node.right)
-}
-
-function treeDepth(node) {
-    if (node == nil) {
-        return 0
-    }
-    let leftDepth = treeDepth(node.left)
-    let rightDepth = treeDepth(node.right)
-    return 1 + if (leftDepth > rightDepth) { leftDepth } else { rightDepth }
-}
-
-// Fibonacci with recursion
+// Fibonacci
 function fib(n) {
-    if (n <= 1) {
-        return n
-    }
+    if (n <= 1) { return n }
     return fib(n - 1) + fib(n - 2)
 }
 
-// Sum of list using recursion
-function sumList(arr, idx) {
-    if (idx >= len(arr)) {
-        return 0
-    }
-    return arr[idx] + sumList(arr, idx + 1)
+// Greatest common divisor
+function gcd(a, b) {
+    if (b == 0) { return a }
+    return gcd(b, a % b)
 }
 
-// Run examples
-let sortedNums = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
-let unsortedNums = [64, 34, 25, 12, 22, 11, 90]
-
-{
-    factorial: {
-        factorial5: factorial(5),
-        factorialTail5: factorialTail(5, 1)
-    },
-    gcd: {
-        gcd48_18: gcd(48, 18),
-        lcm12_18: lcm(12, 18)
-    },
-    search: {
-        found: search(sortedNums, 11),
-        notFound: search(sortedNums, 10)
-    },
-    sorting: {
-        quickSort: quickSort(unsortedNums)
-    },
-    tree: {
-        inorder: inorder(tree),
-        preorder: preorder(tree),
-        postorder: postorder(tree),
-        sum: treeSum(tree),
-        depth: treeDepth(tree)
-    },
-    fibonacci: fib(10),
-    sumList: sumList([1, 2, 3, 4, 5], 0)
-}
+{factorial: factorial(5), fib: fib(10), gcd: gcd(48, 18)}

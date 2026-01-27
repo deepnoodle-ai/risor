@@ -1,0 +1,22 @@
+// Higher-Order Functions Benchmark
+// Tests: function passing, composition
+
+function compose(f, g) {
+    return x => f(g(x))
+}
+
+// Build pipeline functions
+let double = x => x * 2
+let addOne = x => x + 1
+let square = x => x * x
+let addTen = x => x + 10
+
+// Test composition (nested)
+let composed = compose(addTen, compose(double, compose(addOne, square)))
+
+// Apply to many values
+let numbers = list(range(1, 50001))
+let step1 = numbers.map(composed)
+let results = step1.reduce(0, (acc, x) => acc + x)
+
+results

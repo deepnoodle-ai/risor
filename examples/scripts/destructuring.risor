@@ -1,93 +1,21 @@
 // Destructuring
-// Demonstrates object and array destructuring patterns
+// Extract values from maps and lists
 
-// Object destructuring - basic
-let person = {name: "Alice", age: 30, city: "Seattle"}
+// Map destructuring
+let person = {name: "Alice", age: 30}
 let {name, age} = person
 
-// Object destructuring with aliases
-let {name: personName, city: location} = person
-
-// Object destructuring with defaults
-let config = {host: "localhost"}
-let {host, port = 8080, timeout = 30} = config
-
-// Array destructuring - basic
-let coordinates = [10, 20, 30]
-let [x, y, z] = coordinates
-
-// Array destructuring - must match length
-let pair = [1, 2]
-let [first, second] = pair
-
-// Accessing nested structures
-let nested = {
-    user: {
-        profile: {
-            username: "bob",
-            email: "bob@example.com"
-        }
-    }
-}
-let username = nested.user.profile.username
+// List destructuring
+let point = [10, 20]
+let [x, y] = point
 
 // Destructuring in function parameters
-function processPoint({x, y}) {
-    return x + y
+function greet({name}) {
+    return "Hello, " + name
 }
 
-function formatUser({name, age = 0}) {
-    return sprintf("%s (age %d)", name, age)
-}
-
-let point = {x: 5, y: 10}
-let user = {name: "Charlie"}
-
-// Destructuring with spread in maps
+// Spread to merge maps
 let base = {a: 1, b: 2}
-let extended = {...base, c: 3, d: 4}
+let extended = {...base, c: 3}
 
-// Swap values
-let a = 1
-let b = 2
-let temp = a
-a = b
-b = temp
-
-// Complex example: parsing API response
-let apiResponse = {
-    status: "success",
-    data: {
-        items: [
-            {id: 1, value: "first"},
-            {id: 2, value: "second"}
-        ],
-        pagination: {
-            page: 1,
-            total: 10
-        }
-    }
-}
-
-let {status} = apiResponse
-let items = apiResponse.data.items
-let page = apiResponse.data.pagination.page
-let total = apiResponse.data.pagination.total
-
-{
-    name,
-    personName,
-    location,
-    host,
-    port,
-    coordinates: [x, y, z],
-    username,
-    pointSum: processPoint(point),
-    userFormatted: formatUser(user),
-    extended,
-    swapped: [a, b],
-    apiStatus: status,
-    firstItem: items[0],
-    currentPage: page,
-    totalPages: total
-}
+{name, age, x, y, greeting: greet({name: "Bob"}), extended}

@@ -1,143 +1,23 @@
-// Numeric Types and Type Coercion
-// Demonstrates int, float, byte, and arithmetic behavior
+// Numeric Types
+// Int, float, and byte
 
 // Type conversions
-let intVal = 42
-let floatVal = 3.14
-let byteVal = byte(255)
+let i = 42
+let f = 3.14
 
-let intToFloat = float(intVal)        // 42.0
-let floatToInt = int(floatVal)        // 3 (truncates)
-let intToByte = byte(65)              // 65
-let byteToInt = int(byteVal)          // 255
-
-// Numeric equality (cross-type comparison works)
-let intEqualsFloat = 5 == 5.0         // true
-let intEqualsByte = 5 == byte(5)      // true
-let floatEqualsByte = 5.0 == byte(5)  // true
-
-// Arithmetic type coercion
-let intPlusInt = 5 + 3                // int: 8
-let intPlusFloat = 5 + 3.0            // float: 8.0
-let floatPlusFloat = 5.0 + 3.0        // float: 8.0
-let bytePlusByte = byte(5) + byte(3)  // byte: 8
-let bytePlusInt = byte(5) + 3         // int: 8
-let bytePlusFloat = byte(5) + 3.0     // float: 8.0
-
-// Power operator (always returns int with int base)
-let power1 = 2 ** 10                  // int: 1024
-let power2 = 2.0 ** 10                // float: 1024.0
-let power3 = (-2) ** 2                // int: 4
+let toFloat = float(i)    // 42.0
+let toInt = int(f)        // 3 (truncates)
 
 // Division behavior
-let intDiv = 7 / 2                    // int: 3 (integer division)
-let floatDiv = 7.0 / 2                // float: 3.5
-let mixedDiv = 7 / 2.0                // float: 3.5
+let intDiv = 7 / 2        // 3 (integer division)
+let floatDiv = 7.0 / 2    // 3.5
 
-// Modulo
-let mod1 = 17 % 5                     // int: 2
-let mod2 = math.mod(17.5, 5.0)        // float: 2.5
+// Power operator
+let power = 2 ** 10       // 1024
 
-// Byte overflow behavior
-let byteMax = byte(255)
-let byteMin = byte(0)
-
-// Comparison operators work across types
-let comparisons = {
-    intLtFloat: 5 < 5.1,              // true
-    floatLtInt: 4.9 < 5,              // true
-    byteLtInt: byte(4) < 5            // true
-}
-
-// Practical: safe division
-function safeDivide(a, b) {
-    if (b == 0) {
-        return nil
-    }
-    return float(a) / float(b)
-}
-
-// Practical: percentage calculation
-function percentage(part, total) {
-    if (total == 0) {
-        return 0.0
-    }
-    return (float(part) / float(total)) * 100.0
-}
-
-// Practical: clamp to byte range
-function toByte(n) {
-    if (n < 0) {
-        return byte(0)
-    }
-    if (n > 255) {
-        return byte(255)
-    }
-    return byte(n)
-}
-
-// Type checking
-let types = {
-    int: type(intVal),
-    float: type(floatVal),
-    byte: type(byteVal)
-}
-
-// Numeric literals
-let decimal = 1000000
-let hexLiteral = 0xFF                 // 255
-
-// Bitwise operations (int only)
-let bitAnd = 12 & 10                  // 8 (1100 & 1010 = 1000)
-let leftShift = 1 << 4                // 16
-let rightShift = 256 >> 4             // 16
-
-// Increment/decrement
+// Increment
 let counter = 0
 counter++
 counter++
-counter--
 
-{
-    conversions: {
-        intToFloat: intToFloat,
-        floatToInt: floatToInt,
-        intToByte: intToByte,
-        byteToInt: byteToInt
-    },
-    equality: {
-        intEqualsFloat: intEqualsFloat,
-        intEqualsByte: intEqualsByte,
-        floatEqualsByte: floatEqualsByte
-    },
-    coercion: {
-        intPlusInt: {value: intPlusInt, type: type(intPlusInt)},
-        intPlusFloat: {value: intPlusFloat, type: type(intPlusFloat)},
-        bytePlusByte: {value: bytePlusByte, type: type(bytePlusByte)},
-        bytePlusInt: {value: bytePlusInt, type: type(bytePlusInt)}
-    },
-    power: {
-        intBase: power1,
-        floatBase: power2,
-        negative: power3
-    },
-    division: {
-        intDiv: intDiv,
-        floatDiv: floatDiv,
-        mixedDiv: mixedDiv
-    },
-    comparisons: comparisons,
-    practical: {
-        safeDivide: safeDivide(10, 3),
-        divideByZero: safeDivide(10, 0),
-        percentage: percentage(75, 200),
-        toByte: [toByte(-10), toByte(128), toByte(300)]
-    },
-    types: types,
-    bitwise: {
-        and: bitAnd,
-        leftShift: leftShift,
-        rightShift: rightShift
-    },
-    counter: counter
-}
+{toFloat, toInt, intDiv, floatDiv, power, counter}
