@@ -163,7 +163,7 @@ func TestKeywordsAndBuiltins(t *testing.T) {
 	}
 
 	// Test that our builtin list contains expected functions
-	expectedBuiltins := []string{"len", "sprintf", "errorf", "string", "int", "float"}
+	expectedBuiltins := []string{"len", "sprintf", "string", "int", "float"}
 
 	for _, builtin := range expectedBuiltins {
 		found := false

@@ -18,7 +18,7 @@ var risorKeywords = []string{
 // Common built-in functions
 var risorBuiltins = []string{
 	"all", "any", "assert", "bool", "byte", "call", "chunk", "coalesce",
-	"decode", "delete", "encode", "filter", "float", "getattr",
+	"decode", "encode", "filter", "float", "getattr",
 	"int", "keys", "len", "list", "reversed",
 	"sorted", "sprintf", "string", "type",
 }

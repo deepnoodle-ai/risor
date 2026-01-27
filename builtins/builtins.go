@@ -39,20 +39,6 @@ func Sprintf(ctx context.Context, args ...object.Object) object.Object {
 	return result
 }
 
-func Delete(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.Require("delete", 2, args); err != nil {
-		return err
-	}
-	container, ok := args[0].(object.Container)
-	if !ok {
-		return object.TypeErrorf("type error: delete() unsupported argument (%s given)", args[0].Type())
-	}
-	if err := container.DelItem(args[1]); err != nil {
-		return err
-	}
-	return object.Nil
-}
-
 func List(ctx context.Context, args ...object.Object) object.Object {
 	if err := object.RequireRange("list", 0, 1, args); err != nil {
 		return err
@@ -510,7 +496,6 @@ func Builtins() map[string]object.Object {
 		"chunk":    object.NewBuiltin("chunk", Chunk),
 		"coalesce": object.NewBuiltin("coalesce", Coalesce),
 		"decode":   object.NewBuiltin("decode", Decode),
-		"delete":   object.NewBuiltin("delete", Delete),
 		"encode":   object.NewBuiltin("encode", Encode),
 		"filter":   object.NewBuiltin("filter", Filter),
 		"float":    object.NewBuiltin("float", Float),
