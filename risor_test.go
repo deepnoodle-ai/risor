@@ -2,10 +2,12 @@ package risor
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/risor-io/risor/object"
 )
 
 func TestBasicUsage(t *testing.T) {
@@ -193,4 +195,49 @@ func TestConcurrentExecution(t *testing.T) {
 		assert.Nil(t, errors[i], "goroutine %d had an error", i)
 		assert.Equal(t, results[i], int64(i+1), "goroutine %d had wrong result", i)
 	}
+}
+
+// Test custom type registry
+func TestWithTypeRegistry(t *testing.T) {
+	// Define a custom type
+	type Point struct {
+		X, Y int
+	}
+
+	// Create a custom registry that knows how to convert Point
+	registry := NewTypeRegistry().
+		RegisterFromGo(reflect.TypeOf(Point{}), func(v any) (object.Object, error) {
+			p := v.(Point)
+			return object.NewMap(map[string]object.Object{
+				"x": object.NewInt(int64(p.X)),
+				"y": object.NewInt(int64(p.Y)),
+			}), nil
+		}).
+		Build()
+
+	// Use the custom registry
+	result, err := Eval(context.Background(), "point.x + point.y",
+		WithEnv(map[string]any{"point": Point{X: 10, Y: 20}}),
+		WithTypeRegistry(registry),
+	)
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(30))
+}
+
+// Test RisorValuer interface for custom types
+type customValue struct {
+	data string
+}
+
+func (c customValue) RisorValue() object.Object {
+	return object.NewString("custom:" + c.data)
+}
+
+func TestRisorValuerIntegration(t *testing.T) {
+	// Types implementing RisorValuer are automatically converted
+	result, err := Eval(context.Background(), "val",
+		WithEnv(map[string]any{"val": customValue{data: "test"}}),
+	)
+	assert.Nil(t, err)
+	assert.Equal(t, result, "custom:test")
 }

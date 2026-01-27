@@ -80,6 +80,10 @@ type VirtualMachine struct {
 	// This is populated by defer functions before they restore the frame pointer,
 	// ensuring we preserve the full call stack when a panic occurs.
 	panicStack []object.StackFrame
+
+	// typeRegistry handles Go/Risor type conversions.
+	// If nil, object.DefaultRegistry() is used.
+	typeRegistry *object.TypeRegistry
 }
 
 // exceptionFrame represents an active exception handler on the exception stack.
@@ -145,9 +149,9 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 	// Configure observer if present
 	vm.configureObserver()
 
-	// Convert globals to Risor objects
+	// Convert globals to Risor objects using the type registry
 	var err error
-	vm.globals, err = object.AsObjects(vm.inputGlobals)
+	vm.globals, err = object.AsObjectsWithRegistry(vm.inputGlobals, vm.TypeRegistry())
 	if err != nil {
 		return fmt.Errorf("invalid global provided: %v", err)
 	}
@@ -266,6 +270,15 @@ func (vm *VirtualMachine) stop() {
 	vm.runMutex.Lock()
 	defer vm.runMutex.Unlock()
 	vm.running = false
+}
+
+// TypeRegistry returns the VM's type registry for Go/Risor conversions.
+// If no registry was configured, returns the default registry.
+func (vm *VirtualMachine) TypeRegistry() *object.TypeRegistry {
+	if vm.typeRegistry == nil {
+		return object.DefaultRegistry()
+	}
+	return vm.typeRegistry
 }
 
 func (vm *VirtualMachine) Run(ctx context.Context) (err error) {
@@ -929,13 +942,8 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				obj := vm.pop()
 				switch obj := obj.(type) {
 				case *object.Error:
-					if obj.IsRaised() {
-						if herr := vm.handleException(obj); herr != nil {
-							return herr
-						}
-						continue
-					}
-					items[dst] = obj.Value().Error()
+					// Errors are values - stringify them in templates
+					items[dst] = obj.String()
 				case *object.String:
 					items[dst] = obj.Value()
 				default:

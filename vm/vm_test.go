@@ -745,7 +745,7 @@ func TestStringTemplateWithErrorValue(t *testing.T) {
 	// Error values (not thrown) are stringified in templates
 	// Catch an error to get it as a value, then use it in a template
 	code := `
-	let err
+	let err = nil
 	try {
 		throw "something went wrong"
 	} catch e {

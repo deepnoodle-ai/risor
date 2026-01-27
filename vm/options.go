@@ -1,5 +1,7 @@
 package vm
 
+import "github.com/risor-io/risor/object"
+
 // Option is a configuration function for a Virtual Machine.
 type Option func(*VirtualMachine)
 
@@ -46,5 +48,13 @@ func WithContextCheckInterval(interval int) Option {
 func WithObserver(observer Observer) Option {
 	return func(vm *VirtualMachine) {
 		vm.observer = observer
+	}
+}
+
+// WithTypeRegistry sets the type registry for Go/Risor type conversions.
+// If not set, object.DefaultRegistry() is used.
+func WithTypeRegistry(registry *object.TypeRegistry) Option {
+	return func(vm *VirtualMachine) {
+		vm.typeRegistry = registry
 	}
 }

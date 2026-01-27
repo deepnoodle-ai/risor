@@ -362,24 +362,45 @@ Embedding demands predictable termination behavior and control over resource use
 
 ## 9. Embedding Boundary and Type Conversion
 
-`WithEnv(map[string]any)` is convenient but underspecified. It is unclear which
-Go values are accepted and how unsupported values are handled.
+**Status: RESOLVED**
 
-### Problem
+The `TypeRegistry` system now handles Go ↔ Risor type conversion with clear contracts.
 
-Loose conversion rules make embedding fragile and non-deterministic.
+### Resolution
 
-### Proposal
+Implemented `TypeRegistry` with:
+- Explicit, immutable registry for type conversions
+- `DefaultRegistry()` with converters for all built-in types
+- `RegistryBuilder` for custom type converters
+- `RisorValuer` interface for types that self-convert
+- VM-owned registry (no global mutable state)
 
-Document and enforce a conversion policy, or introduce a typed API:
+**API:**
+```go
+// Use default conversion
+risor.Eval(ctx, source, risor.WithEnv(map[string]any{"x": 42}))
 
-- `WithEnv(map[string]object.Object)`
-- `WithValue(name string, value object.Object)`
+// Custom type conversion
+registry := risor.NewTypeRegistry().
+    RegisterFromGo(reflect.TypeOf(MyType{}), convertMyType).
+    Build()
+risor.Eval(ctx, source, risor.WithTypeRegistry(registry))
 
-### Questions
+// Self-converting types
+type User struct { ID int; Name string }
+func (u User) RisorValue() object.Object { ... }
+// Works automatically without registry configuration
+```
 
-- [ ] Which Go types should be supported by default?
-- [ ] Should unsupported types be a compile-time error or runtime error?
+**Supported types by default:**
+- Primitives: bool, int/int8/.../int64, uint/uint8/.../uint64, float32/float64, string
+- Containers: slices, arrays, maps (string keys)
+- Special: []byte, time.Time, json.Number
+- Pointers: automatically dereferenced
+
+**Unsupported types** (e.g., functions, channels) cause a panic at VM creation time, providing immediate feedback rather than mysterious runtime failures.
+
+See `docs/proposals/type-registry.md` for full documentation.
 
 ---
 
@@ -593,40 +614,16 @@ func (b *base) Cost() int { return 0 }
 
 ### 18.3 Type Conversion System
 
-The `typeconv.go` file (1076 lines) handles Go ↔ Risor conversion with two mechanisms:
+**Status: RESOLVED** — Replaced with `TypeRegistry` system. See §9 and `docs/proposals/type-registry.md`.
 
-**1. Type assertion helpers** — `AsInt()`, `AsString()`, `AsBool()`, etc.
+The old system had these issues (now fixed):
 
-```go
-func AsInt(obj Object) (int64, *Error) {
-    switch obj := obj.(type) {
-    case *Int:
-        return obj.value, nil
-    case *Byte:
-        return int64(obj.value), nil
-    default:
-        return 0, TypeErrorf("type error: expected an integer (%s given)", obj.Type())
-    }
-}
-```
+- **Global converter registry** with mutex — Replaced with immutable `TypeRegistry` owned by VM
+- **20+ converter types** with duplicated logic — Replaced with unified numeric handling
+- **TypeConverter interface** with scattered implementations — Replaced with `RegistryBuilder` for custom converters
+- **No extension point for custom types** — Added `RisorValuer` interface for self-converting types
 
-**2. TypeConverter interface** — Bidirectional conversion for reflection
-
-```go
-type TypeConverter interface {
-    To(Object) (interface{}, error)
-    From(interface{}) (Object, error)
-}
-```
-
-**Observations:**
-
-- **Implicit coercions exist**: `AsInt()` accepts `*Byte`, `AsFloat()` accepts `*Int` and `*Byte`
-- **Coercion rules are scattered**: Each `As*` function defines its own rules
-- **Global converter registry**: `typeConverters` map with mutex — another global state concern
-- **20+ converter types**: One per Go primitive, plus slice/map/struct/pointer converters
-
-**Issue:** The coercion rules in `As*` functions don't match the coercion rules in `TypeConverter` implementations. For example, `AsFloat()` accepts `*Int`, but `Float64Converter.To()` has the same logic duplicated.
+The `As*` helper functions (`AsInt()`, `AsString()`, etc.) remain for convenience but the underlying conversion system is now cleaner.
 
 ### 18.4 Operation Dispatch
 
@@ -730,30 +727,14 @@ func (e *Error) GetAttr(name string) (Object, bool) {
 
 ### 18.7 Go Interop (Proxy System)
 
-The Proxy type wraps arbitrary Go structs:
+**Status: REMOVED** — The Proxy system (`Proxy`, `GoType`, `GoField`, `GoMethod`) was removed from v2.
 
-```go
-type Proxy struct {
-    *base
-    typ *GoType       // Cached type metadata
-    obj interface{}   // The wrapped Go value
-}
-```
+Go values are now converted to Risor types at the embedding boundary using `TypeRegistry`:
+- Primitives, slices, and maps are converted to native Risor types
+- Custom types use `RisorValuer` interface or registered converters
+- No reflection-based method dispatch at runtime
 
-**Key mechanisms:**
-
-1. **GoType registry** — Caches reflection metadata per Go type
-2. **GoField** — Wraps struct fields with converters
-3. **GoMethod** — Wraps methods, handles context injection, error extraction
-
-**Observations:**
-
-- `NewProxy()` converts struct values to pointers for mutability
-- Methods are invoked via reflection — performance cost
-- Error returns are detected and extracted automatically
-- Context parameters are injected from the Risor context
-
-**Issue:** The proxy system has a global `goTypeRegistry` with mutex — another global state concern. Also, `IsProxyableType()` is exported but the rules are subtle (interfaces, slices, structs, and struct pointers).
+This simplifies the type system and eliminates the `goTypeRegistry` global state.
 
 ### 18.8 Module State Management
 
@@ -886,7 +867,7 @@ Map attributes (`m.keys`, `m.values`, `m.items`) are implemented via `GetAttr`. 
 | Conversion error signaling inconsistent | Medium | Consistency |
 | Error equality ignores structured data | Low | Semantics |
 | Public constructors panic on bad inputs | Medium | Safety |
-| Global registries (typeConverters, goTypeRegistry) | Medium | Concurrency |
+| ~~Global registries (typeConverters, goTypeRegistry)~~ | ~~Medium~~ | ~~Concurrency~~ | **RESOLVED** — TypeRegistry |
 | Int cache could cause issues if mutated | Low | Safety |
 | List inspectActive not thread-safe | Low | Concurrency |
 | base is always nil pointer | Low | Style |
@@ -954,7 +935,7 @@ Concrete proposals derived from the analysis above, organized by priority.
 | ID | Problem | Proposal | Reason | Status |
 |----|---------|----------|--------|--------|
 | P1-1 | `typeErrorsAreFatal` is global mutable state affecting all VMs (§3) | Remove the configuration entirely. Type errors are always fatal (this was already the effective behavior since `IsFatal()` was never checked). Removed: global variable, `FatalError` interface, `IsFatal()` methods, setter/getter functions. | Simplest solution. The configuration was dead code — no runtime behavior depended on it. | Done |
-| P1-2 | Global registries: `typeConverters`, `goTypeRegistry` (§18.3, §18.7) | Evaluate whether these registries cause actual problems. If so, move into a per-VM or per-context struct. | These are internal caches, not user-facing configuration. May not need changes if they're effectively immutable after initialization. | Not Started |
+| P1-2 | Global registries: `typeConverters`, `goTypeRegistry` (§18.3, §18.7) | Replaced `typeConverters` with `TypeRegistry` (immutable, VM-owned). Removed `goTypeRegistry` along with the proxy system. | Type conversion is now explicit via `WithTypeRegistry` option. No global mutable state remains. | Done |
 | P1-3 | Object interface has 9 methods; `Cost()` mixes resource concerns into values (§1) | Keep 8-method core interface. Change `Equals` to return `bool`, `RunOperation` to return `(Object, error)`. Remove `Cost()`. Add single `Callable` interface for invocable types. | Minimal change. Only one capability interface to remember. Cost tracking moves to Runtime. | Done |
 | P1-4 | Two parallel error systems with unclear boundaries (§2) | Compile-time uses `errors` package (Go errors). Runtime uses `object.Error` (Risor errors). Document the boundary: compiler returns Go errors, VM returns Risor errors. Never wrap one in the other. | Single mental model per phase. Clear ownership of error handling. | Not Started |
 | P1-5 | No resource limits for embedded execution (§8) | Add `Compile(ctx, source, opts)` for cancellation. Add VM options: `WithMaxSteps(int)`, `WithMaxStackDepth(int)`, `WithTimeout(duration)`. | Embedders need predictable termination. Untrusted code must not run forever. | Not Started |
@@ -1000,6 +981,7 @@ Concrete proposals derived from the analysis above, organized by priority.
 | A-5 | Error introspection is not first-class; embedders must know internal types to extract source locations | Add `risor.ErrorLocation(err error) (file string, line int, ok bool)` and `risor.ErrorStack(err error) []Frame` to public API. | Embedders should be able to provide good error messages without knowing Risor internals. | Not Started |
 | A-6 | `List.inspectActive` flag for circular reference detection is not thread-safe (§18.9) | Pass a `seen map[*List]bool` through `Inspect()` calls instead of storing state on the object. Or accept that `Inspect()` is single-threaded and document it. | Mutable state on values causes races. Either fix it or document the constraint. | Not Started |
 | A-7 | Bytecode reuse contract is implicit: same keys required, values can differ (§16) | Add `Bytecode.RequiredGlobals() []string` method. `Run()` validates env keys match at startup (not silently fail mid-execution). | Fail-fast with clear error beats mysterious "undefined" errors during execution. | Not Started |
+| A-8 | The `raised` flag on Error was vestigial from pre-try/catch era when errors could be values OR exceptions | Remove `raised` flag entirely. Errors are values (like Python exceptions). Only `throw` triggers exception handling. Errors stringify in templates. | Cleaner model: errors are data, throw is an action. No mutable state on error objects. | Done |
 
 ### Key Design Decisions
 
@@ -1272,4 +1254,108 @@ func (vm *VM) Run(ctx context.Context) (Object, error) {
         // Execute instruction...
     }
 }
+```
+
+### G. Error Model: Errors as Values (A-8)
+
+**Implemented.** This section documents the error handling model after removing the vestigial `raised` flag.
+
+#### The Model
+
+Errors in Risor v2 follow the Python exception model:
+
+1. **Errors are values** — You can create, inspect, store, and pass them around like any other value
+2. **`throw` is an action** — Only `throw` triggers exception handling
+3. **Caught errors become values again** — In a catch block, the error is just a value
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Error Object = Data (like any other value)                 │
+│  ├── Can be created: caught from try/catch                  │
+│  ├── Can be inspected: err.message(), err.stack()           │
+│  ├── Can be compared: err1 == err2                          │
+│  ├── Can be stringified: `${err}` or string(err)            │
+│  └── Can be stored: let errors = [err1, err2]               │
+│                                                             │
+│  Throw = Action (triggers exception handling)               │
+│  ├── Explicit: throw err                                    │
+│  ├── Implicit: operation failure (1 + "foo")                │
+│  └── Implicit: builtin returns error                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### What Was Removed
+
+The `raised` flag was a vestige of a pre-try/catch design where errors could be either:
+- "Raised" (propagating as exceptions)
+- "Not raised" (usable as values)
+
+With try/catch, this distinction is unnecessary:
+- All errors created by the VM have `raised=true` by default
+- There was no way to create a non-raised error
+- The flag was only checked in one place (BuildString opcode)
+
+**Removed:**
+- `Error.raised` field
+- `Error.IsRaised()` method
+- `Error.WithRaised()` method
+- Raised flag in equality/comparison
+
+#### Usage Examples
+
+```risor
+// Catch an error to get it as a value
+let err = nil
+try {
+    might_fail()
+} catch e {
+    err = e  // e is a value now
+}
+
+// Inspect the error
+print(err.message())
+print(err.stack())
+
+// Stringify in templates
+print(`Error occurred: ${err}`)
+
+// Store errors
+let problems = []
+try { op1() } catch e { problems.append(e) }
+try { op2() } catch e { problems.append(e) }
+
+// Re-throw if needed
+try {
+    risky()
+} catch e {
+    if !e.message().contains("retryable") {
+        throw e  // Re-raise
+    }
+    // Otherwise swallow
+}
+
+// Operations that fail throw automatically
+try {
+    let x = 1 + "foo"  // throws type error
+} catch e {
+    print(e.message())  // "type error: ..."
+}
+```
+
+#### For Embedders
+
+```go
+result, err := risor.Eval(ctx, source, opts...)
+if err != nil {
+    // Unhandled exception propagated up
+    switch e := err.(type) {
+    case *errors.CompileError:
+        // Compilation failed
+    case *object.StructuredError:
+        // Runtime error with location info
+    default:
+        // Other error
+    }
+}
+// result might be an *object.Error if the script returned one as a value
 ```

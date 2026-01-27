@@ -8,10 +8,19 @@ import (
 )
 
 // Error wraps a Go error interface and implements Object.
+//
+// Errors are values. You can create them, inspect them, store them, and pass
+// them around like any other value. Use "throw" to trigger exception handling.
+//
+// Example:
+//
+//	let err = error("something went wrong")
+//	print(err.message())     // inspect
+//	print(`Error: ${err}`)   // stringify
+//	throw err                // only throw triggers exception handling
 type Error struct {
 	*base
 	err        error
-	raised     bool
 	structured *StructuredError
 }
 
@@ -42,22 +51,13 @@ func (e *Error) Compare(other Object) (int, error) {
 	}
 	thisMsg := e.Message().Value()
 	otherMsg := otherErr.Message().Value()
-	if thisMsg == otherMsg && e.raised == otherErr.raised {
+	if thisMsg == otherMsg {
 		return 0, nil
 	}
 	if thisMsg > otherMsg {
 		return 1, nil
 	}
-	if thisMsg < otherMsg {
-		return -1, nil
-	}
-	if e.raised && !otherErr.raised {
-		return 1, nil
-	}
-	if !e.raised && otherErr.raised {
-		return -1, nil
-	}
-	return 0, nil
+	return -1, nil
 }
 
 func (e *Error) Equals(other Object) bool {
@@ -65,7 +65,7 @@ func (e *Error) Equals(other Object) bool {
 	if !ok {
 		return false
 	}
-	return e.Message().Value() == otherError.Message().Value() && e.raised == otherError.raised
+	return e.Message().Value() == otherError.Message().Value()
 }
 
 func (e *Error) GetAttr(name string) (Object, bool) {
@@ -138,15 +138,6 @@ func (e *Error) Message() *String {
 	return NewString(e.err.Error())
 }
 
-func (e *Error) WithRaised(value bool) *Error {
-	e.raised = value
-	return e
-}
-
-func (e *Error) IsRaised() bool {
-	return e.raised
-}
-
 func (e *Error) Error() string {
 	return e.err.Error()
 }
@@ -168,7 +159,7 @@ func Errorf(format string, a ...interface{}) *Error {
 			args = append(args, arg)
 		}
 	}
-	return &Error{err: fmt.Errorf(format, args...), raised: true}
+	return &Error{err: fmt.Errorf(format, args...)}
 }
 
 func (e *Error) MarshalJSON() ([]byte, error) {
@@ -178,17 +169,17 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 func NewError(err error) *Error {
 	switch err := err.(type) {
 	case *Error: // unwrap to get the inner error, to avoid unhelpful nesting
-		return &Error{err: err.Unwrap(), raised: true, structured: err.structured}
+		return &Error{err: err.Unwrap(), structured: err.structured}
 	case *StructuredError:
-		return &Error{err: err, raised: true, structured: err}
+		return &Error{err: err, structured: err}
 	default:
-		return &Error{err: err, raised: true}
+		return &Error{err: err}
 	}
 }
 
 // NewErrorFromStructured creates a new Error from a StructuredError.
 func NewErrorFromStructured(se *StructuredError) *Error {
-	return &Error{err: se, raised: true, structured: se}
+	return &Error{err: se, structured: se}
 }
 
 // Structured returns the underlying StructuredError if present.

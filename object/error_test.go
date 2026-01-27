@@ -36,29 +36,6 @@ func TestErrorCompareStr(t *testing.T) {
 	assert.Equal(t, cmp, 1)
 }
 
-func TestErrorCompareRaised(t *testing.T) {
-	a := NewError(errors.New("a")).WithRaised(true)
-	b := NewError(errors.New("a")) // raised is set by default
-
-	assert.True(t, a.IsRaised())
-	assert.True(t, b.IsRaised())
-
-	result, err := a.Compare(b)
-	assert.Nil(t, err)
-	assert.Equal(t, result, 0)
-
-	b.WithRaised(false)
-	assert.False(t, b.IsRaised())
-
-	result, err = a.Compare(b)
-	assert.Nil(t, err)
-	assert.Equal(t, result, 1)
-
-	result, err = b.Compare(a)
-	assert.Nil(t, err)
-	assert.Equal(t, result, -1)
-}
-
 func TestErrorMessage(t *testing.T) {
 	a := NewError(errors.New("a"))
 
