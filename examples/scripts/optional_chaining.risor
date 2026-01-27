@@ -1,0 +1,96 @@
+// Optional Chaining and Nullish Coalescing
+// Demonstrates safe navigation of potentially nil values
+
+// Sample data with missing fields
+let users = [
+    {
+        id: 1,
+        name: "Alice",
+        profile: {
+            email: "alice@example.com",
+            settings: {
+                theme: "dark",
+                notifications: true
+            }
+        }
+    },
+    {
+        id: 2,
+        name: "Bob",
+        profile: {
+            email: "bob@example.com"
+            // No settings
+        }
+    },
+    {
+        id: 3,
+        name: "Charlie"
+        // No profile
+    }
+]
+
+// Safe property access with ?.
+function getTheme(user) {
+    return user?.profile?.settings?.theme ?? "default"
+}
+
+// Safe property access on nil
+let processor = nil
+let processed = processor?.process ?? "not processed"
+
+// Nullish coalescing (??) vs logical or (||)
+let config = {
+    timeout: 0,
+    retries: nil,
+    enabled: false
+}
+
+// ?? only replaces nil, || replaces any falsy value
+let timeout1 = config.timeout ?? 30    // 0 (0 is not nil)
+let timeout2 = config.timeout || 30    // 30 (0 is falsy)
+
+let retries1 = config.retries ?? 3     // 3 (nil is replaced)
+let retries2 = config.retries || 3     // 3 (nil is falsy)
+
+let enabled1 = config.enabled ?? true  // false (false is not nil)
+let enabled2 = config.enabled || true  // true (false is falsy)
+
+// Coalesce function for first non-nil value
+let value = coalesce(nil, nil, "found", "ignored")
+
+// Practical example: API response handling
+function processResponse(response) {
+    let status = response?.status ?? "unknown"
+    let message = response?.error?.message ?? response?.data?.message ?? "no message"
+    let items = response?.data?.items ?? []
+    return {status: status, message: message, itemCount: len(items)}
+}
+
+let successResponse = {status: "ok", data: {message: "success", items: [1, 2, 3]}}
+let errorResponse = {status: "error", error: {message: "not found"}}
+let emptyResponse = nil
+
+// Using getattr for safe attribute access with default
+let user = users[0]
+let missingField = getattr(user, "missing", "default_value")
+let existingField = getattr(user, "name", "unknown")
+
+{
+    themes: users.map(getTheme),
+    processed: processed,
+    nullishVsOr: {
+        timeout: [timeout1, timeout2],
+        retries: [retries1, retries2],
+        enabled: [enabled1, enabled2]
+    },
+    coalesce: value,
+    responses: {
+        success: processResponse(successResponse),
+        error: processResponse(errorResponse),
+        empty: processResponse(emptyResponse)
+    },
+    getattr: {
+        missing: missingField,
+        existing: existingField
+    }
+}

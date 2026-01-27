@@ -1,0 +1,169 @@
+// State Machine Pattern
+// Demonstrates modeling state transitions with pure functions
+
+// Simple state definitions
+let orderTransitions = {
+    created: ["confirmed", "cancelled"],
+    confirmed: ["processing", "cancelled"],
+    processing: ["shipped", "cancelled"],
+    shipped: ["delivered"],
+    delivered: [],
+    cancelled: []
+}
+
+// Check if transition is valid
+function canTransition(currentStatus, targetStatus) {
+    let allowed = orderTransitions[currentStatus]
+    if (allowed == nil) {
+        return false
+    }
+    return targetStatus in allowed
+}
+
+// Create a new order with state
+function createOrder(id, customer, items) {
+    return {
+        id: id,
+        customer: customer,
+        items: items,
+        status: "created",
+        history: [{status: "created", at: time.now().format(time.RFC3339)}]
+    }
+}
+
+// Transition order to new state
+function transitionOrder(order, newStatus) {
+    if (!canTransition(order.status, newStatus)) {
+        throw error("invalid transition from '%s' to '%s'", order.status, newStatus)
+    }
+
+    let newHistory = [...order.history, {
+        status: newStatus,
+        at: time.now().format(time.RFC3339)
+    }]
+
+    return {
+        id: order.id,
+        customer: order.customer,
+        items: order.items,
+        status: newStatus,
+        history: newHistory
+    }
+}
+
+// Traffic light using closures
+function createTrafficLight() {
+    let states = ["red", "green", "yellow"]
+    let currentIndex = 0
+
+    return {
+        current: function() {
+            return states[currentIndex]
+        },
+        next: function() {
+            currentIndex = (currentIndex + 1) % 3
+            return states[currentIndex]
+        },
+        reset: function() {
+            currentIndex = 0
+            return states[0]
+        }
+    }
+}
+
+// Generic FSM builder
+function buildFSM(initial, transitions) {
+    let currentState = initial
+    let history = []
+
+    function canSend(event) {
+        if (!(currentState in transitions)) {
+            return false
+        }
+        return event in transitions[currentState]
+    }
+
+    function send(event) {
+        if (!canSend(event)) {
+            return {success: false, error: sprintf("no transition for '%s' in state '%s'", event, currentState)}
+        }
+        let previousState = currentState
+        currentState = transitions[currentState][event]
+        history.append({from: previousState, event: event, to: currentState})
+        return {success: true, state: currentState}
+    }
+
+    return {
+        current: function() { return currentState },
+        canSend: canSend,
+        send: send,
+        history: function() { return history }
+    }
+}
+
+// Login flow FSM
+let loginTransitions = {
+    idle: {START: "enteringCredentials"},
+    enteringCredentials: {SUBMIT: "validating", CANCEL: "idle"},
+    validating: {SUCCESS: "authenticated", FAILURE: "error"},
+    authenticated: {LOGOUT: "idle"},
+    error: {RETRY: "enteringCredentials", CANCEL: "idle"}
+}
+
+let loginFSM = buildFSM("idle", loginTransitions)
+
+// Test order workflow
+let order = createOrder("ORD-001", "alice", [{sku: "A1", qty: 2}])
+order = transitionOrder(order, "confirmed")
+order = transitionOrder(order, "processing")
+order = transitionOrder(order, "shipped")
+order = transitionOrder(order, "delivered")
+
+// Test invalid transition
+let invalidResult = try {
+    let newOrder = createOrder("ORD-002", "bob", [])
+    transitionOrder(newOrder, "shipped")
+} catch e {
+    {error: e.message()}
+}
+
+// Test traffic light
+let light = createTrafficLight()
+let lightSequence = [
+    light.current(),
+    light.next(),
+    light.next(),
+    light.next(),
+    light.next()
+]
+
+// Test login FSM
+loginFSM.send("START")
+loginFSM.send("SUBMIT")
+loginFSM.send("FAILURE")
+loginFSM.send("RETRY")
+loginFSM.send("SUBMIT")
+loginFSM.send("SUCCESS")
+
+{
+    orderWorkflow: {
+        finalOrder: {
+            id: order.id,
+            status: order.status,
+            historyLength: len(order.history)
+        },
+        invalidTransition: invalidResult
+    },
+    trafficLight: {
+        sequence: lightSequence
+    },
+    loginFSM: {
+        finalState: loginFSM.current(),
+        history: loginFSM.history()
+    },
+    possibleTransitions: {
+        fromCreated: orderTransitions.created,
+        fromProcessing: orderTransitions.processing,
+        fromDelivered: orderTransitions.delivered
+    }
+}

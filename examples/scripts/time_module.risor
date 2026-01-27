@@ -1,0 +1,108 @@
+// Time Module
+// Demonstrates time operations and formatting
+
+// Get current time
+let now = time.now()
+
+// Create time from Unix timestamp
+let epoch = time.unix(0, 0)                    // Unix epoch
+let timestamp = time.unix(1704067200, 0)       // Jan 1, 2024
+
+// Parse time from string
+let parsed = time.parse(time.RFC3339, "2024-06-15T14:30:00Z")
+
+// Format time in different layouts
+let rfc3339 = now.format(time.RFC3339)
+let rfc1123 = now.format(time.RFC1123)
+let kitchen = now.format(time.Kitchen)
+let custom = now.format("2006-01-02 15:04:05")
+
+// Time components (via format)
+let year = now.format("2006")
+let month = now.format("01")
+let day = now.format("02")
+let hour = now.format("15")
+let minute = now.format("04")
+
+// UTC conversion
+let utc = now.utc()
+let utcFormatted = utc.format(time.RFC3339)
+
+// Unix timestamp
+let unixTimestamp = now.unix()
+
+// Time arithmetic
+let future = now.add_date(1, 0, 0)        // 1 year from now
+let nextMonth = now.add_date(0, 1, 0)     // 1 month from now
+let nextWeek = now.add_date(0, 0, 7)      // 7 days from now
+
+// Time comparison
+let isAfter = future.after(now)
+let isBefore = now.before(future)
+
+// Duration since
+let sinceEpoch = time.since(epoch)
+
+// Practical example: format relative time
+function formatRelative(seconds) {
+    if (seconds < 60) {
+        return sprintf("%d seconds ago", int(seconds))
+    }
+    if (seconds < 3600) {
+        return sprintf("%d minutes ago", int(seconds / 60))
+    }
+    if (seconds < 86400) {
+        return sprintf("%d hours ago", int(seconds / 3600))
+    }
+    return sprintf("%d days ago", int(seconds / 86400))
+}
+
+// Check if time is within a range
+function isWithinRange(t, start, end) {
+    return t.after(start) && t.before(end)
+}
+
+// Available layout constants
+let layouts = [
+    "ANSIC",
+    "UnixDate",
+    "RubyDate",
+    "RFC822",
+    "RFC822Z",
+    "RFC850",
+    "RFC1123",
+    "RFC1123Z",
+    "RFC3339",
+    "RFC3339Nano",
+    "Kitchen",
+    "DateOnly",
+    "TimeOnly"
+]
+
+{
+    now: now.format(time.RFC3339),
+    epoch: epoch.format(time.RFC3339),
+    parsed: parsed.format(time.RFC3339),
+    formats: {
+        rfc3339: rfc3339,
+        rfc1123: rfc1123,
+        kitchen: kitchen,
+        custom: custom
+    },
+    components: {
+        year: year,
+        month: month,
+        day: day,
+        hour: hour,
+        minute: minute
+    },
+    utc: utcFormatted,
+    unixTimestamp: unixTimestamp,
+    future: future.format("2006-01-02"),
+    comparisons: {
+        isAfter: isAfter,
+        isBefore: isBefore
+    },
+    sinceEpoch: formatRelative(sinceEpoch),
+    layouts: layouts
+}

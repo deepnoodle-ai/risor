@@ -1,0 +1,204 @@
+// Builtins Tests
+// Tests for core built-in functions
+
+// Type conversion tests
+function test_int_conversion(t) {
+    t.assert_eq(int("42"), 42)
+    t.assert_eq(int(3.7), 3)
+    t.assert_eq(int(-3.7), -3)
+    t.assert_eq(int(), 0)
+}
+
+function test_float_conversion(t) {
+    t.assert_eq(float("3.14"), 3.14)
+    t.assert_eq(float(42), 42.0)
+    t.assert_eq(float(), 0.0)
+}
+
+function test_string_conversion(t) {
+    t.assert_eq(string(42), "42")
+    t.assert_eq(string(3.14), "3.14")
+    t.assert_eq(string(true), "true")
+    t.assert_eq(string(false), "false")
+    t.assert_eq(string(), "")
+}
+
+function test_bool_conversion(t) {
+    t.assert_eq(bool(1), true)
+    t.assert_eq(bool(0), false)
+    t.assert_eq(bool(""), false)
+    t.assert_eq(bool("hello"), true)
+    t.assert_eq(bool([]), false)
+    t.assert_eq(bool([1]), true)
+    t.assert_eq(bool(), false)
+}
+
+function test_byte_conversion(t) {
+    t.assert_eq(byte(65), 65)
+    t.assert_eq(byte("65"), 65)
+    t.assert_eq(byte(), 0)
+}
+
+function test_list_conversion(t) {
+    t.assert_eq(list(), [])
+    t.assert_eq(list(range(3)), [0, 1, 2])
+}
+
+// Type introspection
+function test_type_function(t) {
+    t.assert_eq(type(42), "int")
+    t.assert_eq(type(3.14), "float")
+    t.assert_eq(type("hello"), "string")
+    t.assert_eq(type(true), "bool")
+    t.assert_eq(type([1, 2, 3]), "list")
+    t.assert_eq(type({a: 1}), "map")
+    t.assert_eq(type(nil), "nil")
+}
+
+// Length function
+function test_len_function(t) {
+    t.assert_eq(len("hello"), 5)
+    t.assert_eq(len([1, 2, 3]), 3)
+    t.assert_eq(len({a: 1, b: 2}), 2)
+    t.assert_eq(len(""), 0)
+    t.assert_eq(len([]), 0)
+    t.assert_eq(len({}), 0)
+}
+
+// Keys function
+function test_keys_function(t) {
+    let m = {a: 1, b: 2, c: 3}
+    let k = keys(m)
+    t.assert_eq(len(k), 3)
+    t.assert("a" in k)
+    t.assert("b" in k)
+    t.assert("c" in k)
+}
+
+// Range function
+function test_range_single_arg(t) {
+    let r = list(range(5))
+    t.assert_eq(r, [0, 1, 2, 3, 4])
+}
+
+function test_range_two_args(t) {
+    let r = list(range(2, 6))
+    t.assert_eq(r, [2, 3, 4, 5])
+}
+
+function test_range_three_args(t) {
+    let r = list(range(0, 10, 2))
+    t.assert_eq(r, [0, 2, 4, 6, 8])
+}
+
+function test_range_negative_step(t) {
+    let r = list(range(5, 0, -1))
+    t.assert_eq(r, [5, 4, 3, 2, 1])
+}
+
+// Coalesce function
+function test_coalesce(t) {
+    t.assert_eq(coalesce(nil, nil, "default"), "default")
+    t.assert_eq(coalesce("first", "second"), "first")
+    t.assert_eq(coalesce(nil, 42), 42)
+    t.assert_eq(coalesce(), nil)
+}
+
+// Chunk function
+function test_chunk_function(t) {
+    let items = [1, 2, 3, 4, 5]
+    t.assert_eq(chunk(items, 2), [[1, 2], [3, 4], [5]])
+    t.assert_eq(chunk(items, 3), [[1, 2, 3], [4, 5]])
+    t.assert_eq(chunk(items, 5), [[1, 2, 3, 4, 5]])
+    t.assert_eq(chunk(items, 10), [[1, 2, 3, 4, 5]])
+}
+
+// Sorted function
+function test_sorted_numbers(t) {
+    t.assert_eq(sorted([3, 1, 4, 1, 5, 9, 2, 6]), [1, 1, 2, 3, 4, 5, 6, 9])
+}
+
+function test_sorted_strings(t) {
+    t.assert_eq(sorted(["banana", "apple", "cherry"]), ["apple", "banana", "cherry"])
+}
+
+function test_sorted_with_key(t) {
+    let items = [3, 1, 4, 1, 5]
+    // Sort descending using comparison function
+    let desc = sorted(items, (a, b) => a > b)
+    t.assert_eq(desc, [5, 4, 3, 1, 1])
+}
+
+// Reversed function
+function test_reversed_list(t) {
+    t.assert_eq(reversed([1, 2, 3]), [3, 2, 1])
+    t.assert_eq(reversed([]), [])
+    t.assert_eq(reversed([1]), [1])
+}
+
+function test_reversed_string(t) {
+    t.assert_eq(reversed("hello"), "olleh")
+    t.assert_eq(reversed(""), "")
+}
+
+// Filter builtin
+function test_filter_builtin(t) {
+    let numbers = [1, 2, 3, 4, 5, 6]
+    let evens = filter(numbers, x => x % 2 == 0)
+    t.assert_eq(evens, [2, 4, 6])
+}
+
+// Any and All
+function test_any_builtin(t) {
+    t.assert(any([false, true, false]))
+    t.assert(!any([false, false, false]))
+    t.assert(!any([]))
+}
+
+function test_all_builtin(t) {
+    t.assert(all([true, true, true]))
+    t.assert(!all([true, false, true]))
+    t.assert(all([]))
+}
+
+// Getattr function
+function test_getattr_function(t) {
+    let obj = {name: "Alice", age: 30}
+    t.assert_eq(getattr(obj, "name"), "Alice")
+    t.assert_eq(getattr(obj, "age"), 30)
+    t.assert_eq(getattr(obj, "missing", "default"), "default")
+}
+
+// Call function
+function test_call_function(t) {
+    function add(a, b) { return a + b }
+    t.assert_eq(call(add, 2, 3), 5)
+}
+
+// Assert function (should not error on true)
+function test_assert_builtin(t) {
+    // If this doesn't throw, the test passes
+    assert(true)
+    assert(1)
+    assert("non-empty")
+    t.assert(true, "assert should not throw on truthy values")
+}
+
+// Error function
+function test_error_function(t) {
+    let err = error("something went wrong")
+    t.assert_error(err)
+}
+
+function test_error_with_formatting(t) {
+    let err = error("file %s not found at line %d", "test.txt", 42)
+    t.assert_error(err)
+}
+
+// Sprintf function
+function test_sprintf_function(t) {
+    t.assert_eq(sprintf("%s", "hello"), "hello")
+    t.assert_eq(sprintf("%d", 42), "42")
+    t.assert_eq(sprintf("%s: %d", "count", 5), "count: 5")
+    t.assert_eq(sprintf("%.2f", 3.14159), "3.14")
+}

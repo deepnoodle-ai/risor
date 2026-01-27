@@ -1,0 +1,128 @@
+// Regular Expressions
+// Demonstrates the regexp module for pattern matching
+
+// Basic matching
+let emailPattern = regexp.compile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
+let isEmail = emailPattern.match("user@example.com")
+let notEmail = emailPattern.match("not-an-email")
+
+// Quick match without compiling
+let quickMatch = regexp.match(`^\d{3}-\d{4}$`, "555-1234")
+
+// Find first match
+let text = "The quick brown fox jumps over the lazy dog"
+let wordPattern = regexp.compile(`\b\w{5}\b`)
+let firstFiveLetterWord = wordPattern.find(text)
+
+// Find all matches
+let allFiveLetterWords = wordPattern.find_all(text)
+
+// Submatches (capturing groups)
+let datePattern = regexp.compile(`(\d{4})-(\d{2})-(\d{2})`)
+let dateMatch = datePattern.find_submatch("Today is 2024-06-15")
+
+// Replace all matches
+let censorPattern = regexp.compile(`\b(password|secret)\b`)
+let censored = censorPattern.replace_all("My password is secret123", "[REDACTED]")
+
+// Split by pattern
+let splitPattern = regexp.compile(`[,;\s]+`)
+let parts = splitPattern.split("apple, banana; cherry  date")
+
+// Practical: validate and extract data
+function parsePhoneNumber(phone) {
+    let pattern = regexp.compile(`^\+?(\d{1,3})?[-.\s]?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})$`)
+    let match = pattern.find_submatch(phone)
+    if (match == nil || len(match) < 5) {
+        return nil
+    }
+    return {
+        country: if (match[1] != "") { match[1] } else { "1" },
+        area: match[2],
+        exchange: match[3],
+        subscriber: match[4]
+    }
+}
+
+// Practical: extract URLs
+function extractUrls(text) {
+    let urlPattern = regexp.compile(`https?://[^\s<>"{}|\\^\[\]` + "`" + `]+`)
+    return urlPattern.find_all(text)
+}
+
+let htmlText = "Visit https://example.com or http://test.org/page?q=1 for info"
+let urls = extractUrls(htmlText)
+
+// Practical: validate username
+function validateUsername(username) {
+    let pattern = regexp.compile(`^[a-zA-Z][a-zA-Z0-9_]{2,19}$`)
+    return pattern.match(username)
+}
+
+// Practical: slugify text
+function slugify(text) {
+    let lower = text.to_lower()
+    let pattern = regexp.compile(`[^a-z0-9]+`)
+    let slug = pattern.replace_all(lower, "-")
+    let trimPattern = regexp.compile(`^-+|-+$`)
+    return trimPattern.replace_all(slug, "")
+}
+
+// Practical: parse key-value pairs
+function parseKeyValues(text) {
+    let pattern = regexp.compile(`(\w+)=["']?([^"'\s,]+)["']?`)
+    let result = {}
+    let matches = text.split(",")
+    matches.each(part => {
+        let kv = pattern.find_submatch(part.trim_space())
+        if (kv != nil && len(kv) >= 3) {
+            result[kv[1]] = kv[2]
+        }
+    })
+    return result
+}
+
+let configText = "host='localhost', port=8080, debug=\"true\""
+let config = parseKeyValues(configText)
+
+// Common patterns
+let patterns = {
+    email: `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`,
+    url: `https?://[^\s]+`,
+    ipv4: `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`,
+    date: `\d{4}-\d{2}-\d{2}`,
+    time: `\d{2}:\d{2}(:\d{2})?`,
+    uuid: `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`
+}
+
+{
+    basicMatch: {
+        email: isEmail,
+        notEmail: notEmail,
+        quickMatch: quickMatch
+    },
+    find: {
+        firstFiveLetterWord: firstFiveLetterWord,
+        allFiveLetterWords: allFiveLetterWords
+    },
+    submatch: dateMatch,
+    replace: censored,
+    split: parts,
+    parsePhone: {
+        valid: parsePhoneNumber("(555) 123-4567"),
+        withCountry: parsePhoneNumber("+1-555-123-4567"),
+        invalid: parsePhoneNumber("invalid")
+    },
+    extractUrls: urls,
+    validate: {
+        validUser: validateUsername("alice_123"),
+        invalidStart: validateUsername("123abc"),
+        tooShort: validateUsername("ab")
+    },
+    slugify: {
+        simple: slugify("Hello World"),
+        complex: slugify("  This is a TEST!! 123  ")
+    },
+    parsedConfig: config,
+    commonPatterns: keys(patterns)
+}

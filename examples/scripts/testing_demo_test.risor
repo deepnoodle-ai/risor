@@ -1,0 +1,271 @@
+// Testing Framework Demo
+// Demonstrates all features of the Risor testing framework
+
+// ============================================================
+// Basic Assertions
+// ============================================================
+
+function test_assert_truthy(t) {
+    // t.assert(condition) - passes if condition is truthy
+    t.assert(true)
+    t.assert(1)
+    t.assert("non-empty")
+    t.assert([1, 2, 3])
+    t.assert({key: "value"})
+}
+
+function test_assert_with_message(t) {
+    // t.assert(condition, message) - custom failure message
+    let x = 10
+    t.assert(x > 0, "x should be positive")
+    t.assert(x < 100, sprintf("x should be less than 100, got %d", x))
+}
+
+// ============================================================
+// Equality Assertions
+// ============================================================
+
+function test_assert_eq_primitives(t) {
+    // t.assert_eq(got, want) - passes if values are equal
+    t.assert_eq(42, 42)
+    t.assert_eq("hello", "hello")
+    t.assert_eq(true, true)
+    t.assert_eq(nil, nil)
+}
+
+function test_assert_eq_collections(t) {
+    t.assert_eq([1, 2, 3], [1, 2, 3])
+    t.assert_eq({a: 1, b: 2}, {a: 1, b: 2})
+    t.assert_eq([], [])
+    t.assert_eq({}, {})
+}
+
+function test_assert_eq_with_message(t) {
+    let result = 2 + 2
+    t.assert_eq(result, 4, "basic arithmetic should work")
+}
+
+// ============================================================
+// Inequality Assertions
+// ============================================================
+
+function test_assert_ne(t) {
+    // t.assert_ne(got, notWant) - passes if values are NOT equal
+    t.assert_ne(1, 2)
+    t.assert_ne("hello", "world")
+    t.assert_ne([1, 2], [1, 2, 3])
+}
+
+function test_assert_ne_with_message(t) {
+    let a = "unique"
+    let b = "different"
+    t.assert_ne(a, b, "strings should be different")
+}
+
+// ============================================================
+// Nil Assertions
+// ============================================================
+
+function test_assert_nil(t) {
+    // t.assert_nil(value) - passes if value is nil
+    t.assert_nil(nil)
+
+    // Note: Map access with missing key throws error in Risor,
+    // so we demonstrate assert_nil with explicit nil value
+    let maybeNil = nil
+    t.assert_nil(maybeNil)
+}
+
+function test_assert_nil_with_message(t) {
+    function maybeReturn(flag) {
+        if (flag) {
+            return "value"
+        }
+        return nil
+    }
+
+    let result = maybeReturn(false)
+    t.assert_nil(result, "function should return nil when flag is false")
+}
+
+// ============================================================
+// Error Assertions
+// ============================================================
+
+function test_assert_error(t) {
+    // t.assert_error(value) - passes if value is an error
+    let err = error("something went wrong")
+    t.assert_error(err)
+}
+
+function test_assert_error_with_message(t) {
+    let err = error("validation failed: %s", "invalid email")
+    t.assert_error(err, "error function should create error objects")
+}
+
+// ============================================================
+// Test Name Access
+// ============================================================
+
+function test_name_property(t) {
+    // t.name - returns the current test name
+    t.assert_eq(t.name, "test_name_property")
+}
+
+// ============================================================
+// Logging
+// ============================================================
+
+function test_logging(t) {
+    // t.log(args...) - logs a message (shown in verbose mode or on failure)
+    t.log("This is a log message")
+    t.log("Multiple", "arguments", "are", "joined")
+    t.log("Values:", 42, true, [1, 2, 3])
+
+    // Logs are useful for debugging
+    let data = {name: "Alice", score: 95}
+    t.log("Processing data:", data)
+
+    t.assert(true)
+}
+
+// ============================================================
+// Skipping Tests
+// ============================================================
+
+function test_skip_without_reason(t) {
+    t.skip()
+    // Code after skip is still executed but test is marked skipped
+    t.assert(true)
+}
+
+function test_skip_with_reason(t) {
+    // t.skip(reason) - skip with explanation
+    t.skip("Feature not yet implemented")
+    t.assert(false, "this should not cause failure")
+}
+
+function test_conditional_skip(t) {
+    let featureEnabled = false
+
+    if (!featureEnabled) {
+        t.skip("Feature flag is disabled")
+    }
+
+    // This code won't affect test status since it's skipped
+    t.assert(featureEnabled)
+}
+
+// ============================================================
+// Explicit Failure
+// ============================================================
+
+function test_fail_explicit(t) {
+    // This test demonstrates t.fail() - uncomment to see failure
+    // t.fail("This test intentionally fails")
+    t.skip("Uncomment the t.fail() line to see failure behavior")
+}
+
+function test_fail_with_condition(t) {
+    let shouldFail = false
+
+    if (shouldFail) {
+        t.fail("Condition triggered failure")
+    }
+
+    t.assert(true, "test completes normally when condition is false")
+}
+
+// ============================================================
+// Complex Test Patterns
+// ============================================================
+
+function test_table_driven(t) {
+    // Table-driven test pattern
+    let testCases = [
+        {input: 0, expected: 1},    // factorial(0) = 1
+        {input: 1, expected: 1},
+        {input: 5, expected: 120},
+        {input: 10, expected: 3628800}
+    ]
+
+    function factorial(n) {
+        if (n <= 1) {
+            return 1
+        }
+        return n * factorial(n - 1)
+    }
+
+    testCases.each(tc => {
+        let result = factorial(tc.input)
+        if (result != tc.expected) {
+            t.fail(sprintf("factorial(%d) = %d, want %d",
+                tc.input, result, tc.expected))
+        }
+    })
+}
+
+function test_setup_and_assertions(t) {
+    // Setup phase
+    t.log("Setting up test data...")
+    let users = [
+        {name: "Alice", age: 30, active: true},
+        {name: "Bob", age: 25, active: false},
+        {name: "Charlie", age: 35, active: true}
+    ]
+
+    // Test phase
+    let activeUsers = users.filter(u => u.active)
+    t.assert_eq(len(activeUsers), 2)
+
+    let names = activeUsers.map(u => u.name)
+    t.assert("Alice" in names)
+    t.assert("Charlie" in names)
+    t.assert(!("Bob" in names))
+
+    let ages = activeUsers.map(u => u.age)
+    let sumAges = ages.reduce(0, (acc, age) => acc + age)
+    let avgAge = float(sumAges) / float(len(activeUsers))
+    t.assert_eq(avgAge, 32.5)
+
+    t.log("Test completed successfully")
+}
+
+function test_error_handling_pattern(t) {
+    // Testing error conditions
+    function divide(a, b) {
+        if (b == 0) {
+            return error("division by zero")
+        }
+        return a / b
+    }
+
+    // Normal case
+    let result = divide(10, 2)
+    t.assert_eq(result, 5)
+
+    // Error case
+    let err = divide(10, 0)
+    t.assert_error(err)
+}
+
+function test_with_helper_functions(t) {
+    // Helper function defined inside test
+    function assertPositive(value, name) {
+        if (value <= 0) {
+            t.fail(sprintf("%s should be positive, got %d", name, value))
+        }
+    }
+
+    let scores = [95, 87, 92, 78, 88]
+
+    // Use map with index to check each score
+    scores.map((i, score) => {
+        assertPositive(score, sprintf("score[%d]", i))
+        return nil
+    })
+
+    let avg = scores.reduce(0, (acc, s) => acc + s) / len(scores)
+    assertPositive(avg, "average")
+    t.assert(avg > 80, "average should be above 80")
+}

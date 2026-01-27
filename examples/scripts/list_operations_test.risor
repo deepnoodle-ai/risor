@@ -1,0 +1,168 @@
+// List Operations Tests
+// Tests for map, filter, reduce, and other list methods
+
+function test_map_basic(t) {
+    let numbers = [1, 2, 3, 4, 5]
+    let squares = numbers.map(x => x * x)
+    t.assert_eq(squares, [1, 4, 9, 16, 25])
+
+    let doubled = numbers.map(x => x * 2)
+    t.assert_eq(doubled, [2, 4, 6, 8, 10])
+}
+
+function test_map_with_index(t) {
+    let letters = ["a", "b", "c"]
+    let indexed = letters.map((i, v) => sprintf("%d:%s", i, v))
+    t.assert_eq(indexed, ["0:a", "1:b", "2:c"])
+}
+
+function test_map_empty_list(t) {
+    let empty = []
+    let result = empty.map(x => x * 2)
+    t.assert_eq(result, [])
+}
+
+function test_filter_basic(t) {
+    let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    let evens = numbers.filter(x => x % 2 == 0)
+    t.assert_eq(evens, [2, 4, 6, 8, 10])
+
+    let odds = numbers.filter(x => x % 2 != 0)
+    t.assert_eq(odds, [1, 3, 5, 7, 9])
+
+    let greaterThan5 = numbers.filter(x => x > 5)
+    t.assert_eq(greaterThan5, [6, 7, 8, 9, 10])
+}
+
+function test_filter_empty_result(t) {
+    let numbers = [1, 2, 3]
+    let result = numbers.filter(x => x > 100)
+    t.assert_eq(result, [])
+}
+
+function test_reduce_sum(t) {
+    let numbers = [1, 2, 3, 4, 5]
+    let sum = numbers.reduce(0, (acc, x) => acc + x)
+    t.assert_eq(sum, 15)
+}
+
+function test_reduce_product(t) {
+    let numbers = [1, 2, 3, 4, 5]
+    let product = numbers.reduce(1, (acc, x) => acc * x)
+    t.assert_eq(product, 120)
+}
+
+function test_reduce_max(t) {
+    let numbers = [3, 1, 4, 1, 5, 9, 2, 6]
+    let max = numbers.reduce(numbers[0], (acc, x) => if (x > acc) { x } else { acc })
+    t.assert_eq(max, 9)
+}
+
+function test_reduce_empty_list(t) {
+    let empty = []
+    let result = empty.reduce(42, (acc, x) => acc + x)
+    t.assert_eq(result, 42, "reduce on empty list should return initial value")
+}
+
+function test_chained_operations(t) {
+    let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    // Sum of squares of even numbers
+    let evens = numbers.filter(x => x % 2 == 0)
+    let squares = evens.map(x => x * x)
+    let result = squares.reduce(0, (acc, x) => acc + x)
+
+    // 2^2 + 4^2 + 6^2 + 8^2 + 10^2 = 4 + 16 + 36 + 64 + 100 = 220
+    t.assert_eq(result, 220)
+}
+
+function test_each(t) {
+    let collected = []
+    [1, 2, 3].each(x => collected.append(x * 10))
+    t.assert_eq(collected, [10, 20, 30])
+}
+
+function test_sorted(t) {
+    let items = [3, 1, 4, 1, 5, 9, 2, 6]
+    let sortedItems = sorted(items)
+    t.assert_eq(sortedItems, [1, 1, 2, 3, 4, 5, 6, 9])
+
+    // Original should be unchanged
+    t.assert_eq(items, [3, 1, 4, 1, 5, 9, 2, 6])
+}
+
+function test_reversed(t) {
+    let items = [1, 2, 3, 4, 5]
+    let reversedItems = reversed(items)
+    t.assert_eq(reversedItems, [5, 4, 3, 2, 1])
+
+    // Original should be unchanged
+    t.assert_eq(items, [1, 2, 3, 4, 5])
+}
+
+function test_chunk(t) {
+    let items = [1, 2, 3, 4, 5, 6, 7]
+    let chunks = chunk(items, 3)
+    t.assert_eq(chunks, [[1, 2, 3], [4, 5, 6], [7]])
+}
+
+function test_chunk_exact_division(t) {
+    let items = [1, 2, 3, 4, 5, 6]
+    let chunks = chunk(items, 2)
+    t.assert_eq(chunks, [[1, 2], [3, 4], [5, 6]])
+}
+
+function test_spread_operator(t) {
+    let first = [1, 2, 3]
+    let second = [4, 5, 6]
+    let combined = [...first, ...second]
+    t.assert_eq(combined, [1, 2, 3, 4, 5, 6])
+}
+
+function test_spread_with_elements(t) {
+    let middle = [2, 3, 4]
+    let result = [1, ...middle, 5]
+    t.assert_eq(result, [1, 2, 3, 4, 5])
+}
+
+function test_list_length(t) {
+    t.assert_eq(len([]), 0)
+    t.assert_eq(len([1]), 1)
+    t.assert_eq(len([1, 2, 3, 4, 5]), 5)
+}
+
+function test_list_indexing(t) {
+    let items = ["a", "b", "c", "d", "e"]
+    t.assert_eq(items[0], "a")
+    t.assert_eq(items[2], "c")
+    t.assert_eq(items[-1], "e")
+    t.assert_eq(items[-2], "d")
+}
+
+function test_list_slicing(t) {
+    let items = [0, 1, 2, 3, 4, 5]
+    t.assert_eq(items[1:4], [1, 2, 3])
+    t.assert_eq(items[:3], [0, 1, 2])
+    t.assert_eq(items[3:], [3, 4, 5])
+    t.assert_eq(items[-2:], [4, 5])
+}
+
+function test_keys_on_list(t) {
+    let items = ["a", "b", "c"]
+    t.assert_eq(keys(items), [0, 1, 2])
+}
+
+function test_any_function(t) {
+    t.assert(any([false, false, true]))
+    t.assert(any([0, 0, 1]))
+    t.assert(!any([false, false, false]))
+    t.assert(!any([]))
+}
+
+function test_all_function(t) {
+    t.assert(all([true, true, true]))
+    t.assert(all([1, 2, 3]))
+    t.assert(!all([true, false, true]))
+    t.assert(all([]), "all on empty list should be true")
+}

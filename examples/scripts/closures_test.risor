@@ -1,0 +1,226 @@
+// Closures and Higher-Order Functions Tests
+// Tests for lexical scoping, state encapsulation, and functional patterns
+
+// Helper function for tests
+function add(a, b) { return a + b }
+function multiply(a, b) { return a * b }
+
+function test_closure_captures_variable(t) {
+    let x = 10
+    let fn = function() { return x }
+    t.assert_eq(fn(), 10)
+}
+
+function test_closure_maintains_state(t) {
+    function makeCounter(start) {
+        let count = start
+        return {
+            increment: function() {
+                count++
+                return count
+            },
+            value: function() {
+                return count
+            }
+        }
+    }
+
+    let counter = makeCounter(0)
+    t.assert_eq(counter.value(), 0)
+    t.assert_eq(counter.increment(), 1)
+    t.assert_eq(counter.increment(), 2)
+    t.assert_eq(counter.value(), 2)
+}
+
+function test_multiple_closures_independent_state(t) {
+    function makeCounter(start) {
+        let count = start
+        return {
+            increment: function() {
+                count++
+                return count
+            },
+            value: function() {
+                return count
+            }
+        }
+    }
+
+    let counter1 = makeCounter(0)
+    let counter2 = makeCounter(100)
+
+    counter1.increment()
+    counter1.increment()
+    counter2.increment()
+
+    t.assert_eq(counter1.value(), 2)
+    t.assert_eq(counter2.value(), 101)
+}
+
+function test_functions_as_arguments(t) {
+    function applyOperation(fn, x, y) {
+        return fn(x, y)
+    }
+
+    t.assert_eq(applyOperation(add, 5, 3), 8)
+    t.assert_eq(applyOperation(multiply, 5, 3), 15)
+}
+
+function test_functions_as_return_values(t) {
+    function makeAdder(n) {
+        return function(x) {
+            return x + n
+        }
+    }
+
+    let add5 = makeAdder(5)
+    let add10 = makeAdder(10)
+
+    t.assert_eq(add5(3), 8)
+    t.assert_eq(add10(3), 13)
+}
+
+function test_function_composition(t) {
+    function compose(f, g) {
+        return function(x) {
+            return f(g(x))
+        }
+    }
+
+    let addOne = x => x + 1
+    let double = x => x * 2
+
+    let addThenDouble = compose(double, addOne)
+    let doubleThenAdd = compose(addOne, double)
+
+    // addThenDouble(5) = double(addOne(5)) = double(6) = 12
+    t.assert_eq(addThenDouble(5), 12)
+
+    // doubleThenAdd(5) = addOne(double(5)) = addOne(10) = 11
+    t.assert_eq(doubleThenAdd(5), 11)
+}
+
+function test_partial_application(t) {
+    function partial(fn, firstArg) {
+        return function(secondArg) {
+            return fn(firstArg, secondArg)
+        }
+    }
+
+    let double = partial(multiply, 2)
+    let triple = partial(multiply, 3)
+
+    t.assert_eq(double(21), 42)
+    t.assert_eq(triple(14), 42)
+}
+
+function test_currying(t) {
+    // Simplified currying test due to closure scoping limitations
+    function makeAdder(n) {
+        return function(x) {
+            return n + x
+        }
+    }
+
+    let add10 = makeAdder(10)
+    let add5 = makeAdder(5)
+
+    t.assert_eq(add10(5), 15)
+    t.assert_eq(add10(20), 30)
+    t.assert_eq(add5(3), 8)
+}
+
+function test_memoization(t) {
+    function memoize(fn) {
+        let cache = {}
+        return function(n) {
+            let key = string(n)
+            if (key in cache) {
+                return cache[key]
+            }
+            let result = fn(n)
+            cache[key] = result
+            return result
+        }
+    }
+
+    let callCount = 0
+    let expensive = function(n) {
+        callCount++
+        return n * n
+    }
+
+    let memoized = memoize(expensive)
+
+    t.assert_eq(memoized(5), 25)
+    t.assert_eq(memoized(5), 25)
+    t.assert_eq(memoized(5), 25)
+    t.assert_eq(callCount, 1, "should only call function once for same input")
+
+    t.assert_eq(memoized(10), 100)
+    t.assert_eq(callCount, 2)
+}
+
+function test_arrow_functions(t) {
+    let addOne = x => x + 1
+    let sum = (a, b) => a + b
+    let constant = () => 42
+
+    t.assert_eq(addOne(5), 6)
+    t.assert_eq(sum(3, 4), 7)
+    t.assert_eq(constant(), 42)
+}
+
+function test_arrow_function_in_map(t) {
+    let numbers = [1, 2, 3, 4, 5]
+    let squares = numbers.map(x => x * x)
+    t.assert_eq(squares, [1, 4, 9, 16, 25])
+}
+
+function test_arrow_function_in_filter(t) {
+    let numbers = [1, 2, 3, 4, 5, 6]
+    let evens = numbers.filter(x => x % 2 == 0)
+    t.assert_eq(evens, [2, 4, 6])
+}
+
+function test_function_validator_factory(t) {
+    function createValidator(minLen, maxLen) {
+        return function(s) {
+            let l = len(s)
+            return l >= minLen && l <= maxLen
+        }
+    }
+
+    let validateUsername = createValidator(3, 20)
+    let validatePassword = createValidator(8, 128)
+
+    t.assert(validateUsername("alice"))
+    t.assert(!validateUsername("ab"))
+    t.assert(!validateUsername("this_username_is_way_too_long_to_be_valid"))
+
+    t.assert(validatePassword("secret123"))
+    t.assert(!validatePassword("short"))
+}
+
+function test_pipeline_with_functions(t) {
+    let addOne = x => x + 1
+    let double = x => x * 2
+
+    // 5 | addOne | double | addOne = ((5 + 1) * 2) + 1 = 13
+    let result = 5 | addOne | double | addOne
+    t.assert_eq(result, 13)
+}
+
+function test_nested_closures(t) {
+    // Test two levels of nesting
+    function outer(a) {
+        return function inner(b) {
+            return a + b
+        }
+    }
+
+    let addFive = outer(5)
+    t.assert_eq(addFive(3), 8)
+    t.assert_eq(addFive(10), 15)
+    t.assert_eq(outer(1)(2), 3)
+}

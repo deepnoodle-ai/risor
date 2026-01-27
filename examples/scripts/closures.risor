@@ -1,0 +1,73 @@
+// Closures and Function Factories
+// Demonstrates lexical scoping and state encapsulation
+
+// Counter factory - each counter has its own state
+function makeCounter(start) {
+    let count = start
+    return {
+        increment: function() {
+            count++
+            return count
+        },
+        decrement: function() {
+            count--
+            return count
+        },
+        value: function() {
+            return count
+        }
+    }
+}
+
+let counter1 = makeCounter(0)
+let counter2 = makeCounter(100)
+
+counter1.increment() // 1
+counter1.increment() // 2
+counter2.decrement() // 99
+
+// Memoization using closures
+function memoize(fn) {
+    let cache = {}
+    return function(n) {
+        let key = string(n)
+        if (key in cache) {
+            return cache[key]
+        }
+        let result = fn(n)
+        cache[key] = result
+        return result
+    }
+}
+
+// Expensive computation (recursive fibonacci)
+function fib(n) {
+    if (n <= 1) {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+let memoFib = memoize(fib)
+
+// Partial application
+function partial(fn, firstArg) {
+    return function(secondArg) {
+        return fn(firstArg, secondArg)
+    }
+}
+
+function multiply(a, b) {
+    return a * b
+}
+
+let double = partial(multiply, 2)
+let triple = partial(multiply, 3)
+
+{
+    counter1: counter1.value(),
+    counter2: counter2.value(),
+    fib10: memoFib(10),
+    doubled: double(21),
+    tripled: triple(14)
+}

@@ -1,0 +1,121 @@
+// Range and Iteration Patterns
+// Demonstrates lazy ranges and iteration techniques
+
+// Basic range - stop only
+let r1 = range(5)               // 0, 1, 2, 3, 4
+let list1 = list(r1)
+
+// Range with start and stop
+let r2 = range(5, 10)           // 5, 6, 7, 8, 9
+let list2 = list(r2)
+
+// Range with step
+let r3 = range(0, 10, 2)        // 0, 2, 4, 6, 8
+let list3 = list(r3)
+
+// Negative step (countdown)
+let r4 = range(10, 0, -1)       // 10, 9, 8, ..., 1
+let list4 = list(r4)
+
+// Ranges are lazy - memory efficient
+let bigRange = range(1000000)
+let firstFew = list(range(5)).map(i => {
+    let items = list(range(i * 1000, i * 1000 + 3))
+    return items
+})
+
+// Using range with map/filter
+let squares = list(range(1, 11)).map(x => x * x)
+let evenSquares = list(range(1, 11)).map(x => x * x).filter(x => x % 2 == 0)
+
+// Practical: generate indices
+let items = ["a", "b", "c", "d", "e"]
+let indexed = list(range(len(items))).map(i => {
+    return {index: i, value: items[i]}
+})
+
+// FizzBuzz using range
+function fizzBuzzValue(n) {
+    let div3 = n % 3 == 0
+    let div5 = n % 5 == 0
+    if (div3 && div5) { return "FizzBuzz" }
+    if (div3) { return "Fizz" }
+    if (div5) { return "Buzz" }
+    return string(n)
+}
+let fizzBuzz = list(range(1, 16)).map(fizzBuzzValue)
+
+// Iteration with keys()
+let data = {a: 1, b: 2, c: 3}
+let mapKeys = keys(data)        // ["a", "b", "c"] (sorted)
+let listKeys = keys(items)      // [0, 1, 2, 3, 4]
+
+// Using sorted() and reversed()
+let unsorted = [3, 1, 4, 1, 5, 9, 2, 6]
+let ascending = sorted(unsorted)
+let descending = reversed(sorted(unsorted))
+
+// Custom sort with comparator
+let words = ["banana", "apple", "cherry", "date"]
+let byLength = sorted(words, (a, b) => len(a) - len(b))
+
+// Practical: pagination simulation
+function paginate(items, pageSize, pageNum) {
+    let start = pageNum * pageSize
+    let end = int(math.min(start + pageSize, len(items)))
+    return {
+        items: items[start:end],
+        page: pageNum,
+        totalPages: int(math.ceil(float(len(items)) / float(pageSize))),
+        hasNext: end < len(items),
+        hasPrev: pageNum > 0
+    }
+}
+
+let allItems = list(range(25)).map(i => sprintf("item_%d", i))
+let page0 = paginate(allItems, 10, 0)
+let page1 = paginate(allItems, 10, 1)
+let page2 = paginate(allItems, 10, 2)
+
+// Practical: batching
+function processBatches(items, batchSize, fn) {
+    let chunks = chunk(items, batchSize)
+    return chunks.map((i, batch) => {
+        return {
+            batchNum: i,
+            result: fn(batch)
+        }
+    })
+}
+
+let batched = processBatches(
+    list(range(12)),
+    4,
+    batch => batch.reduce(0, (a, b) => a + b)
+)
+
+{
+    ranges: {
+        basic: list1,
+        startStop: list2,
+        withStep: list3,
+        countdown: list4
+    },
+    lazyRange: firstFew,
+    squares: squares,
+    evenSquares: evenSquares,
+    indexed: indexed,
+    fizzBuzz: fizzBuzz,
+    keys: {map: mapKeys, list: listKeys},
+    sorting: {
+        ascending: ascending,
+        descending: descending,
+        byLength: byLength
+    },
+    pagination: {
+        page0: page0,
+        page1: page1,
+        page2: page2
+    },
+    batched: batched
+}

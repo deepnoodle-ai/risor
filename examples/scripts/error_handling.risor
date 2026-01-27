@@ -1,0 +1,91 @@
+// Error Handling
+// Demonstrates try/catch/finally and error inspection
+
+// Basic try/catch
+function safeDivide(a, b) {
+    if (b == 0) {
+        throw error("division by zero: %d / %d", a, b)
+    }
+    return a / b
+}
+
+let result1 = try {
+    safeDivide(10, 2)
+} catch e {
+    -1
+}
+
+let result2 = try {
+    safeDivide(10, 0)
+} catch e {
+    -1
+}
+
+// Try/catch with error inspection
+let errorDetails = try {
+    throw error("something went wrong")
+    nil
+} catch e {
+    {
+        message: e.message(),
+        kind: e.kind()
+    }
+}
+
+// Try/finally (finally always runs but doesn't affect return value)
+let cleanupRan = false
+let result3 = try {
+    42
+} finally {
+    cleanupRan = true
+}
+
+// Nested error handling
+function outerFunction() {
+    return try {
+        innerFunction()
+    } catch e {
+        sprintf("outer caught: %s", e.message())
+    }
+}
+
+function innerFunction() {
+    throw "inner error"
+}
+
+// Using assert
+function validateAge(age) {
+    assert(age >= 0, "age cannot be negative")
+    assert(age < 150, "age seems unrealistic")
+    return age
+}
+
+let validAge = try { validateAge(25) } catch e { nil }
+let invalidAge = try { validateAge(-5) } catch e { e.message() }
+
+// Error with typed error kinds
+function parsePositiveInt(s) {
+    let n = try { int(s) } catch e { throw error("invalid integer: %s", s) }
+    if (n < 0) {
+        throw error("expected positive, got: %d", n)
+    }
+    return n
+}
+
+let parsed1 = try { parsePositiveInt("42") } catch e { nil }
+let parsed2 = try { parsePositiveInt("-5") } catch e { e.message() }
+let parsed3 = try { parsePositiveInt("abc") } catch e { e.message() }
+
+{
+    safeDivision: result1,
+    divisionByZero: result2,
+    errorDetails: errorDetails,
+    finallyResult: result3,
+    cleanupRan: cleanupRan,
+    nestedError: outerFunction(),
+    validAge: validAge,
+    invalidAge: invalidAge,
+    parsed1: parsed1,
+    parsed2: parsed2,
+    parsed3: parsed3
+}
