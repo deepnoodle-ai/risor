@@ -15,7 +15,7 @@ func compileSource(source string) (*Code, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := New(WithGlobalNames([]string{"len", "list", "string", "print"}))
+	c, err := New(&Config{GlobalNames: []string{"len", "list", "string", "print"}})
 	if err != nil {
 		return nil, err
 	}

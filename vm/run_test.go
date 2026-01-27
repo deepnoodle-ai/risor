@@ -14,7 +14,7 @@ func TestRun(t *testing.T) {
 	ctx := context.Background()
 	ast, err := parser.Parse(ctx, "1 + 1")
 	assert.Nil(t, err)
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
 	result, err := Run(ctx, code)
 	assert.Nil(t, err)
@@ -25,7 +25,7 @@ func TestRunEmpty(t *testing.T) {
 	ctx := context.Background()
 	ast, err := parser.Parse(ctx, "")
 	assert.Nil(t, err)
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
 	result, err := Run(ctx, code)
 	assert.Nil(t, err)
@@ -36,7 +36,7 @@ func TestRunError(t *testing.T) {
 	ctx := context.Background()
 	ast, err := parser.Parse(ctx, "let foo = 42; foo.bar")
 	assert.Nil(t, err)
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
 	_, err = Run(ctx, code)
 	assert.NotNil(t, err)
@@ -57,7 +57,7 @@ foo.bar`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	code, err := compiler.Compile(ast, compiler.WithFilename("test.risor"))
+	code, err := compiler.Compile(ast, &compiler.Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)
@@ -90,7 +90,7 @@ outer()`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	code, err := compiler.Compile(ast, compiler.WithFilename("stack.risor"))
+	code, err := compiler.Compile(ast, &compiler.Config{Filename: "stack.risor"})
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)
@@ -121,7 +121,7 @@ data.value.bad`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	code, err := compiler.Compile(ast, compiler.WithFilename("nested.risor"))
+	code, err := compiler.Compile(ast, &compiler.Config{Filename: "nested.risor"})
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)
@@ -145,7 +145,7 @@ items.nonexistent()`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)
@@ -166,7 +166,7 @@ x.missing`
 	ast, err := parser.Parse(ctx, source)
 	assert.Nil(t, err)
 
-	code, err := compiler.Compile(ast, compiler.WithFilename("friendly.risor"))
+	code, err := compiler.Compile(ast, &compiler.Config{Filename: "friendly.risor"})
 	assert.Nil(t, err)
 
 	_, err = Run(ctx, code)

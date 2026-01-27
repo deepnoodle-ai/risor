@@ -29,13 +29,14 @@ type replVM struct {
 
 // newReplVM creates a new REPL VM with the given environment.
 func newReplVM(env map[string]any) (*replVM, error) {
-	var compilerOpts []compiler.Option
+	var cfg *compiler.Config
 	if len(env) > 0 {
-		names := slices.Sorted(maps.Keys(env))
-		compilerOpts = append(compilerOpts, compiler.WithGlobalNames(names))
+		cfg = &compiler.Config{
+			GlobalNames: slices.Sorted(maps.Keys(env)),
+		}
 	}
 
-	c, err := compiler.New(compilerOpts...)
+	c, err := compiler.New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -96,9 +97,8 @@ func (v *replVM) Eval(ctx context.Context, source string) (any, error) {
 		return nil, nil
 	}
 
-	if errObj, isErr := result.(*object.Error); isErr && errObj.IsRaised() {
-		return nil, errObj.Value()
-	}
+	// Errors are values. If an unhandled exception occurred, it was returned
+	// from RunCode above. An error on TOS is just a value (created but not thrown).
 
 	// Convert to Go value
 	interfaceVal := result.Interface()

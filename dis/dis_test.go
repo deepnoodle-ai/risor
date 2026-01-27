@@ -24,7 +24,7 @@ func TestFunctionDissasembly(t *testing.T) {
 	}`
 	ast, err := parser.Parse(context.Background(), src)
 	assert.Nil(t, err)
-	code, err := compiler.Compile(ast, compiler.WithGlobalNames([]string{"try", "error"}))
+	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"try", "error"}})
 	assert.Nil(t, err)
 	assert.Equal(t, code.ConstantCount(), 1)
 

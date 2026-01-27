@@ -102,43 +102,29 @@ type Compiler struct {
 	currentNode ast.Node
 }
 
-// Option is a configuration function for a Compiler.
-type Option func(*Compiler)
+// Config holds compiler configuration options.
+type Config struct {
+	// GlobalNames are the names of global variables available during compilation.
+	// These are typically the keys from the environment map passed to the VM.
+	GlobalNames []string
 
-// WithGlobalNames configures the compiler with the given global variable names.
-func WithGlobalNames(names []string) Option {
-	return func(c *Compiler) {
-		c.globalNames = make([]string, len(names))
-		copy(c.globalNames, names) // isolate from caller
-	}
-}
+	// Filename is the source filename, used for error messages.
+	Filename string
 
-// WithCode configures the compiler to compile into the given code object.
-func WithCode(code *Code) Option {
-	return func(c *Compiler) {
-		c.main = code
-	}
-}
+	// Source is the original source code, used for better error messages.
+	Source string
 
-// WithFilename configures the compiler with the source filename.
-func WithFilename(filename string) Option {
-	return func(c *Compiler) {
-		c.filename = filename
-	}
-}
-
-// WithSource configures the compiler with the original source code.
-// This enables better error messages with source context.
-func WithSource(source string) Option {
-	return func(c *Compiler) {
-		c.source = source
-	}
+	// Code is an existing code object to compile into. This is used for
+	// REPL-style incremental compilation where state must be preserved.
+	// If nil, a new code object is created.
+	Code *Code
 }
 
 // Compile compiles the given AST node and returns immutable bytecode.
 // This is the standard entry point for compiling code that will be executed.
-func Compile(node ast.Node, options ...Option) (*bytecode.Code, error) {
-	c, err := New(options...)
+// Pass nil for cfg to use default settings.
+func Compile(node ast.Node, cfg *Config) (*bytecode.Code, error) {
+	c, err := New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -149,12 +135,15 @@ func Compile(node ast.Node, options ...Option) (*bytecode.Code, error) {
 	return code.ToBytecode(), nil
 }
 
-// New creates and returns a new Compiler. Any supplied options are used to
-// configure the compilation process.
-func New(options ...Option) (*Compiler, error) {
+// New creates and returns a new Compiler. Pass nil for cfg to use defaults.
+func New(cfg *Config) (*Compiler, error) {
 	c := &Compiler{}
-	for _, opt := range options {
-		opt(c)
+	if cfg != nil {
+		c.globalNames = make([]string, len(cfg.GlobalNames))
+		copy(c.globalNames, cfg.GlobalNames) // isolate from caller
+		c.filename = cfg.Filename
+		c.source = cfg.Source
+		c.main = cfg.Code
 	}
 	// Create a default, empty code object to compile into if the caller didn't
 	// supply one. If the caller did supply one, it may be a situation like the

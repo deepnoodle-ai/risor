@@ -20,7 +20,7 @@ func TestAddCompilationAndExecution(t *testing.T) {
 	`)
 	assert.Nil(t, err)
 
-	main, err := compiler.Compile(program)
+	main, err := compiler.Compile(program, nil)
 	assert.Nil(t, err)
 
 	constsCount := main.ConstantCount()
@@ -52,7 +52,7 @@ func TestConditional(t *testing.T) {
 	`)
 	assert.Nil(t, err)
 
-	main, err := compiler.Compile(program)
+	main, err := compiler.Compile(program, nil)
 	assert.Nil(t, err)
 
 	vm := New(main)
@@ -731,13 +731,30 @@ func TestTryWithErrorValues(t *testing.T) {
 	assert.Equal(t, result, object.NewString("YES"))
 }
 
-func TestStringTemplateWithRaisedError(t *testing.T) {
+func TestStringTemplateWithThrow(t *testing.T) {
+	// throw triggers exception handling - the template is never completed
 	code := `
 	function raise(msg) { throw msg }
 	` + "`the err string is: ${raise(\"oops\")}. sad!`"
 	_, err := run(context.Background(), code)
 	assert.NotNil(t, err)
 	assert.Equal(t, err.Error(), "oops")
+}
+
+func TestStringTemplateWithErrorValue(t *testing.T) {
+	// Error values (not thrown) are stringified in templates
+	// Catch an error to get it as a value, then use it in a template
+	code := `
+	let err
+	try {
+		throw "something went wrong"
+	} catch e {
+		err = e
+	}
+	` + "`the error is: ${err}`"
+	result, err := run(context.Background(), code)
+	assert.NoError(t, err)
+	assert.Equal(t, result, object.NewString("the error is: something went wrong"))
 }
 
 func TestStringTemplateWithValue(t *testing.T) {
@@ -1140,7 +1157,7 @@ func TestWithContextCheckInterval(t *testing.T) {
 	// Test that WithContextCheckInterval properly sets the interval
 	ast, err := parser.Parse(context.Background(), `1 + 1`)
 	assert.NoError(t, err)
-	main, err := compiler.Compile(ast)
+	main, err := compiler.Compile(ast, nil)
 	assert.NoError(t, err)
 
 	// Test with custom interval
@@ -1338,7 +1355,7 @@ func TestIncrementalEvaluation(t *testing.T) {
 	ast, err := parser.Parse(ctx, "let x = 3")
 	assert.Nil(t, err)
 
-	main, err := compiler.Compile(ast)
+	main, err := compiler.Compile(ast, nil)
 	assert.Nil(t, err)
 
 	v := New(main)
@@ -1351,7 +1368,7 @@ func TestIncrementalEvaluation(t *testing.T) {
 	// that were defined in previous runs
 	ast, err = parser.Parse(ctx, "x + 7")
 	assert.Nil(t, err)
-	code2, err := compiler.Compile(ast, compiler.WithGlobalNames([]string{"x"}))
+	code2, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"x"}})
 	assert.Nil(t, err)
 	assert.Nil(t, v.RunCode(ctx, code2))
 	value, err = v.Get("x")
@@ -1874,7 +1891,7 @@ func TestRunCode(t *testing.T) {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
 	assert.NoError(t, err)
 
 	// Run the second code on the same VM
@@ -1893,7 +1910,7 @@ func TestRunCode(t *testing.T) {
 	ast3, err := parser.Parse(ctx, source3)
 	assert.NoError(t, err)
 
-	code3, err := compiler.Compile(ast3, compiler.WithGlobalNames(globalNames))
+	code3, err := compiler.Compile(ast3, &compiler.Config{GlobalNames: globalNames})
 	assert.NoError(t, err)
 	assert.NoError(t, vm.RunCode(ctx, code3))
 
@@ -1936,7 +1953,7 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
 	assert.NoError(t, err)
 	assert.NoError(t, vm.RunCode(ctx, code2))
 
@@ -1979,7 +1996,7 @@ func TestRunCodeFunctions(t *testing.T) {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
 	assert.NoError(t, err)
 	assert.NoError(t, vm.RunCode(ctx, code2))
 
@@ -2006,7 +2023,7 @@ func TestRunCodeOnVM(t *testing.T) {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
 	assert.NoError(t, err)
 	result, err := RunCodeOnVM(ctx, vm, code2)
 	assert.NoError(t, err)
@@ -2031,7 +2048,7 @@ func TestNewEmpty(t *testing.T) {
 	compile := func(source string) *bytecode.Code {
 		ast, err := parser.Parse(ctx, source)
 		assert.NoError(t, err)
-		code, err := compiler.Compile(ast)
+		code, err := compiler.Compile(ast, nil)
 		assert.NoError(t, err)
 		return code
 	}

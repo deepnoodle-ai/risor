@@ -41,7 +41,7 @@ func TestObserverOnStep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ let result = add(1, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestObserverHaltOnStep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ let result = add(1, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ let z = x + y`
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ let f = a + b + c + d + e`
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestObserverSampleIntervalZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +407,7 @@ foo()
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,7 +514,7 @@ let y = id(42)`
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

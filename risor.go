@@ -4,7 +4,6 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"sort"
 
 	"github.com/risor-io/risor/builtins"
 	"github.com/risor-io/risor/bytecode"
@@ -22,9 +21,10 @@ import (
 type Option func(*options)
 
 type options struct {
-	env      map[string]any
-	filename string
-	observer vm.Observer
+	env          map[string]any
+	filename     string
+	observer     vm.Observer
+	typeRegistry *object.TypeRegistry
 }
 
 func collectOptions(opts ...Option) *options {
@@ -37,16 +37,15 @@ func collectOptions(opts ...Option) *options {
 	return o
 }
 
-func (o *options) compilerOpts() []compiler.Option {
-	var opts []compiler.Option
+func (o *options) compilerConfig() *compiler.Config {
+	cfg := &compiler.Config{}
 	if len(o.env) > 0 {
-		names := slices.Sorted(maps.Keys(o.env))
-		opts = append(opts, compiler.WithGlobalNames(names))
+		cfg.GlobalNames = slices.Sorted(maps.Keys(o.env))
 	}
 	if o.filename != "" {
-		opts = append(opts, compiler.WithFilename(o.filename))
+		cfg.Filename = o.filename
 	}
-	return opts
+	return cfg
 }
 
 func (o *options) vmOpts() []vm.Option {
@@ -56,6 +55,9 @@ func (o *options) vmOpts() []vm.Option {
 	}
 	if o.observer != nil {
 		opts = append(opts, vm.WithObserver(o.observer))
+	}
+	if o.typeRegistry != nil {
+		opts = append(opts, vm.WithTypeRegistry(o.typeRegistry))
 	}
 	return opts
 }
@@ -90,6 +92,43 @@ func WithObserver(observer vm.Observer) Option {
 	return func(o *options) {
 		o.observer = observer
 	}
+}
+
+// WithTypeRegistry sets a custom type registry for Go/Risor type conversions.
+// Use NewTypeRegistry() to create a registry with custom converters.
+//
+// Example:
+//
+//	registry := risor.NewTypeRegistry().
+//	    RegisterFromGo(reflect.TypeOf(MyType{}), convertMyType).
+//	    Build()
+//	result, _ := risor.Eval(ctx, source, risor.WithTypeRegistry(registry))
+func WithTypeRegistry(registry *object.TypeRegistry) Option {
+	return func(o *options) {
+		o.typeRegistry = registry
+	}
+}
+
+// NewTypeRegistry creates a RegistryBuilder for custom type conversions.
+// Use this to add support for custom Go types in Risor scripts.
+//
+// Example:
+//
+//	registry := risor.NewTypeRegistry().
+//	    RegisterFromGo(reflect.TypeOf(User{}), func(v any) (object.Object, error) {
+//	        u := v.(User)
+//	        return object.NewMap(map[string]object.Object{
+//	            "id":   object.NewInt(int64(u.ID)),
+//	            "name": object.NewString(u.Name),
+//	        }), nil
+//	    }).
+//	    Build()
+//
+//	result, _ := risor.Eval(ctx, source,
+//	    risor.WithEnv(risor.Builtins()),
+//	    risor.WithTypeRegistry(registry))
+func NewTypeRegistry() *object.RegistryBuilder {
+	return object.NewRegistryBuilder()
 }
 
 // Builtins returns a map of standard builtins and modules for Risor scripts.
@@ -143,10 +182,10 @@ func Compile(source string, opts ...Option) (*bytecode.Code, error) {
 	}
 
 	// Pass the original source to the compiler for better error messages
-	compilerOpts := o.compilerOpts()
-	compilerOpts = append(compilerOpts, compiler.WithSource(source))
+	cfg := o.compilerConfig()
+	cfg.Source = source
 
-	return compiler.Compile(ast, compilerOpts...)
+	return compiler.Compile(ast, cfg)
 }
 
 // Run executes compiled bytecode and returns the result as a native Go value.
@@ -179,14 +218,4 @@ func Eval(ctx context.Context, source string, opts ...Option) (any, error) {
 		return nil, err
 	}
 	return Run(ctx, code, opts...)
-}
-
-// envNames returns sorted environment variable names (used by VM wrapper).
-func envNames(env map[string]any) []string {
-	names := make([]string, 0, len(env))
-	for name := range env {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }

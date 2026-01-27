@@ -14,7 +14,7 @@ import (
 )
 
 func TestNil(t *testing.T) {
-	c, err := New()
+	c, err := New(nil)
 	assert.Nil(t, err)
 	scope, err := c.CompileAST(&ast.Nil{})
 	assert.Nil(t, err)
@@ -24,7 +24,7 @@ func TestNil(t *testing.T) {
 }
 
 func TestUndefinedVariable(t *testing.T) {
-	c, err := New()
+	c, err := New(nil)
 	assert.Nil(t, err)
 	_, err = c.CompileAST(&ast.Ident{
 		NamePos: token.Position{Line: 1, Column: 1},
@@ -83,7 +83,7 @@ func TestCompileErrors(t *testing.T) {
 	}
 	for _, tt := range testCase {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := New(WithFilename("t.risor"))
+			c, err := New(&Config{Filename: "t.risor"})
 			assert.Nil(t, err)
 			ast, err := parser.Parse(context.Background(), tt.input)
 			assert.Nil(t, err)
@@ -95,7 +95,7 @@ func TestCompileErrors(t *testing.T) {
 }
 
 func TestBadExprCompilation(t *testing.T) {
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
 	// Create a program with a BadExpr
@@ -110,7 +110,7 @@ func TestBadExprCompilation(t *testing.T) {
 }
 
 func TestBadStmtCompilation(t *testing.T) {
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
 	// Create a program with a BadStmt
@@ -125,7 +125,7 @@ func TestBadStmtCompilation(t *testing.T) {
 }
 
 func TestBadExprInVarCompilation(t *testing.T) {
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
 	// Create a var statement with a BadExpr as value
@@ -151,7 +151,7 @@ func TestBadExprInVarCompilation(t *testing.T) {
 }
 
 func TestBadStmtInProgramCompilation(t *testing.T) {
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
 	// Create a program with a BadStmt followed by valid code
@@ -200,7 +200,7 @@ func TestCompoundAssignmentWithIndex(t *testing.T) {
 		{op.Nil},           // implicit return value
 	}
 
-	c, err := New()
+	c, err := New(nil)
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -237,7 +237,7 @@ func TestBitwiseAnd(t *testing.T) {
 	astNode, err := parser.Parse(context.Background(), input)
 	assert.NoError(t, err)
 
-	c, err := New()
+	c, err := New(nil)
 	assert.NoError(t, err)
 	code, err := c.CompileAST(astNode)
 	assert.NoError(t, err)
@@ -286,7 +286,7 @@ function foo() {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := New()
+			c, err := New(nil)
 			assert.Nil(t, err)
 			ast, err := parser.Parse(context.Background(), tt.input)
 			assert.Nil(t, err)
@@ -423,7 +423,7 @@ func TestForwardDeclarationCompilation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := New()
+			c, err := New(nil)
 			assert.Nil(t, err)
 
 			ast, err := parser.Parse(context.Background(), tt.input)
@@ -453,7 +453,7 @@ func TestForwardDeclarationInstructionGeneration(t *testing.T) {
 	main()
 	`
 
-	c, err := New()
+	c, err := New(nil)
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -477,7 +477,7 @@ func TestLocationTracking(t *testing.T) {
 	// Test that locations are recorded for each instruction
 	input := `let x = 42`
 
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -502,7 +502,7 @@ func TestLocationTracking_MultiLine(t *testing.T) {
 let y = 2
 x + y`
 
-	c, err := New(WithFilename("multi.risor"))
+	c, err := New(&Config{Filename: "multi.risor"})
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -527,7 +527,7 @@ x + y`
 func TestLocationTracking_OutOfBounds(t *testing.T) {
 	input := `42`
 
-	c, err := New()
+	c, err := New(nil)
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -550,7 +550,7 @@ func TestLocationTracking_Function(t *testing.T) {
 }
 add(1, 2)`
 
-	c, err := New(WithFilename("func.risor"))
+	c, err := New(&Config{Filename: "func.risor"})
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -587,7 +587,7 @@ func TestGetSourceLine(t *testing.T) {
 let y = 2
 let z = x + y`
 
-	c, err := New()
+	c, err := New(nil)
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -611,7 +611,7 @@ func TestEndColumn_InLocation(t *testing.T) {
 	// Test that EndColumn is set for multi-character tokens
 	input := `let longVariable = 42`
 
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 
 	ast, err := parser.Parse(context.Background(), input)
@@ -639,7 +639,7 @@ func TestEndColumn_SpansToken(t *testing.T) {
 	// Test that EndColumn correctly spans the identifier
 	input := `verylongidentifier`
 
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 	c.SetSource(input) // Set source for proper source preservation
 
@@ -673,7 +673,7 @@ function add(a, b) {
 }
 add(1, 2)`
 
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 	c.SetSource(input)
 
@@ -702,7 +702,7 @@ func TestSetSource_ForREPL(t *testing.T) {
 	// Test that SetSource works for REPL-style compilation
 	input := `let x = 42 + 10`
 
-	c, err := New(WithFilename("repl"))
+	c, err := New(&Config{Filename: "repl"})
 	assert.Nil(t, err)
 
 	// Set source before compilation (as REPL would do)
@@ -725,7 +725,7 @@ func TestLocationTracking_WithComments(t *testing.T) {
 // Line 2 comment
 let x = 42  // Error will be on line 3`
 
-	c, err := New(WithFilename("test.risor"))
+	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
 	c.SetSource(input)
 

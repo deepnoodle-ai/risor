@@ -28,7 +28,7 @@ func BenchmarkRisor_Fibonacci35(b *testing.B) {
 		log.Fatal(err)
 	}
 
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
