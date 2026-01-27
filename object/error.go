@@ -19,9 +19,16 @@ import (
 //	print(`Error: ${err}`)   // stringify
 //	throw err                // only throw triggers exception handling
 type Error struct {
-	*base
 	err        error
 	structured *StructuredError
+}
+
+func (e *Error) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: error has no attribute %q", name)
+}
+
+func (e *Error) IsTruthy() bool {
+	return true
 }
 
 func (e *Error) Type() Type {

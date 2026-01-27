@@ -12,14 +12,16 @@ import (
 
 // List of objects
 type List struct {
-	*base
-
 	// items holds the list of objects
 	items []Object
 
 	// Used to avoid the possibility of infinite recursion when inspecting.
 	// Similar to the usage of Py_ReprEnter in CPython.
 	inspectActive bool
+}
+
+func (ls *List) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: list has no attribute %q", name)
 }
 
 func (ls *List) Type() Type {

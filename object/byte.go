@@ -9,8 +9,15 @@ import (
 
 // Byte wraps byte and implements Object and Hashable interface.
 type Byte struct {
-	*base
 	value byte
+}
+
+func (b *Byte) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (b *Byte) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: byte has no attribute %q", name)
 }
 
 func (b *Byte) Type() Type {

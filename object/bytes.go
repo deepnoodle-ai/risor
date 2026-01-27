@@ -10,23 +10,17 @@ import (
 )
 
 type Bytes struct {
-	*base
 	value []byte
+}
+
+func (b *Bytes) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: bytes has no attribute %q", name)
 }
 
 func (b *Bytes) Inspect() string {
 	return fmt.Sprintf("bytes(%q)", b.value)
 }
 
-// unwrapError checks if obj is an *Error and returns (nil, error) if so,
-// otherwise returns (obj, nil). This is used for inline builtin methods
-// that call helper functions returning Object (which may be *Error).
-func unwrapError(obj Object) (Object, error) {
-	if err, ok := obj.(*Error); ok {
-		return nil, err.Value()
-	}
-	return obj, nil
-}
 
 func (b *Bytes) Type() Type {
 	return BYTES
@@ -79,7 +73,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.contains_any: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.ContainsAny(args[0]))
+				return b.ContainsAny(args[0])
 			},
 		}, true
 	case "contains_rune":
@@ -89,7 +83,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.contains_rune: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.ContainsRune(args[0]))
+				return b.ContainsRune(args[0])
 			},
 		}, true
 	case "count":
@@ -99,7 +93,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.count: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.Count(args[0]))
+				return b.Count(args[0])
 			},
 		}, true
 	case "has_prefix":
@@ -109,7 +103,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.has_prefix: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.HasPrefix(args[0]))
+				return b.HasPrefix(args[0])
 			},
 		}, true
 	case "has_suffix":
@@ -119,7 +113,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.has_suffix: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.HasSuffix(args[0]))
+				return b.HasSuffix(args[0])
 			},
 		}, true
 	case "index":
@@ -129,7 +123,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.index: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.Index(args[0]))
+				return b.Index(args[0])
 			},
 		}, true
 	case "index_any":
@@ -139,7 +133,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.index_any: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.IndexAny(args[0]))
+				return b.IndexAny(args[0])
 			},
 		}, true
 	case "index_byte":
@@ -149,7 +143,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.index_byte: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.IndexByte(args[0]))
+				return b.IndexByte(args[0])
 			},
 		}, true
 	case "index_rune":
@@ -159,7 +153,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.index_rune: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.IndexRune(args[0]))
+				return b.IndexRune(args[0])
 			},
 		}, true
 	case "repeat":
@@ -169,7 +163,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("bytes.repeat: expected 1 argument, got %d", len(args))
 				}
-				return unwrapError(b.Repeat(args[0]))
+				return b.Repeat(args[0])
 			},
 		}, true
 	case "replace":
@@ -179,7 +173,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 3 {
 					return nil, fmt.Errorf("bytes.replace: expected 3 arguments, got %d", len(args))
 				}
-				return unwrapError(b.Replace(args[0], args[1], args[2]))
+				return b.Replace(args[0], args[1], args[2])
 			},
 		}, true
 	case "replace_all":
@@ -189,7 +183,7 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 				if len(args) != 2 {
 					return nil, fmt.Errorf("bytes.replace_all: expected 2 arguments, got %d", len(args))
 				}
-				return unwrapError(b.ReplaceAll(args[0], args[1]))
+				return b.ReplaceAll(args[0], args[1])
 			},
 		}, true
 	}
@@ -296,7 +290,7 @@ func (b *Bytes) SetItem(key, value Object) *Error {
 	}
 	data, convErr := AsBytes(value)
 	if convErr != nil {
-		return convErr
+		return NewError(convErr)
 	}
 	if len(data) != 1 {
 		return Errorf("value error: value must be a single byte (got %d)", len(data))
@@ -351,121 +345,121 @@ func (b *Bytes) Integers() []Object {
 	return result
 }
 
-func (b *Bytes) ContainsAny(obj Object) Object {
+func (b *Bytes) ContainsAny(obj Object) (Object, error) {
 	chars, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBool(bytes.ContainsAny(b.value, chars))
+	return NewBool(bytes.ContainsAny(b.value, chars)), nil
 }
 
-func (b *Bytes) ContainsRune(obj Object) Object {
+func (b *Bytes) ContainsRune(obj Object) (Object, error) {
 	s, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(s) != 1 {
-		return Errorf("bytes.contains_rune: argument must be a single character")
+		return nil, fmt.Errorf("bytes.contains_rune: argument must be a single character")
 	}
-	return NewBool(bytes.ContainsRune(b.value, rune(s[0])))
+	return NewBool(bytes.ContainsRune(b.value, rune(s[0]))), nil
 }
 
-func (b *Bytes) Count(obj Object) Object {
+func (b *Bytes) Count(obj Object) (Object, error) {
 	data, err := AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewInt(int64(bytes.Count(b.value, data)))
+	return NewInt(int64(bytes.Count(b.value, data))), nil
 }
 
-func (b *Bytes) HasPrefix(obj Object) Object {
+func (b *Bytes) HasPrefix(obj Object) (Object, error) {
 	data, err := AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBool(bytes.HasPrefix(b.value, data))
+	return NewBool(bytes.HasPrefix(b.value, data)), nil
 }
 
-func (b *Bytes) HasSuffix(obj Object) Object {
+func (b *Bytes) HasSuffix(obj Object) (Object, error) {
 	data, err := AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBool(bytes.HasSuffix(b.value, data))
+	return NewBool(bytes.HasSuffix(b.value, data)), nil
 }
 
-func (b *Bytes) Index(obj Object) Object {
+func (b *Bytes) Index(obj Object) (Object, error) {
 	data, err := AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewInt(int64(bytes.Index(b.value, data)))
+	return NewInt(int64(bytes.Index(b.value, data))), nil
 }
 
-func (b *Bytes) IndexAny(obj Object) Object {
+func (b *Bytes) IndexAny(obj Object) (Object, error) {
 	chars, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewInt(int64(bytes.IndexAny(b.value, chars)))
+	return NewInt(int64(bytes.IndexAny(b.value, chars))), nil
 }
 
-func (b *Bytes) IndexByte(obj Object) Object {
+func (b *Bytes) IndexByte(obj Object) (Object, error) {
 	data, err := AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(data) != 1 {
-		return Errorf("bytes.index_byte: argument must be a single byte")
+		return nil, fmt.Errorf("bytes.index_byte: argument must be a single byte")
 	}
-	return NewInt(int64(bytes.IndexByte(b.value, data[0])))
+	return NewInt(int64(bytes.IndexByte(b.value, data[0]))), nil
 }
 
-func (b *Bytes) IndexRune(obj Object) Object {
+func (b *Bytes) IndexRune(obj Object) (Object, error) {
 	s, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(s) != 1 {
-		return Errorf("bytes.index_rune: argument must be a single character")
+		return nil, fmt.Errorf("bytes.index_rune: argument must be a single character")
 	}
-	return NewInt(int64(bytes.IndexRune(b.value, rune(s[0]))))
+	return NewInt(int64(bytes.IndexRune(b.value, rune(s[0])))), nil
 }
 
-func (b *Bytes) Repeat(obj Object) Object {
+func (b *Bytes) Repeat(obj Object) (Object, error) {
 	count, err := AsInt(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBytes(bytes.Repeat(b.value, int(count)))
+	return NewBytes(bytes.Repeat(b.value, int(count))), nil
 }
 
-func (b *Bytes) Replace(old, new, count Object) Object {
+func (b *Bytes) Replace(old, new, count Object) (Object, error) {
 	oldBytes, err := AsBytes(old)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	newBytes, err := AsBytes(new)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	n, err := AsInt(count)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBytes(bytes.Replace(b.value, oldBytes, newBytes, int(n)))
+	return NewBytes(bytes.Replace(b.value, oldBytes, newBytes, int(n))), nil
 }
 
-func (b *Bytes) ReplaceAll(old, new Object) Object {
+func (b *Bytes) ReplaceAll(old, new Object) (Object, error) {
 	oldBytes, err := AsBytes(old)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	newBytes, err := AsBytes(new)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBytes(bytes.ReplaceAll(b.value, oldBytes, newBytes))
+	return NewBytes(bytes.ReplaceAll(b.value, oldBytes, newBytes)), nil
 }
 
 

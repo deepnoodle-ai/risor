@@ -67,7 +67,7 @@ func (v *replVM) vmOpts() []vm.Option {
 // Eval evaluates source code within this VM's context.
 // Variables and functions defined in previous Eval calls remain accessible.
 func (v *replVM) Eval(ctx context.Context, source string) (any, error) {
-	ast, err := parser.Parse(ctx, source)
+	ast, err := parser.Parse(ctx, source, nil)
 	if err != nil {
 		return nil, err
 	}

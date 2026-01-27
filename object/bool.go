@@ -8,8 +8,15 @@ import (
 
 // Bool wraps bool and implements Object and Hashable interface.
 type Bool struct {
-	*base
 	value bool
+}
+
+func (b *Bool) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (b *Bool) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: bool has no attribute %q", name)
 }
 
 func (b *Bool) Type() Type {

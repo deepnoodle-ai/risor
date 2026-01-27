@@ -10,8 +10,11 @@ import (
 )
 
 type Time struct {
-	*base
 	value time.Time
+}
+
+func (t *Time) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: time has no attribute %q", name)
 }
 
 func (t *Time) Type() Type {

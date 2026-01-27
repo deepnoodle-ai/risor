@@ -14,8 +14,6 @@ type BuiltinFunction func(ctx context.Context, args ...Object) (Object, error)
 
 // Builtin wraps func and implements Object interface.
 type Builtin struct {
-	*base
-
 	// The function that this object wraps.
 	fn BuiltinFunction
 
@@ -31,6 +29,14 @@ type Builtin struct {
 	// priority over module.Name() when set, allowing standalone builtins to
 	// report a module name without having an actual module reference.
 	moduleName string
+}
+
+func (b *Builtin) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: builtin has no attribute %q", name)
+}
+
+func (b *Builtin) IsTruthy() bool {
+	return true
 }
 
 func (b *Builtin) Type() Type {

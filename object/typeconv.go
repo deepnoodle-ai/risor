@@ -23,35 +23,35 @@ var (
 // Type assertion helpers
 // *****************************************************************************
 
-func AsBool(obj Object) (bool, *Error) {
+func AsBool(obj Object) (bool, error) {
 	b, ok := obj.(*Bool)
 	if !ok {
-		return false, TypeErrorf("type error: expected a bool (%s given)", obj.Type())
+		return false, fmt.Errorf("type error: expected a bool (%s given)", obj.Type())
 	}
 	return b.value, nil
 }
 
-func AsString(obj Object) (string, *Error) {
+func AsString(obj Object) (string, error) {
 	switch obj := obj.(type) {
 	case *String:
 		return obj.value, nil
 	default:
-		return "", TypeErrorf("type error: expected a string (%s given)", obj.Type())
+		return "", fmt.Errorf("type error: expected a string (%s given)", obj.Type())
 	}
 }
 
-func AsInt(obj Object) (int64, *Error) {
+func AsInt(obj Object) (int64, error) {
 	switch obj := obj.(type) {
 	case *Int:
 		return obj.value, nil
 	case *Byte:
 		return int64(obj.value), nil
 	default:
-		return 0, TypeErrorf("type error: expected an integer (%s given)", obj.Type())
+		return 0, fmt.Errorf("type error: expected an integer (%s given)", obj.Type())
 	}
 }
 
-func AsByte(obj Object) (byte, *Error) {
+func AsByte(obj Object) (byte, error) {
 	switch obj := obj.(type) {
 	case *Int:
 		return byte(obj.value), nil
@@ -61,15 +61,15 @@ func AsByte(obj Object) (byte, *Error) {
 		return byte(obj.value), nil
 	case *String:
 		if len(obj.value) != 1 {
-			return 0, TypeErrorf("type error: expected a single byte string (length %d)", len(obj.value))
+			return 0, fmt.Errorf("type error: expected a single byte string (length %d)", len(obj.value))
 		}
 		return obj.value[0], nil
 	default:
-		return 0, TypeErrorf("type error: expected a byte (%s given)", obj.Type())
+		return 0, fmt.Errorf("type error: expected a byte (%s given)", obj.Type())
 	}
 }
 
-func AsFloat(obj Object) (float64, *Error) {
+func AsFloat(obj Object) (float64, error) {
 	switch obj := obj.(type) {
 	case *Int:
 		return float64(obj.value), nil
@@ -78,22 +78,22 @@ func AsFloat(obj Object) (float64, *Error) {
 	case *Float:
 		return obj.value, nil
 	default:
-		return 0.0, TypeErrorf("type error: expected a number (%s given)", obj.Type())
+		return 0.0, fmt.Errorf("type error: expected a number (%s given)", obj.Type())
 	}
 }
 
-func AsList(obj Object) (*List, *Error) {
+func AsList(obj Object) (*List, error) {
 	list, ok := obj.(*List)
 	if !ok {
-		return nil, TypeErrorf("type error: expected a list (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: expected a list (%s given)", obj.Type())
 	}
 	return list, nil
 }
 
-func AsStringSlice(obj Object) ([]string, *Error) {
+func AsStringSlice(obj Object) ([]string, error) {
 	list, ok := obj.(*List)
 	if !ok {
-		return nil, TypeErrorf("type error: expected a list (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: expected a list (%s given)", obj.Type())
 	}
 	result := make([]string, 0, len(list.items))
 	for _, item := range list.items {
@@ -106,41 +106,41 @@ func AsStringSlice(obj Object) ([]string, *Error) {
 	return result, nil
 }
 
-func AsMap(obj Object) (*Map, *Error) {
+func AsMap(obj Object) (*Map, error) {
 	m, ok := obj.(*Map)
 	if !ok {
-		return nil, TypeErrorf("type error: expected a map (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: expected a map (%s given)", obj.Type())
 	}
 	return m, nil
 }
 
-func AsTime(obj Object) (result time.Time, err *Error) {
-	s, ok := obj.(*Time)
+func AsTime(obj Object) (time.Time, error) {
+	t, ok := obj.(*Time)
 	if !ok {
-		return time.Time{}, TypeErrorf("type error: expected a time (%s given)", obj.Type())
+		return time.Time{}, fmt.Errorf("type error: expected a time (%s given)", obj.Type())
 	}
-	return s.value, nil
+	return t.value, nil
 }
 
-func AsBytes(obj Object) ([]byte, *Error) {
+func AsBytes(obj Object) ([]byte, error) {
 	switch obj := obj.(type) {
 	case *Bytes:
 		return obj.value, nil
 	case *String:
 		return []byte(obj.value), nil
 	case io.Reader:
-		bytes, err := io.ReadAll(obj)
+		data, err := io.ReadAll(obj)
 		if err != nil {
-			return nil, NewError(err)
+			return nil, err
 		}
-		return bytes, nil
+		return data, nil
 	default:
-		return nil, TypeErrorf("type error: expected bytes (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: expected bytes (%s given)", obj.Type())
 	}
 }
 
-func AsReader(obj Object) (io.Reader, *Error) {
-	if o, ok := obj.(interface{ AsReader() (io.Reader, *Error) }); ok {
+func AsReader(obj Object) (io.Reader, error) {
+	if o, ok := obj.(interface{ AsReader() (io.Reader, error) }); ok {
 		return o.AsReader()
 	}
 	switch obj := obj.(type) {
@@ -151,26 +151,26 @@ func AsReader(obj Object) (io.Reader, *Error) {
 	case io.Reader:
 		return obj, nil
 	default:
-		return nil, TypeErrorf("type error: expected a readable object (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: expected a readable object (%s given)", obj.Type())
 	}
 }
 
-func AsWriter(obj Object) (io.Writer, *Error) {
-	if o, ok := obj.(interface{ AsWriter() (io.Writer, *Error) }); ok {
+func AsWriter(obj Object) (io.Writer, error) {
+	if o, ok := obj.(interface{ AsWriter() (io.Writer, error) }); ok {
 		return o.AsWriter()
 	}
 	switch obj := obj.(type) {
 	case io.Writer:
 		return obj, nil
 	default:
-		return nil, TypeErrorf("type error: expected a writable object (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: expected a writable object (%s given)", obj.Type())
 	}
 }
 
-func AsError(obj Object) (*Error, *Error) {
+func AsError(obj Object) (*Error, error) {
 	err, ok := obj.(*Error)
 	if !ok {
-		return nil, TypeErrorf("type error: expected an error object (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: expected an error object (%s given)", obj.Type())
 	}
 	return err, nil
 }

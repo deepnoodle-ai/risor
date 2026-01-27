@@ -9,13 +9,16 @@ import (
 )
 
 type Module struct {
-	*base
 	name         string
 	code         *bytecode.Code
 	builtins     map[string]Object
 	globals      []Object
 	globalsIndex map[string]int
 	callable     BuiltinFunction
+}
+
+func (m *Module) IsTruthy() bool {
+	return true
 }
 
 func (m *Module) Type() Type {

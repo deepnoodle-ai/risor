@@ -14,11 +14,18 @@ import (
 // It references an immutable bytecode.Function for its signature and code,
 // and holds runtime state like default values (as Objects) and free variables.
 type Closure struct {
-	*base
 	fn            *bytecode.Function // Immutable function template
 	defaults      []Object           // Pre-converted default values
 	defaultsCount int                // Number of non-nil defaults
 	freeVars      []*Cell            // Captured variables (closure state)
+}
+
+func (f *Closure) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: function has no attribute %q", name)
+}
+
+func (f *Closure) IsTruthy() bool {
+	return true
 }
 
 func (f *Closure) Type() Type {

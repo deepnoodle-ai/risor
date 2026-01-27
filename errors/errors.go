@@ -1,4 +1,22 @@
-// Package errors defines error types with source locations and stack traces.
+// Package errors defines compile-time error types for the Risor language.
+//
+// These errors are returned by the lexer, parser, and compiler phases.
+// They implement Go's error interface and include source location information
+// for diagnostic messages.
+//
+// # Error Boundary
+//
+// Risor has two error systems with a clear boundary:
+//
+//   - Compile-time: This package. Returns Go errors with source locations.
+//     Used by: lexer, parser, compiler. Returned before code executes.
+//
+//   - Runtime: object.Error. Risor error values visible to scripts.
+//     Used by: VM, builtins, scripts. Errors are values; throw triggers exceptions.
+//
+// The boundary is execution: functions like risor.Eval() and compiler.Compile()
+// return Go errors (from this package). Once the VM is running, errors become
+// object.Error values that scripts can catch with try/catch.
 package errors
 
 import (

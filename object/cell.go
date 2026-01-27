@@ -8,8 +8,19 @@ import (
 
 // Internal: do not use. Cell is an implementation detail for closure variable capture.
 type Cell struct {
-	*base
 	value *Object
+}
+
+func (c *Cell) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (c *Cell) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: cell has no attribute %q", name)
+}
+
+func (c *Cell) IsTruthy() bool {
+	return true
 }
 
 func (c *Cell) Inspect() string {

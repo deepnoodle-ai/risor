@@ -6,8 +6,14 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
-type NilType struct {
-	*base
+type NilType struct{}
+
+func (n *NilType) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (n *NilType) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: nil has no attribute %q", name)
 }
 
 func (n *NilType) Type() Type {

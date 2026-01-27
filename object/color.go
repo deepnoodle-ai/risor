@@ -10,8 +10,11 @@ import (
 )
 
 type Color struct {
-	*base
 	value color.Color
+}
+
+func (c *Color) IsTruthy() bool {
+	return true
 }
 
 func (c *Color) Inspect() string {

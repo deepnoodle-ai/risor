@@ -146,7 +146,7 @@ func (s *Server) DidChange(ctx context.Context, params *protocol.DidChangeTextDo
 	doc.item.Version = params.TextDocument.Version
 
 	// Reparse the document
-	doc.ast, doc.err = parser.Parse(ctx, doc.item.Text)
+	doc.ast, doc.err = parser.Parse(ctx, doc.item.Text, nil)
 	if doc.err != nil {
 		log.Error().Err(doc.err).Msg("parse program failed after change")
 	} else {
@@ -167,7 +167,7 @@ func (s *Server) DidOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 		linesChangedSinceAST: map[int]bool{},
 	}
 	if params.TextDocument.Text != "" {
-		doc.ast, doc.err = parser.Parse(ctx, params.TextDocument.Text)
+		doc.ast, doc.err = parser.Parse(ctx, params.TextDocument.Text, nil)
 		if doc.err != nil {
 			log.Error().Err(doc.err).Msg("parse program failed")
 		} else {
@@ -232,7 +232,7 @@ func (s *Server) DidSave(ctx context.Context, params *protocol.DidSaveTextDocume
 
 	// Update document text and re-parse
 	doc.item.Text = *params.Text
-	doc.ast, doc.err = parser.Parse(ctx, *params.Text)
+	doc.ast, doc.err = parser.Parse(ctx, *params.Text, nil)
 	if doc.err != nil {
 		log.Error().Err(doc.err).Str("uri", string(params.TextDocument.URI)).Msg("parse program failed after save - will publish error diagnostic")
 	} else {

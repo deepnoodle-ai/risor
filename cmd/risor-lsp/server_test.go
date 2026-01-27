@@ -24,7 +24,7 @@ func setTestDocument(c *cache, uri protocol.DocumentURI, text string) error {
 
 	if text != "" {
 		ctx := context.Background()
-		doc.ast, doc.err = parser.Parse(ctx, text)
+		doc.ast, doc.err = parser.Parse(ctx, text, nil)
 	}
 
 	return c.put(doc)
@@ -81,7 +81,7 @@ let y = "hello"
 let z = [1, 2, 3]`
 
 	ctx := context.Background()
-	prog, err := parser.Parse(ctx, code)
+	prog, err := parser.Parse(ctx, code, nil)
 	assert.NoError(t, err)
 
 	variables := extractVariables(prog)
@@ -106,7 +106,7 @@ func TestCompletionProvider_ExtractFunctions(t *testing.T) {
 let subtract = function(x, y) { return x - y }`
 
 	ctx := context.Background()
-	prog, err := parser.Parse(ctx, code)
+	prog, err := parser.Parse(ctx, code, nil)
 	assert.NoError(t, err)
 
 	functions := extractFunctions(prog)
@@ -131,7 +131,7 @@ func TestHoverProvider_FindSymbolAtPosition(t *testing.T) {
 let y = "hello"`
 
 	ctx := context.Background()
-	prog, err := parser.Parse(ctx, code)
+	prog, err := parser.Parse(ctx, code, nil)
 	assert.NoError(t, err)
 
 	// Test finding symbol at position of variable 'x' (line 1, around column 5)
@@ -184,7 +184,7 @@ function incomplete(`
 
 	// Parse the code to get a parse error
 	ctx := context.Background()
-	_, err := parser.Parse(ctx, invalidCode)
+	_, err := parser.Parse(ctx, invalidCode, nil)
 	assert.Error(t, err)
 
 	// Verify it's a parse error we can handle
@@ -232,7 +232,7 @@ let message = "test"
 print(message)`
 
 	ctx := context.Background()
-	prog, err := parser.Parse(ctx, code)
+	prog, err := parser.Parse(ctx, code, nil)
 	assert.NoError(t, err)
 
 	// Create a test server

@@ -12,8 +12,15 @@ import (
 // Int wraps int64 and implements Object and Hashable interfaces.
 // Int is immutable: the value is set at construction and cannot be changed.
 type Int struct {
-	*base
 	value int64
+}
+
+func (i *Int) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (i *Int) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: int has no attribute %q", name)
 }
 
 func (i *Int) Inspect() string {

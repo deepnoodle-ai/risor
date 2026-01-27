@@ -10,8 +10,11 @@ import (
 )
 
 type String struct {
-	*base
 	value string
+}
+
+func (s *String) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: string has no attribute %q", name)
 }
 
 func (s *String) Type() Type {
@@ -61,7 +64,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.has_prefix: expected 1 argument, got %d", len(args))
 				}
-				return s.HasPrefix(args[0]), nil
+				return s.HasPrefix(args[0])
 			},
 		}, true
 	case "has_suffix":
@@ -71,7 +74,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.has_suffix: expected 1 argument, got %d", len(args))
 				}
-				return s.HasSuffix(args[0]), nil
+				return s.HasSuffix(args[0])
 			},
 		}, true
 	case "count":
@@ -81,7 +84,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.count: expected 1 argument, got %d", len(args))
 				}
-				return s.Count(args[0]), nil
+				return s.Count(args[0])
 			},
 		}, true
 	case "join":
@@ -91,7 +94,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.join: expected 1 argument, got %d", len(args))
 				}
-				return s.Join(args[0]), nil
+				return s.Join(args[0])
 			},
 		}, true
 	case "split":
@@ -101,7 +104,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.split: expected 1 argument, got %d", len(args))
 				}
-				return s.Split(args[0]), nil
+				return s.Split(args[0])
 			},
 		}, true
 	case "fields":
@@ -121,7 +124,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.index: expected 1 argument, got %d", len(args))
 				}
-				return s.Index(args[0]), nil
+				return s.Index(args[0])
 			},
 		}, true
 	case "last_index":
@@ -131,7 +134,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.last_index: expected 1 argument, got %d", len(args))
 				}
-				return s.LastIndex(args[0]), nil
+				return s.LastIndex(args[0])
 			},
 		}, true
 	case "replace_all":
@@ -141,7 +144,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 2 {
 					return nil, fmt.Errorf("string.replace_all: expected 2 arguments, got %d", len(args))
 				}
-				return s.ReplaceAll(args[0], args[1]), nil
+				return s.ReplaceAll(args[0], args[1])
 			},
 		}, true
 	case "to_lower":
@@ -171,7 +174,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.trim: expected 1 argument, got %d", len(args))
 				}
-				return s.Trim(args[0]), nil
+				return s.Trim(args[0])
 			},
 		}, true
 	case "trim_prefix":
@@ -181,7 +184,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.trim_prefix: expected 1 argument, got %d", len(args))
 				}
-				return s.TrimPrefix(args[0]), nil
+				return s.TrimPrefix(args[0])
 			},
 		}, true
 	case "trim_space":
@@ -201,7 +204,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.trim_suffix: expected 1 argument, got %d", len(args))
 				}
-				return s.TrimSuffix(args[0]), nil
+				return s.TrimSuffix(args[0])
 			},
 		}, true
 	case "compare":
@@ -225,7 +228,7 @@ func (s *String) GetAttr(name string) (Object, bool) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("string.repeat: expected 1 argument, got %d", len(args))
 				}
-				return s.Repeat(args[0]), nil
+				return s.Repeat(args[0])
 			},
 		}, true
 	}
@@ -327,84 +330,84 @@ func (s *String) Contains(obj Object) *Bool {
 	return NewBool(strings.Contains(s.value, other))
 }
 
-func (s *String) HasPrefix(obj Object) Object {
+func (s *String) HasPrefix(obj Object) (Object, error) {
 	prefix, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBool(strings.HasPrefix(s.value, prefix))
+	return NewBool(strings.HasPrefix(s.value, prefix)), nil
 }
 
-func (s *String) HasSuffix(obj Object) Object {
+func (s *String) HasSuffix(obj Object) (Object, error) {
 	suffix, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBool(strings.HasSuffix(s.value, suffix))
+	return NewBool(strings.HasSuffix(s.value, suffix)), nil
 }
 
-func (s *String) Count(obj Object) Object {
+func (s *String) Count(obj Object) (Object, error) {
 	substr, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewInt(int64(strings.Count(s.value, substr)))
+	return NewInt(int64(strings.Count(s.value, substr))), nil
 }
 
-func (s *String) Join(obj Object) Object {
+func (s *String) Join(obj Object) (Object, error) {
 	ls, err := AsList(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var strs []string
 	for _, item := range ls.Value() {
 		itemStr, err := AsString(item)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		strs = append(strs, itemStr)
 	}
-	return NewString(strings.Join(strs, s.value))
+	return NewString(strings.Join(strs, s.value)), nil
 }
 
-func (s *String) Split(obj Object) Object {
+func (s *String) Split(obj Object) (Object, error) {
 	sep, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewStringList(strings.Split(s.value, sep))
+	return NewStringList(strings.Split(s.value, sep)), nil
 }
 
 func (s *String) Fields() Object {
 	return NewStringList(strings.Fields(s.value))
 }
 
-func (s *String) Index(obj Object) Object {
+func (s *String) Index(obj Object) (Object, error) {
 	substr, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewInt(int64(strings.Index(s.value, substr)))
+	return NewInt(int64(strings.Index(s.value, substr))), nil
 }
 
-func (s *String) LastIndex(obj Object) Object {
+func (s *String) LastIndex(obj Object) (Object, error) {
 	substr, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewInt(int64(strings.LastIndex(s.value, substr)))
+	return NewInt(int64(strings.LastIndex(s.value, substr))), nil
 }
 
-func (s *String) ReplaceAll(old, new Object) Object {
+func (s *String) ReplaceAll(old, new Object) (Object, error) {
 	oldStr, err := AsString(old)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	newStr, err := AsString(new)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewString(strings.ReplaceAll(s.value, oldStr, newStr))
+	return NewString(strings.ReplaceAll(s.value, oldStr, newStr)), nil
 }
 
 func (s *String) ToLower() Object {
@@ -415,43 +418,43 @@ func (s *String) ToUpper() Object {
 	return NewString(strings.ToUpper(s.value))
 }
 
-func (s *String) Trim(obj Object) Object {
+func (s *String) Trim(obj Object) (Object, error) {
 	chars, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewString(strings.Trim(s.value, chars))
+	return NewString(strings.Trim(s.value, chars)), nil
 }
 
-func (s *String) TrimPrefix(obj Object) Object {
+func (s *String) TrimPrefix(obj Object) (Object, error) {
 	prefix, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewString(strings.TrimPrefix(s.value, prefix))
+	return NewString(strings.TrimPrefix(s.value, prefix)), nil
 }
 
-func (s *String) TrimSuffix(obj Object) Object {
+func (s *String) TrimSuffix(obj Object) (Object, error) {
 	suffix, err := AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewString(strings.TrimSuffix(s.value, suffix))
+	return NewString(strings.TrimSuffix(s.value, suffix)), nil
 }
 
 func (s *String) TrimSpace() Object {
 	return NewString(strings.TrimSpace(s.value))
 }
 
-func (s *String) Repeat(obj Object) Object {
+func (s *String) Repeat(obj Object) (Object, error) {
 	count, err := AsInt(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if count < 0 {
-		return Errorf("value error: negative repeat count")
+		return nil, fmt.Errorf("value error: negative repeat count")
 	}
-	return NewString(strings.Repeat(s.value, int(count)))
+	return NewString(strings.Repeat(s.value, int(count))), nil
 }
 
 func (s *String) Len() *Int {

@@ -11,8 +11,15 @@ import (
 
 // Float wraps float64 and implements Object and Hashable interfaces.
 type Float struct {
-	*base
 	value float64
+}
+
+func (f *Float) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (f *Float) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: float has no attribute %q", name)
 }
 
 func (f *Float) Inspect() string {

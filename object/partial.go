@@ -9,9 +9,20 @@ import (
 
 // Partial is a partially applied function
 type Partial struct {
-	*base
 	fn   Object
 	args []Object
+}
+
+func (p *Partial) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (p *Partial) SetAttr(name string, value Object) error {
+	return TypeErrorf("type error: partial has no attribute %q", name)
+}
+
+func (p *Partial) IsTruthy() bool {
+	return true
 }
 
 func (p *Partial) Function() Object {
