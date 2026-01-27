@@ -3,9 +3,11 @@ package risor
 import (
 	"encoding/json"
 	"sort"
-	stdtime "time"
 
 	"github.com/risor-io/risor/builtins"
+	"github.com/risor-io/risor/modules/math"
+	"github.com/risor-io/risor/modules/rand"
+	"github.com/risor-io/risor/modules/regexp"
 	"github.com/risor-io/risor/object"
 )
 
@@ -195,7 +197,7 @@ func buildQuickReference() docsQuickReference {
 		Topics: map[string]string{
 			"builtins": "Built-in functions (len, map, filter, range, ...)",
 			"types":    "Types (string, list, map, int, float, ...)",
-			"modules":  "Modules (math, rand, regexp, time)",
+			"modules":  "Modules (math, rand, regexp)",
 			"syntax":   "Complete syntax reference",
 			"errors":   "Common errors and debugging",
 		},
@@ -234,7 +236,7 @@ func buildFullDocumentation() docsFullDocumentation {
 		}
 	}
 
-	for name, t := range docsTypeDocs {
+	for name, t := range docsTypeDocs() {
 		methods := make([]string, len(t.Attrs))
 		for i, attr := range t.Attrs {
 			methods[i] = attr.Name
@@ -260,14 +262,14 @@ func buildCategoryDocs(category string) any {
 			"functions":   builtins.Docs(),
 		}
 	case "types":
-		types := make([]docsTypeInfo, 0, len(docsTypeDocs))
+		types := make([]docsTypeInfo, 0, len(docsTypeDocs()))
 		var typeNames []string
-		for name := range docsTypeDocs {
+		for name := range docsTypeDocs() {
 			typeNames = append(typeNames, name)
 		}
 		sort.Strings(typeNames)
 		for _, name := range typeNames {
-			t := docsTypeDocs[name]
+			t := docsTypeDocs()[name]
 			types = append(types, docsTypeInfo{
 				Name:        name,
 				Doc:         t.Doc,
@@ -277,7 +279,7 @@ func buildCategoryDocs(category string) any {
 		return map[string]any{
 			"category":    "types",
 			"description": "Risor types and their methods",
-			"count":       len(docsTypeDocs),
+			"count":       len(docsTypeDocs()),
 			"types":       types,
 		}
 	case "modules":
@@ -322,7 +324,7 @@ func buildCategoryDocs(category string) any {
 
 func buildTopicDocs(topic string) any {
 	// Check types
-	if t, ok := docsTypeDocs[topic]; ok {
+	if t, ok := docsTypeDocs()[topic]; ok {
 		return map[string]any{
 			"type":    "type",
 			"name":    t.Name,
@@ -356,114 +358,19 @@ func buildTopicDocs(topic string) any {
 	}
 }
 
-// Type documentation (internal)
-var docsTypeDocs = map[string]object.TypeSpec{
-	"string": {
-		Name:  "string",
-		Doc:   "Immutable sequence of Unicode characters",
-		Attrs: docsGetStringAttrs(),
-	},
-	"list": {
-		Name:  "list",
-		Doc:   "Mutable ordered collection of values",
-		Attrs: docsGetListAttrs(),
-	},
-	"map": {
-		Name: "map",
-		Doc:  "Mutable key-value mapping with string keys",
-	},
-	"int": {
-		Name: "int",
-		Doc:  "64-bit signed integer",
-	},
-	"float": {
-		Name: "float",
-		Doc:  "64-bit floating point number",
-	},
-	"bool": {
-		Name: "bool",
-		Doc:  "Boolean value (true or false)",
-	},
-	"bytes": {
-		Name:  "bytes",
-		Doc:   "Mutable sequence of bytes",
-		Attrs: docsGetBytesAttrs(),
-	},
-	"time": {
-		Name:  "time",
-		Doc:   "Point in time with nanosecond precision",
-		Attrs: docsGetTimeAttrs(),
-	},
-	"nil": {
-		Name: "nil",
-		Doc:  "Absence of a value",
-	},
-	"error": {
-		Name: "error",
-		Doc:  "Error value that can be thrown or returned",
-	},
-	"function": {
-		Name: "function",
-		Doc:  "User-defined function or closure",
-	},
-	"builtin": {
-		Name: "builtin",
-		Doc:  "Built-in function implemented in Go",
-	},
-	"module": {
-		Name: "module",
-		Doc:  "Collection of related functions and values",
-	},
-	"range": {
-		Name: "range",
-		Doc:  "Lazy sequence of integers",
-	},
+// docsTypeDocs returns type documentation from the dynamic registry.
+func docsTypeDocs() map[string]object.TypeSpec {
+	return object.TypeDocsMap()
 }
 
-// Module documentation (internal)
+// Module documentation (internal) - generated from modules themselves
 var docsModuleDocs = map[string]struct {
 	Doc   string
 	Funcs []object.FuncSpec
 }{
-	"math": {
-		Doc: "Mathematical functions and constants",
-		Funcs: []object.FuncSpec{
-			{Name: "abs", Doc: "Absolute value", Args: []string{"x"}, Returns: "int|float"},
-			{Name: "ceil", Doc: "Ceiling (round up)", Args: []string{"x"}, Returns: "float"},
-			{Name: "cos", Doc: "Cosine", Args: []string{"x"}, Returns: "float"},
-			{Name: "floor", Doc: "Floor (round down)", Args: []string{"x"}, Returns: "float"},
-			{Name: "log", Doc: "Natural logarithm", Args: []string{"x"}, Returns: "float"},
-			{Name: "max", Doc: "Maximum of two values", Args: []string{"x", "y"}, Returns: "float"},
-			{Name: "min", Doc: "Minimum of two values", Args: []string{"x", "y"}, Returns: "float"},
-			{Name: "pow", Doc: "Power (x^y)", Args: []string{"x", "y"}, Returns: "float"},
-			{Name: "round", Doc: "Round to nearest integer", Args: []string{"x"}, Returns: "float"},
-			{Name: "sin", Doc: "Sine", Args: []string{"x"}, Returns: "float"},
-			{Name: "sqrt", Doc: "Square root", Args: []string{"x"}, Returns: "float"},
-			{Name: "tan", Doc: "Tangent", Args: []string{"x"}, Returns: "float"},
-			{Name: "PI", Doc: "Pi (3.14159...)", Args: nil, Returns: "float"},
-			{Name: "E", Doc: "Euler's number (2.718...)", Args: nil, Returns: "float"},
-		},
-	},
-	"rand": {
-		Doc: "Random number generation",
-		Funcs: []object.FuncSpec{
-			{Name: "float", Doc: "Random float in [0.0, 1.0)", Args: nil, Returns: "float"},
-			{Name: "int", Doc: "Random int in [0, n)", Args: []string{"n"}, Returns: "int"},
-			{Name: "seed", Doc: "Seed the random generator", Args: []string{"seed"}, Returns: "nil"},
-			{Name: "shuffle", Doc: "Shuffle list in place", Args: []string{"list"}, Returns: "list"},
-		},
-	},
-	"regexp": {
-		Doc: "Regular expression matching",
-		Funcs: []object.FuncSpec{
-			{Name: "compile", Doc: "Compile a regular expression", Args: []string{"pattern"}, Returns: "regexp"},
-			{Name: "match", Doc: "Check if pattern matches string", Args: []string{"pattern", "s"}, Returns: "bool"},
-			{Name: "find", Doc: "Find first match", Args: []string{"pattern", "s"}, Returns: "string"},
-			{Name: "find_all", Doc: "Find all matches", Args: []string{"pattern", "s"}, Returns: "list"},
-			{Name: "replace_all", Doc: "Replace all matches", Args: []string{"pattern", "s", "repl"}, Returns: "string"},
-			{Name: "split", Doc: "Split by pattern", Args: []string{"pattern", "s"}, Returns: "list"},
-		},
-	},
+	"math":   {Doc: math.ModuleDoc(), Funcs: math.Docs()},
+	"rand":   {Doc: rand.ModuleDoc(), Funcs: rand.Docs()},
+	"regexp": {Doc: regexp.ModuleDoc(), Funcs: regexp.Docs()},
 	"time": {
 		Doc: "Time and date operations",
 		Funcs: []object.FuncSpec{
@@ -614,23 +521,3 @@ var docsErrorPatterns = []docsErrorPattern{
 	},
 }
 
-// Helper functions to get attrs from types
-func docsGetStringAttrs() []object.AttrSpec {
-	s := object.NewString("")
-	return s.Attrs()
-}
-
-func docsGetListAttrs() []object.AttrSpec {
-	ls := object.NewList(nil)
-	return ls.Attrs()
-}
-
-func docsGetBytesAttrs() []object.AttrSpec {
-	b := object.NewBytes(nil)
-	return b.Attrs()
-}
-
-func docsGetTimeAttrs() []object.AttrSpec {
-	t := object.NewTime(stdtime.Now())
-	return t.Attrs()
-}

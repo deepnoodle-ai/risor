@@ -2,14 +2,23 @@ package builtins
 
 import "github.com/risor-io/risor/object"
 
-// Docs returns documentation for all builtin functions.
-func Docs() []object.FuncSpec {
-	return builtinDocs
+// Entry defines a builtin function along with its documentation.
+// This ensures documentation stays in sync with implementations.
+type Entry struct {
+	Name    string
+	Fn      object.BuiltinFunction
+	Doc     string
+	Args    []string
+	Returns string
+	Example string
 }
 
-var builtinDocs = []object.FuncSpec{
+// Registry holds all builtin function definitions.
+// The documentation and implementation are defined together.
+var registry = []Entry{
 	{
 		Name:    "all",
+		Fn:      All,
 		Doc:     "Return true if all elements are truthy",
 		Args:    []string{"items"},
 		Returns: "bool",
@@ -17,6 +26,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "any",
+		Fn:      Any,
 		Doc:     "Return true if any element is truthy",
 		Args:    []string{"items"},
 		Returns: "bool",
@@ -24,6 +34,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "assert",
+		Fn:      Assert,
 		Doc:     "Raise an error if condition is false",
 		Args:    []string{"condition", "message?"},
 		Returns: "nil",
@@ -31,6 +42,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "bool",
+		Fn:      Bool,
 		Doc:     "Convert value to boolean",
 		Args:    []string{"value?"},
 		Returns: "bool",
@@ -38,13 +50,23 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "byte",
+		Fn:      Byte,
 		Doc:     "Convert value to byte (0-255)",
 		Args:    []string{"value?"},
 		Returns: "byte",
 		Example: "byte(65)",
 	},
 	{
+		Name:    "bytes",
+		Fn:      Bytes,
+		Doc:     "Convert value to bytes",
+		Args:    []string{"value?"},
+		Returns: "bytes",
+		Example: "bytes(\"hello\")",
+	},
+	{
 		Name:    "call",
+		Fn:      Call,
 		Doc:     "Call a function with arguments",
 		Args:    []string{"fn", "args..."},
 		Returns: "any",
@@ -52,6 +74,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "chunk",
+		Fn:      Chunk,
 		Doc:     "Split list into chunks of size n",
 		Args:    []string{"list", "size"},
 		Returns: "list",
@@ -59,6 +82,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "coalesce",
+		Fn:      Coalesce,
 		Doc:     "Return first non-nil argument",
 		Args:    []string{"values..."},
 		Returns: "any",
@@ -66,6 +90,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "decode",
+		Fn:      Decode,
 		Doc:     "Decode data from a format (json, base64, hex, etc.)",
 		Args:    []string{"format", "data"},
 		Returns: "any",
@@ -73,6 +98,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "encode",
+		Fn:      Encode,
 		Doc:     "Encode data to a format (json, base64, hex, etc.)",
 		Args:    []string{"format", "value"},
 		Returns: "string",
@@ -80,6 +106,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "error",
+		Fn:      Error,
 		Doc:     "Create an error value (does not throw)",
 		Args:    []string{"message", "args..."},
 		Returns: "error",
@@ -87,6 +114,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "filter",
+		Fn:      Filter,
 		Doc:     "Keep elements where fn returns true",
 		Args:    []string{"items", "fn"},
 		Returns: "list",
@@ -94,6 +122,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "float",
+		Fn:      Float,
 		Doc:     "Convert value to float",
 		Args:    []string{"value?"},
 		Returns: "float",
@@ -101,6 +130,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "getattr",
+		Fn:      GetAttr,
 		Doc:     "Get attribute from object with optional default",
 		Args:    []string{"obj", "name", "default?"},
 		Returns: "any",
@@ -108,6 +138,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "int",
+		Fn:      Int,
 		Doc:     "Convert value to integer",
 		Args:    []string{"value?"},
 		Returns: "int",
@@ -115,6 +146,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "keys",
+		Fn:      Keys,
 		Doc:     "Get keys from map or indices from list",
 		Args:    []string{"container"},
 		Returns: "list",
@@ -122,6 +154,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "len",
+		Fn:      Len,
 		Doc:     "Return length of container",
 		Args:    []string{"container"},
 		Returns: "int",
@@ -129,6 +162,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "list",
+		Fn:      List,
 		Doc:     "Convert enumerable to list",
 		Args:    []string{"enumerable?"},
 		Returns: "list",
@@ -136,6 +170,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "range",
+		Fn:      Range,
 		Doc:     "Generate a sequence of integers",
 		Args:    []string{"start_or_stop", "stop?", "step?"},
 		Returns: "range",
@@ -143,6 +178,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "reversed",
+		Fn:      Reversed,
 		Doc:     "Return reversed copy of list or string",
 		Args:    []string{"sequence"},
 		Returns: "list|string",
@@ -150,6 +186,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "sorted",
+		Fn:      Sorted,
 		Doc:     "Return sorted copy of list",
 		Args:    []string{"items", "key?"},
 		Returns: "list",
@@ -157,6 +194,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "sprintf",
+		Fn:      Sprintf,
 		Doc:     "Format string with arguments",
 		Args:    []string{"format", "args..."},
 		Returns: "string",
@@ -164,6 +202,7 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "string",
+		Fn:      String,
 		Doc:     "Convert value to string",
 		Args:    []string{"value?"},
 		Returns: "string",
@@ -171,9 +210,34 @@ var builtinDocs = []object.FuncSpec{
 	},
 	{
 		Name:    "type",
+		Fn:      Type,
 		Doc:     "Return type name of value",
 		Args:    []string{"value"},
 		Returns: "string",
 		Example: "type([1, 2, 3])",
 	},
+}
+
+// Builtins returns all builtin functions as a map for use by the VM.
+func Builtins() map[string]object.Object {
+	result := make(map[string]object.Object, len(registry))
+	for _, entry := range registry {
+		result[entry.Name] = object.NewBuiltin(entry.Name, entry.Fn)
+	}
+	return result
+}
+
+// Docs returns documentation for all builtin functions.
+func Docs() []object.FuncSpec {
+	specs := make([]object.FuncSpec, len(registry))
+	for i, entry := range registry {
+		specs[i] = object.FuncSpec{
+			Name:    entry.Name,
+			Doc:     entry.Doc,
+			Args:    entry.Args,
+			Returns: entry.Returns,
+			Example: entry.Example,
+		}
+	}
+	return specs
 }

@@ -556,32 +556,3 @@ func Range(ctx context.Context, args ...object.Object) (object.Object, error) {
 	return object.NewRange(start, stop, step), nil
 }
 
-func Builtins() map[string]object.Object {
-	return map[string]object.Object{
-		"all":      object.NewBuiltin("all", All),
-		"any":      object.NewBuiltin("any", Any),
-		"assert":   object.NewBuiltin("assert", Assert),
-		"bool":     object.NewBuiltin("bool", Bool),
-		"byte":     object.NewBuiltin("byte", Byte),
-		"bytes":    object.NewBuiltin("bytes", Bytes),
-		"call":     object.NewBuiltin("call", Call),
-		"chunk":    object.NewBuiltin("chunk", Chunk),
-		"coalesce": object.NewBuiltin("coalesce", Coalesce),
-		"decode":   object.NewBuiltin("decode", Decode),
-		"encode":   object.NewBuiltin("encode", Encode),
-		"error":    object.NewBuiltin("error", Error),
-		"filter":   object.NewBuiltin("filter", Filter),
-		"float":    object.NewBuiltin("float", Float),
-		"getattr":  object.NewBuiltin("getattr", GetAttr),
-		"int":      object.NewBuiltin("int", Int),
-		"keys":     object.NewBuiltin("keys", Keys),
-		"len":      object.NewBuiltin("len", Len),
-		"list":     object.NewBuiltin("list", List),
-		"range":    object.NewBuiltin("range", Range),
-		"reversed": object.NewBuiltin("reversed", Reversed),
-		"sorted":   object.NewBuiltin("sorted", Sorted),
-		"sprintf":  object.NewBuiltin("sprintf", Sprintf),
-		"string":   object.NewBuiltin("string", String),
-		"type":     object.NewBuiltin("type", Type),
-	}
-}

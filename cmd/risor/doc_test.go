@@ -177,7 +177,7 @@ func TestDocHandler_Unknown(t *testing.T) {
 
 func TestTypeDocs(t *testing.T) {
 	// Verify all type docs have required fields
-	for name, spec := range typeDocs {
+	for name, spec := range typeDocs() {
 		assert.True(t, spec.Name != "", "type %s should have name", name)
 		assert.True(t, spec.Doc != "", "type %s should have doc", name)
 	}
