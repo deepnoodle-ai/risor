@@ -207,20 +207,36 @@ func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructure
 			p.setTokenError(p.curToken, "spread not allowed in destructuring parameter")
 			return nil
 		}
-		// Key should be an identifier
-		keyIdent, ok := item.Key.(*ast.Ident)
-		if !ok {
+
+		// Get key name - can be Ident (explicit key:value) or String (shorthand)
+		var keyName string
+		switch k := item.Key.(type) {
+		case *ast.Ident:
+			keyName = k.Name
+		case *ast.String:
+			// Shorthand syntax: {a, b} produces String keys
+			keyName = k.Value
+		default:
 			p.setTokenError(p.curToken, "expected identifier in destructuring pattern")
 			return nil
 		}
-		binding := ast.DestructureBinding{Key: keyIdent.Name}
-		// Value can be an identifier (alias) or expression (default)
+
+		binding := ast.DestructureBinding{Key: keyName}
+
+		// Handle different value types
 		if item.Value != nil {
-			if valIdent, ok := item.Value.(*ast.Ident); ok {
-				binding.Alias = valIdent.Name
-			} else {
-				// In shorthand {a, b}, key equals value, so value being non-ident means default
-				p.setTokenError(p.curToken, "expected identifier as alias in destructuring pattern")
+			switch v := item.Value.(type) {
+			case *ast.Ident:
+				// For shorthand {a}, key and value are the same - don't set alias
+				// For explicit {a: b}, set alias to the value identifier
+				if v.Name != keyName {
+					binding.Alias = v.Name
+				}
+			case *ast.DefaultValue:
+				// Shorthand with default: {a = expr}
+				binding.Default = v.Default
+			default:
+				p.setTokenError(p.curToken, "expected identifier or default in destructuring pattern")
 				return nil
 			}
 		}

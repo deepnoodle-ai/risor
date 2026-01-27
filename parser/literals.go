@@ -298,7 +298,7 @@ func (p *Parser) parseMapOrSet() (ast.Node, bool) {
 	return &ast.Map{Lbrace: lbrace, Items: items, Rbrace: rbrace}, true
 }
 
-// parseMapItem parses a single map item: either a spread (...obj) or a key-value pair.
+// parseMapItem parses a single map item: spread (...obj), shorthand (a), shorthand with default (a = expr), or key-value (a: b).
 func (p *Parser) parseMapItem() *ast.MapItem {
 	// Check for spread expression
 	if p.curTokenIs(token.SPREAD) {
@@ -312,6 +312,43 @@ func (p *Parser) parseMapItem() *ast.MapItem {
 			return nil
 		}
 		return &ast.MapItem{Key: nil, Value: spread}
+	}
+
+	// Check for shorthand syntax: {a, b} means {a: a, b: b}
+	// Also handles shorthand with default: {a = 1} for destructuring
+	if p.curTokenIs(token.IDENT) {
+		// Simple shorthand: {a} or {a, b}
+		if p.peekTokenIs(token.COMMA) || p.peekTokenIs(token.RBRACE) || p.peekTokenIs(token.NEWLINE) {
+			ident := p.newIdent(p.curToken)
+			key := &ast.String{
+				ValuePos: ident.Pos(),
+				Literal:  ident.Name,
+				Value:    ident.Name,
+			}
+			return &ast.MapItem{Key: key, Value: ident}
+		}
+
+		// Shorthand with default: {a = expr} - used in destructuring
+		if p.peekTokenIs(token.ASSIGN) {
+			ident := p.newIdent(p.curToken)
+			key := &ast.String{
+				ValuePos: ident.Pos(),
+				Literal:  ident.Name,
+				Value:    ident.Name,
+			}
+			p.nextToken() // move to '='
+			p.nextToken() // move to the default expression
+			defaultExpr := p.parseExpression(LOWEST)
+			if defaultExpr == nil {
+				return nil
+			}
+			// Store as DefaultValue so convertMapToDestructureParam can extract the default
+			value := &ast.DefaultValue{
+				Name:    ident,
+				Default: defaultExpr,
+			}
+			return &ast.MapItem{Key: key, Value: value}
+		}
 	}
 
 	// Regular key-value pair

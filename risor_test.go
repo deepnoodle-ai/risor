@@ -92,6 +92,41 @@ func TestBytesBuiltin(t *testing.T) {
 	})
 }
 
+func TestMapShorthandSyntax(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("simple shorthand", func(t *testing.T) {
+		result, err := Eval(ctx, `let a = 1; let b = 2; {a, b}`)
+		assert.Nil(t, err)
+		m, ok := result.(map[string]any)
+		assert.True(t, ok)
+		assert.Equal(t, int64(1), m["a"])
+		assert.Equal(t, int64(2), m["b"])
+	})
+
+	t.Run("mixed shorthand and explicit", func(t *testing.T) {
+		result, err := Eval(ctx, `let x = 10; {x, y: 20, z: 30}`)
+		assert.Nil(t, err)
+		m, ok := result.(map[string]any)
+		assert.True(t, ok)
+		assert.Equal(t, int64(10), m["x"])
+		assert.Equal(t, int64(20), m["y"])
+		assert.Equal(t, int64(30), m["z"])
+	})
+
+	t.Run("shorthand in function return", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function makePoint(x, y) { return {x, y} }
+			makePoint(3, 4)
+		`)
+		assert.Nil(t, err)
+		m, ok := result.(map[string]any)
+		assert.True(t, ok)
+		assert.Equal(t, int64(3), m["x"])
+		assert.Equal(t, int64(4), m["y"])
+	})
+}
+
 func TestEmptyEnvByDefault(t *testing.T) {
 	// Verify that the environment is empty by default (no builtins available)
 	testCases := []struct {
@@ -524,6 +559,60 @@ func TestArrowFunctionDestructureParam(t *testing.T) {
 		`)
 		assert.Nil(t, err)
 		assert.Equal(t, int64(7), result)
+	})
+
+	t.Run("arrow with object destructure shorthand", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let add = ({a, b}) => a + b
+			add({a: 10, b: 20})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(30), result)
+	})
+
+	t.Run("arrow with object destructure alias", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({name: n, value: v}) => n + "=" + string(v)
+			fn({name: "x", value: 42})
+		`, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		assert.Equal(t, "x=42", result)
+	})
+
+	t.Run("arrow with object destructure default", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let greet = ({name, greeting = "Hello"}) => greeting + ", " + name
+			greet({name: "World"})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, "Hello, World", result)
+	})
+
+	t.Run("arrow with object destructure default used", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let calc = ({a = 1, b = 2}) => a + b
+			calc({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), result)
+	})
+
+	t.Run("arrow with object destructure default overridden", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let calc = ({a = 1, b = 2}) => a + b
+			calc({a: 10})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(12), result)
+	})
+
+	t.Run("arrow with mixed shorthand alias default", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({x, y: yVal, z = 100}) => x + yVal + z
+			fn({x: 1, y: 2})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(103), result)
 	})
 }
 

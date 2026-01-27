@@ -63,6 +63,22 @@ func (x *Bool) End() token.Position { return x.ValuePos.Advance(len(x.Literal)) 
 
 func (x *Bool) String() string { return x.Literal }
 
+// DefaultValue is an expression node used in map shorthand syntax {a = expr}.
+// It represents an identifier with a default value, used for destructuring.
+type DefaultValue struct {
+	Name    *Ident // the identifier
+	Default Expr   // the default value expression
+}
+
+func (x *DefaultValue) exprNode() {}
+
+func (x *DefaultValue) Pos() token.Position { return x.Name.Pos() }
+func (x *DefaultValue) End() token.Position { return x.Default.End() }
+
+func (x *DefaultValue) String() string {
+	return x.Name.String() + " = " + x.Default.String()
+}
+
 // String is an expression node that holds a string literal.
 type String struct {
 	ValuePos token.Position // position of opening quote

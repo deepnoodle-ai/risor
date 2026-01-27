@@ -462,6 +462,77 @@ func TestMapWithNewlines(t *testing.T) {
 	assert.Len(t, m.Items, 2)
 }
 
+func TestMapShorthand(t *testing.T) {
+	t.Run("simple shorthand", func(t *testing.T) {
+		// {a, b} should be equivalent to {a: a, b: b}
+		program, err := Parse(context.Background(), "{a, b}", nil)
+		assert.Nil(t, err)
+
+		m, ok := program.First().(*ast.Map)
+		assert.True(t, ok)
+		assert.Len(t, m.Items, 2)
+
+		// First item: key="a", value=ident(a)
+		key0, ok := m.Items[0].Key.(*ast.String)
+		assert.True(t, ok)
+		assert.Equal(t, "a", key0.Value)
+		val0, ok := m.Items[0].Value.(*ast.Ident)
+		assert.True(t, ok)
+		assert.Equal(t, "a", val0.Name)
+
+		// Second item: key="b", value=ident(b)
+		key1, ok := m.Items[1].Key.(*ast.String)
+		assert.True(t, ok)
+		assert.Equal(t, "b", key1.Value)
+		val1, ok := m.Items[1].Value.(*ast.Ident)
+		assert.True(t, ok)
+		assert.Equal(t, "b", val1.Name)
+	})
+
+	t.Run("mixed shorthand and explicit", func(t *testing.T) {
+		// {a, b: 2, c} should have shorthand for a and c, explicit for b
+		program, err := Parse(context.Background(), "{a, b: 2, c}", nil)
+		assert.Nil(t, err)
+
+		m, ok := program.First().(*ast.Map)
+		assert.True(t, ok)
+		assert.Len(t, m.Items, 3)
+
+		// Item 0: shorthand a
+		key0, ok := m.Items[0].Key.(*ast.String)
+		assert.True(t, ok)
+		assert.Equal(t, "a", key0.Value)
+
+		// Item 1: explicit b: 2
+		key1, ok := m.Items[1].Key.(*ast.Ident)
+		assert.True(t, ok)
+		assert.Equal(t, "b", key1.Name)
+
+		// Item 2: shorthand c
+		key2, ok := m.Items[2].Key.(*ast.String)
+		assert.True(t, ok)
+		assert.Equal(t, "c", key2.Value)
+	})
+
+	t.Run("shorthand with default", func(t *testing.T) {
+		// {a = 10} should produce a DefaultValue
+		program, err := Parse(context.Background(), "{a = 10}", nil)
+		assert.Nil(t, err)
+
+		m, ok := program.First().(*ast.Map)
+		assert.True(t, ok)
+		assert.Len(t, m.Items, 1)
+
+		key, ok := m.Items[0].Key.(*ast.String)
+		assert.True(t, ok)
+		assert.Equal(t, "a", key.Value)
+
+		defaultVal, ok := m.Items[0].Value.(*ast.DefaultValue)
+		assert.True(t, ok)
+		assert.Equal(t, "a", defaultVal.Name.Name)
+	})
+}
+
 func TestFunc(t *testing.T) {
 	program, err := Parse(context.Background(), "function f(x, y=3) { x + y; }", nil)
 	assert.Nil(t, err)
