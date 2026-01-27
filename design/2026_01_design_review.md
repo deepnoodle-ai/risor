@@ -937,7 +937,7 @@ Concrete proposals derived from the analysis above, organized by priority.
 | P1-1 | `typeErrorsAreFatal` is global mutable state affecting all VMs (§3) | Remove the configuration entirely. Type errors are always fatal (this was already the effective behavior since `IsFatal()` was never checked). Removed: global variable, `FatalError` interface, `IsFatal()` methods, setter/getter functions. | Simplest solution. The configuration was dead code — no runtime behavior depended on it. | Done |
 | P1-2 | Global registries: `typeConverters`, `goTypeRegistry` (§18.3, §18.7) | Replaced `typeConverters` with `TypeRegistry` (immutable, VM-owned). Removed `goTypeRegistry` along with the proxy system. | Type conversion is now explicit via `WithTypeRegistry` option. No global mutable state remains. | Done |
 | P1-3 | Object interface has 9 methods; `Cost()` mixes resource concerns into values (§1) | Keep 8-method core interface. Change `Equals` to return `bool`, `RunOperation` to return `(Object, error)`. Remove `Cost()`. Add single `Callable` interface for invocable types. | Minimal change. Only one capability interface to remember. Cost tracking moves to Runtime. | Done |
-| P1-4 | Two parallel error systems with unclear boundaries (§2) | Compile-time uses `errors` package (Go errors). Runtime uses `object.Error` (Risor errors). Document the boundary: compiler returns Go errors, VM returns Risor errors. Never wrap one in the other. | Single mental model per phase. Clear ownership of error handling. | Not Started |
+| P1-4 | Two parallel error systems with unclear boundaries (§2) | Compile-time uses `errors` package (Go errors). Runtime uses `object.Error` (Risor errors). Document the boundary: compiler returns Go errors, VM returns Risor errors. Errors are values; `throw` is the action that triggers exception handling (see A-8). | Single mental model per phase. Clear ownership of error handling. | Partial (see A-8) |
 | P1-5 | No resource limits for embedded execution (§8) | Add `Compile(ctx, source, opts)` for cancellation. Add VM options: `WithMaxSteps(int)`, `WithMaxStackDepth(int)`, `WithTimeout(duration)`. | Embedders need predictable termination. Untrusted code must not run forever. | Not Started |
 
 ### P2: Consistency (Design Quality)
@@ -981,7 +981,7 @@ Concrete proposals derived from the analysis above, organized by priority.
 | A-5 | Error introspection is not first-class; embedders must know internal types to extract source locations | Add `risor.ErrorLocation(err error) (file string, line int, ok bool)` and `risor.ErrorStack(err error) []Frame` to public API. | Embedders should be able to provide good error messages without knowing Risor internals. | Not Started |
 | A-6 | `List.inspectActive` flag for circular reference detection is not thread-safe (§18.9) | Pass a `seen map[*List]bool` through `Inspect()` calls instead of storing state on the object. Or accept that `Inspect()` is single-threaded and document it. | Mutable state on values causes races. Either fix it or document the constraint. | Not Started |
 | A-7 | Bytecode reuse contract is implicit: same keys required, values can differ (§16) | Add `Bytecode.RequiredGlobals() []string` method. `Run()` validates env keys match at startup (not silently fail mid-execution). | Fail-fast with clear error beats mysterious "undefined" errors during execution. | Not Started |
-| A-8 | The `raised` flag on Error was vestigial from pre-try/catch era when errors could be values OR exceptions | Remove `raised` flag entirely. Errors are values (like Python exceptions). Only `throw` triggers exception handling. Errors stringify in templates. | Cleaner model: errors are data, throw is an action. No mutable state on error objects. | Done |
+| A-8 | The `raised` flag on Error was vestigial from pre-try/catch era when errors could be values OR exceptions | Remove `raised` flag entirely. Errors are values (like Python exceptions). Only `throw` triggers exception handling. Errors stringify in templates. Restored `error(msg, ...args)` builtin for creating error values. | Cleaner model: errors are data, throw is an action. No mutable state on error objects. | Done |
 
 ### Key Design Decisions
 
@@ -989,9 +989,9 @@ These questions must be resolved before implementation:
 
 | Decision | Options | Recommendation | Tradeoff |
 |----------|---------|----------------|----------|
-| **Error handling model** | (A) `(Object, error)` returns, (B) errors-as-values, (C) keep both | **A: Go-idiomatic** | Large refactor, but eliminates ambiguity |
-| **Object interface size** | (A) Keep 9 methods, (B) 8-method core + Callable | **B: Simplified** | Remove Cost(), fix return types, add Callable interface |
-| **Global state elimination** | (A) Runtime struct in context, (B) Thread-local, (C) Keep globals | **A: Runtime struct** | Slightly more ceremony, but fully concurrent |
+| **Error handling model** | (A) `(Object, error)` returns, (B) errors-as-values, (C) keep both | **A+B: Go-idiomatic returns + errors as script values** | Builtins return `(Object, error)`. In scripts, errors are values; `throw` triggers exceptions. (Done: P0-2, A-8) |
+| **Object interface size** | (A) Keep 9 methods, (B) 8-method core + Callable | **B: Simplified** | Remove Cost(), fix return types, add Callable interface. (Done: P1-3) |
+| **Global state elimination** | (A) Runtime struct in context, (B) Thread-local, (C) Keep globals | **A: VM-owned state** | TypeRegistry owned by VM, no global mutable state. (Done: P1-1, P1-2) |
 | **Value immutability** | (A) Immutable primitives, (B) Mutable (status quo) | **A: Immutable** | Can't modify in place, but safer |
 | **Coercion centralization** | (A) Single rules table, (B) Keep scattered | **A: Centralize** | More indirection, but auditable |
 | **Map key/method collision** | (A) Methods win, (B) Keys win, (C) Document only | **C: Document** | Not ideal, but low churn |
@@ -1271,7 +1271,8 @@ Errors in Risor v2 follow the Python exception model:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Error Object = Data (like any other value)                 │
-│  ├── Can be created: caught from try/catch                  │
+│  ├── Can be created: error("msg", ...args)                  │
+│  ├── Can be caught: try { ... } catch e { ... }             │
 │  ├── Can be inspected: err.message(), err.stack()           │
 │  ├── Can be compared: err1 == err2                          │
 │  ├── Can be stringified: `${err}` or string(err)            │
@@ -1304,20 +1305,25 @@ With try/catch, this distinction is unnecessary:
 #### Usage Examples
 
 ```risor
+// Create an error value directly
+let err = error("file %s not found", filename)
+
+// Inspect the error
+print(err.message())  // "file foo.txt not found"
+print(err.stack())    // [] (no stack until thrown)
+
+// Stringify in templates
+print(`Error occurred: ${err}`)  // "Error occurred: file foo.txt not found"
+
+// Throw when needed
+throw err
+
 // Catch an error to get it as a value
-let err = nil
 try {
     might_fail()
 } catch e {
-    err = e  // e is a value now
+    print(e.message())  // e is a value now
 }
-
-// Inspect the error
-print(err.message())
-print(err.stack())
-
-// Stringify in templates
-print(`Error occurred: ${err}`)
 
 // Store errors
 let problems = []
