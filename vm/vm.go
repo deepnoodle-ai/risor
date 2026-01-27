@@ -64,6 +64,14 @@ type VirtualMachine struct {
 	// If nil, no callbacks are made.
 	observer Observer
 
+	// observerConfig caches the normalized config from the observer.
+	observerConfig ObserverConfig
+
+	// Observer state for StepSampled and StepOnLine modes.
+	sampleCount      int         // Counter for StepSampled mode
+	lastObservedCode *loadedCode // Code object from last OnStep (changes on function call/return)
+	lastObservedLine int         // Source line from last OnStep
+
 	// Exception handling state
 	excStack     []exceptionFrame
 	excStackSize int
@@ -134,6 +142,9 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 		opt(vm)
 	}
 
+	// Configure observer if present
+	vm.configureObserver()
+
 	// Convert globals to Risor objects
 	var err error
 	vm.globals, err = object.AsObjects(vm.inputGlobals)
@@ -141,6 +152,95 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 		return fmt.Errorf("invalid global provided: %v", err)
 	}
 	return nil
+}
+
+// configureObserver initializes the observer configuration from the observer.
+func (vm *VirtualMachine) configureObserver() {
+	if vm.observer == nil {
+		return
+	}
+	vm.observerConfig = NormalizeConfig(vm.observer.Config())
+}
+
+// SetObserverConfig updates the observer configuration on a paused VM.
+// Returns an error if the VM is currently running.
+func (vm *VirtualMachine) SetObserverConfig(cfg ObserverConfig) error {
+	vm.runMutex.Lock()
+	defer vm.runMutex.Unlock()
+	if vm.running {
+		return errors.New("cannot update observer config while VM is running")
+	}
+	vm.observerConfig = NormalizeConfig(cfg)
+	return nil
+}
+
+// dispatchObserver handles OnStep callbacks based on the observer config.
+// Returns an error if the observer halts execution.
+func (vm *VirtualMachine) dispatchObserver(opcode op.Code) error {
+	if vm.observer == nil {
+		return nil
+	}
+
+	cfg := vm.observerConfig
+	var shouldStep bool
+	var loc object.SourceLocation
+
+	switch cfg.StepMode {
+	case StepAll:
+		shouldStep = true
+	case StepNone:
+		return nil
+	case StepSampled:
+		vm.sampleCount++
+		if vm.sampleCount >= cfg.SampleInterval {
+			vm.sampleCount = 0
+			shouldStep = true
+		}
+	case StepOnLine:
+		shouldStep, loc = vm.checkLineChanged()
+	}
+
+	if !shouldStep {
+		return nil
+	}
+
+	// For modes other than StepOnLine, loc is not set yet
+	if loc.Line == 0 {
+		loc = vm.activeCode.LocationAt(vm.ip)
+	}
+
+	event := StepEvent{
+		IP:         vm.ip,
+		Opcode:     opcode,
+		OpcodeName: op.GetInfo(opcode).Name,
+		Location:   loc,
+		StackDepth: vm.sp + 1,
+		FrameDepth: vm.fp + 1,
+	}
+	if !vm.observer.OnStep(event) {
+		return fmt.Errorf("execution halted by observer")
+	}
+	return nil
+}
+
+// checkLineChanged returns true if the source location has changed since
+// the last OnStep call, along with the current location.
+func (vm *VirtualMachine) checkLineChanged() (bool, object.SourceLocation) {
+	loc := vm.activeCode.LocationAt(vm.ip)
+
+	// Skip invalid locations (line 0 indicates no source info).
+	// This suppresses OnStep events until a valid line is reached.
+	if loc.Line == 0 {
+		return false, loc
+	}
+
+	// Check if code object or line changed
+	if vm.activeCode != vm.lastObservedCode || loc.Line != vm.lastObservedLine {
+		vm.lastObservedCode = vm.activeCode
+		vm.lastObservedLine = loc.Line
+		return true, loc
+	}
+	return false, loc
 }
 
 func (vm *VirtualMachine) start(ctx context.Context) error {
@@ -370,19 +470,9 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 
 		// fmt.Println("ip", vm.ip, op.GetInfo(opcode).Name, "sp", vm.sp)
 
-		// Call observer if present
-		if vm.observer != nil {
-			event := StepEvent{
-				IP:         vm.ip,
-				Opcode:     opcode,
-				OpcodeName: op.GetInfo(opcode).Name,
-				Location:   vm.activeCode.LocationAt(vm.ip),
-				StackDepth: vm.sp + 1,
-				FrameDepth: vm.fp + 1,
-			}
-			if !vm.observer.OnStep(event) {
-				return fmt.Errorf("execution halted by observer")
-			}
+		// Dispatch observer callbacks based on observer config
+		if err := vm.dispatchObserver(opcode); err != nil {
+			return err
 		}
 
 		// Advance the instruction pointer to the next instruction. Note that
@@ -583,8 +673,8 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 		case op.ReturnValue:
 			activeFrame := vm.activeFrame
 
-			// Call observer if present (before we lose the frame info)
-			if vm.observer != nil {
+			// Call observer if present and configured to observe returns (before we lose the frame info)
+			if vm.observer != nil && vm.observerConfig.ObserveReturns {
 				funcName := ""
 				if activeFrame.fn != nil {
 					funcName = activeFrame.fn.Name()
@@ -1184,8 +1274,8 @@ func (vm *VirtualMachine) callFunction(
 	// Activate a frame for the function call
 	vm.activateFunction(vm.fp+1, 0, fn, vm.tmp[:argc])
 
-	// Call observer if present
-	if vm.observer != nil {
+	// Call observer if present and configured to observe calls
+	if vm.observer != nil && vm.observerConfig.ObserveCalls {
 		event := CallEvent{
 			FunctionName: fn.Name(),
 			ArgCount:     len(args),
