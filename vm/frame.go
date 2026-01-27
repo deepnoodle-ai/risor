@@ -9,6 +9,7 @@ const DefaultFrameLocals = 8
 type frame struct {
 	returnAddr     int
 	returnSp       int
+	callSiteIP     int // IP of the call instruction in the caller's code (for stack traces)
 	localsCount    uint16
 	fn             *object.Closure
 	code           *loadedCode
@@ -22,6 +23,7 @@ func (f *frame) ActivateCode(code *loadedCode) {
 	f.code = code
 	f.fn = nil
 	f.returnAddr = 0
+	f.callSiteIP = 0
 	f.localsCount = uint16(code.LocalsCount())
 	f.capturedLocals = nil
 
@@ -64,10 +66,10 @@ func (f *frame) ActivateFunction(fn *object.Closure, code *loadedCode, returnAdd
 	// Save the instruction and stack pointers of the caller
 	f.returnAddr = returnAddr
 	f.returnSp = returnSp
+	// Save the call site IP for stack traces (returnAddr may be overwritten with StopSignal)
+	f.callSiteIP = returnAddr
 	// Initialize any local variables that were provided
-	for i := 0; i < len(localValues); i++ {
-		f.locals[i] = localValues[i]
-	}
+	copy(f.locals, localValues)
 }
 
 func (f *frame) Locals() []object.Object {

@@ -71,6 +71,9 @@ func (v *replVM) Eval(ctx context.Context, source string) (any, error) {
 		return nil, err
 	}
 
+	// Set source before CompileAST for better error messages with actual code
+	v.compiler.SetSource(source)
+
 	code, err := v.compiler.CompileAST(ast)
 	if err != nil {
 		return nil, err

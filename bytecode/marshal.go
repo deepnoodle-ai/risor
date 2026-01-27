@@ -66,10 +66,11 @@ type functionDef struct {
 }
 
 type locationDef struct {
-	Filename string `json:"filename,omitempty"`
-	Line     int    `json:"line"`
-	Column   int    `json:"column"`
-	Source   string `json:"source,omitempty"`
+	Filename  string `json:"filename,omitempty"`
+	Line      int    `json:"line"`
+	Column    int    `json:"column"`
+	EndColumn int    `json:"end_column,omitempty"`
+	Source    string `json:"source,omitempty"`
 }
 
 type exceptionHandlerDef struct {
@@ -137,10 +138,11 @@ func stateFromCode(code *Code) (*codeState, error) {
 		for j := 0; j < c.LocationCount(); j++ {
 			loc := c.LocationAt(j)
 			locations[j] = locationDef{
-				Filename: filename,
-				Line:     loc.Line,
-				Column:   loc.Column,
-				Source:   c.GetSourceLine(loc.Line),
+				Filename:  filename,
+				Line:      loc.Line,
+				Column:    loc.Column,
+				EndColumn: loc.EndColumn,
+				Source:    c.GetSourceLine(loc.Line),
 			}
 		}
 
@@ -213,8 +215,9 @@ func codeFromState(state *codeState) (*Code, error) {
 		locations := make([]SourceLocation, len(def.Locations))
 		for j, loc := range def.Locations {
 			locations[j] = SourceLocation{
-				Line:   loc.Line,
-				Column: loc.Column,
+				Line:      loc.Line,
+				Column:    loc.Column,
+				EndColumn: loc.EndColumn,
 			}
 		}
 

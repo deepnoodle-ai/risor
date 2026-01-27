@@ -2,11 +2,11 @@
 // This file demonstrates how Risor reports runtime panics with stack traces.
 // Run with: go run ./cmd/risor ./cmd/risor/testdata/errors/division_by_zero.risor
 
-let divide = function(a, b) {
+function divide(a, b) {
     return a / b
 }
 
-let calculate = function(x, y) {
+function calculate(x, y) {
     return divide(x, y)
 }
 

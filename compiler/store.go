@@ -91,10 +91,11 @@ type symbolTableDef struct {
 
 // locationDef is used to marshal a SourceLocation.
 type locationDef struct {
-	Filename string `json:"filename,omitempty"`
-	Line     int    `json:"line"`
-	Column   int    `json:"column"`
-	Source   string `json:"source,omitempty"`
+	Filename  string `json:"filename,omitempty"`
+	Line      int    `json:"line"`
+	Column    int    `json:"column"`
+	EndColumn int    `json:"end_column,omitempty"`
+	Source    string `json:"source,omitempty"`
 }
 
 // Flat form of a Code object used in marshaling.
@@ -140,6 +141,17 @@ func codeFromState(state *state) (*Code, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// Reconstruct rootSource pointer from parent (same logic as newChild)
+		var rootSource *string
+		if parent != nil {
+			if parent.rootSource != nil {
+				rootSource = parent.rootSource
+			} else if parent.source != "" {
+				rootSource = &parent.source
+			}
+		}
+
 		code := &Code{
 			id:           c.ID,
 			parent:       parent,
@@ -151,6 +163,7 @@ func codeFromState(state *state) (*Code, error) {
 			constants:    constants,
 			names:        copyStrings(c.Names),
 			source:       c.Source,
+			rootSource:   rootSource,
 			locations:    locationsFromDefs(c.Locations),
 			maxCallArgs:  c.MaxCallArgs,
 		}
@@ -442,10 +455,11 @@ func locationsFromDefs(defs []locationDef) []errors.SourceLocation {
 	locs := make([]errors.SourceLocation, len(defs))
 	for i, def := range defs {
 		locs[i] = errors.SourceLocation{
-			Filename: def.Filename,
-			Line:     def.Line,
-			Column:   def.Column,
-			Source:   def.Source,
+			Filename:  def.Filename,
+			Line:      def.Line,
+			Column:    def.Column,
+			EndColumn: def.EndColumn,
+			Source:    def.Source,
 		}
 	}
 	return locs
@@ -458,10 +472,11 @@ func locationsToDefs(locs []errors.SourceLocation) []locationDef {
 	defs := make([]locationDef, len(locs))
 	for i, loc := range locs {
 		defs[i] = locationDef{
-			Filename: loc.Filename,
-			Line:     loc.Line,
-			Column:   loc.Column,
-			Source:   loc.Source,
+			Filename:  loc.Filename,
+			Line:      loc.Line,
+			Column:    loc.Column,
+			EndColumn: loc.EndColumn,
+			Source:    loc.Source,
 		}
 	}
 	return defs

@@ -228,3 +228,63 @@ func TestMarshalUnmarshalConstantTypes(t *testing.T) {
 		t.Errorf("expected constant 5 to be 'hello', got %v", restored.ConstantAt(5))
 	}
 }
+
+func TestMarshalUnmarshalLocationsWithEndColumn(t *testing.T) {
+	// Create code with locations that have EndColumn set
+	locs := []SourceLocation{
+		{Line: 1, Column: 5, EndColumn: 10}, // Multi-char token
+		{Line: 2, Column: 1, EndColumn: 15}, // Wider span
+		{Line: 3, Column: 8, EndColumn: 8},  // Single char (EndColumn == Column)
+		{Line: 4, Column: 12, EndColumn: 0}, // EndColumn not set
+	}
+
+	code := NewCode(CodeParams{
+		ID:           "test",
+		Instructions: []op.Code{op.Nop, op.Nop, op.Nop, op.Nop},
+		Locations:    locs,
+		Filename:     "test.risor",
+	})
+
+	// Marshal
+	data, err := Marshal(code)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	// Unmarshal
+	restored, err := Unmarshal(data)
+	if err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+
+	// Verify locations were preserved
+	if restored.LocationCount() != 4 {
+		t.Fatalf("expected 4 locations, got %v", restored.LocationCount())
+	}
+
+	// Check each location's EndColumn
+	testCases := []struct {
+		idx       int
+		line      int
+		column    int
+		endColumn int
+	}{
+		{0, 1, 5, 10},
+		{1, 2, 1, 15},
+		{2, 3, 8, 8},
+		{3, 4, 12, 0},
+	}
+
+	for _, tc := range testCases {
+		loc := restored.LocationAt(tc.idx)
+		if loc.Line != tc.line {
+			t.Errorf("location %d: expected line %d, got %d", tc.idx, tc.line, loc.Line)
+		}
+		if loc.Column != tc.column {
+			t.Errorf("location %d: expected column %d, got %d", tc.idx, tc.column, loc.Column)
+		}
+		if loc.EndColumn != tc.endColumn {
+			t.Errorf("location %d: expected EndColumn %d, got %d", tc.idx, tc.endColumn, loc.EndColumn)
+		}
+	}
+}

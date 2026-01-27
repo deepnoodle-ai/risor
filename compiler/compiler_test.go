@@ -7,6 +7,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/ast"
+	"github.com/risor-io/risor/errors"
 	"github.com/risor-io/risor/internal/token"
 	"github.com/risor-io/risor/op"
 	"github.com/risor-io/risor/parser"
@@ -604,4 +605,148 @@ let z = x + y`
 	// Out of bounds
 	assert.Equal(t, code.GetSourceLine(0), "")
 	assert.Equal(t, code.GetSourceLine(100), "")
+}
+
+func TestEndColumn_InLocation(t *testing.T) {
+	// Test that EndColumn is set for multi-character tokens
+	input := `let longVariable = 42`
+
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.CompileAST(ast)
+	assert.Nil(t, err)
+
+	// Find a location with EndColumn set
+	hasEndColumn := false
+	for i := 0; i < code.LocationsCount(); i++ {
+		loc := code.LocationAt(i)
+		if loc.EndColumn > 0 && loc.EndColumn > loc.Column {
+			hasEndColumn = true
+			// Verify EndColumn is valid (greater than or equal to Column)
+			assert.GreaterOrEqual(t, loc.EndColumn, loc.Column)
+			break
+		}
+	}
+	// EndColumn should be set for at least some locations
+	assert.True(t, hasEndColumn, "Should have at least one location with EndColumn set")
+}
+
+func TestEndColumn_SpansToken(t *testing.T) {
+	// Test that EndColumn correctly spans the identifier
+	input := `verylongidentifier`
+
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+	c.SetSource(input) // Set source for proper source preservation
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	_, err = c.CompileAST(ast)
+	// This will fail to compile due to undefined variable, but that's fine
+	// We're testing compile-time location tracking
+	assert.NotNil(t, err)
+
+	// Get the error and verify it has location with EndColumn
+	compErr, ok := err.(*errors.CompileError)
+	if ok {
+		formatted := compErr.ToFormatted()
+		// EndColumn should span the identifier
+		if formatted.EndColumn > 0 {
+			// EndColumn is exclusive (points after last char)
+			span := formatted.EndColumn - formatted.Column
+			assert.Equal(t, span, len("verylongidentifier"), "EndColumn should span the identifier")
+		}
+	}
+}
+
+func TestRootSource_PreservedInFunctions(t *testing.T) {
+	// Test that original source is preserved in function bodies
+	input := `// Comment line 1
+// Comment line 2
+function add(a, b) {
+    return a + b
+}
+add(1, 2)`
+
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+	c.SetSource(input)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.CompileAST(ast)
+	assert.Nil(t, err)
+
+	// The root source should be available
+	assert.Contains(t, code.GetSourceLine(1), "// Comment line 1")
+	assert.Contains(t, code.GetSourceLine(4), "return a + b")
+
+	// Function code should be able to get source lines from root
+	allCode := code.Flatten()
+	for _, child := range allCode {
+		if !child.IsRoot() {
+			// Child function should be able to get source lines
+			line := child.GetSourceLine(4)
+			assert.Contains(t, line, "return")
+		}
+	}
+}
+
+func TestSetSource_ForREPL(t *testing.T) {
+	// Test that SetSource works for REPL-style compilation
+	input := `let x = 42 + 10`
+
+	c, err := New(WithFilename("repl"))
+	assert.Nil(t, err)
+
+	// Set source before compilation (as REPL would do)
+	c.SetSource(input)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.CompileAST(ast)
+	assert.Nil(t, err)
+
+	// Verify source is available
+	sourceLine := code.GetSourceLine(1)
+	assert.Contains(t, sourceLine, "let x = 42 + 10")
+}
+
+func TestLocationTracking_WithComments(t *testing.T) {
+	// Test that line numbers account for comments
+	input := `// Line 1 comment
+// Line 2 comment
+let x = 42  // Error will be on line 3`
+
+	c, err := New(WithFilename("test.risor"))
+	assert.Nil(t, err)
+	c.SetSource(input)
+
+	ast, err := parser.Parse(context.Background(), input)
+	assert.Nil(t, err)
+
+	code, err := c.CompileAST(ast)
+	assert.Nil(t, err)
+
+	// Find a location on line 3 (where let x = 42 is)
+	hasLine3 := false
+	for i := 0; i < code.LocationsCount(); i++ {
+		loc := code.LocationAt(i)
+		if loc.Line == 3 {
+			hasLine3 = true
+			break
+		}
+	}
+	assert.True(t, hasLine3, "Should have a location on line 3")
+
+	// Source line 3 should include the comment
+	sourceLine := code.GetSourceLine(3)
+	assert.Contains(t, sourceLine, "let x = 42")
 }

@@ -67,6 +67,11 @@ type VirtualMachine struct {
 	// Exception handling state
 	excStack     []exceptionFrame
 	excStackSize int
+
+	// panicStack stores the stack trace captured during panic unwind.
+	// This is populated by defer functions before they restore the frame pointer,
+	// ensuring we preserve the full call stack when a panic occurs.
+	panicStack []object.StackFrame
 }
 
 // exceptionFrame represents an active exception handler on the exception stack.
@@ -1112,8 +1117,19 @@ func (vm *VirtualMachine) callFunction(
 	baseIP := vm.ip
 	baseSP := vm.sp
 
-	// Restore the previous frame when done
-	defer vm.resumeFrame(baseFP, baseIP, baseSP)
+	// Restore the previous frame when done.
+	// If panicking, capture the stack trace before restoring the frame.
+	defer func() {
+		if r := recover(); r != nil {
+			// Capture stack while frames are still intact
+			if vm.panicStack == nil {
+				vm.panicStack = vm.captureStack()
+			}
+			vm.resumeFrame(baseFP, baseIP, baseSP)
+			panic(r) // Re-panic to continue unwinding
+		}
+		vm.resumeFrame(baseFP, baseIP, baseSP)
+	}()
 
 	// Assemble frame local variables in vm.tmp. The local variable order is:
 	// 1. Function parameters
@@ -1370,18 +1386,24 @@ func (vm *VirtualMachine) captureStack() []object.StackFrame {
 		} else if frame.code.CodeName() != "" {
 			funcName = frame.code.CodeName()
 		} else {
-			funcName = "<main>"
+			funcName = "__main__"
 		}
 
-		// Get the location - use returnAddr for previous frames, current ip for active frame
+		// Get the location:
+		// - Active frame: use current ip (where the error occurred)
+		// - Caller frames: use callSiteIP from the callee frame (where the call was made)
 		ip := 0
 		if i == vm.fp {
 			ip = vm.ip - 1 // Current instruction (ip was already incremented)
 			if ip < 0 {
 				ip = 0
 			}
-		} else {
-			ip = frame.returnAddr - 1
+		} else if i < vm.fp {
+			// For caller frames, the call site is stored in the callee's callSiteIP.
+			// callSiteIP is captured as vm.ip after the Call instruction was read,
+			// so subtract 1 to get the actual Call instruction's source location.
+			calleeFrame := &vm.frames[i+1]
+			ip = calleeFrame.callSiteIP - 1
 			if ip < 0 {
 				ip = 0
 			}
@@ -1468,7 +1490,24 @@ func (vm *VirtualMachine) panicToError(r any) error {
 		friendlyMsg = msg
 	}
 
-	return vm.runtimeError(kind, friendlyMsg)
+	// Use the panic stack if it was captured during unwind, otherwise use current stack
+	stack := vm.panicStack
+	if stack == nil {
+		stack = vm.captureStack()
+	}
+
+	// Get location from the first frame (where the panic occurred)
+	var loc object.SourceLocation
+	if len(stack) > 0 {
+		loc = stack[0].Location
+	} else {
+		loc = vm.getCurrentLocation()
+	}
+
+	// Clear the panic stack for next use
+	vm.panicStack = nil
+
+	return object.NewStructuredError(kind, friendlyMsg, loc, stack)
 }
 
 // handleException handles a thrown exception by finding an appropriate handler.

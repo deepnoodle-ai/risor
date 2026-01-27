@@ -20,31 +20,31 @@ func NewFormatter(useColor bool) *Formatter {
 
 // Colors used for error formatting
 var (
-	colorError      = color.Red
-	colorErrorBold  = color.BrightRed
-	colorCode       = color.BrightBlack
-	colorLocation   = color.Cyan
-	colorLineNum    = color.BrightBlack
-	colorPipe       = color.BrightBlack
-	colorSource     = color.White
-	colorCaret      = color.BrightRed
-	colorHint       = color.BrightYellow
-	colorNote       = color.BrightBlue
+	colorError     = color.Red
+	colorErrorBold = color.BrightRed
+	colorCode      = color.BrightBlack
+	colorLocation  = color.Cyan
+	colorLineNum   = color.BrightBlack
+	colorPipe      = color.BrightBlack
+	colorSource    = color.White
+	colorCaret     = color.BrightRed
+	colorHint      = color.BrightYellow
+	colorNote      = color.BrightBlue
 )
 
 // FormattedError represents an error ready for display.
 type FormattedError struct {
 	Code        ErrorCode
-	Kind        string             // "error", "parse error", "compile error", etc.
+	Kind        string // "error", "parse error", "compile error", etc.
 	Message     string
 	Filename    string
 	Line        int
 	Column      int
-	EndColumn   int                // For multi-character underlines
-	SourceLines []SourceLineEntry  // Multiple lines for context
-	Hint        string             // "Did you mean?" suggestion
-	Note        string             // Additional context
-	Stack       []StackFrame       // Stack trace for runtime errors
+	EndColumn   int               // For multi-character underlines
+	SourceLines []SourceLineEntry // Multiple lines for context
+	Hint        string            // "Did you mean?" suggestion
+	Note        string            // Additional context
+	Stack       []StackFrame      // Stack trace for runtime errors
 }
 
 // SourceLineEntry represents a line of source code with its number.
@@ -223,9 +223,10 @@ func (f *Formatter) writeSource(b *strings.Builder, err *FormattedError, lineNum
 			b.WriteString(caretPad)
 
 			// Carets under the error
+			// EndColumn is exclusive (points after last char), so no +1 needed
 			caretLen := 1
 			if err.EndColumn > err.Column {
-				caretLen = err.EndColumn - err.Column + 1
+				caretLen = err.EndColumn - err.Column
 			}
 			carets := strings.Repeat("^", caretLen)
 			if f.UseColor {

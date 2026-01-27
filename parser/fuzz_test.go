@@ -762,22 +762,22 @@ func FuzzParseRandomBytes(f *testing.F) {
 	// Seed with some byte patterns that might cause issues
 	seeds := [][]byte{
 		[]byte("normal"),
-		{0x00},                   // NULL byte
-		{0x7f},                   // DEL
-		{0xff},                   // Invalid UTF-8
-		{0x80},                   // Invalid UTF-8 continuation
-		{0xc0, 0x80},             // Overlong encoding
-		{0xfe, 0xff},             // UTF-16 BOM
-		{0xef, 0xbb, 0xbf},       // UTF-8 BOM
-		{0xed, 0xa0, 0x80},       // UTF-16 surrogate
-		[]byte("let x = \x00"),   // NULL in code
-		[]byte("let x = \xff"),   // Invalid byte in code
-		[]byte("\x1b[31m"),       // ANSI escape sequence
-		[]byte("a\rb"),           // Carriage return
-		[]byte("a\r\nb"),         // Windows newline
-		[]byte("a\x0bb"),         // Vertical tab
-		[]byte("a\x0cb"),         // Form feed
-		{0xf0, 0x9f, 0x98, 0x80}, // Valid emoji (😀)
+		{0x00},                             // NULL byte
+		{0x7f},                             // DEL
+		{0xff},                             // Invalid UTF-8
+		{0x80},                             // Invalid UTF-8 continuation
+		{0xc0, 0x80},                       // Overlong encoding
+		{0xfe, 0xff},                       // UTF-16 BOM
+		{0xef, 0xbb, 0xbf},                 // UTF-8 BOM
+		{0xed, 0xa0, 0x80},                 // UTF-16 surrogate
+		[]byte("let x = \x00"),             // NULL in code
+		[]byte("let x = \xff"),             // Invalid byte in code
+		[]byte("\x1b[31m"),                 // ANSI escape sequence
+		[]byte("a\rb"),                     // Carriage return
+		[]byte("a\r\nb"),                   // Windows newline
+		[]byte("a\x0bb"),                   // Vertical tab
+		[]byte("a\x0cb"),                   // Form feed
+		{0xf0, 0x9f, 0x98, 0x80},           // Valid emoji (😀)
 		[]byte("let \xf0\x9f\x98\x80 = 1"), // Emoji in identifier
 	}
 

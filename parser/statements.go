@@ -248,6 +248,8 @@ func (p *Parser) parseConst() *ast.Const {
 
 // parseAssignmentValue parses the right hand side of an assignment statement.
 func (p *Parser) parseAssignmentValue() ast.Expr {
+	// Save the assignment token (=) before eatNewlines potentially changes prevToken
+	assignToken := p.prevToken
 	p.eatNewlines()
 	result := p.parseExpression(LOWEST)
 	if result == nil {
@@ -257,9 +259,9 @@ func (p *Parser) parseAssignmentValue() ast.Expr {
 				ErrType:       "parse error",
 				Message:       "assignment is missing a value",
 				File:          p.l.Filename(),
-				StartPosition: p.prevToken.EndPosition,
-				EndPosition:   p.prevToken.EndPosition,
-				SourceCode:    p.l.GetLineText(p.prevToken),
+				StartPosition: assignToken.StartPosition,
+				EndPosition:   assignToken.EndPosition,
+				SourceCode:    p.l.GetLineText(assignToken),
 			}))
 		}
 		return nil

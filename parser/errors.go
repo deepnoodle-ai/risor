@@ -99,7 +99,7 @@ func (e *BaseParserError) ToFormatted() *errors.FormattedError {
 		Filename:  e.file,
 		Line:      start.LineNumber(),
 		Column:    start.ColumnNumber(),
-		EndColumn: end.ColumnNumber(),
+		EndColumn: end.ColumnNumber() + 1, // +1 to make exclusive (token EndPosition is inclusive)
 		SourceLines: []errors.SourceLineEntry{
 			{Number: start.LineNumber(), Text: e.sourceCode, IsMain: true},
 		},

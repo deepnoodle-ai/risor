@@ -6,8 +6,9 @@ import "fmt"
 // This is a minimal representation that only stores line and column.
 // Filename and source text are stored once on the Code object.
 type SourceLocation struct {
-	Line   int // 1-based line number
-	Column int // 1-based column number
+	Line      int // 1-based line number
+	Column    int // 1-based column number
+	EndColumn int // 1-based end column (0 if not set, for multi-char underlines)
 }
 
 // String returns a formatted string representation of the source location.

@@ -33,6 +33,11 @@ type Code struct {
 	functionID   string
 	filename     string // The source file this code came from
 
+	// rootSource points to the full original source from the root Code.
+	// Used for accurate line lookups in function bodies. Child codes set
+	// this to their parent's rootSource (or parent's source if rootSource is nil).
+	rootSource *string
+
 	// Source map: one location per instruction for error reporting
 	locations []errors.SourceLocation
 
@@ -72,6 +77,12 @@ func (c *Code) Parent() *Code {
 }
 
 func (c *Code) newChild(name, source, funcID string) *Code {
+	// Propagate rootSource from parent: if parent has a rootSource, use it;
+	// otherwise use parent's source as the root.
+	rootSrc := c.rootSource
+	if rootSrc == nil && c.source != "" {
+		rootSrc = &c.source
+	}
 	child := &Code{
 		id:         fmt.Sprintf("%s.%d", c.id, len(c.children)),
 		name:       name,
@@ -81,6 +92,7 @@ func (c *Code) newChild(name, source, funcID string) *Code {
 		source:     source,
 		functionID: funcID,
 		filename:   c.filename, // Inherit filename from parent
+		rootSource: rootSrc,
 	}
 	c.children = append(c.children, child)
 	return child
@@ -204,11 +216,24 @@ func (c *Code) LocationsCount() int {
 
 // GetSourceLine returns the source code line at the given 1-based line number.
 // If the line is out of range, an empty string is returned.
+// It tries rootSource first (for accurate line lookup in nested functions),
+// then falls back to the local source.
 func (c *Code) GetSourceLine(lineNum int) string {
-	if c.source == "" || lineNum < 1 {
+	if lineNum < 1 {
 		return ""
 	}
-	lines := strings.Split(c.source, "\n")
+	// Try rootSource first for accurate line lookup in function bodies
+	source := ""
+	if c.rootSource != nil {
+		source = *c.rootSource
+	}
+	if source == "" {
+		source = c.source
+	}
+	if source == "" {
+		return ""
+	}
+	lines := strings.Split(source, "\n")
 	if lineNum > len(lines) {
 		return ""
 	}
@@ -259,8 +284,9 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Cod
 	locations := make([]bytecode.SourceLocation, len(c.locations))
 	for i, loc := range c.locations {
 		locations[i] = bytecode.SourceLocation{
-			Line:   loc.Line,
-			Column: loc.Column,
+			Line:      loc.Line,
+			Column:    loc.Column,
+			EndColumn: loc.EndColumn,
 		}
 	}
 

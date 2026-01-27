@@ -42,7 +42,7 @@ func TestAssignmentWithNewline(t *testing.T) {
 		require.Len(t, program.Stmts, 1)
 
 		stmt := program.Stmts[0]
-		
+
 		var value ast.Expr
 		switch s := stmt.(type) {
 		case *ast.Assign:

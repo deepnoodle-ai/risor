@@ -367,10 +367,10 @@ func TestEmptyConstructsBehavior(t *testing.T) {
 
 func TestOperatorAssociativity(t *testing.T) {
 	tests := []struct {
-		input           string
-		expectedOuter   string
-		isRight         bool // true if right-associative
-		desc            string
+		input         string
+		expectedOuter string
+		isRight       bool // true if right-associative
+		desc          string
 	}{
 		{"a + b + c", "+", false, "addition is left-associative"},
 		{"a - b - c", "-", false, "subtraction is left-associative"},

@@ -8,10 +8,11 @@ import (
 
 // SourceLocation represents a position in source code.
 type SourceLocation struct {
-	Filename string
-	Line     int    // 1-based line number
-	Column   int    // 1-based column number
-	Source   string // The line of source code
+	Filename  string
+	Line      int    // 1-based line number
+	Column    int    // 1-based column number
+	EndColumn int    // 1-based end column (0 if not set, for multi-char underlines)
+	Source    string // The line of source code
 }
 
 // String returns a formatted string representation of the source location.

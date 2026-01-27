@@ -13,6 +13,7 @@ type Code struct {
 	name     string
 	isNamed  bool
 	children []*Code
+	parent   *Code // Parent code (nil for root)
 
 	instructions []op.Code
 	constants    []any
@@ -72,7 +73,7 @@ func NewCode(params CodeParams) *Code {
 		copy(children, params.Children)
 	}
 
-	return &Code{
+	code := &Code{
 		id:                params.ID,
 		name:              params.Name,
 		isNamed:           params.IsNamed,
@@ -91,6 +92,13 @@ func NewCode(params CodeParams) *Code {
 		localNames:        copyStrings(params.LocalNames),
 		exceptionHandlers: copyHandlers(params.ExceptionHandlers),
 	}
+
+	// Set parent reference on all children for source lookups
+	for _, child := range code.children {
+		child.parent = code
+	}
+
+	return code
 }
 
 // ID returns the unique identifier for this code block.
@@ -242,15 +250,34 @@ func (c *Code) Flatten() []*Code {
 }
 
 // GetSourceLine returns the source code line at the given 1-based line number.
+// For nested functions, it tries to look up the line from the root code's source
+// to get the original source with correct line numbers.
 func (c *Code) GetSourceLine(lineNum int) string {
-	if c.source == "" || lineNum < 1 {
+	if lineNum < 1 {
 		return ""
 	}
-	lines := strings.Split(c.source, "\n")
+
+	// Try to get source from root for accurate line lookups in nested functions
+	source := c.getRootSource()
+	if source == "" {
+		return ""
+	}
+
+	lines := strings.Split(source, "\n")
 	if lineNum > len(lines) {
 		return ""
 	}
 	return lines[lineNum-1]
+}
+
+// getRootSource returns the source from the root code for accurate line lookups.
+func (c *Code) getRootSource() string {
+	// Walk up to root to get the full source
+	root := c
+	for root.parent != nil {
+		root = root.parent
+	}
+	return root.source
 }
 
 // Stats returns statistics about this code block.

@@ -55,10 +55,11 @@ func wrapCode(bc *bytecode.Code) *loadedCode {
 	for i := 0; i < bc.LocationCount(); i++ {
 		loc := bc.LocationAt(i)
 		c.Locations[i] = object.SourceLocation{
-			Filename: filename,
-			Line:     loc.Line,
-			Column:   loc.Column,
-			Source:   bc.GetSourceLine(loc.Line),
+			Filename:  filename,
+			Line:      loc.Line,
+			Column:    loc.Column,
+			EndColumn: loc.EndColumn,
+			Source:    bc.GetSourceLine(loc.Line),
 		}
 	}
 

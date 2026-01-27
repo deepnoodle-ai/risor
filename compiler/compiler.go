@@ -147,10 +147,18 @@ func (c *Compiler) Code() *Code {
 // package-level Compile function instead.
 func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 	c.failure = nil
+
+	// Use original source if available (better error messages with actual code),
+	// otherwise fall back to AST string representation.
+	nodeSource := c.source
+	if nodeSource == "" {
+		nodeSource = node.String()
+	}
+
 	if c.main.source == "" {
-		c.main.source = node.String()
+		c.main.source = nodeSource
 	} else {
-		c.main.source = fmt.Sprintf("%s\n%s", c.main.source, node.String())
+		c.main.source = fmt.Sprintf("%s\n%s", c.main.source, nodeSource)
 	}
 	if c.filename != "" {
 		c.main.filename = c.filename
@@ -1258,9 +1266,11 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	}
 
 	// This new code object will store the compiled code for this function.
+	// Extract source from original if available for better error messages.
 	c.funcIndex++
 	functionID := fmt.Sprintf("%d", c.funcIndex)
-	code := c.current.newChild(functionName, node.Body.String(), functionID)
+	bodySource := c.extractFunctionBodySource(node)
+	code := c.current.newChild(functionName, bodySource, functionID)
 
 	// Setting current here means subsequent calls to compile will add to this
 	// code object instead of the parent.
@@ -1831,12 +1841,21 @@ func (c *Compiler) getCurrentLocation() SourceLocation {
 		return SourceLocation{}
 	}
 	pos := c.currentNode.Pos()
+	end := c.currentNode.End()
 	lineNum := pos.LineNumber()
+
+	// EndColumn is only meaningful if the end is on the same line
+	endColumn := 0
+	if end.Line == pos.Line {
+		endColumn = end.ColumnNumber()
+	}
+
 	return SourceLocation{
-		Filename: c.filename,
-		Line:     lineNum,
-		Column:   pos.ColumnNumber(),
-		Source:   c.current.GetSourceLine(lineNum),
+		Filename:  c.filename,
+		Line:      lineNum,
+		Column:    pos.ColumnNumber(),
+		EndColumn: endColumn,
+		Source:    c.current.GetSourceLine(lineNum),
 	}
 }
 
@@ -1949,6 +1968,56 @@ func (c *Compiler) getSourceLine(lineNum int) string {
 		return ""
 	}
 	return lines[lineNum]
+}
+
+// SetSource sets the original source code for better error messages.
+// This should be called before CompileAST when the original source is available.
+func (c *Compiler) SetSource(source string) {
+	c.source = source
+}
+
+// getRootSource returns the best available source for line lookups.
+func (c *Compiler) getRootSource() string {
+	if c.source != "" {
+		return c.source
+	}
+	return c.main.source
+}
+
+// extractFunctionBodySource attempts to extract the function body content from
+// the original source using AST positions. This extracts the inner content of
+// the block (without braces) to match what node.Body.String() produces.
+// Falls back to node.Body.String() if extraction fails.
+func (c *Compiler) extractFunctionBodySource(node *ast.Func) string {
+	rootSource := c.getRootSource()
+	if rootSource == "" {
+		return node.Body.String()
+	}
+
+	// Extract inner content of the block (skip the braces).
+	// Lbrace is at the '{', Rbrace is at the '}'.
+	// We want the content from after '{' to before '}'.
+	bodyStart := node.Body.Lbrace.Char + 1 // Skip '{'
+	bodyEnd := node.Body.Rbrace.Char       // Before '}'
+
+	// Validate bounds
+	if bodyStart < 0 || bodyStart >= len(rootSource) {
+		return node.Body.String()
+	}
+	if bodyEnd > len(rootSource) {
+		bodyEnd = len(rootSource)
+	}
+	if bodyEnd <= bodyStart {
+		return node.Body.String()
+	}
+
+	// Extract and trim leading/trailing whitespace
+	content := strings.TrimSpace(rootSource[bodyStart:bodyEnd])
+	if content == "" {
+		return node.Body.String()
+	}
+
+	return content
 }
 
 func (c *Compiler) compileTry(node *ast.Try) error {

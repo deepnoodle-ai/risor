@@ -90,7 +90,7 @@ func (e *StructuredError) FriendlyErrorMessage() string {
 		msg.WriteString(fmt.Sprintf("%s: %s (%d:%d)\n", e.Kind.String(), e.Message, e.Location.Line, e.Location.Column))
 	}
 
-	// Source snippet with caret
+	// Source snippet with caret/underline
 	if e.Location.Source != "" {
 		msg.WriteString(" | ")
 		msg.WriteString(e.Location.Source)
@@ -98,7 +98,14 @@ func (e *StructuredError) FriendlyErrorMessage() string {
 		if e.Location.Column > 0 {
 			msg.WriteString(" | ")
 			msg.WriteString(strings.Repeat(" ", e.Location.Column-1))
-			msg.WriteString("^\n")
+			// Use multi-character underline if EndColumn is set
+			// EndColumn is exclusive (points after last char), so no +1 needed
+			caretLen := 1
+			if e.Location.EndColumn > e.Location.Column {
+				caretLen = e.Location.EndColumn - e.Location.Column
+			}
+			msg.WriteString(strings.Repeat("^", caretLen))
+			msg.WriteString("\n")
 		}
 	}
 
@@ -150,11 +157,12 @@ func (e *StructuredError) GetLocation() SourceLocation {
 // ToFormatted converts to the FormattedError type for enhanced display.
 func (e *StructuredError) ToFormatted() *FormattedError {
 	fe := &FormattedError{
-		Kind:     e.Kind.String(),
-		Message:  e.Message,
-		Filename: e.Location.Filename,
-		Line:     e.Location.Line,
-		Column:   e.Location.Column,
+		Kind:      e.Kind.String(),
+		Message:   e.Message,
+		Filename:  e.Location.Filename,
+		Line:      e.Location.Line,
+		Column:    e.Location.Column,
+		EndColumn: e.Location.EndColumn,
 	}
 
 	if e.Location.Source != "" {

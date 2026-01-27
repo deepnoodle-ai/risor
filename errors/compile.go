@@ -45,13 +45,14 @@ func (e *CompileError) FriendlyErrorMessage() string {
 // ToFormatted converts to the FormattedError type for display.
 func (e *CompileError) ToFormatted() *FormattedError {
 	fe := &FormattedError{
-		Code:     e.Code,
-		Kind:     "error",
-		Message:  e.Message,
-		Filename: e.Filename,
-		Line:     e.Line,
-		Column:   e.Column,
-		Note:     e.Note,
+		Code:      e.Code,
+		Kind:      "error",
+		Message:   e.Message,
+		Filename:  e.Filename,
+		Line:      e.Line,
+		Column:    e.Column,
+		EndColumn: e.EndColumn,
+		Note:      e.Note,
 	}
 
 	if e.SourceLine != "" {
