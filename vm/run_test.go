@@ -183,3 +183,64 @@ x.missing`
 	// Should contain location info
 	assert.Contains(t, friendly, "2:")
 }
+
+func TestRunError_AttributeErrorPointsAtAttributeName(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		source         string
+		expectedLine   int
+		expectedColumn int
+		description    string
+	}{
+		{
+			name:           "GetAttr on map literal",
+			source:         `{a:1}.xyz`,
+			expectedLine:   1,
+			expectedColumn: 7, // "xyz" starts at column 7
+			description:    "error should point at attribute name, not map literal",
+		},
+		{
+			name:           "ObjectCall on map literal",
+			source:         `{a:1}.each()`,
+			expectedLine:   1,
+			expectedColumn: 7, // "each" starts at column 7
+			description:    "error should point at method name, not map literal",
+		},
+		{
+			name:           "GetAttr on nested expression",
+			source:         `(1 + 2).bad`,
+			expectedLine:   1,
+			expectedColumn: 9, // "bad" starts at column 9
+			description:    "error should point at attribute name, not grouped expression",
+		},
+		{
+			name:           "ObjectCall on list literal",
+			source:         `[1, 2, 3].fake()`,
+			expectedLine:   1,
+			expectedColumn: 11, // "fake" starts at column 11
+			description:    "error should point at method name, not list literal",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, err := parser.Parse(ctx, tt.source, nil)
+			assert.Nil(t, err)
+
+			code, err := compiler.Compile(ast, nil)
+			assert.Nil(t, err)
+
+			_, err = Run(ctx, code)
+			assert.NotNil(t, err)
+
+			structuredErr, ok := err.(*object.StructuredError)
+			assert.True(t, ok, "should be StructuredError")
+
+			loc := structuredErr.Location
+			assert.Equal(t, loc.Line, tt.expectedLine, tt.description+" (line)")
+			assert.Equal(t, loc.Column, tt.expectedColumn, tt.description+" (column)")
+		})
+	}
+}

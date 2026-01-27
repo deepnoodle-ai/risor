@@ -1233,6 +1233,8 @@ func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 	}
 	method := node.Call
 	name := method.Fun.String()
+	// Restore currentNode so LoadAttr gets the method name position
+	c.currentNode = method.Fun
 	c.emit(op.LoadAttr, c.current.addName(name))
 	args := method.Args
 	argc := len(args)
@@ -1267,6 +1269,8 @@ func (c *Compiler) compileGetAttr(node *ast.GetAttr) error {
 		c.emit(op.Copy, 0)
 		jumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
 	}
+	// Restore currentNode so LoadAttr gets the attribute name position
+	c.currentNode = node.Attr
 	idx := c.current.addName(node.Attr.Name)
 	if node.Optional {
 		c.emit(op.LoadAttrOrNil, idx)
