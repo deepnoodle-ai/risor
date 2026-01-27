@@ -385,6 +385,10 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 				return nil, nil, nil
 			}
 		}
+		// After eating newlines, check if we reached the closing paren
+		if p.curTokenIs(token.RPAREN) {
+			break
+		}
 		if p.curTokenIs(token.EOF) {
 			p.setTokenError(p.prevToken, "unterminated function parameters")
 			return nil, nil, nil

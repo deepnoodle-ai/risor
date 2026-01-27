@@ -109,7 +109,7 @@ func TestWalkFunc(t *testing.T) {
 					NamePos: token.Position{Line: 1, Column: 10},
 					Name:    "foo",
 				},
-				Params: []*Ident{xIdent},
+				Params: []FuncParam{xIdent},
 				Body: &Block{
 					Lbrace: token.Position{Line: 1, Column: 17},
 					Stmts: []Node{

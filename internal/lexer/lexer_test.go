@@ -763,7 +763,7 @@ func TestInvalids(t *testing.T) {
 		{"4.f", "invalid decimal literal: 4.f"},
 		{"4a.f", "invalid decimal literal: 4a"},
 		{"0x.1", "invalid decimal literal: 0x."},
-		{"0b.1", "invalid decimal literal: 0b"},
+		{"0b.1", "invalid decimal literal: 0b."},
 		{`"foo`, "unterminated string literal"},
 		{"`foo", "unterminated string literal"},
 		{"'foo", "unterminated string literal"},

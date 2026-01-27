@@ -5,6 +5,10 @@ use (
 	./cmd/risor
 	./cmd/risor-docs
 	./cmd/risor-lsp
+	./examples/go/concurrent_vms
+	./examples/go/custom_env
+	./examples/go/error_handling
+	./examples/go/expression_eval
 	./examples/go/struct
 	./examples/go/tetra3d
 )

@@ -767,8 +767,44 @@ func TestArrowFunctionWithDestructureParams(t *testing.T) {
 // DESTRUCTURING PARAMETERS - EDGE CASES
 // =============================================================================
 
-// Note: Multi-line destructure patterns in parameter lists are not supported.
-// Destructure patterns must be on a single line: function foo({a, b}) { ... }
+func TestDestructureParamWithNewlines(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			"object destructure with newlines",
+			`function foo({
+				a,
+				b
+			}) { a }`,
+		},
+		{
+			"array destructure with newlines",
+			`function foo([
+				a,
+				b
+			]) { a }`,
+		},
+		{
+			"mixed with newlines",
+			`function foo(
+				x,
+				{a, b},
+				[c, d],
+				y
+			) { x }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+			assert.NotNil(t, program.First())
+		})
+	}
+}
 
 func TestDestructureParamEdgeCases(t *testing.T) {
 	t.Run("empty object destructure", func(t *testing.T) {

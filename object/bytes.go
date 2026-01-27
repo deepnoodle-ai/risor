@@ -9,8 +9,32 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+// bytesAttrs defines all attributes available on bytes objects.
+var bytesAttrs = []AttrSpec{
+	{Name: "clone", Doc: "Create a copy of the bytes", Args: nil, Returns: "bytes"},
+	{Name: "contains", Doc: "Check if bytes contains a subsequence", Args: []string{"b"}, Returns: "bool"},
+	{Name: "contains_any", Doc: "Check if bytes contains any of the given characters", Args: []string{"chars"}, Returns: "bool"},
+	{Name: "contains_rune", Doc: "Check if bytes contains a rune", Args: []string{"r"}, Returns: "bool"},
+	{Name: "count", Doc: "Count occurrences of subsequence", Args: []string{"b"}, Returns: "int"},
+	{Name: "equals", Doc: "Check equality with another bytes", Args: []string{"other"}, Returns: "bool"},
+	{Name: "has_prefix", Doc: "Check if bytes starts with prefix", Args: []string{"prefix"}, Returns: "bool"},
+	{Name: "has_suffix", Doc: "Check if bytes ends with suffix", Args: []string{"suffix"}, Returns: "bool"},
+	{Name: "index", Doc: "Find first index of subsequence (-1 if not found)", Args: []string{"b"}, Returns: "int"},
+	{Name: "index_any", Doc: "Find first index of any character (-1 if not found)", Args: []string{"chars"}, Returns: "int"},
+	{Name: "index_byte", Doc: "Find first index of byte (-1 if not found)", Args: []string{"b"}, Returns: "int"},
+	{Name: "index_rune", Doc: "Find first index of rune (-1 if not found)", Args: []string{"r"}, Returns: "int"},
+	{Name: "repeat", Doc: "Repeat bytes n times", Args: []string{"count"}, Returns: "bytes"},
+	{Name: "replace", Doc: "Replace n occurrences", Args: []string{"old", "new", "n"}, Returns: "bytes"},
+	{Name: "replace_all", Doc: "Replace all occurrences", Args: []string{"old", "new"}, Returns: "bytes"},
+}
+
 type Bytes struct {
 	value []byte
+}
+
+// Attrs returns the attribute specifications for bytes objects.
+func (b *Bytes) Attrs() []AttrSpec {
+	return bytesAttrs
 }
 
 func (b *Bytes) SetAttr(name string, value Object) error {
@@ -20,7 +44,6 @@ func (b *Bytes) SetAttr(name string, value Object) error {
 func (b *Bytes) Inspect() string {
 	return fmt.Sprintf("bytes(%q)", b.value)
 }
-
 
 func (b *Bytes) Type() Type {
 	return BYTES
@@ -457,7 +480,6 @@ func (b *Bytes) ReplaceAll(old, new Object) (Object, error) {
 	}
 	return NewBytes(bytes.ReplaceAll(b.value, oldBytes, newBytes)), nil
 }
-
 
 func (b *Bytes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(b.value))

@@ -79,13 +79,114 @@ func (x *String) End() token.Position { return x.ValuePos.Advance(len(x.Literal)
 
 func (x *String) String() string { return fmt.Sprintf("%q", x.Value) }
 
+// FuncParam represents a function parameter, which can be a simple identifier
+// or a destructuring pattern (object or array).
+type FuncParam interface {
+	Node
+	funcParam()
+	// ParamNames returns all variable names introduced by this parameter.
+	ParamNames() []string
+}
+
+// Ensure *Ident implements FuncParam
+func (x *Ident) funcParam() {}
+
+// ParamNames returns the single variable name for an identifier parameter.
+func (x *Ident) ParamNames() []string { return []string{x.Name} }
+
+// ObjectDestructureParam represents object destructuring in parameter position.
+// Example: function foo({a, b}) { ... }
+type ObjectDestructureParam struct {
+	Lbrace   token.Position       // position of "{"
+	Bindings []DestructureBinding // bindings to extract (reused from statements.go)
+	Rbrace   token.Position       // position of "}"
+}
+
+func (x *ObjectDestructureParam) funcParam() {}
+
+func (x *ObjectDestructureParam) Pos() token.Position { return x.Lbrace }
+func (x *ObjectDestructureParam) End() token.Position { return x.Rbrace.Advance(1) }
+
+// ParamNames returns all variable names introduced by this destructuring parameter.
+func (x *ObjectDestructureParam) ParamNames() []string {
+	names := make([]string, len(x.Bindings))
+	for i, b := range x.Bindings {
+		if b.Alias != "" {
+			names[i] = b.Alias
+		} else {
+			names[i] = b.Key
+		}
+	}
+	return names
+}
+
+func (x *ObjectDestructureParam) String() string {
+	var out bytes.Buffer
+	out.WriteString("{")
+	for i, b := range x.Bindings {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(b.Key)
+		if b.Alias != "" && b.Alias != b.Key {
+			out.WriteString(": ")
+			out.WriteString(b.Alias)
+		}
+		if b.Default != nil {
+			out.WriteString(" = ")
+			out.WriteString(b.Default.String())
+		}
+	}
+	out.WriteString("}")
+	return out.String()
+}
+
+// ArrayDestructureParam represents array destructuring in parameter position.
+// Example: function foo([a, b]) { ... }
+type ArrayDestructureParam struct {
+	Lbrack   token.Position            // position of "["
+	Elements []ArrayDestructureElement // elements to extract (reused from statements.go)
+	Rbrack   token.Position            // position of "]"
+}
+
+func (x *ArrayDestructureParam) funcParam() {}
+
+func (x *ArrayDestructureParam) Pos() token.Position { return x.Lbrack }
+func (x *ArrayDestructureParam) End() token.Position { return x.Rbrack.Advance(1) }
+
+// ParamNames returns all variable names introduced by this destructuring parameter.
+func (x *ArrayDestructureParam) ParamNames() []string {
+	names := make([]string, len(x.Elements))
+	for i, e := range x.Elements {
+		names[i] = e.Name.Name
+	}
+	return names
+}
+
+func (x *ArrayDestructureParam) String() string {
+	var out bytes.Buffer
+	out.WriteString("[")
+	for i, e := range x.Elements {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(e.Name.String())
+		if e.Default != nil {
+			out.WriteString(" = ")
+			out.WriteString(e.Default.String())
+		}
+	}
+	out.WriteString("]")
+	return out.String()
+}
+
 // Func is an expression node that holds a function literal.
 type Func struct {
 	Func      token.Position  // position of "function" keyword
 	Name      *Ident          // function name; nil for anonymous functions
 	Lparen    token.Position  // position of "("
-	Params    []*Ident        // parameter names
-	Defaults  map[string]Expr // default values for parameters
+	Params    []FuncParam     // parameter names or destructuring patterns
+	Defaults  map[string]Expr // default values for simple parameters
 	RestParam *Ident          // rest parameter (e.g., ...args); nil if none
 	Rparen    token.Position  // position of ")"
 	Body      *Block          // function body
@@ -101,7 +202,7 @@ func (x *Func) String() string {
 	var out bytes.Buffer
 	params := make([]string, 0, len(x.Params))
 	for _, p := range x.Params {
-		params = append(params, p.Name)
+		params = append(params, p.String())
 	}
 	out.WriteString("function")
 	if x.Name != nil {

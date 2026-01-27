@@ -601,9 +601,9 @@ func TestControlFlow(t *testing.T) {
 		{`if (false) { 3 } else if (true) { 4 } else { 5 }`, object.NewInt(4)},
 		{`let x = 1; if (x > 5) { 99 } else { 100 }`, object.NewInt(100)},
 		{`let x = 1; if (x > 0) { 99 } else { 100 }`, object.NewInt(99)},
-		{`let x = 1; let y = x > 0 ? 77 : 88; y`, object.NewInt(77)},
-		{`let x = (1 > 2) ? 77 : 88; x`, object.NewInt(88)},
-		{`let x = (2 > 1) ? 77 : 88; x`, object.NewInt(77)},
+		{`let x = 1; let y = if (x > 0) { 77 } else { 88 }; y`, object.NewInt(77)},
+		{`let x = if (1 > 2) { 77 } else { 88 }; x`, object.NewInt(88)},
+		{`let x = if (2 > 1) { 77 } else { 88 }; x`, object.NewInt(77)},
 		{`let x = 1; switch (x) { case 1: 99; case 2: 100 }`, object.NewInt(99)},
 		{`switch (2) { case 1: 99; case 2: 100 }`, object.NewInt(100)},
 		{`switch (3) { case 1: 99; default: 42 case 2: 100 }`, object.NewInt(42)},
@@ -725,7 +725,7 @@ func TestTryWithErrorValues(t *testing.T) {
 		let x = "testing 1 2 3"
 		throw myerr
 	} catch e {
-		result = string(e) == "errno == 1" ? "YES" : "NO"
+		result = if (string(e) == "errno == 1") { "YES" } else { "NO" }
 	}
 	result`
 	result, err := run(context.Background(), code)

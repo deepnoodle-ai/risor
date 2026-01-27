@@ -60,7 +60,6 @@ func (d *DynamicAttr) SetAttr(name string, value Object) error {
 	return TypeErrorf("unable to set attribute on dynamic_attr")
 }
 
-
 func (d *DynamicAttr) ResolveAttr(ctx context.Context, name string) (Object, error) {
 	if d.value != nil {
 		return d.value, nil

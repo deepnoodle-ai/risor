@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/deepnoodle-ai/wonton/tui"
+	"github.com/risor-io/risor/object"
 )
 
 // replApp implements tui.InlineApplication for the Risor REPL.
@@ -465,27 +466,99 @@ func (app *replApp) handleCommand(input string) []tui.Cmd {
 	accentStyle := tui.NewStyle().WithFgRGB(tui.RGB{R: 250, G: 180, B: 80})
 
 	switch cmd {
+	case ":type", ":t":
+		if len(parts) < 2 {
+			app.runner.Print(tui.Text("  Usage: :type <expression>").Style(mutedStyle))
+			return nil
+		}
+		expr := strings.TrimSpace(input[len(parts[0]):])
+		obj, err := app.vm.EvalObject(app.ctx, expr)
+		if err != nil {
+			app.runner.Print(tui.Text("  %s", err.Error()).Fg(tui.ColorRed))
+			return nil
+		}
+		app.runner.Print(tui.Group(
+			tui.Text("  ").Style(mutedStyle),
+			tui.Text("%s", obj.Type()).Style(accentStyle),
+		))
+
+	case ":methods", ":m":
+		if len(parts) < 2 {
+			app.runner.Print(tui.Text("  Usage: :methods <expression>").Style(mutedStyle))
+			return nil
+		}
+		expr := strings.TrimSpace(input[len(parts[0]):])
+		obj, err := app.vm.EvalObject(app.ctx, expr)
+		if err != nil {
+			app.runner.Print(tui.Text("  %s", err.Error()).Fg(tui.ColorRed))
+			return nil
+		}
+		introspectable, ok := obj.(object.Introspectable)
+		if !ok {
+			app.runner.Print(tui.Group(
+				tui.Text("  ").Style(mutedStyle),
+				tui.Text("%s", obj.Type()).Style(accentStyle),
+				tui.Text(" has no methods").Style(mutedStyle),
+			))
+			return nil
+		}
+		attrs := introspectable.Attrs()
+		if len(attrs) == 0 {
+			app.runner.Print(tui.Group(
+				tui.Text("  ").Style(mutedStyle),
+				tui.Text("%s", obj.Type()).Style(accentStyle),
+				tui.Text(" has no methods").Style(mutedStyle),
+			))
+			return nil
+		}
+		app.runner.Print(tui.Group(
+			tui.Text("  ").Style(mutedStyle),
+			tui.Text("%s", obj.Type()).Style(accentStyle),
+			tui.Text(" methods:").Style(mutedStyle),
+		))
+		// Display methods with signatures
+		for _, attr := range attrs {
+			var sig string
+			if len(attr.Args) > 0 {
+				sig = fmt.Sprintf(".%s(%s)", attr.Name, strings.Join(attr.Args, ", "))
+			} else {
+				sig = fmt.Sprintf(".%s()", attr.Name)
+			}
+			app.runner.Print(tui.Group(
+				tui.Text("    %s", sig).Style(accentStyle),
+				tui.Text("  %s", attr.Doc).Style(mutedStyle),
+			))
+		}
+
 	case ":help", ":h", ":?":
 		app.runner.Print(tui.Stack(
 			tui.Text(""),
 			tui.Group(
-				tui.Text("  :help, :h, :?").Style(accentStyle),
+				tui.Text("  :help, :h, :?   ").Style(accentStyle),
 				tui.Text("  Show this help").Style(mutedStyle),
 			),
 			tui.Group(
-				tui.Text("  :clear, :cls  ").Style(accentStyle),
-				tui.Text("  Clear the screen").Style(mutedStyle),
+				tui.Text("  :type, :t <expr>").Style(accentStyle),
+				tui.Text("  Show type of expression").Style(mutedStyle),
 			),
 			tui.Group(
-				tui.Text("  :env          ").Style(accentStyle),
+				tui.Text("  :methods <expr> ").Style(accentStyle),
+				tui.Text("  List methods on a value").Style(mutedStyle),
+			),
+			tui.Group(
+				tui.Text("  :env            ").Style(accentStyle),
 				tui.Text("  List available globals").Style(mutedStyle),
 			),
 			tui.Group(
-				tui.Text("  :timing       ").Style(accentStyle),
+				tui.Text("  :timing         ").Style(accentStyle),
 				tui.Text("  Toggle execution timing").Style(mutedStyle),
 			),
 			tui.Group(
-				tui.Text("  :exit, :quit  ").Style(accentStyle),
+				tui.Text("  :clear, :cls    ").Style(accentStyle),
+				tui.Text("  Clear the screen").Style(mutedStyle),
+			),
+			tui.Group(
+				tui.Text("  :exit, :quit    ").Style(accentStyle),
 				tui.Text("  Exit the REPL").Style(mutedStyle),
 			),
 			tui.Text(""),

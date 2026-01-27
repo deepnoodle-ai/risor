@@ -757,3 +757,85 @@ func TestDestructureWithRestParam(t *testing.T) {
 		assert.Equal(t, result, []any{int64(1), []any{int64(2), int64(3), int64(4)}})
 	})
 }
+
+func TestMultilineDestructureParams(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("object destructure with newlines", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({
+				a,
+				b
+			}) { return a + b }
+			foo({a: 1, b: 2})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("array destructure with newlines", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function bar([
+				x,
+				y
+			]) { return x * y }
+			bar([3, 4])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(12))
+	})
+
+	t.Run("mixed params with newlines", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function calc(
+				multiplier,
+				{a, b},
+				[c, d],
+				suffix
+			) {
+				return (a + b + c + d) * multiplier + suffix
+			}
+			calc(10, {a: 1, b: 2}, [3, 4], 5)
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(105)) // (1+2+3+4) * 10 + 5 = 105
+	})
+
+	t.Run("object destructure with defaults and newlines", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function greet({
+				name,
+				greeting = "Hello"
+			}) {
+				return greeting + ", " + name
+			}
+			greet({name: "World"})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, "Hello, World")
+	})
+
+	t.Run("trailing comma in object destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({
+				a,
+				b,
+			}) { return a + b }
+			foo({a: 10, b: 20})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(30))
+	})
+
+	t.Run("trailing comma in array destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function bar([
+				x,
+				y,
+			]) { return x - y }
+			bar([100, 30])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(70))
+	})
+}

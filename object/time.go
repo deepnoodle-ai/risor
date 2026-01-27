@@ -9,8 +9,23 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+// timeAttrs defines all attributes available on time objects.
+var timeAttrs = []AttrSpec{
+	{Name: "add_date", Doc: "Add years, months, and days", Args: []string{"years", "months", "days"}, Returns: "time"},
+	{Name: "after", Doc: "Check if this time is after another", Args: []string{"other"}, Returns: "bool"},
+	{Name: "before", Doc: "Check if this time is before another", Args: []string{"other"}, Returns: "bool"},
+	{Name: "format", Doc: "Format time using layout string", Args: []string{"layout"}, Returns: "string"},
+	{Name: "unix", Doc: "Get Unix timestamp (seconds)", Args: nil, Returns: "int"},
+	{Name: "utc", Doc: "Convert to UTC timezone", Args: nil, Returns: "time"},
+}
+
 type Time struct {
 	value time.Time
+}
+
+// Attrs returns the attribute specifications for time objects.
+func (t *Time) Attrs() []AttrSpec {
+	return timeAttrs
 }
 
 func (t *Time) SetAttr(name string, value Object) error {

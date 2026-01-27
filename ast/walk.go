@@ -152,16 +152,6 @@ func Walk(v Visitor, node Node) {
 		if n.Alternative != nil {
 			Walk(v, n.Alternative)
 		}
-	case *Ternary:
-		if n.Cond != nil {
-			Walk(v, n.Cond)
-		}
-		if n.IfTrue != nil {
-			Walk(v, n.IfTrue)
-		}
-		if n.IfFalse != nil {
-			Walk(v, n.IfFalse)
-		}
 	case *Call:
 		if n.Fun != nil {
 			Walk(v, n.Fun)
@@ -402,16 +392,6 @@ func Preorder(root Node) iter.Seq[Node] {
 					return false
 				}
 				if node.Alternative != nil && !visit(node.Alternative) {
-					return false
-				}
-			case *Ternary:
-				if node.Cond != nil && !visit(node.Cond) {
-					return false
-				}
-				if node.IfTrue != nil && !visit(node.IfTrue) {
-					return false
-				}
-				if node.IfFalse != nil && !visit(node.IfFalse) {
 					return false
 				}
 			case *Call:

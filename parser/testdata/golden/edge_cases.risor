@@ -37,11 +37,6 @@ f(
   b: 2,
 }
 
-// Ternary with newlines after operators
-x ?
-y :
-z
-
 // Optional chaining
 obj?.field
 obj?.method()

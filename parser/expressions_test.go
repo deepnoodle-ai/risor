@@ -184,75 +184,6 @@ func TestOperatorPrecedence(t *testing.T) {
 	}
 }
 
-func TestTernary(t *testing.T) {
-	program, err := Parse(context.Background(), "x > 0 ? 1 : -1", nil)
-	assert.Nil(t, err)
-	assert.Len(t, program.Stmts, 1)
-
-	ternary, ok := program.First().(*ast.Ternary)
-	assert.True(t, ok)
-
-	// Verify condition
-	cond, ok := ternary.Cond.(*ast.Infix)
-	assert.True(t, ok)
-	assert.Equal(t, ">", cond.Op)
-
-	// Verify if-true branch
-	ifTrue, ok := ternary.IfTrue.(*ast.Int)
-	assert.True(t, ok)
-	assert.Equal(t, int64(1), ifTrue.Value)
-
-	// Verify if-false branch
-	ifFalse, ok := ternary.IfFalse.(*ast.Prefix)
-	assert.True(t, ok)
-	assert.Equal(t, "-", ifFalse.Op)
-}
-
-func TestTernaryAST(t *testing.T) {
-	program, err := Parse(context.Background(), "a ? b : c", nil)
-	assert.Nil(t, err)
-
-	ternary, ok := program.First().(*ast.Ternary)
-	assert.True(t, ok)
-
-	// Verify AST node fields
-	assert.NotNil(t, ternary.Cond)
-	assert.NotNil(t, ternary.IfTrue)
-	assert.NotNil(t, ternary.IfFalse)
-	assert.Equal(t, "(a ? b : c)", ternary.String())
-}
-
-func TestTernaryEdgeCases(t *testing.T) {
-	t.Run("nested ternary error", func(t *testing.T) {
-		_, err := Parse(context.Background(), `a ? b ? c : d : e`, nil)
-		assert.NotNil(t, err)
-		assert.Contains(t, err.Error(), "nested ternary")
-	})
-
-	t.Run("missing colon", func(t *testing.T) {
-		_, err := Parse(context.Background(), `a ? b c`, nil)
-		assert.NotNil(t, err)
-		assert.Contains(t, err.Error(), "expected :")
-	})
-
-	t.Run("missing if-true branch", func(t *testing.T) {
-		_, err := Parse(context.Background(), `a ? : c`, nil)
-		assert.NotNil(t, err)
-	})
-
-	t.Run("ternary with complex expressions", func(t *testing.T) {
-		program, err := Parse(context.Background(), `x > 0 ? x * 2 : x * -1`, nil)
-		assert.Nil(t, err)
-		assert.Len(t, program.Stmts, 1)
-
-		ternary, ok := program.First().(*ast.Ternary)
-		assert.True(t, ok)
-		assert.NotNil(t, ternary.Cond)
-		assert.NotNil(t, ternary.IfTrue)
-		assert.NotNil(t, ternary.IfFalse)
-	})
-}
-
 func TestIf(t *testing.T) {
 	program, err := Parse(context.Background(), "if (x < y) { x }", nil)
 	assert.Nil(t, err)
@@ -970,8 +901,10 @@ func TestArrowFunction(t *testing.T) {
 
 			params := function.Params
 			assert.Len(t, params, len(tt.expectedParam))
-			for i, ident := range tt.expectedParam {
-				testLiteralExpression(t, params[i], ident)
+			for i, expectedName := range tt.expectedParam {
+				paramIdent, ok := params[i].(*ast.Ident)
+				assert.True(t, ok, "Expected *ast.Ident")
+				assert.Equal(t, expectedName, paramIdent.Name)
 			}
 		})
 	}
@@ -1008,7 +941,9 @@ func TestArrowFunctionNoParens(t *testing.T) {
 			assert.True(t, ok, "expected Func, got %T", program.First())
 			assert.Nil(t, function.Name)
 			assert.Len(t, function.Params, 1)
-			testLiteralExpression(t, function.Params[0], tt.expectedParam)
+			paramIdent, ok := function.Params[0].(*ast.Ident)
+			assert.True(t, ok, "Expected *ast.Ident")
+			assert.Equal(t, tt.expectedParam, paramIdent.Name)
 		})
 	}
 }
@@ -1019,8 +954,8 @@ func TestArrowFunctionErrors(t *testing.T) {
 		expected string
 	}{
 		{"() =>", "parse error: invalid arrow function body"},
-		{"(1, 2) => x", "parse error: invalid arrow function parameter: expected identifier"},
-		{"(x + 1) => x", "parse error: invalid arrow function parameter: expected identifier"},
+		{"(1, 2) => x", "parse error: invalid arrow function parameter: expected identifier or destructuring pattern"},
+		{"(x + 1) => x", "parse error: invalid arrow function parameter: expected identifier or destructuring pattern"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

@@ -266,8 +266,7 @@ let y =`
 //  2. Newlines at start of line terminate expressions: "x\n+ y" parses as two statements
 //  3. Inside parentheses: leading/trailing newlines are allowed: "(\nx + y\n)"
 //  4. Inside brackets/braces: newlines after commas are allowed: "[1,\n2]"
-//  5. Ternary expressions: newlines allowed around ? and : operators
-//  6. Postfix operators (++, --) must be on same line as operand
+//  5. Postfix operators (++, --) must be on same line as operand
 func TestNewlineHandling(t *testing.T) {
 	validCases := []struct {
 		name     string
@@ -282,12 +281,16 @@ func TestNewlineHandling(t *testing.T) {
 		{"grouped with leading newline", "(\nx + y)", "(x + y)"},
 		{"grouped with trailing newline", "(x + y\n)", "(x + y)"},
 		{"grouped with both newlines", "(\nx + y\n)", "(x + y)"},
-		{"ternary newline after ?", "x ?\ny : z", "(x ? y : z)"},
-		{"ternary newline after :", "x ? y :\nz", "(x ? y : z)"},
-		{"ternary newlines both", "x ?\ny\n: z", "(x ? y : z)"},
 		{"list with newlines", "[1,\n2,\n3]", "[1, 2, 3]"},
 		{"map with newlines", "{a: 1,\nb: 2}", "{a:1, b:2}"},
 		{"function args with newlines", "f(x,\ny,\nz)", "f(x, y, z)"},
+		// Method chaining across newlines (rule 7)
+		{"newline before . method call", "obj\n.method()", "obj.method()"},
+		{"newline before ?. optional chain", "obj\n?.method()", "obj?.method()"},
+		{"multi-line method chain", "obj\n.method1()\n.method2()", "obj.method1().method2()"},
+		{"multi-line optional chain", "obj\n?.prop\n?.nested", "obj?.prop?.nested"},
+		{"multi-line mixed chain", "obj\n.method()\n?.prop", "obj.method()?.prop"},
+		{"chain with args", "list.filter(x => x > 0)\n.map(x => x * 2)", "list.filter(function(x) { return (x > 0) }).map(function(x) { return (x * 2) })"},
 	}
 
 	for _, tt := range validCases {
@@ -331,7 +334,6 @@ func TestNewlineHandling(t *testing.T) {
 		{"newline before + (no unary plus)", "x\n+ y"},
 		{"newline before postfix ++", "x\n++"},
 		{"newline before postfix --", "x\n--"},
-		{"newline before . method call", "obj\n.method()"},
 	}
 
 	for _, tt := range errorCases {
@@ -371,8 +373,8 @@ func TestBadInputs(t *testing.T) {
 		{"&&", `parse error: invalid syntax (unexpected "&&")`},
 		{"[", `parse error: invalid syntax in list`},
 		{"[1,", `parse error: invalid syntax`},
-		{"0?if", `parse error: unexpected end of file while parsing an if expression (expected ()`},
-		{"0?0:", `parse error: invalid syntax in ternary if false expression`},
+		{"0?if", `parse error: unexpected token "?" following statement`},
+		{"0?0:", `parse error: unexpected token "?" following statement`},
 		{"in", `parse error: invalid syntax (unexpected "in")`},
 		{"x in", `parse error: invalid in expression`},
 		{"switch (x) { case 1: \xf5\xf51 case 2: 2 default: 3 }", `syntax error: invalid identifier: �`},

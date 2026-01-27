@@ -279,7 +279,6 @@ func (m *Map) StringKeys() []string {
 	return keys
 }
 
-
 func (m *Map) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.items)
 }

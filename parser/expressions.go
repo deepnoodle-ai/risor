@@ -8,7 +8,6 @@ import (
 // Expression parsing methods for the Parser.
 // This file contains methods that parse expression constructs:
 // - Identifiers and prefix/infix expressions
-// - Ternary expressions
 // - Grouped expressions and arrow functions
 // - Control flow expressions (if, switch)
 // - Block parsing
@@ -28,7 +27,7 @@ func (p *Parser) parseIdent() (ast.Node, bool) {
 	if p.peekTokenIs(token.ARROW) {
 		arrowPos := p.curToken.StartPosition
 		p.nextToken() // move to '=>'
-		return p.parseArrowBody(arrowPos, []*ast.Ident{ident}, nil)
+		return p.parseArrowBody(arrowPos, []ast.FuncParam{ident}, nil)
 	}
 
 	return ident, true
@@ -88,57 +87,6 @@ func (p *Parser) parseInfixExpr(leftNode ast.Node) (ast.Node, bool) {
 		return nil, false
 	}
 	return &ast.Infix{X: left, OpPos: opPos, Op: op, Y: right}, true
-}
-
-func (p *Parser) parseTernary(conditionNode ast.Node) (ast.Node, bool) {
-	condition, ok := conditionNode.(ast.Expr)
-	if !ok {
-		p.setTokenError(p.curToken, "invalid ternary expression")
-		return nil, false
-	}
-	if p.tern {
-		p.setTokenError(p.curToken, "nested ternary expression detected")
-		return nil, false
-	}
-	p.tern = true
-	defer func() { p.tern = false }()
-
-	questionPos := p.curToken.StartPosition
-	p.nextToken() // move past the '?'
-	// Skip newlines after '?'
-	p.eatNewlines()
-	precedence := p.currentPrecedence()
-	ifTrue := p.parseExpression(precedence)
-	if ifTrue == nil {
-		if !p.hadNewError() {
-			p.setTokenError(p.curToken, "invalid syntax in ternary if true expression")
-		}
-		return nil, false
-	}
-	// Allow newlines before the colon
-	if !p.skipNewlinesAndPeek(token.COLON) {
-		p.peekError("ternary expression", token.COLON, p.peekToken)
-		return nil, false
-	}
-	p.nextToken() // move to the ":"
-	colonPos := p.curToken.StartPosition
-	p.nextToken() // move past the ":"
-	// Skip newlines after colon
-	p.eatNewlines()
-	ifFalse := p.parseExpression(precedence)
-	if ifFalse == nil {
-		if !p.hadNewError() {
-			p.setTokenError(p.curToken, "invalid syntax in ternary if false expression")
-		}
-		return nil, false
-	}
-	return &ast.Ternary{
-		Cond:     condition,
-		Question: questionPos,
-		IfTrue:   ifTrue,
-		Colon:    colonPos,
-		IfFalse:  ifFalse,
-	}, true
 }
 
 func (p *Parser) parseGroupedExpr() (ast.Node, bool) {
@@ -212,7 +160,7 @@ func (p *Parser) parseGroupedExpr() (ast.Node, bool) {
 
 // parseArrowParams validates items as arrow function parameters and parses the body
 func (p *Parser) parseArrowParams(arrowPos token.Position, items []ast.Node) (ast.Node, bool) {
-	params := make([]*ast.Ident, 0, len(items))
+	params := make([]ast.FuncParam, 0, len(items))
 	defaults := make(map[string]ast.Expr)
 
 	for _, item := range items {
@@ -227,8 +175,22 @@ func (p *Parser) parseArrowParams(arrowPos token.Position, items []ast.Node) (as
 			}
 			params = append(params, v.Name)
 			defaults[v.Name.Name] = v.Value
+		case *ast.Map:
+			// Convert Map to ObjectDestructureParam for arrow functions: ({a, b}) => ...
+			param := p.convertMapToDestructureParam(v)
+			if param == nil {
+				return nil, false
+			}
+			params = append(params, param)
+		case *ast.List:
+			// Convert List to ArrayDestructureParam for arrow functions: ([a, b]) => ...
+			param := p.convertListToDestructureParam(v)
+			if param == nil {
+				return nil, false
+			}
+			params = append(params, param)
 		default:
-			p.setTokenError(p.curToken, "invalid arrow function parameter: expected identifier")
+			p.setTokenError(p.curToken, "invalid arrow function parameter: expected identifier or destructuring pattern")
 			return nil, false
 		}
 	}
@@ -236,8 +198,62 @@ func (p *Parser) parseArrowParams(arrowPos token.Position, items []ast.Node) (as
 	return p.parseArrowBody(arrowPos, params, defaults)
 }
 
+// convertMapToDestructureParam converts a Map literal to an ObjectDestructureParam.
+// This is used for arrow functions where ({a, b}) => ... is initially parsed as a Map.
+func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructureParam {
+	bindings := make([]ast.DestructureBinding, 0, len(m.Items))
+	for _, item := range m.Items {
+		if item.Key == nil {
+			p.setTokenError(p.curToken, "spread not allowed in destructuring parameter")
+			return nil
+		}
+		// Key should be an identifier
+		keyIdent, ok := item.Key.(*ast.Ident)
+		if !ok {
+			p.setTokenError(p.curToken, "expected identifier in destructuring pattern")
+			return nil
+		}
+		binding := ast.DestructureBinding{Key: keyIdent.Name}
+		// Value can be an identifier (alias) or expression (default)
+		if item.Value != nil {
+			if valIdent, ok := item.Value.(*ast.Ident); ok {
+				binding.Alias = valIdent.Name
+			} else {
+				// In shorthand {a, b}, key equals value, so value being non-ident means default
+				p.setTokenError(p.curToken, "expected identifier as alias in destructuring pattern")
+				return nil
+			}
+		}
+		bindings = append(bindings, binding)
+	}
+	return &ast.ObjectDestructureParam{
+		Lbrace:   m.Lbrace,
+		Bindings: bindings,
+		Rbrace:   m.Rbrace,
+	}
+}
+
+// convertListToDestructureParam converts a List literal to an ArrayDestructureParam.
+// This is used for arrow functions where ([a, b]) => ... is initially parsed as a List.
+func (p *Parser) convertListToDestructureParam(l *ast.List) *ast.ArrayDestructureParam {
+	elements := make([]ast.ArrayDestructureElement, 0, len(l.Items))
+	for _, item := range l.Items {
+		ident, ok := item.(*ast.Ident)
+		if !ok {
+			p.setTokenError(p.curToken, "expected identifier in array destructuring pattern")
+			return nil
+		}
+		elements = append(elements, ast.ArrayDestructureElement{Name: ident})
+	}
+	return &ast.ArrayDestructureParam{
+		Lbrack:   l.Lbrack,
+		Elements: elements,
+		Rbrack:   l.Rbrack,
+	}
+}
+
 // parseArrowBody parses the body of an arrow function (expression or block)
-func (p *Parser) parseArrowBody(arrowPos token.Position, params []*ast.Ident, defaults map[string]ast.Expr) (ast.Node, bool) {
+func (p *Parser) parseArrowBody(arrowPos token.Position, params []ast.FuncParam, defaults map[string]ast.Expr) (ast.Node, bool) {
 	p.nextToken() // move past '=>'
 
 	var body *ast.Block

@@ -9,8 +9,36 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+// stringAttrs defines all attributes available on string objects.
+// This is the single source of truth for string methods.
+var stringAttrs = []AttrSpec{
+	{Name: "compare", Doc: "Compare to another string (-1, 0, or 1)", Args: []string{"other"}, Returns: "int"},
+	{Name: "contains", Doc: "Check if substring exists", Args: []string{"substr"}, Returns: "bool"},
+	{Name: "count", Doc: "Count occurrences of substring", Args: []string{"substr"}, Returns: "int"},
+	{Name: "fields", Doc: "Split on whitespace", Args: nil, Returns: "list"},
+	{Name: "has_prefix", Doc: "Check if string starts with prefix", Args: []string{"prefix"}, Returns: "bool"},
+	{Name: "has_suffix", Doc: "Check if string ends with suffix", Args: []string{"suffix"}, Returns: "bool"},
+	{Name: "index", Doc: "Find first index of substring (-1 if not found)", Args: []string{"substr"}, Returns: "int"},
+	{Name: "join", Doc: "Join list elements with this string as separator", Args: []string{"items"}, Returns: "string"},
+	{Name: "last_index", Doc: "Find last index of substring (-1 if not found)", Args: []string{"substr"}, Returns: "int"},
+	{Name: "repeat", Doc: "Repeat string n times", Args: []string{"count"}, Returns: "string"},
+	{Name: "replace_all", Doc: "Replace all occurrences", Args: []string{"old", "new"}, Returns: "string"},
+	{Name: "split", Doc: "Split by separator", Args: []string{"sep"}, Returns: "list"},
+	{Name: "to_lower", Doc: "Convert to lowercase", Args: nil, Returns: "string"},
+	{Name: "to_upper", Doc: "Convert to uppercase", Args: nil, Returns: "string"},
+	{Name: "trim", Doc: "Trim characters from both ends", Args: []string{"chars"}, Returns: "string"},
+	{Name: "trim_prefix", Doc: "Remove prefix if present", Args: []string{"prefix"}, Returns: "string"},
+	{Name: "trim_space", Doc: "Trim whitespace from both ends", Args: nil, Returns: "string"},
+	{Name: "trim_suffix", Doc: "Remove suffix if present", Args: []string{"suffix"}, Returns: "string"},
+}
+
 type String struct {
 	value string
+}
+
+// Attrs returns the attribute specifications for string objects.
+func (s *String) Attrs() []AttrSpec {
+	return stringAttrs
 }
 
 func (s *String) SetAttr(name string, value Object) error {
@@ -473,7 +501,6 @@ func (s *String) Runes() []Object {
 	}
 	return result
 }
-
 
 func (s *String) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.value)

@@ -135,19 +135,6 @@ func TestOperatorPrecedenceNotInOperator(t *testing.T) {
 	assert.Equal(t, "+", infix.Op)
 }
 
-func TestOperatorPrecedenceTernaryWithAssign(t *testing.T) {
-	// Ternary should group properly with assignment
-	program, err := Parse(context.Background(), "x = a ? b : c", nil)
-	assert.Nil(t, err)
-
-	assign, ok := program.First().(*ast.Assign)
-	assert.True(t, ok, "expected Assign, got %T", program.First())
-
-	ternary, ok := assign.Value.(*ast.Ternary)
-	assert.True(t, ok, "expected Ternary as value, got %T", assign.Value)
-	_ = ternary
-}
-
 func TestAssignmentChainingNotSupported(t *testing.T) {
 	// Risor's Assign is a statement, not an expression
 	// So assignment chaining like "x = y = z = 1" parses as separate statements
@@ -359,62 +346,6 @@ func TestTemplateStringWithMapLiteral(t *testing.T) {
 }
 
 // =============================================================================
-// TERNARY EXPRESSION EDGE CASES
-// =============================================================================
-
-func TestTernaryNestedForbidden(t *testing.T) {
-	// Nested ternary should produce an error
-	_, err := Parse(context.Background(), "a ? b ? c : d : e", nil)
-	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "nested ternary")
-}
-
-func TestTernaryWithNewlinesAfterOperators(t *testing.T) {
-	// Newlines are allowed AFTER ? and : but not before
-	input := `a ?
-b :
-c`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-
-	_, ok := program.First().(*ast.Ternary)
-	assert.True(t, ok)
-}
-
-func TestTernaryNewlineBeforeQuestionNotAllowed(t *testing.T) {
-	// Newline before ? causes the expression to be split
-	input := `a
-? b : c`
-	_, err := Parse(context.Background(), input, nil)
-	// This parses as separate statements, second one starts with ?
-	assert.NotNil(t, err, "newline before ? should cause parse error")
-}
-
-func TestTernaryWithComplexExpressions(t *testing.T) {
-	// Ternary with arithmetic expressions
-	program, err := Parse(context.Background(), "a + b ? c * d : e / f", nil)
-	assert.Nil(t, err)
-
-	ternary, ok := program.First().(*ast.Ternary)
-	assert.True(t, ok)
-
-	// Condition should be a + b
-	cond, ok := ternary.Cond.(*ast.Infix)
-	assert.True(t, ok)
-	assert.Equal(t, "+", cond.Op)
-
-	// True branch should be c * d
-	trueBranch, ok := ternary.IfTrue.(*ast.Infix)
-	assert.True(t, ok)
-	assert.Equal(t, "*", trueBranch.Op)
-
-	// False branch should be e / f
-	falseBranch, ok := ternary.IfFalse.(*ast.Infix)
-	assert.True(t, ok)
-	assert.Equal(t, "/", falseBranch.Op)
-}
-
-// =============================================================================
 // POSTFIX OPERATOR EDGE CASES
 // =============================================================================
 
@@ -485,7 +416,9 @@ func TestArrowFunctionSingleParam(t *testing.T) {
 	fn, ok := program.First().(*ast.Func)
 	assert.True(t, ok)
 	assert.Len(t, fn.Params, 1)
-	assert.Equal(t, "x", fn.Params[0].Name)
+	paramIdent, ok := fn.Params[0].(*ast.Ident)
+	assert.True(t, ok, "Expected *ast.Ident param")
+	assert.Equal(t, "x", paramIdent.Name)
 }
 
 func TestArrowFunctionNoParams(t *testing.T) {

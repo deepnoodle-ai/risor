@@ -10,6 +10,26 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+// listAttrs defines all attributes available on list objects.
+// This is the single source of truth for list methods.
+var listAttrs = []AttrSpec{
+	{Name: "append", Doc: "Add item to end of list", Args: []string{"item"}, Returns: "list"},
+	{Name: "clear", Doc: "Remove all items", Args: nil, Returns: "list"},
+	{Name: "copy", Doc: "Create a shallow copy", Args: nil, Returns: "list"},
+	{Name: "count", Doc: "Count occurrences of item", Args: []string{"item"}, Returns: "int"},
+	{Name: "each", Doc: "Call function for each item", Args: []string{"fn"}, Returns: "nil"},
+	{Name: "extend", Doc: "Add all items from another list", Args: []string{"items"}, Returns: "list"},
+	{Name: "filter", Doc: "Keep items where fn returns true", Args: []string{"fn"}, Returns: "list"},
+	{Name: "index", Doc: "Find first index of item (-1 if not found)", Args: []string{"item"}, Returns: "int"},
+	{Name: "insert", Doc: "Insert item at index", Args: []string{"index", "item"}, Returns: "list"},
+	{Name: "map", Doc: "Transform each item with fn", Args: []string{"fn"}, Returns: "list"},
+	{Name: "pop", Doc: "Remove and return item at index", Args: []string{"index"}, Returns: "any"},
+	{Name: "reduce", Doc: "Reduce list to single value", Args: []string{"initial", "fn"}, Returns: "any"},
+	{Name: "remove", Doc: "Remove first occurrence of item", Args: []string{"item"}, Returns: "nil"},
+	{Name: "reverse", Doc: "Reverse list in place", Args: nil, Returns: "list"},
+	{Name: "sort", Doc: "Sort list in place", Args: nil, Returns: "list"},
+}
+
 // List of objects
 type List struct {
 	// items holds the list of objects
@@ -18,6 +38,11 @@ type List struct {
 	// Used to avoid the possibility of infinite recursion when inspecting.
 	// Similar to the usage of Py_ReprEnter in CPython.
 	inspectActive bool
+}
+
+// Attrs returns the attribute specifications for list objects.
+func (ls *List) Attrs() []AttrSpec {
+	return listAttrs
 }
 
 func (ls *List) SetAttr(name string, value Object) error {
@@ -576,7 +601,6 @@ func (ls *List) runOperationList(opType op.BinaryOpType, right *List) (Object, e
 			opType, right.Type())
 	}
 }
-
 
 func (ls *List) MarshalJSON() ([]byte, error) {
 	return json.Marshal(ls.items)

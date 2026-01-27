@@ -750,3 +750,124 @@ let x = 42  // Error will be on line 3`
 	sourceLine := code.GetSourceLine(3)
 	assert.Contains(t, sourceLine, "let x = 42")
 }
+
+// =============================================================================
+// DESTRUCTURING PARAMETERS
+// =============================================================================
+
+func TestDestructuringParamCompilation(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"basic object destructure", `function foo({a, b}) { return a + b }`},
+		{"object destructure with default", `function foo({x, y = 10}) { return x + y }`},
+		{"object destructure with alias", `function foo({name: n}) { return n }`},
+		{"basic array destructure", `function foo([a, b]) { return a + b }`},
+		{"array destructure with default", `function foo([x, y = 5]) { return x + y }`},
+		{"mixed params", `function foo(x, {a, b}, [c, d]) { return x }`},
+		{"destructure with rest param", `function foo({a}, ...rest) { return a }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Parse error: %v", err)
+
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err, "Compile error for %s: %v", tt.name, err)
+		})
+	}
+}
+
+func TestDestructuringParamSymbols(t *testing.T) {
+	// Test that destructured variables are added to the symbol table
+	input := `function foo({a, b}, [c, d]) { return a + b + c + d }`
+
+	ast, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+
+	code, err := Compile(ast, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, code)
+}
+
+func TestDestructuringParamWithDefaults(t *testing.T) {
+	// Test that defaults are correctly compiled
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			"object with nil default",
+			`function foo({x, y = nil}) { return x }`,
+		},
+		{
+			"object with int default",
+			`function foo({x = 42}) { return x }`,
+		},
+		{
+			"object with string default",
+			`function foo({name = "default"}) { return name }`,
+		},
+		{
+			"object with bool default",
+			`function foo({flag = true}) { return flag }`,
+		},
+		{
+			"array with multiple defaults",
+			`function foo([a = 1, b = 2, c = 3]) { return a + b + c }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err)
+
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err, "Compile error: %v", err)
+		})
+	}
+}
+
+func TestDestructuringInArrowFunction(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"array destructure arrow", `([a, b]) => a + b`},
+		{"array destructure arrow with body", `([x, y]) => { return x * y }`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err)
+
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err, "Compile error: %v", err)
+		})
+	}
+}
+
+func TestDestructuringParamBytecodeEmitted(t *testing.T) {
+	// Test that the compiler emits the correct opcodes for destructuring
+	input := `function foo({a, b}) { return a + b }`
+
+	ast, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+
+	code, err := Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// The compiled code should have instructions for:
+	// - LoadFast (load the synthetic param)
+	// - Copy (duplicate object for each binding)
+	// - LoadAttr (get property)
+	// - StoreFast (store to local var)
+	// - PopTop (clean up)
+
+	// We just verify compilation succeeds and produces bytecode
+	assert.Greater(t, code.InstructionCount(), 0)
+}

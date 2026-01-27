@@ -114,6 +114,38 @@ func (v *replVM) Eval(ctx context.Context, source string) (any, error) {
 	return interfaceVal, nil
 }
 
+// EvalObject evaluates source code and returns the raw Risor object.
+// This is used for introspection commands like :type and :methods.
+func (v *replVM) EvalObject(ctx context.Context, source string) (object.Object, error) {
+	ast, err := parser.Parse(ctx, source, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	v.compiler.SetSource(source)
+
+	code, err := v.compiler.CompileAST(ast)
+	if err != nil {
+		return nil, err
+	}
+
+	bc := code.ToBytecode()
+
+	if err := v.machine.RunCode(ctx, bc, v.vmOpts()...); err != nil {
+		v.nextIP = bc.InstructionCount()
+		return nil, err
+	}
+
+	v.nextIP = bc.InstructionCount()
+
+	result, ok := v.machine.TOS()
+	if !ok || result == nil {
+		return object.Nil, nil
+	}
+
+	return result, nil
+}
+
 // Run executes compiled bytecode within this VM's context.
 func (v *replVM) Run(ctx context.Context, code *bytecode.Code) (any, error) {
 	if err := v.machine.RunCode(ctx, code, v.vmOpts()...); err != nil {

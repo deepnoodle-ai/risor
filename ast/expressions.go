@@ -125,33 +125,6 @@ func (x *If) String() string {
 	return out.String()
 }
 
-// Ternary is an expression node that defines a ternary expression and evaluates
-// to one of two values based on a condition.
-type Ternary struct {
-	Cond     Expr           // condition
-	Question token.Position // position of "?"
-	IfTrue   Expr           // value if condition is true
-	Colon    token.Position // position of ":"
-	IfFalse  Expr           // value if condition is false
-}
-
-func (x *Ternary) exprNode() {}
-
-func (x *Ternary) Pos() token.Position { return x.Cond.Pos() }
-func (x *Ternary) End() token.Position { return x.IfFalse.End() }
-
-func (x *Ternary) String() string {
-	var out bytes.Buffer
-	out.WriteString("(")
-	out.WriteString(x.Cond.String())
-	out.WriteString(" ? ")
-	out.WriteString(x.IfTrue.String())
-	out.WriteString(" : ")
-	out.WriteString(x.IfFalse.String())
-	out.WriteString(")")
-	return out.String()
-}
-
 // Call is an expression node that describes the invocation of a function.
 type Call struct {
 	Fun    Expr           // function expression

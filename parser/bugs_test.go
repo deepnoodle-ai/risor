@@ -44,7 +44,9 @@ func TestArrowWithDefaultParamWorks(t *testing.T) {
 	fn, ok := program.First().(*ast.Func)
 	assert.True(t, ok, "Expected Func, got %T", program.First())
 	assert.Len(t, fn.Params, 1)
-	assert.Equal(t, "x", fn.Params[0].Name)
+	paramIdent, ok := fn.Params[0].(*ast.Ident)
+	assert.True(t, ok, "Expected *ast.Ident param")
+	assert.Equal(t, "x", paramIdent.Name)
 	assert.Contains(t, fn.Defaults, "x")
 }
 
@@ -208,34 +210,33 @@ func TestNewlineAfterDot(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// ISSUE #5: Multiple Newlines in Ternary
-// =============================================================================
-
-func TestTernaryMultipleNewlines(t *testing.T) {
+func TestNewlineBeforeDot(t *testing.T) {
 	tests := []struct {
-		input string
-		desc  string
+		input    string
+		expected string
+		desc     string
 	}{
-		{"a ?\nb :\nc", "single newlines"},
-		{"a ?\n\nb :\n\nc", "multiple newlines"},
-		{"a\n?\nb\n:\nc", "newline before ? should fail"},
+		{"obj\n.field", "obj.field", "newline before dot field access"},
+		{"obj\n\n.field", "obj.field", "multiple newlines before dot"},
+		{"obj\n.method()", "obj.method()", "newline before dot method call"},
+		{"obj\n?.field", "obj?.field", "newline before optional chain"},
+		{"obj\n?.method()", "obj?.method()", "newline before optional chain method"},
+		{"obj\n.field\n.method()", "obj.field.method()", "chained newlines before dots"},
+		{"list.filter(x => x > 0)\n.map(x => x * 2)", "list.filter(function(x) { return (x > 0) }).map(function(x) { return (x * 2) })", "fluent method chain"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := Parse(context.Background(), tt.input, nil)
-			if tt.desc == "newline before ? should fail" {
-				assert.NotNil(t, err, "Newline before ? should cause error")
-			} else {
-				assert.Nil(t, err, "Should parse: %s", tt.input)
-			}
+			program, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+			assert.NotNil(t, program.First())
+			assert.Equal(t, tt.expected, program.First().String())
 		})
 	}
 }
 
 // =============================================================================
-// ISSUE #6: Arrow Function Parameter Validation
+// ISSUE #5: Arrow Function Parameter Validation
 // =============================================================================
 
 func TestArrowFunctionInvalidParams(t *testing.T) {

@@ -236,31 +236,6 @@ func TestIfExpression(t *testing.T) {
 	assert.Equal(t, ifExpr.End().Column, 23)
 }
 
-func TestTernary(t *testing.T) {
-	ternary := &Ternary{
-		Cond: &Bool{
-			ValuePos: token.Position{Line: 1, Column: 1},
-			Literal:  "true",
-			Value:    true,
-		},
-		Question: token.Position{Line: 1, Column: 6},
-		IfTrue: &Int{
-			ValuePos: token.Position{Line: 1, Column: 8},
-			Literal:  "1",
-			Value:    1,
-		},
-		Colon: token.Position{Line: 1, Column: 10},
-		IfFalse: &Int{
-			ValuePos: token.Position{Line: 1, Column: 12},
-			Literal:  "2",
-			Value:    2,
-		},
-	}
-
-	assert.Equal(t, ternary.Pos().Column, 1)
-	assert.Equal(t, ternary.String(), "(true ? 1 : 2)")
-}
-
 func TestCall(t *testing.T) {
 	call := &Call{
 		Fun: &Ident{
@@ -519,9 +494,9 @@ func TestFuncLiteral(t *testing.T) {
 	funcLit := &Func{
 		Func:   token.Position{Line: 1, Column: 1},
 		Lparen: token.Position{Line: 1, Column: 9},
-		Params: []*Ident{
-			{NamePos: token.Position{Line: 1, Column: 10}, Name: "x"},
-			{NamePos: token.Position{Line: 1, Column: 13}, Name: "y"},
+		Params: []FuncParam{
+			&Ident{NamePos: token.Position{Line: 1, Column: 10}, Name: "x"},
+			&Ident{NamePos: token.Position{Line: 1, Column: 13}, Name: "y"},
 		},
 		Rparen: token.Position{Line: 1, Column: 14},
 		Body: &Block{
