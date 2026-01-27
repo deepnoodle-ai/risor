@@ -2,7 +2,7 @@
 // This file demonstrates various Risor language constructs
 
 // Configuration object
-var config = {
+let config = {
     "host": "localhost",
     "port": 8080,
     "debug": true,
@@ -10,7 +10,7 @@ var config = {
 }
 
 // Simple function
-greet := func(name) {
+let greet = func(name) {
     if (name == "") {
         return "Hello, World!"
     }
@@ -18,7 +18,7 @@ greet := func(name) {
 }
 
 // Function with multiple parameters
-calculate := func(operation, a, b) {
+let calculate = func(operation, a, b) {
     if (operation == "add") {
         return a + b
     } else if (operation == "subtract") {
@@ -35,11 +35,11 @@ calculate := func(operation, a, b) {
 }
 
 // Array operations using functional style
-numbers := [1, 2, 3, 4, 5]
-doubled := numbers | map(func(n) { n * 2 })
+let numbers = [1, 2, 3, 4, 5]
+let doubled = numbers | map(func(n) { n * 2 })
 
 // Object manipulation
-person := {
+let person = {
     "name": "Alice",
     "age": 30,
     "email": "alice@example.com"
@@ -53,20 +53,20 @@ println("Greeting:", greet("Developer"))
 println("Calculation:", calculate("add", 10, 5))
 
 // String manipulation
-message := "   Hello, Risor!   "
-trimmed := strings.trim_space(message)
-upper := strings.to_upper(trimmed)
+let message = "   Hello, Risor!   "
+let trimmed = strings.trim_space(message)
+let upper = strings.to_upper(trimmed)
 println("Processed message:", upper)
 
 // Error handling example
-safe_divide := func(a, b) {
+let safe_divide = func(a, b) {
     if (b == 0) {
         return nil, "cannot divide by zero"
     }
     return a / b, nil
 }
 
-result, err := safe_divide(10, 2)
+let result, err = safe_divide(10, 2)
 if (err != nil) {
     println("Error:", err)
 } else {
@@ -74,19 +74,19 @@ if (err != nil) {
 }
 
 // Functional operations on lists
-squares := [1, 2, 3, 4, 5] | map(func(i) { i * i })
+let squares = [1, 2, 3, 4, 5] | map(func(i) { i * i })
 println("Squares:", squares)
 
-evens := numbers | filter(func(n) { n % 2 == 0 })
+let evens = numbers | filter(func(n) { n % 2 == 0 })
 println("Evens:", evens)
 
 // Dictionary access examples
-name := person["name"]
-age := person["age"]
+let name = person["name"]
+let age = person["age"]
 println("Person info:", name, age)
 
 // Switch expression
-get_day_type := func(day) {
+let get_day_type = func(day) {
     switch (day) {
     case "Saturday", "Sunday":
         return "weekend"

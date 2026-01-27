@@ -83,7 +83,7 @@ since(t time) float
 Returns the elapsed time in seconds since the given time.
 
 ```go copy filename="Example"
->>> t := time.now()
+>>> let t = time.now()
 >>> time.since(t)
 1.864104666
 ```
@@ -130,7 +130,7 @@ before(t time) bool
 Returns whether this time is before the given time.
 
 ```go copy filename="Example"
->>> t := time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
+>>> let t = time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
 >>> t.before(time.parse(time.RFC3339, "2023-08-02T00:00:00-04:00"))
 true
 ```
@@ -144,7 +144,7 @@ after(t time) bool
 Returns whether this time is after the given time.
 
 ```go copy filename="Example"
->>> t := time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
+>>> let t = time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
 >>> t.after(time.parse(time.RFC3339, "2023-08-02T00:00:00-04:00"))
 false
 ```
@@ -158,7 +158,7 @@ format(layout string) string
 Formats the time according to the given layout.
 
 ```go copy filename="Example"
->>> t := time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
+>>> let t = time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
 >>> t.format(time.RFC3339)
 "2023-08-01T12:00:00-04:00"
 >>> t.format(time.Kitchen)
@@ -176,7 +176,7 @@ utc() time
 Returns the UTC time corresponding to this time.
 
 ```go copy filename="Example"
->>> t := time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
+>>> let t = time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
 >>> t.utc()
 time("2023-08-01T16:00:00Z")
 ```
@@ -190,7 +190,7 @@ unix() int
 Returns the number of seconds elapsed since the Unix epoch.
 
 ```go copy filename="Example"
->>> t := time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
+>>> let t = time.parse(time.RFC3339, "2023-08-01T12:00:00-04:00")
 >>> t.unix()
 1690905600
 ```

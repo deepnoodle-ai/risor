@@ -277,6 +277,26 @@ func (t *SymbolTable) FindTable(id string) (*SymbolTable, bool) {
 	return nil, false
 }
 
+// AllNames returns all symbol names defined in this table and its ancestors.
+// This is useful for generating "Did you mean?" suggestions.
+func (t *SymbolTable) AllNames() []string {
+	seen := make(map[string]bool)
+	var names []string
+
+	// Walk up the symbol table hierarchy
+	current := t
+	for current != nil {
+		for name := range current.symbolsByName {
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+		current = current.parent
+	}
+	return names
+}
+
 // NewSymbolTable returns a new root symbol table.
 func NewSymbolTable() *SymbolTable {
 	return &SymbolTable{

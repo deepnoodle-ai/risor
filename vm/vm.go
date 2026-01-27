@@ -191,7 +191,7 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic: %v", r)
+			err = vm.panicToError(r)
 		}
 		vm.stop()
 	}()
@@ -506,7 +506,9 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			a := vm.pop()
 			result, err := object.Compare(opType, a, b)
 			if err != nil {
-				if herr := vm.tryHandleError(err); herr != nil {
+				// Wrap the error with location info if it's a simple type error
+				wrappedErr := vm.wrapError(err)
+				if herr := vm.tryHandleError(wrappedErr); herr != nil {
 					return herr
 				}
 				continue
@@ -518,7 +520,9 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			a := vm.pop()
 			result, err := object.BinaryOp(opType, a, b)
 			if err != nil {
-				if herr := vm.tryHandleError(err); herr != nil {
+				// Wrap the error with location info if it's a simple type error
+				wrappedErr := vm.wrapError(err)
+				if herr := vm.tryHandleError(wrappedErr); herr != nil {
 					return herr
 				}
 				continue
@@ -1078,7 +1082,7 @@ func (vm *VirtualMachine) Call(
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic: %v", r)
+			err = vm.panicToError(r)
 		}
 		vm.stop()
 	}()
@@ -1418,6 +1422,53 @@ func (vm *VirtualMachine) typeError(format string, args ...any) *object.Structur
 // evalError creates an evaluation error with location and stack trace.
 func (vm *VirtualMachine) evalError(format string, args ...any) *object.StructuredError {
 	return vm.runtimeError(object.ErrRuntime, format, args...)
+}
+
+// wrapError wraps an existing error with location and stack trace.
+// It determines the error kind from the error type.
+func (vm *VirtualMachine) wrapError(err error) *object.StructuredError {
+	kind := object.ErrRuntime
+	msg := err.Error()
+
+	switch err.(type) {
+	case *object.TypeError:
+		kind = object.ErrType
+		// Strip "type error: " prefix if present (the kind already indicates it)
+		msg = strings.TrimPrefix(msg, "type error: ")
+	}
+	return object.NewStructuredError(kind, msg, vm.getCurrentLocation(), vm.captureStack())
+}
+
+// panicToError converts a recovered panic value to a structured error.
+// It attempts to categorize common Go runtime panics into user-friendly errors.
+func (vm *VirtualMachine) panicToError(r any) error {
+	msg := fmt.Sprintf("%v", r)
+
+	// Categorize common Go runtime panics
+	kind := object.ErrRuntime
+	var friendlyMsg string
+
+	switch {
+	case strings.Contains(msg, "integer divide by zero"):
+		kind = object.ErrValue
+		friendlyMsg = "division by zero"
+	case strings.Contains(msg, "index out of range"):
+		kind = object.ErrValue
+		friendlyMsg = "index out of range"
+	case strings.Contains(msg, "slice bounds out of range"):
+		kind = object.ErrValue
+		friendlyMsg = "slice bounds out of range"
+	case strings.Contains(msg, "nil pointer dereference"):
+		kind = object.ErrValue
+		friendlyMsg = "nil value access"
+	case strings.Contains(msg, "invalid memory address"):
+		kind = object.ErrValue
+		friendlyMsg = "invalid memory access"
+	default:
+		friendlyMsg = msg
+	}
+
+	return vm.runtimeError(kind, friendlyMsg)
 }
 
 // handleException handles a thrown exception by finding an appropriate handler.

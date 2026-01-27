@@ -1,0 +1,9 @@
+// Example: Runtime type error
+// This file demonstrates how Risor reports type errors.
+// Run with: go run ./cmd/risor ./cmd/risor/testdata/errors/type_error.risor
+
+let name = "Alice"
+let age = 30
+
+// Type error: can't add string and int
+let result = name + age

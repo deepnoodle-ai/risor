@@ -1,9 +1,7 @@
 package parser
 
 import (
-	"bytes"
 	"fmt"
-	"strings"
 
 	"github.com/risor-io/risor/errors"
 	"github.com/risor-io/risor/internal/token"
@@ -81,30 +79,31 @@ func (e *BaseParserError) Error() string {
 }
 
 func (e *BaseParserError) FriendlyErrorMessage() string {
-	var msg bytes.Buffer
-	header := e.Error()
-	msg.WriteString(header)
-	msg.WriteString("\n\n")
+	formatter := errors.NewFormatter(false)
+	return formatter.Format(e.ToFormatted())
+}
 
+// ToFormatted converts the parser error to a FormattedError for display.
+func (e *BaseParserError) ToFormatted() *errors.FormattedError {
 	start := e.StartPosition()
 	end := e.EndPosition()
 
-	lineNum := start.LineNumber()
-	colStart := start.ColumnNumber()
-	colEnd := end.ColumnNumber()
-
-	friendlyLoc := fmt.Sprintf("line %d, column %d", lineNum, colStart)
-
-	if e.file != "" {
-		msg.WriteString(fmt.Sprintf("location: %s:%d:%d (%s)\n",
-			e.file, lineNum, colStart, friendlyLoc))
-	} else {
-		msg.WriteString(fmt.Sprintf("location: %s", friendlyLoc))
+	message := e.message
+	if e.cause != nil {
+		message = e.cause.Error()
 	}
-	msg.WriteString("\n" + e.SourceCode() + "\n")
-	pad := strings.Repeat(" ", colStart-1)
-	msg.WriteString(pad + strings.Repeat("^", colEnd-colStart+1))
-	return msg.String()
+
+	return &errors.FormattedError{
+		Kind:      e.errType,
+		Message:   message,
+		Filename:  e.file,
+		Line:      start.LineNumber(),
+		Column:    start.ColumnNumber(),
+		EndColumn: end.ColumnNumber(),
+		SourceLines: []errors.SourceLineEntry{
+			{Number: start.LineNumber(), Text: e.sourceCode, IsMain: true},
+		},
+	}
 }
 
 func (e *BaseParserError) Cause() error {
@@ -225,18 +224,29 @@ func (e *Errors) First() ParserError {
 
 // FriendlyErrorMessage returns a formatted message showing all errors.
 func (e *Errors) FriendlyErrorMessage() string {
+	formatter := errors.NewFormatter(false)
+	return formatter.FormatMultiple(e.ToFormattedMultiple())
+}
+
+// ToFormattedMultiple converts all errors to FormattedError for display.
+func (e *Errors) ToFormattedMultiple() []*errors.FormattedError {
 	if len(e.errs) == 0 {
-		return ""
+		return nil
 	}
-	var buf bytes.Buffer
-	for i, err := range e.errs {
-		if i > 0 {
-			buf.WriteString("\n\n")
+
+	var formatted []*errors.FormattedError
+	for _, err := range e.errs {
+		if formattable, ok := err.(interface{ ToFormatted() *errors.FormattedError }); ok {
+			formatted = append(formatted, formattable.ToFormatted())
+		} else {
+			// Fallback for errors that don't implement ToFormatted
+			formatted = append(formatted, &errors.FormattedError{
+				Kind:    "error",
+				Message: err.Error(),
+			})
 		}
-		fmt.Fprintf(&buf, "Error %d of %d:\n", i+1, len(e.errs))
-		buf.WriteString(err.FriendlyErrorMessage())
 	}
-	return buf.String()
+	return formatted
 }
 
 // The following methods implement ParserError interface by delegating to first error.

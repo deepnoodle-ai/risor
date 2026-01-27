@@ -65,6 +65,13 @@ type FriendlyError interface {
 	FriendlyErrorMessage() string
 }
 
+// FormattableError is an interface for errors that can be formatted with
+// the enhanced error formatter (with colors, source context, etc).
+type FormattableError interface {
+	Error() string
+	ToFormatted() *FormattedError
+}
+
 // FatalError is an interface for errors that may or may not be fatal.
 type FatalError interface {
 	Error() string

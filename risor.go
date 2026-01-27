@@ -142,7 +142,11 @@ func Compile(source string, opts ...Option) (*bytecode.Code, error) {
 		return nil, err
 	}
 
-	return compiler.Compile(ast, o.compilerOpts()...)
+	// Pass the original source to the compiler for better error messages
+	compilerOpts := o.compilerOpts()
+	compilerOpts = append(compilerOpts, compiler.WithSource(source))
+
+	return compiler.Compile(ast, compilerOpts...)
 }
 
 // Run executes compiled bytecode and returns the result as a native Go value.

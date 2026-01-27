@@ -575,7 +575,7 @@ func TestErrorInterface(t *testing.T) {
 	// Test FriendlyErrorMessage
 	friendly := pe.FriendlyErrorMessage()
 	assert.NotEmpty(t, friendly)
-	assert.Contains(t, friendly, "location:")
+	assert.Contains(t, friendly, "-->")
 }
 
 // Test that positions are correctly tracked

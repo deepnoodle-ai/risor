@@ -26,9 +26,9 @@ Here's a short example of how Risor feels like a hybrid of Go and Python. This
 demonstrates using string methods and chained calls:
 
 ```go
-array := ["gophers", "are", "burrowing", "rodents"]
+let array = ["gophers", "are", "burrowing", "rodents"]
 
-sentence := " ".join(array).to_upper()
+let sentence = " ".join(array).to_upper()
 
 // sentence is "GOPHERS ARE BURROWING RODENTS"
 ```

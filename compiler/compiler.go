@@ -50,6 +50,9 @@ type Compiler struct {
 	// Source filename
 	filename string
 
+	// Original source code (for better error messages)
+	source string
+
 	// Current AST node being compiled (used for source map tracking)
 	currentNode ast.Node
 }
@@ -76,6 +79,14 @@ func WithCode(code *Code) Option {
 func WithFilename(filename string) Option {
 	return func(c *Compiler) {
 		c.filename = filename
+	}
+}
+
+// WithSource configures the compiler with the original source code.
+// This enables better error messages with source context.
+func WithSource(source string) Option {
+	return func(c *Compiler) {
+		c.source = source
 	}
 }
 
@@ -482,7 +493,7 @@ func (c *Compiler) compileIdent(node *ast.Ident) error {
 	name := node.Name
 	resolution, found := c.current.symbols.Resolve(name)
 	if !found {
-		return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Pos())
+		return c.formatUndefinedVariableError(name, node.Pos())
 	}
 	c.emitLoad(resolution)
 	return nil
@@ -882,7 +893,7 @@ func (c *Compiler) compilePostfix(node *ast.Postfix) error {
 		name := x.Name
 		resolution, found := c.current.symbols.Resolve(name)
 		if !found {
-			return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Pos())
+			return c.formatUndefinedVariableError(name, node.Pos())
 		}
 		// Push the named variable onto the stack
 		c.emitLoad(resolution)
@@ -1461,7 +1472,7 @@ func (c *Compiler) compileAssign(node *ast.Assign) error {
 	name := node.Name.Name
 	resolution, found := c.current.symbols.Resolve(name)
 	if !found {
-		return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Pos())
+		return c.formatUndefinedVariableError(name, node.Pos())
 	}
 	if resolution.symbol.IsConstant() {
 		return c.formatError(fmt.Sprintf("cannot assign to constant %q", name), node.Pos())
@@ -1879,19 +1890,65 @@ func normalizeFunctionBlock(node *ast.Block) []ast.Node {
 
 // formatError creates a detailed error message including file, line and column information
 func (c *Compiler) formatError(msg string, pos token.Position) error {
-	lineCol := fmt.Sprintf("line %d, column %d", pos.LineNumber(), pos.ColumnNumber())
+	return c.formatErrorWithCode(errors.ErrorCode(""), msg, pos, nil)
+}
+
+// formatErrorWithCode creates a CompileError with an error code and optional suggestions.
+func (c *Compiler) formatErrorWithCode(code errors.ErrorCode, msg string, pos token.Position, suggestions []errors.Suggestion) error {
 	filename := c.filename
 	if filename == "" {
 		filename = "unknown"
 	}
-	var b strings.Builder
-	b.WriteString("compile error: ")
-	b.WriteString(msg)
-	b.WriteString("\n\n")
-	b.WriteString("location: ")
-	b.WriteString(fmt.Sprintf("%s:%d:%d", filename, pos.LineNumber(), pos.ColumnNumber()))
-	b.WriteString(fmt.Sprintf(" (%s)", lineCol))
-	return fmt.Errorf("%s", b.String())
+
+	err := &errors.CompileError{
+		Code:        code,
+		Message:     msg,
+		Filename:    filename,
+		Line:        pos.LineNumber(),
+		Column:      pos.ColumnNumber(),
+		SourceLine:  c.getSourceLine(pos.Line),
+		Suggestions: suggestions,
+	}
+
+	return err
+}
+
+// formatUndefinedVariableError creates an error for undefined variables with "Did you mean?" suggestions.
+func (c *Compiler) formatUndefinedVariableError(name string, pos token.Position) error {
+	// Get all available names for suggestions
+	allNames := c.current.symbols.AllNames()
+
+	// Find similar names
+	suggestions := errors.SuggestSimilar(name, allNames)
+
+	return c.formatErrorWithCode(
+		errors.E2001,
+		fmt.Sprintf("undefined variable %q", name),
+		pos,
+		suggestions,
+	)
+}
+
+// getSourceLine retrieves a specific line from the source code.
+// lineNum is 0-indexed.
+func (c *Compiler) getSourceLine(lineNum int) string {
+	// Prefer the original source if available
+	source := c.source
+	if source == "" {
+		source = c.current.source
+	}
+	if source == "" {
+		source = c.main.source
+	}
+	if source == "" {
+		return ""
+	}
+
+	lines := strings.Split(source, "\n")
+	if lineNum < 0 || lineNum >= len(lines) {
+		return ""
+	}
+	return lines[lineNum]
 }
 
 func (c *Compiler) compileTry(node *ast.Try) error {

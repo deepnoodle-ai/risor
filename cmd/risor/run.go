@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
+	goerrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,8 +13,9 @@ import (
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/cli"
+	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/object"
+	"github.com/risor-io/risor/errors"
 )
 
 func runHandler(ctx *cli.Context) error {
@@ -51,10 +52,7 @@ func runHandler(ctx *cli.Context) error {
 
 	result, err := risor.Eval(ctx.Context(), code, opts...)
 	if err != nil {
-		if friendlyErr, ok := err.(object.FriendlyError); ok {
-			return errors.New(friendlyErr.FriendlyErrorMessage())
-		}
-		return err
+		return formatRisorError(ctx, err)
 	}
 	dt := time.Since(start)
 
@@ -146,7 +144,7 @@ func getRisorCode(ctx *cli.Context) (string, error) {
 		count++
 	}
 	if count > 1 {
-		return "", errors.New("multiple input sources specified")
+		return "", goerrors.New("multiple input sources specified")
 	}
 
 	if stdinSet {
@@ -176,4 +174,26 @@ func handleSigForProfiler() {
 		pprof.StopCPUProfile()
 		os.Exit(1)
 	}()
+}
+
+// formatRisorError formats a Risor error with colors and professional styling.
+func formatRisorError(ctx *cli.Context, err error) error {
+	useColor := !ctx.Bool("no-color") && color.ShouldColorize(os.Stderr)
+	formatter := errors.NewFormatter(useColor)
+
+	// Check for multi-error types (parser errors with multiple errors)
+	if multiErr, ok := err.(interface {
+		ToFormattedMultiple() []*errors.FormattedError
+	}); ok {
+		formatted := multiErr.ToFormattedMultiple()
+		return goerrors.New(formatter.FormatMultiple(formatted))
+	}
+
+	// Check for single formattable errors (StructuredError, CompileError, etc.)
+	if formattable, ok := err.(errors.FormattableError); ok {
+		formatted := formattable.ToFormatted()
+		return goerrors.New(formatter.Format(formatted))
+	}
+
+	return err
 }

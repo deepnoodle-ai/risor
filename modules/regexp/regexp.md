@@ -18,9 +18,9 @@ Compiles a regular expression string into a regexp object.
 ```go filename="Example"
 >>> regexp.compile("a+")
 regexp("a+")
->>> r := regexp.compile("a+"); r.match("a")
+>>> let r = regexp.compile("a+"); r.match("a")
 true
->>> r := regexp.compile("[0-9]+"); r.match("nope")
+>>> let r = regexp.compile("[0-9]+"); r.match("nope")
 false
 ```
 
@@ -56,7 +56,7 @@ match(s string) bool
 Returns true if the string s contains any match of the regular expression pattern.
 
 ```go filename="Example"
->>> r := regexp.compile("a+"); r.match("a")
+>>> let r = regexp.compile("a+"); r.match("a")
 true
 ```
 
@@ -69,7 +69,7 @@ find(s string) string
 Returns the leftmost match of the regular expression pattern in the string s.
 
 ```go filename="Example"
->>> r := regexp.compile("a+"); r.find("baaab")
+>>> let r = regexp.compile("a+"); r.find("baaab")
 "aaa"
 ```
 
@@ -82,7 +82,7 @@ find_all(s string) []string
 Returns a slice of all matches of the regular expression pattern in the string s.
 
 ```go filename="Example"
->>> r := regexp.compile("(du)+"); r.find_all("dunk dug in the deep end")
+>>> let r = regexp.compile("(du)+"); r.find_all("dunk dug in the deep end")
 ["du", "du"]
 ```
 
@@ -96,7 +96,7 @@ Returns a slice of all matches of the regular expression pattern in the string s
 and the matches, if any, of its subexpressions.
 
 ```go filename="Example"
->>> r := regexp.compile("a(b+)a"); r.find_submatch("abba")
+>>> let r = regexp.compile("a(b+)a"); r.find_submatch("abba")
 ["abba", "bb"]
 ```
 
@@ -110,7 +110,7 @@ Returns a copy of the string s with all matches of the regular expression patter
 replaced by repl.
 
 ```go filename="Example"
->>> r := regexp.compile("a+"); r.replace_all("baaab", "x")
+>>> let r = regexp.compile("a+"); r.replace_all("baaab", "x")
 "bxb"
 ```
 
@@ -124,6 +124,6 @@ Splits the string s into a slice of substrings separated by the regular expressi
 pattern.
 
 ```go filename="Example"
->>> r := regexp.compile("a+"); r.split("baaab")
+>>> let r = regexp.compile("a+"); r.split("baaab")
 ["b", "b"]
 ```

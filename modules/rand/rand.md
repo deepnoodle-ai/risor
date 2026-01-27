@@ -85,7 +85,7 @@ shuffle(list)
 Shuffles a list in place and returns it.
 
 ```go filename="Example"
->>> l := [1, 2, 3, 4, 5]
+>>> let l = [1, 2, 3, 4, 5]
 >>> rand.shuffle(l)
 [3, 1, 5, 4, 2]
 ```

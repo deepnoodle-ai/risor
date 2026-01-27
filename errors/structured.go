@@ -146,3 +146,27 @@ func (e *StructuredError) GetStack() []StackFrame {
 func (e *StructuredError) GetLocation() SourceLocation {
 	return e.Location
 }
+
+// ToFormatted converts to the FormattedError type for enhanced display.
+func (e *StructuredError) ToFormatted() *FormattedError {
+	fe := &FormattedError{
+		Kind:     e.Kind.String(),
+		Message:  e.Message,
+		Filename: e.Location.Filename,
+		Line:     e.Location.Line,
+		Column:   e.Location.Column,
+	}
+
+	if e.Location.Source != "" {
+		fe.SourceLines = []SourceLineEntry{
+			{Number: e.Location.Line, Text: e.Location.Source, IsMain: true},
+		}
+	}
+
+	// Convert stack frames
+	if len(e.Stack) > 0 {
+		fe.Stack = e.Stack
+	}
+
+	return fe
+}

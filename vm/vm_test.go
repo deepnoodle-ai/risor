@@ -709,7 +709,10 @@ func TestTryUnsupportedOperation(t *testing.T) {
 	`
 	result, err := run(context.Background(), code)
 	assert.NoError(t, err)
-	assert.Equal(t, result, object.NewString("type error: unsupported operation for list: + on type int"))
+	// Check that the error message contains the expected content (may include location info)
+	resultStr, ok := result.(*object.String)
+	assert.True(t, ok)
+	assert.Contains(t, resultStr.Value(), "type error: unsupported operation for list: + on type int")
 }
 
 func TestTryWithErrorValues(t *testing.T) {
