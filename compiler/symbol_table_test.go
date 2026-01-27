@@ -147,3 +147,123 @@ func TestConstant(t *testing.T) {
 	assert.True(t, found)
 	assert.False(t, resolution.symbol.isConstant)
 }
+
+// =============================================================================
+// BLANK IDENTIFIER TESTS
+// =============================================================================
+
+func TestIsBlankIdentifier(t *testing.T) {
+	assert.True(t, IsBlankIdentifier("_"))
+	assert.False(t, IsBlankIdentifier("__"))
+	assert.False(t, IsBlankIdentifier("_a"))
+	assert.False(t, IsBlankIdentifier("a_"))
+	assert.False(t, IsBlankIdentifier("a"))
+	assert.False(t, IsBlankIdentifier(""))
+}
+
+func TestBlankIdentifierInsertVariable(t *testing.T) {
+	table := NewSymbolTable()
+
+	// InsertVariable for blank identifier returns nil without error
+	sym, err := table.InsertVariable("_")
+	assert.Nil(t, err)
+	assert.Nil(t, sym)
+
+	// Blank identifier is not in the symbol table
+	assert.False(t, table.IsDefined("_"))
+
+	// Can "insert" blank identifier multiple times (no-op each time)
+	sym, err = table.InsertVariable("_")
+	assert.Nil(t, err)
+	assert.Nil(t, sym)
+}
+
+func TestBlankIdentifierInsertConstant(t *testing.T) {
+	table := NewSymbolTable()
+
+	// InsertConstant for blank identifier returns nil without error
+	sym, err := table.InsertConstant("_")
+	assert.Nil(t, err)
+	assert.Nil(t, sym)
+
+	// Blank identifier is not in the symbol table
+	assert.False(t, table.IsDefined("_"))
+}
+
+func TestBlankIdentifierResolve(t *testing.T) {
+	table := NewSymbolTable()
+
+	// Cannot resolve blank identifier
+	_, found := table.Resolve("_")
+	assert.False(t, found)
+
+	// Even after "inserting" it, cannot resolve
+	table.InsertVariable("_")
+	_, found = table.Resolve("_")
+	assert.False(t, found)
+}
+
+func TestBlankIdentifierDoesNotAffectIndexing(t *testing.T) {
+	table := NewSymbolTable()
+
+	// Insert a regular variable
+	a, err := table.InsertVariable("a")
+	assert.Nil(t, err)
+	assert.Equal(t, a.Index(), uint16(0))
+
+	// Insert blank identifier (no-op)
+	_, err = table.InsertVariable("_")
+	assert.Nil(t, err)
+
+	// Insert another regular variable - index should be 1
+	b, err := table.InsertVariable("b")
+	assert.Nil(t, err)
+	assert.Equal(t, b.Index(), uint16(1))
+
+	// Count should be 2 (not including blank identifier)
+	assert.Equal(t, table.Count(), uint16(2))
+}
+
+func TestClaimSlot(t *testing.T) {
+	table := NewSymbolTable()
+
+	// Insert regular variable
+	a, err := table.InsertVariable("a")
+	assert.Nil(t, err)
+	assert.Equal(t, a.Index(), uint16(0))
+
+	// Claim a slot for blank identifier
+	idx, err := table.ClaimSlot()
+	assert.Nil(t, err)
+	assert.Equal(t, idx, uint16(1))
+
+	// Insert another regular variable
+	b, err := table.InsertVariable("b")
+	assert.Nil(t, err)
+	assert.Equal(t, b.Index(), uint16(2))
+
+	// Count should be 3 (including the blank identifier slot)
+	assert.Equal(t, table.Count(), uint16(3))
+
+	// Symbol at index 1 should be nil
+	assert.Nil(t, table.Symbol(1))
+}
+
+func TestClaimSlotMultiple(t *testing.T) {
+	// Simulates function f(_, _, c) - two blank params, one regular
+	table := NewSymbolTable()
+
+	idx0, err := table.ClaimSlot()
+	assert.Nil(t, err)
+	assert.Equal(t, idx0, uint16(0))
+
+	idx1, err := table.ClaimSlot()
+	assert.Nil(t, err)
+	assert.Equal(t, idx1, uint16(1))
+
+	c, err := table.InsertVariable("c")
+	assert.Nil(t, err)
+	assert.Equal(t, c.Index(), uint16(2))
+
+	assert.Equal(t, table.Count(), uint16(3))
+}

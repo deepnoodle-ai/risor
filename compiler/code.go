@@ -157,7 +157,12 @@ func (c *Code) GlobalNames() []string {
 	count := root.Count()
 	names := make([]string, count)
 	for i := uint16(0); i < count; i++ {
-		names[i] = root.Symbol(i).Name()
+		sym := root.Symbol(i)
+		if sym != nil {
+			names[i] = sym.Name()
+		} else {
+			names[i] = BlankIdentifier // Slot for discarded value
+		}
 	}
 	return names
 }
@@ -166,7 +171,12 @@ func (c *Code) LocalNames() []string {
 	count := c.symbols.Count()
 	names := make([]string, count)
 	for i := uint16(0); i < count; i++ {
-		names[i] = c.symbols.Symbol(i).Name()
+		sym := c.symbols.Symbol(i)
+		if sym != nil {
+			names[i] = sym.Name()
+		} else {
+			names[i] = BlankIdentifier // Slot for discarded value
+		}
 	}
 	return names
 }

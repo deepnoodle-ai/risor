@@ -871,3 +871,197 @@ func TestDestructuringParamBytecodeEmitted(t *testing.T) {
 	// We just verify compilation succeeds and produces bytecode
 	assert.Greater(t, code.InstructionCount(), 0)
 }
+
+// =============================================================================
+// BLANK IDENTIFIER TESTS
+// =============================================================================
+
+func TestBlankIdentifier_LetDiscard(t *testing.T) {
+	// let _ = expr should compile the expr and discard the value
+	testCases := []string{
+		"let _ = 42",
+		"let _ = 1 + 2",
+		`let _ = "hello"`,
+	}
+	for _, input := range testCases {
+		t.Run(input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestBlankIdentifier_ConstDiscard(t *testing.T) {
+	// const _ = expr should compile the expr and discard the value
+	input := "const _ = 42"
+	ast, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	_, err = Compile(ast, nil)
+	assert.Nil(t, err)
+}
+
+func TestBlankIdentifier_CannotRead(t *testing.T) {
+	// Reading _ should produce an error
+	testCases := []struct {
+		input  string
+		errMsg string
+	}{
+		{
+			input:  "_",
+			errMsg: "cannot use _ as value",
+		},
+		{
+			input:  "let x = _",
+			errMsg: "cannot use _ as value",
+		},
+		{
+			input:  "let _ = 1; _",
+			errMsg: "cannot use _ as value",
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.NotNil(t, err)
+			assert.Contains(t, err.Error(), tt.errMsg)
+		})
+	}
+}
+
+func TestBlankIdentifier_AssignDiscard(t *testing.T) {
+	// _ = expr should discard the value without needing prior declaration
+	input := "_ = 42"
+	ast, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	_, err = Compile(ast, nil)
+	assert.Nil(t, err)
+}
+
+func TestBlankIdentifier_CompoundAssignError(t *testing.T) {
+	// _ += expr should error (can't read _ for compound assignment)
+	testCases := []string{
+		"_ += 1",
+		"_ -= 1",
+		"_ *= 2",
+		"_ /= 2",
+	}
+	for _, input := range testCases {
+		t.Run(input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.NotNil(t, err)
+			assert.Contains(t, err.Error(), "cannot use _ in compound assignment")
+		})
+	}
+}
+
+func TestBlankIdentifier_MultiVar(t *testing.T) {
+	// let _, b = [1, 2] should discard first value
+	testCases := []string{
+		"let _, b = [1, 2]",
+		"let a, _ = [1, 2]",
+		"let _, _ = [1, 2]", // Both discarded
+		"let _, b, _ = [1, 2, 3]",
+	}
+	for _, input := range testCases {
+		t.Run(input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestBlankIdentifier_ArrayDestructure(t *testing.T) {
+	// let [_, b] = arr should discard first element
+	testCases := []string{
+		"let [_, b] = [1, 2]",
+		"let [a, _] = [1, 2]",
+		"let [_, _] = [1, 2]",
+		"let [_, b, _] = [1, 2, 3]",
+	}
+	for _, input := range testCases {
+		t.Run(input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestBlankIdentifier_ObjectDestructure(t *testing.T) {
+	// let {a: _} = obj should discard the 'a' property
+	testCases := []string{
+		"let {a: _, b} = {a: 1, b: 2}",
+		"let {a, b: _} = {a: 1, b: 2}",
+		"let {a: _, b: _} = {a: 1, b: 2}",
+	}
+	for _, input := range testCases {
+		t.Run(input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestBlankIdentifier_FunctionParam(t *testing.T) {
+	// function f(_, b) should accept but discard first param
+	testCases := []string{
+		"function f(_) { return 42 }",
+		"function f(_, b) { return b }",
+		"function f(a, _) { return a }",
+		"function f(_, _, c) { return c }", // Multiple _ params
+	}
+	for _, input := range testCases {
+		t.Run(input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestBlankIdentifier_RestParam(t *testing.T) {
+	// function f(a, ..._) should accept but discard rest args
+	input := "function f(a, ..._) { return a }"
+	ast, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	_, err = Compile(ast, nil)
+	assert.Nil(t, err)
+}
+
+func TestBlankIdentifier_ArrowFunction(t *testing.T) {
+	// Arrow functions with blank identifier
+	testCases := []string{
+		"_ => 42",
+		"(_, b) => b",
+		"(a, _) => a",
+	}
+	for _, input := range testCases {
+		t.Run(input, func(t *testing.T) {
+			ast, err := parser.Parse(context.Background(), input, nil)
+			assert.Nil(t, err)
+			_, err = Compile(ast, nil)
+			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestBlankIdentifier_DoubleUnderscore(t *testing.T) {
+	// __ (double underscore) should be a normal identifier
+	input := "let __ = 42; __"
+	ast, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	_, err = Compile(ast, nil)
+	assert.Nil(t, err)
+}

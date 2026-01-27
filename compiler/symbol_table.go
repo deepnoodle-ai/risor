@@ -6,6 +6,15 @@ import (
 	"math"
 )
 
+// BlankIdentifier is the special identifier that discards values.
+// It cannot be read, only assigned to.
+const BlankIdentifier = "_"
+
+// IsBlankIdentifier returns true if name is the blank identifier "_".
+func IsBlankIdentifier(name string) bool {
+	return name == BlankIdentifier
+}
+
 // SymbolTable tracks which symbols are defined and referenced in a given scope.
 // These tables may have a parent table, which indicates that they represent a
 // nested scope. If "isBlock" is set to true, this table represents a block
@@ -65,6 +74,23 @@ func (t *SymbolTable) claimIndex(s *Symbol) (uint16, error) {
 	return uidx, nil
 }
 
+// ClaimSlot reserves an index slot without associating it with a name.
+// This is used for blank identifier "_" parameters in functions, where
+// we need to reserve space for the argument but don't need to look it up.
+func (t *SymbolTable) ClaimSlot() (uint16, error) {
+	if t.isBlock {
+		return t.parent.ClaimSlot()
+	}
+	idx := len(t.symbols)
+	if idx >= math.MaxUint16 {
+		return 0, errors.New("compile error: too many symbols")
+	}
+	uidx := uint16(idx)
+	// Append a nil placeholder - this slot exists but has no symbol
+	t.symbols = append(t.symbols, nil)
+	return uidx, nil
+}
+
 func (t *SymbolTable) GetFunction() (*SymbolTable, bool) {
 	if t.parent == nil {
 		return nil, false // global scope
@@ -95,7 +121,14 @@ func (t *SymbolTable) FunctionDepth() int {
 
 // InsertVariable adds a new variable into this symbol table, with an optional value.
 // The symbol will be assigned the next available index.
+//
+// For the blank identifier "_", this returns nil without error. The blank identifier
+// is never actually stored - it's used to discard values.
 func (t *SymbolTable) InsertVariable(name string, value ...any) (*Symbol, error) {
+	// The blank identifier is never stored - return nil to indicate "discard"
+	if IsBlankIdentifier(name) {
+		return nil, nil
+	}
 	if _, ok := t.symbolsByName[name]; ok {
 		return nil, fmt.Errorf("compile error: variable %q already exists", name)
 	}
@@ -116,10 +149,16 @@ func (t *SymbolTable) InsertVariable(name string, value ...any) (*Symbol, error)
 
 // InsertConstant adds a new constant into this symbol table, with an optional value.
 // The symbol will be assigned the next available index.
+//
+// For the blank identifier "_", this returns nil without error (same as InsertVariable).
 func (t *SymbolTable) InsertConstant(name string, value ...any) (*Symbol, error) {
 	sym, err := t.InsertVariable(name, value...)
 	if err != nil {
 		return nil, err
+	}
+	// Blank identifier returns nil from InsertVariable
+	if sym == nil {
+		return nil, nil
 	}
 	sym.isConstant = true
 	return sym, nil
@@ -165,7 +204,14 @@ func (t *SymbolTable) IsGlobal() bool {
 // a Resolution if the symbol is found. The Resolution indicates the symbol's
 // relative scope and depth. If the symbol is found to be a "free" variable,
 // it will be added to the free map for this table.
+//
+// Note: The blank identifier "_" always returns (nil, false) because it cannot
+// be read. Callers should use IsBlankIdentifier to provide a better error message.
 func (t *SymbolTable) Resolve(name string) (*Resolution, bool) {
+	// The blank identifier cannot be read
+	if IsBlankIdentifier(name) {
+		return nil, false
+	}
 	// Access the enclosing function, if any
 	activeFunc, inFunc := t.GetFunction()
 	var activeFuncID string

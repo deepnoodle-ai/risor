@@ -522,6 +522,11 @@ func (c *Compiler) compileVar(node *ast.Var) error {
 	if err != nil {
 		return err
 	}
+	// Blank identifier "_" returns nil - discard the value
+	if sym == nil {
+		c.emit(op.PopTop)
+		return nil
+	}
 	if c.current.parent == nil {
 		c.emit(op.StoreGlobal, sym.Index())
 	} else {
@@ -532,6 +537,10 @@ func (c *Compiler) compileVar(node *ast.Var) error {
 
 func (c *Compiler) compileIdent(node *ast.Ident) error {
 	name := node.Name
+	// The blank identifier cannot be read
+	if IsBlankIdentifier(name) {
+		return c.formatError("cannot use _ as value", node.Pos())
+	}
 	resolution, found := c.current.symbols.Resolve(name)
 	if !found {
 		return c.formatUndefinedVariableError(name, node.Pos())
@@ -558,6 +567,11 @@ func (c *Compiler) compileMultiVar(node *ast.MultiVar) error {
 		sym, err := c.current.symbols.InsertVariable(name)
 		if err != nil {
 			return err
+		}
+		// Blank identifier "_" returns nil - discard the value
+		if sym == nil {
+			c.emit(op.PopTop)
+			continue
 		}
 		if c.current.parent == nil {
 			c.emit(op.StoreGlobal, sym.Index())
@@ -619,6 +633,11 @@ func (c *Compiler) compileObjectDestructure(node *ast.ObjectDestructure) error {
 		sym, err := c.current.symbols.InsertVariable(varName)
 		if err != nil {
 			return err
+		}
+		// Blank identifier "_" returns nil - discard the value
+		if sym == nil {
+			c.emit(op.PopTop)
+			continue
 		}
 		if c.current.parent == nil {
 			c.emit(op.StoreGlobal, sym.Index())
@@ -683,6 +702,11 @@ func (c *Compiler) compileArrayDestructure(node *ast.ArrayDestructure) error {
 		if err != nil {
 			return err
 		}
+		// Blank identifier "_" returns nil - discard the value
+		if sym == nil {
+			c.emit(op.PopTop)
+			continue
+		}
 		if c.current.parent == nil {
 			c.emit(op.StoreGlobal, sym.Index())
 		} else {
@@ -746,6 +770,12 @@ func (c *Compiler) emitObjectDestructurePreamble(param *ast.ObjectDestructurePar
 			varName = binding.Key
 		}
 
+		// Blank identifier "_" - discard the value
+		if IsBlankIdentifier(varName) {
+			c.emit(op.PopTop)
+			continue
+		}
+
 		// Find the variable (already inserted in symbol table during setup)
 		resolution, found := c.current.symbols.Resolve(varName)
 		if !found {
@@ -790,6 +820,12 @@ func (c *Compiler) emitArrayDestructurePreamble(param *ast.ArrayDestructureParam
 				return err
 			}
 			c.changeOperand(jumpPos, delta)
+		}
+
+		// Blank identifier "_" - discard the value
+		if IsBlankIdentifier(varName) {
+			c.emit(op.PopTop)
+			continue
 		}
 
 		// Find the variable (already inserted in symbol table during setup)
@@ -1075,6 +1111,11 @@ func (c *Compiler) compileConst(node *ast.Const) error {
 	sym, err := c.current.symbols.InsertConstant(name)
 	if err != nil {
 		return err
+	}
+	// Blank identifier "_" returns nil - discard the value
+	if sym == nil {
+		c.emit(op.PopTop)
+		return nil
 	}
 	if c.current.parent == nil {
 		c.emit(op.StoreGlobal, sym.Index())
@@ -1465,7 +1506,15 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	}
 
 	// Add all parameter names to the symbol table (including synthetic ones)
+	// For blank identifier "_" parameters, we claim a slot but don't add to lookup
 	for _, paramName := range params {
+		if IsBlankIdentifier(paramName) {
+			// Claim a slot for the argument but don't add to name lookup
+			if _, err := code.symbols.ClaimSlot(); err != nil {
+				return err
+			}
+			continue
+		}
 		if _, err := code.symbols.InsertVariable(paramName); err != nil {
 			return err
 		}
@@ -1478,8 +1527,15 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	var restParamName string
 	if restParam := node.RestParam; restParam != nil {
 		restParamName = restParam.Name
-		if _, err := code.symbols.InsertVariable(restParamName); err != nil {
-			return err
+		if IsBlankIdentifier(restParamName) {
+			// Claim a slot for the rest args but don't add to name lookup
+			if _, err := code.symbols.ClaimSlot(); err != nil {
+				return err
+			}
+		} else {
+			if _, err := code.symbols.InsertVariable(restParamName); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1638,6 +1694,18 @@ func (c *Compiler) compileAssign(node *ast.Assign) error {
 		return c.compileSetItem(node)
 	}
 	name := node.Name.Name
+	// The blank identifier discards the value
+	if IsBlankIdentifier(name) {
+		// Compound assignment to _ doesn't make sense (can't read _)
+		if node.Op != "=" {
+			return c.formatError("cannot use _ in compound assignment", node.Pos())
+		}
+		if err := c.compile(node.Value); err != nil {
+			return err
+		}
+		c.emit(op.PopTop)
+		return nil
+	}
 	resolution, found := c.current.symbols.Resolve(name)
 	if !found {
 		return c.formatUndefinedVariableError(name, node.Pos())
