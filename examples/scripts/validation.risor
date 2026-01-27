@@ -3,7 +3,7 @@
 
 // Validation result type
 function valid(value) {
-    return {valid: true, value: value, errors: []}
+    return {valid: true, value, errors: []}
 }
 
 function invalid(errors) {

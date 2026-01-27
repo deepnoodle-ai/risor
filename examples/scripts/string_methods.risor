@@ -34,7 +34,9 @@ let isHidden = filename.has_prefix(".")
 
 // Replace operations
 let template = "Hello, NAME! Welcome to PLACE."
-let filled = template.replace_all("NAME", "Alice").replace_all("PLACE", "Risor")
+let filled = template
+    .replace_all("NAME", "Alice")
+    .replace_all("PLACE", "Risor")
 
 // Repeat
 let separator = "-".repeat(40)

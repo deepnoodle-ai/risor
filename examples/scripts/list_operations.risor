@@ -17,8 +17,11 @@ let sum = numbers.reduce(0, (acc, x) => acc + x)
 let product = numbers.reduce(1, (acc, x) => acc * x)
 let max = numbers.reduce(numbers[0], (acc, x) => if (x > acc) { x } else { acc })
 
-// Chaining operations
-let sumOfEvenSquares = numbers.filter(x => x % 2 == 0).map(x => x * x).reduce(0, (acc, x) => acc + x)
+// Chaining operations (multiline for readability)
+let sumOfEvenSquares = numbers
+    .filter(x => x % 2 == 0)
+    .map(x => x * x)
+    .reduce(0, (acc, x) => acc + x)
 
 // Map with index (two-argument form)
 let indexed = ["a", "b", "c"].map((i, v) => sprintf("%d: %s", i, v))
@@ -50,15 +53,15 @@ let second = [4, 5, 6]
 let combined = [...first, ...second]
 
 {
-    squares: squares,
-    evens: evens,
-    sum: sum,
-    product: product,
-    sumOfEvenSquares: sumOfEvenSquares,
-    indexed: indexed,
-    collected: collected,
+    squares,
+    evens,
+    sum,
+    product,
+    sumOfEvenSquares,
+    indexed,
+    collected,
     sorted: sortedItems,
     reversed: reversedItems,
-    chunks: chunks,
-    combined: combined
+    chunks,
+    combined
 }

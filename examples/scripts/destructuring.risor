@@ -31,15 +31,12 @@ let nested = {
 }
 let username = nested.user.profile.username
 
-// Functions that work with destructured values
-function processPoint(p) {
-    let {x, y} = p
+// Destructuring in function parameters
+function processPoint({x, y}) {
     return x + y
 }
 
-function formatUser(u) {
-    let {name} = u
-    let age = getattr(u, "age", 0)
+function formatUser({name, age = 0}) {
     return sprintf("%s (age %d)", name, age)
 }
 
@@ -78,16 +75,16 @@ let page = apiResponse.data.pagination.page
 let total = apiResponse.data.pagination.total
 
 {
-    name: name,
-    personName: personName,
-    location: location,
-    host: host,
-    port: port,
+    name,
+    personName,
+    location,
+    host,
+    port,
     coordinates: [x, y, z],
-    username: username,
+    username,
     pointSum: processPoint(point),
     userFormatted: formatUser(user),
-    extended: extended,
+    extended,
     swapped: [a, b],
     apiStatus: status,
     firstItem: items[0],

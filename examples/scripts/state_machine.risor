@@ -23,9 +23,9 @@ function canTransition(currentStatus, targetStatus) {
 // Create a new order with state
 function createOrder(id, customer, items) {
     return {
-        id: id,
-        customer: customer,
-        items: items,
+        id,
+        customer,
+        items,
         status: "created",
         history: [{status: "created", at: time.now().format(time.RFC3339)}]
     }

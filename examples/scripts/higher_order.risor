@@ -68,10 +68,15 @@ let users = [
     {name: "Diana", age: 28, active: true}
 ]
 
-let activeNames = users.filter(u => u.active).map(u => u.name)
+let activeNames = users
+    .filter(u => u.active)
+    .map(u => u.name)
 
 let activeUsers = users.filter(u => u.active)
-let averageActiveAge = activeUsers.map(u => u.age).reduce(0, (acc, age) => acc + age) / len(activeUsers)
+let totalAge = activeUsers
+    .map(u => u.age)
+    .reduce(0, (acc, age) => acc + age)
+let averageActiveAge = totalAge / len(activeUsers)
 
 // Function factories
 function createValidator(minLen, maxLen) {

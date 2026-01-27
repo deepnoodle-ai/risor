@@ -11,8 +11,8 @@ let orders = [
 ]
 
 // Calculate order total
-function orderTotal(order) {
-    return order.items.reduce(0.0, (sum, item) => sum + item.qty * item.price)
+function orderTotal({items}) {
+    return items.reduce(0.0, (sum, {qty, price}) => sum + qty * price)
 }
 
 // Enrich order with computed fields
@@ -87,8 +87,12 @@ let topProduct = keys(products).reduce(nil, (best, sku) => {
 })
 
 // Pipeline style processing
-let shippedOrders = orders.filter(o => o.status == "shipped").map(enrichOrder)
-let shippedRevenue = shippedOrders.map(o => o.total).reduce(0.0, (a, b) => a + b)
+let shippedOrders = orders
+    .filter(o => o.status == "shipped")
+    .map(enrichOrder)
+let shippedRevenue = shippedOrders
+    .map(o => o.total)
+    .reduce(0.0, (a, b) => a + b)
 
 // Date-based filtering (if orders had dates)
 function withinDays(orders, days) {
