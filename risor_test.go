@@ -19,6 +19,79 @@ func TestBasicUsage(t *testing.T) {
 	assert.Equal(t, result, int64(2))
 }
 
+func TestBinaryLiterals(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"0b0", 0},
+		{"0b1", 1},
+		{"0b10", 2},
+		{"0b1010", 10},
+		{"0b11111111", 255},
+		{"0b1010 + 0b0101", 15}, // 10 + 5 = 15
+	}
+	for _, tt := range tests {
+		result, err := Eval(context.Background(), tt.input)
+		assert.Nil(t, err, "input: %s", tt.input)
+		assert.Equal(t, result, tt.expected, "input: %s", tt.input)
+	}
+}
+
+func TestXorOperator(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"0b1010 ^ 0b1100", 6},  // 10 ^ 12 = 6
+		{"0b1111 ^ 0b0000", 15}, // 15 ^ 0 = 15
+		{"0b1111 ^ 0b1111", 0},  // 15 ^ 15 = 0
+		{"5 ^ 3", 6},            // 0101 ^ 0011 = 0110 = 6
+		{"255 ^ 255", 0},
+	}
+	for _, tt := range tests {
+		result, err := Eval(context.Background(), tt.input)
+		assert.Nil(t, err, "input: %s", tt.input)
+		assert.Equal(t, result, tt.expected, "input: %s", tt.input)
+	}
+}
+
+func TestBytesBuiltin(t *testing.T) {
+	ctx := context.Background()
+	env := WithEnv(Builtins())
+
+	t.Run("empty bytes", func(t *testing.T) {
+		result, err := Eval(ctx, "bytes()", env)
+		assert.Nil(t, err)
+		// Empty bytes returns nil slice, check length is 0
+		assert.Equal(t, result, []byte(nil))
+	})
+
+	t.Run("bytes from string", func(t *testing.T) {
+		result, err := Eval(ctx, `bytes("hello")`, env)
+		assert.Nil(t, err)
+		assert.Equal(t, result, []byte("hello"))
+	})
+
+	t.Run("bytes from list", func(t *testing.T) {
+		result, err := Eval(ctx, "bytes([72, 105])", env)
+		assert.Nil(t, err)
+		assert.Equal(t, result, []byte{72, 105}) // "Hi"
+	})
+
+	t.Run("bytes indexing", func(t *testing.T) {
+		result, err := Eval(ctx, `bytes("abc")[0]`, env)
+		assert.Nil(t, err)
+		assert.Equal(t, result, byte(97)) // 'a'
+	})
+
+	t.Run("bytes len", func(t *testing.T) {
+		result, err := Eval(ctx, `len(bytes("hello"))`, env)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(5))
+	})
+}
+
 func TestEmptyEnvByDefault(t *testing.T) {
 	// Verify that the environment is empty by default (no builtins available)
 	testCases := []struct {
@@ -366,3 +439,321 @@ func TestResourceLimits(t *testing.T) {
 	})
 }
 
+// =============================================================================
+// DESTRUCTURING PARAMETERS
+// =============================================================================
+
+func TestObjectDestructureParam(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("basic object destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({a, b}) { return a + b }
+			foo({a: 1, b: 2})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), result)
+	})
+
+	t.Run("object destructure with default", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({x, y = 10}) { return x + y }
+			foo({x: 5})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(15), result)
+	})
+
+	t.Run("object destructure with alias", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({name: n}) { return n }
+			foo({name: "hello"})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, "hello", result)
+	})
+
+	t.Run("mixed regular and destructure params", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo(multiplier, {a, b}) { return multiplier * (a + b) }
+			foo(10, {a: 2, b: 3})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(50), result)
+	})
+}
+
+func TestArrayDestructureParam(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("basic array destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo([a, b]) { return a + b }
+			foo([1, 2])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), result)
+	})
+
+	t.Run("array destructure with default", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo([x, y = 10]) { return x + y }
+			foo([5])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(15), result)
+	})
+
+	t.Run("array destructure third element", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function third([a, b, c]) { return c }
+			third([1, 2, 3])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), result)
+	})
+}
+
+func TestArrowFunctionDestructureParam(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("arrow with array destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let sum = ([a, b]) => a + b
+			sum([3, 4])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(7), result)
+	})
+}
+
+// =============================================================================
+// METHOD CHAINING ACROSS NEWLINES - INTEGRATION TESTS
+// =============================================================================
+
+func TestMethodChainingAcrossNewlinesIntegration(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("fluent list operations", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			[1, 2, 3, 4, 5]
+				.filter(x => x > 2)
+				.map(x => x * 2)
+		`, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		assert.Equal(t, []any{int64(6), int64(8), int64(10)}, result)
+	})
+
+	t.Run("string method chain", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			"hello world"
+				.to_upper()
+				.split(" ")
+		`, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		assert.Equal(t, []any{"HELLO", "WORLD"}, result)
+	})
+
+	t.Run("optional chaining across newlines", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let obj = {a: {b: {c: 42}}}
+			obj
+				?.a
+				?.b
+				?.c
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(42), result)
+	})
+
+	t.Run("optional chaining with nil", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let obj = {a: nil}
+			obj
+				?.a
+				?.b
+				?.c
+		`)
+		assert.Nil(t, err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("mixed dot and optional chain", func(t *testing.T) {
+		// Note: Array index [0] must be on same line as .items since [ is not
+		// a chaining operator. Only . and ?. can follow newlines.
+		result, err := Eval(ctx, `
+			let obj = {a: {b: {c: 42}}}
+			obj
+				.a
+				?.b
+				.c
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(42), result)
+	})
+}
+
+// =============================================================================
+// DESTRUCTURING PARAMETERS - EDGE CASE INTEGRATION TESTS
+// =============================================================================
+
+func TestDestructureParamEdgeCases(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("nested object access", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function getX({point}) { return point.x }
+			getX({point: {x: 10, y: 20}})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(10), result)
+	})
+
+	t.Run("default with expression", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({x = 1 + 2}) { return x }
+			foo({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), result)
+	})
+
+	t.Run("all defaults used", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({a = 1, b = 2, c = 3}) { return a + b + c }
+			foo({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(6), result)
+	})
+
+	t.Run("some defaults used", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({a = 1, b = 2, c = 3}) { return a + b + c }
+			foo({b: 10})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(14), result)
+	})
+
+	t.Run("alias with computation", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function doubled({value: v}) { return v * 2 }
+			doubled({value: 21})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(42), result)
+	})
+
+	t.Run("array destructure order", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function order([a, b, c]) { return [c, b, a] }
+			order([1, 2, 3])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, []any{int64(3), int64(2), int64(1)}, result)
+	})
+
+	t.Run("array destructure partial", func(t *testing.T) {
+		// Note: Risor requires array destructure count to match array length.
+		// Partial unpacking is not supported, so pass exactly one element.
+		result, err := Eval(ctx, `
+			function first([a]) { return a }
+			first([1])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(1), result)
+	})
+
+	t.Run("empty object destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({}) { return 42 }
+			foo({a: 1, b: 2})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(42), result)
+	})
+
+	t.Run("empty array destructure", func(t *testing.T) {
+		// Note: Empty array destructure must be passed an empty array
+		// since Risor requires exact array length match.
+		result, err := Eval(ctx, `
+			function foo([]) { return 42 }
+			foo([])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(42), result)
+	})
+
+	t.Run("destructure in callback", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let items = [{x: 1}, {x: 2}, {x: 3}]
+			let sum = 0
+			items.each(function({x}) { sum = sum + x })
+			sum
+		`, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		assert.Equal(t, int64(6), result)
+	})
+
+	t.Run("multiple destructure params", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function combine({a}, {b}, {c}) { return a + b + c }
+			combine({a: 1}, {b: 2}, {c: 3})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(6), result)
+	})
+
+	t.Run("regular and destructure interleaved", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function calc(mult, {a, b}, divisor) { return (a + b) * mult / divisor }
+			calc(2, {a: 3, b: 7}, 5)
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(4), result)
+	})
+}
+
+func TestDestructureParamClosures(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("destructure captures variable", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function makeAdder({amount}) {
+				return function(x) { return x + amount }
+			}
+			let addFive = makeAdder({amount: 5})
+			addFive(10)
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(15), result)
+	})
+
+	t.Run("nested destructure closures", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function outer({a}) {
+				return function({b}) {
+					return a + b
+				}
+			}
+			let inner = outer({a: 10})
+			inner({b: 5})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(15), result)
+	})
+}
+
+func TestDestructureWithRestParam(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("destructure before rest", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function foo({a}, ...rest) { return [a, rest] }
+			foo({a: 1}, 2, 3, 4)
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, []any{int64(1), []any{int64(2), int64(3), int64(4)}})
+	})
+}

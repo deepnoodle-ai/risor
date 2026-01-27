@@ -27,6 +27,8 @@ func (p *Parser) parseInt() (ast.Node, bool) {
 	var err error
 	if strings.HasPrefix(lit, "0x") {
 		value, err = strconv.ParseInt(lit[2:], 16, 64) // hexadecimal
+	} else if strings.HasPrefix(lit, "0b") {
+		value, err = strconv.ParseInt(lit[2:], 2, 64) // binary
 	} else if strings.HasPrefix(lit, "0") && len(lit) > 1 {
 		value, err = strconv.ParseInt(lit[1:], 8, 64) // octal
 	} else {
@@ -363,14 +365,14 @@ func (p *Parser) parseFunc() (ast.Node, bool) {
 	}, true
 }
 
-func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Ident) {
+func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.Ident) {
 	// If the next parameter is ")", then there are no parameters
 	if p.peekTokenIs(token.RPAREN) {
 		p.nextToken()
 		return map[string]ast.Expr{}, nil, nil
 	}
 	defaults := map[string]ast.Expr{}
-	params := make([]*ast.Ident, 0)
+	params := make([]ast.FuncParam, 0)
 	var restParam *ast.Ident
 	p.nextToken()
 	p.eatNewlines()
@@ -410,6 +412,34 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 			continue
 		}
 
+		// Check for object destructuring parameter: {a, b}
+		if p.curTokenIs(token.LBRACE) {
+			param := p.parseObjectDestructureParam()
+			if param == nil {
+				return nil, nil, nil
+			}
+			params = append(params, param)
+			if p.curTokenIs(token.COMMA) {
+				p.nextToken()
+				p.eatNewlines()
+			}
+			continue
+		}
+
+		// Check for array destructuring parameter: [a, b]
+		if p.curTokenIs(token.LBRACKET) {
+			param := p.parseArrayDestructureParam()
+			if param == nil {
+				return nil, nil, nil
+			}
+			params = append(params, param)
+			if p.curTokenIs(token.COMMA) {
+				p.nextToken()
+				p.eatNewlines()
+			}
+			continue
+		}
+
 		if !p.curTokenIs(token.IDENT) {
 			p.setTokenError(p.curToken, "expected an identifier (got %s)", p.curToken.Literal)
 			return nil, nil, nil
@@ -436,6 +466,139 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []*ast.Ident, *ast.Iden
 		}
 	}
 	return defaults, params, restParam
+}
+
+// parseObjectDestructureParam parses an object destructuring parameter: {a, b, c: alias = default}
+func (p *Parser) parseObjectDestructureParam() *ast.ObjectDestructureParam {
+	lbrace := p.curToken.StartPosition
+	bindings := []ast.DestructureBinding{}
+
+	p.nextToken() // move past '{'
+	p.eatNewlines()
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if p.cancelled() {
+			return nil
+		}
+		p.eatNewlines()
+
+		// After eating newlines, check if we reached the closing brace
+		if p.curTokenIs(token.RBRACE) {
+			break
+		}
+
+		if !p.curTokenIs(token.IDENT) {
+			p.setTokenError(p.curToken, "expected identifier in destructuring pattern")
+			return nil
+		}
+
+		binding := ast.DestructureBinding{Key: p.curToken.Literal}
+		p.nextToken()
+
+		// Check for alias: {key: alias}
+		if p.curTokenIs(token.COLON) {
+			p.nextToken() // move past ':'
+			if !p.curTokenIs(token.IDENT) {
+				p.setTokenError(p.curToken, "expected identifier after ':' in destructuring pattern")
+				return nil
+			}
+			binding.Alias = p.curToken.Literal
+			p.nextToken()
+		}
+
+		// Check for default value: {key = value} or {key: alias = value}
+		if p.curTokenIs(token.ASSIGN) {
+			p.nextToken() // move past '='
+			p.eatNewlines()
+			expr := p.parseExpression(LOWEST)
+			if expr == nil {
+				return nil
+			}
+			binding.Default = expr
+			p.nextToken()
+		}
+
+		bindings = append(bindings, binding)
+
+		if p.curTokenIs(token.COMMA) {
+			p.nextToken()
+			p.eatNewlines()
+		}
+	}
+
+	if !p.curTokenIs(token.RBRACE) {
+		p.setTokenError(p.curToken, "expected '}' in destructuring pattern")
+		return nil
+	}
+	rbrace := p.curToken.StartPosition
+	p.nextToken() // move past '}'
+
+	return &ast.ObjectDestructureParam{
+		Lbrace:   lbrace,
+		Bindings: bindings,
+		Rbrace:   rbrace,
+	}
+}
+
+// parseArrayDestructureParam parses an array destructuring parameter: [a, b = default]
+func (p *Parser) parseArrayDestructureParam() *ast.ArrayDestructureParam {
+	lbrack := p.curToken.StartPosition
+	elements := []ast.ArrayDestructureElement{}
+
+	p.nextToken() // move past '['
+	p.eatNewlines()
+
+	for !p.curTokenIs(token.RBRACKET) && !p.curTokenIs(token.EOF) {
+		if p.cancelled() {
+			return nil
+		}
+		p.eatNewlines()
+
+		// After eating newlines, check if we reached the closing bracket
+		if p.curTokenIs(token.RBRACKET) {
+			break
+		}
+
+		if !p.curTokenIs(token.IDENT) {
+			p.setTokenError(p.curToken, "expected identifier in array destructuring pattern")
+			return nil
+		}
+
+		elem := ast.ArrayDestructureElement{Name: p.newIdent(p.curToken)}
+		p.nextToken()
+
+		// Check for default value: [a = value]
+		if p.curTokenIs(token.ASSIGN) {
+			p.nextToken() // move past '='
+			p.eatNewlines()
+			expr := p.parseExpression(LOWEST)
+			if expr == nil {
+				return nil
+			}
+			elem.Default = expr
+			p.nextToken()
+		}
+
+		elements = append(elements, elem)
+
+		if p.curTokenIs(token.COMMA) {
+			p.nextToken()
+			p.eatNewlines()
+		}
+	}
+
+	if !p.curTokenIs(token.RBRACKET) {
+		p.setTokenError(p.curToken, "expected ']' in array destructuring pattern")
+		return nil
+	}
+	rbrack := p.curToken.StartPosition
+	p.nextToken() // move past ']'
+
+	return &ast.ArrayDestructureParam{
+		Lbrack:   lbrack,
+		Elements: elements,
+		Rbrack:   rbrack,
+	}
 }
 
 func (p *Parser) parseSpread() (ast.Node, bool) {

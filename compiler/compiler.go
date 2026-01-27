@@ -358,10 +358,6 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compilePipe(node); err != nil {
 			return err
 		}
-	case *ast.Ternary:
-		if err := c.compileTernary(node); err != nil {
-			return err
-		}
 	case *ast.Slice:
 		if err := c.compileSlice(node); err != nil {
 			return err
@@ -696,6 +692,116 @@ func (c *Compiler) compileArrayDestructure(node *ast.ArrayDestructure) error {
 	return nil
 }
 
+// emitDestructurePreamble emits bytecode to destructure a function parameter.
+// The parameter at paramIdx contains the value to destructure, and the
+// destructured values are stored into local variables.
+func (c *Compiler) emitDestructurePreamble(param ast.FuncParam, paramIdx int) error {
+	switch p := param.(type) {
+	case *ast.ObjectDestructureParam:
+		return c.emitObjectDestructurePreamble(p, paramIdx)
+	case *ast.ArrayDestructureParam:
+		return c.emitArrayDestructurePreamble(p, paramIdx)
+	}
+	return nil
+}
+
+// emitObjectDestructurePreamble emits bytecode to destructure an object parameter.
+func (c *Compiler) emitObjectDestructurePreamble(param *ast.ObjectDestructureParam, paramIdx int) error {
+	// Load the parameter value onto the stack
+	c.emit(op.LoadFast, uint16(paramIdx))
+
+	// For each binding, load the property and store it in a variable
+	for _, binding := range param.Bindings {
+		// Duplicate the object on the stack (we need it for each property access)
+		c.emit(op.Copy, 0)
+
+		// Load the property - use LoadAttrOrNil if there's a default to avoid errors
+		if binding.Default != nil {
+			c.emit(op.LoadAttrOrNil, c.current.addName(binding.Key))
+		} else {
+			c.emit(op.LoadAttr, c.current.addName(binding.Key))
+		}
+
+		// Handle default value if present
+		if binding.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(binding.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(jumpPos, delta)
+		}
+
+		// Determine the variable name (alias if provided, otherwise key)
+		varName := binding.Alias
+		if varName == "" {
+			varName = binding.Key
+		}
+
+		// Find the variable (already inserted in symbol table during setup)
+		resolution, found := c.current.symbols.Resolve(varName)
+		if !found {
+			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
+		}
+		c.emit(op.StoreFast, resolution.symbol.Index())
+	}
+
+	// Pop the remaining object from the stack
+	c.emit(op.PopTop)
+	return nil
+}
+
+// emitArrayDestructurePreamble emits bytecode to destructure an array parameter.
+func (c *Compiler) emitArrayDestructurePreamble(param *ast.ArrayDestructureParam, paramIdx int) error {
+	elements := param.Elements
+
+	// Load the parameter value onto the stack
+	c.emit(op.LoadFast, uint16(paramIdx))
+
+	// Emit the Unpack opcode to unpack the array onto the stack
+	c.emit(op.Unpack, uint16(len(elements)))
+
+	// Store each value in reverse order (like MultiVar)
+	for i := len(elements) - 1; i >= 0; i-- {
+		element := elements[i]
+		varName := element.Name.Name
+
+		// Handle default value if present
+		if element.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(element.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(jumpPos, delta)
+		}
+
+		// Find the variable (already inserted in symbol table during setup)
+		resolution, found := c.current.symbols.Resolve(varName)
+		if !found {
+			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
+		}
+		c.emit(op.StoreFast, resolution.symbol.Index())
+	}
+	return nil
+}
+
 func (c *Compiler) compileSwitch(node *ast.Switch) error {
 	// Compile the switch expression
 	if err := c.compile(node.Value); err != nil {
@@ -809,40 +915,6 @@ func (c *Compiler) compileSlice(node *ast.Slice) error {
 		}
 	}
 	c.emit(op.Slice)
-	return nil
-}
-
-func (c *Compiler) compileTernary(node *ast.Ternary) error {
-	// evaluate the condition and then conditionally jump to the false case
-	if err := c.compile(node.Cond); err != nil {
-		return err
-	}
-	jumpIfFalsePos := c.emit(op.PopJumpForwardIfFalse, Placeholder)
-
-	// true case execution, then jump over false case
-	if err := c.compile(node.IfTrue); err != nil {
-		return err
-	}
-	trueCaseEndPos := c.emit(op.JumpForward, Placeholder)
-
-	// set the jump amount to reach the beginning of the false case
-	falseCaseDelta, err := c.calculateDelta(jumpIfFalsePos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(jumpIfFalsePos, falseCaseDelta)
-
-	// false case execution
-	if err := c.compile(node.IfFalse); err != nil {
-		return err
-	}
-
-	// set the jump amount for the end of the true case
-	endDelta, err := c.calculateDelta(trueCaseEndPos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(trueCaseEndPos, endDelta)
 	return nil
 }
 
@@ -1317,12 +1389,35 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	// code object instead of the parent.
 	c.current = code
 
-	// Make it quick to look up the index of a parameter
+	// Process parameters - generate synthetic names for destructured params
+	// and track which params need destructuring preamble
+	type destructureInfo struct {
+		param ast.FuncParam
+		index int // original parameter index
+	}
 	paramsIdx := map[string]int{}
 	params := make([]string, len(node.Params))
+	destructureParams := make([]destructureInfo, 0) // params that need destructuring preamble
 	for i, p := range node.Params {
-		params[i] = p.Name
-		paramsIdx[p.Name] = i
+		switch param := p.(type) {
+		case *ast.Ident:
+			params[i] = param.Name
+			paramsIdx[param.Name] = i
+		case *ast.ObjectDestructureParam:
+			// Generate synthetic name for the positional parameter
+			syntheticName := fmt.Sprintf("__destructure_%d", i)
+			params[i] = syntheticName
+			paramsIdx[syntheticName] = i
+			destructureParams = append(destructureParams, destructureInfo{param: p, index: i})
+		case *ast.ArrayDestructureParam:
+			// Generate synthetic name for the positional parameter
+			syntheticName := fmt.Sprintf("__destructure_%d", i)
+			params[i] = syntheticName
+			paramsIdx[syntheticName] = i
+			destructureParams = append(destructureParams, destructureInfo{param: p, index: i})
+		default:
+			return c.formatError(fmt.Sprintf("unexpected parameter type: %T", p), node.Pos())
+		}
 	}
 
 	// Build an array of default values for parameters, supporting only
@@ -1369,14 +1464,17 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		}
 	}
 
-	// Add the parameter names to the symbol table
-	for _, arg := range node.Params {
-		if _, err := code.symbols.InsertVariable(arg.Name); err != nil {
+	// Add all parameter names to the symbol table (including synthetic ones)
+	for _, paramName := range params {
+		if _, err := code.symbols.InsertVariable(paramName); err != nil {
 			return err
 		}
 	}
 
-	// Add rest parameter to symbol table if present
+	// Add rest parameter to symbol table if present.
+	// IMPORTANT: This must come before destructured variable names because
+	// the VM places the rest param value at index `paramsCount`, right after
+	// the regular parameters.
 	var restParamName string
 	if restParam := node.RestParam; restParam != nil {
 		restParamName = restParam.Name
@@ -1385,11 +1483,30 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		}
 	}
 
+	// Add all destructured variable names to the symbol table.
+	// These come after rest param since the destructuring preamble will
+	// store extracted values into these local variables.
+	for _, di := range destructureParams {
+		for _, name := range di.param.ParamNames() {
+			if _, err := code.symbols.InsertVariable(name); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Add the function's own name to its symbol table. This supports recursive
 	// calls to the function. Later when we create the function object, we'll
 	// add the object value to the table.
 	if code.isNamed {
 		if _, err := code.symbols.InsertConstant(functionName); err != nil {
+			return err
+		}
+	}
+
+	// Emit destructuring preamble for any destructured parameters
+	// This runs at the start of the function to extract values into local vars
+	for _, di := range destructureParams {
+		if err := c.emitDestructurePreamble(di.param, di.index); err != nil {
 			return err
 		}
 	}
@@ -1702,6 +1819,8 @@ func (c *Compiler) compileInfix(node *ast.Infix) error {
 		c.emit(op.BinaryOp, uint16(op.RShift))
 	case "&":
 		c.emit(op.BinaryOp, uint16(op.BitwiseAnd))
+	case "^":
+		c.emit(op.BinaryOp, uint16(op.Xor))
 	case ">":
 		c.emit(op.CompareOp, uint16(op.GreaterThan))
 	case ">=":

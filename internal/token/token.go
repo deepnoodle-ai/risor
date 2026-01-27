@@ -60,6 +60,7 @@ const (
 	ASTERISK        Type = "*"
 	ASTERISK_EQUALS Type = "*="
 	BACKTICK        Type = "`"
+	CARET           Type = "^"
 	BANG            Type = "!"
 	CASE            Type = "case"
 	COLON           Type = ":"

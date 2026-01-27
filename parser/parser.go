@@ -25,8 +25,8 @@ type (
 //  2. Newlines at start of line terminate expressions: "x\ny" parses as two statements
 //  3. Inside parentheses: leading/trailing newlines allowed: "(\nx + y\n)"
 //  4. Inside brackets/braces: newlines after commas allowed: "[1,\n2]"
-//  5. Ternary expressions: newlines allowed around ? and : operators
-//  6. Postfix operators (++, --) must be on same line as operand
+//  5. Postfix operators (++, --) must be on same line as operand
+//  6. Chaining operators (., ?.) can follow newlines: "x\n.method()"
 //
 // This policy follows "trailing operator continues" semantics common in many
 // languages, avoiding ambiguity about whether "x\n+ y" means one expression
@@ -97,11 +97,6 @@ type Parser struct {
 	// infix-based syntax.
 	infixParseFns map[token.Type]infixParseFn
 
-	// are we inside a ternary expression?
-	//
-	// Nested ternary expressions are illegal :)
-	tern bool
-
 	// The filename of the input
 	filename string
 
@@ -162,6 +157,7 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	p.registerInfix(token.ASTERISK_EQUALS, p.parseAssign)
 	p.registerInfix(token.ASTERISK, p.parseInfixExpr)
 	p.registerInfix(token.AMPERSAND, p.parseInfixExpr)
+	p.registerInfix(token.CARET, p.parseInfixExpr)
 	p.registerInfix(token.EQ, p.parseInfixExpr)
 	p.registerInfix(token.GT_EQUALS, p.parseInfixExpr)
 	p.registerInfix(token.GT_GT, p.parseInfixExpr)
@@ -185,7 +181,6 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	p.registerInfix(token.PLUS_EQUALS, p.parseAssign)
 	p.registerInfix(token.PLUS, p.parseInfixExpr)
 	p.registerInfix(token.POW, p.parseInfixExpr)
-	p.registerInfix(token.QUESTION, p.parseTernary)
 	p.registerInfix(token.SLASH_EQUALS, p.parseAssign)
 	p.registerInfix(token.SLASH, p.parseInfixExpr)
 
@@ -452,6 +447,25 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 			return nil
 		}
 	}
+	// Check for chaining operators across newlines (rule 7 in newline policy).
+	// This allows: obj\n.method1()\n.method2()
+	for p.skipNewlinesForChaining() {
+		// Found a chaining operator after newlines - continue parsing
+		if precedence >= p.peekPrecedence() {
+			break
+		}
+		infix := p.infixParseFns[p.peekToken.Type]
+		if infix == nil {
+			break
+		}
+		if err := p.nextToken(); err != nil {
+			return nil
+		}
+		leftExp, ok = infix(leftExp)
+		if !ok {
+			return nil
+		}
+	}
 	// Check for postfix operators (++ or --)
 	if p.peekTokenIs(token.PLUS_PLUS) || p.peekTokenIs(token.MINUS_MINUS) {
 		p.nextToken()
@@ -585,6 +599,51 @@ func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
 	}
 
 	// Target not found - restore state
+	p.curToken = savedCur
+	p.peekToken = savedPeek
+	p.l.RestoreState(savedLexer)
+	return false
+}
+
+// isChainingOperator returns true for operators that unambiguously continue
+// an expression when they appear after a newline. These are "safe" to allow
+// across newlines because they can only be infix operators (never prefix).
+func isChainingOperator(t token.Type) bool {
+	return t == token.PERIOD || t == token.QUESTION_DOT
+}
+
+// skipNewlinesForChaining checks if a chaining operator (. or ?.) follows
+// newlines. If found, it skips the newlines and returns true (with peekToken
+// now being the chaining operator). If not found, it returns false without
+// consuming any tokens. This enables method chaining across newlines.
+func (p *Parser) skipNewlinesForChaining() bool {
+	// If peek is not a newline, nothing to do
+	if !p.peekTokenIs(token.NEWLINE) {
+		return false
+	}
+	// Save parser and lexer state
+	savedCur := p.curToken
+	savedPeek := p.peekToken
+	savedLexer := p.l.SaveState()
+
+	// Skip through newlines
+	for p.peekTokenIs(token.NEWLINE) {
+		if err := p.nextToken(); err != nil {
+			// Restore state on error
+			p.curToken = savedCur
+			p.peekToken = savedPeek
+			p.l.RestoreState(savedLexer)
+			return false
+		}
+	}
+
+	// Check if we found a chaining operator
+	if isChainingOperator(p.peekToken.Type) {
+		// Success - keep the new state (newlines consumed)
+		return true
+	}
+
+	// Not a chaining operator - restore state
 	p.curToken = savedCur
 	p.peekToken = savedPeek
 	p.l.RestoreState(savedLexer)

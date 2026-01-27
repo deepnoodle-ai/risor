@@ -19,6 +19,7 @@ const (
 	NumberTypeDecimal NumberType = "decimal"
 	NumberTypeHex     NumberType = "hex"
 	NumberTypeOctal   NumberType = "octal"
+	NumberTypeBinary  NumberType = "binary"
 )
 
 // Lexer holds our object-state.
@@ -183,6 +184,8 @@ func (l *Lexer) Next() (token.Token, error) {
 		} else {
 			tok = l.newToken(token.PIPE, string(l.ch))
 		}
+	case rune('^'):
+		tok = l.newToken(token.CARET, string(l.ch))
 	case rune('='):
 		if l.peekChar() == rune('=') {
 			ch := l.ch
@@ -482,7 +485,7 @@ func (l *Lexer) skipMultiLineComment() {
 	l.skipTabsAndSpaces()
 }
 
-// Read a decimal, hex, or octal number
+// Read a decimal, hex, octal, or binary number
 func (l *Lexer) readNumber(onlyDecimal bool) (NumberType, string, error) {
 	str := string(l.ch)
 	// We usually just accept digits
@@ -493,6 +496,10 @@ func (l *Lexer) readNumber(onlyDecimal bool) (NumberType, string, error) {
 			// 0x prefix => hexadecimal
 			accept = "0x123456789abcdefABCDEF"
 			numberType = NumberTypeHex
+		} else if l.ch == '0' && l.peekChar() == 'b' {
+			// 0b prefix => binary
+			accept = "0b01"
+			numberType = NumberTypeBinary
 		} else if l.ch == '0' && l.peekChar() != '.' {
 			// 0 prefix => octal
 			accept = "01234567"

@@ -19,6 +19,14 @@ import (
 // - Function literals
 // - Spread expressions
 
+// getParamName extracts the name from a FuncParam (assumes it's an Ident)
+func getParamName(p ast.FuncParam) string {
+	if ident, ok := p.(*ast.Ident); ok {
+		return ident.Name
+	}
+	return ""
+}
+
 func TestInt(t *testing.T) {
 	tests := []struct {
 		input   string
@@ -32,6 +40,11 @@ func TestInt(t *testing.T) {
 		{"0x10", 16, "0x10"},
 		{"0x1a", 26, "0x1a"},
 		{"0x1A", 26, "0x1A"},
+		{"0b0", 0, "0b0"},
+		{"0b1", 1, "0b1"},
+		{"0b10", 2, "0b10"},
+		{"0b1010", 10, "0b1010"},
+		{"0b11111111", 255, "0b11111111"},
 		{"010", 8, "010"},
 		{"011", 9, "011"},
 		{"0755", 493, "0755"},
@@ -464,8 +477,8 @@ func TestFunc(t *testing.T) {
 	// Verify params
 	params := function.Params
 	assert.Len(t, params, 2)
-	testLiteralExpression(t, params[0], "x")
-	testLiteralExpression(t, params[1], "y")
+	assert.Equal(t, "x", getParamName(params[0]))
+	assert.Equal(t, "y", getParamName(params[1]))
 
 	// Verify defaults
 	assert.Len(t, function.Defaults, 1)
@@ -489,8 +502,8 @@ func TestFuncAST(t *testing.T) {
 	assert.NotNil(t, fn.Name)
 	assert.Equal(t, "add", fn.Name.Name)
 	assert.Len(t, fn.Params, 2)
-	assert.Equal(t, "a", fn.Params[0].Name)
-	assert.Equal(t, "b", fn.Params[1].Name)
+	assert.Equal(t, "a", getParamName(fn.Params[0]))
+	assert.Equal(t, "b", getParamName(fn.Params[1]))
 	assert.Nil(t, fn.RestParam)
 	assert.NotNil(t, fn.Body)
 	assert.Len(t, fn.Body.Stmts, 1)
@@ -514,8 +527,8 @@ func TestFuncParams(t *testing.T) {
 			function, ok := program.First().(*ast.Func)
 			assert.True(t, ok)
 			assert.Len(t, function.Params, len(tt.expectedParam))
-			for i, ident := range tt.expectedParam {
-				testLiteralExpression(t, function.Params[i], ident)
+			for i, expectedName := range tt.expectedParam {
+				assert.Equal(t, expectedName, getParamName(function.Params[i]))
 			}
 		})
 	}
@@ -535,8 +548,8 @@ func TestFuncParamsWithNewlines(t *testing.T) {
 	function, ok := program.First().(*ast.Func)
 	assert.True(t, ok)
 	assert.Len(t, function.Params, 2)
-	assert.Equal(t, "a", function.Params[0].Name)
-	assert.Equal(t, "b", function.Params[1].Name)
+	assert.Equal(t, "a", getParamName(function.Params[0]))
+	assert.Equal(t, "b", getParamName(function.Params[1]))
 	assert.Len(t, function.Defaults, 1)
 	assert.Contains(t, function.Defaults, "b")
 	assert.NotNil(t, function.RestParam)
@@ -562,8 +575,8 @@ func TestRestParameter(t *testing.T) {
 		fn, ok := program.First().(*ast.Func)
 		assert.True(t, ok)
 		assert.Len(t, fn.Params, 2)
-		assert.Equal(t, "a", fn.Params[0].Name)
-		assert.Equal(t, "b", fn.Params[1].Name)
+		assert.Equal(t, "a", getParamName(fn.Params[0]))
+		assert.Equal(t, "b", getParamName(fn.Params[1]))
 		assert.NotNil(t, fn.RestParam)
 		assert.Equal(t, "rest", fn.RestParam.Name)
 	})
@@ -593,6 +606,369 @@ func TestRestParameterErrors(t *testing.T) {
 		t.Run(tt.input, func(t *testing.T) {
 			_, err := Parse(context.Background(), tt.input, nil)
 			assert.NotNil(t, err)
+			assert.Contains(t, err.Error(), tt.expected)
+		})
+	}
+}
+
+// =============================================================================
+// DESTRUCTURING PARAMETERS
+// =============================================================================
+
+func TestObjectDestructureParam(t *testing.T) {
+	tests := []struct {
+		input         string
+		expectedNames []string
+		desc          string
+	}{
+		{`function foo({a, b}) { a + b }`, []string{"a", "b"}, "basic object destructure"},
+		{`function foo({x}) { x }`, []string{"x"}, "single binding"},
+		{`function foo({a, b, c}) { a }`, []string{"a", "b", "c"}, "three bindings"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+
+			fn, ok := program.First().(*ast.Func)
+			assert.True(t, ok, "Expected Func, got %T", program.First())
+			assert.Len(t, fn.Params, 1)
+
+			dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+			assert.True(t, ok, "Expected ObjectDestructureParam, got %T", fn.Params[0])
+			assert.Len(t, dp.Bindings, len(tt.expectedNames))
+
+			names := dp.ParamNames()
+			assert.Equal(t, tt.expectedNames, names)
+		})
+	}
+}
+
+func TestObjectDestructureParamWithDefaults(t *testing.T) {
+	program, err := Parse(context.Background(), `function foo({a, b = 10}) { a + b }`, nil)
+	assert.Nil(t, err)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, fn.Params, 1)
+
+	dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+	assert.True(t, ok, "Expected ObjectDestructureParam, got %T", fn.Params[0])
+	assert.Len(t, dp.Bindings, 2)
+	assert.Equal(t, "a", dp.Bindings[0].Key)
+	assert.Nil(t, dp.Bindings[0].Default)
+	assert.Equal(t, "b", dp.Bindings[1].Key)
+	assert.NotNil(t, dp.Bindings[1].Default)
+}
+
+func TestObjectDestructureParamWithAlias(t *testing.T) {
+	program, err := Parse(context.Background(), `function foo({name: n}) { n }`, nil)
+	assert.Nil(t, err)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, fn.Params, 1)
+
+	dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+	assert.True(t, ok, "Expected ObjectDestructureParam, got %T", fn.Params[0])
+	assert.Len(t, dp.Bindings, 1)
+	assert.Equal(t, "name", dp.Bindings[0].Key)
+	assert.Equal(t, "n", dp.Bindings[0].Alias)
+}
+
+func TestArrayDestructureParam(t *testing.T) {
+	tests := []struct {
+		input         string
+		expectedNames []string
+		desc          string
+	}{
+		{`function foo([a, b]) { a + b }`, []string{"a", "b"}, "basic array destructure"},
+		{`function foo([x]) { x }`, []string{"x"}, "single element"},
+		{`function foo([a, b, c]) { a }`, []string{"a", "b", "c"}, "three elements"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+
+			fn, ok := program.First().(*ast.Func)
+			assert.True(t, ok, "Expected Func, got %T", program.First())
+			assert.Len(t, fn.Params, 1)
+
+			dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+			assert.True(t, ok, "Expected ArrayDestructureParam, got %T", fn.Params[0])
+			assert.Len(t, dp.Elements, len(tt.expectedNames))
+
+			names := dp.ParamNames()
+			assert.Equal(t, tt.expectedNames, names)
+		})
+	}
+}
+
+func TestArrayDestructureParamWithDefaults(t *testing.T) {
+	program, err := Parse(context.Background(), `function foo([a, b = 10]) { a + b }`, nil)
+	assert.Nil(t, err)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, fn.Params, 1)
+
+	dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+	assert.True(t, ok, "Expected ArrayDestructureParam, got %T", fn.Params[0])
+	assert.Len(t, dp.Elements, 2)
+	assert.Equal(t, "a", dp.Elements[0].Name.Name)
+	assert.Nil(t, dp.Elements[0].Default)
+	assert.Equal(t, "b", dp.Elements[1].Name.Name)
+	assert.NotNil(t, dp.Elements[1].Default)
+}
+
+func TestMixedDestructureAndRegularParams(t *testing.T) {
+	program, err := Parse(context.Background(), `function foo(x, {a, b}, [c, d], y) { x }`, nil)
+	assert.Nil(t, err)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, fn.Params, 4)
+
+	// First param: regular identifier
+	_, ok = fn.Params[0].(*ast.Ident)
+	assert.True(t, ok, "Expected Ident for first param")
+
+	// Second param: object destructure
+	_, ok = fn.Params[1].(*ast.ObjectDestructureParam)
+	assert.True(t, ok, "Expected ObjectDestructureParam for second param")
+
+	// Third param: array destructure
+	_, ok = fn.Params[2].(*ast.ArrayDestructureParam)
+	assert.True(t, ok, "Expected ArrayDestructureParam for third param")
+
+	// Fourth param: regular identifier
+	_, ok = fn.Params[3].(*ast.Ident)
+	assert.True(t, ok, "Expected Ident for fourth param")
+}
+
+func TestArrowFunctionWithDestructureParams(t *testing.T) {
+	// Note: Arrow function destructuring requires the pattern to be parsed as Map/List first
+	// then converted. This test verifies basic support.
+	program, err := Parse(context.Background(), `([a, b]) => a + b`, nil)
+	assert.Nil(t, err)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, fn.Params, 1)
+
+	_, ok = fn.Params[0].(*ast.ArrayDestructureParam)
+	assert.True(t, ok, "Expected ArrayDestructureParam for arrow param")
+}
+
+// =============================================================================
+// DESTRUCTURING PARAMETERS - EDGE CASES
+// =============================================================================
+
+// Note: Multi-line destructure patterns in parameter lists are not supported.
+// Destructure patterns must be on a single line: function foo({a, b}) { ... }
+
+func TestDestructureParamEdgeCases(t *testing.T) {
+	t.Run("empty object destructure", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({}) { 1 }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 0)
+	})
+
+	t.Run("empty array destructure", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo([]) { 1 }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Elements, 0)
+	})
+
+	t.Run("single binding object destructure", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({x}) { x }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 1)
+		assert.Equal(t, "x", dp.Bindings[0].Key)
+	})
+
+	t.Run("trailing comma in object destructure", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({a, b,}) { a }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 2)
+	})
+
+	t.Run("trailing comma in array destructure", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo([a, b,]) { a }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Elements, 2)
+	})
+
+	t.Run("all bindings with defaults", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({a = 1, b = 2, c = 3}) { a }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 3)
+		for _, binding := range dp.Bindings {
+			assert.NotNil(t, binding.Default, "Expected default for %s", binding.Key)
+		}
+	})
+
+	t.Run("alias with default", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({name: n = "default"}) { n }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 1)
+		assert.Equal(t, "name", dp.Bindings[0].Key)
+		assert.Equal(t, "n", dp.Bindings[0].Alias)
+		assert.NotNil(t, dp.Bindings[0].Default)
+	})
+}
+
+func TestDestructureParamWithRestParam(t *testing.T) {
+	program, err := Parse(context.Background(), `function foo({a, b}, ...rest) { a }`, nil)
+	assert.Nil(t, err)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, fn.Params, 1)
+	assert.NotNil(t, fn.RestParam)
+	assert.Equal(t, "rest", fn.RestParam.Name)
+
+	_, ok = fn.Params[0].(*ast.ObjectDestructureParam)
+	assert.True(t, ok)
+}
+
+func TestDestructureParamString(t *testing.T) {
+	// Test that String() methods work correctly
+	t.Run("object destructure string", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({a, b}) { a }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Equal(t, "{a, b}", dp.String())
+	})
+
+	t.Run("object destructure with alias string", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({name: n}) { n }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Equal(t, "{name: n}", dp.String())
+	})
+
+	t.Run("object destructure with default string", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo({a = 1}) { a }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Equal(t, "{a = 1}", dp.String())
+	})
+
+	t.Run("array destructure string", func(t *testing.T) {
+		program, err := Parse(context.Background(), `function foo([a, b]) { a }`, nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+		assert.Equal(t, "[a, b]", dp.String())
+	})
+}
+
+func TestDestructureParamInFuncString(t *testing.T) {
+	// Test that Func.String() correctly formats destructure params
+	program, err := Parse(context.Background(), `function foo({a, b}, [c, d]) { a }`, nil)
+	assert.Nil(t, err)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+
+	str := fn.String()
+	assert.Contains(t, str, "function foo({a, b}, [c, d])")
+}
+
+func TestDestructureParamErrors(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+		desc     string
+	}{
+		{
+			`function foo({123}) { 1 }`,
+			"expected identifier",
+			"number in object destructure",
+		},
+		{
+			`function foo([123]) { 1 }`,
+			"expected identifier",
+			"number in array destructure",
+		},
+		{
+			`function foo({a +}) { 1 }`,
+			"expected",
+			"invalid token in object destructure",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.NotNil(t, err, "Expected error for: %s", tt.input)
 			assert.Contains(t, err.Error(), tt.expected)
 		})
 	}

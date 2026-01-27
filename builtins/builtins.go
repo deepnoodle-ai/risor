@@ -374,6 +374,33 @@ func Byte(ctx context.Context, args ...object.Object) (object.Object, error) {
 	}
 }
 
+func Bytes(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) > 1 {
+		return nil, fmt.Errorf("bytes: expected 0-1 arguments, got %d", len(args))
+	}
+	if len(args) == 0 {
+		return object.NewBytes(nil), nil
+	}
+	switch obj := args[0].(type) {
+	case *object.Bytes:
+		return obj.Clone(), nil
+	case *object.String:
+		return object.NewBytes([]byte(obj.Value())), nil
+	case *object.List:
+		data := make([]byte, len(obj.Value()))
+		for i, item := range obj.Value() {
+			b, err := object.AsByte(item)
+			if err != nil {
+				return nil, object.TypeErrorf("bytes() list items must be integers 0-255 (got %s at index %d)", item.Type(), i)
+			}
+			data[i] = b
+		}
+		return object.NewBytes(data), nil
+	default:
+		return nil, object.TypeErrorf("bytes() unsupported argument (%s given)", args[0].Type())
+	}
+}
+
 func Int(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if len(args) > 1 {
 		return nil, fmt.Errorf("int: expected 0-1 arguments, got %d", len(args))
@@ -536,6 +563,7 @@ func Builtins() map[string]object.Object {
 		"assert":   object.NewBuiltin("assert", Assert),
 		"bool":     object.NewBuiltin("bool", Bool),
 		"byte":     object.NewBuiltin("byte", Byte),
+		"bytes":    object.NewBuiltin("bytes", Bytes),
 		"call":     object.NewBuiltin("call", Call),
 		"chunk":    object.NewBuiltin("chunk", Chunk),
 		"coalesce": object.NewBuiltin("coalesce", Coalesce),
