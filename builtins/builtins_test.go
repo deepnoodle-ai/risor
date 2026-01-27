@@ -139,6 +139,43 @@ func TestSortedWithFunc(t *testing.T) {
 		}))
 }
 
+func TestSortedWithBuiltin(t *testing.T) {
+	ctx := context.Background()
+	input := object.NewList([]object.Object{
+		object.NewInt(3),
+		object.NewInt(1),
+		object.NewInt(2),
+		object.NewInt(99),
+		object.NewInt(0),
+	})
+
+	// Create a builtin comparator for descending order
+	descending := object.NewBuiltin("descending", func(ctx context.Context, args ...object.Object) (object.Object, error) {
+		if len(args) != 2 {
+			return nil, object.TypeErrorf("expected 2 arguments, got %d", len(args))
+		}
+		a, ok1 := args[0].(*object.Int)
+		b, ok2 := args[1].(*object.Int)
+		if !ok1 || !ok2 {
+			return nil, object.TypeErrorf("expected int arguments")
+		}
+		// Return true if b < a (descending order)
+		return object.NewBool(b.Value() < a.Value()), nil
+	})
+
+	result, err := Sorted(ctx, input, descending)
+	assert.Nil(t, err)
+
+	expected := object.NewList([]object.Object{
+		object.NewInt(99),
+		object.NewInt(3),
+		object.NewInt(2),
+		object.NewInt(1),
+		object.NewInt(0),
+	})
+	assertObjectEqual(t, result, expected)
+}
+
 func TestCoalesce(t *testing.T) {
 	ctx := context.Background()
 	tests := []testCase{

@@ -261,17 +261,13 @@ func Sorted(ctx context.Context, args ...object.Object) (object.Object, error) {
 	resultItems := make([]object.Object, len(items))
 	copy(resultItems, items)
 	if len(args) == 2 {
-		fn, ok := args[1].(*object.Closure)
+		callable, ok := args[1].(object.Callable)
 		if !ok {
 			return nil, fmt.Errorf("type error: sorted() expected a function as the second argument (%s given)", args[1].Type())
 		}
-		callFunc, found := object.GetCallFunc(ctx)
-		if !found {
-			return nil, fmt.Errorf("eval error: context did not contain a call function")
-		}
 		var sortErr error
 		sort.SliceStable(resultItems, func(i, j int) bool {
-			result, err := callFunc(ctx, fn, []object.Object{resultItems[i], resultItems[j]})
+			result, err := callable.Call(ctx, resultItems[i], resultItems[j])
 			if err != nil {
 				sortErr = err
 				return false
@@ -326,22 +322,11 @@ func Call(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if len(args) < 1 || len(args) > 64 {
 		return nil, fmt.Errorf("call: expected 1-64 arguments, got %d", len(args))
 	}
-	switch fn := args[0].(type) {
-	case *object.Closure:
-		callFunc, found := object.GetCallFunc(ctx)
-		if !found {
-			return nil, fmt.Errorf("eval error: context did not contain a call function")
-		}
-		result, err := callFunc(ctx, fn, args[1:])
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
-	case object.Callable:
-		return fn.Call(ctx, args[1:]...)
-	default:
+	callable, ok := args[0].(object.Callable)
+	if !ok {
 		return nil, fmt.Errorf("type error: call() unsupported argument (%s given)", args[0].Type())
 	}
+	return callable.Call(ctx, args[1:]...)
 }
 
 func Keys(ctx context.Context, args ...object.Object) (object.Object, error) {

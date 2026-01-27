@@ -121,7 +121,16 @@ type Container interface {
 	Len() *Int
 }
 
-// Callable is an interface that exposes a Call method.
+// Callable is an interface for objects that can be invoked as functions.
+// Both *Builtin and *Closure implement this interface, allowing code to
+// call functions without knowing their concrete type.
+//
+// For closures, Call() uses the CallFunc stored in the context (set by the VM)
+// to execute the closure's bytecode. For builtins, Call() invokes the wrapped
+// Go function directly.
+//
+// List methods like Map, Filter, Each, and Reduce accept any Callable,
+// enabling both builtins and closures to be used as callbacks.
 type Callable interface {
 	// Call invokes the callable with the given arguments and returns the result.
 	Call(ctx context.Context, args ...Object) (Object, error)

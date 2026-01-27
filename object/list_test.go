@@ -69,17 +69,21 @@ func TestListPop(t *testing.T) {
 
 	list := NewList([]Object{zero, one, two})
 
-	val, ok := list.Pop(1).(*String)
+	result, err := list.Pop(1)
+	assert.Nil(t, err)
+	val, ok := result.(*String)
 	assert.True(t, ok)
 	assert.Equal(t, val.Value(), "1")
 
-	val, ok = list.Pop(1).(*String)
+	result, err = list.Pop(1)
+	assert.Nil(t, err)
+	val, ok = result.(*String)
 	assert.True(t, ok)
 	assert.Equal(t, val.Value(), "2")
 
-	err, ok := list.Pop(1).(*Error)
-	assert.True(t, ok)
-	assert.Equal(t, err.Message().Value(), "index error: index out of range: 1")
+	_, err = list.Pop(1)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "index error: index out of range: 1")
 }
 
 func TestListAppend(t *testing.T) {
@@ -702,4 +706,220 @@ func TestResolveIntSlice(t *testing.T) {
 	// Negative stop out of range
 	_, _, err = ResolveIntSlice(Slice{Start: NewInt(0), Stop: NewInt(-10)}, 5)
 	assert.NotNil(t, err)
+}
+
+// mockCallFunc creates a context with a CallFunc that invokes the closure.
+// This simulates what the VM does at runtime.
+func mockCallFunc(ctx context.Context) context.Context {
+	return WithCallFunc(ctx, func(ctx context.Context, fn *Closure, args []Object) (Object, error) {
+		// In real usage, this would execute the closure's bytecode.
+		// For testing, we can't actually run closures without the VM,
+		// so we just test with builtins.
+		return nil, nil
+	})
+}
+
+func TestListMapWithBuiltin(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+
+	// Create a builtin that doubles the value
+	double := NewBuiltin("double", func(ctx context.Context, args ...Object) (Object, error) {
+		if len(args) != 1 {
+			return nil, TypeErrorf("expected 1 argument, got %d", len(args))
+		}
+		i, ok := args[0].(*Int)
+		if !ok {
+			return nil, TypeErrorf("expected int, got %s", args[0].Type())
+		}
+		return NewInt(i.Value() * 2), nil
+	})
+
+	result, err := list.Map(ctx, double)
+	assert.Nil(t, err)
+
+	expected := NewList([]Object{NewInt(2), NewInt(4), NewInt(6)})
+	assert.True(t, Equals(result, expected))
+}
+
+func TestListMapNonCallableError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	// Passing a non-callable should error
+	_, err := list.Map(ctx, NewString("not a function"))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "type error")
+	assert.Contains(t, err.Error(), "expected a function")
+}
+
+func TestListFilterWithBuiltin(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3), NewInt(4)})
+
+	// Create a builtin that returns true for even numbers
+	isEven := NewBuiltin("is_even", func(ctx context.Context, args ...Object) (Object, error) {
+		if len(args) != 1 {
+			return nil, TypeErrorf("expected 1 argument, got %d", len(args))
+		}
+		i, ok := args[0].(*Int)
+		if !ok {
+			return False, nil
+		}
+		return NewBool(i.Value()%2 == 0), nil
+	})
+
+	result, err := list.Filter(ctx, isEven)
+	assert.Nil(t, err)
+
+	expected := NewList([]Object{NewInt(2), NewInt(4)})
+	assert.True(t, Equals(result, expected))
+}
+
+func TestListFilterNonCallableError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	// Passing a non-callable should error
+	_, err := list.Filter(ctx, NewInt(42))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "type error")
+	assert.Contains(t, err.Error(), "expected a function")
+}
+
+func TestListEachWithBuiltin(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+
+	// Track which values were visited
+	var visited []int64
+	visitor := NewBuiltin("visitor", func(ctx context.Context, args ...Object) (Object, error) {
+		if len(args) != 1 {
+			return nil, TypeErrorf("expected 1 argument, got %d", len(args))
+		}
+		if i, ok := args[0].(*Int); ok {
+			visited = append(visited, i.Value())
+		}
+		return Nil, nil
+	})
+
+	result, err := list.Each(ctx, visitor)
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+	assert.Equal(t, visited, []int64{1, 2, 3})
+}
+
+func TestListEachNonCallableError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1)})
+
+	// Passing a non-callable should error
+	_, err := list.Each(ctx, NewList(nil))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "type error")
+	assert.Contains(t, err.Error(), "expected a function")
+}
+
+func TestListReduceWithBuiltin(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3), NewInt(4)})
+
+	// Create a builtin that sums two values
+	sum := NewBuiltin("sum", func(ctx context.Context, args ...Object) (Object, error) {
+		if len(args) != 2 {
+			return nil, TypeErrorf("expected 2 arguments, got %d", len(args))
+		}
+		a, ok1 := args[0].(*Int)
+		b, ok2 := args[1].(*Int)
+		if !ok1 || !ok2 {
+			return nil, TypeErrorf("expected int arguments")
+		}
+		return NewInt(a.Value() + b.Value()), nil
+	})
+
+	// Sum with initial value 0
+	result, err := list.Reduce(ctx, NewInt(0), sum)
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(10))
+}
+
+func TestListReduceNonCallableError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	// Passing a non-callable should error
+	_, err := list.Reduce(ctx, NewInt(0), NewFloat(3.14))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "type error")
+	assert.Contains(t, err.Error(), "expected a function")
+}
+
+func TestListReduceEmptyList(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{})
+
+	sum := NewBuiltin("sum", func(ctx context.Context, args ...Object) (Object, error) {
+		return nil, TypeErrorf("should not be called")
+	})
+
+	// Reduce on empty list returns initial value
+	result, err := list.Reduce(ctx, NewInt(42), sum)
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(42))
+}
+
+func TestListMapBuiltinError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	// Create a builtin that always errors
+	alwaysError := NewBuiltin("error", func(ctx context.Context, args ...Object) (Object, error) {
+		return nil, TypeErrorf("intentional error")
+	})
+
+	_, err := list.Map(ctx, alwaysError)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "intentional error")
+}
+
+func TestListFilterBuiltinError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	// Create a builtin that always errors
+	alwaysError := NewBuiltin("error", func(ctx context.Context, args ...Object) (Object, error) {
+		return nil, TypeErrorf("filter error")
+	})
+
+	_, err := list.Filter(ctx, alwaysError)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "filter error")
+}
+
+func TestListEachBuiltinError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	// Create a builtin that always errors
+	alwaysError := NewBuiltin("error", func(ctx context.Context, args ...Object) (Object, error) {
+		return nil, TypeErrorf("each error")
+	})
+
+	_, err := list.Each(ctx, alwaysError)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "each error")
+}
+
+func TestListReduceBuiltinError(t *testing.T) {
+	ctx := mockCallFunc(context.Background())
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	// Create a builtin that always errors
+	alwaysError := NewBuiltin("error", func(ctx context.Context, args ...Object) (Object, error) {
+		return nil, TypeErrorf("reduce error")
+	})
+
+	_, err := list.Reduce(ctx, NewInt(0), alwaysError)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "reduce error")
 }

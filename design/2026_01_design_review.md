@@ -683,9 +683,9 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 - Methods are created on every `GetAttr` call — no caching
 - Each method closure captures `ls` — proper but allocates
 - Argument validation is duplicated in every method
-- `map()`, `filter()`, `reduce()`, `each()` require `GetCallFunc(ctx)` — they invoke user functions
+- `map()`, `filter()`, `reduce()`, `each()` use the `Callable` interface to invoke user functions
 
-**Issue:** The higher-order methods (`map`, `filter`, etc.) have complex control flow. They handle both `*Builtin` and `*Closure` differently. For `*Closure`, they use `GetCallFunc(ctx)` to get the VM's call function. This coupling between `object` and `vm` is indirect but real.
+**Note:** The higher-order methods now use the `Callable` interface uniformly, which simplifies their implementation. Both `*Builtin` and `*Closure` implement `Callable`, so the same code path handles both. The `CallFunc` context mechanism is now an internal implementation detail of `Closure.Call()` — the list methods don't need to access it directly.
 
 ### 18.6 Error Object Complexity
 
@@ -809,37 +809,44 @@ The VM stores its call function in the context so that objects can invoke closur
 
 ### 18.10 Callable Dispatch Bug (Builtin vs Closure)
 
-`list.filter()` and `list.each()` accept `*Builtin` in their type checks, but then invoke:
+**Status: RESOLVED** — All list higher-order methods now use the `Callable` interface uniformly.
 
-```go
-decision, err := callFunc(ctx, fn.(*Closure), filterArgs)
-```
+The list methods (`Map`, `Filter`, `Each`, `Reduce`) now:
+1. Type-assert to `Callable` instead of checking for `*Closure` or `*Builtin` separately
+2. Call `callable.Call(ctx, args...)` which works for both builtins and closures
+3. Return proper type errors for non-callable arguments
 
-If a builtin is passed, this will panic on the type assertion. `list.map()` handles builtins separately, but `filter` and `each` do not.
+This simplifies the code and eliminates the panic bug. The `CallFunc` context mechanism is now only used internally by `Closure.Call()` — external code uses the `Callable` interface.
 
-**Impact:** A user passing a builtin to `filter` or `each` can trigger a runtime panic instead of a recoverable Risor error.
-
-**Proposals:**
-- Use `Callable` everywhere and call `Call(ctx, ...)` instead of special-casing.
-- Or explicitly disallow builtins for these methods and return a type error.
+The `sorted()` builtin also uses `Callable`, allowing both builtins and closures as custom comparators.
 
 ### 18.11 Attribute Name Collisions in Map
 
-Map attributes (`m.keys`, `m.values`, `m.items`) are implemented via `GetAttr`. Keys with the same names are hidden when accessed via dot syntax.
+**Status: RESOLVED** — Keys now take priority over methods in `Map.GetAttr`.
 
-**Impact:** `m.keys` means "method" even if `m["keys"]` exists. The only way to access such keys is bracket syntax.
+Map keys are checked first; methods are only returned when no key matches. This means:
 
-**Proposal:** Document this behavior explicitly or prioritize map keys over method names for attribute access.
+```risor
+let m = {"keys": "my data", "name": "test"}
+m.keys           // "my data" (the key's value)
+m["keys"]        // "my data" (same)
+keys(m)          // ["keys", "name"] (builtin function)
+m.name           // "test"
+m.values()       // method, since no "values" key exists
+```
+
+Use `keys(m)`, `getattr(m, "method")`, or bracket syntax to access methods when a key shadows them.
 
 ### 18.12 Conversion Error Signaling
 
-**Status: RESOLVED** — All `As*` helper functions now return `(T, error)` using Go's standard error type.
+**Status: RESOLVED** — Unified error handling across the conversion and method layer.
 
 The old system had these issues (now fixed):
 
 - **`As*` functions returned `*Error`** — Now return `error` for Go-idiomatic usage
+- **Object methods returned `*Error` as `Object`** — Methods like `String.ReplaceAll`, `Bytes.HasPrefix`, `List.Pop` now return `(Object, error)`. Errors flow through the Go error channel and the VM handles them uniformly.
+- **`unwrapError` helper** — Removed; no longer needed since methods return errors directly
 - **`FromGoType` returned `*Error` as `Object`** — Remains for backward compatibility, but `TypeRegistry.FromGo` is preferred
-- **Mixed error semantics** — Now consistent: `As*` helpers and `TypeRegistry` methods all return Go errors
 
 ### 18.13 Error Equality and Structured Data
 
@@ -865,7 +872,7 @@ The old system had these issues (now fixed):
 | Operation dispatch duplicates logic per type | Medium | Maintainability |
 | Method attributes on Error (callable vs value) | Low | Consistency |
 | Builtin passed to list.filter/each can panic | High | Correctness |
-| Map attribute names shadow keys | Low | Clarity |
+| ~~Map attribute names shadow keys~~ | ~~Low~~ | ~~Clarity~~ | **RESOLVED** — Keys now take priority over methods |
 | ~~Conversion error signaling inconsistent~~ | ~~Medium~~ | ~~Consistency~~ | **RESOLVED** — As* helpers return error |
 | Error equality ignores structured data | Low | Semantics |
 | Public constructors panic on bad inputs | Medium | Safety |
@@ -882,7 +889,7 @@ The old system had these issues (now fixed):
 - [ ] Is the Error attribute-as-method pattern intentional?
 - [ ] Should Int and other primitives be made immutable by hiding the value field?
 - [ ] Should conversion errors be Go errors or Risor error objects?
-- [ ] Should map attribute access prioritize keys or methods?
+- [x] Should map attribute access prioritize keys or methods? **Keys win. Use `keys(m)` or `getattr()` for methods.**
 
 ---
 
@@ -939,18 +946,18 @@ Concrete proposals derived from the analysis above, organized by priority.
 | P1-1 | `typeErrorsAreFatal` is global mutable state affecting all VMs (§3) | Remove the configuration entirely. Type errors are always fatal (this was already the effective behavior since `IsFatal()` was never checked). Removed: global variable, `FatalError` interface, `IsFatal()` methods, setter/getter functions. | Simplest solution. The configuration was dead code — no runtime behavior depended on it. | Done |
 | P1-2 | Global registries: `typeConverters`, `goTypeRegistry` (§18.3, §18.7) | Replaced `typeConverters` with `TypeRegistry` (immutable, VM-owned). Removed `goTypeRegistry` along with the proxy system. | Type conversion is now explicit via `WithTypeRegistry` option. No global mutable state remains. | Done |
 | P1-3 | Object interface has 9 methods; `Cost()` mixes resource concerns into values (§1) | Keep 8-method core interface. Change `Equals` to return `bool`, `RunOperation` to return `(Object, error)`. Remove `Cost()`. Add single `Callable` interface for invocable types. | Minimal change. Only one capability interface to remember. Cost tracking moves to Runtime. | Done |
-| P1-4 | Two parallel error systems with unclear boundaries (§2) | Compile-time uses `errors` package (Go errors). Runtime uses `object.Error` (Risor errors). Document the boundary: compiler returns Go errors, VM returns Risor errors. Errors are values; `throw` is the action that triggers exception handling (see A-8). | Single mental model per phase. Clear ownership of error handling. | Partial (see A-8) |
+| P1-4 | Two parallel error systems with unclear boundaries (§2) | Compile-time uses `errors` package (Go errors). Runtime uses `object.Error` (Risor errors). Document the boundary: compiler returns Go errors, VM returns Risor errors. Errors are values; `throw` is the action that triggers exception handling. | Single mental model per phase. Clear ownership of error handling. | Done |
 | P1-5 | No resource limits for embedded execution (§8) | Add `Compile(ctx, source, opts)` for cancellation. Add VM options: `WithMaxSteps(int)`, `WithMaxStackDepth(int)`, `WithTimeout(duration)`. | Embedders need predictable termination. Untrusted code must not run forever. | Not Started |
 
 ### P2: Consistency (Design Quality)
 
 | ID | Problem | Proposal | Reason | Status |
 |----|---------|----------|--------|--------|
-| P2-1 | Type coercion rules scattered across `As*` functions and `TypeConverter` implementations (§18.3) | Create `coercion/rules.go` with a single `NumericPromotion` table and `PromoteNumeric(left, right Object)` function. All coercion logic references this file. | One source of truth. Coercion behavior becomes auditable and testable in isolation. | Not Started |
-| P2-2 | Conversion functions have inconsistent error signaling: some return `*Error` as `Object`, some return `(Object, error)` (§18.12) | All `As*` helper functions (`AsInt`, `AsString`, `AsBool`, etc.) now return `(T, error)` using Go's standard error type. `TypeRegistry` methods already returned `(Object, error)`. `FromGoType` remains for backward compatibility but is deprecated. | Consistent with P0-2. Embedders get predictable error handling. | Done |
+| P2-1 | Type coercion rules scattered across `As*` functions and `TypeConverter` implementations (§18.3) | Create `coercion/rules.go` with a single `NumericPromotion` table and `PromoteNumeric(left, right Object)` function. All coercion logic references this file. | One source of truth. Coercion behavior becomes auditable and testable in isolation. | Won't Do |
+| P2-2 | Conversion functions have inconsistent error signaling: some return `*Error` as `Object`, some return `(Object, error)` (§18.12) | All `As*` helper functions return `(T, error)`. Object methods exposed via `GetAttr` (e.g., `String.ReplaceAll`, `Bytes.HasPrefix`, `List.Pop`) now return `(Object, error)` and errors flow through the Go error channel to the VM. Removed `unwrapError` helper. | Consistent error handling. The VM checks Go errors uniformly; no more error-as-value in method returns. | Done |
 | P2-3 | `Builtin` struct has redundant `module` and `moduleName` fields (§4) | Keep only `moduleName string`. Derive module reference when needed via lookup. | Simpler struct. Single source of truth for module association. | Won't Do |
 | P2-4 | Public constructors (`NewBuiltin`, `Module.UseGlobals`) panic on invalid inputs (§18.14) | Use builder pattern for `Builtin`: `NewBuiltin(name, fn).InModule(name)`. Validate at build time, not construction. Remove panic paths. | Host processes should not crash due to API misuse. Builder pattern is ergonomic and avoids error handling ceremony. | Done |
-| P2-5 | Map attribute names (`keys`, `values`, `items`) shadow map keys with the same names (§18.11) | Document behavior explicitly. Add `__method__(name)` for unambiguous method access, or reverse priority for maps (keys shadow methods). | Users need a way to access shadowed keys. Behavior should be predictable. | Not Started |
+| P2-5 | Map attribute names (`keys`, `values`, `items`) shadow map keys with the same names (§18.11) | Reversed priority: keys are checked first, methods second. Use `keys(m)` or `getattr(m, "method")` to access methods explicitly. | Maps behave intuitively as data containers. Dot syntax always means "get key" when the key exists. | Done |
 
 ### P3: Clarity (Documentation & Polish)
 
@@ -995,7 +1002,7 @@ These questions must be resolved before implementation:
 | **Global state elimination** | (A) Runtime struct in context, (B) Thread-local, (C) Keep globals | **A: VM-owned state** | TypeRegistry owned by VM, no global mutable state. (Done: P1-1, P1-2) |
 | **Value immutability** | (A) Immutable primitives, (B) Mutable (status quo) | **A: Immutable** | Can't modify in place, but safer |
 | **Coercion centralization** | (A) Single rules table, (B) Keep scattered | **A: Centralize** | More indirection, but auditable |
-| **Map key/method collision** | (A) Methods win, (B) Keys win, (C) Document only | **C: Document** | Not ideal, but low churn |
+| **Map key/method collision** | (A) Methods win, (B) Keys win, (C) Document only | **B: Keys win** | Maps are data containers; use `keys(m)` or `getattr()` for methods (Done: P2-5) |
 
 ### Implementation Order
 

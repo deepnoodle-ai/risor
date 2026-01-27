@@ -145,7 +145,7 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 				if err != nil {
 					return nil, err
 				}
-				return ls.Pop(index), nil
+				return ls.Pop(index)
 			},
 		}, true
 	case "remove":
@@ -228,44 +228,27 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 }
 
 func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
-	callFunc, found := GetCallFunc(ctx)
-	if !found {
-		return nil, fmt.Errorf("eval error: list.map() context did not contain a call function")
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, fmt.Errorf("type error: list.map() expected a function (%s given)", fn.Type())
 	}
-	var numParameters int
-	switch obj := fn.(type) {
-	case *Builtin:
-		result := make([]Object, 0, len(ls.items))
-		for _, value := range ls.items {
-			outputValue, err := obj.fn(ctx, value)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, outputValue)
+	// Closures can accept (index, value) if they have 2 parameters
+	var passIndex bool
+	if closure, ok := fn.(*Closure); ok {
+		count := closure.ParameterCount()
+		if count < 1 || count > 2 {
+			return nil, fmt.Errorf("type error: list.map() received an incompatible function")
 		}
-		return NewList(result), nil
-	case *Closure:
-		numParameters = obj.ParameterCount()
-	default:
-		return nil, fmt.Errorf("type error: list.map() expected a function (%s given)", obj.Type())
+		passIndex = count == 2
 	}
-	if numParameters < 1 || numParameters > 2 {
-		return nil, fmt.Errorf("type error: list.map() received an incompatible function")
-	}
-	compiledFunc := fn.(*Closure)
-	var index Int
-	mapArgs := make([]Object, 2)
 	result := make([]Object, 0, len(ls.items))
 	for i, value := range ls.items {
-		index.value = int64(i)
-		mapArgs[0] = &index
-		mapArgs[1] = value
-		var err error
 		var outputValue Object
-		if numParameters == 1 {
-			outputValue, err = callFunc(ctx, compiledFunc, mapArgs[1:])
+		var err error
+		if passIndex {
+			outputValue, err = callable.Call(ctx, NewInt(int64(i)), value)
 		} else {
-			outputValue, err = callFunc(ctx, compiledFunc, mapArgs)
+			outputValue, err = callable.Call(ctx, value)
 		}
 		if err != nil {
 			return nil, err
@@ -276,21 +259,13 @@ func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
 }
 
 func (ls *List) Filter(ctx context.Context, fn Object) (Object, error) {
-	callFunc, found := GetCallFunc(ctx)
-	if !found {
-		return nil, fmt.Errorf("eval error: list.filter() context did not contain a call function")
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, fmt.Errorf("type error: list.filter() expected a function (%s given)", fn.Type())
 	}
-	switch obj := fn.(type) {
-	case *Closure, *Builtin:
-		// Nothing do do here
-	default:
-		return nil, fmt.Errorf("type error: list.filter() expected a function (%s given)", obj.Type())
-	}
-	filterArgs := make([]Object, 1)
 	var result []Object
 	for _, value := range ls.items {
-		filterArgs[0] = value
-		decision, err := callFunc(ctx, fn.(*Closure), filterArgs)
+		decision, err := callable.Call(ctx, value)
 		if err != nil {
 			return nil, err
 		}
@@ -302,21 +277,12 @@ func (ls *List) Filter(ctx context.Context, fn Object) (Object, error) {
 }
 
 func (ls *List) Each(ctx context.Context, fn Object) (Object, error) {
-	callFunc, found := GetCallFunc(ctx)
-	if !found {
-		return nil, fmt.Errorf("eval error: list.each() context did not contain a call function")
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, fmt.Errorf("type error: list.each() expected a function (%s given)", fn.Type())
 	}
-	switch obj := fn.(type) {
-	case *Closure, *Builtin:
-		// Nothing do do here
-	default:
-		return nil, fmt.Errorf("type error: list.each() expected a function (%s given)", obj.Type())
-	}
-	eachArgs := make([]Object, 1)
 	for _, value := range ls.items {
-		eachArgs[0] = value
-		_, err := callFunc(ctx, fn.(*Closure), eachArgs)
-		if err != nil {
+		if _, err := callable.Call(ctx, value); err != nil {
 			return nil, err
 		}
 	}
@@ -324,37 +290,19 @@ func (ls *List) Each(ctx context.Context, fn Object) (Object, error) {
 }
 
 func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) (Object, error) {
-	callFunc, found := GetCallFunc(ctx)
-	if !found {
-		return nil, fmt.Errorf("eval error: list.reduce() context did not contain a call function")
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, fmt.Errorf("type error: list.reduce() expected a function (%s given)", fn.Type())
 	}
-	switch obj := fn.(type) {
-	case *Builtin:
-		accumulator := initial
-		for _, value := range ls.items {
-			result, err := obj.fn(ctx, accumulator, value)
-			if err != nil {
-				return nil, err
-			}
-			accumulator = result
+	accumulator := initial
+	for _, value := range ls.items {
+		result, err := callable.Call(ctx, accumulator, value)
+		if err != nil {
+			return nil, err
 		}
-		return accumulator, nil
-	case *Closure:
-		accumulator := initial
-		reduceArgs := make([]Object, 2)
-		for _, value := range ls.items {
-			reduceArgs[0] = accumulator
-			reduceArgs[1] = value
-			result, err := callFunc(ctx, obj, reduceArgs)
-			if err != nil {
-				return nil, err
-			}
-			accumulator = result
-		}
-		return accumulator, nil
-	default:
-		return nil, fmt.Errorf("type error: list.reduce() expected a function (%s given)", obj.Type())
+		accumulator = result
 	}
+	return accumulator, nil
 }
 
 // Append adds an item at the end of the list.
@@ -423,14 +371,14 @@ func (ls *List) Insert(index int64, obj Object) {
 }
 
 // Pop removes the item at the specified position.
-func (ls *List) Pop(index int64) Object {
+func (ls *List) Pop(index int64) (Object, error) {
 	idx, err := ResolveIndex(index, int64(len(ls.items)))
 	if err != nil {
-		return Errorf(err.Error())
+		return nil, err
 	}
 	result := ls.items[idx]
 	ls.items = append(ls.items[:idx], ls.items[idx+1:]...)
-	return result
+	return result, nil
 }
 
 // Remove removes the first item with the specified value.
