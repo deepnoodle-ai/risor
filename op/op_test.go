@@ -15,9 +15,9 @@ func TestGetInfo(t *testing.T) {
 
 func TestGetInfoAllOpcodes(t *testing.T) {
 	tests := []struct {
-		code      Code
-		name      string
-		operands  int
+		code     Code
+		name     string
+		operands int
 	}{
 		{Nop, "NOP", 0},
 		{Halt, "HALT", 0},

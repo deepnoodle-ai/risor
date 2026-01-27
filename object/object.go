@@ -70,8 +70,8 @@ type Object interface {
 	// Interface converts the given object to a native Go value.
 	Interface() interface{}
 
-	// Returns True if the given object is equal to this object.
-	Equals(other Object) Object
+	// Returns true if the given object is equal to this object.
+	Equals(other Object) bool
 
 	// GetAttr returns the attribute with the given name from this object.
 	GetAttr(name string) (Object, bool)
@@ -84,10 +84,7 @@ type Object interface {
 
 	// RunOperation runs an operation on this object with the given
 	// right-hand side object.
-	RunOperation(opType op.BinaryOpType, right Object) Object
-
-	// Cost returns the incremental processing cost of this object.
-	Cost() int
+	RunOperation(opType op.BinaryOpType, right Object) (Object, error)
 }
 
 // Slice is used to specify a range or slice of items in a container.
@@ -127,7 +124,7 @@ type Container interface {
 // Callable is an interface that exposes a Call method.
 type Callable interface {
 	// Call invokes the callable with the given arguments and returns the result.
-	Call(ctx context.Context, args ...Object) Object
+	Call(ctx context.Context, args ...Object) (Object, error)
 }
 
 // Hashable types can be hashed and consequently used in a set.

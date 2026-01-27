@@ -10,6 +10,14 @@ and run on a lightweight virtual machine.
 
 We are making major modifications for a new `v2` version of the library.
 
+Our priorities when designing and building `v2`:
+
+- **Correctness** — Well-defined behavior
+- **Clarity** — One way to do things, explicit over implicit, documented contracts
+- **Foundation** — Small core that is easily built upon
+- **Focused** — Solve embedding use cases well, defer features that add complexity without clear value
+- **Elegant** — Intuitive scripting syntax that feels natural and expressive
+
 ## Risor Syntax Examples
 
 ```ts

@@ -55,140 +55,140 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 	case "append":
 		return &Builtin{
 			name: "list.append",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.append", 1, len(args))
+					return nil, fmt.Errorf("list.append: expected 1 argument, got %d", len(args))
 				}
 				ls.Append(args[0])
-				return ls
+				return ls, nil
 			},
 		}, true
 	case "clear":
 		return &Builtin{
 			name: "list.clear",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("list.clear", 0, len(args))
+					return nil, fmt.Errorf("list.clear: expected 0 arguments, got %d", len(args))
 				}
 				ls.Clear()
-				return ls
+				return ls, nil
 			},
 		}, true
 	case "copy":
 		return &Builtin{
 			name: "list.copy",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("list.copy", 0, len(args))
+					return nil, fmt.Errorf("list.copy: expected 0 arguments, got %d", len(args))
 				}
-				return ls.Copy()
+				return ls.Copy(), nil
 			},
 		}, true
 	case "count":
 		return &Builtin{
 			name: "list.count",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.count", 1, len(args))
+					return nil, fmt.Errorf("list.count: expected 1 argument, got %d", len(args))
 				}
-				return NewInt(ls.Count(args[0]))
+				return NewInt(ls.Count(args[0])), nil
 			},
 		}, true
 	case "extend":
 		return &Builtin{
 			name: "list.extend",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.extend", 1, len(args))
+					return nil, fmt.Errorf("list.extend: expected 1 argument, got %d", len(args))
 				}
 				other, err := AsList(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				ls.Extend(other)
-				return ls
+				return ls, nil
 			},
 		}, true
 	case "index":
 		return &Builtin{
 			name: "list.index",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.index", 1, len(args))
+					return nil, fmt.Errorf("list.index: expected 1 argument, got %d", len(args))
 				}
-				return NewInt(ls.Index(args[0]))
+				return NewInt(ls.Index(args[0])), nil
 			},
 		}, true
 	case "insert":
 		return &Builtin{
 			name: "list.insert",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 2 {
-					return NewArgsError("list.insert", 2, len(args))
+					return nil, fmt.Errorf("list.insert: expected 2 arguments, got %d", len(args))
 				}
 				index, err := AsInt(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				ls.Insert(index, args[1])
-				return ls
+				return ls, nil
 			},
 		}, true
 	case "pop":
 		return &Builtin{
 			name: "list.pop",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.pop", 1, len(args))
+					return nil, fmt.Errorf("list.pop: expected 1 argument, got %d", len(args))
 				}
 				index, err := AsInt(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
-				return ls.Pop(index)
+				return ls.Pop(index), nil
 			},
 		}, true
 	case "remove":
 		return &Builtin{
 			name: "list.remove",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.remove", 1, len(args))
+					return nil, fmt.Errorf("list.remove: expected 1 argument, got %d", len(args))
 				}
 				ls.Remove(args[0])
-				return ls
+				return ls, nil
 			},
 		}, true
 	case "reverse":
 		return &Builtin{
 			name: "list.reverse",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("list.reverse", 0, len(args))
+					return nil, fmt.Errorf("list.reverse: expected 0 arguments, got %d", len(args))
 				}
 				ls.Reverse()
-				return ls
+				return ls, nil
 			},
 		}, true
 	case "sort":
 		return &Builtin{
 			name: "list.sort",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("list.sort", 0, len(args))
+					return nil, fmt.Errorf("list.sort: expected 0 arguments, got %d", len(args))
 				}
 				if err := Sort(ls.items); err != nil {
-					return err
+					return nil, err
 				}
-				return ls
+				return ls, nil
 			},
 		}, true
 	case "map":
 		return &Builtin{
 			name: "list.map",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.map", 1, len(args))
+					return nil, fmt.Errorf("list.map: expected 1 argument, got %d", len(args))
 				}
 				return ls.Map(ctx, args[0])
 			},
@@ -196,9 +196,9 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 	case "filter":
 		return &Builtin{
 			name: "list.filter",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.filter", 1, len(args))
+					return nil, fmt.Errorf("list.filter: expected 1 argument, got %d", len(args))
 				}
 				return ls.Filter(ctx, args[0])
 			},
@@ -206,9 +206,9 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 	case "each":
 		return &Builtin{
 			name: "list.each",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("list.each", 1, len(args))
+					return nil, fmt.Errorf("list.each: expected 1 argument, got %d", len(args))
 				}
 				return ls.Each(ctx, args[0])
 			},
@@ -216,9 +216,9 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 	case "reduce":
 		return &Builtin{
 			name: "list.reduce",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 2 {
-					return NewArgsError("list.reduce", 2, len(args))
+					return nil, fmt.Errorf("list.reduce: expected 2 arguments, got %d", len(args))
 				}
 				return ls.Reduce(ctx, args[0], args[1])
 			},
@@ -227,30 +227,30 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 	return nil, false
 }
 
-func (ls *List) Map(ctx context.Context, fn Object) Object {
+func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
 	callFunc, found := GetCallFunc(ctx)
 	if !found {
-		return EvalErrorf("eval error: list.map() context did not contain a call function")
+		return nil, fmt.Errorf("eval error: list.map() context did not contain a call function")
 	}
 	var numParameters int
 	switch obj := fn.(type) {
 	case *Builtin:
 		result := make([]Object, 0, len(ls.items))
 		for _, value := range ls.items {
-			outputValue := obj.fn(ctx, value)
-			if IsError(outputValue) {
-				return outputValue
+			outputValue, err := obj.fn(ctx, value)
+			if err != nil {
+				return nil, err
 			}
 			result = append(result, outputValue)
 		}
-		return NewList(result)
+		return NewList(result), nil
 	case *Closure:
 		numParameters = obj.ParameterCount()
 	default:
-		return TypeErrorf("type error: list.map() expected a function (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: list.map() expected a function (%s given)", obj.Type())
 	}
 	if numParameters < 1 || numParameters > 2 {
-		return TypeErrorf("type error: list.map() received an incompatible function")
+		return nil, fmt.Errorf("type error: list.map() received an incompatible function")
 	}
 	compiledFunc := fn.(*Closure)
 	var index Int
@@ -268,26 +268,23 @@ func (ls *List) Map(ctx context.Context, fn Object) Object {
 			outputValue, err = callFunc(ctx, compiledFunc, mapArgs)
 		}
 		if err != nil {
-			return Errorf(err.Error())
-		}
-		if IsError(outputValue) {
-			return outputValue
+			return nil, err
 		}
 		result = append(result, outputValue)
 	}
-	return NewList(result)
+	return NewList(result), nil
 }
 
-func (ls *List) Filter(ctx context.Context, fn Object) Object {
+func (ls *List) Filter(ctx context.Context, fn Object) (Object, error) {
 	callFunc, found := GetCallFunc(ctx)
 	if !found {
-		return EvalErrorf("eval error: list.filter() context did not contain a call function")
+		return nil, fmt.Errorf("eval error: list.filter() context did not contain a call function")
 	}
 	switch obj := fn.(type) {
 	case *Closure, *Builtin:
 		// Nothing do do here
 	default:
-		return TypeErrorf("type error: list.filter() expected a function (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: list.filter() expected a function (%s given)", obj.Type())
 	}
 	filterArgs := make([]Object, 1)
 	var result []Object
@@ -295,59 +292,53 @@ func (ls *List) Filter(ctx context.Context, fn Object) Object {
 		filterArgs[0] = value
 		decision, err := callFunc(ctx, fn.(*Closure), filterArgs)
 		if err != nil {
-			return Errorf(err.Error())
-		}
-		if IsError(decision) {
-			return decision
+			return nil, err
 		}
 		if decision.IsTruthy() {
 			result = append(result, value)
 		}
 	}
-	return NewList(result)
+	return NewList(result), nil
 }
 
-func (ls *List) Each(ctx context.Context, fn Object) Object {
+func (ls *List) Each(ctx context.Context, fn Object) (Object, error) {
 	callFunc, found := GetCallFunc(ctx)
 	if !found {
-		return EvalErrorf("eval error: list.each() context did not contain a call function")
+		return nil, fmt.Errorf("eval error: list.each() context did not contain a call function")
 	}
 	switch obj := fn.(type) {
 	case *Closure, *Builtin:
 		// Nothing do do here
 	default:
-		return TypeErrorf("type error: list.each() expected a function (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: list.each() expected a function (%s given)", obj.Type())
 	}
 	eachArgs := make([]Object, 1)
 	for _, value := range ls.items {
 		eachArgs[0] = value
-		result, err := callFunc(ctx, fn.(*Closure), eachArgs)
+		_, err := callFunc(ctx, fn.(*Closure), eachArgs)
 		if err != nil {
-			return Errorf(err.Error())
-		}
-		if IsError(result) {
-			return result
+			return nil, err
 		}
 	}
-	return Nil
+	return Nil, nil
 }
 
-func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) Object {
+func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) (Object, error) {
 	callFunc, found := GetCallFunc(ctx)
 	if !found {
-		return EvalErrorf("eval error: list.reduce() context did not contain a call function")
+		return nil, fmt.Errorf("eval error: list.reduce() context did not contain a call function")
 	}
 	switch obj := fn.(type) {
 	case *Builtin:
 		accumulator := initial
 		for _, value := range ls.items {
-			result := obj.fn(ctx, accumulator, value)
-			if IsError(result) {
-				return result
+			result, err := obj.fn(ctx, accumulator, value)
+			if err != nil {
+				return nil, err
 			}
 			accumulator = result
 		}
-		return accumulator
+		return accumulator, nil
 	case *Closure:
 		accumulator := initial
 		reduceArgs := make([]Object, 2)
@@ -356,16 +347,13 @@ func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) Object {
 			reduceArgs[1] = value
 			result, err := callFunc(ctx, obj, reduceArgs)
 			if err != nil {
-				return Errorf(err.Error())
-			}
-			if IsError(result) {
-				return result
+				return nil, err
 			}
 			accumulator = result
 		}
-		return accumulator
+		return accumulator, nil
 	default:
-		return TypeErrorf("type error: list.reduce() expected a function (%s given)", obj.Type())
+		return nil, fmt.Errorf("type error: list.reduce() expected a function (%s given)", obj.Type())
 	}
 }
 
@@ -499,21 +487,21 @@ func (ls *List) Compare(other Object) (int, error) {
 	return 0, nil
 }
 
-func (ls *List) Equals(other Object) Object {
-	if other.Type() != LIST {
-		return False
+func (ls *List) Equals(other Object) bool {
+	otherList, ok := other.(*List)
+	if !ok {
+		return false
 	}
-	otherList := other.(*List)
 	if len(ls.items) != len(otherList.items) {
-		return False
+		return false
 	}
 	for i, v := range ls.items {
 		otherV := otherList.items[i]
 		if !Equals(v, otherV) {
-			return False
+			return false
 		}
 	}
-	return True
+	return true
 }
 
 func (ls *List) IsTruthy() bool {
@@ -616,34 +604,29 @@ func (ls *List) Enumerate(ctx context.Context, fn func(key, value Object) bool) 
 	}
 }
 
-func (ls *List) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (ls *List) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *List:
 		return ls.runOperationList(opType, right)
 	default:
-		return TypeErrorf("type error: unsupported operation for list: %v on type %s",
+		return nil, fmt.Errorf("type error: unsupported operation for list: %v on type %s",
 			opType, right.Type())
 	}
 }
 
-func (ls *List) runOperationList(opType op.BinaryOpType, right *List) Object {
+func (ls *List) runOperationList(opType op.BinaryOpType, right *List) (Object, error) {
 	switch opType {
 	case op.Add:
 		combined := make([]Object, len(ls.items)+len(right.items))
 		copy(combined, ls.items)
 		copy(combined[len(ls.items):], right.items)
-		return NewList(combined)
+		return NewList(combined), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for list: %v on type %s",
+		return nil, fmt.Errorf("type error: unsupported operation for list: %v on type %s",
 			opType, right.Type())
 	}
 }
 
-func (ls *List) Cost() int {
-	// It would be possible to recurse into the list and compute the cost of
-	// each item, but let's avoid that since it would be an expensive op itself.
-	return len(ls.items) * 8
-}
 
 func (ls *List) MarshalJSON() ([]byte, error) {
 	return json.Marshal(ls.items)

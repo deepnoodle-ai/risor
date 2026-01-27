@@ -200,10 +200,10 @@ func TestListEquals(t *testing.T) {
 	list3 := NewList([]Object{NewInt(1)})
 	list4 := NewList([]Object{NewInt(1), NewInt(3)})
 
-	assert.Equal(t, list1.Equals(list2), True)
-	assert.Equal(t, list1.Equals(list3), False)
-	assert.Equal(t, list1.Equals(list4), False)
-	assert.Equal(t, list1.Equals(NewString("test")), False)
+	assert.True(t, list1.Equals(list2))
+	assert.False(t, list1.Equals(list3))
+	assert.False(t, list1.Equals(list4))
+	assert.False(t, list1.Equals(NewString("test")))
 }
 
 func TestListIsTruthy(t *testing.T) {
@@ -347,22 +347,18 @@ func TestListRunOperation(t *testing.T) {
 	list2 := NewList([]Object{NewInt(3), NewInt(4)})
 
 	// Add lists
-	result := list1.RunOperation(op.Add, list2)
+	result, err := list1.RunOperation(op.Add, list2)
+	assert.Nil(t, err)
 	resultList := result.(*List)
 	assert.Equal(t, resultList.Len().Value(), int64(4))
 
 	// Unsupported operation
-	result = list1.RunOperation(op.Subtract, list2)
-	assert.True(t, IsError(result))
+	_, err = list1.RunOperation(op.Subtract, list2)
+	assert.NotNil(t, err)
 
 	// Unsupported type
-	result = list1.RunOperation(op.Add, NewInt(1))
-	assert.True(t, IsError(result))
-}
-
-func TestListCost(t *testing.T) {
-	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
-	assert.Equal(t, list.Cost(), 24) // 3 items * 8
+	_, err = list1.RunOperation(op.Add, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestListMarshalJSON(t *testing.T) {
@@ -382,10 +378,11 @@ func TestListGetAttrAppend(t *testing.T) {
 	ctx := context.Background()
 	list := NewList([]Object{NewInt(1)})
 
-	append, ok := list.GetAttr("append")
+	appendFn, ok := list.GetAttr("append")
 	assert.True(t, ok)
 
-	result := append.(*Builtin).Call(ctx, NewInt(2))
+	result, err := appendFn.(*Builtin).Call(ctx, NewInt(2))
+	assert.Nil(t, err)
 	assert.Equal(t, result, list)
 	assert.Equal(t, list.Len().Value(), int64(2))
 }
@@ -393,10 +390,10 @@ func TestListGetAttrAppend(t *testing.T) {
 func TestListGetAttrAppendError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
-	append, _ := list.GetAttr("append")
+	appendFn, _ := list.GetAttr("append")
 
-	result := append.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := appendFn.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrClear(t *testing.T) {
@@ -406,7 +403,8 @@ func TestListGetAttrClear(t *testing.T) {
 	clear, ok := list.GetAttr("clear")
 	assert.True(t, ok)
 
-	result := clear.(*Builtin).Call(ctx)
+	result, err := clear.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	assert.Equal(t, result, list)
 	assert.Equal(t, list.Len().Value(), int64(0))
 }
@@ -415,8 +413,8 @@ func TestListGetAttrClearError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
 	clear, _ := list.GetAttr("clear")
-	result := clear.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := clear.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrCopy(t *testing.T) {
@@ -426,7 +424,8 @@ func TestListGetAttrCopy(t *testing.T) {
 	copyFn, ok := list.GetAttr("copy")
 	assert.True(t, ok)
 
-	result := copyFn.(*Builtin).Call(ctx)
+	result, err := copyFn.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*List).Len().Value(), int64(1))
 }
 
@@ -434,8 +433,8 @@ func TestListGetAttrCopyError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
 	copyFn, _ := list.GetAttr("copy")
-	result := copyFn.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := copyFn.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrCount(t *testing.T) {
@@ -445,7 +444,8 @@ func TestListGetAttrCount(t *testing.T) {
 	count, ok := list.GetAttr("count")
 	assert.True(t, ok)
 
-	result := count.(*Builtin).Call(ctx, NewInt(1))
+	result, err := count.(*Builtin).Call(ctx, NewInt(1))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(2))
 }
 
@@ -453,8 +453,8 @@ func TestListGetAttrCountError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
 	count, _ := list.GetAttr("count")
-	result := count.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := count.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrExtend(t *testing.T) {
@@ -464,7 +464,8 @@ func TestListGetAttrExtend(t *testing.T) {
 	extend, ok := list.GetAttr("extend")
 	assert.True(t, ok)
 
-	result := extend.(*Builtin).Call(ctx, NewList([]Object{NewInt(2), NewInt(3)}))
+	result, err := extend.(*Builtin).Call(ctx, NewList([]Object{NewInt(2), NewInt(3)}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, list)
 	assert.Equal(t, list.Len().Value(), int64(3))
 }
@@ -475,12 +476,12 @@ func TestListGetAttrExtendError(t *testing.T) {
 	extend, _ := list.GetAttr("extend")
 
 	// Wrong arg count
-	result := extend.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := extend.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = extend.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = extend.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrIndex(t *testing.T) {
@@ -490,7 +491,8 @@ func TestListGetAttrIndex(t *testing.T) {
 	index, ok := list.GetAttr("index")
 	assert.True(t, ok)
 
-	result := index.(*Builtin).Call(ctx, NewString("b"))
+	result, err := index.(*Builtin).Call(ctx, NewString("b"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(1))
 }
 
@@ -498,8 +500,8 @@ func TestListGetAttrIndexError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
 	index, _ := list.GetAttr("index")
-	result := index.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := index.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrInsert(t *testing.T) {
@@ -509,7 +511,8 @@ func TestListGetAttrInsert(t *testing.T) {
 	insert, ok := list.GetAttr("insert")
 	assert.True(t, ok)
 
-	result := insert.(*Builtin).Call(ctx, NewInt(1), NewInt(2))
+	result, err := insert.(*Builtin).Call(ctx, NewInt(1), NewInt(2))
+	assert.Nil(t, err)
 	assert.Equal(t, result, list)
 	assert.Equal(t, list.Len().Value(), int64(3))
 }
@@ -520,12 +523,12 @@ func TestListGetAttrInsertError(t *testing.T) {
 	insert, _ := list.GetAttr("insert")
 
 	// Wrong arg count
-	result := insert.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := insert.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 
 	// Wrong type for index
-	result = insert.(*Builtin).Call(ctx, NewString("x"), NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = insert.(*Builtin).Call(ctx, NewString("x"), NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrPop(t *testing.T) {
@@ -535,7 +538,8 @@ func TestListGetAttrPop(t *testing.T) {
 	pop, ok := list.GetAttr("pop")
 	assert.True(t, ok)
 
-	result := pop.(*Builtin).Call(ctx, NewInt(1))
+	result, err := pop.(*Builtin).Call(ctx, NewInt(1))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(2))
 	assert.Equal(t, list.Len().Value(), int64(2))
 }
@@ -546,12 +550,12 @@ func TestListGetAttrPopError(t *testing.T) {
 	pop, _ := list.GetAttr("pop")
 
 	// Wrong arg count
-	result := pop.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := pop.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = pop.(*Builtin).Call(ctx, NewString("x"))
-	assert.True(t, IsError(result))
+	_, err = pop.(*Builtin).Call(ctx, NewString("x"))
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrRemove(t *testing.T) {
@@ -561,7 +565,8 @@ func TestListGetAttrRemove(t *testing.T) {
 	remove, ok := list.GetAttr("remove")
 	assert.True(t, ok)
 
-	result := remove.(*Builtin).Call(ctx, NewInt(2))
+	result, err := remove.(*Builtin).Call(ctx, NewInt(2))
+	assert.Nil(t, err)
 	assert.Equal(t, result, list)
 	assert.Equal(t, list.Len().Value(), int64(2))
 }
@@ -570,8 +575,8 @@ func TestListGetAttrRemoveError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
 	remove, _ := list.GetAttr("remove")
-	result := remove.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := remove.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrReverse(t *testing.T) {
@@ -581,7 +586,8 @@ func TestListGetAttrReverse(t *testing.T) {
 	reverse, ok := list.GetAttr("reverse")
 	assert.True(t, ok)
 
-	result := reverse.(*Builtin).Call(ctx)
+	result, err := reverse.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	assert.Equal(t, result, list)
 	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(3))
 }
@@ -590,8 +596,8 @@ func TestListGetAttrReverseError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
 	reverse, _ := list.GetAttr("reverse")
-	result := reverse.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := reverse.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrSort(t *testing.T) {
@@ -601,7 +607,8 @@ func TestListGetAttrSort(t *testing.T) {
 	sort, ok := list.GetAttr("sort")
 	assert.True(t, ok)
 
-	result := sort.(*Builtin).Call(ctx)
+	result, err := sort.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	assert.Equal(t, result, list)
 	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(1))
 	assert.Equal(t, list.Value()[1].(*Int).Value(), int64(2))
@@ -612,8 +619,8 @@ func TestListGetAttrSortError(t *testing.T) {
 	ctx := context.Background()
 	list := NewList(nil)
 	sort, _ := list.GetAttr("sort")
-	result := sort.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := sort.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestListGetAttrInvalid(t *testing.T) {

@@ -64,7 +64,8 @@ func TestMapGetAttrKeys(t *testing.T) {
 
 	keys, ok := m.GetAttr("keys")
 	assert.True(t, ok)
-	result := keys.(*Builtin).Call(ctx)
+	result, err := keys.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	list := result.(*List)
 	assert.Len(t, list.Value(), 2)
 	// Keys are sorted
@@ -76,8 +77,8 @@ func TestMapGetAttrKeysError(t *testing.T) {
 	ctx := context.Background()
 	m := NewMap(nil)
 	keys, _ := m.GetAttr("keys")
-	result := keys.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := keys.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrValues(t *testing.T) {
@@ -89,7 +90,8 @@ func TestMapGetAttrValues(t *testing.T) {
 
 	values, ok := m.GetAttr("values")
 	assert.True(t, ok)
-	result := values.(*Builtin).Call(ctx)
+	result, err := values.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	list := result.(*List)
 	assert.Len(t, list.Value(), 2)
 	// Values are in key-sorted order
@@ -101,8 +103,8 @@ func TestMapGetAttrValuesError(t *testing.T) {
 	ctx := context.Background()
 	m := NewMap(nil)
 	values, _ := m.GetAttr("values")
-	result := values.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := values.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrGet(t *testing.T) {
@@ -113,15 +115,18 @@ func TestMapGetAttrGet(t *testing.T) {
 	assert.True(t, ok)
 
 	// Get existing key
-	result := get.(*Builtin).Call(ctx, NewString("key"))
+	result, err := get.(*Builtin).Call(ctx, NewString("key"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(42))
 
 	// Get missing key - returns nil
-	result = get.(*Builtin).Call(ctx, NewString("missing"))
+	result, err = get.(*Builtin).Call(ctx, NewString("missing"))
+	assert.Nil(t, err)
 	assert.Equal(t, result, Nil)
 
 	// Get missing key with default
-	result = get.(*Builtin).Call(ctx, NewString("missing"), NewString("default"))
+	result, err = get.(*Builtin).Call(ctx, NewString("missing"), NewString("default"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "default")
 }
 
@@ -131,16 +136,16 @@ func TestMapGetAttrGetErrors(t *testing.T) {
 	get, _ := m.GetAttr("get")
 
 	// No args
-	result := get.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := get.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Too many args
-	result = get.(*Builtin).Call(ctx, NewString("a"), NewString("b"), NewString("c"))
-	assert.True(t, IsError(result))
+	_, err = get.(*Builtin).Call(ctx, NewString("a"), NewString("b"), NewString("c"))
+	assert.NotNil(t, err)
 
 	// Wrong type for key
-	result = get.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = get.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrClear(t *testing.T) {
@@ -150,7 +155,8 @@ func TestMapGetAttrClear(t *testing.T) {
 	clear, ok := m.GetAttr("clear")
 	assert.True(t, ok)
 
-	result := clear.(*Builtin).Call(ctx)
+	result, err := clear.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	assert.Equal(t, result, m)
 	assert.Equal(t, m.Size(), 0)
 }
@@ -159,8 +165,8 @@ func TestMapGetAttrClearError(t *testing.T) {
 	ctx := context.Background()
 	m := NewMap(nil)
 	clear, _ := m.GetAttr("clear")
-	result := clear.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := clear.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrCopy(t *testing.T) {
@@ -170,7 +176,8 @@ func TestMapGetAttrCopy(t *testing.T) {
 	copyFn, ok := m.GetAttr("copy")
 	assert.True(t, ok)
 
-	result := copyFn.(*Builtin).Call(ctx)
+	result, err := copyFn.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	copyMap := result.(*Map)
 
 	// Copy has same values
@@ -185,8 +192,8 @@ func TestMapGetAttrCopyError(t *testing.T) {
 	ctx := context.Background()
 	m := NewMap(nil)
 	copyFn, _ := m.GetAttr("copy")
-	result := copyFn.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := copyFn.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrItems(t *testing.T) {
@@ -199,7 +206,8 @@ func TestMapGetAttrItems(t *testing.T) {
 	items, ok := m.GetAttr("items")
 	assert.True(t, ok)
 
-	result := items.(*Builtin).Call(ctx)
+	result, err := items.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	list := result.(*List)
 	assert.Len(t, list.Value(), 2)
 
@@ -217,8 +225,8 @@ func TestMapGetAttrItemsError(t *testing.T) {
 	ctx := context.Background()
 	m := NewMap(nil)
 	items, _ := m.GetAttr("items")
-	result := items.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := items.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrPop(t *testing.T) {
@@ -229,16 +237,19 @@ func TestMapGetAttrPop(t *testing.T) {
 	assert.True(t, ok)
 
 	// Pop existing key
-	result := pop.(*Builtin).Call(ctx, NewString("key"))
+	result, err := pop.(*Builtin).Call(ctx, NewString("key"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(42))
 	assert.Equal(t, m.Size(), 0)
 
 	// Pop missing key without default - returns nil
-	result = pop.(*Builtin).Call(ctx, NewString("missing"))
+	result, err = pop.(*Builtin).Call(ctx, NewString("missing"))
+	assert.Nil(t, err)
 	assert.Equal(t, result, Nil)
 
 	// Pop missing key with default
-	result = pop.(*Builtin).Call(ctx, NewString("missing"), NewString("default"))
+	result, err = pop.(*Builtin).Call(ctx, NewString("missing"), NewString("default"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "default")
 }
 
@@ -248,16 +259,16 @@ func TestMapGetAttrPopErrors(t *testing.T) {
 	pop, _ := m.GetAttr("pop")
 
 	// No args
-	result := pop.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := pop.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Too many args
-	result = pop.(*Builtin).Call(ctx, NewString("a"), NewString("b"), NewString("c"))
-	assert.True(t, IsError(result))
+	_, err = pop.(*Builtin).Call(ctx, NewString("a"), NewString("b"), NewString("c"))
+	assert.NotNil(t, err)
 
 	// Wrong type for key
-	result = pop.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = pop.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrSetDefault(t *testing.T) {
@@ -268,12 +279,14 @@ func TestMapGetAttrSetDefault(t *testing.T) {
 	assert.True(t, ok)
 
 	// Set default for missing key
-	result := setdefault.(*Builtin).Call(ctx, NewString("new"), NewInt(99))
+	result, err := setdefault.(*Builtin).Call(ctx, NewString("new"), NewInt(99))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(99))
 	assert.Equal(t, m.Get("new").(*Int).Value(), int64(99))
 
 	// Set default for existing key - returns existing value
-	result = setdefault.(*Builtin).Call(ctx, NewString("existing"), NewInt(999))
+	result, err = setdefault.(*Builtin).Call(ctx, NewString("existing"), NewInt(999))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(1))
 }
 
@@ -283,12 +296,12 @@ func TestMapGetAttrSetDefaultErrors(t *testing.T) {
 	setdefault, _ := m.GetAttr("setdefault")
 
 	// Wrong arg count
-	result := setdefault.(*Builtin).Call(ctx, NewString("key"))
-	assert.True(t, IsError(result))
+	_, err := setdefault.(*Builtin).Call(ctx, NewString("key"))
+	assert.NotNil(t, err)
 
 	// Wrong type for key
-	result = setdefault.(*Builtin).Call(ctx, NewInt(1), NewInt(2))
-	assert.True(t, IsError(result))
+	_, err = setdefault.(*Builtin).Call(ctx, NewInt(1), NewInt(2))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrUpdate(t *testing.T) {
@@ -299,7 +312,8 @@ func TestMapGetAttrUpdate(t *testing.T) {
 	assert.True(t, ok)
 
 	other := NewMap(map[string]Object{"b": NewInt(2), "a": NewInt(10)})
-	result := update.(*Builtin).Call(ctx, other)
+	result, err := update.(*Builtin).Call(ctx, other)
+	assert.Nil(t, err)
 	assert.Equal(t, result, m)
 
 	// Updated
@@ -313,12 +327,12 @@ func TestMapGetAttrUpdateErrors(t *testing.T) {
 	update, _ := m.GetAttr("update")
 
 	// Wrong arg count
-	result := update.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := update.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = update.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = update.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetAttrFallback(t *testing.T) {
@@ -401,22 +415,22 @@ func TestMapEquals(t *testing.T) {
 	m4 := NewMap(map[string]Object{"a": NewInt(1), "b": NewInt(3)})
 
 	// Equal maps
-	assert.Equal(t, m1.Equals(m2), True)
+	assert.True(t, m1.Equals(m2))
 
 	// Different sizes
-	assert.Equal(t, m1.Equals(m3), False)
+	assert.False(t, m1.Equals(m3))
 
 	// Different values
-	assert.Equal(t, m1.Equals(m4), False)
+	assert.False(t, m1.Equals(m4))
 
 	// Different type
-	assert.Equal(t, m1.Equals(NewString("test")), False)
+	assert.False(t, m1.Equals(NewString("test")))
 }
 
 func TestMapRunOperation(t *testing.T) {
 	m := NewMap(nil)
-	result := m.RunOperation(op.Add, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := m.RunOperation(op.Add, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestMapGetItem(t *testing.T) {
@@ -552,14 +566,6 @@ func TestMapSortedKeys(t *testing.T) {
 
 	keys := m.SortedKeys()
 	assert.Equal(t, keys, []string{"a", "b", "c"})
-}
-
-func TestMapCost(t *testing.T) {
-	m := NewMap(map[string]Object{
-		"a": NewInt(1),
-		"b": NewInt(2),
-	})
-	assert.Equal(t, m.Cost(), 16) // 2 items * 8
 }
 
 func TestMapMarshalJSON(t *testing.T) {

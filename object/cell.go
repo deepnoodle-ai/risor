@@ -44,15 +44,16 @@ func (c *Cell) Interface() interface{} {
 	return (*c.value).Interface()
 }
 
-func (c *Cell) Equals(other Object) Object {
-	if c == other {
-		return True
+func (c *Cell) Equals(other Object) bool {
+	otherCell, ok := other.(*Cell)
+	if !ok {
+		return false
 	}
-	return False
+	return c == otherCell
 }
 
-func (c *Cell) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for cell: %v", opType)
+func (c *Cell) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for cell: %v", opType)
 }
 
 func (c *Cell) MarshalJSON() ([]byte, error) {

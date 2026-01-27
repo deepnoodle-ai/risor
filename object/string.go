@@ -47,185 +47,185 @@ func (s *String) GetAttr(name string) (Object, bool) {
 	case "contains":
 		return &Builtin{
 			name: "string.contains",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.contains", 1, len(args))
+					return nil, fmt.Errorf("string.contains: expected 1 argument, got %d", len(args))
 				}
-				return s.Contains(args[0])
+				return s.Contains(args[0]), nil
 			},
 		}, true
 	case "has_prefix":
 		return &Builtin{
 			name: "string.has_prefix",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.has_prefix", 1, len(args))
+					return nil, fmt.Errorf("string.has_prefix: expected 1 argument, got %d", len(args))
 				}
-				return s.HasPrefix(args[0])
+				return s.HasPrefix(args[0]), nil
 			},
 		}, true
 	case "has_suffix":
 		return &Builtin{
 			name: "string.has_suffix",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.has_suffix", 1, len(args))
+					return nil, fmt.Errorf("string.has_suffix: expected 1 argument, got %d", len(args))
 				}
-				return s.HasSuffix(args[0])
+				return s.HasSuffix(args[0]), nil
 			},
 		}, true
 	case "count":
 		return &Builtin{
 			name: "string.count",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.count", 1, len(args))
+					return nil, fmt.Errorf("string.count: expected 1 argument, got %d", len(args))
 				}
-				return s.Count(args[0])
+				return s.Count(args[0]), nil
 			},
 		}, true
 	case "join":
 		return &Builtin{
 			name: "string.join",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.join", 1, len(args))
+					return nil, fmt.Errorf("string.join: expected 1 argument, got %d", len(args))
 				}
-				return s.Join(args[0])
+				return s.Join(args[0]), nil
 			},
 		}, true
 	case "split":
 		return &Builtin{
 			name: "string.split",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.split", 1, len(args))
+					return nil, fmt.Errorf("string.split: expected 1 argument, got %d", len(args))
 				}
-				return s.Split(args[0])
+				return s.Split(args[0]), nil
 			},
 		}, true
 	case "fields":
 		return &Builtin{
 			name: "string.fields",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("string.fields", 0, len(args))
+					return nil, fmt.Errorf("string.fields: expected 0 arguments, got %d", len(args))
 				}
-				return s.Fields()
+				return s.Fields(), nil
 			},
 		}, true
 	case "index":
 		return &Builtin{
 			name: "string.index",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.index", 1, len(args))
+					return nil, fmt.Errorf("string.index: expected 1 argument, got %d", len(args))
 				}
-				return s.Index(args[0])
+				return s.Index(args[0]), nil
 			},
 		}, true
 	case "last_index":
 		return &Builtin{
 			name: "string.last_index",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.last_index", 1, len(args))
+					return nil, fmt.Errorf("string.last_index: expected 1 argument, got %d", len(args))
 				}
-				return s.LastIndex(args[0])
+				return s.LastIndex(args[0]), nil
 			},
 		}, true
 	case "replace_all":
 		return &Builtin{
 			name: "string.replace_all",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 2 {
-					return NewArgsError("string.replace_all", 2, len(args))
+					return nil, fmt.Errorf("string.replace_all: expected 2 arguments, got %d", len(args))
 				}
-				return s.ReplaceAll(args[0], args[1])
+				return s.ReplaceAll(args[0], args[1]), nil
 			},
 		}, true
 	case "to_lower":
 		return &Builtin{
 			name: "string.to_lower",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("string.to_lower", 0, len(args))
+					return nil, fmt.Errorf("string.to_lower: expected 0 arguments, got %d", len(args))
 				}
-				return s.ToLower()
+				return s.ToLower(), nil
 			},
 		}, true
 	case "to_upper":
 		return &Builtin{
 			name: "string.to_upper",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("string.to_upper", 0, len(args))
+					return nil, fmt.Errorf("string.to_upper: expected 0 arguments, got %d", len(args))
 				}
-				return s.ToUpper()
+				return s.ToUpper(), nil
 			},
 		}, true
 	case "trim":
 		return &Builtin{
 			name: "string.trim",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.trim", 1, len(args))
+					return nil, fmt.Errorf("string.trim: expected 1 argument, got %d", len(args))
 				}
-				return s.Trim(args[0])
+				return s.Trim(args[0]), nil
 			},
 		}, true
 	case "trim_prefix":
 		return &Builtin{
 			name: "string.trim_prefix",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.trim_prefix", 1, len(args))
+					return nil, fmt.Errorf("string.trim_prefix: expected 1 argument, got %d", len(args))
 				}
-				return s.TrimPrefix(args[0])
+				return s.TrimPrefix(args[0]), nil
 			},
 		}, true
 	case "trim_space":
 		return &Builtin{
 			name: "string.trim_space",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("string.trim_space", 0, len(args))
+					return nil, fmt.Errorf("string.trim_space: expected 0 arguments, got %d", len(args))
 				}
-				return s.TrimSpace()
+				return s.TrimSpace(), nil
 			},
 		}, true
 	case "trim_suffix":
 		return &Builtin{
 			name: "string.trim_suffix",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.trim_suffix", 1, len(args))
+					return nil, fmt.Errorf("string.trim_suffix: expected 1 argument, got %d", len(args))
 				}
-				return s.TrimSuffix(args[0])
+				return s.TrimSuffix(args[0]), nil
 			},
 		}, true
 	case "compare":
 		return &Builtin{
 			name: "string.compare",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.compare", 1, len(args))
+					return nil, fmt.Errorf("string.compare: expected 1 argument, got %d", len(args))
 				}
 				result, err := s.Compare(args[0])
 				if err != nil {
-					return NewError(err)
+					return nil, err
 				}
-				return NewInt(int64(result))
+				return NewInt(int64(result)), nil
 			},
 		}, true
 	case "repeat":
 		return &Builtin{
 			name: "string.repeat",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("string.repeat", 1, len(args))
+					return nil, fmt.Errorf("string.repeat: expected 1 argument, got %d", len(args))
 				}
-				return s.Repeat(args[0])
+				return s.Repeat(args[0]), nil
 			},
 		}, true
 	}
@@ -250,32 +250,33 @@ func (s *String) Compare(other Object) (int, error) {
 	return -1, nil
 }
 
-func (s *String) Equals(other Object) Object {
-	if other.Type() == STRING && s.value == other.(*String).value {
-		return True
+func (s *String) Equals(other Object) bool {
+	otherString, ok := other.(*String)
+	if !ok {
+		return false
 	}
-	return False
+	return s.value == otherString.value
 }
 
 func (s *String) IsTruthy() bool {
 	return s.value != ""
 }
 
-func (s *String) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (s *String) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *String:
 		return s.runOperationString(opType, right)
 	default:
-		return TypeErrorf("type error: unsupported operation for string: %v on type %s", opType, right.Type())
+		return nil, fmt.Errorf("type error: unsupported operation for string: %v on type %s", opType, right.Type())
 	}
 }
 
-func (s *String) runOperationString(opType op.BinaryOpType, right *String) Object {
+func (s *String) runOperationString(opType op.BinaryOpType, right *String) (Object, error) {
 	switch opType {
 	case op.Add:
-		return NewString(s.value + right.value)
+		return NewString(s.value + right.value), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for string: %v on type %s", opType, right.Type())
+		return nil, fmt.Errorf("type error: unsupported operation for string: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -474,9 +475,6 @@ func (s *String) Runes() []Object {
 	return result
 }
 
-func (s *String) Cost() int {
-	return len(s.value)
-}
 
 func (s *String) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.value)

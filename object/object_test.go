@@ -112,8 +112,8 @@ func TestPrintableValue(t *testing.T) {
 	testTime, err := time.Parse("2006-01-02", "2021-01-01")
 	assert.NoError(t, err)
 
-	builtin := func(ctx context.Context, args ...Object) Object {
-		return nil
+	builtin := func(ctx context.Context, args ...Object) (Object, error) {
+		return nil, nil
 	}
 
 	cases := []testCase{

@@ -60,58 +60,54 @@ func (e *Error) Compare(other Object) (int, error) {
 	return 0, nil
 }
 
-func (e *Error) Equals(other Object) Object {
-	switch other := other.(type) {
-	case *Error:
-		if e.Message().Value() == other.Message().Value() && e.raised == other.raised {
-			return True
-		}
-		return False
-	default:
-		return False
+func (e *Error) Equals(other Object) bool {
+	otherError, ok := other.(*Error)
+	if !ok {
+		return false
 	}
+	return e.Message().Value() == otherError.Message().Value() && e.raised == otherError.raised
 }
 
 func (e *Error) GetAttr(name string) (Object, bool) {
 	switch name {
 	case "error":
-		return NewBuiltin("error", func(ctx context.Context, args ...Object) Object {
-			return e.Message()
+		return NewBuiltin("error", func(ctx context.Context, args ...Object) (Object, error) {
+			return e.Message(), nil
 		}), true
 	case "message":
-		return NewBuiltin("message", func(ctx context.Context, args ...Object) Object {
-			return e.Message()
+		return NewBuiltin("message", func(ctx context.Context, args ...Object) (Object, error) {
+			return e.Message(), nil
 		}), true
 	case "line":
-		return NewBuiltin("line", func(ctx context.Context, args ...Object) Object {
+		return NewBuiltin("line", func(ctx context.Context, args ...Object) (Object, error) {
 			if e.structured != nil {
-				return NewInt(int64(e.structured.Location.Line))
+				return NewInt(int64(e.structured.Location.Line)), nil
 			}
-			return NewInt(0)
+			return NewInt(0), nil
 		}), true
 	case "column":
-		return NewBuiltin("column", func(ctx context.Context, args ...Object) Object {
+		return NewBuiltin("column", func(ctx context.Context, args ...Object) (Object, error) {
 			if e.structured != nil {
-				return NewInt(int64(e.structured.Location.Column))
+				return NewInt(int64(e.structured.Location.Column)), nil
 			}
-			return NewInt(0)
+			return NewInt(0), nil
 		}), true
 	case "filename":
-		return NewBuiltin("filename", func(ctx context.Context, args ...Object) Object {
+		return NewBuiltin("filename", func(ctx context.Context, args ...Object) (Object, error) {
 			if e.structured != nil && e.structured.Location.Filename != "" {
-				return NewString(e.structured.Location.Filename)
+				return NewString(e.structured.Location.Filename), nil
 			}
-			return Nil
+			return Nil, nil
 		}), true
 	case "source":
-		return NewBuiltin("source", func(ctx context.Context, args ...Object) Object {
+		return NewBuiltin("source", func(ctx context.Context, args ...Object) (Object, error) {
 			if e.structured != nil && e.structured.Location.Source != "" {
-				return NewString(e.structured.Location.Source)
+				return NewString(e.structured.Location.Source), nil
 			}
-			return Nil
+			return Nil, nil
 		}), true
 	case "stack":
-		return NewBuiltin("stack", func(ctx context.Context, args ...Object) Object {
+		return NewBuiltin("stack", func(ctx context.Context, args ...Object) (Object, error) {
 			if e.structured != nil && len(e.structured.Stack) > 0 {
 				frames := make([]Object, len(e.structured.Stack))
 				for i, frame := range e.structured.Stack {
@@ -122,16 +118,16 @@ func (e *Error) GetAttr(name string) (Object, bool) {
 						"filename": NewString(frame.Location.Filename),
 					})
 				}
-				return NewList(frames)
+				return NewList(frames), nil
 			}
-			return NewList(nil)
+			return NewList(nil), nil
 		}), true
 	case "kind":
-		return NewBuiltin("kind", func(ctx context.Context, args ...Object) Object {
+		return NewBuiltin("kind", func(ctx context.Context, args ...Object) (Object, error) {
 			if e.structured != nil {
-				return NewString(e.structured.Kind.String())
+				return NewString(e.structured.Kind.String()), nil
 			}
-			return NewString("error")
+			return NewString("error"), nil
 		}), true
 	default:
 		return nil, false
@@ -159,8 +155,8 @@ func (e *Error) Unwrap() error {
 	return e.err
 }
 
-func (e *Error) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return NewError(newTypeErrorf("type error: unsupported operation for error: %v", opType))
+func (e *Error) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for error: %v", opType)
 }
 
 func Errorf(format string, a ...interface{}) *Error {

@@ -32,19 +32,20 @@ func (d *DynamicAttr) String() string {
 	return d.Inspect()
 }
 
-func (d *DynamicAttr) Equals(other Object) Object {
-	if d == other {
-		return True
+func (d *DynamicAttr) Equals(other Object) bool {
+	otherDynamic, ok := other.(*DynamicAttr)
+	if !ok {
+		return false
 	}
-	return False
+	return d == otherDynamic
 }
 
 func (d *DynamicAttr) IsTruthy() bool {
 	return d.value != nil
 }
 
-func (d *DynamicAttr) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for dynamic_attr: %v", opType)
+func (d *DynamicAttr) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for dynamic_attr: %v", opType)
 }
 
 func (d *DynamicAttr) MarshalJSON() ([]byte, error) {
@@ -59,9 +60,6 @@ func (d *DynamicAttr) SetAttr(name string, value Object) error {
 	return TypeErrorf("type error: unable to set attribute on dynamic_attr")
 }
 
-func (d *DynamicAttr) Cost() int {
-	return 0
-}
 
 func (d *DynamicAttr) ResolveAttr(ctx context.Context, name string) (Object, error) {
 	if d.value != nil {

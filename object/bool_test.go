@@ -81,13 +81,13 @@ func TestBoolCompare(t *testing.T) {
 }
 
 func TestBoolEquals(t *testing.T) {
-	assert.Equal(t, object.True.Equals(object.True), object.True)
-	assert.Equal(t, object.False.Equals(object.False), object.True)
-	assert.Equal(t, object.True.Equals(object.False), object.False)
-	assert.Equal(t, object.False.Equals(object.True), object.False)
+	assert.True(t, object.True.Equals(object.True))
+	assert.True(t, object.False.Equals(object.False))
+	assert.False(t, object.True.Equals(object.False))
+	assert.False(t, object.False.Equals(object.True))
 
 	// Different type
-	assert.Equal(t, object.True.Equals(object.NewInt(1)), object.False)
+	assert.False(t, object.True.Equals(object.NewInt(1)))
 }
 
 func TestBoolIsTruthy(t *testing.T) {
@@ -96,8 +96,8 @@ func TestBoolIsTruthy(t *testing.T) {
 }
 
 func TestBoolRunOperation(t *testing.T) {
-	result := object.True.RunOperation(op.Add, object.False)
-	assert.True(t, object.IsError(result))
+	_, err := object.True.RunOperation(op.Add, object.False)
+	assert.NotNil(t, err)
 }
 
 func TestBoolMarshalJSON(t *testing.T) {

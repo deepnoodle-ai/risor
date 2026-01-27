@@ -14,7 +14,7 @@ func TestStringBasics(t *testing.T) {
 	assert.Equal(t, value.String(), "abcd")
 	assert.Equal(t, value.Inspect(), `"abcd"`)
 	assert.Equal(t, value.Interface(), "abcd")
-	assert.True(t, value.Equals(NewString("abcd")).(*Bool).value)
+	assert.True(t, value.Equals(NewString("abcd")))
 }
 
 func TestStringCompare(t *testing.T) {

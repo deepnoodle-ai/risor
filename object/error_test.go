@@ -14,8 +14,8 @@ func TestErrorEquals(t *testing.T) {
 	other2 := NewError(errors.New("b"))
 
 	assert.Equal(t, e.Message().Value(), "a")
-	assert.True(t, e.Equals(other1).Interface().(bool))
-	assert.False(t, e.Equals(other2).Interface().(bool))
+	assert.True(t, e.Equals(other1))
+	assert.False(t, e.Equals(other2))
 }
 
 func TestErrorCompareStr(t *testing.T) {
@@ -65,12 +65,14 @@ func TestErrorMessage(t *testing.T) {
 	attr, ok := a.GetAttr("error")
 	assert.True(t, ok)
 	fn := attr.(*Builtin)
-	result := fn.Call(context.Background())
+	result, err := fn.Call(context.Background())
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "a")
 
 	attr, ok = a.GetAttr("message")
 	assert.True(t, ok)
 	fn = attr.(*Builtin)
-	result = fn.Call(context.Background())
+	result, err = fn.Call(context.Background())
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "a")
 }

@@ -30,7 +30,8 @@ func TestTimeAddDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("AddDate(%d, %d, %d)", tt.years, tt.months, tt.days), func(t *testing.T) {
-			result := baseTime.AddDate(context.Background(), NewInt(tt.years), NewInt(tt.months), NewInt(tt.days))
+			result, err := baseTime.AddDate(context.Background(), NewInt(tt.years), NewInt(tt.months), NewInt(tt.days))
+			assert.Nil(t, err)
 
 			assert.Equal(t, result.Type(), TIME, "expected TIME, got %v", result.Type())
 

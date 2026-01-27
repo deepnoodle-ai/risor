@@ -2,6 +2,7 @@ package object
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"strconv"
 
@@ -71,29 +72,23 @@ func (f *Float) Compare(other Object) (int, error) {
 	}
 }
 
-func (f *Float) Equals(other Object) Object {
+func (f *Float) Equals(other Object) bool {
 	switch other := other.(type) {
 	case *Int:
-		if f.value == float64(other.value) {
-			return True
-		}
+		return f.value == float64(other.value)
 	case *Float:
-		if f.value == other.value {
-			return True
-		}
+		return f.value == other.value
 	case *Byte:
-		if f.value == float64(other.value) {
-			return True
-		}
+		return f.value == float64(other.value)
 	}
-	return False
+	return false
 }
 
 func (f *Float) IsTruthy() bool {
 	return f.value != 0.0
 }
 
-func (f *Float) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (f *Float) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *Int:
 		return f.runOperationFloat(opType, float64(right.value))
@@ -103,24 +98,24 @@ func (f *Float) RunOperation(opType op.BinaryOpType, right Object) Object {
 		rightFloat := float64(right.value)
 		return f.runOperationFloat(opType, rightFloat)
 	default:
-		return TypeErrorf("type error: unsupported operation for float: %v on type %s", opType, right.Type())
+		return nil, fmt.Errorf("type error: unsupported operation for float: %v on type %s", opType, right.Type())
 	}
 }
 
-func (f *Float) runOperationFloat(opType op.BinaryOpType, right float64) Object {
+func (f *Float) runOperationFloat(opType op.BinaryOpType, right float64) (Object, error) {
 	switch opType {
 	case op.Add:
-		return NewFloat(f.value + right)
+		return NewFloat(f.value + right), nil
 	case op.Subtract:
-		return NewFloat(f.value - right)
+		return NewFloat(f.value - right), nil
 	case op.Multiply:
-		return NewFloat(f.value * right)
+		return NewFloat(f.value * right), nil
 	case op.Divide:
-		return NewFloat(f.value / right)
+		return NewFloat(f.value / right), nil
 	case op.Power:
-		return NewFloat(math.Pow(f.value, right))
+		return NewFloat(math.Pow(f.value, right)), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for float: %v", opType)
+		return nil, fmt.Errorf("type error: unsupported operation for float: %v", opType)
 	}
 }
 

@@ -38,15 +38,16 @@ func (p *Partial) Interface() interface{} {
 	return p.fn
 }
 
-func (p *Partial) Equals(other Object) Object {
-	if p == other {
-		return True
+func (p *Partial) Equals(other Object) bool {
+	otherPartial, ok := other.(*Partial)
+	if !ok {
+		return false
 	}
-	return False
+	return p == otherPartial
 }
 
-func (p *Partial) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for nil: %v", opType)
+func (p *Partial) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for partial: %v", opType)
 }
 
 func (p *Partial) MarshalJSON() ([]byte, error) {

@@ -101,15 +101,16 @@ func (m *Module) Compare(other Object) (int, error) {
 	return -1, nil
 }
 
-func (m *Module) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for module: %v", opType)
+func (m *Module) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for module: %v", opType)
 }
 
-func (m *Module) Equals(other Object) Object {
-	if m == other {
-		return True
+func (m *Module) Equals(other Object) bool {
+	otherModule, ok := other.(*Module)
+	if !ok {
+		return false
 	}
-	return False
+	return m == otherModule
 }
 
 func (m *Module) MarshalJSON() ([]byte, error) {
@@ -124,9 +125,9 @@ func (m *Module) UseGlobals(globals []Object) {
 	m.globals = globals
 }
 
-func (m *Module) Call(ctx context.Context, args ...Object) Object {
+func (m *Module) Call(ctx context.Context, args ...Object) (Object, error) {
 	if m.callable == nil {
-		return TypeErrorf("type error: module %q is not callable", m.name)
+		return nil, fmt.Errorf("type error: module %q is not callable", m.name)
 	}
 	return m.callable(ctx, args...)
 }

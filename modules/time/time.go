@@ -2,61 +2,62 @@ package time
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/risor-io/risor/object"
 )
 
-func Now(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.Require("time.now", 0, args); err != nil {
-		return err
+func Now(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) != 0 {
+		return nil, fmt.Errorf("time.now: expected 0 arguments, got %d", len(args))
 	}
-	return object.NewTime(time.Now())
+	return object.NewTime(time.Now()), nil
 }
 
-func Unix(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.Require("time.unix", 2, args); err != nil {
-		return err
+func Unix(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("time.unix: expected 2 arguments, got %d", len(args))
 	}
 	sec, err := object.AsInt(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	nsec, err := object.AsInt(args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return object.NewTime(time.Unix(sec, nsec))
+	return object.NewTime(time.Unix(sec, nsec)), nil
 }
 
-func Parse(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.Require("time.parse", 2, args); err != nil {
-		return err
+func Parse(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("time.parse: expected 2 arguments, got %d", len(args))
 	}
 	layout, err := object.AsString(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	value, err := object.AsString(args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	t, parseErr := time.Parse(layout, value)
 	if parseErr != nil {
-		return object.NewError(parseErr)
+		return nil, parseErr
 	}
-	return object.NewTime(t)
+	return object.NewTime(t), nil
 }
 
-func Since(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.Require("time.since", 1, args); err != nil {
-		return err
+func Since(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("time.since: expected 1 argument, got %d", len(args))
 	}
 	t, err := object.AsTime(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return object.NewFloat(time.Since(t).Seconds())
+	return object.NewFloat(time.Since(t).Seconds()), nil
 }
 
 func Module() *object.Module {

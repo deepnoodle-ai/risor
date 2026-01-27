@@ -80,19 +80,19 @@ func TestBytesEquals(t *testing.T) {
 	b3 := NewBytes([]byte("world"))
 
 	// Equal bytes
-	assert.Equal(t, b1.Equals(b2), True)
+	assert.True(t, b1.Equals(b2))
 
 	// Not equal bytes
-	assert.Equal(t, b1.Equals(b3), False)
+	assert.False(t, b1.Equals(b3))
 
 	// Equal to string
-	assert.Equal(t, b1.Equals(NewString("hello")), True)
+	assert.True(t, b1.Equals(NewString("hello")))
 
 	// Not equal to string
-	assert.Equal(t, b1.Equals(NewString("world")), False)
+	assert.False(t, b1.Equals(NewString("world")))
 
 	// Different type
-	assert.Equal(t, b1.Equals(NewInt(1)), False)
+	assert.False(t, b1.Equals(NewInt(1)))
 }
 
 func TestBytesIsTruthy(t *testing.T) {
@@ -108,26 +108,28 @@ func TestBytesRunOperation(t *testing.T) {
 	b2 := NewBytes([]byte("world"))
 
 	// Add bytes
-	result := b1.RunOperation(op.Add, b2)
+	result, err := b1.RunOperation(op.Add, b2)
+	assert.Nil(t, err)
 	resultBytes := result.(*Bytes)
 	assert.Equal(t, string(resultBytes.Value()), "helloworld")
 
 	// Add string
-	result = b1.RunOperation(op.Add, NewString("!"))
+	result, err = b1.RunOperation(op.Add, NewString("!"))
+	assert.Nil(t, err)
 	resultBytes = result.(*Bytes)
 	assert.Equal(t, string(resultBytes.Value()), "hello!")
 
 	// Unsupported operation with bytes
-	result = b1.RunOperation(op.Subtract, b2)
-	assert.True(t, IsError(result))
+	_, err = b1.RunOperation(op.Subtract, b2)
+	assert.NotNil(t, err)
 
 	// Unsupported operation with string
-	result = b1.RunOperation(op.Subtract, NewString("!"))
-	assert.True(t, IsError(result))
+	_, err = b1.RunOperation(op.Subtract, NewString("!"))
+	assert.NotNil(t, err)
 
 	// Unsupported type
-	result = b1.RunOperation(op.Add, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = b1.RunOperation(op.Add, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetItem(t *testing.T) {
@@ -284,7 +286,8 @@ func TestBytesGetAttrClone(t *testing.T) {
 	clone, ok := b.GetAttr("clone")
 	assert.True(t, ok)
 
-	result := clone.(*Builtin).Call(ctx)
+	result, err := clone.(*Builtin).Call(ctx)
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bytes).Value(), []byte{1, 2, 3})
 }
 
@@ -292,8 +295,8 @@ func TestBytesGetAttrCloneError(t *testing.T) {
 	ctx := context.Background()
 	b := NewBytes([]byte{1, 2, 3})
 	clone, _ := b.GetAttr("clone")
-	result := clone.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err := clone.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrEquals(t *testing.T) {
@@ -303,10 +306,12 @@ func TestBytesGetAttrEquals(t *testing.T) {
 	equals, ok := b.GetAttr("equals")
 	assert.True(t, ok)
 
-	result := equals.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	result, err := equals.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	assert.Nil(t, err)
 	assert.Equal(t, result, True)
 
-	result = equals.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	result, err = equals.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	assert.Nil(t, err)
 	assert.Equal(t, result, False)
 }
 
@@ -314,8 +319,8 @@ func TestBytesGetAttrEqualsError(t *testing.T) {
 	ctx := context.Background()
 	b := NewBytes([]byte{1})
 	equals, _ := b.GetAttr("equals")
-	result := equals.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := equals.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrContains(t *testing.T) {
@@ -325,7 +330,8 @@ func TestBytesGetAttrContains(t *testing.T) {
 	contains, ok := b.GetAttr("contains")
 	assert.True(t, ok)
 
-	result := contains.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	result, err := contains.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	assert.Nil(t, err)
 	assert.Equal(t, result, True)
 }
 
@@ -333,8 +339,8 @@ func TestBytesGetAttrContainsError(t *testing.T) {
 	ctx := context.Background()
 	b := NewBytes([]byte{1})
 	contains, _ := b.GetAttr("contains")
-	result := contains.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := contains.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrContainsAny(t *testing.T) {
@@ -344,10 +350,12 @@ func TestBytesGetAttrContainsAny(t *testing.T) {
 	containsAny, ok := b.GetAttr("contains_any")
 	assert.True(t, ok)
 
-	result := containsAny.(*Builtin).Call(ctx, NewString("aeiou"))
+	result, err := containsAny.(*Builtin).Call(ctx, NewString("aeiou"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, true)
 
-	result = containsAny.(*Builtin).Call(ctx, NewString("xyz"))
+	result, err = containsAny.(*Builtin).Call(ctx, NewString("xyz"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, false)
 }
 
@@ -357,12 +365,12 @@ func TestBytesGetAttrContainsAnyError(t *testing.T) {
 	containsAny, _ := b.GetAttr("contains_any")
 
 	// Wrong arg count
-	result := containsAny.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := containsAny.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = containsAny.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = containsAny.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrContainsRune(t *testing.T) {
@@ -372,10 +380,12 @@ func TestBytesGetAttrContainsRune(t *testing.T) {
 	containsRune, ok := b.GetAttr("contains_rune")
 	assert.True(t, ok)
 
-	result := containsRune.(*Builtin).Call(ctx, NewString("e"))
+	result, err := containsRune.(*Builtin).Call(ctx, NewString("e"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, true)
 
-	result = containsRune.(*Builtin).Call(ctx, NewString("z"))
+	result, err = containsRune.(*Builtin).Call(ctx, NewString("z"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, false)
 }
 
@@ -385,16 +395,16 @@ func TestBytesGetAttrContainsRuneError(t *testing.T) {
 	containsRune, _ := b.GetAttr("contains_rune")
 
 	// Wrong arg count
-	result := containsRune.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := containsRune.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = containsRune.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = containsRune.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 
 	// Too many characters
-	result = containsRune.(*Builtin).Call(ctx, NewString("abc"))
-	assert.True(t, IsError(result))
+	_, err = containsRune.(*Builtin).Call(ctx, NewString("abc"))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrCount(t *testing.T) {
@@ -404,7 +414,8 @@ func TestBytesGetAttrCount(t *testing.T) {
 	count, ok := b.GetAttr("count")
 	assert.True(t, ok)
 
-	result := count.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	result, err := count.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(2))
 }
 
@@ -414,12 +425,12 @@ func TestBytesGetAttrCountError(t *testing.T) {
 	count, _ := b.GetAttr("count")
 
 	// Wrong arg count
-	result := count.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := count.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = count.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = count.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrHasPrefix(t *testing.T) {
@@ -429,10 +440,12 @@ func TestBytesGetAttrHasPrefix(t *testing.T) {
 	hasPrefix, ok := b.GetAttr("has_prefix")
 	assert.True(t, ok)
 
-	result := hasPrefix.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	result, err := hasPrefix.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, true)
 
-	result = hasPrefix.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	result, err = hasPrefix.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, false)
 }
 
@@ -441,11 +454,11 @@ func TestBytesGetAttrHasPrefixError(t *testing.T) {
 	b := NewBytes([]byte{1})
 	hasPrefix, _ := b.GetAttr("has_prefix")
 
-	result := hasPrefix.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := hasPrefix.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
-	result = hasPrefix.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = hasPrefix.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrHasSuffix(t *testing.T) {
@@ -455,10 +468,12 @@ func TestBytesGetAttrHasSuffix(t *testing.T) {
 	hasSuffix, ok := b.GetAttr("has_suffix")
 	assert.True(t, ok)
 
-	result := hasSuffix.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	result, err := hasSuffix.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, true)
 
-	result = hasSuffix.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	result, err = hasSuffix.(*Builtin).Call(ctx, NewBytes([]byte("hello")))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, false)
 }
 
@@ -467,11 +482,11 @@ func TestBytesGetAttrHasSuffixError(t *testing.T) {
 	b := NewBytes([]byte{1})
 	hasSuffix, _ := b.GetAttr("has_suffix")
 
-	result := hasSuffix.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := hasSuffix.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
-	result = hasSuffix.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = hasSuffix.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrIndex(t *testing.T) {
@@ -481,10 +496,12 @@ func TestBytesGetAttrIndex(t *testing.T) {
 	index, ok := b.GetAttr("index")
 	assert.True(t, ok)
 
-	result := index.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	result, err := index.(*Builtin).Call(ctx, NewBytes([]byte("world")))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(6))
 
-	result = index.(*Builtin).Call(ctx, NewBytes([]byte("foo")))
+	result, err = index.(*Builtin).Call(ctx, NewBytes([]byte("foo")))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(-1))
 }
 
@@ -493,11 +510,11 @@ func TestBytesGetAttrIndexError(t *testing.T) {
 	b := NewBytes([]byte{1})
 	index, _ := b.GetAttr("index")
 
-	result := index.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := index.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
-	result = index.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = index.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrIndexAny(t *testing.T) {
@@ -507,10 +524,12 @@ func TestBytesGetAttrIndexAny(t *testing.T) {
 	indexAny, ok := b.GetAttr("index_any")
 	assert.True(t, ok)
 
-	result := indexAny.(*Builtin).Call(ctx, NewString("aeiou"))
+	result, err := indexAny.(*Builtin).Call(ctx, NewString("aeiou"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(1)) // 'e'
 
-	result = indexAny.(*Builtin).Call(ctx, NewString("xyz"))
+	result, err = indexAny.(*Builtin).Call(ctx, NewString("xyz"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(-1))
 }
 
@@ -519,11 +538,11 @@ func TestBytesGetAttrIndexAnyError(t *testing.T) {
 	b := NewBytes([]byte{1})
 	indexAny, _ := b.GetAttr("index_any")
 
-	result := indexAny.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := indexAny.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
-	result = indexAny.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = indexAny.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrIndexByte(t *testing.T) {
@@ -533,10 +552,12 @@ func TestBytesGetAttrIndexByte(t *testing.T) {
 	indexByte, ok := b.GetAttr("index_byte")
 	assert.True(t, ok)
 
-	result := indexByte.(*Builtin).Call(ctx, NewBytes([]byte{20}))
+	result, err := indexByte.(*Builtin).Call(ctx, NewBytes([]byte{20}))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(1))
 
-	result = indexByte.(*Builtin).Call(ctx, NewBytes([]byte{99}))
+	result, err = indexByte.(*Builtin).Call(ctx, NewBytes([]byte{99}))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(-1))
 }
 
@@ -546,16 +567,16 @@ func TestBytesGetAttrIndexByteError(t *testing.T) {
 	indexByte, _ := b.GetAttr("index_byte")
 
 	// Wrong arg count
-	result := indexByte.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := indexByte.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = indexByte.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = indexByte.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 
 	// Must be single byte
-	result = indexByte.(*Builtin).Call(ctx, NewBytes([]byte{1, 2}))
-	assert.True(t, IsError(result))
+	_, err = indexByte.(*Builtin).Call(ctx, NewBytes([]byte{1, 2}))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrIndexRune(t *testing.T) {
@@ -565,10 +586,12 @@ func TestBytesGetAttrIndexRune(t *testing.T) {
 	indexRune, ok := b.GetAttr("index_rune")
 	assert.True(t, ok)
 
-	result := indexRune.(*Builtin).Call(ctx, NewString("l"))
+	result, err := indexRune.(*Builtin).Call(ctx, NewString("l"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(2))
 
-	result = indexRune.(*Builtin).Call(ctx, NewString("z"))
+	result, err = indexRune.(*Builtin).Call(ctx, NewString("z"))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(-1))
 }
 
@@ -578,16 +601,16 @@ func TestBytesGetAttrIndexRuneError(t *testing.T) {
 	indexRune, _ := b.GetAttr("index_rune")
 
 	// Wrong arg count
-	result := indexRune.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := indexRune.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = indexRune.(*Builtin).Call(ctx, NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = indexRune.(*Builtin).Call(ctx, NewInt(1))
+	assert.NotNil(t, err)
 
 	// Must be single character
-	result = indexRune.(*Builtin).Call(ctx, NewString("abc"))
-	assert.True(t, IsError(result))
+	_, err = indexRune.(*Builtin).Call(ctx, NewString("abc"))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrRepeat(t *testing.T) {
@@ -597,7 +620,8 @@ func TestBytesGetAttrRepeat(t *testing.T) {
 	repeat, ok := b.GetAttr("repeat")
 	assert.True(t, ok)
 
-	result := repeat.(*Builtin).Call(ctx, NewInt(3))
+	result, err := repeat.(*Builtin).Call(ctx, NewInt(3))
+	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bytes).Value(), []byte("ababab"))
 }
 
@@ -606,11 +630,11 @@ func TestBytesGetAttrRepeatError(t *testing.T) {
 	b := NewBytes([]byte{1})
 	repeat, _ := b.GetAttr("repeat")
 
-	result := repeat.(*Builtin).Call(ctx)
-	assert.True(t, IsError(result))
+	_, err := repeat.(*Builtin).Call(ctx)
+	assert.NotNil(t, err)
 
-	result = repeat.(*Builtin).Call(ctx, NewString("test"))
-	assert.True(t, IsError(result))
+	_, err = repeat.(*Builtin).Call(ctx, NewString("test"))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrReplace(t *testing.T) {
@@ -621,7 +645,8 @@ func TestBytesGetAttrReplace(t *testing.T) {
 	assert.True(t, ok)
 
 	// Replace with limit
-	result := replace.(*Builtin).Call(ctx, NewBytes([]byte("hello")), NewBytes([]byte("hi")), NewInt(2))
+	result, err := replace.(*Builtin).Call(ctx, NewBytes([]byte("hello")), NewBytes([]byte("hi")), NewInt(2))
+	assert.Nil(t, err)
 	assert.Equal(t, string(result.(*Bytes).Value()), "hi hi hello")
 }
 
@@ -631,20 +656,20 @@ func TestBytesGetAttrReplaceError(t *testing.T) {
 	replace, _ := b.GetAttr("replace")
 
 	// Wrong arg count
-	result := replace.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewBytes([]byte{2}))
-	assert.True(t, IsError(result))
+	_, err := replace.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewBytes([]byte{2}))
+	assert.NotNil(t, err)
 
 	// Wrong type for old
-	result = replace.(*Builtin).Call(ctx, NewInt(1), NewBytes([]byte{2}), NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = replace.(*Builtin).Call(ctx, NewInt(1), NewBytes([]byte{2}), NewInt(1))
+	assert.NotNil(t, err)
 
 	// Wrong type for new
-	result = replace.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewInt(1), NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = replace.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewInt(1), NewInt(1))
+	assert.NotNil(t, err)
 
 	// Wrong type for count
-	result = replace.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewBytes([]byte{2}), NewString("x"))
-	assert.True(t, IsError(result))
+	_, err = replace.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewBytes([]byte{2}), NewString("x"))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrReplaceAll(t *testing.T) {
@@ -654,7 +679,8 @@ func TestBytesGetAttrReplaceAll(t *testing.T) {
 	replaceAll, ok := b.GetAttr("replace_all")
 	assert.True(t, ok)
 
-	result := replaceAll.(*Builtin).Call(ctx, NewBytes([]byte("hello")), NewBytes([]byte("hi")))
+	result, err := replaceAll.(*Builtin).Call(ctx, NewBytes([]byte("hello")), NewBytes([]byte("hi")))
+	assert.Nil(t, err)
 	assert.Equal(t, string(result.(*Bytes).Value()), "hi hi hi")
 }
 
@@ -664,27 +690,22 @@ func TestBytesGetAttrReplaceAllError(t *testing.T) {
 	replaceAll, _ := b.GetAttr("replace_all")
 
 	// Wrong arg count
-	result := replaceAll.(*Builtin).Call(ctx, NewBytes([]byte{1}))
-	assert.True(t, IsError(result))
+	_, err := replaceAll.(*Builtin).Call(ctx, NewBytes([]byte{1}))
+	assert.NotNil(t, err)
 
 	// Wrong type for old
-	result = replaceAll.(*Builtin).Call(ctx, NewInt(1), NewBytes([]byte{2}))
-	assert.True(t, IsError(result))
+	_, err = replaceAll.(*Builtin).Call(ctx, NewInt(1), NewBytes([]byte{2}))
+	assert.NotNil(t, err)
 
 	// Wrong type for new
-	result = replaceAll.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewInt(1))
-	assert.True(t, IsError(result))
+	_, err = replaceAll.(*Builtin).Call(ctx, NewBytes([]byte{1}), NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestBytesGetAttrInvalid(t *testing.T) {
 	b := NewBytes([]byte{1})
 	_, ok := b.GetAttr("invalid_method")
 	assert.False(t, ok)
-}
-
-func TestBytesCost(t *testing.T) {
-	b := NewBytes([]byte{1, 2, 3, 4, 5})
-	assert.Equal(t, b.Cost(), 5)
 }
 
 func TestBytesMarshalJSON(t *testing.T) {

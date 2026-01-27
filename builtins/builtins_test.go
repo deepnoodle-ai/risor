@@ -26,7 +26,11 @@ type testCase struct {
 
 func TestSorted(t *testing.T) {
 	ctx := context.Background()
-	tests := []testCase{
+	tests := []struct {
+		input       object.Object
+		expected    object.Object
+		expectError bool
+	}{
 		{
 			object.NewList([]object.Object{
 				object.NewInt(3),
@@ -38,6 +42,7 @@ func TestSorted(t *testing.T) {
 				object.NewInt(2),
 				object.NewInt(3),
 			}),
+			false,
 		},
 		{
 			object.NewList([]object.Object{
@@ -45,7 +50,8 @@ func TestSorted(t *testing.T) {
 				object.NewInt(1),
 				object.NewString("nope"),
 			}),
-			object.TypeErrorf("type error: unable to compare string and int"),
+			nil,
+			true,
 		},
 		{
 			object.NewList([]object.Object{
@@ -58,12 +64,18 @@ func TestSorted(t *testing.T) {
 				object.NewString("b"),
 				object.NewString("c"),
 			}),
+			false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input.Inspect(), func(t *testing.T) {
-			result := Sorted(ctx, tt.input)
-			assertObjectEqual(t, result, tt.expected)
+			result, err := Sorted(ctx, tt.input)
+			if tt.expectError {
+				assert.NotNil(t, err)
+			} else {
+				assert.Nil(t, err)
+				assertObjectEqual(t, result, tt.expected)
+			}
 		})
 	}
 }
@@ -92,7 +104,8 @@ func TestSortedWithFunc(t *testing.T) {
 	var sortFn *object.Closure
 
 	// Confirm Sorted returns the expected sorted list
-	result := Sorted(ctx, input, sortFn)
+	result, err := Sorted(ctx, input, sortFn)
+	assert.Nil(t, err)
 	assert.Equal(t,
 
 		result, object.NewList([]object.Object{
@@ -130,7 +143,8 @@ func TestCoalesce(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input.Inspect(), func(t *testing.T) {
-			result := Coalesce(ctx, tt.input.(*object.List).Value()...)
+			result, err := Coalesce(ctx, tt.input.(*object.List).Value()...)
+			assert.Nil(t, err)
 			assertObjectEqual(t, result, tt.expected)
 		})
 	}
@@ -139,9 +153,10 @@ func TestCoalesce(t *testing.T) {
 func TestChunk(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
-		input    object.Object
-		size     int64
-		expected object.Object
+		input       object.Object
+		size        int64
+		expected    object.Object
+		expectError bool
 	}{
 		{
 			object.NewList([]object.Object{
@@ -159,6 +174,7 @@ func TestChunk(t *testing.T) {
 					object.NewInt(3),
 				}),
 			}),
+			false,
 		},
 		{
 			object.NewList([]object.Object{
@@ -178,22 +194,30 @@ func TestChunk(t *testing.T) {
 					object.NewString("d"),
 				}),
 			}),
+			false,
 		},
 		{
 			object.NewString("wrong"),
 			2,
-			object.TypeErrorf("type error: chunk() expected a list (string given)"),
+			nil,
+			true,
 		},
 		{
 			object.NewList([]object.Object{}),
 			-1,
-			object.Errorf("value error: chunk() size must be > 0 (-1 given)"),
+			nil,
+			true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input.Inspect(), func(t *testing.T) {
-			result := Chunk(ctx, tt.input, object.NewInt(tt.size))
-			assertObjectEqual(t, result, tt.expected)
+			result, err := Chunk(ctx, tt.input, object.NewInt(tt.size))
+			if tt.expectError {
+				assert.NotNil(t, err)
+			} else {
+				assert.Nil(t, err)
+				assertObjectEqual(t, result, tt.expected)
+			}
 		})
 	}
 }
@@ -212,7 +236,8 @@ func TestLen(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Len(ctx, tt.input)
+			result, err := Len(ctx, tt.input)
+			assert.Nil(t, err)
 			assertObjectEqual(t, result, tt.expected)
 		})
 	}
@@ -221,39 +246,42 @@ func TestLen(t *testing.T) {
 func TestLenErrors(t *testing.T) {
 	ctx := context.Background()
 	// Wrong argument count
-	result := Len(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Len(ctx)
+	assert.NotNil(t, err)
 
 	// Unsupported type
-	result = Len(ctx, object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err = Len(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
 }
 
 func TestSprintf(t *testing.T) {
 	ctx := context.Background()
-	result := Sprintf(ctx, object.NewString("hello %s"), object.NewString("world"))
+	result, err := Sprintf(ctx, object.NewString("hello %s"), object.NewString("world"))
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewString("hello world"))
 
-	result = Sprintf(ctx, object.NewString("value: %d"), object.NewInt(42))
+	result, err = Sprintf(ctx, object.NewString("value: %d"), object.NewInt(42))
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewString("value: 42"))
 }
 
 func TestSprintfErrors(t *testing.T) {
 	ctx := context.Background()
 	// Wrong argument count
-	result := Sprintf(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Sprintf(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type for format string
-	result = Sprintf(ctx, object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err = Sprintf(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
 }
 
 func TestList(t *testing.T) {
 	ctx := context.Background()
 
 	// No arguments
-	result := List(ctx)
+	result, err := List(ctx)
+	assert.Nil(t, err)
 	list, ok := result.(*object.List)
 	assert.True(t, ok)
 	assert.Len(t, list.Value(), 0)
@@ -263,39 +291,42 @@ func TestListErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Int is not supported
-	result := List(ctx, object.NewInt(3))
-	assert.True(t, object.IsError(result))
+	_, err := List(ctx, object.NewInt(3))
+	assert.NotNil(t, err)
 
 	// Negative int is not supported
-	result = List(ctx, object.NewInt(-1))
-	assert.True(t, object.IsError(result))
+	_, err = List(ctx, object.NewInt(-1))
+	assert.NotNil(t, err)
 
 	// Non-enumerable type
-	result = List(ctx, object.NewFloat(3.14))
-	assert.True(t, object.IsError(result))
+	_, err = List(ctx, object.NewFloat(3.14))
+	assert.NotNil(t, err)
 }
 
 func TestString(t *testing.T) {
 	ctx := context.Background()
 
 	// No arguments
-	result := String(ctx)
+	result, err := String(ctx)
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewString(""))
 
 	// String argument
-	result = String(ctx, object.NewString("hello"))
+	result, err = String(ctx, object.NewString("hello"))
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewString("hello"))
 
 	// Int argument
-	result = String(ctx, object.NewInt(42))
+	result, err = String(ctx, object.NewInt(42))
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewString("42"))
 }
 
 func TestStringErrors(t *testing.T) {
 	ctx := context.Background()
 	// Too many arguments
-	result := String(ctx, object.NewString("a"), object.NewString("b"))
-	assert.True(t, object.IsError(result))
+	_, err := String(ctx, object.NewString("a"), object.NewString("b"))
+	assert.NotNil(t, err)
 }
 
 func TestType(t *testing.T) {
@@ -312,7 +343,8 @@ func TestType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
-			result := Type(ctx, tt.input)
+			result, err := Type(ctx, tt.input)
+			assert.Nil(t, err)
 			assertObjectEqual(t, result, object.NewString(tt.expected))
 		})
 	}
@@ -320,117 +352,131 @@ func TestType(t *testing.T) {
 
 func TestTypeErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Type(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Type(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestAssert(t *testing.T) {
 	ctx := context.Background()
 
 	// Truthy assertion
-	result := Assert(ctx, object.True)
+	result, err := Assert(ctx, object.True)
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.Nil)
 
 	// With message
-	result = Assert(ctx, object.True, object.NewString("should pass"))
+	result, err = Assert(ctx, object.True, object.NewString("should pass"))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.Nil)
 
 	// Failed assertion
-	result = Assert(ctx, object.False)
-	assert.True(t, object.IsError(result))
+	_, err = Assert(ctx, object.False)
+	assert.NotNil(t, err)
 
 	// Failed assertion with message
-	result = Assert(ctx, object.False, object.NewString("custom error"))
-	assert.True(t, object.IsError(result))
+	_, err = Assert(ctx, object.False, object.NewString("custom error"))
+	assert.NotNil(t, err)
 }
 
 func TestAssertErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Assert(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Assert(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestAny(t *testing.T) {
 	ctx := context.Background()
 
 	// Some truthy
-	result := Any(ctx, object.NewList([]object.Object{object.False, object.True, object.False}))
+	result, err := Any(ctx, object.NewList([]object.Object{object.False, object.True, object.False}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.True)
 
 	// All falsy
-	result = Any(ctx, object.NewList([]object.Object{object.False, object.Nil}))
+	result, err = Any(ctx, object.NewList([]object.Object{object.False, object.Nil}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.False)
 
 	// Empty list
-	result = Any(ctx, object.NewList([]object.Object{}))
+	result, err = Any(ctx, object.NewList([]object.Object{}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.False)
 }
 
 func TestAnyErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Any(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Any(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestAll(t *testing.T) {
 	ctx := context.Background()
 
 	// All truthy
-	result := All(ctx, object.NewList([]object.Object{object.True, object.NewInt(1), object.NewString("yes")}))
+	result, err := All(ctx, object.NewList([]object.Object{object.True, object.NewInt(1), object.NewString("yes")}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.True)
 
 	// Some falsy
-	result = All(ctx, object.NewList([]object.Object{object.True, object.False}))
+	result, err = All(ctx, object.NewList([]object.Object{object.True, object.False}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.False)
 
 	// Empty list (vacuous truth)
-	result = All(ctx, object.NewList([]object.Object{}))
+	result, err = All(ctx, object.NewList([]object.Object{}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.True)
 }
 
 func TestAllErrors(t *testing.T) {
 	ctx := context.Background()
-	result := All(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := All(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestBool(t *testing.T) {
 	ctx := context.Background()
 
 	// No arguments
-	result := Bool(ctx)
+	result, err := Bool(ctx)
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.False)
 
 	// Truthy values
-	result = Bool(ctx, object.True)
+	result, err = Bool(ctx, object.True)
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.True)
 
-	result = Bool(ctx, object.NewInt(1))
+	result, err = Bool(ctx, object.NewInt(1))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.True)
 
 	// Falsy values
-	result = Bool(ctx, object.False)
+	result, err = Bool(ctx, object.False)
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.False)
 
-	result = Bool(ctx, object.Nil)
+	result, err = Bool(ctx, object.Nil)
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.False)
 }
 
 func TestBoolErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Bool(ctx, object.NewInt(1), object.NewInt(2))
-	assert.True(t, object.IsError(result))
+	_, err := Bool(ctx, object.NewInt(1), object.NewInt(2))
+	assert.NotNil(t, err)
 }
 
 func TestReversed(t *testing.T) {
 	ctx := context.Background()
 
 	// List
-	result := Reversed(ctx, object.NewList([]object.Object{
+	result, err := Reversed(ctx, object.NewList([]object.Object{
 		object.NewInt(1),
 		object.NewInt(2),
 		object.NewInt(3),
 	}))
+	assert.Nil(t, err)
 	expected := object.NewList([]object.Object{
 		object.NewInt(3),
 		object.NewInt(2),
@@ -439,17 +485,18 @@ func TestReversed(t *testing.T) {
 	assertObjectEqual(t, result, expected)
 
 	// String
-	result = Reversed(ctx, object.NewString("abc"))
+	result, err = Reversed(ctx, object.NewString("abc"))
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewString("cba"))
 }
 
 func TestReversedErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Reversed(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Reversed(ctx)
+	assert.NotNil(t, err)
 
-	result = Reversed(ctx, object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err = Reversed(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
 }
 
 func TestKeys(t *testing.T) {
@@ -457,7 +504,8 @@ func TestKeys(t *testing.T) {
 
 	// List keys are indices
 	list := object.NewList([]object.Object{object.NewString("a"), object.NewString("b")})
-	result := Keys(ctx, list)
+	result, err := Keys(ctx, list)
+	assert.Nil(t, err)
 	keyList, ok := result.(*object.List)
 	assert.True(t, ok)
 	assert.Len(t, keyList.Value(), 2)
@@ -465,33 +513,37 @@ func TestKeys(t *testing.T) {
 
 func TestKeysErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Keys(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Keys(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestByte(t *testing.T) {
 	ctx := context.Background()
 
 	// No arguments
-	result := Byte(ctx)
+	result, err := Byte(ctx)
+	assert.Nil(t, err)
 	b, ok := result.(*object.Byte)
 	assert.True(t, ok)
 	assert.Equal(t, b.Value(), byte(0))
 
 	// From int
-	result = Byte(ctx, object.NewInt(65))
+	result, err = Byte(ctx, object.NewInt(65))
+	assert.Nil(t, err)
 	b, ok = result.(*object.Byte)
 	assert.True(t, ok)
 	assert.Equal(t, b.Value(), byte(65))
 
 	// From float
-	result = Byte(ctx, object.NewFloat(66.5))
+	result, err = Byte(ctx, object.NewFloat(66.5))
+	assert.Nil(t, err)
 	b, ok = result.(*object.Byte)
 	assert.True(t, ok)
 	assert.Equal(t, b.Value(), byte(66))
 
 	// From string
-	result = Byte(ctx, object.NewString("42"))
+	result, err = Byte(ctx, object.NewString("42"))
+	assert.Nil(t, err)
 	b, ok = result.(*object.Byte)
 	assert.True(t, ok)
 	assert.Equal(t, b.Value(), byte(42))
@@ -499,45 +551,50 @@ func TestByte(t *testing.T) {
 
 func TestByteErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Byte(ctx, object.NewInt(1), object.NewInt(2))
-	assert.True(t, object.IsError(result))
+	_, err := Byte(ctx, object.NewInt(1), object.NewInt(2))
+	assert.NotNil(t, err)
 
-	result = Byte(ctx, object.NewString("invalid"))
-	assert.True(t, object.IsError(result))
+	_, err = Byte(ctx, object.NewString("invalid"))
+	assert.NotNil(t, err)
 
-	result = Byte(ctx, object.NewList([]object.Object{}))
-	assert.True(t, object.IsError(result))
+	_, err = Byte(ctx, object.NewList([]object.Object{}))
+	assert.NotNil(t, err)
 }
 
 func TestInt(t *testing.T) {
 	ctx := context.Background()
 
 	// No arguments
-	result := Int(ctx)
+	result, err := Int(ctx)
+	assert.Nil(t, err)
 	i, ok := result.(*object.Int)
 	assert.True(t, ok)
 	assert.Equal(t, i.Value(), int64(0))
 
 	// From int
-	result = Int(ctx, object.NewInt(42))
+	result, err = Int(ctx, object.NewInt(42))
+	assert.Nil(t, err)
 	i, ok = result.(*object.Int)
 	assert.True(t, ok)
 	assert.Equal(t, i.Value(), int64(42))
 
 	// From float
-	result = Int(ctx, object.NewFloat(3.7))
+	result, err = Int(ctx, object.NewFloat(3.7))
+	assert.Nil(t, err)
 	i, ok = result.(*object.Int)
 	assert.True(t, ok)
 	assert.Equal(t, i.Value(), int64(3))
 
 	// From string
-	result = Int(ctx, object.NewString("123"))
+	result, err = Int(ctx, object.NewString("123"))
+	assert.Nil(t, err)
 	i, ok = result.(*object.Int)
 	assert.True(t, ok)
 	assert.Equal(t, i.Value(), int64(123))
 
 	// Hex string
-	result = Int(ctx, object.NewString("0xff"))
+	result, err = Int(ctx, object.NewString("0xff"))
+	assert.Nil(t, err)
 	i, ok = result.(*object.Int)
 	assert.True(t, ok)
 	assert.Equal(t, i.Value(), int64(255))
@@ -545,39 +602,43 @@ func TestInt(t *testing.T) {
 
 func TestIntErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Int(ctx, object.NewInt(1), object.NewInt(2))
-	assert.True(t, object.IsError(result))
+	_, err := Int(ctx, object.NewInt(1), object.NewInt(2))
+	assert.NotNil(t, err)
 
-	result = Int(ctx, object.NewString("invalid"))
-	assert.True(t, object.IsError(result))
+	_, err = Int(ctx, object.NewString("invalid"))
+	assert.NotNil(t, err)
 
-	result = Int(ctx, object.NewList([]object.Object{}))
-	assert.True(t, object.IsError(result))
+	_, err = Int(ctx, object.NewList([]object.Object{}))
+	assert.NotNil(t, err)
 }
 
 func TestFloat(t *testing.T) {
 	ctx := context.Background()
 
 	// No arguments
-	result := Float(ctx)
+	result, err := Float(ctx)
+	assert.Nil(t, err)
 	f, ok := result.(*object.Float)
 	assert.True(t, ok)
 	assert.Equal(t, f.Value(), float64(0))
 
 	// From int
-	result = Float(ctx, object.NewInt(42))
+	result, err = Float(ctx, object.NewInt(42))
+	assert.Nil(t, err)
 	f, ok = result.(*object.Float)
 	assert.True(t, ok)
 	assert.Equal(t, f.Value(), float64(42))
 
 	// From float
-	result = Float(ctx, object.NewFloat(3.14))
+	result, err = Float(ctx, object.NewFloat(3.14))
+	assert.Nil(t, err)
 	f, ok = result.(*object.Float)
 	assert.True(t, ok)
 	assert.Equal(t, f.Value(), float64(3.14))
 
 	// From string
-	result = Float(ctx, object.NewString("3.14"))
+	result, err = Float(ctx, object.NewString("3.14"))
+	assert.Nil(t, err)
 	f, ok = result.(*object.Float)
 	assert.True(t, ok)
 	assert.Equal(t, f.Value(), float64(3.14))
@@ -585,14 +646,14 @@ func TestFloat(t *testing.T) {
 
 func TestFloatErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Float(ctx, object.NewInt(1), object.NewInt(2))
-	assert.True(t, object.IsError(result))
+	_, err := Float(ctx, object.NewInt(1), object.NewInt(2))
+	assert.NotNil(t, err)
 
-	result = Float(ctx, object.NewString("invalid"))
-	assert.True(t, object.IsError(result))
+	_, err = Float(ctx, object.NewString("invalid"))
+	assert.NotNil(t, err)
 
-	result = Float(ctx, object.NewList([]object.Object{}))
-	assert.True(t, object.IsError(result))
+	_, err = Float(ctx, object.NewList([]object.Object{}))
+	assert.NotNil(t, err)
 }
 
 func TestGetAttr(t *testing.T) {
@@ -600,61 +661,66 @@ func TestGetAttr(t *testing.T) {
 
 	// Existing attribute on list
 	list := object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)})
-	result := GetAttr(ctx, list, object.NewString("append"))
+	result, err := GetAttr(ctx, list, object.NewString("append"))
+	assert.Nil(t, err)
 	_, ok := result.(*object.Builtin)
 	assert.True(t, ok)
 
 	// With default value for missing attribute
-	result = GetAttr(ctx, object.NewInt(42), object.NewString("missing"), object.NewString("default"))
+	result, err = GetAttr(ctx, object.NewInt(42), object.NewString("missing"), object.NewString("default"))
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewString("default"))
 }
 
 func TestGetAttrErrors(t *testing.T) {
 	ctx := context.Background()
-	result := GetAttr(ctx, object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err := GetAttr(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
 
-	result = GetAttr(ctx, object.NewInt(42), object.NewInt(1))
-	assert.True(t, object.IsError(result))
+	_, err = GetAttr(ctx, object.NewInt(42), object.NewInt(1))
+	assert.NotNil(t, err)
 
 	// Missing attribute without default
-	result = GetAttr(ctx, object.NewInt(42), object.NewString("missing"))
-	assert.True(t, object.IsError(result))
+	_, err = GetAttr(ctx, object.NewInt(42), object.NewString("missing"))
+	assert.NotNil(t, err)
 }
 
 func TestIsHashable(t *testing.T) {
 	ctx := context.Background()
 
 	// Hashable types
-	result := IsHashable(ctx, object.NewString("hello"))
+	result, err := IsHashable(ctx, object.NewString("hello"))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.True)
 
-	result = IsHashable(ctx, object.NewInt(42))
+	result, err = IsHashable(ctx, object.NewInt(42))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.True)
 
 	// Non-hashable types
-	result = IsHashable(ctx, object.NewList([]object.Object{}))
+	result, err = IsHashable(ctx, object.NewList([]object.Object{}))
+	assert.Nil(t, err)
 	assert.Equal(t, result, object.False)
 }
 
 func TestIsHashableErrors(t *testing.T) {
 	ctx := context.Background()
-	result := IsHashable(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := IsHashable(ctx)
+	assert.NotNil(t, err)
 }
 
 func TestFilter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a simple builtin function that returns true for even numbers
-	isEven := object.NewBuiltin("is_even", func(ctx context.Context, args ...object.Object) object.Object {
+	isEven := object.NewBuiltin("is_even", func(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if len(args) != 1 {
-			return object.False
+			return object.False, nil
 		}
 		if i, ok := args[0].(*object.Int); ok {
-			return object.NewBool(i.Value()%2 == 0)
+			return object.NewBool(i.Value()%2 == 0), nil
 		}
-		return object.False
+		return object.False, nil
 	})
 
 	list := object.NewList([]object.Object{
@@ -664,7 +730,8 @@ func TestFilter(t *testing.T) {
 		object.NewInt(4),
 	})
 
-	result := Filter(ctx, list, isEven)
+	result, err := Filter(ctx, list, isEven)
+	assert.Nil(t, err)
 	expected := object.NewList([]object.Object{
 		object.NewInt(2),
 		object.NewInt(4),
@@ -674,38 +741,39 @@ func TestFilter(t *testing.T) {
 
 func TestFilterErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Filter(ctx, object.NewList([]object.Object{}))
-	assert.True(t, object.IsError(result))
+	_, err := Filter(ctx, object.NewList([]object.Object{}))
+	assert.NotNil(t, err)
 
-	result = Filter(ctx, object.NewList([]object.Object{}), object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err = Filter(ctx, object.NewList([]object.Object{}), object.NewInt(42))
+	assert.NotNil(t, err)
 }
 
 func TestCall(t *testing.T) {
 	ctx := context.Background()
 
 	// Call a builtin
-	addOne := object.NewBuiltin("add_one", func(ctx context.Context, args ...object.Object) object.Object {
+	addOne := object.NewBuiltin("add_one", func(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if len(args) != 1 {
-			return object.Errorf("expected 1 argument")
+			return nil, object.Errorf("expected 1 argument").Value()
 		}
 		if i, ok := args[0].(*object.Int); ok {
-			return object.NewInt(i.Value() + 1)
+			return object.NewInt(i.Value() + 1), nil
 		}
-		return object.Errorf("expected int")
+		return nil, object.Errorf("expected int").Value()
 	})
 
-	result := Call(ctx, addOne, object.NewInt(5))
+	result, err := Call(ctx, addOne, object.NewInt(5))
+	assert.Nil(t, err)
 	assertObjectEqual(t, result, object.NewInt(6))
 }
 
 func TestCallErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Call(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Call(ctx)
+	assert.NotNil(t, err)
 
-	result = Call(ctx, object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err = Call(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
 }
 
 func TestSortedMap(t *testing.T) {
@@ -716,7 +784,8 @@ func TestSortedMap(t *testing.T) {
 		"c": object.NewInt(3),
 	})
 
-	result := Sorted(ctx, m)
+	result, err := Sorted(ctx, m)
+	assert.Nil(t, err)
 	list, ok := result.(*object.List)
 	assert.True(t, ok)
 	// Keys should be sorted
@@ -725,7 +794,8 @@ func TestSortedMap(t *testing.T) {
 
 func TestSortedString(t *testing.T) {
 	ctx := context.Background()
-	result := Sorted(ctx, object.NewString("cba"))
+	result, err := Sorted(ctx, object.NewString("cba"))
+	assert.Nil(t, err)
 	list, ok := result.(*object.List)
 	assert.True(t, ok)
 	assert.Len(t, list.Value(), 3)
@@ -733,22 +803,22 @@ func TestSortedString(t *testing.T) {
 
 func TestSortedErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Sorted(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Sorted(ctx)
+	assert.NotNil(t, err)
 
-	result = Sorted(ctx, object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err = Sorted(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
 
 	// Second argument must be function
-	result = Sorted(ctx, object.NewList([]object.Object{}), object.NewInt(42))
-	assert.True(t, object.IsError(result))
+	_, err = Sorted(ctx, object.NewList([]object.Object{}), object.NewInt(42))
+	assert.NotNil(t, err)
 }
 
 func TestChunkErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Chunk(ctx, object.NewList([]object.Object{}))
-	assert.True(t, object.IsError(result))
+	_, err := Chunk(ctx, object.NewList([]object.Object{}))
+	assert.NotNil(t, err)
 
-	result = Chunk(ctx, object.NewList([]object.Object{}), object.NewString("invalid"))
-	assert.True(t, object.IsError(result))
+	_, err = Chunk(ctx, object.NewList([]object.Object{}), object.NewString("invalid"))
+	assert.NotNil(t, err)
 }

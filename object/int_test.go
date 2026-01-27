@@ -48,9 +48,8 @@ func TestIntEquals(t *testing.T) {
 		{twoFlt, twoFlt, true},
 	}
 	for _, tc := range tests {
-		result, ok := tc.first.Equals(tc.second).(*Bool)
-		assert.True(t, ok)
-		assert.Equal(t, result.Value(), tc.expected,
+		result := tc.first.Equals(tc.second)
+		assert.Equal(t, result, tc.expected,
 			"first: %v, second: %v", tc.first, tc.second)
 	}
 }

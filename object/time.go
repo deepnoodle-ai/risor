@@ -67,87 +67,88 @@ func (t *Time) Compare(other Object) (int, error) {
 	return -1, nil
 }
 
-func (t *Time) Equals(other Object) Object {
-	if other.Type() == TIME && t.value == other.(*Time).value {
-		return True
+func (t *Time) Equals(other Object) bool {
+	otherTime, ok := other.(*Time)
+	if !ok {
+		return false
 	}
-	return False
+	return t.value == otherTime.value
 }
 
-func (t *Time) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for time: %v", opType)
+func (t *Time) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for time: %v", opType)
 }
 
 func NewTime(t time.Time) *Time {
 	return &Time{value: t}
 }
 
-func (t *Time) AddDate(ctx context.Context, args ...Object) Object {
+func (t *Time) AddDate(ctx context.Context, args ...Object) (Object, error) {
 	if len(args) != 3 {
-		return NewArgsError("time.add_date", 3, len(args))
+		return nil, fmt.Errorf("time.add_date: expected 3 arguments, got %d", len(args))
 	}
 
 	years, err := AsInt(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	months, err := AsInt(args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	days, err := AsInt(args[2])
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return NewTime(t.value.AddDate(int(years), int(months), int(days)))
+	return NewTime(t.value.AddDate(int(years), int(months), int(days))), nil
 }
 
-func (t *Time) After(ctx context.Context, args ...Object) Object {
+func (t *Time) After(ctx context.Context, args ...Object) (Object, error) {
 	if len(args) != 1 {
-		return NewArgsError("time.after", 1, len(args))
+		return nil, fmt.Errorf("time.after: expected 1 argument, got %d", len(args))
 	}
 	other, err := AsTime(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBool(t.value.After(other))
+	return NewBool(t.value.After(other)), nil
 }
 
-func (t *Time) Before(ctx context.Context, args ...Object) Object {
+func (t *Time) Before(ctx context.Context, args ...Object) (Object, error) {
 	if len(args) != 1 {
-		return NewArgsError("time.before", 1, len(args))
+		return nil, fmt.Errorf("time.before: expected 1 argument, got %d", len(args))
 	}
 	other, err := AsTime(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewBool(t.value.Before(other))
+	return NewBool(t.value.Before(other)), nil
 }
 
-func (t *Time) Format(ctx context.Context, args ...Object) Object {
+func (t *Time) Format(ctx context.Context, args ...Object) (Object, error) {
 	if len(args) != 1 {
-		return NewArgsError("time.format", 1, len(args))
+		return nil, fmt.Errorf("time.format: expected 1 argument, got %d", len(args))
 	}
 	layout, err := AsString(args[0])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return NewString(t.value.Format(layout))
+	return NewString(t.value.Format(layout)), nil
 }
 
-func (t *Time) UTC(ctx context.Context, args ...Object) Object {
+func (t *Time) UTC(ctx context.Context, args ...Object) (Object, error) {
 	if len(args) != 0 {
-		return NewArgsError("time.utc", 0, len(args))
+		return nil, fmt.Errorf("time.utc: expected 0 arguments, got %d", len(args))
 	}
-	return NewTime(t.value.UTC())
+	return NewTime(t.value.UTC()), nil
 }
 
-func (t *Time) Unix(ctx context.Context, args ...Object) Object {
+func (t *Time) Unix(ctx context.Context, args ...Object) (Object, error) {
 	if len(args) != 0 {
-		return NewArgsError("time.unix", 0, len(args))
+		return nil, fmt.Errorf("time.unix: expected 0 arguments, got %d", len(args))
 	}
-	return NewInt(t.value.Unix())
+	return NewInt(t.value.Unix()), nil
 }
 
 func (t *Time) IsTruthy() bool {

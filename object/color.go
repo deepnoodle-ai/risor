@@ -30,9 +30,9 @@ func (c *Color) GetAttr(name string) (Object, bool) {
 	switch name {
 	case "rgba":
 		return NewBuiltin("color.rgba",
-			func(ctx context.Context, args ...Object) Object {
+			func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("color.rgba", 0, len(args))
+					return nil, fmt.Errorf("color.rgba: expected 0 arguments, got %d", len(args))
 				}
 				r, g, b, a := c.value.RGBA()
 				return NewList([]Object{
@@ -40,7 +40,7 @@ func (c *Color) GetAttr(name string) (Object, bool) {
 					NewInt(int64(g)),
 					NewInt(int64(b)),
 					NewInt(int64(a)),
-				})
+				}), nil
 			}), true
 	}
 	return nil, false
@@ -59,15 +59,16 @@ func (c *Color) String() string {
 	return fmt.Sprintf("color(r=%d g=%d b=%d a=%d)", r, g, b, a)
 }
 
-func (c *Color) Equals(other Object) Object {
-	if c == other {
-		return True
+func (c *Color) Equals(other Object) bool {
+	otherColor, ok := other.(*Color)
+	if !ok {
+		return false
 	}
-	return False
+	return c == otherColor
 }
 
-func (c *Color) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for color: %v ", opType)
+func (c *Color) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for color: %v", opType)
 }
 
 func (c *Color) MarshalJSON() ([]byte, error) {

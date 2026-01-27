@@ -13,7 +13,8 @@ func TestFloat(t *testing.T) {
 
 	// Test that Float returns a value in [0, 1)
 	for range 100 {
-		result := Float(ctx)
+		result, err := Float(ctx)
+		assert.Nil(t, err)
 		f, ok := result.(*object.Float)
 		assert.True(t, ok)
 		assert.True(t, f.Value() >= 0.0)
@@ -25,8 +26,8 @@ func TestFloatErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Wrong argument count
-	result := Float(ctx, object.NewInt(1))
-	assert.True(t, object.IsError(result))
+	_, err := Float(ctx, object.NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestInt(t *testing.T) {
@@ -34,7 +35,8 @@ func TestInt(t *testing.T) {
 
 	// Test that Int returns a non-negative value
 	for range 100 {
-		result := Int(ctx)
+		result, err := Int(ctx)
+		assert.Nil(t, err)
 		intVal, ok := result.(*object.Int)
 		assert.True(t, ok)
 		assert.True(t, intVal.Value() >= 0)
@@ -45,8 +47,8 @@ func TestIntErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Wrong argument count
-	result := Int(ctx, object.NewInt(1))
-	assert.True(t, object.IsError(result))
+	_, err := Int(ctx, object.NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestIntN(t *testing.T) {
@@ -55,7 +57,8 @@ func TestIntN(t *testing.T) {
 	// Test that IntN returns a value in [0, n)
 	n := int64(100)
 	for range 100 {
-		result := IntN(ctx, object.NewInt(n))
+		result, err := IntN(ctx, object.NewInt(n))
+		assert.Nil(t, err)
 		intVal, ok := result.(*object.Int)
 		assert.True(t, ok)
 		assert.True(t, intVal.Value() >= 0)
@@ -67,12 +70,12 @@ func TestIntNErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Wrong argument count
-	result := IntN(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := IntN(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = IntN(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = IntN(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestNormFloat(t *testing.T) {
@@ -81,7 +84,8 @@ func TestNormFloat(t *testing.T) {
 	// Test that NormFloat returns float values (normal distribution)
 	// We can't test exact values, but we can verify it returns floats
 	for range 100 {
-		result := NormFloat(ctx)
+		result, err := NormFloat(ctx)
+		assert.Nil(t, err)
 		_, ok := result.(*object.Float)
 		assert.True(t, ok)
 	}
@@ -91,8 +95,8 @@ func TestNormFloatErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Wrong argument count
-	result := NormFloat(ctx, object.NewInt(1))
-	assert.True(t, object.IsError(result))
+	_, err := NormFloat(ctx, object.NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestExpFloat(t *testing.T) {
@@ -100,7 +104,8 @@ func TestExpFloat(t *testing.T) {
 
 	// Test that ExpFloat returns non-negative floats (exponential distribution)
 	for range 100 {
-		result := ExpFloat(ctx)
+		result, err := ExpFloat(ctx)
+		assert.Nil(t, err)
 		f, ok := result.(*object.Float)
 		assert.True(t, ok)
 		assert.True(t, f.Value() >= 0.0)
@@ -111,8 +116,8 @@ func TestExpFloatErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Wrong argument count
-	result := ExpFloat(ctx, object.NewInt(1))
-	assert.True(t, object.IsError(result))
+	_, err := ExpFloat(ctx, object.NewInt(1))
+	assert.NotNil(t, err)
 }
 
 func TestShuffle(t *testing.T) {
@@ -129,7 +134,8 @@ func TestShuffle(t *testing.T) {
 	list := object.NewList(original)
 
 	// Shuffle the list
-	result := Shuffle(ctx, list)
+	result, err := Shuffle(ctx, list)
+	assert.Nil(t, err)
 
 	// Verify it returns the same list object
 	resultList, ok := result.(*object.List)
@@ -158,7 +164,8 @@ func TestShuffleEmpty(t *testing.T) {
 
 	// Shuffling empty list should work
 	list := object.NewList([]object.Object{})
-	result := Shuffle(ctx, list)
+	result, err := Shuffle(ctx, list)
+	assert.Nil(t, err)
 
 	resultList, ok := result.(*object.List)
 	assert.True(t, ok)
@@ -169,15 +176,15 @@ func TestShuffleErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Wrong argument count
-	result := Shuffle(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Shuffle(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = Shuffle(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Shuffle(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 
-	result = Shuffle(ctx, object.NewInt(5))
-	assert.True(t, object.IsError(result))
+	_, err = Shuffle(ctx, object.NewInt(5))
+	assert.NotNil(t, err)
 }
 
 func TestModule(t *testing.T) {

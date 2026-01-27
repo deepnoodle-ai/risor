@@ -18,6 +18,16 @@ func (b *Bytes) Inspect() string {
 	return fmt.Sprintf("bytes(%q)", b.value)
 }
 
+// unwrapError checks if obj is an *Error and returns (nil, error) if so,
+// otherwise returns (obj, nil). This is used for inline builtin methods
+// that call helper functions returning Object (which may be *Error).
+func unwrapError(obj Object) (Object, error) {
+	if err, ok := obj.(*Error); ok {
+		return nil, err.Value()
+	}
+	return obj, nil
+}
+
 func (b *Bytes) Type() Type {
 	return BYTES
 }
@@ -35,151 +45,151 @@ func (b *Bytes) GetAttr(name string) (Object, bool) {
 	case "clone":
 		return &Builtin{
 			name: "bytes.clone",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("bytes.clone", 0, len(args))
+					return nil, fmt.Errorf("bytes.clone: expected 0 arguments, got %d", len(args))
 				}
-				return b.Clone()
+				return b.Clone(), nil
 			},
 		}, true
 	case "equals":
 		return &Builtin{
 			name: "bytes.equals",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.equals", 1, len(args))
+					return nil, fmt.Errorf("bytes.equals: expected 1 argument, got %d", len(args))
 				}
-				return b.Equals(args[0])
+				return NewBool(b.Equals(args[0])), nil
 			},
 		}, true
 	case "contains":
 		return &Builtin{
 			name: "bytes.contains",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.contains", 1, len(args))
+					return nil, fmt.Errorf("bytes.contains: expected 1 argument, got %d", len(args))
 				}
-				return b.Contains(args[0])
+				return b.Contains(args[0]), nil
 			},
 		}, true
 	case "contains_any":
 		return &Builtin{
 			name: "bytes.contains_any",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.contains_any", 1, len(args))
+					return nil, fmt.Errorf("bytes.contains_any: expected 1 argument, got %d", len(args))
 				}
-				return b.ContainsAny(args[0])
+				return unwrapError(b.ContainsAny(args[0]))
 			},
 		}, true
 	case "contains_rune":
 		return &Builtin{
 			name: "bytes.contains_rune",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.contains_rune", 1, len(args))
+					return nil, fmt.Errorf("bytes.contains_rune: expected 1 argument, got %d", len(args))
 				}
-				return b.ContainsRune(args[0])
+				return unwrapError(b.ContainsRune(args[0]))
 			},
 		}, true
 	case "count":
 		return &Builtin{
 			name: "bytes.count",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.count", 1, len(args))
+					return nil, fmt.Errorf("bytes.count: expected 1 argument, got %d", len(args))
 				}
-				return b.Count(args[0])
+				return unwrapError(b.Count(args[0]))
 			},
 		}, true
 	case "has_prefix":
 		return &Builtin{
 			name: "bytes.has_prefix",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.has_prefix", 1, len(args))
+					return nil, fmt.Errorf("bytes.has_prefix: expected 1 argument, got %d", len(args))
 				}
-				return b.HasPrefix(args[0])
+				return unwrapError(b.HasPrefix(args[0]))
 			},
 		}, true
 	case "has_suffix":
 		return &Builtin{
 			name: "bytes.has_suffix",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.has_suffix", 1, len(args))
+					return nil, fmt.Errorf("bytes.has_suffix: expected 1 argument, got %d", len(args))
 				}
-				return b.HasSuffix(args[0])
+				return unwrapError(b.HasSuffix(args[0]))
 			},
 		}, true
 	case "index":
 		return &Builtin{
 			name: "bytes.index",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.index", 1, len(args))
+					return nil, fmt.Errorf("bytes.index: expected 1 argument, got %d", len(args))
 				}
-				return b.Index(args[0])
+				return unwrapError(b.Index(args[0]))
 			},
 		}, true
 	case "index_any":
 		return &Builtin{
 			name: "bytes.index_any",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.index_any", 1, len(args))
+					return nil, fmt.Errorf("bytes.index_any: expected 1 argument, got %d", len(args))
 				}
-				return b.IndexAny(args[0])
+				return unwrapError(b.IndexAny(args[0]))
 			},
 		}, true
 	case "index_byte":
 		return &Builtin{
 			name: "bytes.index_byte",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.index_byte", 1, len(args))
+					return nil, fmt.Errorf("bytes.index_byte: expected 1 argument, got %d", len(args))
 				}
-				return b.IndexByte(args[0])
+				return unwrapError(b.IndexByte(args[0]))
 			},
 		}, true
 	case "index_rune":
 		return &Builtin{
 			name: "bytes.index_rune",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.index_rune", 1, len(args))
+					return nil, fmt.Errorf("bytes.index_rune: expected 1 argument, got %d", len(args))
 				}
-				return b.IndexRune(args[0])
+				return unwrapError(b.IndexRune(args[0]))
 			},
 		}, true
 	case "repeat":
 		return &Builtin{
 			name: "bytes.repeat",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("bytes.repeat", 1, len(args))
+					return nil, fmt.Errorf("bytes.repeat: expected 1 argument, got %d", len(args))
 				}
-				return b.Repeat(args[0])
+				return unwrapError(b.Repeat(args[0]))
 			},
 		}, true
 	case "replace":
 		return &Builtin{
 			name: "bytes.replace",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 3 {
-					return NewArgsError("bytes.replace", 3, len(args))
+					return nil, fmt.Errorf("bytes.replace: expected 3 arguments, got %d", len(args))
 				}
-				return b.Replace(args[0], args[1], args[2])
+				return unwrapError(b.Replace(args[0], args[1], args[2]))
 			},
 		}, true
 	case "replace_all":
 		return &Builtin{
 			name: "bytes.replace_all",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 2 {
-					return NewArgsError("bytes.replace_all", 2, len(args))
+					return nil, fmt.Errorf("bytes.replace_all: expected 2 arguments, got %d", len(args))
 				}
-				return b.ReplaceAll(args[0], args[1])
+				return unwrapError(b.ReplaceAll(args[0], args[1]))
 			},
 		}, true
 	}
@@ -205,61 +215,53 @@ func (b *Bytes) Compare(other Object) (int, error) {
 	}
 }
 
-func (b *Bytes) Equals(other Object) Object {
+func (b *Bytes) Equals(other Object) bool {
 	switch other := other.(type) {
 	case *Bytes:
-		cmp := bytes.Compare(b.value, other.value)
-		if cmp == 0 {
-			return True
-		}
-		return False
+		return bytes.Equal(b.value, other.value)
 	case *String:
-		cmp := bytes.Compare(b.value, []byte(other.value))
-		if cmp == 0 {
-			return True
-		}
-		return False
+		return bytes.Equal(b.value, []byte(other.value))
 	}
-	return False
+	return false
 }
 
 func (b *Bytes) IsTruthy() bool {
 	return len(b.value) > 0
 }
 
-func (b *Bytes) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (b *Bytes) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *Bytes:
 		return b.runOperationBytes(opType, right)
 	case *String:
 		return b.runOperationString(opType, right)
 	default:
-		return TypeErrorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
+		return nil, fmt.Errorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
 	}
 }
 
-func (b *Bytes) runOperationBytes(opType op.BinaryOpType, right *Bytes) Object {
+func (b *Bytes) runOperationBytes(opType op.BinaryOpType, right *Bytes) (Object, error) {
 	switch opType {
 	case op.Add:
 		result := make([]byte, len(b.value)+len(right.value))
 		copy(result, b.value)
 		copy(result[len(b.value):], right.value)
-		return NewBytes(result)
+		return NewBytes(result), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
+		return nil, fmt.Errorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
 	}
 }
 
-func (b *Bytes) runOperationString(opType op.BinaryOpType, right *String) Object {
+func (b *Bytes) runOperationString(opType op.BinaryOpType, right *String) (Object, error) {
 	switch opType {
 	case op.Add:
 		rightBytes := []byte(right.value)
 		result := make([]byte, len(b.value)+len(rightBytes))
 		copy(result, b.value)
 		copy(result[len(b.value):], rightBytes)
-		return NewBytes(result)
+		return NewBytes(result), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
+		return nil, fmt.Errorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -466,9 +468,6 @@ func (b *Bytes) ReplaceAll(old, new Object) Object {
 	return NewBytes(bytes.ReplaceAll(b.value, oldBytes, newBytes))
 }
 
-func (b *Bytes) Cost() int {
-	return len(b.value)
-}
 
 func (b *Bytes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(b.value))

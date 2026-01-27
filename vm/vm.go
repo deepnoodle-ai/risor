@@ -1315,9 +1315,9 @@ func (vm *VirtualMachine) callObject(
 		vm.push(result)
 		return nil
 	case object.Callable:
-		result := fn.Call(ctx, args...)
-		if err, ok := result.(*object.Error); ok && err.IsRaised() {
-			return err.Value()
+		result, err := fn.Call(ctx, args...)
+		if err != nil {
+			return err
 		}
 		vm.push(result)
 		return nil

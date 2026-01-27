@@ -19,13 +19,13 @@ func TestBinaryCodecs(t *testing.T) {
 	for _, codec := range codecs {
 		codecName := object.NewString(codec)
 		t.Run(codec, func(t *testing.T) {
-			encoded := Encode(ctx, object.NewString(value), codecName)
-			if errObj, ok := encoded.(*object.Error); ok {
-				t.Fatalf("encoding error: %v", errObj)
+			encoded, err := Encode(ctx, object.NewString(value), codecName)
+			if err != nil {
+				t.Fatalf("encoding error: %v", err)
 			}
-			decoded := Decode(ctx, encoded, codecName)
-			if errObj, ok := decoded.(*object.Error); ok {
-				t.Fatalf("decoding error: %v", errObj)
+			decoded, err := Decode(ctx, encoded, codecName)
+			if err != nil {
+				t.Fatalf("decoding error: %v", err)
 			}
 			assert.Equal(t, decoded, object.NewBytes([]byte(value)))
 		})
@@ -34,23 +34,22 @@ func TestBinaryCodecs(t *testing.T) {
 
 func TestUnknownCodec(t *testing.T) {
 	ctx := context.Background()
-	encoded := Encode(ctx, object.NewString("oops"), object.NewString("unknown"))
-	errObj, ok := encoded.(*object.Error)
-	assert.True(t, ok)
-	assert.Equal(t, errObj.Value().Error(), "codec not found: unknown")
+	_, err := Encode(ctx, object.NewString("oops"), object.NewString("unknown"))
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "codec not found: unknown")
 }
 
 func TestJsonCodec(t *testing.T) {
 	ctx := context.Background()
 	value := "thumbs up 👍🏼"
-	encoded := Encode(ctx, object.NewString(value), object.NewString("json"))
-	if errObj, ok := encoded.(*object.Error); ok {
-		t.Fatalf("encoding error: %v", errObj)
+	encoded, err := Encode(ctx, object.NewString(value), object.NewString("json"))
+	if err != nil {
+		t.Fatalf("encoding error: %v", err)
 	}
 	assert.Equal(t, encoded, object.NewString("\""+value+"\""))
-	decoded := Decode(ctx, encoded, object.NewString("json"))
-	if errObj, ok := decoded.(*object.Error); ok {
-		t.Fatalf("decoding error: %v", errObj)
+	decoded, err := Decode(ctx, encoded, object.NewString("json"))
+	if err != nil {
+		t.Fatalf("decoding error: %v", err)
 	}
 	assert.Equal(t, decoded, object.NewString(value))
 }

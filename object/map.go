@@ -62,121 +62,121 @@ func (m *Map) GetAttr(name string) (Object, bool) {
 	case "keys":
 		return &Builtin{
 			name: "map.keys",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("map.keys", 0, len(args))
+					return nil, fmt.Errorf("map.keys: expected 0 arguments, got %d", len(args))
 				}
-				return m.Keys()
+				return m.Keys(), nil
 			},
 		}, true
 	case "values":
 		return &Builtin{
 			name: "map.values",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("map.values", 0, len(args))
+					return nil, fmt.Errorf("map.values: expected 0 arguments, got %d", len(args))
 				}
-				return m.Values()
+				return m.Values(), nil
 			},
 		}, true
 	case "get":
 		return &Builtin{
 			name: "map.get",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) < 1 || len(args) > 2 {
-					return NewArgsRangeError("map.get", 1, 2, len(args))
+					return nil, fmt.Errorf("map.get: expected 1-2 arguments, got %d", len(args))
 				}
 				key, err := AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				value, found := m.items[key]
 				if !found {
 					if len(args) == 2 {
-						return args[1]
+						return args[1], nil
 					}
-					return Nil
+					return Nil, nil
 				}
-				return value
+				return value, nil
 			},
 		}, true
 	case "clear":
 		return &Builtin{
 			name: "map.clear",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("map.clear", 0, len(args))
+					return nil, fmt.Errorf("map.clear: expected 0 arguments, got %d", len(args))
 				}
 				m.Clear()
-				return m
+				return m, nil
 			},
 		}, true
 	case "copy":
 		return &Builtin{
 			name: "map.copy",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("map.copy", 0, len(args))
+					return nil, fmt.Errorf("map.copy: expected 0 arguments, got %d", len(args))
 				}
-				return m.Copy()
+				return m.Copy(), nil
 			},
 		}, true
 	case "items":
 		return &Builtin{
 			name: "map.items",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 0 {
-					return NewArgsError("map.items", 0, len(args))
+					return nil, fmt.Errorf("map.items: expected 0 arguments, got %d", len(args))
 				}
-				return m.ListItems()
+				return m.ListItems(), nil
 			},
 		}, true
 	case "pop":
 		return &Builtin{
 			name: "map.pop",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				nArgs := len(args)
 				if nArgs < 1 || nArgs > 2 {
-					return NewArgsRangeError("map.pop", 1, 2, len(args))
+					return nil, fmt.Errorf("map.pop: expected 1-2 arguments, got %d", len(args))
 				}
 				key, err := AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				var def Object
 				if nArgs == 2 {
 					def = args[1]
 				}
-				return m.Pop(key, def)
+				return m.Pop(key, def), nil
 			},
 		}, true
 	case "setdefault":
 		return &Builtin{
 			name: "map.setdefault",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 2 {
-					return NewArgsError("map.setdefault", 2, len(args))
+					return nil, fmt.Errorf("map.setdefault: expected 2 arguments, got %d", len(args))
 				}
 				key, err := AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
-				return m.SetDefault(key, args[1])
+				return m.SetDefault(key, args[1]), nil
 			},
 		}, true
 	case "update":
 		return &Builtin{
 			name: "map.update",
-			fn: func(ctx context.Context, args ...Object) Object {
+			fn: func(ctx context.Context, args ...Object) (Object, error) {
 				if len(args) != 1 {
-					return NewArgsError("map.update", 1, len(args))
+					return nil, fmt.Errorf("map.update: expected 1 argument, got %d", len(args))
 				}
 				other, err := AsMap(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				m.Update(other)
-				return m
+				return m, nil
 			},
 		}, true
 	}
@@ -299,28 +299,28 @@ func (m *Map) Interface() interface{} {
 	return result
 }
 
-func (m *Map) Equals(other Object) Object {
-	if other.Type() != MAP {
-		return False
+func (m *Map) Equals(other Object) bool {
+	otherMap, ok := other.(*Map)
+	if !ok {
+		return false
 	}
-	otherMap := other.(*Map)
 	if len(m.items) != len(otherMap.items) {
-		return False
+		return false
 	}
 	for k, v := range m.items {
 		otherValue, found := otherMap.items[k]
 		if !found {
-			return False
+			return false
 		}
-		if !v.Equals(otherValue).(*Bool).value {
-			return False
+		if !v.Equals(otherValue) {
+			return false
 		}
 	}
-	return True
+	return true
 }
 
-func (m *Map) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for map: %v", opType)
+func (m *Map) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for map: %v", opType)
 }
 
 func (m *Map) GetItem(key Object) (Object, *Error) {
@@ -395,11 +395,6 @@ func (m *Map) StringKeys() []string {
 	return keys
 }
 
-func (m *Map) Cost() int {
-	// It would be possible to recurse and compute the cost of each item, but
-	// let's avoid that since it would be an expensive op itself.
-	return len(m.items) * 8
-}
 
 func (m *Map) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.items)

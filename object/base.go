@@ -13,7 +13,3 @@ func (b *base) SetAttr(name string, value Object) error {
 func (b *base) IsTruthy() bool {
 	return true
 }
-
-func (b *base) Cost() int {
-	return 0
-}

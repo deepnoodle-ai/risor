@@ -50,79 +50,73 @@ func (r *Regexp) Compare(other object.Object) (int, error) {
 	return -1, nil
 }
 
-func (r *Regexp) Equals(other object.Object) object.Object {
+func (r *Regexp) Equals(other object.Object) bool {
 	switch other := other.(type) {
 	case *Regexp:
-		if r.value == other.value {
-			return object.True
-		}
+		return r.value == other.value
 	}
-	return object.False
+	return false
 }
 
 func (r *Regexp) MarshalJSON() ([]byte, error) {
 	return []byte(r.value.String()), nil
 }
 
-func (r *Regexp) RunOperation(opType op.BinaryOpType, right object.Object) object.Object {
-	return object.TypeErrorf("type error: unsupported operation for regexp: %v", opType)
+func (r *Regexp) RunOperation(opType op.BinaryOpType, right object.Object) (object.Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for regexp: %v", opType)
 }
 
 func (r *Regexp) SetAttr(name string, value object.Object) error {
-	return object.TypeErrorf("type error: cannot set attribute %q on regexp object", name)
+	return fmt.Errorf("type error: cannot set attribute %q on regexp object", name)
 }
 
 func (r *Regexp) IsTruthy() bool {
 	return true
 }
 
-func (r *Regexp) Cost() int {
-	return 0
-}
-
 func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 	switch name {
 	case "match":
 		return object.NewBuiltin("regexp.match",
-			func(ctx context.Context, args ...object.Object) object.Object {
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
-					return object.NewArgsError("regexp.match", 1, len(args))
+					return nil, fmt.Errorf("regexp.match: expected 1 argument, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
-				return object.NewBool(r.value.MatchString(strValue))
+				return object.NewBool(r.value.MatchString(strValue)), nil
 			},
 		), true
 	case "find":
 		return object.NewBuiltin("regexp.find",
-			func(ctx context.Context, args ...object.Object) object.Object {
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
-					return object.NewArgsError("regexp.find", 1, len(args))
+					return nil, fmt.Errorf("regexp.find: expected 1 argument, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
-				return object.NewString(r.value.FindString(strValue))
+				return object.NewString(r.value.FindString(strValue)), nil
 			},
 		), true
 	case "find_all":
 		return object.NewBuiltin("regexp.find_all",
-			func(ctx context.Context, args ...object.Object) object.Object {
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) < 1 || len(args) > 2 {
-					return object.NewArgsRangeError("regexp.find_all", 1, 2, len(args))
+					return nil, fmt.Errorf("regexp.find_all: expected 1-2 arguments, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				n := -1
 				if len(args) == 2 {
 					i64, err := object.AsInt(args[1])
 					if err != nil {
-						return err
+						return nil, err
 					}
 					n = int(i64)
 				}
@@ -130,58 +124,58 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				for _, match := range r.value.FindAllString(strValue, n) {
 					matches = append(matches, object.NewString(match))
 				}
-				return object.NewList(matches)
+				return object.NewList(matches), nil
 			},
 		), true
 	case "find_submatch":
 		return object.NewBuiltin("regexp.find_submatch",
-			func(ctx context.Context, args ...object.Object) object.Object {
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
-					return object.NewArgsError("regexp.find_submatch", 1, len(args))
+					return nil, fmt.Errorf("regexp.find_submatch: expected 1 argument, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				var matches []object.Object
 				for _, match := range r.value.FindStringSubmatch(strValue) {
 					matches = append(matches, object.NewString(match))
 				}
-				return object.NewList(matches)
+				return object.NewList(matches), nil
 			},
 		), true
 	case "replace_all":
 		return object.NewBuiltin("regexp.replace_all",
-			func(ctx context.Context, args ...object.Object) object.Object {
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 2 {
-					return object.NewArgsError("regexp.replace_all", 2, len(args))
+					return nil, fmt.Errorf("regexp.replace_all: expected 2 arguments, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				replaceValue, err := object.AsString(args[1])
 				if err != nil {
-					return err
+					return nil, err
 				}
-				return object.NewString(r.value.ReplaceAllString(strValue, replaceValue))
+				return object.NewString(r.value.ReplaceAllString(strValue, replaceValue)), nil
 			},
 		), true
 	case "split":
 		return object.NewBuiltin("regexp.split",
-			func(ctx context.Context, args ...object.Object) object.Object {
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) < 1 || len(args) > 2 {
-					return object.NewArgsRangeError("regexp.split", 1, 2, len(args))
+					return nil, fmt.Errorf("regexp.split: expected 1-2 arguments, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
-					return err
+					return nil, err
 				}
 				n := -1
 				if len(args) == 2 {
 					i64, err := object.AsInt(args[1])
 					if err != nil {
-						return err
+						return nil, err
 					}
 					n = int(i64)
 				}
@@ -190,7 +184,7 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				for _, match := range matches {
 					matchObjects = append(matchObjects, object.NewString(match))
 				}
-				return object.NewList(matchObjects)
+				return object.NewList(matchObjects), nil
 			},
 		), true
 	}

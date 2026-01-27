@@ -10,7 +10,7 @@ import (
 var _ Callable = (*Builtin)(nil) // Ensure that *Builtin implements Callable
 
 // BuiltinFunction holds the type of a built-in function.
-type BuiltinFunction func(ctx context.Context, args ...Object) Object
+type BuiltinFunction func(ctx context.Context, args ...Object) (Object, error)
 
 // Builtin wraps func and implements Object interface.
 type Builtin struct {
@@ -28,10 +28,6 @@ type Builtin struct {
 	// The name of the module this function origiantes from.
 	// This is only used for overriding builtins.
 	moduleName string
-
-	// If true, this function is built to handle errors and it should be
-	// invoked even if one of its parameters evaluates to an error.
-	isErrorHandler bool
 }
 
 func (b *Builtin) Type() Type {
@@ -46,11 +42,7 @@ func (b *Builtin) Interface() interface{} {
 	return nil
 }
 
-func (b *Builtin) IsErrorHandler() bool {
-	return b.isErrorHandler
-}
-
-func (b *Builtin) Call(ctx context.Context, args ...Object) Object {
+func (b *Builtin) Call(ctx context.Context, args ...Object) (Object, error) {
 	return b.fn(ctx, args...)
 }
 
@@ -92,15 +84,16 @@ func (b *Builtin) Key() string {
 	return fmt.Sprintf("%s.%s", b.module.Name().value, b.name)
 }
 
-func (b *Builtin) Equals(other Object) Object {
-	if b == other {
-		return True
+func (b *Builtin) Equals(other Object) bool {
+	otherBuiltin, ok := other.(*Builtin)
+	if !ok {
+		return false
 	}
-	return False
+	return b == otherBuiltin
 }
 
-func (b *Builtin) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for builtin: %v", opType)
+func (b *Builtin) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for builtin: %v", opType)
 }
 
 func (b *Builtin) MarshalJSON() ([]byte, error) {
@@ -108,35 +101,36 @@ func (b *Builtin) MarshalJSON() ([]byte, error) {
 }
 
 // NewNoopBuiltin creates a builtin function that has no effect.
-func NewNoopBuiltin(name string, module *Module) *Builtin {
-	b := &Builtin{
-		fn: func(ctx context.Context, args ...Object) Object {
-			return Nil
+// Use WithModule() to associate it with a module if needed.
+func NewNoopBuiltin(name string) *Builtin {
+	return &Builtin{
+		fn: func(ctx context.Context, args ...Object) (Object, error) {
+			return Nil, nil
 		},
-		name:   name,
-		module: module,
+		name: name,
 	}
+}
+
+// NewBuiltin creates a new builtin function with the given name and function.
+// Use the builder methods InModule() or WithModule() to associate the builtin
+// with a module.
+func NewBuiltin(name string, fn BuiltinFunction) *Builtin {
+	return &Builtin{fn: fn, name: name}
+}
+
+// InModule sets the module name for this builtin. This is used for the Key()
+// method which returns the fully-qualified name (e.g., "math.sqrt").
+func (b *Builtin) InModule(moduleName string) *Builtin {
+	b.moduleName = moduleName
+	return b
+}
+
+// WithModule sets the module for this builtin. The module name is derived
+// from the module's name. Use this when you have a module reference.
+func (b *Builtin) WithModule(module *Module) *Builtin {
+	b.module = module
 	if module != nil {
 		b.moduleName = module.Name().value
 	}
-	return b
-}
-
-func NewBuiltin(name string, fn BuiltinFunction, module ...*Module) *Builtin {
-	b := &Builtin{fn: fn, name: name}
-	if len(module) == 1 {
-		b.module = module[0]
-	} else if len(module) > 1 {
-		panic(fmt.Sprintf("NewBuiltin: too many arguments: %d", len(module)))
-	}
-	if b.module != nil {
-		b.moduleName = b.module.Name().value
-	}
-	return b
-}
-
-func NewErrorHandler(name string, fn BuiltinFunction, module ...*Module) *Builtin {
-	b := NewBuiltin(name, fn, module...)
-	b.isErrorHandler = true
 	return b
 }

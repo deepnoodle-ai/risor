@@ -82,15 +82,16 @@ func (f *Closure) GetAttr(name string) (Object, bool) {
 	return nil, false
 }
 
-func (f *Closure) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for function: %v", opType)
+func (f *Closure) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for function: %v", opType)
 }
 
-func (f *Closure) Equals(other Object) Object {
-	if f == other {
-		return True
+func (f *Closure) Equals(other Object) bool {
+	otherClosure, ok := other.(*Closure)
+	if !ok {
+		return false
 	}
-	return False
+	return f == otherClosure
 }
 
 // FreeVarCount returns the number of captured variables.
@@ -160,16 +161,12 @@ func (f *Closure) MarshalJSON() ([]byte, error) {
 	return nil, TypeErrorf("type error: unable to marshal function")
 }
 
-func (f *Closure) Call(ctx context.Context, args ...Object) Object {
+func (f *Closure) Call(ctx context.Context, args ...Object) (Object, error) {
 	callFunc, found := GetCallFunc(ctx)
 	if !found {
-		return Errorf("eval error: context did not contain a call function")
+		return nil, fmt.Errorf("eval error: context did not contain a call function")
 	}
-	result, err := callFunc(ctx, f, args)
-	if err != nil {
-		return NewError(err)
-	}
-	return result
+	return callFunc(ctx, f, args)
 }
 
 // NewClosure creates a Closure from a bytecode.Function template.

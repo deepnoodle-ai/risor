@@ -25,7 +25,8 @@ func TestAbs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Abs(ctx, tt.input)
+			result, err := Abs(ctx, tt.input)
+			assert.Nil(t, err)
 			assert.True(t, object.Equals(result, tt.expected), "got %s, want %s", result.Inspect(), tt.expected.Inspect())
 		})
 	}
@@ -34,12 +35,12 @@ func TestAbs(t *testing.T) {
 func TestAbsErrors(t *testing.T) {
 	ctx := context.Background()
 	// Wrong argument count
-	result := Abs(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Abs(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = Abs(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Abs(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestSqrt(t *testing.T) {
@@ -56,7 +57,8 @@ func TestSqrt(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Sqrt(ctx, tt.input)
+			result, err := Sqrt(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.expected)
@@ -67,12 +69,12 @@ func TestSqrt(t *testing.T) {
 func TestSqrtErrors(t *testing.T) {
 	ctx := context.Background()
 	// Wrong argument count
-	result := Sqrt(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Sqrt(ctx)
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = Sqrt(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Sqrt(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestMax(t *testing.T) {
@@ -91,7 +93,8 @@ func TestMax(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Max(ctx, tt.x, tt.y)
+			result, err := Max(ctx, tt.x, tt.y)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.want)
@@ -102,15 +105,15 @@ func TestMax(t *testing.T) {
 func TestMaxErrors(t *testing.T) {
 	ctx := context.Background()
 	// Wrong argument count
-	result := Max(ctx, object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err := Max(ctx, object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = Max(ctx, object.NewString("a"), object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err = Max(ctx, object.NewString("a"), object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Max(ctx, object.NewFloat(1.0), object.NewString("b"))
-	assert.True(t, object.IsError(result))
+	_, err = Max(ctx, object.NewFloat(1.0), object.NewString("b"))
+	assert.NotNil(t, err)
 }
 
 func TestMin(t *testing.T) {
@@ -129,7 +132,8 @@ func TestMin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Min(ctx, tt.x, tt.y)
+			result, err := Min(ctx, tt.x, tt.y)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.want)
@@ -140,15 +144,15 @@ func TestMin(t *testing.T) {
 func TestMinErrors(t *testing.T) {
 	ctx := context.Background()
 	// Wrong argument count
-	result := Min(ctx, object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err := Min(ctx, object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = Min(ctx, object.NewString("a"), object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err = Min(ctx, object.NewString("a"), object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Min(ctx, object.NewFloat(1.0), object.NewString("b"))
-	assert.True(t, object.IsError(result))
+	_, err = Min(ctx, object.NewFloat(1.0), object.NewString("b"))
+	assert.NotNil(t, err)
 }
 
 func TestSum(t *testing.T) {
@@ -193,7 +197,8 @@ func TestSum(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Sum(ctx, tt.input)
+			result, err := Sum(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.expected)
@@ -204,19 +209,19 @@ func TestSum(t *testing.T) {
 func TestSumErrors(t *testing.T) {
 	ctx := context.Background()
 	// Wrong argument count
-	result := Sum(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Sum(ctx)
+	assert.NotNil(t, err)
 
 	// Not a list
-	result = Sum(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Sum(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 
 	// List with invalid types
-	result = Sum(ctx, object.NewList([]object.Object{
+	_, err = Sum(ctx, object.NewList([]object.Object{
 		object.NewInt(1),
 		object.NewString("invalid"),
 	}))
-	assert.True(t, object.IsError(result))
+	assert.NotNil(t, err)
 }
 
 func TestCeil(t *testing.T) {
@@ -233,7 +238,8 @@ func TestCeil(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Ceil(ctx, tt.input)
+			result, err := Ceil(ctx, tt.input)
+			assert.Nil(t, err)
 			assert.True(t, object.Equals(result, tt.expected))
 		})
 	}
@@ -241,11 +247,11 @@ func TestCeil(t *testing.T) {
 
 func TestCeilErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Ceil(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Ceil(ctx)
+	assert.NotNil(t, err)
 
-	result = Ceil(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Ceil(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestFloor(t *testing.T) {
@@ -262,7 +268,8 @@ func TestFloor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Floor(ctx, tt.input)
+			result, err := Floor(ctx, tt.input)
+			assert.Nil(t, err)
 			assert.True(t, object.Equals(result, tt.expected))
 		})
 	}
@@ -270,11 +277,11 @@ func TestFloor(t *testing.T) {
 
 func TestFloorErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Floor(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Floor(ctx)
+	assert.NotNil(t, err)
 
-	result = Floor(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Floor(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestSin(t *testing.T) {
@@ -291,7 +298,8 @@ func TestSin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Sin(ctx, tt.input)
+			result, err := Sin(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.True(t, math.Abs(f.Value()-tt.expected) < 1e-10)
@@ -301,11 +309,11 @@ func TestSin(t *testing.T) {
 
 func TestSinErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Sin(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Sin(ctx)
+	assert.NotNil(t, err)
 
-	result = Sin(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Sin(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestCos(t *testing.T) {
@@ -322,7 +330,8 @@ func TestCos(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Cos(ctx, tt.input)
+			result, err := Cos(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.True(t, math.Abs(f.Value()-tt.expected) < 1e-10)
@@ -332,11 +341,11 @@ func TestCos(t *testing.T) {
 
 func TestCosErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Cos(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Cos(ctx)
+	assert.NotNil(t, err)
 
-	result = Cos(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Cos(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestTan(t *testing.T) {
@@ -352,7 +361,8 @@ func TestTan(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Tan(ctx, tt.input)
+			result, err := Tan(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.True(t, math.Abs(f.Value()-tt.expected) < 1e-10)
@@ -362,11 +372,11 @@ func TestTan(t *testing.T) {
 
 func TestTanErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Tan(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Tan(ctx)
+	assert.NotNil(t, err)
 
-	result = Tan(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Tan(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestMod(t *testing.T) {
@@ -383,7 +393,8 @@ func TestMod(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Mod(ctx, tt.x, tt.y)
+			result, err := Mod(ctx, tt.x, tt.y)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.want)
@@ -393,14 +404,14 @@ func TestMod(t *testing.T) {
 
 func TestModErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Mod(ctx, object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err := Mod(ctx, object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Mod(ctx, object.NewString("a"), object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err = Mod(ctx, object.NewString("a"), object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Mod(ctx, object.NewFloat(1.0), object.NewString("b"))
-	assert.True(t, object.IsError(result))
+	_, err = Mod(ctx, object.NewFloat(1.0), object.NewString("b"))
+	assert.NotNil(t, err)
 }
 
 func TestLog(t *testing.T) {
@@ -416,7 +427,8 @@ func TestLog(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Log(ctx, tt.input)
+			result, err := Log(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.True(t, math.Abs(f.Value()-tt.expected) < 1e-10)
@@ -426,11 +438,11 @@ func TestLog(t *testing.T) {
 
 func TestLogErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Log(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Log(ctx)
+	assert.NotNil(t, err)
 
-	result = Log(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Log(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestLog10(t *testing.T) {
@@ -446,7 +458,8 @@ func TestLog10(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Log10(ctx, tt.input)
+			result, err := Log10(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.True(t, math.Abs(f.Value()-tt.expected) < 1e-10)
@@ -456,11 +469,11 @@ func TestLog10(t *testing.T) {
 
 func TestLog10Errors(t *testing.T) {
 	ctx := context.Background()
-	result := Log10(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Log10(ctx)
+	assert.NotNil(t, err)
 
-	result = Log10(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Log10(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestLog2(t *testing.T) {
@@ -476,7 +489,8 @@ func TestLog2(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Log2(ctx, tt.input)
+			result, err := Log2(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.True(t, math.Abs(f.Value()-tt.expected) < 1e-10)
@@ -486,11 +500,11 @@ func TestLog2(t *testing.T) {
 
 func TestLog2Errors(t *testing.T) {
 	ctx := context.Background()
-	result := Log2(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Log2(ctx)
+	assert.NotNil(t, err)
 
-	result = Log2(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Log2(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestPow(t *testing.T) {
@@ -507,7 +521,8 @@ func TestPow(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Pow(ctx, tt.x, tt.y)
+			result, err := Pow(ctx, tt.x, tt.y)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.want)
@@ -517,14 +532,14 @@ func TestPow(t *testing.T) {
 
 func TestPowErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Pow(ctx, object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err := Pow(ctx, object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Pow(ctx, object.NewString("a"), object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err = Pow(ctx, object.NewString("a"), object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Pow(ctx, object.NewFloat(1.0), object.NewString("b"))
-	assert.True(t, object.IsError(result))
+	_, err = Pow(ctx, object.NewFloat(1.0), object.NewString("b"))
+	assert.NotNil(t, err)
 }
 
 func TestPow10(t *testing.T) {
@@ -540,7 +555,8 @@ func TestPow10(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Pow10(ctx, tt.input)
+			result, err := Pow10(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.expected)
@@ -550,11 +566,11 @@ func TestPow10(t *testing.T) {
 
 func TestPow10Errors(t *testing.T) {
 	ctx := context.Background()
-	result := Pow10(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Pow10(ctx)
+	assert.NotNil(t, err)
 
-	result = Pow10(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Pow10(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestAtan2(t *testing.T) {
@@ -571,7 +587,8 @@ func TestAtan2(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Atan2(ctx, tt.y, tt.x)
+			result, err := Atan2(ctx, tt.y, tt.x)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.True(t, math.Abs(f.Value()-tt.want) < 1e-10)
@@ -581,14 +598,14 @@ func TestAtan2(t *testing.T) {
 
 func TestAtan2Errors(t *testing.T) {
 	ctx := context.Background()
-	result := Atan2(ctx, object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err := Atan2(ctx, object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Atan2(ctx, object.NewString("a"), object.NewFloat(1.0))
-	assert.True(t, object.IsError(result))
+	_, err = Atan2(ctx, object.NewString("a"), object.NewFloat(1.0))
+	assert.NotNil(t, err)
 
-	result = Atan2(ctx, object.NewFloat(1.0), object.NewString("b"))
-	assert.True(t, object.IsError(result))
+	_, err = Atan2(ctx, object.NewFloat(1.0), object.NewString("b"))
+	assert.NotNil(t, err)
 }
 
 func TestIsInf(t *testing.T) {
@@ -605,7 +622,8 @@ func TestIsInf(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsInf(ctx, tt.input)
+			result, err := IsInf(ctx, tt.input)
+			assert.Nil(t, err)
 			b, ok := result.(*object.Bool)
 			assert.True(t, ok)
 			assert.Equal(t, b.Value(), tt.expected)
@@ -615,11 +633,11 @@ func TestIsInf(t *testing.T) {
 
 func TestIsInfErrors(t *testing.T) {
 	ctx := context.Background()
-	result := IsInf(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := IsInf(ctx)
+	assert.NotNil(t, err)
 
-	result = IsInf(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = IsInf(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestRound(t *testing.T) {
@@ -636,7 +654,8 @@ func TestRound(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Round(ctx, tt.input)
+			result, err := Round(ctx, tt.input)
+			assert.Nil(t, err)
 			f, ok := result.(*object.Float)
 			assert.True(t, ok)
 			assert.Equal(t, f.Value(), tt.expected)
@@ -646,30 +665,33 @@ func TestRound(t *testing.T) {
 
 func TestRoundErrors(t *testing.T) {
 	ctx := context.Background()
-	result := Round(ctx)
-	assert.True(t, object.IsError(result))
+	_, err := Round(ctx)
+	assert.NotNil(t, err)
 
-	result = Round(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Round(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestInf(t *testing.T) {
 	ctx := context.Background()
 
 	// Default positive infinity
-	result := Inf(ctx)
+	result, err := Inf(ctx)
+	assert.Nil(t, err)
 	f, ok := result.(*object.Float)
 	assert.True(t, ok)
 	assert.True(t, math.IsInf(f.Value(), 1))
 
 	// Positive sign
-	result = Inf(ctx, object.NewInt(1))
+	result, err = Inf(ctx, object.NewInt(1))
+	assert.Nil(t, err)
 	f, ok = result.(*object.Float)
 	assert.True(t, ok)
 	assert.True(t, math.IsInf(f.Value(), 1))
 
 	// Negative sign
-	result = Inf(ctx, object.NewInt(-1))
+	result, err = Inf(ctx, object.NewInt(-1))
+	assert.Nil(t, err)
 	f, ok = result.(*object.Float)
 	assert.True(t, ok)
 	assert.True(t, math.IsInf(f.Value(), -1))
@@ -679,12 +701,12 @@ func TestInfErrors(t *testing.T) {
 	ctx := context.Background()
 
 	// Too many arguments
-	result := Inf(ctx, object.NewInt(1), object.NewInt(2))
-	assert.True(t, object.IsError(result))
+	_, err := Inf(ctx, object.NewInt(1), object.NewInt(2))
+	assert.NotNil(t, err)
 
 	// Wrong type
-	result = Inf(ctx, object.NewString("hello"))
-	assert.True(t, object.IsError(result))
+	_, err = Inf(ctx, object.NewString("hello"))
+	assert.NotNil(t, err)
 }
 
 func TestModule(t *testing.T) {

@@ -56,19 +56,20 @@ func (b *Bool) Compare(other Object) (int, error) {
 	return -1, nil
 }
 
-func (b *Bool) Equals(other Object) Object {
-	if other.Type() == BOOL && b.value == other.(*Bool).value {
-		return True
+func (b *Bool) Equals(other Object) bool {
+	otherBool, ok := other.(*Bool)
+	if !ok {
+		return false
 	}
-	return False
+	return b.value == otherBool.value
 }
 
 func (b *Bool) IsTruthy() bool {
 	return b.value
 }
 
-func (b *Bool) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for bool: %v", opType)
+func (b *Bool) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, fmt.Errorf("type error: unsupported operation for bool: %v", opType)
 }
 
 func (b *Bool) MarshalJSON() ([]byte, error) {
@@ -93,5 +94,5 @@ func Not(b *Bool) *Bool {
 }
 
 func Equals(a, b Object) bool {
-	return a.Equals(b).(*Bool).value
+	return a.Equals(b)
 }

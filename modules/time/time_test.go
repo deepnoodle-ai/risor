@@ -10,7 +10,8 @@ import (
 )
 
 func TestNow(t *testing.T) {
-	got := Now(context.Background())
+	got, err := Now(context.Background())
+	assert.Nil(t, err)
 	_, ok := got.(*object.Time)
 	assert.True(t, ok)
 }
@@ -27,9 +28,10 @@ func TestUnix(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got, _ := object.AsTime(
-			Unix(context.Background(), object.NewInt(tt.sec), object.NewInt(tt.nsec)),
-		)
+		result, err := Unix(context.Background(), object.NewInt(tt.sec), object.NewInt(tt.nsec))
+		assert.Nil(t, err)
+		got, convErr := object.AsTime(result)
+		assert.Nil(t, convErr)
 		assert.Equal(t, got.UTC(), tt.want.UTC())
 	}
 }
@@ -46,7 +48,8 @@ func TestParse(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := Parse(context.Background(), object.NewString(tt.layout), object.NewString(tt.value))
+		got, err := Parse(context.Background(), object.NewString(tt.layout), object.NewString(tt.value))
+		assert.Nil(t, err)
 		assert.Equal(t, got, object.NewTime(tt.want))
 	}
 }
@@ -55,7 +58,8 @@ func TestSince(t *testing.T) {
 	now := time.Now()
 	time.Sleep(100 * time.Millisecond)
 
-	got := Since(context.Background(), object.NewTime(now))
+	got, err := Since(context.Background(), object.NewTime(now))
+	assert.Nil(t, err)
 	f, ok := got.(*object.Float)
 	assert.True(t, ok)
 
