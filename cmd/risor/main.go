@@ -73,7 +73,9 @@ func main() {
 		Description("Browse language documentation").
 		Args("topic?").
 		Flags(
-			cli.String("output", "o").Enum("json", "text").Help("Output format"),
+			cli.String("format", "f").Enum("json", "text", "markdown").Help("Output format"),
+			cli.Bool("quick", "q").Help("Show quick reference"),
+			cli.Bool("all", "a").Help("Show complete documentation"),
 		).
 		Run(docHandler)
 

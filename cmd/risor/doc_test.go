@@ -213,3 +213,266 @@ func TestFormatSignature(t *testing.T) {
 		assert.Equal(t, result, tt.expected)
 	}
 }
+
+func TestDocHandler_QuickReference(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("doc").
+		Args("topic?").
+		Flags(
+			cli.String("format", "f").Enum("json", "text", "markdown"),
+			cli.Bool("quick", "q"),
+			cli.Bool("all", "a"),
+		).
+		Run(docHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"doc", "--quick"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should show quick reference with syntax patterns
+	assert.True(t, contains(output, "Risor"))
+	assert.True(t, contains(output, "SYNTAX") || contains(output, "syntax"))
+	assert.True(t, contains(output, "let x = 1"))
+}
+
+func TestDocHandler_QuickJSON(t *testing.T) {
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("doc").
+		Args("topic?").
+		Flags(
+			cli.String("format", "f").Enum("json", "text", "markdown"),
+			cli.Bool("quick", "q"),
+			cli.Bool("all", "a"),
+		).
+		Run(docHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"doc", "--quick", "--format", "json"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should be valid JSON with expected fields
+	assert.True(t, contains(output, `"risor"`))
+	assert.True(t, contains(output, `"version"`))
+	assert.True(t, contains(output, `"syntax_quick_ref"`))
+	assert.True(t, contains(output, `"topics"`))
+}
+
+func TestDocHandler_Syntax(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("doc").
+		Args("topic?").
+		Flags(
+			cli.String("format", "f").Enum("json", "text", "markdown"),
+			cli.Bool("quick", "q"),
+			cli.Bool("all", "a"),
+		).
+		Run(docHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"doc", "syntax"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should show syntax reference
+	assert.True(t, contains(output, "LITERALS") || contains(output, "literals"))
+	assert.True(t, contains(output, "FUNCTIONS") || contains(output, "functions"))
+}
+
+func TestDocHandler_Errors(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("doc").
+		Args("topic?").
+		Flags(
+			cli.String("format", "f").Enum("json", "text", "markdown"),
+			cli.Bool("quick", "q"),
+			cli.Bool("all", "a"),
+		).
+		Run(docHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"doc", "errors"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should show error patterns
+	assert.True(t, contains(output, "TYPE_ERROR") || contains(output, "type_error"))
+	assert.True(t, contains(output, "NAME_ERROR") || contains(output, "name_error"))
+}
+
+func TestDocHandler_MarkdownFormat(t *testing.T) {
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("doc").
+		Args("topic?").
+		Flags(
+			cli.String("format", "f").Enum("json", "text", "markdown"),
+			cli.Bool("quick", "q"),
+			cli.Bool("all", "a"),
+		).
+		Run(docHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"doc", "--format", "markdown"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should output markdown with headers and tables
+	assert.True(t, contains(output, "# Risor"))
+	assert.True(t, contains(output, "## Built-in Functions"))
+	assert.True(t, contains(output, "|"))
+}
+
+func TestDocHandler_JSONFormat(t *testing.T) {
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("doc").
+		Args("topic?").
+		Flags(
+			cli.String("format", "f").Enum("json", "text", "markdown"),
+			cli.Bool("quick", "q"),
+			cli.Bool("all", "a"),
+		).
+		Run(docHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"doc", "--format", "json"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should be valid JSON with expected structure
+	assert.True(t, contains(output, `"builtins"`))
+	assert.True(t, contains(output, `"modules"`))
+	assert.True(t, contains(output, `"types"`))
+}
+
+func TestDocHandler_BuiltinsCategory(t *testing.T) {
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("doc").
+		Args("topic?").
+		Flags(
+			cli.String("format", "f").Enum("json", "text", "markdown"),
+			cli.Bool("quick", "q"),
+			cli.Bool("all", "a"),
+		).
+		Run(docHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"doc", "builtins", "--format", "json"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should show builtins category
+	assert.True(t, contains(output, `"category": "builtins"`))
+	assert.True(t, contains(output, `"functions"`))
+}
+
+func TestSyntaxSections(t *testing.T) {
+	// Verify all syntax sections have required fields
+	for _, section := range syntaxSections {
+		assert.True(t, section.Name != "", "section should have name")
+		assert.True(t, len(section.Items) > 0, "section %s should have items", section.Name)
+
+		for _, item := range section.Items {
+			assert.True(t, item.Syntax != "", "item in %s should have syntax", section.Name)
+			assert.True(t, item.Notes != "", "item in %s should have notes", section.Name)
+		}
+	}
+}
+
+func TestErrorPatterns(t *testing.T) {
+	// Verify all error patterns have required fields
+	for _, pattern := range errorPatterns {
+		assert.True(t, pattern.Type != "", "pattern should have type")
+		assert.True(t, pattern.MessagePattern != "", "pattern %s should have message pattern", pattern.Type)
+		assert.True(t, len(pattern.Causes) > 0, "pattern %s should have causes", pattern.Type)
+		assert.True(t, len(pattern.Examples) > 0, "pattern %s should have examples", pattern.Type)
+
+		for _, ex := range pattern.Examples {
+			assert.True(t, ex.Error != "", "example in %s should have error", pattern.Type)
+			assert.True(t, ex.BadCode != "", "example in %s should have bad code", pattern.Type)
+			assert.True(t, ex.Fix != "", "example in %s should have fix", pattern.Type)
+		}
+	}
+}

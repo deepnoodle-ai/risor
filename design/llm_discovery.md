@@ -260,12 +260,11 @@ The `risor doc syntax` command provides a comprehensive syntax reference:
     {
       "name": "control_flow",
       "items": [
-        {"syntax": "if cond { } else { }", "notes": "Conditional"},
-        {"syntax": "for item in items { }", "notes": "For-in loop"},
-        {"syntax": "for i, item in items { }", "notes": "For-in with index"},
-        {"syntax": "for cond { }", "notes": "While-style loop"},
-        {"syntax": "switch val { case x: ... }", "notes": "Switch statement"},
-        {"syntax": "break, continue, return", "notes": "Control keywords"}
+        {"syntax": "if (cond) { } else { }", "notes": "Conditional (is an expression)"},
+        {"syntax": "switch (val) { case x: ... }", "notes": "Switch statement"},
+        {"syntax": "try { } catch e { }", "notes": "Error handling"},
+        {"syntax": "throw error(msg)", "notes": "Raise an error"},
+        {"syntax": "return value", "notes": "Return from function"}
       ]
     },
     {
@@ -274,8 +273,8 @@ The `risor doc syntax` command provides a comprehensive syntax reference:
         {"syntax": "+ - * / %", "notes": "Arithmetic"},
         {"syntax": "== != < > <= >=", "notes": "Comparison"},
         {"syntax": "&& || !", "notes": "Logical"},
-        {"syntax": "?? ?: ?.", "notes": "Nil coalescing, ternary, optional chain"},
-        {"syntax": "|>", "notes": "Pipe operator"}
+        {"syntax": "?? ?.", "notes": "Nil coalescing, optional chain"},
+        {"syntax": "|", "notes": "Pipe operator"}
       ]
     },
     {

@@ -93,10 +93,8 @@ print(person["age"])
 // Check keys
 print("name" in person)  // true
 
-// Iterate
-for k, v in person {
-    print(k, "=", v)
-}`,
+// Get keys and values
+print(keys(person))    // ["name", "age", "city"]`,
 	},
 	{
 		Name:        "spread",
@@ -187,28 +185,23 @@ let size = if (x > 100) {
 print(size)`,
 	},
 	{
-		Name:        "loops",
-		Description: "For loops",
+		Name:        "iteration",
+		Description: "Functional iteration",
 		Category:    "control",
-		Code: `// Iterate over list
-for x in [1, 2, 3] {
-    print(x)
-}
+		Code: `// Use map, filter, and other methods for iteration
+let nums = [1, 2, 3, 4, 5]
 
-// With index
-for i, x in ["a", "b", "c"] {
-    print(i, x)
-}
+// Transform each element
+let doubled = nums.map(x => x * 2)
+print(doubled)  // [2, 4, 6, 8, 10]
 
-// Iterate over map
-for k, v in {a: 1, b: 2} {
-    print(k, "=>", v)
-}
+// Filter elements
+let evens = nums.filter(x => x % 2 == 0)
+print(evens)  // [2, 4]
 
-// Range
-for i in range(5) {
-    print(i)
-}`,
+// Use range for sequences
+let squares = list(range(5)).map(x => x * x)
+print(squares)  // [0, 1, 4, 9, 16]`,
 	},
 	{
 		Name:        "switch",
