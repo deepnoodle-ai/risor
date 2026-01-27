@@ -1,10 +1,46 @@
 package object
 
 import (
+	"context"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/risor-io/risor/op"
 )
+
+func TestListType(t *testing.T) {
+	list := NewList(nil)
+	assert.Equal(t, list.Type(), LIST)
+}
+
+func TestListValue(t *testing.T) {
+	items := []Object{NewInt(1), NewInt(2)}
+	list := NewList(items)
+	assert.Equal(t, list.Value(), items)
+}
+
+func TestListInspect(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewString("hello")})
+	assert.Equal(t, list.Inspect(), `[1, "hello"]`)
+}
+
+func TestListInspectEmpty(t *testing.T) {
+	list := NewList(nil)
+	assert.Equal(t, list.Inspect(), "[]")
+}
+
+func TestListInspectSelfReference(t *testing.T) {
+	list := NewList(nil)
+	list.Append(list)
+	// Should handle self-reference without infinite loop
+	inspect := list.Inspect()
+	assert.Equal(t, inspect, "[[...]]")
+}
+
+func TestListString(t *testing.T) {
+	list := NewList([]Object{NewInt(1)})
+	assert.Equal(t, list.String(), "[1]")
+}
 
 func TestListInsert(t *testing.T) {
 	one := NewInt(1)
@@ -44,4 +80,619 @@ func TestListPop(t *testing.T) {
 	err, ok := list.Pop(1).(*Error)
 	assert.True(t, ok)
 	assert.Equal(t, err.Message().Value(), "index error: index out of range: 1")
+}
+
+func TestListAppend(t *testing.T) {
+	list := NewList([]Object{NewInt(1)})
+	list.Append(NewInt(2))
+	assert.Equal(t, list.Len().Value(), int64(2))
+	assert.Equal(t, list.Value()[1].(*Int).Value(), int64(2))
+}
+
+func TestListClear(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+	list.Clear()
+	assert.Equal(t, list.Len().Value(), int64(0))
+}
+
+func TestListCopy(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+	copyList := list.Copy()
+
+	// Same values
+	assert.Equal(t, copyList.Len().Value(), int64(2))
+
+	// But different object
+	list.Clear()
+	assert.Equal(t, copyList.Len().Value(), int64(2))
+}
+
+func TestListCount(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(1), NewInt(1)})
+	assert.Equal(t, list.Count(NewInt(1)), int64(3))
+	assert.Equal(t, list.Count(NewInt(2)), int64(1))
+	assert.Equal(t, list.Count(NewInt(99)), int64(0))
+}
+
+func TestListExtend(t *testing.T) {
+	list1 := NewList([]Object{NewInt(1), NewInt(2)})
+	list2 := NewList([]Object{NewInt(3), NewInt(4)})
+	list1.Extend(list2)
+	assert.Equal(t, list1.Len().Value(), int64(4))
+}
+
+func TestListIndex(t *testing.T) {
+	list := NewList([]Object{NewString("a"), NewString("b"), NewString("c")})
+	assert.Equal(t, list.Index(NewString("b")), int64(1))
+	assert.Equal(t, list.Index(NewString("x")), int64(-1))
+}
+
+func TestListRemove(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	list.Remove(NewInt(2))
+	assert.Equal(t, list.Len().Value(), int64(2))
+
+	// Remove non-existent item (no-op)
+	list.Remove(NewInt(99))
+	assert.Equal(t, list.Len().Value(), int64(2))
+}
+
+func TestListReverse(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	list.Reverse()
+	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(3))
+	assert.Equal(t, list.Value()[1].(*Int).Value(), int64(2))
+	assert.Equal(t, list.Value()[2].(*Int).Value(), int64(1))
+}
+
+func TestListReversed(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	reversed := list.Reversed()
+
+	// Original unchanged
+	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(1))
+
+	// Reversed copy
+	assert.Equal(t, reversed.Value()[0].(*Int).Value(), int64(3))
+}
+
+func TestListInterface(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewString("hello")})
+	iface := list.Interface()
+	result := iface.([]interface{})
+	assert.Equal(t, result[0], int64(1))
+	assert.Equal(t, result[1], "hello")
+}
+
+func TestListCompare(t *testing.T) {
+	list1 := NewList([]Object{NewInt(1), NewInt(2)})
+	list2 := NewList([]Object{NewInt(1), NewInt(2)})
+	list3 := NewList([]Object{NewInt(1)})
+	list4 := NewList([]Object{NewInt(1), NewInt(3)})
+
+	// Equal
+	cmp, err := list1.Compare(list2)
+	assert.Nil(t, err)
+	assert.Equal(t, cmp, 0)
+
+	// Different sizes
+	cmp, err = list1.Compare(list3)
+	assert.Nil(t, err)
+	assert.True(t, cmp > 0)
+
+	cmp, err = list3.Compare(list1)
+	assert.Nil(t, err)
+	assert.True(t, cmp < 0)
+
+	// Same size, different values
+	cmp, err = list1.Compare(list4)
+	assert.Nil(t, err)
+	assert.True(t, cmp < 0) // 2 < 3
+
+	// Different type
+	_, err = list1.Compare(NewInt(1))
+	assert.NotNil(t, err)
+}
+
+func TestListEquals(t *testing.T) {
+	list1 := NewList([]Object{NewInt(1), NewInt(2)})
+	list2 := NewList([]Object{NewInt(1), NewInt(2)})
+	list3 := NewList([]Object{NewInt(1)})
+	list4 := NewList([]Object{NewInt(1), NewInt(3)})
+
+	assert.Equal(t, list1.Equals(list2), True)
+	assert.Equal(t, list1.Equals(list3), False)
+	assert.Equal(t, list1.Equals(list4), False)
+	assert.Equal(t, list1.Equals(NewString("test")), False)
+}
+
+func TestListIsTruthy(t *testing.T) {
+	assert.False(t, NewList(nil).IsTruthy())
+	assert.False(t, NewList([]Object{}).IsTruthy())
+	assert.True(t, NewList([]Object{NewInt(1)}).IsTruthy())
+}
+
+func TestListKeys(t *testing.T) {
+	list := NewList([]Object{NewString("a"), NewString("b"), NewString("c")})
+	keys := list.Keys().(*List)
+	assert.Equal(t, keys.Len().Value(), int64(3))
+	assert.Equal(t, keys.Value()[0].(*Int).Value(), int64(0))
+	assert.Equal(t, keys.Value()[1].(*Int).Value(), int64(1))
+	assert.Equal(t, keys.Value()[2].(*Int).Value(), int64(2))
+}
+
+func TestListGetItem(t *testing.T) {
+	list := NewList([]Object{NewInt(10), NewInt(20), NewInt(30)})
+
+	// Valid index
+	val, err := list.GetItem(NewInt(1))
+	assert.Nil(t, err)
+	assert.Equal(t, val.(*Int).Value(), int64(20))
+
+	// Negative index
+	val, err = list.GetItem(NewInt(-1))
+	assert.Nil(t, err)
+	assert.Equal(t, val.(*Int).Value(), int64(30))
+
+	// Out of range
+	_, err = list.GetItem(NewInt(10))
+	assert.NotNil(t, err)
+
+	// Wrong type
+	_, err = list.GetItem(NewString("test"))
+	assert.NotNil(t, err)
+}
+
+func TestListGetSlice(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3), NewInt(4), NewInt(5)})
+
+	// Valid slice
+	result, err := list.GetSlice(Slice{Start: NewInt(1), Stop: NewInt(3)})
+	assert.Nil(t, err)
+	resultList := result.(*List)
+	assert.Equal(t, resultList.Len().Value(), int64(2))
+
+	// Nil start
+	result, err = list.GetSlice(Slice{Start: nil, Stop: NewInt(2)})
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*List).Len().Value(), int64(2))
+
+	// Nil stop
+	result, err = list.GetSlice(Slice{Start: NewInt(3), Stop: nil})
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*List).Len().Value(), int64(2))
+}
+
+func TestListSetItem(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+
+	// Valid set
+	err := list.SetItem(NewInt(1), NewInt(99))
+	assert.Nil(t, err)
+	assert.Equal(t, list.Value()[1].(*Int).Value(), int64(99))
+
+	// Wrong index type
+	err = list.SetItem(NewString("test"), NewInt(1))
+	assert.NotNil(t, err)
+
+	// Out of range
+	err = list.SetItem(NewInt(10), NewInt(1))
+	assert.NotNil(t, err)
+}
+
+func TestListDelItem(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+
+	// Valid delete
+	err := list.DelItem(NewInt(1))
+	assert.Nil(t, err)
+	assert.Equal(t, list.Len().Value(), int64(2))
+
+	// Wrong type
+	err = list.DelItem(NewString("test"))
+	assert.NotNil(t, err)
+
+	// Out of range
+	err = list.DelItem(NewInt(10))
+	assert.NotNil(t, err)
+}
+
+func TestListContains(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	assert.Equal(t, list.Contains(NewInt(2)), True)
+	assert.Equal(t, list.Contains(NewInt(99)), False)
+}
+
+func TestListLen(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	assert.Equal(t, list.Len().Value(), int64(3))
+}
+
+func TestListSize(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	assert.Equal(t, list.Size(), 3)
+}
+
+func TestListEnumerate(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewString("a"), NewString("b"), NewString("c")})
+
+	var indices []int64
+	var values []string
+	list.Enumerate(ctx, func(key, value Object) bool {
+		indices = append(indices, key.(*Int).Value())
+		values = append(values, value.(*String).Value())
+		return true
+	})
+
+	assert.Equal(t, indices, []int64{0, 1, 2})
+	assert.Equal(t, values, []string{"a", "b", "c"})
+}
+
+func TestListEnumerateEarlyStop(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3), NewInt(4), NewInt(5)})
+
+	count := 0
+	list.Enumerate(ctx, func(key, value Object) bool {
+		count++
+		return count < 2
+	})
+
+	assert.Equal(t, count, 2)
+}
+
+func TestListRunOperation(t *testing.T) {
+	list1 := NewList([]Object{NewInt(1), NewInt(2)})
+	list2 := NewList([]Object{NewInt(3), NewInt(4)})
+
+	// Add lists
+	result := list1.RunOperation(op.Add, list2)
+	resultList := result.(*List)
+	assert.Equal(t, resultList.Len().Value(), int64(4))
+
+	// Unsupported operation
+	result = list1.RunOperation(op.Subtract, list2)
+	assert.True(t, IsError(result))
+
+	// Unsupported type
+	result = list1.RunOperation(op.Add, NewInt(1))
+	assert.True(t, IsError(result))
+}
+
+func TestListCost(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	assert.Equal(t, list.Cost(), 24) // 3 items * 8
+}
+
+func TestListMarshalJSON(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewString("hello")})
+	data, err := list.MarshalJSON()
+	assert.Nil(t, err)
+	assert.True(t, len(data) > 0)
+}
+
+func TestNewStringList(t *testing.T) {
+	list := NewStringList([]string{"a", "b", "c"})
+	assert.Equal(t, list.Len().Value(), int64(3))
+	assert.Equal(t, list.Value()[0].(*String).Value(), "a")
+}
+
+func TestListGetAttrAppend(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1)})
+
+	append, ok := list.GetAttr("append")
+	assert.True(t, ok)
+
+	result := append.(*Builtin).Call(ctx, NewInt(2))
+	assert.Equal(t, result, list)
+	assert.Equal(t, list.Len().Value(), int64(2))
+}
+
+func TestListGetAttrAppendError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	append, _ := list.GetAttr("append")
+
+	result := append.(*Builtin).Call(ctx)
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrClear(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1), NewInt(2)})
+
+	clear, ok := list.GetAttr("clear")
+	assert.True(t, ok)
+
+	result := clear.(*Builtin).Call(ctx)
+	assert.Equal(t, result, list)
+	assert.Equal(t, list.Len().Value(), int64(0))
+}
+
+func TestListGetAttrClearError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	clear, _ := list.GetAttr("clear")
+	result := clear.(*Builtin).Call(ctx, NewInt(1))
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrCopy(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1)})
+
+	copyFn, ok := list.GetAttr("copy")
+	assert.True(t, ok)
+
+	result := copyFn.(*Builtin).Call(ctx)
+	assert.Equal(t, result.(*List).Len().Value(), int64(1))
+}
+
+func TestListGetAttrCopyError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	copyFn, _ := list.GetAttr("copy")
+	result := copyFn.(*Builtin).Call(ctx, NewInt(1))
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrCount(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(1)})
+
+	count, ok := list.GetAttr("count")
+	assert.True(t, ok)
+
+	result := count.(*Builtin).Call(ctx, NewInt(1))
+	assert.Equal(t, result.(*Int).Value(), int64(2))
+}
+
+func TestListGetAttrCountError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	count, _ := list.GetAttr("count")
+	result := count.(*Builtin).Call(ctx)
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrExtend(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1)})
+
+	extend, ok := list.GetAttr("extend")
+	assert.True(t, ok)
+
+	result := extend.(*Builtin).Call(ctx, NewList([]Object{NewInt(2), NewInt(3)}))
+	assert.Equal(t, result, list)
+	assert.Equal(t, list.Len().Value(), int64(3))
+}
+
+func TestListGetAttrExtendError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	extend, _ := list.GetAttr("extend")
+
+	// Wrong arg count
+	result := extend.(*Builtin).Call(ctx)
+	assert.True(t, IsError(result))
+
+	// Wrong type
+	result = extend.(*Builtin).Call(ctx, NewInt(1))
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrIndex(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewString("a"), NewString("b"), NewString("c")})
+
+	index, ok := list.GetAttr("index")
+	assert.True(t, ok)
+
+	result := index.(*Builtin).Call(ctx, NewString("b"))
+	assert.Equal(t, result.(*Int).Value(), int64(1))
+}
+
+func TestListGetAttrIndexError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	index, _ := list.GetAttr("index")
+	result := index.(*Builtin).Call(ctx)
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrInsert(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1), NewInt(3)})
+
+	insert, ok := list.GetAttr("insert")
+	assert.True(t, ok)
+
+	result := insert.(*Builtin).Call(ctx, NewInt(1), NewInt(2))
+	assert.Equal(t, result, list)
+	assert.Equal(t, list.Len().Value(), int64(3))
+}
+
+func TestListGetAttrInsertError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	insert, _ := list.GetAttr("insert")
+
+	// Wrong arg count
+	result := insert.(*Builtin).Call(ctx, NewInt(1))
+	assert.True(t, IsError(result))
+
+	// Wrong type for index
+	result = insert.(*Builtin).Call(ctx, NewString("x"), NewInt(1))
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrPop(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+
+	pop, ok := list.GetAttr("pop")
+	assert.True(t, ok)
+
+	result := pop.(*Builtin).Call(ctx, NewInt(1))
+	assert.Equal(t, result.(*Int).Value(), int64(2))
+	assert.Equal(t, list.Len().Value(), int64(2))
+}
+
+func TestListGetAttrPopError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	pop, _ := list.GetAttr("pop")
+
+	// Wrong arg count
+	result := pop.(*Builtin).Call(ctx)
+	assert.True(t, IsError(result))
+
+	// Wrong type
+	result = pop.(*Builtin).Call(ctx, NewString("x"))
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrRemove(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+
+	remove, ok := list.GetAttr("remove")
+	assert.True(t, ok)
+
+	result := remove.(*Builtin).Call(ctx, NewInt(2))
+	assert.Equal(t, result, list)
+	assert.Equal(t, list.Len().Value(), int64(2))
+}
+
+func TestListGetAttrRemoveError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	remove, _ := list.GetAttr("remove")
+	result := remove.(*Builtin).Call(ctx)
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrReverse(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+
+	reverse, ok := list.GetAttr("reverse")
+	assert.True(t, ok)
+
+	result := reverse.(*Builtin).Call(ctx)
+	assert.Equal(t, result, list)
+	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(3))
+}
+
+func TestListGetAttrReverseError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	reverse, _ := list.GetAttr("reverse")
+	result := reverse.(*Builtin).Call(ctx, NewInt(1))
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrSort(t *testing.T) {
+	ctx := context.Background()
+	list := NewList([]Object{NewInt(3), NewInt(1), NewInt(2)})
+
+	sort, ok := list.GetAttr("sort")
+	assert.True(t, ok)
+
+	result := sort.(*Builtin).Call(ctx)
+	assert.Equal(t, result, list)
+	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(1))
+	assert.Equal(t, list.Value()[1].(*Int).Value(), int64(2))
+	assert.Equal(t, list.Value()[2].(*Int).Value(), int64(3))
+}
+
+func TestListGetAttrSortError(t *testing.T) {
+	ctx := context.Background()
+	list := NewList(nil)
+	sort, _ := list.GetAttr("sort")
+	result := sort.(*Builtin).Call(ctx, NewInt(1))
+	assert.True(t, IsError(result))
+}
+
+func TestListGetAttrInvalid(t *testing.T) {
+	list := NewList(nil)
+	_, ok := list.GetAttr("invalid_method")
+	assert.False(t, ok)
+}
+
+func TestResolveIndex(t *testing.T) {
+	// Positive indices
+	idx, err := ResolveIndex(0, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, idx, int64(0))
+
+	idx, err = ResolveIndex(4, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, idx, int64(4))
+
+	// Negative indices
+	idx, err = ResolveIndex(-1, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, idx, int64(4))
+
+	idx, err = ResolveIndex(-5, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, idx, int64(0))
+
+	// Out of range
+	_, err = ResolveIndex(5, 5)
+	assert.NotNil(t, err)
+
+	_, err = ResolveIndex(-6, 5)
+	assert.NotNil(t, err)
+}
+
+func TestResolveIntSlice(t *testing.T) {
+	// Basic slice
+	start, stop, err := ResolveIntSlice(Slice{Start: NewInt(1), Stop: NewInt(3)}, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, start, int64(1))
+	assert.Equal(t, stop, int64(3))
+
+	// Negative start
+	start, stop, err = ResolveIntSlice(Slice{Start: NewInt(-2), Stop: NewInt(5)}, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, start, int64(3))
+	assert.Equal(t, stop, int64(5))
+
+	// Negative stop
+	start, stop, err = ResolveIntSlice(Slice{Start: NewInt(0), Stop: NewInt(-1)}, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, start, int64(0))
+	assert.Equal(t, stop, int64(4))
+
+	// Wrong start type
+	_, _, err = ResolveIntSlice(Slice{Start: NewString("x"), Stop: NewInt(3)}, 5)
+	assert.NotNil(t, err)
+
+	// Wrong stop type
+	_, _, err = ResolveIntSlice(Slice{Start: NewInt(0), Stop: NewString("x")}, 5)
+	assert.NotNil(t, err)
+
+	// Start > stop
+	_, _, err = ResolveIntSlice(Slice{Start: NewInt(3), Stop: NewInt(1)}, 5)
+	assert.NotNil(t, err)
+
+	// Start out of range
+	_, _, err = ResolveIntSlice(Slice{Start: NewInt(10), Stop: NewInt(12)}, 5)
+	assert.NotNil(t, err)
+
+	// Stop out of range
+	_, _, err = ResolveIntSlice(Slice{Start: NewInt(0), Stop: NewInt(10)}, 5)
+	assert.NotNil(t, err)
+
+	// Negative start out of range
+	_, _, err = ResolveIntSlice(Slice{Start: NewInt(-10), Stop: NewInt(3)}, 5)
+	assert.NotNil(t, err)
+
+	// Negative stop out of range
+	_, _, err = ResolveIntSlice(Slice{Start: NewInt(0), Stop: NewInt(-10)}, 5)
+	assert.NotNil(t, err)
 }
