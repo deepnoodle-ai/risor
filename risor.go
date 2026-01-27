@@ -16,6 +16,7 @@ import (
 	modTime "github.com/risor-io/risor/modules/time"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
+	"github.com/risor-io/risor/syntax"
 	"github.com/risor-io/risor/vm"
 )
 
@@ -23,6 +24,24 @@ import (
 var (
 	ErrStepLimitExceeded = vm.ErrStepLimitExceeded
 	ErrStackOverflow     = vm.ErrStackOverflow
+)
+
+// Re-export syntax types for convenient access.
+type (
+	SyntaxConfig     = syntax.SyntaxConfig
+	Validator        = syntax.Validator
+	ValidatorFunc    = syntax.ValidatorFunc
+	ValidationError  = syntax.ValidationError
+	ValidationErrors = syntax.ValidationErrors
+	Transformer      = syntax.Transformer
+	TransformerFunc  = syntax.TransformerFunc
+)
+
+// Re-export presets.
+var (
+	ExpressionOnly = syntax.ExpressionOnly
+	BasicScripting = syntax.BasicScripting
+	FullLanguage   = syntax.FullLanguage
 )
 
 // Option configures a Risor compilation or execution.
@@ -38,6 +57,10 @@ type options struct {
 	maxSteps      int64
 	maxStackDepth int
 	timeout       time.Duration
+	// AST validation and transformation
+	syntaxConfig *syntax.SyntaxConfig
+	validators   []syntax.Validator
+	transformers []syntax.Transformer
 }
 
 func collectOptions(opts ...Option) *options {
@@ -228,6 +251,66 @@ func WithTimeout(d time.Duration) Option {
 	}
 }
 
+// WithSyntax applies a syntax configuration that restricts allowed constructs.
+// The validator runs after parsing and before any transformers.
+//
+// Example:
+//
+//	// Only allow expressions - no variable declarations or control flow
+//	result, err := risor.Eval(ctx, "price * quantity",
+//	    risor.WithEnv(map[string]any{"price": 100.0, "quantity": 5}),
+//	    risor.WithSyntax(risor.ExpressionOnly),
+//	)
+func WithSyntax(config SyntaxConfig) Option {
+	return func(o *options) {
+		o.syntaxConfig = &config
+	}
+}
+
+// WithValidator adds a custom validator to run after parsing.
+// Multiple validators can be added; they run in order.
+// Validation runs before transformation.
+//
+// Example:
+//
+//	// Disallow accessing the "secret" variable
+//	noSecrets := risor.ValidatorFunc(func(p *ast.Program) []risor.ValidationError {
+//	    var errs []risor.ValidationError
+//	    for node := range ast.Preorder(p) {
+//	        if ident, ok := node.(*ast.Ident); ok && ident.Name == "secret" {
+//	            errs = append(errs, risor.ValidationError{
+//	                Message:  "access to 'secret' is not allowed",
+//	                Node:     node,
+//	                Position: node.Pos(),
+//	            })
+//	        }
+//	    }
+//	    return errs
+//	})
+func WithValidator(v Validator) Option {
+	return func(o *options) {
+		o.validators = append(o.validators, v)
+	}
+}
+
+// WithTransform adds a transformer to run after validation.
+// Multiple transformers can be added; they run in order.
+// Each transformer receives the output of the previous one.
+//
+// Example:
+//
+//	// Double all integer literals
+//	doubler := risor.TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
+//	    // Walk and transform...
+//	    return p, nil
+//	})
+//	result, err := risor.Eval(ctx, source, risor.WithTransform(doubler))
+func WithTransform(t Transformer) Option {
+	return func(o *options) {
+		o.transformers = append(o.transformers, t)
+	}
+}
+
 // NewTypeRegistry creates a RegistryBuilder for custom type conversions.
 // Use this to add support for custom Go types in Risor scripts.
 //
@@ -356,16 +439,39 @@ func Compile(ctx context.Context, source string, opts ...Option) (*bytecode.Code
 	if o.filename != "" {
 		parserCfg = &parser.Config{Filename: o.filename}
 	}
-	ast, err := parser.Parse(ctx, source, parserCfg)
+	program, err := parser.Parse(ctx, source, parserCfg)
 	if err != nil {
 		return nil, err
+	}
+
+	// Validate syntax config (if specified)
+	if o.syntaxConfig != nil {
+		validator := syntax.NewSyntaxValidator(*o.syntaxConfig)
+		if errs := validator.Validate(program); len(errs) > 0 {
+			return nil, syntax.NewValidationErrors(errs)
+		}
+	}
+
+	// Run custom validators
+	for _, v := range o.validators {
+		if errs := v.Validate(program); len(errs) > 0 {
+			return nil, syntax.NewValidationErrors(errs)
+		}
+	}
+
+	// Run transformers
+	for _, t := range o.transformers {
+		program, err = t.Transform(program)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Pass the original source to the compiler for better error messages
 	cfg := o.compilerConfig()
 	cfg.Source = source
 
-	return compiler.Compile(ast, cfg)
+	return compiler.Compile(program, cfg)
 }
 
 // Run executes compiled bytecode and returns the result.
