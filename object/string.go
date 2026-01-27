@@ -9,36 +9,164 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
-// stringAttrs defines all attributes available on string objects.
-// This is the single source of truth for string methods.
-var stringAttrs = []AttrSpec{
-	{Name: "compare", Doc: "Compare to another string (-1, 0, or 1)", Args: []string{"other"}, Returns: "int"},
-	{Name: "contains", Doc: "Check if substring exists", Args: []string{"substr"}, Returns: "bool"},
-	{Name: "count", Doc: "Count occurrences of substring", Args: []string{"substr"}, Returns: "int"},
-	{Name: "fields", Doc: "Split on whitespace", Args: nil, Returns: "list"},
-	{Name: "has_prefix", Doc: "Check if string starts with prefix", Args: []string{"prefix"}, Returns: "bool"},
-	{Name: "has_suffix", Doc: "Check if string ends with suffix", Args: []string{"suffix"}, Returns: "bool"},
-	{Name: "index", Doc: "Find first index of substring (-1 if not found)", Args: []string{"substr"}, Returns: "int"},
-	{Name: "join", Doc: "Join list elements with this string as separator", Args: []string{"items"}, Returns: "string"},
-	{Name: "last_index", Doc: "Find last index of substring (-1 if not found)", Args: []string{"substr"}, Returns: "int"},
-	{Name: "repeat", Doc: "Repeat string n times", Args: []string{"count"}, Returns: "string"},
-	{Name: "replace_all", Doc: "Replace all occurrences", Args: []string{"old", "new"}, Returns: "string"},
-	{Name: "split", Doc: "Split by separator", Args: []string{"sep"}, Returns: "list"},
-	{Name: "to_lower", Doc: "Convert to lowercase", Args: nil, Returns: "string"},
-	{Name: "to_upper", Doc: "Convert to uppercase", Args: nil, Returns: "string"},
-	{Name: "trim", Doc: "Trim characters from both ends", Args: []string{"chars"}, Returns: "string"},
-	{Name: "trim_prefix", Doc: "Remove prefix if present", Args: []string{"prefix"}, Returns: "string"},
-	{Name: "trim_space", Doc: "Trim whitespace from both ends", Args: nil, Returns: "string"},
-	{Name: "trim_suffix", Doc: "Remove suffix if present", Args: []string{"suffix"}, Returns: "string"},
+var stringMethods = NewMethodRegistry[*String]("string")
+
+func init() {
+	stringMethods.Define("compare").
+		Doc("Compare to another string (-1, 0, or 1)").
+		Arg("other").
+		Returns("int").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			result, err := s.Compare(args[0])
+			if err != nil {
+				return nil, err
+			}
+			return NewInt(int64(result)), nil
+		})
+
+	stringMethods.Define("contains").
+		Doc("Check if substring exists").
+		Arg("substr").
+		Returns("bool").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Contains(args[0]), nil
+		})
+
+	stringMethods.Define("count").
+		Doc("Count occurrences of substring").
+		Arg("substr").
+		Returns("int").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Count(args[0])
+		})
+
+	stringMethods.Define("fields").
+		Doc("Split on whitespace").
+		Returns("list").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Fields(), nil
+		})
+
+	stringMethods.Define("has_prefix").
+		Doc("Check if string starts with prefix").
+		Arg("prefix").
+		Returns("bool").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.HasPrefix(args[0])
+		})
+
+	stringMethods.Define("has_suffix").
+		Doc("Check if string ends with suffix").
+		Arg("suffix").
+		Returns("bool").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.HasSuffix(args[0])
+		})
+
+	stringMethods.Define("index").
+		Doc("Find first index of substring (-1 if not found)").
+		Arg("substr").
+		Returns("int").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Index(args[0])
+		})
+
+	stringMethods.Define("join").
+		Doc("Join list elements with this string as separator").
+		Arg("items").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Join(args[0])
+		})
+
+	stringMethods.Define("last_index").
+		Doc("Find last index of substring (-1 if not found)").
+		Arg("substr").
+		Returns("int").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.LastIndex(args[0])
+		})
+
+	stringMethods.Define("repeat").
+		Doc("Repeat string n times").
+		Arg("count").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Repeat(args[0])
+		})
+
+	stringMethods.Define("replace_all").
+		Doc("Replace all occurrences").
+		Args("old", "new").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.ReplaceAll(args[0], args[1])
+		})
+
+	stringMethods.Define("split").
+		Doc("Split by separator").
+		Arg("sep").
+		Returns("list").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Split(args[0])
+		})
+
+	stringMethods.Define("to_lower").
+		Doc("Convert to lowercase").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.ToLower(), nil
+		})
+
+	stringMethods.Define("to_upper").
+		Doc("Convert to uppercase").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.ToUpper(), nil
+		})
+
+	stringMethods.Define("trim").
+		Doc("Trim characters from both ends").
+		Arg("chars").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.Trim(args[0])
+		})
+
+	stringMethods.Define("trim_prefix").
+		Doc("Remove prefix if present").
+		Arg("prefix").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.TrimPrefix(args[0])
+		})
+
+	stringMethods.Define("trim_space").
+		Doc("Trim whitespace from both ends").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.TrimSpace(), nil
+		})
+
+	stringMethods.Define("trim_suffix").
+		Doc("Remove suffix if present").
+		Arg("suffix").
+		Returns("string").
+		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			return s.TrimSuffix(args[0])
+		})
 }
 
 type String struct {
 	value string
 }
 
-// Attrs returns the attribute specifications for string objects.
 func (s *String) Attrs() []AttrSpec {
-	return stringAttrs
+	return stringMethods.Specs()
+}
+
+func (s *String) GetAttr(name string) (Object, bool) {
+	return stringMethods.GetAttr(s, name)
 }
 
 func (s *String) SetAttr(name string, value Object) error {
@@ -67,196 +195,6 @@ func (s *String) Inspect() string {
 
 func (s *String) String() string {
 	return s.value
-}
-
-func (s *String) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "contains":
-		return &Builtin{
-			name: "string.contains",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.contains: expected 1 argument, got %d", len(args))
-				}
-				return s.Contains(args[0]), nil
-			},
-		}, true
-	case "has_prefix":
-		return &Builtin{
-			name: "string.has_prefix",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.has_prefix: expected 1 argument, got %d", len(args))
-				}
-				return s.HasPrefix(args[0])
-			},
-		}, true
-	case "has_suffix":
-		return &Builtin{
-			name: "string.has_suffix",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.has_suffix: expected 1 argument, got %d", len(args))
-				}
-				return s.HasSuffix(args[0])
-			},
-		}, true
-	case "count":
-		return &Builtin{
-			name: "string.count",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.count: expected 1 argument, got %d", len(args))
-				}
-				return s.Count(args[0])
-			},
-		}, true
-	case "join":
-		return &Builtin{
-			name: "string.join",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.join: expected 1 argument, got %d", len(args))
-				}
-				return s.Join(args[0])
-			},
-		}, true
-	case "split":
-		return &Builtin{
-			name: "string.split",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.split: expected 1 argument, got %d", len(args))
-				}
-				return s.Split(args[0])
-			},
-		}, true
-	case "fields":
-		return &Builtin{
-			name: "string.fields",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("string.fields: expected 0 arguments, got %d", len(args))
-				}
-				return s.Fields(), nil
-			},
-		}, true
-	case "index":
-		return &Builtin{
-			name: "string.index",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.index: expected 1 argument, got %d", len(args))
-				}
-				return s.Index(args[0])
-			},
-		}, true
-	case "last_index":
-		return &Builtin{
-			name: "string.last_index",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.last_index: expected 1 argument, got %d", len(args))
-				}
-				return s.LastIndex(args[0])
-			},
-		}, true
-	case "replace_all":
-		return &Builtin{
-			name: "string.replace_all",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 2 {
-					return nil, fmt.Errorf("string.replace_all: expected 2 arguments, got %d", len(args))
-				}
-				return s.ReplaceAll(args[0], args[1])
-			},
-		}, true
-	case "to_lower":
-		return &Builtin{
-			name: "string.to_lower",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("string.to_lower: expected 0 arguments, got %d", len(args))
-				}
-				return s.ToLower(), nil
-			},
-		}, true
-	case "to_upper":
-		return &Builtin{
-			name: "string.to_upper",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("string.to_upper: expected 0 arguments, got %d", len(args))
-				}
-				return s.ToUpper(), nil
-			},
-		}, true
-	case "trim":
-		return &Builtin{
-			name: "string.trim",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.trim: expected 1 argument, got %d", len(args))
-				}
-				return s.Trim(args[0])
-			},
-		}, true
-	case "trim_prefix":
-		return &Builtin{
-			name: "string.trim_prefix",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.trim_prefix: expected 1 argument, got %d", len(args))
-				}
-				return s.TrimPrefix(args[0])
-			},
-		}, true
-	case "trim_space":
-		return &Builtin{
-			name: "string.trim_space",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("string.trim_space: expected 0 arguments, got %d", len(args))
-				}
-				return s.TrimSpace(), nil
-			},
-		}, true
-	case "trim_suffix":
-		return &Builtin{
-			name: "string.trim_suffix",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.trim_suffix: expected 1 argument, got %d", len(args))
-				}
-				return s.TrimSuffix(args[0])
-			},
-		}, true
-	case "compare":
-		return &Builtin{
-			name: "string.compare",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.compare: expected 1 argument, got %d", len(args))
-				}
-				result, err := s.Compare(args[0])
-				if err != nil {
-					return nil, err
-				}
-				return NewInt(int64(result)), nil
-			},
-		}, true
-	case "repeat":
-		return &Builtin{
-			name: "string.repeat",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("string.repeat: expected 1 argument, got %d", len(args))
-				}
-				return s.Repeat(args[0])
-			},
-		}, true
-	}
-	return nil, false
 }
 
 func (s *String) Interface() interface{} {

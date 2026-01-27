@@ -373,7 +373,16 @@ stringMethods.Define("contains").
 
 ### Variadic Methods
 
-For methods that accept variable arguments, extend `AttrSpec`:
+Add a `Variadic()` method to the builder:
+
+```go
+func (b *MethodBuilder[T]) Variadic() *MethodBuilder[T] {
+    b.variadic = true
+    return b
+}
+```
+
+Update `AttrSpec` and validation:
 
 ```go
 type AttrSpec struct {
@@ -383,45 +392,48 @@ type AttrSpec struct {
     Variadic bool   // true if last arg can repeat
     Returns  string
 }
-```
 
-Then modify validation:
-
-```go
+// In GetAttr:
 if m.Spec.Variadic {
     minArgs := len(m.Spec.Args) - 1
     if len(args) < minArgs {
-        return nil, fmt.Errorf("%s: expected at least %d argument(s), got %d", ...)
+        return nil, fmt.Errorf("%s: expected at least %d arguments, got %d",
+            fullName, minArgs, len(args))
     }
 } else {
     if len(args) != expectedArgs {
-        return nil, fmt.Errorf("%s: expected %d argument(s), got %d", ...)
+        return nil, argsError(fullName, expectedArgs, len(args))
     }
 }
 ```
 
-### Optional Arguments
-
-Support optional args with defaults:
+Usage:
 
 ```go
-type ArgSpec struct {
-    Name     string
-    Optional bool
-    Default  Object // nil if required
-}
+stringMethods.Define("join").
+    Doc("Join list elements with separator").
+    Arg("items").
+    Variadic().
+    Returns("string").
+    Impl(...)
+```
 
-type AttrSpec struct {
-    Name    string
-    Doc     string
-    Args    []ArgSpec
-    Returns string
+### Optional Arguments with Defaults
+
+For methods with optional arguments, add support via the builder:
+
+```go
+func (b *MethodBuilder[T]) OptionalArg(name string, defaultValue Object) *MethodBuilder[T] {
+    b.optionalArgs = append(b.optionalArgs, optArg{name, defaultValue})
+    return b
 }
 ```
 
+The registry would normalize args before calling the impl, filling in defaults for missing optional args.
+
 ### Return Type Enum
 
-Replace the informal `Returns string` with a typed enum:
+Replace the informal `Returns string` with a typed enum for tooling support:
 
 ```go
 type ReturnType int
@@ -437,16 +449,18 @@ const (
     ReturnBytes
     ReturnTime
 )
+```
 
-type AttrSpec struct {
-    Name    string
-    Doc     string
-    Args    []string
-    Returns ReturnType
+Update the builder:
+
+```go
+func (b *MethodBuilder[T]) ReturnsType(typ ReturnType) *MethodBuilder[T] {
+    b.returnType = typ
+    return b
 }
 ```
 
-This enables tooling to do type checking and better autocomplete.
+This enables IDE autocomplete and static analysis tools.
 
 ## Migration Plan
 
@@ -488,10 +502,48 @@ Use Go reflection to auto-discover methods.
 
 **Rejected because:** Too magical, poor error messages, doesn't align with Risor's "explicit over implicit" principle.
 
-## Open Questions
+### Direct `Add()` with Struct Literal
 
-1. **Method ordering** - Should `Specs()` return methods in alphabetical order or registration order? Registration order preserves intentional grouping.
+The original proposal used `Add(AttrSpec{...}, impl)`:
 
-2. **Builtin caching** - Should `GetAttr` cache the created `*Builtin` objects? Current pattern creates new ones each call. Caching could improve performance but complicates the design.
+```go
+stringMethods.Add(
+    AttrSpec{Name: "contains", Doc: "Check if substring exists", Args: []string{"substr"}, Returns: "bool"},
+    func(s *String, ctx context.Context, args ...Object) (Object, error) {
+        return s.Contains(args[0]), nil
+    },
+)
+```
 
-3. **Spec immutability** - Should we return a copy from `Specs()` to prevent mutation? Current slice return is more efficient but allows accidental modification.
+**Rejected because:** Requires full struct literal with field names on every call. The fluent builder is more readable and each line has a single concern.
+
+## Design Decisions
+
+The following questions from the original proposal have been resolved:
+
+### Method Ordering
+
+**Decision:** Registration order.
+
+Alphabetical order loses intentional grouping (e.g., `split`/`join` together, `to_upper`/`to_lower` together). Registration order lets authors organize methods logically.
+
+### Spec Immutability
+
+**Decision:** Return a clone from `Specs()`.
+
+The slice is small and `Specs()` is called infrequently (tooling, not hot path). Use `slices.Clone()` to prevent accidental mutation.
+
+### Builtin Caching
+
+**Decision:** Defer for now.
+
+The current pattern creates a new `*Builtin` on each `GetAttr` call. This is simple and correct. Caching would require a per-instance map (since the closure captures `self`), adding complexity. Benchmark before optimizing—method calls may not be the bottleneck.
+
+If profiling shows this matters, add caching as a follow-up:
+
+```go
+type MethodRegistry[T any] struct {
+    // ...
+    cache sync.Map // map[cacheKey]*Builtin where cacheKey includes self identity
+}
+```

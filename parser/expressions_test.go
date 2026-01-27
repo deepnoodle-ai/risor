@@ -967,3 +967,137 @@ func TestArrowFunctionErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestArrowFunctionDestructureParams(t *testing.T) {
+	t.Run("object destructure shorthand", func(t *testing.T) {
+		program, err := Parse(context.Background(), "({a, b}) => a + b", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 2)
+		assert.Equal(t, "a", dp.Bindings[0].Key)
+		assert.Equal(t, "b", dp.Bindings[1].Key)
+	})
+
+	t.Run("object destructure with alias", func(t *testing.T) {
+		program, err := Parse(context.Background(), "({name: n, value: v}) => n", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 2)
+		assert.Equal(t, "name", dp.Bindings[0].Key)
+		assert.Equal(t, "n", dp.Bindings[0].Alias)
+		assert.Equal(t, "value", dp.Bindings[1].Key)
+		assert.Equal(t, "v", dp.Bindings[1].Alias)
+	})
+
+	t.Run("object destructure with default", func(t *testing.T) {
+		program, err := Parse(context.Background(), "({a = 10}) => a", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 1)
+		assert.Equal(t, "a", dp.Bindings[0].Key)
+		assert.NotNil(t, dp.Bindings[0].Default)
+
+		defaultInt, ok := dp.Bindings[0].Default.(*ast.Int)
+		assert.True(t, ok)
+		assert.Equal(t, int64(10), defaultInt.Value)
+	})
+
+	t.Run("object destructure with multiple defaults", func(t *testing.T) {
+		program, err := Parse(context.Background(), "({a = 1, b = 2, c = 3}) => a + b + c", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 3)
+
+		for i, key := range []string{"a", "b", "c"} {
+			assert.Equal(t, key, dp.Bindings[i].Key)
+			assert.NotNil(t, dp.Bindings[i].Default)
+		}
+	})
+
+	t.Run("object destructure mixed shorthand and default", func(t *testing.T) {
+		program, err := Parse(context.Background(), "({x, y = 10, z}) => x + y + z", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Bindings, 3)
+
+		// x - no default
+		assert.Equal(t, "x", dp.Bindings[0].Key)
+		assert.Nil(t, dp.Bindings[0].Default)
+
+		// y = 10 - has default
+		assert.Equal(t, "y", dp.Bindings[1].Key)
+		assert.NotNil(t, dp.Bindings[1].Default)
+
+		// z - no default
+		assert.Equal(t, "z", dp.Bindings[2].Key)
+		assert.Nil(t, dp.Bindings[2].Default)
+	})
+
+	t.Run("array destructure", func(t *testing.T) {
+		program, err := Parse(context.Background(), "([a, b]) => a + b", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Elements, 2)
+		assert.Equal(t, "a", dp.Elements[0].Name.Name)
+		assert.Equal(t, "b", dp.Elements[1].Name.Name)
+	})
+
+	t.Run("mixed regular and destructure params", func(t *testing.T) {
+		program, err := Parse(context.Background(), "(x, {a, b}, [c, d], y) => x", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 4)
+
+		// x - regular ident
+		_, ok = fn.Params[0].(*ast.Ident)
+		assert.True(t, ok)
+
+		// {a, b} - object destructure
+		_, ok = fn.Params[1].(*ast.ObjectDestructureParam)
+		assert.True(t, ok)
+
+		// [c, d] - array destructure
+		_, ok = fn.Params[2].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+
+		// y - regular ident
+		_, ok = fn.Params[3].(*ast.Ident)
+		assert.True(t, ok)
+	})
+}

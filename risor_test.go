@@ -617,6 +617,232 @@ func TestArrowFunctionDestructureParam(t *testing.T) {
 }
 
 // =============================================================================
+// SHORTHAND MAP SYNTAX - COMPREHENSIVE TESTS
+// =============================================================================
+
+func TestMapShorthandComprehensive(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("shorthand preserves variable values", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let name = "Alice"
+			let age = 30
+			let city = "NYC"
+			{name, age, city}
+		`)
+		assert.Nil(t, err)
+		m := result.(map[string]any)
+		assert.Equal(t, m["name"], "Alice")
+		assert.Equal(t, m["age"], int64(30))
+		assert.Equal(t, m["city"], "NYC")
+	})
+
+	t.Run("shorthand with computed values", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let x = 10
+			let y = x * 2
+			{x, y}
+		`)
+		assert.Nil(t, err)
+		m := result.(map[string]any)
+		assert.Equal(t, m["x"], int64(10))
+		assert.Equal(t, m["y"], int64(20))
+	})
+
+	t.Run("shorthand in nested map", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let id = 1
+			let name = "test"
+			{outer: {id, name}}
+		`)
+		assert.Nil(t, err)
+		m := result.(map[string]any)
+		inner := m["outer"].(map[string]any)
+		assert.Equal(t, inner["id"], int64(1))
+		assert.Equal(t, inner["name"], "test")
+	})
+
+	t.Run("shorthand with spread", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let base = {a: 1, b: 2}
+			let c = 3
+			{...base, c}
+		`)
+		assert.Nil(t, err)
+		m := result.(map[string]any)
+		assert.Equal(t, m["a"], int64(1))
+		assert.Equal(t, m["b"], int64(2))
+		assert.Equal(t, m["c"], int64(3))
+	})
+
+	t.Run("shorthand in list of maps", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let makeItem = function(i) {
+				let id = i
+				let value = i * 10
+				return {id, value}
+			}
+			[makeItem(0), makeItem(1), makeItem(2)]
+		`)
+		assert.Nil(t, err)
+		list := result.([]any)
+		assert.Len(t, list, 3)
+		assert.Equal(t, list[0].(map[string]any)["id"], int64(0))
+		assert.Equal(t, list[2].(map[string]any)["value"], int64(20))
+	})
+
+	t.Run("shorthand as function argument", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function process(obj) { return obj.x + obj.y }
+			let x = 5
+			let y = 10
+			process({x, y})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(15))
+	})
+
+	t.Run("shorthand with string keys containing expressions", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let count = 42
+			let total = 100
+			{count, total, "ratio": count / total}
+		`)
+		assert.Nil(t, err)
+		m := result.(map[string]any)
+		assert.Equal(t, m["count"], int64(42))
+		assert.Equal(t, m["total"], int64(100))
+	})
+}
+
+func TestArrowDestructureEdgeCases(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("deeply nested access in destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({config}) => config.settings.value
+			fn({config: {settings: {value: 42}}})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(42))
+	})
+
+	t.Run("destructure with method call on extracted value", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({text}) => text.to_upper()
+			fn({text: "hello"})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, "HELLO")
+	})
+
+	t.Run("array destructure in arrow with expression", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let sum = ([a, b, c]) => a + b + c
+			sum([1, 2, 3])
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(6))
+	})
+
+	t.Run("destructure with nil default", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({value = nil}) => value
+			fn({})
+		`)
+		assert.Nil(t, err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("destructure with string default", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let greet = ({name = "stranger"}) => "Hello, " + name
+			greet({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, "Hello, stranger")
+	})
+
+	t.Run("multiple arrow functions with destructure", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let getX = ({x}) => x
+			let getY = ({y}) => y
+			let point = {x: 10, y: 20}
+			getX(point) + getY(point)
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(30))
+	})
+
+	t.Run("arrow destructure in higher order function", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let points = [{x: 1, y: 2}, {x: 3, y: 4}, {x: 5, y: 6}]
+			points.map(({x, y}) => x + y)
+		`, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		assert.Equal(t, result, []any{int64(3), int64(7), int64(11)})
+	})
+
+	t.Run("arrow destructure in filter", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let items = [{active: true, value: 1}, {active: false, value: 2}, {active: true, value: 3}]
+			items.filter(({active}) => active).map(({value}) => value)
+		`, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		assert.Equal(t, result, []any{int64(1), int64(3)})
+	})
+
+	t.Run("arrow destructure with immediately invoked function", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			(({a, b}) => a * b)({a: 6, b: 7})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(42))
+	})
+}
+
+func TestDestructureDefaultExpressions(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("default with arithmetic expression", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({x = 1 + 2 + 3}) => x
+			fn({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(6))
+	})
+
+	t.Run("default with function call", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			function defaultValue() { return 42 }
+			let fn = ({x = defaultValue()}) => x
+			fn({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(42))
+	})
+
+	t.Run("default with list literal", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({items = [1, 2, 3]}) => items
+			fn({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, []any{int64(1), int64(2), int64(3)})
+	})
+
+	t.Run("default with map literal", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({config = {debug: true}}) => config.debug
+			fn({})
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, result, true)
+	})
+}
+
+// =============================================================================
 // METHOD CHAINING ACROSS NEWLINES - INTEGRATION TESTS
 // =============================================================================
 

@@ -10,24 +10,145 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
-// listAttrs defines all attributes available on list objects.
-// This is the single source of truth for list methods.
-var listAttrs = []AttrSpec{
-	{Name: "append", Doc: "Add item to end of list", Args: []string{"item"}, Returns: "list"},
-	{Name: "clear", Doc: "Remove all items", Args: nil, Returns: "list"},
-	{Name: "copy", Doc: "Create a shallow copy", Args: nil, Returns: "list"},
-	{Name: "count", Doc: "Count occurrences of item", Args: []string{"item"}, Returns: "int"},
-	{Name: "each", Doc: "Call function for each item", Args: []string{"fn"}, Returns: "nil"},
-	{Name: "extend", Doc: "Add all items from another list", Args: []string{"items"}, Returns: "list"},
-	{Name: "filter", Doc: "Keep items where fn returns true", Args: []string{"fn"}, Returns: "list"},
-	{Name: "index", Doc: "Find first index of item (-1 if not found)", Args: []string{"item"}, Returns: "int"},
-	{Name: "insert", Doc: "Insert item at index", Args: []string{"index", "item"}, Returns: "list"},
-	{Name: "map", Doc: "Transform each item with fn", Args: []string{"fn"}, Returns: "list"},
-	{Name: "pop", Doc: "Remove and return item at index", Args: []string{"index"}, Returns: "any"},
-	{Name: "reduce", Doc: "Reduce list to single value", Args: []string{"initial", "fn"}, Returns: "any"},
-	{Name: "remove", Doc: "Remove first occurrence of item", Args: []string{"item"}, Returns: "nil"},
-	{Name: "reverse", Doc: "Reverse list in place", Args: nil, Returns: "list"},
-	{Name: "sort", Doc: "Sort list in place", Args: nil, Returns: "list"},
+var listMethods = NewMethodRegistry[*List]("list")
+
+func init() {
+	listMethods.Define("append").
+		Doc("Add item to end of list").
+		Arg("item").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Append(args[0])
+			return ls, nil
+		})
+
+	listMethods.Define("clear").
+		Doc("Remove all items").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Clear()
+			return ls, nil
+		})
+
+	listMethods.Define("copy").
+		Doc("Create a shallow copy").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Copy(), nil
+		})
+
+	listMethods.Define("count").
+		Doc("Count occurrences of item").
+		Arg("item").
+		Returns("int").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return NewInt(ls.Count(args[0])), nil
+		})
+
+	listMethods.Define("each").
+		Doc("Call function for each item").
+		Arg("fn").
+		Returns("nil").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Each(ctx, args[0])
+		})
+
+	listMethods.Define("extend").
+		Doc("Add all items from another list").
+		Arg("items").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			other, err := AsList(args[0])
+			if err != nil {
+				return nil, err
+			}
+			ls.Extend(other)
+			return ls, nil
+		})
+
+	listMethods.Define("filter").
+		Doc("Keep items where fn returns true").
+		Arg("fn").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Filter(ctx, args[0])
+		})
+
+	listMethods.Define("index").
+		Doc("Find first index of item (-1 if not found)").
+		Arg("item").
+		Returns("int").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return NewInt(ls.Index(args[0])), nil
+		})
+
+	listMethods.Define("insert").
+		Doc("Insert item at index").
+		Args("index", "item").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			index, err := AsInt(args[0])
+			if err != nil {
+				return nil, err
+			}
+			ls.Insert(index, args[1])
+			return ls, nil
+		})
+
+	listMethods.Define("map").
+		Doc("Transform each item with fn").
+		Arg("fn").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Map(ctx, args[0])
+		})
+
+	listMethods.Define("pop").
+		Doc("Remove and return item at index").
+		Arg("index").
+		Returns("any").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			index, err := AsInt(args[0])
+			if err != nil {
+				return nil, err
+			}
+			return ls.Pop(index)
+		})
+
+	listMethods.Define("reduce").
+		Doc("Reduce list to single value").
+		Args("initial", "fn").
+		Returns("any").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Reduce(ctx, args[0], args[1])
+		})
+
+	listMethods.Define("remove").
+		Doc("Remove first occurrence of item").
+		Arg("item").
+		Returns("nil").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Remove(args[0])
+			return ls, nil
+		})
+
+	listMethods.Define("reverse").
+		Doc("Reverse list in place").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Reverse()
+			return ls, nil
+		})
+
+	listMethods.Define("sort").
+		Doc("Sort list in place").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			if err := Sort(ls.items); err != nil {
+				return nil, err
+			}
+			return ls, nil
+		})
 }
 
 // List of objects
@@ -40,9 +161,12 @@ type List struct {
 	inspectActive bool
 }
 
-// Attrs returns the attribute specifications for list objects.
 func (ls *List) Attrs() []AttrSpec {
-	return listAttrs
+	return listMethods.Specs()
+}
+
+func (ls *List) GetAttr(name string) (Object, bool) {
+	return listMethods.GetAttr(ls, name)
 }
 
 func (ls *List) SetAttr(name string, value Object) error {
@@ -75,183 +199,6 @@ func (ls *List) Inspect() string {
 	out.WriteString(strings.Join(items, ", "))
 	out.WriteString("]")
 	return out.String()
-}
-
-func (ls *List) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "append":
-		return &Builtin{
-			name: "list.append",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.append: expected 1 argument, got %d", len(args))
-				}
-				ls.Append(args[0])
-				return ls, nil
-			},
-		}, true
-	case "clear":
-		return &Builtin{
-			name: "list.clear",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("list.clear: expected 0 arguments, got %d", len(args))
-				}
-				ls.Clear()
-				return ls, nil
-			},
-		}, true
-	case "copy":
-		return &Builtin{
-			name: "list.copy",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("list.copy: expected 0 arguments, got %d", len(args))
-				}
-				return ls.Copy(), nil
-			},
-		}, true
-	case "count":
-		return &Builtin{
-			name: "list.count",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.count: expected 1 argument, got %d", len(args))
-				}
-				return NewInt(ls.Count(args[0])), nil
-			},
-		}, true
-	case "extend":
-		return &Builtin{
-			name: "list.extend",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.extend: expected 1 argument, got %d", len(args))
-				}
-				other, err := AsList(args[0])
-				if err != nil {
-					return nil, err
-				}
-				ls.Extend(other)
-				return ls, nil
-			},
-		}, true
-	case "index":
-		return &Builtin{
-			name: "list.index",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.index: expected 1 argument, got %d", len(args))
-				}
-				return NewInt(ls.Index(args[0])), nil
-			},
-		}, true
-	case "insert":
-		return &Builtin{
-			name: "list.insert",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 2 {
-					return nil, fmt.Errorf("list.insert: expected 2 arguments, got %d", len(args))
-				}
-				index, err := AsInt(args[0])
-				if err != nil {
-					return nil, err
-				}
-				ls.Insert(index, args[1])
-				return ls, nil
-			},
-		}, true
-	case "pop":
-		return &Builtin{
-			name: "list.pop",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.pop: expected 1 argument, got %d", len(args))
-				}
-				index, err := AsInt(args[0])
-				if err != nil {
-					return nil, err
-				}
-				return ls.Pop(index)
-			},
-		}, true
-	case "remove":
-		return &Builtin{
-			name: "list.remove",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.remove: expected 1 argument, got %d", len(args))
-				}
-				ls.Remove(args[0])
-				return ls, nil
-			},
-		}, true
-	case "reverse":
-		return &Builtin{
-			name: "list.reverse",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("list.reverse: expected 0 arguments, got %d", len(args))
-				}
-				ls.Reverse()
-				return ls, nil
-			},
-		}, true
-	case "sort":
-		return &Builtin{
-			name: "list.sort",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("list.sort: expected 0 arguments, got %d", len(args))
-				}
-				if err := Sort(ls.items); err != nil {
-					return nil, err
-				}
-				return ls, nil
-			},
-		}, true
-	case "map":
-		return &Builtin{
-			name: "list.map",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.map: expected 1 argument, got %d", len(args))
-				}
-				return ls.Map(ctx, args[0])
-			},
-		}, true
-	case "filter":
-		return &Builtin{
-			name: "list.filter",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.filter: expected 1 argument, got %d", len(args))
-				}
-				return ls.Filter(ctx, args[0])
-			},
-		}, true
-	case "each":
-		return &Builtin{
-			name: "list.each",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("list.each: expected 1 argument, got %d", len(args))
-				}
-				return ls.Each(ctx, args[0])
-			},
-		}, true
-	case "reduce":
-		return &Builtin{
-			name: "list.reduce",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 2 {
-					return nil, fmt.Errorf("list.reduce: expected 2 arguments, got %d", len(args))
-				}
-				return ls.Reduce(ctx, args[0], args[1])
-			},
-		}, true
-	}
-	return nil, false
 }
 
 func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
