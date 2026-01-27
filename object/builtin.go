@@ -22,11 +22,14 @@ type Builtin struct {
 	// The name of the function.
 	name string
 
-	// The module the function originates from (optional)
+	// The module the function originates from (optional). Used by GetAttr to
+	// return the actual module object for the __module__ attribute.
 	module *Module
 
-	// The name of the module this function origiantes from.
-	// This is only used for overriding builtins.
+	// The name of the module this function originates from. Used by Key() to
+	// return the fully-qualified name (e.g., "math.sqrt"). This field takes
+	// priority over module.Name() when set, allowing standalone builtins to
+	// report a module name without having an actual module reference.
 	moduleName string
 }
 

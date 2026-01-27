@@ -6,6 +6,7 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+// Internal: do not use. Cell is an implementation detail for closure variable capture.
 type Cell struct {
 	*base
 	value *Object
