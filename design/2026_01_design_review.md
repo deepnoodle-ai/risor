@@ -974,7 +974,7 @@ Concrete proposals derived from the analysis above, organized by priority.
 
 | ID | Problem | Proposal | Reason | Status |
 |----|---------|----------|--------|--------|
-| P3-1 | Compiler two-pass strategy is undocumented (§14) | Add a block comment at the top of `compiler/compiler.go` explaining: (1) why two passes, (2) what each pass does, (3) how forward references work. | New contributors can understand the design without reverse-engineering. | Not Started |
+| P3-1 | Compiler two-pass strategy is undocumented (§14) | Add a block comment at the top of `compiler/compiler.go` explaining: (1) why two passes, (2) what each pass does, (3) how forward references work. | New contributors can understand the design without reverse-engineering. | Done |
 | P3-2 | No language semantics specification (§7) | Create `docs/semantics.md` covering: numeric types and coercions, equality/ordering rules, truthiness, iteration order, error propagation. Version it with v2. | Embedders need a stable contract. Behavior should be specified, not inferred. | Not Started |
 | P3-3 | Concurrency contract is unclear: are env values copied or shared? (§10) | Document in API docs: (1) env map is shallow-copied, values are shared, (2) builtins must be thread-safe, (3) mutable objects in env are caller's responsibility. | Safe embedding requires clear ownership rules. | Not Started |
 | P3-4 | Global name binding at compile time is subtle (§16) | Document that compiled bytecode is bound to specific global names. Provide `Bytecode.GlobalNames()` method for introspection. | Users need to understand why reusing bytecode with different env keys fails. | Not Started |

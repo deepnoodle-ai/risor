@@ -1,5 +1,50 @@
 // Package compiler is used to compile a Risor abstract syntax tree (AST) into
 // the corresponding bytecode.
+//
+// # Two-Pass Compilation Strategy
+//
+// The compiler uses a two-pass approach to handle forward references. This
+// allows functions to call other functions that are defined later in the source.
+//
+// Example where forward references are needed:
+//
+//	function isEven(n) { return n == 0 || isOdd(n - 1) }
+//	function isOdd(n) { return n != 0 && isEven(n - 1) }
+//
+// Without the first pass, compiling isEven would fail because isOdd is not yet
+// defined when isEven references it.
+//
+// Pass 1: collectFunctionDeclarations
+//
+// Walks the AST to find all named function declarations at the module (global)
+// scope and registers them in the symbol table as constants. This ensures their
+// names are available for resolution during the second pass.
+//
+// Only top-level functions are collected. Functions nested inside other
+// functions or blocks are compiled in order and cannot be forward-referenced.
+//
+// Pass 2: compile
+//
+// Recursively compiles each AST node into bytecode. When the compiler encounters
+// a reference to an identifier, it resolves the name via the symbol table. For
+// forward-referenced functions, the symbol was already registered in pass 1.
+//
+// When compiling a named function definition, the compiler checks whether the
+// name was already registered (from pass 1) and reuses that symbol slot rather
+// than creating a duplicate.
+//
+// # Symbol Scopes
+//
+// The compiler tracks three variable scopes:
+//
+//   - Global: Module-level variables, accessed via LoadGlobal/StoreGlobal
+//   - Local: Function-local variables, accessed via LoadFast/StoreFast
+//   - Free: Captured closure variables, accessed via LoadFree/StoreFree
+//
+// The symbol table handles scope resolution and tracks which local variables
+// are captured by nested functions (free variables). When a function references
+// a variable from an enclosing scope, the compiler emits MakeCell instructions
+// to capture the variable into the closure.
 package compiler
 
 import (
