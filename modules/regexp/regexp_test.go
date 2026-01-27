@@ -27,6 +27,16 @@ func TestRegexpMatch(t *testing.T) {
 	assert.Equal(t, result, object.False)
 }
 
+func TestRegexpTest(t *testing.T) {
+	// test() is an alias for match()
+	obj := NewRegexp(regexp.MustCompile(`foo.*`))
+	test, ok := obj.GetAttr("test")
+	assert.True(t, ok)
+	result, err := test.(*object.Builtin).Call(context.Background(), object.NewString("seafood"))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.True)
+}
+
 func TestRegexpMatchErrors(t *testing.T) {
 	ctx := context.Background()
 	obj := NewRegexp(regexp.MustCompile(`foo.*`))
@@ -53,6 +63,16 @@ func TestRegexpFind(t *testing.T) {
 	result, err := find.(*object.Builtin).Call(context.Background(), object.NewString("seafood fool"))
 	assert.Nil(t, err)
 	assert.Equal(t, result, object.NewString("food"))
+}
+
+func TestRegexpFindNoMatch(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`xyz`))
+	find, ok := obj.GetAttr("find")
+	assert.True(t, ok)
+	result, err := find.(*object.Builtin).Call(ctx, object.NewString("hello world"))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestRegexpFindErrors(t *testing.T) {
@@ -121,13 +141,52 @@ func TestRegexpFindAllErrors(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestRegexpFindSubmatch(t *testing.T) {
+func TestRegexpSearch(t *testing.T) {
 	ctx := context.Background()
-	obj := NewRegexp(regexp.MustCompile(`(foo)(bar)`))
-	findSubmatch, ok := obj.GetAttr("find_submatch")
+	obj := NewRegexp(regexp.MustCompile(`world`))
+	search, ok := obj.GetAttr("search")
 	assert.True(t, ok)
 
-	result, err := findSubmatch.(*object.Builtin).Call(ctx, object.NewString("foobar"))
+	result, err := search.(*object.Builtin).Call(ctx, object.NewString("hello world"))
+	assert.Nil(t, err)
+	i, ok := result.(*object.Int)
+	assert.True(t, ok)
+	assert.Equal(t, i.Value(), int64(6))
+}
+
+func TestRegexpSearchNoMatch(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`xyz`))
+	search, ok := obj.GetAttr("search")
+	assert.True(t, ok)
+
+	result, err := search.(*object.Builtin).Call(ctx, object.NewString("hello world"))
+	assert.Nil(t, err)
+	i, ok := result.(*object.Int)
+	assert.True(t, ok)
+	assert.Equal(t, i.Value(), int64(-1))
+}
+
+func TestRegexpSearchErrors(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`foo`))
+	search, ok := obj.GetAttr("search")
+	assert.True(t, ok)
+
+	_, err := search.(*object.Builtin).Call(ctx)
+	assert.NotNil(t, err)
+
+	_, err = search.(*object.Builtin).Call(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
+}
+
+func TestRegexpGroups(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`(foo)(bar)`))
+	groups, ok := obj.GetAttr("groups")
+	assert.True(t, ok)
+
+	result, err := groups.(*object.Builtin).Call(ctx, object.NewString("foobar"))
 	assert.Nil(t, err)
 	expected := object.NewList([]object.Object{
 		object.NewString("foobar"),
@@ -137,18 +196,120 @@ func TestRegexpFindSubmatch(t *testing.T) {
 	assert.Equal(t, result, expected)
 }
 
-func TestRegexpFindSubmatchErrors(t *testing.T) {
+func TestRegexpGroupsNoMatch(t *testing.T) {
 	ctx := context.Background()
 	obj := NewRegexp(regexp.MustCompile(`(foo)(bar)`))
-	findSubmatch, ok := obj.GetAttr("find_submatch")
+	groups, ok := obj.GetAttr("groups")
+	assert.True(t, ok)
+
+	result, err := groups.(*object.Builtin).Call(ctx, object.NewString("hello"))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
+}
+
+func TestRegexpGroupsErrors(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`(foo)(bar)`))
+	groups, ok := obj.GetAttr("groups")
 	assert.True(t, ok)
 
 	// Wrong argument count
-	_, err := findSubmatch.(*object.Builtin).Call(ctx)
+	_, err := groups.(*object.Builtin).Call(ctx)
 	assert.NotNil(t, err)
 
 	// Wrong type
-	_, err = findSubmatch.(*object.Builtin).Call(ctx, object.NewInt(42))
+	_, err = groups.(*object.Builtin).Call(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
+}
+
+func TestRegexpFindAllGroups(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`(\w+)@(\w+)`))
+	findAllGroups, ok := obj.GetAttr("find_all_groups")
+	assert.True(t, ok)
+
+	result, err := findAllGroups.(*object.Builtin).Call(ctx, object.NewString("user@host admin@server"))
+	assert.Nil(t, err)
+	expected := object.NewList([]object.Object{
+		object.NewList([]object.Object{
+			object.NewString("user@host"),
+			object.NewString("user"),
+			object.NewString("host"),
+		}),
+		object.NewList([]object.Object{
+			object.NewString("admin@server"),
+			object.NewString("admin"),
+			object.NewString("server"),
+		}),
+	})
+	assert.Equal(t, result, expected)
+}
+
+func TestRegexpFindAllGroupsWithLimit(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`(\w+)@(\w+)`))
+	findAllGroups, ok := obj.GetAttr("find_all_groups")
+	assert.True(t, ok)
+
+	result, err := findAllGroups.(*object.Builtin).Call(ctx, object.NewString("user@host admin@server"), object.NewInt(1))
+	assert.Nil(t, err)
+	expected := object.NewList([]object.Object{
+		object.NewList([]object.Object{
+			object.NewString("user@host"),
+			object.NewString("user"),
+			object.NewString("host"),
+		}),
+	})
+	assert.Equal(t, result, expected)
+}
+
+func TestRegexpFindAllGroupsErrors(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`(\w+)@(\w+)`))
+	findAllGroups, ok := obj.GetAttr("find_all_groups")
+	assert.True(t, ok)
+
+	_, err := findAllGroups.(*object.Builtin).Call(ctx)
+	assert.NotNil(t, err)
+
+	_, err = findAllGroups.(*object.Builtin).Call(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
+}
+
+func TestRegexpReplace(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`a+`))
+	replace, ok := obj.GetAttr("replace")
+	assert.True(t, ok)
+
+	// Replace all (default)
+	result, err := replace.(*object.Builtin).Call(ctx, object.NewString("baaab baaab"), object.NewString("X"))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("bXb bXb"))
+}
+
+func TestRegexpReplaceWithCount(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`a+`))
+	replace, ok := obj.GetAttr("replace")
+	assert.True(t, ok)
+
+	// Replace only first match
+	result, err := replace.(*object.Builtin).Call(ctx, object.NewString("baaab baaab"), object.NewString("X"), object.NewInt(1))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("bXb baaab"))
+}
+
+func TestRegexpReplaceErrors(t *testing.T) {
+	ctx := context.Background()
+	obj := NewRegexp(regexp.MustCompile(`a+`))
+	replace, ok := obj.GetAttr("replace")
+	assert.True(t, ok)
+
+	_, err := replace.(*object.Builtin).Call(ctx, object.NewString("a"))
+	assert.NotNil(t, err)
+
+	_, err = replace.(*object.Builtin).Call(ctx, object.NewInt(42), object.NewString("X"))
 	assert.NotNil(t, err)
 }
 
@@ -247,6 +408,24 @@ func TestRegexpSplitErrors(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestRegexpPattern(t *testing.T) {
+	obj := NewRegexp(regexp.MustCompile(`foo\d+`))
+	pattern, ok := obj.GetAttr("pattern")
+	assert.True(t, ok)
+	s, ok := pattern.(*object.String)
+	assert.True(t, ok)
+	assert.Equal(t, s.Value(), `foo\d+`)
+}
+
+func TestRegexpNumGroups(t *testing.T) {
+	obj := NewRegexp(regexp.MustCompile(`(foo)(\d+)(bar)?`))
+	numGroups, ok := obj.GetAttr("num_groups")
+	assert.True(t, ok)
+	i, ok := numGroups.(*object.Int)
+	assert.True(t, ok)
+	assert.Equal(t, i.Value(), int64(3))
+}
+
 func TestCompile(t *testing.T) {
 	ctx := context.Background()
 
@@ -309,6 +488,127 @@ func TestMatchErrors(t *testing.T) {
 	// Wrong type for string
 	_, err = Match(ctx, object.NewString("foo"), object.NewInt(42))
 	assert.NotNil(t, err)
+}
+
+func TestEscape(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Escape(ctx, object.NewString(`foo.bar[0]`))
+	assert.Nil(t, err)
+	s, ok := result.(*object.String)
+	assert.True(t, ok)
+	assert.Equal(t, s.Value(), `foo\.bar\[0\]`)
+}
+
+func TestEscapeErrors(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := Escape(ctx)
+	assert.NotNil(t, err)
+
+	_, err = Escape(ctx, object.NewInt(42))
+	assert.NotNil(t, err)
+}
+
+func TestModuleReplace(t *testing.T) {
+	ctx := context.Background()
+
+	// Replace all
+	result, err := Replace(ctx, object.NewString(`a+`), object.NewString("baaab"), object.NewString("X"))
+	assert.Nil(t, err)
+	s, ok := result.(*object.String)
+	assert.True(t, ok)
+	assert.Equal(t, s.Value(), "bXb")
+}
+
+func TestModuleReplaceWithCount(t *testing.T) {
+	ctx := context.Background()
+
+	// Replace with count
+	result, err := Replace(ctx, object.NewString(`a+`), object.NewString("baaab baaab"), object.NewString("X"), object.NewInt(1))
+	assert.Nil(t, err)
+	s, ok := result.(*object.String)
+	assert.True(t, ok)
+	assert.Equal(t, s.Value(), "bXb baaab")
+}
+
+func TestModuleReplaceErrors(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := Replace(ctx, object.NewString(`a+`), object.NewString("test"))
+	assert.NotNil(t, err)
+
+	_, err = Replace(ctx, object.NewString(`[invalid`), object.NewString("test"), object.NewString("X"))
+	assert.NotNil(t, err)
+}
+
+func TestModuleSplit(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Split(ctx, object.NewString(`\s+`), object.NewString("hello world"))
+	assert.Nil(t, err)
+	expected := object.NewList([]object.Object{
+		object.NewString("hello"),
+		object.NewString("world"),
+	})
+	assert.Equal(t, result, expected)
+}
+
+func TestModuleSplitErrors(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := Split(ctx, object.NewString(`\s+`))
+	assert.NotNil(t, err)
+}
+
+func TestModuleFind(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Find(ctx, object.NewString(`\d+`), object.NewString("abc123def"))
+	assert.Nil(t, err)
+	s, ok := result.(*object.String)
+	assert.True(t, ok)
+	assert.Equal(t, s.Value(), "123")
+}
+
+func TestModuleFindNoMatch(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Find(ctx, object.NewString(`\d+`), object.NewString("abcdef"))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
+}
+
+func TestModuleFindAll(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := FindAll(ctx, object.NewString(`\d+`), object.NewString("abc123def456"))
+	assert.Nil(t, err)
+	expected := object.NewList([]object.Object{
+		object.NewString("123"),
+		object.NewString("456"),
+	})
+	assert.Equal(t, result, expected)
+}
+
+func TestModuleSearch(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Search(ctx, object.NewString(`world`), object.NewString("hello world"))
+	assert.Nil(t, err)
+	i, ok := result.(*object.Int)
+	assert.True(t, ok)
+	assert.Equal(t, i.Value(), int64(6))
+}
+
+func TestModuleSearchNoMatch(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Search(ctx, object.NewString(`xyz`), object.NewString("hello world"))
+	assert.Nil(t, err)
+	i, ok := result.(*object.Int)
+	assert.True(t, ok)
+	assert.Equal(t, i.Value(), int64(-1))
 }
 
 func TestRegexpType(t *testing.T) {
@@ -413,10 +713,12 @@ func TestModule(t *testing.T) {
 	assert.NotNil(t, m)
 	assert.Equal(t, m.Name().Value(), "regexp")
 
-	// Verify functions exist
-	_, ok := m.GetAttr("compile")
-	assert.True(t, ok)
-
-	_, ok = m.GetAttr("match")
-	assert.True(t, ok)
+	// Verify all functions exist
+	functions := []string{
+		"compile", "match", "escape", "replace", "split", "find", "find_all", "search",
+	}
+	for _, name := range functions {
+		_, ok := m.GetAttr(name)
+		assert.True(t, ok, "missing function: %s", name)
+	}
 }

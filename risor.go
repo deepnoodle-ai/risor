@@ -13,7 +13,6 @@ import (
 	modMath "github.com/risor-io/risor/modules/math"
 	modRand "github.com/risor-io/risor/modules/rand"
 	modRegexp "github.com/risor-io/risor/modules/regexp"
-	modTime "github.com/risor-io/risor/modules/time"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
 	"github.com/risor-io/risor/syntax"
@@ -364,7 +363,6 @@ func defaultModules() map[string]object.Object {
 		"math":   modMath.Module(),
 		"rand":   modRand.Module(),
 		"regexp": modRegexp.Module(),
-		"time":   modTime.Module(),
 	}
 }
 

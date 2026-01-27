@@ -130,7 +130,7 @@ Level 2: Deep Dive (risor doc <topic>)
   "topics": {
     "builtins": "27 built-in functions (len, map, filter, range, ...)",
     "types": "14 types (string, list, map, int, float, ...)",
-    "modules": "4 modules (math, rand, regexp, time)",
+    "modules": "3 modules (math, rand, regexp)",
     "syntax": "Complete syntax reference",
     "errors": "Common errors and debugging"
   },

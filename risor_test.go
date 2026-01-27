@@ -243,7 +243,6 @@ func TestBuiltinsFunc(t *testing.T) {
 		"math",
 		"rand",
 		"regexp",
-		"time",
 		"keys",
 		"len",
 		"string",

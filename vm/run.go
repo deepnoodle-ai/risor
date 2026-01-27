@@ -8,7 +8,6 @@ import (
 	"github.com/risor-io/risor/compiler"
 	modMath "github.com/risor-io/risor/modules/math"
 	modRand "github.com/risor-io/risor/modules/rand"
-	modTime "github.com/risor-io/risor/modules/time"
 	"github.com/risor-io/risor/object"
 	"github.com/risor-io/risor/parser"
 )
@@ -87,7 +86,6 @@ func basicBuiltins() map[string]any {
 	globals := map[string]any{
 		"math": modMath.Module(),
 		"rand": modRand.Module(),
-		"time": modTime.Module(),
 	}
 	for k, v := range builtins.Builtins() {
 		globals[k] = v

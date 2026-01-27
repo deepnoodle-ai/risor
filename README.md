@@ -115,7 +115,7 @@ container operations (`len`, `keys`, `delete`, `chunk`), and utilities like
 The `encode` and `decode` builtins support multiple formats: `base64`, `base32`,
 `hex`, `json`, `csv`, and `urlquery`.
 
-Four modules are included: `math`, `rand`, `regexp`, and `time`.
+Three modules are included: `math`, `rand`, and `regexp`.
 
 ## Go Interface
 

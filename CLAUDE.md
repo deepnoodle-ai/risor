@@ -86,7 +86,7 @@ Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (
 - `vm/` - Virtual machine execution
 - `object/` - Type system (~47 files) - all Risor values implement `Object` interface
 - `builtins/` - Built-in functions (type conversions, container ops, encode/decode)
-- `modules/` - 4 modules: math, rand, regexp, time
+- `modules/` - 3 modules: math, rand, regexp
 
 ### Entry Points
 

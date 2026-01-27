@@ -321,7 +321,7 @@ The following modules are removed to make Risor secure by default:
 | `errors` | Error utilities | Use error() builtin |
 | `fmt` | print/printf | Use custom print builtins |
 
-**Available modules in v2:** `math`, `rand`, `regexp`, `time`
+**Available modules in v2:** `math`, `rand`, `regexp`
 
 To add I/O capabilities, provide custom builtins in your environment:
 

@@ -77,11 +77,12 @@ func (r *Regexp) Attrs() []object.AttrSpec {
 
 func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 	switch name {
-	case "match":
-		return object.NewBuiltin("regexp.match",
+	// Testing
+	case "test", "match":
+		return object.NewBuiltin("regexp.test",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
-					return nil, fmt.Errorf("regexp.match: expected 1 argument, got %d", len(args))
+					return nil, fmt.Errorf("regexp.test: expected 1 argument, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
@@ -90,6 +91,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				return object.NewBool(r.value.MatchString(strValue)), nil
 			},
 		), true
+
+	// Finding first match
 	case "find":
 		return object.NewBuiltin("regexp.find",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
@@ -100,9 +103,15 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				if err != nil {
 					return nil, err
 				}
-				return object.NewString(r.value.FindString(strValue)), nil
+				match := r.value.FindString(strValue)
+				if match == "" && !r.value.MatchString(strValue) {
+					return object.Nil, nil
+				}
+				return object.NewString(match), nil
 			},
 		), true
+
+	// Finding all matches
 	case "find_all":
 		return object.NewBuiltin("regexp.find_all",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
@@ -128,23 +137,127 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				return object.NewList(matches), nil
 			},
 		), true
-	case "find_submatch":
-		return object.NewBuiltin("regexp.find_submatch",
+
+	// Search for index
+	case "search":
+		return object.NewBuiltin("regexp.search",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
-					return nil, fmt.Errorf("regexp.find_submatch: expected 1 argument, got %d", len(args))
+					return nil, fmt.Errorf("regexp.search: expected 1 argument, got %d", len(args))
 				}
 				strValue, err := object.AsString(args[0])
 				if err != nil {
 					return nil, err
 				}
+				loc := r.value.FindStringIndex(strValue)
+				if loc == nil {
+					return object.NewInt(-1), nil
+				}
+				// Convert byte index to rune index for Unicode correctness
+				runeIndex := len([]rune(strValue[:loc[0]]))
+				return object.NewInt(int64(runeIndex)), nil
+			},
+		), true
+
+	// Capture groups (renamed from find_submatch)
+	case "groups":
+		return object.NewBuiltin("regexp.groups",
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
+				if len(args) != 1 {
+					return nil, fmt.Errorf("regexp.groups: expected 1 argument, got %d", len(args))
+				}
+				strValue, err := object.AsString(args[0])
+				if err != nil {
+					return nil, err
+				}
+				submatches := r.value.FindStringSubmatch(strValue)
+				if submatches == nil {
+					return object.Nil, nil
+				}
 				var matches []object.Object
-				for _, match := range r.value.FindStringSubmatch(strValue) {
+				for _, match := range submatches {
 					matches = append(matches, object.NewString(match))
 				}
 				return object.NewList(matches), nil
 			},
 		), true
+
+	// All matches with capture groups
+	case "find_all_groups":
+		return object.NewBuiltin("regexp.find_all_groups",
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
+				if len(args) < 1 || len(args) > 2 {
+					return nil, fmt.Errorf("regexp.find_all_groups: expected 1-2 arguments, got %d", len(args))
+				}
+				strValue, err := object.AsString(args[0])
+				if err != nil {
+					return nil, err
+				}
+				n := -1
+				if len(args) == 2 {
+					i64, err := object.AsInt(args[1])
+					if err != nil {
+						return nil, err
+					}
+					n = int(i64)
+				}
+				allSubmatches := r.value.FindAllStringSubmatch(strValue, n)
+				var result []object.Object
+				for _, submatches := range allSubmatches {
+					var group []object.Object
+					for _, match := range submatches {
+						group = append(group, object.NewString(match))
+					}
+					result = append(result, object.NewList(group))
+				}
+				return object.NewList(result), nil
+			},
+		), true
+
+	// Replace with optional count
+	case "replace":
+		return object.NewBuiltin("regexp.replace",
+			func(ctx context.Context, args ...object.Object) (object.Object, error) {
+				if len(args) < 2 || len(args) > 3 {
+					return nil, fmt.Errorf("regexp.replace: expected 2-3 arguments, got %d", len(args))
+				}
+				strValue, err := object.AsString(args[0])
+				if err != nil {
+					return nil, err
+				}
+				replaceValue, err := object.AsString(args[1])
+				if err != nil {
+					return nil, err
+				}
+
+				count := 0 // 0 means replace all
+				if len(args) == 3 {
+					c, err := object.AsInt(args[2])
+					if err != nil {
+						return nil, err
+					}
+					count = int(c)
+				}
+
+				if count == 0 {
+					return object.NewString(r.value.ReplaceAllString(strValue, replaceValue)), nil
+				}
+
+				// Replace up to count matches
+				result := strValue
+				for i := 0; i < count; i++ {
+					loc := r.value.FindStringIndex(result)
+					if loc == nil {
+						break
+					}
+					expanded := r.value.ReplaceAllString(result[loc[0]:loc[1]], replaceValue)
+					result = result[:loc[0]] + expanded + result[loc[1]:]
+				}
+				return object.NewString(result), nil
+			},
+		), true
+
+	// Replace all (convenience method, same as replace with count=0)
 	case "replace_all":
 		return object.NewBuiltin("regexp.replace_all",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
@@ -162,6 +275,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				return object.NewString(r.value.ReplaceAllString(strValue, replaceValue)), nil
 			},
 		), true
+
+	// Split
 	case "split":
 		return object.NewBuiltin("regexp.split",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
@@ -188,6 +303,13 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				return object.NewList(matchObjects), nil
 			},
 		), true
+
+	// Introspection
+	case "pattern":
+		return object.NewString(r.value.String()), true
+
+	case "num_groups":
+		return object.NewInt(int64(r.value.NumSubexp())), true
 	}
 	return nil, false
 }
