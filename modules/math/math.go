@@ -26,7 +26,7 @@ func Abs(ctx context.Context, args ...object.Object) (object.Object, error) {
 		}
 		return object.NewFloat(v), nil
 	default:
-		return nil, fmt.Errorf("type error: argument to math.abs not supported, got=%s", args[0].Type())
+		return nil, object.TypeErrorf("argument to math.abs not supported, got=%s", args[0].Type())
 	}
 }
 
@@ -58,7 +58,7 @@ func Sqrt(ctx context.Context, args ...object.Object) (object.Object, error) {
 		v := arg.Value()
 		return object.NewFloat(math.Sqrt(v)), nil
 	default:
-		return nil, fmt.Errorf("type error: argument to math.sqrt not supported, got=%s", args[0].Type())
+		return nil, object.TypeErrorf("argument to math.sqrt not supported, got=%s", args[0].Type())
 	}
 }
 
@@ -102,7 +102,7 @@ func Sum(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.List:
 		array = arg.Value()
 	default:
-		return nil, fmt.Errorf("type error: %s object is not iterable", arg.Type())
+		return nil, object.TypeErrorf("%s object is not iterable", arg.Type())
 	}
 	if len(array) == 0 {
 		return object.NewFloat(0), nil
@@ -115,7 +115,7 @@ func Sum(ctx context.Context, args ...object.Object) (object.Object, error) {
 		case *object.Float:
 			sum += val.Value()
 		default:
-			return nil, fmt.Errorf("value error: invalid input for math.sum: %s", val.Type())
+			return nil, object.ValueErrorf("invalid input for math.sum: %s", val.Type())
 		}
 	}
 	return object.NewFloat(sum), nil
@@ -131,7 +131,7 @@ func Ceil(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Float:
 		return object.NewFloat(math.Ceil(arg.Value())), nil
 	default:
-		return nil, fmt.Errorf("type error: argument to math.ceil not supported, got=%s", args[0].Type())
+		return nil, object.TypeErrorf("argument to math.ceil not supported, got=%s", args[0].Type())
 	}
 }
 
@@ -145,7 +145,7 @@ func Floor(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Float:
 		return object.NewFloat(math.Floor(arg.Value())), nil
 	default:
-		return nil, fmt.Errorf("type error: argument to math.floor not supported, got=%s", args[0].Type())
+		return nil, object.TypeErrorf("argument to math.floor not supported, got=%s", args[0].Type())
 	}
 }
 
@@ -159,7 +159,7 @@ func Sin(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Float:
 		return object.NewFloat(math.Sin(arg.Value())), nil
 	default:
-		return nil, fmt.Errorf("type error: argument to math.sin not supported, got=%s", args[0].Type())
+		return nil, object.TypeErrorf("argument to math.sin not supported, got=%s", args[0].Type())
 	}
 }
 
@@ -173,7 +173,7 @@ func Cos(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Float:
 		return object.NewFloat(math.Cos(arg.Value())), nil
 	default:
-		return nil, fmt.Errorf("type error: argument to math.cos not supported, got=%s", args[0].Type())
+		return nil, object.TypeErrorf("argument to math.cos not supported, got=%s", args[0].Type())
 	}
 }
 

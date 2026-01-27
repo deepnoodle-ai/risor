@@ -220,3 +220,13 @@ func ArgsErrorf(format string, args ...interface{}) *Error {
 func TypeErrorf(format string, args ...interface{}) *Error {
 	return NewError(newTypeErrorf(format, args...))
 }
+
+// ValueErrorf returns a Risor Error object containing a value error.
+func ValueErrorf(format string, args ...interface{}) *Error {
+	return NewError(newValueErrorf(format, args...))
+}
+
+// IndexErrorf returns a Risor Error object containing an index error.
+func IndexErrorf(format string, args ...interface{}) *Error {
+	return NewError(newIndexErrorf(format, args...))
+}

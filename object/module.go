@@ -44,7 +44,7 @@ func (m *Module) GetAttr(name string) (Object, bool) {
 }
 
 func (m *Module) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: cannot modify module attributes")
+	return TypeErrorf("cannot modify module attributes")
 }
 
 // Override provides a mechanism to modify module attributes after loading.
@@ -53,7 +53,7 @@ func (m *Module) SetAttr(name string, value Object) error {
 // with a value of nil is equivalent to deleting the attribute.
 func (m *Module) Override(name string, value Object) error {
 	if name == "__name__" {
-		return TypeErrorf("type error: cannot override attribute %q", name)
+		return TypeErrorf("cannot override attribute %q", name)
 	}
 	if _, found := m.builtins[name]; found {
 		if value == nil {
@@ -71,7 +71,7 @@ func (m *Module) Override(name string, value Object) error {
 		m.globals[index] = value
 		return nil
 	}
-	return TypeErrorf("type error: module has no attribute %q", name)
+	return TypeErrorf("module has no attribute %q", name)
 }
 
 func (m *Module) Interface() interface{} {
@@ -93,7 +93,7 @@ func (m *Module) Code() *bytecode.Code {
 func (m *Module) Compare(other Object) (int, error) {
 	otherMod, ok := other.(*Module)
 	if !ok {
-		return 0, TypeErrorf("type error: unable to compare module and %s", other.Type())
+		return 0, TypeErrorf("unable to compare module and %s", other.Type())
 	}
 	if m.name == otherMod.name {
 		return 0, nil
@@ -105,7 +105,7 @@ func (m *Module) Compare(other Object) (int, error) {
 }
 
 func (m *Module) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for module: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for module: %v", opType)
 }
 
 func (m *Module) Equals(other Object) bool {
@@ -117,7 +117,7 @@ func (m *Module) Equals(other Object) bool {
 }
 
 func (m *Module) MarshalJSON() ([]byte, error) {
-	return nil, TypeErrorf("type error: unable to marshal module")
+	return nil, TypeErrorf("unable to marshal module")
 }
 
 func (m *Module) UseGlobals(globals []Object) {
@@ -130,7 +130,7 @@ func (m *Module) UseGlobals(globals []Object) {
 
 func (m *Module) Call(ctx context.Context, args ...Object) (Object, error) {
 	if m.callable == nil {
-		return nil, fmt.Errorf("type error: module %q is not callable", m.name)
+		return nil, newTypeErrorf("module %q is not callable", m.name)
 	}
 	return m.callable(ctx, args...)
 }

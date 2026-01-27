@@ -103,7 +103,7 @@ func encodeHex(ctx context.Context, obj object.Object) (object.Object, error) {
 func encodeJSON(ctx context.Context, obj object.Object) (object.Object, error) {
 	nativeObject := obj.Interface()
 	if nativeObject == nil {
-		return nil, fmt.Errorf("value error: encode() does not support %T", obj)
+		return nil, object.ValueErrorf("encode() does not support %T", obj)
 	}
 	jsonBytes, err := json.Marshal(nativeObject)
 	if err != nil {
@@ -156,11 +156,11 @@ func csvStringListFromMap(m *object.Map, keys []string) ([]string, error) {
 func encodeCsv(ctx context.Context, obj object.Object) (object.Object, error) {
 	list, ok := obj.(*object.List)
 	if !ok {
-		return nil, fmt.Errorf("type error: encode(obj, \"csv\") requires a list (got %s)", obj.Type())
+		return nil, object.TypeErrorf("encode(obj, \"csv\") requires a list (got %s)", obj.Type())
 	}
 	items := list.Value()
 	if len(items) == 0 {
-		return nil, fmt.Errorf("value error: encode(obj, \"csv\") requires a non-empty List")
+		return nil, object.ValueErrorf("encode(obj, \"csv\") requires a non-empty List")
 	}
 	records := make([][]string, 0, len(items))
 	switch outer := items[0].(type) {
@@ -168,7 +168,7 @@ func encodeCsv(ctx context.Context, obj object.Object) (object.Object, error) {
 		for _, item := range items {
 			innerList, ok := item.(*object.List)
 			if !ok {
-				return nil, fmt.Errorf("value error: encode(obj, \"csv\") requires a list of lists (got %s)", item.Type())
+				return nil, object.ValueErrorf("encode(obj, \"csv\") requires a list of lists (got %s)", item.Type())
 			}
 			strList, err := asStringList(innerList)
 			if err != nil {
@@ -183,7 +183,7 @@ func encodeCsv(ctx context.Context, obj object.Object) (object.Object, error) {
 		for _, item := range items {
 			innerMap, ok := item.(*object.Map)
 			if !ok {
-				return nil, fmt.Errorf("value error: encode(obj, \"csv\") requires a list of maps (got %s)", item.Type())
+				return nil, object.ValueErrorf("encode(obj, \"csv\") requires a list of maps (got %s)", item.Type())
 			}
 			strList, err := csvStringListFromMap(innerMap, keys)
 			if err != nil {
@@ -192,7 +192,7 @@ func encodeCsv(ctx context.Context, obj object.Object) (object.Object, error) {
 			records = append(records, strList)
 		}
 	default:
-		return nil, fmt.Errorf("value error: encode(obj, \"csv\") requires a list of lists or maps (got list of %s)", items[0].Type())
+		return nil, object.ValueErrorf("encode(obj, \"csv\") requires a list of lists or maps (got list of %s)", items[0].Type())
 	}
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)

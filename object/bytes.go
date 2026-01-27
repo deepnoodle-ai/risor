@@ -14,7 +14,7 @@ type Bytes struct {
 }
 
 func (b *Bytes) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: bytes has no attribute %q", name)
+	return TypeErrorf("bytes has no attribute %q", name)
 }
 
 func (b *Bytes) Inspect() string {
@@ -201,7 +201,7 @@ func (b *Bytes) Compare(other Object) (int, error) {
 	case *String:
 		return bytes.Compare(b.value, []byte(other.value)), nil
 	default:
-		return 0, TypeErrorf("type error: unable to compare bytes and %s", other.Type())
+		return 0, TypeErrorf("unable to compare bytes and %s", other.Type())
 	}
 }
 
@@ -226,7 +226,7 @@ func (b *Bytes) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 	case *String:
 		return b.runOperationString(opType, right)
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for bytes: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -238,7 +238,7 @@ func (b *Bytes) runOperationBytes(opType op.BinaryOpType, right *Bytes) (Object,
 		copy(result[len(b.value):], right.value)
 		return NewBytes(result), nil
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for bytes: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -251,14 +251,14 @@ func (b *Bytes) runOperationString(opType op.BinaryOpType, right *String) (Objec
 		copy(result[len(b.value):], rightBytes)
 		return NewBytes(result), nil
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for bytes: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for bytes: %v on type %s", opType, right.Type())
 	}
 }
 
 func (b *Bytes) GetItem(key Object) (Object, *Error) {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return nil, TypeErrorf("type error: bytes index must be an int (got %s)", key.Type())
+		return nil, TypeErrorf("bytes index must be an int (got %s)", key.Type())
 	}
 	index, err := ResolveIndex(indexObj.value, int64(len(b.value)))
 	if err != nil {
@@ -278,7 +278,7 @@ func (b *Bytes) GetSlice(slice Slice) (Object, *Error) {
 func (b *Bytes) SetItem(key, value Object) *Error {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return TypeErrorf("type error: index must be an int (got %s)", key.Type())
+		return TypeErrorf("index must be an int (got %s)", key.Type())
 	}
 	index, err := ResolveIndex(indexObj.value, int64(len(b.value)))
 	if err != nil {
@@ -289,14 +289,14 @@ func (b *Bytes) SetItem(key, value Object) *Error {
 		return NewError(convErr)
 	}
 	if len(data) != 1 {
-		return Errorf("value error: value must be a single byte (got %d)", len(data))
+		return NewError(newValueErrorf("value must be a single byte (got %d)", len(data)))
 	}
 	b.value[index] = data[0]
 	return nil
 }
 
 func (b *Bytes) DelItem(key Object) *Error {
-	return TypeErrorf("type error: cannot delete from bytes")
+	return TypeErrorf("cannot delete from bytes")
 }
 
 func (b *Bytes) Contains(obj Object) *Bool {

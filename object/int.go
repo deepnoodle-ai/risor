@@ -19,7 +19,7 @@ func (i *Int) GetAttr(name string) (Object, bool) {
 }
 
 func (i *Int) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: int has no attribute %q", name)
+	return TypeErrorf("int has no attribute %q", name)
 }
 
 func (i *Int) Inspect() string {
@@ -70,7 +70,7 @@ func (i *Int) Compare(other Object) (int, error) {
 		}
 		return -1, nil
 	default:
-		return 0, TypeErrorf("type error: unable to compare int and %s", other.Type())
+		return 0, TypeErrorf("unable to compare int and %s", other.Type())
 	}
 }
 
@@ -100,7 +100,7 @@ func (i *Int) RunOperation(opType op.BinaryOpType, right Object) (Object, error)
 		rightInt := int64(right.value)
 		return i.runOperationInt(opType, rightInt)
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for int: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for int: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -113,8 +113,14 @@ func (i *Int) runOperationInt(opType op.BinaryOpType, right int64) (Object, erro
 	case op.Multiply:
 		return NewInt(i.value * right), nil
 	case op.Divide:
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
 		return NewInt(i.value / right), nil
 	case op.Modulo:
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
 		return NewInt(i.value % right), nil
 	case op.Xor:
 		return NewInt(i.value ^ right), nil
@@ -129,7 +135,7 @@ func (i *Int) runOperationInt(opType op.BinaryOpType, right int64) (Object, erro
 	case op.BitwiseOr:
 		return NewInt(i.value | right), nil
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for int: %v on type int", opType)
+		return nil, newTypeErrorf("unsupported operation for int: %v on type int", opType)
 	}
 }
 
@@ -147,7 +153,7 @@ func (i *Int) runOperationFloat(opType op.BinaryOpType, right float64) (Object, 
 	case op.Power:
 		return NewInt(int64(math.Pow(float64(i.value), float64(right)))), nil
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for int: %v on type float", opType)
+		return nil, newTypeErrorf("unsupported operation for int: %v on type float", opType)
 	}
 }
 

@@ -21,7 +21,7 @@ type Closure struct {
 }
 
 func (f *Closure) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: function has no attribute %q", name)
+	return TypeErrorf("function has no attribute %q", name)
 }
 
 func (f *Closure) IsTruthy() bool {
@@ -90,7 +90,7 @@ func (f *Closure) GetAttr(name string) (Object, bool) {
 }
 
 func (f *Closure) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for function: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for function: %v", opType)
 }
 
 func (f *Closure) Equals(other Object) bool {
@@ -165,7 +165,7 @@ func (f *Closure) LocalsCount() int {
 }
 
 func (f *Closure) MarshalJSON() ([]byte, error) {
-	return nil, TypeErrorf("type error: unable to marshal function")
+	return nil, TypeErrorf("unable to marshal function")
 }
 
 func (f *Closure) Call(ctx context.Context, args ...Object) (Object, error) {

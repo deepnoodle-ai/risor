@@ -16,7 +16,7 @@ func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 
 	comparable, ok := a.(Comparable)
 	if !ok {
-		return nil, TypeErrorf("type error: expected a comparable object (got %s)", a.Type())
+		return nil, TypeErrorf("expected a comparable object (got %s)", a.Type())
 	}
 	value, err := comparable.Compare(b)
 	if err != nil {

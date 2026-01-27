@@ -15,6 +15,8 @@ type (
 	EvalError       = errors.EvalError
 	ArgsError       = errors.ArgsError
 	TypeError       = errors.TypeError
+	ValueError      = errors.ValueError
+	IndexError      = errors.IndexError
 )
 
 // Re-export error kind constants
@@ -33,13 +35,17 @@ var (
 	NewEvalError        = errors.NewEvalError
 	NewArgsErrorType    = errors.NewArgsError
 	NewTypeError        = errors.NewTypeError
+	NewValueError       = errors.NewValueError
+	NewIndexError       = errors.NewIndexError
 	NewStructuredError  = errors.NewStructuredError
 	NewStructuredErrorf = errors.NewStructuredErrorf
 )
 
 // Internal functions used by the wrapper functions in object.go
 var (
-	newEvalErrorf = errors.EvalErrorf
-	newArgsErrorf = errors.ArgsErrorf
-	newTypeErrorf = errors.TypeErrorf
+	newEvalErrorf  = errors.EvalErrorf
+	newArgsErrorf  = errors.ArgsErrorf
+	newTypeErrorf  = errors.TypeErrorf
+	newValueErrorf = errors.ValueErrorf
+	newIndexErrorf = errors.IndexErrorf
 )

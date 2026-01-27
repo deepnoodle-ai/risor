@@ -21,7 +21,7 @@ type List struct {
 }
 
 func (ls *List) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: list has no attribute %q", name)
+	return TypeErrorf("list has no attribute %q", name)
 }
 
 func (ls *List) Type() Type {
@@ -232,14 +232,14 @@ func (ls *List) GetAttr(name string) (Object, bool) {
 func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
 	callable, ok := fn.(Callable)
 	if !ok {
-		return nil, fmt.Errorf("type error: list.map() expected a function (%s given)", fn.Type())
+		return nil, newTypeErrorf("list.map() expected a function (%s given)", fn.Type())
 	}
 	// Closures can accept (index, value) if they have 2 parameters
 	var passIndex bool
 	if closure, ok := fn.(*Closure); ok {
 		count := closure.ParameterCount()
 		if count < 1 || count > 2 {
-			return nil, fmt.Errorf("type error: list.map() received an incompatible function")
+			return nil, newTypeErrorf("list.map() received an incompatible function")
 		}
 		passIndex = count == 2
 	}
@@ -263,7 +263,7 @@ func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
 func (ls *List) Filter(ctx context.Context, fn Object) (Object, error) {
 	callable, ok := fn.(Callable)
 	if !ok {
-		return nil, fmt.Errorf("type error: list.filter() expected a function (%s given)", fn.Type())
+		return nil, newTypeErrorf("list.filter() expected a function (%s given)", fn.Type())
 	}
 	var result []Object
 	for _, value := range ls.items {
@@ -281,7 +281,7 @@ func (ls *List) Filter(ctx context.Context, fn Object) (Object, error) {
 func (ls *List) Each(ctx context.Context, fn Object) (Object, error) {
 	callable, ok := fn.(Callable)
 	if !ok {
-		return nil, fmt.Errorf("type error: list.each() expected a function (%s given)", fn.Type())
+		return nil, newTypeErrorf("list.each() expected a function (%s given)", fn.Type())
 	}
 	for _, value := range ls.items {
 		if _, err := callable.Call(ctx, value); err != nil {
@@ -294,7 +294,7 @@ func (ls *List) Each(ctx context.Context, fn Object) (Object, error) {
 func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) (Object, error) {
 	callable, ok := fn.(Callable)
 	if !ok {
-		return nil, fmt.Errorf("type error: list.reduce() expected a function (%s given)", fn.Type())
+		return nil, newTypeErrorf("list.reduce() expected a function (%s given)", fn.Type())
 	}
 	accumulator := initial
 	for _, value := range ls.items {
@@ -414,7 +414,7 @@ func (ls *List) String() string {
 func (ls *List) Compare(other Object) (int, error) {
 	otherList, ok := other.(*List)
 	if !ok {
-		return 0, TypeErrorf("type error: unable to compare list and %s", other.Type())
+		return 0, TypeErrorf("unable to compare list and %s", other.Type())
 	}
 	if len(ls.items) > len(otherList.items) {
 		return 1, nil
@@ -424,7 +424,7 @@ func (ls *List) Compare(other Object) (int, error) {
 	for i := 0; i < len(ls.items); i++ {
 		comparable, ok := ls.items[i].(Comparable)
 		if !ok {
-			return 0, TypeErrorf("type error: %s object is not comparable", ls.items[i].Type())
+			return 0, TypeErrorf("%s object is not comparable", ls.items[i].Type())
 		}
 		comp, err := comparable.Compare(otherList.items[i])
 		if err != nil {
@@ -478,11 +478,11 @@ func (ls *List) Keys() Object {
 func (ls *List) GetItem(key Object) (Object, *Error) {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return nil, TypeErrorf("type error: list index must be an int (got %s)", key.Type())
+		return nil, TypeErrorf("list index must be an int (got %s)", key.Type())
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
-		return nil, Errorf(err.Error())
+		return nil, NewError(err)
 	}
 	return ls.items[idx], nil
 }
@@ -491,7 +491,7 @@ func (ls *List) GetItem(key Object) (Object, *Error) {
 func (ls *List) GetSlice(s Slice) (Object, *Error) {
 	start, stop, err := ResolveIntSlice(s, int64(len(ls.items)))
 	if err != nil {
-		return nil, Errorf(err.Error())
+		return nil, NewError(err)
 	}
 	items := ls.items[start:stop]
 	itemsCopy := make([]Object, len(items))
@@ -503,7 +503,7 @@ func (ls *List) GetSlice(s Slice) (Object, *Error) {
 func (ls *List) SetItem(key, value Object) *Error {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return TypeErrorf("type error: list index must be an int (got %s)", key.Type())
+		return TypeErrorf("list index must be an int (got %s)", key.Type())
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
@@ -517,7 +517,7 @@ func (ls *List) SetItem(key, value Object) *Error {
 func (ls *List) DelItem(key Object) *Error {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return TypeErrorf("type error: list index must be an int (got %s)", key.Type())
+		return TypeErrorf("list index must be an int (got %s)", key.Type())
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
@@ -559,7 +559,7 @@ func (ls *List) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 	case *List:
 		return ls.runOperationList(opType, right)
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for list: %v on type %s",
+		return nil, newTypeErrorf("unsupported operation for list: %v on type %s",
 			opType, right.Type())
 	}
 }
@@ -572,7 +572,7 @@ func (ls *List) runOperationList(opType op.BinaryOpType, right *List) (Object, e
 		copy(combined[len(ls.items):], right.items)
 		return NewList(combined), nil
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for list: %v on type %s",
+		return nil, newTypeErrorf("unsupported operation for list: %v on type %s",
 			opType, right.Type())
 	}
 }
@@ -600,7 +600,7 @@ func NewStringList(s []string) *List {
 func ResolveIndex(idx int64, size int64) (int64, error) {
 	max := size - 1
 	if idx > max {
-		return 0, fmt.Errorf("index error: index out of range: %d", idx)
+		return 0, newIndexErrorf("index out of range: %d", idx)
 	}
 	if idx >= 0 {
 		return idx, nil
@@ -608,7 +608,7 @@ func ResolveIndex(idx int64, size int64) (int64, error) {
 	// Handle negative indices, where -1 is the last item in the array
 	reversed := idx + size
 	if reversed < 0 || reversed > max {
-		return 0, fmt.Errorf("index error: index out of range: %d", idx)
+		return 0, newIndexErrorf("index out of range: %d", idx)
 	}
 	return reversed, nil
 }
@@ -620,7 +620,7 @@ func ResolveIntSlice(slice Slice, size int64) (start int64, stop int64, err erro
 	if slice.Start != nil {
 		startObj, ok := slice.Start.(*Int)
 		if !ok {
-			err = TypeErrorf("type error: slice start index must be an int (got %s)", slice.Start.Type())
+			err = TypeErrorf("slice start index must be an int (got %s)", slice.Start.Type())
 			return
 		}
 		start = startObj.value
@@ -628,7 +628,7 @@ func ResolveIntSlice(slice Slice, size int64) (start int64, stop int64, err erro
 	if slice.Stop != nil {
 		stopObj, ok := slice.Stop.(*Int)
 		if !ok {
-			err = TypeErrorf("type error: slice stop index must be an int (got %s)", slice.Stop.Type())
+			err = TypeErrorf("slice stop index must be an int (got %s)", slice.Stop.Type())
 			return
 		}
 		stop = stopObj.value

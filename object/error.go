@@ -24,7 +24,7 @@ type Error struct {
 }
 
 func (e *Error) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: error has no attribute %q", name)
+	return TypeErrorf("error has no attribute %q", name)
 }
 
 func (e *Error) IsTruthy() bool {
@@ -54,7 +54,7 @@ func (e *Error) Interface() interface{} {
 func (e *Error) Compare(other Object) (int, error) {
 	otherErr, ok := other.(*Error)
 	if !ok {
-		return 0, TypeErrorf("type error: unable to compare error and %s", other.Type())
+		return 0, TypeErrorf("unable to compare error and %s", other.Type())
 	}
 	thisMsg := e.Message().Value()
 	otherMsg := otherErr.Message().Value()
@@ -154,7 +154,7 @@ func (e *Error) Unwrap() error {
 }
 
 func (e *Error) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for error: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for error: %v", opType)
 }
 
 func Errorf(format string, a ...interface{}) *Error {
@@ -170,7 +170,7 @@ func Errorf(format string, a ...interface{}) *Error {
 }
 
 func (e *Error) MarshalJSON() ([]byte, error) {
-	return nil, TypeErrorf("type error: unable to marshal error")
+	return nil, TypeErrorf("unable to marshal error")
 }
 
 func NewError(err error) *Error {
@@ -179,6 +179,12 @@ func NewError(err error) *Error {
 		return &Error{err: err.Unwrap(), structured: err.structured}
 	case *StructuredError:
 		return &Error{err: err, structured: err}
+	case *TypeError:
+		return &Error{err: err, structured: NewStructuredError(ErrType, err.Error(), SourceLocation{}, nil)}
+	case *ValueError:
+		return &Error{err: err, structured: NewStructuredError(ErrValue, err.Error(), SourceLocation{}, nil)}
+	case *IndexError:
+		return &Error{err: err, structured: NewStructuredError(ErrValue, err.Error(), SourceLocation{}, nil)}
 	default:
 		return &Error{err: err}
 	}

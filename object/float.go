@@ -2,7 +2,6 @@ package object
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"strconv"
 
@@ -19,7 +18,7 @@ func (f *Float) GetAttr(name string) (Object, bool) {
 }
 
 func (f *Float) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: float has no attribute %q", name)
+	return TypeErrorf("float has no attribute %q", name)
 }
 
 func (f *Float) Inspect() string {
@@ -71,7 +70,7 @@ func (f *Float) Compare(other Object) (int, error) {
 		}
 		return -1, nil
 	default:
-		return 0, TypeErrorf("type error: unable to compare float and %s", other.Type())
+		return 0, TypeErrorf("unable to compare float and %s", other.Type())
 	}
 }
 
@@ -101,7 +100,7 @@ func (f *Float) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 		rightFloat := float64(right.value)
 		return f.runOperationFloat(opType, rightFloat)
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for float: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for float: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -118,7 +117,7 @@ func (f *Float) runOperationFloat(opType op.BinaryOpType, right float64) (Object
 	case op.Power:
 		return NewFloat(math.Pow(f.value, right)), nil
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for float: %v", opType)
+		return nil, newTypeErrorf("unsupported operation for float: %v", opType)
 	}
 }
 

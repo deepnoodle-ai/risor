@@ -16,7 +16,7 @@ func (c *Cell) GetAttr(name string) (Object, bool) {
 }
 
 func (c *Cell) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: cell has no attribute %q", name)
+	return TypeErrorf("cell has no attribute %q", name)
 }
 
 func (c *Cell) IsTruthy() bool {
@@ -65,11 +65,11 @@ func (c *Cell) Equals(other Object) bool {
 }
 
 func (c *Cell) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for cell: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for cell: %v", opType)
 }
 
 func (c *Cell) MarshalJSON() ([]byte, error) {
-	return nil, TypeErrorf("type error: unable to marshal cell")
+	return nil, TypeErrorf("unable to marshal cell")
 }
 
 func NewCell(value *Object) *Cell {

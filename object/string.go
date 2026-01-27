@@ -14,7 +14,7 @@ type String struct {
 }
 
 func (s *String) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: string has no attribute %q", name)
+	return TypeErrorf("string has no attribute %q", name)
 }
 
 func (s *String) Type() Type {
@@ -238,7 +238,7 @@ func (s *String) Interface() interface{} {
 func (s *String) Compare(other Object) (int, error) {
 	otherStr, ok := other.(*String)
 	if !ok {
-		return 0, TypeErrorf("type error: unable to compare string and %s", other.Type())
+		return 0, TypeErrorf("unable to compare string and %s", other.Type())
 	}
 	if s.value == otherStr.value {
 		return 0, nil
@@ -266,7 +266,7 @@ func (s *String) RunOperation(opType op.BinaryOpType, right Object) (Object, err
 	case *String:
 		return s.runOperationString(opType, right)
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for string: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for string: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -275,7 +275,7 @@ func (s *String) runOperationString(opType op.BinaryOpType, right *String) (Obje
 	case op.Add:
 		return NewString(s.value + right.value), nil
 	default:
-		return nil, fmt.Errorf("type error: unsupported operation for string: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for string: %v on type %s", opType, right.Type())
 	}
 }
 
@@ -290,12 +290,12 @@ func (s *String) Reversed() *String {
 func (s *String) GetItem(key Object) (Object, *Error) {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return nil, TypeErrorf("type error: string index must be an int (got %s)", key.Type())
+		return nil, TypeErrorf("string index must be an int (got %s)", key.Type())
 	}
 	runes := []rune(s.value)
 	index, err := ResolveIndex(indexObj.value, int64(len(runes)))
 	if err != nil {
-		return nil, Errorf(err.Error())
+		return nil, NewError(err)
 	}
 	return NewString(string(runes[index])), nil
 }
@@ -304,18 +304,18 @@ func (s *String) GetSlice(slice Slice) (Object, *Error) {
 	runes := []rune(s.value)
 	start, stop, err := ResolveIntSlice(slice, int64(len(runes)))
 	if err != nil {
-		return nil, Errorf(err.Error())
+		return nil, NewError(err)
 	}
 	resultRunes := runes[start:stop]
 	return NewString(string(resultRunes)), nil
 }
 
 func (s *String) SetItem(key, value Object) *Error {
-	return TypeErrorf("type error: set item is unsupported for string")
+	return TypeErrorf("set item is unsupported for string")
 }
 
 func (s *String) DelItem(key Object) *Error {
-	return TypeErrorf("type error: del item is unsupported for string")
+	return TypeErrorf("del item is unsupported for string")
 }
 
 func (s *String) Contains(obj Object) *Bool {
@@ -448,7 +448,7 @@ func (s *String) Repeat(obj Object) (Object, error) {
 		return nil, err
 	}
 	if count < 0 {
-		return nil, fmt.Errorf("value error: negative repeat count")
+		return nil, newValueErrorf("negative repeat count")
 	}
 	return NewString(strings.Repeat(s.value, int(count))), nil
 }

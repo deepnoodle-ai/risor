@@ -14,7 +14,7 @@ type Time struct {
 }
 
 func (t *Time) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: time has no attribute %q", name)
+	return TypeErrorf("time has no attribute %q", name)
 }
 
 func (t *Time) Type() Type {
@@ -59,7 +59,7 @@ func (t *Time) String() string {
 func (t *Time) Compare(other Object) (int, error) {
 	otherStr, ok := other.(*Time)
 	if !ok {
-		return 0, TypeErrorf("type error: unable to compare time and %s", other.Type())
+		return 0, TypeErrorf("unable to compare time and %s", other.Type())
 	}
 	if t.value == otherStr.value {
 		return 0, nil
@@ -79,7 +79,7 @@ func (t *Time) Equals(other Object) bool {
 }
 
 func (t *Time) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for time: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for time: %v", opType)
 }
 
 func NewTime(t time.Time) *Time {

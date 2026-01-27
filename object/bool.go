@@ -16,7 +16,7 @@ func (b *Bool) GetAttr(name string) (Object, bool) {
 }
 
 func (b *Bool) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: bool has no attribute %q", name)
+	return TypeErrorf("bool has no attribute %q", name)
 }
 
 func (b *Bool) Type() Type {
@@ -42,7 +42,7 @@ func (b *Bool) String() string {
 func (b *Bool) Compare(other Object) (int, error) {
 	otherBool, ok := other.(*Bool)
 	if !ok {
-		return 0, TypeErrorf("type error: unable to compare bool and %s", other.Type())
+		return 0, TypeErrorf("unable to compare bool and %s", other.Type())
 	}
 	if b.value == otherBool.value {
 		return 0, nil
@@ -66,7 +66,7 @@ func (b *Bool) IsTruthy() bool {
 }
 
 func (b *Bool) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for bool: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for bool: %v", opType)
 }
 
 func (b *Bool) MarshalJSON() ([]byte, error) {

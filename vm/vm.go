@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/object"
@@ -30,7 +31,11 @@ const (
 	DefaultContextCheckInterval = 1000
 )
 
-var ErrGlobalNotFound = errors.New("global not found")
+var (
+	ErrGlobalNotFound    = errors.New("global not found")
+	ErrStepLimitExceeded = errors.New("step limit exceeded")
+	ErrStackOverflow     = errors.New("stack overflow")
+)
 
 type VirtualMachine struct {
 	ip           int // instruction pointer
@@ -84,30 +89,41 @@ type VirtualMachine struct {
 	// typeRegistry handles Go/Risor type conversions.
 	// If nil, object.DefaultRegistry() is used.
 	typeRegistry *object.TypeRegistry
+
+	// Resource limits
+	maxSteps      int64         // Maximum instructions. 0 = unlimited.
+	maxStackDepth int           // Maximum stack depth. 0 = use MaxStackDepth.
+	timeout       time.Duration // Execution timeout. 0 = no timeout.
+
+	// Step counting state for resource limits. These fields are stored on the
+	// VM (rather than as local variables in eval) so that step counting persists
+	// across recursive eval calls. This is important because methods like
+	// list.each() and list.map() invoke callbacks via callFunction, which calls
+	// eval recursively. Without VM-level counters, each callback would start
+	// with fresh counters, allowing infinite iterations to bypass step limits.
+	stepCount        int64 // Total instructions executed across all eval calls
+	stepCheckCounter int   // Instructions since last periodic check
 }
 
 // exceptionFrame represents an active exception handler on the exception stack.
 type exceptionFrame struct {
-	handler      *bytecode.ExceptionHandler
-	code         *loadedCode   // The code object containing this handler
-	fp           int           // Frame pointer when handler was pushed
-	pendingError *object.Error // Error to re-throw after finally (if any)
-	inFinally    bool          // Are we currently executing a finally block?
+	handler       *bytecode.ExceptionHandler
+	code          *loadedCode   // The code object containing this handler
+	fp            int           // Frame pointer when handler was pushed
+	pendingError  *object.Error // Error to re-throw after finally (if any)
+	pendingReturn object.Object // Value to return after finally (if any)
+	inCatch       bool          // Are we currently executing a catch block?
+	inFinally     bool          // Are we currently executing a finally block?
 }
 
-// New creates a new Virtual Machine.
-func New(main *bytecode.Code, options ...Option) *VirtualMachine {
+// New creates a new Virtual Machine with the given bytecode and options.
+func New(main *bytecode.Code, options ...Option) (*VirtualMachine, error) {
 	vm, err := createVM(options)
 	if err != nil {
-		// Being unable to convert globals to Risor objects is more likely a
-		// programming error than a runtime error, so this panic is borderline
-		// appropriate. The only reason we're keeping this function signature
-		// and not just switching to returning an error is for compatibility.
-		// Using NewEmpty instead of New addresses this.
-		panic(err)
+		return nil, err
 	}
 	vm.main = main
-	return vm
+	return vm, nil
 }
 
 // NewEmpty creates a new Virtual Machine without initial main code.
@@ -300,6 +316,13 @@ func (vm *VirtualMachine) RunCode(ctx context.Context, codeToRun *bytecode.Code,
 
 // runCodeInternal is the shared implementation for Run and RunCode
 func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *bytecode.Code, resetState bool) (err error) {
+	// Apply timeout to context if configured
+	if vm.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, vm.timeout)
+		defer cancel()
+	}
+
 	// Set up some guarantees:
 	// 1. It is an error to call Run on a VM that is already running
 	// 2. The running flag will always be set to false when Run returns
@@ -450,30 +473,54 @@ func (vm *VirtualMachine) GlobalNames() []string {
 // Assuming this function returns without error, the result of the evaluation
 // will be on the top of the stack.
 func (vm *VirtualMachine) eval(ctx context.Context) error {
-	// Instruction counter for deterministic context checking
-	var instructionCount int
+	// Use VM fields for step counting so counts persist across recursive calls
 	checkInterval := vm.contextCheckInterval
 	doneChan := ctx.Done()
 
+	// Calculate effective stack limit
+	maxStackDepth := vm.maxStackDepth
+	if maxStackDepth == 0 || maxStackDepth > MaxStackDepth {
+		maxStackDepth = MaxStackDepth
+	}
+
 	// Run to the end of the active code
+evalLoop:
 	for vm.ip < len(vm.activeCode.Instructions) {
 
 		if atomic.LoadInt32(&vm.halt) == 1 {
 			return ctx.Err()
 		}
 
-		// Deterministic check of ctx.Done() every N instructions.
-		// This guarantees responsiveness regardless of goroutine scheduling.
-		if checkInterval > 0 && doneChan != nil {
-			instructionCount++
-			if instructionCount >= checkInterval {
-				instructionCount = 0
-				select {
-				case <-doneChan:
-					atomic.StoreInt32(&vm.halt, 1)
-					return ctx.Err()
-				default:
-					// Context not cancelled, continue execution
+		// Periodic checks (context, steps, stack) every N instructions.
+		// This amortizes the cost of resource limit checking.
+		// Using VM fields ensures counts persist across recursive eval calls
+		// (e.g., when callbacks are invoked via list.each(), list.map(), etc.)
+		if checkInterval > 0 {
+			vm.stepCheckCounter++
+			if vm.stepCheckCounter >= checkInterval {
+				vm.stepCheckCounter = 0
+
+				// Context cancellation check
+				if doneChan != nil {
+					select {
+					case <-doneChan:
+						atomic.StoreInt32(&vm.halt, 1)
+						return ctx.Err()
+					default:
+					}
+				}
+
+				// Step limit check
+				if vm.maxSteps > 0 {
+					vm.stepCount += int64(checkInterval)
+					if vm.stepCount > vm.maxSteps {
+						return ErrStepLimitExceeded
+					}
+				}
+
+				// Stack depth check
+				if vm.sp >= maxStackDepth {
+					return ErrStackOverflow
 				}
 			}
 		}
@@ -685,6 +732,29 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 			}
 		case op.ReturnValue:
 			activeFrame := vm.activeFrame
+
+			// Check for finally blocks that need to run before returning.
+			// We need to find exception frames for the current function frame
+			// that have finally blocks we haven't run yet.
+			if vm.excStackSize > 0 {
+				for i := vm.excStackSize - 1; i >= 0; i-- {
+					excFrame := &vm.excStack[i]
+					// Only consider handlers for the current function frame
+					if excFrame.fp != vm.fp || excFrame.code != vm.activeCode {
+						break
+					}
+					// If there's a finally block and we're not already in it
+					if excFrame.handler.FinallyStart > 0 && !excFrame.inFinally {
+						// Save the return value and jump to finally
+						returnValue := vm.pop()
+						excFrame.pendingReturn = returnValue
+						excFrame.inFinally = true
+						vm.ip = excFrame.handler.FinallyStart
+						// Don't return - continue execution in the finally block
+						continue evalLoop
+					}
+				}
+			}
 
 			// Call observer if present and configured to observe returns (before we lose the frame info)
 			if vm.observer != nil && vm.observerConfig.ObserveReturns {
@@ -1086,9 +1156,51 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 				return err
 			}
 		case op.EndFinally:
-			// End of finally block - re-raise pending exception if any
+			// End of finally block - check for pending return or exception
 			if vm.excStackSize > 0 {
 				excFrame := &vm.excStack[vm.excStackSize-1]
+
+				// Handle pending return (return statement was executed in try/catch)
+				if excFrame.inFinally && excFrame.pendingReturn != nil {
+					// Complete the pending return
+					returnValue := excFrame.pendingReturn
+					excFrame.pendingReturn = nil
+					excFrame.inFinally = false
+					excFrame.inCatch = false
+					vm.excStackSize-- // Pop this handler
+
+					// Push return value back onto stack and perform return
+					vm.push(returnValue)
+
+					activeFrame := vm.activeFrame
+
+					// Call observer if present and configured to observe returns
+					if vm.observer != nil && vm.observerConfig.ObserveReturns {
+						funcName := ""
+						if activeFrame.fn != nil {
+							funcName = activeFrame.fn.Name()
+						}
+						event := ReturnEvent{
+							FunctionName: funcName,
+							Location:     vm.getCurrentLocation(),
+							FrameDepth:   vm.fp,
+						}
+						if !vm.observer.OnReturn(event) {
+							return fmt.Errorf("execution halted by observer")
+						}
+					}
+
+					returnAddr := activeFrame.returnAddr
+					returnSp := activeFrame.returnSp
+					returnFp := vm.fp - 1
+					vm.resumeFrame(returnFp, returnAddr, returnSp)
+					if returnAddr == StopSignal {
+						return nil
+					}
+					continue evalLoop
+				}
+
+				// Handle pending error (exception was thrown, no catch, finally ran)
 				if excFrame.inFinally && excFrame.pendingError != nil {
 					// Re-raise the pending error
 					pendingErr := excFrame.pendingError
@@ -1100,9 +1212,13 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 					if err := vm.handleException(pendingErr); err != nil {
 						return err
 					}
-				} else if excFrame.inFinally {
-					// No pending error, just clear the finally flag
+					continue evalLoop
+				}
+
+				// Normal finally completion (from try or catch falling through)
+				if excFrame.inFinally || excFrame.inCatch {
 					excFrame.inFinally = false
+					excFrame.inCatch = false
 					vm.excStackSize--
 				}
 			}
@@ -1192,8 +1308,15 @@ func (vm *VirtualMachine) Call(
 	return vm.callFunction(vm.initContext(ctx), fn, args)
 }
 
-// Calls a compiled function with the given arguments. This is used internally
-// when a Risor object calls a function, e.g. [1, 2, 3].map(func(x) { x + 1 }).
+// callFunction executes a compiled function with the given arguments. This is
+// used internally when a Risor object invokes a callback, e.g.:
+//
+//	[1, 2, 3].map(func(x) { x + 1 })
+//
+// The function calls vm.eval() recursively, which means step counting and
+// resource limits apply to callback execution. The VM's stepCount field
+// persists across these recursive calls, ensuring that callbacks cannot
+// bypass step limits by executing in a "fresh" eval context.
 func (vm *VirtualMachine) callFunction(
 	ctx context.Context,
 	fn *object.Closure,
@@ -1372,10 +1495,14 @@ func (vm *VirtualMachine) resumeFrame(fp, ip, sp int) *frame {
 }
 
 // ensureFrameCapacity grows the frames slice if needed to accommodate the given frame index.
-// Returns an error if the frame index exceeds MaxFrameDepth.
+// Returns an error if the frame index exceeds the configured limit or MaxFrameDepth.
 func (vm *VirtualMachine) ensureFrameCapacity(fp int) error {
+	// Check against configured limit first (if set and smaller than MaxFrameDepth)
+	if vm.maxStackDepth > 0 && vm.maxStackDepth < MaxFrameDepth && fp >= vm.maxStackDepth {
+		return ErrStackOverflow
+	}
 	if fp >= MaxFrameDepth {
-		return fmt.Errorf("stack overflow: frame depth %d exceeds maximum %d", fp, MaxFrameDepth)
+		return ErrStackOverflow
 	}
 	if fp >= len(vm.frames) {
 		// Grow the slice - double capacity or grow to fit, whichever is larger
@@ -1553,8 +1680,10 @@ func (vm *VirtualMachine) wrapError(err error) *object.StructuredError {
 	switch err.(type) {
 	case *object.TypeError:
 		kind = object.ErrType
-		// Strip "type error: " prefix if present (the kind already indicates it)
-		msg = strings.TrimPrefix(msg, "type error: ")
+	case *object.ValueError:
+		kind = object.ErrValue
+	case *object.IndexError:
+		kind = object.ErrValue // Index errors are a kind of value error
 	}
 	return object.NewStructuredError(kind, msg, vm.getCurrentLocation(), vm.captureStack())
 }
@@ -1562,6 +1691,13 @@ func (vm *VirtualMachine) wrapError(err error) *object.StructuredError {
 // panicToError converts a recovered panic value to a structured error.
 // It attempts to categorize common Go runtime panics into user-friendly errors.
 func (vm *VirtualMachine) panicToError(r any) error {
+	// Check if it's one of our sentinel errors - return directly to preserve error chain
+	if err, ok := r.(error); ok {
+		if errors.Is(err, ErrStackOverflow) || errors.Is(err, ErrStepLimitExceeded) {
+			return err
+		}
+	}
+
 	msg := fmt.Sprintf("%v", r)
 
 	// Categorize common Go runtime panics
@@ -1630,11 +1766,18 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 
 		handler := excFrame.handler
 
-		// If we have a catch block, it handles the exception
+		// If we have a catch block and we're not already in it, enter catch
 		// When catch completes normally, exception is considered handled
-		if handler.CatchStart > 0 && handler.CatchStart != handler.FinallyStart {
-			// Pop the exception handler since catch will handle it
-			vm.excStackSize--
+		if handler.CatchStart > 0 && handler.CatchStart != handler.FinallyStart && !excFrame.inCatch {
+			// If there's a finally block, keep the frame on the stack so that
+			// return statements in catch can trigger the finally block.
+			// EndFinally will pop the frame after finally completes.
+			if handler.FinallyStart > 0 {
+				excFrame.inCatch = true
+			} else {
+				// No finally block - pop the handler since catch will fully handle it
+				vm.excStackSize--
+			}
 
 			// Push error onto stack for catch block
 			vm.push(errObj)
@@ -1642,7 +1785,18 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 			return nil
 		}
 
-		// No catch block, but we have finally - run finally with pending error
+		// Exception thrown while in catch block - go to finally if available
+		// (The exception from catch replaces the original exception)
+		if excFrame.inCatch && handler.FinallyStart > 0 && !excFrame.inFinally {
+			// Store the new error for re-raising after finally
+			excFrame.pendingError = errObj
+			excFrame.inCatch = false
+			excFrame.inFinally = true
+			vm.ip = handler.FinallyStart
+			return nil
+		}
+
+		// No catch block (or already in catch), but we have finally - run finally with pending error
 		if handler.FinallyStart > 0 && !excFrame.inFinally {
 			// Store the pending error for re-raising after finally
 			excFrame.pendingError = errObj

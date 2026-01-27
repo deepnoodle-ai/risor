@@ -32,7 +32,7 @@ type Builtin struct {
 }
 
 func (b *Builtin) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: builtin has no attribute %q", name)
+	return TypeErrorf("builtin has no attribute %q", name)
 }
 
 func (b *Builtin) IsTruthy() bool {
@@ -102,11 +102,11 @@ func (b *Builtin) Equals(other Object) bool {
 }
 
 func (b *Builtin) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for builtin: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for builtin: %v", opType)
 }
 
 func (b *Builtin) MarshalJSON() ([]byte, error) {
-	return nil, TypeErrorf("type error: unable to marshal builtin")
+	return nil, TypeErrorf("unable to marshal builtin")
 }
 
 // NewNoopBuiltin creates a builtin function that has no effect.

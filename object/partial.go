@@ -18,7 +18,7 @@ func (p *Partial) GetAttr(name string) (Object, bool) {
 }
 
 func (p *Partial) SetAttr(name string, value Object) error {
-	return TypeErrorf("type error: partial has no attribute %q", name)
+	return TypeErrorf("partial has no attribute %q", name)
 }
 
 func (p *Partial) IsTruthy() bool {
@@ -58,11 +58,11 @@ func (p *Partial) Equals(other Object) bool {
 }
 
 func (p *Partial) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for partial: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for partial: %v", opType)
 }
 
 func (p *Partial) MarshalJSON() ([]byte, error) {
-	return nil, TypeErrorf("type error: unable to marshal partial")
+	return nil, TypeErrorf("unable to marshal partial")
 }
 
 func NewPartial(fn Object, args []Object) *Partial {

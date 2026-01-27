@@ -26,7 +26,7 @@ var (
 func AsBool(obj Object) (bool, error) {
 	b, ok := obj.(*Bool)
 	if !ok {
-		return false, fmt.Errorf("type error: expected a bool (%s given)", obj.Type())
+		return false, newTypeErrorf("expected a bool (%s given)", obj.Type())
 	}
 	return b.value, nil
 }
@@ -36,7 +36,7 @@ func AsString(obj Object) (string, error) {
 	case *String:
 		return obj.value, nil
 	default:
-		return "", fmt.Errorf("type error: expected a string (%s given)", obj.Type())
+		return "", newTypeErrorf("expected a string (%s given)", obj.Type())
 	}
 }
 
@@ -47,7 +47,7 @@ func AsInt(obj Object) (int64, error) {
 	case *Byte:
 		return int64(obj.value), nil
 	default:
-		return 0, fmt.Errorf("type error: expected an integer (%s given)", obj.Type())
+		return 0, newTypeErrorf("expected an integer (%s given)", obj.Type())
 	}
 }
 
@@ -61,11 +61,11 @@ func AsByte(obj Object) (byte, error) {
 		return byte(obj.value), nil
 	case *String:
 		if len(obj.value) != 1 {
-			return 0, fmt.Errorf("type error: expected a single byte string (length %d)", len(obj.value))
+			return 0, newTypeErrorf("expected a single byte string (length %d)", len(obj.value))
 		}
 		return obj.value[0], nil
 	default:
-		return 0, fmt.Errorf("type error: expected a byte (%s given)", obj.Type())
+		return 0, newTypeErrorf("expected a byte (%s given)", obj.Type())
 	}
 }
 
@@ -78,14 +78,14 @@ func AsFloat(obj Object) (float64, error) {
 	case *Float:
 		return obj.value, nil
 	default:
-		return 0.0, fmt.Errorf("type error: expected a number (%s given)", obj.Type())
+		return 0.0, newTypeErrorf("expected a number (%s given)", obj.Type())
 	}
 }
 
 func AsList(obj Object) (*List, error) {
 	list, ok := obj.(*List)
 	if !ok {
-		return nil, fmt.Errorf("type error: expected a list (%s given)", obj.Type())
+		return nil, newTypeErrorf("expected a list (%s given)", obj.Type())
 	}
 	return list, nil
 }
@@ -93,7 +93,7 @@ func AsList(obj Object) (*List, error) {
 func AsStringSlice(obj Object) ([]string, error) {
 	list, ok := obj.(*List)
 	if !ok {
-		return nil, fmt.Errorf("type error: expected a list (%s given)", obj.Type())
+		return nil, newTypeErrorf("expected a list (%s given)", obj.Type())
 	}
 	result := make([]string, 0, len(list.items))
 	for _, item := range list.items {
@@ -109,7 +109,7 @@ func AsStringSlice(obj Object) ([]string, error) {
 func AsMap(obj Object) (*Map, error) {
 	m, ok := obj.(*Map)
 	if !ok {
-		return nil, fmt.Errorf("type error: expected a map (%s given)", obj.Type())
+		return nil, newTypeErrorf("expected a map (%s given)", obj.Type())
 	}
 	return m, nil
 }
@@ -117,7 +117,7 @@ func AsMap(obj Object) (*Map, error) {
 func AsTime(obj Object) (time.Time, error) {
 	t, ok := obj.(*Time)
 	if !ok {
-		return time.Time{}, fmt.Errorf("type error: expected a time (%s given)", obj.Type())
+		return time.Time{}, newTypeErrorf("expected a time (%s given)", obj.Type())
 	}
 	return t.value, nil
 }
@@ -135,7 +135,7 @@ func AsBytes(obj Object) ([]byte, error) {
 		}
 		return data, nil
 	default:
-		return nil, fmt.Errorf("type error: expected bytes (%s given)", obj.Type())
+		return nil, newTypeErrorf("expected bytes (%s given)", obj.Type())
 	}
 }
 
@@ -151,7 +151,7 @@ func AsReader(obj Object) (io.Reader, error) {
 	case io.Reader:
 		return obj, nil
 	default:
-		return nil, fmt.Errorf("type error: expected a readable object (%s given)", obj.Type())
+		return nil, newTypeErrorf("expected a readable object (%s given)", obj.Type())
 	}
 }
 
@@ -163,14 +163,14 @@ func AsWriter(obj Object) (io.Writer, error) {
 	case io.Writer:
 		return obj, nil
 	default:
-		return nil, fmt.Errorf("type error: expected a writable object (%s given)", obj.Type())
+		return nil, newTypeErrorf("expected a writable object (%s given)", obj.Type())
 	}
 }
 
 func AsError(obj Object) (*Error, error) {
 	err, ok := obj.(*Error)
 	if !ok {
-		return nil, fmt.Errorf("type error: expected an error object (%s given)", obj.Type())
+		return nil, newTypeErrorf("expected an error object (%s given)", obj.Type())
 	}
 	return err, nil
 }
@@ -386,7 +386,7 @@ func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type) (any, error) {
 
 	list, ok := obj.(*List)
 	if !ok {
-		return nil, fmt.Errorf("type error: expected a list, got %s", obj.Type())
+		return nil, newTypeErrorf("expected a list, got %s", obj.Type())
 	}
 
 	elemType := target.Elem()
@@ -404,7 +404,7 @@ func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type) (any, error) {
 func (r *TypeRegistry) toGoArray(obj Object, target reflect.Type) (any, error) {
 	list, ok := obj.(*List)
 	if !ok {
-		return nil, fmt.Errorf("type error: expected a list, got %s", obj.Type())
+		return nil, newTypeErrorf("expected a list, got %s", obj.Type())
 	}
 
 	elemType := target.Elem()
@@ -431,7 +431,7 @@ func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type) (any, error) {
 
 	m, ok := obj.(*Map)
 	if !ok {
-		return nil, fmt.Errorf("type error: expected a map, got %s", obj.Type())
+		return nil, newTypeErrorf("expected a map, got %s", obj.Type())
 	}
 
 	if target.Key().Kind() != reflect.String {
@@ -481,7 +481,7 @@ func toNumeric(obj Object, target reflect.Type) (any, error) {
 	case *Byte:
 		intVal = int64(v.value)
 	default:
-		return nil, fmt.Errorf("type error: expected number, got %s", obj.Type())
+		return nil, newTypeErrorf("expected number, got %s", obj.Type())
 	}
 
 	switch target.Kind() {
@@ -553,7 +553,7 @@ func toNumeric(obj Object, target reflect.Type) (any, error) {
 func toBool(obj Object) (bool, error) {
 	b, ok := obj.(*Bool)
 	if !ok {
-		return false, fmt.Errorf("type error: expected bool, got %s", obj.Type())
+		return false, newTypeErrorf("expected bool, got %s", obj.Type())
 	}
 	return b.value, nil
 }
@@ -561,7 +561,7 @@ func toBool(obj Object) (bool, error) {
 func toGoString(obj Object) (string, error) {
 	s, ok := obj.(*String)
 	if !ok {
-		return "", fmt.Errorf("type error: expected string, got %s", obj.Type())
+		return "", newTypeErrorf("expected string, got %s", obj.Type())
 	}
 	return s.value, nil
 }
@@ -573,7 +573,7 @@ func toGoError(obj Object) (error, error) {
 	case *String:
 		return errors.New(v.Value()), nil
 	default:
-		return nil, fmt.Errorf("type error: expected error, got %s", obj.Type())
+		return nil, newTypeErrorf("expected error, got %s", obj.Type())
 	}
 }
 
@@ -678,7 +678,7 @@ func createDefaultRegistry() *TypeRegistry {
 				case *String:
 					return time.Parse(time.RFC3339, v.value)
 				default:
-					return nil, fmt.Errorf("type error: expected time, got %s", obj.Type())
+					return nil, newTypeErrorf("expected time, got %s", obj.Type())
 				}
 			},
 		},
@@ -695,7 +695,7 @@ func createDefaultRegistry() *TypeRegistry {
 func FromGoType(obj interface{}) Object {
 	result, err := DefaultRegistry().FromGo(obj)
 	if err != nil {
-		return TypeErrorf("type error: unmarshaling %v (%v): %v",
+		return TypeErrorf("unmarshaling %v (%v): %v",
 			obj, reflect.TypeOf(obj), err)
 	}
 	return result
@@ -736,13 +736,13 @@ func ObjectToRune(obj Object) (rune, error) {
 	switch v := obj.(type) {
 	case *String:
 		if utf8.RuneCountInString(v.value) != 1 {
-			return 0, fmt.Errorf("type error: expected single rune string (got length %d)", utf8.RuneCountInString(v.value))
+			return 0, newTypeErrorf("expected single rune string (got length %d)", utf8.RuneCountInString(v.value))
 		}
 		r, _ := utf8.DecodeRuneInString(v.value)
 		return r, nil
 	case *Int:
 		return rune(v.value), nil
 	default:
-		return 0, fmt.Errorf("type error: expected string or int, got %s", obj.Type())
+		return 0, newTypeErrorf("expected string or int, got %s", obj.Type())
 	}
 }

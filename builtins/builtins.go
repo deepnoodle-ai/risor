@@ -19,7 +19,7 @@ func Len(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case object.Container:
 		return arg.Len(), nil
 	default:
-		return nil, fmt.Errorf("type error: len() unsupported argument (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("len() unsupported argument (%s given)", args[0].Type())
 	}
 }
 
@@ -65,11 +65,11 @@ func List(ctx context.Context, args ...object.Object) (object.Object, error) {
 	}
 	// Reject int arguments explicitly
 	if _, ok := args[0].(*object.Int); ok {
-		return nil, fmt.Errorf("type error: list() expected an enumerable (int given)")
+		return nil, object.TypeErrorf("list() expected an enumerable (int given)")
 	}
 	enumerable, ok := args[0].(object.Enumerable)
 	if !ok {
-		return nil, fmt.Errorf("type error: list() expected an enumerable (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("list() expected an enumerable (%s given)", args[0].Type())
 	}
 	var items []object.Object
 	enumerable.Enumerate(ctx, func(key, value object.Object) bool {
@@ -153,7 +153,7 @@ func Any(ctx context.Context, args ...object.Object) (object.Object, error) {
 			return object.True, nil
 		}
 	default:
-		return nil, fmt.Errorf("type error: any() argument must be a container (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("any() argument must be a container (%s given)", args[0].Type())
 	}
 	return object.False, nil
 }
@@ -182,7 +182,7 @@ func All(ctx context.Context, args ...object.Object) (object.Object, error) {
 			return object.False, nil
 		}
 	default:
-		return nil, fmt.Errorf("type error: all() argument must be a container (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("all() argument must be a container (%s given)", args[0].Type())
 	}
 	return object.True, nil
 }
@@ -193,7 +193,7 @@ func Filter(ctx context.Context, args ...object.Object) (object.Object, error) {
 	}
 	fn, ok := args[1].(object.Callable)
 	if !ok {
-		return nil, fmt.Errorf("type error: filter() expected a callable (%s given)", args[1].Type())
+		return nil, object.TypeErrorf("filter() expected a callable (%s given)", args[1].Type())
 	}
 	var result []object.Object
 	switch container := args[0].(type) {
@@ -224,7 +224,7 @@ func Filter(ctx context.Context, args ...object.Object) (object.Object, error) {
 			return nil, filterErr
 		}
 	default:
-		return nil, fmt.Errorf("type error: filter() argument must be a container (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("filter() argument must be a container (%s given)", args[0].Type())
 	}
 	return object.NewList(result), nil
 }
@@ -256,14 +256,14 @@ func Sorted(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.String:
 		items = arg.Runes()
 	default:
-		return nil, fmt.Errorf("type error: sorted() unsupported argument (%s given)", arg.Type())
+		return nil, object.TypeErrorf("sorted() unsupported argument (%s given)", arg.Type())
 	}
 	resultItems := make([]object.Object, len(items))
 	copy(resultItems, items)
 	if len(args) == 2 {
 		callable, ok := args[1].(object.Callable)
 		if !ok {
-			return nil, fmt.Errorf("type error: sorted() expected a function as the second argument (%s given)", args[1].Type())
+			return nil, object.TypeErrorf("sorted() expected a function as the second argument (%s given)", args[1].Type())
 		}
 		var sortErr error
 		sort.SliceStable(resultItems, func(i, j int) bool {
@@ -296,7 +296,7 @@ func Reversed(ctx context.Context, args ...object.Object) (object.Object, error)
 	case *object.String:
 		return arg.Reversed(), nil
 	default:
-		return nil, fmt.Errorf("type error: reversed() unsupported argument (%s given)", arg.Type())
+		return nil, object.TypeErrorf("reversed() unsupported argument (%s given)", arg.Type())
 	}
 }
 
@@ -314,7 +314,7 @@ func GetAttr(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if len(args) == 3 {
 		return args[2], nil
 	}
-	return nil, fmt.Errorf("type error: getattr() %s object has no attribute %q",
+	return nil, object.TypeErrorf("getattr() %s object has no attribute %q",
 		args[0].Type(), attrName)
 }
 
@@ -324,7 +324,7 @@ func Call(ctx context.Context, args ...object.Object) (object.Object, error) {
 	}
 	callable, ok := args[0].(object.Callable)
 	if !ok {
-		return nil, fmt.Errorf("type error: call() unsupported argument (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("call() unsupported argument (%s given)", args[0].Type())
 	}
 	return callable.Call(ctx, args[1:]...)
 }
@@ -346,7 +346,7 @@ func Keys(ctx context.Context, args ...object.Object) (object.Object, error) {
 		})
 		return object.NewList(keys), nil
 	default:
-		return nil, fmt.Errorf("type error: keys() unsupported argument (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("keys() unsupported argument (%s given)", args[0].Type())
 	}
 }
 
@@ -368,9 +368,9 @@ func Byte(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if i, err := strconv.ParseInt(obj.Value(), 0, 8); err == nil {
 			return object.NewByte(byte(i)), nil
 		}
-		return nil, fmt.Errorf("value error: invalid literal for byte(): %q", obj.Value())
+		return nil, object.ValueErrorf("invalid literal for byte(): %q", obj.Value())
 	default:
-		return nil, fmt.Errorf("type error: byte() unsupported argument (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("byte() unsupported argument (%s given)", args[0].Type())
 	}
 }
 
@@ -392,9 +392,9 @@ func Int(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if i, err := strconv.ParseInt(obj.Value(), 0, 64); err == nil {
 			return object.NewInt(i), nil
 		}
-		return nil, fmt.Errorf("value error: invalid literal for int(): %q", obj.Value())
+		return nil, object.ValueErrorf("invalid literal for int(): %q", obj.Value())
 	default:
-		return nil, fmt.Errorf("type error: int() unsupported argument (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("int() unsupported argument (%s given)", args[0].Type())
 	}
 }
 
@@ -416,9 +416,9 @@ func Float(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if f, err := strconv.ParseFloat(obj.Value(), 64); err == nil {
 			return object.NewFloat(f), nil
 		}
-		return nil, fmt.Errorf("value error: invalid literal for float(): %q", obj.Value())
+		return nil, object.ValueErrorf("invalid literal for float(): %q", obj.Value())
 	default:
-		return nil, fmt.Errorf("type error: float() unsupported argument (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("float() unsupported argument (%s given)", args[0].Type())
 	}
 }
 
@@ -440,16 +440,16 @@ func Chunk(ctx context.Context, args ...object.Object) (object.Object, error) {
 	}
 	list, ok := args[0].(*object.List)
 	if !ok {
-		return nil, fmt.Errorf("type error: chunk() expected a list (%s given)", args[0].Type())
+		return nil, object.TypeErrorf("chunk() expected a list (%s given)", args[0].Type())
 	}
 	listSize := int64(list.Size())
 	chunkSizeObj, ok := args[1].(*object.Int)
 	if !ok {
-		return nil, fmt.Errorf("type error: chunk() expected an int (%s given)", args[1].Type())
+		return nil, object.TypeErrorf("chunk() expected an int (%s given)", args[1].Type())
 	}
 	chunkSize := chunkSizeObj.Value()
 	if chunkSize <= 0 {
-		return nil, fmt.Errorf("value error: chunk() size must be > 0 (%d given)", chunkSize)
+		return nil, object.ValueErrorf("chunk() size must be > 0 (%d given)", chunkSize)
 	}
 	items := list.Value()
 	nChunks := listSize / chunkSize
@@ -486,7 +486,7 @@ func Range(ctx context.Context, args ...object.Object) (object.Object, error) {
 		// range(stop)
 		stopObj, ok := args[0].(*object.Int)
 		if !ok {
-			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[0].Type())
+			return nil, object.TypeErrorf("range() integer expected, got %s", args[0].Type())
 		}
 		start = 0
 		stop = stopObj.Value()
@@ -495,11 +495,11 @@ func Range(ctx context.Context, args ...object.Object) (object.Object, error) {
 		// range(start, stop)
 		startObj, ok := args[0].(*object.Int)
 		if !ok {
-			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[0].Type())
+			return nil, object.TypeErrorf("range() integer expected, got %s", args[0].Type())
 		}
 		stopObj, ok := args[1].(*object.Int)
 		if !ok {
-			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[1].Type())
+			return nil, object.TypeErrorf("range() integer expected, got %s", args[1].Type())
 		}
 		start = startObj.Value()
 		stop = stopObj.Value()
@@ -508,21 +508,21 @@ func Range(ctx context.Context, args ...object.Object) (object.Object, error) {
 		// range(start, stop, step)
 		startObj, ok := args[0].(*object.Int)
 		if !ok {
-			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[0].Type())
+			return nil, object.TypeErrorf("range() integer expected, got %s", args[0].Type())
 		}
 		stopObj, ok := args[1].(*object.Int)
 		if !ok {
-			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[1].Type())
+			return nil, object.TypeErrorf("range() integer expected, got %s", args[1].Type())
 		}
 		stepObj, ok := args[2].(*object.Int)
 		if !ok {
-			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[2].Type())
+			return nil, object.TypeErrorf("range() integer expected, got %s", args[2].Type())
 		}
 		start = startObj.Value()
 		stop = stopObj.Value()
 		step = stepObj.Value()
 		if step == 0 {
-			return nil, fmt.Errorf("value error: range() step argument must not be zero")
+			return nil, object.ValueErrorf("range() step argument must not be zero")
 		}
 	}
 

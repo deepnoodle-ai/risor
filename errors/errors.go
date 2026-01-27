@@ -153,5 +153,48 @@ func NewTypeError(err error) *TypeError {
 }
 
 func TypeErrorf(format string, args ...any) *TypeError {
-	return NewTypeError(fmt.Errorf(format, args...))
+	return NewTypeError(fmt.Errorf("type error: "+format, args...))
+}
+
+// ValueError is used to indicate an invalid value for an operation.
+// Examples: division by zero, invalid argument values.
+type ValueError struct {
+	Err error
+}
+
+func (v *ValueError) Error() string {
+	return v.Err.Error()
+}
+
+func (v *ValueError) Unwrap() error {
+	return v.Err
+}
+
+func NewValueError(err error) *ValueError {
+	return &ValueError{Err: err}
+}
+
+func ValueErrorf(format string, args ...any) *ValueError {
+	return NewValueError(fmt.Errorf("value error: "+format, args...))
+}
+
+// IndexError is used to indicate an index is out of bounds.
+type IndexError struct {
+	Err error
+}
+
+func (i *IndexError) Error() string {
+	return i.Err.Error()
+}
+
+func (i *IndexError) Unwrap() error {
+	return i.Err
+}
+
+func NewIndexError(err error) *IndexError {
+	return &IndexError{Err: err}
+}
+
+func IndexErrorf(format string, args ...any) *IndexError {
+	return NewIndexError(fmt.Errorf("index error: "+format, args...))
 }

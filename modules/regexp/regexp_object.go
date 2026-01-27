@@ -59,11 +59,11 @@ func (r *Regexp) MarshalJSON() ([]byte, error) {
 }
 
 func (r *Regexp) RunOperation(opType op.BinaryOpType, right object.Object) (object.Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for regexp: %v", opType)
+	return nil, object.TypeErrorf("unsupported operation for regexp: %v", opType)
 }
 
 func (r *Regexp) SetAttr(name string, value object.Object) error {
-	return fmt.Errorf("type error: cannot set attribute %q on regexp object", name)
+	return object.TypeErrorf("cannot set attribute %q on regexp object", name)
 }
 
 func (r *Regexp) IsTruthy() bool {

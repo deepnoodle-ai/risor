@@ -81,7 +81,7 @@ func (r *Range) SetAttr(name string, value Object) error {
 }
 
 func (r *Range) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
-	return nil, fmt.Errorf("type error: unsupported operation for range: %v", opType)
+	return nil, newTypeErrorf("unsupported operation for range: %v", opType)
 }
 
 // length returns the number of elements in the range.
