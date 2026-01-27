@@ -38,6 +38,11 @@ type Code struct {
 
 	// Local variable names (for debugging/disassembly)
 	localNames []string
+
+	// envKeys stores the names of globals that were provided via the
+	// environment at compile time (as opposed to globals defined in the
+	// script itself). Used for validation at run time.
+	envKeys []string
 }
 
 // CodeParams contains parameters for creating a new Code.
@@ -58,6 +63,7 @@ type CodeParams struct {
 	GlobalCount  int
 	GlobalNames  []string
 	LocalNames   []string
+	EnvKeys      []string // Names of globals from compile-time env (for validation)
 
 	ExceptionHandlers []ExceptionHandler
 }
@@ -90,6 +96,7 @@ func NewCode(params CodeParams) *Code {
 		globalCount:       params.GlobalCount,
 		globalNames:       copyStrings(params.GlobalNames),
 		localNames:        copyStrings(params.LocalNames),
+		envKeys:           copyStrings(params.EnvKeys),
 		exceptionHandlers: copyHandlers(params.ExceptionHandlers),
 	}
 
@@ -305,6 +312,20 @@ func (c *Code) GlobalNames() []string {
 	names := make([]string, len(c.globalNames))
 	copy(names, c.globalNames)
 	return names
+}
+
+// EnvKeys returns a copy of the global names that were provided via the
+// environment at compile time. This is a subset of GlobalNames() - it excludes
+// globals that were defined within the script itself.
+//
+// Use this for validation: at run time, ensure the env contains all these keys.
+func (c *Code) EnvKeys() []string {
+	if len(c.envKeys) == 0 {
+		return nil
+	}
+	keys := make([]string, len(c.envKeys))
+	copy(keys, c.envKeys)
+	return keys
 }
 
 // FunctionNames returns the names of all named functions in this code.

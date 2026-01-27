@@ -833,11 +833,13 @@ Map attributes (`m.keys`, `m.values`, `m.items`) are implemented via `GetAttr`. 
 
 ### 18.12 Conversion Error Signaling
 
-`FromGoType()` returns an `Object` and encodes failures as `*Error`. `TypeConverter.From()` returns `(Object, error)`. `AsObjects()` returns `(map[string]Object, error)`.
+**Status: RESOLVED** — All `As*` helper functions now return `(T, error)` using Go's standard error type.
 
-**Impact:** The conversion layer mixes error-as-value and error-as-exception semantics, which can surprise embedders and complicate error handling.
+The old system had these issues (now fixed):
 
-**Proposal:** Unify conversion errors to a single convention for v2 (either Go errors or Risor error objects).
+- **`As*` functions returned `*Error`** — Now return `error` for Go-idiomatic usage
+- **`FromGoType` returned `*Error` as `Object`** — Remains for backward compatibility, but `TypeRegistry.FromGo` is preferred
+- **Mixed error semantics** — Now consistent: `As*` helpers and `TypeRegistry` methods all return Go errors
 
 ### 18.13 Error Equality and Structured Data
 
@@ -864,7 +866,7 @@ Map attributes (`m.keys`, `m.values`, `m.items`) are implemented via `GetAttr`. 
 | Method attributes on Error (callable vs value) | Low | Consistency |
 | Builtin passed to list.filter/each can panic | High | Correctness |
 | Map attribute names shadow keys | Low | Clarity |
-| Conversion error signaling inconsistent | Medium | Consistency |
+| ~~Conversion error signaling inconsistent~~ | ~~Medium~~ | ~~Consistency~~ | **RESOLVED** — As* helpers return error |
 | Error equality ignores structured data | Low | Semantics |
 | Public constructors panic on bad inputs | Medium | Safety |
 | ~~Global registries (typeConverters, goTypeRegistry)~~ | ~~Medium~~ | ~~Concurrency~~ | **RESOLVED** — TypeRegistry |
@@ -945,8 +947,8 @@ Concrete proposals derived from the analysis above, organized by priority.
 | ID | Problem | Proposal | Reason | Status |
 |----|---------|----------|--------|--------|
 | P2-1 | Type coercion rules scattered across `As*` functions and `TypeConverter` implementations (§18.3) | Create `coercion/rules.go` with a single `NumericPromotion` table and `PromoteNumeric(left, right Object)` function. All coercion logic references this file. | One source of truth. Coercion behavior becomes auditable and testable in isolation. | Not Started |
-| P2-2 | Conversion functions have inconsistent error signaling: some return `*Error` as `Object`, some return `(Object, error)` (§18.12) | All conversion functions return `(Object, error)`. `FromGoType`, `AsInt`, `AsString`, etc. all follow this pattern. | Consistent with P0-2. Embedders get predictable error handling. | Not Started |
-| P2-3 | `Builtin` struct has redundant `module` and `moduleName` fields (§4) | Keep only `moduleName string`. Derive module reference when needed via lookup. | Simpler struct. Single source of truth for module association. | Not Started |
+| P2-2 | Conversion functions have inconsistent error signaling: some return `*Error` as `Object`, some return `(Object, error)` (§18.12) | All `As*` helper functions (`AsInt`, `AsString`, `AsBool`, etc.) now return `(T, error)` using Go's standard error type. `TypeRegistry` methods already returned `(Object, error)`. `FromGoType` remains for backward compatibility but is deprecated. | Consistent with P0-2. Embedders get predictable error handling. | Done |
+| P2-3 | `Builtin` struct has redundant `module` and `moduleName` fields (§4) | Keep only `moduleName string`. Derive module reference when needed via lookup. | Simpler struct. Single source of truth for module association. | Won't Do |
 | P2-4 | Public constructors (`NewBuiltin`, `Module.UseGlobals`) panic on invalid inputs (§18.14) | Use builder pattern for `Builtin`: `NewBuiltin(name, fn).InModule(name)`. Validate at build time, not construction. Remove panic paths. | Host processes should not crash due to API misuse. Builder pattern is ergonomic and avoids error handling ceremony. | Done |
 | P2-5 | Map attribute names (`keys`, `values`, `items`) shadow map keys with the same names (§18.11) | Document behavior explicitly. Add `__method__(name)` for unambiguous method access, or reverse priority for maps (keys shadow methods). | Users need a way to access shadowed keys. Behavior should be predictable. | Not Started |
 
@@ -956,9 +958,9 @@ Concrete proposals derived from the analysis above, organized by priority.
 |----|---------|----------|--------|--------|
 | P3-1 | Compiler two-pass strategy is undocumented (§14) | Add a block comment at the top of `compiler/compiler.go` explaining: (1) why two passes, (2) what each pass does, (3) how forward references work. | New contributors can understand the design without reverse-engineering. | Done |
 | P3-2 | No language semantics specification (§7) | Create `docs/semantics.md` covering: numeric types and coercions, equality/ordering rules, truthiness, iteration order, error propagation. Version it with v2. | Embedders need a stable contract. Behavior should be specified, not inferred. | Not Started |
-| P3-3 | Concurrency contract is unclear: are env values copied or shared? (§10) | Document in API docs: (1) env map is shallow-copied, values are shared, (2) builtins must be thread-safe, (3) mutable objects in env are caller's responsibility. | Safe embedding requires clear ownership rules. | Not Started |
-| P3-4 | Global name binding at compile time is subtle (§16) | Document that compiled bytecode is bound to specific global names. Provide `Bytecode.GlobalNames()` method for introspection. | Users need to understand why reusing bytecode with different env keys fails. | Not Started |
-| P3-5 | Result conversion rules are implicit (§17) | Document in API docs: `nil` for `NilType`, `Inspect()` string for types without Go equivalent, native Go types otherwise. Add `risor.WithRawResult()` option to return `object.Object` directly. | Embedders can choose the conversion behavior that fits their use case. | Not Started |
+| P3-3 | Concurrency contract is unclear: are env values copied or shared? (§10) | Document in API docs: (1) env map is shallow-copied, values are shared, (2) builtins must be thread-safe, (3) mutable objects in env are caller's responsibility. | Safe embedding requires clear ownership rules. | Done |
+| P3-4 | Global name binding at compile time is subtle (§16) | Document that compiled bytecode is bound to specific global names. Provide `Bytecode.GlobalNames()` method for introspection. | Users need to understand why reusing bytecode with different env keys fails. | Done |
+| P3-5 | Result conversion rules are implicit (§17) | Document in API docs: `nil` for `NilType`, `Inspect()` string for types without Go equivalent, native Go types otherwise. Add `risor.WithRawResult()` option to return `object.Object` directly. | Embedders can choose the conversion behavior that fits their use case. | Done |
 
 ### P4: Future Consideration (Deferred)
 
@@ -967,7 +969,7 @@ Concrete proposals derived from the analysis above, organized by priority.
 | P4-1 | HashKey struct wastes memory with unused fields (§5) | Consider interface-based HashKey only if profiling shows memory pressure in map-heavy workloads. | Optimization without measurement is premature. Current design is simple and correct. | Deferred |
 | P4-2 | Python-derived opcode names are inconsistent (§15) | Rename only during major refactoring: `LoadFast`→`LoadLocal`, `LoadFree`→`LoadCapture`, `BinarySubscr`→`Index`. | Churn without functional benefit. Address opportunistically. | Deferred |
 | P4-3 | No module/import system for scripts (§13) | Defer to post-v2 unless embedding use cases require it. Current design is intentionally minimal. | Scope control. Module systems are complex and may not fit embedding-first philosophy. | Deferred |
-| P4-4 | `Cell` type is public but is an implementation detail (§12) | Move to `internal/vm/` or add `// Internal: do not use` documentation. | API surface should reflect user-facing types only. | Deferred |
+| P4-4 | `Cell` type is public but is an implementation detail (§12) | Move to `internal/vm/` or add `// Internal: do not use` documentation. | API surface should reflect user-facing types only. | Done |
 
 ### Additional Proposals (New)
 
@@ -979,7 +981,7 @@ Concrete proposals derived from the analysis above, organized by priority.
 | A-4 | Observer API has no stability promise; tooling (profilers, debuggers) will break on changes (§11) | Define a minimal stable observer contract for v2: `OnCall`, `OnReturn`, `OnError`, `OnLine`. Version the observer interface. Unstable events go in a separate `ExperimentalObserver` interface. | Tooling ecosystem needs a stable foundation. Versioning prevents silent breakage. | Not Started |
 | A-5 | Error introspection is not first-class; embedders must know internal types to extract source locations | Add `risor.ErrorLocation(err error) (file string, line int, ok bool)` and `risor.ErrorStack(err error) []Frame` to public API. | Embedders should be able to provide good error messages without knowing Risor internals. | Not Started |
 | A-6 | `List.inspectActive` flag for circular reference detection is not thread-safe (§18.9) | Pass a `seen map[*List]bool` through `Inspect()` calls instead of storing state on the object. Or accept that `Inspect()` is single-threaded and document it. | Mutable state on values causes races. Either fix it or document the constraint. | Not Started |
-| A-7 | Bytecode reuse contract is implicit: same keys required, values can differ (§16) | Add `Bytecode.RequiredGlobals() []string` method. `Run()` validates env keys match at startup (not silently fail mid-execution). | Fail-fast with clear error beats mysterious "undefined" errors during execution. | Not Started |
+| A-7 | Bytecode reuse contract is implicit: same keys required, values can differ (§16) | Add `Bytecode.RequiredGlobals() []string` method. `Run()` validates env keys match at startup (not silently fail mid-execution). | Fail-fast with clear error beats mysterious "undefined" errors during execution. | Done |
 | A-8 | The `raised` flag on Error was vestigial from pre-try/catch era when errors could be values OR exceptions | Remove `raised` flag entirely. Errors are values (like Python exceptions). Only `throw` triggers exception handling. Errors stringify in templates. Restored `error(msg, ...args)` builtin for creating error values. | Cleaner model: errors are data, throw is an action. No mutable state on error objects. | Done |
 
 ### Key Design Decisions

@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 
@@ -25,6 +26,7 @@ type options struct {
 	filename     string
 	observer     vm.Observer
 	typeRegistry *object.TypeRegistry
+	rawResult    bool
 }
 
 func collectOptions(opts ...Option) *options {
@@ -70,6 +72,23 @@ func (o *options) vmOpts() []vm.Option {
 // library:
 //
 //	result, _ := risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
+//
+// # Concurrency Contract
+//
+// The env map is shallow-copied when this option is applied, but the values
+// within the map are shared with the caller. This has several implications:
+//
+//   - The caller retains a reference to mutable objects passed in the env
+//   - Built-in functions must be thread-safe as they may be invoked concurrently
+//   - Mutable objects (slices, maps, custom types) in env are the caller's
+//     responsibility to synchronize if concurrent access is possible
+//   - Each VM execution gets its own shallow copy of the globals map,
+//     but the underlying objects are shared
+//
+// For safe concurrent execution, either:
+//   - Use immutable values in the environment
+//   - Create fresh environment maps for each concurrent execution
+//   - Synchronize access to mutable objects externally
 func WithEnv(env map[string]any) Option {
 	return func(o *options) {
 		maps.Copy(o.env, env)
@@ -108,6 +127,38 @@ func WithTypeRegistry(registry *object.TypeRegistry) Option {
 		o.typeRegistry = registry
 	}
 }
+
+// WithRawResult configures Run and Eval to return the result as an
+// object.Object instead of converting it to a native Go type.
+//
+// By default, results are converted as follows:
+//   - NilType returns nil
+//   - String returns string
+//   - Int returns int64
+//   - Float returns float64
+//   - Bool returns bool
+//   - List returns []any
+//   - Map returns map[string]any
+//   - Other types (closures, modules, etc.) return their Inspect() string
+//
+// With WithRawResult(), the object.Object is returned directly, allowing
+// embedders to:
+//   - Inspect the exact Risor type
+//   - Access type-specific methods
+//   - Avoid the overhead of conversion
+//   - Handle types that don't have a Go equivalent
+//
+// Example:
+//
+//	result, _ := risor.Eval(ctx, `[1, 2, 3]`, risor.WithRawResult())
+//	list := result.(*object.List)
+//	fmt.Println(list.Len()) // 3
+func WithRawResult() Option {
+	return func(o *options) {
+		o.rawResult = true
+	}
+}
+
 
 // NewTypeRegistry creates a RegistryBuilder for custom type conversions.
 // Use this to add support for custom Go types in Risor scripts.
@@ -166,9 +217,70 @@ func defaultModules() map[string]object.Object {
 	}
 }
 
+// validateGlobals checks that the env keys match the globals expected by the
+// bytecode. Returns an error if there's a mismatch.
+//
+// This uses EnvKeys() which tracks only the globals that were provided via
+// the environment at compile time (not globals defined within the script).
+func validateGlobals(code *bytecode.Code, env map[string]any) error {
+	// EnvKeys returns only the globals from compile-time env,
+	// not script-defined globals like functions or let bindings.
+	required := code.EnvKeys()
+	if len(required) == 0 {
+		return nil // No external globals were required at compile time
+	}
+
+	// Build a set of provided keys
+	provided := make(map[string]bool, len(env))
+	for k := range env {
+		provided[k] = true
+	}
+
+	// Find any required keys that are missing
+	var missing []string
+	for _, name := range required {
+		if !provided[name] {
+			missing = append(missing, name)
+		}
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required globals: %v (bytecode was compiled with: %v)",
+			missing, required)
+	}
+
+	return nil
+}
+
 // Compile parses and compiles source code into executable bytecode.
 // The returned Code is immutable and safe for concurrent use.
 // Multiple goroutines can execute the same Code simultaneously.
+//
+// # Global Name Binding
+//
+// The compiled bytecode is bound to the specific global names present in the
+// environment at compile time. Global variable references are resolved by
+// index, not by name, during execution. This means:
+//
+//   - The same Code can be reused with different env maps that have the same
+//     keys (values may differ)
+//   - Using Code with an env that has different keys will cause undefined
+//     behavior (wrong values or panics)
+//   - To introspect which globals a Code requires, use Code.GlobalNames()
+//
+// Example:
+//
+//	// Compile with env keys "x" and "y"
+//	code, _ := risor.Compile("x + y", risor.WithEnv(map[string]any{"x": 1, "y": 2}))
+//
+//	// OK: same keys, different values
+//	result1, _ := risor.Run(ctx, code, risor.WithEnv(map[string]any{"x": 10, "y": 20}))
+//
+//	// NOT OK: different keys - will fail or produce wrong results
+//	// risor.Run(ctx, code, risor.WithEnv(map[string]any{"a": 1, "b": 2}))
+//
+//	// Introspect required globals
+//	names := code.GlobalNames() // returns []string{"x", "y"}
 func Compile(source string, opts ...Option) (*bytecode.Code, error) {
 	o := collectOptions(opts...)
 
@@ -188,15 +300,53 @@ func Compile(source string, opts ...Option) (*bytecode.Code, error) {
 	return compiler.Compile(ast, cfg)
 }
 
-// Run executes compiled bytecode and returns the result as a native Go value.
+// Run executes compiled bytecode and returns the result.
 // Each call creates fresh runtime state, allowing concurrent execution of the
 // same Code.
+//
+// # Global Name Validation
+//
+// Run validates that the env keys match the globals expected by the bytecode.
+// If there's a mismatch, Run returns an error explaining what's wrong.
+// This prevents subtle bugs where the wrong values are accessed at runtime.
+//
+// # Result Conversion
+//
+// By default, the result is converted to a native Go value using these rules:
+//
+//   - NilType → nil
+//   - String → string
+//   - Int → int64
+//   - Float → float64
+//   - Bool → bool
+//   - Byte → byte
+//   - Bytes → []byte
+//   - List → []any (elements recursively converted)
+//   - Map → map[string]any (values recursively converted)
+//   - Time → time.Time
+//
+// For types without a Go equivalent (closures, modules, errors, etc.),
+// the Inspect() string representation is returned.
+//
+// Use WithRawResult() to receive the object.Object directly without conversion.
 func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) {
 	o := collectOptions(opts...)
+
+	// Validate that env keys match the globals expected by the bytecode
+	if err := validateGlobals(code, o.env); err != nil {
+		return nil, err
+	}
+
 	result, err := vm.Run(ctx, code, o.vmOpts()...)
 	if err != nil {
 		return nil, err
 	}
+
+	// Return raw object.Object if requested
+	if o.rawResult {
+		return result, nil
+	}
+
 	// Convert to Go value
 	interfaceVal := result.Interface()
 	// For objects that don't have a Go equivalent (modules, closures),
@@ -211,7 +361,10 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 
 // Eval is a convenience function that compiles and runs source code.
 // It is equivalent to Compile() followed by Run().
-// Returns the result as a native Go value.
+//
+// The result is converted to a native Go value by default. See Run for
+// the conversion rules. Use WithRawResult() to receive the object.Object
+// directly.
 func Eval(ctx context.Context, source string, opts ...Option) (any, error) {
 	code, err := Compile(source, opts...)
 	if err != nil {

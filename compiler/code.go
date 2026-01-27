@@ -47,6 +47,10 @@ type Code struct {
 	// Exception handlers for try/catch/finally
 	exceptionHandlers []*ExceptionHandler
 
+	// envKeys stores the names of globals from the compile-time env.
+	// Only set on root code. Used for validation at run time.
+	envKeys []string
+
 	// Used during compilation only
 	pipeActive bool
 }
@@ -332,6 +336,7 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Cod
 		GlobalCount:       c.GlobalsCount(),
 		GlobalNames:       c.GlobalNames(),
 		LocalNames:        c.LocalNames(),
+		EnvKeys:           c.envKeys,
 		ExceptionHandlers: handlers,
 	})
 

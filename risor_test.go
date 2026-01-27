@@ -3,6 +3,7 @@ package risor
 import (
 	"context"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -241,3 +242,76 @@ func TestRisorValuerIntegration(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, "custom:test")
 }
+
+// Test WithRawResult option
+func TestWithRawResult(t *testing.T) {
+	// Without WithRawResult, we get a native Go value
+	result1, err := Eval(context.Background(), "[1, 2, 3]")
+	assert.Nil(t, err)
+	assert.Equal(t, result1, []any{int64(1), int64(2), int64(3)})
+
+	// With WithRawResult, we get the object.Object directly
+	result2, err := Eval(context.Background(), "[1, 2, 3]", WithRawResult())
+	assert.Nil(t, err)
+
+	// Verify it's a *object.List
+	list, ok := result2.(*object.List)
+	assert.True(t, ok, "expected *object.List")
+	assert.Equal(t, list.Len().Value(), int64(3))
+}
+
+// Test WithRawResult for types without Go equivalent
+func TestWithRawResultClosure(t *testing.T) {
+	// Closures normally return their Inspect() string
+	result1, err := Eval(context.Background(), "function() { return 1 }")
+	assert.Nil(t, err)
+	_, isString := result1.(string)
+	assert.True(t, isString, "expected string representation")
+
+	// With WithRawResult, we get the Closure object
+	result2, err := Eval(context.Background(), "function() { return 1 }", WithRawResult())
+	assert.Nil(t, err)
+	_, isClosure := result2.(*object.Closure)
+	assert.True(t, isClosure, "expected *object.Closure")
+}
+
+// Test global name validation between compile and run
+func TestGlobalNameValidation(t *testing.T) {
+	// Compile with x, y, z
+	code, err := Compile("x + y + z", WithEnv(map[string]any{
+		"x": int64(1),
+		"y": int64(2),
+		"z": int64(3),
+	}))
+	assert.Nil(t, err)
+
+	// Run with same keys - should succeed
+	result, err := Run(context.Background(), code, WithEnv(map[string]any{
+		"x": int64(10),
+		"y": int64(20),
+		"z": int64(30),
+	}))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(60))
+
+	// Run with missing key - should fail with clear error
+	_, err = Run(context.Background(), code, WithEnv(map[string]any{
+		"x": int64(1),
+		"y": int64(2),
+		// missing "z"
+	}))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "missing required globals"))
+	assert.True(t, strings.Contains(err.Error(), "z"))
+
+	// Run with extra keys is allowed (only missing keys cause errors)
+	result, err = Run(context.Background(), code, WithEnv(map[string]any{
+		"x":     int64(1),
+		"y":     int64(2),
+		"z":     int64(3),
+		"extra": int64(999),
+	}))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(6))
+}
+

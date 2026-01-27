@@ -165,6 +165,9 @@ func New(cfg *Config) (*Compiler, error) {
 			return nil, err
 		}
 	}
+	// Store the env keys on the main code for later validation
+	c.main.envKeys = make([]string, len(c.globalNames))
+	copy(c.main.envKeys, c.globalNames)
 	// Start compiling into the main code object
 	c.current = c.main
 	return c, nil
