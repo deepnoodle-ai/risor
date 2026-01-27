@@ -743,14 +743,8 @@ func TestStringTemplateWithThrow(t *testing.T) {
 
 func TestStringTemplateWithErrorValue(t *testing.T) {
 	// Error values (not thrown) are stringified in templates
-	// Catch an error to get it as a value, then use it in a template
 	code := `
-	let err = nil
-	try {
-		throw "something went wrong"
-	} catch e {
-		err = e
-	}
+	let err = error("something went wrong")
 	` + "`the error is: ${err}`"
 	result, err := run(context.Background(), code)
 	assert.NoError(t, err)

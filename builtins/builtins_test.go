@@ -16,7 +16,29 @@ func assertObjectEqual(t *testing.T, got, want object.Object) {
 func TestBuiltins(t *testing.T) {
 	m := Builtins()
 	count := len(m)
-	assert.Greater(t, count, 21) // Reduced after removing try(), error(), set(), buffer(), delete() builtins
+	assert.Greater(t, count, 22) // error() restored; try(), set(), buffer(), delete() still removed
+}
+
+func TestError(t *testing.T) {
+	ctx := context.Background()
+
+	// Simple error message
+	result, err := Error(ctx, object.NewString("something went wrong"))
+	assert.Nil(t, err)
+	errObj, ok := result.(*object.Error)
+	assert.True(t, ok)
+	assert.Equal(t, errObj.Value().Error(), "something went wrong")
+
+	// Formatted error message
+	result, err = Error(ctx, object.NewString("file %s not found at line %d"), object.NewString("test.txt"), object.NewInt(42))
+	assert.Nil(t, err)
+	errObj, ok = result.(*object.Error)
+	assert.True(t, ok)
+	assert.Equal(t, errObj.Value().Error(), "file test.txt not found at line 42")
+
+	// No arguments - should error
+	_, err = Error(ctx)
+	assert.NotNil(t, err)
 }
 
 type testCase struct {
