@@ -43,7 +43,7 @@ func (b *Builtin) Value() BuiltinFunction {
 }
 
 func (b *Builtin) Interface() interface{} {
-	return b.fn
+	return nil
 }
 
 func (b *Builtin) IsErrorHandler() bool {

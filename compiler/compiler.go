@@ -1118,7 +1118,11 @@ func (c *Compiler) compileGetAttr(node *ast.GetAttr) error {
 		jumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
 	}
 	idx := c.current.addName(node.Attr.Name)
-	c.emit(op.LoadAttr, idx)
+	if node.Optional {
+		c.emit(op.LoadAttrOrNil, idx)
+	} else {
+		c.emit(op.LoadAttr, idx)
+	}
 	if node.Optional {
 		c.emit(op.Nop)
 		delta, _ := c.calculateDelta(jumpPos)
