@@ -11,12 +11,12 @@ let hasNumber = re.match("abc123")
 let found = re.find("price: 42 dollars")
 
 // Find all matches
-let all = re.find_all("a1 b2 c3")
+let matches = re.find_all("a1 b2 c3")
 
 // Replace matches
-let result = re.replace_all("a1 b2", "X")
+let replaced = re.replace_all("a1 b2", "X")
 
 // Quick match without compile
 let isPhone = regexp.match(`^\d{3}-\d{4}$`, "555-1234")
 
-{hasNumber, found, all, result, isPhone}
+{hasNumber, found, matches, replaced, isPhone}
