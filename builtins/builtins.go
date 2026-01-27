@@ -46,6 +46,10 @@ func List(ctx context.Context, args ...object.Object) object.Object {
 	if len(args) == 0 {
 		return object.NewList(nil)
 	}
+	// Reject int arguments explicitly
+	if _, ok := args[0].(*object.Int); ok {
+		return object.TypeErrorf("type error: list() expected an enumerable (int given)")
+	}
 	enumerable, ok := args[0].(object.Enumerable)
 	if !ok {
 		return object.TypeErrorf("type error: list() expected an enumerable (%s given)", args[0].Type())

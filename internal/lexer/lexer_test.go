@@ -717,7 +717,7 @@ func TestEscapeSequences(t *testing.T) {
 			l := New(tt.input)
 			tok, err := l.Next()
 			assert.Nil(t, err)
-			assert.Equal(t, tok.Type, token.Type(token.STRING))
+			assert.Equal(t, tok.Type, token.STRING)
 			assert.Equal(t, tok.Literal, tt.expectedLiteral)
 		})
 	}
@@ -868,4 +868,775 @@ func TestStateSaveRestoreWithNewlines(t *testing.T) {
 	tok2Again, err := l.Next()
 	assert.Nil(t, err)
 	assert.True(t, tok2Again.Type == token.NEWLINE)
+}
+
+func TestSpreadOperator(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			input: "...",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.SPREAD, "..."},
+				{token.EOF, ""},
+			},
+		},
+		{
+			input: "[...arr]",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.LBRACKET, "["},
+				{token.SPREAD, "..."},
+				{token.IDENT, "arr"},
+				{token.RBRACKET, "]"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			// Two dots should be two periods, not spread
+			input: "..",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.PERIOD, "."},
+				{token.PERIOD, "."},
+				{token.EOF, ""},
+			},
+		},
+		{
+			// Four dots = spread + period
+			input: "....",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.SPREAD, "..."},
+				{token.PERIOD, "."},
+				{token.EOF, ""},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestOptionalChainingAndNullish(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			input: "a?.b",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.QUESTION_DOT, "?."},
+				{token.IDENT, "b"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			input: "a ?? b",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.NULLISH, "??"},
+				{token.IDENT, "b"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			input: "a?.b ?? c",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.QUESTION_DOT, "?."},
+				{token.IDENT, "b"},
+				{token.NULLISH, "??"},
+				{token.IDENT, "c"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			// Single question mark
+			input: "a ? b : c",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.QUESTION, "?"},
+				{token.IDENT, "b"},
+				{token.COLON, ":"},
+				{token.IDENT, "c"},
+				{token.EOF, ""},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestArrowFunction(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			input: "x => x",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "x"},
+				{token.ARROW, "=>"},
+				{token.IDENT, "x"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			input: "(a, b) => a + b",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.LPAREN, "("},
+				{token.IDENT, "a"},
+				{token.COMMA, ","},
+				{token.IDENT, "b"},
+				{token.RPAREN, ")"},
+				{token.ARROW, "=>"},
+				{token.IDENT, "a"},
+				{token.PLUS, "+"},
+				{token.IDENT, "b"},
+				{token.EOF, ""},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestBitShiftOperators(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			input: "a << 2",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.LT_LT, "<<"},
+				{token.INT, "2"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			input: "b >> 3",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "b"},
+				{token.GT_GT, ">>"},
+				{token.INT, "3"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			input: "1<<2>>3",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.INT, "1"},
+				{token.LT_LT, "<<"},
+				{token.INT, "2"},
+				{token.GT_GT, ">>"},
+				{token.INT, "3"},
+				{token.EOF, ""},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestCRLFNewlines(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			name:  "CRLF",
+			input: "a\r\nb",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.NEWLINE, "\r\n"},
+				{token.IDENT, "b"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			name:  "CR only",
+			input: "a\rb",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.NEWLINE, "\r"},
+				{token.IDENT, "b"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			name:  "mixed newlines",
+			input: "a\r\nb\nc\rd",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.NEWLINE, "\r\n"},
+				{token.IDENT, "b"},
+				{token.NEWLINE, "\n"},
+				{token.IDENT, "c"},
+				{token.NEWLINE, "\r"},
+				{token.IDENT, "d"},
+				{token.EOF, ""},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestSinglePipe(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			input: "a | b",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.PIPE, "|"},
+				{token.IDENT, "b"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			input: "a || b | c",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.OR, "||"},
+				{token.IDENT, "b"},
+				{token.PIPE, "|"},
+				{token.IDENT, "c"},
+				{token.EOF, ""},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestAsAfterPeriod(t *testing.T) {
+	// The lexer has special handling for "as" after a period to ensure
+	// it's treated as an identifier (for method names like obj.as())
+	// rather than potentially being a keyword in the future.
+	tests := []struct {
+		name     string
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			name:  "as standalone is ident",
+			input: "x as int",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "x"},
+				{token.IDENT, "as"},
+				{token.IDENT, "int"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			name:  "as after period is ident",
+			input: "obj.as",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "obj"},
+				{token.PERIOD, "."},
+				{token.IDENT, "as"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			name:  "as method call",
+			input: "obj.as()",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "obj"},
+				{token.PERIOD, "."},
+				{token.IDENT, "as"},
+				{token.LPAREN, "("},
+				{token.RPAREN, ")"},
+				{token.EOF, ""},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestEmptyInput(t *testing.T) {
+	l := New("")
+	tok, err := l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.EOF)
+	assert.Equal(t, tok.Literal, "")
+}
+
+func TestMultipleEOFReads(t *testing.T) {
+	l := New("x")
+
+	// Read the identifier
+	tok, err := l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.IDENT)
+	assert.Equal(t, tok.Literal, "x")
+
+	// Read EOF multiple times
+	for i := 0; i < 5; i++ {
+		tok, err = l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Type, token.EOF, "EOF read %d", i)
+	}
+}
+
+func TestUnterminatedMultiLineComment(t *testing.T) {
+	// Unterminated multi-line comment should eventually hit EOF
+	l := New("a /* unterminated comment")
+
+	tok, err := l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.IDENT)
+	assert.Equal(t, tok.Literal, "a")
+
+	// The comment consumes everything until EOF
+	tok, err = l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.EOF)
+}
+
+func TestShebangNotAtStart(t *testing.T) {
+	// #! not at start should be treated differently
+	tests := []struct {
+		name     string
+		input    string
+		expected []struct {
+			typ     token.Type
+			literal string
+		}
+	}{
+		{
+			name:  "shebang at start is skipped",
+			input: "#!/bin/risor\nx",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.NEWLINE, "\n"},
+				{token.IDENT, "x"},
+				{token.EOF, ""},
+			},
+		},
+		{
+			name:  "hash not followed by bang",
+			input: "# comment",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				// # is not a valid identifier start, should error
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := New(tt.input)
+			for i, exp := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+				assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+			}
+		})
+	}
+}
+
+func TestShebangMidFile(t *testing.T) {
+	// #! after newline should error (not treated as shebang)
+	input := "x\n#!/bin/risor"
+	l := New(input)
+
+	tok, err := l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.IDENT)
+
+	tok, err = l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.NEWLINE)
+
+	// # is not a valid identifier, should error
+	_, err = l.Next()
+	assert.NotNil(t, err)
+}
+
+func TestGetLineTextEdgeCases(t *testing.T) {
+	t.Run("empty input", func(t *testing.T) {
+		l := New("")
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Type, token.EOF)
+		line := l.GetLineText(tok)
+		assert.Equal(t, line, "")
+	})
+
+	t.Run("single token no newline", func(t *testing.T) {
+		l := New("hello")
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		line := l.GetLineText(tok)
+		assert.Equal(t, line, "hello")
+	})
+
+	t.Run("token at start of line", func(t *testing.T) {
+		l := New("first\nsecond")
+		// Skip to second line
+		l.Next() // first
+		l.Next() // newline
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Literal, "second")
+		line := l.GetLineText(tok)
+		assert.Equal(t, line, "second")
+	})
+
+	t.Run("token on last line without trailing newline", func(t *testing.T) {
+		l := New("line1\nline2")
+		l.Next() // line1
+		l.Next() // newline
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		line := l.GetLineText(tok)
+		assert.Equal(t, line, "line2")
+	})
+
+	t.Run("multiple tokens on same line", func(t *testing.T) {
+		l := New("a + b")
+		tok1, _ := l.Next() // a
+		tok2, _ := l.Next() // +
+		tok3, _ := l.Next() // b
+
+		assert.Equal(t, l.GetLineText(tok1), "a + b")
+		assert.Equal(t, l.GetLineText(tok2), "a + b")
+		assert.Equal(t, l.GetLineText(tok3), "a + b")
+	})
+
+	t.Run("EOF token", func(t *testing.T) {
+		l := New("x")
+		l.Next() // x
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Type, token.EOF)
+		line := l.GetLineText(tok)
+		assert.Equal(t, line, "x")
+	})
+
+	t.Run("EOF on empty line", func(t *testing.T) {
+		// Note: GetLineText for EOF returns the previous line's content
+		// as context, not an empty string for the empty line after newline
+		l := New("x\n")
+		l.Next() // x
+		l.Next() // newline
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Type, token.EOF)
+		line := l.GetLineText(tok)
+		assert.Equal(t, line, "x")
+	})
+}
+
+func TestFilenameOption(t *testing.T) {
+	t.Run("WithFile option", func(t *testing.T) {
+		l := New("x", WithFile("test.risor"))
+		assert.Equal(t, l.Filename(), "test.risor")
+
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.StartPosition.File, "test.risor")
+		assert.Equal(t, tok.EndPosition.File, "test.risor")
+	})
+
+	t.Run("SetFilename method", func(t *testing.T) {
+		l := New("x")
+		assert.Equal(t, l.Filename(), "")
+
+		l.SetFilename("updated.risor")
+		assert.Equal(t, l.Filename(), "updated.risor")
+
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.StartPosition.File, "updated.risor")
+	})
+
+	t.Run("Position method includes file", func(t *testing.T) {
+		l := New("x", WithFile("pos.risor"))
+		pos := l.Position()
+		assert.Equal(t, pos.File, "pos.risor")
+	})
+}
+
+func TestTemplateStringWithNewlines(t *testing.T) {
+	tests := []struct {
+		name            string
+		input           string
+		expectedLiteral string
+	}{
+		{
+			name:            "single line",
+			input:           "`hello`",
+			expectedLiteral: "hello",
+		},
+		{
+			name:            "with newline",
+			input:           "`hello\nworld`",
+			expectedLiteral: "hello\nworld",
+		},
+		{
+			name:            "multiple newlines",
+			input:           "`line1\nline2\nline3`",
+			expectedLiteral: "line1\nline2\nline3",
+		},
+		{
+			name:            "with CRLF",
+			input:           "`hello\r\nworld`",
+			expectedLiteral: "hello\r\nworld",
+		},
+		{
+			name:            "with tabs and spaces",
+			input:           "`  \t  hello  \t  `",
+			expectedLiteral: "  \t  hello  \t  ",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := New(tt.input)
+			tok, err := l.Next()
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, token.TEMPLATE)
+			assert.Equal(t, tok.Literal, tt.expectedLiteral)
+		})
+	}
+}
+
+func TestFloatEdgeCases(t *testing.T) {
+	tests := []struct {
+		input           string
+		expectedType    token.Type
+		expectedLiteral string
+	}{
+		{"0.0", token.FLOAT, "0.0"},
+		{"0.1", token.FLOAT, "0.1"},
+		{"0.123456789", token.FLOAT, "0.123456789"},
+		{"123.0", token.FLOAT, "123.0"},
+		{"0", token.INT, "0"},
+		{"00", token.INT, "00"}, // octal zero
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			tok, err := l.Next()
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, tt.expectedType)
+			assert.Equal(t, tok.Literal, tt.expectedLiteral)
+		})
+	}
+}
+
+func TestStringWithEmbeddedNewline(t *testing.T) {
+	// String literals (not templates) cannot span lines
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"double quote with newline", "\"hello\nworld\""},
+		{"single quote with newline", "'hello\nworld'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := New(tt.input)
+			_, err := l.Next()
+			assert.NotNil(t, err)
+			assert.Equal(t, err.Error(), "unterminated string literal")
+		})
+	}
+}
+
+func TestWhitespaceOnly(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"spaces only", "   "},
+		{"tabs only", "\t\t\t"},
+		{"mixed tabs and spaces", "  \t  \t  "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := New(tt.input)
+			tok, err := l.Next()
+			assert.Nil(t, err)
+			assert.Equal(t, tok.Type, token.EOF)
+		})
+	}
+}
+
+func TestSlashEquals(t *testing.T) {
+	input := "a /= 2"
+	expected := []struct {
+		typ     token.Type
+		literal string
+	}{
+		{token.IDENT, "a"},
+		{token.SLASH_EQUALS, "/="},
+		{token.INT, "2"},
+		{token.EOF, ""},
+	}
+	l := New(input)
+	for i, exp := range expected {
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
+		assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+	}
 }

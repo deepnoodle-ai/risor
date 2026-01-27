@@ -257,21 +257,17 @@ func TestList(t *testing.T) {
 	list, ok := result.(*object.List)
 	assert.True(t, ok)
 	assert.Len(t, list.Value(), 0)
-
-	// With size
-	result = List(ctx, object.NewInt(3))
-	list, ok = result.(*object.List)
-	assert.True(t, ok)
-	assert.Len(t, list.Value(), 3)
-	for _, v := range list.Value() {
-		assert.Equal(t, v, object.Nil)
-	}
 }
 
 func TestListErrors(t *testing.T) {
 	ctx := context.Background()
-	// Negative size
-	result := List(ctx, object.NewInt(-1))
+
+	// Int is not supported
+	result := List(ctx, object.NewInt(3))
+	assert.True(t, object.IsError(result))
+
+	// Negative int is not supported
+	result = List(ctx, object.NewInt(-1))
 	assert.True(t, object.IsError(result))
 
 	// Non-enumerable type
