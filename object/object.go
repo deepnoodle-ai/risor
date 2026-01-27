@@ -73,6 +73,11 @@ type Object interface {
 	// Returns true if the given object is equal to this object.
 	Equals(other Object) bool
 
+	// Attrs returns the attribute specifications for this object type.
+	// Used for introspection, documentation, and tooling (autocomplete, etc.).
+	// Returns nil for types with no attributes.
+	Attrs() []AttrSpec
+
 	// GetAttr returns the attribute with the given name from this object.
 	GetAttr(name string) (Object, bool)
 

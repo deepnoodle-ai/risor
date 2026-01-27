@@ -87,6 +87,11 @@ func (t *TestContext) Equals(other object.Object) bool {
 	return false
 }
 
+func (t *TestContext) Attrs() []object.AttrSpec {
+	// TODO: Migrate to AttrRegistry for introspection support
+	return nil
+}
+
 func (t *TestContext) GetAttr(name string) (object.Object, bool) {
 	// Check for dynamic name property first
 	if name == "name" {

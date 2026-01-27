@@ -61,6 +61,11 @@ func (m *Map) SetAttr(name string, value Object) error {
 	return nil
 }
 
+func (m *Map) Attrs() []AttrSpec {
+	// Map has no methods - dot syntax accesses keys directly.
+	return nil
+}
+
 func (m *Map) GetAttr(name string) (Object, bool) {
 	// Map dot syntax only accesses keys. Use keys(m) for key list,
 	// getattr(m, "key", default) for safe access with default.

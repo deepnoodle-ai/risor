@@ -52,6 +52,10 @@ func (d *DynamicAttr) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("marshal error: unable to marshal dynamic_attr")
 }
 
+func (d *DynamicAttr) Attrs() []AttrSpec {
+	return nil
+}
+
 func (d *DynamicAttr) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

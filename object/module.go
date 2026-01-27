@@ -8,6 +8,17 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+var moduleAttrs = NewAttrRegistry[*Module]("module")
+
+func init() {
+	moduleAttrs.Define("__name__").
+		Doc("The name of the module").
+		Returns("string").
+		Getter(func(m *Module) Object {
+			return NewString(m.name)
+		})
+}
+
 type Module struct {
 	name         string
 	code         *bytecode.Code
@@ -15,6 +26,32 @@ type Module struct {
 	globals      []Object
 	globalsIndex map[string]int
 	callable     BuiltinFunction
+}
+
+func (m *Module) Attrs() []AttrSpec {
+	// Module has both registry attrs and dynamic attrs from builtins/globals
+	// For introspection, we only return the registry specs
+	return moduleAttrs.Specs()
+}
+
+func (m *Module) GetAttr(name string) (Object, bool) {
+	// First check registry (for __name__)
+	if obj, ok := moduleAttrs.GetAttr(m, name); ok {
+		return obj, true
+	}
+	// Then check builtins
+	if builtin, found := m.builtins[name]; found {
+		return builtin, true
+	}
+	// Then check globals
+	if index, found := m.globalsIndex[name]; found {
+		return m.globals[index], true
+	}
+	return nil, false
+}
+
+func (m *Module) SetAttr(name string, value Object) error {
+	return TypeErrorf("cannot modify module attributes")
 }
 
 func (m *Module) IsTruthy() bool {
@@ -27,24 +64,6 @@ func (m *Module) Type() Type {
 
 func (m *Module) Inspect() string {
 	return m.String()
-}
-
-func (m *Module) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "__name__":
-		return NewString(m.name), true
-	}
-	if builtin, found := m.builtins[name]; found {
-		return builtin, true
-	}
-	if index, found := m.globalsIndex[name]; found {
-		return m.globals[index], true
-	}
-	return nil, false
-}
-
-func (m *Module) SetAttr(name string, value Object) error {
-	return TypeErrorf("cannot modify module attributes")
 }
 
 // Override provides a mechanism to modify module attributes after loading.

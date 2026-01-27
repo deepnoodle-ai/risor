@@ -9,6 +9,27 @@ import (
 
 var _ Callable = (*Builtin)(nil) // Ensure that *Builtin implements Callable
 
+var builtinAttrs = NewAttrRegistry[*Builtin]("builtin")
+
+func init() {
+	builtinAttrs.Define("__name__").
+		Doc("The fully-qualified name of the builtin function").
+		Returns("string").
+		Getter(func(b *Builtin) Object {
+			return NewString(b.Key())
+		})
+
+	builtinAttrs.Define("__module__").
+		Doc("The module this builtin belongs to, or nil").
+		Returns("module").
+		Getter(func(b *Builtin) Object {
+			if b.module != nil {
+				return b.module
+			}
+			return Nil
+		})
+}
+
 // BuiltinFunction holds the type of a built-in function.
 type BuiltinFunction func(ctx context.Context, args ...Object) (Object, error)
 
@@ -29,6 +50,14 @@ type Builtin struct {
 	// priority over module.Name() when set, allowing standalone builtins to
 	// report a module name without having an actual module reference.
 	moduleName string
+}
+
+func (b *Builtin) Attrs() []AttrSpec {
+	return builtinAttrs.Specs()
+}
+
+func (b *Builtin) GetAttr(name string) (Object, bool) {
+	return builtinAttrs.GetAttr(b, name)
 }
 
 func (b *Builtin) SetAttr(name string, value Object) error {
@@ -68,19 +97,6 @@ func (b *Builtin) String() string {
 
 func (b *Builtin) Name() string {
 	return b.name
-}
-
-func (b *Builtin) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "__name__":
-		return NewString(b.Key()), true
-	case "__module__":
-		if b.module != nil {
-			return b.module, true
-		}
-		return Nil, true
-	}
-	return nil, false
 }
 
 // Returns a string that uniquely identifies this builtin function.

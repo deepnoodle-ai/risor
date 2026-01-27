@@ -70,6 +70,11 @@ func (r *Regexp) IsTruthy() bool {
 	return true
 }
 
+func (r *Regexp) Attrs() []object.AttrSpec {
+	// TODO: Migrate to AttrRegistry for introspection support
+	return nil
+}
+
 func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 	switch name {
 	case "match":

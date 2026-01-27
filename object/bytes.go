@@ -9,32 +9,139 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
-// bytesAttrs defines all attributes available on bytes objects.
-var bytesAttrs = []AttrSpec{
-	{Name: "clone", Doc: "Create a copy of the bytes", Args: nil, Returns: "bytes"},
-	{Name: "contains", Doc: "Check if bytes contains a subsequence", Args: []string{"b"}, Returns: "bool"},
-	{Name: "contains_any", Doc: "Check if bytes contains any of the given characters", Args: []string{"chars"}, Returns: "bool"},
-	{Name: "contains_rune", Doc: "Check if bytes contains a rune", Args: []string{"r"}, Returns: "bool"},
-	{Name: "count", Doc: "Count occurrences of subsequence", Args: []string{"b"}, Returns: "int"},
-	{Name: "equals", Doc: "Check equality with another bytes", Args: []string{"other"}, Returns: "bool"},
-	{Name: "has_prefix", Doc: "Check if bytes starts with prefix", Args: []string{"prefix"}, Returns: "bool"},
-	{Name: "has_suffix", Doc: "Check if bytes ends with suffix", Args: []string{"suffix"}, Returns: "bool"},
-	{Name: "index", Doc: "Find first index of subsequence (-1 if not found)", Args: []string{"b"}, Returns: "int"},
-	{Name: "index_any", Doc: "Find first index of any character (-1 if not found)", Args: []string{"chars"}, Returns: "int"},
-	{Name: "index_byte", Doc: "Find first index of byte (-1 if not found)", Args: []string{"b"}, Returns: "int"},
-	{Name: "index_rune", Doc: "Find first index of rune (-1 if not found)", Args: []string{"r"}, Returns: "int"},
-	{Name: "repeat", Doc: "Repeat bytes n times", Args: []string{"count"}, Returns: "bytes"},
-	{Name: "replace", Doc: "Replace n occurrences", Args: []string{"old", "new", "n"}, Returns: "bytes"},
-	{Name: "replace_all", Doc: "Replace all occurrences", Args: []string{"old", "new"}, Returns: "bytes"},
+var bytesMethods = NewMethodRegistry[*Bytes]("bytes")
+
+func init() {
+	bytesMethods.Define("clone").
+		Doc("Create a copy of the bytes").
+		Returns("bytes").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.Clone(), nil
+		})
+
+	bytesMethods.Define("contains").
+		Doc("Check if bytes contains a subsequence").
+		Arg("b").
+		Returns("bool").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.Contains(args[0]), nil
+		})
+
+	bytesMethods.Define("contains_any").
+		Doc("Check if bytes contains any of the given characters").
+		Arg("chars").
+		Returns("bool").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.ContainsAny(args[0])
+		})
+
+	bytesMethods.Define("contains_rune").
+		Doc("Check if bytes contains a rune").
+		Arg("r").
+		Returns("bool").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.ContainsRune(args[0])
+		})
+
+	bytesMethods.Define("count").
+		Doc("Count occurrences of subsequence").
+		Arg("b").
+		Returns("int").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.Count(args[0])
+		})
+
+	bytesMethods.Define("equals").
+		Doc("Check equality with another bytes").
+		Arg("other").
+		Returns("bool").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return NewBool(b.Equals(args[0])), nil
+		})
+
+	bytesMethods.Define("has_prefix").
+		Doc("Check if bytes starts with prefix").
+		Arg("prefix").
+		Returns("bool").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.HasPrefix(args[0])
+		})
+
+	bytesMethods.Define("has_suffix").
+		Doc("Check if bytes ends with suffix").
+		Arg("suffix").
+		Returns("bool").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.HasSuffix(args[0])
+		})
+
+	bytesMethods.Define("index").
+		Doc("Find first index of subsequence (-1 if not found)").
+		Arg("b").
+		Returns("int").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.Index(args[0])
+		})
+
+	bytesMethods.Define("index_any").
+		Doc("Find first index of any character (-1 if not found)").
+		Arg("chars").
+		Returns("int").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.IndexAny(args[0])
+		})
+
+	bytesMethods.Define("index_byte").
+		Doc("Find first index of byte (-1 if not found)").
+		Arg("b").
+		Returns("int").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.IndexByte(args[0])
+		})
+
+	bytesMethods.Define("index_rune").
+		Doc("Find first index of rune (-1 if not found)").
+		Arg("r").
+		Returns("int").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.IndexRune(args[0])
+		})
+
+	bytesMethods.Define("repeat").
+		Doc("Repeat bytes n times").
+		Arg("count").
+		Returns("bytes").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.Repeat(args[0])
+		})
+
+	bytesMethods.Define("replace").
+		Doc("Replace n occurrences").
+		Args("old", "new", "n").
+		Returns("bytes").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.Replace(args[0], args[1], args[2])
+		})
+
+	bytesMethods.Define("replace_all").
+		Doc("Replace all occurrences").
+		Args("old", "new").
+		Returns("bytes").
+		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
+			return b.ReplaceAll(args[0], args[1])
+		})
 }
 
 type Bytes struct {
 	value []byte
 }
 
-// Attrs returns the attribute specifications for bytes objects.
 func (b *Bytes) Attrs() []AttrSpec {
-	return bytesAttrs
+	return bytesMethods.Specs()
+}
+
+func (b *Bytes) GetAttr(name string) (Object, bool) {
+	return bytesMethods.GetAttr(b, name)
 }
 
 func (b *Bytes) SetAttr(name string, value Object) error {
@@ -51,162 +158,6 @@ func (b *Bytes) Type() Type {
 
 func (b *Bytes) Value() []byte {
 	return b.value
-}
-
-func (b *Bytes) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "clone":
-		return &Builtin{
-			name: "bytes.clone",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("bytes.clone: expected 0 arguments, got %d", len(args))
-				}
-				return b.Clone(), nil
-			},
-		}, true
-	case "equals":
-		return &Builtin{
-			name: "bytes.equals",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.equals: expected 1 argument, got %d", len(args))
-				}
-				return NewBool(b.Equals(args[0])), nil
-			},
-		}, true
-	case "contains":
-		return &Builtin{
-			name: "bytes.contains",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.contains: expected 1 argument, got %d", len(args))
-				}
-				return b.Contains(args[0]), nil
-			},
-		}, true
-	case "contains_any":
-		return &Builtin{
-			name: "bytes.contains_any",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.contains_any: expected 1 argument, got %d", len(args))
-				}
-				return b.ContainsAny(args[0])
-			},
-		}, true
-	case "contains_rune":
-		return &Builtin{
-			name: "bytes.contains_rune",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.contains_rune: expected 1 argument, got %d", len(args))
-				}
-				return b.ContainsRune(args[0])
-			},
-		}, true
-	case "count":
-		return &Builtin{
-			name: "bytes.count",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.count: expected 1 argument, got %d", len(args))
-				}
-				return b.Count(args[0])
-			},
-		}, true
-	case "has_prefix":
-		return &Builtin{
-			name: "bytes.has_prefix",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.has_prefix: expected 1 argument, got %d", len(args))
-				}
-				return b.HasPrefix(args[0])
-			},
-		}, true
-	case "has_suffix":
-		return &Builtin{
-			name: "bytes.has_suffix",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.has_suffix: expected 1 argument, got %d", len(args))
-				}
-				return b.HasSuffix(args[0])
-			},
-		}, true
-	case "index":
-		return &Builtin{
-			name: "bytes.index",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.index: expected 1 argument, got %d", len(args))
-				}
-				return b.Index(args[0])
-			},
-		}, true
-	case "index_any":
-		return &Builtin{
-			name: "bytes.index_any",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.index_any: expected 1 argument, got %d", len(args))
-				}
-				return b.IndexAny(args[0])
-			},
-		}, true
-	case "index_byte":
-		return &Builtin{
-			name: "bytes.index_byte",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.index_byte: expected 1 argument, got %d", len(args))
-				}
-				return b.IndexByte(args[0])
-			},
-		}, true
-	case "index_rune":
-		return &Builtin{
-			name: "bytes.index_rune",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.index_rune: expected 1 argument, got %d", len(args))
-				}
-				return b.IndexRune(args[0])
-			},
-		}, true
-	case "repeat":
-		return &Builtin{
-			name: "bytes.repeat",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("bytes.repeat: expected 1 argument, got %d", len(args))
-				}
-				return b.Repeat(args[0])
-			},
-		}, true
-	case "replace":
-		return &Builtin{
-			name: "bytes.replace",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 3 {
-					return nil, fmt.Errorf("bytes.replace: expected 3 arguments, got %d", len(args))
-				}
-				return b.Replace(args[0], args[1], args[2])
-			},
-		}, true
-	case "replace_all":
-		return &Builtin{
-			name: "bytes.replace_all",
-			fn: func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 2 {
-					return nil, fmt.Errorf("bytes.replace_all: expected 2 arguments, got %d", len(args))
-				}
-				return b.ReplaceAll(args[0], args[1])
-			},
-		}, true
-	}
-	return nil, false
 }
 
 func (b *Bytes) Interface() interface{} {

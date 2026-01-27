@@ -12,6 +12,10 @@ type Byte struct {
 	value byte
 }
 
+func (b *Byte) Attrs() []AttrSpec {
+	return nil
+}
+
 func (b *Byte) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

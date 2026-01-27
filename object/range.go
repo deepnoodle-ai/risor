@@ -7,6 +7,31 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+var rangeAttrs = NewAttrRegistry[*Range]("range")
+
+func init() {
+	rangeAttrs.Define("start").
+		Doc("The start value of the range").
+		Returns("int").
+		Getter(func(r *Range) Object {
+			return NewInt(r.start)
+		})
+
+	rangeAttrs.Define("stop").
+		Doc("The stop value of the range (exclusive)").
+		Returns("int").
+		Getter(func(r *Range) Object {
+			return NewInt(r.stop)
+		})
+
+	rangeAttrs.Define("step").
+		Doc("The step value of the range").
+		Returns("int").
+		Getter(func(r *Range) Object {
+			return NewInt(r.step)
+		})
+}
+
 // Range represents a lazy sequence of integers, similar to Python's range.
 // It stores start, stop, and step values and generates integers on demand.
 type Range struct {
@@ -21,6 +46,18 @@ func NewRange(start, stop, step int64) *Range {
 		panic("range step cannot be zero")
 	}
 	return &Range{start: start, stop: stop, step: step}
+}
+
+func (r *Range) Attrs() []AttrSpec {
+	return rangeAttrs.Specs()
+}
+
+func (r *Range) GetAttr(name string) (Object, bool) {
+	return rangeAttrs.GetAttr(r, name)
+}
+
+func (r *Range) SetAttr(name string, value Object) error {
+	return fmt.Errorf("attribute error: range object does not support attribute assignment")
 }
 
 func (r *Range) Type() Type { return "range" }
@@ -62,22 +99,6 @@ func (r *Range) Equals(other Object) bool {
 	return r.start == otherRange.start &&
 		r.stop == otherRange.stop &&
 		r.step == otherRange.step
-}
-
-func (r *Range) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "start":
-		return NewInt(r.start), true
-	case "stop":
-		return NewInt(r.stop), true
-	case "step":
-		return NewInt(r.step), true
-	}
-	return nil, false
-}
-
-func (r *Range) SetAttr(name string, value Object) error {
-	return fmt.Errorf("attribute error: range object does not support attribute assignment")
 }
 
 func (r *Range) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {

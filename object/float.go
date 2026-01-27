@@ -13,6 +13,10 @@ type Float struct {
 	value float64
 }
 
+func (f *Float) Attrs() []AttrSpec {
+	return nil
+}
+
 func (f *Float) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

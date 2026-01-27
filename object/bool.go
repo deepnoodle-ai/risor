@@ -11,6 +11,10 @@ type Bool struct {
 	value bool
 }
 
+func (b *Bool) Attrs() []AttrSpec {
+	return nil
+}
+
 func (b *Bool) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

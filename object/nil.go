@@ -6,6 +6,10 @@ import (
 
 type NilType struct{}
 
+func (n *NilType) Attrs() []AttrSpec {
+	return nil
+}
+
 func (n *NilType) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

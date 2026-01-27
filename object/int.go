@@ -14,6 +14,10 @@ type Int struct {
 	value int64
 }
 
+func (i *Int) Attrs() []AttrSpec {
+	return nil
+}
+
 func (i *Int) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

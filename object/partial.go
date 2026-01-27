@@ -13,6 +13,10 @@ type Partial struct {
 	args []Object
 }
 
+func (p *Partial) Attrs() []AttrSpec {
+	return nil
+}
+
 func (p *Partial) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

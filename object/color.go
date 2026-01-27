@@ -9,8 +9,37 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+var colorMethods = NewMethodRegistry[*Color]("color")
+
+func init() {
+	colorMethods.Define("rgba").
+		Doc("Get RGBA components as a list [r, g, b, a]").
+		Returns("list").
+		Impl(func(c *Color, ctx context.Context, args ...Object) (Object, error) {
+			r, g, b, a := c.value.RGBA()
+			return NewList([]Object{
+				NewInt(int64(r)),
+				NewInt(int64(g)),
+				NewInt(int64(b)),
+				NewInt(int64(a)),
+			}), nil
+		})
+}
+
 type Color struct {
 	value color.Color
+}
+
+func (c *Color) Attrs() []AttrSpec {
+	return colorMethods.Specs()
+}
+
+func (c *Color) GetAttr(name string) (Object, bool) {
+	return colorMethods.GetAttr(c, name)
+}
+
+func (c *Color) SetAttr(name string, value Object) error {
+	return TypeErrorf("color object has no attribute %q", name)
 }
 
 func (c *Color) IsTruthy() bool {
@@ -27,30 +56,6 @@ func (c *Color) Type() Type {
 
 func (c *Color) Value() color.Color {
 	return c.value
-}
-
-func (c *Color) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "rgba":
-		return NewBuiltin("color.rgba",
-			func(ctx context.Context, args ...Object) (Object, error) {
-				if len(args) != 0 {
-					return nil, fmt.Errorf("color.rgba: expected 0 arguments, got %d", len(args))
-				}
-				r, g, b, a := c.value.RGBA()
-				return NewList([]Object{
-					NewInt(int64(r)),
-					NewInt(int64(g)),
-					NewInt(int64(b)),
-					NewInt(int64(a)),
-				}), nil
-			}), true
-	}
-	return nil, false
-}
-
-func (c *Color) SetAttr(name string, value Object) error {
-	return TypeErrorf("color object has no attribute %q", name)
 }
 
 func (c *Color) Interface() interface{} {

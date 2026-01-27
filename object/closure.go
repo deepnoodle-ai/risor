@@ -85,6 +85,10 @@ func (f *Closure) Interface() interface{} {
 	return nil
 }
 
+func (f *Closure) Attrs() []AttrSpec {
+	return nil
+}
+
 func (f *Closure) GetAttr(name string) (Object, bool) {
 	return nil, false
 }

@@ -11,6 +11,10 @@ type Cell struct {
 	value *Object
 }
 
+func (c *Cell) Attrs() []AttrSpec {
+	return nil
+}
+
 func (c *Cell) GetAttr(name string) (Object, bool) {
 	return nil, false
 }
