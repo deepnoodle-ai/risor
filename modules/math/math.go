@@ -100,8 +100,6 @@ func Sum(ctx context.Context, args ...object.Object) object.Object {
 	switch arg := arg.(type) {
 	case *object.List:
 		array = arg.Value()
-	case *object.Set:
-		array = arg.List().Value()
 	default:
 		return object.TypeErrorf("type error: %s object is not iterable", arg.Type())
 	}

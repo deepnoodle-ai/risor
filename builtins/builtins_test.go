@@ -16,41 +16,12 @@ func assertObjectEqual(t *testing.T, got, want object.Object) {
 func TestBuiltins(t *testing.T) {
 	m := Builtins()
 	count := len(m)
-	assert.Greater(t, count, 23) // Reduced from 25 after removing try() and error() builtins
+	assert.Greater(t, count, 22) // Reduced after removing try(), error(), set(), buffer() builtins
 }
 
 type testCase struct {
 	input    object.Object
 	expected object.Object
-}
-
-func TestMake(t *testing.T) {
-	ctx := context.Background()
-
-	tests := []testCase{
-		{object.NewBuiltin("list", nil), object.NewList([]object.Object{})},
-		{object.NewBuiltin("map", nil), object.NewMap(map[string]object.Object{})},
-		{object.NewBuiltin("set", nil), object.NewSet([]object.Object{})},
-
-		{object.NewList([]object.Object{
-			object.NewString("ignored"),
-		}), object.NewList([]object.Object{})},
-
-		{object.NewMap(map[string]object.Object{
-			"ignored": object.NewString("ignored"),
-		}), object.NewMap(map[string]object.Object{})},
-
-		{object.NewSet([]object.Object{
-			object.NewString("ignored"),
-		}), object.NewSet([]object.Object{})},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input.Inspect(), func(t *testing.T) {
-			result := Make(ctx, tt.input)
-			assertObjectEqual(t, result, tt.expected)
-		})
-	}
 }
 
 func TestSorted(t *testing.T) {

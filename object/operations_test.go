@@ -8,11 +8,11 @@ import (
 )
 
 func TestCompareNonComparable(t *testing.T) {
-	s1 := NewSet(nil)
-	s2 := NewSet(nil)
-	_, err := Compare(op.LessThan, s1, s2)
+	m1 := NewMap(nil)
+	m2 := NewMap(nil)
+	_, err := Compare(op.LessThan, m1, m2)
 	assert.Error(t, err)
-	assert.Equal(t, err.Error(), "type error: expected a comparable object (got set)")
+	assert.Equal(t, err.Error(), "type error: expected a comparable object (got map)")
 }
 
 func TestCompareUnknownComparison(t *testing.T) {

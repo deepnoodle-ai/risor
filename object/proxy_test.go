@@ -259,27 +259,6 @@ func TestProxySetGetAttrNil(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, value, object.Nil)
 
-	// I starts at nil
-	value, ok = proxy.GetAttr("I")
-	assert.True(t, ok)
-	assert.Equal(t, value, object.Nil)
-
-	// Set to "abc"
-	assert.Nil(t, proxy.SetAttr("I", object.NewBuffer(bytes.NewBufferString("abc"))))
-
-	// Confirm "abc"
-	value, ok = proxy.GetAttr("I")
-	assert.True(t, ok)
-	assert.Equal(t, value, object.NewBuffer(bytes.NewBufferString("abc")))
-
-	// Set to nil
-	assert.Nil(t, proxy.SetAttr("I", object.Nil))
-
-	// Confirm nil
-	value, ok = proxy.GetAttr("I")
-	assert.True(t, ok)
-	assert.Equal(t, value, object.Nil)
-
 	// M starts at nil
 	value, ok = proxy.GetAttr("M")
 	assert.True(t, ok)
@@ -370,11 +349,11 @@ func TestProxyBytesBuffer(t *testing.T) {
 	buf.WriteString("defg")
 	assert.Equal(t, lenMethod.Call(ctx), object.NewInt(7))
 
-	// Confirm we can call Bytes() and get a byte_slice back
+	// Confirm we can call Bytes() and get a bytes back
 	getBytes, ok := proxy.GetAttr("Bytes")
 	assert.True(t, ok)
-	bytes := getBytes.(*object.Builtin).Call(ctx)
-	assert.Equal(t, bytes, object.NewByteSlice([]byte("abcdefg")))
+	bytesResult := getBytes.(*object.Builtin).Call(ctx)
+	assert.Equal(t, bytesResult, object.NewBytes([]byte("abcdefg")))
 }
 
 func TestProxyMethodError(t *testing.T) {
@@ -418,21 +397,21 @@ func TestProxyHasher(t *testing.T) {
 	sum, ok := method.(*object.Builtin)
 	assert.True(t, ok)
 
-	result := write.Call(ctx, object.NewByteSlice([]byte("abc")))
+	result := write.Call(ctx, object.NewBytes([]byte("abc")))
 	assert.Equal(t, result, object.NewInt(3))
 
-	result = write.Call(ctx, object.NewByteSlice([]byte("de")))
+	result = write.Call(ctx, object.NewBytes([]byte("de")))
 	assert.Equal(t, result, object.NewInt(2))
 
-	result = sum.Call(ctx, object.NewByteSlice(nil))
-	byte_slice, ok := result.(*object.ByteSlice)
+	result = sum.Call(ctx, object.NewBytes(nil))
+	resultBytes, ok := result.(*object.Bytes)
 	assert.True(t, ok)
 
 	other := sha256.New()
 	other.Write([]byte("abcde"))
 	expected := other.Sum(nil)
 
-	assert.Equal(t, byte_slice.Value(), expected)
+	assert.Equal(t, resultBytes.Value(), expected)
 }
 
 type nestedStructA struct {

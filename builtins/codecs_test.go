@@ -27,7 +27,7 @@ func TestBinaryCodecs(t *testing.T) {
 			if errObj, ok := decoded.(*object.Error); ok {
 				t.Fatalf("decoding error: %v", errObj)
 			}
-			assert.Equal(t, decoded, object.NewByteSlice([]byte(value)))
+			assert.Equal(t, decoded, object.NewBytes([]byte(value)))
 		})
 	}
 }

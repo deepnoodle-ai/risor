@@ -31,10 +31,9 @@ type Type string
 // Type constants
 const (
 	BOOL          Type = "bool"
-	BUFFER        Type = "buffer"
 	BUILTIN       Type = "builtin"
 	BYTE          Type = "byte"
-	BYTE_SLICE    Type = "byte_slice"
+	BYTES         Type = "bytes"
 	CELL          Type = "cell"
 	COLOR         Type = "color"
 	COMPLEX       Type = "complex"
@@ -42,7 +41,6 @@ const (
 	DYNAMIC_ATTR  Type = "dynamic_attr"
 	ERROR         Type = "error"
 	FLOAT         Type = "float"
-	FLOAT_SLICE   Type = "float_slice"
 	FUNCTION      Type = "function"
 	GO_FIELD      Type = "go_field"
 	GO_METHOD     Type = "go_method"
@@ -55,7 +53,6 @@ const (
 	PARTIAL       Type = "partial"
 	PROXY         Type = "proxy"
 	RESULT        Type = "result"
-	SET           Type = "set"
 	STRING        Type = "string"
 	TIME          Type = "time"
 )

@@ -227,7 +227,7 @@ func decodeBase64(ctx context.Context, obj object.Object) object.Object {
 	if decodeErr != nil {
 		return object.NewError(decodeErr)
 	}
-	return object.NewByteSlice(dst[:count])
+	return object.NewBytes(dst[:count])
 }
 
 func decodeBase32(ctx context.Context, obj object.Object) object.Object {
@@ -241,7 +241,7 @@ func decodeBase32(ctx context.Context, obj object.Object) object.Object {
 	if decodeErr != nil {
 		return object.NewError(decodeErr)
 	}
-	return object.NewByteSlice(dst[:count])
+	return object.NewBytes(dst[:count])
 }
 
 func decodeHex(ctx context.Context, obj object.Object) object.Object {
@@ -254,7 +254,7 @@ func decodeHex(ctx context.Context, obj object.Object) object.Object {
 	if decodeErr != nil {
 		return object.NewError(decodeErr)
 	}
-	return object.NewByteSlice(dst[:count])
+	return object.NewBytes(dst[:count])
 }
 
 func decodeJSON(ctx context.Context, obj object.Object) object.Object {

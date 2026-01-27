@@ -1184,7 +1184,7 @@ func TestProxy(t *testing.T) {
 	}
 	result, err := run(context.Background(), `s.Data`, opts)
 	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewByteSlice([]byte("foo")))
+	assert.Equal(t, result, object.NewBytes([]byte("foo")))
 }
 
 func TestWithContextCheckInterval(t *testing.T) {

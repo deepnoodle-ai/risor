@@ -2,7 +2,6 @@
 package builtins
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -19,8 +18,6 @@ func Len(ctx context.Context, args ...object.Object) object.Object {
 	switch arg := args[0].(type) {
 	case object.Container:
 		return arg.Len()
-	case *object.Buffer:
-		return object.NewInt(int64(arg.Value().Len()))
 	default:
 		return object.TypeErrorf("type error: len() unsupported argument (%s given)", args[0].Type())
 	}
@@ -54,32 +51,6 @@ func Delete(ctx context.Context, args ...object.Object) object.Object {
 		return err
 	}
 	return object.Nil
-}
-
-func Set(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.RequireRange("set", 0, 1, args); err != nil {
-		return err
-	}
-	set := object.NewSetWithSize(0)
-	if len(args) == 0 {
-		return set
-	}
-	enumerable, ok := args[0].(object.Enumerable)
-	if !ok {
-		return object.TypeErrorf("type error: set() expected an enumerable (%s given)", args[0].Type())
-	}
-	var addErr object.Object
-	enumerable.Enumerate(ctx, func(key, value object.Object) bool {
-		if res := set.Add(value); object.IsError(res) {
-			addErr = res
-			return false
-		}
-		return true
-	})
-	if addErr != nil {
-		return addErr
-	}
-	return set
 }
 
 func List(ctx context.Context, args ...object.Object) object.Object {
@@ -121,10 +92,6 @@ func String(ctx context.Context, args ...object.Object) object.Object {
 	}
 	arg := args[0]
 	switch arg := arg.(type) {
-	case *object.Buffer:
-		return object.NewString(arg.Value().String())
-	case *object.ByteSlice:
-		return object.NewString(string(arg.Value()))
 	case *object.String:
 		return object.NewString(arg.Value())
 	case io.Reader:
@@ -138,37 +105,6 @@ func String(ctx context.Context, args ...object.Object) object.Object {
 			return object.NewString(s.String())
 		}
 		return object.NewString(args[0].Inspect())
-	}
-}
-
-func Buffer(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.RequireRange("buffer", 0, 1, args); err != nil {
-		return err
-	}
-	if len(args) == 0 {
-		return object.NewBuffer(new(bytes.Buffer))
-	}
-	arg := args[0]
-	switch arg := arg.(type) {
-	case *object.Buffer:
-		return object.NewBufferFromBytes(arg.Value().Bytes())
-	case *object.ByteSlice:
-		return object.NewBufferFromBytes(arg.Value())
-	case *object.String:
-		return object.NewBufferFromBytes([]byte(arg.Value()))
-	case *object.Int:
-		// Special case: treat the value as the size to allocate
-		val := arg.Value()
-		return object.NewBufferFromBytes(make([]byte, val))
-	case io.Reader:
-		bytes, err := io.ReadAll(arg)
-		if err != nil {
-			return object.NewError(err)
-		}
-		return object.NewBufferFromBytes(bytes)
-	default:
-		return object.TypeErrorf("type error: buffer() unsupported argument (%s given)",
-			args[0].Type())
 	}
 }
 
@@ -208,24 +144,6 @@ func Any(ctx context.Context, args ...object.Object) object.Object {
 				return object.True
 			}
 		}
-	case *object.Set:
-		for _, val := range arg.Value() {
-			if val.IsTruthy() {
-				return object.True
-			}
-		}
-	case *object.ByteSlice:
-		for _, val := range arg.Value() {
-			if val != 0 {
-				return object.True
-			}
-		}
-	case *object.Buffer:
-		for _, val := range arg.Value().Bytes() {
-			if val != 0 {
-				return object.True
-			}
-		}
 	case object.Enumerable:
 		found := false
 		arg.Enumerate(ctx, func(key, value object.Object) bool {
@@ -252,24 +170,6 @@ func All(ctx context.Context, args ...object.Object) object.Object {
 	case *object.List:
 		for _, val := range arg.Value() {
 			if !val.IsTruthy() {
-				return object.False
-			}
-		}
-	case *object.Set:
-		for _, val := range arg.Value() {
-			if !val.IsTruthy() {
-				return object.False
-			}
-		}
-	case *object.ByteSlice:
-		for _, val := range arg.Value() {
-			if val == 0 {
-				return object.False
-			}
-		}
-	case *object.Buffer:
-		for _, val := range arg.Value().Bytes() {
-			if val == 0 {
 				return object.False
 			}
 		}
@@ -309,38 +209,6 @@ func Filter(ctx context.Context, args ...object.Object) object.Object {
 			}
 			if decision.IsTruthy() {
 				result = append(result, val)
-			}
-		}
-	case *object.Set:
-		for _, val := range container.Value() {
-			decision := fn.Call(ctx, val)
-			if object.IsError(decision) {
-				return decision
-			}
-			if decision.IsTruthy() {
-				result = append(result, val)
-			}
-		}
-	case *object.ByteSlice:
-		for _, val := range container.Value() {
-			byteObj := object.NewByte(val)
-			decision := fn.Call(ctx, byteObj)
-			if object.IsError(decision) {
-				return decision
-			}
-			if decision.IsTruthy() {
-				result = append(result, byteObj)
-			}
-		}
-	case *object.Buffer:
-		for _, val := range container.Value().Bytes() {
-			byteObj := object.NewByte(val)
-			decision := fn.Call(ctx, byteObj)
-			if object.IsError(decision) {
-				return decision
-			}
-			if decision.IsTruthy() {
-				result = append(result, byteObj)
 			}
 		}
 	case object.Enumerable:
@@ -389,12 +257,8 @@ func Sorted(ctx context.Context, args ...object.Object) object.Object {
 		items = arg.Value()
 	case *object.Map:
 		items = arg.Keys().Value()
-	case *object.Set:
-		items = arg.List().Value()
 	case *object.String:
 		items = arg.Runes()
-	case *object.ByteSlice:
-		items = arg.Integers()
 	default:
 		return object.TypeErrorf("type error: sorted() unsupported argument (%s given)", arg.Type())
 	}
@@ -438,8 +302,6 @@ func Reversed(ctx context.Context, args ...object.Object) object.Object {
 	case *object.List:
 		return arg.Reversed()
 	case *object.String:
-		return arg.Reversed()
-	case *object.ByteSlice:
 		return arg.Reversed()
 	default:
 		return object.TypeErrorf("type error: reversed() unsupported argument (%s given)",
@@ -497,8 +359,6 @@ func Keys(ctx context.Context, args ...object.Object) object.Object {
 		return arg.Keys()
 	case *object.List:
 		return arg.Keys()
-	case *object.Set:
-		return arg.List()
 	case object.Enumerable:
 		var keys []object.Object
 		arg.Enumerate(ctx, func(key, value object.Object) bool {
@@ -583,47 +443,6 @@ func Float(ctx context.Context, args ...object.Object) object.Object {
 	}
 }
 
-func Make(ctx context.Context, args ...object.Object) object.Object {
-	if err := object.RequireRange("make", 1, 2, args); err != nil {
-		return err
-	}
-	typ := args[0]
-	size := 0
-	if len(args) == 2 {
-		switch arg := args[1].(type) {
-		case *object.Int:
-			size = int(arg.Value())
-		default:
-			return object.TypeErrorf("type error: make() expected an int (%s given)", arg.Type())
-		}
-	}
-	if size < 0 {
-		return object.Errorf("value error: make() size must be >= 0 (%d given)", size)
-	}
-	switch typ := typ.(type) {
-	case *object.List:
-		return object.NewList(make([]object.Object, 0, size))
-	case *object.Map:
-		return object.NewMap(make(map[string]object.Object, size))
-	case *object.Set:
-		return object.NewSetWithSize(size)
-	case *object.Builtin:
-		name := typ.Name()
-		switch name {
-		case "list":
-			return object.NewList(make([]object.Object, 0, size))
-		case "map":
-			return object.NewMap(make(map[string]object.Object, size))
-		case "set":
-			return object.NewSetWithSize(size)
-		default:
-			return object.Errorf("value error: make() unsupported type name (%s given)", name)
-		}
-	default:
-		return object.TypeErrorf("type error: make() unsupported type (%s given)", typ.Type())
-	}
-}
-
 func Coalesce(ctx context.Context, args ...object.Object) object.Object {
 	if err := object.RequireRange("coalesce", 0, 64, args); err != nil {
 		return err
@@ -701,7 +520,6 @@ func Builtins() map[string]object.Object {
 		"len":      object.NewBuiltin("len", Len),
 		"list":     object.NewBuiltin("list", List),
 		"reversed": object.NewBuiltin("reversed", Reversed),
-		"set":      object.NewBuiltin("set", Set),
 		"sorted":   object.NewBuiltin("sorted", Sorted),
 		"sprintf":  object.NewBuiltin("sprintf", Sprintf),
 		"string":   object.NewBuiltin("string", String),

@@ -31,11 +31,9 @@ var kindConverters = map[reflect.Kind]TypeConverter{
 }
 
 var typeConverters = map[reflect.Type]TypeConverter{
-	reflect.TypeOf(byte(0)):              &ByteConverter{},
-	reflect.TypeOf(time.Time{}):          &TimeConverter{},
-	reflect.TypeOf(bytes.NewBuffer(nil)): &BufferConverter{},
-	reflect.TypeOf([]byte{}):             &ByteSliceConverter{},
-	reflect.TypeOf([]float64{}):          &FloatSliceConverter{},
+	reflect.TypeOf(byte(0)):     &ByteConverter{},
+	reflect.TypeOf(time.Time{}): &TimeConverter{},
+	reflect.TypeOf([]byte{}):    &BytesConverter{},
 }
 
 // Kinds do NOT intend to handle for now:
@@ -60,10 +58,6 @@ func AsString(obj Object) (string, *Error) {
 	switch obj := obj.(type) {
 	case *String:
 		return obj.value, nil
-	case *ByteSlice:
-		return string(obj.value), nil
-	case *Buffer:
-		return obj.value.String(), nil
 	default:
 		return "", TypeErrorf("type error: expected a string (%s given)", obj.Type())
 	}
@@ -151,20 +145,10 @@ func AsTime(obj Object) (result time.Time, err *Error) {
 	return s.value, nil
 }
 
-func AsSet(obj Object) (*Set, *Error) {
-	set, ok := obj.(*Set)
-	if !ok {
-		return nil, TypeErrorf("type error: expected a set (%s given)", obj.Type())
-	}
-	return set, nil
-}
-
 func AsBytes(obj Object) ([]byte, *Error) {
 	switch obj := obj.(type) {
-	case *ByteSlice:
+	case *Bytes:
 		return obj.value, nil
-	case *Buffer:
-		return obj.value.Bytes(), nil
 	case *String:
 		return []byte(obj.value), nil
 	case io.Reader:
@@ -183,7 +167,7 @@ func AsReader(obj Object) (io.Reader, *Error) {
 		return o.AsReader()
 	}
 	switch obj := obj.(type) {
-	case *ByteSlice:
+	case *Bytes:
 		return bytes.NewBuffer(obj.value), nil
 	case *String:
 		return bytes.NewBufferString(obj.value), nil
@@ -199,8 +183,6 @@ func AsWriter(obj Object) (io.Writer, *Error) {
 		return o.AsWriter()
 	}
 	switch obj := obj.(type) {
-	case *Buffer:
-		return obj.value, nil
 	case io.Writer:
 		return obj, nil
 	default:
@@ -256,9 +238,7 @@ func FromGoType(obj interface{}) Object {
 	case byte:
 		return NewByte(obj)
 	case []byte:
-		return NewByteSlice(obj)
-	case *bytes.Buffer:
-		return NewBuffer(obj)
+		return NewBytes(obj)
 	case *bytecode.Function:
 		return NewClosure(obj)
 	case bool:
@@ -734,10 +714,6 @@ type StringConverter struct{}
 
 func (c *StringConverter) To(obj Object) (interface{}, error) {
 	switch obj := obj.(type) {
-	case *ByteSlice:
-		return string(obj.value), nil
-	case *Buffer:
-		return obj.value.String(), nil
 	case *String:
 		return obj.value, nil
 	default:
@@ -749,15 +725,13 @@ func (c *StringConverter) From(obj interface{}) (Object, error) {
 	return NewString(obj.(string)), nil
 }
 
-// ByteSliceConverter converts between []byte and *ByteSlice.
-type ByteSliceConverter struct{}
+// BytesConverter converts between []byte and *Bytes.
+type BytesConverter struct{}
 
-func (c *ByteSliceConverter) To(obj Object) (interface{}, error) {
+func (c *BytesConverter) To(obj Object) (interface{}, error) {
 	switch obj := obj.(type) {
-	case *ByteSlice:
+	case *Bytes:
 		return obj.value, nil
-	case *Buffer:
-		return obj.value.Bytes(), nil
 	case *String:
 		return []byte(obj.value), nil
 	default:
@@ -765,24 +739,8 @@ func (c *ByteSliceConverter) To(obj Object) (interface{}, error) {
 	}
 }
 
-func (c *ByteSliceConverter) From(obj interface{}) (Object, error) {
-	return NewByteSlice(obj.([]byte)), nil
-}
-
-// FloatSliceConverter converts between []float64 and *FloatSlice.
-type FloatSliceConverter struct{}
-
-func (c *FloatSliceConverter) To(obj Object) (interface{}, error) {
-	switch obj := obj.(type) {
-	case *FloatSlice:
-		return obj.value, nil
-	default:
-		return nil, TypeErrorf("type error: expected float_slice (%s given)", obj.Type())
-	}
-}
-
-func (c *FloatSliceConverter) From(obj interface{}) (Object, error) {
-	return NewFloatSlice(obj.([]float64)), nil
+func (c *BytesConverter) From(obj interface{}) (Object, error) {
+	return NewBytes(obj.([]byte)), nil
 }
 
 // TimeConverter converts between time.Time and *Time.
@@ -801,24 +759,6 @@ func (c *TimeConverter) To(obj Object) (interface{}, error) {
 
 func (c *TimeConverter) From(obj interface{}) (Object, error) {
 	return NewTime(obj.(time.Time)), nil
-}
-
-// BufferConverter converts between *bytes.Buffer and *Buffer.
-type BufferConverter struct{}
-
-func (c *BufferConverter) To(obj Object) (interface{}, error) {
-	switch obj := obj.(type) {
-	case *Buffer:
-		return obj.value, nil
-	case *ByteSlice:
-		return bytes.NewBuffer(obj.value), nil
-	default:
-		return nil, TypeErrorf("type error: expected buffer (%s given)", obj.Type())
-	}
-}
-
-func (c *BufferConverter) From(obj interface{}) (Object, error) {
-	return NewBuffer(obj.(*bytes.Buffer)), nil
 }
 
 // DynamicConverter converts between interface{} and the appropriate Risor type.

@@ -400,6 +400,11 @@ func (p *Parser) parseStatementStrict() ast.Node {
 	// statement should end with a semicolon or the next token should be
 	// a statement terminator
 	if !p.curTokenIs(token.SEMICOLON) && !statementTerminators[p.peekToken.Type] {
+		// Check for common mistake: trying to use := for variable declaration
+		if _, isIdent := stmt.(*ast.Ident); isIdent && p.peekTokenIs(token.COLON) {
+			p.setTokenError(p.curToken, "unexpected \":\" (for variable declaration, use \"let %s = ...\")", p.curToken.Literal)
+			return nil
+		}
 		p.setTokenError(p.curToken, "unexpected token %q following statement", p.peekToken.Literal)
 		return nil
 	}

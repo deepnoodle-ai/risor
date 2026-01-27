@@ -1,7 +1,6 @@
 package object
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -351,25 +350,7 @@ func TestTimeConverter(t *testing.T) {
 	assert.Equal(t, goTime, now)
 }
 
-func TestBufferConverter(t *testing.T) {
-	buf := bytes.NewBufferString("hello")
-	typ := reflect.TypeOf(buf)
-
-	c, err := NewTypeConverter(typ)
-	assert.Nil(t, err)
-
-	tBuf, err := c.From(buf)
-	assert.Nil(t, err)
-	assert.Equal(t, tBuf, NewBuffer(buf))
-
-	gBuf, err := c.To(NewBufferFromBytes([]byte("hello")))
-	assert.Nil(t, err)
-	goBuf, ok := gBuf.(*bytes.Buffer)
-	assert.True(t, ok)
-	assert.Equal(t, goBuf, buf)
-}
-
-func TestByteSliceConverter(t *testing.T) {
+func TestBytesConverter(t *testing.T) {
 	buf := []byte("abc")
 	typ := reflect.TypeOf(buf)
 
@@ -378,9 +359,9 @@ func TestByteSliceConverter(t *testing.T) {
 
 	tBuf, err := c.From(buf)
 	assert.Nil(t, err)
-	assert.Equal(t, tBuf, NewByteSlice([]byte("abc")))
+	assert.Equal(t, tBuf, NewBytes([]byte("abc")))
 
-	gBuf, err := c.To(NewByteSlice([]byte("abc")))
+	gBuf, err := c.To(NewBytes([]byte("abc")))
 	assert.Nil(t, err)
 	goBuf, ok := gBuf.([]byte)
 	assert.True(t, ok)

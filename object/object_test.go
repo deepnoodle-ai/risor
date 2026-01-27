@@ -24,7 +24,6 @@ func TestObjectString(t *testing.T) {
 		{NewInt(-3), "-3"},
 		{NewString("foo"), "foo"},
 		{NewList([]Object{NewInt(1), NewInt(2)}), "[1, 2]"},
-		{NewSet([]Object{True, Nil}), "{true, nil}"},
 		{NewMap(map[string]Object{"foo": NewInt(1), "bar": NewInt(2)}), `{"bar": 2, "foo": 1}`},
 		{NewTime(tm), "time(\"2009-11-10T23:00:00Z\")"},
 	}
@@ -142,13 +141,6 @@ func TestPrintableValue(t *testing.T) {
 				"c": Nil,
 			}),
 			expected: `{"a": 42, "b": "hello", "c": nil}`,
-		},
-		{
-			obj: NewSet([]Object{
-				NewInt(42),
-				NewString("hi there"),
-			}),
-			expected: `{42, "hi there"}`,
 		},
 	}
 	for _, tc := range cases {
