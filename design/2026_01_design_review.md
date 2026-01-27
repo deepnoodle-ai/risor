@@ -43,6 +43,7 @@ The following major changes have been implemented:
 | **Base Type** | Removed `*base` embedding. Types use standalone default functions. |
 | **Immutable Primitives** | All primitive types (`Int`, `Float`, `String`, `Bool`, `Byte`) have unexported value fields. |
 | **Thread Safety** | Risor objects are not thread-safe. Don't share them across goroutines. (Same constraint as Python/JS.) |
+| **Language Semantics** | `docs/semantics.md` specifies numeric coercion, equality, ordering, truthiness, iteration order, and error propagation. |
 
 ---
 
@@ -94,21 +95,6 @@ func (vm *VM) Run(ctx context.Context) (Object, error) {
 
 ---
 
-### P3-2: Language Semantics Specification
-
-**Problem:** No canonical specification for core language semantics.
-
-**Proposal:** Create `docs/semantics.md` covering:
-- Numeric types and coercions
-- Equality/ordering rules
-- Truthiness
-- Iteration order for maps/objects
-- Error propagation and stack traces
-
-**Reason:** Embedders need a stable contract. Behavior should be specified, not inferred.
-
----
-
 ### A-2: Error Equality Semantics
 
 **Problem:** `Error.Equals()` ignores structured data (filename, line, stack). Two errors from different sources compare equal if messages match.
@@ -132,7 +118,6 @@ func (vm *VM) Run(ctx context.Context) (Object, error) {
 
 - [ ] Which resource limits are essential for v2? (P1-5)
 - [ ] Should limits be enforced in the VM, compiler, or both? (P1-5)
-- [ ] What is the minimal semantics spec that embedders need? (P3-2)
 - [ ] Should containers cache their method builtins? (performance)
 - [ ] Is the Error attribute-as-method pattern intentional? (consistency)
 

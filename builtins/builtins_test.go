@@ -857,3 +857,80 @@ func TestChunkErrors(t *testing.T) {
 	_, err = Chunk(ctx, object.NewList([]object.Object{}), object.NewString("invalid"))
 	assert.NotNil(t, err)
 }
+
+func TestRange(t *testing.T) {
+	ctx := context.Background()
+
+	// range(5)
+	result, err := Range(ctx, object.NewInt(5))
+	assert.Nil(t, err)
+	r, ok := result.(*object.Range)
+	assert.True(t, ok)
+	assert.Equal(t, r.Start(), int64(0))
+	assert.Equal(t, r.Stop(), int64(5))
+	assert.Equal(t, r.Step(), int64(1))
+
+	// range(1, 5)
+	result, err = Range(ctx, object.NewInt(1), object.NewInt(5))
+	assert.Nil(t, err)
+	r, ok = result.(*object.Range)
+	assert.True(t, ok)
+	assert.Equal(t, r.Start(), int64(1))
+	assert.Equal(t, r.Stop(), int64(5))
+	assert.Equal(t, r.Step(), int64(1))
+
+	// range(0, 10, 2)
+	result, err = Range(ctx, object.NewInt(0), object.NewInt(10), object.NewInt(2))
+	assert.Nil(t, err)
+	r, ok = result.(*object.Range)
+	assert.True(t, ok)
+	assert.Equal(t, r.Start(), int64(0))
+	assert.Equal(t, r.Stop(), int64(10))
+	assert.Equal(t, r.Step(), int64(2))
+
+	// range(5, 0, -1)
+	result, err = Range(ctx, object.NewInt(5), object.NewInt(0), object.NewInt(-1))
+	assert.Nil(t, err)
+	r, ok = result.(*object.Range)
+	assert.True(t, ok)
+	assert.Equal(t, r.Start(), int64(5))
+	assert.Equal(t, r.Stop(), int64(0))
+	assert.Equal(t, r.Step(), int64(-1))
+}
+
+func TestRangeErrors(t *testing.T) {
+	ctx := context.Background()
+
+	// No arguments
+	_, err := Range(ctx)
+	assert.NotNil(t, err)
+
+	// Too many arguments
+	_, err = Range(ctx, object.NewInt(1), object.NewInt(2), object.NewInt(3), object.NewInt(4))
+	assert.NotNil(t, err)
+
+	// Non-int argument
+	_, err = Range(ctx, object.NewString("5"))
+	assert.NotNil(t, err)
+
+	// Step of zero
+	_, err = Range(ctx, object.NewInt(0), object.NewInt(10), object.NewInt(0))
+	assert.NotNil(t, err)
+}
+
+func TestRangeWithList(t *testing.T) {
+	ctx := context.Background()
+
+	// Convert range to list
+	r, _ := Range(ctx, object.NewInt(5))
+	listResult, err := List(ctx, r)
+	assert.Nil(t, err)
+	list, ok := listResult.(*object.List)
+	assert.True(t, ok)
+	assert.Len(t, list.Value(), 5)
+
+	expected := []int64{0, 1, 2, 3, 4}
+	for i, v := range list.Value() {
+		assert.Equal(t, v.(*object.Int).Value(), expected[i])
+	}
+}

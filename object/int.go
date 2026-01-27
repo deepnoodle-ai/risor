@@ -1,7 +1,6 @@
 package object
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -154,22 +153,6 @@ func (i *Int) runOperationFloat(opType op.BinaryOpType, right float64) (Object, 
 
 func (i *Int) MarshalJSON() ([]byte, error) {
 	return json.Marshal(i.value)
-}
-
-func (i *Int) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
-	if i.value >= 0 {
-		for j := int64(0); j < i.value; j++ {
-			if !fn(NewInt(j), NewInt(j)) {
-				return
-			}
-		}
-	} else {
-		for j := int64(0); j > i.value; j-- {
-			if !fn(NewInt(-j), NewInt(j)) {
-				return
-			}
-		}
-	}
 }
 
 // NewInt returns an *Int for the given value. Small integers (-10 to 255)

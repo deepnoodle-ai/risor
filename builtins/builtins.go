@@ -470,6 +470,65 @@ func Chunk(ctx context.Context, args ...object.Object) (object.Object, error) {
 	return object.NewList(chunks), nil
 }
 
+// Range creates a range object that generates integers lazily.
+// range(stop) - generates 0, 1, 2, ..., stop-1
+// range(start, stop) - generates start, start+1, ..., stop-1
+// range(start, stop, step) - generates start, start+step, start+2*step, ...
+func Range(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) < 1 || len(args) > 3 {
+		return nil, fmt.Errorf("range: expected 1-3 arguments, got %d", len(args))
+	}
+
+	var start, stop, step int64
+
+	switch len(args) {
+	case 1:
+		// range(stop)
+		stopObj, ok := args[0].(*object.Int)
+		if !ok {
+			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[0].Type())
+		}
+		start = 0
+		stop = stopObj.Value()
+		step = 1
+	case 2:
+		// range(start, stop)
+		startObj, ok := args[0].(*object.Int)
+		if !ok {
+			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[0].Type())
+		}
+		stopObj, ok := args[1].(*object.Int)
+		if !ok {
+			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[1].Type())
+		}
+		start = startObj.Value()
+		stop = stopObj.Value()
+		step = 1
+	case 3:
+		// range(start, stop, step)
+		startObj, ok := args[0].(*object.Int)
+		if !ok {
+			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[0].Type())
+		}
+		stopObj, ok := args[1].(*object.Int)
+		if !ok {
+			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[1].Type())
+		}
+		stepObj, ok := args[2].(*object.Int)
+		if !ok {
+			return nil, fmt.Errorf("type error: range() integer expected, got %s", args[2].Type())
+		}
+		start = startObj.Value()
+		stop = stopObj.Value()
+		step = stepObj.Value()
+		if step == 0 {
+			return nil, fmt.Errorf("value error: range() step argument must not be zero")
+		}
+	}
+
+	return object.NewRange(start, stop, step), nil
+}
+
 func Builtins() map[string]object.Object {
 	return map[string]object.Object{
 		"all":      object.NewBuiltin("all", All),
@@ -490,6 +549,7 @@ func Builtins() map[string]object.Object {
 		"keys":     object.NewBuiltin("keys", Keys),
 		"len":      object.NewBuiltin("len", Len),
 		"list":     object.NewBuiltin("list", List),
+		"range":    object.NewBuiltin("range", Range),
 		"reversed": object.NewBuiltin("reversed", Reversed),
 		"sorted":   object.NewBuiltin("sorted", Sorted),
 		"sprintf":  object.NewBuiltin("sprintf", Sprintf),
