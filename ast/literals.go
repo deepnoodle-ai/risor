@@ -73,7 +73,12 @@ type DefaultValue struct {
 func (x *DefaultValue) exprNode() {}
 
 func (x *DefaultValue) Pos() token.Position { return x.Name.Pos() }
-func (x *DefaultValue) End() token.Position { return x.Default.End() }
+func (x *DefaultValue) End() token.Position {
+	if x.Default != nil {
+		return x.Default.End()
+	}
+	return x.Name.End()
+}
 
 func (x *DefaultValue) String() string {
 	return x.Name.String() + " = " + x.Default.String()
@@ -212,7 +217,13 @@ func (x *Func) exprNode() {}
 func (x *Func) stmtNode() {} // named functions are also statements
 
 func (x *Func) Pos() token.Position { return x.Func }
-func (x *Func) End() token.Position { return x.Body.End() }
+
+func (x *Func) End() token.Position {
+	if x.Body != nil {
+		return x.Body.End()
+	}
+	return x.Rparen.Advance(1)
+}
 
 func (x *Func) String() string {
 	var out bytes.Buffer

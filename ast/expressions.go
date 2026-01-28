@@ -31,7 +31,12 @@ type Prefix struct {
 func (x *Prefix) exprNode() {}
 
 func (x *Prefix) Pos() token.Position { return x.OpPos }
-func (x *Prefix) End() token.Position { return x.X.End() }
+func (x *Prefix) End() token.Position {
+	if x.X != nil {
+		return x.X.End()
+	}
+	return x.OpPos.Advance(len(x.Op))
+}
 
 func (x *Prefix) String() string {
 	var out bytes.Buffer
@@ -79,8 +84,19 @@ type Infix struct {
 
 func (x *Infix) exprNode() {}
 
-func (x *Infix) Pos() token.Position { return x.X.Pos() }
-func (x *Infix) End() token.Position { return x.Y.End() }
+func (x *Infix) Pos() token.Position {
+	if x.X != nil {
+		return x.X.Pos()
+	}
+	return x.OpPos
+}
+
+func (x *Infix) End() token.Position {
+	if x.Y != nil {
+		return x.Y.End()
+	}
+	return x.OpPos.Advance(len(x.Op))
+}
 
 func (x *Infix) String() string {
 	var out bytes.Buffer
@@ -109,7 +125,10 @@ func (x *If) End() token.Position {
 	if x.Alternative != nil {
 		return x.Alternative.End()
 	}
-	return x.Consequence.End()
+	if x.Consequence != nil {
+		return x.Consequence.End()
+	}
+	return x.Rparen.Advance(1)
 }
 
 func (x *If) String() string {
@@ -135,7 +154,12 @@ type Call struct {
 
 func (x *Call) exprNode() {}
 
-func (x *Call) Pos() token.Position { return x.Fun.Pos() }
+func (x *Call) Pos() token.Position {
+	if x.Fun != nil {
+		return x.Fun.Pos()
+	}
+	return x.Lparen
+}
 func (x *Call) End() token.Position { return x.Rparen.Advance(1) }
 
 func (x *Call) String() string {
@@ -162,7 +186,12 @@ type GetAttr struct {
 
 func (x *GetAttr) exprNode() {}
 
-func (x *GetAttr) Pos() token.Position { return x.X.Pos() }
+func (x *GetAttr) Pos() token.Position {
+	if x.X != nil {
+		return x.X.Pos()
+	}
+	return x.Period
+}
 func (x *GetAttr) End() token.Position { return x.Attr.End() }
 
 func (x *GetAttr) String() string {
@@ -185,8 +214,19 @@ type Pipe struct {
 
 func (x *Pipe) exprNode() {}
 
-func (x *Pipe) Pos() token.Position { return x.Exprs[0].Pos() }
-func (x *Pipe) End() token.Position { return x.Exprs[len(x.Exprs)-1].End() }
+func (x *Pipe) Pos() token.Position {
+	if len(x.Exprs) > 0 {
+		return x.Exprs[0].Pos()
+	}
+	return token.NoPos
+}
+
+func (x *Pipe) End() token.Position {
+	if len(x.Exprs) > 0 {
+		return x.Exprs[len(x.Exprs)-1].End()
+	}
+	return token.NoPos
+}
 
 func (x *Pipe) String() string {
 	var out bytes.Buffer
@@ -211,7 +251,12 @@ type ObjectCall struct {
 
 func (x *ObjectCall) exprNode() {}
 
-func (x *ObjectCall) Pos() token.Position { return x.X.Pos() }
+func (x *ObjectCall) Pos() token.Position {
+	if x.X != nil {
+		return x.X.Pos()
+	}
+	return x.Period
+}
 func (x *ObjectCall) End() token.Position { return x.Call.End() }
 
 func (x *ObjectCall) String() string {
@@ -236,7 +281,12 @@ type Index struct {
 
 func (x *Index) exprNode() {}
 
-func (x *Index) Pos() token.Position { return x.X.Pos() }
+func (x *Index) Pos() token.Position {
+	if x.X != nil {
+		return x.X.Pos()
+	}
+	return x.Lbrack
+}
 func (x *Index) End() token.Position { return x.Rbrack.Advance(1) }
 
 func (x *Index) String() string {
@@ -259,7 +309,12 @@ type Slice struct {
 
 func (x *Slice) exprNode() {}
 
-func (x *Slice) Pos() token.Position { return x.X.Pos() }
+func (x *Slice) Pos() token.Position {
+	if x.X != nil {
+		return x.X.Pos()
+	}
+	return x.Lbrack
+}
 func (x *Slice) End() token.Position { return x.Rbrack.Advance(1) }
 
 func (x *Slice) String() string {
@@ -360,8 +415,19 @@ type In struct {
 
 func (x *In) exprNode() {}
 
-func (x *In) Pos() token.Position { return x.X.Pos() }
-func (x *In) End() token.Position { return x.Y.End() }
+func (x *In) Pos() token.Position {
+	if x.X != nil {
+		return x.X.Pos()
+	}
+	return x.InPos
+}
+
+func (x *In) End() token.Position {
+	if x.Y != nil {
+		return x.Y.End()
+	}
+	return x.InPos.Advance(2) // len("in")
+}
 
 func (x *In) String() string {
 	var out bytes.Buffer
@@ -380,8 +446,19 @@ type NotIn struct {
 
 func (x *NotIn) exprNode() {}
 
-func (x *NotIn) Pos() token.Position { return x.X.Pos() }
-func (x *NotIn) End() token.Position { return x.Y.End() }
+func (x *NotIn) Pos() token.Position {
+	if x.X != nil {
+		return x.X.Pos()
+	}
+	return x.NotInPos
+}
+
+func (x *NotIn) End() token.Position {
+	if x.Y != nil {
+		return x.Y.End()
+	}
+	return x.NotInPos.Advance(6) // len("not in")
+}
 
 func (x *NotIn) String() string {
 	var out bytes.Buffer
