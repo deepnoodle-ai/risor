@@ -288,3 +288,60 @@ func TestMarshalUnmarshalLocationsWithEndColumn(t *testing.T) {
 		}
 	}
 }
+
+func TestMarshalUnmarshalLocalNames(t *testing.T) {
+	// Create code with local variable names for debugging/disassembly
+	code := NewCode(CodeParams{
+		ID:           "test",
+		Name:         "testFunc",
+		Instructions: []op.Code{op.LoadFast, 0, op.LoadFast, 1, op.ReturnValue},
+		LocalCount:   3,
+		LocalNames:   []string{"x", "y", "result"},
+	})
+
+	// Marshal
+	data, err := Marshal(code)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	// Unmarshal
+	restored, err := Unmarshal(data)
+	if err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+
+	// Verify local names were preserved
+	if restored.LocalNameCount() != 3 {
+		t.Fatalf("expected 3 local names, got %v", restored.LocalNameCount())
+	}
+
+	expectedNames := []string{"x", "y", "result"}
+	for i, expected := range expectedNames {
+		if restored.LocalNameAt(i) != expected {
+			t.Errorf("expected local name %d to be %q, got %q", i, expected, restored.LocalNameAt(i))
+		}
+	}
+}
+
+func TestMarshalUnmarshalEmptyLocalNames(t *testing.T) {
+	// Code without local names should round-trip correctly
+	code := NewCode(CodeParams{
+		ID:           "test",
+		Instructions: []op.Code{op.Nil, op.ReturnValue},
+	})
+
+	data, err := Marshal(code)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	restored, err := Unmarshal(data)
+	if err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+
+	if restored.LocalNameCount() != 0 {
+		t.Errorf("expected 0 local names, got %v", restored.LocalNameCount())
+	}
+}

@@ -163,7 +163,7 @@ func (c *Code) NameCount() int {
 	return len(c.names)
 }
 
-// Name returns the name at the given index.
+// NameAt returns the attribute name at the given index.
 func (c *Code) NameAt(index int) string {
 	return c.names[index]
 }

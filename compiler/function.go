@@ -43,8 +43,17 @@ func (f *Function) Default(index int) any {
 	return f.defaults[index]
 }
 
+// RequiredArgsCount returns the minimum number of arguments required.
+// A parameter requires an argument if it has no default value (nil in defaults array).
 func (f *Function) RequiredArgsCount() int {
-	return len(f.parameters) - len(f.defaults)
+	// Count non-nil defaults - a nil entry means no default for that parameter
+	defaultsWithValue := 0
+	for _, d := range f.defaults {
+		if d != nil {
+			defaultsWithValue++
+		}
+	}
+	return len(f.parameters) - defaultsWithValue
 }
 
 func (f *Function) LocalsCount() int {
@@ -55,8 +64,10 @@ func (f *Function) String() string {
 	var out bytes.Buffer
 	parameters := make([]string, 0)
 	for i, name := range f.parameters {
-		if def := f.defaults[i]; def != nil {
-			name += "=" + fmt.Sprintf("%v", def)
+		if i < len(f.defaults) {
+			if def := f.defaults[i]; def != nil {
+				name += "=" + fmt.Sprintf("%v", def)
+			}
 		}
 		parameters = append(parameters, name)
 	}
@@ -67,7 +78,11 @@ func (f *Function) String() string {
 	out.WriteString("(")
 	out.WriteString(strings.Join(parameters, ", "))
 	out.WriteString(") {")
-	lines := strings.Split(f.Code().Source(), "\n")
+	var source string
+	if f.code != nil {
+		source = f.code.Source()
+	}
+	lines := strings.Split(source, "\n")
 	if len(lines) == 1 {
 		out.WriteString(" " + lines[0] + " }")
 	} else if len(lines) == 0 {
