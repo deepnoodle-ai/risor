@@ -248,6 +248,30 @@ func Walk(v Visitor, node Node) {
 		if n.Body != nil {
 			Walk(v, n.Body)
 		}
+
+	// Destructuring parameter types
+	case *ObjectDestructureParam:
+		for _, b := range n.Bindings {
+			if b.Default != nil {
+				Walk(v, b.Default)
+			}
+		}
+	case *ArrayDestructureParam:
+		for _, e := range n.Elements {
+			if e.Name != nil {
+				Walk(v, e.Name)
+			}
+			if e.Default != nil {
+				Walk(v, e.Default)
+			}
+		}
+	case *DefaultValue:
+		if n.Name != nil {
+			Walk(v, n.Name)
+		}
+		if n.Default != nil {
+			Walk(v, n.Default)
+		}
 	}
 }
 
@@ -509,6 +533,30 @@ func Preorder(root Node) iter.Seq[Node] {
 					if !visit(expr) {
 						return false
 					}
+				}
+
+			// Destructuring parameter types
+			case *ObjectDestructureParam:
+				for _, b := range node.Bindings {
+					if b.Default != nil && !visit(b.Default) {
+						return false
+					}
+				}
+			case *ArrayDestructureParam:
+				for _, e := range node.Elements {
+					if e.Name != nil && !visit(e.Name) {
+						return false
+					}
+					if e.Default != nil && !visit(e.Default) {
+						return false
+					}
+				}
+			case *DefaultValue:
+				if node.Name != nil && !visit(node.Name) {
+					return false
+				}
+				if node.Default != nil && !visit(node.Default) {
+					return false
 				}
 			}
 			return true

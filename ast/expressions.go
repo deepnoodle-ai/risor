@@ -289,7 +289,12 @@ type Case struct {
 func (x *Case) exprNode() {}
 
 func (x *Case) Pos() token.Position { return x.Case }
-func (x *Case) End() token.Position { return x.Body.End() }
+func (x *Case) End() token.Position {
+	if x.Body != nil {
+		return x.Body.End()
+	}
+	return x.Colon.Advance(1)
+}
 
 func (x *Case) String() string {
 	var out bytes.Buffer

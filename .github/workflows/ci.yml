@@ -27,7 +27,9 @@ jobs:
         run: go install gotest.tools/gotestsum@latest
 
       - name: Run tests
-        run: make test
+        run: |
+          mkdir -p /tmp/test-reports
+          make test
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
