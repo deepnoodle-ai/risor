@@ -46,14 +46,19 @@ func (f *Function) Default(index int) any {
 // RequiredArgsCount returns the minimum number of arguments required.
 // A parameter requires an argument if it has no default value (nil in defaults array).
 func (f *Function) RequiredArgsCount() int {
-	// Count non-nil defaults - a nil entry means no default for that parameter
-	defaultsWithValue := 0
-	for _, d := range f.defaults {
+	// Count non-nil defaults (nil means no default for that parameter)
+	// Only consider defaults up to the parameter count to avoid negative results
+	paramCount := len(f.parameters)
+	required := paramCount
+	for i, d := range f.defaults {
+		if i >= paramCount {
+			break
+		}
 		if d != nil {
-			defaultsWithValue++
+			required--
 		}
 	}
-	return len(f.parameters) - defaultsWithValue
+	return required
 }
 
 func (f *Function) LocalsCount() int {

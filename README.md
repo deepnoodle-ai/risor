@@ -20,8 +20,8 @@ user.role == "admin" || resource.ownerId == user.id
 // Configuration logic: safe navigation with fallbacks
 user?.settings?.theme ?? config?.defaults?.theme ?? "light"
 
-// Data transformation: filter, map, aggregate
-orders.filter(o => o.status == "pending").map(o => o.total).sum()
+// Data transformation: filter, map, reduce
+orders.filter(o => o.status == "pending").map(o => o.total).reduce((a, b) => a + b, 0)
 ```
 
 ## Go API

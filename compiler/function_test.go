@@ -50,6 +50,12 @@ func TestFunctionRequiredArgsCount(t *testing.T) {
 			defaults: []any{1}, // only first param has default
 			expected: 2,
 		},
+		{
+			name:     "defaults longer than params",
+			params:   []string{"a"},
+			defaults: []any{1, 2, 3}, // extra defaults ignored, shouldn't go negative
+			expected: 0,
+		},
 	}
 
 	for _, tt := range tests {

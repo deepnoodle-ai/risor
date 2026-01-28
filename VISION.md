@@ -75,7 +75,7 @@ and lets each application tailor Risor to its needs.
 When evaluating a feature or change, ask:
 
 1. **Does this serve embedded use cases?** If it only helps standalone scripting, it's probably out of scope.
-2. **Does this keep the core small?** If it can be a builtin instead of a language feature, prefer that.
+2. **Does this keep the core small?** If it can be a built-in function instead of a language feature, prefer that.
 3. **Is this the only way to do it?** If we already have a way, we need a strong reason to add another.
 4. **Will this surprise users?** If behavior isn't obvious, reconsider.
 5. **Can we say no?** The best features are the ones we don't add. Every feature is maintenance forever.
