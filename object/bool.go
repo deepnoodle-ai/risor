@@ -3,14 +3,24 @@ package object
 import (
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
 // Bool wraps bool and implements Object and Hashable interface.
 type Bool struct {
-	*base
 	value bool
+}
+
+func (b *Bool) Attrs() []AttrSpec {
+	return nil
+}
+
+func (b *Bool) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (b *Bool) SetAttr(name string, value Object) error {
+	return TypeErrorf("bool has no attribute %q", name)
 }
 
 func (b *Bool) Type() Type {
@@ -25,16 +35,6 @@ func (b *Bool) Inspect() string {
 	return fmt.Sprintf("%t", b.value)
 }
 
-func (b *Bool) HashKey() HashKey {
-	var value int64
-	if b.value {
-		value = 1
-	} else {
-		value = 0
-	}
-	return HashKey{Type: b.Type(), IntValue: value}
-}
-
 func (b *Bool) Interface() interface{} {
 	return b.value
 }
@@ -46,7 +46,7 @@ func (b *Bool) String() string {
 func (b *Bool) Compare(other Object) (int, error) {
 	otherBool, ok := other.(*Bool)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare bool and %s", other.Type())
+		return 0, TypeErrorf("unable to compare bool and %s", other.Type())
 	}
 	if b.value == otherBool.value {
 		return 0, nil
@@ -57,19 +57,20 @@ func (b *Bool) Compare(other Object) (int, error) {
 	return -1, nil
 }
 
-func (b *Bool) Equals(other Object) Object {
-	if other.Type() == BOOL && b.value == other.(*Bool).value {
-		return True
+func (b *Bool) Equals(other Object) bool {
+	otherBool, ok := other.(*Bool)
+	if !ok {
+		return false
 	}
-	return False
+	return b.value == otherBool.value
 }
 
 func (b *Bool) IsTruthy() bool {
 	return b.value
 }
 
-func (b *Bool) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for bool: %v", opType)
+func (b *Bool) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, newTypeErrorf("unsupported operation for bool: %v", opType)
 }
 
 func (b *Bool) MarshalJSON() ([]byte, error) {
@@ -94,5 +95,5 @@ func Not(b *Bool) *Bool {
 }
 
 func Equals(a, b Object) bool {
-	return a.Equals(b).(*Bool).value
+	return a.Equals(b)
 }

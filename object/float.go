@@ -5,14 +5,24 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
 // Float wraps float64 and implements Object and Hashable interfaces.
 type Float struct {
-	*base
 	value float64
+}
+
+func (f *Float) Attrs() []AttrSpec {
+	return nil
+}
+
+func (f *Float) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (f *Float) SetAttr(name string, value Object) error {
+	return TypeErrorf("float has no attribute %q", name)
 }
 
 func (f *Float) Inspect() string {
@@ -25,10 +35,6 @@ func (f *Float) Type() Type {
 
 func (f *Float) Value() float64 {
 	return f.value
-}
-
-func (f *Float) HashKey() HashKey {
-	return HashKey{Type: f.Type(), FltValue: f.value}
 }
 
 func (f *Float) Interface() interface{} {
@@ -68,33 +74,27 @@ func (f *Float) Compare(other Object) (int, error) {
 		}
 		return -1, nil
 	default:
-		return 0, errz.TypeErrorf("type error: unable to compare float and %s", other.Type())
+		return 0, TypeErrorf("unable to compare float and %s", other.Type())
 	}
 }
 
-func (f *Float) Equals(other Object) Object {
+func (f *Float) Equals(other Object) bool {
 	switch other := other.(type) {
 	case *Int:
-		if f.value == float64(other.value) {
-			return True
-		}
+		return f.value == float64(other.value)
 	case *Float:
-		if f.value == other.value {
-			return True
-		}
+		return f.value == other.value
 	case *Byte:
-		if f.value == float64(other.value) {
-			return True
-		}
+		return f.value == float64(other.value)
 	}
-	return False
+	return false
 }
 
 func (f *Float) IsTruthy() bool {
 	return f.value != 0.0
 }
 
-func (f *Float) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (f *Float) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *Int:
 		return f.runOperationFloat(opType, float64(right.value))
@@ -104,24 +104,24 @@ func (f *Float) RunOperation(opType op.BinaryOpType, right Object) Object {
 		rightFloat := float64(right.value)
 		return f.runOperationFloat(opType, rightFloat)
 	default:
-		return TypeErrorf("type error: unsupported operation for float: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for float: %v on type %s", opType, right.Type())
 	}
 }
 
-func (f *Float) runOperationFloat(opType op.BinaryOpType, right float64) Object {
+func (f *Float) runOperationFloat(opType op.BinaryOpType, right float64) (Object, error) {
 	switch opType {
 	case op.Add:
-		return NewFloat(f.value + right)
+		return NewFloat(f.value + right), nil
 	case op.Subtract:
-		return NewFloat(f.value - right)
+		return NewFloat(f.value - right), nil
 	case op.Multiply:
-		return NewFloat(f.value * right)
+		return NewFloat(f.value * right), nil
 	case op.Divide:
-		return NewFloat(f.value / right)
+		return NewFloat(f.value / right), nil
 	case op.Power:
-		return NewFloat(math.Pow(f.value, right))
+		return NewFloat(math.Pow(f.value, right)), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for float: %v", opType)
+		return nil, newTypeErrorf("unsupported operation for float: %v", opType)
 	}
 }
 

@@ -1,4 +1,4 @@
-<h1><img src="https://github.com/risor-io/risor/raw/main/static/images/risor-logo-nopad.png" alt="Risor logo" height="64" valign="middle"> Risor</h1>
+# Risor
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/risor-io/risor/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/risor-io/risor/tree/main)
 [![Apache-2.0 license](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -23,20 +23,14 @@ You might also want to try evaluating Risor scripts [from your browser](https://
 ## Syntax Example
 
 Here's a short example of how Risor feels like a hybrid of Go and Python. This
-demonstrates using Risor's pipe expressions to apply a series of transformations:
+demonstrates using string methods and chained calls:
 
 ```go
-array := ["gophers", "are", "burrowing", "rodents"]
+let array = ["gophers", "are", "burrowing", "rodents"]
 
-sentence := array | strings.join(" ") | strings.to_upper
+let sentence = " ".join(array).to_upper()
 
-print(sentence)
-```
-
-Output:
-
-```
-GOPHERS ARE BURROWING RODENTS
+// sentence is "GOPHERS ARE BURROWING RODENTS"
 ```
 
 ## Getting Started
@@ -71,7 +65,7 @@ Build the CLI from source as follows:
 ```bash
 git clone git@github.com:risor-io/risor.git
 cd risor/cmd/risor
-go install -tags aws,k8s,vault .
+go install .
 ```
 
 ### Go Library
@@ -98,7 +92,12 @@ import (
 func main() {
 	ctx := context.Background()
 	script := "math.sqrt(input)"
-	result, err := risor.Eval(ctx, script, risor.WithGlobal("input", 4))
+
+	// Start with the standard library and add custom variables
+	env := risor.Builtins()
+	env["input"] = 4
+
+	result, err := risor.Eval(ctx, script, risor.WithEnv(env))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,15 +107,15 @@ func main() {
 
 ## Built-in Functions and Modules
 
-30+ built-in functions are included and are documented [here](https://risor.io/docs/builtins).
+24 built-in functions are included and are documented [here](https://risor.io/docs/builtins).
+These include type conversions (`int`, `float`, `string`, `list`, `set`, etc.),
+container operations (`len`, `keys`, `delete`, `chunk`), and utilities like
+`filter`, `sorted`, `encode`, and `decode`.
 
-Modules are included that generally wrap the equivalent Go package. For example,
-there is direct correspondence between `base64`, `bytes`, `filepath`, `json`, `math`, `os`,
-`rand`, `regexp`, `strconv`, `strings`, and `time` Risor modules and
-the Go standard library.
+The `encode` and `decode` builtins support multiple formats: `base64`, `base32`,
+`hex`, `json`, `csv`, and `urlquery`.
 
-Risor modules that are beyond the Go standard library currently include
-`aws`, `color`, `cli`, `jmespath`, `pgx`, `playwright`, `qrcode`, `uuid`, `vault`, `k8s`, and more.
+Three modules are included: `math`, `rand`, and `regexp`.
 
 ## Go Interface
 
@@ -124,18 +123,20 @@ It is trivial to embed Risor in your Go program in order to evaluate scripts
 that have access to arbitrary Go structs and other types.
 
 The simplest way to use Risor is to call the `Eval` function and provide the script source code.
-The result is returned as a Risor object:
+By default, the environment is empty. Use `risor.Builtins()` to get the standard library:
 
 ```go
-result, err := risor.Eval(ctx, "math.min([5, 2, 7])")
-// result is 2, as an *object.Int
+result, err := risor.Eval(ctx, "math.min([5, 2, 7])", risor.WithEnv(risor.Builtins()))
+// result is 2
 ```
 
-Provide input to the script using Risor options:
+Provide input to the script using `WithEnv`:
 
 ```go
-result, err := risor.Eval(ctx, "input | strings.to_upper", risor.WithGlobal("input", "hello"))
-// result is "HELLO", as an *object.String
+env := risor.Builtins()
+env["input"] = 16
+result, err := risor.Eval(ctx, "input | math.sqrt", risor.WithEnv(env))
+// result is 4.0
 ```
 
 Use the same mechanism to inject a struct. You can then access fields or call
@@ -146,70 +147,29 @@ type Example struct {
     Message string
 }
 example := &Example{"abc"}
-result, err := risor.Eval(ctx, "len(ex.Message)", risor.WithGlobal("ex", example))
-// result is 3, as an *object.Int
+env := risor.Builtins()
+env["ex"] = example
+result, err := risor.Eval(ctx, "len(ex.Message)", risor.WithEnv(env))
+// result is 3
 ```
 
-## Optional Modules
+## Adding Custom Modules
 
 Risor is designed to have minimal external dependencies in its core libraries.
-You can choose to opt into various add-on modules if they are of value in your
-application. The modules are present in this same Git repository, but must be
-installed with `go get` as separate dependencies:
-
-| Name           | Path                                               | Go Get Command                                            |
-| -------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| aws            | [modules/aws](./modules/aws)                       | `go get github.com/risor-io/risor/modules/aws`            |
-| bcrypt         | [modules/bcrypt](./modules/bcrypt)                 | `go get github.com/risor-io/risor/modules/bcrypt`         |
-| cli            | [modules/cli](./modules/cli)                       | `go get github.com/risor-io/risor/modules/cli`            |
-| color          | [modules/color](./modules/color)                   | `go get github.com/risor-io/risor/modules/color`          |
-| echarts        | [modules/echarts](./modules/echarts)               | `go get github.com/risor-io/risor/modules/echarts`        |
-| gha            | [modules/gha](./modules/gha)                       | `go get github.com/risor-io/risor/modules/gha`            |
-| github         | [modules/github](./modules/github)                 | `go get github.com/risor-io/risor/modules/github`         |
-| goquery        | [modules/goquery](./modules/goquery)               | `go get github.com/risor-io/risor/modules/goquery`        |
-| htmltomarkdown | [modules/htmltomarkdown](./modules/htmltomarkdown) | `go get github.com/risor-io/risor/modules/htmltomarkdown` |
-| image          | [modules/image](./modules/image)                   | `go get github.com/risor-io/risor/modules/image`          |
-| isatty         | [modules/isatty](./modules/isatty)                 | `go get github.com/risor-io/risor/modules/isatty`         |
-| jmespath       | [modules/jmespath](./modules/jmespath)             | `go get github.com/risor-io/risor/modules/jmespath`       |
-| k8s            | [modules/kubernetes](./modules/kubernetes)         | `go get github.com/risor-io/risor/modules/kubernetes`     |
-| pgx            | [modules/pgx](./modules/pgx)                       | `go get github.com/risor-io/risor/modules/pgx`            |
-| playwright     | [modules/playwright](./modules/playwright)         | `go get github.com/risor-io/risor/modules/playwright`     |
-| qrcode         | [modules/qrcode](./modules/qrcode)                 | `go get github.com/risor-io/risor/modules/qrcode`         |
-| redis          | [modules/redis](./modules/redis)                   | `go get github.com/risor-io/risor/modules/redis`          |
-| s3fs           | [os/s3fs](./os/s3fs)                               | `go get github.com/risor-io/risor/os/s3fs`                |
-| sched          | [modules/sched](./modules/sched)                   | `go get github.com/risor-io/risor/modules/sched`          |
-| semver         | [modules/semver](./modules/semver)                 | `go get github.com/risor-io/risor/modules/semver`         |
-| shlex          | [modules/shlex](./modules/shlex)                   | `go get github.com/risor-io/risor/modules/shlex`          |
-| slack          | [modules/slack](./modules/slack)                   | `go get github.com/risor-io/risor/modules/slack`          |
-| sql            | [modules/sql](./modules/sql)                       | `go get github.com/risor-io/risor/modules/sql`            |
-| tablewriter    | [modules/tablewriter](./modules/tablewriter)       | `go get github.com/risor-io/risor/modules/tablewriter`    |
-| template       | [modules/template](./modules/template)             | `go get github.com/risor-io/risor/modules/template`       |
-| uuid           | [modules/uuid](./modules/uuid)                     | `go get github.com/risor-io/risor/modules/uuid`           |
-| yaml           | [modules/yaml](./modules/yaml)                     | `go get github.com/risor-io/risor/modules/yaml`           |
-| vault          | [modules/vault](./modules/vault)                   | `go get github.com/risor-io/risor/modules/vault`          |
-
-These add-ons are included by default when using the Risor CLI. However, when
-building Risor into your own program, you'll need to opt-in using `go get` as
-described above and then add the modules as globals in Risor scripts as follows:
+You can add custom modules to the environment when embedding Risor:
 
 ```go
 import (
     "github.com/risor-io/risor"
-    "github.com/risor-io/risor/modules/aws"
-    "github.com/risor-io/risor/modules/image"
-    "github.com/risor-io/risor/modules/pgx"
-    "github.com/risor-io/risor/modules/uuid"
+    "github.com/risor-io/risor/object"
 )
 
 func main() {
-    source := `"nice modules!"`
-    result, err := risor.Eval(ctx, source,
-        risor.WithGlobals(map[string]any{
-            "aws":   aws.Module(),
-            "image": image.Module(),
-            "pgx":   pgx.Module(),
-            "uuid":  uuid.Module(),
-        }))
+    env := risor.Builtins()
+    env["custom"] = object.NewBuiltinsModule("custom", map[string]object.Object{
+        "hello": object.NewBuiltin("hello", myHelloFunc),
+    })
+    result, err := risor.Eval(ctx, source, risor.WithEnv(env))
     // ...
 }
 ```

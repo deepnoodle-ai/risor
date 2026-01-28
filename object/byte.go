@@ -4,14 +4,24 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
 // Byte wraps byte and implements Object and Hashable interface.
 type Byte struct {
-	*base
 	value byte
+}
+
+func (b *Byte) Attrs() []AttrSpec {
+	return nil
+}
+
+func (b *Byte) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (b *Byte) SetAttr(name string, value Object) error {
+	return TypeErrorf("byte has no attribute %q", name)
 }
 
 func (b *Byte) Type() Type {
@@ -24,10 +34,6 @@ func (b *Byte) Value() byte {
 
 func (b *Byte) Inspect() string {
 	return fmt.Sprintf("%d", b.value)
-}
-
-func (b *Byte) HashKey() HashKey {
-	return HashKey{Type: b.Type(), IntValue: int64(b.value)}
 }
 
 func (b *Byte) Interface() interface{} {
@@ -67,33 +73,27 @@ func (b *Byte) Compare(other Object) (int, error) {
 		}
 		return -1, nil
 	default:
-		return 0, errz.TypeErrorf("type error: unable to compare byte and %s", other.Type())
+		return 0, TypeErrorf("unable to compare byte and %s", other.Type())
 	}
 }
 
-func (b *Byte) Equals(other Object) Object {
+func (b *Byte) Equals(other Object) bool {
 	switch other := other.(type) {
 	case *Byte:
-		if b.value == other.value {
-			return True
-		}
+		return b.value == other.value
 	case *Int:
-		if int64(b.value) == other.value {
-			return True
-		}
+		return int64(b.value) == other.value
 	case *Float:
-		if float64(b.value) == other.value {
-			return True
-		}
+		return float64(b.value) == other.value
 	}
-	return False
+	return false
 }
 
 func (b *Byte) IsTruthy() bool {
 	return b.value > 0
 }
 
-func (b *Byte) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (b *Byte) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *Byte:
 		return b.runOperationByte(opType, right.value)
@@ -102,82 +102,94 @@ func (b *Byte) RunOperation(opType op.BinaryOpType, right Object) Object {
 	case *Float:
 		return b.runOperationFloat(opType, right.value)
 	default:
-		return TypeErrorf("type error: unsupported operation for byte: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for byte: %v on type %s", opType, right.Type())
 	}
 }
 
-func (b *Byte) runOperationByte(opType op.BinaryOpType, right byte) Object {
+func (b *Byte) runOperationByte(opType op.BinaryOpType, right byte) (Object, error) {
 	switch opType {
 	case op.Add:
-		return NewByte(b.value + right)
+		return NewByte(b.value + right), nil
 	case op.Subtract:
-		return NewByte(b.value - right)
+		return NewByte(b.value - right), nil
 	case op.Multiply:
-		return NewByte(b.value * right)
+		return NewByte(b.value * right), nil
 	case op.Divide:
-		return NewByte(b.value / right)
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
+		return NewByte(b.value / right), nil
 	case op.Modulo:
-		return NewByte(b.value % right)
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
+		return NewByte(b.value % right), nil
 	case op.Xor:
-		return NewByte(b.value ^ right)
+		return NewByte(b.value ^ right), nil
 	case op.Power:
-		return NewByte(byte(math.Pow(float64(b.value), float64(right))))
+		return NewByte(byte(math.Pow(float64(b.value), float64(right)))), nil
 	case op.LShift:
-		return NewByte(b.value << right)
+		return NewByte(b.value << right), nil
 	case op.RShift:
-		return NewByte(b.value >> right)
+		return NewByte(b.value >> right), nil
 	case op.BitwiseAnd:
-		return NewByte(b.value & right)
+		return NewByte(b.value & right), nil
 	case op.BitwiseOr:
-		return NewByte(b.value | right)
+		return NewByte(b.value | right), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for byte: %v on type byte", opType)
+		return nil, newTypeErrorf("unsupported operation for byte: %v on type byte", opType)
 	}
 }
 
-func (b *Byte) runOperationInt(opType op.BinaryOpType, right int64) Object {
+func (b *Byte) runOperationInt(opType op.BinaryOpType, right int64) (Object, error) {
 	switch opType {
 	case op.Add:
-		return NewInt(int64(b.value) + right)
+		return NewInt(int64(b.value) + right), nil
 	case op.Subtract:
-		return NewInt(int64(b.value) - right)
+		return NewInt(int64(b.value) - right), nil
 	case op.Multiply:
-		return NewInt(int64(b.value) * right)
+		return NewInt(int64(b.value) * right), nil
 	case op.Divide:
-		return NewInt(int64(b.value) / right)
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
+		return NewInt(int64(b.value) / right), nil
 	case op.Modulo:
-		return NewInt(int64(b.value) % right)
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
+		return NewInt(int64(b.value) % right), nil
 	case op.Xor:
-		return NewInt(int64(b.value) ^ right)
+		return NewInt(int64(b.value) ^ right), nil
 	case op.Power:
-		return NewInt(int64(math.Pow(float64(b.value), float64(right))))
+		return NewInt(int64(math.Pow(float64(b.value), float64(right)))), nil
 	case op.LShift:
-		return NewInt(int64(b.value) << right)
+		return NewInt(int64(b.value) << right), nil
 	case op.RShift:
-		return NewInt(int64(b.value) >> right)
+		return NewInt(int64(b.value) >> right), nil
 	case op.BitwiseAnd:
-		return NewInt(int64(b.value) & right)
+		return NewInt(int64(b.value) & right), nil
 	case op.BitwiseOr:
-		return NewInt(int64(b.value) | right)
+		return NewInt(int64(b.value) | right), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for byte: %v on type int", opType)
+		return nil, newTypeErrorf("unsupported operation for byte: %v on type int", opType)
 	}
 }
 
-func (b *Byte) runOperationFloat(opType op.BinaryOpType, right float64) Object {
+func (b *Byte) runOperationFloat(opType op.BinaryOpType, right float64) (Object, error) {
 	switch opType {
 	case op.Add:
-		return NewFloat(float64(b.value) + right)
+		return NewFloat(float64(b.value) + right), nil
 	case op.Subtract:
-		return NewFloat(float64(b.value) - right)
+		return NewFloat(float64(b.value) - right), nil
 	case op.Multiply:
-		return NewFloat(float64(b.value) * right)
+		return NewFloat(float64(b.value) * right), nil
 	case op.Divide:
-		return NewFloat(float64(b.value) / right)
+		return NewFloat(float64(b.value) / right), nil
 	case op.Power:
-		return NewFloat(math.Pow(float64(b.value), right))
+		return NewFloat(math.Pow(float64(b.value), right)), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for byte: %v on type float", opType)
+		return nil, newTypeErrorf("unsupported operation for byte: %v on type float", opType)
 	}
 }
 

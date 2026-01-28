@@ -1,0 +1,22 @@
+// Regular Expressions
+// Pattern matching with regexp
+
+// Compile a pattern
+let re = regexp.compile(`\d+`)
+
+// Check if string matches
+let hasNumber = re.match("abc123")
+
+// Find first match
+let found = re.find("price: 42 dollars")
+
+// Find all matches
+let matches = re.find_all("a1 b2 c3")
+
+// Replace matches
+let replaced = re.replace_all("a1 b2", "X")
+
+// Quick match without compile
+let isPhone = regexp.match(`^\d{3}-\d{4}$`, "555-1234")
+
+{hasNumber, found, matches, replaced, isPhone}

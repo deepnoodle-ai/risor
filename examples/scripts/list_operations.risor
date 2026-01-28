@@ -1,0 +1,23 @@
+// List Operations
+// Map, filter, and reduce
+
+let numbers = [1, 2, 3, 4, 5]
+
+// Transform each element
+let doubled = numbers.map(x => x * 2)
+
+// Keep elements matching a condition
+let evens = numbers.filter(x => x % 2 == 0)
+
+// Combine into a single value
+let sum = numbers.reduce(0, (acc, x) => acc + x)
+
+// Chain operations
+let result = numbers
+    .filter(x => x > 2)
+    .map(x => x * 2)
+
+// Combine lists with spread
+let combined = [...[1, 2], ...[3, 4]]
+
+{doubled, evens, sum, result, combined}

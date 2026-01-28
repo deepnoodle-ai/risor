@@ -1,0 +1,20 @@
+// Math Module
+// Mathematical functions and constants
+
+// Constants
+let pi = math.PI
+
+// Basic functions
+let abs = math.abs(-42)
+let sqrt = math.sqrt(16)
+let pow = math.pow(2, 8)
+
+// Rounding
+let floor = math.floor(3.7)
+let ceil = math.ceil(3.2)
+
+// Min and max
+let min = math.min(5, 3)
+let max = math.max(5, 3)
+
+{pi, abs, sqrt, pow, floor, ceil, min, max}

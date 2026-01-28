@@ -19,11 +19,11 @@ func main() {
 	a := Engine.NewVector(4,5,6)
 	b := Engine.NewVector(1,2,3)
 	c := a.Add(b) // This works now, which is great!
-	c.X = 15 // However, this fails with "type error: cannot set field X"
-	print("c.X =", c.X) // Print the value to verify it was set correctly
-	print(c)
+	c.X = 15 // Set field X
+	// Return the result (print not available in sandboxed mode)
+	{"x": c.X, "vector": c}
 	`
-	_, err := risor.Eval(context.Background(), src, risor.WithGlobal("Engine", &Engine{}))
+	_, err := risor.Eval(context.Background(), src, risor.WithEnv(map[string]any{"Engine": &Engine{}}))
 	if err != nil {
 		log.Fatal(err)
 	}

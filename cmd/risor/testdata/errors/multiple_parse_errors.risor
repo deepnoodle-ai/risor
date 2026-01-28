@@ -1,0 +1,17 @@
+// Example: Multiple parse errors
+// This file demonstrates how Risor reports multiple syntax errors at once.
+// Run with: go run ./cmd/risor ./cmd/risor/testdata/errors/multiple_parse_errors.risor
+
+// Error 1: Missing closing paren in function parameters
+function greet(name, age {
+    return "Hello, " + name
+}
+
+// Error 2: Invalid assignment target (can't assign to expression)
+1 + 2 = 3
+
+// Error 3: Unterminated string literal
+let message = "this string never ends
+
+// Error 4: Missing value in assignment
+let x =

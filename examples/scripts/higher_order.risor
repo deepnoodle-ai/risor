@@ -1,0 +1,20 @@
+// Higher-Order Functions
+// Functions as values and the pipe operator
+
+// Pass functions as arguments
+function apply(fn, x) {
+    return fn(x)
+}
+
+let double = x => x * 2
+let square = x => x * x
+
+// Pipe operator chains transformations
+let result = 5 | double | square
+
+// Use with list methods
+let numbers = [1, 2, 3, 4, 5]
+let doubled = numbers.map(double)
+let big = numbers.filter(x => x > 2)
+
+{applied: apply(double, 10), pipeResult: result, doubled, big}

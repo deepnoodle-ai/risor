@@ -1,8 +1,0 @@
-
-mydata := {
-    count: 1,
-}
-
-func get_count() {
-    return mydata["count"]
-}

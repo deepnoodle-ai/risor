@@ -1,0 +1,23 @@
+// Error Handling
+// Try, catch, and throw
+
+// Throw errors
+function divide(a, b) {
+    if (b == 0) {
+        throw error("division by zero")
+    }
+    return a / b
+}
+
+// Catch errors with try/catch
+let ok = try { divide(10, 2) } catch e { -1 }
+let failed = try { divide(10, 0) } catch e { -1 }
+
+// Get error message
+let msg = try {
+    throw error("oops")
+} catch e {
+    e.message()
+}
+
+{ok, failed, msg}

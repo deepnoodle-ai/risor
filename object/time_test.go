@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestTimeAddDate(t *testing.T) {
@@ -30,12 +30,13 @@ func TestTimeAddDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("AddDate(%d, %d, %d)", tt.years, tt.months, tt.days), func(t *testing.T) {
-			result := baseTime.AddDate(context.Background(), NewInt(tt.years), NewInt(tt.months), NewInt(tt.days))
+			result, err := baseTime.AddDate(context.Background(), NewInt(tt.years), NewInt(tt.months), NewInt(tt.days))
+			assert.Nil(t, err)
 
-			require.Equal(t, TIME, result.Type(), "expected TIME, got %v", result.Type())
+			assert.Equal(t, result.Type(), TIME, "expected TIME, got %v", result.Type())
 
 			resultTime := result.(*Time).Value()
-			require.Equal(t, tt.want, resultTime)
+			assert.Equal(t, resultTime, tt.want)
 		})
 	}
 }

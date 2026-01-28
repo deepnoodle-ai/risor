@@ -1,0 +1,187 @@
+// Encoding and Decoding Tests
+// Tests for JSON, Base64, Hex, and other codecs
+
+function test_json_encode_object(t) {
+    let data = {name: "Alice", age: 30}
+    let encoded = encode(data, "json")
+    t.assert(encoded.contains("Alice"))
+    t.assert(encoded.contains("30"))
+}
+
+function test_json_decode_object(t) {
+    let json = '{"name": "Bob", "age": 25}'
+    let decoded = decode(json, "json")
+    t.assert_eq(decoded.name, "Bob")
+    t.assert_eq(decoded.age, 25)
+}
+
+function test_json_round_trip(t) {
+    let original = {
+        name: "Charlie",
+        active: true,
+        scores: [95, 87, 92]
+    }
+    let encoded = encode(original, "json")
+    let decoded = decode(encoded, "json")
+
+    t.assert_eq(decoded.name, original.name)
+    t.assert_eq(decoded.active, original.active)
+    t.assert_eq(decoded.scores, original.scores)
+}
+
+function test_json_nested_objects(t) {
+    let data = {
+        user: {
+            name: "Diana",
+            settings: {
+                theme: "dark",
+                notifications: true
+            }
+        }
+    }
+    let encoded = encode(data, "json")
+    let decoded = decode(encoded, "json")
+
+    t.assert_eq(decoded.user.name, "Diana")
+    t.assert_eq(decoded.user.settings.theme, "dark")
+    t.assert_eq(decoded.user.settings.notifications, true)
+}
+
+function test_json_array(t) {
+    let data = [1, 2, 3, "four", true, nil]
+    let encoded = encode(data, "json")
+    let decoded = decode(encoded, "json")
+
+    t.assert_eq(len(decoded), 6)
+    t.assert_eq(decoded[0], 1)
+    t.assert_eq(decoded[3], "four")
+    t.assert_eq(decoded[4], true)
+    t.assert_eq(decoded[5], nil)
+}
+
+function test_base64_encode(t) {
+    let message = "Hello, World!"
+    let encoded = encode(message, "base64")
+    t.assert_eq(encoded, "SGVsbG8sIFdvcmxkIQ==")
+}
+
+function test_base64_decode(t) {
+    let encoded = "SGVsbG8sIFdvcmxkIQ=="
+    let decoded = decode(encoded, "base64")
+    t.assert_eq(decoded, "Hello, World!")
+}
+
+function test_base64_round_trip(t) {
+    let original = "The quick brown fox jumps over the lazy dog"
+    let encoded = encode(original, "base64")
+    let decoded = decode(encoded, "base64")
+    t.assert_eq(decoded, original)
+}
+
+function test_base32_encode(t) {
+    let message = "Hello"
+    let encoded = encode(message, "base32")
+    t.assert_eq(encoded, "JBSWY3DP")
+}
+
+function test_base32_round_trip(t) {
+    let original = "Test message"
+    let encoded = encode(original, "base32")
+    let decoded = decode(encoded, "base32")
+    t.assert_eq(decoded, original)
+}
+
+function test_hex_encode(t) {
+    let message = "Hi"
+    let encoded = encode(message, "hex")
+    t.assert_eq(encoded, "4869")
+}
+
+function test_hex_decode(t) {
+    let hex = "48656c6c6f"
+    let decoded = decode(hex, "hex")
+    t.assert_eq(decoded, "Hello")
+}
+
+function test_hex_round_trip(t) {
+    let original = "Binary data test"
+    let encoded = encode(original, "hex")
+    let decoded = decode(encoded, "hex")
+    t.assert_eq(decoded, original)
+}
+
+function test_urlquery_skip(t) {
+    // URL query encoding requires string input, not maps
+    // This is a placeholder for when the API is clarified
+    t.skip("URL query encoding API differs from expected")
+}
+
+function test_csv_encode(t) {
+    let data = [
+        ["name", "age"],
+        ["Alice", "30"],
+        ["Bob", "25"]
+    ]
+    let encoded = encode(data, "csv")
+    t.assert(encoded.contains("name"))
+    t.assert(encoded.contains("Alice"))
+    t.assert(encoded.contains("30"))
+}
+
+function test_csv_decode(t) {
+    let csv = "name,age\nAlice,30\nBob,25"
+    let decoded = decode(csv, "csv")
+
+    t.assert_eq(len(decoded), 3)
+    t.assert_eq(decoded[0], ["name", "age"])
+    t.assert_eq(decoded[1], ["Alice", "30"])
+    t.assert_eq(decoded[2], ["Bob", "25"])
+}
+
+function test_csv_round_trip(t) {
+    let original = [
+        ["id", "name", "score"],
+        ["1", "Alice", "95"],
+        ["2", "Bob", "87"]
+    ]
+    let encoded = encode(original, "csv")
+    let decoded = decode(encoded, "csv")
+
+    t.assert_eq(decoded, original)
+}
+
+function test_complex_json_structure(t) {
+    let data = {
+        users: [
+            {id: 1, name: "Alice", tags: ["admin", "user"]},
+            {id: 2, name: "Bob", tags: ["user"]}
+        ],
+        config: {
+            maxResults: 100,
+            enabled: true
+        }
+    }
+
+    let encoded = encode(data, "json")
+    let decoded = decode(encoded, "json")
+
+    t.assert_eq(len(decoded.users), 2)
+    t.assert_eq(decoded.users[0].name, "Alice")
+    t.assert_eq(decoded.users[0].tags, ["admin", "user"])
+    t.assert_eq(decoded.config.maxResults, 100)
+    t.assert_eq(decoded.config.enabled, true)
+}
+
+function test_empty_structures(t) {
+    // Empty object
+    let emptyObj = {}
+    let encodedObj = encode(emptyObj, "json")
+    let decodedObj = decode(encodedObj, "json")
+    t.assert_eq(keys(decodedObj), [])
+
+    // Empty array
+    let emptyArr = []
+    let encodedArr = encode(emptyArr, "json")
+    let decodedArr = decode(encodedArr, "json")
+    t.assert_eq(decodedArr, [])
+}

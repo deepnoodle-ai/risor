@@ -3,25 +3,24 @@ package object
 import (
 	"testing"
 
-	"github.com/risor-io/risor/errz"
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/op"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCompareNonComparable(t *testing.T) {
-	s1 := NewSet(nil)
-	s2 := NewSet(nil)
-	_, err := Compare(op.LessThan, s1, s2)
-	require.Error(t, err)
-	require.Equal(t, errz.TypeErrorf("type error: expected a comparable object (got set)"), err)
+	m1 := NewMap(nil)
+	m2 := NewMap(nil)
+	_, err := Compare(op.LessThan, m1, m2)
+	assert.Error(t, err)
+	assert.Equal(t, err.Error(), "type error: expected a comparable object (got map)")
 }
 
 func TestCompareUnknownComparison(t *testing.T) {
 	obj1 := NewInt(1)
 	obj2 := NewInt(2)
 	_, err := Compare(op.CompareOpType(222), obj1, obj2)
-	require.Error(t, err)
-	require.Equal(t, errz.EvalErrorf("eval error: unknown object comparison operator: 222"), err)
+	assert.Error(t, err)
+	assert.Equal(t, err.Error(), "eval error: unknown object comparison operator: 222")
 }
 
 func TestAndOperator(t *testing.T) {
@@ -44,8 +43,8 @@ func TestAndOperator(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		result, err := BinaryOp(op.And, tc.left, tc.right)
-		require.NoError(t, err)
-		require.Equal(t, tc.want, result)
+		assert.NoError(t, err)
+		assert.Equal(t, result, tc.want)
 	}
 }
 
@@ -69,7 +68,7 @@ func TestOrOperator(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		result, err := BinaryOp(op.Or, tc.left, tc.right)
-		require.NoError(t, err)
-		require.Equal(t, tc.want, result)
+		assert.NoError(t, err)
+		assert.Equal(t, result, tc.want)
 	}
 }

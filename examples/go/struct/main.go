@@ -67,8 +67,8 @@ const defaultExample = `
 svc.SetName("My Service")
 svc.Start()
 state := svc.GetState()
-print("STATE:", state, type(state))
-state.IsRunning()
+// Return a map with state info (print not available in sandboxed mode)
+{"state": state, "type": type(state), "running": state.IsRunning()}
 `
 
 var red = color.New(color.FgRed).SprintfFunc()
@@ -84,7 +84,7 @@ func main() {
 	svc := &Service{}
 
 	// Run the Risor code which can access the service as `svc`
-	result, err := risor.Eval(ctx, code, risor.WithGlobal("svc", svc))
+	result, err := risor.Eval(ctx, code, risor.WithEnv(map[string]any{"svc": svc}))
 	if err != nil {
 		fmt.Println(red(err.Error()))
 		os.Exit(1)

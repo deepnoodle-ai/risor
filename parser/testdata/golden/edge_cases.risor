@@ -1,0 +1,60 @@
+// Operator precedence edge cases
+
+// Unary minus with power - parses as (-2) ** 3
+-2 ** 3
+
+// Nullish coalescing with logical - ?? has lower precedence than &&
+a ?? b && c
+
+// In operator has high precedence
+1 + 2 in [3]
+
+// Not in operator similar
+1 + 2 not in [3]
+
+// Pipe with newlines after operator
+a |
+b |
+c
+
+// Newlines in function calls
+f(
+  1,
+  2,
+  3
+)
+
+// Newlines in lists
+[
+  1,
+  2,
+  3,
+]
+
+// Newlines in maps
+{
+  a: 1,
+  b: 2,
+}
+
+// Optional chaining
+obj?.field
+obj?.method()
+a?.b?.c
+
+// Compound assignment on attributes
+obj.field += 1
+
+// Postfix on indexed expression
+arr[0]++
+
+// Arrow function variations
+x => x + 1
+() => 42
+(a, b) => a + b
+(a, b = 10) => a + b
+(x) => { return x * 2 }
+
+// Spread in various contexts
+[1, ...arr, 2]
+f(a, ...args, b)

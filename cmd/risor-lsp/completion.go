@@ -10,29 +10,22 @@ import (
 
 // Risor keywords for completion
 var risorKeywords = []string{
-	"as", "break", "case", "const", "continue", "default", "defer", "else",
-	"false", "for", "from", "func", "go", "if", "import", "in", "nil", "not",
-	"range", "return", "struct", "switch", "true", "var",
+	"case", "catch", "const", "default", "else", "false", "finally",
+	"function", "if", "in", "let", "nil", "not", "return", "struct",
+	"switch", "throw", "true", "try",
 }
 
 // Common built-in functions
 var risorBuiltins = []string{
-	"all", "any", "assert", "bool", "buffer", "byte_slice", "byte", "call",
-	"chan", "chr", "chunk", "close", "coalesce", "decode", "delete", "encode",
-	"error", "float_slice", "float", "getattr", "hash", "int", "is_hashable",
-	"iter", "jmespath", "keys", "len", "list", "make", "map", "ord", "reversed",
-	"set", "sorted", "spawn", "sprintf", "string", "try", "type",
+	"all", "any", "assert", "bool", "byte", "call", "chunk", "coalesce",
+	"decode", "encode", "filter", "float", "getattr",
+	"int", "keys", "len", "list", "reversed",
+	"sorted", "sprintf", "string", "type",
 }
 
 // Common modules
 var risorModules = []string{
-	"aws", "base64", "bcrypt", "bytes", "cli", "color", "dns", "echarts",
-	"errors", "exec", "filepath", "fmt", "gha", "github", "goquery",
-	"htmltomarkdown", "http", "image", "isatty", "jmespath", "json",
-	"kubernetes", "math", "net", "os", "pgx", "playwright", "qrcode",
-	"rand", "redis", "regexp", "sched", "semver", "shlex", "slack",
-	"sql", "ssh", "strconv", "strings", "tablewriter", "template",
-	"time", "uuid", "vault", "yaml",
+	"math", "rand", "regexp", "strings", "time",
 }
 
 func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
@@ -106,16 +99,16 @@ func extractVariables(program *ast.Program) []string {
 	var variables []string
 	variableSet := make(map[string]bool)
 
-	for _, stmt := range program.Statements() {
+	for _, stmt := range program.Stmts {
 		switch s := stmt.(type) {
 		case *ast.Var:
-			name, _ := s.Value()
+			name := s.Name.Name
 			if name != "" && !variableSet[name] {
 				variables = append(variables, name)
 				variableSet[name] = true
 			}
 		case *ast.Assign:
-			name := s.Name()
+			name := s.Name.Name
 			if name != "" && !variableSet[name] {
 				variables = append(variables, name)
 				variableSet[name] = true
@@ -131,12 +124,12 @@ func extractFunctions(program *ast.Program) []string {
 	var functions []string
 	functionSet := make(map[string]bool)
 
-	for _, stmt := range program.Statements() {
+	for _, stmt := range program.Stmts {
 		switch s := stmt.(type) {
 		case *ast.Assign:
 			// Check if we're assigning a function to a variable
-			if _, ok := s.Value().(*ast.Func); ok {
-				name := s.Name()
+			if _, ok := s.Value.(*ast.Func); ok {
+				name := s.Name.Name
 				if name != "" && !functionSet[name] {
 					functions = append(functions, name)
 					functionSet[name] = true
@@ -144,8 +137,8 @@ func extractFunctions(program *ast.Program) []string {
 			}
 		case *ast.Var:
 			// Check if we're declaring a variable with a function value
-			name, value := s.Value()
-			if _, ok := value.(*ast.Func); ok && name != "" {
+			name := s.Name.Name
+			if _, ok := s.Value.(*ast.Func); ok && name != "" {
 				if !functionSet[name] {
 					functions = append(functions, name)
 					functionSet[name] = true

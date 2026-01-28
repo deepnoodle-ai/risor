@@ -1,0 +1,26 @@
+// Closures
+// Functions that capture variables from their environment
+
+// A counter that remembers its state
+function makeCounter() {
+    let count = 0
+    return function() {
+        count++
+        return count
+    }
+}
+
+let counter = makeCounter()
+let a = counter()  // 1
+let b = counter()  // 2
+let c = counter()  // 3
+
+// A multiplier factory
+function makeMultiplier(factor) {
+    return x => x * factor
+}
+
+let double = makeMultiplier(2)
+let triple = makeMultiplier(3)
+
+{counts: [a, b, c], doubled: double(5), tripled: triple(5)}

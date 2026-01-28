@@ -1,0 +1,5 @@
+function greet(name) { return ("Hello, " + name) }
+function add(a, b) { return (a + b) }
+function sum() { return numbers }
+let arrow = function(x, y) { return (x + y) }
+let simple = function(x) { return (x * 2) }

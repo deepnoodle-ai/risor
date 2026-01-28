@@ -1,0 +1,4 @@
+// Basic expressions test
+1 + 2 * 3
+x + y - z
+a && b || c

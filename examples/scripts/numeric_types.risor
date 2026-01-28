@@ -1,0 +1,23 @@
+// Numeric Types
+// Int, float, and byte
+
+// Type conversions
+let i = 42
+let f = 3.14
+
+let toFloat = float(i)    // 42.0
+let toInt = int(f)        // 3 (truncates)
+
+// Division behavior
+let intDiv = 7 / 2        // 3 (integer division)
+let floatDiv = 7.0 / 2    // 3.5
+
+// Power operator
+let power = 2 ** 10       // 1024
+
+// Increment
+let counter = 0
+counter++
+counter++
+
+{toFloat, toInt, intDiv, floatDiv, power, counter}

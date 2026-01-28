@@ -1,12 +1,21 @@
 package object
 
 import (
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
-type NilType struct {
-	*base
+type NilType struct{}
+
+func (n *NilType) Attrs() []AttrSpec {
+	return nil
+}
+
+func (n *NilType) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (n *NilType) SetAttr(name string, value Object) error {
+	return TypeErrorf("nil has no attribute %q", name)
 }
 
 func (n *NilType) Type() Type {
@@ -25,22 +34,16 @@ func (n *NilType) Interface() interface{} {
 	return nil
 }
 
-func (n *NilType) HashKey() HashKey {
-	return HashKey{Type: n.Type()}
-}
-
 func (n *NilType) Compare(other Object) (int, error) {
 	if _, ok := other.(*NilType); ok {
 		return 0, nil
 	}
-	return 0, errz.TypeErrorf("type error: unable to compare nil and %s", other.Type())
+	return 0, TypeErrorf("unable to compare nil and %s", other.Type())
 }
 
-func (n *NilType) Equals(other Object) Object {
-	if other.Type() == NIL {
-		return True
-	}
-	return False
+func (n *NilType) Equals(other Object) bool {
+	_, ok := other.(*NilType)
+	return ok
 }
 
 func (n *NilType) IsTruthy() bool {
@@ -51,6 +54,6 @@ func (n *NilType) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
-func (n *NilType) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for nil: %v", opType)
+func (n *NilType) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, newTypeErrorf("unsupported operation for nil: %v", opType)
 }

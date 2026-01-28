@@ -2,80 +2,99 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 
+	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/compiler"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/dis"
-	"github.com/risor-io/risor/parser"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-const disExample = `  risor dis -c "a := 1 + 2"
+func disHandler(ctx *cli.Context) error {
+	opts := getRisorOptions(ctx)
 
-  risor dis ./path/to/script.risor
+	// Get code from -c flag, --stdin, or file argument
+	code, err := getDisCode(ctx)
+	if err != nil {
+		return err
+	}
 
-  risor dis ./path/to/script.risor --func myfunc`
+	// Compile the input code
+	compiledCode, err := risor.Compile(context.Background(), code, opts...)
+	if err != nil {
+		return err
+	}
+	targetCode := compiledCode
 
-var disCmd = &cobra.Command{
-	Use:     "dis",
-	Short:   "Disassemble Risor code",
-	Example: disExample,
-	Args:    cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		ctx := context.Background()
-		processGlobalFlags()
-		opts := getRisorOptions()
-		code, err := getRisorCode(cmd, args)
-		if err != nil {
-			fatal(err)
-		}
-
-		// Parse then compile the input code
-		ast, err := parser.Parse(ctx, code)
-		if err != nil {
-			fatal(err)
-		}
-		cfg := risor.NewConfig(opts...)
-		compiledCode, err := compiler.Compile(ast, cfg.CompilerOpts()...)
-		if err != nil {
-			fatal(err)
-		}
-		targetCode := compiledCode
-
-		// If a function name was provided, disassemble its code only
-		if funcName := viper.GetString("func"); funcName != "" {
-			var fn *compiler.Function
-			for i := 0; i < compiledCode.ConstantsCount(); i++ {
-				obj, ok := compiledCode.Constant(i).(*compiler.Function)
-				if !ok {
-					continue
-				}
-				if obj.Name() == funcName {
-					fn = obj
-					break
-				}
+	// If a function name was provided, disassemble its code only
+	if funcName := ctx.String("func"); funcName != "" {
+		var fn *bytecode.Function
+		for i := 0; i < compiledCode.ConstantCount(); i++ {
+			obj, ok := compiledCode.ConstantAt(i).(*bytecode.Function)
+			if !ok {
+				continue
 			}
-			if fn == nil {
-				fatal(fmt.Sprintf("function %q not found", funcName))
+			if obj.Name() == funcName {
+				fn = obj
+				break
 			}
-			targetCode = fn.Code()
 		}
+		if fn == nil {
+			return fmt.Errorf("function %q not found", funcName)
+		}
+		targetCode = fn.Code()
+	}
 
-		// Disassemble and print the instructions
-		instructions, err := dis.Disassemble(targetCode)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		dis.Print(instructions, os.Stdout)
-	},
+	// Disassemble and print the instructions
+	instructions, err := dis.Disassemble(targetCode)
+	if err != nil {
+		return err
+	}
+	dis.Print(instructions, os.Stdout)
+	return nil
 }
 
-func init() {
-	rootCmd.AddCommand(disCmd)
-	disCmd.Flags().String("func", "", "Function name")
-	viper.BindPFlag("func", disCmd.Flags().Lookup("func"))
+func getDisCode(ctx *cli.Context) (string, error) {
+	codeSet := ctx.IsSet("code")
+	stdinSet := ctx.Bool("stdin")
+	fileProvided := ctx.Arg(0) != ""
+
+	// Check for conflicting input sources
+	count := 0
+	if codeSet {
+		count++
+	}
+	if stdinSet {
+		count++
+	}
+	if fileProvided {
+		count++
+	}
+	if count > 1 {
+		return "", errors.New("multiple input sources specified")
+	}
+	if count == 0 {
+		return "", errors.New("no input provided")
+	}
+
+	if stdinSet {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+
+	if fileProvided {
+		data, err := os.ReadFile(ctx.Arg(0))
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+
+	return ctx.String("code"), nil
 }

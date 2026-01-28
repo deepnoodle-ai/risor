@@ -11,6 +11,7 @@ type Function struct {
 	name       string
 	parameters []string
 	defaults   []any
+	restParam  string // Name of rest parameter (empty if none)
 	code       *Code
 }
 
@@ -85,6 +86,7 @@ type FunctionOpts struct {
 	Name       string
 	Parameters []string
 	Defaults   []any
+	RestParam  string // Name of rest parameter (empty if none)
 	Code       *Code
 }
 
@@ -94,6 +96,15 @@ func NewFunction(opts FunctionOpts) *Function {
 		name:       opts.Name,
 		parameters: opts.Parameters,
 		defaults:   opts.Defaults,
+		restParam:  opts.RestParam,
 		code:       opts.Code,
 	}
+}
+
+func (f *Function) RestParam() string {
+	return f.restParam
+}
+
+func (f *Function) HasRestParam() bool {
+	return f.restParam != ""
 }

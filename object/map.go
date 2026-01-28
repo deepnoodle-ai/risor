@@ -53,133 +53,22 @@ func (m *Map) Value() map[string]Object {
 }
 
 func (m *Map) SetAttr(name string, value Object) error {
+	// Dot syntax only updates existing keys. Use bracket syntax to add new keys.
+	if _, exists := m.items[name]; !exists {
+		return fmt.Errorf("key error: %q does not exist (use m[%q] = value to add new keys)", name, name)
+	}
 	m.Set(name, value)
 	return nil
 }
 
+func (m *Map) Attrs() []AttrSpec {
+	// Map has no methods - dot syntax accesses keys directly.
+	return nil
+}
+
 func (m *Map) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "keys":
-		return &Builtin{
-			name: "map.keys",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("map.keys", 0, len(args))
-				}
-				return m.Keys()
-			},
-		}, true
-	case "values":
-		return &Builtin{
-			name: "map.values",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("map.values", 0, len(args))
-				}
-				return m.Values()
-			},
-		}, true
-	case "get":
-		return &Builtin{
-			name: "map.get",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) < 1 || len(args) > 2 {
-					return NewArgsRangeError("map.get", 1, 2, len(args))
-				}
-				key, err := AsString(args[0])
-				if err != nil {
-					return err
-				}
-				value, found := m.items[key]
-				if !found {
-					if len(args) == 2 {
-						return args[1]
-					}
-					return Nil
-				}
-				return value
-			},
-		}, true
-	case "clear":
-		return &Builtin{
-			name: "map.clear",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("map.clear", 0, len(args))
-				}
-				m.Clear()
-				return m
-			},
-		}, true
-	case "copy":
-		return &Builtin{
-			name: "map.copy",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("map.copy", 0, len(args))
-				}
-				return m.Copy()
-			},
-		}, true
-	case "items":
-		return &Builtin{
-			name: "map.items",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("map.items", 0, len(args))
-				}
-				return m.ListItems()
-			},
-		}, true
-	case "pop":
-		return &Builtin{
-			name: "map.pop",
-			fn: func(ctx context.Context, args ...Object) Object {
-				nArgs := len(args)
-				if nArgs < 1 || nArgs > 2 {
-					return NewArgsRangeError("map.pop", 1, 2, len(args))
-				}
-				key, err := AsString(args[0])
-				if err != nil {
-					return err
-				}
-				var def Object
-				if nArgs == 2 {
-					def = args[1]
-				}
-				return m.Pop(key, def)
-			},
-		}, true
-	case "setdefault":
-		return &Builtin{
-			name: "map.setdefault",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 2 {
-					return NewArgsError("map.setdefault", 2, len(args))
-				}
-				key, err := AsString(args[0])
-				if err != nil {
-					return err
-				}
-				return m.SetDefault(key, args[1])
-			},
-		}, true
-	case "update":
-		return &Builtin{
-			name: "map.update",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("map.update", 1, len(args))
-				}
-				other, err := AsMap(args[0])
-				if err != nil {
-					return err
-				}
-				m.Update(other)
-				return m
-			},
-		}, true
-	}
+	// Map dot syntax only accesses keys. Use keys(m) for key list,
+	// getattr(m, "key", default) for safe access with default.
 	o, ok := m.items[name]
 	return o, ok
 }
@@ -299,34 +188,34 @@ func (m *Map) Interface() interface{} {
 	return result
 }
 
-func (m *Map) Equals(other Object) Object {
-	if other.Type() != MAP {
-		return False
+func (m *Map) Equals(other Object) bool {
+	otherMap, ok := other.(*Map)
+	if !ok {
+		return false
 	}
-	otherMap := other.(*Map)
 	if len(m.items) != len(otherMap.items) {
-		return False
+		return false
 	}
 	for k, v := range m.items {
 		otherValue, found := otherMap.items[k]
 		if !found {
-			return False
+			return false
 		}
-		if !v.Equals(otherValue).(*Bool).value {
-			return False
+		if !v.Equals(otherValue) {
+			return false
 		}
 	}
-	return True
+	return true
 }
 
-func (m *Map) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for map: %v", opType)
+func (m *Map) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, newTypeErrorf("unsupported operation for map: %v", opType)
 }
 
 func (m *Map) GetItem(key Object) (Object, *Error) {
 	strObj, ok := key.(*String)
 	if !ok {
-		return nil, TypeErrorf("type error: map key must be a string (got %s)", key.Type())
+		return nil, TypeErrorf("map key must be a string (got %s)", key.Type())
 	}
 	value, found := m.items[strObj.value]
 	if !found {
@@ -344,7 +233,7 @@ func (m *Map) GetSlice(s Slice) (Object, *Error) {
 func (m *Map) SetItem(key, value Object) *Error {
 	strObj, ok := key.(*String)
 	if !ok {
-		return TypeErrorf("type error: map key must be a string (got %s)", key.Type())
+		return TypeErrorf("map key must be a string (got %s)", key.Type())
 	}
 	m.items[strObj.value] = value
 	return nil
@@ -354,7 +243,7 @@ func (m *Map) SetItem(key, value Object) *Error {
 func (m *Map) DelItem(key Object) *Error {
 	strObj, ok := key.(*String)
 	if !ok {
-		return TypeErrorf("type error: map key must be a string (got %s)", key.Type())
+		return TypeErrorf("map key must be a string (got %s)", key.Type())
 	}
 	delete(m.items, strObj.value)
 	return nil
@@ -379,8 +268,12 @@ func (m *Map) Len() *Int {
 	return NewInt(int64(len(m.items)))
 }
 
-func (m *Map) Iter() Iterator {
-	return NewMapIter(m)
+func (m *Map) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for _, k := range m.SortedKeys() {
+		if !fn(NewString(k), m.items[k]) {
+			return
+		}
+	}
 }
 
 func (m *Map) StringKeys() []string {
@@ -389,12 +282,6 @@ func (m *Map) StringKeys() []string {
 		keys = append(keys, k)
 	}
 	return keys
-}
-
-func (m *Map) Cost() int {
-	// It would be possible to recurse and compute the cost of each item, but
-	// let's avoid that since it would be an expensive op itself.
-	return len(m.items) * 8
 }
 
 func (m *Map) MarshalJSON() ([]byte, error) {

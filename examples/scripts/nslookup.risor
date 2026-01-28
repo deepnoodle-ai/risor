@@ -1,8 +1,0 @@
-#!/usr/bin/env risor --
-
-res := nslookup("www.google.com")
-
-print(res)
-
-print(nslookup("google.com", "TXT"))
-print(nslookup("www.google.com", "A", "1.1.1.1:53"))

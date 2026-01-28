@@ -1,7 +1,7 @@
 // expected value: [1, 2, 3, 4]
 // expected type: list
 
-a := [1,2,3]
+let a = [1,2,3]
 a.append(4)
 assert(a[3] == 4)
 

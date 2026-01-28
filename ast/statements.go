@@ -2,217 +2,192 @@ package ast
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/token"
+	"github.com/risor-io/risor/internal/token"
 )
 
-// Var is a statement that assigns a value to a variable. It may be a
-// declaration or an assignment. If it's a declaration, isWalrus is true.
+// Var is a statement that declares a new variable with an initial value.
+// This is used for "let x = value" statements.
 type Var struct {
-	token token.Token
-
-	// name is the name of the variable to which we're assigning
-	name *Ident
-
-	// value is the thing we're storing in the variable.
-	value Expression
-
-	// isWalrus is true if this is a ":=" statement.
-	isWalrus bool
+	Let   token.Position // position of "let" keyword
+	Name  *Ident         // variable name
+	Value Expr           // initial value
 }
 
-// NewVar creates a new Var node.
-func NewVar(token token.Token, name *Ident, value Expression) *Var {
-	return &Var{token: token, name: name, value: value}
-}
+func (x *Var) stmtNode() {}
 
-// NewDeclaration creates a new Var node that is a declaration.
-func NewDeclaration(token token.Token, name *Ident, value Expression) *Var {
-	return &Var{token: token, name: name, value: value, isWalrus: true}
-}
+func (x *Var) Pos() token.Position { return x.Let }
+func (x *Var) End() token.Position { return x.Value.End() }
 
-func (s *Var) StatementNode() {}
-
-func (s *Var) IsExpression() bool { return false }
-
-func (s *Var) Token() token.Token { return s.token }
-
-func (s *Var) Literal() string { return s.token.Literal }
-
-func (s *Var) Value() (string, Expression) { return s.name.value, s.value }
-
-func (s *Var) IsWalrus() bool { return s.isWalrus }
-
-func (s *Var) String() string {
+func (x *Var) String() string {
 	var out bytes.Buffer
-	if s.isWalrus {
-		out.WriteString(s.name.Literal() + " := ")
-		out.WriteString(s.value.String())
-		return out.String()
-	}
-	out.WriteString(s.Literal() + " ")
-	out.WriteString(s.name.Literal())
+	out.WriteString("let ")
+	out.WriteString(x.Name.Name)
 	out.WriteString(" = ")
-	if s.value != nil {
-		out.WriteString(s.value.String())
+	if x.Value != nil {
+		out.WriteString(x.Value.String())
 	}
 	return out.String()
 }
 
-// MultiVar is a statement that assigns values to more than one variable.
-// The right hand side must be a container type, with the same number of
-// elements as the number of variables on the left hand side.
+// MultiVar is a statement that declares multiple variables at once.
+// This is used for "let x, y = [1, 2]" statements where the right-hand side
+// is unpacked into multiple variables.
 type MultiVar struct {
-	token    token.Token
-	names    []*Ident   // names being assigned
-	value    Expression // value is the thing we're storing in the variable.
-	isWalrus bool       // isWalrus is true if this is a ":=" statement.
+	Let   token.Position // position of "let" keyword
+	Names []*Ident       // variable names
+	Value Expr           // value to unpack
 }
 
-func NewMultiVar(token token.Token, names []*Ident, value Expression, isWalrus bool) *MultiVar {
-	return &MultiVar{token: token, names: names, value: value, isWalrus: isWalrus}
-}
+func (x *MultiVar) stmtNode() {}
 
-func (s *MultiVar) StatementNode() {}
+func (x *MultiVar) Pos() token.Position { return x.Let }
+func (x *MultiVar) End() token.Position { return x.Value.End() }
 
-func (s *MultiVar) IsExpression() bool { return false }
-
-func (s *MultiVar) Token() token.Token { return s.token }
-
-func (s *MultiVar) Literal() string { return s.token.Literal }
-
-func (s *MultiVar) Value() ([]string, Expression) {
-	names := make([]string, 0, len(s.names))
-	for _, name := range s.names {
-		names = append(names, name.value)
-	}
-	return names, s.value
-}
-
-func (s *MultiVar) IsWalrus() bool { return s.isWalrus }
-
-func (s *MultiVar) String() string {
-	names, expr := s.Value()
-	namesStr := strings.Join(names, ", ")
+func (x *MultiVar) String() string {
 	var out bytes.Buffer
-	if s.isWalrus {
-		out.WriteString(namesStr + " := ")
-		out.WriteString(expr.String())
-		return out.String()
+	names := make([]string, 0, len(x.Names))
+	for _, name := range x.Names {
+		names = append(names, name.Name)
 	}
-	out.WriteString(s.Literal() + " ")
-	out.WriteString(namesStr)
+	out.WriteString("let ")
+	out.WriteString(strings.Join(names, ", "))
 	out.WriteString(" = ")
-	out.WriteString(expr.String())
+	out.WriteString(x.Value.String())
+	return out.String()
+}
+
+// DestructureBinding represents a single binding in object destructuring.
+// It has a key (property name to extract), an optional alias (local variable name),
+// and an optional default value.
+type DestructureBinding struct {
+	Key     string // property name to extract from object
+	Alias   string // local variable name (empty means use Key as name)
+	Default Expr   // default value if property is nil (optional)
+}
+
+// ObjectDestructure is a statement that extracts properties from an object.
+// This is used for "let { a, b } = obj" or "let { a: x, b: y } = obj" statements.
+type ObjectDestructure struct {
+	Let      token.Position       // position of "let" keyword
+	Lbrace   token.Position       // position of "{"
+	Bindings []DestructureBinding // bindings to extract
+	Rbrace   token.Position       // position of "}"
+	Value    Expr                 // value to destructure
+}
+
+func (x *ObjectDestructure) stmtNode() {}
+
+func (x *ObjectDestructure) Pos() token.Position { return x.Let }
+func (x *ObjectDestructure) End() token.Position { return x.Value.End() }
+
+func (x *ObjectDestructure) String() string {
+	var out bytes.Buffer
+	out.WriteString("let { ")
+	for i, b := range x.Bindings {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(b.Key)
+		if b.Alias != "" && b.Alias != b.Key {
+			out.WriteString(": ")
+			out.WriteString(b.Alias)
+		}
+		if b.Default != nil {
+			out.WriteString(" = ")
+			out.WriteString(b.Default.String())
+		}
+	}
+	out.WriteString(" } = ")
+	out.WriteString(x.Value.String())
+	return out.String()
+}
+
+// ArrayDestructureElement represents a single element binding in array destructuring.
+type ArrayDestructureElement struct {
+	Name    *Ident // variable name to bind
+	Default Expr   // default value if element is nil (optional)
+}
+
+// ArrayDestructure is a statement that extracts elements from an array.
+// This is used for "let [a, b] = arr" or "let [a = 1, b = 2] = arr" statements.
+type ArrayDestructure struct {
+	Let      token.Position            // position of "let" keyword
+	Lbrack   token.Position            // position of "["
+	Elements []ArrayDestructureElement // elements to extract
+	Rbrack   token.Position            // position of "]"
+	Value    Expr                      // value to destructure
+}
+
+func (x *ArrayDestructure) stmtNode() {}
+
+func (x *ArrayDestructure) Pos() token.Position { return x.Let }
+func (x *ArrayDestructure) End() token.Position { return x.Value.End() }
+
+func (x *ArrayDestructure) String() string {
+	var out bytes.Buffer
+	out.WriteString("let [")
+	for i, e := range x.Elements {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(e.Name.String())
+		if e.Default != nil {
+			out.WriteString(" = ")
+			out.WriteString(e.Default.String())
+		}
+	}
+	out.WriteString("] = ")
+	out.WriteString(x.Value.String())
 	return out.String()
 }
 
 // Const is a statement that defines a named constant.
 type Const struct {
-	// the "const" token
-	token token.Token
-
-	// name of the constant
-	name *Ident
-
-	// value of the constant
-	value Expression
+	Const token.Position // position of "const" keyword
+	Name  *Ident         // constant name
+	Value Expr           // constant value
 }
 
-// NewConst creates a new Const node.
-func NewConst(token token.Token, name *Ident, value Expression) *Const {
-	return &Const{token: token, name: name, value: value}
-}
+func (x *Const) stmtNode() {}
 
-func (c *Const) StatementNode() {}
+func (x *Const) Pos() token.Position { return x.Const }
+func (x *Const) End() token.Position { return x.Value.End() }
 
-func (c *Const) IsExpression() bool { return false }
-
-func (c *Const) Token() token.Token { return c.token }
-
-func (c *Const) Literal() string { return c.token.Literal }
-
-func (c *Const) Value() (string, Expression) { return c.name.value, c.value }
-
-func (c *Const) String() string {
+func (x *Const) String() string {
 	var out bytes.Buffer
-	out.WriteString(c.Literal() + " ")
-	out.WriteString(c.name.Literal())
+	out.WriteString("const ")
+	out.WriteString(x.Name.Name)
 	out.WriteString(" = ")
-	if c.value != nil {
-		out.WriteString(c.value.String())
-	}
-	return out.String()
-}
-
-// Branch defines a break or continue statement.
-type Control struct {
-	// "break", or "continue"
-	token token.Token
-
-	// optional value, for return statements
-	value Expression
-}
-
-// NewControl creates a new Control node.
-func NewControl(token token.Token, value Expression) *Control {
-	return &Control{token: token, value: value}
-}
-
-func (c *Control) StatementNode() {}
-
-func (c *Control) IsExpression() bool { return false }
-
-func (c *Control) Token() token.Token { return c.token }
-
-func (c *Control) Literal() string { return c.token.Literal }
-
-func (c *Control) Value() Expression { return c.value }
-
-func (c *Control) IsReturn() bool {
-	return c.token.Type == token.RETURN
-}
-
-func (c *Control) String() string {
-	var out bytes.Buffer
-	out.WriteString(c.Literal())
-	if c.value != nil {
-		out.WriteString(" " + c.value.String())
+	if x.Value != nil {
+		out.WriteString(x.Value.String())
 	}
 	return out.String()
 }
 
 // Return defines a return statement.
 type Return struct {
-	// "return"
-	token token.Token
-
-	// optional value
-	value Expression
+	Return token.Position // position of "return" keyword
+	Value  Expr           // return value; nil if no value
 }
 
-// NewReturn creates a new Return node.
-func NewReturn(token token.Token, value Expression) *Return {
-	return &Return{token: token, value: value}
+func (x *Return) stmtNode() {}
+
+func (x *Return) Pos() token.Position { return x.Return }
+func (x *Return) End() token.Position {
+	if x.Value != nil {
+		return x.Value.End()
+	}
+	return x.Return.Advance(6) // len("return")
 }
 
-func (r *Return) StatementNode() {}
-
-func (r *Return) IsExpression() bool { return false }
-
-func (r *Return) Token() token.Token { return r.token }
-
-func (r *Return) Literal() string { return r.token.Literal }
-
-func (r *Return) Value() Expression { return r.value }
-
-func (r *Return) String() string {
+func (x *Return) String() string {
 	var out bytes.Buffer
-	out.WriteString(r.Literal())
-	if r.value != nil {
-		out.WriteString(" " + r.value.String())
+	out.WriteString("return")
+	if x.Value != nil {
+		out.WriteString(" ")
+		out.WriteString(x.Value.String())
 	}
 	return out.String()
 }
@@ -220,38 +195,28 @@ func (r *Return) String() string {
 // Block is a node that holds a sequence of statements. This is used to
 // represent the body of a function, loop, or a conditional.
 type Block struct {
-	token      token.Token // the opening "{" token
-	statements []Node      // the statements in the block
+	Lbrace token.Position // position of "{"
+	Stmts  []Node         // statements in the block
+	Rbrace token.Position // position of "}"
 }
 
-// NewBlock creates a new Block node.
-func NewBlock(token token.Token, statements []Node) *Block {
-	return &Block{token: token, statements: statements}
-}
+func (x *Block) stmtNode() {}
 
-func (b *Block) StatementNode() {}
+func (x *Block) Pos() token.Position { return x.Lbrace }
+func (x *Block) End() token.Position { return x.Rbrace.Advance(1) }
 
-func (b *Block) IsExpression() bool { return false }
-
-func (b *Block) Token() token.Token { return b.token }
-
-func (b *Block) Literal() string { return b.token.Literal }
-
-func (b *Block) Statements() []Node { return b.statements }
-
-func (b *Block) EndsWithReturn() bool {
-	count := len(b.statements)
-	if count == 0 {
+// EndsWithReturn returns true if the block ends with a return statement.
+func (x *Block) EndsWithReturn() bool {
+	if len(x.Stmts) == 0 {
 		return false
 	}
-	last := b.statements[count-1]
-	_, isReturn := last.(*Return)
-	return isReturn
+	_, ok := x.Stmts[len(x.Stmts)-1].(*Return)
+	return ok
 }
 
-func (b *Block) String() string {
+func (x *Block) String() string {
 	var out bytes.Buffer
-	for i, s := range b.statements {
+	for i, s := range x.Stmts {
 		if i > 0 {
 			out.WriteString("\n")
 		}
@@ -260,447 +225,154 @@ func (b *Block) String() string {
 	return out.String()
 }
 
-// For is a statement node that defines a for loop.
-type For struct {
-	token token.Token
-
-	// condition determines whether the loop should continue running.
-	condition Node
-
-	// consequence contains the statements that make up the loop body.
-	consequence *Block
-
-	// Initialization statement which is executed once before evaluating the
-	// condition for the first iteration.
-	init Node
-
-	// Statement which is executed after each execution of the block
-	// (and only if the block was executed).
-	post Node
-}
-
-// NewSimpleFor creates a new For node with no condition, init, or post.
-func NewSimpleFor(token token.Token, consequence *Block) *For {
-	return &For{token: token, consequence: consequence}
-}
-
-// NewFor creates a new For node.
-func NewFor(token token.Token, condition Node, consequence *Block, init Node, post Node) *For {
-	return &For{token: token, condition: condition, consequence: consequence, init: init, post: post}
-}
-
-func (f *For) StatementNode() {}
-
-func (f *For) IsExpression() bool { return false }
-
-func (f *For) Token() token.Token { return f.token }
-
-func (f *For) Literal() string { return f.token.Literal }
-
-func (f *For) IsSimpleLoop() bool {
-	return f.consequence != nil && f.init == nil && f.condition == nil
-}
-
-func (f *For) IsIteratorLoop() bool {
-	if f.condition == nil {
-		return false
-	}
-	switch f.condition.(type) {
-	case *Var, *MultiVar:
-		// The only case where var and multi-var assignments are supported are
-		// when an iterator is being used to define the loop. The assignment AST
-		// node currently comes through as the loop "condition" in the AST. For
-		// loops that use iterators can look like these:
-		//   for i := range x {}
-		//   for i, j := range x {}
-		//   for i, j := myiterator {}
-		return true
-	}
-	return false
-}
-
-func (f *For) Condition() Node { return f.condition }
-
-func (f *For) Consequence() *Block { return f.consequence }
-
-func (f *For) Init() Node { return f.init }
-
-func (f *For) Post() Node { return f.post }
-
-func (f *For) String() string {
-	var out bytes.Buffer
-	// Simple for {} loop
-	if f.IsSimpleLoop() {
-		out.WriteString("for { ")
-		out.WriteString(f.consequence.String())
-		out.WriteString(" }")
-		return out.String()
-	}
-	if f.init == nil {
-		out.WriteString("for ")
-		out.WriteString(f.condition.String())
-		out.WriteString(" { ")
-		out.WriteString(f.consequence.String())
-		out.WriteString(" }")
-		return out.String()
-	}
-	// Full style for loop
-	out.WriteString("for ")
-	out.WriteString(f.init.String() + "; ")
-	out.WriteString(f.condition.String() + "; ")
-	out.WriteString(f.post.String())
-	out.WriteString(" { ")
-	out.WriteString(f.consequence.String())
-	out.WriteString(" }")
-	return out.String()
-}
-
-// ForIn is a statement node that defines a Python-style for-in loop.
-type ForIn struct {
-	token token.Token
-
-	// variable is the identifier that holds the current iteration value
-	variable *Ident
-
-	// iterable is the expression that provides the values to iterate over
-	iterable Node
-
-	// consequence contains the statements that make up the loop body.
-	consequence *Block
-}
-
-// NewForIn creates a new ForIn node.
-func NewForIn(token token.Token, variable *Ident, iterable Node, consequence *Block) *ForIn {
-	return &ForIn{token: token, variable: variable, iterable: iterable, consequence: consequence}
-}
-
-func (f *ForIn) StatementNode() {}
-
-func (f *ForIn) IsExpression() bool { return false }
-
-func (f *ForIn) Token() token.Token { return f.token }
-
-func (f *ForIn) Literal() string { return f.token.Literal }
-
-func (f *ForIn) Variable() *Ident { return f.variable }
-
-func (f *ForIn) Iterable() Node { return f.iterable }
-
-func (f *ForIn) Consequence() *Block { return f.consequence }
-
-func (f *ForIn) String() string {
-	var out bytes.Buffer
-	out.WriteString("for ")
-	out.WriteString(f.variable.String())
-	out.WriteString(" in ")
-	out.WriteString(f.iterable.String())
-	out.WriteString(" ")
-	out.WriteString(f.consequence.String())
-	return out.String()
-}
-
 // Assign is a statement node used to describe a variable assignment.
 type Assign struct {
-	token    token.Token
-	name     *Ident // this may be nil, e.g. `[0, 1, 2][0] = 3`
-	index    *Index
-	operator string
-	value    Expression
+	Name  *Ident         // variable name; nil for index assignment
+	Index *Index         // index expression; nil for simple assignment
+	OpPos token.Position // position of operator
+	Op    string         // assignment operator: "=", "+=", "-=", etc.
+	Value Expr           // value to assign
 }
 
-// NewAssign creates a new Assign node.
-func NewAssign(operator token.Token, name *Ident, value Expression) *Assign {
-	return &Assign{token: operator, name: name, operator: operator.Literal, value: value}
+func (x *Assign) stmtNode() {}
+
+func (x *Assign) Pos() token.Position {
+	if x.Name != nil {
+		return x.Name.Pos()
+	}
+	return x.Index.Pos()
 }
+func (x *Assign) End() token.Position { return x.Value.End() }
 
-// NewAssignIndex creates a new Assign node for an index assignment.
-func NewAssignIndex(operator token.Token, index *Index, value Expression) *Assign {
-	return &Assign{token: operator, index: index, operator: operator.Literal, value: value}
-}
-
-func (a *Assign) StatementNode() {}
-
-func (a *Assign) IsExpression() bool { return false }
-
-func (a *Assign) Token() token.Token { return a.token }
-
-func (a *Assign) Literal() string { return a.token.Literal }
-
-func (a *Assign) Name() string { return a.name.value }
-
-func (a *Assign) Index() *Index { return a.index }
-
-func (a *Assign) Operator() string { return a.operator }
-
-func (a *Assign) Value() Expression { return a.value }
-
-func (a *Assign) String() string {
+func (x *Assign) String() string {
 	var out bytes.Buffer
-	if a.index != nil {
-		out.WriteString(a.index.String())
+	if x.Index != nil {
+		out.WriteString(x.Index.String())
 	} else {
-		out.WriteString(a.name.value)
+		out.WriteString(x.Name.Name)
 	}
-	out.WriteString(" " + a.operator + " ")
-	out.WriteString(a.value.String())
-	return out.String()
-}
-
-// Import is a statement node that describes a module import statement.
-type Import struct {
-	token token.Token // the "import" token
-	path  *String     // path of the module to import
-	alias *Ident      // alias for the module
-}
-
-// NewImport creates a new Import node.
-func NewImport(token token.Token, path *String, alias *Ident) *Import {
-	return &Import{token: token, path: path, alias: alias}
-}
-
-func (i *Import) StatementNode() {}
-
-func (i *Import) IsExpression() bool { return false }
-
-func (i *Import) Token() token.Token { return i.token }
-
-func (i *Import) Literal() string { return i.token.Literal }
-
-func (i *Import) Path() *String { return i.path }
-
-func (i *Import) Alias() *Ident { return i.alias }
-
-// ModuleName returns the name to use for the imported module
-// (either alias or last part of path)
-func (i *Import) ModuleName() string {
-	if i.alias != nil {
-		return i.alias.String()
-	}
-	parts := strings.Split(i.path.Value(), "/")
-	return parts[len(parts)-1]
-}
-
-func (i *Import) String() string {
-	var out bytes.Buffer
-	out.WriteString(i.Literal() + " ")
-	out.WriteString(i.path.String())
-	if i.alias != nil {
-		out.WriteString(" as " + i.alias.Literal())
-	}
-	return out.String()
-}
-
-// FromImport is a statement node that describes a module import statement.
-type FromImport struct {
-	token     token.Token // the "from" token
-	parents   []*Ident    // parent modules
-	imports   []*Import   // the imports, each with optional alias
-	isGrouped bool
-}
-
-// NewFromImport creates a new FromImport node.
-func NewFromImport(
-	token token.Token,
-	parents []*Ident,
-	imports []*Import,
-	isGrouped bool,
-) *FromImport {
-	return &FromImport{
-		token:     token,
-		parents:   parents,
-		imports:   imports,
-		isGrouped: isGrouped,
-	}
-}
-
-func (i *FromImport) StatementNode() {}
-
-func (i *FromImport) IsExpression() bool { return false }
-
-func (i *FromImport) Token() token.Token { return i.token }
-
-func (i *FromImport) Literal() string { return i.token.Literal }
-
-func (i *FromImport) Parents() []*Ident { return i.parents }
-
-func (i *FromImport) Imports() []*Import { return i.imports }
-
-func (i *FromImport) String() string {
-	var out bytes.Buffer
-	out.WriteString(i.Literal() + " \"")
-	for i, parent := range i.parents {
-		if i > 0 {
-			out.WriteString(".")
-		}
-		out.WriteString(parent.Literal())
-	}
-	out.WriteString("\" import ")
-	if i.isGrouped {
-		out.WriteString("(")
-	}
-	for idx, im := range i.imports {
-		if idx > 0 {
-			out.WriteString(", ")
-		}
-		out.WriteString(im.Path().String())
-		if im.Alias() != nil {
-			out.WriteString(" as " + im.Alias().Literal())
-		}
-	}
-	if i.isGrouped {
-		out.WriteString(")")
-	}
+	out.WriteString(" ")
+	out.WriteString(x.Op)
+	out.WriteString(" ")
+	out.WriteString(x.Value.String())
 	return out.String()
 }
 
 // Postfix is a statement node that describes a postfix expression like "x++".
+// The operand X can be an Ident, Index, or GetAttr expression.
 type Postfix struct {
-	token token.Token
-	// operator holds the postfix token, e.g. ++
-	operator string
+	X     Expr           // operand (must be assignable: Ident, Index, or GetAttr)
+	OpPos token.Position // position of operator
+	Op    string         // operator: "++", "--"
 }
 
-// NewPostfix creates a new Postfix node.
-func NewPostfix(token token.Token, operator string) *Postfix {
-	return &Postfix{token: token, operator: operator}
-}
+func (x *Postfix) stmtNode() {}
 
-func (p *Postfix) StatementNode() {}
+func (x *Postfix) Pos() token.Position { return x.X.Pos() }
+func (x *Postfix) End() token.Position { return x.OpPos.Advance(2) } // len("++") or len("--")
 
-func (p *Postfix) IsExpression() bool { return false }
-
-func (p *Postfix) Token() token.Token { return p.token }
-
-func (p *Postfix) Literal() string { return p.token.Literal }
-
-func (p *Postfix) Operator() string { return p.operator }
-
-func (p *Postfix) String() string {
+func (x *Postfix) String() string {
 	var out bytes.Buffer
 	out.WriteString("(")
-	out.WriteString(p.token.Literal)
-	out.WriteString(p.operator)
+	out.WriteString(x.X.String())
+	out.WriteString(x.Op)
 	out.WriteString(")")
 	return out.String()
 }
 
 // SetAttr is a statement node that describes setting an attribute on an object.
 type SetAttr struct {
-	token token.Token
-
-	// object whose attribute is being accessed
-	object Expression
-
-	// The attribute itself
-	attribute *Ident
-
-	// The value for the attribute
-	value Expression
+	X      Expr           // object expression
+	Period token.Position // position of "."
+	Attr   *Ident         // attribute name
+	OpPos  token.Position // position of operator
+	Op     string         // assignment operator: "=", "+=", "-=", "*=", "/="
+	Value  Expr           // value to set
 }
 
-// NewSetAttr creates a new SetAttr node.
-func NewSetAttr(token token.Token, object Expression, attribute *Ident, value Expression) *SetAttr {
-	return &SetAttr{token: token, object: object, attribute: attribute, value: value}
-}
+func (x *SetAttr) stmtNode() {}
 
-func (p *SetAttr) StatementNode() {}
+func (x *SetAttr) Pos() token.Position { return x.X.Pos() }
+func (x *SetAttr) End() token.Position { return x.Value.End() }
 
-func (e *SetAttr) IsExpression() bool { return false }
-
-func (e *SetAttr) Token() token.Token { return e.token }
-
-func (e *SetAttr) Literal() string { return e.token.Literal }
-
-func (e *SetAttr) Object() Expression { return e.object }
-
-func (e *SetAttr) Name() string { return e.attribute.value }
-
-func (e *SetAttr) Value() Expression { return e.value }
-
-func (e *SetAttr) String() string {
+func (x *SetAttr) String() string {
 	var out bytes.Buffer
-	out.WriteString(e.object.String())
+	out.WriteString(x.X.String())
 	out.WriteString(".")
-	out.WriteString(e.attribute.value)
-	out.WriteString(" = ")
-	out.WriteString(e.value.String())
+	out.WriteString(x.Attr.Name)
+	out.WriteString(" ")
+	out.WriteString(x.Op)
+	out.WriteString(" ")
+	out.WriteString(x.Value.String())
 	return out.String()
 }
 
-// A Go statement node represents a go statement.
-type Go struct {
-	token token.Token
-	call  Expression
+// Try represents a try/catch/finally statement.
+type Try struct {
+	Try          token.Position // position of "try" keyword
+	Body         *Block         // try block
+	Catch        token.Position // position of "catch" keyword; zero if no catch
+	CatchIdent   *Ident         // catch variable; nil if "catch { }"
+	CatchBlock   *Block         // catch block; nil if no catch
+	Finally      token.Position // position of "finally" keyword; zero if no finally
+	FinallyBlock *Block         // finally block; nil if no finally
 }
 
-// NewGo creates a new Go statement node.
-func NewGo(token token.Token, call Expression) *Go {
-	return &Go{token: token, call: call}
+func (x *Try) stmtNode() {}
+func (x *Try) exprNode() {} // try is also an expression
+
+func (x *Try) Pos() token.Position { return x.Try }
+
+func (x *Try) End() token.Position {
+	if x.FinallyBlock != nil {
+		return x.FinallyBlock.End()
+	}
+	if x.CatchBlock != nil {
+		return x.CatchBlock.End()
+	}
+	return x.Body.End()
 }
 
-func (g *Go) StatementNode() {}
-
-func (g *Go) IsExpression() bool { return false }
-
-func (g *Go) Token() token.Token { return g.token }
-
-func (g *Go) Literal() string { return g.token.Literal }
-
-func (g *Go) Call() Expression { return g.call }
-
-func (g *Go) String() string {
-	return fmt.Sprintf("go %s", g.call.String())
+func (x *Try) String() string {
+	var out bytes.Buffer
+	out.WriteString("try ")
+	out.WriteString(x.Body.String())
+	if x.CatchBlock != nil {
+		out.WriteString(" catch ")
+		if x.CatchIdent != nil {
+			out.WriteString(x.CatchIdent.String())
+			out.WriteString(" ")
+		}
+		out.WriteString(x.CatchBlock.String())
+	}
+	if x.FinallyBlock != nil {
+		out.WriteString(" finally ")
+		out.WriteString(x.FinallyBlock.String())
+	}
+	return out.String()
 }
 
-// A Defer statement node represents a defer statement.
-type Defer struct {
-	token token.Token
-	call  Expression
+// Throw represents a throw statement.
+type Throw struct {
+	Throw token.Position // position of "throw" keyword
+	Value Expr           // value to throw
 }
 
-// NewDefer creates a new Defer node.
-func NewDefer(token token.Token, call Expression) *Defer {
-	return &Defer{token: token, call: call}
+func (x *Throw) stmtNode() {}
+
+func (x *Throw) Pos() token.Position { return x.Throw }
+func (x *Throw) End() token.Position {
+	if x.Value != nil {
+		return x.Value.End()
+	}
+	return x.Throw.Advance(5) // len("throw")
 }
 
-func (d *Defer) StatementNode() {}
-
-func (d *Defer) IsExpression() bool { return false }
-
-func (d *Defer) Token() token.Token { return d.token }
-
-func (d *Defer) Literal() string { return d.token.Literal }
-
-func (d *Defer) Call() Expression { return d.call }
-
-func (d *Defer) String() string {
-	return fmt.Sprintf("defer %s", d.call.String())
-}
-
-// A Send statement node represents a channel send operation.
-type Send struct {
-	token   token.Token
-	channel Expression
-	value   Expression
-}
-
-// NewSend creates a new Send node.
-func NewSend(token token.Token, channel, value Expression) *Send {
-	return &Send{token: token, channel: channel, value: value}
-}
-
-func (s *Send) StatementNode() {}
-
-func (s *Send) IsExpression() bool { return false }
-
-func (s *Send) Token() token.Token { return s.token }
-
-func (s *Send) Literal() string { return s.token.Literal }
-
-func (s *Send) Channel() Expression { return s.channel }
-
-func (s *Send) Value() Expression { return s.value }
-
-func (s *Send) String() string {
-	return fmt.Sprintf("%s <- %s", s.channel.String(), s.value.String())
+func (x *Throw) String() string {
+	var out bytes.Buffer
+	out.WriteString("throw ")
+	if x.Value != nil {
+		out.WriteString(x.Value.String())
+	}
+	return out.String()
 }

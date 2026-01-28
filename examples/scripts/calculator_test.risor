@@ -1,0 +1,36 @@
+// calculator_test.risor - Example Risor test file
+
+function add(a, b) {
+    return a + b
+}
+
+function subtract(a, b) {
+    return a - b
+}
+
+function test_addition(t) {
+    t.assert_eq(add(2, 3), 5)
+    t.assert_eq(add(-1, 1), 0)
+    t.assert_eq(add(0, 0), 0)
+}
+
+function test_subtraction(t) {
+    t.assert_eq(subtract(5, 3), 2)
+    t.assert_eq(subtract(0, 5), -5)
+}
+
+function test_with_logging(t) {
+    t.log("Testing with logging")
+    let result = add(10, 20)
+    t.log("Result:", result)
+    t.assert_eq(result, 31)
+}
+
+function test_skip_example(t) {
+    t.skip("This feature is not implemented yet")
+}
+
+function test_failure_example(t) {
+    // This test intentionally fails to show failure output
+    t.assert_eq(1, 2, "one should equal two (it won't!)")
+}

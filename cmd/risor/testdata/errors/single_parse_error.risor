@@ -1,0 +1,8 @@
+// Example: Single parse error
+// This file demonstrates the error format for a single syntax error.
+// Run with: go run ./cmd/risor ./cmd/risor/testdata/errors/single_parse_error.risor
+
+let validCode = 42
+
+// Unterminated string - only one error
+let broken = "this string is missing its closing quote

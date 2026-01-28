@@ -1,0 +1,17 @@
+// Random Module
+// Random number generation
+
+// Random float between 0 and 1
+let randomFloat = rand.float()
+
+// Random integer in range
+let dice = rand.intn(6) + 1
+
+// Coin flip
+let coin = if (rand.intn(2) == 0) { "heads" } else { "tails" }
+
+// Shuffle a list
+let cards = [1, 2, 3, 4, 5]
+rand.shuffle(cards)
+
+{randomFloat, dice, coin, shuffled: cards}

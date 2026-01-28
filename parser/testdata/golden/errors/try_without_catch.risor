@@ -1,0 +1,2 @@
+// try requires at least catch or finally
+try { x }

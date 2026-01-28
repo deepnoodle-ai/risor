@@ -1,7 +1,7 @@
 // This file contains intentional syntax errors for testing diagnostics
 
 // Missing value assignment
-var incomplete = 
+var incomplete =
 
 // Function with syntax error
 func broken_function(
@@ -12,13 +12,13 @@ if true {
     println("Missing closing brace")
 
 // Invalid string literal
-bad_string := "unclosed string
+let bad_string = "unclosed string
 
 // Invalid array syntax
-bad_array := [1, 2, 3,
+let bad_array = [1, 2, 3,
 
 // Multiple errors on same line
-var x = ; var y = 
+var x = ; var y =
 
 // Unclosed comment
 /* This comment is never closed

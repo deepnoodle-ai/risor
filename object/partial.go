@@ -4,15 +4,29 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
 // Partial is a partially applied function
 type Partial struct {
-	*base
 	fn   Object
 	args []Object
+}
+
+func (p *Partial) Attrs() []AttrSpec {
+	return nil
+}
+
+func (p *Partial) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (p *Partial) SetAttr(name string, value Object) error {
+	return TypeErrorf("partial has no attribute %q", name)
+}
+
+func (p *Partial) IsTruthy() bool {
+	return true
 }
 
 func (p *Partial) Function() Object {
@@ -39,19 +53,20 @@ func (p *Partial) Interface() interface{} {
 	return p.fn
 }
 
-func (p *Partial) Equals(other Object) Object {
-	if p == other {
-		return True
+func (p *Partial) Equals(other Object) bool {
+	otherPartial, ok := other.(*Partial)
+	if !ok {
+		return false
 	}
-	return False
+	return p == otherPartial
 }
 
-func (p *Partial) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for nil: %v", opType)
+func (p *Partial) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, newTypeErrorf("unsupported operation for partial: %v", opType)
 }
 
 func (p *Partial) MarshalJSON() ([]byte, error) {
-	return nil, errz.TypeErrorf("type error: unable to marshal partial")
+	return nil, TypeErrorf("unable to marshal partial")
 }
 
 func NewPartial(fn Object, args []Object) *Partial {

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/risor-io/risor/internal/color"
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/color"
 )
 
 func TestTable(t *testing.T) {
@@ -27,7 +27,7 @@ func TestTable(t *testing.T) {
 | a       |    b | c       |
 +---------+------+---------+
 `
-	require.Equal(t, strings.TrimSpace(expected)+"\n", buf.String())
+	assert.Equal(t, buf.String(), strings.TrimSpace(expected)+"\n")
 }
 
 func TestColoredTable(t *testing.T) {
@@ -40,19 +40,16 @@ func TestColoredTable(t *testing.T) {
 	table.WithHeaderAlignment([]Alignment{AlignCenter, AlignCenter, AlignCenter})
 
 	// Add rows with colored content
-	bold := color.New(color.Bold)
-	green := color.New(color.FgGreen)
-
 	table.Append([]string{
-		bold.Sprint("Bold text"),
+		color.ApplyBold("Bold text"),
 		"12345",
-		green.Sprint("Green text"),
+		color.Green.Sprint("Green text"),
 	})
 
 	table.Append([]string{
 		"Normal",
-		bold.Sprintf("%d", 999),
-		green.Sprint("More color"),
+		color.ApplyBold("999"),
+		color.Green.Sprint("More color"),
 	})
 
 	// Render the table
@@ -64,12 +61,12 @@ func TestColoredTable(t *testing.T) {
 
 	// Simple validation that color codes don't break alignment
 	lines := strings.Split(result, "\n")
-	require.True(t, len(lines) >= 5, "Table should have at least 5 lines")
+	assert.True(t, len(lines) >= 5, "Table should have at least 5 lines")
 
 	// Check all lines have the same length
 	expectedLength := len(lines[0])
 	for i := 1; i < len(lines)-1; i++ { // Skip last line which might be empty
-		require.Equal(t, expectedLength, len(stripAnsi(lines[i])),
+		assert.Equal(t, len(stripAnsi(lines[i])), expectedLength,
 			"Line %d has incorrect length after stripping ANSI codes", i)
 	}
 }

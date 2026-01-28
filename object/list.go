@@ -7,20 +7,170 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
+var listMethods = NewMethodRegistry[*List]("list")
+
+func init() {
+	listMethods.Define("append").
+		Doc("Add item to end of list").
+		Arg("item").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Append(args[0])
+			return ls, nil
+		})
+
+	listMethods.Define("clear").
+		Doc("Remove all items").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Clear()
+			return ls, nil
+		})
+
+	listMethods.Define("copy").
+		Doc("Create a shallow copy").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Copy(), nil
+		})
+
+	listMethods.Define("count").
+		Doc("Count occurrences of item").
+		Arg("item").
+		Returns("int").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return NewInt(ls.Count(args[0])), nil
+		})
+
+	listMethods.Define("each").
+		Doc("Call function for each item").
+		Arg("fn").
+		Returns("nil").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Each(ctx, args[0])
+		})
+
+	listMethods.Define("extend").
+		Doc("Add all items from another list").
+		Arg("items").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			other, err := AsList(args[0])
+			if err != nil {
+				return nil, err
+			}
+			ls.Extend(other)
+			return ls, nil
+		})
+
+	listMethods.Define("filter").
+		Doc("Keep items where fn returns true").
+		Arg("fn").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Filter(ctx, args[0])
+		})
+
+	listMethods.Define("index").
+		Doc("Find first index of item (-1 if not found)").
+		Arg("item").
+		Returns("int").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return NewInt(ls.Index(args[0])), nil
+		})
+
+	listMethods.Define("insert").
+		Doc("Insert item at index").
+		Args("index", "item").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			index, err := AsInt(args[0])
+			if err != nil {
+				return nil, err
+			}
+			ls.Insert(index, args[1])
+			return ls, nil
+		})
+
+	listMethods.Define("map").
+		Doc("Transform each item with fn").
+		Arg("fn").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Map(ctx, args[0])
+		})
+
+	listMethods.Define("pop").
+		Doc("Remove and return item at index").
+		Arg("index").
+		Returns("any").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			index, err := AsInt(args[0])
+			if err != nil {
+				return nil, err
+			}
+			return ls.Pop(index)
+		})
+
+	listMethods.Define("reduce").
+		Doc("Reduce list to single value").
+		Args("initial", "fn").
+		Returns("any").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			return ls.Reduce(ctx, args[0], args[1])
+		})
+
+	listMethods.Define("remove").
+		Doc("Remove first occurrence of item").
+		Arg("item").
+		Returns("nil").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Remove(args[0])
+			return ls, nil
+		})
+
+	listMethods.Define("reverse").
+		Doc("Reverse list in place").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			ls.Reverse()
+			return ls, nil
+		})
+
+	listMethods.Define("sort").
+		Doc("Sort list in place").
+		Returns("list").
+		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			if err := Sort(ls.items); err != nil {
+				return nil, err
+			}
+			return ls, nil
+		})
+}
+
 // List of objects
 type List struct {
-	*base
-
 	// items holds the list of objects
 	items []Object
 
 	// Used to avoid the possibility of infinite recursion when inspecting.
 	// Similar to the usage of Py_ReprEnter in CPython.
 	inspectActive bool
+}
+
+func (ls *List) Attrs() []AttrSpec {
+	return listMethods.Specs()
+}
+
+func (ls *List) GetAttr(name string) (Object, bool) {
+	return listMethods.GetAttr(ls, name)
+}
+
+func (ls *List) SetAttr(name string, value Object) error {
+	return TypeErrorf("list has no attribute %q", name)
 }
 
 func (ls *List) Type() Type {
@@ -51,276 +201,82 @@ func (ls *List) Inspect() string {
 	return out.String()
 }
 
-func (ls *List) GetAttr(name string) (Object, bool) {
-	switch name {
-	case "append":
-		return &Builtin{
-			name: "list.append",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.append", 1, len(args))
-				}
-				ls.Append(args[0])
-				return ls
-			},
-		}, true
-	case "clear":
-		return &Builtin{
-			name: "list.clear",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("list.clear", 0, len(args))
-				}
-				ls.Clear()
-				return ls
-			},
-		}, true
-	case "copy":
-		return &Builtin{
-			name: "list.copy",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("list.copy", 0, len(args))
-				}
-				return ls.Copy()
-			},
-		}, true
-	case "count":
-		return &Builtin{
-			name: "list.count",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.count", 1, len(args))
-				}
-				return NewInt(ls.Count(args[0]))
-			},
-		}, true
-	case "extend":
-		return &Builtin{
-			name: "list.extend",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.extend", 1, len(args))
-				}
-				other, err := AsList(args[0])
-				if err != nil {
-					return err
-				}
-				ls.Extend(other)
-				return ls
-			},
-		}, true
-	case "index":
-		return &Builtin{
-			name: "list.index",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.index", 1, len(args))
-				}
-				return NewInt(ls.Index(args[0]))
-			},
-		}, true
-	case "insert":
-		return &Builtin{
-			name: "list.insert",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 2 {
-					return NewArgsError("list.insert", 2, len(args))
-				}
-				index, err := AsInt(args[0])
-				if err != nil {
-					return err
-				}
-				ls.Insert(index, args[1])
-				return ls
-			},
-		}, true
-	case "pop":
-		return &Builtin{
-			name: "list.pop",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.pop", 1, len(args))
-				}
-				index, err := AsInt(args[0])
-				if err != nil {
-					return err
-				}
-				return ls.Pop(index)
-			},
-		}, true
-	case "remove":
-		return &Builtin{
-			name: "list.remove",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.remove", 1, len(args))
-				}
-				ls.Remove(args[0])
-				return ls
-			},
-		}, true
-	case "reverse":
-		return &Builtin{
-			name: "list.reverse",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("list.reverse", 0, len(args))
-				}
-				ls.Reverse()
-				return ls
-			},
-		}, true
-	case "sort":
-		return &Builtin{
-			name: "list.sort",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 0 {
-					return NewArgsError("list.sort", 0, len(args))
-				}
-				if err := Sort(ls.items); err != nil {
-					return err
-				}
-				return ls
-			},
-		}, true
-	case "map":
-		return &Builtin{
-			name: "list.map",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.map", 1, len(args))
-				}
-				return ls.Map(ctx, args[0])
-			},
-		}, true
-	case "filter":
-		return &Builtin{
-			name: "list.filter",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.filter", 1, len(args))
-				}
-				return ls.Filter(ctx, args[0])
-			},
-		}, true
-	case "each":
-		return &Builtin{
-			name: "list.each",
-			fn: func(ctx context.Context, args ...Object) Object {
-				if len(args) != 1 {
-					return NewArgsError("list.each", 1, len(args))
-				}
-				return ls.Each(ctx, args[0])
-			},
-		}, true
+func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, newTypeErrorf("list.map() expected a function (%s given)", fn.Type())
 	}
-	return nil, false
-}
-
-func (ls *List) Map(ctx context.Context, fn Object) Object {
-	callFunc, found := GetCallFunc(ctx)
-	if !found {
-		return EvalErrorf("eval error: list.map() context did not contain a call function")
-	}
-	var numParameters int
-	switch obj := fn.(type) {
-	case *Builtin:
-		result := make([]Object, 0, len(ls.items))
-		for _, value := range ls.items {
-			outputValue := obj.fn(ctx, value)
-			if IsError(outputValue) {
-				return outputValue
-			}
-			result = append(result, outputValue)
+	// Closures can accept (index, value) if they have 2 parameters
+	var passIndex bool
+	if closure, ok := fn.(*Closure); ok {
+		count := closure.ParameterCount()
+		if count < 1 || count > 2 {
+			return nil, newTypeErrorf("list.map() received an incompatible function")
 		}
-		return NewList(result)
-	case *Function:
-		numParameters = len(obj.parameters)
-	default:
-		return TypeErrorf("type error: list.map() expected a function (%s given)", obj.Type())
+		passIndex = count == 2
 	}
-	if numParameters < 1 || numParameters > 2 {
-		return TypeErrorf("type error: list.map() received an incompatible function")
-	}
-	compiledFunc := fn.(*Function)
-	var index Int
-	mapArgs := make([]Object, 2)
 	result := make([]Object, 0, len(ls.items))
 	for i, value := range ls.items {
-		index.value = int64(i)
-		mapArgs[0] = &index
-		mapArgs[1] = value
-		var err error
 		var outputValue Object
-		if numParameters == 1 {
-			outputValue, err = callFunc(ctx, compiledFunc, mapArgs[1:])
+		var err error
+		if passIndex {
+			outputValue, err = callable.Call(ctx, NewInt(int64(i)), value)
 		} else {
-			outputValue, err = callFunc(ctx, compiledFunc, mapArgs)
+			outputValue, err = callable.Call(ctx, value)
 		}
 		if err != nil {
-			return Errorf(err.Error())
-		}
-		if IsError(outputValue) {
-			return outputValue
+			return nil, err
 		}
 		result = append(result, outputValue)
 	}
-	return NewList(result)
+	return NewList(result), nil
 }
 
-func (ls *List) Filter(ctx context.Context, fn Object) Object {
-	callFunc, found := GetCallFunc(ctx)
-	if !found {
-		return EvalErrorf("eval error: list.filter() context did not contain a call function")
+func (ls *List) Filter(ctx context.Context, fn Object) (Object, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, newTypeErrorf("list.filter() expected a function (%s given)", fn.Type())
 	}
-	switch obj := fn.(type) {
-	case *Function, *Builtin:
-		// Nothing do do here
-	default:
-		return TypeErrorf("type error: list.filter() expected a function (%s given)", obj.Type())
-	}
-	filterArgs := make([]Object, 1)
 	var result []Object
 	for _, value := range ls.items {
-		filterArgs[0] = value
-		decision, err := callFunc(ctx, fn.(*Function), filterArgs)
+		decision, err := callable.Call(ctx, value)
 		if err != nil {
-			return Errorf(err.Error())
-		}
-		if IsError(decision) {
-			return decision
+			return nil, err
 		}
 		if decision.IsTruthy() {
 			result = append(result, value)
 		}
 	}
-	return NewList(result)
+	return NewList(result), nil
 }
 
-func (ls *List) Each(ctx context.Context, fn Object) Object {
-	callFunc, found := GetCallFunc(ctx)
-	if !found {
-		return EvalErrorf("eval error: list.each() context did not contain a call function")
+func (ls *List) Each(ctx context.Context, fn Object) (Object, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, newTypeErrorf("list.each() expected a function (%s given)", fn.Type())
 	}
-	switch obj := fn.(type) {
-	case *Function, *Builtin:
-		// Nothing do do here
-	default:
-		return TypeErrorf("type error: list.each() expected a function (%s given)", obj.Type())
-	}
-	eachArgs := make([]Object, 1)
 	for _, value := range ls.items {
-		eachArgs[0] = value
-		result, err := callFunc(ctx, fn.(*Function), eachArgs)
-		if err != nil {
-			return Errorf(err.Error())
-		}
-		if IsError(result) {
-			return result
+		if _, err := callable.Call(ctx, value); err != nil {
+			return nil, err
 		}
 	}
-	return Nil
+	return Nil, nil
+}
+
+func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) (Object, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, newTypeErrorf("list.reduce() expected a function (%s given)", fn.Type())
+	}
+	accumulator := initial
+	for _, value := range ls.items {
+		result, err := callable.Call(ctx, accumulator, value)
+		if err != nil {
+			return nil, err
+		}
+		accumulator = result
+	}
+	return accumulator, nil
 }
 
 // Append adds an item at the end of the list.
@@ -389,14 +345,14 @@ func (ls *List) Insert(index int64, obj Object) {
 }
 
 // Pop removes the item at the specified position.
-func (ls *List) Pop(index int64) Object {
+func (ls *List) Pop(index int64) (Object, error) {
 	idx, err := ResolveIndex(index, int64(len(ls.items)))
 	if err != nil {
-		return Errorf(err.Error())
+		return nil, err
 	}
 	result := ls.items[idx]
 	ls.items = append(ls.items[:idx], ls.items[idx+1:]...)
-	return result
+	return result, nil
 }
 
 // Remove removes the first item with the specified value.
@@ -430,7 +386,7 @@ func (ls *List) String() string {
 func (ls *List) Compare(other Object) (int, error) {
 	otherList, ok := other.(*List)
 	if !ok {
-		return 0, errz.TypeErrorf("type error: unable to compare list and %s", other.Type())
+		return 0, TypeErrorf("unable to compare list and %s", other.Type())
 	}
 	if len(ls.items) > len(otherList.items) {
 		return 1, nil
@@ -440,7 +396,7 @@ func (ls *List) Compare(other Object) (int, error) {
 	for i := 0; i < len(ls.items); i++ {
 		comparable, ok := ls.items[i].(Comparable)
 		if !ok {
-			return 0, errz.TypeErrorf("type error: %s object is not comparable", ls.items[i].Type())
+			return 0, TypeErrorf("%s object is not comparable", ls.items[i].Type())
 		}
 		comp, err := comparable.Compare(otherList.items[i])
 		if err != nil {
@@ -453,21 +409,21 @@ func (ls *List) Compare(other Object) (int, error) {
 	return 0, nil
 }
 
-func (ls *List) Equals(other Object) Object {
-	if other.Type() != LIST {
-		return False
+func (ls *List) Equals(other Object) bool {
+	otherList, ok := other.(*List)
+	if !ok {
+		return false
 	}
-	otherList := other.(*List)
 	if len(ls.items) != len(otherList.items) {
-		return False
+		return false
 	}
 	for i, v := range ls.items {
 		otherV := otherList.items[i]
 		if !Equals(v, otherV) {
-			return False
+			return false
 		}
 	}
-	return True
+	return true
 }
 
 func (ls *List) IsTruthy() bool {
@@ -494,11 +450,11 @@ func (ls *List) Keys() Object {
 func (ls *List) GetItem(key Object) (Object, *Error) {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return nil, TypeErrorf("type error: list index must be an int (got %s)", key.Type())
+		return nil, TypeErrorf("list index must be an int (got %s)", key.Type())
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
-		return nil, Errorf(err.Error())
+		return nil, NewError(err)
 	}
 	return ls.items[idx], nil
 }
@@ -507,7 +463,7 @@ func (ls *List) GetItem(key Object) (Object, *Error) {
 func (ls *List) GetSlice(s Slice) (Object, *Error) {
 	start, stop, err := ResolveIntSlice(s, int64(len(ls.items)))
 	if err != nil {
-		return nil, Errorf(err.Error())
+		return nil, NewError(err)
 	}
 	items := ls.items[start:stop]
 	itemsCopy := make([]Object, len(items))
@@ -519,7 +475,7 @@ func (ls *List) GetSlice(s Slice) (Object, *Error) {
 func (ls *List) SetItem(key, value Object) *Error {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return TypeErrorf("type error: list index must be an int (got %s)", key.Type())
+		return TypeErrorf("list index must be an int (got %s)", key.Type())
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
@@ -533,7 +489,7 @@ func (ls *List) SetItem(key, value Object) *Error {
 func (ls *List) DelItem(key Object) *Error {
 	indexObj, ok := key.(*Int)
 	if !ok {
-		return TypeErrorf("type error: list index must be an int (got %s)", key.Type())
+		return TypeErrorf("list index must be an int (got %s)", key.Type())
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
@@ -562,37 +518,35 @@ func (ls *List) Size() int {
 	return len(ls.items)
 }
 
-func (ls *List) Iter() Iterator {
-	return NewListIter(ls)
+func (ls *List) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
+	for i, item := range ls.items {
+		if !fn(NewInt(int64(i)), item) {
+			return
+		}
+	}
 }
 
-func (ls *List) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (ls *List) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *List:
 		return ls.runOperationList(opType, right)
 	default:
-		return TypeErrorf("type error: unsupported operation for list: %v on type %s",
+		return nil, newTypeErrorf("unsupported operation for list: %v on type %s",
 			opType, right.Type())
 	}
 }
 
-func (ls *List) runOperationList(opType op.BinaryOpType, right *List) Object {
+func (ls *List) runOperationList(opType op.BinaryOpType, right *List) (Object, error) {
 	switch opType {
 	case op.Add:
 		combined := make([]Object, len(ls.items)+len(right.items))
 		copy(combined, ls.items)
 		copy(combined[len(ls.items):], right.items)
-		return NewList(combined)
+		return NewList(combined), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for list: %v on type %s",
+		return nil, newTypeErrorf("unsupported operation for list: %v on type %s",
 			opType, right.Type())
 	}
-}
-
-func (ls *List) Cost() int {
-	// It would be possible to recurse into the list and compute the cost of
-	// each item, but let's avoid that since it would be an expensive op itself.
-	return len(ls.items) * 8
 }
 
 func (ls *List) MarshalJSON() ([]byte, error) {
@@ -617,7 +571,7 @@ func NewStringList(s []string) *List {
 func ResolveIndex(idx int64, size int64) (int64, error) {
 	max := size - 1
 	if idx > max {
-		return 0, fmt.Errorf("index error: index out of range: %d", idx)
+		return 0, newIndexErrorf("index out of range: %d", idx)
 	}
 	if idx >= 0 {
 		return idx, nil
@@ -625,7 +579,7 @@ func ResolveIndex(idx int64, size int64) (int64, error) {
 	// Handle negative indices, where -1 is the last item in the array
 	reversed := idx + size
 	if reversed < 0 || reversed > max {
-		return 0, fmt.Errorf("index error: index out of range: %d", idx)
+		return 0, newIndexErrorf("index out of range: %d", idx)
 	}
 	return reversed, nil
 }
@@ -637,7 +591,7 @@ func ResolveIntSlice(slice Slice, size int64) (start int64, stop int64, err erro
 	if slice.Start != nil {
 		startObj, ok := slice.Start.(*Int)
 		if !ok {
-			err = errz.TypeErrorf("type error: slice start index must be an int (got %s)", slice.Start.Type())
+			err = TypeErrorf("slice start index must be an int (got %s)", slice.Start.Type())
 			return
 		}
 		start = startObj.value
@@ -645,7 +599,7 @@ func ResolveIntSlice(slice Slice, size int64) (start int64, stop int64, err erro
 	if slice.Stop != nil {
 		stopObj, ok := slice.Stop.(*Int)
 		if !ok {
-			err = errz.TypeErrorf("type error: slice stop index must be an int (got %s)", slice.Stop.Type())
+			err = TypeErrorf("slice stop index must be an int (got %s)", slice.Stop.Type())
 			return
 		}
 		stop = stopObj.value

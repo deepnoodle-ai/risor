@@ -1,0 +1,14 @@
+// Encoding and Decoding
+// JSON, Base64, and other formats
+
+// JSON
+let data = {name: "Alice", age: 30}
+let jsonStr = encode(data, "json")
+let decoded = decode(jsonStr, "json")
+
+// Base64
+let message = "Hello!"
+let b64 = encode(message, "base64")
+let original = decode(b64, "base64")
+
+{json: jsonStr, decoded, base64: b64, original}

@@ -1,9 +1,0 @@
-#!/usr/bin/env risor --
-
-values := [3, 1, 4, 2, 5]
-
-// Spawn a thread that sorts the values
-thread := values.sort.spawn()
-
-// Wait for it to complete
-thread.wait()

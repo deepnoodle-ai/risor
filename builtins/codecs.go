@@ -2,7 +2,6 @@ package builtins
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/base32"
 	"encoding/base64"
@@ -10,12 +9,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"net/url"
 	"sort"
 	"sync"
 
-	"github.com/risor-io/risor/arg"
 	"github.com/risor-io/risor/object"
 )
 
@@ -26,8 +24,8 @@ var (
 
 // Codec contains an Encode and a Decode function
 type Codec struct {
-	Encode func(context.Context, object.Object) object.Object
-	Decode func(context.Context, object.Object) object.Object
+	Encode func(context.Context, object.Object) (object.Object, error)
+	Decode func(context.Context, object.Object) (object.Object, error)
 }
 
 func init() {
@@ -37,7 +35,6 @@ func init() {
 	RegisterCodec("json", &Codec{Encode: encodeJSON, Decode: decodeJSON})
 	RegisterCodec("csv", &Codec{Encode: encodeCsv, Decode: decodeCsv})
 	RegisterCodec("urlquery", &Codec{Encode: encodeUrlQuery, Decode: decodeUrlQuery})
-	RegisterCodec("gzip", &Codec{Encode: encodeGzip, Decode: decodeGzip})
 }
 
 // RegisterCodec registers a new codec
@@ -64,82 +61,66 @@ func GetCodec(name string) (*Codec, error) {
 	return codec, nil
 }
 
-func Encode(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("encode", 2, args); err != nil {
-		return err
+func Encode(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("encode: expected 2 arguments, got %d", len(args))
 	}
 	encoding, err := object.AsString(args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	codec, codecErr := GetCodec(encoding)
 	if codecErr != nil {
-		return object.NewError(codecErr)
+		return nil, codecErr
 	}
 	return codec.Encode(ctx, args[0])
 }
 
-func encodeGzip(ctx context.Context, obj object.Object) object.Object {
+func encodeBase64(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var buf bytes.Buffer
-	writer := gzip.NewWriter(&buf)
-	if _, err := writer.Write(data); err != nil {
-		return object.NewError(err)
-	}
-	if err := writer.Close(); err != nil {
-		return object.NewError(err)
-	}
-	return object.NewByteSlice(buf.Bytes())
+	return object.NewString(base64.StdEncoding.EncodeToString(data)), nil
 }
 
-func encodeBase64(ctx context.Context, obj object.Object) object.Object {
+func encodeBase32(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return object.NewString(base64.StdEncoding.EncodeToString(data))
+	return object.NewString(base32.StdEncoding.EncodeToString(data)), nil
 }
 
-func encodeBase32(ctx context.Context, obj object.Object) object.Object {
+func encodeHex(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return object.NewString(base32.StdEncoding.EncodeToString(data))
+	return object.NewString(hex.EncodeToString(data)), nil
 }
 
-func encodeHex(ctx context.Context, obj object.Object) object.Object {
-	data, err := object.AsBytes(obj)
-	if err != nil {
-		return err
-	}
-	return object.NewString(hex.EncodeToString(data))
-}
-
-func encodeJSON(ctx context.Context, obj object.Object) object.Object {
+func encodeJSON(ctx context.Context, obj object.Object) (object.Object, error) {
 	nativeObject := obj.Interface()
 	if nativeObject == nil {
-		return object.Errorf("value error: encode() does not support %T", obj)
+		return nil, object.ValueErrorf("encode() does not support %T", obj)
 	}
 	jsonBytes, err := json.Marshal(nativeObject)
 	if err != nil {
-		return object.NewError(err)
+		return nil, err
 	}
-	return object.NewString(string(jsonBytes))
+	return object.NewString(string(jsonBytes)), nil
 }
 
-func encodeUrlQuery(ctx context.Context, obj object.Object) object.Object {
+func encodeUrlQuery(ctx context.Context, obj object.Object) (object.Object, error) {
 	str, err := object.AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return object.NewString(url.QueryEscape(str))
+	return object.NewString(url.QueryEscape(str)), nil
 }
 
-func asStringList(list *object.List) ([]string, *object.Error) {
+func asStringList(list *object.List) ([]string, error) {
 	items := list.Value()
 	result := make([]string, len(items))
 	for i, item := range items {
@@ -153,7 +134,7 @@ func asStringList(list *object.List) ([]string, *object.Error) {
 	return result, nil
 }
 
-func csvStringListFromMap(m *object.Map, keys []string) ([]string, *object.Error) {
+func csvStringListFromMap(m *object.Map, keys []string) ([]string, error) {
 	items := m.Value()
 	result := make([]string, 0, len(keys))
 	for _, key := range keys {
@@ -172,14 +153,14 @@ func csvStringListFromMap(m *object.Map, keys []string) ([]string, *object.Error
 	return result, nil
 }
 
-func encodeCsv(ctx context.Context, obj object.Object) object.Object {
+func encodeCsv(ctx context.Context, obj object.Object) (object.Object, error) {
 	list, ok := obj.(*object.List)
 	if !ok {
-		return object.TypeErrorf("type error: encode(obj, \"csv\") requires a list (got %s)", obj.Type())
+		return nil, object.TypeErrorf("encode(obj, \"csv\") requires a list (got %s)", obj.Type())
 	}
 	items := list.Value()
 	if len(items) == 0 {
-		return object.Errorf("value error: encode(obj, \"csv\") requires a non-empty List")
+		return nil, object.ValueErrorf("encode(obj, \"csv\") requires a non-empty List")
 	}
 	records := make([][]string, 0, len(items))
 	switch outer := items[0].(type) {
@@ -187,11 +168,11 @@ func encodeCsv(ctx context.Context, obj object.Object) object.Object {
 		for _, item := range items {
 			innerList, ok := item.(*object.List)
 			if !ok {
-				return object.Errorf("value error: encode(obj, \"csv\") requires a list of lists (got %s)", item.Type())
+				return nil, object.ValueErrorf("encode(obj, \"csv\") requires a list of lists (got %s)", item.Type())
 			}
 			strList, err := asStringList(innerList)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			records = append(records, strList)
 		}
@@ -202,119 +183,102 @@ func encodeCsv(ctx context.Context, obj object.Object) object.Object {
 		for _, item := range items {
 			innerMap, ok := item.(*object.Map)
 			if !ok {
-				return object.Errorf("value error: encode(obj, \"csv\") requires a list of maps (got %s)", item.Type())
+				return nil, object.ValueErrorf("encode(obj, \"csv\") requires a list of maps (got %s)", item.Type())
 			}
 			strList, err := csvStringListFromMap(innerMap, keys)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			records = append(records, strList)
 		}
 	default:
-		return object.Errorf("value error: encode(obj, \"csv\") requires a list of lists or maps (got list of %s)", items[0].Type())
+		return nil, object.ValueErrorf("encode(obj, \"csv\") requires a list of lists or maps (got list of %s)", items[0].Type())
 	}
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 	if err := writer.WriteAll(records); err != nil {
-		return object.NewError(err)
+		return nil, err
 	}
-	return object.NewString(buf.String())
+	return object.NewString(buf.String()), nil
 }
 
-func Decode(ctx context.Context, args ...object.Object) object.Object {
-	if err := arg.Require("decode", 2, args); err != nil {
-		return err
+func Decode(ctx context.Context, args ...object.Object) (object.Object, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("decode: expected 2 arguments, got %d", len(args))
 	}
 	encoding, err := object.AsString(args[1])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	codec, codecErr := GetCodec(encoding)
 	if codecErr != nil {
-		return object.NewError(codecErr)
+		return nil, codecErr
 	}
 	return codec.Decode(ctx, args[0])
 }
 
-func decodeGzip(ctx context.Context, obj object.Object) object.Object {
-	data, errObj := object.AsBytes(obj)
-	if errObj != nil {
-		return errObj
-	}
-	reader := bytes.NewReader(data)
-	gzreader, err := gzip.NewReader(reader)
-	if err != nil {
-		return object.NewError(err)
-	}
-	output, err := io.ReadAll(gzreader)
-	if err != nil {
-		return object.NewError(err)
-	}
-	return object.NewByteSlice(output)
-}
-
-func decodeBase64(ctx context.Context, obj object.Object) object.Object {
+func decodeBase64(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	enc := base64.StdEncoding
 	dst := make([]byte, enc.DecodedLen(len(data)))
 	count, decodeErr := enc.Decode(dst, data)
 	if decodeErr != nil {
-		return object.NewError(decodeErr)
+		return nil, decodeErr
 	}
-	return object.NewByteSlice(dst[:count])
+	return object.NewBytes(dst[:count]), nil
 }
 
-func decodeBase32(ctx context.Context, obj object.Object) object.Object {
+func decodeBase32(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	enc := base32.StdEncoding
 	dst := make([]byte, enc.DecodedLen(len(data)))
 	count, decodeErr := enc.Decode(dst, data)
 	if decodeErr != nil {
-		return object.NewError(decodeErr)
+		return nil, decodeErr
 	}
-	return object.NewByteSlice(dst[:count])
+	return object.NewBytes(dst[:count]), nil
 }
 
-func decodeHex(ctx context.Context, obj object.Object) object.Object {
+func decodeHex(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dst := make([]byte, hex.DecodedLen(len(data)))
 	count, decodeErr := hex.Decode(dst, data)
 	if decodeErr != nil {
-		return object.NewError(decodeErr)
+		return nil, decodeErr
 	}
-	return object.NewByteSlice(dst[:count])
+	return object.NewBytes(dst[:count]), nil
 }
 
-func decodeJSON(ctx context.Context, obj object.Object) object.Object {
+func decodeJSON(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var result interface{}
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
-		return object.NewError(err)
+		return nil, err
 	}
-	return object.FromGoType(result)
+	return object.FromGoType(result), nil
 }
 
-func decodeCsv(ctx context.Context, obj object.Object) object.Object {
+func decodeCsv(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsBytes(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	reader := csv.NewReader(bytes.NewReader(data))
 	recs, ioErr := reader.ReadAll()
 	if ioErr != nil {
-		return object.NewError(ioErr)
+		return nil, ioErr
 	}
 	records := make([]object.Object, 0, len(recs))
 	for _, record := range recs {
@@ -324,18 +288,18 @@ func decodeCsv(ctx context.Context, obj object.Object) object.Object {
 		}
 		records = append(records, object.NewList(fields))
 	}
-	return object.NewList(records)
+	return object.NewList(records), nil
 }
 
 // decodeUrlQuery wraps url.QueryUnescape
-func decodeUrlQuery(ctx context.Context, obj object.Object) object.Object {
+func decodeUrlQuery(ctx context.Context, obj object.Object) (object.Object, error) {
 	data, err := object.AsString(obj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	result, escErr := url.QueryUnescape(data)
 	if escErr != nil {
-		return object.NewError(escErr)
+		return nil, escErr
 	}
-	return object.NewString(result)
+	return object.NewString(result), nil
 }

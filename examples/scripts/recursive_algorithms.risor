@@ -1,0 +1,22 @@
+// Recursive Algorithms
+// Recursion patterns
+
+// Factorial
+function factorial(n) {
+    if (n <= 1) { return 1 }
+    return n * factorial(n - 1)
+}
+
+// Fibonacci
+function fib(n) {
+    if (n <= 1) { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+// Greatest common divisor
+function gcd(a, b) {
+    if (b == 0) { return a }
+    return gcd(b, a % b)
+}
+
+{factorial: factorial(5), fib: fib(10), gcd: gcd(48, 18)}

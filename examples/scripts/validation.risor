@@ -1,0 +1,26 @@
+// Validation
+// Simple input validation
+
+function validateUsername(name) {
+    if (len(name) < 3) {
+        return {ok: false, error: "too short"}
+    }
+    if (len(name) > 20) {
+        return {ok: false, error: "too long"}
+    }
+    return {ok: true, error: nil}
+}
+
+function validateAge(age) {
+    if (age < 0 || age > 150) {
+        return {ok: false, error: "invalid age"}
+    }
+    return {ok: true, error: nil}
+}
+
+{
+    name1: validateUsername("alice"),
+    name2: validateUsername("ab"),
+    age1: validateAge(25),
+    age2: validateAge(-5)
+}

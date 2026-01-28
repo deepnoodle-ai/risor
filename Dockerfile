@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS build
+FROM golang:1.25-alpine AS build
 
 ARG TARGETARCH
 
@@ -12,12 +12,11 @@ COPY . .
 RUN cd cmd/risor && go mod download
 RUN CGO_ENABLED=0 GOOS=linux \
     go build \
-    -tags=aws,k8s,vault \
     -ldflags "-X 'main.version=${RISOR_VERSION}' -X 'main.commit=${GIT_REVISION}' -X 'main.date=${BUILD_DATE}'" \
     -o risor \
     ./cmd/risor
 
-FROM alpine:3.19
+FROM alpine:3.23
 
 WORKDIR /app
 

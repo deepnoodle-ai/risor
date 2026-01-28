@@ -1,0 +1,21 @@
+// State Machine
+// Simple state transitions
+
+let transitions = {
+    idle: ["running"],
+    running: ["paused", "stopped"],
+    paused: ["running", "stopped"],
+    stopped: []
+}
+
+function canTransition(from, to) {
+    let allowed = transitions[from]
+    return allowed != nil && to in allowed
+}
+
+// Test some transitions
+let t1 = canTransition("idle", "running")     // true
+let t2 = canTransition("idle", "stopped")     // false
+let t3 = canTransition("running", "paused")   // true
+
+{t1, t2, t3}

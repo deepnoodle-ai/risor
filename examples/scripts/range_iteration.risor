@@ -1,0 +1,21 @@
+// Range and Iteration
+// Ranges and collection helpers
+
+// Basic ranges
+let r1 = list(range(5))           // [0, 1, 2, 3, 4]
+let r2 = list(range(2, 6))        // [2, 3, 4, 5]
+let r3 = list(range(0, 10, 2))    // [0, 2, 4, 6, 8]
+
+// Use range with map
+let squares = list(range(1, 5)).map(x => x * x)
+
+// Sorting
+let nums = [3, 1, 4, 1, 5]
+let asc = sorted(nums)
+let desc = reversed(asc)
+
+// Get keys from a map
+let data = {a: 1, b: 2}
+let k = keys(data)
+
+{r1, r2, r3, squares, asc, desc, keys: k}

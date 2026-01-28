@@ -5,14 +5,25 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
 // Int wraps int64 and implements Object and Hashable interfaces.
+// Int is immutable: the value is set at construction and cannot be changed.
 type Int struct {
-	*base
 	value int64
+}
+
+func (i *Int) Attrs() []AttrSpec {
+	return nil
+}
+
+func (i *Int) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (i *Int) SetAttr(name string, value Object) error {
+	return TypeErrorf("int has no attribute %q", name)
 }
 
 func (i *Int) Inspect() string {
@@ -25,10 +36,6 @@ func (i *Int) Type() Type {
 
 func (i *Int) Value() int64 {
 	return i.value
-}
-
-func (i *Int) HashKey() HashKey {
-	return HashKey{Type: i.Type(), IntValue: i.value}
 }
 
 func (i *Int) Interface() interface{} {
@@ -67,33 +74,27 @@ func (i *Int) Compare(other Object) (int, error) {
 		}
 		return -1, nil
 	default:
-		return 0, errz.TypeErrorf("type error: unable to compare int and %s", other.Type())
+		return 0, TypeErrorf("unable to compare int and %s", other.Type())
 	}
 }
 
-func (i *Int) Equals(other Object) Object {
+func (i *Int) Equals(other Object) bool {
 	switch other := other.(type) {
 	case *Int:
-		if i.value == other.value {
-			return True
-		}
+		return i.value == other.value
 	case *Float:
-		if float64(i.value) == other.value {
-			return True
-		}
+		return float64(i.value) == other.value
 	case *Byte:
-		if i.value == int64(other.value) {
-			return True
-		}
+		return i.value == int64(other.value)
 	}
-	return False
+	return false
 }
 
 func (i *Int) IsTruthy() bool {
 	return i.value != 0
 }
 
-func (i *Int) RunOperation(opType op.BinaryOpType, right Object) Object {
+func (i *Int) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
 	switch right := right.(type) {
 	case *Int:
 		return i.runOperationInt(opType, right.value)
@@ -103,54 +104,60 @@ func (i *Int) RunOperation(opType op.BinaryOpType, right Object) Object {
 		rightInt := int64(right.value)
 		return i.runOperationInt(opType, rightInt)
 	default:
-		return TypeErrorf("type error: unsupported operation for int: %v on type %s", opType, right.Type())
+		return nil, newTypeErrorf("unsupported operation for int: %v on type %s", opType, right.Type())
 	}
 }
 
-func (i *Int) runOperationInt(opType op.BinaryOpType, right int64) Object {
+func (i *Int) runOperationInt(opType op.BinaryOpType, right int64) (Object, error) {
 	switch opType {
 	case op.Add:
-		return NewInt(i.value + right)
+		return NewInt(i.value + right), nil
 	case op.Subtract:
-		return NewInt(i.value - right)
+		return NewInt(i.value - right), nil
 	case op.Multiply:
-		return NewInt(i.value * right)
+		return NewInt(i.value * right), nil
 	case op.Divide:
-		return NewInt(i.value / right)
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
+		return NewInt(i.value / right), nil
 	case op.Modulo:
-		return NewInt(i.value % right)
+		if right == 0 {
+			return nil, newValueErrorf("division by zero")
+		}
+		return NewInt(i.value % right), nil
 	case op.Xor:
-		return NewInt(i.value ^ right)
+		return NewInt(i.value ^ right), nil
 	case op.Power:
-		return NewInt(int64(math.Pow(float64(i.value), float64(right))))
+		return NewInt(int64(math.Pow(float64(i.value), float64(right)))), nil
 	case op.LShift:
-		return NewInt(i.value << uint(right))
+		return NewInt(i.value << uint(right)), nil
 	case op.RShift:
-		return NewInt(i.value >> uint(right))
+		return NewInt(i.value >> uint(right)), nil
 	case op.BitwiseAnd:
-		return NewInt(i.value & right)
+		return NewInt(i.value & right), nil
 	case op.BitwiseOr:
-		return NewInt(i.value | right)
+		return NewInt(i.value | right), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for int: %v on type int", opType)
+		return nil, newTypeErrorf("unsupported operation for int: %v on type int", opType)
 	}
 }
 
-func (i *Int) runOperationFloat(opType op.BinaryOpType, right float64) Object {
+func (i *Int) runOperationFloat(opType op.BinaryOpType, right float64) (Object, error) {
 	iValue := float64(i.value)
 	switch opType {
 	case op.Add:
-		return NewFloat(iValue + right)
+		return NewFloat(iValue + right), nil
 	case op.Subtract:
-		return NewFloat(iValue - right)
+		return NewFloat(iValue - right), nil
 	case op.Multiply:
-		return NewFloat(iValue * right)
+		return NewFloat(iValue * right), nil
 	case op.Divide:
-		return NewFloat(iValue / right)
+		return NewFloat(iValue / right), nil
 	case op.Power:
-		return NewInt(int64(math.Pow(float64(i.value), float64(right))))
+		return NewInt(int64(math.Pow(float64(i.value), float64(right)))), nil
 	default:
-		return TypeErrorf("type error: unsupported operation for int: %v on type float", opType)
+		return nil, newTypeErrorf("unsupported operation for int: %v on type float", opType)
 	}
 }
 
@@ -158,24 +165,39 @@ func (i *Int) MarshalJSON() ([]byte, error) {
 	return json.Marshal(i.value)
 }
 
-func (i *Int) Iter() Iterator {
-	return NewIntIter(i)
-}
-
+// NewInt returns an *Int for the given value. Small integers (-10 to 255)
+// are returned from a pre-allocated cache, so the same pointer may be
+// returned for equal values. This is safe because Int is immutable.
 func NewInt(value int64) *Int {
-	if value >= 0 && value < tableSize {
-		return intCache[value]
+	if value >= 0 && value < positiveCacheSize {
+		return positiveCache[value]
+	}
+	if value < 0 && value >= -negativeCacheSize {
+		return negativeCache[-value-1]
 	}
 	return &Int{value: value}
 }
 
-const tableSize = 256
+// Int caches hold pre-allocated Int objects for small integers.
+// The caches are initialized once at package load time and are read-only
+// thereafter, making them safe for concurrent use across multiple VMs.
+const (
+	positiveCacheSize = 256 // 0 to 255
+	negativeCacheSize = 10  // -1 to -10
+)
 
-var intCache = []*Int{}
+var (
+	positiveCache []*Int
+	negativeCache []*Int
+)
 
 func init() {
-	intCache = make([]*Int, tableSize)
-	for i := 0; i < tableSize; i++ {
-		intCache[i] = &Int{value: int64(i)}
+	positiveCache = make([]*Int, positiveCacheSize)
+	for i := range positiveCacheSize {
+		positiveCache[i] = &Int{value: int64(i)}
+	}
+	negativeCache = make([]*Int, negativeCacheSize)
+	for i := range negativeCacheSize {
+		negativeCache[i] = &Int{value: int64(-i - 1)}
 	}
 }

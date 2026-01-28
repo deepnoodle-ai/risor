@@ -65,7 +65,7 @@ func runMultipleScripts() {
     source1 := `x := 10; y := 20; x + y`
     ast1, _ := parser.Parse(ctx, source1)
     code1, _ := compiler.Compile(ast1)
-    vm1 := vm.New(code1)  // New VM instance
+    vm1, _ := vm.New(code1)  // New VM instance
     vm1.Run(ctx)
     result1, _ := vm1.TOS()
     
@@ -73,7 +73,7 @@ func runMultipleScripts() {
     source2 := `a := 5; b := 15; a * b`
     ast2, _ := parser.Parse(ctx, source2)
     code2, _ := compiler.Compile(ast2)
-    vm2 := vm.New(code2)  // Another new VM instance
+    vm2, _ := vm.New(code2)  // Another new VM instance
     vm2.Run(ctx)
     result2, _ := vm2.TOS()
     
@@ -92,7 +92,7 @@ func runMultipleScripts() {
     source1 := `x := 10; y := 20; x + y`
     ast1, _ := parser.Parse(ctx, source1)
     code1, _ := compiler.Compile(ast1)
-    machine := vm.New(code1)  // Single VM instance
+    machine, _ := vm.New(code1)  // Single VM instance
     
     // Run the initial code
     machine.Run(ctx)

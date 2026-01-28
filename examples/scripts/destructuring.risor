@@ -1,0 +1,21 @@
+// Destructuring
+// Extract values from maps and lists
+
+// Map destructuring
+let person = {name: "Alice", age: 30}
+let {name, age} = person
+
+// List destructuring
+let point = [10, 20]
+let [x, y] = point
+
+// Destructuring in function parameters
+function greet({name}) {
+    return "Hello, " + name
+}
+
+// Spread to merge maps
+let base = {a: 1, b: 2}
+let extended = {...base, c: 3}
+
+{name, age, x, y, greeting: greet({name: "Bob"}), extended}

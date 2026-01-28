@@ -2,355 +2,158 @@ package vm
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/object"
-	ros "github.com/risor-io/risor/os"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAddCompilationAndExecution(t *testing.T) {
 	program, err := parser.Parse(context.Background(), `
-	x := 11
-	y := 12
+	let x = 11
+	let y = 12
 	x + y
-	`)
-	require.Nil(t, err)
+	`, nil)
+	assert.Nil(t, err)
 
-	c, err := compiler.New()
-	require.Nil(t, err)
+	main, err := compiler.Compile(program, nil)
+	assert.Nil(t, err)
 
-	main, err := c.Compile(program)
-	require.Nil(t, err)
+	constsCount := main.ConstantCount()
+	assert.Equal(t, constsCount, 2)
 
-	constsCount := main.ConstantsCount()
-	require.Equal(t, 2, constsCount)
+	c1, ok := main.ConstantAt(0).(int64)
+	assert.True(t, ok)
+	assert.Equal(t, c1, int64(11))
 
-	c1, ok := main.Constant(0).(int64)
-	require.True(t, ok)
-	require.Equal(t, int64(11), c1)
+	c2, ok := main.ConstantAt(1).(int64)
+	assert.True(t, ok)
+	assert.Equal(t, c2, int64(12))
 
-	c2, ok := main.Constant(1).(int64)
-	require.True(t, ok)
-	require.Equal(t, int64(12), c2)
-
-	vm := New(main)
-	require.Nil(t, vm.Run(context.Background()))
+	vm, err := New(main)
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(context.Background()))
 
 	tos, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(23), tos)
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(23))
 }
 
 func TestConditional(t *testing.T) {
 	program, err := parser.Parse(context.Background(), `
-	x := 20
-	if x > 10 {
+	let x = 20
+	if (x > 10) {
 		x = 99
 	}
 	x
-	`)
-	require.Nil(t, err)
+	`, nil)
+	assert.Nil(t, err)
 
-	main, err := compiler.Compile(program)
-	require.Nil(t, err)
+	main, err := compiler.Compile(program, nil)
+	assert.Nil(t, err)
 
-	vm := New(main)
-	require.Nil(t, vm.Run(context.Background()))
+	vm, err := New(main)
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(context.Background()))
 
 	tos, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(99), tos)
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(99))
 }
 
 func TestConditional3(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 5
-	y := 10
-	if x > 1 {
+	let x = 5
+	let y = 10
+	if (x > 1) {
 		y
 	} else {
 		99
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(10))
 }
 
 func TestConditional4(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 5
-	y := 22
-	z := 33
-	if x < 1 {
+	let x = 5
+	let y = 22
+	let z = 33
+	if (x < 1) {
 		x = y
 	} else {
 		x = z
 	}
 	x
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(33), result)
-}
-
-func TestLoop(t *testing.T) {
-	result, err := run(context.Background(), `
-	y := 0
-	for {
-		y = y + 1
-		if y > 10 {
-			break
-		}
-	}
-	y
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(11), result)
-}
-
-func TestForLoop2(t *testing.T) {
-	result, err := run(context.Background(),
-		`x := 0; for y := 0; y < 5; y++ { x = y }; x`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
-}
-
-func TestForLoop3(t *testing.T) {
-	result, err := run(context.Background(), `x := 0; for x < 10 { x++ }; x`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result)
-}
-
-func TestForRange1(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := [1, 2.3, "hello", true]
-	output := []
-	for i := range x {
-		1 + 2
-		3 + 4
-	}
-	99
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
-}
-
-func TestForRange2(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for _, value := range [5,6,7] {
-		x = value
-	}
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(7), result)
-}
-
-func TestForRange3(t *testing.T) {
-	result, err := run(context.Background(), `
-	x, y := [0, 0]
-	for i, value := range [5, 6, 7] {
-		x = i      // should go up to 2
-		y = value  // should go up to 7
-	}
-	[x, y]
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(2),
-		object.NewInt(7),
-	}), result)
-}
-
-func TestForRange4(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for i := range ["a", "b", "c"] { x = i }
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
-}
-
-func TestForRange5(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for range ["a", "b", "c"] { x++ }
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), result)
-}
-
-func TestForRange7(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := nil
-	y := nil
-	count := 0
-	f := func() { range [ "a", "b", "c" ] }
-	for i, value := f() {
-		x = i      // should count 0, 1, 2
-		y = value  // should go "a", "b", "c"
-		count++
-	}
-	[x, y, count]
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(2),
-		object.NewString("c"),
-		object.NewInt(3),
-	}), result)
-}
-
-func TestIterator(t *testing.T) {
-	tests := []testCase{
-		{`(range [ 33, 44, 55 ]).next()`, object.NewInt(33)},
-		{`c := { 33, 44, 55 }; i := range c; i.next(); i.entry().value`, object.True},
-		{`c := { 33, 44, 55 }; i := range c; i.next(); i.entry().key`, object.NewInt(33)},
-		{`(range [ 33, 44, 55 ]).next()`, object.NewInt(33)},
-		{`i := range "abcd"; i.next(); i.entry().key`, object.NewInt(0)},
-		{`i := range "abcd"; i.next(); i.entry().value`, object.NewString("a")},
-		{`c := { a: 33, b: 44 }; (range c).next()`, object.NewString("a")},
-		{`c := { a: 33, b: 44 }; i := range c; i.next(); i.entry().key`, object.NewString("a")},
-		{`c := { a: 33, b: 44 }; i := range c; i.next(); i.entry().value`, object.NewInt(33)},
-	}
-	runTests(t, tests)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(33))
 }
 
 func TestIndexing(t *testing.T) {
 	tests := []testCase{
-		{`x := [1, 2]; x[0] = 9; x[0]`, object.NewInt(9)},
-		{`x := [1, 2]; x[-1] = 9; x[1]`, object.NewInt(9)},
-		{`x := {a: 1}; x["a"] = 9; x["a"]`, object.NewInt(9)},
-		{`x := {a: 1}; x["b"] = 9; x["b"]`, object.NewInt(9)},
-		{`x := { 1 }; x[1]`, object.True},
-		{`x := { 1 }; x[2]`, object.False},
+		{`let x = [1, 2]; x[0] = 9; x[0]`, object.NewInt(9)},
+		{`let x = [1, 2]; x[-1] = 9; x[1]`, object.NewInt(9)},
+		{`let x = {a: 1}; x["a"] = 9; x["a"]`, object.NewInt(9)},
+		{`let x = {a: 1}; x["b"] = 9; x["b"]`, object.NewInt(9)},
 	}
 	runTests(t, tests)
 }
 
-func TestStackPopping1(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := []
-	for i := 0; i < 4; i++ {
-		1
-		2
-		3
-		4
-		x.append(i)
-	}
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(0),
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
-}
-
-func TestStackPopping2(t *testing.T) {
-	result, err := run(context.Background(), `
-	for i := range [1, 2, 3] {
-		1
-		2
-		3
-		4
-	}
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
-}
-
-func TestStackBehavior1(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 99
-	for i := 0; i < 4; x {
-		i++
-		1
-		2
-		3
-	}
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
-}
-
-func TestStackBehavior2(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 77
-	for i := 0; i < 4; x {
-		i++
-		1
-		2
-		3
-		4
-		if i > 0 {
-			break // loop once
-		}
-	}
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
-}
-
 func TestStackBehavior3(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 77
-	if x > 0 {
-		99 
+	let x = 77
+	if (x > 0) {
+		99
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestStackBehavior4(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := -1
-	if x > 0 {
-		99 
+	let x = -1
+	if (x > 0) {
+		99
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestAssignmentOperators(t *testing.T) {
 	result, err := run(context.Background(), `
-	y := 99
+	let y = 99
 	y  = 3
 	y += 6
 	y /= 9
 	y *= 2
 	y
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(2))
 }
 
 func TestFunctionCall(t *testing.T) {
 	result, err := run(context.Background(), `
-	f := func(x) { 42 + x }
-	v := f(1)
+	let f = function(x) { 42 + x }
+	let v = f(1)
 	v + 10
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(53), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(53))
 }
 
 func TestSwitch1(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
-	switch x {
+	let x = 3
+	switch (x) {
 		case 1:
 		case 2:
 			21
@@ -358,225 +161,222 @@ func TestSwitch1(t *testing.T) {
 			42
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(42), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(42))
 }
 
 func TestSwitch2(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 1
-	switch x {
+	let x = 1
+	switch (x) {
 		case 1:
 			99
 		case 2:
 			42
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestSwitch3(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
-	switch x {
+	let x = 3
+	switch (x) {
 		case 1:
 			99
 		case 2:
 			42
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestSwitch4(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
-	switch x { default: 99 }
+	let x = 3
+	switch (x) { default: 99 }
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestSwitch5(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
-	switch x { default: 99 case 3: x; x-1 }
+	let x = 3
+	switch (x) { default: 99 case 3: x; x-1 }
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(2))
 }
 
 func TestStr(t *testing.T) {
 	result, err := run(context.Background(), `
-	s := "hello"
+	let s = "hello"
 	s
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("hello"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("hello"))
 }
 
 func TestStrLen(t *testing.T) {
 	result, err := run(context.Background(), `
-	s := "hello"
+	let s = "hello"
 	len(s)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(5), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(5))
 }
 
 func TestList1(t *testing.T) {
 	result, err := run(context.Background(), `
-	l := [1, 2, 3]
+	let l = [1, 2, 3]
 	l
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(1),
+			object.NewInt(2),
+			object.NewInt(3),
+		}))
 }
 
 func TestList2(t *testing.T) {
 	result, err := run(context.Background(), `
-	plusOne := func(x) { x + 1 }
+	let plusOne = function(x) { x + 1 }
 	[plusOne(0), 4-2, plusOne(2)]
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(1),
+			object.NewInt(2),
+			object.NewInt(3),
+		}))
 }
 
 func TestMap(t *testing.T) {
 	result, err := run(context.Background(), `
 	{"a": 1, "b": 4-2}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewMap(map[string]object.Object{
-		"a": object.NewInt(1),
-		"b": object.NewInt(2),
-	}), result)
-}
+	assert.Nil(t, err)
+	assert.Equal(t,
 
-func TestSet(t *testing.T) {
-	result, err := run(context.Background(), `
-	{"a", 4-1}
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewSet([]object.Object{
-		object.NewString("a"),
-		object.NewInt(3),
-	}), result)
+		result, object.NewMap(map[string]object.Object{
+			"a": object.NewInt(1),
+			"b": object.NewInt(2),
+		}))
 }
 
 func TestNonLocal(t *testing.T) {
 	result, err := run(context.Background(), `
-	y := 3
-	z := 99
-	f := func() { y = 4 }
+	let y = 3
+	let z = 99
+	let f = function() { y = 4 }
 	f()
 	y
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(4))
 }
 
 func TestFrameLocals1(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 1
-	f := func(x) { x = 99 }
+	let x = 1
+	let f = function(x) { x = 99 }
 	f(4)
 	x
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(1), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(1))
 }
 
 func TestFrameLocals2(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 1
-	f := func(y) { x = 99 }
+	let x = 1
+	let f = function(y) { x = 99 }
 	f(4)
 	x
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(99), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(99))
 }
 
 func TestMapKeys(t *testing.T) {
 	result, err := run(context.Background(), `
-	m := {"a": 1, "b": 2}
+	let m = {"a": 1, "b": 2}
 	keys(m)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewString("a"),
-		object.NewString("b"),
-	}), result)
+	assert.Nil(t, err)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewString("a"),
+			object.NewString("b"),
+		}))
 }
 
 func TestClosure(t *testing.T) {
 	result, err := run(context.Background(), `
-	f := func(x) { func() { x } }
-	closure := f(22)
+	let f = function(x) { function() { x } }
+	let closure = f(22)
 	closure()
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(22), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(22))
 }
 
 func TestClosureIncrementer(t *testing.T) {
 	result, err := run(context.Background(), `
-	f := func(x) {
-		func() { x++; x }
+	let f = function(x) {
+		function() { x++; x }
 	}
-	incrementer := f(0)
+	let incrementer = f(0)
 	incrementer() // 1
 	incrementer() // 2
 	incrementer() // 3
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(3))
 }
 
 func TestClosureOverLocal(t *testing.T) {
 	result, err := run(context.Background(), `
-	var testValue = 100
-	func getint() {
-		var foo = testValue + 1
-		func inner() {
+	let testValue = 100
+	function getint() {
+		let foo = testValue + 1
+		function inner() {
 			foo
 		}
 		return inner
 	}
 	getint()()
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(101), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(101))
 }
 
 func TestClosureManyVariables(t *testing.T) {
 	result, err := run(context.Background(), `
-	func foo(a, b, c) {
-		return func(d) {
+	function foo(a, b, c) {
+		return function(d) {
 			return [a, b, c, d]
 		}
 	}
 	foo("hello", "world", "risor")("go")
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewStringList([]string{"hello", "world", "risor", "go"}), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewStringList([]string{"hello", "world", "risor", "go"}))
 }
 
 func TestRecursiveExample1(t *testing.T) {
 	result, err := run(context.Background(), `
-	func twoexp(n) {
-		if n == 0 {
+	function twoexp(n) {
+		if (n == 0) {
 			return 1
 		} else {
 			return 2 * twoexp(n-1)
@@ -584,17 +384,17 @@ func TestRecursiveExample1(t *testing.T) {
 	}
 	twoexp(4)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(16), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(16))
 }
 
 func TestRecursiveExample2(t *testing.T) {
 	result, err := run(context.Background(), `
-	func twoexp(n) {
-		a := 1
-		b := 2
-		c := a * b
-		if n == 0 {
+	function twoexp(n) {
+		let a = 1
+		let b = 2
+		let c = a * b
+		if (n == 0) {
 			return 1
 		} else {
 			return c * twoexp(n-1)
@@ -602,39 +402,78 @@ func TestRecursiveExample2(t *testing.T) {
 	}
 	twoexp(4)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(16), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(16))
 }
 
 func TestConstant(t *testing.T) {
 	_, err := run(context.Background(), `const x = 1; x = 2`)
-	require.NotNil(t, err)
-	require.Equal(t, "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:16 (line 1, column 16)", err.Error())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:14 (line 1, column 14)")
 }
 
 func TestConstantFunction(t *testing.T) {
 	_, err := run(context.Background(), `
-	func add(x, y) { x + y }
+	function add(x, y) { x + y }
 	add = "bloop"
 	`)
-	require.NotNil(t, err)
-	require.Equal(t, "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:6 (line 3, column 6)", err.Error())
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:2 (line 3, column 2)")
 }
 
 func TestStatementsNilValue(t *testing.T) {
 	// The result value of a statement is always nil
 	tests := []testCase{
-		{`x := 0`, object.Nil},
-		{`x := 0; x++`, object.Nil},
-		{`x := 0; x--`, object.Nil},
-		{`x := 0; x += 1`, object.Nil},
-		{`x := 0; x -= 1`, object.Nil},
+		{`let x = 0`, object.Nil},
+		{`let x = 0; x++`, object.Nil},
+		{`let x = 0; x--`, object.Nil},
+		{`let x = 0; x += 1`, object.Nil},
+		{`let x = 0; x -= 1`, object.Nil},
 		{`const x = 0`, object.Nil},
-		{`var x = 0`, object.Nil},
-		{`x, y := [0, 0]`, object.Nil},
-		{`x := [1]; x[0] = 2`, object.Nil},
-		{`for i := 0; i < 10; i++ { 42 }`, object.Nil},
-		{`x := 0; for i := 0; i < 10; i++ { x = i }`, object.Nil},
+		{`let x = 0`, object.Nil},
+		{`let x, y = [0, 0]`, object.Nil},
+		{`let x = [1]; x[0] = 2`, object.Nil},
+	}
+	runTests(t, tests)
+}
+
+func TestPostfixOperators(t *testing.T) {
+	tests := []testCase{
+		// Simple variable postfix
+		{`let x = 5; x++; x`, object.NewInt(6)},
+		{`let x = 5; x--; x`, object.NewInt(4)},
+		// Index postfix with literal index
+		{`let arr = [1, 2, 3]; arr[0]++; arr[0]`, object.NewInt(2)},
+		{`let arr = [10, 20, 30]; arr[1]--; arr[1]`, object.NewInt(19)},
+		{`let arr = [1, 2, 3]; arr[0]++; arr[1]++; arr[2]++; arr`, object.NewList([]object.Object{
+			object.NewInt(2), object.NewInt(3), object.NewInt(4),
+		})},
+		// Index postfix with variable index
+		{`let arr = [1, 2, 3]; let i = 1; arr[i]++; arr[i]`, object.NewInt(3)},
+		{`let arr = [10, 20, 30]; let i = 2; arr[i]--; arr`, object.NewList([]object.Object{
+			object.NewInt(10), object.NewInt(20), object.NewInt(29),
+		})},
+		// Index postfix with expression index
+		{`let arr = [1, 2, 3, 4]; arr[1 + 1]++; arr[2]`, object.NewInt(4)},
+		// Map index postfix
+		{`let m = {"a": 1}; m["a"]++; m["a"]`, object.NewInt(2)},
+		{`let m = {"x": 10}; m["x"]--; m["x"]`, object.NewInt(9)},
+		// Map with variable key
+		{`let m = {"key": 5}; let k = "key"; m[k]++; m["key"]`, object.NewInt(6)},
+		// Attribute postfix
+		{`let obj = {x: 5}; obj.x++; obj.x`, object.NewInt(6)},
+		{`let obj = {value: 10}; obj.value--; obj.value`, object.NewInt(9)},
+		// Nested attribute postfix
+		{`let obj = {inner: {count: 0}}; obj.inner.count++; obj.inner.count`, object.NewInt(1)},
+		// Multiple operations
+		{`let arr = [0]; arr[0]++; arr[0]++; arr[0]++; arr[0]`, object.NewInt(3)},
+		{`let obj = {n: 0}; obj.n++; obj.n++; obj.n`, object.NewInt(2)},
+		// Multiple postfix operations on different indices
+		{`let arr = [0, 0, 0]; arr[0]++; arr[1]++; arr[2]++; arr`, object.NewList([]object.Object{
+			object.NewInt(1), object.NewInt(1), object.NewInt(1),
+		})},
+		// Postfix with float (should work with numeric addition)
+		{`let obj = {f: 1.5}; obj.f++; obj.f`, object.NewFloat(2.5)},
 	}
 	runTests(t, tests)
 }
@@ -657,7 +496,7 @@ func TestArithmetic(t *testing.T) {
 		{`3 % 3`, object.NewInt(0)},
 		{`11 % 3`, object.NewInt(2)},
 		{`-11`, object.NewInt(-11)},
-		{`x := -11; -x`, object.NewInt(11)},
+		{`let x = -11; -x`, object.NewInt(11)},
 		{`-1.5`, object.NewFloat(-1.5)},
 		{`3 & 1`, object.NewInt(1)},
 		{`3 & 3`, object.NewInt(3)},
@@ -739,7 +578,6 @@ func TestTruthiness(t *testing.T) {
 		{`![]`, object.True},
 		{`![1]`, object.False},
 		{`!{}`, object.True},
-		{`!{1}`, object.False},
 		{`!""`, object.True},
 		{`!"a"`, object.False},
 		{`bool(0)`, object.False},
@@ -747,7 +585,6 @@ func TestTruthiness(t *testing.T) {
 		{`bool([])`, object.False},
 		{`bool([1])`, object.True},
 		{`bool({})`, object.False},
-		{`bool({1})`, object.True},
 		{`bool({foo: 1})`, object.True},
 	}
 	runTests(t, tests)
@@ -755,26 +592,26 @@ func TestTruthiness(t *testing.T) {
 
 func TestControlFlow(t *testing.T) {
 	tests := []testCase{
-		{`if false { 3 }`, object.Nil},
-		{`if true { 3 }`, object.NewInt(3)},
-		{`if false { 3 } else { 4 }`, object.NewInt(4)},
-		{`if true { 3 } else { 4 }`, object.NewInt(3)},
-		{`if false { 3 } else if false { 4 } else { 5 }`, object.NewInt(5)},
-		{`if true { 3 } else if false { 4 } else { 5 }`, object.NewInt(3)},
-		{`if false { 3 } else if true { 4 } else { 5 }`, object.NewInt(4)},
-		{`x := 1; if x > 5 { 99 } else { 100 }`, object.NewInt(100)},
-		{`x := 1; if x > 0 { 99 } else { 100 }`, object.NewInt(99)},
-		{`x := 1; y := x > 0 ? 77 : 88; y`, object.NewInt(77)},
-		{`x := (1 > 2) ? 77 : 88; x`, object.NewInt(88)},
-		{`x := (2 > 1) ? 77 : 88; x`, object.NewInt(77)},
-		{`x := 1; switch x { case 1: 99; case 2: 100 }`, object.NewInt(99)},
-		{`switch 2 { case 1: 99; case 2: 100 }`, object.NewInt(100)},
-		{`switch 3 { case 1: 99; default: 42 case 2: 100 }`, object.NewInt(42)},
-		{`switch 3 { case 1: 99; case 2: 100 }`, object.Nil},
-		{`switch 3 { case 1, 3: 99; case 2: 100 }`, object.NewInt(99)},
-		{`switch 3 { case 1: 99; case 2, 4-1: 100 }`, object.NewInt(100)},
-		{`x := 3; switch bool(x) { case true: "wow" }`, object.NewString("wow")},
-		{`x := 0; switch bool(x) { case true: "wow" }`, object.Nil},
+		{`if (false) { 3 }`, object.Nil},
+		{`if (true) { 3 }`, object.NewInt(3)},
+		{`if (false) { 3 } else { 4 }`, object.NewInt(4)},
+		{`if (true) { 3 } else { 4 }`, object.NewInt(3)},
+		{`if (false) { 3 } else if (false) { 4 } else { 5 }`, object.NewInt(5)},
+		{`if (true) { 3 } else if (false) { 4 } else { 5 }`, object.NewInt(3)},
+		{`if (false) { 3 } else if (true) { 4 } else { 5 }`, object.NewInt(4)},
+		{`let x = 1; if (x > 5) { 99 } else { 100 }`, object.NewInt(100)},
+		{`let x = 1; if (x > 0) { 99 } else { 100 }`, object.NewInt(99)},
+		{`let x = 1; let y = if (x > 0) { 77 } else { 88 }; y`, object.NewInt(77)},
+		{`let x = if (1 > 2) { 77 } else { 88 }; x`, object.NewInt(88)},
+		{`let x = if (2 > 1) { 77 } else { 88 }; x`, object.NewInt(77)},
+		{`let x = 1; switch (x) { case 1: 99; case 2: 100 }`, object.NewInt(99)},
+		{`switch (2) { case 1: 99; case 2: 100 }`, object.NewInt(100)},
+		{`switch (3) { case 1: 99; default: 42 case 2: 100 }`, object.NewInt(42)},
+		{`switch (3) { case 1: 99; case 2: 100 }`, object.Nil},
+		{`switch (3) { case 1, 3: 99; case 2: 100 }`, object.NewInt(99)},
+		{`switch (3) { case 1: 99; case 2, 4-1: 100 }`, object.NewInt(100)},
+		{`let x = 3; switch (bool(x)) { case true: "wow" }`, object.NewString("wow")},
+		{`let x = 0; switch (bool(x)) { case true: "wow" }`, object.Nil},
 	}
 	runTests(t, tests)
 }
@@ -787,9 +624,7 @@ func TestLength(t *testing.T) {
 		{`len("hello")`, object.NewInt(5)},
 		{`len([1, 2, 3])`, object.NewInt(3)},
 		{`len({"abc": 1})`, object.NewInt(1)},
-		{`len({"abc"})`, object.NewInt(1)},
 		{`len("ᛛᛥ")`, object.NewInt(2)},
-		{`len(string(byte_slice([0, 1, 2])))`, object.NewInt(3)},
 	}
 	runTests(t, tests)
 }
@@ -800,9 +635,6 @@ func TestBuiltins(t *testing.T) {
 		{`keys({"a": 1})`, object.NewList([]object.Object{
 			object.NewString("a"),
 		})},
-		{`byte(9)`, object.NewByte(9)},
-		{`byte_slice([9])`, object.NewByteSlice([]byte{9})},
-		{`float_slice([9])`, object.NewFloatSlice([]float64{9})},
 		{`type(3.14159)`, object.NewString("float")},
 		{`type("hi".contains)`, object.NewString("builtin")},
 		{`sprintf("%d-%d", 1, 2)`, object.NewString("1-2")},
@@ -810,13 +642,8 @@ func TestBuiltins(t *testing.T) {
 		{`float("2.5")`, object.NewFloat(2.5)},
 		{`string(99)`, object.NewString("99")},
 		{`string(2.5)`, object.NewString("2.5")},
-		{`ord("a")`, object.NewInt(97)},
-		{`chr(97)`, object.NewString("a")},
 		{`encode("hi", "hex")`, object.NewString("6869")},
 		{`encode("hi", "base64")`, object.NewString("aGk=")},
-		{`iter("abc").next()`, object.NewString("a")},
-		{`i := iter("abc"); i.next(); i.entry().key`, object.NewInt(0)},
-		{`i := iter("abc"); i.next(); i.entry().value`, object.NewString("a")},
 		{`reversed("abc")`, object.NewString("cba")},
 		{`reversed([1, 2, 3])`, object.NewList([]object.Object{
 			object.NewInt(3),
@@ -838,216 +665,130 @@ func TestBuiltins(t *testing.T) {
 	runTests(t, tests)
 }
 
-func TestTry(t *testing.T) {
+func TestTryKeyword(t *testing.T) {
 	tests := []testCase{
-		{`try(1)`, object.NewInt(1)},
-		{`try(1, 2)`, object.NewInt(1)},
-		{`try(func() { error("oops") }, "nope")`, object.NewString("nope")},
-		{`try(func() { error("oops") }, func(e) { e })`, object.Errorf("oops").WithRaised(false)},
-		{`try(func() { error("oops") }, func(e) { e.error() })`, object.NewString("oops")},
-		{`try(func() { error("oops") }, func() { error("oops") }, 1)`, object.NewInt(1)},
-		{`x := 0; y := 0; z := try(func() {
-			x = 11
-			error("oops1")
-			x = 12
-		  }, func() {
-			y = 21
-			error("oops2")
-			y = 22
-		  }, 33); [x, y, z]`, object.NewList([]object.Object{
-			object.NewInt(11),
-			object.NewInt(21),
-			object.NewInt(33),
-		})},
+		// Basic try/catch
+		{`let r = "ok"; try { r = "try" } catch e { r = "catch" }; r`, object.NewString("try")},
+		{`let r = "ok"; try { throw "err" } catch e { r = "catch" }; r`, object.NewString("catch")},
+		// Try with no error
+		{`let x = 1; try { x = 2 } catch e { x = 3 }; x`, object.NewInt(2)},
+		// Try with error
+		{`let x = 1; try { throw "oops"; x = 2 } catch e { x = 3 }; x`, object.NewInt(3)},
 	}
 	runTests(t, tests)
 }
 
 func TestTryEvalError(t *testing.T) {
 	code := `
-	try(func() { error(errors.eval_error("oops")) }, 1)
+	try { throw "oops" } catch e { 1 }
 	`
 	_, err := run(context.Background(), code)
-	require.NotNil(t, err)
-	require.Equal(t, "oops", err.Error())
-	require.Equal(t, errz.EvalErrorf("oops"), err)
+	// With the new try/catch, thrown errors are caught
+	assert.Nil(t, err)
 }
 
 func TestTryTypeError(t *testing.T) {
 	code := `
-	i := 0
-	try(func() { i.append("x") }, func(e) { e.message() })
+	let i = 0
+	let msg = ""
+	try { i.append("x") } catch e { msg = string(e) }
+	msg
 	`
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
-	require.Equal(t, object.NewString("type error: attribute \"append\" not found on int object"), result)
+	assert.NoError(t, err)
+	// Check that the error message contains the expected content (may include location info)
+	resultStr, ok := result.(*object.String)
+	assert.True(t, ok)
+	assert.Contains(t, resultStr.Value(), "type error: attribute \"append\" not found on int object")
 }
 
 func TestTryUnsupportedOperation(t *testing.T) {
 	code := `
-	i := []
-	try(func() { i + 3 }, func(e) { e.message() })
+	let i = []
+	let msg = ""
+	try { i + 3 } catch e { msg = string(e) }
+	msg
 	`
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
-	require.Equal(t, object.NewString("type error: unsupported operation for list: + on type int"), result)
+	assert.NoError(t, err)
+	// Check that the error message contains the expected content (may include location info)
+	resultStr, ok := result.(*object.String)
+	assert.True(t, ok)
+	assert.Contains(t, resultStr.Value(), "type error: unsupported operation for list: + on type int")
 }
 
 func TestTryWithErrorValues(t *testing.T) {
 	code := `
-	const myerr = errors.new("errno == 1")
-	try(func() {
-		print("testing 1 2 3")
-		error(myerr)
-	}, func(e) {
-		return e == myerr ? "YES" : "NO"
-	})`
+	const myerr = "errno == 1"
+	let result = ""
+	try {
+		let x = "testing 1 2 3"
+		throw myerr
+	} catch e {
+		result = if (string(e) == "errno == 1") { "YES" } else { "NO" }
+	}
+	result`
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
-	require.Equal(t, object.NewString("YES"), result)
+	assert.NoError(t, err)
+	assert.Equal(t, result, object.NewString("YES"))
 }
 
-func TestTryWithLoop(t *testing.T) {
+func TestStringTemplateWithThrow(t *testing.T) {
+	// throw triggers exception handling - the template is never completed
 	code := `
-	result := []
-	for i := 0; i < 5; i++ {
-		value := try(
-			func() { if i % 2 == 0 { error("Even number") } else { return i } },
-			func(e) { return e.message() }
-		)
-		result.append(value)
-	}
-	result
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	expected := object.NewList([]object.Object{
-		object.NewString("Even number"),
-		object.NewInt(1),
-		object.NewString("Even number"),
-		object.NewInt(3),
-		object.NewString("Even number"),
-	})
-	require.Equal(t, expected, result)
-}
-
-func TestTryWithClosure(t *testing.T) {
-	code := `
-	func makeCounter() {
-		count := 0
-		return func() {
-			count++
-			if count > 3 {
-				error("Count exceeded")
-			}
-			return count
-		}
-	}
-	counter := makeCounter()
-	result := []
-	for i := 0; i < 5; i++ {
-		value := try(counter, func(e) { return e.message() })
-		result.append(value)
-	}
-	result
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	expected := object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-		object.NewString("Count exceeded"),
-		object.NewString("Count exceeded"),
-	})
-	require.Equal(t, expected, result)
-}
-
-func TestTryWithDefer(t *testing.T) {
-	code := `
-	result := []
-	func operation() {
-		try(
-			func() {
-				defer result.append("deferred")
-				result.append("start")
-				error("operation failed")
-			},
-			func(e) { result.append("caught: " + e.message()) }
-		)
-	}
-	operation()
-	result
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	expected := object.NewList([]object.Object{
-		object.NewString("start"),
-		object.NewString("deferred"),
-		object.NewString("caught: operation failed"),
-	})
-	require.Equal(t, expected, result)
-}
-
-func TestDeferWithError(t *testing.T) {
-	code := `
-	func operation() {
-		defer func() {
-			error("AGH")
-		}()
-	}
-	operation()
-	`
+	function raise(msg) { throw msg }
+	` + "`the err string is: ${raise(\"oops\")}. sad!`"
 	_, err := run(context.Background(), code)
-	require.Error(t, err)
-	require.Equal(t, fmt.Errorf("AGH"), err)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "oops")
 }
 
-func TestStringTemplateWithRaisedError(t *testing.T) {
-	code := "'the err string is: {error(`oops`)}. sad!'"
-	_, err := run(context.Background(), code)
-	require.NotNil(t, err)
-	require.Equal(t, "oops", err.Error())
-}
-
-func TestStringTemplateWithNonRaisedError(t *testing.T) {
-	code := "'the err string is: {errors.new(`oops`)}. sad!'"
+func TestStringTemplateWithErrorValue(t *testing.T) {
+	// Error values (not thrown) are stringified in templates
+	code := `
+	let err = error("something went wrong")
+	` + "`the error is: ${err}`"
 	result, err := run(context.Background(), code)
-	require.NoError(t, err)
-	require.Equal(t, object.NewString("the err string is: oops. sad!"), result)
+	assert.NoError(t, err)
+	assert.Equal(t, result, object.NewString("the error is: something went wrong"))
+}
+
+func TestStringTemplateWithValue(t *testing.T) {
+	code := "`the message is: ${\"oops\"}. sad!`"
+	result, err := run(context.Background(), code)
+	assert.NoError(t, err)
+	assert.Equal(t, result, object.NewString("the message is: oops. sad!"))
 }
 
 func TestMultiVarAssignment(t *testing.T) {
 	tests := []testCase{
-		{`a, b := [3, 4]; a`, object.NewInt(3)},
-		{`a, b := [3, 4]; b`, object.NewInt(4)},
-		{`a, b, c := [3, 4, 5]; a`, object.NewInt(3)},
-		{`a, b, c := [3, 4, 5]; b`, object.NewInt(4)},
-		{`a, b, c := [3, 4, 5]; c`, object.NewInt(5)},
-		{`a, b := "ᛛᛥ"; a`, object.NewString("ᛛ")},
-		{`a, b := "ᛛᛥ"; b`, object.NewString("ᛥ")},
-		{`a, b := {42, 43}; a`, object.NewInt(42)},
-		{`a, b := {42, 43}; b`, object.NewInt(43)},
-		{`a, b := {foo: 1, bar: 2}; a`, object.NewString("bar")},
-		{`a, b := {foo: 1, bar: 2}; b`, object.NewString("foo")},
+		{`let a, b = [3, 4]; a`, object.NewInt(3)},
+		{`let a, b = [3, 4]; b`, object.NewInt(4)},
+		{`let a, b, c = [3, 4, 5]; a`, object.NewInt(3)},
+		{`let a, b, c = [3, 4, 5]; b`, object.NewInt(4)},
+		{`let a, b, c = [3, 4, 5]; c`, object.NewInt(5)},
+		{`let a, b = "ᛛᛥ"; a`, object.NewString("ᛛ")},
+		{`let a, b = "ᛛᛥ"; b`, object.NewString("ᛥ")},
+		{`let a, b = {foo: 1, bar: 2}; a`, object.NewString("bar")},
+		{`let a, b = {foo: 1, bar: 2}; b`, object.NewString("foo")},
 	}
 	runTests(t, tests)
 }
 
 func TestFunctions(t *testing.T) {
 	tests := []testCase{
-		{`func add(x, y) { x + y }; add(3, 4)`, object.NewInt(7)},
-		{`func add(x, y) { x + y }; add(3, 4) + 5`, object.NewInt(12)},
-		{`func inc(x, amount=1) { x + amount }; inc(3)`, object.NewInt(4)},
-		{`func factorial(n) { if (n == 1) { return 1 } else { return n * factorial(n - 1) } }; factorial(5)`, object.NewInt(120)},
-		{`z := 10; y := func(x, inc=100) { x + z + inc }; y(3)`, object.NewInt(113)},
-		{`func(x="a", y="b") { x + y }()`, object.NewString("ab")},
-		{`func(x="a", y="b") { x + y + "c" }()`, object.NewString("abc")},
-		{`func(x="a", y="b") { x + y + "c" }("W")`, object.NewString("Wbc")},
-		{`func(x="a", y="b") { x + y + "c" }("W", "X")`, object.NewString("WXc")},
-		{`func(x="a", y="b") { return "X"; x + y + "c" }()`, object.NewString("X")},
-		{`x := 1; func() { y := 10; x + y }()`, object.NewInt(11)},
-		{`x := 1; func() { func() { y := 10; x + y } }()()`, object.NewInt(11)},
+		{`function add(x, y) { x + y }; add(3, 4)`, object.NewInt(7)},
+		{`function add(x, y) { x + y }; add(3, 4) + 5`, object.NewInt(12)},
+		{`function inc(x, amount=1) { x + amount }; inc(3)`, object.NewInt(4)},
+		{`function factorial(n) { if (n == 1) { return 1 } else { return n * factorial(n - 1) } }; factorial(5)`, object.NewInt(120)},
+		{`let z = 10; let y = function(x, inc=100) { x + z + inc }; y(3)`, object.NewInt(113)},
+		{`function(x="a", y="b") { x + y }()`, object.NewString("ab")},
+		{`function(x="a", y="b") { x + y + "c" }()`, object.NewString("abc")},
+		{`function(x="a", y="b") { x + y + "c" }("W")`, object.NewString("Wbc")},
+		{`function(x="a", y="b") { x + y + "c" }("W", "X")`, object.NewString("WXc")},
+		{`function(x="a", y="b") { return "X"; x + y + "c" }()`, object.NewString("X")},
+		{`let x = 1; function() { let y = 10; x + y }()`, object.NewInt(11)},
+		{`let x = 1; function() { function() { let y = 10; x + y } }()()`, object.NewInt(11)},
 	}
 	runTests(t, tests)
 }
@@ -1062,9 +803,8 @@ func TestContainers(t *testing.T) {
 		{`4 in [1, 2, 3]`, object.False},
 		{`{"foo": "bar"}["foo"]`, object.NewString("bar")},
 		{`{foo: "bar"}["foo"]`, object.NewString("bar")},
-		{`[1, 2, 3, 4, 5].filter(func(x) { x > 3 })`, object.NewList(
+		{`[1, 2, 3, 4, 5].filter(function(x) { x > 3 })`, object.NewList(
 			[]object.Object{object.NewInt(4), object.NewInt(5)})},
-		{`range [1]`, object.NewListIter(object.NewList([]object.Object{object.NewInt(1)}))},
 	}
 	runTests(t, tests)
 }
@@ -1081,312 +821,308 @@ func TestStrings(t *testing.T) {
 		{`"hello"[1]`, object.NewString("e")},
 		{`"hello"[-1]`, object.NewString("o")},
 		{`"hello"[-2]`, object.NewString("l")},
-		{`a := 1; b := "ok"; '{a + 1}-{b | strings.to_upper}'`, object.NewString("2-OK")},
-		{`func(a, b) { return 'A: {a} B: {b}' }("hi", "bye")`, object.NewString("A: hi B: bye")},
+		{"let a = 1; let b = \"ok\"; `${a + 1}-${b.to_upper()}`", object.NewString("2-OK")},
+		{"function(a, b) { return `A: ${a} B: ${b}` }(\"hi\", \"bye\")", object.NewString("A: hi B: bye")},
 	}
 	runTests(t, tests)
 }
 
 func TestPipes(t *testing.T) {
 	tests := []testCase{
-		{`"hello" | strings.to_upper`, object.NewString("HELLO")},
+		{`"hello".to_upper()`, object.NewString("HELLO")},
 		{`"hello" | len`, object.NewInt(5)},
-		{`func() { "hello" }() | len`, object.NewInt(5)},
-		{`["a", "b"] | strings.join(",") | strings.to_upper`, object.NewString("A,B")},
-		{`func() { "a" } | call`, object.NewString("a")},
+		{`function() { "hello" }() | len`, object.NewInt(5)},
+		{`",".join(["a", "b"]).to_upper()`, object.NewString("A,B")},
+		{`function() { "a" } | call`, object.NewString("a")},
 		{`"abc" | getattr("to_upper") | call`, object.NewString("ABC")},
-		{`"abc" | func(s) { s.to_upper() }`, object.NewString("ABC")},
+		{`"abc" | function(s) { s.to_upper() }`, object.NewString("ABC")},
 		{`[11, 12, 3] | math.sum`, object.NewFloat(26)},
-		{`"42" | json.unmarshal`, object.NewFloat(42)},
 	}
 	runTests(t, tests)
 }
 
 func TestQuicksort(t *testing.T) {
 	result, err := run(context.Background(), `
-	func quicksort(arr) {
-		if len(arr) < 2 {
+	function quicksort(arr) {
+		if (len(arr) < 2) {
 			return arr
 		} else {
-			pivot := arr[0]
-			less := arr[1:].filter(func(x) { x <= pivot })
-			more := arr[1:].filter(func(x) { x > pivot })
+			let pivot = arr[0]
+			let less = arr[1:].filter(function(x) { x <= pivot })
+			let more = arr[1:].filter(function(x) { x > pivot })
 			return quicksort(less) + [pivot] + quicksort(more)
 		}
 	}
 	quicksort([10, 5, 2, 3])
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList(
-		[]object.Object{
-			object.NewInt(2),
-			object.NewInt(3),
-			object.NewInt(5),
-			object.NewInt(10),
-		}), result)
-}
+	assert.Nil(t, err)
+	assert.Equal(t,
 
-func TestMergesort(t *testing.T) {
-	result, err := run(context.Background(), `
-	func mergesort(arr) {
-		length := len(arr)
-		if length <= 1 {
-			return arr
-		}
-		mid := length / 2
-		left := mergesort(arr[:mid])
-		right := mergesort(arr[mid:])
-		output := list(length)
-		i, j, k := [0, 0, 0]
-		for i < len(left) {
-			for j < len(right) && right[j] <= left[i] {
-				output[k] = right[j]
-				k++
-				j++
-			}
-			output[k] = left[i]
-			k++
-			i++
-		}
-		for j < len(right) {
-			output[k] = right[j]
-			k++
-			j++
-		}
-		return output
-	}
-	", ".join(mergesort([1, 9, -1, 4, 3, 2, 7, 8, 5, 6, 0]).map(string))
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9"), result)
-}
-
-func TestRecursiveIsPrime(t *testing.T) {
-	result, err := run(context.Background(), `
-	func is_prime(n, i=2) {
-		// Base cases
-		if (n <= 2) { return n == 2 }
-		if (n % i == 0) { return false }
-		if (i * i > n) { return true }
-		// Check for next divisor
-    	return is_prime(n, i + 1);
-	}
-	ints := []
-	for i := 1; i < 30; i++ { ints.append(i) }
-	primes := ints.filter(is_prime)
-	", ".join(primes.map(string))
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("2, 3, 5, 7, 11, 13, 17, 19, 23, 29"), result)
+		result, object.NewList(
+			[]object.Object{
+				object.NewInt(2),
+				object.NewInt(3),
+				object.NewInt(5),
+				object.NewInt(10),
+			}))
 }
 
 func TestAndShortCircuit(t *testing.T) {
 	// AND should short-circuit, so data[5] should not be evaluated
 	result, err := run(context.Background(), `
-	data := []
-	if len(data) && data[5] {
+	let data = []
+	if (len(data) && data[5]) {
 		"nope!"
 	} else {
 		"worked!"
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("worked!"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("worked!"))
 }
 
 func TestOrShortCircuit(t *testing.T) {
 	// OR should short-circuit, so data[5] should not be evaluated
 	result, err := run(context.Background(), `
-	data := [1]
-	if len(data) || data[5] {
+	let data = [1]
+	if (len(data) || data[5]) {
 		"worked!"
 	} else {
 		"nope!"
 	}
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("worked!"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("worked!"))
 }
 
-func TestLoopBreak(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for i := 0; i < 10; i++ {
-		if i == 3 { break }
-		x = i
+func TestNullishCoalescing(t *testing.T) {
+	tests := []testCase{
+		// Basic nil case
+		{`nil ?? "default"`, object.NewString("default")},
+		// Non-nil value
+		{`"value" ?? "default"`, object.NewString("value")},
+		// Falsy but non-nil values should NOT trigger default
+		{`0 ?? 42`, object.NewInt(0)},
+		{`false ?? true`, object.False},
+		{`"" ?? "default"`, object.NewString("")},
+		// Chained nullish coalescing
+		{`nil ?? nil ?? "final"`, object.NewString("final")},
+		{`nil ?? "first" ?? "second"`, object.NewString("first")},
+		// With expressions
+		{`let x = nil; x ?? 10`, object.NewInt(10)},
+		{`let x = 5; x ?? 10`, object.NewInt(5)},
+		// Comparison with OR (different behavior)
+		{`0 || 42`, object.NewInt(42)}, // OR uses truthiness
+		{`0 ?? 42`, object.NewInt(0)},  // ?? only checks nil
 	}
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	runTests(t, tests)
 }
 
-func TestLoopContinue(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for i := 0; i < 10; i++ {
-		if i > 3 { continue }
-		x = i
+func TestSpreadOperator(t *testing.T) {
+	tests := []testCase{
+		// Array spread
+		{`let a = [1, 2]; [...a]`, object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)})},
+		{`let a = [1, 2]; [0, ...a, 3]`, object.NewList([]object.Object{
+			object.NewInt(0), object.NewInt(1), object.NewInt(2), object.NewInt(3),
+		})},
+		{`let a = [1]; let b = [2]; [...a, ...b]`, object.NewList([]object.Object{
+			object.NewInt(1), object.NewInt(2),
+		})},
+		// Function call spread
+		{`function sum(a, b, c) { return a + b + c }; let args = [1, 2, 3]; sum(...args)`, object.NewInt(6)},
+		{
+			`function foo(a, b, c, d) { return [a, b, c, d] }; let x = [2, 3]; foo(1, ...x, 4)`,
+			object.NewList([]object.Object{
+				object.NewInt(1), object.NewInt(2), object.NewInt(3), object.NewInt(4),
+			}),
+		},
+		// Spread with string concatenation
+		{`function join(a, b) { return a + b }; let items = ["a", "b"]; join(...items)`, object.NewString("ab")},
 	}
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), result)
+	runTests(t, tests)
 }
 
-func TestRangeLoopBreak(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for i := range [0, 1, 2, 3, 4] {
-		if i == 3 { break }
-		x = i
+func TestRestParameter(t *testing.T) {
+	tests := []testCase{
+		// Rest with regular params
+		{
+			`function foo(a, ...rest) { return [a, rest] }; foo(1, 2, 3)`,
+			object.NewList([]object.Object{
+				object.NewInt(1),
+				object.NewList([]object.Object{object.NewInt(2), object.NewInt(3)}),
+			}),
+		},
+		// Rest with no extra args
+		{`function test(...args) { return args }; test()`, object.NewList([]object.Object{})},
+		// Rest collects all remaining
+		{`function test(a, b, ...rest) { return len(rest) }; test(1, 2, 3, 4, 5)`, object.NewInt(3)},
 	}
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	runTests(t, tests)
 }
 
-func TestRangeLoopContinue(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for i := range [0, 1, 2, 3, 4] {
-		if i > 3 { continue }
-		x = i
+func TestObjectDestructuring(t *testing.T) {
+	tests := []testCase{
+		// Basic destructuring
+		{
+			`let obj = { a: 1, b: 2 }; let { a, b } = obj; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)}),
+		},
+		// With aliases
+		{
+			`let obj = { name: "Alice", age: 30 }; let { name: n, age: a } = obj; [n, a]`,
+			object.NewList([]object.Object{object.NewString("Alice"), object.NewInt(30)}),
+		},
+		// Single property
+		{`let obj = { x: 42 }; let { x } = obj; x`, object.NewInt(42)},
+		// From function return
+		{
+			`function getUser() { return { id: 1, active: true } }; let { id, active } = getUser(); [id, active]`,
+			object.NewList([]object.Object{object.NewInt(1), object.True}),
+		},
+		// Mixed aliases and non-aliases
+		{
+			`let obj = { a: 1, b: 2, c: 3 }; let { a, b: x, c } = obj; [a, x, c]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2), object.NewInt(3)}),
+		},
 	}
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), result)
+	runTests(t, tests)
 }
 
-func TestForCondition(t *testing.T) {
-	result, err := run(context.Background(), `
-	c := true
-	count := 0
-	for c {
-		count++
-		if count == 10 {
-			c = false
-		}
+func TestArrayDestructuring(t *testing.T) {
+	tests := []testCase{
+		// Basic array destructuring
+		{
+			`let [a, b] = [1, 2]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)}),
+		},
+		// Three elements
+		{`let [x, y, z] = [10, 20, 30]; x + y + z`, object.NewInt(60)},
+		// With string (unpacks characters)
+		{
+			`let [a, b, c] = "xyz"; [a, b, c]`,
+			object.NewList([]object.Object{object.NewString("x"), object.NewString("y"), object.NewString("z")}),
+		},
+		// From function return
+		{
+			`function getCoords() { return [100, 200] }; let [x, y] = getCoords(); [x, y]`,
+			object.NewList([]object.Object{object.NewInt(100), object.NewInt(200)}),
+		},
+		// Single element
+		{`let [a] = [42]; a`, object.NewInt(42)},
+		// Mixed types
+		{
+			`let [s, n, b] = ["hello", 42, true]; [s, n, b]`,
+			object.NewList([]object.Object{object.NewString("hello"), object.NewInt(42), object.True}),
+		},
 	}
-	count
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result)
+	runTests(t, tests)
 }
 
-func TestForIntCondition(t *testing.T) {
-	result, err := run(context.Background(), `
-	count := 10
-	for count { count-- }
-	count
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(0), result)
-}
-
-func TestForExprCondition(t *testing.T) {
-	result, err := run(context.Background(), `
-	count := 10
-	for (count >= 5) { count-- }
-	count
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
-}
-
-func TestInvalidForCondition(t *testing.T) {
-	result, err := run(context.Background(), `
-	count := 10
-	for x := 2 { count-- }
-	count
-	`)
-	require.NoError(t, err)
-	require.Equal(t, object.NewInt(8), result)
-}
-
-func TestSimpleLoopBreak(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	for {
-		x++
-		if x == 2 { break }
-		max := math.max(1, 2) // inject some extra instructions
+func TestDestructuringDefaults(t *testing.T) {
+	tests := []testCase{
+		// Array destructuring with defaults - empty array
+		{
+			`let [a = 10, b = 20] = []; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(10), object.NewInt(20)}),
+		},
+		// Array destructuring with defaults - partial array
+		{
+			`let [a = 10, b = 20] = [5]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(20)}),
+		},
+		// Array destructuring with defaults - full array
+		{
+			`let [a = 10, b = 20] = [5, 6]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(6)}),
+		},
+		// Object destructuring with defaults - empty object
+		{
+			`let { x = 10, y = 20 } = {}; [x, y]`,
+			object.NewList([]object.Object{object.NewInt(10), object.NewInt(20)}),
+		},
+		// Object destructuring with defaults - partial object
+		{
+			`let { x = 10, y = 20 } = { x: 5 }; [x, y]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(20)}),
+		},
+		// Object destructuring with alias and default
+		{`let { name: n = "default" } = {}; n`, object.NewString("default")},
+		{`let { name: n = "default" } = { name: "Alice" }; n`, object.NewString("Alice")},
+		// Mixed - some with defaults, some without
+		{
+			`let [a, b = 20] = [5]; [a, b]`,
+			object.NewList([]object.Object{object.NewInt(5), object.NewInt(20)}),
+		},
 	}
-	x
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(2), result)
+	runTests(t, tests)
 }
 
-func TestNestedLoops(t *testing.T) {
-	result, err := run(context.Background(), `
-	x, y, z := [0, 0, 0]
-	for {
-		x++ // This should execute 3 times total
-		if x == 3 { break }
-		// We should reach this point twice, with x as 1 then 2
-		for i := range [0, 1, 2, 3] {
-			y++ // This should execute 8 times total
-			if i > 1 { continue }
-			// We should reach this point 4 times total
-			for h := 0; h < 10; h++ {
-				z++ // This should execute 16 times total (4 times per inner loop)
-				if h == 3 { break }
-			}
-		}
+func TestObjectSpread(t *testing.T) {
+	tests := []testCase{
+		// Basic object spread
+		{`let a = {x: 1}; let b = {...a}; b.x`, object.NewInt(1)},
+		// Spread with additional properties
+		{`let a = {x: 1}; let b = {...a, y: 2}; b.y`, object.NewInt(2)},
+		// Property override
+		{`let a = {x: 1, y: 2}; let b = {...a, y: 99}; b.y`, object.NewInt(99)},
+		// Multiple spreads
+		{
+			`let a = {x: 1}; let c = {y: 2}; let d = {...a, ...c}; [d.x, d.y]`,
+			object.NewList([]object.Object{object.NewInt(1), object.NewInt(2)}),
+		},
+		// Later spread overrides earlier
+		{`let a = {x: 1}; let c = {x: 99}; let d = {...a, ...c}; d.x`, object.NewInt(99)},
+		// Spread with computed properties
+		{`let a = {x: 1}; let b = {...a, y: 2 + 3}; b.y`, object.NewInt(5)},
 	}
-	[x, y, z]
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(3),
-		object.NewInt(8),
-		object.NewInt(16),
-	}), result)
+	runTests(t, tests)
 }
 
-func TestSimpleLoopContinue(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := 0
-	y := 0
-	for {
-		x++
-		if x < 2 { continue }
-		// We'll reach here on x in [2, 3, 4, 5, 6]
-		if x > 5 { break }
-		// We'll reach here on x in [2, 3, 4, 5]; so y should increment 4 times
-		y++
-		max := math.max(1, 2) // inject some extra instructions
+func TestOptionalChaining(t *testing.T) {
+	tests := []testCase{
+		// Property access on non-nil
+		{`let obj = { name: "test" }; obj?.name`, object.NewString("test")},
+		// Property access on nil
+		{`let obj = nil; obj?.name`, object.Nil},
+		// Method call on non-nil
+		{`let s = "hello"; s?.to_upper()`, object.NewString("HELLO")},
+		// Method call on nil
+		{`let s = nil; s?.to_upper()`, object.Nil},
+		// Chained optional access
+		{`let obj = { inner: { value: 42 } }; obj?.inner?.value`, object.NewInt(42)},
+		{`let obj = { inner: nil }; obj?.inner?.value`, object.Nil},
+		{`let obj = nil; obj?.inner?.value`, object.Nil},
+		// Mixed with regular access
+		{`let obj = { a: { b: 1 } }; obj.a?.b`, object.NewInt(1)},
+		{`let obj = { a: nil }; obj.a?.b`, object.Nil},
+		// With nullish coalescing
+		{`let obj = nil; obj?.name ?? "default"`, object.NewString("default")},
+		{`let obj = { name: "test" }; obj?.name ?? "default"`, object.NewString("test")},
 	}
-	y
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
+	runTests(t, tests)
 }
 
 func TestManyLocals(t *testing.T) {
 	result, err := run(context.Background(), `
-	func example(x) {
-		a := x + 1
-		b := a + 1
-		c := b + 1
-		d := c + 1
-		e := d + 1
-		f := e + 1
-		g := f + 1
-		h := g + 1
-		i := h + 1
-		j := i + 1
-		k := j + 1
-		l := k + 1
+	function example(x) {
+		let a = x + 1
+		let b = a + 1
+		let c = b + 1
+		let d = c + 1
+		let e = d + 1
+		let f = e + 1
+		let g = f + 1
+		let h = g + 1
+		let i = h + 1
+		let j = i + 1
+		let k = j + 1
+		let l = k + 1
 		return l
 	}
 	example(0)
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(12), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(12))
 }
 
 func TestIncorrectArgCount(t *testing.T) {
@@ -1395,620 +1131,268 @@ func TestIncorrectArgCount(t *testing.T) {
 		expectedErr string
 	}
 	tests := []testCase{
-		{`func ex() { 1 }; ex(1)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`func ex(x) { x }; ex()`, "args error: function \"ex\" takes 1 argument (0 given)"},
-		{`func ex(x) { x }; ex(1, 2)`, "args error: function \"ex\" takes 1 argument (2 given)"},
-		{`func ex(x, y) { 1 }; ex()`, "args error: function \"ex\" takes 2 arguments (0 given)"},
-		{`func ex(x, y) { 1 }; ex(0)`, "args error: function \"ex\" takes 2 arguments (1 given)"},
-		{`func ex(x, y) { 1 }; ex(1, 2, 3)`, "args error: function \"ex\" takes 2 arguments (3 given)"},
-		{`func ex() { 1 }; [1, 2].filter(ex)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`func ex() { 1 }; "foo" | ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`function ex() { 1 }; ex(1)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`function ex(x) { x }; ex()`, "args error: function \"ex\" takes 1 argument (0 given)"},
+		{`function ex(x) { x }; ex(1, 2)`, "args error: function \"ex\" takes 1 argument (2 given)"},
+		{`function ex(x, y) { 1 }; ex()`, "args error: function \"ex\" takes 2 arguments (0 given)"},
+		{`function ex(x, y) { 1 }; ex(0)`, "args error: function \"ex\" takes 2 arguments (1 given)"},
+		{`function ex(x, y) { 1 }; ex(1, 2, 3)`, "args error: function \"ex\" takes 2 arguments (3 given)"},
+		{`function ex() { 1 }; [1, 2].filter(ex)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`function ex() { 1 }; "foo" | ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
 		{`"foo" | "bar"`, "type error: object is not callable (got string)"},
 	}
 	for _, tt := range tests {
 		_, err := run(context.Background(), tt.input)
-		require.NotNil(t, err)
-		require.Equal(t, tt.expectedErr, err.Error())
+		assert.NotNil(t, err)
+		// Check that the error message contains the expected content (may include location info)
+		assert.Contains(t, err.Error(), tt.expectedErr)
 	}
 }
 
-type testData struct {
-	Count int
-}
+func TestWithContextCheckInterval(t *testing.T) {
+	// Test that WithContextCheckInterval properly sets the interval
+	ast, err := parser.Parse(context.Background(), `1 + 1`, nil)
+	assert.NoError(t, err)
+	main, err := compiler.Compile(ast, nil)
+	assert.NoError(t, err)
 
-func (t *testData) Increment() {
-	t.Count++
-}
+	// Test with custom interval
+	vm, err := New(main, WithContextCheckInterval(500))
+	assert.Nil(t, err)
+	assert.Equal(t, vm.contextCheckInterval, 500)
 
-func (t testData) GetCount() int {
-	return t.Count
-}
+	// Test with zero (disabled)
+	vm2, err := New(main, WithContextCheckInterval(0))
+	assert.Nil(t, err)
+	assert.Equal(t, vm2.contextCheckInterval, 0)
 
-type testStruct struct {
-	A int
-	B string
-	C *testData
-}
-
-func TestNestedProxies(t *testing.T) {
-	s := &testStruct{
-		A: 1,
-		B: "foo",
-		C: &testData{
-			Count: 3,
-		},
-	}
-	opts := runOpts{
-		Globals: map[string]interface{}{"s": s},
-	}
-	result, err := run(context.Background(), `
-	s.C.Increment()
-	s.C.GetCount()
-	`, opts)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
-}
-
-func TestProxy(t *testing.T) {
-	type test struct {
-		Data []byte
-	}
-	opts := runOpts{
-		Globals: map[string]interface{}{
-			"s": &test{Data: []byte("foo")},
-		},
-	}
-	result, err := run(context.Background(), `s.Data`, opts)
-	require.Nil(t, err)
-	require.Equal(t, object.NewByteSlice([]byte("foo")), result)
-}
-
-func TestHalt(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
-	defer cancel()
-	_, err := run(ctx, `for {}`)
-	require.NotNil(t, err)
-	require.Equal(t, context.DeadlineExceeded, err)
-}
-
-func TestCallHalt(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
-	defer cancel()
-
-	vm, err := newVM(context.Background(), "func block() { for {} }")
-	require.NoError(t, err)
-	require.NoError(t, vm.Run(context.Background()))
-
-	obj, err := vm.Get("block")
-	require.NoError(t, err)
-
-	fn, ok := obj.(*object.Function)
-	require.True(t, ok)
-
-	_, err = vm.Call(ctx, fn, nil)
-	require.NotNil(t, err)
-	require.Equal(t, context.DeadlineExceeded, err)
+	// Test default value
+	vm3, err := New(main)
+	assert.Nil(t, err)
+	assert.Equal(t, vm3.contextCheckInterval, DefaultContextCheckInterval)
 }
 
 func TestReturnGlobalVariable(t *testing.T) {
 	result, err := run(context.Background(), `
-	x := 3
-	func test() { x }
+	let x = 3
+	function test() { x }
 	test()
 	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(3))
 }
 
 func TestNakedReturn(t *testing.T) {
-	result, err := run(context.Background(), `func test(a) { return }; test(15)`)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
+	result, err := run(context.Background(), `function test(a) { return }; test(15)`)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
 }
 
 func TestGlobalNames(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	count := 1
-	func inc(a, b) { a + b }
-	m := {one: 1}
-	foo := func() { "bar" }
+	let count = 1
+	function inc(a, b) { a + b }
+	let m = {one: 1}
+	let foo = function() { "bar" }
 	`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	globals := vm.GlobalNames()
 	globalsMap := map[string]bool{}
 	for _, g := range globals {
 		globalsMap[g] = true
 	}
-	require.True(t, globalsMap["count"])
-	require.True(t, globalsMap["inc"])
-	require.True(t, globalsMap["m"])
-	require.True(t, globalsMap["foo"])
+	assert.True(t, globalsMap["count"])
+	assert.True(t, globalsMap["inc"])
+	assert.True(t, globalsMap["m"])
+	assert.True(t, globalsMap["foo"])
 }
 
 func TestGetGlobal(t *testing.T) {
 	ctx := context.Background()
-	source := `func inc(a, b) { a + b }`
+	source := `function inc(a, b) { a + b }`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	obj, err := vm.Get("inc")
-	require.Nil(t, err)
-	fn, ok := obj.(*object.Function)
-	require.True(t, ok)
-	require.Equal(t, "inc", fn.Name())
+	assert.Nil(t, err)
+	fn, ok := obj.(*object.Closure)
+	assert.True(t, ok)
+	assert.Equal(t, fn.Name(), "inc")
 }
 
 func TestCall(t *testing.T) {
 	ctx := context.Background()
-	source := `func inc(a, b) { a + b }`
+	source := `function inc(a, b) { a + b }`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	obj, err := vm.Get("inc")
-	require.Nil(t, err)
-	fn, ok := obj.(*object.Function)
-	require.True(t, ok)
+	assert.Nil(t, err)
+	fn, ok := obj.(*object.Closure)
+	assert.True(t, ok)
 
 	result, err := vm.Call(ctx, fn, []object.Object{
 		object.NewInt(9),
 		object.NewInt(1),
 	})
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(10))
 }
 
 func TestCallWithClosure(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	func get_counter() {
-		count := 10
-		return func() {
+	function get_counter() {
+		let count = 10
+		return function() {
 			count++
 			return count
 		}
 	}
-	counter := get_counter()
+	let counter = get_counter()
 	`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 
 	obj, err := vm.Get("counter")
-	require.Nil(t, err)
-	counter, ok := obj.(*object.Function)
-	require.True(t, ok)
+	assert.Nil(t, err)
+	counter, ok := obj.(*object.Closure)
+	assert.True(t, ok)
 
 	// The counter's first value will be 11. Confirm it counts up from there.
 	for i := int64(11); i < 100; i++ {
 		obj, err := vm.Call(ctx, counter, []object.Object{})
-		require.Nil(t, err)
-		require.Equal(t, object.NewInt(i), obj)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, object.NewInt(i))
 	}
 }
 
 func TestFreeVariableAssignment(t *testing.T) {
 	ctx := context.Background()
 	source := `
-	func get_counters() {
-		a := 0
-		b := 0
-		c := 0
-		func incA() {
+	function get_counters() {
+		let a = 0
+		let b = 0
+		let c = 0
+		function incA() {
 			a++
 			return a
 		}
-		func incB() {
+		function incB() {
 			b++
 			return b
 		}
-		func incC() {
+		function incC() {
 			c++
 			return c
 		}
 		return [incA, incB, incC]
 	}
-	incA, incB, incC := get_counters()
+	let incA, incB, incC = get_counters()
 	incA(); incA()                 // 1, 2
 	incB(); incB(); incB()         // 1, 2, 3
 	incC(); incC(); incC(); incC() // 1, 2, 3, 4
 	[incA(), incB(), incC()]       // [3, 4, 5]
 	`
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 	result, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(3),
-		object.NewInt(4),
-		object.NewInt(5),
-	}), result)
+	assert.True(t, ok)
+	assert.Equal(t,
+
+		result, object.NewList([]object.Object{
+			object.NewInt(3),
+			object.NewInt(4),
+			object.NewInt(5),
+		}))
 }
 
 func TestInterpolatedStringClosures1(t *testing.T) {
 	ctx := context.Background()
-	source := `
-	func foo(a, b, c) {
-		return func(d) {
-			return '{strings.to_upper(a)}-{b}-{c}-{d}'
-		}
-	}
-	foo("foo", "bar", "baz")("go")
-	`
+	source := "function foo(a, b, c) {\n" +
+		"	return function(d) {\n" +
+		"		return `${a.to_upper()}-${b}-${c}-${d}`\n" +
+		"	}\n" +
+		"}\n" +
+		"foo(\"foo\", \"bar\", \"baz\")(\"go\")"
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 	result, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewString("FOO-bar-baz-go"), result)
+	assert.True(t, ok)
+	assert.Equal(t, result, object.NewString("FOO-bar-baz-go"))
 }
 
 func TestInterpolatedStringClosures2(t *testing.T) {
 	ctx := context.Background()
-	source := `
-	x := 3
-	func foo(a, b="bar") {
-		count := 42
-		return func(a) {
-			return 'a: {a} b: {b} count: {count-2} x: {x+1}'
-		}
-	}
-	foo("IGNORED")("HEY")
-	`
+	source := "let x = 3\n" +
+		"function foo(a, b=\"bar\") {\n" +
+		"	let count = 42\n" +
+		"	return function(a) {\n" +
+		"		return `a: ${a} b: ${b} count: ${count-2} x: ${x+1}`\n" +
+		"	}\n" +
+		"}\n" +
+		"foo(\"IGNORED\")(\"HEY\")"
 	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
 	result, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewString("a: HEY b: bar count: 40 x: 4"), result)
-}
-
-func TestClone(t *testing.T) {
-	ctx := context.Background()
-	source := `
-	x := 3
-	func inc() {
-		x++
-	}
-	inc()
-	x
-	`
-	vm, err := newVM(ctx, source)
-	require.Nil(t, err)
-	require.Nil(t, vm.Run(ctx))
-	result, ok := vm.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(4), result)
-
-	clone, err := vm.Clone()
-	require.Nil(t, err)
-	value, err := clone.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), value)
-}
-
-func TestCloneWithAnonymousFunc(t *testing.T) {
-	registered := map[string]*object.Function{}
-
-	// Custom built-in function to be called from the Risor script to register
-	// an anonymous function
-	registerFunc := func(ctx context.Context, args ...object.Object) object.Object {
-		name := args[0].(*object.String).Value()
-		fn := args[1].(*object.Function)
-		registered[name] = fn
-		return object.Nil
-	}
-
-	ctx := context.Background()
-	source := `
-	x := 3
-	register("inc", func() {
-		x++
-		return x
-	})
-	`
-	globals := map[string]any{
-		"register": object.NewBuiltin("register", registerFunc),
-	}
-	machine, err := newVM(ctx, source, runOpts{Globals: globals})
-	require.Nil(t, err)
-	require.Nil(t, machine.Run(ctx))
-
-	// x should be 3 in the original VM
-	value, err := machine.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), value)
-
-	// Confirm the "inc" function was registered
-	incFunc, ok := registered["inc"]
-	require.True(t, ok)
-
-	// Create a clone of the VM and confirm it also has x = 3
-	clone, err := machine.Clone()
-	require.Nil(t, err)
-	value, err = clone.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), value)
-
-	// Call the "inc" function in the clone and confirm it increments x to 4
-	// in both the clone and the original VM
-	_, err = clone.Call(ctx, incFunc, nil)
-	require.Nil(t, err)
-
-	// Clone's x is now 4
-	value, err = clone.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), value)
-
-	// Original's x is now 4
-	value, err = machine.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), value)
+	assert.True(t, ok)
+	assert.Equal(t, result, object.NewString("a: HEY b: bar count: 40 x: 4"))
 }
 
 func TestIncrementalEvaluation(t *testing.T) {
 	ctx := context.Background()
-	ast, err := parser.Parse(ctx, "x := 3")
-	require.Nil(t, err)
+	ast, err := parser.Parse(ctx, "let x = 3", nil)
+	assert.Nil(t, err)
 
-	comp, err := compiler.New()
-	require.Nil(t, err)
-	main, err := comp.Compile(ast)
-	require.Nil(t, err)
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
 
-	v := New(main)
-	require.Nil(t, v.Run(ctx))
+	v, err := New(main)
+	assert.Nil(t, err)
+	assert.Nil(t, v.Run(ctx))
 	value, err := v.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), value)
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(3))
 
-	ast, err = parser.Parse(ctx, "x + 7")
-	require.Nil(t, err)
-	_, err = comp.Compile(ast)
-	require.Nil(t, err)
-	require.Nil(t, v.Run(ctx))
+	// For incremental evaluation, we need to tell the compiler about globals
+	// that were defined in previous runs
+	ast, err = parser.Parse(ctx, "x + 7", nil)
+	assert.Nil(t, err)
+	code2, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"x"}})
+	assert.Nil(t, err)
+	assert.Nil(t, v.RunCode(ctx, code2))
 	value, err = v.Get("x")
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(3), value)
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(3))
 
 	tos, ok := v.TOS()
-	require.True(t, ok)
-	require.Equal(t, object.NewInt(10), tos)
-}
-
-func TestImports(t *testing.T) {
-	tests := []testCase{
-		{`import simple_math; simple_math.add(3, 4)`, object.NewInt(7)},
-		{`import simple_math; int(simple_math.pi)`, object.NewInt(3)},
-		{`import data; data.mydata["count"]`, object.NewInt(1)},
-		{`import data; data.mydata["count"] = 3; data.mydata["count"]`, object.NewInt(3)},
-		{`import data as d; d.mydata["count"]`, object.NewInt(1)},
-		{`import math as m; m.min(3,-7)`, object.NewFloat(-7)},
-	}
-	runTests(t, tests)
-}
-
-func TestFromImport(t *testing.T) {
-	tests := []testCase{
-		{`from a.data import mapValue; mapValue["3"]`, object.NewInt(3)},
-		{`from a.function import plusOne; plusOne(1)`, object.NewInt(2)},
-		{`from a import function; function.plusOne(1)`, object.NewInt(2)},
-		{`from a.b import data as b_data; from a.function import plusOne; plusOne(b_data.mapValue["1"]) `, object.NewInt(2)},
-		{`from math import min; min(3,-7)`, object.NewFloat(-7)},
-		{`from math import min as m; m(3,-7)`, object.NewFloat(-7)},
-		{
-			`from math import (min as a, max as b); [a(1,2), b(1,2)]`,
-			object.NewList([]object.Object{
-				object.NewFloat(1),
-				object.NewFloat(2),
-			}),
-		},
-	}
-	runTests(t, tests)
-}
-
-func TestBadImports(t *testing.T) {
-	ctx := context.Background()
-	type testCase struct {
-		input     string
-		expectErr string
-	}
-	tests := []testCase{
-		{`import foo`, `import error: module "foo" not found`},
-		{`import foo as bar`, `import error: module "foo" not found`},
-		{`import math as`, `parse error: unexpected end of file while parsing an import statement (expected identifier)`},
-		{`from foo import bar`, `import error: module "foo" not found`},
-		{`from a.b import c`, `import error: module "a/b" not found`},
-		{`from a.b import c as d`, `import error: module "a/b" not found`},
-		{`from math import foo`, `import error: cannot import name "foo" from "math"`},
-		{`from math`, `parse error: from-import is missing import statement`},
-		{`from math import`, `parse error: unexpected end of file while parsing a from-import statement (expected identifier)`},
-		{`from math import min as`, `parse error: unexpected end of file while parsing a from-import statement (expected identifier)`},
-	}
-	for _, tt := range tests {
-		_, err := run(ctx, tt.input)
-		require.NotNil(t, err)
-		require.Equal(t, tt.expectErr, err.Error())
-	}
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(10))
 }
 
 func TestModifyModule(t *testing.T) {
 	_, err := run(context.Background(), `math.max = 123`)
-	require.Error(t, err)
-	require.Equal(t, "type error: cannot modify module attributes", err.Error())
-}
-
-func TestEarlyForRangeReturn(t *testing.T) {
-	code := `
-func operation(c) {
-	for range [1, 2, 3] {
-		return "result"
-	}
-}
-func main() {
-	items := ['ab', 'cd']
-	results := []
-	for _, item := range items {
-		value := operation(item)
-		results.append(value)
-	}
-	return results
-}
-main()
-`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewString("result"),
-		object.NewString("result"),
-	}), result)
-}
-
-func TestDeferStatementGlobalClosure(t *testing.T) {
-	code := `
-	x := 0
-	func foo(value) { defer func() { x = value }() }
-	foo(4)
-	x
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(4), result)
-}
-
-func TestDeferStatementOrdering(t *testing.T) {
-	code := `
-	l := []
-	func foo(value) {
-		defer l.append(value+1) // 3
-		defer l.append(value)   // 2
-		l.append(1)             // 1
-	}
-	foo(2)
-	l
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
-}
-
-func TestDeferStatementAnon(t *testing.T) {
-	code := `
-	func() {
-		x := 42
-		defer func() { x = 1 }()
-		defer func() { x = 2 }()
-		return x
-	}()
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(42), result)
-}
-
-func TestDeferStatementBuiltin(t *testing.T) {
-	code := `
-	m := {one: 1, two: 2}
-	func test() {
-		func() {
-			m["three"] = 3
-			defer delete(m, "one")
-		}()
-	}
-	test()
-	m
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewMap(map[string]object.Object{
-		"two":   object.NewInt(2),
-		"three": object.NewInt(3),
-	}), result)
-}
-
-func TestDeferFileClose(t *testing.T) {
-	code := `
-	func get_lines(path) {
-		f := os.open(path)
-		defer f.close()
-		return string(f.read()).split("\n")
-	}
-	lines := get_lines("fixtures/jabberwocky.txt")
-	lines[0]
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("'Twas brillig, and the slithy toves"), result)
-}
-
-func TestDeferBehavior(t *testing.T) {
-	code := `
-	func work(count) {
-		c := chan(count)
-		spawn(func() {
-			defer close(c)
-			for i := 0; i < count; i++ {
-				c <- i
-			}
-		})
-		return c
-	}
-	results := []
-	for _, value := range work(5) {
-		results.append(value)
-	}
-	results
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(0),
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-		object.NewInt(4),
-	}), result)
-}
-
-func TestDeferNoStackPollution(t *testing.T) {
-	code := `
-	result := []
-	func append_value(v) {
-		defer func(v) {
-			result.append(v)
-		}(v)
-	}
-	for _, v := range [1, 2, 3] {
-		append_value(v)
-	}
-	result
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
+	assert.Error(t, err)
+	assert.Equal(t, err.Error(), "type error: cannot modify module attributes")
 }
 
 func TestFreeVariables(t *testing.T) {
 	code := `
-	func test(count) {
-		l := []
-		func() {
-			y := count
-			if true {
+	function test(count) {
+		let l = []
+		function() {
+			let y = count
+			if (true) {
 				l.append(y)
 			}
 		}()
@@ -2017,88 +1401,8 @@ func TestFreeVariables(t *testing.T) {
 	test(5)
 	`
 	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{object.NewInt(5)}), result)
-}
-
-func TestChannels(t *testing.T) {
-	tests := []testCase{
-		{`c := chan(1); c <- 1; <-c`, object.NewInt(1)},
-		{`c := make(chan, 1); c <- 1; <-c`, object.NewInt(1)},
-		{`c := chan(2); c <- 1; c <- 2; [<-c, <-c]`, object.NewList([]object.Object{
-			object.NewInt(1), object.NewInt(2),
-		})},
-		{`c := chan(1); c <- 1; close(c); <-c`, object.NewInt(1)},
-		{`c := chan(); close(c); <-c`, object.Nil},
-		{`c := chan(1); c <- "ok"; close(c); [<-c, <-c]`, object.NewList([]object.Object{
-			object.NewString("ok"), object.Nil,
-		})},
-		{`c := chan(2); c <- "a"; c <- "b"; close(c);
-		  results := []
-		  for _, value := range c { results.append(value) }
-		  results`, object.NewList([]object.Object{
-			object.NewString("a"),
-			object.NewString("b"),
-		})},
-	}
-	runTests(t, tests)
-}
-
-func TestChannelErrors(t *testing.T) {
-	ctx := context.Background()
-	type testCase struct {
-		input     string
-		expectErr string
-	}
-	tests := []testCase{
-		{`c := chan(1); close(c); c <- 1`, "exec error: send on closed channel"},
-		{`c := chan(1); close(c); close(c)`, "exec error: close of closed channel"},
-		{`c := chan(1); c <- 1; close(c); c <- 2`, "exec error: send on closed channel"},
-	}
-	for _, tt := range tests {
-		_, err := run(ctx, tt.input)
-		require.NotNil(t, err)
-		require.Equal(t, tt.expectErr, err.Error())
-	}
-}
-
-func TestGoStatement(t *testing.T) {
-	tests := []testCase{
-		{`go func() { 1 }()`, object.Nil},
-		{`x := 0; go func() { x = 1 }(); time.sleep(0.1); x`, object.NewInt(1)},
-		{`c := chan(1); go func() { c <- 1 }(); <-c`, object.NewInt(1)},
-		{`func dowork() {
-			c := make(chan)
-			go func() { defer close(c); c <- 98765 }();
-			return c
-		  }
-		  rxchan := dowork()
-		  <-rxchan`, object.NewInt(98765)},
-	}
-	runTests(t, tests)
-}
-
-func TestSpawn(t *testing.T) {
-	tests := []testCase{
-		{`func test(x) { return x + 1 }; spawn(test, 33).wait()`, object.NewInt(34)},
-		{`spawn(func(x=10) { x }).wait()`, object.NewInt(10)},
-		{`x := 0; spawn(func() { x = 34 }).wait(); x`, object.NewInt(34)},
-		{`l := []; spawn(func() { l.append(1) }).wait(); l`, object.NewList([]object.Object{object.NewInt(1)})},
-		{`l := []; spawn(func(x) { x.append(1) }, l).wait(); l`, object.NewList([]object.Object{object.NewInt(1)})},
-		{`
-		func work(x) { return x ** 2 }
-		threads := []
-		for i := 0; i < 5; i++ { threads.append(spawn(work, i))	}
-		threads.map(func(t) { t.wait() })
-		`, object.NewList([]object.Object{
-			object.NewInt(0),
-			object.NewInt(1),
-			object.NewInt(4),
-			object.NewInt(9),
-			object.NewInt(16),
-		})},
-	}
-	runTests(t, tests)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewList([]object.Object{object.NewInt(5)}))
 }
 
 func TestMaps(t *testing.T) {
@@ -2124,7 +1428,7 @@ func TestMaps(t *testing.T) {
 			"a": object.NewInt(1),
 			"b": object.NewInt(2),
 		})},
-		{`m := {"a": 1, "b": 2}; m["a"] *= 8; m`, object.NewMap(map[string]object.Object{
+		{`let m = {"a": 1, "b": 2}; m["a"] *= 8; m`, object.NewMap(map[string]object.Object{
 			"a": object.NewInt(8),
 			"b": object.NewInt(2),
 		})},
@@ -2157,103 +1461,57 @@ func TestLists(t *testing.T) {
 			object.NewInt(1),
 			object.NewInt(2),
 		})},
-		{`l := [1, 2]; for k := range l { l[k] *= 2 }; l`, object.NewList([]object.Object{
-			object.NewInt(2),
-			object.NewInt(4),
-		})},
 	}
 	runTests(t, tests)
 }
 
-func TestFunctionStack(t *testing.T) {
-	code := `
-	for i := range 1 {
-		try(func() {
-		  42
-		  error("kaboom")
-		})
-	  }
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
-}
-
-func TestFunctionStackNewErr(t *testing.T) {
-	code := `
-	for i := range 1 {
-		try(func() {
-		  42
-		}, func(e) {
-		  error("kaboom")
-		})
-	  }
-	`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.Nil, result)
-}
-
 func TestMultivar(t *testing.T) {
 	code := `
-	x, y := [1, 2]
-	x, y = [98, 99]
+	let x, y = [1, 2]
 	[x, y]
 	`
 	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(98),
-		object.NewInt(99),
-	}), result)
-}
+	assert.Nil(t, err)
+	assert.Equal(t,
 
-func TestExecWithDir(t *testing.T) {
-	code := `exec(["cat", "jabberwocky.txt"], {dir: "fixtures"}).stdout.split("\n")[0]`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("'Twas brillig, and the slithy toves"), result)
-}
-
-func TestExecOldWayWithDir(t *testing.T) {
-	code := `exec("cat", ["jabberwocky.txt"], {dir: "fixtures"}).stdout.split("\n")[0]`
-	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("'Twas brillig, and the slithy toves"), result)
+		result, object.NewList([]object.Object{
+			object.NewInt(1),
+			object.NewInt(2),
+		}))
 }
 
 func TestReturnNamedFunction(t *testing.T) {
 	code := `
-	func test() {
-		return func foo() {
+	function test() {
+		return function foo() {
 			return "FOO"
 		}
 	}
-	f := test()
+	let f = test()
 	f()
 	`
 	result, err := run(context.Background(), code)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("FOO"), result)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("FOO"))
 }
 
 func TestContextDone(t *testing.T) {
 	// Context with no deadline does not return a Done channel
 	ctx := context.Background()
 	d := ctx.Done()
-	require.Nil(t, d)
+	assert.Nil(t, d)
 
 	// Context with deadline returns a Done channel
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	d = tctx.Done()
-	require.NotNil(t, d)
+	assert.NotNil(t, d)
 
 	// Context with cancel returns a Done channel
 	cctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	d = cctx.Done()
-	require.NotNil(t, d)
+	assert.NotNil(t, d)
 }
 
 type testCase struct {
@@ -2268,181 +1526,22 @@ func runTests(t *testing.T, tests []testCase) {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Helper()
 			result, err := run(ctx, tt.input)
-			require.Nil(t, err)
-			require.NotNil(t, result)
-			require.Equal(t, tt.expected, result)
+			assert.Nil(t, err)
+			assert.NotNil(t, result)
+			assert.Equal(t, result, tt.expected)
 		})
 	}
-}
-
-// TestNestedRangeLoopBreak tests that breaking from an inner for-range loop in a nested loop
-// doesn't cause stack overflow.
-func TestNestedRangeLoopBreak(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected object.Object
-	}{
-		{
-			name: "Basic case with single iteration",
-			input: `
-				items1 := [1]
-				items2 := [1, 2]
-				count := 0
-				for range items1 {
-					for range items2 {
-						count += 1
-						break
-					}
-				}
-				count
-			`,
-			expected: object.NewInt(1),
-		},
-		{
-			name: "Multiple iterations in outer loop",
-			input: `
-				items1 := [1, 2, 3]
-				items2 := [1, 2]
-				count := 0
-				for range items1 {
-					for range items2 {
-						count += 1
-						break
-					}
-				}
-				count
-			`,
-			expected: object.NewInt(3),
-		},
-		{
-			name: "Multiple iterations with indexed loop",
-			input: `
-				items1 := [1, 2, 3]
-				items2 := [1, 2, 3]
-				result := []
-				for i, _ := range items1 {
-					for j, _ := range items2 {
-						result = result + [[i, j]]
-						break
-					}
-				}
-				result
-			`,
-			expected: object.NewList([]object.Object{
-				object.NewList([]object.Object{object.NewInt(0), object.NewInt(0)}),
-				object.NewList([]object.Object{object.NewInt(1), object.NewInt(0)}),
-				object.NewList([]object.Object{object.NewInt(2), object.NewInt(0)}),
-			}),
-		},
-		{
-			name: "Many iterations to ensure no stack overflow",
-			input: `
-				count := 0
-				for range 100 {
-					for range 33 {
-						count += 1
-						break
-					}
-				}
-				count
-			`,
-			expected: object.NewInt(100),
-		},
-		{
-			name: "Break from single loop",
-			input: `
-				count := 0
-				for range 100 {
-					count += 77
-					break
-					x := "should not be here"
-				}
-				count
-			`,
-			expected: object.NewInt(77),
-		},
-	}
-
-	ctx := context.Background()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := run(ctx, tt.input)
-			require.Nil(t, err)
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-// TestDeeplyNestedRangeLoopBreak tests deeply nested for-range loops with breaks
-// to ensure stack doesn't overflow
-func TestDeeplyNestedRangeLoopBreak(t *testing.T) {
-	// This test creates a deeply nested set of for-range loops (3 levels)
-	// with break statements at each level
-	input := `
-		count := 0
-		// Create a more complex nesting case with multiple breaks
-		for i := range 5 {
-			for j := range 5 {
-				if j == 3 {
-					break  // Break from j loop
-				}
-				for k := range 5 {
-					count += 1
-					if k == 2 {
-						break  // Break from k loop
-					}
-				}
-			}
-		}
-		count
-	`
-
-	ctx := context.Background()
-	result, err := run(ctx, input)
-	require.Nil(t, err)
-
-	// We should get 5 (outer loops) * 3 (middle loops before break) * 3 (inner loops before break) = 45
-	require.Equal(t, object.NewInt(45), result)
-}
-
-func TestClonedVMOS(t *testing.T) {
-	code := `os.stdout.write("hello\n")`
-	ctx := context.Background()
-	ast, err := parser.Parse(ctx, code)
-	require.Nil(t, err)
-
-	globals := basicBuiltins()
-	var globalNames []string
-	for k := range globals {
-		globalNames = append(globalNames, k)
-	}
-
-	main, err := compiler.Compile(ast, compiler.WithGlobalNames(globalNames))
-	require.Nil(t, err)
-
-	stdout := ros.NewBufferFile([]byte{})
-	vos := ros.NewVirtualOS(ctx, ros.WithStdout(stdout))
-
-	vm1 := New(main, WithOS(vos), WithGlobals(globals))
-	require.Nil(t, vm1.Run(ctx))
-	require.Equal(t, "hello\n", string(stdout.Bytes()))
-
-	vm2, err := vm1.Clone()
-	require.Nil(t, err)
-	require.Nil(t, vm2.Run(ctx))
-	require.Equal(t, "hello\nhello\n", string(stdout.Bytes()))
 }
 
 func TestFunctionForwardDeclaration(t *testing.T) {
 	tests := []testCase{
 		// Basic forward declaration - function called before definition
 		{`
-		func main() {
+		function main() {
 			return helper(5)
 		}
 		
-		func helper(x) {
+		function helper(x) {
 			return x * 2
 		}
 		
@@ -2451,15 +1550,15 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 
 		// Forward declaration with multiple functions
 		{`
-		func start() {
+		function start() {
 			return first() + second()
 		}
 		
-		func first() {
+		function first() {
 			return 10
 		}
 		
-		func second() {
+		function second() {
 			return 20
 		}
 		
@@ -2468,15 +1567,15 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 
 		// Forward declaration with nested calls
 		{`
-		func outer() {
+		function outer() {
 			return inner() + 5
 		}
 		
-		func inner() {
+		function inner() {
 			return deepest() * 2
 		}
 		
-		func deepest() {
+		function deepest() {
 			return 7
 		}
 		
@@ -2485,40 +1584,40 @@ func TestFunctionForwardDeclaration(t *testing.T) {
 
 		// Forward declaration with default parameters
 		{`
-		func calculator(op="add") {
-			if op == "add" {
+		function calculator(op="add") {
+			if (op == "add") {
 				return adder(5, 3)
 			} else {
 				return multiplier(5, 3)
 			}
 		}
-		
-		func adder(a, b) {
+
+		function adder(a, b) {
 			return a + b
 		}
-		
-		func multiplier(a, b) {
+
+		function multiplier(a, b) {
 			return a * b
 		}
-		
+
 		calculator()
 		`, object.NewInt(8)},
 
 		// Forward declaration with closures
 		{`
-		func makeCounter() {
-			count := 0
-			return func() {
+		function makeCounter() {
+			let count = 0
+			return function() {
 				count++
 				return incrementHelper(count)
 			}
 		}
 		
-		func incrementHelper(n) {
+		function incrementHelper(n) {
 			return n * 10
 		}
 		
-		counter := makeCounter()
+		let counter = makeCounter()
 		counter()
 		`, object.NewInt(10)},
 	}
@@ -2529,20 +1628,20 @@ func TestMutualRecursion(t *testing.T) {
 	tests := []testCase{
 		// Basic mutual recursion - even/odd
 		{`
-		func is_even(n) {
-			if n == 0 {
+		function is_even(n) {
+			if (n == 0) {
 				return true
 			}
 			return is_odd(n - 1)
 		}
-		
-		func is_odd(n) {
-			if n == 0 {
+
+		function is_odd(n) {
+			if (n == 0) {
 				return false
 			}
 			return is_even(n - 1)
 		}
-		
+
 		[is_even(4), is_odd(4), is_even(5), is_odd(5)]
 		`, object.NewList([]object.Object{
 			object.True,
@@ -2553,39 +1652,39 @@ func TestMutualRecursion(t *testing.T) {
 
 		// Mutual recursion with return values
 		{`
-		func countdown_a(n) {
-			if n <= 0 {
+		function countdown_a(n) {
+			if (n <= 0) {
 				return 0
 			}
 			return n + countdown_b(n - 1)
 		}
-		
-		func countdown_b(n) {
-			if n <= 0 {
+
+		function countdown_b(n) {
+			if (n <= 0) {
 				return 0
 			}
 			return n + countdown_a(n - 1)
 		}
-		
+
 		countdown_a(5)
 		`, object.NewInt(15)},
 
 		// More complex mutual recursion
 		{`
-		func fibonacci_a(n) {
-			if n <= 1 {
+		function fibonacci_a(n) {
+			if (n <= 1) {
 				return n
 			}
 			return fibonacci_b(n - 1) + fibonacci_a(n - 2)
 		}
-		
-		func fibonacci_b(n) {
-			if n <= 1 {
+
+		function fibonacci_b(n) {
+			if (n <= 1) {
 				return n
 			}
 			return fibonacci_a(n - 1) + fibonacci_b(n - 2)
 		}
-		
+
 		fibonacci_a(6)
 		`, object.NewInt(8)},
 	}
@@ -2596,22 +1695,22 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 	tests := []testCase{
 		// Forward declaration with if statements
 		{`
-		func process(x) {
-			if x > 10 {
+		function process(x) {
+			if (x > 10) {
 				return big_handler(x)
 			} else {
 				return small_handler(x)
 			}
 		}
-		
-		func big_handler(x) {
+
+		function big_handler(x) {
 			return x * 2
 		}
-		
-		func small_handler(x) {
+
+		function small_handler(x) {
 			return x + 10
 		}
-		
+
 		[process(5), process(15)]
 		`, object.NewList([]object.Object{
 			object.NewInt(15),
@@ -2620,8 +1719,8 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 
 		// Forward declaration with switch
 		{`
-		func router(op) {
-			switch op {
+		function router(op) {
+			switch (op) {
 				case "add":
 					return op_add(5, 3)
 				case "sub":
@@ -2631,15 +1730,15 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 			}
 		}
 		
-		func op_add(a, b) {
+		function op_add(a, b) {
 			return a + b
 		}
 		
-		func op_sub(a, b) {
+		function op_sub(a, b) {
 			return a - b
 		}
 		
-		func op_default() {
+		function op_default() {
 			return 0
 		}
 		
@@ -2653,137 +1752,19 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 	runTests(t, tests)
 }
 
-func TestForwardDeclarationWithLoops(t *testing.T) {
-	tests := []testCase{
-		// Forward declaration with for loops
-		{`
-		func sum_with_helper(n) {
-			total := 0
-			for i := 1; i <= n; i++ {
-				total += process_number(i)
-			}
-			return total
-		}
-		
-		func process_number(x) {
-			return x * 2
-		}
-		
-		sum_with_helper(5)
-		`, object.NewInt(30)},
-
-		// Forward declaration with range loops
-		{`
-		func process_list(items) {
-			result := []
-			for _, item := range items {
-				result.append(transform_item(item))
-			}
-			return result
-		}
-		
-		func transform_item(x) {
-			return x + 10
-		}
-		
-		process_list([1, 2, 3])
-		`, object.NewList([]object.Object{
-			object.NewInt(11),
-			object.NewInt(12),
-			object.NewInt(13),
-		})},
-	}
-	runTests(t, tests)
-}
-
-func TestComplexForwardDeclarationScenarios(t *testing.T) {
-	tests := []testCase{
-		// Multiple forward declarations with dependencies
-		{`
-		func main_processor() {
-			data := prepare_data()
-			processed := process_data(data)
-			return finalize_data(processed)
-		}
-		
-		func prepare_data() {
-			return [1, 2, 3, 4, 5]
-		}
-		
-		func process_data(items) {
-			result := []
-			for _, item := range items {
-				result.append(transform_value(item))
-			}
-			return result
-		}
-		
-		func transform_value(x) {
-			return multiply_by_factor(x, 3)
-		}
-		
-		func multiply_by_factor(value, factor) {
-			return value * factor
-		}
-		
-		func finalize_data(items) {
-			return calculate_sum(items)
-		}
-		
-		func calculate_sum(items) {
-			total := 0
-			for _, item := range items {
-				total += item
-			}
-			return total
-		}
-		
-		main_processor()
-		`, object.NewInt(45)},
-
-		// Forward declaration with error handling
-		{`
-		func safe_processor(x) {
-			result := try(
-				func() { return risky_operation(x) },
-				func(e) { return fallback_operation(x) }
-			)
-			return result
-		}
-		
-		func risky_operation(x) {
-			if x < 0 {
-				error("negative number")
-			}
-			return x * 2
-		}
-		
-		func fallback_operation(x) {
-			return 0
-		}
-		
-		[safe_processor(5), safe_processor(-5)]
-		`, object.NewList([]object.Object{
-			object.NewInt(10),
-			object.NewInt(0),
-		})},
-	}
-	runTests(t, tests)
-}
-
 func TestForwardDeclarationEdgeCases(t *testing.T) {
 	tests := []testCase{
 		// Forward declaration with nested function returning global function
 		{`
-		func outer() {
-			func inner() {
+		function outer() {
+			function inner() {
 				return "inner"
 			}
 			
 			return inner() + " " + global_helper()
 		}
 		
-		func global_helper() {
+		function global_helper() {
 			return "outer"
 		}
 		
@@ -2792,31 +1773,31 @@ func TestForwardDeclarationEdgeCases(t *testing.T) {
 
 		// Forward declaration with anonymous functions
 		{`
-		func factory() {
-			return func() {
+		function factory() {
+			return function() {
 				return delayed_function()
 			}
 		}
 		
-		func delayed_function() {
+		function delayed_function() {
 			return "delayed"
 		}
 		
-		fn := factory()
+		let fn = factory()
 		fn()
 		`, object.NewString("delayed")},
 
 		// Forward declaration with function as parameter
 		{`
-		func processor(fn) {
+		function processor(fn) {
 			return fn(5)
 		}
 		
-		func main() {
+		function main() {
 			return processor(multiplier)
 		}
 		
-		func multiplier(x) {
+		function multiplier(x) {
 			return x * 3
 		}
 		
@@ -2838,7 +1819,7 @@ func TestForwardDeclarationErrors(t *testing.T) {
 		{
 			name: "undefined function call",
 			input: `
-			func caller() {
+			function caller() {
 				return nonexistent_function()
 			}
 			caller()
@@ -2848,11 +1829,11 @@ func TestForwardDeclarationErrors(t *testing.T) {
 		{
 			name: "function redefinition error",
 			input: `
-			func duplicate() {
+			function duplicate() {
 				return 1
 			}
 			
-			func duplicate() {
+			function duplicate() {
 				return 2
 			}
 			
@@ -2863,11 +1844,11 @@ func TestForwardDeclarationErrors(t *testing.T) {
 		{
 			name: "circular dependency with undefined function",
 			input: `
-			func a() {
+			function a() {
 				return b() + c()  // c() is never defined
 			}
 			
-			func b() {
+			function b() {
 				return a()
 			}
 			
@@ -2880,8 +1861,8 @@ func TestForwardDeclarationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := run(ctx, tt.input)
-			require.NotNil(t, err)
-			require.Contains(t, err.Error(), tt.expectedErr)
+			assert.NotNil(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
 		})
 	}
 }
@@ -2890,19 +1871,19 @@ func TestRunCode(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a VM with initial code
-	vm, err := newVM(ctx, "x := 10; y := 20; x + y")
-	require.NoError(t, err)
+	vm, err := newVM(ctx, "let x = 10; let y = 20; x + y")
+	assert.NoError(t, err)
 
 	// Run the initial code
-	require.NoError(t, vm.Run(ctx))
+	assert.NoError(t, vm.Run(ctx))
 
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(30))
+	assert.True(t, exists)
+	assert.Equal(t, int64(30), result.(*object.Int).Value())
 
 	// Compile and run different code on the same VM
-	ast2, err := parser.Parse(ctx, "a := 5; b := 15; a * b")
-	require.NoError(t, err)
+	ast2, err := parser.Parse(ctx, "let a = 5; let b = 15; a * b", nil)
+	assert.NoError(t, err)
 
 	globals := basicBuiltins()
 	var globalNames []string
@@ -2910,32 +1891,32 @@ func TestRunCode(t *testing.T) {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
+	assert.NoError(t, err)
 
 	// Run the second code on the same VM
-	require.NoError(t, vm.RunCode(ctx, code2))
+	assert.NoError(t, vm.RunCode(ctx, code2))
 
 	result2, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result2.(*object.Int).Value(), int64(75))
+	assert.True(t, exists)
+	assert.Equal(t, int64(75), result2.(*object.Int).Value())
 
 	// Run a third piece of code
 	source3 := `
-		name := "Risor"
-		greeting := "Hello, " + name + "!"
+		let name = "Risor"
+		let greeting = "Hello, " + name + "!"
 		greeting
 	`
-	ast3, err := parser.Parse(ctx, source3)
-	require.NoError(t, err)
+	ast3, err := parser.Parse(ctx, source3, nil)
+	assert.NoError(t, err)
 
-	code3, err := compiler.Compile(ast3, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, code3))
+	code3, err := compiler.Compile(ast3, &compiler.Config{GlobalNames: globalNames})
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, code3))
 
 	result3, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result3.(*object.String).Value(), "Hello, Risor!")
+	assert.True(t, exists)
+	assert.Equal(t, "Hello, Risor!", result3.(*object.String).Value())
 }
 
 func TestRunCodeWithGlobalVariables(t *testing.T) {
@@ -2948,37 +1929,37 @@ func TestRunCodeWithGlobalVariables(t *testing.T) {
 	}
 
 	source1 := `
-		result := baseValue * multiplier
+		let result = baseValue * multiplier
 		result
 	`
 	vm, err := newVM(ctx, source1, runOpts{Globals: customGlobals})
-	require.NoError(t, err)
-	require.NoError(t, vm.Run(ctx))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.Run(ctx))
 
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(200))
+	assert.True(t, exists)
+	assert.Equal(t, int64(200), result.(*object.Int).Value())
 
 	// Run different code that also uses globals
 	source2 := `
-		newResult := baseValue + multiplier
+		let newResult = baseValue + multiplier
 		newResult
 	`
-	ast2, err := parser.Parse(ctx, source2)
-	require.NoError(t, err)
+	ast2, err := parser.Parse(ctx, source2, nil)
+	assert.NoError(t, err)
 
 	var globalNames []string
 	for k := range customGlobals {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, code2))
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, code2))
 
 	result2, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result2.(*object.Int).Value(), int64(102))
+	assert.True(t, exists)
+	assert.Equal(t, int64(102), result2.(*object.Int).Value())
 }
 
 func TestRunCodeFunctions(t *testing.T) {
@@ -2986,28 +1967,28 @@ func TestRunCodeFunctions(t *testing.T) {
 
 	// Test that functions work correctly when running multiple code objects
 	source1 := `
-		func add(a, b) {
+		function add(a, b) {
 			return a + b
 		}
 		add(10, 20)
 	`
 	vm, err := newVM(ctx, source1)
-	require.NoError(t, err)
-	require.NoError(t, vm.Run(ctx))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.Run(ctx))
 
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(30))
+	assert.True(t, exists)
+	assert.Equal(t, int64(30), result.(*object.Int).Value())
 
 	// Run code with a different function
 	source2 := `
-		func multiply(x, y) {
+		function multiply(x, y) {
 			return x * y
 		}
 		multiply(6, 7)
 	`
-	ast2, err := parser.Parse(ctx, source2)
-	require.NoError(t, err)
+	ast2, err := parser.Parse(ctx, source2, nil)
+	assert.NoError(t, err)
 
 	globals := basicBuiltins()
 	var globalNames []string
@@ -3015,26 +1996,26 @@ func TestRunCodeFunctions(t *testing.T) {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, code2))
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, code2))
 
 	result2, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result2.(*object.Int).Value(), int64(42))
+	assert.True(t, exists)
+	assert.Equal(t, int64(42), result2.(*object.Int).Value())
 }
 
 func TestRunCodeOnVM(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a VM with initial code
-	vm, err := newVM(ctx, "x := 42; x")
-	require.NoError(t, err)
-	require.NoError(t, vm.Run(ctx))
+	vm, err := newVM(ctx, "let x = 42; x")
+	assert.NoError(t, err)
+	assert.NoError(t, vm.Run(ctx))
 
 	// Compile a different piece of code
-	ast2, err := parser.Parse(ctx, "y := 100; z := 200; y + z")
-	require.NoError(t, err)
+	ast2, err := parser.Parse(ctx, "let y = 100; let z = 200; y + z", nil)
+	assert.NoError(t, err)
 
 	globals := basicBuiltins()
 	var globalNames []string
@@ -3042,426 +2023,372 @@ func TestRunCodeOnVM(t *testing.T) {
 		globalNames = append(globalNames, k)
 	}
 
-	code2, err := compiler.Compile(ast2, compiler.WithGlobalNames(globalNames))
-	require.NoError(t, err)
+	code2, err := compiler.Compile(ast2, &compiler.Config{GlobalNames: globalNames})
+	assert.NoError(t, err)
 	result, err := RunCodeOnVM(ctx, vm, code2)
-	require.NoError(t, err)
-	require.Equal(t, result.(*object.Int).Value(), int64(300))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(300), result.(*object.Int).Value())
 }
 
 func TestRunCodeFirst(t *testing.T) {
 	ctx := context.Background()
 	vm, err := newVM(ctx, `
-		func add(a, b) { return a + b }
+		function add(a, b) { return a + b }
 		add(10, 20)
 	`)
-	require.NoError(t, err)
-	require.NoError(t, vm.RunCode(ctx, vm.main))
+	assert.NoError(t, err)
+	assert.NoError(t, vm.RunCode(ctx, vm.main))
 	result, exists := vm.TOS()
-	require.True(t, exists)
-	require.Equal(t, result.(*object.Int).Value(), int64(30))
+	assert.True(t, exists)
+	assert.Equal(t, int64(30), result.(*object.Int).Value())
 }
 
 func TestNewEmpty(t *testing.T) {
 	ctx := context.Background()
-	compile := func(source string) *compiler.Code {
-		ast, err := parser.Parse(ctx, source)
-		require.NoError(t, err)
-		code, err := compiler.Compile(ast)
-		require.NoError(t, err)
+	compile := func(source string) *bytecode.Code {
+		ast, err := parser.Parse(ctx, source, nil)
+		assert.NoError(t, err)
+		code, err := compiler.Compile(ast, nil)
+		assert.NoError(t, err)
 		return code
 	}
 
 	// Test creating a VM without main code
 	vm, err := NewEmpty()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Test that Run() returns an error when no main code is provided
 	err = vm.Run(ctx)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "no main code available")
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "no main code available")
 
 	// Test that RunCode() works with specific code
-	code := compile(`x := 42; x`)
+	code := compile(`let x = 42; x`)
 	err = vm.RunCode(ctx, code)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify the result is on the stack
 	result, ok := vm.TOS()
-	require.True(t, ok)
+	assert.True(t, ok)
 	intResult, ok := result.(*object.Int)
-	require.True(t, ok)
-	require.Equal(t, intResult.Value(), int64(42))
+	assert.True(t, ok)
+	assert.Equal(t, int64(42), intResult.Value())
 
 	// Test that Call() works with functions
-	fnCode := compile(`func add(a, b) { return a + b }`)
+	fnCode := compile(`function add(a, b) { return a + b }`)
 	err = vm.RunCode(ctx, fnCode)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	addFn, err := vm.Get("add")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	result, err = vm.Call(ctx, addFn.(*object.Function), []object.Object{
+	result, err = vm.Call(ctx, addFn.(*object.Closure), []object.Object{
 		object.NewInt(10),
 		object.NewInt(20),
 	})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	intResult, ok = result.(*object.Int)
-	require.True(t, ok)
-	require.Equal(t, intResult.Value(), int64(30))
+	assert.True(t, ok)
+	assert.Equal(t, int64(30), intResult.Value())
 }
 
-func TestNewEmptyClone(t *testing.T) {
-	ctx := context.Background()
-	compile := func(source string) *compiler.Code {
-		ast, err := parser.Parse(ctx, source)
-		require.NoError(t, err)
-		code, err := compiler.Compile(ast)
-		require.NoError(t, err)
-		return code
-	}
-
-	// Test cloning a VM without main code
-	vm, err := NewEmpty()
-	require.NoError(t, err)
-
-	// Run some code to set up state
-	code := compile(`x := 100`)
-	err = vm.RunCode(ctx, code)
-	require.NoError(t, err)
-
-	// Clone the VM
-	clone, err := vm.Clone()
-	require.NoError(t, err)
-
-	// Verify the clone also has no main code
-	require.Nil(t, clone.main)
-
-	// Verify Run() fails on clone too
-	err = clone.Run(ctx)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "no main code available")
-
-	// Verify RunCode() works on clone
-	newCode := compile(`y := 200; y`)
-	err = clone.RunCode(ctx, newCode)
-	require.NoError(t, err)
-
-	// Verify result
-	result, ok := clone.TOS()
-	require.True(t, ok)
-	intResult, ok := result.(*object.Int)
-	require.True(t, ok)
-	require.Equal(t, intResult.Value(), int64(200))
-}
-
-func TestForIn1(t *testing.T) {
-	result, err := run(context.Background(), `
-	sum := 0
-	for x in [1, 2, 3] {
-		sum = sum + x
-	}
-	sum
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(6), result)
-}
-
-func TestForIn2(t *testing.T) {
-	result, err := run(context.Background(), `
-	fruits := ["apple", "banana", "cherry"]
-	last := ""
-	for fruit in fruits {
-		last = fruit
-	}
-	last
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("cherry"), result)
-}
-
-func TestForIn3(t *testing.T) {
-	result, err := run(context.Background(), `
-	items := []
-	for x in [10, 20, 30] {
-		items.append(x * 2)
-	}
-	items
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(20),
-		object.NewInt(40),
-		object.NewInt(60),
-	}), result)
-}
-
-func TestForInString(t *testing.T) {
-	result, err := run(context.Background(), `
-	chars := []
-	for c in "hello" {
-		chars.append(c)
-	}
-	chars
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewString("h"),
-		object.NewString("e"),
-		object.NewString("l"),
-		object.NewString("l"),
-		object.NewString("o"),
-	}), result)
-}
-
-func TestForInBreakContinue(t *testing.T) {
-	result, err := run(context.Background(), `
-	sum := 0
-	for x in [1, 2, 3, 4, 5] {
-		if x == 3 {
-			continue
-		}
-		if x == 5 {
-			break
-		}
-		sum = sum + x
-	}
-	sum
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(7), result) // 1 + 2 + 4, skipping 3 and breaking before 5
-}
-
-func TestForInWithMaps(t *testing.T) {
-	result, err := run(context.Background(), `
-	data := {a: 1, b: 2, c: 3}
-	result := []
-	for key in data {
-		result.append(key)
-	}
-	result.sort()
-	result
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	}), result)
-}
-
-func TestForInWithSets(t *testing.T) {
-	result, err := run(context.Background(), `
-	data := {1, 2, 3}
-	result := []
-	for item in data {
-		result.append(item)
-	}
-	result.sort()
-	result
-	`)
-	require.Nil(t, err)
-	// Sets might return the values (not keys) for iteration, let's check what we get
-	list, ok := result.(*object.List)
-	require.True(t, ok)
-	require.Equal(t, 3, len(list.Value()))
-}
-
-func TestForInWithRangeFunction(t *testing.T) {
-	result, err := run(context.Background(), `
-	total := 0
-	for i in range(5) {
-		total = total + i
-	}
-	total
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(10), result) // 0+1+2+3+4 = 10
-}
-
-func TestForInNestedLoops(t *testing.T) {
-	result, err := run(context.Background(), `
-	pairs := []
-	for x in [1, 2] {
-		for y in [3, 4] {
-			pairs.append([x, y])
-		}
-	}
-	pairs
-	`)
-	require.Nil(t, err)
-	expected := object.NewList([]object.Object{
-		object.NewList([]object.Object{object.NewInt(1), object.NewInt(3)}),
-		object.NewList([]object.Object{object.NewInt(1), object.NewInt(4)}),
-		object.NewList([]object.Object{object.NewInt(2), object.NewInt(3)}),
-		object.NewList([]object.Object{object.NewInt(2), object.NewInt(4)}),
-	})
-	require.Equal(t, expected, result)
-}
-
-func TestForInWithComplexExpressions(t *testing.T) {
-	result, err := run(context.Background(), `
-	data := [[1, 2], [3, 4], [5, 6]]
-	sum := 0
-	for row in data {
-		for val in row {
-			sum = sum + val
-		}
-	}
-	sum
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(21), result) // 1+2+3+4+5+6 = 21
-}
-
-func TestForInWithFunctionCalls(t *testing.T) {
-	result, err := run(context.Background(), `
-	getData := func() { 
-		return [10, 20, 30] 
-	}
-	sum := 0
-	for val in getData() {
-		sum = sum + val
-	}
-	sum
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(60), result) // 10+20+30 = 60
-}
-
-func TestForInWithMethodChaining(t *testing.T) {
-	result, err := run(context.Background(), `
-	getData := func() { return [1, 2, 3] }
-	sum := 0
-	for val in getData() {
-		sum = sum + val
-	}
-	sum
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(6), result) // 1+2+3 = 6
-}
-
-func TestForInEmptyIterable(t *testing.T) {
-	result, err := run(context.Background(), `
-	count := 0
-	for x in [] {
-		count++
-	}
-	count
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(0), result)
-}
-
-func TestForInSingleElement(t *testing.T) {
-	result, err := run(context.Background(), `
-	value := nil
-	for x in [42] {
-		value = x
-	}
-	value
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewInt(42), result)
-}
-
-func TestForInVariableScoping(t *testing.T) {
-	result, err := run(context.Background(), `
-	x := "outer"
-	for x in ["inner"] {
-		// x is now "inner" in loop scope
-	}
-	x  // Should still be "outer" after loop
-	`)
-	require.Nil(t, err)
-	require.Equal(t, object.NewString("outer"), result)
-}
-
-func TestForInWithDifferentTypes(t *testing.T) {
+func TestArrowFunctions(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
 		expected object.Object
 	}{
 		{
-			name: "iterate over mixed types",
-			input: `
-			result := []
-			for item in [1, "hello", true, 3.14] {
-				result.append(item)
-			}
-			result
-			`,
-			expected: object.NewList([]object.Object{
-				object.NewInt(1),
-				object.NewString("hello"),
-				object.True,
-				object.NewFloat(3.14),
-			}),
+			name:     "simple arrow function",
+			input:    `let add = (x, y) => x + y; add(2, 3)`,
+			expected: object.NewInt(5),
 		},
 		{
-			name: "iterate over string bytes",
-			input: `
-			result := []
-			for b in "abc" {
-				result.append(b)
-			}
-			result
-			`,
-			expected: object.NewList([]object.Object{
-				object.NewString("a"), // string character
-				object.NewString("b"), // string character
-				object.NewString("c"), // string character
-			}),
+			name:     "arrow function no params",
+			input:    `let f = () => 42; f()`,
+			expected: object.NewInt(42),
+		},
+		{
+			name:     "arrow function single param",
+			input:    `let double = (x) => x * 2; double(5)`,
+			expected: object.NewInt(10),
+		},
+		{
+			name:     "arrow function with block body",
+			input:    `let f = (x) => { return x + 1 }; f(10)`,
+			expected: object.NewInt(11),
+		},
+		{
+			name:     "arrow function with default parameter",
+			input:    `let greet = (name = "world") => "hello " + name; greet()`,
+			expected: object.NewString("hello world"),
+		},
+		{
+			name:     "arrow function default parameter override",
+			input:    `let greet = (name = "world") => "hello " + name; greet("claude")`,
+			expected: object.NewString("hello claude"),
+		},
+		{
+			name:     "arrow function as callback",
+			input:    `[1, 2, 3].map((x) => x * 2)`,
+			expected: object.NewList([]object.Object{object.NewInt(2), object.NewInt(4), object.NewInt(6)}),
+		},
+		{
+			name:     "arrow function filter",
+			input:    `[1, 2, 3, 4, 5].filter((x) => x > 2)`,
+			expected: object.NewList([]object.Object{object.NewInt(3), object.NewInt(4), object.NewInt(5)}),
+		},
+		{
+			name:     "immediately invoked arrow function",
+			input:    `((x) => x + 1)(5)`,
+			expected: object.NewInt(6),
+		},
+		{
+			name:     "single param no parens",
+			input:    `let double = x => x * 2; double(5)`,
+			expected: object.NewInt(10),
+		},
+		{
+			name:     "single param no parens as callback",
+			input:    `[1, 2, 3].map(x => x * 10)`,
+			expected: object.NewList([]object.Object{object.NewInt(10), object.NewInt(20), object.NewInt(30)}),
+		},
+		{
+			name:     "arrow function returning arrow function",
+			input:    `let makeAdder = (x) => (y) => x + y; let add5 = makeAdder(5); add5(3)`,
+			expected: object.NewInt(8),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := run(context.Background(), tt.input)
-			require.Nil(t, err)
-			require.Equal(t, tt.expected, result)
+			assert.Nil(t, err, "unexpected error: %v", err)
+			assert.Equal(t, result, tt.expected)
 		})
 	}
 }
 
-func TestForInErrorConditions(t *testing.T) {
+func TestTryCatch(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		expectError bool
+		name     string
+		input    string
+		expected object.Object
 	}{
 		{
-			name: "non-iterable object",
+			name: "basic try/catch with throw",
 			input: `
-			for x in true {
-				x
+			let result = "initial"
+			try {
+				throw "error"
+			} catch e {
+				result = "caught"
 			}
+			result
 			`,
-			expectError: true,
+			expected: object.NewString("caught"),
 		},
 		{
-			name: "nil iterable",
+			name: "try block succeeds, catch not executed",
 			input: `
-			data := nil
-			for x in data {
-				x
+			let result = "success"
+			try {
+				result = "try"
+			} catch e {
+				result = "catch"
 			}
+			result
 			`,
-			expectError: true,
+			expected: object.NewString("try"),
+		},
+		{
+			name: "catch without binding",
+			input: `
+			let result = "initial"
+			try {
+				throw "oops"
+			} catch {
+				result = "handled"
+			}
+			result
+			`,
+			expected: object.NewString("handled"),
+		},
+		{
+			name: "try/finally without catch",
+			input: `
+			let cleanup = false
+			try {
+				cleanup = true
+			} finally {
+				cleanup = true
+			}
+			cleanup
+			`,
+			expected: object.True,
+		},
+		{
+			name: "finally runs after catch",
+			input: `
+			let steps = []
+			try {
+				throw "err"
+			} catch e {
+				steps = steps + ["catch"]
+			} finally {
+				steps = steps + ["finally"]
+			}
+			steps
+			`,
+			expected: object.NewList([]object.Object{
+				object.NewString("catch"),
+				object.NewString("finally"),
+			}),
+		},
+		{
+			name: "throw string value",
+			input: `
+			let msg = ""
+			try {
+				throw "my error message"
+			} catch e {
+				msg = string(e)
+			}
+			msg
+			`,
+			expected: object.NewString("my error message"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := run(context.Background(), tt.input)
-			if tt.expectError {
-				require.NotNil(t, err)
-			} else {
-				require.Nil(t, err)
-			}
+			result, err := run(context.Background(), tt.input)
+			assert.Nil(t, err, "unexpected error: %v", err)
+			assert.Equal(t, result, tt.expected)
 		})
 	}
+}
+
+func TestThrowWithoutCatch(t *testing.T) {
+	// Test that an unhandled throw propagates as an error
+	_, err := run(context.Background(), `throw "unhandled"`)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "unhandled")
+}
+
+func TestMaxSteps(t *testing.T) {
+	ctx := context.Background()
+	// Use many arithmetic operations to consume steps
+	source := `
+	let x = 0
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x = x + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+	x
+	`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Run with a very low step limit - should hit limit quickly
+	vm, err := New(main, WithMaxSteps(50), WithContextCheckInterval(10))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Equal(t, err, ErrStepLimitExceeded)
+}
+
+func TestMaxStepsNotExceeded(t *testing.T) {
+	ctx := context.Background()
+	// Use list().each() with range to sum numbers
+	source := `
+	let sum = 0
+	list(range(10)).each(function(i) { sum = sum + i })
+	sum
+	`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	globals := basicBuiltins()
+	var globalNames []string
+	for k := range globals {
+		globalNames = append(globalNames, k)
+	}
+
+	main, err := compiler.Compile(ast, &compiler.Config{GlobalNames: globalNames})
+	assert.Nil(t, err)
+
+	// Run with a high step limit that won't be exceeded
+	vm, err := New(main, WithGlobals(globals), WithMaxSteps(100000))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.Nil(t, err)
+
+	tos, ok := vm.TOS()
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(45))
+}
+
+func TestMaxStackDepth(t *testing.T) {
+	ctx := context.Background()
+	// Recursive function that will overflow with a low stack limit
+	source := `
+function recurse(n) {
+	if (n > 0) {
+		return recurse(n - 1) + 1
+	}
+	return 0
+}
+recurse(100)
+`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Run with a stack depth limit that will be exceeded
+	vm, err := New(main, WithMaxStackDepth(10))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "stack overflow")
+}
+
+func TestTimeout(t *testing.T) {
+	ctx := context.Background()
+	// Use list().each() with range to iterate for a long time
+	source := `
+	let sum = 0
+	list(range(1000000)).each(function(i) { sum = sum + i })
+	sum
+	`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	globals := basicBuiltins()
+	var globalNames []string
+	for k := range globals {
+		globalNames = append(globalNames, k)
+	}
+
+	main, err := compiler.Compile(ast, &compiler.Config{GlobalNames: globalNames})
+	assert.Nil(t, err)
+
+	// Run with a very short timeout
+	vm, err := New(main, WithGlobals(globals), WithTimeout(5*time.Millisecond))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Equal(t, err, context.DeadlineExceeded)
 }

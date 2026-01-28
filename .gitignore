@@ -3,8 +3,11 @@
 .vscode
 node_modules
 
+/proposals
+
 risor*.vsix
 risor-language-server.log
+/risor-lsp
 
 risor-example.db*
 

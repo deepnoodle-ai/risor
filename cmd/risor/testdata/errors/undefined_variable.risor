@@ -1,0 +1,10 @@
+// Example: Undefined variable with "Did you mean?" suggestion
+// This file demonstrates the "Did you mean?" feature for typos.
+// Run with: go run ./cmd/risor ./cmd/risor/testdata/errors/undefined_variable.risor
+
+let firstName = "Alice"
+let lastName = "Smith"
+let age = 30
+
+// Typo: "firstNme" should be "firstName"
+let greeting = "Hello, " + firstNme + " " + lastName

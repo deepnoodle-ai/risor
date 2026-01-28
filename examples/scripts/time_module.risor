@@ -1,0 +1,20 @@
+// Time Module
+// Working with dates and times
+
+// Current time
+let now = time.now()
+
+// Format time
+let formatted = now.format(time.RFC3339)
+let custom = now.format("2006-01-02")
+
+// Parse time
+let parsed = time.parse(time.RFC3339, "2024-06-15T14:30:00Z")
+
+// Unix timestamp
+let unix = now.unix()
+
+// Add days
+let tomorrow = now.add_date(0, 0, 1)
+
+{formatted, custom, parsed: parsed.format(time.RFC3339), unix, tomorrow: tomorrow.format("2006-01-02")}

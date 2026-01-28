@@ -12,21 +12,25 @@ const (
 	Halt        Code = 2
 	Call        Code = 3
 	ReturnValue Code = 4
-	Defer       Code = 5
-	Go          Code = 6
+	// Defer (removed in v2)    Code = 5
+	// Go (removed in v2)       Code = 6
+	CallSpread Code = 7 // Call with args from list on stack
 
 	// Jump
-	JumpBackward          Code = 10
-	JumpForward           Code = 11
-	PopJumpForwardIfFalse Code = 12
-	PopJumpForwardIfTrue  Code = 13
+	JumpBackward           Code = 10
+	JumpForward            Code = 11
+	PopJumpForwardIfFalse  Code = 12
+	PopJumpForwardIfTrue   Code = 13
+	PopJumpForwardIfNotNil Code = 14
+	PopJumpForwardIfNil    Code = 15
 
 	// Load
-	LoadAttr   Code = 20
-	LoadFast   Code = 21
-	LoadFree   Code = 22
-	LoadGlobal Code = 23
-	LoadConst  Code = 24
+	LoadAttr      Code = 20
+	LoadFast      Code = 21
+	LoadFree      Code = 22
+	LoadGlobal    Code = 23
+	LoadConst     Code = 24
+	LoadAttrOrNil Code = 25 // Like LoadAttr but returns nil instead of error for missing attrs
 
 	// Store
 	StoreAttr   Code = 30
@@ -43,8 +47,11 @@ const (
 	// Build
 	BuildList   Code = 50
 	BuildMap    Code = 51
-	BuildSet    Code = 52
 	BuildString Code = 53
+	ListAppend  Code = 54 // Append TOS to list at TOS-1
+	ListExtend  Code = 55 // Extend list at TOS-1 with iterable at TOS
+	MapMerge    Code = 56 // Merge map at TOS into map at TOS-1
+	MapSet      Code = 57 // Set key (TOS-1) to value (TOS) in map at TOS-2
 
 	// Containers
 	BinarySubscr Code = 60
@@ -64,18 +71,14 @@ const (
 	False Code = 81
 	True  Code = 82
 
-	// Iteration
-	ForIter Code = 90
-	GetIter Code = 91
-	Range   Code = 92
+	// Iteration (for loops removed in v2)
+	// ForIter Code = 90
+	// GetIter Code = 91
+	// Range   Code = 92
 
-	// Import
-	FromImport Code = 100
-	Import     Code = 101
-
-	// Channels
-	Receive Code = 110
-	Send    Code = 111
+	// Channels (removed in v2)
+	// Receive Code = 110
+	// Send    Code = 111
 
 	// Closures
 	LoadClosure Code = 120
@@ -83,6 +86,12 @@ const (
 
 	// Partials
 	Partial Code = 130
+
+	// Exception handling
+	PushExcept Code = 140 // Push exception handler: operand1=catch offset, operand2=finally offset
+	PopExcept  Code = 141 // Pop exception handler (normal try completion)
+	Throw      Code = 142 // Throw TOS as exception
+	EndFinally Code = 143 // End finally block, re-raise pending exception if any
 )
 
 // BinaryOpType describes a type of binary operation, as in an operation that
@@ -194,24 +203,23 @@ func init() {
 		{BinarySubscr, "BINARY_SUBSCR", 0},
 		{BuildList, "BUILD_LIST", 1},
 		{BuildMap, "BUILD_MAP", 1},
-		{BuildSet, "BUILD_SET", 1},
 		{BuildString, "BUILD_STRING", 1},
 		{Call, "CALL", 1},
+		{CallSpread, "CALL_SPREAD", 0},
 		{CompareOp, "COMPARE_OP", 1},
 		{ContainsOp, "CONTAINS_OP", 1},
 		{Copy, "COPY", 1},
-		{Defer, "DEFER", 0},
 		{False, "FALSE", 0},
-		{ForIter, "FOR_ITER", 2},
-		{FromImport, "FROM_IMPORT", 2},
-		{GetIter, "GET_ITER", 0},
-		{Go, "GO", 0},
 		{Halt, "HALT", 0},
-		{Import, "IMPORT", 0},
 		{JumpBackward, "JUMP_BACKWARD", 1},
 		{JumpForward, "JUMP_FORWARD", 1},
 		{Length, "LENGTH", 0},
+		{ListAppend, "LIST_APPEND", 0},
+		{ListExtend, "LIST_EXTEND", 0},
+		{MapMerge, "MAP_MERGE", 0},
+		{MapSet, "MAP_SET", 0},
 		{LoadAttr, "LOAD_ATTR", 1},
+		{LoadAttrOrNil, "LOAD_ATTR_OR_NIL", 1},
 		{LoadClosure, "LOAD_CLOSURE", 2},
 		{LoadConst, "LOAD_CONST", 1},
 		{LoadFast, "LOAD_FAST", 1},
@@ -222,12 +230,11 @@ func init() {
 		{Nop, "NOP", 0},
 		{Partial, "PARTIAL", 1},
 		{PopJumpForwardIfFalse, "POP_JUMP_FORWARD_IF_FALSE", 1},
+		{PopJumpForwardIfNil, "POP_JUMP_FORWARD_IF_NIL", 1},
+		{PopJumpForwardIfNotNil, "POP_JUMP_FORWARD_IF_NOT_NIL", 1},
 		{PopJumpForwardIfTrue, "POP_JUMP_FORWARD_IF_TRUE", 1},
 		{PopTop, "POP_TOP", 0},
-		{Range, "RANGE", 0},
-		{Receive, "RECEIVE", 0},
 		{ReturnValue, "RETURN_VALUE", 0},
-		{Send, "SEND", 0},
 		{Slice, "SLICE", 0},
 		{StoreAttr, "STORE_ATTR", 1},
 		{StoreFast, "STORE_FAST", 1},
@@ -239,6 +246,10 @@ func init() {
 		{UnaryNegative, "UNARY_NEGATIVE", 0},
 		{UnaryNot, "UNARY_NOT", 0},
 		{Unpack, "UNPACK", 1},
+		{PushExcept, "PUSH_EXCEPT", 2},
+		{PopExcept, "POP_EXCEPT", 0},
+		{Throw, "THROW", 0},
+		{EndFinally, "END_FINALLY", 0},
 	}
 	for _, o := range ops {
 		infos[o.op] = Info{

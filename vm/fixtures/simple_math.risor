@@ -1,4 +1,0 @@
-
-func add(x, y) { x + y }
-
-pi := math.PI

@@ -1,0 +1,26 @@
+// String Methods
+// Common string operations
+
+// Trim whitespace
+let trimmed = "  hello  ".trim_space()
+
+// Case conversion
+let upper = "hello".to_upper()
+let lower = "HELLO".to_lower()
+
+// Split and join
+let parts = "a,b,c".split(",")
+let joined = "-".join(parts)
+
+// Search
+let hasWorld = "hello world".contains("world")
+
+// Replace
+let result = "hello".replace_all("l", "L")
+
+// Indexing
+let word = "hello"
+let first = word[0]
+let slice = word[1:4]
+
+{trimmed, upper, lower, parts, joined, hasWorld, result, first, slice}

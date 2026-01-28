@@ -1,42 +1,14 @@
-go 1.24.0
+go 1.25
 
 use (
 	.
 	./cmd/risor
-	./cmd/risor-api
 	./cmd/risor-docs
 	./cmd/risor-lsp
-	./cmd/risor-modgen
-	./examples/go/sqlite
+	./examples/go/concurrent_vms
+	./examples/go/custom_env
+	./examples/go/error_handling
+	./examples/go/expression_eval
 	./examples/go/struct
 	./examples/go/tetra3d
-	./modules/aws
-	./modules/bcrypt
-	./modules/cli
-	./modules/color
-	./modules/echarts
-	./modules/gha
-	./modules/github
-	./modules/goquery
-	./modules/htmltomarkdown
-	./modules/image
-	./modules/isatty
-	./modules/jmespath
-	./modules/kubernetes
-	./modules/pgx
-	./modules/playwright
-	./modules/qrcode
-	./modules/redis
-	./modules/sched
-	./modules/semver
-	./modules/shlex
-	./modules/slack
-	./modules/sql
-	./modules/ssh
-	./modules/tablewriter
-	./modules/template
-	./modules/uuid
-	./modules/vault
-	./modules/yaml
-	./os/s3fs
 )

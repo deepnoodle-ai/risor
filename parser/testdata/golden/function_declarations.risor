@@ -1,0 +1,15 @@
+// Function declarations test
+function greet(name) {
+    return "Hello, " + name
+}
+
+function add(a, b = 0) {
+    return a + b
+}
+
+function sum(...numbers) {
+    return numbers
+}
+
+let arrow = (x, y) => x + y
+let simple = x => x * 2

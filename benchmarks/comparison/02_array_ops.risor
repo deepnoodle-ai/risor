@@ -1,0 +1,11 @@
+// Array Operations Benchmark
+// Tests: map, filter, closures, list iteration
+
+let numbers = list(range(1, 100001))
+
+// Chain: filter evens, square them, sum
+let evens = numbers.filter(x => x % 2 == 0)
+let squares = evens.map(x => x * x)
+let result = squares.reduce(0, (acc, x) => acc + x)
+
+result

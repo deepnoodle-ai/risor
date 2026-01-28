@@ -3,7 +3,7 @@ package tmpl
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestParseString(t *testing.T) {
@@ -12,7 +12,7 @@ func TestParseString(t *testing.T) {
 		want  []*Fragment
 	}{
 		{
-			"Hello {name}!",
+			"Hello ${name}!",
 			[]*Fragment{
 				{value: "Hello ", isVariable: false},
 				{value: "name", isVariable: true},
@@ -20,36 +20,40 @@ func TestParseString(t *testing.T) {
 			},
 		},
 		{
-			"ab{{c}} {foo} $bar baz\t",
+			"ab ${foo} $bar baz\t",
 			[]*Fragment{
-				{value: "ab{c} ", isVariable: false},
+				{value: "ab ", isVariable: false},
 				{value: "foo", isVariable: true},
 				{value: " $bar baz\t", isVariable: false},
 			},
 		},
 		{
-			"{ hi + 3 }{h[0]+foo.bar()}X{}${}",
+			"${ hi + 3 }${h[0]+foo.bar()}X${}",
 			[]*Fragment{
 				{value: " hi + 3 ", isVariable: true},
 				{value: "h[0]+foo.bar()", isVariable: true},
 				{value: "X", isVariable: false},
 				{value: "", isVariable: true},
-				{value: "$", isVariable: false},
-				{value: "", isVariable: true},
 			},
 		},
 		{
-			`{{1}}`,
+			`plain text without interpolation`,
 			[]*Fragment{
-				{value: "{1}", isVariable: false},
+				{value: "plain text without interpolation", isVariable: false},
+			},
+		},
+		{
+			`{not interpolation}`,
+			[]*Fragment{
+				{value: "{not interpolation}", isVariable: false},
 			},
 		},
 	}
 	for _, tc := range tests {
 		res, err := Parse(tc.input)
-		require.Nil(t, err)
-		require.Equal(t, tc.input, res.Value())
-		require.Equal(t, tc.want, res.Fragments())
+		assert.Nil(t, err)
+		assert.Equal(t, res.Value(), tc.input)
+		assert.Equal(t, res.Fragments(), tc.want)
 	}
 }
 
@@ -58,15 +62,12 @@ func TestParseStringErrors(t *testing.T) {
 		input   string
 		wantErr string
 	}{
-		{"{", `missing '}' in template: {`},
-		{"a{0} {cd", `missing '}' in template: a{0} {cd`},
-		{`{ x.update({"foo": 1}) }`, `invalid '{' in template: { x.update({"foo": 1}) }`},
-		{"{a}}", `invalid '}' in template: {a}}`},
-		{"}a", `invalid '}' in template: }a`},
+		{"${", `missing '}' in template: ${`},
+		{"a${0} ${cd", `missing '}' in template: a${0} ${cd`},
 	}
 	for _, tc := range tests {
 		_, err := Parse(tc.input)
-		require.NotNil(t, err)
-		require.Equal(t, tc.wantErr, err.Error())
+		assert.NotNil(t, err)
+		assert.Equal(t, err.Error(), tc.wantErr)
 	}
 }

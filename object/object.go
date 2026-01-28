@@ -22,7 +22,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
@@ -32,46 +31,25 @@ type Type string
 // Type constants
 const (
 	BOOL          Type = "bool"
-	BUFFER        Type = "buffer"
 	BUILTIN       Type = "builtin"
 	BYTE          Type = "byte"
-	BYTE_SLICE    Type = "byte_slice"
+	BYTES         Type = "bytes"
 	CELL          Type = "cell"
-	CHANNEL       Type = "channel"
 	COLOR         Type = "color"
 	COMPLEX       Type = "complex"
 	COMPLEX_SLICE Type = "complex_slice"
-	DIR_ENTRY     Type = "dir_entry"
 	DYNAMIC_ATTR  Type = "dynamic_attr"
 	ERROR         Type = "error"
-	FILE          Type = "file"
-	FILE_INFO     Type = "file_info"
-	FILE_ITER     Type = "file_iter"
-	FILE_MODE     Type = "file_mode"
 	FLOAT         Type = "float"
-	FLOAT_SLICE   Type = "float_slice"
 	FUNCTION      Type = "function"
-	GO_FIELD      Type = "go_field"
-	GO_METHOD     Type = "go_method"
-	GO_TYPE       Type = "go_type"
 	INT           Type = "int"
-	INT_ITER      Type = "int_iter"
-	ITER_ENTRY    Type = "iter_entry"
 	LIST          Type = "list"
-	LIST_ITER     Type = "list_iter"
 	MAP           Type = "map"
-	MAP_ITER      Type = "map_iter"
 	MODULE        Type = "module"
 	NIL           Type = "nil"
 	PARTIAL       Type = "partial"
-	PROXY         Type = "proxy"
 	RESULT        Type = "result"
-	SET           Type = "set"
-	SET_ITER      Type = "set_iter"
-	SLICE_ITER    Type = "slice_iter"
 	STRING        Type = "string"
-	STRING_ITER   Type = "string_iter"
-	THREAD        Type = "thread"
 	TIME          Type = "time"
 )
 
@@ -92,8 +70,13 @@ type Object interface {
 	// Interface converts the given object to a native Go value.
 	Interface() interface{}
 
-	// Returns True if the given object is equal to this object.
-	Equals(other Object) Object
+	// Returns true if the given object is equal to this object.
+	Equals(other Object) bool
+
+	// Attrs returns the attribute specifications for this object type.
+	// Used for introspection, documentation, and tooling (autocomplete, etc.).
+	// Returns nil for types with no attributes.
+	Attrs() []AttrSpec
 
 	// GetAttr returns the attribute with the given name from this object.
 	GetAttr(name string) (Object, bool)
@@ -106,10 +89,7 @@ type Object interface {
 
 	// RunOperation runs an operation on this object with the given
 	// right-hand side object.
-	RunOperation(opType op.BinaryOpType, right Object) Object
-
-	// Cost returns the incremental processing cost of this object.
-	Cost() int
+	RunOperation(opType op.BinaryOpType, right Object) (Object, error)
 }
 
 // Slice is used to specify a range or slice of items in a container.
@@ -118,35 +98,14 @@ type Slice struct {
 	Stop  Object
 }
 
-// IteratorEntry is a single item returned by an iterator.
-type IteratorEntry interface {
-	Object
-	Key() Object
-	Value() Object
-	Primary() Object
-}
-
-// Iterator is an interface used to iterate over a container.
-type Iterator interface {
-	Object
-
-	// Next advances the iterator and then returns the current object and a
-	// bool indicating whether the returned item is valid. Once Next() has been
-	// called, the Entry() method can be used to get an IteratorEntry.
-	Next(context.Context) (Object, bool)
-
-	// Entry returns the current entry in the iterator and a bool indicating
-	// whether the returned item is valid.
-	Entry() (IteratorEntry, bool)
-}
-
-// Iterable is an interface that exposes an iterator for an Object.
-type Iterable interface {
-	Iter() Iterator
+// Enumerable is an interface for types that can be iterated with a callback.
+// The callback receives the key and value for each element. Return false to stop.
+type Enumerable interface {
+	Enumerate(ctx context.Context, fn func(key, value Object) bool)
 }
 
 type Container interface {
-	Iterable
+	Enumerable
 
 	// GetItem implements the [key] operator for a container type.
 	GetItem(key Object) (Object, *Error)
@@ -167,16 +126,19 @@ type Container interface {
 	Len() *Int
 }
 
-// Callable is an interface that exposes a Call method.
+// Callable is an interface for objects that can be invoked as functions.
+// Both *Builtin and *Closure implement this interface, allowing code to
+// call functions without knowing their concrete type.
+//
+// For closures, Call() uses the CallFunc stored in the context (set by the VM)
+// to execute the closure's bytecode. For builtins, Call() invokes the wrapped
+// Go function directly.
+//
+// List methods like Map, Filter, Each, and Reduce accept any Callable,
+// enabling both builtins and closures to be used as callbacks.
 type Callable interface {
 	// Call invokes the callable with the given arguments and returns the result.
-	Call(ctx context.Context, args ...Object) Object
-}
-
-// Hashable types can be hashed and consequently used in a set.
-type Hashable interface {
-	// Hash returns a hash key for the given object.
-	HashKey() HashKey
+	Call(ctx context.Context, args ...Object) (Object, error)
 }
 
 // Comparable is an interface used to compare two objects.
@@ -198,18 +160,6 @@ func CompareTypes(a, b Object) int {
 		return 1
 	}
 	return 0
-}
-
-// HashKey is used to identify unique values in a set.
-type HashKey struct {
-	// Type of the object being referenced.
-	Type Type
-	// FltValue is used as the key for floats.
-	FltValue float64
-	// IntValue is used as the key for integers.
-	IntValue int64
-	// StrValue is used as the key for strings.
-	StrValue string
 }
 
 // AttrResolver is an interface used to resolve dynamic attributes on an object.
@@ -263,15 +213,25 @@ func PrintableValue(obj Object) interface{} {
 
 // EvalErrorf returns a Risor Error object containing an eval error.
 func EvalErrorf(format string, args ...interface{}) *Error {
-	return NewError(errz.EvalErrorf(format, args...))
+	return NewError(newEvalErrorf(format, args...))
 }
 
 // ArgsErrorf returns a Risor Error object containing an arguments error.
 func ArgsErrorf(format string, args ...interface{}) *Error {
-	return NewError(errz.ArgsErrorf(format, args...))
+	return NewError(newArgsErrorf(format, args...))
 }
 
 // TypeErrorf returns a Risor Error object containing a type error.
 func TypeErrorf(format string, args ...interface{}) *Error {
-	return NewError(errz.TypeErrorf(format, args...))
+	return NewError(newTypeErrorf(format, args...))
+}
+
+// ValueErrorf returns a Risor Error object containing a value error.
+func ValueErrorf(format string, args ...interface{}) *Error {
+	return NewError(newValueErrorf(format, args...))
+}
+
+// IndexErrorf returns a Risor Error object containing an index error.
+func IndexErrorf(format string, args ...interface{}) *Error {
+	return NewError(newIndexErrorf(format, args...))
 }

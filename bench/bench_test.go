@@ -13,7 +13,7 @@ import (
 func BenchmarkRisor_Fibonacci35(b *testing.B) {
 	script := `
     func fibonacci(n) {
-        if n <= 1 {
+        if (n <= 1) {
             return n
         }
         return fibonacci(n-1) + fibonacci(n-2)
@@ -23,12 +23,12 @@ func BenchmarkRisor_Fibonacci35(b *testing.B) {
 
 	ctx := context.Background()
 
-	ast, err := parser.Parse(ctx, script)
+	ast, err := parser.Parse(ctx, script, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	code, err := compiler.Compile(ast)
+	code, err := compiler.Compile(ast, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

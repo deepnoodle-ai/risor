@@ -3,13 +3,28 @@ package object
 import (
 	"fmt"
 
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
+// Internal: do not use. Cell is an implementation detail for closure variable capture.
 type Cell struct {
-	*base
 	value *Object
+}
+
+func (c *Cell) Attrs() []AttrSpec {
+	return nil
+}
+
+func (c *Cell) GetAttr(name string) (Object, bool) {
+	return nil, false
+}
+
+func (c *Cell) SetAttr(name string, value Object) error {
+	return TypeErrorf("cell has no attribute %q", name)
+}
+
+func (c *Cell) IsTruthy() bool {
+	return true
 }
 
 func (c *Cell) Inspect() string {
@@ -45,19 +60,20 @@ func (c *Cell) Interface() interface{} {
 	return (*c.value).Interface()
 }
 
-func (c *Cell) Equals(other Object) Object {
-	if c == other {
-		return True
+func (c *Cell) Equals(other Object) bool {
+	otherCell, ok := other.(*Cell)
+	if !ok {
+		return false
 	}
-	return False
+	return c == otherCell
 }
 
-func (c *Cell) RunOperation(opType op.BinaryOpType, right Object) Object {
-	return TypeErrorf("type error: unsupported operation for cell: %v", opType)
+func (c *Cell) RunOperation(opType op.BinaryOpType, right Object) (Object, error) {
+	return nil, newTypeErrorf("unsupported operation for cell: %v", opType)
 }
 
 func (c *Cell) MarshalJSON() ([]byte, error) {
-	return nil, errz.TypeErrorf("type error: unable to marshal cell")
+	return nil, TypeErrorf("unable to marshal cell")
 }
 
 func NewCell(value *Object) *Cell {

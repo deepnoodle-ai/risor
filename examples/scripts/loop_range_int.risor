@@ -1,9 +1,0 @@
-#!/usr/bin/env risor --
-
-for i := range 3 {
-    print(i)
-}
-
-for _, i := range -3 {
-    print(i)
-}

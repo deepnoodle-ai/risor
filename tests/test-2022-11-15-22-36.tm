@@ -2,6 +2,6 @@
 // expected value: 10
 // expected type: int
 
-var a = 10
+let a = 10
 
 a

@@ -1,0 +1,13 @@
+// Data structures test
+let list = [1, 2, 3, ...other]
+let map = {a: 1, b: 2, ...rest}
+let nested = {
+    inner: {
+        value: 42
+    }
+}
+
+// Destructuring
+let {name, age} = person
+let {x: aliasX, y: aliasY = 0} = point
+let [first, second, third] = arr

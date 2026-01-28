@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/risor-io/risor/errors"
 	"github.com/risor-io/risor/op"
 )
 
@@ -88,6 +89,15 @@ type symbolTableDef struct {
 	Children      []*symbolTableDef     `json:"children,omitempty"`
 }
 
+// locationDef is used to marshal a SourceLocation.
+type locationDef struct {
+	Filename  string `json:"filename,omitempty"`
+	Line      int    `json:"line"`
+	Column    int    `json:"column"`
+	EndColumn int    `json:"end_column,omitempty"`
+	Source    string `json:"source,omitempty"`
+}
+
 // Flat form of a Code object used in marshaling.
 type codeDef struct {
 	ID            string            `json:"id,omitempty"`
@@ -99,6 +109,9 @@ type codeDef struct {
 	Constants     []json.RawMessage `json:"constants,omitempty"`
 	Names         []string          `json:"names,omitempty"`
 	Source        string            `json:"source,omitempty"`
+	Locations     []locationDef     `json:"locations,omitempty"`
+	MaxCallArgs   uint16            `json:"max_call_args,omitempty"`
+	EnvKeys       []string          `json:"env_keys,omitempty"`
 }
 
 // A representation of a Code object that can be marshalled more easily.
@@ -129,6 +142,17 @@ func codeFromState(state *state) (*Code, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// Reconstruct rootSource pointer from parent (same logic as newChild)
+		var rootSource *string
+		if parent != nil {
+			if parent.rootSource != nil {
+				rootSource = parent.rootSource
+			} else if parent.source != "" {
+				rootSource = &parent.source
+			}
+		}
+
 		code := &Code{
 			id:           c.ID,
 			parent:       parent,
@@ -140,6 +164,10 @@ func codeFromState(state *state) (*Code, error) {
 			constants:    constants,
 			names:        copyStrings(c.Names),
 			source:       c.Source,
+			rootSource:   rootSource,
+			locations:    locationsFromDefs(c.Locations),
+			maxCallArgs:  c.MaxCallArgs,
+			envKeys:      copyStrings(c.EnvKeys),
 		}
 		codesByID[code.id] = code
 		codes = append(codes, code)
@@ -344,6 +372,9 @@ func stateFromCode(code *Code) (*state, error) {
 			Name:          code.name,
 			Names:         copyStrings(code.names),
 			Source:        code.source,
+			Locations:     locationsToDefs(code.locations),
+			MaxCallArgs:   code.maxCallArgs,
+			EnvKeys:       copyStrings(code.envKeys),
 		}
 		if code.parent != nil {
 			cdef.ParentID = code.parent.id
@@ -418,6 +449,40 @@ func copyStrings(src []string) []string {
 	dst := make([]string, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func locationsFromDefs(defs []locationDef) []errors.SourceLocation {
+	if defs == nil {
+		return nil
+	}
+	locs := make([]errors.SourceLocation, len(defs))
+	for i, def := range defs {
+		locs[i] = errors.SourceLocation{
+			Filename:  def.Filename,
+			Line:      def.Line,
+			Column:    def.Column,
+			EndColumn: def.EndColumn,
+			Source:    def.Source,
+		}
+	}
+	return locs
+}
+
+func locationsToDefs(locs []errors.SourceLocation) []locationDef {
+	if locs == nil {
+		return nil
+	}
+	defs := make([]locationDef, len(locs))
+	for i, loc := range locs {
+		defs[i] = locationDef{
+			Filename:  loc.Filename,
+			Line:      loc.Line,
+			Column:    loc.Column,
+			EndColumn: loc.EndColumn,
+			Source:    loc.Source,
+		}
+	}
+	return defs
 }
 
 func CopyInstructions(src []op.Code) []op.Code {

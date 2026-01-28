@@ -1,5 +1,50 @@
 // Package compiler is used to compile a Risor abstract syntax tree (AST) into
 // the corresponding bytecode.
+//
+// # Two-Pass Compilation Strategy
+//
+// The compiler uses a two-pass approach to handle forward references. This
+// allows functions to call other functions that are defined later in the source.
+//
+// Example where forward references are needed:
+//
+//	function isEven(n) { return n == 0 || isOdd(n - 1) }
+//	function isOdd(n) { return n != 0 && isEven(n - 1) }
+//
+// Without the first pass, compiling isEven would fail because isOdd is not yet
+// defined when isEven references it.
+//
+// Pass 1: collectFunctionDeclarations
+//
+// Walks the AST to find all named function declarations at the module (global)
+// scope and registers them in the symbol table as constants. This ensures their
+// names are available for resolution during the second pass.
+//
+// Only top-level functions are collected. Functions nested inside other
+// functions or blocks are compiled in order and cannot be forward-referenced.
+//
+// Pass 2: compile
+//
+// Recursively compiles each AST node into bytecode. When the compiler encounters
+// a reference to an identifier, it resolves the name via the symbol table. For
+// forward-referenced functions, the symbol was already registered in pass 1.
+//
+// When compiling a named function definition, the compiler checks whether the
+// name was already registered (from pass 1) and reuses that symbol slot rather
+// than creating a duplicate.
+//
+// # Symbol Scopes
+//
+// The compiler tracks three variable scopes:
+//
+//   - Global: Module-level variables, accessed via LoadGlobal/StoreGlobal
+//   - Local: Function-local variables, accessed via LoadFast/StoreFast
+//   - Free: Captured closure variables, accessed via LoadFree/StoreFree
+//
+// The symbol table handles scope resolution and tracks which local variables
+// are captured by nested functions (free variables). When a function references
+// a variable from an enclosing scope, the compiler emits MakeCell instructions
+// to capture the variable into the closure.
 package compiler
 
 import (
@@ -9,9 +54,14 @@ import (
 	"strings"
 
 	"github.com/risor-io/risor/ast"
+	"github.com/risor-io/risor/bytecode"
+	"github.com/risor-io/risor/errors"
+	"github.com/risor-io/risor/internal/token"
 	"github.com/risor-io/risor/op"
-	"github.com/risor-io/risor/token"
 )
+
+// SourceLocation is an alias to errors.SourceLocation for convenience.
+type SourceLocation = errors.SourceLocation
 
 const (
 	// MaxArgs is the maximum number of arguments a function can have.
@@ -44,49 +94,56 @@ type Compiler struct {
 
 	// Source filename
 	filename string
+
+	// Original source code (for better error messages)
+	source string
+
+	// Current AST node being compiled (used for source map tracking)
+	currentNode ast.Node
 }
 
-// Option is a configuration function for a Compiler.
-type Option func(*Compiler)
+// Config holds compiler configuration options.
+type Config struct {
+	// GlobalNames are the names of global variables available during compilation.
+	// These are typically the keys from the environment map passed to the VM.
+	GlobalNames []string
 
-// WithGlobalNames configures the compiler with the given global variable names.
-func WithGlobalNames(names []string) Option {
-	return func(c *Compiler) {
-		c.globalNames = make([]string, len(names))
-		copy(c.globalNames, names) // isolate from caller
-	}
+	// Filename is the source filename, used for error messages.
+	Filename string
+
+	// Source is the original source code, used for better error messages.
+	Source string
+
+	// Code is an existing code object to compile into. This is used for
+	// REPL-style incremental compilation where state must be preserved.
+	// If nil, a new code object is created.
+	Code *Code
 }
 
-// WithCode configures the compiler to compile into the given code object.
-func WithCode(code *Code) Option {
-	return func(c *Compiler) {
-		c.main = code
-	}
-}
-
-// WithFilename configures the compiler with the source filename.
-func WithFilename(filename string) Option {
-	return func(c *Compiler) {
-		c.filename = filename
-	}
-}
-
-// Compile the given AST node and return the compiled code object. This is a
-// shorthand for compiler.New(options).Compile(node).
-func Compile(node ast.Node, options ...Option) (*Code, error) {
-	c, err := New(options...)
+// Compile compiles the given AST node and returns immutable bytecode.
+// This is the standard entry point for compiling code that will be executed.
+// Pass nil for cfg to use default settings.
+func Compile(node ast.Node, cfg *Config) (*bytecode.Code, error) {
+	c, err := New(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return c.Compile(node)
+	code, err := c.CompileAST(node)
+	if err != nil {
+		return nil, err
+	}
+	return code.ToBytecode(), nil
 }
 
-// New creates and returns a new Compiler. Any supplied options are used to
-// configure the compilation process.
-func New(options ...Option) (*Compiler, error) {
+// New creates and returns a new Compiler. Pass nil for cfg to use defaults.
+func New(cfg *Config) (*Compiler, error) {
 	c := &Compiler{}
-	for _, opt := range options {
-		opt(c)
+	if cfg != nil {
+		c.globalNames = make([]string, len(cfg.GlobalNames))
+		copy(c.globalNames, cfg.GlobalNames) // isolate from caller
+		c.filename = cfg.Filename
+		c.source = cfg.Source
+		c.main = cfg.Code
 	}
 	// Create a default, empty code object to compile into if the caller didn't
 	// supply one. If the caller did supply one, it may be a situation like the
@@ -108,6 +165,9 @@ func New(options ...Option) (*Compiler, error) {
 			return nil, err
 		}
 	}
+	// Store the env keys on the main code for later validation
+	c.main.envKeys = make([]string, len(c.globalNames))
+	copy(c.main.envKeys, c.globalNames)
 	// Start compiling into the main code object
 	c.current = c.main
 	return c, nil
@@ -118,13 +178,24 @@ func (c *Compiler) Code() *Code {
 	return c.main
 }
 
-// Compile the given AST node and return the compiled code object.
-func (c *Compiler) Compile(node ast.Node) (*Code, error) {
+// CompileAST compiles the given AST node and returns the mutable Code object.
+// This is used for REPL-style incremental compilation where state must be
+// preserved across multiple compilations. For normal compilation, use the
+// package-level Compile function instead.
+func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 	c.failure = nil
+
+	// Use original source if available (better error messages with actual code),
+	// otherwise fall back to AST string representation.
+	nodeSource := c.source
+	if nodeSource == "" {
+		nodeSource = node.String()
+	}
+
 	if c.main.source == "" {
-		c.main.source = node.String()
+		c.main.source = nodeSource
 	} else {
-		c.main.source = fmt.Sprintf("%s\n%s", c.main.source, node.String())
+		c.main.source = fmt.Sprintf("%s\n%s", c.main.source, nodeSource)
 	}
 	if c.filename != "" {
 		c.main.filename = c.filename
@@ -152,23 +223,23 @@ func (c *Compiler) Compile(node ast.Node) (*Code, error) {
 func (c *Compiler) collectFunctionDeclarations(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
-		for _, stmt := range node.Statements() {
+		for _, stmt := range node.Stmts {
 			if err := c.collectFunctionDeclarations(stmt); err != nil {
 				return err
 			}
 		}
 	case *ast.Block:
-		for _, stmt := range node.Statements() {
+		for _, stmt := range node.Stmts {
 			if err := c.collectFunctionDeclarations(stmt); err != nil {
 				return err
 			}
 		}
 	case *ast.Func:
 		// Only collect named functions at the top level
-		if node.Name() != nil && c.current.parent == nil {
-			functionName := node.Name().Literal()
+		if node.Name != nil && c.current.parent == nil {
+			functionName := node.Name.Name
 			if _, found := c.current.symbols.Get(functionName); found {
-				return c.formatError(fmt.Sprintf("function %q redefined", functionName), node.Token().StartPosition)
+				return c.formatError(fmt.Sprintf("function %q redefined", functionName), node.Pos())
 			}
 			if _, err := c.current.symbols.InsertConstant(functionName); err != nil {
 				return err
@@ -180,6 +251,8 @@ func (c *Compiler) collectFunctionDeclarations(node ast.Node) error {
 
 // compile the given AST node and all its children.
 func (c *Compiler) compile(node ast.Node) error {
+	// Track the current node for source location mapping
+	c.currentNode = node
 	switch node := node.(type) {
 	case *ast.Nil:
 		if err := c.compileNil(); err != nil {
@@ -229,18 +302,6 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileIdent(node); err != nil {
 			return err
 		}
-	case *ast.For:
-		if err := c.compileFor(node); err != nil {
-			return err
-		}
-	case *ast.ForIn:
-		if err := c.compileForIn(node); err != nil {
-			return err
-		}
-	case *ast.Control:
-		if err := c.compileControl(node); err != nil {
-			return err
-		}
 	case *ast.Return:
 		if err := c.compileReturn(node); err != nil {
 			return err
@@ -259,10 +320,6 @@ func (c *Compiler) compile(node ast.Node) error {
 		}
 	case *ast.Map:
 		if err := c.compileMap(node); err != nil {
-			return err
-		}
-	case *ast.Set:
-		if err := c.compileSet(node); err != nil {
 			return err
 		}
 	case *ast.Index:
@@ -301,24 +358,8 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compilePipe(node); err != nil {
 			return err
 		}
-	case *ast.Ternary:
-		if err := c.compileTernary(node); err != nil {
-			return err
-		}
-	case *ast.Range:
-		if err := c.compileRange(node); err != nil {
-			return err
-		}
 	case *ast.Slice:
 		if err := c.compileSlice(node); err != nil {
-			return err
-		}
-	case *ast.Import:
-		if err := c.compileImport(node); err != nil {
-			return err
-		}
-	case *ast.FromImport:
-		if err := c.compileFromImport(node); err != nil {
 			return err
 		}
 	case *ast.Switch:
@@ -329,49 +370,34 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileMultiVar(node); err != nil {
 			return err
 		}
+	case *ast.ObjectDestructure:
+		if err := c.compileObjectDestructure(node); err != nil {
+			return err
+		}
+	case *ast.ArrayDestructure:
+		if err := c.compileArrayDestructure(node); err != nil {
+			return err
+		}
 	case *ast.SetAttr:
 		if err := c.compileSetAttr(node); err != nil {
 			return err
 		}
-	case *ast.Go:
-		if err := c.compileGoStmt(node); err != nil {
+	case *ast.Try:
+		if err := c.compileTry(node); err != nil {
 			return err
 		}
-	case *ast.Defer:
-		if err := c.compileDeferStmt(node); err != nil {
+	case *ast.Throw:
+		if err := c.compileThrow(node); err != nil {
 			return err
 		}
-	case *ast.Send:
-		if err := c.compileSend(node); err != nil {
-			return err
-		}
-	case *ast.Receive:
-		if err := c.compileReceive(node); err != nil {
-			return err
-		}
+	case *ast.BadExpr:
+		return c.formatError("syntax error in expression", node.Pos())
+	case *ast.BadStmt:
+		return c.formatError("syntax error in statement", node.Pos())
 	default:
 		panic(fmt.Sprintf("compile error: unknown ast node type: %T", node))
 	}
 	return nil
-}
-
-// startLoop should be called when starting to compile a new loop. This is used
-// to understand which loop that "break" and "continue" statements should target.
-func (c *Compiler) startLoop() *loop {
-	currentCode := c.current
-	loop := &loop{code: currentCode}
-	currentCode.loops = append(currentCode.loops, loop)
-	return loop
-}
-
-// currentLoop returns the loop that is currently being compiled, which is the
-// loop that "break" and "continue" statements should target.
-func (c *Compiler) currentLoop() *loop {
-	loops := c.current.loops
-	if len(loops) == 0 {
-		return nil
-	}
-	return loops[len(loops)-1]
 }
 
 func (c *Compiler) currentPosition() int {
@@ -384,17 +410,17 @@ func (c *Compiler) compileNil() error {
 }
 
 func (c *Compiler) compileInt(node *ast.Int) error {
-	c.emit(op.LoadConst, c.constant(node.Value()))
+	c.emit(op.LoadConst, c.constant(node.Value))
 	return nil
 }
 
 func (c *Compiler) compileFloat(node *ast.Float) error {
-	c.emit(op.LoadConst, c.constant(node.Value()))
+	c.emit(op.LoadConst, c.constant(node.Value))
 	return nil
 }
 
 func (c *Compiler) compileBool(node *ast.Bool) error {
-	if node.Value() {
+	if node.Value {
 		c.emit(op.True)
 	} else {
 		c.emit(op.False)
@@ -402,8 +428,14 @@ func (c *Compiler) compileBool(node *ast.Bool) error {
 	return nil
 }
 
+// isExpr returns true if the given node is an expression node.
+func isExpr(node ast.Node) bool {
+	_, ok := node.(ast.Expr)
+	return ok
+}
+
 func (c *Compiler) compileProgram(node *ast.Program) error {
-	statements := node.Statements()
+	statements := node.Stmts
 	count := len(statements)
 	if count == 0 {
 		// Guarantee that the program evaluates to a value
@@ -414,14 +446,14 @@ func (c *Compiler) compileProgram(node *ast.Program) error {
 				return err
 			}
 			if i < count-1 {
-				if stmt.IsExpression() {
+				if isExpr(stmt) {
 					c.emit(op.PopTop)
 				}
 			}
 		}
 		// Guarantee that the program evaluates to a value
 		lastStatement := statements[count-1]
-		if !lastStatement.IsExpression() {
+		if !isExpr(lastStatement) {
 			c.emit(op.Nil)
 		}
 	}
@@ -434,7 +466,7 @@ func (c *Compiler) compileBlock(node *ast.Block) error {
 	defer func() {
 		code.symbols = code.symbols.parent
 	}()
-	statements := node.Statements()
+	statements := node.Stmts
 	count := len(statements)
 	if count == 0 {
 		// Guarantee that the block evaluates to a value
@@ -445,14 +477,14 @@ func (c *Compiler) compileBlock(node *ast.Block) error {
 				return err
 			}
 			if i < count-1 {
-				if stmt.IsExpression() {
+				if isExpr(stmt) {
 					c.emit(op.PopTop)
 				}
 			}
 		}
 		// Guarantee that the block evaluates to a value
 		lastStatement := statements[count-1]
-		if !lastStatement.IsExpression() {
+		if !isExpr(lastStatement) {
 			c.emit(op.Nil)
 		}
 	}
@@ -472,7 +504,7 @@ func (c *Compiler) compileFunctionBlock(node *ast.Block) error {
 			return err
 		}
 		if i < count-1 {
-			if stmt.IsExpression() {
+			if isExpr(stmt) {
 				c.emit(op.PopTop)
 			}
 		}
@@ -481,13 +513,19 @@ func (c *Compiler) compileFunctionBlock(node *ast.Block) error {
 }
 
 func (c *Compiler) compileVar(node *ast.Var) error {
-	name, expr := node.Value()
+	name := node.Name.Name
+	expr := node.Value
 	if err := c.compile(expr); err != nil {
 		return err
 	}
 	sym, err := c.current.symbols.InsertVariable(name)
 	if err != nil {
 		return err
+	}
+	// Blank identifier "_" returns nil - discard the value
+	if sym == nil {
+		c.emit(op.PopTop)
+		return nil
 	}
 	if c.current.parent == nil {
 		c.emit(op.StoreGlobal, sym.Index())
@@ -498,26 +536,24 @@ func (c *Compiler) compileVar(node *ast.Var) error {
 }
 
 func (c *Compiler) compileIdent(node *ast.Ident) error {
-	name := node.Literal()
+	name := node.Name
+	// The blank identifier cannot be read
+	if IsBlankIdentifier(name) {
+		return c.formatError("cannot use _ as value", node.Pos())
+	}
 	resolution, found := c.current.symbols.Resolve(name)
 	if !found {
-		return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Token().StartPosition)
+		return c.formatUndefinedVariableError(name, node.Pos())
 	}
-	switch resolution.scope {
-	case Global:
-		c.emit(op.LoadGlobal, resolution.symbol.Index())
-	case Local:
-		c.emit(op.LoadFast, resolution.symbol.Index())
-	case Free:
-		c.emit(op.LoadFree, uint16(resolution.freeIndex))
-	}
+	c.emitLoad(resolution)
 	return nil
 }
 
 func (c *Compiler) compileMultiVar(node *ast.MultiVar) error {
-	names, expr := node.Value()
+	names := node.Names
+	expr := node.Value
 	if len(names) > math.MaxUint16 {
-		return c.formatError("too many variables in multi-variable assignment", node.Token().StartPosition)
+		return c.formatError("too many variables in multi-variable assignment", node.Pos())
 	}
 	// Compile the RHS value
 	if err := c.compile(expr); err != nil {
@@ -525,59 +561,301 @@ func (c *Compiler) compileMultiVar(node *ast.MultiVar) error {
 	}
 	// Emit the Unpack opcode to unpack the tuple-like object onto the stack
 	c.emit(op.Unpack, uint16(len(names)))
-	// Iterate through the names in reverse order and assign the values
-	if node.IsWalrus() {
-		for i := len(names) - 1; i >= 0; i-- {
-			name := names[i]
-			sym, err := c.current.symbols.InsertVariable(name)
+	// Iterate through the names in reverse order and declare the variables
+	for i := len(names) - 1; i >= 0; i-- {
+		name := names[i].Name
+		sym, err := c.current.symbols.InsertVariable(name)
+		if err != nil {
+			return err
+		}
+		// Blank identifier "_" returns nil - discard the value
+		if sym == nil {
+			c.emit(op.PopTop)
+			continue
+		}
+		if c.current.parent == nil {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
+		}
+	}
+	return nil
+}
+
+func (c *Compiler) compileObjectDestructure(node *ast.ObjectDestructure) error {
+	bindings := node.Bindings
+	if len(bindings) > math.MaxUint16 {
+		return c.formatError("too many bindings in object destructuring", node.Pos())
+	}
+
+	// Compile the source object
+	if err := c.compile(node.Value); err != nil {
+		return err
+	}
+
+	// For each binding, load the property and store it in a variable
+	for _, binding := range bindings {
+		// Duplicate the object on the stack (we need it for each property access)
+		c.emit(op.Copy, 0)
+
+		// Load the property - use LoadAttrOrNil if there's a default to avoid errors
+		if binding.Default != nil {
+			c.emit(op.LoadAttrOrNil, c.current.addName(binding.Key))
+		} else {
+			c.emit(op.LoadAttr, c.current.addName(binding.Key))
+		}
+
+		// Handle default value if present
+		if binding.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(binding.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
 			if err != nil {
 				return err
 			}
-			if c.current.parent == nil {
-				c.emit(op.StoreGlobal, sym.Index())
-			} else {
-				c.emit(op.StoreFast, sym.Index())
-			}
+			c.changeOperand(jumpPos, delta)
 		}
-		return nil
+
+		// Determine the variable name (alias if provided, otherwise key)
+		varName := binding.Alias
+		if varName == "" {
+			varName = binding.Key
+		}
+
+		// Insert the variable and store the value
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
+		}
+		// Blank identifier "_" returns nil - discard the value
+		if sym == nil {
+			c.emit(op.PopTop)
+			continue
+		}
+		if c.current.parent == nil {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
+		}
 	}
-	for i := len(names) - 1; i >= 0; i-- {
-		name := names[i]
-		resolution, found := c.current.symbols.Resolve(name)
+
+	// Pop the remaining object from the stack
+	c.emit(op.PopTop)
+
+	return nil
+}
+
+func (c *Compiler) compileArrayDestructure(node *ast.ArrayDestructure) error {
+	elements := node.Elements
+	if len(elements) > math.MaxUint16 {
+		return c.formatError("too many elements in array destructuring", node.Pos())
+	}
+
+	// Check if any elements have defaults
+	hasDefaults := false
+	for _, elem := range elements {
+		if elem.Default != nil {
+			hasDefaults = true
+			break
+		}
+	}
+
+	// Compile the source array
+	if err := c.compile(node.Value); err != nil {
+		return err
+	}
+
+	// Emit the Unpack opcode to unpack the array onto the stack
+	c.emit(op.Unpack, uint16(len(elements)))
+
+	// Store each value in reverse order (like MultiVar)
+	for i := len(elements) - 1; i >= 0; i-- {
+		element := elements[i]
+		varName := element.Name.Name
+
+		// Handle default value if present
+		if hasDefaults && element.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(element.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(jumpPos, delta)
+		}
+
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
+		}
+		// Blank identifier "_" returns nil - discard the value
+		if sym == nil {
+			c.emit(op.PopTop)
+			continue
+		}
+		if c.current.parent == nil {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
+		}
+	}
+	return nil
+}
+
+// emitDestructurePreamble emits bytecode to destructure a function parameter.
+// The parameter at paramIdx contains the value to destructure, and the
+// destructured values are stored into local variables.
+func (c *Compiler) emitDestructurePreamble(param ast.FuncParam, paramIdx int) error {
+	switch p := param.(type) {
+	case *ast.ObjectDestructureParam:
+		return c.emitObjectDestructurePreamble(p, paramIdx)
+	case *ast.ArrayDestructureParam:
+		return c.emitArrayDestructurePreamble(p, paramIdx)
+	}
+	return nil
+}
+
+// emitObjectDestructurePreamble emits bytecode to destructure an object parameter.
+func (c *Compiler) emitObjectDestructurePreamble(param *ast.ObjectDestructureParam, paramIdx int) error {
+	// Load the parameter value onto the stack
+	c.emit(op.LoadFast, uint16(paramIdx))
+
+	// For each binding, load the property and store it in a variable
+	for _, binding := range param.Bindings {
+		// Duplicate the object on the stack (we need it for each property access)
+		c.emit(op.Copy, 0)
+
+		// Load the property - use LoadAttrOrNil if there's a default to avoid errors
+		if binding.Default != nil {
+			c.emit(op.LoadAttrOrNil, c.current.addName(binding.Key))
+		} else {
+			c.emit(op.LoadAttr, c.current.addName(binding.Key))
+		}
+
+		// Handle default value if present
+		if binding.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(binding.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(jumpPos, delta)
+		}
+
+		// Determine the variable name (alias if provided, otherwise key)
+		varName := binding.Alias
+		if varName == "" {
+			varName = binding.Key
+		}
+
+		// Blank identifier "_" - discard the value
+		if IsBlankIdentifier(varName) {
+			c.emit(op.PopTop)
+			continue
+		}
+
+		// Find the variable (already inserted in symbol table during setup)
+		resolution, found := c.current.symbols.Resolve(varName)
 		if !found {
-			return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Token().StartPosition)
+			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
 		}
-		symbolIndex := resolution.symbol.Index()
-		switch resolution.scope {
-		case Global:
-			c.emit(op.StoreGlobal, symbolIndex)
-		case Local:
-			c.emit(op.StoreFast, symbolIndex)
-		case Free:
-			c.emit(op.StoreFree, uint16(resolution.freeIndex))
+		c.emit(op.StoreFast, resolution.symbol.Index())
+	}
+
+	// Pop the remaining object from the stack
+	c.emit(op.PopTop)
+	return nil
+}
+
+// emitArrayDestructurePreamble emits bytecode to destructure an array parameter.
+func (c *Compiler) emitArrayDestructurePreamble(param *ast.ArrayDestructureParam, paramIdx int) error {
+	elements := param.Elements
+
+	// Load the parameter value onto the stack
+	c.emit(op.LoadFast, uint16(paramIdx))
+
+	// Emit the Unpack opcode to unpack the array onto the stack
+	c.emit(op.Unpack, uint16(len(elements)))
+
+	// Store each value in reverse order (like MultiVar)
+	for i := len(elements) - 1; i >= 0; i-- {
+		element := elements[i]
+		varName := element.Name.Name
+
+		// Handle default value if present
+		if element.Default != nil {
+			// Stack has the value at TOS. Check if it's nil.
+			c.emit(op.Copy, 0) // Duplicate the value
+			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+			// If nil, pop the nil value and use the default
+			c.emit(op.PopTop)
+			if err := c.compile(element.Default); err != nil {
+				return err
+			}
+			c.emit(op.Nop)
+			delta, err := c.calculateDelta(jumpPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(jumpPos, delta)
 		}
+
+		// Blank identifier "_" - discard the value
+		if IsBlankIdentifier(varName) {
+			c.emit(op.PopTop)
+			continue
+		}
+
+		// Find the variable (already inserted in symbol table during setup)
+		resolution, found := c.current.symbols.Resolve(varName)
+		if !found {
+			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
+		}
+		c.emit(op.StoreFast, resolution.symbol.Index())
 	}
 	return nil
 }
 
 func (c *Compiler) compileSwitch(node *ast.Switch) error {
 	// Compile the switch expression
-	if err := c.compile(node.Value()); err != nil {
+	if err := c.compile(node.Value); err != nil {
 		return err
 	}
 
-	choices := node.Choices()
+	choices := node.Cases
 
 	// Emit jump positions for each case
 	var caseJumpPositions []int
 	defaultJumpPos := -1
 
 	for i, choice := range choices {
-		if choice.IsDefault() {
+		if choice.Default {
 			defaultJumpPos = i
 			continue
 		}
-		for _, expr := range choice.Expressions() {
+		for _, expr := range choice.Exprs {
 			// Duplicate the switch value for each case comparison
 			c.emit(op.Copy, 0)
 			// Compile the case expression
@@ -601,7 +879,7 @@ func (c *Compiler) compileSwitch(node *ast.Switch) error {
 		if i == defaultJumpPos {
 			continue
 		}
-		for range choice.Expressions() {
+		for range choice.Exprs {
 			delta, err := c.calculateDelta(caseJumpPositions[offset])
 			if err != nil {
 				return err
@@ -609,11 +887,11 @@ func (c *Compiler) compileSwitch(node *ast.Switch) error {
 			c.changeOperand(caseJumpPositions[offset], delta)
 			offset++
 		}
-		if choice.Block() == nil {
+		if choice.Body == nil {
 			// Empty case block
 			c.emit(op.Nil)
 		} else {
-			if err := c.compile(choice.Block()); err != nil {
+			if err := c.compile(choice.Body); err != nil {
 				return err
 			}
 		}
@@ -628,7 +906,7 @@ func (c *Compiler) compileSwitch(node *ast.Switch) error {
 
 	// Compile the default case block if it exists
 	if defaultJumpPos != -1 {
-		if err := c.compile(choices[defaultJumpPos].Block()); err != nil {
+		if err := c.compile(choices[defaultJumpPos].Body); err != nil {
 			return err
 		}
 	} else {
@@ -651,94 +929,24 @@ func (c *Compiler) compileSwitch(node *ast.Switch) error {
 	return nil
 }
 
-func (c *Compiler) compileImport(node *ast.Import) error {
-	moduleName := node.Path().Value()
-	c.emit(op.LoadConst, c.constant(moduleName))
-	c.emit(op.Import)
-
-	// Determine the variable name to store the imported module
-	var name string
-	if node.Alias() != nil {
-		name = node.Alias().String()
-	} else {
-		name = node.ModuleName()
-	}
-
-	var sym *Symbol
-	var found bool
-	sym, found = c.current.symbols.Get(name)
-	if !found {
-		var err error
-		sym, err = c.current.symbols.InsertConstant(name)
-		if err != nil {
-			return err
-		}
-	}
-	if c.current.parent == nil {
-		c.emit(op.StoreGlobal, sym.Index())
-	} else {
-		c.emit(op.StoreFast, sym.Index())
-	}
-	return nil
-}
-
-func (c *Compiler) compileFromImport(node *ast.FromImport) error {
-	if len(node.Parents()) > 255 {
-		return fmt.Errorf("compile error: too many parents in from-import")
-	}
-	for _, parent := range node.Parents() {
-		c.emit(op.LoadConst, c.constant(parent.String()))
-	}
-	aliases := map[string]string{}
-	for _, im := range node.Imports() {
-		name := im.Path().Value()
-		alias := name
-		if im.Alias() != nil {
-			alias = im.Alias().String()
-		}
-		c.emit(op.LoadConst, c.constant(name))
-		aliases[name] = alias
-	}
-	c.emit(op.FromImport, uint16(len(node.Parents())), uint16(len(node.Imports())))
-	for _, im := range node.Imports() {
-		alias := aliases[im.Path().Value()]
-		var sym *Symbol
-		var found bool
-		sym, found = c.current.symbols.Get(alias)
-		if !found {
-			var err error
-			sym, err = c.current.symbols.InsertConstant(alias)
-			if err != nil {
-				return err
-			}
-		}
-		if c.current.parent == nil {
-			c.emit(op.StoreGlobal, sym.Index())
-		} else {
-			c.emit(op.StoreFast, sym.Index())
-		}
-	}
-	return nil
-}
-
 func (c *Compiler) compileSlice(node *ast.Slice) error {
-	if err := c.compile(node.Left()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	to := node.ToIndex()
-	if to == nil {
+	high := node.High
+	if high == nil {
 		c.emit(op.Copy, 0)
 		c.emit(op.Length)
 	} else {
-		if err := c.compile(to); err != nil {
+		if err := c.compile(high); err != nil {
 			return err
 		}
 	}
-	from := node.FromIndex()
-	if from == nil {
+	low := node.Low
+	if low == nil {
 		c.emit(op.LoadConst, c.constant(int64(0)))
 	} else {
-		if err := c.compile(from); err != nil {
+		if err := c.compile(low); err != nil {
 			return err
 		}
 	}
@@ -746,55 +954,13 @@ func (c *Compiler) compileSlice(node *ast.Slice) error {
 	return nil
 }
 
-func (c *Compiler) compileRange(node *ast.Range) error {
-	if err := c.compile(node.Container()); err != nil {
-		return err
-	}
-	c.emit(op.Range)
-	return nil
-}
-
-func (c *Compiler) compileTernary(node *ast.Ternary) error {
-	// evaluate the condition and then conditionally jump to the false case
-	if err := c.compile(node.Condition()); err != nil {
-		return err
-	}
-	jumpIfFalsePos := c.emit(op.PopJumpForwardIfFalse, Placeholder)
-
-	// true case execution, then jump over false case
-	if err := c.compile(node.IfTrue()); err != nil {
-		return err
-	}
-	trueCaseEndPos := c.emit(op.JumpForward, Placeholder)
-
-	// set the jump amount to reach the beginning of the false case
-	falseCaseDelta, err := c.calculateDelta(jumpIfFalsePos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(jumpIfFalsePos, falseCaseDelta)
-
-	// false case execution
-	if err := c.compile(node.IfFalse()); err != nil {
-		return err
-	}
-
-	// set the jump amount for the end of the true case
-	endDelta, err := c.calculateDelta(trueCaseEndPos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(trueCaseEndPos, endDelta)
-	return nil
-}
-
 func (c *Compiler) compileString(node *ast.String) error {
 	// Is the string a template or a simple string?
-	tmpl := node.Template()
+	tmpl := node.Template
 
 	// Simple strings are just emitted as a constant
 	if tmpl == nil {
-		c.emit(op.LoadConst, c.constant(node.Value()))
+		c.emit(op.LoadConst, c.constant(node.Value))
 		return nil
 	}
 
@@ -804,7 +970,7 @@ func (c *Compiler) compileString(node *ast.String) error {
 	}
 
 	var expressionIndex int
-	expressions := node.TemplateExpressions()
+	expressions := node.Exprs
 
 	// Emit code that pushes each fragment of the string onto the stack
 	for _, f := range fragments {
@@ -834,7 +1000,7 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 	if c.current.pipeActive {
 		return fmt.Errorf("compile error: invalid nested pipe")
 	}
-	exprs := node.Expressions()
+	exprs := node.Exprs
 	if len(exprs) < 2 {
 		return fmt.Errorf("compile error: the pipe operator requires at least two expressions")
 	}
@@ -863,52 +1029,93 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 }
 
 func (c *Compiler) compilePostfix(node *ast.Postfix) error {
-	name := node.Literal()
-	resolution, found := c.current.symbols.Resolve(name)
-	if !found {
-		return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Token().StartPosition)
+	// Determine the increment/decrement amount
+	var amount int64
+	switch node.Op {
+	case "++":
+		amount = 1
+	case "--":
+		amount = -1
+	default:
+		return c.formatError(fmt.Sprintf("unknown postfix operator %q", node.Op), node.Pos())
 	}
-	symbolIndex := resolution.symbol.Index()
-	// Push the named variable onto the stack
-	switch resolution.scope {
-	case Global:
-		c.emit(op.LoadGlobal, symbolIndex)
-	case Local:
-		c.emit(op.LoadFast, symbolIndex)
-	case Free:
-		c.emit(op.LoadFree, uint16(resolution.freeIndex))
-	}
-	// Push the integer amount to the stack (1 or -1)
-	operator := node.Operator()
-	if operator == "++" {
-		c.emit(op.LoadConst, c.constant(int64(1)))
-	} else if operator == "--" {
-		c.emit(op.LoadConst, c.constant(int64(-1)))
-	} else {
-		return c.formatError(fmt.Sprintf("unknown postfix operator %q", operator), node.Token().StartPosition)
-	}
-	// Run increment or decrement as an Add BinaryOp
-	c.emit(op.BinaryOp, uint16(op.Add))
-	// Store TOS in LHS
-	switch resolution.scope {
-	case Global:
-		c.emit(op.StoreGlobal, symbolIndex)
-	case Local:
-		c.emit(op.StoreFast, symbolIndex)
-	case Free:
-		c.emit(op.StoreFree, uint16(resolution.freeIndex))
+
+	switch x := node.X.(type) {
+	case *ast.Ident:
+		// Simple variable: x++
+		name := x.Name
+		resolution, found := c.current.symbols.Resolve(name)
+		if !found {
+			return c.formatUndefinedVariableError(name, node.Pos())
+		}
+		// Push the named variable onto the stack
+		c.emitLoad(resolution)
+		// Push the increment amount
+		c.emit(op.LoadConst, c.constant(amount))
+		// Add
+		c.emit(op.BinaryOp, uint16(op.Add))
+		// Store back
+		c.emitStore(resolution)
+
+	case *ast.Index:
+		// Index expression: arr[i]++
+		// 1. Load the current value
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		if err := c.compile(x.Index); err != nil {
+			return err
+		}
+		c.emit(op.BinarySubscr)
+		// 2. Add the increment amount
+		c.emit(op.LoadConst, c.constant(amount))
+		c.emit(op.BinaryOp, uint16(op.Add))
+		// 3. Store back
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		if err := c.compile(x.Index); err != nil {
+			return err
+		}
+		c.emit(op.StoreSubscr)
+
+	case *ast.GetAttr:
+		// Attribute expression: obj.x++
+		idx := c.current.addName(x.Attr.Name)
+		// 1. Load the current attribute value
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		c.emit(op.LoadAttr, idx)
+		// 2. Add the increment amount
+		c.emit(op.LoadConst, c.constant(amount))
+		c.emit(op.BinaryOp, uint16(op.Add))
+		// 3. Store back
+		if err := c.compile(x.X); err != nil {
+			return err
+		}
+		c.emit(op.StoreAttr, idx)
+
+	default:
+		return c.formatError("cannot apply postfix operator to this expression", node.Pos())
 	}
 	return nil
 }
 
 func (c *Compiler) compileConst(node *ast.Const) error {
-	name, expr := node.Value()
+	name := node.Name.Name
+	expr := node.Value
 	if err := c.compile(expr); err != nil {
 		return err
 	}
 	sym, err := c.current.symbols.InsertConstant(name)
 	if err != nil {
 		return err
+	}
+	// Blank identifier "_" returns nil - discard the value
+	if sym == nil {
+		c.emit(op.PopTop)
+		return nil
 	}
 	if c.current.parent == nil {
 		c.emit(op.StoreGlobal, sym.Index())
@@ -919,10 +1126,10 @@ func (c *Compiler) compileConst(node *ast.Const) error {
 }
 
 func (c *Compiler) compileIn(node *ast.In) error {
-	if err := c.compile(node.Right()); err != nil {
+	if err := c.compile(node.Y); err != nil {
 		return err
 	}
-	if err := c.compile(node.Left()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
 	c.emit(op.ContainsOp, 0)
@@ -930,10 +1137,10 @@ func (c *Compiler) compileIn(node *ast.In) error {
 }
 
 func (c *Compiler) compileNotIn(node *ast.NotIn) error {
-	if err := c.compile(node.Right()); err != nil {
+	if err := c.compile(node.Y); err != nil {
 		return err
 	}
-	if err := c.compile(node.Left()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
 	c.emit(op.ContainsOp, 0)
@@ -942,10 +1149,10 @@ func (c *Compiler) compileNotIn(node *ast.NotIn) error {
 }
 
 func (c *Compiler) compilePrefix(node *ast.Prefix) error {
-	if err := c.compile(node.Right()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	switch node.Operator() {
+	switch node.Op {
 	case "!":
 		c.emit(op.UnaryNot)
 	case "-":
@@ -955,39 +1162,81 @@ func (c *Compiler) compilePrefix(node *ast.Prefix) error {
 }
 
 func (c *Compiler) compileCall(node *ast.Call) error {
-	args := node.Arguments()
+	args := node.Args
 	argc := len(args)
 	if argc > MaxArgs {
 		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
 	}
-	if err := c.compile(node.Function()); err != nil {
+
+	// Check if any arguments are spread expressions
+	hasSpread := false
+	for _, arg := range args {
+		if _, ok := arg.(*ast.Spread); ok {
+			hasSpread = true
+			break
+		}
+	}
+
+	if err := c.compile(node.Fun); err != nil {
 		return err
 	}
+
+	if !hasSpread {
+		// Fast path: no spread, use regular Call
+		for _, arg := range args {
+			if err := c.compile(arg); err != nil {
+				return err
+			}
+		}
+		if c.current.pipeActive {
+			c.emit(op.Partial, uint16(argc))
+		} else {
+			c.emit(op.Call, uint16(argc))
+		}
+		return nil
+	}
+
+	// Slow path: has spread, build args list then use CallSpread
+	c.emit(op.BuildList, 0) // Start with empty list
 	for _, arg := range args {
-		if err := c.compile(arg); err != nil {
-			return err
+		if spread, ok := arg.(*ast.Spread); ok {
+			// Spread: extend the args list with the iterable
+			if err := c.compile(spread.X); err != nil {
+				return err
+			}
+			c.emit(op.ListExtend)
+		} else {
+			// Normal arg: append to the args list
+			if err := c.compile(arg); err != nil {
+				return err
+			}
+			c.emit(op.ListAppend)
 		}
 	}
 	if c.current.pipeActive {
-		c.emit(op.Partial, uint16(argc))
-	} else {
-		c.emit(op.Call, uint16(argc))
+		// For pipe, we can't easily support spread (would need PartialSpread)
+		return fmt.Errorf("compile error: spread arguments not supported in pipe expressions")
 	}
+	c.emit(op.CallSpread)
 	return nil
 }
 
 func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
-	if err := c.compile(node.Object()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	expr := node.Call()
-	method, ok := expr.(*ast.Call)
-	if !ok {
-		return fmt.Errorf("compile error: invalid call expression")
+	// Handle optional chaining (?.)
+	var jumpPos int
+	if node.Optional {
+		c.emit(op.Copy, 0)
+		jumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
 	}
-	name := method.Function().String()
+	method := node.Call
+	name := method.Fun.String()
+	// Restore currentNode so LoadAttr gets the method name position
+	c.currentNode = method.Fun
 	c.emit(op.LoadAttr, c.current.addName(name))
-	args := method.Arguments()
+	args := method.Args
 	argc := len(args)
 	if argc > MaxArgs {
 		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
@@ -1002,23 +1251,45 @@ func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 	} else {
 		c.emit(op.Call, uint16(len(args)))
 	}
+	if node.Optional {
+		c.emit(op.Nop)
+		delta, _ := c.calculateDelta(jumpPos)
+		c.changeOperand(jumpPos, delta)
+	}
 	return nil
 }
 
 func (c *Compiler) compileGetAttr(node *ast.GetAttr) error {
-	if err := c.compile(node.Object()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	idx := c.current.addName(node.Name())
-	c.emit(op.LoadAttr, idx)
+	// Handle optional chaining (?.)
+	var jumpPos int
+	if node.Optional {
+		c.emit(op.Copy, 0)
+		jumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
+	}
+	// Restore currentNode so LoadAttr gets the attribute name position
+	c.currentNode = node.Attr
+	idx := c.current.addName(node.Attr.Name)
+	if node.Optional {
+		c.emit(op.LoadAttrOrNil, idx)
+	} else {
+		c.emit(op.LoadAttr, idx)
+	}
+	if node.Optional {
+		c.emit(op.Nop)
+		delta, _ := c.calculateDelta(jumpPos)
+		c.changeOperand(jumpPos, delta)
+	}
 	return nil
 }
 
 func (c *Compiler) compileIndex(node *ast.Index) error {
-	if err := c.compile(node.Left()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	if err := c.compile(node.Index()); err != nil {
+	if err := c.compile(node.Index); err != nil {
 		return err
 	}
 	c.emit(op.BinarySubscr)
@@ -1026,70 +1297,114 @@ func (c *Compiler) compileIndex(node *ast.Index) error {
 }
 
 func (c *Compiler) compileList(node *ast.List) error {
-	items := node.Items()
+	items := node.Items
 	count := len(items)
 	if count > math.MaxUint16 {
 		return fmt.Errorf("compile error: list literal exceeds max size")
 	}
+
+	// Check if any items are spread expressions
+	hasSpread := false
 	for _, expr := range items {
-		if err := c.compile(expr); err != nil {
-			return err
+		if _, ok := expr.(*ast.Spread); ok {
+			hasSpread = true
+			break
 		}
 	}
-	c.emit(op.BuildList, uint16(count))
+
+	if !hasSpread {
+		// Fast path: no spread, use simple BuildList
+		for _, expr := range items {
+			if err := c.compile(expr); err != nil {
+				return err
+			}
+		}
+		c.emit(op.BuildList, uint16(count))
+		return nil
+	}
+
+	// Slow path: has spread, build incrementally
+	// Start with an empty list
+	c.emit(op.BuildList, 0)
+
+	for _, expr := range items {
+		if spread, ok := expr.(*ast.Spread); ok {
+			// Spread: extend the list with the iterable
+			if err := c.compile(spread.X); err != nil {
+				return err
+			}
+			c.emit(op.ListExtend)
+		} else {
+			// Normal item: append to the list
+			if err := c.compile(expr); err != nil {
+				return err
+			}
+			c.emit(op.ListAppend)
+		}
+	}
 	return nil
 }
 
 func (c *Compiler) compileMap(node *ast.Map) error {
-	items := node.Items()
-	count := len(items)
-	for k, v := range items {
-		switch k := k.(type) {
-		case *ast.String:
-			if err := c.compile(k); err != nil {
+	items := node.Items
+
+	// Check if any items are spread expressions (key is nil)
+	hasSpread := node.HasSpread()
+
+	if !hasSpread {
+		// Fast path: no spread, use simple BuildMap
+		for _, item := range items {
+			switch k := item.Key.(type) {
+			case *ast.String:
+				if err := c.compile(k); err != nil {
+					return err
+				}
+			case *ast.Ident:
+				c.emit(op.LoadConst, c.constant(k.String()))
+			default:
+				return fmt.Errorf("compile error: invalid map key type: %v", item.Key)
+			}
+			if err := c.compile(item.Value); err != nil {
 				return err
 			}
-		case *ast.Ident:
-			c.emit(op.LoadConst, c.constant(k.String()))
-		default:
-			return fmt.Errorf("compile error: invalid map key type: %v", k)
 		}
-		if err := c.compile(v); err != nil {
-			return err
-		}
+		c.emit(op.BuildMap, uint16(len(items)))
+		return nil
 	}
-	c.emit(op.BuildMap, uint16(count))
-	return nil
-}
 
-func (c *Compiler) compileSend(node *ast.Send) error {
-	if err := c.compile(node.Channel()); err != nil {
-		return err
-	}
-	if err := c.compile(node.Value()); err != nil {
-		return err
-	}
-	c.emit(op.Send)
-	return nil
-}
+	// Slow path: has spread, build incrementally
+	c.emit(op.BuildMap, 0) // Start with empty map
 
-func (c *Compiler) compileReceive(node *ast.Receive) error {
-	if err := c.compile(node.Channel()); err != nil {
-		return err
-	}
-	c.emit(op.Receive)
-	return nil
-}
-
-func (c *Compiler) compileSet(node *ast.Set) error {
-	items := node.Items()
-	count := len(items)
-	for _, expr := range items {
-		if err := c.compile(expr); err != nil {
-			return err
+	for _, item := range items {
+		if item.Key == nil {
+			// Spread: merge the map with the existing one
+			// The Value is a Spread node, we need to compile its inner value
+			spread, ok := item.Value.(*ast.Spread)
+			if !ok {
+				return fmt.Errorf("compile error: expected spread expression in map")
+			}
+			if err := c.compile(spread.X); err != nil {
+				return err
+			}
+			c.emit(op.MapMerge)
+		} else {
+			// Normal key-value: set in the map
+			switch k := item.Key.(type) {
+			case *ast.String:
+				if err := c.compile(k); err != nil {
+					return err
+				}
+			case *ast.Ident:
+				c.emit(op.LoadConst, c.constant(k.String()))
+			default:
+				return fmt.Errorf("compile error: invalid map key type: %v", item.Key)
+			}
+			if err := c.compile(item.Value); err != nil {
+				return err
+			}
+			c.emit(op.MapSet)
 		}
 	}
-	c.emit(op.BuildSet, uint16(count))
 	return nil
 }
 
@@ -1097,52 +1412,78 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	// Python cell variables:
 	// https://stackoverflow.com/questions/23757143/what-is-a-cell-in-the-context-of-an-interpreter-or-compiler
 
-	if len(node.Parameters()) > 255 {
-		return c.formatError("function exceeded parameter limit of 255", node.Token().StartPosition)
+	if len(node.Params) > 255 {
+		return c.formatError("function exceeded parameter limit of 255", node.Pos())
 	}
 
 	// The function has an optional name. If it is named, the name will be
 	// stored in the function's own symbol table to support recursive calls.
 	var functionName string
-	if ident := node.Name(); ident != nil {
-		functionName = ident.Literal()
+	if ident := node.Name; ident != nil {
+		functionName = ident.Name
 	}
 
 	// This new code object will store the compiled code for this function.
+	// Extract source from original if available for better error messages.
 	c.funcIndex++
 	functionID := fmt.Sprintf("%d", c.funcIndex)
-	code := c.current.newChild(functionName, node.Body().String(), functionID)
+	bodySource := c.extractFunctionBodySource(node)
+	code := c.current.newChild(functionName, bodySource, functionID)
 
 	// Setting current here means subsequent calls to compile will add to this
 	// code object instead of the parent.
 	c.current = code
 
-	// Make it quick to look up the index of a parameter
+	// Process parameters - generate synthetic names for destructured params
+	// and track which params need destructuring preamble
+	type destructureInfo struct {
+		param ast.FuncParam
+		index int // original parameter index
+	}
 	paramsIdx := map[string]int{}
-	params := node.ParameterNames()
-	for i, name := range params {
-		paramsIdx[name] = i
+	params := make([]string, len(node.Params))
+	destructureParams := make([]destructureInfo, 0) // params that need destructuring preamble
+	for i, p := range node.Params {
+		switch param := p.(type) {
+		case *ast.Ident:
+			params[i] = param.Name
+			paramsIdx[param.Name] = i
+		case *ast.ObjectDestructureParam:
+			// Generate synthetic name for the positional parameter
+			syntheticName := fmt.Sprintf("__destructure_%d", i)
+			params[i] = syntheticName
+			paramsIdx[syntheticName] = i
+			destructureParams = append(destructureParams, destructureInfo{param: p, index: i})
+		case *ast.ArrayDestructureParam:
+			// Generate synthetic name for the positional parameter
+			syntheticName := fmt.Sprintf("__destructure_%d", i)
+			params[i] = syntheticName
+			paramsIdx[syntheticName] = i
+			destructureParams = append(destructureParams, destructureInfo{param: p, index: i})
+		default:
+			return c.formatError(fmt.Sprintf("unexpected parameter type: %T", p), node.Pos())
+		}
 	}
 
 	// Build an array of default values for parameters, supporting only
 	// the basic types of int, string, bool, float, and nil.
 	defaults := make([]any, len(params))
 	defaultsSet := map[int]bool{}
-	for name, expr := range node.Defaults() {
+	for name, expr := range node.Defaults {
 		var value any
 		switch expr := expr.(type) {
 		case *ast.Int:
-			value = expr.Value()
+			value = expr.Value
 		case *ast.String:
-			value = expr.Value()
+			value = expr.Value
 		case *ast.Bool:
-			value = expr.Value()
+			value = expr.Value
 		case *ast.Float:
-			value = expr.Value()
+			value = expr.Value
 		case *ast.Nil:
 			value = nil
 		default:
-			line := node.Token().StartPosition.Line + 1
+			line := node.Pos().Line + 1
 			return fmt.Errorf("compile error: unsupported default value (got %s, line %d)", expr, line)
 		}
 		index := paramsIdx[name]
@@ -1151,7 +1492,7 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	}
 
 	// Confirm only trailing parameters have defaults
-	if len(node.Defaults()) > 0 {
+	if len(node.Defaults) > 0 {
 		hasDefaults := false
 		for i := 0; i < len(params); i++ {
 			if defaultsSet[i] {
@@ -1163,15 +1504,53 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 				} else {
 					msg = fmt.Sprintf("%s anonymous function", msg)
 				}
-				return c.formatError(msg, node.Token().StartPosition)
+				return c.formatError(msg, node.Pos())
 			}
 		}
 	}
 
-	// Add the parameter names to the symbol table
-	for _, arg := range node.Parameters() {
-		if _, err := code.symbols.InsertVariable(arg.Literal()); err != nil {
+	// Add all parameter names to the symbol table (including synthetic ones)
+	// For blank identifier "_" parameters, we claim a slot but don't add to lookup
+	for _, paramName := range params {
+		if IsBlankIdentifier(paramName) {
+			// Claim a slot for the argument but don't add to name lookup
+			if _, err := code.symbols.ClaimSlot(); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := code.symbols.InsertVariable(paramName); err != nil {
 			return err
+		}
+	}
+
+	// Add rest parameter to symbol table if present.
+	// IMPORTANT: This must come before destructured variable names because
+	// the VM places the rest param value at index `paramsCount`, right after
+	// the regular parameters.
+	var restParamName string
+	if restParam := node.RestParam; restParam != nil {
+		restParamName = restParam.Name
+		if IsBlankIdentifier(restParamName) {
+			// Claim a slot for the rest args but don't add to name lookup
+			if _, err := code.symbols.ClaimSlot(); err != nil {
+				return err
+			}
+		} else {
+			if _, err := code.symbols.InsertVariable(restParamName); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Add all destructured variable names to the symbol table.
+	// These come after rest param since the destructuring preamble will
+	// store extracted values into these local variables.
+	for _, di := range destructureParams {
+		for _, name := range di.param.ParamNames() {
+			if _, err := code.symbols.InsertVariable(name); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1184,8 +1563,16 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		}
 	}
 
+	// Emit destructuring preamble for any destructured parameters
+	// This runs at the start of the function to extract values into local vars
+	for _, di := range destructureParams {
+		if err := c.emitDestructurePreamble(di.param, di.index); err != nil {
+			return err
+		}
+	}
+
 	// Compile the function body
-	if err := c.compileFunctionBlock(node.Body()); err != nil {
+	if err := c.compileFunctionBlock(node.Body); err != nil {
 		return err
 	}
 
@@ -1198,6 +1585,7 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		Name:       functionName,
 		Parameters: params,
 		Defaults:   defaults,
+		RestParam:  restParamName,
 		Code:       code,
 	})
 
@@ -1239,34 +1627,11 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	return nil
 }
 
-func (c *Compiler) compileControl(node *ast.Control) error {
-	literal := node.Literal()
-	loop := c.currentLoop()
-	if loop == nil {
-		if literal == "break" {
-			return c.formatError("invalid break statement outside of a loop", node.Token().StartPosition)
-		}
-		return c.formatError("invalid continue statement outside of a loop", node.Token().StartPosition)
-	}
-	if literal == "break" {
-		// When breaking from a for-range loop, we need to pop the iterator from the stack
-		if loop.isRangeLoop {
-			c.emit(op.PopTop)
-		}
-		position := c.emit(op.JumpForward, Placeholder)
-		loop.breakPos = append(loop.breakPos, position)
-	} else {
-		position := c.emit(op.JumpForward, Placeholder)
-		loop.continuePos = append(loop.continuePos, position)
-	}
-	return nil
-}
-
 func (c *Compiler) compileReturn(node *ast.Return) error {
 	if c.current.IsRoot() {
-		return c.formatError("invalid return statement outside of a function", node.Token().StartPosition)
+		return c.formatError("invalid return statement outside of a function", node.Pos())
 	}
-	value := node.Value()
+	value := node.Value
 	if value == nil {
 		c.emit(op.Nil)
 	} else {
@@ -1279,26 +1644,26 @@ func (c *Compiler) compileReturn(node *ast.Return) error {
 }
 
 func (c *Compiler) compileSetItem(node *ast.Assign) error {
-	index := node.Index()
+	index := node.Index
 
 	// Handle compound operators (*=, +=, etc.)
-	if node.Operator() != "=" {
+	if node.Op != "=" {
 		// 1. Load the current value: test[0]
-		if err := c.compile(index.Left()); err != nil {
+		if err := c.compile(index.X); err != nil {
 			return err
 		}
-		if err := c.compile(index.Index()); err != nil {
+		if err := c.compile(index.Index); err != nil {
 			return err
 		}
 		c.emit(op.BinarySubscr)
 
 		// 2. Load the RHS value
-		if err := c.compile(node.Value()); err != nil {
+		if err := c.compile(node.Value); err != nil {
 			return err
 		}
 
 		// 3. Apply the compound operation
-		switch node.Operator() {
+		switch node.Op {
 		case "+=":
 			c.emit(op.BinaryOp, uint16(op.Add))
 		case "-=":
@@ -1308,20 +1673,20 @@ func (c *Compiler) compileSetItem(node *ast.Assign) error {
 		case "/=":
 			c.emit(op.BinaryOp, uint16(op.Divide))
 		default:
-			return fmt.Errorf("compile error: unsupported compound assignment operator: %s", node.Operator())
+			return fmt.Errorf("compile error: unsupported compound assignment operator: %s", node.Op)
 		}
 	} else {
 		// Simple assignment
-		if err := c.compile(node.Value()); err != nil {
+		if err := c.compile(node.Value); err != nil {
 			return err
 		}
 	}
 
 	// 4. Store the result back
-	if err := c.compile(index.Left()); err != nil {
+	if err := c.compile(index.X); err != nil {
 		return err
 	}
-	if err := c.compile(index.Index()); err != nil {
+	if err := c.compile(index.Index); err != nil {
 		return err
 	}
 	c.emit(op.StoreSubscr)
@@ -1329,48 +1694,44 @@ func (c *Compiler) compileSetItem(node *ast.Assign) error {
 }
 
 func (c *Compiler) compileAssign(node *ast.Assign) error {
-	if node.Index() != nil {
+	if node.Index != nil {
 		return c.compileSetItem(node)
 	}
-	name := node.Name()
-	resolution, found := c.current.symbols.Resolve(name)
-	if !found {
-		return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Token().StartPosition)
-	}
-	sym := resolution.symbol
-	if sym.IsConstant() {
-		return c.formatError(fmt.Sprintf("cannot assign to constant %q", name), node.Token().StartPosition)
-	}
-	symbolIndex := sym.Index()
-	if node.Operator() == "=" {
-		if err := c.compile(node.Value()); err != nil {
+	name := node.Name.Name
+	// The blank identifier discards the value
+	if IsBlankIdentifier(name) {
+		// Compound assignment to _ doesn't make sense (can't read _)
+		if node.Op != "=" {
+			return c.formatError("cannot use _ in compound assignment", node.Pos())
+		}
+		if err := c.compile(node.Value); err != nil {
 			return err
 		}
-		switch resolution.scope {
-		case Global:
-			c.emit(op.StoreGlobal, symbolIndex)
-		case Local:
-			c.emit(op.StoreFast, symbolIndex)
-		case Free:
-			c.emit(op.StoreFree, uint16(resolution.freeIndex))
+		c.emit(op.PopTop)
+		return nil
+	}
+	resolution, found := c.current.symbols.Resolve(name)
+	if !found {
+		return c.formatUndefinedVariableError(name, node.Pos())
+	}
+	if resolution.symbol.IsConstant() {
+		return c.formatError(fmt.Sprintf("cannot assign to constant %q", name), node.Pos())
+	}
+	if node.Op == "=" {
+		if err := c.compile(node.Value); err != nil {
+			return err
 		}
+		c.emitStore(resolution)
 		return nil
 	}
 	// Push LHS as TOS
-	switch resolution.scope {
-	case Global:
-		c.emit(op.LoadGlobal, symbolIndex)
-	case Local:
-		c.emit(op.LoadFast, symbolIndex)
-	case Free:
-		c.emit(op.LoadFree, uint16(resolution.freeIndex))
-	}
+	c.emitLoad(resolution)
 	// Push RHS as TOS
-	if err := c.compile(node.Value()); err != nil {
+	if err := c.compile(node.Value); err != nil {
 		return err
 	}
 	// Result becomes TOS
-	switch node.Operator() {
+	switch node.Op {
 	case "+=":
 		c.emit(op.BinaryOp, uint16(op.Add))
 	case "-=":
@@ -1381,418 +1742,66 @@ func (c *Compiler) compileAssign(node *ast.Assign) error {
 		c.emit(op.BinaryOp, uint16(op.Divide))
 	}
 	// Store TOS in LHS
-	switch resolution.scope {
-	case Global:
-		c.emit(op.StoreGlobal, symbolIndex)
-	case Local:
-		c.emit(op.StoreFast, symbolIndex)
-	case Free:
-		c.emit(op.StoreFree, uint16(resolution.freeIndex))
-	}
+	c.emitStore(resolution)
 	return nil
 }
 
 func (c *Compiler) compileSetAttr(node *ast.SetAttr) error {
-	// Handle compound operators (*=, +=, etc.)
-	if node.Token().Type != token.ASSIGN {
-		// 1. Load the current value
-		if err := c.compile(node.Object()); err != nil {
-			return err
-		}
-		idx := c.current.addName(node.Name())
-		c.emit(op.LoadAttr, idx)
+	idx := c.current.addName(node.Attr.Name)
 
-		// 2. Load the RHS value
-		if err := c.compile(node.Value()); err != nil {
+	if node.Op == "=" {
+		// Simple assignment: compile value, compile object, store attr
+		if err := c.compile(node.Value); err != nil {
 			return err
 		}
-
-		// 3. Apply the compound operation
-		switch node.Token().Type {
-		case token.PLUS_EQUALS:
-			c.emit(op.BinaryOp, uint16(op.Add))
-		case token.MINUS_EQUALS:
-			c.emit(op.BinaryOp, uint16(op.Subtract))
-		case token.ASTERISK_EQUALS:
-			c.emit(op.BinaryOp, uint16(op.Multiply))
-		case token.SLASH_EQUALS:
-			c.emit(op.BinaryOp, uint16(op.Divide))
-		default:
-			return fmt.Errorf("compile error: unsupported compound assignment operator: %s", node.Token().Literal)
-		}
-	} else {
-		// Simple assignment
-		if err := c.compile(node.Value()); err != nil {
+		if err := c.compile(node.X); err != nil {
 			return err
 		}
+		c.emit(op.StoreAttr, idx)
+		return nil
 	}
 
-	// 4. Store the result back
-	if err := c.compile(node.Object()); err != nil {
+	// Compound assignment: load current value, apply operation, store result
+	// First, load current attribute value
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	idx := c.current.addName(node.Name())
+	c.emit(op.LoadAttr, idx)
+
+	// Compile the RHS value
+	if err := c.compile(node.Value); err != nil {
+		return err
+	}
+
+	// Apply the binary operation
+	switch node.Op {
+	case "+=":
+		c.emit(op.BinaryOp, uint16(op.Add))
+	case "-=":
+		c.emit(op.BinaryOp, uint16(op.Subtract))
+	case "*=":
+		c.emit(op.BinaryOp, uint16(op.Multiply))
+	case "/=":
+		c.emit(op.BinaryOp, uint16(op.Divide))
+	}
+
+	// Compile the object again and store the attribute
+	if err := c.compile(node.X); err != nil {
+		return err
+	}
 	c.emit(op.StoreAttr, idx)
 	return nil
 }
 
-func (c *Compiler) compileForRange(forNode *ast.For, names []string, container ast.Node) error {
-	if err := c.compile(container); err != nil {
-		return err
-	}
-	// Get an iterator for the container at TOS
-	c.emit(op.GetIter)
-
-	code := c.current
-	code.symbols = code.symbols.NewBlock()
-	loop := c.startLoop()
-	loop.isRangeLoop = true
-	defer func() {
-		loop.end()
-		code.symbols = code.symbols.parent
-	}()
-
-	iterPos := c.emit(op.ForIter, 0, uint16(len(names)))
-
-	// assign the current value of the iterator to the loop variable
-	for _, name := range names {
-		sym, err := code.symbols.InsertVariable(name)
-		if err != nil {
-			return err
-		}
-		if code.symbols.IsGlobal() {
-			c.emit(op.StoreGlobal, sym.Index())
-		} else {
-			c.emit(op.StoreFast, sym.Index())
-		}
-	}
-
-	// compile the body of the loop
-	if err := c.compile(forNode.Consequence()); err != nil {
-		return err
-	}
-	c.emit(op.PopTop)
-
-	// jump back to the start of the loop
-	delta, err := c.calculateDelta(iterPos)
-	if err != nil {
-		return err
-	}
-	jumpBackPos := c.emit(op.JumpBackward, delta)
-
-	// update the ForIter instruction to jump "here" when done
-	delta, err = c.calculateDelta(iterPos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(iterPos, delta)
-
-	// Update breaks to jump to this point
-	for _, pos := range loop.breakPos {
-		delta, err = c.calculateDelta(pos)
-		if err != nil {
-			return err
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-
-	// Update continues
-	for _, pos := range loop.continuePos {
-		delta := jumpBackPos - pos
-		if delta > math.MaxUint16 {
-			return c.formatError("loop code size exceeded limits", forNode.Token().StartPosition)
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-	return nil
-}
-
-func (c *Compiler) compileForCondition(forNode *ast.For, condition ast.Expression) error {
-	code := c.current
-	code.symbols = code.symbols.NewBlock()
-	loop := c.startLoop()
-	defer func() {
-		loop.end()
-		code.symbols = code.symbols.parent
-	}()
-	startPos := c.currentPosition()
-	if err := c.compile(condition); err != nil {
-		return err
-	}
-	jumpDefaultPos := c.emit(op.PopJumpForwardIfFalse, Placeholder)
-	if err := c.compile(forNode.Consequence()); err != nil {
-		return err
-	}
-	c.emit(op.PopTop)
-	delta, err := c.calculateDelta(startPos)
-	if err != nil {
-		return err
-	}
-	jumpBackPos := c.emit(op.JumpBackward, delta)
-	nopPos := c.emit(op.Nop)
-	for _, pos := range loop.breakPos {
-		delta := nopPos - pos
-		if delta > math.MaxUint16 {
-			return fmt.Errorf("compile error: loop code size exceeded limits")
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-	for _, pos := range loop.continuePos {
-		delta := jumpBackPos - pos
-		if delta > math.MaxUint16 {
-			return fmt.Errorf("compile error: loop code size exceeded limits")
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-	delta, err = c.calculateDelta(jumpDefaultPos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(jumpDefaultPos, delta)
-	return nil
-}
-
-func (c *Compiler) compileFor(node *ast.For) error {
-	// Simple loop e.g. `for { ... }`
-	if node.IsSimpleLoop() {
-		return c.compileSimpleFor(node)
-	}
-
-	// For-Range loop e.g. `for i, value := range container { ... }`
-	if node.Init() == nil && node.Post() == nil {
-		cond := node.Condition()
-		switch cond := cond.(type) {
-		case *ast.Var:
-			name, rhs := cond.Value()
-			if rangeNode, ok := rhs.(*ast.Range); ok {
-				return c.compileForRange(node, []string{name}, rangeNode.Container())
-			} else {
-				return c.compileForRange(node, []string{name}, rhs)
-			}
-		case *ast.MultiVar:
-			names, rhs := cond.Value()
-			if len(names) != 2 {
-				return c.formatError("invalid for loop", node.Token().StartPosition)
-			}
-			if rangeNode, ok := rhs.(*ast.Range); ok {
-				return c.compileForRange(node, names, rangeNode.Container())
-			} else {
-				return c.compileForRange(node, names, rhs)
-			}
-		case *ast.Range:
-			return c.compileForRange(node, nil, cond.Container())
-		case ast.Expression:
-			return c.compileForCondition(node, cond)
-		default:
-			return c.formatError("invalid for loop", node.Token().StartPosition)
-		}
-	}
-
-	// For-Condition loop e.g. `for i := 0; i < 10; i++ { ... }`
-	code := c.current
-	code.symbols = code.symbols.NewBlock()
-	loop := c.startLoop()
-	defer func() {
-		loop.end()
-		code.symbols = code.symbols.parent
-	}()
-
-	// Compile the init statement if present
-	if node.Init() != nil {
-		if err := c.compile(node.Init()); err != nil {
-			return err
-		}
-	}
-
-	// Mark the position of the loop start
-	loopStart := c.currentPosition()
-
-	// Compile the condition expression if present
-	var conditionJumpPos int
-	if node.Condition() != nil {
-		if err := c.compile(node.Condition()); err != nil {
-			return err
-		}
-		// Emit a jump to execute if the condition fails
-		conditionJumpPos = c.emit(op.PopJumpForwardIfFalse, Placeholder)
-	}
-
-	// Compile the loop body
-	if err := c.compile(node.Consequence()); err != nil {
-		return err
-	}
-	c.emit(op.PopTop)
-
-	// This is where "continue" statements should jump to so that they pick
-	// up the "post" statement if there is one before going back to the beginning.
-	continueDst := len(c.current.instructions)
-
-	// Compile the post statement if present
-	if node.Post() != nil {
-		post := node.Post()
-		if err := c.compile(post); err != nil {
-			return err
-		}
-		// If the post statement is an expression, pop the value so its ignored
-		if post.IsExpression() {
-			c.emit(op.PopTop)
-		}
-	}
-
-	// Jump back to the loop start
-	delta, err := c.calculateDelta(loopStart)
-	if err != nil {
-		return err
-	}
-	c.emit(op.JumpBackward, delta)
-
-	// Update the condition jump position
-	if conditionJumpPos != 0 {
-		delta, err = c.calculateDelta(conditionJumpPos)
-		if err != nil {
-			return err
-		}
-		c.changeOperand(conditionJumpPos, delta)
-	}
-
-	// Update breaks to jump to this point
-	for _, pos := range loop.breakPos {
-		delta, err = c.calculateDelta(pos)
-		if err != nil {
-			return err
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-
-	// Update continues to jump to the post statement
-	for _, pos := range loop.continuePos {
-		delta := continueDst - pos
-		if delta > math.MaxUint16 {
-			return fmt.Errorf("compile error: loop code size exceeded limits")
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-	return nil
-}
-
-func (c *Compiler) compileSimpleFor(node *ast.For) error {
-	code := c.current
-	code.symbols = code.symbols.NewBlock()
-	loop := c.startLoop()
-	defer func() {
-		loop.end()
-		code.symbols = code.symbols.parent
-	}()
-	startPos := c.currentPosition()
-	if err := c.compile(node.Consequence()); err != nil {
-		return err
-	}
-	c.emit(op.PopTop)
-	delta, err := c.calculateDelta(startPos)
-	if err != nil {
-		return err
-	}
-	jumpBackPos := c.emit(op.JumpBackward, delta)
-	nopPos := c.emit(op.Nop)
-	for _, pos := range loop.breakPos {
-		delta := nopPos - pos
-		if delta > math.MaxUint16 {
-			return fmt.Errorf("compile error: loop code size exceeded limits")
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-	for _, pos := range loop.continuePos {
-		delta := jumpBackPos - pos
-		if delta > math.MaxUint16 {
-			return fmt.Errorf("compile error: loop code size exceeded limits")
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-	return nil
-}
-
-func (c *Compiler) compileForIn(node *ast.ForIn) error {
-	// Compile the iterable expression
-	if err := c.compile(node.Iterable()); err != nil {
-		return err
-	}
-	// Get an iterator for the container at TOS
-	c.emit(op.GetIter)
-
-	code := c.current
-	code.symbols = code.symbols.NewBlock()
-	loop := c.startLoop()
-	loop.isRangeLoop = true
-	defer func() {
-		loop.end()
-		code.symbols = code.symbols.parent
-	}()
-
-	// ForIter instruction: pop iterator, advance it, push current values
-	// Use 3 to indicate Python-style single variable (gets value, not key)
-	iterPos := c.emit(op.ForIter, 0, 3) // 3 indicates Python-style single variable (gets value)
-
-	// Assign the current value of the iterator to the loop variable
-	varName := node.Variable().Literal()
-	sym, err := code.symbols.InsertVariable(varName)
-	if err != nil {
-		return err
-	}
-	if code.symbols.IsGlobal() {
-		c.emit(op.StoreGlobal, sym.Index())
-	} else {
-		c.emit(op.StoreFast, sym.Index())
-	}
-
-	// Compile the body of the loop
-	if err := c.compile(node.Consequence()); err != nil {
-		return err
-	}
-	c.emit(op.PopTop)
-
-	// Jump back to the start of the loop
-	delta, err := c.calculateDelta(iterPos)
-	if err != nil {
-		return err
-	}
-	jumpBackPos := c.emit(op.JumpBackward, delta)
-
-	// Update the ForIter instruction to jump "here" when done
-	delta, err = c.calculateDelta(iterPos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(iterPos, delta)
-
-	// Update breaks to jump to this point
-	for _, pos := range loop.breakPos {
-		delta, err = c.calculateDelta(pos)
-		if err != nil {
-			return err
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-
-	// Update continues
-	for _, pos := range loop.continuePos {
-		delta := jumpBackPos - pos
-		if delta > math.MaxUint16 {
-			return c.formatError("loop code size exceeded limits", node.Token().StartPosition)
-		}
-		c.changeOperand(pos, uint16(delta))
-	}
-	return nil
-}
-
 func (c *Compiler) compileIf(node *ast.If) error {
-	if err := c.compile(node.Condition()); err != nil {
+	if err := c.compile(node.Cond); err != nil {
 		return err
 	}
 	jumpIfFalsePos := c.emit(op.PopJumpForwardIfFalse, Placeholder)
-	if err := c.compile(node.Consequence()); err != nil {
+	if err := c.compile(node.Consequence); err != nil {
 		return err
 	}
-	alternative := node.Alternative()
+	alternative := node.Alternative
 	if alternative != nil {
 		// Jump forward to skip the alternative by default
 		jumpForwardPos := c.emit(op.JumpForward, Placeholder)
@@ -1847,18 +1856,20 @@ func (c *Compiler) changeOperand(instructionIndex int, operand uint16) {
 }
 
 func (c *Compiler) compileInfix(node *ast.Infix) error {
-	operator := node.Operator()
+	operator := node.Op
 	// Short-circuit operators
 	if operator == "&&" {
 		return c.compileAnd(node)
 	} else if operator == "||" {
 		return c.compileOr(node)
+	} else if operator == "??" {
+		return c.compileNullish(node)
 	}
 	// Non-short-circuit operators
-	if err := c.compile(node.Left()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	if err := c.compile(node.Right()); err != nil {
+	if err := c.compile(node.Y); err != nil {
 		return err
 	}
 	switch operator {
@@ -1880,6 +1891,8 @@ func (c *Compiler) compileInfix(node *ast.Infix) error {
 		c.emit(op.BinaryOp, uint16(op.RShift))
 	case "&":
 		c.emit(op.BinaryOp, uint16(op.BitwiseAnd))
+	case "^":
+		c.emit(op.BinaryOp, uint16(op.Xor))
 	case ">":
 		c.emit(op.CompareOp, uint16(op.GreaterThan))
 	case ">=":
@@ -1893,19 +1906,19 @@ func (c *Compiler) compileInfix(node *ast.Infix) error {
 	case "!=":
 		c.emit(op.CompareOp, uint16(op.NotEqual))
 	default:
-		return c.formatError(fmt.Sprintf("unknown operator %q", node.Operator()), node.Token().StartPosition)
+		return c.formatError(fmt.Sprintf("unknown operator %q", node.Op), node.Pos())
 	}
 	return nil
 }
 
 func (c *Compiler) compileAnd(node *ast.Infix) error {
 	// The "&&" AND operator needs to have "short circuit" behavior
-	if err := c.compile(node.Left()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
 	c.emit(op.Copy, 0) // Duplicate LHS
 	jumpPos := c.emit(op.PopJumpForwardIfFalse, Placeholder)
-	if err := c.compile(node.Right()); err != nil {
+	if err := c.compile(node.Y); err != nil {
 		return err
 	}
 	c.emit(op.BinaryOp, uint16(op.And))
@@ -1920,12 +1933,12 @@ func (c *Compiler) compileAnd(node *ast.Infix) error {
 
 func (c *Compiler) compileOr(node *ast.Infix) error {
 	// The "||" OR operator needs to have "short circuit" behavior
-	if err := c.compile(node.Left()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
 	c.emit(op.Copy, 0) // Duplicate LHS
 	jumpPos := c.emit(op.PopJumpForwardIfTrue, Placeholder)
-	if err := c.compile(node.Right()); err != nil {
+	if err := c.compile(node.Y); err != nil {
 		return err
 	}
 	c.emit(op.BinaryOp, uint16(op.Or))
@@ -1938,48 +1951,34 @@ func (c *Compiler) compileOr(node *ast.Infix) error {
 	return nil
 }
 
-func (c *Compiler) compileGoStmt(node *ast.Go) error {
-	expr := node.Call()
-	switch expr := expr.(type) {
-	case *ast.Call:
-		if err := c.compilePartial(expr); err != nil {
-			return err
-		}
-	case *ast.ObjectCall:
-		if err := c.compilePartialObjectCall(expr); err != nil {
-			return err
-		}
+func (c *Compiler) compileNullish(node *ast.Infix) error {
+	// The "??" nullish coalescing operator returns the RHS only if LHS is nil
+	// Unlike ||, it doesn't treat falsy values (0, "", false) as triggering the default
+	if err := c.compile(node.X); err != nil {
+		return err
 	}
-	c.emit(op.Go)
-	return nil
-}
-
-func (c *Compiler) compileDeferStmt(node *ast.Defer) error {
-	if c.current.parent == nil {
-		return c.formatError("defer statement outside of a function", node.Token().StartPosition)
+	c.emit(op.Copy, 0) // Duplicate LHS
+	jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
+	c.emit(op.PopTop) // Pop the nil value
+	if err := c.compile(node.Y); err != nil {
+		return err
 	}
-	expr := node.Call()
-	switch expr := expr.(type) {
-	case *ast.Call:
-		if err := c.compilePartial(expr); err != nil {
-			return err
-		}
-	case *ast.ObjectCall:
-		if err := c.compilePartialObjectCall(expr); err != nil {
-			return err
-		}
+	c.emit(op.Nop) // Jump target
+	delta, err := c.calculateDelta(jumpPos)
+	if err != nil {
+		return err
 	}
-	c.emit(op.Defer)
+	c.changeOperand(jumpPos, delta)
 	return nil
 }
 
 func (c *Compiler) compilePartial(call *ast.Call) error {
-	args := call.Arguments()
+	args := call.Args
 	argc := len(args)
 	if argc > MaxArgs {
 		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
 	}
-	if err := c.compile(call.Function()); err != nil {
+	if err := c.compile(call.Fun); err != nil {
 		return err
 	}
 	for _, arg := range args {
@@ -1992,17 +1991,13 @@ func (c *Compiler) compilePartial(call *ast.Call) error {
 }
 
 func (c *Compiler) compilePartialObjectCall(node *ast.ObjectCall) error {
-	if err := c.compile(node.Object()); err != nil {
+	if err := c.compile(node.X); err != nil {
 		return err
 	}
-	expr := node.Call()
-	method, ok := expr.(*ast.Call)
-	if !ok {
-		return fmt.Errorf("compile error: invalid call expression")
-	}
-	name := method.Function().String()
+	method := node.Call
+	name := method.Fun.String()
 	c.emit(op.LoadAttr, c.current.addName(name))
-	args := method.Arguments()
+	args := method.Args
 	argc := len(args)
 	if argc > MaxArgs {
 		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
@@ -2031,7 +2026,69 @@ func (c *Compiler) emit(opcode op.Code, operands ...uint16) int {
 	code := c.current
 	pos := len(code.instructions)
 	code.instructions = append(code.instructions, inst...)
+
+	// Track maximum call arguments for VM optimization
+	if opcode == op.Call && len(operands) > 0 {
+		argc := operands[0]
+		if argc > code.maxCallArgs {
+			code.maxCallArgs = argc
+		}
+	}
+
+	// Record source location for each instruction byte
+	loc := c.getCurrentLocation()
+	for range inst {
+		code.locations = append(code.locations, loc)
+	}
 	return pos
+}
+
+// emitLoad emits the appropriate load instruction based on the variable's scope.
+func (c *Compiler) emitLoad(resolution *Resolution) {
+	switch resolution.scope {
+	case Global:
+		c.emit(op.LoadGlobal, resolution.symbol.Index())
+	case Local:
+		c.emit(op.LoadFast, resolution.symbol.Index())
+	case Free:
+		c.emit(op.LoadFree, uint16(resolution.freeIndex))
+	}
+}
+
+// emitStore emits the appropriate store instruction based on the variable's scope.
+func (c *Compiler) emitStore(resolution *Resolution) {
+	switch resolution.scope {
+	case Global:
+		c.emit(op.StoreGlobal, resolution.symbol.Index())
+	case Local:
+		c.emit(op.StoreFast, resolution.symbol.Index())
+	case Free:
+		c.emit(op.StoreFree, uint16(resolution.freeIndex))
+	}
+}
+
+// getCurrentLocation returns the source location of the current AST node being compiled.
+func (c *Compiler) getCurrentLocation() SourceLocation {
+	if c.currentNode == nil {
+		return SourceLocation{}
+	}
+	pos := c.currentNode.Pos()
+	end := c.currentNode.End()
+	lineNum := pos.LineNumber()
+
+	// EndColumn is only meaningful if the end is on the same line
+	endColumn := 0
+	if end.Line == pos.Line {
+		endColumn = end.ColumnNumber()
+	}
+
+	return SourceLocation{
+		Filename:  c.filename,
+		Line:      lineNum,
+		Column:    pos.ColumnNumber(),
+		EndColumn: endColumn,
+		Source:    c.current.GetSourceLine(lineNum),
+	}
 }
 
 func makeInstruction(opcode op.Code, operands ...uint16) []op.Code {
@@ -2055,8 +2112,8 @@ func normalizeFunctionBlock(node *ast.Block) []ast.Node {
 	// 2. If there are no return statements, append one implicitly
 	// 3. An implicit return will return either the value of the
 	//    last expression, or nil if the last statement is not an expression.
-	returnNil := ast.NewReturn(token.Token{}, ast.NewNil(token.Token{}))
-	statements := node.Statements()
+	returnNil := &ast.Return{Value: &ast.Nil{}}
+	statements := node.Stmts
 	count := len(statements)
 	if count == 0 {
 		return []ast.Node{returnNil}
@@ -2074,8 +2131,8 @@ func normalizeFunctionBlock(node *ast.Block) []ast.Node {
 	//  2. The last statement is not an expression (return nil)
 	last := statements[count-1]
 	switch last := last.(type) {
-	case ast.Expression:
-		statements[count-1] = ast.NewReturn(token.Token{}, last)
+	case ast.Expr:
+		statements[count-1] = &ast.Return{Value: last}
 	default:
 		statements = append(statements, returnNil)
 	}
@@ -2084,17 +2141,259 @@ func normalizeFunctionBlock(node *ast.Block) []ast.Node {
 
 // formatError creates a detailed error message including file, line and column information
 func (c *Compiler) formatError(msg string, pos token.Position) error {
-	lineCol := fmt.Sprintf("line %d, column %d", pos.LineNumber(), pos.ColumnNumber())
+	return c.formatErrorWithCode(errors.ErrorCode(""), msg, pos, nil)
+}
+
+// formatErrorWithCode creates a CompileError with an error code and optional suggestions.
+func (c *Compiler) formatErrorWithCode(code errors.ErrorCode, msg string, pos token.Position, suggestions []errors.Suggestion) error {
 	filename := c.filename
 	if filename == "" {
 		filename = "unknown"
 	}
-	var b strings.Builder
-	b.WriteString("compile error: ")
-	b.WriteString(msg)
-	b.WriteString("\n\n")
-	b.WriteString("location: ")
-	b.WriteString(fmt.Sprintf("%s:%d:%d", filename, pos.LineNumber(), pos.ColumnNumber()))
-	b.WriteString(fmt.Sprintf(" (%s)", lineCol))
-	return fmt.Errorf("%s", b.String())
+
+	err := &errors.CompileError{
+		Code:        code,
+		Message:     msg,
+		Filename:    filename,
+		Line:        pos.LineNumber(),
+		Column:      pos.ColumnNumber(),
+		SourceLine:  c.getSourceLine(pos.Line),
+		Suggestions: suggestions,
+	}
+
+	return err
+}
+
+// formatUndefinedVariableError creates an error for undefined variables with "Did you mean?" suggestions.
+func (c *Compiler) formatUndefinedVariableError(name string, pos token.Position) error {
+	// Get all available names for suggestions
+	allNames := c.current.symbols.AllNames()
+
+	// Find similar names
+	suggestions := errors.SuggestSimilar(name, allNames)
+
+	return c.formatErrorWithCode(
+		errors.E2001,
+		fmt.Sprintf("undefined variable %q", name),
+		pos,
+		suggestions,
+	)
+}
+
+// getSourceLine retrieves a specific line from the source code.
+// lineNum is 0-indexed.
+func (c *Compiler) getSourceLine(lineNum int) string {
+	// Prefer the original source if available
+	source := c.source
+	if source == "" {
+		source = c.current.source
+	}
+	if source == "" {
+		source = c.main.source
+	}
+	if source == "" {
+		return ""
+	}
+
+	lines := strings.Split(source, "\n")
+	if lineNum < 0 || lineNum >= len(lines) {
+		return ""
+	}
+	return lines[lineNum]
+}
+
+// SetSource sets the original source code for better error messages.
+// This should be called before CompileAST when the original source is available.
+func (c *Compiler) SetSource(source string) {
+	c.source = source
+}
+
+// getRootSource returns the best available source for line lookups.
+func (c *Compiler) getRootSource() string {
+	if c.source != "" {
+		return c.source
+	}
+	return c.main.source
+}
+
+// extractFunctionBodySource attempts to extract the function body content from
+// the original source using AST positions. This extracts the inner content of
+// the block (without braces) to match what node.Body.String() produces.
+// Falls back to node.Body.String() if extraction fails.
+func (c *Compiler) extractFunctionBodySource(node *ast.Func) string {
+	rootSource := c.getRootSource()
+	if rootSource == "" {
+		return node.Body.String()
+	}
+
+	// Extract inner content of the block (skip the braces).
+	// Lbrace is at the '{', Rbrace is at the '}'.
+	// We want the content from after '{' to before '}'.
+	bodyStart := node.Body.Lbrace.Char + 1 // Skip '{'
+	bodyEnd := node.Body.Rbrace.Char       // Before '}'
+
+	// Validate bounds
+	if bodyStart < 0 || bodyStart >= len(rootSource) {
+		return node.Body.String()
+	}
+	if bodyEnd > len(rootSource) {
+		bodyEnd = len(rootSource)
+	}
+	if bodyEnd <= bodyStart {
+		return node.Body.String()
+	}
+
+	// Extract and trim leading/trailing whitespace
+	content := strings.TrimSpace(rootSource[bodyStart:bodyEnd])
+	if content == "" {
+		return node.Body.String()
+	}
+
+	return content
+}
+
+func (c *Compiler) compileTry(node *ast.Try) error {
+	// Record the start of the try block
+	tryStart := c.currentPosition()
+
+	// Emit PushExcept with placeholders for catch/finally offsets
+	pushExceptPos := c.emit(op.PushExcept, Placeholder, Placeholder)
+
+	// Compile the try body - its value stays on stack as the expression result
+	if err := c.compileBlock(node.Body); err != nil {
+		return err
+	}
+
+	// Emit PopExcept (normal completion - removes exception handler)
+	// The try block's value remains on stack
+	c.emit(op.PopExcept)
+
+	// Jump to finally if we have one, otherwise past catch block
+	jumpAfterTryPos := c.emit(op.JumpForward, Placeholder)
+
+	// Record where catch block starts (or where an exception would land if no catch)
+	catchStart := c.currentPosition()
+
+	// Compile catch block if present
+	catchBlock := node.CatchBlock
+	catchVarIdx := -1
+	if catchBlock != nil {
+		// Create a new scope for the catch block
+		code := c.current
+		code.symbols = code.symbols.NewBlock()
+
+		// If there's a catch identifier, create a variable for it
+		// The error value will be on the stack when we enter the catch block
+		catchIdent := node.CatchIdent
+		if catchIdent != nil {
+			sym, err := code.symbols.InsertVariable(catchIdent.Name)
+			if err != nil {
+				code.symbols = code.symbols.parent
+				return err
+			}
+			catchVarIdx = int(sym.Index())
+			// Store the error from the stack into the catch variable
+			if code.parent == nil {
+				c.emit(op.StoreGlobal, sym.Index())
+			} else {
+				c.emit(op.StoreFast, sym.Index())
+			}
+		} else {
+			// No catch identifier, just pop the error
+			c.emit(op.PopTop)
+		}
+
+		// Compile the catch block body - its value stays on stack as the expression result
+		if err := c.compileBlock(catchBlock); err != nil {
+			code.symbols = code.symbols.parent
+			return err
+		}
+
+		// Exit scope (catch block's value remains on stack)
+		code.symbols = code.symbols.parent
+	}
+
+	// After catch, we fall through to finally (if present) or to end
+	// No jump needed here - execution flows naturally to finally
+
+	// Record where finally block starts
+	finallyStart := c.currentPosition()
+
+	// Compile finally block if present
+	finallyBlock := node.FinallyBlock
+	if finallyBlock != nil {
+		// Compile the finally block body
+		if err := c.compileBlock(finallyBlock); err != nil {
+			return err
+		}
+
+		// Pop the finally block's value - in Kotlin-style semantics, finally
+		// doesn't contribute to the expression result. The try/catch value
+		// is already on the stack underneath.
+		c.emit(op.PopTop)
+
+		// EndFinally will re-raise any pending exception or complete pending return
+		c.emit(op.EndFinally)
+	}
+
+	// Record the end position
+	endPos := c.currentPosition()
+
+	// Patch the PushExcept instruction with actual offsets
+	catchOffset := uint16(catchStart - pushExceptPos)
+	finallyOffset := uint16(0)
+	if finallyBlock != nil {
+		finallyOffset = uint16(finallyStart - pushExceptPos)
+	}
+	c.changeOperand(pushExceptPos, catchOffset)
+	c.changeOperand(pushExceptPos+1, finallyOffset)
+
+	// Patch jump after try:
+	// - If we have finally, jump to finally
+	// - If we only have catch, jump past catch to the end
+	var jumpTarget int
+	if finallyBlock != nil {
+		jumpTarget = finallyStart
+	} else {
+		jumpTarget = endPos
+	}
+	jumpDelta := jumpTarget - jumpAfterTryPos
+	if jumpDelta > int(Placeholder) {
+		return c.formatError("try block too large", node.Pos())
+	}
+	c.changeOperand(jumpAfterTryPos, uint16(jumpDelta))
+
+	// Record the exception handler
+	// Only set FinallyStart if there's actually a finally block
+	handlerFinallyStart := 0
+	if finallyBlock != nil {
+		handlerFinallyStart = finallyStart
+	}
+	handler := &ExceptionHandler{
+		TryStart:     tryStart,
+		TryEnd:       endPos,
+		CatchStart:   catchStart,
+		FinallyStart: handlerFinallyStart,
+		CatchVarIdx:  catchVarIdx,
+	}
+	c.current.AddExceptionHandler(handler)
+
+	// Try is an expression (Kotlin-style):
+	// - If try succeeds: returns try block's value
+	// - If exception caught: returns catch block's value
+	// - Finally block runs for side effects but doesn't affect return value
+	// The value is already on the stack from try or catch block.
+
+	return nil
+}
+
+func (c *Compiler) compileThrow(node *ast.Throw) error {
+	// Compile the expression to throw
+	if err := c.compile(node.Value); err != nil {
+		return err
+	}
+
+	// Emit Throw opcode
+	c.emit(op.Throw)
+	return nil
 }

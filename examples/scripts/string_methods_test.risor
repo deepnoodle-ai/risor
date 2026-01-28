@@ -1,0 +1,171 @@
+// String Methods Tests
+// Tests for string manipulation and methods
+
+function test_trim_space(t) {
+    t.assert_eq("  hello  ".trim_space(), "hello")
+    t.assert_eq("\t\nhello\n\t".trim_space(), "hello")
+    t.assert_eq("hello".trim_space(), "hello")
+    t.assert_eq("".trim_space(), "")
+}
+
+function test_trim_chars(t) {
+    t.assert_eq("...hello...".trim("."), "hello")
+    t.assert_eq("xxxhelloyyy".trim("xy"), "hello")
+    t.assert_eq("hello".trim("."), "hello")
+}
+
+function test_to_upper(t) {
+    t.assert_eq("hello".to_upper(), "HELLO")
+    t.assert_eq("Hello World".to_upper(), "HELLO WORLD")
+    t.assert_eq("HELLO".to_upper(), "HELLO")
+    t.assert_eq("".to_upper(), "")
+}
+
+function test_to_lower(t) {
+    t.assert_eq("HELLO".to_lower(), "hello")
+    t.assert_eq("Hello World".to_lower(), "hello world")
+    t.assert_eq("hello".to_lower(), "hello")
+    t.assert_eq("".to_lower(), "")
+}
+
+function test_split(t) {
+    t.assert_eq("a,b,c".split(","), ["a", "b", "c"])
+    t.assert_eq("hello".split(","), ["hello"])
+    t.assert_eq("a::b::c".split("::"), ["a", "b", "c"])
+}
+
+function test_fields(t) {
+    t.assert_eq("the quick brown fox".fields(), ["the", "quick", "brown", "fox"])
+    t.assert_eq("hello   world".fields(), ["hello", "world"])
+    t.assert_eq("single".fields(), ["single"])
+}
+
+function test_join(t) {
+    t.assert_eq(", ".join(["a", "b", "c"]), "a, b, c")
+    t.assert_eq("-".join(["x", "y", "z"]), "x-y-z")
+    t.assert_eq("".join(["a", "b", "c"]), "abc")
+    t.assert_eq(", ".join([]), "")
+}
+
+function test_contains(t) {
+    let text = "the quick brown fox"
+    t.assert(text.contains("quick"))
+    t.assert(text.contains("fox"))
+    t.assert(!text.contains("dog"))
+    t.assert("".contains("") == true)
+}
+
+function test_index(t) {
+    let text = "the quick brown fox"
+    t.assert_eq(text.index("quick"), 4)
+    t.assert_eq(text.index("fox"), 16)
+    t.assert_eq(text.index("dog"), -1)
+    t.assert_eq(text.index("the"), 0)
+}
+
+function test_last_index(t) {
+    let text = "the quick brown fox jumps over the lazy dog"
+    t.assert_eq(text.last_index("the"), 31)
+    t.assert_eq(text.last_index("o"), 41)
+    t.assert_eq(text.last_index("xyz"), -1)
+}
+
+function test_count(t) {
+    let text = "the quick brown fox jumps over the lazy dog"
+    t.assert_eq(text.count("the"), 2)
+    t.assert_eq(text.count("o"), 4)
+    t.assert_eq(text.count("xyz"), 0)
+}
+
+function test_has_prefix(t) {
+    t.assert("hello world".has_prefix("hello"))
+    t.assert("hello world".has_prefix(""))
+    t.assert(!"hello world".has_prefix("world"))
+}
+
+function test_has_suffix(t) {
+    t.assert("document.pdf".has_suffix(".pdf"))
+    t.assert("document.pdf".has_suffix(""))
+    t.assert(!"document.pdf".has_suffix(".txt"))
+}
+
+function test_trim_prefix(t) {
+    t.assert_eq("prefix_value".trim_prefix("prefix_"), "value")
+    t.assert_eq("hello".trim_prefix("xyz"), "hello")
+    t.assert_eq("hello".trim_prefix(""), "hello")
+}
+
+function test_trim_suffix(t) {
+    t.assert_eq("value.txt".trim_suffix(".txt"), "value")
+    t.assert_eq("hello".trim_suffix("xyz"), "hello")
+    t.assert_eq("hello".trim_suffix(""), "hello")
+}
+
+function test_replace_all(t) {
+    let template = "Hello, NAME! Welcome to PLACE."
+    let step1 = template.replace_all("NAME", "Alice")
+    let result = step1.replace_all("PLACE", "Risor")
+    t.assert_eq(result, "Hello, Alice! Welcome to Risor.")
+}
+
+function test_replace_all_multiple(t) {
+    t.assert_eq("aaa".replace_all("a", "b"), "bbb")
+    t.assert_eq("hello".replace_all("l", "L"), "heLLo")
+}
+
+function test_repeat(t) {
+    t.assert_eq("ab".repeat(3), "ababab")
+    t.assert_eq("-".repeat(5), "-----")
+    t.assert_eq("x".repeat(0), "")
+    t.assert_eq("".repeat(10), "")
+}
+
+function test_compare(t) {
+    t.assert_eq("apple".compare("banana"), -1)
+    t.assert_eq("hello".compare("hello"), 0)
+    t.assert_eq("zebra".compare("alpha"), 1)
+}
+
+function test_string_concatenation(t) {
+    let first = "Hello"
+    let second = "World"
+    t.assert_eq(first + " " + second, "Hello World")
+}
+
+function test_sprintf(t) {
+    t.assert_eq(sprintf("%s", "hello"), "hello")
+    t.assert_eq(sprintf("%d", 42), "42")
+    t.assert_eq(sprintf("%s: %d", "count", 5), "count: 5")
+}
+
+function test_string_indexing(t) {
+    let s = "hello"
+    t.assert_eq(s[0], "h")
+    t.assert_eq(s[4], "o")
+    t.assert_eq(s[-1], "o")
+    t.assert_eq(s[-2], "l")
+}
+
+function test_string_slicing(t) {
+    let s = "hello world"
+    t.assert_eq(s[0:5], "hello")
+    t.assert_eq(s[6:], "world")
+    t.assert_eq(s[:5], "hello")
+    t.assert_eq(s[-5:], "world")
+}
+
+function test_string_length(t) {
+    t.assert_eq(len(""), 0)
+    t.assert_eq(len("hello"), 5)
+    t.assert_eq(len("hello world"), 11)
+}
+
+function test_string_reversed(t) {
+    t.assert_eq(reversed("hello"), "olleh")
+    t.assert_eq(reversed("a"), "a")
+    t.assert_eq(reversed(""), "")
+}
+
+function test_string_sorted(t) {
+    t.assert_eq(sorted("dcba"), ["a", "b", "c", "d"])
+}

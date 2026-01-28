@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/stretchr/testify/require"
 )
 
 // TestLanguageServerIntegration demonstrates testing the language server
@@ -13,38 +13,35 @@ import (
 func TestLanguageServerIntegration(t *testing.T) {
 	// Sample Risor code that demonstrates various language features
 	risorCode := `// Example Risor program
-var config = {
+let config = {
     "host": "localhost",
     "port": 8080,
     "debug": true
 }
 
 // Function to process user data
-process_user := func(user_id, name) {
-    if user_id <= 0 {
+let process_user = function(user_id, name) {
+    if (user_id <= 0) {
         return "Invalid user ID"
     }
-    
-    user_data := {
+
+    let user_data = {
         "id": user_id,
         "name": name,
         "status": "active"
     }
-    
+
     return user_data
 }
 
-// Main processing logic
-users := []
-for i := 0; i < 5; i++ {
-    user := process_user(i, sprintf("User_%d", i))
-    users = append(users, user)
-}
+// Main processing logic using functional style
+let users = [0, 1, 2, 3, 4].map(i => process_user(i, "User_" + string(i)))
 
-// Print results
-for user in users {
-    println(sprintf("User: %s (ID: %d)", user["name"], user["id"]))
-}`
+// Filter active users
+let active_users = users.filter(u => u["status"] == "active")
+
+// Print count
+println("Total users: " + string(len(active_users)))`
 
 	// Create a server instance
 	server := &Server{
@@ -58,36 +55,36 @@ for user in users {
 	// Test 1: Document parsing and caching
 	t.Run("DocumentParsing", func(t *testing.T) {
 		err := setTestDocument(server.cache, uri, risorCode)
-		require.NoError(t, err, "Failed to cache document")
+		assert.NoError(t, err, "Failed to cache document")
 
 		doc, err := server.cache.get(uri)
-		require.NoError(t, err, "Failed to retrieve document")
+		assert.NoError(t, err, "Failed to retrieve document")
 
-		require.NoError(t, doc.err, "Document parsing failed")
+		assert.NoError(t, doc.err, "Document parsing failed")
 
-		require.NotNil(t, doc.ast, "Expected AST to be parsed")
+		assert.NotNil(t, doc.ast, "Expected AST to be parsed")
 
-		statements := doc.ast.Statements()
-		require.NotEmpty(t, statements, "Expected statements in AST")
+		statements := doc.ast.Stmts
+		assert.NotEmpty(t, statements, "Expected statements in AST")
 
 		t.Logf("Successfully parsed %d statements", len(statements))
 	})
 
 	// Test 2: Completion at various positions
 	t.Run("Completion", func(t *testing.T) {
-		// Test completion at line 23 (after "for user in")
+		// Test completion at line 26 (in the active_users line where users is in scope)
 		params := &protocol.CompletionParams{
 			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 				TextDocument: protocol.TextDocumentIdentifier{URI: uri},
-				Position:     protocol.Position{Line: 22, Character: 15}, // After "for user in "
+				Position:     protocol.Position{Line: 25, Character: 20}, // In "let active_users = users..."
 			},
 		}
 
 		result, err := server.Completion(context.Background(), params)
-		require.NoError(t, err, "Completion failed")
+		assert.NoError(t, err, "Completion failed")
 
-		require.NotNil(t, result, "Expected completion result")
-		require.NotEmpty(t, result.Items, "Expected completion items")
+		assert.NotNil(t, result, "Expected completion result")
+		assert.NotEmpty(t, result.Items, "Expected completion items")
 
 		// Should include variables like "users", keywords, and builtins
 		hasUsers := false
@@ -98,16 +95,16 @@ for user in users {
 			switch item.Label {
 			case "users":
 				hasUsers = true
-			case "range", "if", "for":
+			case "let", "if", "const":
 				hasKeywords = true
 			case "len", "print", "println":
 				hasBuiltins = true
 			}
 		}
 
-		require.True(t, hasUsers, "Expected 'users' variable in completion")
-		require.True(t, hasKeywords, "Expected keywords in completion")
-		require.True(t, hasBuiltins, "Expected builtin functions in completion")
+		assert.True(t, hasUsers, "Expected 'users' variable in completion")
+		assert.True(t, hasKeywords, "Expected keywords in completion")
+		assert.True(t, hasBuiltins, "Expected builtin functions in completion")
 
 		t.Logf("Completion returned %d items", len(result.Items))
 	})
@@ -123,7 +120,7 @@ for user in users {
 		}
 
 		result, err := server.Hover(context.Background(), params)
-		require.NoError(t, err, "Hover failed")
+		assert.NoError(t, err, "Hover failed")
 
 		// Note: hover might not find anything with our simple position-based implementation
 		// This is expected for this test
@@ -141,10 +138,10 @@ for user in users {
 		}
 
 		result, err := server.DocumentSymbol(context.Background(), params)
-		require.NoError(t, err, "DocumentSymbol failed")
+		assert.NoError(t, err, "DocumentSymbol failed")
 
-		require.NotNil(t, result, "Expected document symbols result")
-		require.NotEmpty(t, result, "Expected document symbols")
+		assert.NotNil(t, result, "Expected document symbols result")
+		assert.NotEmpty(t, result, "Expected document symbols")
 
 		// Should find variables like "config", "process_user", "users"
 		symbolNames := []string{}
@@ -163,7 +160,7 @@ for user in users {
 					break
 				}
 			}
-			require.True(t, found, "Expected symbol '%s' not found in %v", expected, symbolNames)
+			assert.True(t, found, "Expected symbol '%s' not found in %v", expected, symbolNames)
 		}
 
 		t.Logf("Found symbols: %v", symbolNames)
@@ -180,7 +177,7 @@ for user in users {
 		}
 
 		result, err := server.Definition(context.Background(), params)
-		require.NoError(t, err, "Definition failed")
+		assert.NoError(t, err, "Definition failed")
 
 		// This might not find anything with our simple implementation,
 		// but shouldn't error
@@ -199,22 +196,22 @@ func TestLanguageServerWithErrors(t *testing.T) {
 	}
 
 	// Code with syntax errors
-	invalidCode := `var x = 42
-func incomplete(
-y := "missing closing brace"
-if true {
+	invalidCode := `let x = 42
+function incomplete(
+let y = "missing closing brace"
+if (true) {
     // missing closing brace`
 
 	uri := protocol.DocumentURI("file:///invalid.risor")
 
 	err := setTestDocument(server.cache, uri, invalidCode)
-	require.NoError(t, err, "Failed to cache document")
+	assert.NoError(t, err, "Failed to cache document")
 
 	doc, err := server.cache.get(uri)
-	require.NoError(t, err, "Failed to retrieve document")
+	assert.NoError(t, err, "Failed to retrieve document")
 
 	// Should have a parse error
-	require.Error(t, doc.err, "Expected parse error for invalid code")
+	assert.Error(t, doc.err, "Expected parse error for invalid code")
 
 	t.Logf("Parse error (as expected): %v", doc.err)
 
@@ -227,11 +224,11 @@ if true {
 	}
 
 	result, err := server.Completion(context.Background(), params)
-	require.NoError(t, err, "Completion failed")
+	assert.NoError(t, err, "Completion failed")
 
 	// Should still provide keywords and builtins even with syntax errors
-	require.NotNil(t, result, "Expected completion result")
-	require.NotEmpty(t, result.Items, "Expected completion items even with syntax errors")
+	assert.NotNil(t, result, "Expected completion result")
+	assert.NotEmpty(t, result.Items, "Expected completion items even with syntax errors")
 
 	t.Logf("Completion with errors returned %d items", len(result.Items))
 }
@@ -239,32 +236,31 @@ if true {
 // TestRisorCodeExamples tests the language server with various Risor code patterns
 func TestRisorCodeExamples(t *testing.T) {
 	examples := map[string]string{
-		"variables": `var name = "Risor"
-age := 25
-is_valid = true`,
+		"variables": `let name = "Risor"
+let age = 25
+let is_valid = true`,
 
-		"functions": `add := func(a, b) { return a + b }
-greet := func(name) {
-    return sprintf("Hello, %s!", name)
+		"functions": `let add = function(a, b) { return a + b }
+let greet = function(name) {
+    return "Hello, " + name + "!"
 }`,
 
-		"control_flow": `if age >= 18 {
-    status := "adult"
+		"control_flow": `let age = 18
+if (age >= 18) {
+    let status = "adult"
 } else {
-    status := "minor"
+    let status = "minor"
 }
 
-for i in range(10) {
-    println(i)
-}`,
+let items = [1, 2, 3, 4, 5].map(i => i * 2)`,
 
-		"data_structures": `person := {
+		"data_structures": `let person = {
     "name": "Alice",
     "age": 30,
     "hobbies": ["reading", "coding"]
 }
 
-numbers := [1, 2, 3, 4, 5]`,
+let numbers = [1, 2, 3, 4, 5]`,
 	}
 
 	server := &Server{
@@ -278,17 +274,17 @@ numbers := [1, 2, 3, 4, 5]`,
 			uri := protocol.DocumentURI("file:///" + name + ".risor")
 
 			err := setTestDocument(server.cache, uri, code)
-			require.NoError(t, err, "Failed to cache document")
+			assert.NoError(t, err, "Failed to cache document")
 
 			doc, err := server.cache.get(uri)
-			require.NoError(t, err, "Failed to retrieve document")
+			assert.NoError(t, err, "Failed to retrieve document")
 
-			require.NoError(t, doc.err, "Parse error in %s", name)
+			assert.NoError(t, doc.err, "Parse error in %s", name)
 
-			require.NotNil(t, doc.ast, "No AST parsed for %s", name)
+			assert.NotNil(t, doc.ast, "No AST parsed for %s", name)
 
-			statements := doc.ast.Statements()
-			require.NotEmpty(t, statements, "No statements found in %s", name)
+			statements := doc.ast.Stmts
+			assert.NotEmpty(t, statements, "No statements found in %s", name)
 
 			t.Logf("Example '%s': parsed %d statements successfully", name, len(statements))
 
@@ -301,10 +297,10 @@ numbers := [1, 2, 3, 4, 5]`,
 			}
 
 			result, err := server.Completion(context.Background(), params)
-			require.NoError(t, err, "Completion failed for %s", name)
+			assert.NoError(t, err, "Completion failed for %s", name)
 
-			require.NotNil(t, result, "No completion result for %s", name)
-			require.NotEmpty(t, result.Items, "No completion items for %s", name)
+			assert.NotNil(t, result, "No completion result for %s", name)
+			assert.NotEmpty(t, result.Items, "No completion items for %s", name)
 
 			t.Logf("Example '%s': completion returned %d items", name, len(result.Items))
 		})

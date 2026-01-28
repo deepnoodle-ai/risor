@@ -7,7 +7,6 @@ builds:
     env:
       - CGO_ENABLED=0
     flags:
-      - -tags=aws,k8s,vault
       - -trimpath
     ldflags:
       - -s -w

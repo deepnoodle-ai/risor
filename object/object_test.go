@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/risor-io/risor/errz"
-	"github.com/stretchr/testify/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestObjectString(t *testing.T) {
@@ -25,7 +24,6 @@ func TestObjectString(t *testing.T) {
 		{NewInt(-3), "-3"},
 		{NewString("foo"), "foo"},
 		{NewList([]Object{NewInt(1), NewInt(2)}), "[1, 2]"},
-		{NewSet([]Object{True, Nil}), "{true, nil}"},
 		{NewMap(map[string]Object{"foo": NewInt(1), "bar": NewInt(2)}), `{"bar": 2, "foo": 1}`},
 		{NewTime(tm), "time(\"2009-11-10T23:00:00Z\")"},
 	}
@@ -62,17 +60,17 @@ func TestComparisons(t *testing.T) {
 		{True, False, 1, nil},
 		{False, True, -1, nil},
 		{Nil, Nil, 0, nil},
-		{Nil, True, 0, errz.TypeErrorf("type error: unable to compare nil and bool")},
+		{Nil, True, 0, TypeErrorf("unable to compare nil and bool")},
 		{NewInt(1), NewFloat(1.0), 0, nil},
 		{NewInt(1), NewFloat(2.0), -1, nil},
 		{NewInt(1), NewFloat(0.0), 1, nil},
 		{NewFloat(1.0), NewInt(1), 0, nil},
 		{NewFloat(1.0), NewInt(2), -1, nil},
 		{NewFloat(1.0), NewInt(0), 1, nil},
-		{NewInt(1), NewString("1"), 0, errz.TypeErrorf("type error: unable to compare int and string")},
-		{NewString("1"), NewInt(1), 0, errz.TypeErrorf("type error: unable to compare string and int")},
-		{NewFloat(1.0), NewString("1"), 0, errz.TypeErrorf("type error: unable to compare float and string")},
-		{NewString("1"), NewFloat(1.0), 0, errz.TypeErrorf("type error: unable to compare string and float")},
+		{NewInt(1), NewString("1"), 0, TypeErrorf("unable to compare int and string")},
+		{NewString("1"), NewInt(1), 0, TypeErrorf("unable to compare string and int")},
+		{NewFloat(1.0), NewString("1"), 0, TypeErrorf("unable to compare float and string")},
+		{NewString("1"), NewFloat(1.0), 0, TypeErrorf("unable to compare string and float")},
 		{NewByte(1), NewByte(1), 0, nil},
 		{NewByte(1), NewByte(2), -1, nil},
 		{NewByte(2), NewByte(1), 1, nil},
@@ -92,10 +90,15 @@ func TestComparisons(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s %s", tt.left.Type(), tt.right.Type()), func(t *testing.T) {
 			comparable, ok := tt.left.(Comparable)
-			require.True(t, ok)
+			assert.True(t, ok)
 			cmp, cmpErr := comparable.Compare(tt.right)
-			require.Equal(t, tt.expected, cmp)
-			require.Equal(t, tt.expectedErr, cmpErr)
+			assert.Equal(t, cmp, tt.expected)
+			if tt.expectedErr == nil {
+				assert.Nil(t, cmpErr)
+			} else {
+				assert.Error(t, cmpErr)
+				assert.Equal(t, cmpErr.Error(), tt.expectedErr.Error())
+			}
 		})
 	}
 }
@@ -107,10 +110,10 @@ func TestPrintableValue(t *testing.T) {
 	}
 
 	testTime, err := time.Parse("2006-01-02", "2021-01-01")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	builtin := func(ctx context.Context, args ...Object) Object {
-		return nil
+	builtin := func(ctx context.Context, args ...Object) (Object, error) {
+		return nil, nil
 	}
 
 	cases := []testCase{
@@ -120,7 +123,7 @@ func TestPrintableValue(t *testing.T) {
 		{NewFloat(42.42), 42.42},
 		{NewBool(true), true},
 		{NewBool(false), false},
-		{Errorf("error"), errors.New("error")},
+		{Errorf("error"), "error"}, // PrintableValue returns error message as string
 		{obj: Nil, expected: "nil"},
 		{obj: NewTime(testTime), expected: "2021-01-01T00:00:00Z"},
 		{obj: NewBuiltin("foo", builtin), expected: "builtin(foo)"},
@@ -139,18 +142,18 @@ func TestPrintableValue(t *testing.T) {
 			}),
 			expected: `{"a": 42, "b": "hello", "c": nil}`,
 		},
-		{
-			obj: NewSet([]Object{
-				NewInt(42),
-				NewString("hi there"),
-			}),
-			expected: `{42, "hi there"}`,
-		},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%v", tc.expected), func(t *testing.T) {
 			got := PrintableValue(tc.obj)
-			require.Equal(t, tc.expected, got)
+			// Handle error comparison specially since error pointers differ
+			if gotErr, ok := got.(error); ok {
+				expectedErr, ok := tc.expected.(string)
+				assert.True(t, ok)
+				assert.Equal(t, gotErr.Error(), expectedErr)
+				return
+			}
+			assert.Equal(t, got, tc.expected)
 		})
 	}
 }

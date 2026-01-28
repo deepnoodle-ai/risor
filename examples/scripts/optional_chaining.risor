@@ -1,0 +1,17 @@
+// Optional Chaining
+// Safe navigation with ?. and ??
+
+let user = {name: "Alice", profile: {theme: "dark"}}
+let guest = {name: "Guest"}
+
+// Safe property access with ?.
+let theme1 = user?.profile?.theme      // "dark"
+let theme2 = guest?.profile?.theme     // nil
+
+// Default with ?? (nullish coalescing)
+let display = guest?.profile?.theme ?? "light"
+
+// getattr with default
+let age = getattr(user, "age", 0)
+
+{theme1, theme2, display, age}

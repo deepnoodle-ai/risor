@@ -1,23 +1,22 @@
 package object
 
 import (
-	"github.com/risor-io/risor/errz"
 	"github.com/risor-io/risor/op"
 )
 
-// Compare two objects using the given comparison operator. An Error object is
+// Compare two objects using the given comparison operator. An error is
 // returned if either of the objects is not comparable.
 func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 	switch opType {
 	case op.Equal:
-		return a.Equals(b), nil
+		return NewBool(a.Equals(b)), nil
 	case op.NotEqual:
-		return Not(a.Equals(b).(*Bool)), nil
+		return NewBool(!a.Equals(b)), nil
 	}
 
 	comparable, ok := a.(Comparable)
 	if !ok {
-		return nil, errz.TypeErrorf("type error: expected a comparable object (got %s)", a.Type())
+		return nil, TypeErrorf("expected a comparable object (got %s)", a.Type())
 	}
 	value, err := comparable.Compare(b)
 	if err != nil {
@@ -34,7 +33,7 @@ func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 	case op.GreaterThanOrEqual:
 		return NewBool(value >= 0), nil
 	default:
-		return nil, errz.EvalErrorf("eval error: unknown object comparison operator: %d", opType)
+		return nil, EvalErrorf("eval error: unknown object comparison operator: %d", opType)
 	}
 }
 
@@ -57,15 +56,5 @@ func BinaryOp(opType op.BinaryOpType, a, b Object) (Object, error) {
 		}
 		return b, nil
 	}
-	// In Risor v2, RunOperation should return a separate error value
-	result := a.RunOperation(opType, b)
-	switch result := result.(type) {
-	case *Error:
-		if result.IsRaised() {
-			return nil, result.Unwrap()
-		}
-		return result, nil
-	default:
-		return result, nil
-	}
+	return a.RunOperation(opType, b)
 }

@@ -1,0 +1,14 @@
+// Example: Runtime error - division by zero
+// This file demonstrates how Risor reports runtime panics with stack traces.
+// Run with: go run ./cmd/risor ./cmd/risor/testdata/errors/division_by_zero.risor
+
+function divide(a, b) {
+    return a / b
+}
+
+function calculate(x, y) {
+    return divide(x, y)
+}
+
+// This will cause a division by zero error
+let result = calculate(100, 0)

@@ -6,27 +6,33 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/color"
+	"github.com/risor-io/risor/bytecode"
 	"github.com/risor-io/risor/compiler"
 	"github.com/risor-io/risor/parser"
-	"github.com/stretchr/testify/require"
 )
 
 func TestFunctionDissasembly(t *testing.T) {
+	// Disable colors for consistent test output
+	color.Enabled = false
+	defer func() { color.Enabled = true }()
 	src := `
-	func f() {
+	function f() {
 		42
 		error("kaboom")
 	}`
-	ast, err := parser.Parse(context.Background(), src)
-	require.Nil(t, err)
-	code, err := compiler.Compile(ast, compiler.WithGlobalNames([]string{"try", "error"}))
-	require.Nil(t, err)
-	require.Equal(t, 1, code.ConstantsCount())
+	ast, err := parser.Parse(context.Background(), src, nil)
+	assert.Nil(t, err)
+	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"try", "error"}})
+	assert.Nil(t, err)
+	assert.Equal(t, code.ConstantCount(), 1)
 
-	f := code.Constant(0)
-	require.IsType(t, &compiler.Function{}, f)
-	instructions, err := Disassemble(f.(*compiler.Function).Code())
-	require.Nil(t, err)
+	c := code.ConstantAt(0)
+	f, ok := c.(*bytecode.Function)
+	assert.True(t, ok)
+	instructions, err := Disassemble(f.Code())
+	assert.Nil(t, err)
 
 	var buf bytes.Buffer
 	Print(instructions, &buf)
@@ -44,5 +50,5 @@ func TestFunctionDissasembly(t *testing.T) {
 |      9 | RETURN_VALUE |          |          |
 +--------+--------------+----------+----------+
 `)
-	require.Equal(t, expected+"\n", result)
+	assert.Equal(t, result, expected+"\n")
 }
