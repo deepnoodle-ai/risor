@@ -59,13 +59,12 @@ func TestEdgeCases(t *testing.T) {
 		config := SyntaxConfig{DisallowTemplates: true}
 		validator := NewSyntaxValidator(config)
 
-		// Plain backtick string without ${} is NOT a template
+		// Plain backtick string without ${} should be allowed
+		// (it's just a string literal, not a template)
 		source := "`hello world`"
 		program := parse(t, source)
 		errs := validator.Validate(program)
-		// This depends on how the parser handles backtick strings
-		// without interpolation - either way is acceptable
-		_ = errs
+		assert.Equal(t, len(errs), 0)
 	})
 
 	t.Run("arrow function with destructure param", func(t *testing.T) {

@@ -90,16 +90,7 @@ func (v *SyntaxValidator) checkNode(node ast.Node) *ValidationError {
 			}
 		}
 
-	case *ast.Call:
-		if v.config.DisallowFuncCall {
-			return &ValidationError{
-				Message:  "function calls are not allowed",
-				Node:     node,
-				Position: node.Pos(),
-			}
-		}
-
-	case *ast.ObjectCall:
+	case *ast.Call, *ast.ObjectCall:
 		if v.config.DisallowFuncCall {
 			return &ValidationError{
 				Message:  "function calls are not allowed",
