@@ -138,7 +138,7 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	p.registerPrefix(token.IF, p.parseIf)
 	p.registerPrefix(token.ILLEGAL, p.illegalToken)
 	p.registerPrefix(token.INT, p.parseInt)
-	p.registerPrefix(token.LBRACE, p.parseMapOrSet)
+	p.registerPrefix(token.LBRACE, p.parseMap)
 	p.registerPrefix(token.LBRACKET, p.parseList)
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpr)
 	p.registerPrefix(token.MINUS, p.parsePrefixExpr)

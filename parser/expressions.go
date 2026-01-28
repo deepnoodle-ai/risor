@@ -254,12 +254,19 @@ func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructure
 func (p *Parser) convertListToDestructureParam(l *ast.List) *ast.ArrayDestructureParam {
 	elements := make([]ast.ArrayDestructureElement, 0, len(l.Items))
 	for _, item := range l.Items {
-		ident, ok := item.(*ast.Ident)
-		if !ok {
+		switch v := item.(type) {
+		case *ast.Ident:
+			elements = append(elements, ast.ArrayDestructureElement{Name: v})
+		case *ast.DefaultValue:
+			// Handle default value: [a = expr]
+			elements = append(elements, ast.ArrayDestructureElement{
+				Name:    v.Name,
+				Default: v.Default,
+			})
+		default:
 			p.setTokenError(p.curToken, "expected identifier in array destructuring pattern")
 			return nil
 		}
-		elements = append(elements, ast.ArrayDestructureElement{Name: ident})
 	}
 	return &ast.ArrayDestructureParam{
 		Lbrack:   l.Lbrack,
@@ -540,8 +547,13 @@ func (p *Parser) parseCaseBody() *ast.Block {
 			break
 		}
 		// Parse one statement
-		if s := p.parseStatement(); s != nil {
+		stmtErrorCount := len(p.errors)
+		s := p.parseStatement()
+		if s != nil {
 			statements = append(statements, s)
+		} else if len(p.errors) > stmtErrorCount {
+			// Statement failed with error - return nil to propagate error
+			return nil
 		}
 		// Check for proper statement termination
 		if !p.curTokenIs(token.SEMICOLON) && !statementTerminators[p.peekToken.Type] &&
