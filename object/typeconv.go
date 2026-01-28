@@ -265,6 +265,9 @@ func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type) (Object, error) {
 		}
 		return r.FromGo(rv.Elem().Interface())
 	case reflect.Func:
+		if rv.IsNil() {
+			return Nil, nil
+		}
 		return NewGoFunc(rv, typ.String(), r), nil
 	case reflect.Struct:
 		// Wrap as GoStruct (create pointer for addressability)

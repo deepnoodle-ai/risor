@@ -496,6 +496,13 @@ func TestTypeRegistryNilHandling(t *testing.T) {
 		assert.Equal(t, result, Nil)
 	})
 
+	t.Run("FromGo nil func", func(t *testing.T) {
+		var fn func()
+		result, err := registry.FromGo(fn)
+		assert.Nil(t, err)
+		assert.Equal(t, result, Nil)
+	})
+
 	t.Run("ToGo nil to pointer", func(t *testing.T) {
 		result, err := registry.ToGo(Nil, reflect.TypeOf((*int)(nil)))
 		assert.Nil(t, err)
