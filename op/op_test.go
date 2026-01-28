@@ -105,8 +105,8 @@ func TestBinaryOpTypeString(t *testing.T) {
 		{Power, "**"},
 		{LShift, "<<"},
 		{RShift, ">>"},
-		{BitwiseAnd, "&^"},
-		{BitwiseOr, "|^"},
+		{BitwiseAnd, "&"},
+		{BitwiseOr, "|"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {

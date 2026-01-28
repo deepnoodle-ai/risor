@@ -906,8 +906,13 @@ func (c *Compiler) compileSwitch(node *ast.Switch) error {
 
 	// Compile the default case block if it exists
 	if defaultJumpPos != -1 {
-		if err := c.compile(choices[defaultJumpPos].Body); err != nil {
-			return err
+		if choices[defaultJumpPos].Body == nil {
+			// Empty default case block
+			c.emit(op.Nil)
+		} else {
+			if err := c.compile(choices[defaultJumpPos].Body); err != nil {
+				return err
+			}
 		}
 	} else {
 		c.emit(op.Nil)
@@ -966,7 +971,7 @@ func (c *Compiler) compileString(node *ast.String) error {
 
 	fragments := tmpl.Fragments()
 	if len(fragments) > math.MaxUint16 {
-		return fmt.Errorf("compile error: string template exceeded max fragment size")
+		return c.formatError("string template exceeded max fragment size", node.Pos())
 	}
 
 	var expressionIndex int
@@ -998,11 +1003,11 @@ func (c *Compiler) compileString(node *ast.String) error {
 
 func (c *Compiler) compilePipe(node *ast.Pipe) error {
 	if c.current.pipeActive {
-		return fmt.Errorf("compile error: invalid nested pipe")
+		return c.formatError("invalid nested pipe", node.Pos())
 	}
 	exprs := node.Exprs
 	if len(exprs) < 2 {
-		return fmt.Errorf("compile error: the pipe operator requires at least two expressions")
+		return c.formatError("the pipe operator requires at least two expressions", node.Pos())
 	}
 	// Compile the first expression (filling TOS with the initial pipe value)
 	if err := c.compile(exprs[0]); err != nil {
@@ -1165,7 +1170,7 @@ func (c *Compiler) compileCall(node *ast.Call) error {
 	args := node.Args
 	argc := len(args)
 	if argc > MaxArgs {
-		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
+		return c.formatError(fmt.Sprintf("max args limit of %d exceeded (got %d)", MaxArgs, argc), node.Pos())
 	}
 
 	// Check if any arguments are spread expressions
@@ -1215,7 +1220,7 @@ func (c *Compiler) compileCall(node *ast.Call) error {
 	}
 	if c.current.pipeActive {
 		// For pipe, we can't easily support spread (would need PartialSpread)
-		return fmt.Errorf("compile error: spread arguments not supported in pipe expressions")
+		return c.formatError("spread arguments not supported in pipe expressions", node.Pos())
 	}
 	c.emit(op.CallSpread)
 	return nil
@@ -1239,7 +1244,7 @@ func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 	args := method.Args
 	argc := len(args)
 	if argc > MaxArgs {
-		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
+		return c.formatError(fmt.Sprintf("max args limit of %d exceeded (got %d)", MaxArgs, argc), node.Pos())
 	}
 	for _, arg := range args {
 		if err := c.compile(arg); err != nil {
@@ -1300,7 +1305,7 @@ func (c *Compiler) compileList(node *ast.List) error {
 	items := node.Items
 	count := len(items)
 	if count > math.MaxUint16 {
-		return fmt.Errorf("compile error: list literal exceeds max size")
+		return c.formatError("list literal exceeds max size", node.Pos())
 	}
 
 	// Check if any items are spread expressions
@@ -1362,7 +1367,7 @@ func (c *Compiler) compileMap(node *ast.Map) error {
 			case *ast.Ident:
 				c.emit(op.LoadConst, c.constant(k.String()))
 			default:
-				return fmt.Errorf("compile error: invalid map key type: %v", item.Key)
+				return c.formatError(fmt.Sprintf("invalid map key type: %T", item.Key), item.Key.Pos())
 			}
 			if err := c.compile(item.Value); err != nil {
 				return err
@@ -1381,7 +1386,7 @@ func (c *Compiler) compileMap(node *ast.Map) error {
 			// The Value is a Spread node, we need to compile its inner value
 			spread, ok := item.Value.(*ast.Spread)
 			if !ok {
-				return fmt.Errorf("compile error: expected spread expression in map")
+				return c.formatError("expected spread expression in map", item.Value.Pos())
 			}
 			if err := c.compile(spread.X); err != nil {
 				return err
@@ -1397,7 +1402,7 @@ func (c *Compiler) compileMap(node *ast.Map) error {
 			case *ast.Ident:
 				c.emit(op.LoadConst, c.constant(k.String()))
 			default:
-				return fmt.Errorf("compile error: invalid map key type: %v", item.Key)
+				return c.formatError(fmt.Sprintf("invalid map key type: %T", item.Key), item.Key.Pos())
 			}
 			if err := c.compile(item.Value); err != nil {
 				return err
@@ -1412,8 +1417,8 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	// Python cell variables:
 	// https://stackoverflow.com/questions/23757143/what-is-a-cell-in-the-context-of-an-interpreter-or-compiler
 
-	if len(node.Params) > 255 {
-		return c.formatError("function exceeded parameter limit of 255", node.Pos())
+	if len(node.Params) > MaxArgs {
+		return c.formatError(fmt.Sprintf("function exceeded parameter limit of %d", MaxArgs), node.Pos())
 	}
 
 	// The function has an optional name. If it is named, the name will be
@@ -1483,8 +1488,7 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		case *ast.Nil:
 			value = nil
 		default:
-			line := node.Pos().Line + 1
-			return fmt.Errorf("compile error: unsupported default value (got %s, line %d)", expr, line)
+			return c.formatError(fmt.Sprintf("unsupported default value type: %T", expr), expr.Pos())
 		}
 		index := paramsIdx[name]
 		defaults[index] = value
@@ -1673,7 +1677,7 @@ func (c *Compiler) compileSetItem(node *ast.Assign) error {
 		case "/=":
 			c.emit(op.BinaryOp, uint16(op.Divide))
 		default:
-			return fmt.Errorf("compile error: unsupported compound assignment operator: %s", node.Op)
+			return c.formatError(fmt.Sprintf("unsupported compound assignment operator: %s", node.Op), node.Pos())
 		}
 	} else {
 		// Simple assignment
@@ -1845,7 +1849,8 @@ func (c *Compiler) compileIf(node *ast.If) error {
 func (c *Compiler) calculateDelta(pos int) (uint16, error) {
 	instrCount := len(c.current.instructions)
 	delta := instrCount - pos
-	if delta > math.MaxUint16 {
+	// Use >= because Placeholder (MaxUint16) is reserved for unpatched jumps
+	if delta >= int(Placeholder) {
 		return 0, fmt.Errorf("compile error: jump destination is too far away")
 	}
 	return uint16(delta), nil
@@ -1976,7 +1981,7 @@ func (c *Compiler) compilePartial(call *ast.Call) error {
 	args := call.Args
 	argc := len(args)
 	if argc > MaxArgs {
-		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
+		return c.formatError(fmt.Sprintf("max args limit of %d exceeded (got %d)", MaxArgs, argc), call.Pos())
 	}
 	if err := c.compile(call.Fun); err != nil {
 		return err
@@ -2000,7 +2005,7 @@ func (c *Compiler) compilePartialObjectCall(node *ast.ObjectCall) error {
 	args := method.Args
 	argc := len(args)
 	if argc > MaxArgs {
-		return fmt.Errorf("compile error: max args limit of %d exceeded (got %d)", MaxArgs, argc)
+		return c.formatError(fmt.Sprintf("max args limit of %d exceeded (got %d)", MaxArgs, argc), node.Pos())
 	}
 	for _, arg := range args {
 		if err := c.compile(arg); err != nil {
@@ -2276,6 +2281,8 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 
 	// Compile catch block if present
 	catchBlock := node.CatchBlock
+	// catchVarIdx is -1 if there's no catch identifier; otherwise it's the
+	// local variable index where the caught exception value will be stored.
 	catchVarIdx := -1
 	if catchBlock != nil {
 		// Create a new scope for the catch block
@@ -2358,7 +2365,8 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 		jumpTarget = endPos
 	}
 	jumpDelta := jumpTarget - jumpAfterTryPos
-	if jumpDelta > int(Placeholder) {
+	// Use >= because Placeholder (MaxUint16) is reserved for unpatched jumps
+	if jumpDelta >= int(Placeholder) {
 		return c.formatError("try block too large", node.Pos())
 	}
 	c.changeOperand(jumpAfterTryPos, uint16(jumpDelta))

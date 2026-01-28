@@ -141,9 +141,9 @@ func (bop BinaryOpType) String() string {
 	case RShift:
 		return ">>"
 	case BitwiseAnd:
-		return "&^"
+		return "&"
 	case BitwiseOr:
-		return "|^"
+		return "|"
 	default:
 		return ""
 	}

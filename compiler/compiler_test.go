@@ -73,7 +73,7 @@ func TestCompileErrors(t *testing.T) {
 		{
 			name:   "unsupported default value",
 			input:  "function(a, b=[1,2,3]) {}()",
-			errMsg: "compile error: unsupported default value (got [1, 2, 3], line 1)",
+			errMsg: "compile error: unsupported default value type: *ast.List\n\nlocation: t.risor:1:15 (line 1, column 15)",
 		},
 		{
 			name:   "cannot assign to constant",
