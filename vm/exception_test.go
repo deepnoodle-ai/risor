@@ -2042,3 +2042,139 @@ func TestTryAsExpression(t *testing.T) {
 		})
 	}
 }
+
+// TestClosureCreationWithTryCatch verifies that closures work correctly with
+// exception handling. This tests that the LoadClosure opcode properly continues
+// to evalLoop (not the inner for loop) when an error is handled.
+func TestClosureCreationWithTryCatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected object.Object
+	}{
+		{
+			name: "closure with captured variable in try block",
+			input: `
+			let outer = 10
+			let fn = nil
+			try {
+				fn = function() { return outer }
+			} catch e {
+				fn = function() { return -1 }
+			}
+			fn()
+			`,
+			expected: object.NewInt(10),
+		},
+		{
+			name: "nested closures in try block",
+			input: `
+			let x = 5
+			let fn = nil
+			try {
+				fn = function() {
+					let inner = function() { return x * 2 }
+					return inner()
+				}
+			} catch e {
+				fn = function() { return -1 }
+			}
+			fn()
+			`,
+			expected: object.NewInt(10),
+		},
+		{
+			name: "multiple closures capturing different variables",
+			input: `
+			let a = 1
+			let b = 2
+			let c = 3
+			let fns = []
+			try {
+				fns = [
+					function() { return a },
+					function() { return b },
+					function() { return c }
+				]
+			} catch e {
+				fns = [function() { return -1 }]
+			}
+			[fns[0](), fns[1](), fns[2]()]
+			`,
+			expected: object.NewList([]object.Object{
+				object.NewInt(1),
+				object.NewInt(2),
+				object.NewInt(3),
+			}),
+		},
+		{
+			name: "closure creation followed by exception",
+			input: `
+			let x = 10
+			let fn = nil
+			let result = ""
+			try {
+				fn = function() { return x }
+				throw "after closure"
+			} catch e {
+				result = "caught: " + string(e)
+			}
+			[fn(), result]
+			`,
+			expected: object.NewList([]object.Object{
+				object.NewInt(10),
+				object.NewString("caught: after closure"),
+			}),
+		},
+		{
+			name: "closure factory in try block",
+			input: `
+			let makeAdder = function(n) {
+				return function(x) { return x + n }
+			}
+			let add5 = nil
+			let add10 = nil
+			try {
+				add5 = makeAdder(5)
+				add10 = makeAdder(10)
+			} catch e {
+				add5 = function(x) { return -1 }
+				add10 = function(x) { return -1 }
+			}
+			[add5(3), add10(3)]
+			`,
+			expected: object.NewList([]object.Object{
+				object.NewInt(8),
+				object.NewInt(13),
+			}),
+		},
+		{
+			name: "closure in iteration with try/catch",
+			input: `
+			let funcs = []
+			let values = [1, 2, 3, 4, 5]
+			values.each(function(v) {
+				try {
+					funcs = funcs + [function() { return v * 2 }]
+				} catch e {
+					funcs = funcs + [function() { return -1 }]
+				}
+			})
+			[funcs[0](), funcs[2](), funcs[4]()]
+			`,
+			expected: object.NewList([]object.Object{
+				object.NewInt(2),
+				object.NewInt(6),
+				object.NewInt(10),
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.input)
+			assert.Nil(t, err, "unexpected error: %v", err)
+			assert.Equal(t, result, tt.expected)
+		})
+	}
+}

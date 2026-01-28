@@ -4,7 +4,16 @@ import (
 	"github.com/risor-io/risor/object"
 )
 
-const DefaultFrameLocals = 8
+const (
+	// DefaultFrameLocals is the number of local variables that can be stored
+	// directly in the frame's fixed storage array, avoiding heap allocation.
+	DefaultFrameLocals = 8
+
+	// MinExtendedLocalsCapacity is the minimum capacity allocated for extended
+	// locals when heap allocation is needed. This provides headroom for future
+	// calls to reduce allocation churn for functions with varying local counts.
+	MinExtendedLocalsCapacity = 32
+)
 
 type frame struct {
 	returnAddr     int
@@ -43,8 +52,8 @@ func (f *frame) ActivateCode(code *loadedCode) {
 			// Need to allocate - size with some headroom for future calls
 			// to reduce allocation churn for functions with varying local counts
 			allocSize := int(f.localsCount)
-			if allocSize < 32 {
-				allocSize = 32 // Minimum allocation to reduce churn
+			if allocSize < MinExtendedLocalsCapacity {
+				allocSize = MinExtendedLocalsCapacity
 			}
 			f.extendedLocals = make([]object.Object, f.localsCount, allocSize)
 		}

@@ -2365,6 +2365,68 @@ recurse(100)
 	assert.Contains(t, err.Error(), "stack overflow")
 }
 
+// TestMaxFrameDepth verifies that WithMaxFrameDepth limits call frame depth.
+func TestMaxFrameDepth(t *testing.T) {
+	ctx := context.Background()
+	source := `
+function recurse(n) {
+	if (n <= 0) { return 0 }
+	return recurse(n - 1) + 1
+}
+recurse(100)
+`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Low frame limit should trigger stack overflow
+	vm, err := New(main, WithMaxFrameDepth(10))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "stack overflow")
+
+	// Sufficient frame limit should succeed
+	vm2, err := New(main, WithMaxFrameDepth(150))
+	assert.Nil(t, err)
+	err = vm2.Run(ctx)
+	assert.Nil(t, err)
+}
+
+// TestSeparateStackLimits verifies that value stack and frame depth
+// can be limited independently.
+func TestSeparateStackLimits(t *testing.T) {
+	ctx := context.Background()
+	source := `
+function recurse(n) {
+	if (n <= 0) { return 0 }
+	return recurse(n - 1) + 1
+}
+recurse(50)
+`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Low value stack limit but high frame limit should succeed
+	// (recursion doesn't build up value stack much)
+	vm1, err := New(main, WithMaxValueStackDepth(100), WithMaxFrameDepth(100))
+	assert.Nil(t, err)
+	err = vm1.Run(ctx)
+	assert.Nil(t, err)
+
+	// High value stack limit but low frame limit should fail
+	vm2, err := New(main, WithMaxValueStackDepth(1000), WithMaxFrameDepth(10))
+	assert.Nil(t, err)
+	err = vm2.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "stack overflow")
+}
+
 func TestTimeout(t *testing.T) {
 	ctx := context.Background()
 	// Use list().each() with range to iterate for a long time

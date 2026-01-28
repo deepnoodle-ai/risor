@@ -70,18 +70,47 @@ func WithTypeRegistry(registry *object.TypeRegistry) Option {
 // Step counting includes all VM instructions, including those executed in
 // callbacks invoked by methods like list.each() and list.map(). This ensures
 // that resource limits work consistently regardless of code structure.
+//
+// Note: Step counting is approximate for performance. Steps are counted in
+// batches (default: 1000 instructions), so actual execution may exceed the
+// limit by up to (batch size - 1) instructions before detection.
 func WithMaxSteps(n int64) Option {
 	return func(vm *VirtualMachine) {
 		vm.maxSteps = n
 	}
 }
 
-// WithMaxStackDepth sets the maximum stack depth for the VM.
-// If exceeded, the VM will return ErrStackOverflow.
-// A value of 0 (default) uses the global MaxStackDepth constant.
+// WithMaxStackDepth sets both the maximum value stack depth and call frame
+// depth for the VM. If either limit is exceeded, the VM will return
+// ErrStackOverflow. A value of 0 (default) uses the global MaxStackDepth
+// and MaxFrameDepth constants.
+//
+// This is a convenience function that sets both limits to the same value.
+// Use WithMaxValueStackDepth and WithMaxFrameDepth for fine-grained control.
 func WithMaxStackDepth(n int) Option {
 	return func(vm *VirtualMachine) {
-		vm.maxStackDepth = n
+		vm.maxValueStackDepth = n
+		vm.maxFrameDepth = n
+	}
+}
+
+// WithMaxValueStackDepth sets the maximum value stack depth for the VM.
+// The value stack holds intermediate values during expression evaluation.
+// If exceeded, the VM will return ErrStackOverflow.
+// A value of 0 (default) uses the global MaxStackDepth constant.
+func WithMaxValueStackDepth(n int) Option {
+	return func(vm *VirtualMachine) {
+		vm.maxValueStackDepth = n
+	}
+}
+
+// WithMaxFrameDepth sets the maximum call frame depth for the VM.
+// This limits how deep function calls can be nested (recursion depth).
+// If exceeded, the VM will return ErrStackOverflow.
+// A value of 0 (default) uses the global MaxFrameDepth constant.
+func WithMaxFrameDepth(n int) Option {
+	return func(vm *VirtualMachine) {
+		vm.maxFrameDepth = n
 	}
 }
 
