@@ -30,7 +30,6 @@ func (e *CompileError) Error() string {
 			b.WriteString(":")
 		}
 		fmt.Fprintf(&b, "%d:%d", e.Line, e.Column)
-		fmt.Fprintf(&b, " (line %d, column %d)", e.Line, e.Column)
 	}
 	return b.String()
 }

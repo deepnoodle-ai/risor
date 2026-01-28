@@ -409,7 +409,7 @@ func TestRecursiveExample2(t *testing.T) {
 func TestConstant(t *testing.T) {
 	_, err := run(context.Background(), `const x = 1; x = 2`)
 	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:14 (line 1, column 14)")
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:14")
 }
 
 func TestConstantFunction(t *testing.T) {
@@ -418,7 +418,7 @@ func TestConstantFunction(t *testing.T) {
 	add = "bloop"
 	`)
 	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:2 (line 3, column 2)")
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:2")
 }
 
 func TestStatementsNilValue(t *testing.T) {

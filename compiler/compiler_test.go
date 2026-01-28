@@ -31,7 +31,7 @@ func TestUndefinedVariable(t *testing.T) {
 		Name:    "foo",
 	})
 	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "compile error: undefined variable \"foo\"\n\nlocation: unknown:2:2 (line 2, column 2)")
+	assert.Equal(t, err.Error(), "compile error: undefined variable \"foo\"\n\nlocation: unknown:2:2")
 }
 
 func TestCompileErrors(t *testing.T) {
@@ -43,42 +43,42 @@ func TestCompileErrors(t *testing.T) {
 		{
 			name:   "undefined variable foo",
 			input:  "foo",
-			errMsg: "compile error: undefined variable \"foo\"\n\nlocation: t.risor:1:1 (line 1, column 1)",
+			errMsg: "compile error: undefined variable \"foo\"\n\nlocation: t.risor:1:1",
 		},
 		{
 			name:   "undefined variable x",
 			input:  "x = 1",
-			errMsg: "compile error: undefined variable \"x\"\n\nlocation: t.risor:1:1 (line 1, column 1)",
+			errMsg: "compile error: undefined variable \"x\"\n\nlocation: t.risor:1:1",
 		},
 		{
 			name:   "undefined variable y",
 			input:  "let x = 1;\ny = x + 1",
-			errMsg: "compile error: undefined variable \"y\"\n\nlocation: t.risor:2:1 (line 2, column 1)",
+			errMsg: "compile error: undefined variable \"y\"\n\nlocation: t.risor:2:1",
 		},
 		{
 			name:   "undefined variable z",
 			input:  "\n\n z++;",
-			errMsg: "compile error: undefined variable \"z\"\n\nlocation: t.risor:3:2 (line 3, column 2)",
+			errMsg: "compile error: undefined variable \"z\"\n\nlocation: t.risor:3:2",
 		},
 		{
 			name:   "invalid argument defaults",
 			input:  "function bad(a=1, b) {}",
-			errMsg: "compile error: invalid argument defaults for function \"bad\"\n\nlocation: t.risor:1:1 (line 1, column 1)",
+			errMsg: "compile error: invalid argument defaults for function \"bad\"\n\nlocation: t.risor:1:1",
 		},
 		{
 			name:   "invalid argument defaults for anonymous function",
 			input:  "function(a=1, b) {}()",
-			errMsg: "compile error: invalid argument defaults for anonymous function\n\nlocation: t.risor:1:1 (line 1, column 1)",
+			errMsg: "compile error: invalid argument defaults for anonymous function\n\nlocation: t.risor:1:1",
 		},
 		{
 			name:   "unsupported default value",
 			input:  "function(a, b=[1,2,3]) {}()",
-			errMsg: "compile error: unsupported default value type: *ast.List\n\nlocation: t.risor:1:15 (line 1, column 15)",
+			errMsg: "compile error: unsupported default value type: *ast.List\n\nlocation: t.risor:1:15",
 		},
 		{
 			name:   "cannot assign to constant",
 			input:  "const a = 1; a = 2",
-			errMsg: "compile error: cannot assign to constant \"a\"\n\nlocation: t.risor:1:14 (line 1, column 14)",
+			errMsg: "compile error: cannot assign to constant \"a\"\n\nlocation: t.risor:1:14",
 		},
 	}
 	for _, tt := range testCase {

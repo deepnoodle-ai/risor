@@ -135,19 +135,19 @@ func TestEmptyEnvByDefault(t *testing.T) {
 	}{
 		{
 			input:       "keys({foo: 1})",
-			expectedErr: "compile error: undefined variable \"keys\"\n\nlocation: unknown:1:1 (line 1, column 1)",
+			expectedErr: "compile error: undefined variable \"keys\"\n\nlocation: unknown:1:1",
 		},
 		{
 			input:       "any([0, 0, 1])",
-			expectedErr: "compile error: undefined variable \"any\"\n\nlocation: unknown:1:1 (line 1, column 1)",
+			expectedErr: "compile error: undefined variable \"any\"\n\nlocation: unknown:1:1",
 		},
 		{
 			input:       "string(42)",
-			expectedErr: "compile error: undefined variable \"string\"\n\nlocation: unknown:1:1 (line 1, column 1)",
+			expectedErr: "compile error: undefined variable \"string\"\n\nlocation: unknown:1:1",
 		},
 		{
 			input:       "math.abs(-1)",
-			expectedErr: "compile error: undefined variable \"math\"\n\nlocation: unknown:1:1 (line 1, column 1)",
+			expectedErr: "compile error: undefined variable \"math\"\n\nlocation: unknown:1:1",
 		},
 	}
 	for _, tc := range testCases {
