@@ -371,16 +371,6 @@ var docsModuleDocs = map[string]struct {
 	"math":   {Doc: math.ModuleDoc(), Funcs: math.Docs()},
 	"rand":   {Doc: rand.ModuleDoc(), Funcs: rand.Docs()},
 	"regexp": {Doc: regexp.ModuleDoc(), Funcs: regexp.Docs()},
-	"time": {
-		Doc: "Time and date operations",
-		Funcs: []object.FuncSpec{
-			{Name: "now", Doc: "Current time", Args: nil, Returns: "time"},
-			{Name: "parse", Doc: "Parse time string", Args: []string{"layout", "value"}, Returns: "time"},
-			{Name: "since", Doc: "Duration since time", Args: []string{"t"}, Returns: "float"},
-			{Name: "sleep", Doc: "Sleep for duration (seconds)", Args: []string{"seconds"}, Returns: "nil"},
-			{Name: "unix", Doc: "Create time from Unix timestamp", Args: []string{"sec", "nsec?"}, Returns: "time"},
-		},
-	},
 }
 
 // Syntax quick reference

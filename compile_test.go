@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/dis"
 )
 
@@ -25,58 +26,31 @@ function multiply(a, b) {
 let result = add(x, y)
 `
 	code, err := Compile(context.Background(), source)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	stats := code.Stats()
 
-	if stats.InstructionCount == 0 {
-		t.Error("expected non-zero instruction count")
-	}
-
-	if stats.ConstantCount == 0 {
-		t.Error("expected non-zero constant count")
-	}
-
-	if stats.GlobalCount == 0 {
-		t.Error("expected non-zero global count")
-	}
-
-	if stats.FunctionCount != 2 {
-		t.Errorf("expected 2 functions, got %d", stats.FunctionCount)
-	}
-
-	// Source bytes may differ from len(source) due to AST stringification
-	if stats.SourceBytes == 0 {
-		t.Error("expected non-zero source bytes")
-	}
+	assert.True(t, stats.InstructionCount > 0, "expected non-zero instruction count")
+	assert.True(t, stats.ConstantCount > 0, "expected non-zero constant count")
+	assert.True(t, stats.GlobalCount > 0, "expected non-zero global count")
+	assert.Equal(t, stats.FunctionCount, 2)
+	assert.True(t, stats.SourceBytes > 0, "expected non-zero source bytes")
 }
 
 func TestCodeDisassemble(t *testing.T) {
 	source := `let x = 1 + 2`
 	code, err := Compile(context.Background(), source)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	instructions, err := dis.Disassemble(code)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	var buf bytes.Buffer
 	dis.Print(instructions, &buf)
 	disasm := buf.String()
 
-	if disasm == "" {
-		t.Error("expected non-empty disassembly")
-	}
-
-	// Should contain some common opcodes
-	if !strings.Contains(disasm, "LOAD_CONST") {
-		t.Error("expected disassembly to contain LOAD_CONST")
-	}
+	assert.True(t, disasm != "", "expected non-empty disassembly")
+	assert.True(t, strings.Contains(disasm, "LOAD_CONST"), "expected disassembly to contain LOAD_CONST")
 }
 
 func TestCodeFunctionNames(t *testing.T) {
@@ -93,16 +67,12 @@ function subtract(a, b) {
 let f = function(x) { return x * 2 }
 `
 	code, err := Compile(context.Background(), source)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	names := code.FunctionNames()
 
 	// Should have at least 2 named functions
-	if len(names) < 2 {
-		t.Errorf("expected at least 2 function names, got %d", len(names))
-	}
+	assert.True(t, len(names) >= 2, "expected at least 2 function names, got %d", len(names))
 
 	// Check for expected function names
 	foundAdd := false
@@ -116,12 +86,8 @@ let f = function(x) { return x * 2 }
 		}
 	}
 
-	if !foundAdd {
-		t.Error("expected to find 'add' in function names")
-	}
-	if !foundSubtract {
-		t.Error("expected to find 'subtract' in function names")
-	}
+	assert.True(t, foundAdd, "expected to find 'add' in function names")
+	assert.True(t, foundSubtract, "expected to find 'subtract' in function names")
 }
 
 func TestCodeGlobalNames(t *testing.T) {
@@ -131,9 +97,7 @@ let y = 2
 let z = x + y
 `
 	code, err := Compile(context.Background(), source)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(t, err)
 
 	names := code.GlobalNames()
 
@@ -145,8 +109,6 @@ let z = x + y
 	}
 
 	for _, expected := range []string{"x", "y", "z"} {
-		if !nameSet[expected] {
-			t.Errorf("expected to find %q in global names", expected)
-		}
+		assert.True(t, nameSet[expected], "expected to find %q in global names", expected)
 	}
 }
