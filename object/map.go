@@ -123,6 +123,10 @@ func init() {
 			if !ok {
 				return nil, newTypeErrorf("map.update() expected a map (%s given)", args[0].Type())
 			}
+			// Short-circuit if updating with self
+			if other == m {
+				return Nil, nil
+			}
 			for k, v := range other.items {
 				m.items[k] = v
 			}

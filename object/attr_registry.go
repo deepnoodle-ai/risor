@@ -31,7 +31,7 @@ type AttrBuilder[T any] struct {
 	name        string
 	doc         string
 	args        []string
-	optionalIdx int // Index where optional args start (-1 means all required)
+	optionalIdx int // Index where optional args start (0 means all required)
 	returns     string
 }
 
@@ -93,13 +93,23 @@ func (b *AttrBuilder[T]) Doc(doc string) *AttrBuilder[T] {
 }
 
 // Arg adds a required argument by name (for methods).
+// Panics if called after OptionalArg (required args must come first).
 func (b *AttrBuilder[T]) Arg(name string) *AttrBuilder[T] {
+	if b.optionalIdx > 0 {
+		panic(fmt.Sprintf("%s.%s: required argument %q cannot follow optional arguments",
+			b.registry.typeName, b.name, name))
+	}
 	b.args = append(b.args, name)
 	return b
 }
 
 // Args adds multiple required arguments (for methods).
+// Panics if called after OptionalArg (required args must come first).
 func (b *AttrBuilder[T]) Args(names ...string) *AttrBuilder[T] {
+	if b.optionalIdx > 0 {
+		panic(fmt.Sprintf("%s.%s: required arguments cannot follow optional arguments",
+			b.registry.typeName, b.name))
+	}
 	b.args = append(b.args, names...)
 	return b
 }

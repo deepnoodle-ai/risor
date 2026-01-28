@@ -630,6 +630,14 @@ func TestMapMethodUpdate(t *testing.T) {
 	// Updated
 	assert.Equal(t, m.Get("a").(*Int).Value(), int64(10))
 	assert.Equal(t, m.Get("b").(*Int).Value(), int64(2))
+
+	// Self-update is a no-op (short-circuits)
+	result, err = callable.Call(ctx, m)
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+	// Values unchanged
+	assert.Equal(t, m.Get("a").(*Int).Value(), int64(10))
+	assert.Equal(t, m.Get("b").(*Int).Value(), int64(2))
 }
 
 func TestMapMethodClear(t *testing.T) {

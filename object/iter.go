@@ -85,6 +85,9 @@ func NewIter(desc string, gen func(ctx context.Context, fn func(key, value Objec
 func NewMapKeyIter(m *Map) *Iter {
 	return NewIter("map.keys", func(ctx context.Context, fn func(key, value Object) bool) {
 		for i, k := range m.SortedKeys() {
+			if ctx.Err() != nil {
+				return
+			}
 			if !fn(NewInt(int64(i)), NewString(k)) {
 				return
 			}
@@ -96,6 +99,9 @@ func NewMapKeyIter(m *Map) *Iter {
 func NewMapValueIter(m *Map) *Iter {
 	return NewIter("map.values", func(ctx context.Context, fn func(key, value Object) bool) {
 		for i, k := range m.SortedKeys() {
+			if ctx.Err() != nil {
+				return
+			}
 			if !fn(NewInt(int64(i)), m.items[k]) {
 				return
 			}
@@ -107,6 +113,9 @@ func NewMapValueIter(m *Map) *Iter {
 func NewMapItemIter(m *Map) *Iter {
 	return NewIter("map.entries", func(ctx context.Context, fn func(key, value Object) bool) {
 		for i, k := range m.SortedKeys() {
+			if ctx.Err() != nil {
+				return
+			}
 			pair := NewList([]Object{NewString(k), m.items[k]})
 			if !fn(NewInt(int64(i)), pair) {
 				return
