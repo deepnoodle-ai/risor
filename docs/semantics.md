@@ -234,6 +234,80 @@ Spread (`...`) uses enumeration order:
 [...{b: 2, a: 1}]  // ["a", "b"]
 ```
 
+## Map Methods
+
+Maps have methods accessible via dot syntax. Methods take priority over keys
+(Python-style shadowing).
+
+### Available Methods
+
+| Method | Signature | Returns | Description |
+|--------|-----------|---------|-------------|
+| `keys()` | `() → iter` | Iterator | Iterate over keys (sorted) |
+| `values()` | `() → iter` | Iterator | Iterate over values |
+| `entries()` | `() → iter` | Iterator | Iterate over [key, value] pairs |
+| `each(fn)` | `(fn) → nil` | nil | Call fn(key, value) for each entry |
+| `get(key, default?)` | `(key, default?) → any` | Value | Safe access with optional default |
+| `pop(key, default?)` | `(key, default?) → any` | Value | Remove and return |
+| `setdefault(key, val)` | `(key, value) → any` | Value | Set if missing, return final value |
+| `update(other)` | `(map) → nil` | nil | Merge another map into this one |
+| `clear()` | `() → nil` | nil | Remove all entries |
+| `copy()` | `() → map` | Map | Shallow copy |
+
+### Method Shadowing
+
+Methods take priority over map keys. Use bracket syntax to access keys that
+shadow method names:
+
+```ts
+let m = {keys: "my data", name: "Alice"}
+
+m.keys()     // Method - returns iterator over ["keys", "name"]
+m["keys"]    // Data - returns "my data"
+m.name       // Data - returns "Alice" (no method named "name")
+```
+
+### Iterators
+
+Methods like `keys()`, `values()`, and `entries()` return lazy iterators.
+Iterators implement `Enumerable` and can be:
+
+- Collected to a list with `list()`
+- Spread into a list with `[...]`
+- Iterated with `each()`
+
+```ts
+let m = {a: 1, b: 2, c: 3}
+
+// Collect to list
+list(m.keys())      // ["a", "b", "c"]
+[...m.values()]     // [1, 2, 3]
+
+// Iterate with callback
+m.each((k, v) => print(k + "=" + string(v)))
+
+// Chain operations
+m.entries().each(([k, v]) => {
+    print(k, v)
+})
+```
+
+### Safe Access
+
+Use `get()` for safe access with a default value:
+
+```ts
+let config = {host: "localhost"}
+
+config.get("host")           // "localhost"
+config.get("port")           // nil (key missing)
+config.get("port", 8080)     // 8080 (default used)
+
+// Versus direct access
+config.port                  // Error: attribute "port" not found
+config["port"]               // Error: key "port" not found
+```
+
 ## Map Shorthand Syntax
 
 Maps support shorthand syntax when keys match variable names:

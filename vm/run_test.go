@@ -203,9 +203,9 @@ func TestRunError_AttributeErrorPointsAtAttributeName(t *testing.T) {
 		},
 		{
 			name:           "ObjectCall on map literal",
-			source:         `{a:1}.each()`,
+			source:         `{a:1}.fake()`,
 			expectedLine:   1,
-			expectedColumn: 7, // "each" starts at column 7
+			expectedColumn: 7, // "fake" starts at column 7
 			description:    "error should point at method name, not map literal",
 		},
 		{

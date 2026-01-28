@@ -11,6 +11,7 @@ import (
 type AttrDef[T any] struct {
 	Spec       AttrSpec
 	IsProperty bool
+	MinArgs    int // Minimum required arguments (for optional arg support)
 	// For methods:
 	MethodImpl func(self T, ctx context.Context, args ...Object) (Object, error)
 	// For properties:
@@ -26,11 +27,12 @@ type AttrRegistry[T any] struct {
 
 // AttrBuilder provides a fluent API for defining a single attribute.
 type AttrBuilder[T any] struct {
-	registry *AttrRegistry[T]
-	name     string
-	doc      string
-	args     []string
-	returns  string
+	registry    *AttrRegistry[T]
+	name        string
+	doc         string
+	args        []string
+	optionalIdx int // Index where optional args start (-1 means all required)
+	returns     string
 }
 
 // NewAttrRegistry creates a registry for the given type name.
@@ -70,13 +72,14 @@ func (r *AttrRegistry[T]) GetAttr(self T, name string) (Object, bool) {
 	}
 
 	// Method: wrap in Builtin with argument validation
-	expectedArgs := len(attr.Spec.Args)
+	minArgs := attr.MinArgs
+	maxArgs := len(attr.Spec.Args)
 	fullName := r.typeName + "." + name
 	return &Builtin{
 		name: fullName,
 		fn: func(ctx context.Context, args ...Object) (Object, error) {
-			if len(args) != expectedArgs {
-				return nil, argsError(fullName, expectedArgs, len(args))
+			if len(args) < minArgs || len(args) > maxArgs {
+				return nil, argsRangeError(fullName, minArgs, maxArgs, len(args))
 			}
 			return attr.MethodImpl(self, ctx, args...)
 		},
@@ -101,6 +104,17 @@ func (b *AttrBuilder[T]) Args(names ...string) *AttrBuilder[T] {
 	return b
 }
 
+// OptionalArg adds an optional argument by name (for methods).
+// Optional args must come after all required args.
+func (b *AttrBuilder[T]) OptionalArg(name string) *AttrBuilder[T] {
+	if b.optionalIdx == 0 {
+		// First optional arg - mark where optional args start
+		b.optionalIdx = len(b.args) + 1 // +1 because we use 0 as "not set"
+	}
+	b.args = append(b.args, name)
+	return b
+}
+
 // Returns sets the return type (for documentation/tooling).
 func (b *AttrBuilder[T]) Returns(typ string) *AttrBuilder[T] {
 	b.returns = typ
@@ -121,7 +135,12 @@ func (b *AttrBuilder[T]) Impl(fn func(T, context.Context, ...Object) (Object, er
 		Args:    b.args,
 		Returns: b.returns,
 	}
-	r.attrs[b.name] = AttrDef[T]{Spec: spec, MethodImpl: fn}
+	// Calculate minimum required args
+	minArgs := len(b.args)
+	if b.optionalIdx > 0 {
+		minArgs = b.optionalIdx - 1 // -1 because optionalIdx is 1-indexed
+	}
+	r.attrs[b.name] = AttrDef[T]{Spec: spec, MinArgs: minArgs, MethodImpl: fn}
 	r.specs = append(r.specs, spec)
 }
 
@@ -152,6 +171,14 @@ func argsError(methodName string, expected, got int) error {
 		return fmt.Errorf("%s: expected 1 argument, got %d", methodName, got)
 	}
 	return fmt.Errorf("%s: expected %d arguments, got %d", methodName, expected, got)
+}
+
+// argsRangeError returns a grammatically correct argument count error for methods with optional args.
+func argsRangeError(methodName string, min, max, got int) error {
+	if min == max {
+		return argsError(methodName, min, got)
+	}
+	return fmt.Errorf("%s: expected %d to %d arguments, got %d", methodName, min, max, got)
 }
 
 // Arg extracts and type-asserts an argument from the args slice.

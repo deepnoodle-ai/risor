@@ -40,6 +40,13 @@ numbers.filter(x => x > 2).map(x => x * 2) // [6, 8, 10]
 // Destructuring and spread
 let { name, age } = {name: "Alice", age: 30}
 let merged = {...{a: 1}, ...{b: 2}} // {a: 1, b: 2}
+
+// Map methods (Python-style, methods shadow keys)
+let config = {host: "localhost", port: 8080}
+config.keys()                      // iter("host", "port")
+config.get("timeout", 30)          // 30 (default value)
+config.each((k, v) => print(k, v)) // iterate key-value pairs
+list(config.entries())             // [["host", "localhost"], ["port", 8080]]
 ```
 
 ## Build Commands

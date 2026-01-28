@@ -11,6 +11,142 @@ import (
 	"github.com/risor-io/risor/op"
 )
 
+var mapMethods = NewMethodRegistry[*Map]("map")
+
+func init() {
+	// Iterator-returning methods
+	mapMethods.Define("keys").
+		Doc("Iterate over map keys").
+		Returns("iter").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			return NewMapKeyIter(m), nil
+		})
+
+	mapMethods.Define("values").
+		Doc("Iterate over map values").
+		Returns("iter").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			return NewMapValueIter(m), nil
+		})
+
+	mapMethods.Define("entries").
+		Doc("Iterate over [key, value] pairs").
+		Returns("iter").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			return NewMapItemIter(m), nil
+		})
+
+	// Callback-based iteration
+	mapMethods.Define("each").
+		Doc("Call function for each key-value pair").
+		Arg("fn").
+		Returns("nil").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			callable, ok := args[0].(Callable)
+			if !ok {
+				return nil, newTypeErrorf("map.each() expected a function (%s given)", args[0].Type())
+			}
+			for _, k := range m.SortedKeys() {
+				if _, err := callable.Call(ctx, NewString(k), m.items[k]); err != nil {
+					return nil, err
+				}
+			}
+			return Nil, nil
+		})
+
+	// Safe access with default
+	mapMethods.Define("get").
+		Doc("Get value with optional default").
+		Arg("key").
+		OptionalArg("default").
+		Returns("any").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			key, err := Arg[*String](args, 0, "map.get")
+			if err != nil {
+				return nil, err
+			}
+			value, found := m.items[key.value]
+			if found {
+				return value, nil
+			}
+			if len(args) > 1 {
+				return args[1], nil
+			}
+			return Nil, nil
+		})
+
+	// Remove and return
+	mapMethods.Define("pop").
+		Doc("Remove key and return its value").
+		Arg("key").
+		OptionalArg("default").
+		Returns("any").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			key, err := Arg[*String](args, 0, "map.pop")
+			if err != nil {
+				return nil, err
+			}
+			value, found := m.items[key.value]
+			if found {
+				delete(m.items, key.value)
+				return value, nil
+			}
+			if len(args) > 1 {
+				return args[1], nil
+			}
+			return Nil, nil
+		})
+
+	// Set if missing
+	mapMethods.Define("setdefault").
+		Doc("Set value if key is missing, return final value").
+		Args("key", "value").
+		Returns("any").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			key, err := Arg[*String](args, 0, "map.setdefault")
+			if err != nil {
+				return nil, err
+			}
+			if _, found := m.items[key.value]; !found {
+				m.items[key.value] = args[1]
+			}
+			return m.items[key.value], nil
+		})
+
+	// Merge another map
+	mapMethods.Define("update").
+		Doc("Merge another map into this one").
+		Arg("other").
+		Returns("nil").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			other, ok := args[0].(*Map)
+			if !ok {
+				return nil, newTypeErrorf("map.update() expected a map (%s given)", args[0].Type())
+			}
+			for k, v := range other.items {
+				m.items[k] = v
+			}
+			return Nil, nil
+		})
+
+	// Clear all items
+	mapMethods.Define("clear").
+		Doc("Remove all items").
+		Returns("nil").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			m.items = map[string]Object{}
+			return Nil, nil
+		})
+
+	// Shallow copy
+	mapMethods.Define("copy").
+		Doc("Create a shallow copy").
+		Returns("map").
+		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
+			return m.Copy(), nil
+		})
+}
+
 type Map struct {
 	items map[string]Object
 
@@ -62,13 +198,16 @@ func (m *Map) SetAttr(name string, value Object) error {
 }
 
 func (m *Map) Attrs() []AttrSpec {
-	// Map has no methods - dot syntax accesses keys directly.
-	return nil
+	return mapMethods.Specs()
 }
 
 func (m *Map) GetAttr(name string) (Object, bool) {
-	// Map dot syntax only accesses keys. Use keys(m) for key list,
-	// getattr(m, "key", default) for safe access with default.
+	// Methods take priority over map keys (Python-style shadowing).
+	// Use bracket syntax m["keys"] to access a key that shadows a method.
+	if method, ok := mapMethods.GetAttr(m, name); ok {
+		return method, true
+	}
+	// Fall back to map data
 	o, ok := m.items[name]
 	return o, ok
 }
