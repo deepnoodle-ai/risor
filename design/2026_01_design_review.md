@@ -36,7 +36,7 @@ The following major changes have been implemented:
 | **Error Handling** | Builtins return `(Object, error)`. Errors are values; `throw` triggers exceptions. `raised` flag removed. |
 | **Global State** | Removed `typeErrorsAreFatal`, `FatalError`, `IsFatal()`. Removed global registries. |
 | **Type Conversion** | `TypeRegistry` system (immutable, VM-owned). `RisorValuer` interface for custom types. |
-| **Map Semantics** | Dot syntax accesses keys only. Use `keys(m)` or `getattr()` for builtins. |
+| **Map Semantics** | Dot syntax accesses methods first, then keys (Python-style shadowing). Use `m["key"]` for data that shadows a method name. Maps have 10 methods: `keys()`, `values()`, `entries()`, `each()`, `get()`, `pop()`, `setdefault()`, `update()`, `clear()`, `copy()`. Iterator-returning methods are lazy. |
 | **Callable Dispatch** | List methods use `Callable` interface uniformly. No more panics. |
 | **Documentation** | Compiler two-pass strategy documented. Concurrency contract documented. Global name binding documented. Result conversion rules documented. |
 | **Proxy System** | Removed entirely. Go values convert at embedding boundary via `TypeRegistry`. |

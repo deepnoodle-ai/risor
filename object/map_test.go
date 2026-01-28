@@ -423,3 +423,324 @@ func TestNewMapNil(t *testing.T) {
 	assert.NotNil(t, m.Value())
 	assert.Len(t, m.Value(), 0)
 }
+
+// Tests for map methods via GetAttr
+
+func TestMapMethodKeys(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"b": NewInt(2),
+		"a": NewInt(1),
+	})
+
+	method, ok := m.GetAttr("keys")
+	assert.True(t, ok)
+
+	callable := method.(Callable)
+	result, err := callable.Call(ctx)
+	assert.Nil(t, err)
+
+	// Returns an iterator
+	it := result.(*Iter)
+	var keys []string
+	it.Enumerate(ctx, func(key, value Object) bool {
+		keys = append(keys, value.(*String).Value())
+		return true
+	})
+	assert.Equal(t, keys, []string{"a", "b"})
+}
+
+func TestMapMethodValues(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"b": NewInt(2),
+		"a": NewInt(1),
+	})
+
+	method, ok := m.GetAttr("values")
+	assert.True(t, ok)
+
+	callable := method.(Callable)
+	result, err := callable.Call(ctx)
+	assert.Nil(t, err)
+
+	// Returns an iterator
+	it := result.(*Iter)
+	var values []int64
+	it.Enumerate(ctx, func(key, value Object) bool {
+		values = append(values, value.(*Int).Value())
+		return true
+	})
+	assert.Equal(t, values, []int64{1, 2})
+}
+
+func TestMapMethodEntries(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"b": NewInt(2),
+		"a": NewInt(1),
+	})
+
+	method, ok := m.GetAttr("entries")
+	assert.True(t, ok)
+
+	callable := method.(Callable)
+	result, err := callable.Call(ctx)
+	assert.Nil(t, err)
+
+	// Returns an iterator
+	it := result.(*Iter)
+	var items [][2]any
+	it.Enumerate(ctx, func(key, value Object) bool {
+		pair := value.(*List).Value()
+		items = append(items, [2]any{
+			pair[0].(*String).Value(),
+			pair[1].(*Int).Value(),
+		})
+		return true
+	})
+	assert.Len(t, items, 2)
+	assert.Equal(t, items[0], [2]any{"a", int64(1)})
+	assert.Equal(t, items[1], [2]any{"b", int64(2)})
+}
+
+func TestMapMethodEach(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"b": NewInt(2),
+		"a": NewInt(1),
+	})
+
+	method, ok := m.GetAttr("each")
+	assert.True(t, ok)
+
+	var visited [][2]any
+	fn := NewBuiltin("test", func(ctx context.Context, args ...Object) (Object, error) {
+		key := args[0].(*String).Value()
+		val := args[1].(*Int).Value()
+		visited = append(visited, [2]any{key, val})
+		return Nil, nil
+	})
+
+	callable := method.(Callable)
+	result, err := callable.Call(ctx, fn)
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+
+	// Visited in sorted key order
+	assert.Len(t, visited, 2)
+	assert.Equal(t, visited[0], [2]any{"a", int64(1)})
+	assert.Equal(t, visited[1], [2]any{"b", int64(2)})
+}
+
+func TestMapMethodGet(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"key": NewInt(42),
+	})
+
+	method, ok := m.GetAttr("get")
+	assert.True(t, ok)
+	callable := method.(Callable)
+
+	// Get existing key
+	result, err := callable.Call(ctx, NewString("key"))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(42))
+
+	// Get missing key without default
+	result, err = callable.Call(ctx, NewString("missing"))
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+
+	// Get missing key with default
+	result, err = callable.Call(ctx, NewString("missing"), NewString("default"))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*String).Value(), "default")
+}
+
+func TestMapMethodPop(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"key": NewInt(42),
+	})
+
+	method, ok := m.GetAttr("pop")
+	assert.True(t, ok)
+	callable := method.(Callable)
+
+	// Pop existing key
+	result, err := callable.Call(ctx, NewString("key"))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(42))
+	assert.Equal(t, m.Size(), 0) // Key was removed
+
+	// Pop missing key without default
+	result, err = callable.Call(ctx, NewString("missing"))
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+
+	// Pop missing key with default
+	result, err = callable.Call(ctx, NewString("missing"), NewString("default"))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*String).Value(), "default")
+}
+
+func TestMapMethodSetdefault(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"existing": NewInt(1),
+	})
+
+	method, ok := m.GetAttr("setdefault")
+	assert.True(t, ok)
+	callable := method.(Callable)
+
+	// Set default for missing key
+	result, err := callable.Call(ctx, NewString("new"), NewInt(99))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(99))
+	assert.Equal(t, m.Get("new").(*Int).Value(), int64(99))
+
+	// Set default for existing key - returns existing value
+	result, err = callable.Call(ctx, NewString("existing"), NewInt(999))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(1))
+}
+
+func TestMapMethodUpdate(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"a": NewInt(1),
+	})
+
+	method, ok := m.GetAttr("update")
+	assert.True(t, ok)
+	callable := method.(Callable)
+
+	other := NewMap(map[string]Object{
+		"b": NewInt(2),
+		"a": NewInt(10),
+	})
+
+	result, err := callable.Call(ctx, other)
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+
+	// Updated
+	assert.Equal(t, m.Get("a").(*Int).Value(), int64(10))
+	assert.Equal(t, m.Get("b").(*Int).Value(), int64(2))
+
+	// Self-update is a no-op (short-circuits)
+	result, err = callable.Call(ctx, m)
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+	// Values unchanged
+	assert.Equal(t, m.Get("a").(*Int).Value(), int64(10))
+	assert.Equal(t, m.Get("b").(*Int).Value(), int64(2))
+}
+
+func TestMapMethodClear(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"key": NewInt(42),
+	})
+
+	method, ok := m.GetAttr("clear")
+	assert.True(t, ok)
+	callable := method.(Callable)
+
+	result, err := callable.Call(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+	assert.Equal(t, m.Size(), 0)
+}
+
+func TestMapMethodCopy(t *testing.T) {
+	ctx := context.Background()
+	m := NewMap(map[string]Object{
+		"key": NewInt(42),
+	})
+
+	method, ok := m.GetAttr("copy")
+	assert.True(t, ok)
+	callable := method.(Callable)
+
+	result, err := callable.Call(ctx)
+	assert.Nil(t, err)
+
+	copyMap := result.(*Map)
+	assert.Equal(t, copyMap.Get("key").(*Int).Value(), int64(42))
+
+	// Modifying original doesn't affect copy
+	m.Set("key", NewInt(100))
+	assert.Equal(t, copyMap.Get("key").(*Int).Value(), int64(42))
+}
+
+func TestMapMethodShadowing(t *testing.T) {
+	ctx := context.Background()
+
+	// Create a map with a key named "keys" (shadows the method)
+	m := NewMap(map[string]Object{
+		"keys":   NewList([]Object{NewInt(1), NewInt(2), NewInt(3)}),
+		"values": NewString("my values"),
+		"normal": NewInt(42),
+	})
+
+	// Method wins over data - m.keys returns the method, not the data
+	method, ok := m.GetAttr("keys")
+	assert.True(t, ok)
+	callable := method.(Callable)
+	result, err := callable.Call(ctx)
+	assert.Nil(t, err)
+	// It's an iterator, not the list we stored
+	_, isIter := result.(*Iter)
+	assert.True(t, isIter)
+
+	// Same for values
+	method, ok = m.GetAttr("values")
+	assert.True(t, ok)
+	callable = method.(Callable)
+	result, err = callable.Call(ctx)
+	assert.Nil(t, err)
+	_, isIter = result.(*Iter)
+	assert.True(t, isIter)
+
+	// Non-method keys still work via GetAttr
+	val, ok := m.GetAttr("normal")
+	assert.True(t, ok)
+	assert.Equal(t, val.(*Int).Value(), int64(42))
+
+	// Use bracket syntax (GetItem) to access shadowed keys
+	val, errObj := m.GetItem(NewString("keys"))
+	assert.Nil(t, errObj)
+	list := val.(*List)
+	assert.Len(t, list.Value(), 3)
+
+	val, errObj = m.GetItem(NewString("values"))
+	assert.Nil(t, errObj)
+	assert.Equal(t, val.(*String).Value(), "my values")
+}
+
+func TestMapAttrs(t *testing.T) {
+	m := NewMap(nil)
+	attrs := m.Attrs()
+	assert.True(t, len(attrs) > 0)
+
+	// Check that expected methods are present
+	methodNames := make(map[string]bool)
+	for _, attr := range attrs {
+		methodNames[attr.Name] = true
+	}
+
+	assert.True(t, methodNames["keys"])
+	assert.True(t, methodNames["values"])
+	assert.True(t, methodNames["entries"])
+	assert.True(t, methodNames["each"])
+	assert.True(t, methodNames["get"])
+	assert.True(t, methodNames["pop"])
+	assert.True(t, methodNames["setdefault"])
+	assert.True(t, methodNames["update"])
+	assert.True(t, methodNames["clear"])
+	assert.True(t, methodNames["copy"])
+}
