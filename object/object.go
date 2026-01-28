@@ -48,6 +48,7 @@ const (
 	MODULE        Type = "module"
 	NIL           Type = "nil"
 	PARTIAL       Type = "partial"
+	RANGE         Type = "range"
 	RESULT        Type = "result"
 	STRING        Type = "string"
 	TIME          Type = "time"

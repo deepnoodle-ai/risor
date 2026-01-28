@@ -9,7 +9,7 @@ import (
 
 func TestRangeBasics(t *testing.T) {
 	r := NewRange(0, 5, 1)
-	assert.Equal(t, r.Type(), Type("range"))
+	assert.Equal(t, r.Type(), RANGE)
 	assert.Equal(t, r.Inspect(), "range(5)")
 	assert.True(t, r.IsTruthy())
 

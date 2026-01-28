@@ -60,7 +60,7 @@ func (r *Range) SetAttr(name string, value Object) error {
 	return fmt.Errorf("attribute error: range object does not support attribute assignment")
 }
 
-func (r *Range) Type() Type { return "range" }
+func (r *Range) Type() Type { return RANGE }
 
 func (r *Range) Inspect() string {
 	if r.step == 1 {

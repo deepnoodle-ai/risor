@@ -401,6 +401,9 @@ func (b *Bytes) Repeat(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	if count < 0 {
+		return nil, newValueErrorf("negative repeat count")
+	}
 	return NewBytes(bytes.Repeat(b.value, int(count))), nil
 }
 

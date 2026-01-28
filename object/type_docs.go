@@ -49,7 +49,7 @@ func init() {
 	// Module attrs are dynamic based on contents, just register __name__
 	RegisterType(MODULE, "Collection of related functions and values", nil)
 
-	RegisterType("range", "Lazy sequence of integers", func() []AttrSpec {
+	RegisterType(RANGE, "Lazy sequence of integers", func() []AttrSpec {
 		return NewRange(0, 0, 1).Attrs()
 	})
 }

@@ -20,11 +20,11 @@ func RequireRange(funcName string, min, max int, args []Object) *Error {
 	if nArgs < min {
 		return NewError(ArgsErrorf(
 			"args error: %s() takes at least %d %s (%d given)",
-			funcName, min, pluralize("argument", nArgs > 1), nArgs))
+			funcName, min, pluralize("argument", min > 1), nArgs))
 	} else if nArgs > max {
 		return NewError(ArgsErrorf(
 			"args error: %s() takes at most %d %s (%d given)",
-			funcName, max, pluralize("argument", nArgs > 1), nArgs))
+			funcName, max, pluralize("argument", max > 1), nArgs))
 	}
 	return nil
 }
