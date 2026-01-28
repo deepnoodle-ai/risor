@@ -555,4 +555,3 @@ func Range(ctx context.Context, args ...object.Object) (object.Object, error) {
 
 	return object.NewRange(start, stop, step), nil
 }
-

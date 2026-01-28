@@ -85,10 +85,10 @@ type docsSyntaxPattern struct {
 
 // docsQuickReference is the quick reference structure.
 type docsQuickReference struct {
-	Risor         docsRisorInfo       `json:"risor"`
+	Risor          docsRisorInfo       `json:"risor"`
 	SyntaxQuickRef []docsSyntaxPattern `json:"syntax_quick_ref"`
-	Topics        map[string]string    `json:"topics"`
-	Next          []string             `json:"next"`
+	Topics         map[string]string   `json:"topics"`
+	Next           []string            `json:"next"`
 }
 
 // docsTypeInfo summarizes a type.
@@ -122,10 +122,10 @@ type docsSyntaxItem struct {
 
 // docsErrorPattern describes a common error pattern.
 type docsErrorPattern struct {
-	Type           string              `json:"type"`
-	MessagePattern string              `json:"message_pattern"`
-	Causes         []string            `json:"causes"`
-	Examples       []docsErrorExample  `json:"examples"`
+	Type           string             `json:"type"`
+	MessagePattern string             `json:"message_pattern"`
+	Causes         []string           `json:"causes"`
+	Examples       []docsErrorExample `json:"examples"`
 }
 
 // docsErrorExample shows a specific error case.
@@ -138,12 +138,12 @@ type docsErrorExample struct {
 
 // docsFullDocumentation contains all documentation.
 type docsFullDocumentation struct {
-	Risor    docsRisorInfo                `json:"risor"`
-	Builtins []object.FuncSpec            `json:"builtins"`
-	Modules  map[string]docsModuleInfo    `json:"modules"`
-	Types    map[string]docsTypeInfo      `json:"types"`
-	Syntax   []docsSyntaxSection          `json:"syntax"`
-	Errors   []docsErrorPattern           `json:"errors"`
+	Risor    docsRisorInfo             `json:"risor"`
+	Builtins []object.FuncSpec         `json:"builtins"`
+	Modules  map[string]docsModuleInfo `json:"modules"`
+	Types    map[string]docsTypeInfo   `json:"types"`
+	Syntax   []docsSyntaxSection       `json:"syntax"`
+	Errors   []docsErrorPattern        `json:"errors"`
 }
 
 // Docs returns structured documentation about Risor.
@@ -520,4 +520,3 @@ var docsErrorPatterns = []docsErrorPattern{
 		},
 	},
 }
-

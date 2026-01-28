@@ -7,10 +7,10 @@ const docVersion = "2.0.0"
 
 // QuickReference provides a concise overview of Risor for quick orientation.
 type QuickReference struct {
-	Risor         RisorInfo        `json:"risor"`
-	SyntaxQuickRef []SyntaxPattern `json:"syntax_quick_ref"`
-	Topics        map[string]string `json:"topics"`
-	Next          []string          `json:"next"`
+	Risor          RisorInfo         `json:"risor"`
+	SyntaxQuickRef []SyntaxPattern   `json:"syntax_quick_ref"`
+	Topics         map[string]string `json:"topics"`
+	Next           []string          `json:"next"`
 }
 
 // RisorInfo provides basic information about Risor.
@@ -111,14 +111,14 @@ type ErrorExample struct {
 
 // FunctionDetail provides detailed documentation for a function.
 type FunctionDetail struct {
-	Name         string           `json:"name"`
-	Category     string           `json:"category"`
-	Signature    string           `json:"signature"`
-	Doc          string           `json:"doc"`
-	Parameters   []ParameterInfo  `json:"parameters,omitempty"`
-	Returns      *ReturnInfo      `json:"returns,omitempty"`
-	Examples     []ExampleInfo    `json:"examples,omitempty"`
-	Related      []string         `json:"related,omitempty"`
+	Name         string            `json:"name"`
+	Category     string            `json:"category"`
+	Signature    string            `json:"signature"`
+	Doc          string            `json:"doc"`
+	Parameters   []ParameterInfo   `json:"parameters,omitempty"`
+	Returns      *ReturnInfo       `json:"returns,omitempty"`
+	Examples     []ExampleInfo     `json:"examples,omitempty"`
+	Related      []string          `json:"related,omitempty"`
 	CommonErrors []CommonErrorInfo `json:"common_errors,omitempty"`
 }
 
@@ -180,10 +180,10 @@ type BuiltinDetail struct {
 
 // FullDocumentation contains all documentation for --all mode.
 type FullDocumentation struct {
-	Risor    RisorInfo              `json:"risor"`
-	Builtins []object.FuncSpec      `json:"builtins"`
-	Modules  map[string]ModuleInfo  `json:"modules"`
-	Types    map[string]TypeDetail  `json:"types"`
-	Syntax   []SyntaxSection        `json:"syntax"`
-	Errors   []ErrorPattern         `json:"errors"`
+	Risor    RisorInfo             `json:"risor"`
+	Builtins []object.FuncSpec     `json:"builtins"`
+	Modules  map[string]ModuleInfo `json:"modules"`
+	Types    map[string]TypeDetail `json:"types"`
+	Syntax   []SyntaxSection       `json:"syntax"`
+	Errors   []ErrorPattern        `json:"errors"`
 }
