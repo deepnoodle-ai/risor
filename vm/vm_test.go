@@ -409,7 +409,7 @@ func TestRecursiveExample2(t *testing.T) {
 func TestConstant(t *testing.T) {
 	_, err := run(context.Background(), `const x = 1; x = 2`)
 	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:14 (line 1, column 14)")
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"x\"\n\nlocation: unknown:1:14")
 }
 
 func TestConstantFunction(t *testing.T) {
@@ -418,7 +418,7 @@ func TestConstantFunction(t *testing.T) {
 	add = "bloop"
 	`)
 	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:2 (line 3, column 2)")
+	assert.Equal(t, err.Error(), "compile error: cannot assign to constant \"add\"\n\nlocation: unknown:3:2")
 }
 
 func TestStatementsNilValue(t *testing.T) {
@@ -2361,6 +2361,68 @@ recurse(100)
 	vm, err := New(main, WithMaxStackDepth(10))
 	assert.Nil(t, err)
 	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "stack overflow")
+}
+
+// TestMaxFrameDepth verifies that WithMaxFrameDepth limits call frame depth.
+func TestMaxFrameDepth(t *testing.T) {
+	ctx := context.Background()
+	source := `
+function recurse(n) {
+	if (n <= 0) { return 0 }
+	return recurse(n - 1) + 1
+}
+recurse(100)
+`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Low frame limit should trigger stack overflow
+	vm, err := New(main, WithMaxFrameDepth(10))
+	assert.Nil(t, err)
+	err = vm.Run(ctx)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "stack overflow")
+
+	// Sufficient frame limit should succeed
+	vm2, err := New(main, WithMaxFrameDepth(150))
+	assert.Nil(t, err)
+	err = vm2.Run(ctx)
+	assert.Nil(t, err)
+}
+
+// TestSeparateStackLimits verifies that value stack and frame depth
+// can be limited independently.
+func TestSeparateStackLimits(t *testing.T) {
+	ctx := context.Background()
+	source := `
+function recurse(n) {
+	if (n <= 0) { return 0 }
+	return recurse(n - 1) + 1
+}
+recurse(50)
+`
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	// Low value stack limit but high frame limit should succeed
+	// (recursion doesn't build up value stack much)
+	vm1, err := New(main, WithMaxValueStackDepth(100), WithMaxFrameDepth(100))
+	assert.Nil(t, err)
+	err = vm1.Run(ctx)
+	assert.Nil(t, err)
+
+	// High value stack limit but low frame limit should fail
+	vm2, err := New(main, WithMaxValueStackDepth(1000), WithMaxFrameDepth(10))
+	assert.Nil(t, err)
+	err = vm2.Run(ctx)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "stack overflow")
 }

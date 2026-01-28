@@ -1100,4 +1100,63 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		_, ok = fn.Params[3].(*ast.Ident)
 		assert.True(t, ok)
 	})
+
+	t.Run("array destructure with default", func(t *testing.T) {
+		program, err := Parse(context.Background(), "([a = 1]) => a", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Elements, 1)
+		assert.Equal(t, "a", dp.Elements[0].Name.Name)
+		assert.NotNil(t, dp.Elements[0].Default)
+
+		defaultInt, ok := dp.Elements[0].Default.(*ast.Int)
+		assert.True(t, ok)
+		assert.Equal(t, int64(1), defaultInt.Value)
+	})
+
+	t.Run("array destructure with multiple defaults", func(t *testing.T) {
+		program, err := Parse(context.Background(), "([a = 1, b = 2, c]) => a + b + c", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+		assert.Len(t, fn.Params, 1)
+
+		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+		assert.Len(t, dp.Elements, 3)
+
+		// a = 1
+		assert.Equal(t, "a", dp.Elements[0].Name.Name)
+		assert.NotNil(t, dp.Elements[0].Default)
+
+		// b = 2
+		assert.Equal(t, "b", dp.Elements[1].Name.Name)
+		assert.NotNil(t, dp.Elements[1].Default)
+
+		// c (no default)
+		assert.Equal(t, "c", dp.Elements[2].Name.Name)
+		assert.Nil(t, dp.Elements[2].Default)
+	})
+
+	t.Run("array destructure with complex default", func(t *testing.T) {
+		program, err := Parse(context.Background(), "([a = x + 1]) => a", nil)
+		assert.Nil(t, err)
+
+		fn, ok := program.First().(*ast.Func)
+		assert.True(t, ok)
+
+		dp, ok := fn.Params[0].(*ast.ArrayDestructureParam)
+		assert.True(t, ok)
+
+		// Default should be an Infix expression
+		_, ok = dp.Elements[0].Default.(*ast.Infix)
+		assert.True(t, ok, "Default should be an infix expression")
+	})
 }

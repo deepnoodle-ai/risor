@@ -36,15 +36,19 @@ func NewValidationErrors(errs []ValidationError) *ValidationErrors {
 
 // Error implements the error interface.
 func (e *ValidationErrors) Error() string {
-	if len(e.Errors) == 1 {
+	switch len(e.Errors) {
+	case 0:
+		return "no validation errors"
+	case 1:
 		return e.Errors[0].Error()
+	default:
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d validation errors:\n", len(e.Errors))
+		for _, err := range e.Errors {
+			fmt.Fprintf(&b, "  - %s\n", err.Error())
+		}
+		return b.String()
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%d validation errors:\n", len(e.Errors))
-	for _, err := range e.Errors {
-		fmt.Fprintf(&b, "  - %s\n", err.Error())
-	}
-	return b.String()
 }
 
 // Unwrap returns the first error for errors.Is/As compatibility.

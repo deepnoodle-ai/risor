@@ -18,7 +18,12 @@ type Var struct {
 func (x *Var) stmtNode() {}
 
 func (x *Var) Pos() token.Position { return x.Let }
-func (x *Var) End() token.Position { return x.Value.End() }
+func (x *Var) End() token.Position {
+	if x.Value != nil {
+		return x.Value.End()
+	}
+	return x.Name.End()
+}
 
 func (x *Var) String() string {
 	var out bytes.Buffer
@@ -43,7 +48,15 @@ type MultiVar struct {
 func (x *MultiVar) stmtNode() {}
 
 func (x *MultiVar) Pos() token.Position { return x.Let }
-func (x *MultiVar) End() token.Position { return x.Value.End() }
+func (x *MultiVar) End() token.Position {
+	if x.Value != nil {
+		return x.Value.End()
+	}
+	if len(x.Names) > 0 {
+		return x.Names[len(x.Names)-1].End()
+	}
+	return x.Let.Advance(3) // len("let")
+}
 
 func (x *MultiVar) String() string {
 	var out bytes.Buffer
@@ -80,7 +93,12 @@ type ObjectDestructure struct {
 func (x *ObjectDestructure) stmtNode() {}
 
 func (x *ObjectDestructure) Pos() token.Position { return x.Let }
-func (x *ObjectDestructure) End() token.Position { return x.Value.End() }
+func (x *ObjectDestructure) End() token.Position {
+	if x.Value != nil {
+		return x.Value.End()
+	}
+	return x.Rbrace.Advance(1)
+}
 
 func (x *ObjectDestructure) String() string {
 	var out bytes.Buffer
@@ -123,7 +141,12 @@ type ArrayDestructure struct {
 func (x *ArrayDestructure) stmtNode() {}
 
 func (x *ArrayDestructure) Pos() token.Position { return x.Let }
-func (x *ArrayDestructure) End() token.Position { return x.Value.End() }
+func (x *ArrayDestructure) End() token.Position {
+	if x.Value != nil {
+		return x.Value.End()
+	}
+	return x.Rbrack.Advance(1)
+}
 
 func (x *ArrayDestructure) String() string {
 	var out bytes.Buffer
@@ -153,7 +176,12 @@ type Const struct {
 func (x *Const) stmtNode() {}
 
 func (x *Const) Pos() token.Position { return x.Const }
-func (x *Const) End() token.Position { return x.Value.End() }
+func (x *Const) End() token.Position {
+	if x.Value != nil {
+		return x.Value.End()
+	}
+	return x.Name.End()
+}
 
 func (x *Const) String() string {
 	var out bytes.Buffer
@@ -240,7 +268,10 @@ func (x *Assign) Pos() token.Position {
 	if x.Name != nil {
 		return x.Name.Pos()
 	}
-	return x.Index.Pos()
+	if x.Index != nil {
+		return x.Index.Pos()
+	}
+	return x.OpPos
 }
 func (x *Assign) End() token.Position { return x.Value.End() }
 
@@ -330,7 +361,10 @@ func (x *Try) End() token.Position {
 	if x.CatchBlock != nil {
 		return x.CatchBlock.End()
 	}
-	return x.Body.End()
+	if x.Body != nil {
+		return x.Body.End()
+	}
+	return x.Try.Advance(3) // len("try")
 }
 
 func (x *Try) String() string {

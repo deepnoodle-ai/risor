@@ -706,3 +706,405 @@ func TestNewTypeError(t *testing.T) {
 	assert.Contains(t, err.Error(), "test")
 	assert.Equal(t, err.Unwrap().Error(), "test")
 }
+
+// Tests for ValueError
+
+func TestValueError(t *testing.T) {
+	err := ValueErrorf("division by zero")
+	assert.Contains(t, err.Error(), "value error: division by zero")
+
+	// Test Unwrap
+	underlying := err.Unwrap()
+	assert.NotNil(t, underlying)
+	assert.Contains(t, underlying.Error(), "division by zero")
+}
+
+func TestNewValueError(t *testing.T) {
+	cause := EvalErrorf("bad value")
+	err := NewValueError(cause)
+
+	assert.Contains(t, err.Error(), "bad value")
+	assert.Equal(t, err.Unwrap(), cause)
+}
+
+// Tests for IndexError
+
+func TestIndexError(t *testing.T) {
+	err := IndexErrorf("list index %d out of range [0, %d)", 5, 3)
+	assert.Contains(t, err.Error(), "index error: list index 5 out of range [0, 3)")
+
+	// Test Unwrap
+	underlying := err.Unwrap()
+	assert.NotNil(t, underlying)
+}
+
+func TestNewIndexError(t *testing.T) {
+	cause := EvalErrorf("out of bounds")
+	err := NewIndexError(cause)
+
+	assert.Contains(t, err.Error(), "out of bounds")
+	assert.Equal(t, err.Unwrap(), cause)
+}
+
+// Tests for CompileError
+
+func TestCompileError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      *CompileError
+		contains []string
+		excludes []string
+	}{
+		{
+			name: "with filename and location",
+			err: &CompileError{
+				Code:     E2001,
+				Message:  "undefined variable 'foo'",
+				Filename: "test.risor",
+				Line:     10,
+				Column:   5,
+			},
+			contains: []string{
+				"compile error:",
+				"undefined variable 'foo'",
+				"location:",
+				"test.risor:10:5",
+			},
+			// Should NOT have duplicate location info
+			excludes: []string{"(line 10, column 5)"},
+		},
+		{
+			name: "without filename",
+			err: &CompileError{
+				Code:    E2001,
+				Message: "undefined variable 'bar'",
+				Line:    5,
+				Column:  3,
+			},
+			contains: []string{
+				"compile error:",
+				"undefined variable 'bar'",
+				"location:",
+				"5:3",
+			},
+		},
+		{
+			name: "without location",
+			err: &CompileError{
+				Message: "general compile error",
+			},
+			contains: []string{
+				"compile error:",
+				"general compile error",
+			},
+			excludes: []string{"location:"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.err.Error()
+			for _, s := range tt.contains {
+				assert.Contains(t, result, s)
+			}
+			for _, s := range tt.excludes {
+				assert.False(t, strings.Contains(result, s), "should not contain %q", s)
+			}
+		})
+	}
+}
+
+func TestCompileError_FriendlyErrorMessage(t *testing.T) {
+	err := &CompileError{
+		Code:       E2001,
+		Message:    "undefined variable 'foo'",
+		Filename:   "test.risor",
+		Line:       10,
+		Column:     5,
+		SourceLine: "let x = foo + 1",
+		Suggestions: []Suggestion{
+			{Value: "food", Distance: 1},
+		},
+	}
+
+	result := err.FriendlyErrorMessage()
+
+	// Check formatted output contains key elements
+	assert.Contains(t, result, "E2001")
+	assert.Contains(t, result, "undefined variable 'foo'")
+	assert.Contains(t, result, "test.risor:10:5")
+	assert.Contains(t, result, "let x = foo + 1")
+	assert.Contains(t, result, "hint:")
+	assert.Contains(t, result, "food")
+}
+
+func TestCompileError_ToFormatted(t *testing.T) {
+	err := &CompileError{
+		Code:       E2001,
+		Message:    "test message",
+		Filename:   "test.risor",
+		Line:       10,
+		Column:     5,
+		EndColumn:  10,
+		SourceLine: "some code",
+		Note:       "additional note",
+		Suggestions: []Suggestion{
+			{Value: "suggestion1", Distance: 1},
+		},
+	}
+
+	formatted := err.ToFormatted()
+
+	assert.Equal(t, formatted.Code, E2001)
+	assert.Equal(t, formatted.Kind, "error")
+	assert.Equal(t, formatted.Message, "test message")
+	assert.Equal(t, formatted.Filename, "test.risor")
+	assert.Equal(t, formatted.Line, 10)
+	assert.Equal(t, formatted.Column, 5)
+	assert.Equal(t, formatted.EndColumn, 10)
+	assert.Equal(t, formatted.Note, "additional note")
+	assert.Equal(t, len(formatted.SourceLines), 1)
+	assert.Equal(t, formatted.SourceLines[0].Text, "some code")
+	assert.True(t, formatted.SourceLines[0].IsMain)
+	assert.Contains(t, formatted.Hint, "suggestion1")
+}
+
+// Tests for CompileErrors
+
+func TestCompileErrors_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		errors   []*CompileError
+		expected string
+	}{
+		{
+			name:     "empty",
+			errors:   nil,
+			expected: "",
+		},
+		{
+			name: "single error",
+			errors: []*CompileError{
+				{Message: "first error", Line: 1, Column: 1},
+			},
+			expected: "compile error: first error",
+		},
+		{
+			name: "multiple errors",
+			errors: []*CompileError{
+				{Message: "first error", Line: 1, Column: 1},
+				{Message: "second error", Line: 2, Column: 1},
+				{Message: "third error", Line: 3, Column: 1},
+			},
+			expected: "(and 2 more errors)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := &CompileErrors{Errors: tt.errors}
+			result := errs.Error()
+			if tt.expected == "" {
+				assert.Equal(t, result, "")
+			} else {
+				assert.Contains(t, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCompileErrors_FriendlyErrorMessage(t *testing.T) {
+	errs := &CompileErrors{
+		Errors: []*CompileError{
+			{Message: "first error", Line: 1, Column: 1, SourceLine: "code1"},
+			{Message: "second error", Line: 2, Column: 1, SourceLine: "code2"},
+		},
+	}
+
+	result := errs.FriendlyErrorMessage()
+
+	assert.Contains(t, result, "first error")
+	assert.Contains(t, result, "second error")
+	assert.Contains(t, result, "found 2 errors")
+}
+
+func TestCompileErrors_FriendlyErrorMessage_Empty(t *testing.T) {
+	errs := &CompileErrors{}
+	result := errs.FriendlyErrorMessage()
+	assert.Equal(t, result, "")
+}
+
+func TestCompileErrors_Add(t *testing.T) {
+	errs := &CompileErrors{}
+	assert.Equal(t, errs.Count(), 0)
+	assert.False(t, errs.HasErrors())
+
+	errs.Add(&CompileError{Message: "error 1"})
+	assert.Equal(t, errs.Count(), 1)
+	assert.True(t, errs.HasErrors())
+
+	errs.Add(&CompileError{Message: "error 2"})
+	assert.Equal(t, errs.Count(), 2)
+}
+
+func TestCompileErrors_ToError(t *testing.T) {
+	tests := []struct {
+		name       string
+		errors     []*CompileError
+		expectNil  bool
+		expectType string
+	}{
+		{
+			name:      "empty returns nil",
+			errors:    nil,
+			expectNil: true,
+		},
+		{
+			name: "single error returns CompileError",
+			errors: []*CompileError{
+				{Message: "only error"},
+			},
+			expectType: "*errors.CompileError",
+		},
+		{
+			name: "multiple errors returns CompileErrors",
+			errors: []*CompileError{
+				{Message: "error 1"},
+				{Message: "error 2"},
+			},
+			expectType: "*errors.CompileErrors",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := &CompileErrors{Errors: tt.errors}
+			result := errs.ToError()
+			if tt.expectNil {
+				assert.Nil(t, result)
+			} else {
+				assert.NotNil(t, result)
+				// Check type by examining error message behavior
+				if tt.expectType == "*errors.CompileError" {
+					_, ok := result.(*CompileError)
+					assert.True(t, ok, "expected *CompileError")
+				} else {
+					_, ok := result.(*CompileErrors)
+					assert.True(t, ok, "expected *CompileErrors")
+				}
+			}
+		})
+	}
+}
+
+// Edge case tests
+
+func TestSuggestSimilar_Unicode(t *testing.T) {
+	// Test with Unicode characters
+	candidates := []string{"日本語", "日本", "にほんご"}
+	suggestions := SuggestSimilar("日本", candidates)
+
+	// Should find "日本語" as close match
+	assert.True(t, len(suggestions) >= 1)
+}
+
+func TestSuggestSimilar_CaseInsensitive(t *testing.T) {
+	candidates := []string{"Print", "PRINTF", "println"}
+	suggestions := SuggestSimilar("print", candidates)
+
+	// Should match case-insensitively
+	assert.True(t, len(suggestions) >= 1)
+}
+
+func TestLevenshteinDistance_Unicode(t *testing.T) {
+	// Test Unicode handling
+	tests := []struct {
+		a, b     string
+		expected int
+	}{
+		{"hello", "hëllo", 1}, // Substitution with accented character
+		{"café", "cafe", 1},   // Remove accent
+		{"日本", "日本語", 1},      // Japanese characters
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.a+"_"+tt.b, func(t *testing.T) {
+			result := levenshteinDistance(tt.a, tt.b)
+			assert.Equal(t, result, tt.expected)
+		})
+	}
+}
+
+func TestFormatter_EdgeCases(t *testing.T) {
+	f := NewFormatter(false)
+
+	t.Run("empty message", func(t *testing.T) {
+		err := &FormattedError{
+			Kind:    "error",
+			Message: "",
+		}
+		result := f.Format(err)
+		assert.Contains(t, result, "error:")
+	})
+
+	t.Run("zero column with source", func(t *testing.T) {
+		err := &FormattedError{
+			Kind:    "error",
+			Message: "test",
+			Line:    1,
+			Column:  0, // Zero column
+			SourceLines: []SourceLineEntry{
+				{Number: 1, Text: "some code", IsMain: true},
+			},
+		}
+		result := f.Format(err)
+		// Should not crash and should not show caret when column is 0
+		assert.Contains(t, result, "some code")
+	})
+
+	t.Run("very long source line", func(t *testing.T) {
+		longLine := strings.Repeat("x", 1000)
+		err := &FormattedError{
+			Kind:    "error",
+			Message: "test",
+			Line:    1,
+			Column:  500,
+			SourceLines: []SourceLineEntry{
+				{Number: 1, Text: longLine, IsMain: true},
+			},
+		}
+		result := f.Format(err)
+		assert.Contains(t, result, longLine)
+	})
+}
+
+func TestStructuredError_GetStack(t *testing.T) {
+	stack := []StackFrame{
+		{Function: "func1", Location: SourceLocation{Line: 1, Column: 1}},
+		{Function: "func2", Location: SourceLocation{Line: 2, Column: 1}},
+	}
+	err := NewStructuredError(ErrRuntime, "test", SourceLocation{}, stack)
+
+	result := err.GetStack()
+	assert.Equal(t, len(result), 2)
+	assert.Equal(t, result[0].Function, "func1")
+	assert.Equal(t, result[1].Function, "func2")
+}
+
+func TestStructuredError_GetLocation(t *testing.T) {
+	loc := SourceLocation{
+		Filename:  "test.risor",
+		Line:      10,
+		Column:    5,
+		EndColumn: 15,
+		Source:    "let x = 42",
+	}
+	err := NewStructuredError(ErrType, "test", loc, nil)
+
+	result := err.GetLocation()
+	assert.Equal(t, result.Filename, "test.risor")
+	assert.Equal(t, result.Line, 10)
+	assert.Equal(t, result.Column, 5)
+	assert.Equal(t, result.EndColumn, 15)
+	assert.Equal(t, result.Source, "let x = 42")
+}

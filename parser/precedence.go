@@ -11,7 +11,6 @@ const (
 	PIPE        // |
 	COND        // OR or AND
 	ASSIGN      // =
-	TERNARY     // ? :
 	EQUALS      // == or !=
 	LESSGREATER // > or <
 	SUM         // + or -
@@ -26,7 +25,6 @@ const (
 
 // Precedences for each token type
 var precedences = map[token.Type]int{
-	token.QUESTION:        TERNARY,
 	token.NULLISH:         NULLISH,
 	token.ASSIGN:          ASSIGN,
 	token.EQ:              EQUALS,

@@ -774,3 +774,427 @@ func TestThrowStatement(t *testing.T) {
 	assert.Equal(t, throwStmt.End().Column, 6) // 1 + len("throw")
 	assert.Equal(t, throwStmt.String(), "throw ")
 }
+
+// Bug reproduction tests - These test edge cases and nil handling
+
+func TestVarNilValue(t *testing.T) {
+	// Var with nil Value - tests inconsistency between End() and String()
+	// String() handles nil Value, but End() should also handle it
+	varStmt := &Var{
+		Let:   token.Position{Line: 1, Column: 1},
+		Name:  &Ident{NamePos: token.Position{Line: 1, Column: 5}, Name: "x"},
+		Value: nil,
+	}
+
+	// String() handles nil Value gracefully
+	s := varStmt.String()
+	assert.Equal(t, s, "let x = ")
+
+	// End() should not panic with nil Value
+	// Currently this would panic: x.Value.End() when Value is nil
+	// After fix, should return position after variable name or "="
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Var.End() panicked with nil Value: %v", r)
+		}
+	}()
+	_ = varStmt.End()
+}
+
+func TestMultiVarNilValue(t *testing.T) {
+	// MultiVar with nil Value
+	multiVar := &MultiVar{
+		Let: token.Position{Line: 1, Column: 1},
+		Names: []*Ident{
+			{NamePos: token.Position{Line: 1, Column: 5}, Name: "x"},
+		},
+		Value: nil,
+	}
+
+	// End() should not panic with nil Value
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("MultiVar.End() panicked with nil Value: %v", r)
+		}
+	}()
+	_ = multiVar.End()
+}
+
+func TestConstNilValue(t *testing.T) {
+	// Const with nil Value - tests inconsistency between End() and String()
+	// String() handles nil Value, but End() should also handle it
+	constStmt := &Const{
+		Const: token.Position{Line: 1, Column: 1},
+		Name:  &Ident{NamePos: token.Position{Line: 1, Column: 7}, Name: "X"},
+		Value: nil,
+	}
+
+	// String() handles nil Value gracefully
+	s := constStmt.String()
+	assert.Equal(t, s, "const X = ")
+
+	// End() should not panic with nil Value
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Const.End() panicked with nil Value: %v", r)
+		}
+	}()
+	_ = constStmt.End()
+}
+
+func TestPipeEmptyExprs(t *testing.T) {
+	// Pipe with empty Exprs slice - would cause index out of bounds
+	pipe := &Pipe{
+		Exprs: []Expr{},
+	}
+
+	// Pos() and End() should not panic with empty Exprs
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Pipe.Pos() or End() panicked with empty Exprs: %v", r)
+		}
+	}()
+
+	// These currently panic: index out of range
+	_ = pipe.Pos()
+	_ = pipe.End()
+}
+
+func TestFuncNilBody(t *testing.T) {
+	// Func with nil Body
+	funcLit := &Func{
+		Func:   token.Position{Line: 1, Column: 1},
+		Lparen: token.Position{Line: 1, Column: 9},
+		Params: []FuncParam{},
+		Rparen: token.Position{Line: 1, Column: 10},
+		Body:   nil,
+	}
+
+	// End() should not panic with nil Body
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Func.End() panicked with nil Body: %v", r)
+		}
+	}()
+	_ = funcLit.End()
+}
+
+func TestDefaultValueNilDefault(t *testing.T) {
+	// DefaultValue with nil Default
+	dv := &DefaultValue{
+		Name:    &Ident{NamePos: token.Position{Line: 1, Column: 1}, Name: "x"},
+		Default: nil,
+	}
+
+	// End() should not panic with nil Default
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("DefaultValue.End() panicked with nil Default: %v", r)
+		}
+	}()
+	_ = dv.End()
+}
+
+func TestObjectDestructureNilValue(t *testing.T) {
+	// ObjectDestructure with nil Value
+	objDest := &ObjectDestructure{
+		Let:      token.Position{Line: 1, Column: 1},
+		Lbrace:   token.Position{Line: 1, Column: 5},
+		Bindings: []DestructureBinding{{Key: "a"}},
+		Rbrace:   token.Position{Line: 1, Column: 8},
+		Value:    nil,
+	}
+
+	// End() should not panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("ObjectDestructure.End() panicked with nil Value: %v", r)
+		}
+	}()
+	_ = objDest.End()
+}
+
+func TestArrayDestructureNilValue(t *testing.T) {
+	// ArrayDestructure with nil Value
+	arrDest := &ArrayDestructure{
+		Let:    token.Position{Line: 1, Column: 1},
+		Lbrack: token.Position{Line: 1, Column: 5},
+		Elements: []ArrayDestructureElement{
+			{Name: &Ident{NamePos: token.Position{Line: 1, Column: 6}, Name: "a"}},
+		},
+		Rbrack: token.Position{Line: 1, Column: 8},
+		Value:  nil,
+	}
+
+	// End() should not panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("ArrayDestructure.End() panicked with nil Value: %v", r)
+		}
+	}()
+	_ = arrDest.End()
+}
+
+func TestIfNilConsequence(t *testing.T) {
+	// If with nil Consequence (edge case - should be invalid AST, but End() should not panic)
+	ifExpr := &If{
+		If:          token.Position{Line: 1, Column: 1},
+		Lparen:      token.Position{Line: 1, Column: 4},
+		Cond:        &Bool{ValuePos: token.Position{Line: 1, Column: 5}, Value: true},
+		Rparen:      token.Position{Line: 1, Column: 9},
+		Consequence: nil,
+	}
+
+	// End() should not panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("If.End() panicked with nil Consequence: %v", r)
+		}
+	}()
+	_ = ifExpr.End()
+}
+
+func TestPrefixNilX(t *testing.T) {
+	// Prefix with nil X
+	prefix := &Prefix{
+		OpPos: token.Position{Line: 1, Column: 1},
+		Op:    "!",
+		X:     nil,
+	}
+
+	// End() should not panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Prefix.End() panicked with nil X: %v", r)
+		}
+	}()
+	_ = prefix.End()
+}
+
+func TestInfixNilOperands(t *testing.T) {
+	// Infix with nil X
+	infix := &Infix{
+		X:     nil,
+		OpPos: token.Position{Line: 1, Column: 3},
+		Op:    "+",
+		Y:     &Int{ValuePos: token.Position{Line: 1, Column: 5}, Value: 2},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Infix.Pos() panicked with nil X: %v", r)
+		}
+	}()
+	_ = infix.Pos()
+
+	// Infix with nil Y
+	infix2 := &Infix{
+		X:     &Int{ValuePos: token.Position{Line: 1, Column: 1}, Value: 1},
+		OpPos: token.Position{Line: 1, Column: 3},
+		Op:    "+",
+		Y:     nil,
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Infix.End() panicked with nil Y: %v", r)
+		}
+	}()
+	_ = infix2.End()
+}
+
+func TestCaseNilBody(t *testing.T) {
+	// Case with nil Body
+	caseExpr := &Case{
+		Case:  token.Position{Line: 1, Column: 1},
+		Exprs: []Expr{&Int{ValuePos: token.Position{Line: 1, Column: 6}, Value: 1}},
+		Colon: token.Position{Line: 1, Column: 7},
+		Body:  nil,
+	}
+
+	// End() should use Colon position when Body is nil
+	pos := caseExpr.End()
+	assert.Equal(t, pos.Column, 8) // Colon.Advance(1)
+}
+
+func TestGetAttrNilX(t *testing.T) {
+	// GetAttr with nil X
+	getAttr := &GetAttr{
+		X:      nil,
+		Period: token.Position{Line: 1, Column: 4},
+		Attr:   &Ident{NamePos: token.Position{Line: 1, Column: 5}, Name: "foo"},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("GetAttr.Pos() panicked with nil X: %v", r)
+		}
+	}()
+	_ = getAttr.Pos()
+}
+
+func TestObjectCallNilX(t *testing.T) {
+	// ObjectCall with nil X
+	objCall := &ObjectCall{
+		X:      nil,
+		Period: token.Position{Line: 1, Column: 4},
+		Call: &Call{
+			Fun:    &Ident{NamePos: token.Position{Line: 1, Column: 5}, Name: "method"},
+			Lparen: token.Position{Line: 1, Column: 11},
+			Args:   []Node{},
+			Rparen: token.Position{Line: 1, Column: 12},
+		},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("ObjectCall.Pos() panicked with nil X: %v", r)
+		}
+	}()
+	_ = objCall.Pos()
+}
+
+func TestCallNilFun(t *testing.T) {
+	// Call with nil Fun
+	call := &Call{
+		Fun:    nil,
+		Lparen: token.Position{Line: 1, Column: 4},
+		Args:   []Node{},
+		Rparen: token.Position{Line: 1, Column: 5},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Call.Pos() panicked with nil Fun: %v", r)
+		}
+	}()
+	_ = call.Pos()
+}
+
+func TestIndexNilX(t *testing.T) {
+	// Index with nil X
+	index := &Index{
+		X:      nil,
+		Lbrack: token.Position{Line: 1, Column: 4},
+		Index:  &Int{ValuePos: token.Position{Line: 1, Column: 5}, Value: 0},
+		Rbrack: token.Position{Line: 1, Column: 6},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Index.Pos() panicked with nil X: %v", r)
+		}
+	}()
+	_ = index.Pos()
+}
+
+func TestSliceNilX(t *testing.T) {
+	// Slice with nil X
+	slice := &Slice{
+		X:      nil,
+		Lbrack: token.Position{Line: 1, Column: 4},
+		Low:    nil,
+		High:   nil,
+		Rbrack: token.Position{Line: 1, Column: 6},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Slice.Pos() panicked with nil X: %v", r)
+		}
+	}()
+	_ = slice.Pos()
+}
+
+func TestInNilOperands(t *testing.T) {
+	// In with nil X
+	inExpr := &In{
+		X:     nil,
+		InPos: token.Position{Line: 1, Column: 3},
+		Y:     &Ident{NamePos: token.Position{Line: 1, Column: 6}, Name: "list"},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("In.Pos() panicked with nil X: %v", r)
+		}
+	}()
+	_ = inExpr.Pos()
+
+	// In with nil Y
+	inExpr2 := &In{
+		X:     &Ident{NamePos: token.Position{Line: 1, Column: 1}, Name: "x"},
+		InPos: token.Position{Line: 1, Column: 3},
+		Y:     nil,
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("In.End() panicked with nil Y: %v", r)
+		}
+	}()
+	_ = inExpr2.End()
+}
+
+func TestNotInNilOperands(t *testing.T) {
+	// NotIn with nil X
+	notInExpr := &NotIn{
+		X:        nil,
+		NotInPos: token.Position{Line: 1, Column: 3},
+		Y:        &Ident{NamePos: token.Position{Line: 1, Column: 10}, Name: "list"},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("NotIn.Pos() panicked with nil X: %v", r)
+		}
+	}()
+	_ = notInExpr.Pos()
+
+	// NotIn with nil Y
+	notInExpr2 := &NotIn{
+		X:        &Ident{NamePos: token.Position{Line: 1, Column: 1}, Name: "x"},
+		NotInPos: token.Position{Line: 1, Column: 3},
+		Y:        nil,
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("NotIn.End() panicked with nil Y: %v", r)
+		}
+	}()
+	_ = notInExpr2.End()
+}
+
+func TestTryNilBody(t *testing.T) {
+	// Try with nil Body (edge case)
+	tryStmt := &Try{
+		Try:  token.Position{Line: 1, Column: 1},
+		Body: nil,
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Try.End() panicked with nil Body: %v", r)
+		}
+	}()
+	_ = tryStmt.End()
+}
+
+func TestAssignNilNameAndIndex(t *testing.T) {
+	// Assign with both Name and Index nil (should not happen, but test resilience)
+	assign := &Assign{
+		Name:  nil,
+		Index: nil,
+		OpPos: token.Position{Line: 1, Column: 3},
+		Op:    "=",
+		Value: &Int{ValuePos: token.Position{Line: 1, Column: 5}, Value: 42},
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Assign.Pos() panicked with nil Name and Index: %v", r)
+		}
+	}()
+	_ = assign.Pos()
+}

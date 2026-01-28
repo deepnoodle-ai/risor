@@ -91,8 +91,13 @@ type VirtualMachine struct {
 	typeRegistry *object.TypeRegistry
 
 	// Resource limits
-	maxSteps      int64         // Maximum instructions. 0 = unlimited.
-	maxStackDepth int           // Maximum stack depth. 0 = use MaxStackDepth.
+	maxSteps int64 // Maximum instructions. 0 = unlimited.
+	// maxValueStackDepth limits the value stack depth (vm.sp).
+	// A value of 0 uses the global MaxStackDepth constant.
+	maxValueStackDepth int
+	// maxFrameDepth limits the call frame depth (vm.fp).
+	// A value of 0 uses the global MaxFrameDepth constant.
+	maxFrameDepth int
 	timeout       time.Duration // Execution timeout. 0 = no timeout.
 
 	// Step counting state for resource limits. These fields are stored on the
@@ -101,7 +106,11 @@ type VirtualMachine struct {
 	// list.each() and list.map() invoke callbacks via callFunction, which calls
 	// eval recursively. Without VM-level counters, each callback would start
 	// with fresh counters, allowing infinite iterations to bypass step limits.
-	stepCount        int64 // Total instructions executed across all eval calls
+	//
+	// Note: Step counting is approximate for performance. Steps are counted in
+	// batches of contextCheckInterval, so actual execution may exceed maxSteps
+	// by up to (contextCheckInterval - 1) instructions before detection.
+	stepCount        int64 // Approximate total instructions executed across all eval calls
 	stepCheckCounter int   // Instructions since last periodic check
 }
 
@@ -479,10 +488,10 @@ func (vm *VirtualMachine) eval(ctx context.Context) error {
 	checkInterval := vm.contextCheckInterval
 	doneChan := ctx.Done()
 
-	// Calculate effective stack limit
-	maxStackDepth := vm.maxStackDepth
-	if maxStackDepth == 0 || maxStackDepth > MaxStackDepth {
-		maxStackDepth = MaxStackDepth
+	// Calculate effective value stack limit
+	maxValueStackDepth := vm.maxValueStackDepth
+	if maxValueStackDepth == 0 || maxValueStackDepth > MaxStackDepth {
+		maxValueStackDepth = MaxStackDepth
 	}
 
 	// Run to the end of the active code
@@ -520,8 +529,8 @@ evalLoop:
 					}
 				}
 
-				// Stack depth check
-				if vm.sp >= maxStackDepth {
+				// Value stack depth check
+				if vm.sp >= maxValueStackDepth {
 					return ErrStackOverflow
 				}
 			}
@@ -1501,8 +1510,8 @@ func (vm *VirtualMachine) resumeFrame(fp, ip, sp int) *frame {
 // ensureFrameCapacity grows the frames slice if needed to accommodate the given frame index.
 // Returns an error if the frame index exceeds the configured limit or MaxFrameDepth.
 func (vm *VirtualMachine) ensureFrameCapacity(fp int) error {
-	// Check against configured limit first (if set and smaller than MaxFrameDepth)
-	if vm.maxStackDepth > 0 && vm.maxStackDepth < MaxFrameDepth && fp >= vm.maxStackDepth {
+	// Check against configured frame depth limit first (if set and smaller than MaxFrameDepth)
+	if vm.maxFrameDepth > 0 && vm.maxFrameDepth < MaxFrameDepth && fp >= vm.maxFrameDepth {
 		return ErrStackOverflow
 	}
 	if fp >= MaxFrameDepth {

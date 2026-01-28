@@ -311,14 +311,6 @@ func (p *Parser) parseAssign(name ast.Node) (ast.Node, bool) {
 		p.setTokenError(p.curToken, "unexpected token for assignment: %s", name.String())
 		return nil, false
 	}
-	switch p.curToken.Type {
-	case token.PLUS_EQUALS, token.MINUS_EQUALS, token.SLASH_EQUALS,
-		token.ASTERISK_EQUALS, token.ASSIGN:
-		// this is a valid operator
-	default:
-		p.setTokenError(p.curToken, "unsupported operator for assignment: %s", op)
-		return nil, false
-	}
 	p.nextToken() // move to the RHS value
 	p.eatNewlines()
 	right := p.parseExpression(LOWEST)

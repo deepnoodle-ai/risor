@@ -148,6 +148,8 @@ func (p *Parser) parseList() (ast.Node, bool) {
 
 // parseExprList parses a comma-separated list of expressions until the end token.
 // It wraps parseNodeList and ensures all items are expressions.
+// Special case: Assign nodes with simple ident LHS are converted to DefaultValue
+// to support array destructuring with defaults in arrow functions: ([a = 1]) => ...
 func (p *Parser) parseExprList(end token.Type) []ast.Expr {
 	nodes := p.parseNodeList(end)
 	if nodes == nil {
@@ -155,12 +157,22 @@ func (p *Parser) parseExprList(end token.Type) []ast.Expr {
 	}
 	exprs := make([]ast.Expr, len(nodes))
 	for i, node := range nodes {
-		expr, ok := node.(ast.Expr)
-		if !ok {
-			p.setTokenError(p.curToken, "expected expression in list")
-			return nil
+		// First try direct expression
+		if expr, ok := node.(ast.Expr); ok {
+			exprs[i] = expr
+			continue
 		}
-		exprs[i] = expr
+		// Handle Assign with simple ident LHS - convert to DefaultValue
+		// This supports array destructuring defaults: [a = 1]
+		if assign, ok := node.(*ast.Assign); ok && assign.Name != nil && assign.Op == "=" {
+			exprs[i] = &ast.DefaultValue{
+				Name:    assign.Name,
+				Default: assign.Value,
+			}
+			continue
+		}
+		p.setTokenError(p.curToken, "expected expression in list")
+		return nil
 	}
 	return exprs
 }
@@ -230,7 +242,7 @@ func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 	return list
 }
 
-func (p *Parser) parseMapOrSet() (ast.Node, bool) {
+func (p *Parser) parseMap() (ast.Node, bool) {
 	lbrace := p.curToken.StartPosition
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
@@ -659,14 +671,4 @@ func (p *Parser) parseSpread() (ast.Node, bool) {
 func (p *Parser) parseNewline() (ast.Node, bool) {
 	p.nextToken()
 	return nil, true
-}
-
-func (p *Parser) parseReserved() (ast.Node, bool) {
-	p.setTokenError(p.curToken, "reserved keyword: %s", p.curToken.Literal)
-	return nil, false
-}
-
-func (p *Parser) parseReservedInfix(_ ast.Node) (ast.Node, bool) {
-	p.setTokenError(p.curToken, "reserved operator: %s", p.curToken.Literal)
-	return nil, false
 }

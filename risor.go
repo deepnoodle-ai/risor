@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -24,6 +25,9 @@ var (
 	ErrStepLimitExceeded = vm.ErrStepLimitExceeded
 	ErrStackOverflow     = vm.ErrStackOverflow
 )
+
+// ErrNilCode is returned when Run is called with a nil Code.
+var ErrNilCode = errors.New("code is nil")
 
 // Re-export syntax types for convenient access.
 type (
@@ -502,6 +506,10 @@ func Compile(ctx context.Context, source string, opts ...Option) (*bytecode.Code
 //
 // Use WithRawResult() to receive the object.Object directly without conversion.
 func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) {
+	if code == nil {
+		return nil, ErrNilCode
+	}
+
 	o := collectOptions(opts...)
 
 	// Validate that env keys match the globals expected by the bytecode

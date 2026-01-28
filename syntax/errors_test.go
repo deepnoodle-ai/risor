@@ -47,7 +47,10 @@ func TestValidationErrorsWrapper(t *testing.T) {
 	}
 
 	wrapper := NewValidationErrors(errs)
-	assert.True(t, len(wrapper.Error()) > 0)
+	errStr := wrapper.Error()
+	assert.True(t, strings.Contains(errStr, "2 validation errors"))
+	assert.True(t, strings.Contains(errStr, "error 1"))
+	assert.True(t, strings.Contains(errStr, "error 2"))
 
 	// Test Unwrap
 	var firstErr *ValidationError
@@ -66,7 +69,7 @@ func TestValidationErrorsSingleError(t *testing.T) {
 
 func TestValidationErrorsEmptySlice(t *testing.T) {
 	wrapper := NewValidationErrors([]ValidationError{})
-	assert.Equal(t, wrapper.Error(), "0 validation errors:\n")
+	assert.Equal(t, wrapper.Error(), "no validation errors")
 	assert.Nil(t, wrapper.Unwrap())
 }
 

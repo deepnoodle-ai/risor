@@ -97,6 +97,7 @@ type codeDef struct {
 	LocalCount        int                   `json:"local_count"`
 	GlobalCount       int                   `json:"global_count"`
 	GlobalNames       []string              `json:"global_names,omitempty"`
+	LocalNames        []string              `json:"local_names,omitempty"`
 	ExceptionHandlers []exceptionHandlerDef `json:"exception_handlers,omitempty"`
 }
 
@@ -156,6 +157,11 @@ func stateFromCode(code *Code) (*codeState, error) {
 			globalNames[j] = c.GlobalNameAt(j)
 		}
 
+		localNames := make([]string, c.LocalNameCount())
+		for j := 0; j < c.LocalNameCount(); j++ {
+			localNames[j] = c.LocalNameAt(j)
+		}
+
 		instructions := make([]op.Code, c.InstructionCount())
 		for j := 0; j < c.InstructionCount(); j++ {
 			instructions[j] = c.InstructionAt(j)
@@ -184,6 +190,7 @@ func stateFromCode(code *Code) (*codeState, error) {
 			LocalCount:        c.LocalCount(),
 			GlobalCount:       c.GlobalCount(),
 			GlobalNames:       globalNames,
+			LocalNames:        localNames,
 			ExceptionHandlers: handlers,
 		}
 	}
@@ -253,6 +260,7 @@ func codeFromState(state *codeState) (*Code, error) {
 			LocalCount:        def.LocalCount,
 			GlobalCount:       def.GlobalCount,
 			GlobalNames:       def.GlobalNames,
+			LocalNames:        def.LocalNames,
 			ExceptionHandlers: handlers,
 		})
 	}
@@ -367,6 +375,8 @@ func unmarshalConstantImmutable(data json.RawMessage, codes []*Code) (any, error
 		if err := json.Unmarshal(data, &d); err != nil {
 			return nil, err
 		}
+		// Return as int64 to match the compiler's internal representation.
+		// The VM handles both int and int64 appropriately.
 		return d.Value, nil
 	case "float":
 		var d floatConstantDef

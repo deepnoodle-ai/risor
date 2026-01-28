@@ -481,3 +481,295 @@ func TestPreorderBadStmt(t *testing.T) {
 		t.Errorf("expected 2 nodes, got %d", count)
 	}
 }
+
+// Tests for walking nodes with nil children - ensures Walk/Preorder don't panic
+
+func TestWalkVarNilValue(t *testing.T) {
+	// Walk should handle Var with nil Value
+	program := &Program{
+		Stmts: []Node{
+			&Var{
+				Let:   token.Position{Line: 1, Column: 1},
+				Name:  &Ident{NamePos: token.Position{Line: 1, Column: 5}, Name: "x"},
+				Value: nil,
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, Var (Value is nil, so not visited)
+	if count != 2 {
+		t.Errorf("expected 2 nodes, got %d", count)
+	}
+}
+
+func TestWalkInfixNilOperands(t *testing.T) {
+	// Walk should handle Infix with nil X or Y
+	program := &Program{
+		Stmts: []Node{
+			&Infix{
+				X:     nil,
+				OpPos: token.Position{Line: 1, Column: 3},
+				Op:    "+",
+				Y:     &Int{ValuePos: token.Position{Line: 1, Column: 5}, Value: 2},
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, Infix, Int (X is nil)
+	if count != 3 {
+		t.Errorf("expected 3 nodes, got %d", count)
+	}
+}
+
+func TestWalkObjectDestructureParam(t *testing.T) {
+	// Walk should handle ObjectDestructureParam with defaults
+	program := &Program{
+		Stmts: []Node{
+			&Func{
+				Func:   token.Position{Line: 1, Column: 1},
+				Lparen: token.Position{Line: 1, Column: 9},
+				Params: []FuncParam{
+					&ObjectDestructureParam{
+						Lbrace: token.Position{Line: 1, Column: 10},
+						Bindings: []DestructureBinding{
+							{Key: "a", Default: &Int{ValuePos: token.Position{Line: 1, Column: 15}, Value: 1}},
+							{Key: "b", Default: nil}, // no default
+						},
+						Rbrace: token.Position{Line: 1, Column: 20},
+					},
+				},
+				Rparen: token.Position{Line: 1, Column: 21},
+				Body: &Block{
+					Lbrace: token.Position{Line: 1, Column: 23},
+					Stmts:  []Node{},
+					Rbrace: token.Position{Line: 1, Column: 25},
+				},
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, Func, ObjectDestructureParam, Int (default), Block
+	if count != 5 {
+		t.Errorf("expected 5 nodes, got %d", count)
+	}
+}
+
+func TestWalkArrayDestructureParam(t *testing.T) {
+	// Walk should handle ArrayDestructureParam with defaults
+	program := &Program{
+		Stmts: []Node{
+			&Func{
+				Func:   token.Position{Line: 1, Column: 1},
+				Lparen: token.Position{Line: 1, Column: 9},
+				Params: []FuncParam{
+					&ArrayDestructureParam{
+						Lbrack: token.Position{Line: 1, Column: 10},
+						Elements: []ArrayDestructureElement{
+							{
+								Name:    &Ident{NamePos: token.Position{Line: 1, Column: 11}, Name: "a"},
+								Default: &Int{ValuePos: token.Position{Line: 1, Column: 15}, Value: 1},
+							},
+							{
+								Name:    &Ident{NamePos: token.Position{Line: 1, Column: 18}, Name: "b"},
+								Default: nil, // no default
+							},
+						},
+						Rbrack: token.Position{Line: 1, Column: 20},
+					},
+				},
+				Rparen: token.Position{Line: 1, Column: 21},
+				Body: &Block{
+					Lbrace: token.Position{Line: 1, Column: 23},
+					Stmts:  []Node{},
+					Rbrace: token.Position{Line: 1, Column: 25},
+				},
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, Func, ArrayDestructureParam, Ident(a), Int(default), Ident(b), Block
+	if count != 7 {
+		t.Errorf("expected 7 nodes, got %d", count)
+	}
+}
+
+func TestWalkDefaultValue(t *testing.T) {
+	// Walk should handle DefaultValue node
+	program := &Program{
+		Stmts: []Node{
+			&DefaultValue{
+				Name:    &Ident{NamePos: token.Position{Line: 1, Column: 1}, Name: "x"},
+				Default: &Int{ValuePos: token.Position{Line: 1, Column: 5}, Value: 42},
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, DefaultValue, Ident, Int
+	if count != 4 {
+		t.Errorf("expected 4 nodes, got %d", count)
+	}
+}
+
+func TestPreorderVarNilValue(t *testing.T) {
+	// Preorder should handle Var with nil Value
+	program := &Program{
+		Stmts: []Node{
+			&Var{
+				Let:   token.Position{Line: 1, Column: 1},
+				Name:  &Ident{NamePos: token.Position{Line: 1, Column: 5}, Name: "x"},
+				Value: nil,
+			},
+		},
+	}
+
+	var count int
+	for range Preorder(program) {
+		count++
+	}
+
+	// Program, Var (Value is nil)
+	if count != 2 {
+		t.Errorf("expected 2 nodes, got %d", count)
+	}
+}
+
+func TestPreorderObjectDestructureParam(t *testing.T) {
+	// Preorder should handle ObjectDestructureParam
+	param := &ObjectDestructureParam{
+		Lbrace: token.Position{Line: 1, Column: 10},
+		Bindings: []DestructureBinding{
+			{Key: "a", Default: &Int{ValuePos: token.Position{Line: 1, Column: 15}, Value: 1}},
+		},
+		Rbrace: token.Position{Line: 1, Column: 20},
+	}
+
+	var count int
+	for range Preorder(param) {
+		count++
+	}
+
+	// ObjectDestructureParam, Int (default)
+	if count != 2 {
+		t.Errorf("expected 2 nodes, got %d", count)
+	}
+}
+
+func TestWalkStringWithExprs(t *testing.T) {
+	// Walk should visit template expressions in strings
+	program := &Program{
+		Stmts: []Node{
+			&String{
+				ValuePos: token.Position{Line: 1, Column: 1},
+				Literal:  `"hello {name}"`,
+				Value:    "hello {name}",
+				Exprs: []Expr{
+					&Ident{NamePos: token.Position{Line: 1, Column: 8}, Name: "name"},
+				},
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, String, Ident
+	if count != 3 {
+		t.Errorf("expected 3 nodes, got %d", count)
+	}
+}
+
+func TestWalkTryNilParts(t *testing.T) {
+	// Walk should handle Try with nil CatchBlock and FinallyBlock
+	program := &Program{
+		Stmts: []Node{
+			&Try{
+				Try: token.Position{Line: 1, Column: 1},
+				Body: &Block{
+					Lbrace: token.Position{Line: 1, Column: 5},
+					Stmts:  []Node{},
+					Rbrace: token.Position{Line: 1, Column: 7},
+				},
+				CatchIdent:   nil,
+				CatchBlock:   nil,
+				FinallyBlock: nil,
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, Try, Block
+	if count != 3 {
+		t.Errorf("expected 3 nodes, got %d", count)
+	}
+}
+
+func TestWalkMapWithSpread(t *testing.T) {
+	// Walk should handle Map with spread items (Key is nil)
+	program := &Program{
+		Stmts: []Node{
+			&Map{
+				Lbrace: token.Position{Line: 1, Column: 1},
+				Items: []MapItem{
+					{
+						Key:   nil, // spread
+						Value: &Ident{NamePos: token.Position{Line: 1, Column: 5}, Name: "other"},
+					},
+					{
+						Key:   &String{ValuePos: token.Position{Line: 1, Column: 12}, Value: "a"},
+						Value: &Int{ValuePos: token.Position{Line: 1, Column: 17}, Value: 1},
+					},
+				},
+				Rbrace: token.Position{Line: 1, Column: 18},
+			},
+		},
+	}
+
+	var count int
+	Inspect(program, func(n Node) bool {
+		count++
+		return true
+	})
+
+	// Program, Map, Ident(other), String(key), Int(value)
+	if count != 5 {
+		t.Errorf("expected 5 nodes, got %d", count)
+	}
+}

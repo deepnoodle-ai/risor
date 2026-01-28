@@ -46,6 +46,9 @@ func (c *Cell) Value() Object {
 }
 
 func (c *Cell) Set(value Object) {
+	if c.value == nil {
+		return
+	}
 	*c.value = value
 }
 
