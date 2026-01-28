@@ -52,6 +52,8 @@ const (
 	RESULT        Type = "result"
 	STRING        Type = "string"
 	TIME          Type = "time"
+	GOFUNC        Type = "go_func"
+	GOSTRUCT      Type = "go_struct"
 )
 
 var (

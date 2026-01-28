@@ -254,6 +254,10 @@ func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type) (Object, error) {
 		if rv.IsNil() {
 			return Nil, nil
 		}
+		// Check if it's a pointer to a struct
+		if rv.Elem().Kind() == reflect.Struct {
+			return NewGoStruct(rv, r), nil
+		}
 		return r.FromGo(rv.Elem().Interface())
 	case reflect.Interface:
 		if rv.IsNil() {
@@ -261,8 +265,12 @@ func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type) (Object, error) {
 		}
 		return r.FromGo(rv.Elem().Interface())
 	case reflect.Func:
-		// Functions can't be converted automatically
-		return nil, fmt.Errorf("cannot convert function type %s to Risor object", typ)
+		return NewGoFunc(rv, typ.String(), r), nil
+	case reflect.Struct:
+		// Wrap as GoStruct (create pointer for addressability)
+		ptrVal := reflect.New(typ)
+		ptrVal.Elem().Set(rv)
+		return NewGoStruct(ptrVal, r), nil
 	default:
 		return nil, fmt.Errorf("unsupported type: %s (kind: %s)", typ, typ.Kind())
 	}

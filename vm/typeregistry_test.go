@@ -234,21 +234,29 @@ func TestTypeRegistryWithDifferentGlobalTypes(t *testing.T) {
 	}
 }
 
-func TestTypeRegistryErrorOnInvalidGlobal(t *testing.T) {
-	// Functions cannot be converted to Risor objects
+func TestTypeRegistryGoFuncGlobal(t *testing.T) {
+	// Functions are now converted to GoFunc objects
 	globals := map[string]any{
-		"fn": func() {},
+		"fn": func() int { return 42 },
 	}
 
-	ast, err := parser.Parse(context.Background(), "fn", nil)
+	ast, err := parser.Parse(context.Background(), "fn()", nil)
 	assert.Nil(t, err)
 
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"fn"}})
 	assert.Nil(t, err)
 
-	// New() should return an error because of invalid global
-	_, err = New(code, WithGlobals(globals))
-	assert.NotNil(t, err)
+	// New() should succeed because functions are now supported
+	vm, err := New(code, WithGlobals(globals))
+	assert.Nil(t, err)
+
+	// Running should call the function and return 42
+	err = vm.Run(context.Background())
+	assert.Nil(t, err)
+
+	tos, ok := vm.TOS()
+	assert.True(t, ok)
+	assert.Equal(t, tos.(*object.Int).Value(), int64(42))
 }
 
 func TestNewEmptyWithTypeRegistry(t *testing.T) {
