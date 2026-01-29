@@ -105,6 +105,10 @@ type Parser struct {
 
 	// Maximum allowed recursion depth
 	maxDepth int
+
+	// inPatternContext is true when parsing match patterns, which disables
+	// arrow function parsing (since => is the arm separator in match)
+	inPatternContext bool
 }
 
 // New returns a Parser for the program provided by the given Lexer.
@@ -146,6 +150,7 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	p.registerPrefix(token.NIL, p.parseNil)
 	p.registerPrefix(token.PIPE, p.parsePrefixExpr)
 	p.registerPrefix(token.STRING, p.parseString)
+	p.registerPrefix(token.MATCH, p.parseMatch)
 	p.registerPrefix(token.SWITCH, p.parseSwitch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.SPREAD, p.parseSpread)

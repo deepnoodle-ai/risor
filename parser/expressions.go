@@ -24,7 +24,8 @@ func (p *Parser) parseIdent() (ast.Node, bool) {
 	ident := p.newIdent(p.curToken)
 
 	// Check for single-param arrow function: x => expr
-	if p.peekTokenIs(token.ARROW) {
+	// But not in pattern context (where => is the match arm separator)
+	if p.peekTokenIs(token.ARROW) && !p.inPatternContext {
 		arrowPos := p.curToken.StartPosition
 		p.nextToken() // move to '=>'
 		return p.parseArrowBody(arrowPos, []ast.FuncParam{ident}, nil)
@@ -136,8 +137,8 @@ func (p *Parser) parseGroupedExpr() (ast.Node, bool) {
 	}
 	p.nextToken() // move to ')'
 
-	// Check for arrow function
-	if p.peekTokenIs(token.ARROW) {
+	// Check for arrow function (but not in pattern context)
+	if p.peekTokenIs(token.ARROW) && !p.inPatternContext {
 		p.nextToken() // move to '=>'
 		return p.parseArrowParams(openParen, items)
 	}
@@ -789,4 +790,162 @@ func (p *Parser) parseOptionalChain(objNode ast.Node) (ast.Node, bool) {
 	}
 	// Optional chaining does not support assignment
 	return &ast.GetAttr{X: obj, Period: period, Attr: name, Optional: true}, true
+}
+
+// parseMatch parses a match expression: match subject { pattern => result, ... }
+func (p *Parser) parseMatch() (ast.Node, bool) {
+	matchPos := p.curToken.StartPosition
+
+	// Parse the subject expression
+	p.nextToken()
+	subject := p.parseExpression(LOWEST)
+	if subject == nil {
+		return nil, false
+	}
+
+	// Expect opening brace
+	if !p.expectPeek("match expression", token.LBRACE) {
+		return nil, false
+	}
+	lbrace := p.curToken.StartPosition
+	p.nextToken()
+	p.eatNewlines()
+
+	// Parse match arms
+	var arms []*ast.MatchArm
+	var defaultArm *ast.MatchArm
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if p.cancelled() {
+			return nil, false
+		}
+
+		arm, isDefault := p.parseMatchArm()
+		if arm == nil {
+			return nil, false
+		}
+
+		if isDefault {
+			if defaultArm != nil {
+				p.setTokenError(p.curToken, "match expression has multiple default arms")
+				return nil, false
+			}
+			defaultArm = arm
+		} else {
+			arms = append(arms, arm)
+		}
+
+		// After parsing an arm, curToken is on the last token of the result.
+		// We need to advance to the next token to check for more arms or end.
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken() // move to comma
+			p.nextToken() // move past comma to next pattern
+			p.eatNewlines()
+		} else if p.peekTokenIs(token.NEWLINE) {
+			p.nextToken() // move to newline
+			p.eatNewlines()
+			// After newlines, if not at RBRACE, we should be at the next pattern
+			if !p.curTokenIs(token.RBRACE) {
+				continue // curToken is now the next pattern
+			}
+		} else if p.peekTokenIs(token.RBRACE) {
+			// Move to the closing brace so the loop exits
+			p.nextToken()
+		} else {
+			// Something else follows - try to parse as next pattern
+			p.nextToken()
+			p.eatNewlines()
+		}
+	}
+
+	// Require a default arm
+	if defaultArm == nil {
+		p.setTokenError(p.curToken, "match expression requires a default arm (_)")
+		return nil, false
+	}
+
+	if !p.curTokenIs(token.RBRACE) {
+		p.peekError("match expression", token.RBRACE, p.curToken)
+		return nil, false
+	}
+	rbrace := p.curToken.StartPosition
+
+	return &ast.Match{
+		Match:   matchPos,
+		Subject: subject,
+		Lbrace:  lbrace,
+		Arms:    arms,
+		Default: defaultArm,
+		Rbrace:  rbrace,
+	}, true
+}
+
+// parseMatchArm parses a single match arm: pattern => result
+// Returns the arm and whether it's a default arm (wildcard pattern).
+func (p *Parser) parseMatchArm() (*ast.MatchArm, bool) {
+	pattern := p.parsePattern()
+	if pattern == nil {
+		return nil, false
+	}
+
+	isDefault := false
+	if _, ok := pattern.(*ast.WildcardPattern); ok {
+		isDefault = true
+	}
+
+	// Expect =>
+	if !p.expectPeek("match arm", token.ARROW) {
+		return nil, false
+	}
+	arrowPos := p.curToken.StartPosition
+
+	// Parse the result expression
+	p.nextToken()
+	p.eatNewlines()
+
+	result := p.parseExpression(LOWEST)
+	if result == nil {
+		p.setTokenError(p.curToken, "invalid match arm result")
+		return nil, false
+	}
+
+	return &ast.MatchArm{
+		Pattern: pattern,
+		Arrow:   arrowPos,
+		Result:  result,
+	}, isDefault
+}
+
+// parsePattern parses a pattern for a match arm.
+// Patterns can be arbitrary expressions (evaluated at runtime for comparison).
+// The special identifier "_" is the wildcard pattern that matches anything.
+func (p *Parser) parsePattern() ast.Pattern {
+	// Check for wildcard pattern (underscore identifier)
+	if p.curTokenIs(token.IDENT) && p.curToken.Literal == "_" {
+		return &ast.WildcardPattern{Underscore: p.curToken.StartPosition}
+	}
+
+	// Spread is not supported in patterns
+	if p.curTokenIs(token.SPREAD) {
+		p.setTokenError(p.curToken, "spread operator not supported in match patterns")
+		return nil
+	}
+
+	// Set pattern context to prevent arrow function parsing
+	// (since => is the match arm separator)
+	p.inPatternContext = true
+	expr := p.parseExpression(LOWEST)
+	p.inPatternContext = false
+
+	if expr == nil {
+		return nil
+	}
+
+	// Check for spread in the parsed expression
+	if _, ok := expr.(*ast.Spread); ok {
+		p.setTokenError(p.curToken, "spread operator not supported in match patterns")
+		return nil
+	}
+
+	return &ast.LiteralPattern{Value: expr}
 }

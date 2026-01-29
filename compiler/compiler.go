@@ -366,6 +366,10 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileSwitch(node); err != nil {
 			return err
 		}
+	case *ast.Match:
+		if err := c.compileMatch(node); err != nil {
+			return err
+		}
 	case *ast.MultiVar:
 		if err := c.compileMultiVar(node); err != nil {
 			return err
@@ -931,6 +935,104 @@ func (c *Compiler) compileSwitch(node *ast.Switch) error {
 
 	// Remove the duplicated switch value from the stack
 	c.emit(op.PopTop)
+	return nil
+}
+
+func (c *Compiler) compileMatch(node *ast.Match) error {
+	// Compile the subject expression (remains on stack for comparisons)
+	if err := c.compile(node.Subject); err != nil {
+		return err
+	}
+
+	arms := node.Arms
+
+	// Emit pattern match and jump positions for each arm
+	var armJumpPositions []int
+
+	for _, arm := range arms {
+		// Duplicate the subject value for pattern matching
+		c.emit(op.Copy, 0)
+
+		// Compile the pattern match (leaves true/false on stack)
+		if err := c.compilePatternMatch(arm.Pattern); err != nil {
+			return err
+		}
+
+		// Jump to this arm's body if pattern matches
+		jumpPos := c.emit(op.PopJumpForwardIfTrue, Placeholder)
+		armJumpPositions = append(armJumpPositions, jumpPos)
+	}
+
+	// Jump to default arm if no patterns matched
+	jumpDefaultPos := c.emit(op.JumpForward, Placeholder)
+
+	// Compile each arm's body
+	var endBlockPositions []int
+	for i, arm := range arms {
+		// Patch the jump to this arm's body
+		delta, err := c.calculateDelta(armJumpPositions[i])
+		if err != nil {
+			return err
+		}
+		c.changeOperand(armJumpPositions[i], delta)
+
+		// Compile the arm's result expression
+		if err := c.compile(arm.Result); err != nil {
+			return err
+		}
+
+		// Jump to end after arm body
+		endBlockPositions = append(endBlockPositions, c.emit(op.JumpForward, Placeholder))
+	}
+
+	// Patch jump to default arm
+	delta, err := c.calculateDelta(jumpDefaultPos)
+	if err != nil {
+		return err
+	}
+	c.changeOperand(jumpDefaultPos, delta)
+
+	// Compile the default arm's body
+	if err := c.compile(node.Default.Result); err != nil {
+		return err
+	}
+
+	// Patch all end jumps to point here
+	for _, pos := range endBlockPositions {
+		delta, err := c.calculateDelta(pos)
+		if err != nil {
+			return err
+		}
+		c.changeOperand(pos, delta)
+	}
+
+	// Swap result with subject and pop subject
+	c.emit(op.Swap, 1)
+	c.emit(op.PopTop)
+
+	return nil
+}
+
+// compilePatternMatch compiles code to match the TOS value against a pattern.
+// Leaves true or false on the stack.
+func (c *Compiler) compilePatternMatch(pattern ast.Pattern) error {
+	switch p := pattern.(type) {
+	case *ast.LiteralPattern:
+		// Compile the literal value
+		if err := c.compile(p.Value); err != nil {
+			return err
+		}
+		// Compare TOS (literal) with TOS-1 (subject copy)
+		c.emit(op.CompareOp, uint16(op.Equal))
+
+	case *ast.WildcardPattern:
+		// Wildcard matches everything - pop the copy and push true
+		c.emit(op.PopTop)
+		c.emit(op.True)
+
+	default:
+		return c.formatError("unsupported pattern type", pattern.Pos())
+	}
 	return nil
 }
 
