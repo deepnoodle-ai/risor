@@ -1,0 +1,35 @@
+{
+  "name": "risor",
+  "version": "2.0.0",
+  "description": "Fast, embedded scripting language for TypeScript/JavaScript",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "risor": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cli": "tsx src/cli.ts",
+    "repl": "tsx src/repl.ts",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write src"
+  },
+  "keywords": [
+    "scripting",
+    "language",
+    "interpreter",
+    "embedded"
+  ],
+  "author": "DeepNoodle",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

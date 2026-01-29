@@ -1,0 +1,9 @@
+[package]
+name = "risor-bytecode"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Bytecode definitions for the Risor scripting language"
+
+[dependencies]

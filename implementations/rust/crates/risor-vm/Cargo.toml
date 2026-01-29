@@ -1,0 +1,11 @@
+[package]
+name = "risor-vm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Virtual machine for the Risor scripting language"
+
+[dependencies]
+risor-bytecode = { path = "../risor-bytecode" }
+thiserror.workspace = true

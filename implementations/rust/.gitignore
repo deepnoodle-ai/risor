@@ -1,0 +1,19 @@
+# Build output
+target/
+
+# Cargo lock (optional for libraries, but we'll keep it for workspace)
+# Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.orig

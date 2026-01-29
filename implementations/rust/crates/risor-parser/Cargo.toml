@@ -1,0 +1,11 @@
+[package]
+name = "risor-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Parser for the Risor scripting language"
+
+[dependencies]
+risor-lexer = { path = "../risor-lexer" }
+thiserror.workspace = true

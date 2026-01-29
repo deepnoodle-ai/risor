@@ -1,0 +1,13 @@
+[package]
+name = "risor-compiler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Compiler for the Risor scripting language"
+
+[dependencies]
+risor-lexer = { path = "../risor-lexer" }
+risor-parser = { path = "../risor-parser" }
+risor-bytecode = { path = "../risor-bytecode" }
+thiserror.workspace = true

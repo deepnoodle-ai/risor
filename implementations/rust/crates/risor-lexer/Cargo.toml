@@ -1,0 +1,10 @@
+[package]
+name = "risor-lexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lexer for the Risor scripting language"
+
+[dependencies]
+thiserror.workspace = true

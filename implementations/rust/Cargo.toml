@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/risor",
+    "crates/risor-lexer",
+    "crates/risor-parser",
+    "crates/risor-bytecode",
+    "crates/risor-compiler",
+    "crates/risor-vm",
+    "crates/risor-cli",
+]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2024"
+license = "MIT"
+authors = ["DeepNoodle <engineering@deepnoodle.ai>"]
+repository = "https://github.com/deepnoodle-ai/risor"
+description = "Fast, embedded scripting language for Rust"
+
+[workspace.dependencies]
+thiserror = "2"
