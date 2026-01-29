@@ -496,6 +496,13 @@ func TestTypeRegistryNilHandling(t *testing.T) {
 		assert.Equal(t, result, Nil)
 	})
 
+	t.Run("FromGo nil func", func(t *testing.T) {
+		var fn func()
+		result, err := registry.FromGo(fn)
+		assert.Nil(t, err)
+		assert.Equal(t, result, Nil)
+	})
+
 	t.Run("ToGo nil to pointer", func(t *testing.T) {
 		result, err := registry.ToGo(Nil, reflect.TypeOf((*int)(nil)))
 		assert.Nil(t, err)
@@ -673,10 +680,12 @@ func TestTypeRegistryEmptyContainers(t *testing.T) {
 func TestTypeRegistryErrorCases(t *testing.T) {
 	registry := DefaultRegistry()
 
-	t.Run("FromGo unsupported type (func)", func(t *testing.T) {
+	t.Run("FromGo func converts to GoFunc", func(t *testing.T) {
 		fn := func() {}
-		_, err := registry.FromGo(fn)
-		assert.NotNil(t, err)
+		result, err := registry.FromGo(fn)
+		assert.Nil(t, err)
+		_, ok := result.(*GoFunc)
+		assert.True(t, ok)
 	})
 
 	t.Run("FromGo unsupported map key type", func(t *testing.T) {
@@ -852,19 +861,21 @@ func TestAsObjectsWithRegistry(t *testing.T) {
 	assert.Equal(t, result["normal"], NewInt(42)) // Default
 }
 
-func TestAsObjectsError(t *testing.T) {
+func TestAsObjectsWithFunc(t *testing.T) {
 	m := map[string]any{
-		"bad": func() {}, // Functions can't be converted
+		"fn": func() {}, // Functions are now converted to GoFunc
 	}
 
-	_, err := AsObjects(m)
-	assert.NotNil(t, err)
+	result, err := AsObjects(m)
+	assert.Nil(t, err)
+	_, ok := result["fn"].(*GoFunc)
+	assert.True(t, ok)
 }
 
-func TestFromGoTypeError(t *testing.T) {
-	// FromGoType returns error as Object
+func TestFromGoTypeFunc(t *testing.T) {
+	// FromGoType now converts functions to GoFunc
 	result := FromGoType(func() {})
-	_, ok := result.(*Error)
+	_, ok := result.(*GoFunc)
 	assert.True(t, ok)
 }
 

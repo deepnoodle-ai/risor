@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -1151,5 +1152,118 @@ func TestMultilineDestructureParams(t *testing.T) {
 		`)
 		assert.Nil(t, err)
 		assert.Equal(t, result, int64(70))
+	})
+}
+
+// =============================================================================
+// GO FUNCTIONS AND STRUCTS IN ENVIRONMENT
+// =============================================================================
+
+func TestGoFuncInEnv(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("simple Go function", func(t *testing.T) {
+		env := map[string]any{
+			"double": func(x int) int { return x * 2 },
+		}
+		result, err := Eval(ctx, "double(21)", WithEnv(env))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(42))
+	})
+
+	t.Run("sprintf-style function", func(t *testing.T) {
+		env := map[string]any{
+			"sprintf": func(format string, args ...any) string {
+				return strings.ReplaceAll(format, "%s", args[0].(string))
+			},
+		}
+		result, err := Eval(ctx, `sprintf("Hello, %s!", "world")`, WithEnv(env))
+		assert.Nil(t, err)
+		assert.Equal(t, result, "Hello, world!")
+	})
+
+	t.Run("function with context", func(t *testing.T) {
+		type ctxKey string
+		env := map[string]any{
+			"getValue": func(ctx context.Context) string {
+				if v := ctx.Value(ctxKey("test")); v != nil {
+					return v.(string)
+				}
+				return "default"
+			},
+		}
+		ctxWithValue := context.WithValue(ctx, ctxKey("test"), "from-context")
+		result, err := Eval(ctxWithValue, "getValue()", WithEnv(env))
+		assert.Nil(t, err)
+		assert.Equal(t, result, "from-context")
+	})
+
+	t.Run("function returning error", func(t *testing.T) {
+		env := map[string]any{
+			"mayFail": func(shouldFail bool) (string, error) {
+				if shouldFail {
+					return "", errors.New("intentional error")
+				}
+				return "success", nil
+			},
+		}
+		result, err := Eval(ctx, "mayFail(false)", WithEnv(env))
+		assert.Nil(t, err)
+		assert.Equal(t, result, "success")
+	})
+}
+
+type TestTweet struct {
+	Text string
+	Len  int
+}
+
+func (t *TestTweet) Summary() string {
+	return t.Text[:min(t.Len, len(t.Text))]
+}
+
+func TestGoStructInEnv(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("struct field access", func(t *testing.T) {
+		env := map[string]any{
+			"tweet": &TestTweet{Text: "Hello, world!", Len: 5},
+		}
+		result, err := Eval(ctx, "tweet.Len", WithEnv(env))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(5))
+	})
+
+	t.Run("struct method call", func(t *testing.T) {
+		env := map[string]any{
+			"tweet": &TestTweet{Text: "Hello, world!", Len: 5},
+		}
+		result, err := Eval(ctx, "tweet.Summary()", WithEnv(env))
+		assert.Nil(t, err)
+		assert.Equal(t, result, "Hello")
+	})
+
+	t.Run("slice of structs", func(t *testing.T) {
+		tweets := []*TestTweet{
+			{Text: "First", Len: 10},
+			{Text: "Second", Len: 20},
+		}
+		env := map[string]any{
+			"tweets": tweets,
+		}
+		result, err := Eval(ctx, "tweets[1].Len", WithEnv(env))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(20))
+	})
+
+	t.Run("struct field modification", func(t *testing.T) {
+		tweet := &TestTweet{Text: "Original", Len: 10}
+		env := map[string]any{
+			"tweet": tweet,
+		}
+		_, err := Eval(ctx, "tweet.Len = 99", WithEnv(env))
+		assert.Nil(t, err)
+		// Verify the underlying struct was modified
+		assert.Equal(t, tweet.Len, 99)
 	})
 }
