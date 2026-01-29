@@ -181,8 +181,12 @@ func (l *Lexer) Next() (token.Token, error) {
 			ch := l.ch
 			l.readChar()
 			tok = l.newToken(token.OR, string(ch)+string(l.ch))
+		} else if l.peekChar() == rune('>') {
+			ch := l.ch
+			l.readChar()
+			tok = l.newToken(token.PIPE, string(ch)+string(l.ch))
 		} else {
-			tok = l.newToken(token.PIPE, string(l.ch))
+			tok = l.newToken(token.BITOR, string(l.ch))
 		}
 	case rune('^'):
 		tok = l.newToken(token.CARET, string(l.ch))

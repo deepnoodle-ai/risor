@@ -1062,13 +1062,13 @@ func TestStrings(t *testing.T) {
 func TestPipes(t *testing.T) {
 	tests := []testCase{
 		{`"hello".to_upper()`, object.NewString("HELLO")},
-		{`"hello" | len`, object.NewInt(5)},
-		{`function() { "hello" }() | len`, object.NewInt(5)},
+		{`"hello" |> len`, object.NewInt(5)},
+		{`function() { "hello" }() |> len`, object.NewInt(5)},
 		{`",".join(["a", "b"]).to_upper()`, object.NewString("A,B")},
-		{`function() { "a" } | call`, object.NewString("a")},
-		{`"abc" | getattr("to_upper") | call`, object.NewString("ABC")},
-		{`"abc" | function(s) { s.to_upper() }`, object.NewString("ABC")},
-		{`[11, 12, 3] | math.sum`, object.NewFloat(26)},
+		{`function() { "a" } |> call`, object.NewString("a")},
+		{`"abc" |> getattr("to_upper") |> call`, object.NewString("ABC")},
+		{`"abc" |> function(s) { s.to_upper() }`, object.NewString("ABC")},
+		{`[11, 12, 3] |> math.sum`, object.NewFloat(26)},
 	}
 	runTests(t, tests)
 }
@@ -1370,8 +1370,8 @@ func TestIncorrectArgCount(t *testing.T) {
 		{`function ex(x, y) { 1 }; ex(0)`, "args error: function \"ex\" takes 2 arguments (1 given)"},
 		{`function ex(x, y) { 1 }; ex(1, 2, 3)`, "args error: function \"ex\" takes 2 arguments (3 given)"},
 		{`function ex() { 1 }; [1, 2].filter(ex)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`function ex() { 1 }; "foo" | ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`"foo" | "bar"`, "type error: object is not callable (got string)"},
+		{`function ex() { 1 }; "foo" |> ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`"foo" |> "bar"`, "type error: object is not callable (got string)"},
 	}
 	for _, tt := range tests {
 		_, err := run(context.Background(), tt.input)

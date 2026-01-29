@@ -1192,7 +1192,7 @@ func TestCRLFNewlines(t *testing.T) {
 	}
 }
 
-func TestSinglePipe(t *testing.T) {
+func TestPipeAndBitorTokens(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected []struct {
@@ -1201,19 +1201,31 @@ func TestSinglePipe(t *testing.T) {
 		}
 	}{
 		{
+			input: "a |> b",
+			expected: []struct {
+				typ     token.Type
+				literal string
+			}{
+				{token.IDENT, "a"},
+				{token.PIPE, "|>"},
+				{token.IDENT, "b"},
+				{token.EOF, ""},
+			},
+		},
+		{
 			input: "a | b",
 			expected: []struct {
 				typ     token.Type
 				literal string
 			}{
 				{token.IDENT, "a"},
-				{token.PIPE, "|"},
+				{token.BITOR, "|"},
 				{token.IDENT, "b"},
 				{token.EOF, ""},
 			},
 		},
 		{
-			input: "a || b | c",
+			input: "a || b |> c",
 			expected: []struct {
 				typ     token.Type
 				literal string
@@ -1221,7 +1233,7 @@ func TestSinglePipe(t *testing.T) {
 				{token.IDENT, "a"},
 				{token.OR, "||"},
 				{token.IDENT, "b"},
-				{token.PIPE, "|"},
+				{token.PIPE, "|>"},
 				{token.IDENT, "c"},
 				{token.EOF, ""},
 			},

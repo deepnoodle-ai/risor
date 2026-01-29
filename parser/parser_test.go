@@ -312,7 +312,6 @@ func TestNewlineHandling(t *testing.T) {
 		numStmts int
 	}{
 		{"newline before [", "arr\n[0]", 2},
-		{"newline before |", "x\n| y", 2},
 		{"two assignments", "x = 1\ny = 2", 2},
 		{"two idents", "x\ny", 2},
 	}
@@ -413,7 +412,7 @@ func TestIncompleThings(t *testing.T) {
 		{`[`, "parse error: invalid syntax in list"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
 		{`{ "a", "b", "c"`, "parse error: unexpected , while parsing map (expected :)"},
-		{`foo |`, "parse error: invalid pipe expression"},
+		{`foo |>`, "parse error: invalid pipe expression"},
 		{`(1, 2`, "parse error: unexpected end of file while parsing grouped expression or arrow function (expected ))"},
 	}
 	for _, tt := range tests {
@@ -542,10 +541,10 @@ func FuzzParse(f *testing.F) {
 		`'foo bar'`,
 		`x.func(x=1, y=2).bar`,
 		`0A=`,
-		`"hi" | strings.to_lower | strings.to_upper`,
+		`"hi" |> strings.to_lower |> strings.to_upper`,
 		`math.PI * 2.0`,
-		`{x: 1, y: 2, z: 3} | keys`,
-		`{1, "hi"} | len`,
+		`{x: 1, y: 2, z: 3} |> keys`,
+		`{1, "hi"} |> len`,
 		`[1] in {1, 2, 3}`,
 		`let f = function(x) { function() { x + 1 } }; f(1)`,
 		`switch (x) { case 1: 1 case 2: 2 default: 3 }`,

@@ -235,7 +235,7 @@ func (x *Pipe) String() string {
 		args = append(args, a.String())
 	}
 	out.WriteString("(")
-	out.WriteString(strings.Join(args, " | "))
+	out.WriteString(strings.Join(args, " |> "))
 	out.WriteString(")")
 	return out.String()
 }

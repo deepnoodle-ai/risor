@@ -142,7 +142,7 @@ func TestEdgeCases(t *testing.T) {
 		config := SyntaxConfig{DisallowPipe: true}
 		validator := NewSyntaxValidator(config)
 
-		source := "x | foo | bar | baz"
+		source := "x |> foo |> bar |> baz"
 		program := parse(t, source)
 		errs := validator.Validate(program)
 		// Even though there's one pipe expression, it should be caught once

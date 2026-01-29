@@ -287,7 +287,7 @@ func TestPipe(t *testing.T) {
 	}
 
 	assert.Equal(t, pipe.Pos().Column, 1)
-	assert.Equal(t, pipe.String(), "(a | b | c)")
+	assert.Equal(t, pipe.String(), "(a |> b |> c)")
 }
 
 func TestObjectCall(t *testing.T) {

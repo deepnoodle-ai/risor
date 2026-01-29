@@ -467,9 +467,9 @@ func TestPipe(t *testing.T) {
 		exprType       string
 		expectedIdents []string
 	}{
-		{"let x = foo | bar;", "ident", []string{"foo", "bar"}},
-		{`let x = foo() | bar(name="foo") | baz(y=4);`, "call", []string{"foo", "bar", "baz"}},
-		{`let x = a() | b();`, "call", []string{"a", "b"}},
+		{"let x = foo |> bar;", "ident", []string{"foo", "bar"}},
+		{`let x = foo() |> bar(name="foo") |> baz(y=4);`, "call", []string{"foo", "bar", "baz"}},
+		{`let x = a() |> b();`, "call", []string{"a", "b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -504,7 +504,7 @@ func TestPipe(t *testing.T) {
 }
 
 func TestPipeAST(t *testing.T) {
-	program, err := Parse(context.Background(), "data | filter | sort", nil)
+	program, err := Parse(context.Background(), "data |> filter |> sort", nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)

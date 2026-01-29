@@ -107,7 +107,7 @@ func TestWithSyntaxBasicScripting(t *testing.T) {
 	})
 
 	t.Run("allows pipe", func(t *testing.T) {
-		result, err := Eval(ctx, `[1, 2, 3] | len`,
+		result, err := Eval(ctx, `[1, 2, 3] |> len`,
 			WithEnv(Builtins()),
 			WithSyntax(BasicScripting))
 		assert.Nil(t, err)

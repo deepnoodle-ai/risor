@@ -1998,6 +1998,8 @@ func (c *Compiler) compileInfix(node *ast.Infix) error {
 		c.emit(op.BinaryOp, uint16(op.RShift))
 	case "&":
 		c.emit(op.BinaryOp, uint16(op.BitwiseAnd))
+	case "|":
+		c.emit(op.BinaryOp, uint16(op.BitwiseOr))
 	case "^":
 		c.emit(op.BinaryOp, uint16(op.Xor))
 	case ">":

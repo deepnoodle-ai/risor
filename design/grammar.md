@@ -92,7 +92,7 @@ POW:            '**'
 
 (* Bitwise *)
 AMPERSAND:      '&'
-PIPE:           '|'
+BITOR:          '|'
 CARET:          '^'
 LT_LT:          '<<'
 GT_GT:          '>>'
@@ -123,6 +123,7 @@ MINUS_MINUS:    '--'
 
 (* Other Operators *)
 ARROW:          '=>'
+PIPE:           '|>'
 SPREAD:         '...'
 NULLISH:        '??'
 QUESTION_DOT:   '?.'
@@ -410,10 +411,10 @@ expressionStatement:
 | 1 (lowest) | `\|\|` | left |
 | 2 | `&&` | left |
 | 3 | `??` | left |
-| 4 | `\|` (pipe) | left |
+| 4 | `\|>` (pipe) | left |
 | 5 | `==`, `!=` | left |
 | 6 | `<`, `<=`, `>`, `>=`, `in`, `not in` | left |
-| 7 | `\|` (bitwise), `^` | left |
+| 7 | `\|`, `^` (bitwise) | left |
 | 8 | `&` (bitwise) | left |
 | 9 | `<<`, `>>` | left |
 | 10 | `+`, `-` | left |
@@ -438,7 +439,7 @@ nullishExpr:
     pipeExpr {'??' pipeExpr}
 
 pipeExpr:
-    equalityExpr {'|' equalityExpr}
+    equalityExpr {'|>' equalityExpr}
 
 equalityExpr:
     comparisonExpr {('==' | '!=') comparisonExpr}
@@ -539,7 +540,7 @@ literal:
     | NilLiteral
 
 groupedExpr:
-    '(' [expression] ')'
+    '(' expression ')'
 ```
 
 #### Collection Literals
@@ -678,10 +679,10 @@ notInExpr:
 
 ```ebnf
 pipeExpr:
-    expression '|' expression {'|' expression}
+    expression '|>' expression {'|>' expression}
 ```
 
-**Semantics:** In `a | f(x)`, the pipe operator transforms this to `f(a, x)`, inserting the left operand as the first argument to the function call on the right.
+**Semantics:** In `a |> f(x)`, the pipe operator transforms this to `f(a, x)`, inserting the left operand as the first argument to the function call on the right.
 
 ---
 
@@ -838,7 +839,7 @@ Token:
     | '==' | '!=' | '<' | '>' | '<=' | '>='
     | '=' | '+=' | '-=' | '*=' | '/='
     | '++' | '--'
-    | '=>' | '...' | '??' | '?.'
+    | '=>' | '|>' | '...' | '??' | '?.'
 
     (* Delimiters *)
     | '(' | ')' | '{' | '}' | '[' | ']'
@@ -972,7 +973,7 @@ let value = x ?? default
 let name = user?.profile?.name
 
 // Pipe operator
-let result = data | filter(x => x > 0) | map(x => x * 2)
+let result = data |> filter(x => x > 0) |> map(x => x * 2)
 ```
 
 ### Error Handling
