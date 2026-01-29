@@ -503,7 +503,6 @@ func (p *WildcardPattern) String() string { return "_" }
 // MatchArm represents one arm of a match expression: pattern => result
 type MatchArm struct {
 	Pattern Pattern        // the pattern to match
-	Guard   Expr           // optional guard condition (Phase 4)
 	Arrow   token.Position // position of "=>"
 	Result  Expr           // the result expression
 }
@@ -514,10 +513,6 @@ func (a *MatchArm) End() token.Position { return a.Result.End() }
 func (a *MatchArm) String() string {
 	var out bytes.Buffer
 	out.WriteString(a.Pattern.String())
-	if a.Guard != nil {
-		out.WriteString(" if ")
-		out.WriteString(a.Guard.String())
-	}
 	out.WriteString(" => ")
 	out.WriteString(a.Result.String())
 	return out.String()
