@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/risor-io/risor/ast"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAssignmentWithNewline(t *testing.T) {
@@ -37,9 +37,9 @@ func TestAssignmentWithNewline(t *testing.T) {
 
 	for _, tt := range tests {
 		program, err := Parse(context.Background(), tt.input, nil)
-		require.NoError(t, err, "Parse error for input: %s", tt.input)
-		require.NotNil(t, program)
-		require.Len(t, program.Stmts, 1)
+		assert.Nil(t, err, "Parse error for input: %s", tt.input)
+		assert.NotNil(t, program)
+		assert.Len(t, program.Stmts, 1)
 
 		stmt := program.Stmts[0]
 
@@ -55,7 +55,7 @@ func TestAssignmentWithNewline(t *testing.T) {
 
 		switch v := value.(type) {
 		case *ast.Int:
-			require.Equal(t, tt.expected, v.Value)
+			assert.Equal(t, v.Value, tt.expected)
 		default:
 			t.Fatalf("Expected Int value, got %T", value)
 		}
@@ -81,8 +81,8 @@ func TestLiteralsWithNewlines(t *testing.T) {
 	if err != nil {
 		t.Log(err.Error())
 	}
-	require.NoError(t, err)
-	require.Len(t, program.Stmts, 3)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 3)
 }
 
 // =============================================================================
@@ -130,9 +130,9 @@ func TestMethodChainingAcrossNewlines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			program, err := Parse(context.Background(), tt.input, nil)
-			require.NoError(t, err, "Parse error for: %s", tt.input)
-			require.Len(t, program.Stmts, 1)
-			require.Equal(t, tt.expected, program.First().String())
+			assert.Nil(t, err, "Parse error for: %s", tt.input)
+			assert.Len(t, program.Stmts, 1)
+			assert.Equal(t, program.First().String(), tt.expected)
 		})
 	}
 }
@@ -157,7 +157,7 @@ func TestMethodChainingDoesNotAffectOtherOperators(t *testing.T) {
 			program, err := Parse(context.Background(), tt.input, nil)
 			// Some may error (like +y without context), but check those that parse
 			if err == nil {
-				require.Len(t, program.Stmts, tt.numStmts, "Expected %d statements for: %s", tt.numStmts, tt.input)
+				assert.Len(t, program.Stmts, tt.numStmts, "Expected %d statements for: %s", tt.numStmts, tt.input)
 			}
 		})
 	}
@@ -171,9 +171,9 @@ func TestMethodChainingWithComments(t *testing.T) {
 		.method2()`
 
 	program, err := Parse(context.Background(), input, nil)
-	require.NoError(t, err)
-	require.Len(t, program.Stmts, 1)
-	require.Equal(t, "obj.method1().method2()", program.First().String())
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+	assert.Equal(t, program.First().String(), "obj.method1().method2()")
 }
 
 func TestMethodChainingInComplexExpressions(t *testing.T) {
@@ -202,9 +202,9 @@ func TestMethodChainingInComplexExpressions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			program, err := Parse(context.Background(), tt.input, nil)
-			require.NoError(t, err, "Parse error for: %s", tt.input)
-			require.Len(t, program.Stmts, 1)
-			require.Equal(t, tt.expected, program.First().String())
+			assert.Nil(t, err, "Parse error for: %s", tt.input)
+			assert.Len(t, program.Stmts, 1)
+			assert.Equal(t, program.First().String(), tt.expected)
 		})
 	}
 }
