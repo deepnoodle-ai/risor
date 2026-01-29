@@ -13,8 +13,8 @@ a ?? b && c
 1 + 2 not in [3]
 
 // Pipe with newlines after operator
-a |
-b |
+a |>
+b |>
 c
 
 // Newlines in function calls

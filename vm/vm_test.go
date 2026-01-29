@@ -211,6 +211,238 @@ func TestSwitch5(t *testing.T) {
 	assert.Equal(t, result, object.NewInt(2))
 }
 
+func TestMatchBasic(t *testing.T) {
+	tests := []testCase{
+		// Match integer literals
+		{`match 1 { 1 => "one", 2 => "two", _ => "other" }`, object.NewString("one")},
+		{`match 2 { 1 => "one", 2 => "two", _ => "other" }`, object.NewString("two")},
+		{`match 3 { 1 => "one", 2 => "two", _ => "other" }`, object.NewString("other")},
+
+		// Match string literals
+		{`match "hello" { "hi" => 1, "hello" => 2, _ => 0 }`, object.NewInt(2)},
+		{`match "world" { "hi" => 1, "hello" => 2, _ => 0 }`, object.NewInt(0)},
+
+		// Match boolean literals
+		{`match true { true => "yes", false => "no", _ => "unknown" }`, object.NewString("yes")},
+		{`match false { true => "yes", false => "no", _ => "unknown" }`, object.NewString("no")},
+
+		// Match nil
+		{`match nil { nil => "nothing", _ => "something" }`, object.NewString("nothing")},
+		{`match 42 { nil => "nothing", _ => "something" }`, object.NewString("something")},
+
+		// Match with variables
+		{`let x = 5; match x { 1 => "one", 5 => "five", _ => "other" }`, object.NewString("five")},
+	}
+	runTests(t, tests)
+}
+
+func TestMatchExpressions(t *testing.T) {
+	tests := []testCase{
+		// Match result is an expression
+		{`let result = match 1 { 1 => "one", _ => "other" }; result`, object.NewString("one")},
+
+		// Match with expression results
+		{`match 2 { 1 => 10 + 1, 2 => 20 + 2, _ => 0 }`, object.NewInt(22)},
+
+		// Match with function call result
+		{`
+		function double(x) { x * 2 }
+		match 3 { 1 => double(1), 3 => double(3), _ => 0 }
+		`, object.NewInt(6)},
+
+		// Nested match
+		{`
+		let x = 1
+		let y = 2
+		match x {
+			1 => match y {
+				1 => "x=1,y=1"
+				2 => "x=1,y=2"
+				_ => "x=1,y=other"
+			}
+			_ => "x=other"
+		}
+		`, object.NewString("x=1,y=2")},
+	}
+	runTests(t, tests)
+}
+
+func TestMatchWithNewlines(t *testing.T) {
+	result, err := run(context.Background(), `
+	let x = 2
+	match x {
+		1 => "one"
+		2 => "two"
+		3 => "three"
+		_ => "other"
+	}
+	`)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString("two"))
+}
+
+func TestMatchExpressionPatterns(t *testing.T) {
+	tests := []testCase{
+		// Match against variable
+		{`let target = 5; match 5 { target => "matched", _ => "other" }`, object.NewString("matched")},
+		{`let target = 5; match 3 { target => "matched", _ => "other" }`, object.NewString("other")},
+
+		// Match against computed expression
+		{`match 4 { 2 + 2 => "four", _ => "other" }`, object.NewString("four")},
+		{`match 10 { 3 * 3 => "nine", 5 * 2 => "ten", _ => "other" }`, object.NewString("ten")},
+
+		// Match against function call
+		{`
+		function getValue() { return 42 }
+		match 42 { getValue() => "matched", _ => "other" }
+		`, object.NewString("matched")},
+
+		// Match with method call pattern
+		{`
+		let nums = [1, 2, 3]
+		match 3 { len(nums) => "length match", _ => "other" }
+		`, object.NewString("length match")},
+
+		// Combining different pattern types
+		{`
+		let x = 10
+		let y = 20
+		match 30 {
+			x => "matched x"
+			y => "matched y"
+			x + y => "matched sum"
+			_ => "other"
+		}
+		`, object.NewString("matched sum")},
+	}
+	runTests(t, tests)
+}
+
+func TestMatchEdgeCases(t *testing.T) {
+	tests := []testCase{
+		// Nested match
+		{`match 1 { 1 => match 2 { 2 => "deep", _ => "d1" }, _ => "d0" }`, object.NewString("deep")},
+
+		// Match in arrow function
+		{`let f = (x) => match x { 1 => "one", _ => "other" }; f(1)`, object.NewString("one")},
+
+		// Match as subject of another match
+		{`match (match 1 { 1 => 2, _ => 0 }) { 2 => "two", _ => "other" }`, object.NewString("two")},
+
+		// Only default arm
+		{`match 42 { _ => "always" }`, object.NewString("always")},
+
+		// Subject evaluated exactly once
+		{`
+		let count = 0
+		let f = function() { count = count + 1; return 2 }
+		match f() { 1 => "a", 2 => "b", 3 => "c", _ => "d" }
+		count
+		`, object.NewInt(1)},
+
+		// Pattern short-circuits on first match
+		{`
+		let count = 0
+		let inc = function(n) { count = count + 1; return n }
+		match 1 { inc(1) => "one", inc(2) => "two", _ => "other" }
+		count
+		`, object.NewInt(1)},
+
+		// Optional chaining in pattern
+		{`let obj = {value: 42}; match 42 { obj?.value => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// Nullish coalescing in pattern
+		{`let x = nil; match 10 { (x ?? 10) => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// Match in if condition
+		{`if (match 1 { 1 => true, _ => false }) { "yes" } else { "no" }`, object.NewString("yes")},
+
+		// Match returning function
+		{`let f = match 1 { 1 => (x) => x * 2, _ => (x) => x }; f(5)`, object.NewInt(10)},
+
+		// Index expression in pattern
+		{`let arr = [10, 20, 30]; match 20 { arr[1] => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// Deep attribute access in pattern
+		{`let c = {db: {host: "localhost"}}; match "localhost" { c.db.host => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// String concatenation in pattern
+		{`let p = "hello"; match "hello world" { p + " world" => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// Match inside list literal
+		{
+			`[match 1 { 1 => "a", _ => "b" }, match 2 { 2 => "c", _ => "d" }]`,
+			object.NewList([]object.Object{object.NewString("a"), object.NewString("c")}),
+		},
+
+		// Match as function argument
+		{`let f = function(x) { return x + "!" }; f(match 1 { 1 => "one", _ => "other" })`, object.NewString("one!")},
+
+		// Logical operators in patterns
+		{`match true { (true && true) => "yes", _ => "no" }`, object.NewString("yes")},
+		{`match true { (false || true) => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// Comparison in pattern
+		{`match true { (1 < 2) => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// In operator in pattern
+		{`match true { (1 in [1, 2, 3]) => "yes", _ => "no" }`, object.NewString("yes")},
+	}
+	runTests(t, tests)
+}
+
+func TestMatchSpecialValues(t *testing.T) {
+	tests := []testCase{
+		// Empty string
+		{`match "" { "" => "empty", _ => "other" }`, object.NewString("empty")},
+
+		// Zero
+		{`match 0 { 0 => "zero", _ => "other" }`, object.NewString("zero")},
+
+		// Negative number
+		{`match -5 { -5 => "neg", _ => "other" }`, object.NewString("neg")},
+
+		// Float
+		{`match 3.14 { 3.14 => "pi", _ => "other" }`, object.NewString("pi")},
+
+		// Nil subject
+		{`match nil { nil => "nil", _ => "other" }`, object.NewString("nil")},
+
+		// Unicode
+		{`match "日本語" { "日本語" => "jp", _ => "other" }`, object.NewString("jp")},
+
+		// Boolean false
+		{`match false { false => "false", true => "true", _ => "other" }`, object.NewString("false")},
+
+		// Many arms
+		{`match 50 { 1 => "a", 2 => "b", 3 => "c", 10 => "j", 50 => "fifty", _ => "other" }`, object.NewString("fifty")},
+	}
+	runTests(t, tests)
+}
+
+func TestMatchCollections(t *testing.T) {
+	tests := []testCase{
+		// List value equality
+		{`let a = [1, 2, 3]; let b = [1, 2, 3]; match a { b => "equal", _ => "not" }`, object.NewString("equal")},
+
+		// List same reference
+		{`let a = [1, 2, 3]; match a { a => "same", _ => "diff" }`, object.NewString("same")},
+
+		// Map value equality
+		{`let a = {x: 1}; let b = {x: 1}; match a { b => "equal", _ => "not" }`, object.NewString("equal")},
+
+		// Map same reference
+		{`let a = {x: 1}; match a { a => "same", _ => "diff" }`, object.NewString("same")},
+
+		// List literal subject with variable pattern
+		{`let t = [1, 2]; match [1, 2] { t => "match", _ => "no" }`, object.NewString("match")},
+
+		// Map literal subject with variable pattern
+		{`let t = {a: 1}; match {a: 1} { t => "match", _ => "no" }`, object.NewString("match")},
+	}
+	runTests(t, tests)
+}
+
 func TestStr(t *testing.T) {
 	result, err := run(context.Background(), `
 	let s = "hello"
@@ -830,13 +1062,13 @@ func TestStrings(t *testing.T) {
 func TestPipes(t *testing.T) {
 	tests := []testCase{
 		{`"hello".to_upper()`, object.NewString("HELLO")},
-		{`"hello" | len`, object.NewInt(5)},
-		{`function() { "hello" }() | len`, object.NewInt(5)},
+		{`"hello" |> len`, object.NewInt(5)},
+		{`function() { "hello" }() |> len`, object.NewInt(5)},
 		{`",".join(["a", "b"]).to_upper()`, object.NewString("A,B")},
-		{`function() { "a" } | call`, object.NewString("a")},
-		{`"abc" | getattr("to_upper") | call`, object.NewString("ABC")},
-		{`"abc" | function(s) { s.to_upper() }`, object.NewString("ABC")},
-		{`[11, 12, 3] | math.sum`, object.NewFloat(26)},
+		{`function() { "a" } |> call`, object.NewString("a")},
+		{`"abc" |> getattr("to_upper") |> call`, object.NewString("ABC")},
+		{`"abc" |> function(s) { s.to_upper() }`, object.NewString("ABC")},
+		{`[11, 12, 3] |> math.sum`, object.NewFloat(26)},
 	}
 	runTests(t, tests)
 }
@@ -1138,8 +1370,8 @@ func TestIncorrectArgCount(t *testing.T) {
 		{`function ex(x, y) { 1 }; ex(0)`, "args error: function \"ex\" takes 2 arguments (1 given)"},
 		{`function ex(x, y) { 1 }; ex(1, 2, 3)`, "args error: function \"ex\" takes 2 arguments (3 given)"},
 		{`function ex() { 1 }; [1, 2].filter(ex)`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`function ex() { 1 }; "foo" | ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
-		{`"foo" | "bar"`, "type error: object is not callable (got string)"},
+		{`function ex() { 1 }; "foo" |> ex`, "args error: function \"ex\" takes 0 arguments (1 given)"},
+		{`"foo" |> "bar"`, "type error: object is not callable (got string)"},
 	}
 	for _, tt := range tests {
 		_, err := run(context.Background(), tt.input)

@@ -235,7 +235,7 @@ func (x *Pipe) String() string {
 		args = append(args, a.String())
 	}
 	out.WriteString("(")
-	out.WriteString(strings.Join(args, " | "))
+	out.WriteString(strings.Join(args, " |> "))
 	out.WriteString(")")
 	return out.String()
 }
@@ -465,5 +465,91 @@ func (x *NotIn) String() string {
 	out.WriteString(x.X.String())
 	out.WriteString(" not in ")
 	out.WriteString(x.Y.String())
+	return out.String()
+}
+
+// Pattern is implemented by all pattern types in match expressions.
+type Pattern interface {
+	Node
+	patternNode()
+}
+
+// LiteralPattern matches an expression value. Despite the name, it supports
+// any expression (variables, function calls, etc.) that is evaluated at
+// runtime and compared for equality with the match subject.
+type LiteralPattern struct {
+	Value Expr // the expression to evaluate and match against
+}
+
+func (p *LiteralPattern) patternNode() {}
+
+func (p *LiteralPattern) Pos() token.Position { return p.Value.Pos() }
+func (p *LiteralPattern) End() token.Position { return p.Value.End() }
+
+func (p *LiteralPattern) String() string { return p.Value.String() }
+
+// WildcardPattern matches any value (the _ pattern).
+type WildcardPattern struct {
+	Underscore token.Position // position of "_"
+}
+
+func (p *WildcardPattern) patternNode() {}
+
+func (p *WildcardPattern) Pos() token.Position { return p.Underscore }
+func (p *WildcardPattern) End() token.Position { return p.Underscore.Advance(1) }
+
+func (p *WildcardPattern) String() string { return "_" }
+
+// MatchArm represents one arm of a match expression: pattern => result
+type MatchArm struct {
+	Pattern Pattern        // the pattern to match
+	Arrow   token.Position // position of "=>"
+	Result  Expr           // the result expression
+}
+
+func (a *MatchArm) Pos() token.Position { return a.Pattern.Pos() }
+func (a *MatchArm) End() token.Position { return a.Result.End() }
+
+func (a *MatchArm) String() string {
+	var out bytes.Buffer
+	out.WriteString(a.Pattern.String())
+	out.WriteString(" => ")
+	out.WriteString(a.Result.String())
+	return out.String()
+}
+
+// Match is a pattern-matching expression.
+type Match struct {
+	Match   token.Position // position of "match" keyword
+	Subject Expr           // expression being matched
+	Lbrace  token.Position // position of "{"
+	Arms    []*MatchArm    // match arms (non-default patterns)
+	Default *MatchArm      // default arm (_ pattern), required
+	Rbrace  token.Position // position of "}"
+}
+
+func (x *Match) exprNode() {}
+
+func (x *Match) Pos() token.Position { return x.Match }
+func (x *Match) End() token.Position { return x.Rbrace.Advance(1) }
+
+func (x *Match) String() string {
+	var out bytes.Buffer
+	out.WriteString("match ")
+	out.WriteString(x.Subject.String())
+	out.WriteString(" { ")
+	for i, arm := range x.Arms {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(arm.String())
+	}
+	if x.Default != nil {
+		if len(x.Arms) > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(x.Default.String())
+	}
+	out.WriteString(" }")
 	return out.String()
 }

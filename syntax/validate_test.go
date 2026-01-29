@@ -287,8 +287,8 @@ func TestSyntaxValidator_DisallowPipe(t *testing.T) {
 		wantErr bool
 	}{
 		{"foo(x)", false},
-		{"x | foo", true},
-		{"x | foo | bar", true},
+		{"x |> foo", true},
+		{"x |> foo |> bar", true},
 	}
 
 	config := SyntaxConfig{DisallowPipe: true}
@@ -461,7 +461,7 @@ func TestZeroValueConfig(t *testing.T) {
 		"try { 1 } catch { 2 }",
 		"let {a} = obj",
 		"[...arr]",
-		"x | foo",
+		"x |> foo",
 		"`hello ${name}`",
 	}
 

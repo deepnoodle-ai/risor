@@ -467,9 +467,9 @@ func TestPipe(t *testing.T) {
 		exprType       string
 		expectedIdents []string
 	}{
-		{"let x = foo | bar;", "ident", []string{"foo", "bar"}},
-		{`let x = foo() | bar(name="foo") | baz(y=4);`, "call", []string{"foo", "bar", "baz"}},
-		{`let x = a() | b();`, "call", []string{"a", "b"}},
+		{"let x = foo |> bar;", "ident", []string{"foo", "bar"}},
+		{`let x = foo() |> bar(name="foo") |> baz(y=4);`, "call", []string{"foo", "bar", "baz"}},
+		{`let x = a() |> b();`, "call", []string{"a", "b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -504,7 +504,7 @@ func TestPipe(t *testing.T) {
 }
 
 func TestPipeAST(t *testing.T) {
-	program, err := Parse(context.Background(), "data | filter | sort", nil)
+	program, err := Parse(context.Background(), "data |> filter |> sort", nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)
@@ -1159,4 +1159,260 @@ func TestArrowFunctionDestructureParams(t *testing.T) {
 		_, ok = dp.Elements[0].Default.(*ast.Infix)
 		assert.True(t, ok, "Default should be an infix expression")
 	})
+}
+
+func TestMatchExpression(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			`match x { 1 => "one", _ => "other" }`,
+			`match x { 1 => "one", _ => "other" }`,
+		},
+		{
+			`match x { 1 => "one", 2 => "two", _ => "other" }`,
+			`match x { 1 => "one", 2 => "two", _ => "other" }`,
+		},
+		{
+			`match "hello" { "hi" => 1, "hello" => 2, _ => 0 }`,
+			`match "hello" { "hi" => 1, "hello" => 2, _ => 0 }`,
+		},
+		{
+			`match true { true => "yes", false => "no", _ => "unknown" }`,
+			`match true { true => "yes", false => "no", _ => "unknown" }`,
+		},
+		{
+			`match nil { nil => "nothing", _ => "something" }`,
+			`match nil { nil => "nothing", _ => "something" }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err)
+			assert.Len(t, program.Stmts, 1)
+			assert.Equal(t, tt.expected, program.First().String())
+		})
+	}
+}
+
+func TestMatchExpressionAST(t *testing.T) {
+	program, err := Parse(context.Background(), `match x { 1 => "one", 2 => "two", _ => "other" }`, nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	matchExpr, ok := program.First().(*ast.Match)
+	assert.True(t, ok)
+
+	// Verify subject
+	subject, ok := matchExpr.Subject.(*ast.Ident)
+	assert.True(t, ok)
+	assert.Equal(t, "x", subject.Name)
+
+	// Verify arms
+	assert.Len(t, matchExpr.Arms, 2)
+
+	// First arm: 1 => "one"
+	arm1 := matchExpr.Arms[0]
+	lit1, ok := arm1.Pattern.(*ast.LiteralPattern)
+	assert.True(t, ok)
+	int1, ok := lit1.Value.(*ast.Int)
+	assert.True(t, ok)
+	assert.Equal(t, int64(1), int1.Value)
+	result1, ok := arm1.Result.(*ast.String)
+	assert.True(t, ok)
+	assert.Equal(t, "one", result1.Value)
+
+	// Second arm: 2 => "two"
+	arm2 := matchExpr.Arms[1]
+	lit2, ok := arm2.Pattern.(*ast.LiteralPattern)
+	assert.True(t, ok)
+	int2, ok := lit2.Value.(*ast.Int)
+	assert.True(t, ok)
+	assert.Equal(t, int64(2), int2.Value)
+
+	// Default arm: _ => "other"
+	assert.NotNil(t, matchExpr.Default)
+	_, ok = matchExpr.Default.Pattern.(*ast.WildcardPattern)
+	assert.True(t, ok)
+	defaultResult, ok := matchExpr.Default.Result.(*ast.String)
+	assert.True(t, ok)
+	assert.Equal(t, "other", defaultResult.Value)
+}
+
+func TestMatchExpressionWithNewlines(t *testing.T) {
+	input := `match x {
+		1 => "one"
+		2 => "two"
+		_ => "other"
+	}`
+	program, err := Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	matchExpr, ok := program.First().(*ast.Match)
+	assert.True(t, ok)
+	assert.Len(t, matchExpr.Arms, 2)
+	assert.NotNil(t, matchExpr.Default)
+}
+
+func TestMatchExpressionErrors(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			`match x { 1 => "one" }`,
+			"parse error: match expression requires a default arm (_)",
+		},
+		{
+			`match x { _ => "a", _ => "b" }`,
+			"parse error: match expression has multiple default arms",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.NotNil(t, err)
+			pe, ok := err.(ParserError)
+			assert.True(t, ok)
+			assert.Equal(t, tt.expected, pe.Error())
+		})
+	}
+}
+
+func TestMatchExpressionPatterns(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		// Variable patterns
+		{
+			`match x { y => "matched y", _ => "other" }`,
+			`match x { y => "matched y", _ => "other" }`,
+		},
+		// Expression patterns
+		{
+			`match x { 1 + 1 => "two", _ => "other" }`,
+			`match x { (1 + 1) => "two", _ => "other" }`,
+		},
+		// Function call patterns
+		{
+			`match x { get_value() => "matched", _ => "other" }`,
+			`match x { get_value() => "matched", _ => "other" }`,
+		},
+		// Parenthesized patterns
+		{
+			`match x { (a) => "matched a", _ => "other" }`,
+			`match x { a => "matched a", _ => "other" }`,
+		},
+		// Attribute access patterns
+		{
+			`match x { obj.field => "matched", _ => "other" }`,
+			`match x { obj.field => "matched", _ => "other" }`,
+		},
+		// Index patterns
+		{
+			`match x { arr[0] => "matched", _ => "other" }`,
+			`match x { arr[0] => "matched", _ => "other" }`,
+		},
+		// Logical operators in patterns
+		{
+			`match x { (a && b) => "both", _ => "other" }`,
+			`match x { (a && b) => "both", _ => "other" }`,
+		},
+		// Comparison in pattern
+		{
+			`match x { (1 < 2) => "less", _ => "other" }`,
+			`match x { (1 < 2) => "less", _ => "other" }`,
+		},
+		// In operator pattern
+		{
+			`match x { (1 in arr) => "found", _ => "other" }`,
+			`match x { 1 in arr => "found", _ => "other" }`,
+		},
+		// Nullish coalescing pattern
+		{
+			`match x { (a ?? b) => "matched", _ => "other" }`,
+			`match x { (a ?? b) => "matched", _ => "other" }`,
+		},
+		// Optional chaining pattern
+		{
+			`match x { obj?.field => "matched", _ => "other" }`,
+			`match x { obj?.field => "matched", _ => "other" }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			program, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err)
+			assert.Len(t, program.Stmts, 1)
+			assert.Equal(t, tt.expected, program.First().String())
+		})
+	}
+}
+
+func TestMatchNested(t *testing.T) {
+	input := `match x {
+		1 => match y {
+			2 => "x=1,y=2"
+			_ => "x=1,y=other"
+		}
+		_ => "x=other"
+	}`
+	program, err := Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	outer, ok := program.First().(*ast.Match)
+	assert.True(t, ok)
+	assert.Len(t, outer.Arms, 1)
+
+	// First arm's result should be a nested match
+	inner, ok := outer.Arms[0].Result.(*ast.Match)
+	assert.True(t, ok)
+	assert.Len(t, inner.Arms, 1)
+}
+
+func TestMatchInArrowFunction(t *testing.T) {
+	input := `(x) => match x { 1 => "one", _ => "other" }`
+	program, err := Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	fn, ok := program.First().(*ast.Func)
+	assert.True(t, ok)
+	assert.Len(t, fn.Params, 1)
+
+	// Arrow function expression body is wrapped in a return statement
+	assert.Len(t, fn.Body.Stmts, 1)
+	ret, ok := fn.Body.Stmts[0].(*ast.Return)
+	assert.True(t, ok)
+
+	// The return value should be the match expression
+	_, ok = ret.Value.(*ast.Match)
+	assert.True(t, ok)
+}
+
+func TestMatchAsSubject(t *testing.T) {
+	input := `match (match x { 1 => 2, _ => 0 }) { 2 => "two", _ => "other" }`
+	program, err := Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	outer, ok := program.First().(*ast.Match)
+	assert.True(t, ok)
+
+	// Subject should be a match expression
+	_, ok = outer.Subject.(*ast.Match)
+	assert.True(t, ok)
+}
+
+func TestMatchSpreadNotAllowed(t *testing.T) {
+	_, err := Parse(context.Background(), `match x { ...arr => "matched", _ => "other" }`, nil)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "spread operator not supported in match patterns")
 }

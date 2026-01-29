@@ -95,7 +95,8 @@ const (
 	NIL             Type = "nil"
 	NOT             Type = "NOT"
 	NULLISH         Type = "??"
-	PIPE            Type = "|"
+	PIPE            Type = "|>"
+	BITOR           Type = "|"
 	OR              Type = "||"
 	PERIOD          Type = "."
 	PLUS            Type = "+"
@@ -115,6 +116,7 @@ const (
 	SLASH_EQUALS    Type = "/="
 	STRING          Type = "STRING"
 	STRUCT          Type = "STRUCT"
+	MATCH           Type = "match"
 	SWITCH          Type = "switch"
 	TEMPLATE        Type = "TEMPLATE"
 	TRUE            Type = "TRUE"
@@ -137,6 +139,7 @@ var keywords = map[string]Type{
 	"if":       IF,
 	"in":       IN,
 	"let":      LET,
+	"match":    MATCH,
 	"nil":      NIL,
 	"not":      NOT,
 	"return":   RETURN,

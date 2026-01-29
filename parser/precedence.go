@@ -8,7 +8,7 @@ const (
 	_ int = iota
 	LOWEST
 	NULLISH     // ??
-	PIPE        // |
+	PIPE        // |>
 	COND        // OR or AND
 	ASSIGN      // =
 	EQUALS      // == or !=
@@ -42,6 +42,7 @@ var precedences = map[token.Type]int{
 	token.ASTERISK:        PRODUCT,
 	token.ASTERISK_EQUALS: PRODUCT,
 	token.AMPERSAND:       PRODUCT,
+	token.BITOR:           PRODUCT,
 	token.CARET:           PRODUCT,
 	token.GT_GT:           PRODUCT,
 	token.LT_LT:           PRODUCT,

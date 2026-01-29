@@ -30,7 +30,7 @@ func TestExpressionOnlyPreset(t *testing.T) {
 		{"try { 1 } catch { 2 }", true},
 		{"let {a} = obj", true},
 		{"[...arr]", true},
-		{"x | foo", true},
+		{"x |> foo", true},
 	}
 
 	validator := NewSyntaxValidator(ExpressionOnly)
@@ -62,7 +62,7 @@ func TestBasicScriptingPreset(t *testing.T) {
 		{"try { 1 } catch { 2 }", false},
 		{"let {a} = obj", false},
 		{"[...arr]", false},
-		{"x | foo", false},
+		{"x |> foo", false},
 		{"`hello ${name}`", false},
 
 		// Disallowed - only function definitions and return
@@ -95,7 +95,7 @@ func TestFullLanguagePreset(t *testing.T) {
 		"try { 1 } catch { 2 }",
 		"let {a} = obj",
 		"[...arr]",
-		"x | foo",
+		"x |> foo",
 		"`hello ${name}`",
 	}
 

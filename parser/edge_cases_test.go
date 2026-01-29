@@ -51,8 +51,8 @@ func TestPowerRightAssociative(t *testing.T) {
 
 func TestOperatorPrecedencePipeWithArithmetic(t *testing.T) {
 	// Pipe has lower precedence than arithmetic
-	// a | b + c should parse as a | (b + c) because + binds tighter
-	program, err := Parse(context.Background(), "a | b + c", nil)
+	// a |> b + c should parse as a |> (b + c) because + binds tighter
+	program, err := Parse(context.Background(), "a |> b + c", nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)
@@ -692,8 +692,8 @@ func TestMultipleSpreadsInList(t *testing.T) {
 
 func TestPipeWithNewlinesAfterOperator(t *testing.T) {
 	// Newlines are allowed AFTER the pipe operator
-	input := `a |
-b |
+	input := `a |>
+b |>
 c`
 	program, err := Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
@@ -704,18 +704,16 @@ c`
 }
 
 func TestPipeNewlineBeforeOperatorNotAllowed(t *testing.T) {
-	// Newlines BEFORE | cause the expression to be split
+	// Newlines BEFORE |> cause the expression to be split
 	input := `a
-| b`
-	program, err := Parse(context.Background(), input, nil)
-	// First statement is just "a"
-	assert.Nil(t, err)
-	assert.Equal(t, "a", program.First().String())
-	// Second statement starts with | which is an error
+|> b`
+	_, err := Parse(context.Background(), input, nil)
+	// First statement is just "a", second starts with |> which is a parse error
+	assert.NotNil(t, err)
 }
 
 func TestPipeWithFunctionCalls(t *testing.T) {
-	program, err := Parse(context.Background(), "data | filter(f) | map(g)", nil)
+	program, err := Parse(context.Background(), "data |> filter(f) |> map(g)", nil)
 	assert.Nil(t, err)
 
 	pipe, ok := program.First().(*ast.Pipe)

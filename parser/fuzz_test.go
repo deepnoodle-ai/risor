@@ -106,8 +106,8 @@ default:
 		"obj.field = 1",
 
 		// Pipes
-		"a | b | c",
-		"data | filter(f) | map(g)",
+		"a |> b |> c",
+		"data |> filter(f) |> map(g)",
 
 		// Spread
 		"[...arr]",
@@ -322,7 +322,7 @@ func FuzzParseStringConsistency(f *testing.F) {
 		"a ? b : c",
 		"obj.field",
 		"arr[0]",
-		"a | b | c",
+		"a |> b |> c",
 		"try { x } catch e { y }",
 	}
 

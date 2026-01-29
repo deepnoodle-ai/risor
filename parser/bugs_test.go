@@ -472,15 +472,15 @@ func TestPipeAfterExpressions(t *testing.T) {
 		input string
 		desc  string
 	}{
-		{"x | f", "ident pipe func"},
-		{"1 | f", "int pipe func"},
-		{"\"s\" | f", "string pipe func"},
-		{"[1, 2] | f", "list pipe func"},
-		{"{a: 1} | f", "map pipe func"},
-		{"f() | g", "call pipe func"},
-		{"x.y | f", "attr access pipe func"},
-		{"x[0] | f", "index pipe func"},
-		{"(x) | f", "grouped pipe func"},
+		{"x |> f", "ident pipe func"},
+		{"1 |> f", "int pipe func"},
+		{"\"s\" |> f", "string pipe func"},
+		{"[1, 2] |> f", "list pipe func"},
+		{"{a: 1} |> f", "map pipe func"},
+		{"f() |> g", "call pipe func"},
+		{"x.y |> f", "attr access pipe func"},
+		{"x[0] |> f", "index pipe func"},
+		{"(x) |> f", "grouped pipe func"},
 	}
 
 	for _, tt := range tests {
