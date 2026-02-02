@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/deepnoodle-ai/wonton v0.0.24 // indirect
+	github.com/deepnoodle-ai/wonton v0.0.25 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20250329061421-6d0a8e981e4c // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/purego v0.8.3 // indirect
