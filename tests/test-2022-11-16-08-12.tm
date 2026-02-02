@@ -1,4 +1,4 @@
-// github issue: https://github.com/risor-io/risor/issues/6
+// github issue: https://github.com/deepnoodle-ai/risor/issues/6
 // expected value: 11
 // expected type: int
 
