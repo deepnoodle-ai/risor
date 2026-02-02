@@ -4,9 +4,20 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/vm"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
+
+// execute runs the input and returns the result as an object.Object
+func execute(ctx context.Context, input string) (object.Object, error) {
+	code, err := risor.Compile(ctx, input, risor.WithEnv(risor.Builtins()))
+	if err != nil {
+		return nil, err
+	}
+	return vm.Run(ctx, code, vm.WithGlobals(risor.Builtins()))
+}
 
 // TestBlankIdentifier_EndToEnd tests the blank identifier "_" functionality
 // through the full compilation and execution pipeline.
