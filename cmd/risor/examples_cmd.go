@@ -11,7 +11,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
 	"github.com/deepnoodle-ai/risor/v2"
-	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 )
 
 // Example represents a code example

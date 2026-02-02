@@ -9,8 +9,8 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/risor/v2"
-	"github.com/deepnoodle-ai/risor/v2/bytecode"
-	"github.com/deepnoodle-ai/risor/v2/dis"
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/pkg/dis"
 )
 
 func disHandler(ctx *cli.Context) error {

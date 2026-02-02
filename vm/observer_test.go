@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deepnoodle-ai/risor/v2/compiler"
-	"github.com/deepnoodle-ai/risor/v2/parser"
+	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 )
 
 // TestObserver is a test observer that records events.

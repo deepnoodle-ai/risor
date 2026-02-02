@@ -1,8 +1,8 @@
 package vm
 
 import (
-	"github.com/deepnoodle-ai/risor/v2/object"
-	"github.com/deepnoodle-ai/risor/v2/op"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
 
 // StepMode controls when OnStep callbacks are triggered.

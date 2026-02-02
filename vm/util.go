@@ -3,7 +3,7 @@ package vm
 import (
 	"fmt"
 
-	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 )
 
 func checkCallArgs(fn *object.Closure, argc int) error {

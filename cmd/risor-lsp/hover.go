@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/deepnoodle-ai/risor/v2/ast"
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 )
 
 func (s *Server) Hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {

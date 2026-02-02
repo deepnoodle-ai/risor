@@ -1,7 +1,7 @@
 package vm
 
 import (
-	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 )
 
 const (

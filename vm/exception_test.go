@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 )
 
 // TestExceptionCrossingFunctionBoundaries tests that exceptions propagate

@@ -6,10 +6,10 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/deepnoodle-ai/risor/v2/bytecode"
-	"github.com/deepnoodle-ai/risor/v2/compiler"
-	"github.com/deepnoodle-ai/risor/v2/object"
-	"github.com/deepnoodle-ai/risor/v2/parser"
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/risor/v2/vm"
 )
 

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/deepnoodle-ai/risor/v2/object"
+import "github.com/deepnoodle-ai/risor/v2/pkg/object"
 
 // Version is the current Risor version.
 const docVersion = "2.0.0"

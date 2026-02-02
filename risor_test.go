@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -9,8 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 func TestBasicUsage(t *testing.T) {
@@ -1266,4 +1268,889 @@ func TestGoStructInEnv(t *testing.T) {
 		// Verify the underlying struct was modified
 		assert.Equal(t, tweet.Len, 99)
 	})
+}
+
+// =============================================================================
+// ISSUE TESTS
+// =============================================================================
+
+func TestRunWithNilCode(t *testing.T) {
+	ctx := context.Background()
+
+	// Running with nil code should return ErrNilCode
+	_, err := Run(ctx, nil)
+	assert.NotNil(t, err)
+	assert.ErrorIs(t, err, ErrNilCode)
+}
+
+func TestDocumentedModulesMatchBuiltins(t *testing.T) {
+	// Verify that all modules documented in Docs() are actually available
+	docs := Docs(DocsCategory("modules"))
+	data := docs.Data().(map[string]any)
+	modules := data["modules"].([]docsModuleInfo)
+
+	env := Builtins()
+
+	for _, mod := range modules {
+		t.Run(mod.Name, func(t *testing.T) {
+			_, exists := env[mod.Name]
+			assert.True(t, exists, "documented module %q should be available in Builtins()", mod.Name)
+		})
+	}
+}
+
+func TestEvalWithEmptySource(t *testing.T) {
+	ctx := context.Background()
+
+	// Empty source should return nil with no error
+	result, err := Eval(ctx, "")
+	assert.Nil(t, err)
+	assert.Nil(t, result)
+}
+
+func TestEvalWithWhitespaceOnly(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Eval(ctx, "   \n\t  ")
+	assert.Nil(t, err)
+	assert.Nil(t, result)
+}
+
+func TestNegativeResourceLimits(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("negative maxSteps treated as unlimited", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 1", WithMaxSteps(-100))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(2))
+	})
+
+	t.Run("negative maxStackDepth treated as default", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 1", WithMaxStackDepth(-100))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(2))
+	})
+
+	t.Run("negative timeout treated as no timeout", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 1", WithTimeout(-1))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(2))
+	})
+}
+
+func TestZeroResourceLimits(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("zero maxSteps means unlimited", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 1", WithMaxSteps(0))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(2))
+	})
+
+	t.Run("zero maxStackDepth uses default", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 1", WithMaxStackDepth(0))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(2))
+	})
+
+	t.Run("zero timeout means no timeout", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 1", WithTimeout(0))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(2))
+	})
+}
+
+func TestWithEnvNilMap(t *testing.T) {
+	ctx := context.Background()
+
+	// Passing nil to WithEnv should not panic
+	result, err := Eval(ctx, "1 + 1", WithEnv(nil))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(2))
+}
+
+func TestNilOptionIsIgnored(t *testing.T) {
+	ctx := context.Background()
+
+	// Nil options should be silently ignored
+	result, err := Eval(ctx, "1 + 1", nil, WithEnv(map[string]any{}), nil)
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(2))
+}
+
+func TestWithEnvDuplicateKeysBehavior(t *testing.T) {
+	ctx := context.Background()
+
+	// Last value should win (documented behavior)
+	result, err := Eval(ctx, "x",
+		WithEnv(map[string]any{"x": int64(1)}),
+		WithEnv(map[string]any{"x": int64(2)}),
+		WithEnv(map[string]any{"x": int64(3)}),
+	)
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(3))
+}
+
+func TestGlobalValidationEmptyEnvAtRuntime(t *testing.T) {
+	ctx := context.Background()
+
+	// Compile with env
+	code, err := Compile(ctx, "x + y", WithEnv(map[string]any{
+		"x": int64(1),
+		"y": int64(2),
+	}))
+	assert.Nil(t, err)
+
+	// Run with empty env should fail with clear error
+	_, err = Run(ctx, code)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "missing required globals"))
+}
+
+func TestCompileWithCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := Compile(ctx, "1 + 2")
+	assert.NotNil(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestResultConversionEdgeCases(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("module returns inspect string", func(t *testing.T) {
+		// Modules have no Go equivalent, should return Inspect() string
+		result, err := Eval(ctx, "math", WithEnv(Builtins()))
+		assert.Nil(t, err)
+		s, ok := result.(string)
+		assert.True(t, ok, "module should be converted to string")
+		assert.True(t, strings.Contains(s, "module"))
+	})
+
+	t.Run("closure returns inspect string", func(t *testing.T) {
+		result, err := Eval(ctx, "function() { return 1 }")
+		assert.Nil(t, err)
+		s, ok := result.(string)
+		assert.True(t, ok, "closure should be converted to string")
+		assert.True(t, strings.Contains(s, "func"))
+	})
+
+	t.Run("error object returns go error", func(t *testing.T) {
+		// Error objects return the underlying Go error via Interface()
+		result, err := Eval(ctx, `error("test")`, WithEnv(Builtins()))
+		assert.Nil(t, err)
+		goErr, ok := result.(error)
+		assert.True(t, ok, "error object should return Go error")
+		assert.Equal(t, goErr.Error(), "test")
+	})
+
+	t.Run("nil returns nil", func(t *testing.T) {
+		result, err := Eval(ctx, "nil")
+		assert.Nil(t, err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("empty list returns empty slice", func(t *testing.T) {
+		result, err := Eval(ctx, "[]")
+		assert.Nil(t, err)
+		list, ok := result.([]any)
+		assert.True(t, ok)
+		assert.Len(t, list, 0)
+	})
+
+	t.Run("empty map returns empty map", func(t *testing.T) {
+		result, err := Eval(ctx, "{}")
+		assert.Nil(t, err)
+		m, ok := result.(map[string]any)
+		assert.True(t, ok)
+		assert.Len(t, m, 0)
+	})
+}
+
+func TestCompileRunSeparation(t *testing.T) {
+	ctx := context.Background()
+
+	// Compile once, run multiple times with different envs
+	code, err := Compile(ctx, "value * 2", WithEnv(map[string]any{"value": int64(0)}))
+	assert.Nil(t, err)
+
+	tests := []struct {
+		value    int64
+		expected int64
+	}{
+		{1, 2},
+		{5, 10},
+		{100, 200},
+	}
+
+	for _, tt := range tests {
+		result, err := Run(ctx, code, WithEnv(map[string]any{"value": tt.value}))
+		assert.Nil(t, err)
+		assert.Equal(t, result, tt.expected)
+	}
+}
+
+// =============================================================================
+// DOCS TESTS
+// =============================================================================
+
+func TestDocs_Quick(t *testing.T) {
+	docs := Docs(DocsQuick())
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "version"))
+	assert.True(t, strings.Contains(j, "syntax_quick_ref"))
+	assert.True(t, strings.Contains(j, "topics"))
+}
+
+func TestDocs_All(t *testing.T) {
+	docs := Docs(DocsAll())
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "builtins"))
+	assert.True(t, strings.Contains(j, "modules"))
+	assert.True(t, strings.Contains(j, "types"))
+	assert.True(t, strings.Contains(j, "syntax"))
+	assert.True(t, strings.Contains(j, "errors"))
+}
+
+func TestDocs_Category_Builtins(t *testing.T) {
+	docs := Docs(DocsCategory("builtins"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "builtins"))
+	assert.True(t, strings.Contains(j, "functions"))
+}
+
+func TestDocs_Category_Types(t *testing.T) {
+	docs := Docs(DocsCategory("types"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "types"))
+}
+
+func TestDocs_Category_Modules(t *testing.T) {
+	docs := Docs(DocsCategory("modules"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "modules"))
+}
+
+func TestDocs_Category_Syntax(t *testing.T) {
+	docs := Docs(DocsCategory("syntax"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "sections"))
+}
+
+func TestDocs_Category_Errors(t *testing.T) {
+	docs := Docs(DocsCategory("errors"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "patterns"))
+}
+
+func TestDocs_Topic_Type(t *testing.T) {
+	docs := Docs(DocsTopic("string"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "string"))
+	assert.True(t, strings.Contains(j, "methods"))
+}
+
+func TestDocs_Topic_Module(t *testing.T) {
+	docs := Docs(DocsTopic("math"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "math"))
+	assert.True(t, strings.Contains(j, "functions"))
+}
+
+func TestDocs_Topic_Builtin(t *testing.T) {
+	docs := Docs(DocsTopic("len"))
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "len"))
+	assert.True(t, strings.Contains(j, "builtin"))
+}
+
+func TestDocs_Default(t *testing.T) {
+	// Default returns quick reference
+	docs := Docs()
+	j := docs.JSON()
+
+	assert.True(t, len(j) > 0)
+	assert.True(t, strings.Contains(j, "syntax_quick_ref"))
+}
+
+func TestDocs_Data(t *testing.T) {
+	docs := Docs(DocsQuick())
+	data := docs.Data()
+
+	assert.NotNil(t, data)
+
+	// Should be a docsQuickReference
+	ref, ok := data.(docsQuickReference)
+	assert.True(t, ok)
+	assert.Equal(t, ref.Risor.Version, Version)
+}
+
+func TestDocs_ValidJSON(t *testing.T) {
+	// Test that all doc modes produce valid JSON
+	testCases := []struct {
+		name string
+		opts []DocsOption
+	}{
+		{"quick", []DocsOption{DocsQuick()}},
+		{"all", []DocsOption{DocsAll()}},
+		{"category_builtins", []DocsOption{DocsCategory("builtins")}},
+		{"category_types", []DocsOption{DocsCategory("types")}},
+		{"category_modules", []DocsOption{DocsCategory("modules")}},
+		{"category_syntax", []DocsOption{DocsCategory("syntax")}},
+		{"category_errors", []DocsOption{DocsCategory("errors")}},
+		{"topic_string", []DocsOption{DocsTopic("string")}},
+		{"topic_math", []DocsOption{DocsTopic("math")}},
+		{"topic_len", []DocsOption{DocsTopic("len")}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			docs := Docs(tc.opts...)
+			j := docs.JSON()
+
+			var result any
+			err := json.Unmarshal([]byte(j), &result)
+			assert.Nil(t, err, "should produce valid JSON for %s", tc.name)
+		})
+	}
+}
+
+// =============================================================================
+// SYNTAX VALIDATION TESTS
+// =============================================================================
+
+func TestWithSyntaxExpressionOnly(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("allows expressions", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 2", WithSyntax(ExpressionOnly))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("allows variable access", func(t *testing.T) {
+		result, err := Eval(ctx, "x * y",
+			WithEnv(map[string]any{"x": int64(5), "y": int64(6)}),
+			WithSyntax(ExpressionOnly))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(30))
+	})
+
+	t.Run("allows function calls", func(t *testing.T) {
+		env := Builtins()
+		result, err := Eval(ctx, "len([1, 2, 3])",
+			WithEnv(env),
+			WithSyntax(ExpressionOnly))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("disallows variable declarations", func(t *testing.T) {
+		_, err := Eval(ctx, "let x = 1", WithSyntax(ExpressionOnly))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "variable declarations are not allowed"))
+	})
+
+	t.Run("disallows function definitions", func(t *testing.T) {
+		_, err := Eval(ctx, "function foo() { 1 }", WithSyntax(ExpressionOnly))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "function definitions are not allowed"))
+	})
+
+	t.Run("disallows if expressions", func(t *testing.T) {
+		_, err := Eval(ctx, "if (true) { 1 }", WithSyntax(ExpressionOnly))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "if expressions are not allowed"))
+	})
+
+	t.Run("disallows assignment", func(t *testing.T) {
+		_, err := Eval(ctx, "x = 1",
+			WithEnv(map[string]any{"x": int64(0)}),
+			WithSyntax(ExpressionOnly))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "assignment is not allowed"))
+	})
+}
+
+func TestWithSyntaxBasicScripting(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("allows variable declarations", func(t *testing.T) {
+		result, err := Eval(ctx, "let x = 1; x + 2", WithSyntax(BasicScripting))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("allows if expressions", func(t *testing.T) {
+		result, err := Eval(ctx, "let x = 5; if (x > 3) { 10 } else { 0 }", WithSyntax(BasicScripting))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(10))
+	})
+
+	t.Run("allows try/catch", func(t *testing.T) {
+		result, err := Eval(ctx, "try { 42 } catch { 0 }", WithSyntax(BasicScripting))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(42))
+	})
+
+	t.Run("allows switch", func(t *testing.T) {
+		result, err := Eval(ctx, "let x = 2; switch (x) { case 1: 10 case 2: 20 default: 0 }", WithSyntax(BasicScripting))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(20))
+	})
+
+	t.Run("allows destructuring", func(t *testing.T) {
+		result, err := Eval(ctx, "let {a, b} = {a: 1, b: 2}; a + b", WithSyntax(BasicScripting))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("allows spread", func(t *testing.T) {
+		result, err := Eval(ctx, "let arr = [1, 2]; [...arr, 3]", WithSyntax(BasicScripting))
+		assert.Nil(t, err)
+		assert.Equal(t, result, []any{int64(1), int64(2), int64(3)})
+	})
+
+	t.Run("allows pipe", func(t *testing.T) {
+		result, err := Eval(ctx, `[1, 2, 3] |> len`,
+			WithEnv(Builtins()),
+			WithSyntax(BasicScripting))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("disallows function definitions", func(t *testing.T) {
+		_, err := Eval(ctx, "function foo() { 1 }", WithSyntax(BasicScripting))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "function definitions are not allowed"))
+	})
+
+	t.Run("disallows arrow functions", func(t *testing.T) {
+		_, err := Eval(ctx, "x => x + 1", WithSyntax(BasicScripting))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "function definitions are not allowed"))
+	})
+}
+
+func TestFullLanguageAllowsEverything(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		source string
+		env    map[string]any
+	}{
+		{"1 + 2", nil},
+		{"let x = 1; x", nil},
+		{"y = 2", map[string]any{"y": int64(0)}},
+		{"if (true) { 1 }", nil},
+		{"function foo() { return 1 }; foo()", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.source, func(t *testing.T) {
+			opts := []Option{WithSyntax(FullLanguage)}
+			if tt.env != nil {
+				opts = append(opts, WithEnv(tt.env))
+			}
+			_, err := Eval(ctx, tt.source, opts...)
+			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestWithCustomValidator(t *testing.T) {
+	ctx := context.Background()
+
+	noSecrets := ValidatorFunc(func(p *ast.Program) []ValidationError {
+		var errs []ValidationError
+		for node := range ast.Preorder(p) {
+			if ident, ok := node.(*ast.Ident); ok && ident.Name == "secret" {
+				errs = append(errs, ValidationError{
+					Message:  "access to 'secret' is not allowed",
+					Node:     node,
+					Position: node.Pos(),
+				})
+			}
+		}
+		return errs
+	})
+
+	t.Run("allows normal access", func(t *testing.T) {
+		result, err := Eval(ctx, "x + y",
+			WithEnv(map[string]any{"x": int64(1), "y": int64(2)}),
+			WithValidator(noSecrets))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("disallows secret access", func(t *testing.T) {
+		_, err := Eval(ctx, "secret + 1",
+			WithEnv(map[string]any{"secret": int64(42)}),
+			WithValidator(noSecrets))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "access to 'secret' is not allowed"))
+	})
+}
+
+func TestMultipleValidators(t *testing.T) {
+	ctx := context.Background()
+
+	noFoo := ValidatorFunc(func(p *ast.Program) []ValidationError {
+		var errs []ValidationError
+		for node := range ast.Preorder(p) {
+			if ident, ok := node.(*ast.Ident); ok && ident.Name == "foo" {
+				errs = append(errs, ValidationError{
+					Message:  "identifier 'foo' is not allowed",
+					Node:     node,
+					Position: node.Pos(),
+				})
+			}
+		}
+		return errs
+	})
+
+	noBar := ValidatorFunc(func(p *ast.Program) []ValidationError {
+		var errs []ValidationError
+		for node := range ast.Preorder(p) {
+			if ident, ok := node.(*ast.Ident); ok && ident.Name == "bar" {
+				errs = append(errs, ValidationError{
+					Message:  "identifier 'bar' is not allowed",
+					Node:     node,
+					Position: node.Pos(),
+				})
+			}
+		}
+		return errs
+	})
+
+	t.Run("both validators pass", func(t *testing.T) {
+		result, err := Eval(ctx, "x + y",
+			WithEnv(map[string]any{"x": int64(1), "y": int64(2)}),
+			WithValidator(noFoo),
+			WithValidator(noBar))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("first validator fails", func(t *testing.T) {
+		_, err := Eval(ctx, "foo + 1",
+			WithEnv(map[string]any{"foo": int64(1)}),
+			WithValidator(noFoo),
+			WithValidator(noBar))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "foo"))
+	})
+
+	t.Run("second validator fails", func(t *testing.T) {
+		_, err := Eval(ctx, "bar + 1",
+			WithEnv(map[string]any{"bar": int64(1)}),
+			WithValidator(noFoo),
+			WithValidator(noBar))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "bar"))
+	})
+}
+
+func TestCustomValidatorWithPreset(t *testing.T) {
+	ctx := context.Background()
+
+	maxHundred := ValidatorFunc(func(p *ast.Program) []ValidationError {
+		var errs []ValidationError
+		for node := range ast.Preorder(p) {
+			if intNode, ok := node.(*ast.Int); ok && intNode.Value > 100 {
+				errs = append(errs, ValidationError{
+					Message:  "integer values must not exceed 100",
+					Node:     node,
+					Position: node.Pos(),
+				})
+			}
+		}
+		return errs
+	})
+
+	t.Run("passes both validations", func(t *testing.T) {
+		result, err := Eval(ctx, "50 + 30",
+			WithSyntax(ExpressionOnly),
+			WithValidator(maxHundred))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(80))
+	})
+
+	t.Run("fails preset validation", func(t *testing.T) {
+		_, err := Eval(ctx, "let x = 50",
+			WithSyntax(ExpressionOnly),
+			WithValidator(maxHundred))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "variable declarations"))
+	})
+
+	t.Run("fails custom validation", func(t *testing.T) {
+		_, err := Eval(ctx, "150 + 30",
+			WithSyntax(ExpressionOnly),
+			WithValidator(maxHundred))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "must not exceed 100"))
+	})
+}
+
+func TestWithTransformer(t *testing.T) {
+	ctx := context.Background()
+
+	doubler := TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
+		for node := range ast.Preorder(p) {
+			if intNode, ok := node.(*ast.Int); ok {
+				intNode.Value *= 2
+			}
+		}
+		return p, nil
+	})
+
+	t.Run("transforms integers", func(t *testing.T) {
+		result, err := Eval(ctx, "5 + 3", WithTransform(doubler))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(16)) // (5*2) + (3*2) = 16
+	})
+}
+
+func TestMultipleTransformers(t *testing.T) {
+	ctx := context.Background()
+
+	doubler := TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
+		for node := range ast.Preorder(p) {
+			if intNode, ok := node.(*ast.Int); ok {
+				intNode.Value *= 2
+			}
+		}
+		return p, nil
+	})
+
+	addOne := TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
+		for node := range ast.Preorder(p) {
+			if intNode, ok := node.(*ast.Int); ok {
+				intNode.Value++
+			}
+		}
+		return p, nil
+	})
+
+	t.Run("transformers chain in order", func(t *testing.T) {
+		// Start with 5 -> double (10) -> add one (11)
+		result, err := Eval(ctx, "5",
+			WithTransform(doubler),
+			WithTransform(addOne))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(11))
+	})
+
+	t.Run("reverse order gives different result", func(t *testing.T) {
+		// Start with 5 -> add one (6) -> double (12)
+		result, err := Eval(ctx, "5",
+			WithTransform(addOne),
+			WithTransform(doubler))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(12))
+	})
+}
+
+func TestTransformerError(t *testing.T) {
+	ctx := context.Background()
+
+	failingTransformer := TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
+		return nil, errors.New("transformation failed")
+	})
+
+	_, err := Eval(ctx, "1 + 2", WithTransform(failingTransformer))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "transformation failed"))
+}
+
+func TestValidationRunsBeforeTransformation(t *testing.T) {
+	ctx := context.Background()
+
+	transformerCalled := false
+	transformer := TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
+		transformerCalled = true
+		return p, nil
+	})
+
+	_, err := Eval(ctx, "let x = 1",
+		WithSyntax(ExpressionOnly),
+		WithTransform(transformer))
+
+	assert.NotNil(t, err)
+	assert.False(t, transformerCalled, "transformer should not be called if validation fails")
+}
+
+func TestCombinedValidatorsAndTransformers(t *testing.T) {
+	ctx := context.Background()
+
+	noNegatives := ValidatorFunc(func(p *ast.Program) []ValidationError {
+		var errs []ValidationError
+		for node := range ast.Preorder(p) {
+			if prefix, ok := node.(*ast.Prefix); ok {
+				if prefix.Op == "-" {
+					if _, isInt := prefix.X.(*ast.Int); isInt {
+						errs = append(errs, ValidationError{
+							Message:  "negative numbers are not allowed",
+							Node:     node,
+							Position: node.Pos(),
+						})
+					}
+				}
+			}
+		}
+		return errs
+	})
+
+	identity := TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
+		return p, nil
+	})
+
+	t.Run("passes validation and transformation", func(t *testing.T) {
+		result, err := Eval(ctx, "1 + 2",
+			WithSyntax(ExpressionOnly),
+			WithValidator(noNegatives),
+			WithTransform(identity))
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+
+	t.Run("fails syntax validation", func(t *testing.T) {
+		_, err := Eval(ctx, "let x = 1",
+			WithSyntax(ExpressionOnly),
+			WithValidator(noNegatives))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "variable declarations"))
+	})
+
+	t.Run("fails custom validation", func(t *testing.T) {
+		_, err := Eval(ctx, "-5 + 3",
+			WithSyntax(ExpressionOnly),
+			WithValidator(noNegatives))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "negative numbers"))
+	})
+}
+
+func TestCompileWithSyntax(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("compile fails with validation error", func(t *testing.T) {
+		_, err := Compile(ctx, "let x = 1", WithSyntax(ExpressionOnly))
+		assert.NotNil(t, err)
+		assert.True(t, strings.Contains(err.Error(), "variable declarations"))
+	})
+
+	t.Run("compile succeeds with valid code", func(t *testing.T) {
+		code, err := Compile(ctx, "1 + 2", WithSyntax(ExpressionOnly))
+		assert.Nil(t, err)
+		assert.NotNil(t, code)
+
+		result, err := Run(ctx, code)
+		assert.Nil(t, err)
+		assert.Equal(t, result, int64(3))
+	})
+}
+
+func TestSyntaxWithFilename(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := Eval(ctx, "let x = 1",
+		WithSyntax(ExpressionOnly),
+		WithFilename("test.risor"))
+
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "test.risor"))
+}
+
+func TestValidationErrorsType(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := Eval(ctx, "let x = 1; let y = 2", WithSyntax(ExpressionOnly))
+	assert.NotNil(t, err)
+
+	var validationErrs *ValidationErrors
+	assert.True(t, errors.As(err, &validationErrs))
+	assert.True(t, len(validationErrs.Errors) >= 1)
+}
+
+func TestValidationErrorCount(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := Eval(ctx, `
+		let x = 1
+		let y = 2
+		let z = 3
+	`, WithSyntax(ExpressionOnly))
+
+	assert.NotNil(t, err)
+
+	var validationErrs *ValidationErrors
+	assert.True(t, errors.As(err, &validationErrs))
+	assert.Equal(t, len(validationErrs.Errors), 3)
+}
+
+func TestExpressionOnlyWithMethodChaining(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Eval(ctx, `"hello".to_upper().to_lower()`,
+		WithEnv(Builtins()),
+		WithSyntax(ExpressionOnly))
+	assert.Nil(t, err)
+	assert.Equal(t, result, "hello")
+}
+
+func TestExpressionOnlyWithListOperations(t *testing.T) {
+	ctx := context.Background()
+
+	// Arrow functions are function definitions, so they should be blocked
+	_, err := Eval(ctx, `[1, 2, 3].map(x => x * 2)`,
+		WithEnv(Builtins()),
+		WithSyntax(ExpressionOnly))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "function definitions"))
+}
+
+func TestBasicScriptingLoops(t *testing.T) {
+	ctx := context.Background()
+
+	result, err := Eval(ctx, `
+		let sum = 0
+		let i = 1
+		if (i <= 3) {
+			sum = sum + i
+			i = i + 1
+			if (i <= 3) {
+				sum = sum + i
+				i = i + 1
+				if (i <= 3) {
+					sum = sum + i
+				}
+			}
+		}
+		sum
+	`, WithSyntax(BasicScripting))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(6)) // 1 + 2 + 3
 }

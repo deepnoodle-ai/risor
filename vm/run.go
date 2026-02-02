@@ -3,13 +3,13 @@ package vm
 import (
 	"context"
 
-	"github.com/deepnoodle-ai/risor/v2/builtins"
-	"github.com/deepnoodle-ai/risor/v2/bytecode"
-	"github.com/deepnoodle-ai/risor/v2/compiler"
-	modMath "github.com/deepnoodle-ai/risor/v2/modules/math"
-	modRand "github.com/deepnoodle-ai/risor/v2/modules/rand"
-	"github.com/deepnoodle-ai/risor/v2/object"
-	"github.com/deepnoodle-ai/risor/v2/parser"
+	"github.com/deepnoodle-ai/risor/v2/pkg/builtins"
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
+	modMath "github.com/deepnoodle-ai/risor/v2/pkg/modules/math"
+	modRand "github.com/deepnoodle-ai/risor/v2/pkg/modules/rand"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 )
 
 // Run the given code in a new Virtual Machine and return the result.

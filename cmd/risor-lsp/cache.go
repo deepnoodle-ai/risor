@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/deepnoodle-ai/risor/v2/ast"
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 )
 
 type document struct {

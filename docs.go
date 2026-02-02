@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/deepnoodle-ai/risor/v2/builtins"
-	"github.com/deepnoodle-ai/risor/v2/modules/math"
-	"github.com/deepnoodle-ai/risor/v2/modules/rand"
-	"github.com/deepnoodle-ai/risor/v2/modules/regexp"
-	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/builtins"
+	"github.com/deepnoodle-ai/risor/v2/pkg/modules/math"
+	"github.com/deepnoodle-ai/risor/v2/pkg/modules/rand"
+	"github.com/deepnoodle-ai/risor/v2/pkg/modules/regexp"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 )
 
 // DocsOption configures documentation retrieval.

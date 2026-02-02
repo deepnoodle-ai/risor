@@ -5,7 +5,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/deepnoodle-ai/risor/v2/testing"
+	"github.com/deepnoodle-ai/risor/v2/pkg/testing"
 )
 
 func testHandler(ctx *cli.Context) error {

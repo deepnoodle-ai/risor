@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/cli"
-	"github.com/deepnoodle-ai/risor/v2/ast"
-	"github.com/deepnoodle-ai/risor/v2/parser"
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 )
 
 func fmtHandler(ctx *cli.Context) error {
