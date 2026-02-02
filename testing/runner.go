@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/vm"
+	"github.com/deepnoodle-ai/risor/v2"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/vm"
 )
 
 // Config holds configuration for running tests.

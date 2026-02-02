@@ -9,7 +9,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 func TestEvalHandler_SimpleExpression(t *testing.T) {

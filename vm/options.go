@@ -3,7 +3,7 @@ package vm
 import (
 	"time"
 
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 // Option is a configuration function for a Virtual Machine.

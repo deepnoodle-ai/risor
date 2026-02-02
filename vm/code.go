@@ -3,9 +3,9 @@ package vm
 import (
 	"fmt"
 
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // loadedCode wraps bytecode.Code with VM-specific runtime data.

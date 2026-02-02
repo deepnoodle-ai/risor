@@ -3,7 +3,7 @@ package object
 import (
 	"fmt"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Internal: do not use. Cell is an implementation detail for closure variable capture.

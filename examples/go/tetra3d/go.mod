@@ -1,11 +1,11 @@
-module github.com/risor-io/risor/examples/go/tetra3d
+module github.com/deepnoodle-ai/risor/v2/examples/go/tetra3d
 
 go 1.25
 
-replace github.com/risor-io/risor => ../../..
+replace github.com/deepnoodle-ai/risor/v2 => ../../..
 
 require (
-	github.com/risor-io/risor v0.0.0-00010101000000-000000000000
+	github.com/deepnoodle-ai/risor/v2 v2.0.0
 	github.com/solarlune/tetra3d v0.16.3
 )
 

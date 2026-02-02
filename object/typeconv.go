@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/risor-io/risor/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
 )
 
 var (

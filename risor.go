@@ -8,16 +8,16 @@ import (
 	"slices"
 	"time"
 
-	"github.com/risor-io/risor/builtins"
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/compiler"
-	modMath "github.com/risor-io/risor/modules/math"
-	modRand "github.com/risor-io/risor/modules/rand"
-	modRegexp "github.com/risor-io/risor/modules/regexp"
-	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/parser"
-	"github.com/risor-io/risor/syntax"
-	"github.com/risor-io/risor/vm"
+	"github.com/deepnoodle-ai/risor/v2/builtins"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/compiler"
+	modMath "github.com/deepnoodle-ai/risor/v2/modules/math"
+	modRand "github.com/deepnoodle-ai/risor/v2/modules/rand"
+	modRegexp "github.com/deepnoodle-ai/risor/v2/modules/regexp"
+	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/parser"
+	"github.com/deepnoodle-ai/risor/v2/syntax"
+	"github.com/deepnoodle-ai/risor/v2/vm"
 )
 
 // Sentinel errors for resource limits.

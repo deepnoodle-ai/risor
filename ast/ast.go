@@ -1,7 +1,7 @@
 // Package ast defines the abstract syntax tree representation of Risor code.
 package ast
 
-import "github.com/risor-io/risor/internal/token"
+import "github.com/deepnoodle-ai/risor/v2/internal/token"
 
 // Node represents a portion of the syntax tree. All nodes have position
 // information indicating where they appear in the source code.

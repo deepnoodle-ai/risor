@@ -1,12 +1,12 @@
-module github.com/risor-io/risor/cmd/risor
+module github.com/deepnoodle-ai/risor/v2/cmd/risor
 
 go 1.25
 
-replace github.com/risor-io/risor => ../..
+replace github.com/deepnoodle-ai/risor/v2 => ../..
 
 require (
-	github.com/deepnoodle-ai/wonton v0.0.24
-	github.com/risor-io/risor v1.8.0
+	github.com/deepnoodle-ai/risor/v2 v2.0.0
+	github.com/deepnoodle-ai/wonton v0.0.25
 )
 
 require (

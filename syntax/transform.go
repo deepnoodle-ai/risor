@@ -1,6 +1,6 @@
 package syntax
 
-import "github.com/risor-io/risor/ast"
+import "github.com/deepnoodle-ai/risor/v2/ast"
 
 // Transformer modifies an AST before compilation.
 // Transformers receive ownership of the AST and return a (possibly new) AST.

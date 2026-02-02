@@ -3,7 +3,7 @@ package bytecode
 import (
 	"strings"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Code represents a compiled code block (module, function body, etc.).

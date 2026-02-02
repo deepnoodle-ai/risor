@@ -22,7 +22,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Type of an object as a string.

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // structMeta caches reflection metadata for a struct type.

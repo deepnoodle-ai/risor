@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 func Len(ctx context.Context, args ...object.Object) (object.Object, error) {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Byte wraps byte and implements Object and Hashable interface.

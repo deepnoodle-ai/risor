@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/risor-io/risor"
+	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/solarlune/tetra3d"
 )
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/risor-io/risor"
+	"github.com/deepnoodle-ai/risor/v2"
 )
 
 func main() {

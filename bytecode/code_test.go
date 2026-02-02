@@ -3,7 +3,7 @@ package bytecode
 import (
 	"testing"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 func TestNewCodeImmutability(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/parser"
+	"github.com/deepnoodle-ai/risor/v2/parser"
 )
 
 func TestEdgeCases(t *testing.T) {

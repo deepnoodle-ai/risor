@@ -1,7 +1,7 @@
 package object
 
 import (
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Compare two objects using the given comparison operator. An error is

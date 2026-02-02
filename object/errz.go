@@ -2,7 +2,7 @@
 package object
 
 import (
-	"github.com/risor-io/risor/errors"
+	"github.com/deepnoodle-ai/risor/v2/errors"
 )
 
 // Re-export types from errors package for convenience

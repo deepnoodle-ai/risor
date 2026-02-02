@@ -1,6 +1,6 @@
 package compiler
 
-import "github.com/risor-io/risor/op"
+import "github.com/deepnoodle-ai/risor/v2/op"
 
 type InstructionIter struct {
 	code *Code

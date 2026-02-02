@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/risor-io/risor"
+	"github.com/deepnoodle-ai/risor/v2"
 )
 
 type State struct {

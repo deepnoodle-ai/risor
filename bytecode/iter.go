@@ -1,6 +1,6 @@
 package bytecode
 
-import "github.com/risor-io/risor/op"
+import "github.com/deepnoodle-ai/risor/v2/op"
 
 // InstructionIter iterates over instructions in a Code object.
 type InstructionIter struct {

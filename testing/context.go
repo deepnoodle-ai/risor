@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Ensure context package is available for the builtin wrapper signatures

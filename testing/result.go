@@ -4,7 +4,7 @@ package testing
 import (
 	"time"
 
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 // Status represents the outcome of a test.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 var _ Callable = (*Builtin)(nil) // Ensure that *Builtin implements Callable

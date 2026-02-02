@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/ast"
+	"github.com/deepnoodle-ai/risor/v2/ast"
 )
 
 func TestAssignmentWithNewline(t *testing.T) {

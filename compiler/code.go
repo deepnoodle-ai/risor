@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/errors"
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/errors"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // ExceptionHandler describes a try/catch/finally block for exception handling.

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Closure is a runtime function instance with captured variables.

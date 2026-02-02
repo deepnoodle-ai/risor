@@ -11,8 +11,8 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
-	"github.com/risor-io/risor/ast"
-	"github.com/risor-io/risor/parser"
+	"github.com/deepnoodle-ai/risor/v2/ast"
+	"github.com/deepnoodle-ai/risor/v2/parser"
 )
 
 // LintIssue represents a code quality issue

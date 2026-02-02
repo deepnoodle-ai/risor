@@ -1,6 +1,6 @@
 package rand
 
-import "github.com/risor-io/risor/object"
+import "github.com/deepnoodle-ai/risor/v2/object"
 
 // Docs returns documentation for the rand module.
 func Docs() []object.FuncSpec {

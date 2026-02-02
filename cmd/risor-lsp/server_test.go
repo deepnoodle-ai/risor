@@ -6,7 +6,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/risor-io/risor/parser"
+	"github.com/deepnoodle-ai/risor/v2/parser"
 )
 
 // Helper function to set a document in the cache for testing

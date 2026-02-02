@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 // Abs returns the absolute value of x.

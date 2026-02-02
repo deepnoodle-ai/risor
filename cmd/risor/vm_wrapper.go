@@ -6,11 +6,11 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/object"
-	"github.com/risor-io/risor/parser"
-	"github.com/risor-io/risor/vm"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/compiler"
+	"github.com/deepnoodle-ai/risor/v2/object"
+	"github.com/deepnoodle-ai/risor/v2/parser"
+	"github.com/deepnoodle-ai/risor/v2/vm"
 )
 
 // replVM provides stateful execution for REPL and incremental evaluation.

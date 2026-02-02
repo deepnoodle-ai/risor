@@ -1,6 +1,6 @@
 package parser
 
-import "github.com/risor-io/risor/internal/token"
+import "github.com/deepnoodle-ai/risor/v2/internal/token"
 
 // Precedence order for operators (from lowest to highest)
 // Note: Higher numbers = higher precedence (binds tighter)

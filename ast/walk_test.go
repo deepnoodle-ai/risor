@@ -3,7 +3,7 @@ package ast
 import (
 	"testing"
 
-	"github.com/risor-io/risor/internal/token"
+	"github.com/deepnoodle-ai/risor/v2/internal/token"
 )
 
 func TestWalk(t *testing.T) {

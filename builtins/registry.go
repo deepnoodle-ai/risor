@@ -1,6 +1,6 @@
 package builtins
 
-import "github.com/risor-io/risor/object"
+import "github.com/deepnoodle-ai/risor/v2/object"
 
 // Entry defines a builtin function along with its documentation.
 // This ensures documentation stays in sync with implementations.

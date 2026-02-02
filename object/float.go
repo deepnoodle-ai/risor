@@ -5,7 +5,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Float wraps float64 and implements Object and Hashable interfaces.

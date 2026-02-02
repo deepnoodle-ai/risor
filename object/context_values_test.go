@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
 )
 
 func TestContextCallFunc(t *testing.T) {

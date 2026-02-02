@@ -5,9 +5,9 @@ import (
 	"log"
 	"testing"
 
-	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/parser"
-	"github.com/risor-io/risor/vm"
+	"github.com/deepnoodle-ai/risor/v2/compiler"
+	"github.com/deepnoodle-ai/risor/v2/parser"
+	"github.com/deepnoodle-ai/risor/v2/vm"
 )
 
 func BenchmarkRisor_Fibonacci35(b *testing.B) {

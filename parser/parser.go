@@ -8,9 +8,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/risor-io/risor/ast"
-	"github.com/risor-io/risor/internal/lexer"
-	"github.com/risor-io/risor/internal/token"
+	"github.com/deepnoodle-ai/risor/v2/ast"
+	"github.com/deepnoodle-ai/risor/v2/internal/lexer"
+	"github.com/deepnoodle-ai/risor/v2/internal/token"
 )
 
 type (

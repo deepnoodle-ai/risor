@@ -1,6 +1,6 @@
 package bytecode
 
-import "github.com/risor-io/risor/op"
+import "github.com/deepnoodle-ai/risor/v2/op"
 
 // copyStrings returns a copy of the given string slice.
 func copyStrings(src []string) []string {

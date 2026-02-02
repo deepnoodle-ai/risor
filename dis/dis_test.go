@@ -8,9 +8,9 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/compiler"
-	"github.com/risor-io/risor/parser"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/compiler"
+	"github.com/deepnoodle-ai/risor/v2/parser"
 )
 
 func TestFunctionDissasembly(t *testing.T) {

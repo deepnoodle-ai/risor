@@ -3,7 +3,7 @@ package object
 import (
 	"fmt"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Bool wraps bool and implements Object and Hashable interface.

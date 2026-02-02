@@ -8,7 +8,7 @@ import (
 	stdt "testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 func TestStatus_String(t *stdt.T) {

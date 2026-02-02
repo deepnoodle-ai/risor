@@ -3,7 +3,7 @@ package parser
 import (
 	"testing"
 
-	"github.com/risor-io/risor/ast"
+	"github.com/deepnoodle-ai/risor/v2/ast"
 )
 
 func testVarStatement(t *testing.T, s *ast.Var, name string) bool {

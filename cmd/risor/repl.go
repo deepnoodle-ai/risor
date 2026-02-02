@@ -10,7 +10,7 @@ import (
 	"unicode"
 
 	"github.com/deepnoodle-ai/wonton/tui"
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 // replApp implements tui.InlineApplication for the Risor REPL.

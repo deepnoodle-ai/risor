@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/risor-io/risor/parser"
+	"github.com/deepnoodle-ai/risor/v2/parser"
 	"github.com/rs/zerolog/log"
 )
 

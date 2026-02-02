@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // DynamicAttr is an Object that represents an attribute that can be dynamically

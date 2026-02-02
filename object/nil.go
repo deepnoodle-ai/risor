@@ -1,7 +1,7 @@
 package object
 
 import (
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 type NilType struct{}

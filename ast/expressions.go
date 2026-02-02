@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"strings"
 
-	"github.com/risor-io/risor/internal/token"
+	"github.com/deepnoodle-ai/risor/v2/internal/token"
 )
 
 // Ident is an expression node that refers to a variable by name.

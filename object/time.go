@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 var timeMethods = NewMethodRegistry[*Time]("time")

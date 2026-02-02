@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/internal/table"
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/internal/table"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Instruction represents a single bytecode instruction and its operands.

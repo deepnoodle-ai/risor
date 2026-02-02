@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 // Int wraps int64 and implements Object and Hashable interfaces.

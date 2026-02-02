@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/risor-io/risor/bytecode"
-	"github.com/risor-io/risor/op"
+	"github.com/deepnoodle-ai/risor/v2/bytecode"
+	"github.com/deepnoodle-ai/risor/v2/op"
 )
 
 var moduleAttrs = NewAttrRegistry[*Module]("module")

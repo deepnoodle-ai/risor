@@ -34,7 +34,7 @@
 //
 // # Package Dependencies
 //
-// This package depends only on [github.com/risor-io/risor/op] to avoid
+// This package depends only on [github.com/deepnoodle-ai/risor/v2/op] to avoid
 // circular dependencies with the object package. Constants are stored as
 // []any and converted to object.Object by the VM at load time.
 //

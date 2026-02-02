@@ -9,8 +9,8 @@ import (
 	"os"
 
 	"github.com/deepnoodle-ai/wonton/cli"
-	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/object"
+	"github.com/deepnoodle-ai/risor/v2"
+	"github.com/deepnoodle-ai/risor/v2/object"
 )
 
 func evalHandler(ctx *cli.Context) error {
