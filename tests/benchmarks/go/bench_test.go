@@ -7,7 +7,7 @@ import (
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
-	"github.com/deepnoodle-ai/risor/v2/vm"
+	"github.com/deepnoodle-ai/risor/v2/pkg/vm"
 )
 
 func BenchmarkRisor_Fibonacci35(b *testing.B) {

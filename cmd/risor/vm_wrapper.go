@@ -10,7 +10,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
-	"github.com/deepnoodle-ai/risor/v2/vm"
+	"github.com/deepnoodle-ai/risor/v2/pkg/vm"
 )
 
 // replVM provides stateful execution for REPL and incremental evaluation.

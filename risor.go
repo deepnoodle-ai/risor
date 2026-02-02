@@ -17,7 +17,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/risor/v2/pkg/syntax"
-	"github.com/deepnoodle-ai/risor/v2/vm"
+	"github.com/deepnoodle-ai/risor/v2/pkg/vm"
 )
 
 // Sentinel errors for resource limits.

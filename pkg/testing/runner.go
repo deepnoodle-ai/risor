@@ -12,7 +12,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
-	"github.com/deepnoodle-ai/risor/v2/vm"
+	"github.com/deepnoodle-ai/risor/v2/pkg/vm"
 )
 
 // Config holds configuration for running tests.
