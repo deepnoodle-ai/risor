@@ -3,8 +3,8 @@ package parser
 import (
 	"fmt"
 
-	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
+	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 )
 
 // ErrorOpts is a struct that holds a variety of error data.

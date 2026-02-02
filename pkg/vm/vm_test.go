@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestAddCompilationAndExecution(t *testing.T) {

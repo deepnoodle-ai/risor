@@ -8,10 +8,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/internal/table"
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
+	"github.com/deepnoodle-ai/wonton/color"
 )
 
 // Instruction represents a single bytecode instruction and its operands.

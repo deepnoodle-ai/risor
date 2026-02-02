@@ -53,10 +53,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/deepnoodle-ai/risor/v2/internal/token"
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
-	"github.com/deepnoodle-ai/risor/v2/internal/token"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
 

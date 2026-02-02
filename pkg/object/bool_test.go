@@ -3,9 +3,9 @@ package object_test
 import (
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestBool(t *testing.T) {

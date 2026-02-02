@@ -9,8 +9,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/deepnoodle-ai/wonton/tui"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // replApp implements tui.InlineApplication for the Risor REPL.

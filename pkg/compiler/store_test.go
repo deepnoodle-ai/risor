@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func compileSource(source string) (*Code, error) {

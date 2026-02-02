@@ -3,8 +3,8 @@ package ast
 import (
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestString(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/internal/tmpl"
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 )
 
 // Literal parsing methods for the Parser.

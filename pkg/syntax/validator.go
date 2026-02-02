@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 )
 
 // ValidationError represents a syntax restriction violation.

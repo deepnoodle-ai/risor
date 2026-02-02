@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/deepnoodle-ai/wonton/cli"
-	"github.com/deepnoodle-ai/wonton/tui"
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
+	"github.com/deepnoodle-ai/wonton/cli"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // LintIssue represents a code quality issue

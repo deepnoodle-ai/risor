@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestTypeRegistryMethod(t *testing.T) {

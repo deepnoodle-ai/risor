@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 )
 
 // Expression parsing methods for the Parser.

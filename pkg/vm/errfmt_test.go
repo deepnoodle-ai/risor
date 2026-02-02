@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // TestRuntimeErrorHasEndColumn verifies runtime errors have EndColumn for multi-char underlines

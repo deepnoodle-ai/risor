@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	stdt "testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestStatus_String(t *stdt.T) {

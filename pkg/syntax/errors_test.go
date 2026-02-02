@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestMultipleErrors(t *testing.T) {

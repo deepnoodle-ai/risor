@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestAbs(t *testing.T) {

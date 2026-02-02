@@ -10,9 +10,9 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
-	"github.com/deepnoodle-ai/risor/v2"
 )
 
 // BenchResult holds benchmark statistics
