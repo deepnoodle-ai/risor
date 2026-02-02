@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/risor-io/risor/parser"
 	"github.com/rs/zerolog/log"
 )
 

@@ -7,13 +7,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/builtins"
+	"github.com/deepnoodle-ai/risor/v2/pkg/modules/math"
+	"github.com/deepnoodle-ai/risor/v2/pkg/modules/rand"
+	"github.com/deepnoodle-ai/risor/v2/pkg/modules/regexp"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
-	"github.com/risor-io/risor/builtins"
-	"github.com/risor-io/risor/modules/math"
-	"github.com/risor-io/risor/modules/rand"
-	"github.com/risor-io/risor/modules/regexp"
-	"github.com/risor-io/risor/object"
 )
 
 // typeDocs returns type documentation from the dynamic registry.

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor"
 )
 
 func TestReplVM(t *testing.T) {

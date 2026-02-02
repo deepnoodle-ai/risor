@@ -18,7 +18,7 @@ user.role == "admin" || resource.ownerId == user.id
 `Hello, ${user.name}! Your order ships ${order.shipDate}.`
 
 // Configuration logic: safe navigation with fallbacks
-user?.settings?.theme ?? config?.defaults?.theme ?? "light"
+config?.defaults?.theme ?? "light"
 
 // Data transformation: filter, map, reduce
 orders.filter(o => o.status == "pending").map(o => o.total).reduce((a, b) => a + b, 0)
@@ -34,34 +34,33 @@ env := risor.Builtins()
 env["user"] = currentUser
 env["resource"] = requestedResource
 
-allowed, err := risor.Eval(ctx, `user.role == "admin" || resource.ownerId == user.id`, risor.WithEnv(env))
+allowed, err := risor.Eval(ctx,
+    `user.role == "admin" || resource.ownerId == user.id`,
+    risor.WithEnv(env),
+)
 ```
 
 Go primitives, slices, and maps convert automatically.
 
 ## What Risor Isn't
 
-**Not a general-purpose language.** Risor isn't trying to replace Python or
-TypeScript. It's a tool for adding flexibility to Go applications.
-
-**Not for large programs.** Risor handles longer scripts fine, but the sweet
-spot is expressions and small scripts.
-
-**Not an ecosystem.** No package manager, no plugin system. Extension happens
-through Go code, not Risor code.
+Risor is not trying to compete with Python, Typescript, or other general purpose
+scripting languages. Nor is it intended for writing large programs, hence there
+is no package manager or module import mechanism in the language. That said,
+there are several easy ways to customize and extend the environment and
+built-in functions and types available to Risor expressions during execution.
 
 ## Documentation
 
 - [Language Semantics](docs/semantics.md) — Type coercion, equality, and iteration
 - [Exception Handling](docs/exceptions.md) — Try/catch/finally and error types
-- [v1 to v2 Migration](docs/v1-to-v2-migration.md) — Upgrading from v1
+- [v1 to v2 Migration](docs/migration-v2.md) — Upgrading from v1
 
 ## Risor v2
 
 This is Risor v2, a major evolution focused on the embedded scripting use case.
-The syntax draws from TypeScript: arrow functions, optional chaining,
-destructuring, and functional iteration. For loops are gone in favor of `map`,
-`filter`, and `reduce`.
+Implementations of Risor v2 for use in Typescript and Rust programs is currently
+being prototyped, with good initial results.
 
 Risor v1 remains available at [tag v1.8.1](https://github.com/deepnoodle-ai/risor/releases/tag/v1.8.1).
 

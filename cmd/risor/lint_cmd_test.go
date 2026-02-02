@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/risor-io/risor/parser"
 )
 
 func TestLintProgram_EmptyIfBlock(t *testing.T) {

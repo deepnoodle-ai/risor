@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/testing"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/risor-io/risor/testing"
 )
 
 func testHandler(ctx *cli.Context) error {

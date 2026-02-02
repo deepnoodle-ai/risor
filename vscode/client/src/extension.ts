@@ -50,7 +50,7 @@ async function findOrInstallLanguageServer(
   try {
     window.showInformationMessage("Installing Risor Language Server...");
     await execAsync(
-      "go install github.com/risor-io/risor/cmd/risor-lsp@v1.8.1"
+      "go install github.com/deepnoodle-ai/risor/v2/cmd/risor-lsp@v1.8.1"
     );
 
     // Verify installation
@@ -66,7 +66,7 @@ async function findOrInstallLanguageServer(
   } catch (error) {
     console.error("Failed to install risor-lsp via go install:", error);
     window.showErrorMessage(
-      "Failed to install Risor Language Server automatically. Please run: go install github.com/risor-io/risor/cmd/risor-lsp@v1.8.1"
+      "Failed to install Risor Language Server automatically. Please run: go install github.com/deepnoodle-ai/risor/v2/cmd/risor-lsp@v1.8.1"
     );
     throw error;
   }

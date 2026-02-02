@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
-	"github.com/risor-io/risor/ast"
 )
 
 type document struct {

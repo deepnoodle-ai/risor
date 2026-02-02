@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/fatih/color"
-	"github.com/risor-io/risor"
 )
 
 type State struct {

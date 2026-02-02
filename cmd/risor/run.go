@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/deepnoodle-ai/risor/v2"
+	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
-	"github.com/risor-io/risor"
-	"github.com/risor-io/risor/errors"
 )
 
 func runHandler(ctx *cli.Context) error {

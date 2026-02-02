@@ -1,16 +1,16 @@
-module github.com/risor-io/risor/examples/go/tetra3d
+module github.com/deepnoodle-ai/risor/v2/examples/go/tetra3d
 
 go 1.25
 
-replace github.com/risor-io/risor => ../../..
+replace github.com/deepnoodle-ai/risor/v2 => ../../..
 
 require (
-	github.com/risor-io/risor v0.0.0-00010101000000-000000000000
+	github.com/deepnoodle-ai/risor/v2 v2.0.0
 	github.com/solarlune/tetra3d v0.16.3
 )
 
 require (
-	github.com/deepnoodle-ai/wonton v0.0.24 // indirect
+	github.com/deepnoodle-ai/wonton v0.0.25 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20250329061421-6d0a8e981e4c // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/purego v0.8.3 // indirect
