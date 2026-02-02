@@ -1,4 +1,4 @@
-package risor
+package docs
 
 import (
 	"encoding/json"
