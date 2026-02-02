@@ -1,9 +1,13 @@
 export GIT_REVISION=$(shell git rev-parse --short HEAD)
 
+# Packages to exclude from testing (examples, benchmarks)
+TEST_EXCLUDE := examples tests/benchmarks
+
 .PHONY: test
 test:
 	gotestsum --junitfile /tmp/test-reports/unit-tests.xml \
-		-- -coverprofile=coverage.out -covermode=atomic ./...
+		-- -coverprofile=coverage.out -covermode=atomic \
+		$$(go list ./... | grep -v -E '$(subst $(eval ) ,|,$(TEST_EXCLUDE))')
 
 .PHONY: pprof
 pprof:
@@ -13,7 +17,7 @@ pprof:
 
 .PHONY: bench
 bench:
-	go test -bench=. -benchmem ./bench
+	go test -bench=. -benchmem ./tests/benchmarks/go
 
 # https://code.visualstudio.com/api/working-with-extensions/publishing-extension#packaging-extensions
 .PHONY: install-tools
