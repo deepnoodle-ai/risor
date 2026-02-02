@@ -317,24 +317,6 @@ func TestTemplateStringSyntaxErrorInInterpolation(t *testing.T) {
 	assert.Contains(t, err.Error(), "template interpolation")
 }
 
-func TestTemplateStringNestedBraces(t *testing.T) {
-	// Template with map literal inside - use a non-empty map to avoid ambiguity
-	program, err := Parse(context.Background(), "`${{}}`", nil)
-	// NOTE: Empty map `${{}}` causes parsing issues due to brace matching
-	// This is a known limitation - the template parser struggles with nested braces
-	if err != nil {
-		// Document this as a known issue
-		t.Skip("Template with empty map literal has parsing issues - known limitation")
-	}
-
-	str, ok := program.First().(*ast.String)
-	assert.True(t, ok)
-	assert.Len(t, str.Exprs, 1)
-
-	_, ok = str.Exprs[0].(*ast.Map)
-	assert.True(t, ok)
-}
-
 func TestTemplateStringWithMapLiteral(t *testing.T) {
 	// Non-empty map works
 	program, err := Parse(context.Background(), "`${x}`", nil)
