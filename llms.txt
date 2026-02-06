@@ -1,0 +1,633 @@
+# Risor
+
+Risor is a fast, embedded scripting language for Go. Scripts compile to bytecode
+and run on a lightweight virtual machine. Use it to add user-facing scripting,
+rule evaluation, or expression engines to Go applications. Apache 2.0, Go 1.25+.
+
+Risor has a small, focused core: a JavaScript-like syntax with closures, iterators,
+pipe expressions, destructuring, and spread operators. The type system includes
+strings, numbers, lists, maps, bytes, errors, and time values — each with built-in
+methods. Three modules ship with the standard library: math, rand, and regexp.
+
+By default the environment is empty (secure by default). The embedder controls
+exactly what the script can access by passing an environment map. Scripts cannot
+touch the filesystem, network, or OS unless the embedder explicitly provides
+functions for that.
+
+Module: `github.com/deepnoodle-ai/risor/v2`
+
+Install: `go get github.com/deepnoodle-ai/risor/v2`
+
+## Execution pipeline
+
+```
+Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (execution)
+```
+
+Bytecode is immutable and safe for concurrent use. Multiple goroutines can execute
+the same compiled code simultaneously, each with its own VM state.
+
+## Go embedding API
+
+```go
+// Compile and run in one step
+result, err := risor.Eval(ctx, `[1, 2, 3].map(x => x * 2)`)
+// result: []any{2, 4, 6}
+
+// With standard library
+result, err := risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
+
+// Custom environment
+env := map[string]any{"price": 100.0, "quantity": 5}
+result, err := risor.Eval(ctx, "price * quantity", risor.WithEnv(env))
+
+// Separate compile and run for reuse
+code, err := risor.Compile(ctx, source, risor.WithEnv(env))
+result, err := risor.Run(ctx, code, risor.WithEnv(env))
+```
+
+Compiled bytecode is bound to the global names present at compile time. The same
+Code can be reused with different env maps that have the same keys (values may
+differ). Using Code with an env that has different keys causes undefined behavior.
+
+## Options
+
+```go
+risor.WithEnv(map[string]any)       // Provide environment (additive, last value wins)
+risor.WithFilename(string)          // Set filename for error messages
+risor.WithObserver(vm.Observer)     // Execution observer for profiling/debugging
+risor.WithTypeRegistry(registry)    // Custom Go/Risor type conversions
+risor.WithRawResult()               // Return object.Object instead of Go values
+risor.WithMaxSteps(int64)           // Limit instruction count (0 = unlimited)
+risor.WithMaxStackDepth(int)        // Limit call stack depth
+risor.WithTimeout(time.Duration)    // Execution timeout
+risor.WithSyntax(config)            // Restrict allowed syntax constructs
+risor.WithValidator(v)              // Custom AST validator
+risor.WithTransform(t)              // Custom AST transformer
+```
+
+## Result conversion
+
+By default, results are converted to native Go types:
+
+- `nil` → `nil`
+- `string` → `string`
+- `int` → `int64`
+- `float` → `float64`
+- `bool` → `bool`
+- `byte` → `byte`
+- `bytes` → `[]byte`
+- `list` → `[]any`
+- `map` → `map[string]any`
+- `time` → `time.Time`
+- Other types → `Inspect()` string
+
+Use `WithRawResult()` to receive `object.Object` directly.
+
+## Customizing the environment
+
+```go
+// Default: empty (secure by default)
+risor.Eval(ctx, "1 + 2")
+
+// Standard library
+risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
+
+// Customize standard library
+env := risor.Builtins()
+delete(env, "math")             // remove a module
+env["custom_fn"] = myFunc       // add custom function
+risor.Eval(ctx, source, risor.WithEnv(env))
+```
+
+## Syntax restriction
+
+Three presets control which language features are allowed:
+
+```go
+// Only expressions — no variables, functions, or control flow
+risor.Eval(ctx, "price * 1.1",
+    risor.WithEnv(map[string]any{"price": 100.0}),
+    risor.WithSyntax(risor.ExpressionOnly),
+)
+
+// Scripting — control flow and error handling, but no function definitions
+risor.WithSyntax(risor.BasicScripting)
+
+// Full language (default)
+risor.WithSyntax(risor.FullLanguage)
+```
+
+Custom validators and transformers can further restrict or modify the AST.
+
+## Resource limits
+
+```go
+// Limit instruction count
+result, err := risor.Eval(ctx, source, risor.WithMaxSteps(10000))
+if errors.Is(err, risor.ErrStepLimitExceeded) { /* ... */ }
+
+// Limit call stack depth
+result, err := risor.Eval(ctx, source, risor.WithMaxStackDepth(100))
+if errors.Is(err, risor.ErrStackOverflow) { /* ... */ }
+
+// Execution timeout
+result, err := risor.Eval(ctx, source, risor.WithTimeout(100*time.Millisecond))
+if errors.Is(err, context.DeadlineExceeded) { /* ... */ }
+```
+
+## Go interop types
+
+GoFunc wraps arbitrary Go functions for use in Risor via reflection.
+GoStruct wraps Go struct pointers, exposing exported fields and methods.
+Both use a TypeRegistry for automatic conversion between Go and Risor types.
+
+```go
+registry := risor.NewTypeRegistry().
+    RegisterFromGo(reflect.TypeOf(User{}), func(v any) (object.Object, error) {
+        u := v.(User)
+        return object.NewMap(map[string]object.Object{
+            "id":   object.NewInt(int64(u.ID)),
+            "name": object.NewString(u.Name),
+        }), nil
+    }).
+    Build()
+
+result, _ := risor.Eval(ctx, source,
+    risor.WithEnv(risor.Builtins()),
+    risor.WithTypeRegistry(registry))
+```
+
+## Language syntax
+
+### Variables and assignments
+
+```js
+let name = "Alice"
+let x = 42
+x = 100                // reassignment
+x += 10                // compound assignment (+=, -=, *=, /=, %=)
+```
+
+### Data types
+
+```js
+// Primitives
+true                   // bool
+42                     // int (64-bit)
+3.14                   // float (64-bit)
+"hello"                // string
+`template ${name}`     // template string
+nil                    // nil
+
+// Numbers support hex, octal, binary
+0xFF                   // hex
+0o77                   // octal
+0b1010                 // binary
+
+// Containers
+[1, 2, 3]             // list
+{name: "Alice", age: 30} // map (string keys)
+
+// Other
+byte(65)               // byte (0-255)
+bytes("hello")         // byte sequence
+range(10)              // lazy integer range
+error("oops")          // error value
+```
+
+### Operators
+
+```js
+// Arithmetic: +, -, *, /, %
+// Comparison: ==, !=, <, >, <=, >=
+// Logical: &&, ||, !
+// Membership: in, not in
+// Pipe: |
+"x" in {x: 1}         // true
+3 not in [1, 2]        // true
+```
+
+### Functions and closures
+
+```js
+// Function declaration
+function add(a, b) {
+    return a + b
+}
+
+// Arrow functions
+let double = x => x * 2
+let add = (a, b) => a + b
+
+// Default parameters
+function greet(name = "World") {
+    return `Hello ${name}!`
+}
+
+// Closures
+function makeCounter() {
+    let count = 0
+    return function() {
+        count++
+        return count
+    }
+}
+```
+
+### Control flow
+
+```js
+// If/else (is an expression — returns a value)
+let status = if x > 0 { "positive" } else { "non-positive" }
+
+// While loop
+while condition {
+    // ...
+    break    // exit loop
+    continue // skip to next iteration
+}
+
+// For-in loop
+for item in [1, 2, 3] {
+    print(item)
+}
+for i, item in ["a", "b", "c"] {
+    print(i, item)
+}
+for key, value in {a: 1, b: 2} {
+    print(key, value)
+}
+for i in range(10) {
+    print(i)
+}
+
+// Switch
+switch value {
+case "a":
+    // ...
+case "b", "c":
+    // ...
+default:
+    // ...
+}
+```
+
+### Pipe expressions
+
+The pipe operator passes the left value as the first argument to the right function:
+
+```js
+5 | x => x * 2 | x => x + 1     // 11
+[3, 1, 2] | sorted | reversed    // [3, 2, 1]
+"hello" | string                  // "hello"
+```
+
+### Spread and destructuring
+
+```js
+// Spread in lists
+let a = [1, 2]
+let b = [...a, 3, 4]             // [1, 2, 3, 4]
+
+// Spread in maps
+let merged = {...{a: 1}, ...{b: 2}} // {a: 1, b: 2}
+
+// Spread in function calls
+let args = [1, 2, 3]
+fn(...args)
+
+// Object destructuring
+let {name, age} = {name: "Alice", age: 30}
+let {x = 5} = {}                 // with default
+
+// Array destructuring
+let [first, second] = [1, 2]
+```
+
+### Optional chaining
+
+```js
+obj?.field?.nested
+obj?.method()
+list?.[0]
+```
+
+### Error handling
+
+```js
+// Try/catch/finally
+try {
+    risky_operation()
+} catch e {
+    print(e.message())
+} finally {
+    cleanup()
+}
+
+// Create and throw errors
+let err = error("file %s not found", filename)
+throw error("something went wrong")
+
+// Error methods: message(), line(), column(), filename(), source(), stack()
+```
+
+### String interpolation
+
+```js
+let name = "World"
+let greeting = `Hello ${name}!`
+let result = `${1 + 2} items`
+```
+
+## Built-in functions
+
+Type conversions:
+
+- `int(value?)` — Convert to 64-bit integer
+- `float(value?)` — Convert to 64-bit float
+- `string(value?)` — Convert to string
+- `bool(value?)` — Convert to boolean
+- `byte(value?)` — Convert to byte (0-255)
+- `bytes(value?)` — Convert to byte sequence
+- `list(enumerable?)` — Convert enumerable to list
+
+Container operations:
+
+- `len(container)` — Length of string, list, map, or bytes
+- `keys(container)` — Keys from map or indices from list
+- `sorted(items, key?)` — Sorted copy with optional comparator
+- `reversed(sequence)` — Reversed copy of list or string
+- `filter(items, fn)` — Keep elements where fn returns true
+- `chunk(list, size)` — Split list into chunks
+- `range(stop)`, `range(start, stop)`, `range(start, stop, step)` — Lazy integer sequence
+
+Encoding/decoding:
+
+- `encode(value, format)` — Encode to format: json, base64, base32, hex, csv, urlquery
+- `decode(data, format)` — Decode from format: json, base64, base32, hex, csv, urlquery
+
+Utility:
+
+- `type(value)` — Type name as string
+- `sprintf(format, args...)` — Format string (Go fmt.Sprintf syntax)
+- `error(message, args...)` — Create error value (does not throw)
+- `assert(condition, message?)` — Raise error if false
+- `getattr(obj, name, default?)` — Safe attribute access
+- `call(fn, args...)` — Call function dynamically
+- `any(items)` — True if any element is truthy
+- `all(items)` — True if all elements are truthy
+- `coalesce(values...)` — First non-nil argument
+
+## Type methods
+
+### String methods
+
+```js
+"hello world".contains("world")       // true
+"hello world".split(" ")              // ["hello", "world"]
+"hello".to_upper()                    // "HELLO"
+"HELLO".to_lower()                    // "hello"
+"  hello  ".trim_space()              // "hello"
+"hello".has_prefix("he")             // true
+"hello".has_suffix("lo")             // true
+"hello".index("ll")                  // 2
+"hello".replace_all("l", "r")        // "herro"
+"a-b-c".join(["x", "y"])            // "x-y" (separator.join(list))
+"hello hello".count("hello")         // 2
+"abc".repeat(3)                      // "abcabcabc"
+"  hello  ".trim(" ")               // "hello"
+"hello world".fields()               // ["hello", "world"]
+```
+
+### List methods
+
+```js
+let items = [1, 2, 3]
+items.append(4)                      // [1, 2, 3, 4] (mutates)
+items.extend([5, 6])                 // [1, 2, 3, 4, 5, 6] (mutates)
+items.insert(0, 0)                   // [0, 1, 2, ...] (mutates)
+items.pop()                          // removes and returns last
+items.pop(0)                         // removes and returns at index
+items.remove(3)                      // removes first occurrence
+items.reverse()                      // reverses in place
+items.sort()                         // sorts in place
+items.clear()                        // removes all items
+items.copy()                         // shallow copy
+items.count(2)                       // count occurrences
+items.index(2)                       // index of first occurrence
+items.filter(x => x > 2)            // new filtered list
+items.map(x => x * 2)               // new mapped list
+items.each(x => print(x))           // iterate (returns nil)
+items.reduce(0, (acc, x) => acc + x) // reduce to single value
+```
+
+### Map methods
+
+Methods shadow keys — use bracket notation to access a key that matches a method name.
+
+```js
+let config = {host: "localhost", port: 8080}
+config.keys()                        // iter("host", "port")
+config.values()                      // iter("localhost", 8080)
+config.entries()                     // iter(["host", "localhost"], ["port", 8080])
+config.each((k, v) => print(k, v))  // iterate key-value pairs
+config.get("timeout", 30)           // 30 (default if missing)
+config.pop("host")                  // removes and returns "localhost"
+config.setdefault("debug", false)   // set if missing, return value
+config.update({port: 9090})         // merge another map
+config.clear()                      // remove all entries
+config.copy()                       // shallow copy
+list(config.keys())                 // ["host", "port"]
+```
+
+### Error methods
+
+```js
+let err = error("something went wrong")
+err.message()                        // "something went wrong"
+err.line()                           // source line number
+err.column()                         // source column number
+err.filename()                       // source filename
+err.source()                         // source code context
+err.stack()                          // stack trace
+```
+
+### Time methods
+
+```js
+let t = time_value
+t.format("2006-01-02")              // formatted string (Go layout)
+t.unix()                             // Unix timestamp
+t.utc()                              // convert to UTC
+t.add_date(years, months, days)     // new time with offset
+t.after(other)                       // true if after other
+t.before(other)                      // true if before other
+```
+
+### Range attributes
+
+```js
+let r = range(1, 10, 2)
+r.start                              // 1
+r.stop                               // 10
+r.step                               // 2
+```
+
+## Modules
+
+### math
+
+Constants: `pi`, `e`, `tau`, `inf`, `nan`
+
+Functions:
+
+- Basic: `abs`, `sign`, `ceil`, `floor`, `round`, `trunc`, `clamp`
+- Min/Max: `min`, `max`, `sum`
+- Powers: `sqrt`, `cbrt`, `pow`, `exp`, `log`, `log10`, `log2`
+- Trigonometry: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `hypot`
+- Hyperbolic: `sinh`, `cosh`, `tanh`
+- Conversion: `degrees`, `radians`
+- Predicates: `is_finite`, `is_inf`, `is_nan`
+
+```js
+math.sqrt(16)          // 4.0
+math.clamp(15, 0, 10)  // 10
+math.pi                // 3.141592653589793
+```
+
+### rand
+
+- `rand.random()` — Float in [0.0, 1.0)
+- `rand.int()`, `rand.int(n)`, `rand.int(min, max)` — Random integers
+- `rand.randint(a, b)` — Random integer in [a, b] inclusive
+- `rand.uniform(a, b)` — Random float in [a, b]
+- `rand.normal()`, `rand.normal(mu, sigma)` — Normal distribution
+- `rand.exponential()`, `rand.exponential(lambda)` — Exponential distribution
+- `rand.choice(list)` — Random element
+- `rand.sample(list, k)` — k unique random elements
+- `rand.shuffle(list)` — Shuffle in place
+- `rand.bytes(n)` — n random bytes
+
+### regexp
+
+- `regexp.compile(pattern)` — Compile regular expression
+- `regexp.match(pattern, str)` — Test if string matches
+- `regexp.find(pattern, str)` — First match
+- `regexp.find_all(pattern, str, n?)` — All matches
+- `regexp.search(pattern, str)` — Index of first match
+- `regexp.replace(pattern, str, repl, count?)` — Replace matches
+- `regexp.split(pattern, str, n?)` — Split by pattern
+- `regexp.escape(str)` — Escape metacharacters
+
+```js
+regexp.match(`\d+`, "abc123")          // true
+regexp.find_all(`\w+`, "hello world")  // ["hello", "world"]
+regexp.replace(`\d`, "a1b2", "X")      // "aXbX"
+```
+
+## Iterator protocol
+
+Maps, ranges, and other types return lazy iterators. Iterators implement the
+Enumerable interface and can be consumed with spread, `list()`, or `for`:
+
+```js
+let m = {a: 1, b: 2}
+let k = m.keys()              // lazy iterator
+list(k)                       // ["a", "b"]
+[...m.values()]               // [1, 2]
+
+for key, value in m.entries() {
+    print(key, value)
+}
+
+for i in range(5) {
+    print(i)                  // 0, 1, 2, 3, 4
+}
+```
+
+## Indexing and slicing
+
+```js
+let items = [10, 20, 30, 40, 50]
+items[0]                      // 10
+items[-1]                     // 50 (negative indexing)
+items[1:3]                    // [20, 30]
+items[:2]                     // [10, 20]
+items[2:]                     // [30, 40, 50]
+
+let s = "hello"
+s[0]                          // "h"
+s[1:3]                        // "el"
+
+let m = {a: 1, b: 2}
+m["a"]                        // 1
+m.a                           // 1
+```
+
+## Core Go types (object package)
+
+All Risor values implement `object.Object`:
+
+```go
+type Object interface {
+    Type() Type
+    Inspect() string
+    Interface() interface{}
+    Equals(other Object) bool
+    IsTruthy() bool
+    Attrs() []AttrSpec
+    GetAttr(name string) (Object, bool)
+    SetAttr(name string, value Object) error
+    RunOperation(opType op.BinaryOpType, right Object) (Object, error)
+}
+```
+
+Additional interfaces:
+
+- `Container` — GetItem, GetSlice, SetItem, DelItem, Contains, Len (list, map, string)
+- `Enumerable` — Enumerate(ctx, callback) for iteration
+- `Callable` — Call(ctx, args...) for functions
+- `Comparable` — Compare(other) returning -1/0/1
+
+Concrete types:
+
+- `*object.Bool`, `*object.Int`, `*object.Float`, `*object.String`
+- `*object.Byte`, `*object.Bytes`, `*object.NilType`
+- `*object.List`, `*object.Map`, `*object.Range`
+- `*object.Iter` — lazy iterator
+- `*object.Closure` — compiled function with captured variables
+- `*object.Builtin` — Go function wrapper
+- `*object.Partial` — partially applied function
+- `*object.Error` — error with message, position, and stack trace
+- `*object.Time` — time value
+- `*object.Module` — namespace for module functions
+- `*object.GoFunc` — reflected Go function
+- `*object.GoStruct` — reflected Go struct (fields + methods)
+- `*object.Color` — RGB color value
+
+## Project structure
+
+- `risor.go` — Public API: Eval, Compile, Run, Builtins, options
+- `pkg/object/` — Type system (all Risor values)
+- `pkg/builtins/` — Built-in functions and codecs
+- `pkg/modules/` — Standard modules: math, rand, regexp
+- `internal/lexer/` — Tokenization
+- `pkg/parser/` — Recursive descent parser, AST construction
+- `pkg/ast/` — AST node types
+- `pkg/compiler/` — Bytecode generation with symbol table
+- `pkg/bytecode/` — Bytecode representation
+- `pkg/vm/` — Virtual machine execution
+- `pkg/syntax/` — AST validation and transformation
+- `cmd/risor/` — CLI with REPL, formatter, linter, test runner
+- `cmd/risor-lsp/` — Language server for IDE support
+
+## Docs
+
+- [README](README.md)
+- [GoDoc](https://pkg.go.dev/github.com/deepnoodle-ai/risor/v2)
+
+## Related projects
+
+- [Dive](https://github.com/deepnoodle-ai/dive) — Go library for building AI agents and LLM-powered applications
+- [Wonton](https://github.com/deepnoodle-ai/wonton) — Go library for CLIs: TUI framework, HTML-to-Markdown, HTTP utilities
