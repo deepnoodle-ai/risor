@@ -511,7 +511,7 @@ math.pi                // 3.141592653589793
 
 ### regexp
 
-- `regexp.compile(pattern)` — Compile regex
+- `regexp.compile(pattern)` — Compile regular expression
 - `regexp.match(pattern, str)` — Test if string matches
 - `regexp.find(pattern, str)` — First match
 - `regexp.find_all(pattern, str, n?)` — All matches
