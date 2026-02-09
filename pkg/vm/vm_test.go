@@ -1925,7 +1925,6 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 			object.NewInt(15),
 			object.NewInt(30),
 		})},
-
 	}
 	runTests(t, tests)
 }
