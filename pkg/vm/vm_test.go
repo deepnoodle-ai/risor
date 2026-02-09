@@ -150,67 +150,6 @@ func TestFunctionCall(t *testing.T) {
 	assert.Equal(t, result, object.NewInt(53))
 }
 
-func TestSwitch1(t *testing.T) {
-	result, err := run(context.Background(), `
-	let x = 3
-	switch (x) {
-		case 1:
-		case 2:
-			21
-		case 3:
-			42
-	}
-	`)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewInt(42))
-}
-
-func TestSwitch2(t *testing.T) {
-	result, err := run(context.Background(), `
-	let x = 1
-	switch (x) {
-		case 1:
-			99
-		case 2:
-			42
-	}
-	`)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewInt(99))
-}
-
-func TestSwitch3(t *testing.T) {
-	result, err := run(context.Background(), `
-	let x = 3
-	switch (x) {
-		case 1:
-			99
-		case 2:
-			42
-	}
-	`)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.Nil)
-}
-
-func TestSwitch4(t *testing.T) {
-	result, err := run(context.Background(), `
-	let x = 3
-	switch (x) { default: 99 }
-	`)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewInt(99))
-}
-
-func TestSwitch5(t *testing.T) {
-	result, err := run(context.Background(), `
-	let x = 3
-	switch (x) { default: 99 case 3: x; x-1 }
-	`)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewInt(2))
-}
-
 func TestMatchBasic(t *testing.T) {
 	tests := []testCase{
 		// Match integer literals
@@ -439,6 +378,52 @@ func TestMatchCollections(t *testing.T) {
 
 		// Map literal subject with variable pattern
 		{`let t = {a: 1}; match {a: 1} { t => "match", _ => "no" }`, object.NewString("match")},
+	}
+	runTests(t, tests)
+}
+
+func TestMatchGuards(t *testing.T) {
+	tests := []testCase{
+		// Guard passes: pattern matches and guard is true
+		{`let x = 5; match x { 5 if true => "yes", _ => "no" }`, object.NewString("yes")},
+
+		// Guard fails: pattern matches but guard is false, falls to default
+		{`let x = 5; match x { 5 if false => "yes", _ => "no" }`, object.NewString("no")},
+
+		// Guard with comparison
+		{`let x = 10; let y = 5; match x { 10 if y > 3 => "big", 10 if y < 3 => "small", _ => "other" }`, object.NewString("big")},
+
+		// Guard fails, falls to next matching arm
+		{`let x = 1; match x { 1 if false => "a", 1 if true => "b", _ => "c" }`, object.NewString("b")},
+
+		// Guard with variable expression
+		{`
+		let x = 42
+		let threshold = 40
+		match x {
+			42 if x > threshold => "above"
+			42 if x <= threshold => "below"
+			_ => "unknown"
+		}
+		`, object.NewString("above")},
+
+		// Mixed guards and no guards
+		{`match 2 { 1 => "one", 2 if false => "nope", 2 => "two", _ => "other" }`, object.NewString("two")},
+
+		// Guard on first arm fails, non-guarded arm matches
+		{`match 1 { 1 if false => "guarded", 1 => "plain", _ => "default" }`, object.NewString("plain")},
+
+		// All guards fail, default is reached
+		{`match 1 { 1 if false => "a", 1 if false => "b", _ => "default" }`, object.NewString("default")},
+
+		// Guard using function call
+		{`
+		function is_positive(n) { n > 0 }
+		match 5 {
+			5 if is_positive(5) => "pos"
+			_ => "neg"
+		}
+		`, object.NewString("pos")},
 	}
 	runTests(t, tests)
 }
@@ -836,14 +821,6 @@ func TestControlFlow(t *testing.T) {
 		{`let x = 1; let y = if (x > 0) { 77 } else { 88 }; y`, object.NewInt(77)},
 		{`let x = if (1 > 2) { 77 } else { 88 }; x`, object.NewInt(88)},
 		{`let x = if (2 > 1) { 77 } else { 88 }; x`, object.NewInt(77)},
-		{`let x = 1; switch (x) { case 1: 99; case 2: 100 }`, object.NewInt(99)},
-		{`switch (2) { case 1: 99; case 2: 100 }`, object.NewInt(100)},
-		{`switch (3) { case 1: 99; default: 42 case 2: 100 }`, object.NewInt(42)},
-		{`switch (3) { case 1: 99; case 2: 100 }`, object.Nil},
-		{`switch (3) { case 1, 3: 99; case 2: 100 }`, object.NewInt(99)},
-		{`switch (3) { case 1: 99; case 2, 4-1: 100 }`, object.NewInt(100)},
-		{`let x = 3; switch (bool(x)) { case true: "wow" }`, object.NewString("wow")},
-		{`let x = 0; switch (bool(x)) { case true: "wow" }`, object.Nil},
 	}
 	runTests(t, tests)
 }
@@ -1949,37 +1926,6 @@ func TestForwardDeclarationWithConditionals(t *testing.T) {
 			object.NewInt(30),
 		})},
 
-		// Forward declaration with switch
-		{`
-		function router(op) {
-			switch (op) {
-				case "add":
-					return op_add(5, 3)
-				case "sub":
-					return op_sub(5, 3)
-				default:
-					return op_default()
-			}
-		}
-		
-		function op_add(a, b) {
-			return a + b
-		}
-		
-		function op_sub(a, b) {
-			return a - b
-		}
-		
-		function op_default() {
-			return 0
-		}
-		
-		[router("add"), router("sub"), router("unknown")]
-		`, object.NewList([]object.Object{
-			object.NewInt(8),
-			object.NewInt(2),
-			object.NewInt(0),
-		})},
 	}
 	runTests(t, tests)
 }

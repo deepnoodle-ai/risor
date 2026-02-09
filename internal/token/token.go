@@ -62,11 +62,9 @@ const (
 	BACKTICK        Type = "`"
 	CARET           Type = "^"
 	BANG            Type = "!"
-	CASE            Type = "case"
 	COLON           Type = ":"
 	COMMA           Type = ","
 	CONST           Type = "CONST"
-	DEFAULT         Type = "DEFAULT"
 	FUNCTION        Type = "FUNCTION"
 	ELSE            Type = "ELSE"
 	EOF             Type = "EOF"
@@ -117,7 +115,6 @@ const (
 	STRING          Type = "STRING"
 	STRUCT          Type = "STRUCT"
 	MATCH           Type = "match"
-	SWITCH          Type = "switch"
 	TEMPLATE        Type = "TEMPLATE"
 	TRUE            Type = "TRUE"
 	NEWLINE         Type = "EOL"
@@ -130,9 +127,7 @@ const (
 
 // Reserved keywords
 var keywords = map[string]Type{
-	"case":     CASE,
 	"const":    CONST,
-	"default":  DEFAULT,
 	"else":     ELSE,
 	"false":    FALSE,
 	"function": FUNCTION,
@@ -144,7 +139,6 @@ var keywords = map[string]Type{
 	"not":      NOT,
 	"return":   RETURN,
 	"struct":   STRUCT,
-	"switch":   SWITCH,
 	"throw":    THROW,
 	"true":     TRUE,
 	"try":      TRY,

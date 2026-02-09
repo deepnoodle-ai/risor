@@ -191,20 +191,6 @@ func Walk(v Visitor, node Node) {
 		if n.High != nil {
 			Walk(v, n.High)
 		}
-	case *Case:
-		for _, expr := range n.Exprs {
-			Walk(v, expr)
-		}
-		if n.Body != nil {
-			Walk(v, n.Body)
-		}
-	case *Switch:
-		if n.Value != nil {
-			Walk(v, n.Value)
-		}
-		for _, c := range n.Cases {
-			Walk(v, c)
-		}
 	case *In:
 		if n.X != nil {
 			Walk(v, n.X)
@@ -219,6 +205,25 @@ func Walk(v Visitor, node Node) {
 		if n.Y != nil {
 			Walk(v, n.Y)
 		}
+	case *Match:
+		if n.Subject != nil {
+			Walk(v, n.Subject)
+		}
+		for _, arm := range n.Arms {
+			Walk(v, arm.Pattern)
+			if arm.Guard != nil {
+				Walk(v, arm.Guard)
+			}
+			Walk(v, arm.Result)
+		}
+		if n.Default != nil {
+			Walk(v, n.Default.Pattern)
+			Walk(v, n.Default.Result)
+		}
+	case *LiteralPattern:
+		Walk(v, n.Value)
+	case *WildcardPattern:
+		// No children
 	case *List:
 		for _, item := range n.Items {
 			Walk(v, item)
@@ -461,24 +466,6 @@ func Preorder(root Node) iter.Seq[Node] {
 				if node.High != nil && !visit(node.High) {
 					return false
 				}
-			case *Case:
-				for _, expr := range node.Exprs {
-					if !visit(expr) {
-						return false
-					}
-				}
-				if node.Body != nil && !visit(node.Body) {
-					return false
-				}
-			case *Switch:
-				if node.Value != nil && !visit(node.Value) {
-					return false
-				}
-				for _, c := range node.Cases {
-					if !visit(c) {
-						return false
-					}
-				}
 			case *In:
 				if node.X != nil && !visit(node.X) {
 					return false
@@ -493,6 +480,35 @@ func Preorder(root Node) iter.Seq[Node] {
 				if node.Y != nil && !visit(node.Y) {
 					return false
 				}
+			case *Match:
+				if node.Subject != nil && !visit(node.Subject) {
+					return false
+				}
+				for _, arm := range node.Arms {
+					if !visit(arm.Pattern) {
+						return false
+					}
+					if arm.Guard != nil && !visit(arm.Guard) {
+						return false
+					}
+					if !visit(arm.Result) {
+						return false
+					}
+				}
+				if node.Default != nil {
+					if !visit(node.Default.Pattern) {
+						return false
+					}
+					if !visit(node.Default.Result) {
+						return false
+					}
+				}
+			case *LiteralPattern:
+				if node.Value != nil && !visit(node.Value) {
+					return false
+				}
+			case *WildcardPattern:
+				// No children
 			case *List:
 				for _, item := range node.Items {
 					if !visit(item) {

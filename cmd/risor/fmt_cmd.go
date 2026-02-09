@@ -269,50 +269,6 @@ func (f *Formatter) formatNode(node ast.Node) {
 		f.buf.WriteString(" not in ")
 		f.formatNode(n.Y)
 
-	case *ast.Switch:
-		f.buf.WriteString("switch")
-		if n.Value != nil {
-			f.buf.WriteString(" (")
-			f.formatNode(n.Value)
-			f.buf.WriteString(")")
-		}
-		f.buf.WriteString(" {\n")
-		f.indent++
-		for _, c := range n.Cases {
-			f.writeIndent()
-			f.formatNode(c)
-			f.buf.WriteString("\n")
-		}
-		f.indent--
-		f.writeIndent()
-		f.buf.WriteString("}")
-
-	case *ast.Case:
-		if len(n.Exprs) == 0 {
-			f.buf.WriteString("default:")
-		} else {
-			f.buf.WriteString("case ")
-			for i, expr := range n.Exprs {
-				if i > 0 {
-					f.buf.WriteString(", ")
-				}
-				f.formatNode(expr)
-			}
-			f.buf.WriteString(":")
-		}
-		if n.Body != nil {
-			f.buf.WriteString("\n")
-			f.indent++
-			for i, stmt := range n.Body.Stmts {
-				if i > 0 {
-					f.buf.WriteString("\n")
-				}
-				f.writeIndent()
-				f.formatNode(stmt)
-			}
-			f.indent--
-		}
-
 	case *ast.Try:
 		f.buf.WriteString("try ")
 		f.formatNode(n.Body)

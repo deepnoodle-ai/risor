@@ -362,10 +362,6 @@ func (c *Compiler) compile(node ast.Node) error {
 		if err := c.compileSlice(node); err != nil {
 			return err
 		}
-	case *ast.Switch:
-		if err := c.compileSwitch(node); err != nil {
-			return err
-		}
 	case *ast.Match:
 		if err := c.compileMatch(node); err != nil {
 			return err
@@ -842,102 +838,6 @@ func (c *Compiler) emitArrayDestructurePreamble(param *ast.ArrayDestructureParam
 	return nil
 }
 
-func (c *Compiler) compileSwitch(node *ast.Switch) error {
-	// Compile the switch expression
-	if err := c.compile(node.Value); err != nil {
-		return err
-	}
-
-	choices := node.Cases
-
-	// Emit jump positions for each case
-	var caseJumpPositions []int
-	defaultJumpPos := -1
-
-	for i, choice := range choices {
-		if choice.Default {
-			defaultJumpPos = i
-			continue
-		}
-		for _, expr := range choice.Exprs {
-			// Duplicate the switch value for each case comparison
-			c.emit(op.Copy, 0)
-			// Compile the case expression
-			if err := c.compile(expr); err != nil {
-				return err
-			}
-			// Emit the CompareOp equal comparison
-			c.emit(op.CompareOp, uint16(op.Equal))
-			// Emit PopJumpForwardIfTrue and store its position
-			jumpPos := c.emit(op.PopJumpForwardIfTrue, Placeholder)
-			caseJumpPositions = append(caseJumpPositions, jumpPos)
-		}
-	}
-
-	jumpDefaultPos := c.emit(op.JumpForward, Placeholder)
-
-	// Update case jump positions and compile case blocks
-	var offset int
-	var endBlockPosits []int
-	for i, choice := range choices {
-		if i == defaultJumpPos {
-			continue
-		}
-		for range choice.Exprs {
-			delta, err := c.calculateDelta(caseJumpPositions[offset])
-			if err != nil {
-				return err
-			}
-			c.changeOperand(caseJumpPositions[offset], delta)
-			offset++
-		}
-		if choice.Body == nil {
-			// Empty case block
-			c.emit(op.Nil)
-		} else {
-			if err := c.compile(choice.Body); err != nil {
-				return err
-			}
-		}
-		endBlockPosits = append(endBlockPosits, c.emit(op.JumpForward, Placeholder))
-	}
-
-	delta, err := c.calculateDelta(jumpDefaultPos)
-	if err != nil {
-		return err
-	}
-	c.changeOperand(jumpDefaultPos, delta)
-
-	// Compile the default case block if it exists
-	if defaultJumpPos != -1 {
-		if choices[defaultJumpPos].Body == nil {
-			// Empty default case block
-			c.emit(op.Nil)
-		} else {
-			if err := c.compile(choices[defaultJumpPos].Body); err != nil {
-				return err
-			}
-		}
-	} else {
-		c.emit(op.Nil)
-	}
-
-	// Update end block jump positions
-	for _, pos := range endBlockPosits {
-		delta, err := c.calculateDelta(pos)
-		if err != nil {
-			return err
-		}
-		c.changeOperand(pos, delta)
-	}
-
-	c.emit(op.Swap, 1)
-
-	// Remove the duplicated switch value from the stack
-	c.emit(op.PopTop)
-	return nil
-}
-
 func (c *Compiler) compileMatch(node *ast.Match) error {
 	// Compile the subject expression (remains on stack for comparisons)
 	if err := c.compile(node.Subject); err != nil {
@@ -946,7 +846,7 @@ func (c *Compiler) compileMatch(node *ast.Match) error {
 
 	arms := node.Arms
 
-	// Emit pattern match and jump positions for each arm
+	// Emit pattern match (and optional guard) + jump positions for each arm
 	var armJumpPositions []int
 
 	for _, arm := range arms {
@@ -958,9 +858,30 @@ func (c *Compiler) compileMatch(node *ast.Match) error {
 			return err
 		}
 
-		// Jump to this arm's body if pattern matches
-		jumpPos := c.emit(op.PopJumpForwardIfTrue, Placeholder)
-		armJumpPositions = append(armJumpPositions, jumpPos)
+		if arm.Guard != nil {
+			// Pattern fails → skip guard, continue to next arm test
+			guardSkipPos := c.emit(op.PopJumpForwardIfFalse, Placeholder)
+
+			// Pattern matched → evaluate guard expression
+			if err := c.compile(arm.Guard); err != nil {
+				return err
+			}
+
+			// Guard passes → jump to arm body
+			bodyJumpPos := c.emit(op.PopJumpForwardIfTrue, Placeholder)
+			armJumpPositions = append(armJumpPositions, bodyJumpPos)
+
+			// Guard failed → patch guardSkip to land here (next arm test)
+			delta, err := c.calculateDelta(guardSkipPos)
+			if err != nil {
+				return err
+			}
+			c.changeOperand(guardSkipPos, delta)
+		} else {
+			// No guard: jump to arm body if pattern matches
+			jumpPos := c.emit(op.PopJumpForwardIfTrue, Placeholder)
+			armJumpPositions = append(armJumpPositions, jumpPos)
+		}
 	}
 
 	// Jump to default arm if no patterns matched

@@ -87,16 +87,6 @@ func TestEdgeCases(t *testing.T) {
 		assert.True(t, len(errs) > 0)
 	})
 
-	t.Run("switch with default only", func(t *testing.T) {
-		config := SyntaxConfig{DisallowSwitch: true}
-		validator := NewSyntaxValidator(config)
-
-		source := "switch (x) { default: 1 }"
-		program := parse(t, source)
-		errs := validator.Validate(program)
-		assert.True(t, len(errs) > 0)
-	})
-
 	t.Run("chained method calls", func(t *testing.T) {
 		config := SyntaxConfig{DisallowFuncCall: true}
 		validator := NewSyntaxValidator(config)

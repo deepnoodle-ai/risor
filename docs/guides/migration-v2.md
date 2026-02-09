@@ -16,7 +16,7 @@ embedding experience.
 
 ## Syntax Changes
 
-### Parentheses Required for if/switch
+### Parentheses Required for if
 
 v1 used Go-style conditions without parentheses. v2 requires TypeScript-style
 parentheses.
@@ -26,16 +26,10 @@ parentheses.
 if x > 0 {
     print(x)
 }
-switch value {
-    case 1: handle()
-}
 
 // v2
 if (x > 0) {
     print(x)
-}
-switch (value) {
-    case 1: handle()
 }
 ```
 
@@ -549,7 +543,7 @@ result, err := risor.Run(ctx, code,
 ## Migration Checklist
 
 1. **Update syntax:**
-   - [ ] Add parentheses to all `if` and `switch` conditions
+   - [ ] Add parentheses to all `if` conditions
    - [ ] Replace `delete()` with `del` statement
    - [ ] Replace `try()` builtin with `try/catch` blocks
    - [ ] Replace `#` comments with `//`

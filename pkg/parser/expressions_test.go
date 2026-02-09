@@ -14,7 +14,6 @@ import (
 // - Infix expressions
 // - Ternary expressions
 // - If expressions
-// - Switch expressions
 // - Index/slice expressions
 // - Call expressions
 // - Pipe expressions
@@ -245,65 +244,6 @@ func TestIfElseIf(t *testing.T) {
 	nestedIf, ok := ifExpr.Alternative.Stmts[0].(*ast.If)
 	assert.True(t, ok)
 	assert.NotNil(t, nestedIf.Alternative)
-}
-
-func TestSwitch(t *testing.T) {
-	input := `switch (val) {
-	case 1:
-	default:
-      x
-	  x
-}`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-	assert.Len(t, program.Stmts, 1)
-
-	switchExpr, ok := program.First().(*ast.Switch)
-	assert.True(t, ok)
-	assert.Equal(t, "val", switchExpr.Value.String())
-	assert.Len(t, switchExpr.Cases, 2)
-
-	choice1 := switchExpr.Cases[0]
-	assert.Len(t, choice1.Exprs, 1)
-	assert.Equal(t, "1", choice1.Exprs[0].String())
-
-	choice2 := switchExpr.Cases[1]
-	assert.Len(t, choice2.Exprs, 0) // default case
-}
-
-func TestSwitchAST(t *testing.T) {
-	input := `switch (x) { case 1: "one" case 2: "two" default: "other" }`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-
-	sw, ok := program.First().(*ast.Switch)
-	assert.True(t, ok)
-
-	// Verify AST node fields
-	assert.NotNil(t, sw.Value)
-	assert.Len(t, sw.Cases, 3)
-
-	// First case
-	assert.Len(t, sw.Cases[0].Exprs, 1)
-	caseVal, ok := sw.Cases[0].Exprs[0].(*ast.Int)
-	assert.True(t, ok)
-	assert.Equal(t, int64(1), caseVal.Value)
-
-	// Default case (last)
-	assert.Len(t, sw.Cases[2].Exprs, 0) // no expressions = default
-}
-
-func TestSwitchMultipleCaseValues(t *testing.T) {
-	input := `switch (x) { case 1, 2, 3: "small" default: "big" }`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-
-	sw, ok := program.First().(*ast.Switch)
-	assert.True(t, ok)
-	assert.Len(t, sw.Cases, 2)
-
-	// First case has 3 values
-	assert.Len(t, sw.Cases[0].Exprs, 3)
 }
 
 func TestIndex(t *testing.T) {
@@ -1415,4 +1355,58 @@ func TestMatchSpreadNotAllowed(t *testing.T) {
 	_, err := Parse(context.Background(), `match x { ...arr => "matched", _ => "other" }`, nil)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "spread operator not supported in match patterns")
+}
+
+func TestMatchGuards(t *testing.T) {
+	t.Run("basic guard", func(t *testing.T) {
+		program, err := Parse(context.Background(), `match x { 1 if y > 0 => "pos", _ => "other" }`, nil)
+		assert.Nil(t, err)
+		assert.Len(t, program.Stmts, 1)
+
+		matchExpr, ok := program.First().(*ast.Match)
+		assert.True(t, ok)
+		assert.Len(t, matchExpr.Arms, 1)
+
+		arm := matchExpr.Arms[0]
+		assert.NotNil(t, arm.Guard)
+		assert.Equal(t, "1 if (y > 0) => \"pos\"", arm.String())
+	})
+
+	t.Run("guard with newlines", func(t *testing.T) {
+		input := `match x {
+			1 if y > 0 => "pos"
+			2 if y < 0 => "neg"
+			_ => "other"
+		}`
+		program, err := Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+
+		matchExpr, ok := program.First().(*ast.Match)
+		assert.True(t, ok)
+		assert.Len(t, matchExpr.Arms, 2)
+		assert.NotNil(t, matchExpr.Arms[0].Guard)
+		assert.NotNil(t, matchExpr.Arms[1].Guard)
+	})
+
+	t.Run("mixed guards and no guards", func(t *testing.T) {
+		input := `match x { 1 if y => "a", 2 => "b", _ => "c" }`
+		program, err := Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+
+		matchExpr, ok := program.First().(*ast.Match)
+		assert.True(t, ok)
+		assert.Len(t, matchExpr.Arms, 2)
+		assert.NotNil(t, matchExpr.Arms[0].Guard) // 1 if y => "a"
+		assert.Nil(t, matchExpr.Arms[1].Guard)    // 2 => "b"
+	})
+
+	t.Run("no guard on default", func(t *testing.T) {
+		input := `match x { 1 => "a", _ => "default" }`
+		program, err := Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+
+		matchExpr, ok := program.First().(*ast.Match)
+		assert.True(t, ok)
+		assert.Nil(t, matchExpr.Default.Guard)
+	})
 }

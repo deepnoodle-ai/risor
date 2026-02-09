@@ -150,7 +150,6 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	p.registerPrefix(token.NIL, p.parseNil)
 	p.registerPrefix(token.STRING, p.parseString)
 	p.registerPrefix(token.MATCH, p.parseMatch)
-	p.registerPrefix(token.SWITCH, p.parseSwitch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.SPREAD, p.parseSpread)
 	p.registerPrefix(token.TRY, p.parseTry)
@@ -307,7 +306,7 @@ func (p *Parser) synchronize() {
 		// Stop at statement-starting keywords
 		switch p.curToken.Type {
 		case token.LET, token.CONST, token.RETURN, token.IF,
-			token.FUNCTION, token.SWITCH, token.TRY, token.THROW:
+			token.FUNCTION, token.TRY, token.THROW:
 			return
 		}
 		prevPos := p.curToken.StartPosition

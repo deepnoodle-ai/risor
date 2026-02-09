@@ -807,67 +807,6 @@ finally {
 }
 
 // =============================================================================
-// SWITCH STATEMENT EDGE CASES
-// =============================================================================
-
-func TestSwitchBasic(t *testing.T) {
-	input := `switch (x) {
-case 1:
-	a
-case 2:
-	b
-default:
-	c
-}`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-
-	sw, ok := program.First().(*ast.Switch)
-	assert.True(t, ok)
-	assert.Len(t, sw.Cases, 3)
-}
-
-func TestSwitchMultipleDefaults(t *testing.T) {
-	input := `switch (x) {
-default:
-	a
-default:
-	b
-}`
-	_, err := Parse(context.Background(), input, nil)
-	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "multiple default")
-}
-
-func TestSwitchMultipleCaseExprs(t *testing.T) {
-	input := `switch (x) {
-case 1, 2, 3:
-	a
-}`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-
-	sw, ok := program.First().(*ast.Switch)
-	assert.True(t, ok)
-	assert.Len(t, sw.Cases[0].Exprs, 3)
-}
-
-func TestSwitchEmptyCaseBody(t *testing.T) {
-	input := `switch (x) {
-case 1:
-case 2:
-	a
-}`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-
-	sw, ok := program.First().(*ast.Switch)
-	assert.True(t, ok)
-	assert.Nil(t, sw.Cases[0].Body) // First case has no body
-	assert.NotNil(t, sw.Cases[1].Body)
-}
-
-// =============================================================================
 // RETURN AND THROW EDGE CASES
 // =============================================================================
 
