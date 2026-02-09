@@ -40,10 +40,10 @@ make docker-build
 This pushes multi-arch images (amd64, arm64) to Docker Hub:
 
 - `risor/risor:latest`
-- `risor/risor:<version>`
+- `risor/risor:<version>` (derived from the git tag)
 - `risor/risor:<git-revision>`
 
-Update the version tags in the `docker-build` Makefile target before running.
+The version is derived automatically from `git describe --tags`.
 
 ## Homebrew
 
@@ -64,8 +64,9 @@ as a versioned formula before releasing:
 1. Clone the tap: `git clone https://github.com/deepnoodle-ai/homebrew-risor.git`
 2. Copy `Formula/risor.rb` to `Formula/risor@<major>.rb`
 3. Rename the class from `Risor` to `RisorAT<major>` (Homebrew convention)
-4. Commit and push
-5. Then run `make release` — GoReleaser overwrites `risor.rb` with the new version
+4. Commit and push the versioned formula
+5. Return to the main risor repo, tag the new release, and run `make release`
+   (GoReleaser will overwrite `risor.rb` with the new version)
 
 Users can pin to the old version:
 
