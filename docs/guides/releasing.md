@@ -39,9 +39,9 @@ make docker-build
 
 This pushes multi-arch images (amd64, arm64) to Docker Hub:
 
-- `risor/risor:latest`
-- `risor/risor:<version>` (derived from the git tag)
-- `risor/risor:<git-revision>`
+- `deepnoodle/risor:latest`
+- `deepnoodle/risor:<version>` (derived from the git tag)
+- `deepnoodle/risor:<git-revision>`
 
 The version is derived automatically from `git describe --tags`.
 
