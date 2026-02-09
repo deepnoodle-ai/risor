@@ -1,6 +1,10 @@
 # Changelog
 
-## v2.0.0
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/).
+
+## [2.0.0] - 2026-02-09
 
 Risor v2 is a major release focused on the embedded scripting use case. It
 introduces a secure-by-default sandbox, TypeScript-aligned syntax, and a
@@ -8,7 +12,7 @@ streamlined Go API.
 
 See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
 
-### New Features
+### Added
 
 - **Arrow functions** — concise lambdas: `x => x * 2`, `(a, b) => a + b`
 - **Optional chaining** — safe property access: `user?.profile?.name`
@@ -29,6 +33,17 @@ See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
 - **Execution observer** — hook into VM execution for profiling and debugging
 - **Pipe expressions** — `data |> transform |> filter`
 
+### Changed
+
+- **Secure by default** — empty environment unless explicitly configured
+- **Parentheses required for if** — `if (condition)` instead of `if condition`
+- **Callable returns `(Object, error)`** — explicit error returns throughout
+- **BuiltinFunction returns `(Object, error)`** — explicit error returns
+- **Object.Equals returns `bool`** — instead of Object
+- **Parser/Compiler use Config structs** — replaces functional options
+- **byte_slice renamed to bytes**
+- **Only 3 built-in modules** — math, rand, regexp
+
 ### Removed
 
 - **For loops** — use functional iteration: `.each()`, `.map()`, `.filter()`, `.reduce()`
@@ -44,17 +59,6 @@ See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
 - **try() builtin** — use try/catch
 - **delete() builtin** — removed, no replacement
 
-### Changed
-
-- **Secure by default** — empty environment unless explicitly configured
-- **Parentheses required for if** — `if (condition)` instead of `if condition`
-- **Callable returns `(Object, error)`** — explicit error returns throughout
-- **BuiltinFunction returns `(Object, error)`** — explicit error returns
-- **Object.Equals returns `bool`** — instead of Object
-- **Parser/Compiler use Config structs** — replaces functional options
-- **byte_slice renamed to bytes**
-- **Only 3 built-in modules** — math, rand, regexp
-
-## v1.8.1
+## [1.8.1] - 2025-01-15
 
 Final v1 release. See [v1.8.1 on GitHub](https://github.com/deepnoodle-ai/risor/releases/tag/v1.8.1).
