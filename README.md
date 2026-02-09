@@ -59,7 +59,8 @@ Go primitives, slices, and maps convert automatically.
 Risor is designed for scenarios where a Go application needs to evaluate
 user-provided or externally-defined logic at runtime:
 
-- **Business rules & workflow engines** — Conditions like `order.total > 100 && customer.tier == "gold"` that decide branching, eligibility, or routing without redeployment
+- **Workflow engines** — Evaluate conditions and run small scripts at each step to decide branching, transform data, or trigger actions
+- **Rules engines** — Express business rules like `order.total > 100 && customer.tier == "gold"` that change frequently without redeployment
 - **Expression evaluation** — Dynamic filters, computed fields, validation rules, access control predicates
 - **String templating** — Interpolated strings with embedded expressions for notifications, reports, emails
 - **Configuration logic** — When static config (YAML, JSON) isn't enough but a full language is too much
