@@ -582,8 +582,6 @@ func printNode(node ast.Node, indent string, isLast bool) {
 			printNode(pair.Value, pairIndent, true)
 		}
 
-	// TODO: Add ast.For case when for loops are implemented in the AST
-
 	default:
 		// Generic handler for other node types
 		printLine(tui.Group(
