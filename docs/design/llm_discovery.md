@@ -261,7 +261,7 @@ The `risor doc syntax` command provides a comprehensive syntax reference:
       "name": "control_flow",
       "items": [
         {"syntax": "if (cond) { } else { }", "notes": "Conditional (is an expression)"},
-        {"syntax": "switch (val) { case x: ... }", "notes": "Switch statement"},
+        {"syntax": "match val { pat => expr, _ => default }", "notes": "Pattern matching with optional guards"},
         {"syntax": "try { } catch e { }", "notes": "Error handling"},
         {"syntax": "throw error(msg)", "notes": "Raise an error"},
         {"syntax": "return value", "notes": "Return from function"}

@@ -168,7 +168,7 @@ operators.
 Truthiness is evaluated in:
 
 - `if` / `else` conditions
-- `while` loop conditions
+- `match` guard expressions
 - Logical `!` (not) operator
 - Logical `&&` (and) and `||` (or) operators
 

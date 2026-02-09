@@ -54,10 +54,8 @@ Hidden:
 ### Keywords
 
 ```ebnf
-CASE:       'case'
 CATCH:      'catch'
 CONST:      'const'
-DEFAULT:    'default'
 ELSE:       'else'
 FALSE:      'false'
 FINALLY:    'finally'
@@ -70,7 +68,6 @@ NIL:        'nil'
 NOT:        'not'
 RETURN:     'return'
 STRUCT:     'struct'      (* reserved for future use *)
-SWITCH:     'switch'
 THROW:      'throw'
 TRUE:       'true'
 TRY:        'try'
@@ -612,20 +609,6 @@ ifExpr:
     'if' '(' expression ')' block ['else' block]
 ```
 
-#### Switch Expression
-
-```ebnf
-switchExpr:
-    'switch' '(' expression ')' '{' {caseClause} '}'
-
-caseClause:
-    'case' caseExprs ':' {statement}
-    | 'default' ':' {statement}
-
-caseExprs:
-    expression {',' expression}
-```
-
 #### Match Expression
 
 ```ebnf
@@ -827,9 +810,9 @@ Token:
     ShebangLine | SingleLineComment | MultiLineComment | WS | NL
 
     (* Keywords *)
-    | 'case' | 'catch' | 'const' | 'default' | 'else' | 'false'
+    | 'catch' | 'const' | 'else' | 'false'
     | 'finally' | 'function' | 'if' | 'in' | 'let' | 'match'
-    | 'nil' | 'not' | 'return' | 'struct' | 'switch' | 'throw'
+    | 'nil' | 'not' | 'return' | 'struct' | 'throw'
     | 'true' | 'try'
 
     (* Operators *)
@@ -920,19 +903,18 @@ let coords = ([x, y]) => x * y
 // If expression
 let result = if (x > 0) { "positive" } else { "non-positive" }
 
-// Switch expression
-let day = switch (n) {
-    case 0: "Sunday"
-    case 1: "Monday"
-    case 2, 3, 4: "Midweek"
-    default: "Weekend"
-}
-
 // Match expression
 let describe = match value {
     0 => "zero"
     1 => "one"
     _ => "other"
+}
+
+// Match with guards
+let label = match score {
+    score if score >= 90 => "A"
+    score if score >= 80 => "B"
+    _ => "C"
 }
 ```
 
