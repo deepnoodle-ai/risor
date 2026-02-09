@@ -160,6 +160,11 @@ func TestExample(t *testing.T) {
 }
 ```
 
+## Releasing
+
+See [docs/guides/releasing.md](docs/guides/releasing.md) for the full release
+process (GoReleaser, Homebrew tap, Docker images, versioned formulas).
+
 ## CI/CD
 
 GitHub Actions runs three jobs:

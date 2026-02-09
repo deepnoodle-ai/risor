@@ -1,4 +1,5 @@
 export GIT_REVISION=$(shell git rev-parse --short HEAD)
+export VERSION=$(shell git describe --tags --always --dirty | sed 's/^v//')
 
 # Packages to exclude from testing (examples, benchmarks)
 TEST_EXCLUDE := examples tests/benchmarks
@@ -89,8 +90,8 @@ docker-build:
 	docker buildx build \
 		-t risor/risor:latest \
 		-t risor/risor:$(GIT_REVISION) \
-		-t risor/risor:2.0.0 \
-		--build-arg "RISOR_VERSION=2.0.0" \
+		-t risor/risor:$(VERSION) \
+		--build-arg "RISOR_VERSION=$(VERSION)" \
 		--build-arg "GIT_REVISION=$(GIT_REVISION)" \
 		--build-arg "BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')" \
 		--platform linux/amd64,linux/arm64 \
