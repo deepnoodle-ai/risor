@@ -35,7 +35,7 @@ See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
 
 ### Changed
 
-- **Secure by default** — empty environment unless explicitly configured
+- **Isolated by default** — empty environment unless explicitly configured
 - **Parentheses required for if** — `if (condition)` instead of `if condition`
 - **Callable returns `(Object, error)`** — explicit error returns throughout
 - **BuiltinFunction returns `(Object, error)`** — explicit error returns
