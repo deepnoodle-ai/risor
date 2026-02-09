@@ -1065,3 +1065,155 @@ func TestBlankIdentifier_DoubleUnderscore(t *testing.T) {
 	_, err = Compile(ast, nil)
 	assert.Nil(t, err)
 }
+
+// =============================================================================
+// COMPILEASTE ROLLBACK TESTS
+// =============================================================================
+
+// TestCompileASTRollback verifies that when CompileAST fails, the Code object
+// is left unchanged. This is critical for REPL-style incremental compilation
+// where the same Compiler and Code are reused across multiple inputs.
+func TestCompileASTRollback(t *testing.T) {
+	c, err := New(nil)
+	assert.Nil(t, err)
+
+	// Compile valid code first
+	ast1, err := parser.Parse(context.Background(), "let x = 42", nil)
+	assert.Nil(t, err)
+
+	code, err := c.CompileAST(ast1)
+	assert.Nil(t, err)
+
+	// Record state after successful compilation
+	instrCount := code.InstructionCount()
+	constCount := code.ConstantsCount()
+	nameCount := code.NameCount()
+	locCount := code.LocationsCount()
+	symCount := code.symbols.Count()
+	source := code.Source()
+
+	assert.Greater(t, instrCount, 0)
+	assert.Greater(t, constCount, 0)
+
+	// Attempt to compile code with an undefined variable (compile error)
+	ast2, err := parser.Parse(context.Background(), "undefined_var + 1", nil)
+	assert.Nil(t, err)
+
+	_, err = c.CompileAST(ast2)
+	assert.NotNil(t, err)
+
+	// All state should be exactly as it was before the failed compilation
+	assert.Equal(t, code.InstructionCount(), instrCount)
+	assert.Equal(t, code.ConstantsCount(), constCount)
+	assert.Equal(t, code.NameCount(), nameCount)
+	assert.Equal(t, code.LocationsCount(), locCount)
+	assert.Equal(t, code.symbols.Count(), symCount)
+	assert.Equal(t, code.Source(), source)
+}
+
+// TestCompileASTRollbackPreservesSymbols verifies that a failed compilation
+// does not leave phantom symbols in the symbol table. If it did, subsequent
+// compilations could resolve names that shouldn't exist.
+func TestCompileASTRollbackPreservesSymbols(t *testing.T) {
+	c, err := New(nil)
+	assert.Nil(t, err)
+
+	// Define "x"
+	ast1, err := parser.Parse(context.Background(), "let x = 1", nil)
+	assert.Nil(t, err)
+	_, err = c.CompileAST(ast1)
+	assert.Nil(t, err)
+
+	// This should fail: "y" is not defined. But it partially compiles
+	// "let y = ..." before hitting the undefined "z".
+	ast2, err := parser.Parse(context.Background(), "let y = z + 1", nil)
+	assert.Nil(t, err)
+	_, err = c.CompileAST(ast2)
+	assert.NotNil(t, err)
+
+	// "y" should NOT be in the symbol table since the compilation was rolled back
+	_, found := c.main.symbols.Get("y")
+	assert.False(t, found, "symbol 'y' should not exist after rollback")
+
+	// "x" should still be in the symbol table
+	_, found = c.main.symbols.Get("x")
+	assert.True(t, found, "symbol 'x' should still exist")
+}
+
+// TestCompileASTRollbackFunctionDeclaration verifies that forward-declared
+// function names are rolled back when compilation fails.
+func TestCompileASTRollbackFunctionDeclaration(t *testing.T) {
+	c, err := New(nil)
+	assert.Nil(t, err)
+
+	// This fails because "unknown" is undefined, but the first pass will have
+	// already registered "broken" in the symbol table via collectFunctionDeclarations.
+	ast1, err := parser.Parse(context.Background(), "function broken() { return unknown }", nil)
+	assert.Nil(t, err)
+	_, err = c.CompileAST(ast1)
+	assert.NotNil(t, err)
+
+	// "broken" should NOT be in the symbol table after rollback
+	_, found := c.main.symbols.Get("broken")
+	assert.False(t, found, "symbol 'broken' should not exist after rollback")
+
+	// The name should be available for a new, valid definition
+	ast2, err := parser.Parse(context.Background(), "let broken = 42", nil)
+	assert.Nil(t, err)
+	_, err = c.CompileAST(ast2)
+	assert.Nil(t, err)
+}
+
+// TestCompileASTRollbackIncrementalREPL simulates a REPL session where
+// compile errors occur between valid inputs. Each valid input should work
+// correctly regardless of intermediate failures.
+func TestCompileASTRollbackIncrementalREPL(t *testing.T) {
+	c, err := New(nil)
+	assert.Nil(t, err)
+
+	// Successful: define x
+	ast1, err := parser.Parse(context.Background(), "let x = 10", nil)
+	assert.Nil(t, err)
+	code, err := c.CompileAST(ast1)
+	assert.Nil(t, err)
+	snap1 := code.InstructionCount()
+
+	// Fail: reference undefined "foo"
+	ast2, err := parser.Parse(context.Background(), "foo + x", nil)
+	assert.Nil(t, err)
+	_, err = c.CompileAST(ast2)
+	assert.NotNil(t, err)
+
+	// Code should be unchanged from snap1
+	assert.Equal(t, code.InstructionCount(), snap1)
+
+	// Fail again: another error
+	ast3, err := parser.Parse(context.Background(), "bar * 2", nil)
+	assert.Nil(t, err)
+	_, err = c.CompileAST(ast3)
+	assert.NotNil(t, err)
+
+	// Still unchanged
+	assert.Equal(t, code.InstructionCount(), snap1)
+
+	// Successful: define y using x
+	ast4, err := parser.Parse(context.Background(), "let y = x + 5", nil)
+	assert.Nil(t, err)
+	_, err = c.CompileAST(ast4)
+	assert.Nil(t, err)
+
+	// Instructions grew from snap1
+	assert.Greater(t, code.InstructionCount(), snap1)
+
+	// Both symbols should exist
+	_, found := c.main.symbols.Get("x")
+	assert.True(t, found)
+	_, found = c.main.symbols.Get("y")
+	assert.True(t, found)
+
+	// Neither failed symbol should exist
+	_, found = c.main.symbols.Get("foo")
+	assert.False(t, found)
+	_, found = c.main.symbols.Get("bar")
+	assert.False(t, found)
+}

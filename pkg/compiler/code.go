@@ -55,6 +55,47 @@ type Code struct {
 	pipeActive bool
 }
 
+// codeSnapshot captures the state of a Code object for rollback.
+type codeSnapshot struct {
+	instructionLen    int
+	constantLen       int
+	nameLen           int
+	locationLen       int
+	childLen          int
+	exceptionHandlers int
+	source            string
+	maxCallArgs       uint16
+}
+
+// snapshot captures the current state of the Code so it can be restored
+// later if a compilation attempt fails.
+func (c *Code) snapshot() codeSnapshot {
+	return codeSnapshot{
+		instructionLen:    len(c.instructions),
+		constantLen:       len(c.constants),
+		nameLen:           len(c.names),
+		locationLen:       len(c.locations),
+		childLen:          len(c.children),
+		exceptionHandlers: len(c.exceptionHandlers),
+		source:            c.source,
+		maxCallArgs:       c.maxCallArgs,
+	}
+}
+
+// restore reverts the Code to a previous snapshot, truncating any bytecode,
+// constants, names, locations, children, or exception handlers that were
+// appended after the snapshot was taken.
+func (c *Code) restore(s codeSnapshot) {
+	c.instructions = c.instructions[:s.instructionLen]
+	c.constants = c.constants[:s.constantLen]
+	c.names = c.names[:s.nameLen]
+	c.locations = c.locations[:s.locationLen]
+	c.children = c.children[:s.childLen]
+	c.exceptionHandlers = c.exceptionHandlers[:s.exceptionHandlers]
+	c.source = s.source
+	c.maxCallArgs = s.maxCallArgs
+}
+
 func (c *Code) ID() string {
 	return c.id
 }

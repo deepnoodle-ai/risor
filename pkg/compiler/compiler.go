@@ -185,6 +185,24 @@ func (c *Compiler) Code() *Code {
 func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 	c.failure = nil
 
+	// Snapshot compiler state so we can rollback if compilation fails.
+	// This is critical for REPL-style incremental compilation where the
+	// same Code object is reused across multiple CompileAST calls. Without
+	// rollback, a failed compilation would leave partial bytecode and symbol
+	// table entries that corrupt subsequent compilations.
+	codeSnap := c.main.snapshot()
+	symSnap := c.main.symbols.snapshot()
+	funcIdx := c.funcIndex
+
+	// rollback restores all compiler state to before this CompileAST call.
+	rollback := func() {
+		c.main.restore(codeSnap)
+		c.main.symbols.restore(symSnap)
+		c.funcIndex = funcIdx
+		c.current = c.main
+		c.failure = nil
+	}
+
 	// Use original source if available (better error messages with actual code),
 	// otherwise fall back to AST string representation.
 	nodeSource := c.source
@@ -203,17 +221,21 @@ func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 
 	// First pass: collect function declarations to allow forward references
 	if err := c.collectFunctionDeclarations(node); err != nil {
+		rollback()
 		return nil, err
 	}
 
 	// Second pass: actual compilation
 	if err := c.compile(node); err != nil {
+		rollback()
 		return nil, err
 	}
 	// Check for failures that happened that aren't propagated up the call
 	// stack. Some errors are difficult to propagate without bloating the code.
 	if c.failure != nil {
-		return nil, c.failure
+		err := c.failure
+		rollback()
+		return nil, err
 	}
 	return c.main, nil
 }
