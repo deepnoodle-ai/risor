@@ -88,9 +88,9 @@ docker-build-init:
 .PHONY: docker-build
 docker-build:
 	docker buildx build \
-		-t risor/risor:latest \
-		-t risor/risor:$(GIT_REVISION) \
-		-t risor/risor:$(VERSION) \
+		-t deepnoodle/risor:latest \
+		-t deepnoodle/risor:$(GIT_REVISION) \
+		-t deepnoodle/risor:$(VERSION) \
 		--build-arg "RISOR_VERSION=$(VERSION)" \
 		--build-arg "GIT_REVISION=$(GIT_REVISION)" \
 		--build-arg "BUILD_DATE=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')" \
