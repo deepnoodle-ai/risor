@@ -343,6 +343,39 @@ func (t *SymbolTable) AllNames() []string {
 	return names
 }
 
+// symbolTableSnapshot captures the state of a SymbolTable for rollback.
+type symbolTableSnapshot struct {
+	symbolLen  int
+	childLen   int
+	knownNames map[string]struct{}
+}
+
+// snapshot captures the current state of the symbol table so it can be
+// restored later if a compilation attempt fails.
+func (t *SymbolTable) snapshot() symbolTableSnapshot {
+	names := make(map[string]struct{}, len(t.symbolsByName))
+	for k := range t.symbolsByName {
+		names[k] = struct{}{}
+	}
+	return symbolTableSnapshot{
+		symbolLen:  len(t.symbols),
+		childLen:   len(t.children),
+		knownNames: names,
+	}
+}
+
+// restore reverts the symbol table to a previous snapshot, removing any
+// symbols or children added after the snapshot was taken.
+func (t *SymbolTable) restore(s symbolTableSnapshot) {
+	t.symbols = t.symbols[:s.symbolLen]
+	t.children = t.children[:s.childLen]
+	for name := range t.symbolsByName {
+		if _, ok := s.knownNames[name]; !ok {
+			delete(t.symbolsByName, name)
+		}
+	}
+}
+
 // NewSymbolTable returns a new root symbol table.
 func NewSymbolTable() *SymbolTable {
 	return &SymbolTable{
