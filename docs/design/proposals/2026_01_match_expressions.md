@@ -2,8 +2,8 @@
 
 ## Problem Statement
 
-Risor currently supports conditional logic through `if` expressions and ternary-style
-constructs. While these work well for simple conditions, they become unwieldy when:
+Risor currently supports conditional logic through `if` expressions. While these work
+well for simple conditions, they become unwieldy when:
 
 1. **Multiple conditions on the same value** — Requires repeated `if/else if` chains
 2. **Structural matching** — Testing object shapes requires manual property access

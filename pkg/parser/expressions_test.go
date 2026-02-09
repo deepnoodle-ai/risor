@@ -12,7 +12,6 @@ import (
 // - Identifiers
 // - Prefix expressions
 // - Infix expressions
-// - Ternary expressions
 // - If expressions
 // - Index/slice expressions
 // - Call expressions
