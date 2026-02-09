@@ -1,7 +1,7 @@
 # Risor
 
 [![CI](https://github.com/deepnoodle-ai/risor/actions/workflows/ci.yml/badge.svg)](https://github.com/deepnoodle-ai/risor/actions/workflows/ci.yml)
-[![Go.Dev reference](https://img.shields.io/badge/go.dev-reference-blue?logo=go&logoColor=white)](https://pkg.go.dev/github.com/deepnoodle-ai/risor)
+[![Go.Dev reference](https://img.shields.io/badge/go.dev-reference-blue?logo=go&logoColor=white)](https://pkg.go.dev/github.com/deepnoodle-ai/risor/v2)
 [![Apache-2.0 license](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Risor is a fast, embeddable expression language for Go applications.
@@ -24,12 +24,20 @@ config?.defaults?.theme ?? "light"
 orders.filter(o => o.status == "pending").map(o => o.total).reduce((a, b) => a + b, 0)
 ```
 
+## Install
+
+```bash
+go get github.com/deepnoodle-ai/risor/v2
+```
+
 ## Go API
 
 Embedding is straightforward. By default, the environment is empty (secure by
 default). Add the standard library with `risor.Builtins()`:
 
 ```go
+import "github.com/deepnoodle-ai/risor/v2"
+
 env := risor.Builtins()
 env["user"] = currentUser
 env["resource"] = requestedResource
@@ -52,9 +60,9 @@ built-in functions and types available to Risor expressions during execution.
 
 ## Documentation
 
-- [Language Semantics](docs/semantics.md) — Type coercion, equality, and iteration
-- [Exception Handling](docs/exceptions.md) — Try/catch/finally and error types
-- [v1 to v2 Migration](docs/migration-v2.md) — Upgrading from v1
+- [Language Semantics](docs/guides/semantics.md) — Type coercion, equality, and iteration
+- [Exception Handling](docs/guides/exceptions.md) — Try/catch/finally and error types
+- [v1 to v2 Migration](docs/guides/migration-v2.md) — Upgrading from v1
 
 ## Risor v2
 
