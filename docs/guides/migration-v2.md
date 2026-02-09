@@ -110,18 +110,6 @@ throw error("formatted error: %s", details)
 
 See [exceptions.md](exceptions.md) for complete documentation.
 
-### del Statement Replaces delete() Builtin
-
-```ts
-// v1
-delete(map, "key")
-delete(list, 0)
-
-// v2
-del map["key"]
-del list[0]
-```
-
 ## Removed Language Features
 
 ### For Loops Removed
@@ -212,18 +200,6 @@ x = 1 # inline comment
 x = 1 // inline comment
 
 #!/usr/bin/env risor  // shebang still works
-```
-
-### Pipe Forward Operator Removed
-
-Only the `|` pipe operator is supported.
-
-```ts
-// v1
-data |> transform |> filter
-
-// v2
-data | transform | filter
 ```
 
 ### Set Literals Removed
@@ -330,7 +306,7 @@ risor.Eval(ctx, source, risor.WithEnv(env))
 
 | Builtin | v2 Alternative |
 |---------|----------------|
-| `delete(container, key)` | `del container[key]` |
+| `delete(container, key)` | Removed, no replacement |
 | `make(type, size)` | Not needed |
 | `iter(container)` | Use enumeration methods |
 | `is_hashable(value)` | Not needed |
@@ -544,7 +520,7 @@ result, err := risor.Run(ctx, code,
 
 1. **Update syntax:**
    - [ ] Add parentheses to all `if` conditions
-   - [ ] Replace `delete()` with `del` statement
+   - [ ] Remove `delete()` calls (no replacement)
    - [ ] Replace `try()` builtin with `try/catch` blocks
    - [ ] Replace `#` comments with `//`
 

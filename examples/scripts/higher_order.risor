@@ -10,7 +10,7 @@ let double = x => x * 2
 let square = x => x * x
 
 // Pipe operator chains transformations
-let result = 5 | double | square
+let result = 5 |> double |> square
 
 // Use with list methods
 let numbers = [1, 2, 3, 4, 5]

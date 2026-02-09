@@ -206,8 +206,8 @@ function test_pipeline_with_functions(t) {
     let addOne = x => x + 1
     let double = x => x * 2
 
-    // 5 | addOne | double | addOne = ((5 + 1) * 2) + 1 = 13
-    let result = 5 | addOne | double | addOne
+    // 5 |> addOne |> double |> addOne = ((5 + 1) * 2) + 1 = 13
+    let result = 5 |> addOne |> double |> addOne
     t.assert_eq(result, 13)
 }
 

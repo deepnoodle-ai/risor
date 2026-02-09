@@ -15,7 +15,6 @@ See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
 - **Nullish coalescing** — defaults: `value ?? "fallback"`
 - **try/catch/finally** — keyword-based exception handling as expressions
 - **throw** — explicit exception throwing
-- **del statement** — `del map["key"]`, `del list[0]`
 - **Match expressions** — pattern matching with guard expressions
 - **Spread operator** — `{...a, ...b}`, `[...a, ...b]`
 - **Destructuring** — `let {name, age} = obj`, `let [a, b] = list`
@@ -28,7 +27,7 @@ See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
 - **RisorValuer interface** — automatic Go-to-Risor conversion
 - **Resource limits** — step limits, stack depth, and timeouts
 - **Execution observer** — hook into VM execution for profiling and debugging
-- **Pipe expressions** — `data | transform | filter`
+- **Pipe expressions** — `data |> transform |> filter`
 
 ### Removed
 
@@ -39,12 +38,11 @@ See [v1 to v2 Migration Guide](docs/guides/migration-v2.md) for upgrade details.
 - **Switch/case** — use `match` expressions or if/else
 - **Set literals** — use lists
 - **Hash comments** — use `//` (shebang still supported)
-- **Pipe forward operator (`|>`)** — use `|`
 - **I/O modules** — os, http, exec, ssh, dns, net, bcrypt, filepath, errors, fmt
 - **Proxy type** — use TypeRegistry or RisorValuer
 - **buffer, set, float_slice types** — use bytes and list
 - **try() builtin** — use try/catch
-- **delete() builtin** — use `del` statement
+- **delete() builtin** — removed, no replacement
 
 ### Changed
 
