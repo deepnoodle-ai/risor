@@ -10,9 +10,9 @@ import (
 
 // Risor keywords for completion
 var risorKeywords = []string{
-	"case", "catch", "const", "default", "else", "false", "finally",
-	"function", "if", "in", "let", "nil", "not", "return", "struct",
-	"switch", "throw", "true", "try",
+	"catch", "const", "else", "false", "finally",
+	"function", "if", "in", "let", "match", "nil", "not", "return", "struct",
+	"throw", "true", "try",
 }
 
 // Common built-in functions

@@ -22,28 +22,6 @@ func TestBitwiseOpStrings(t *testing.T) {
 	})
 }
 
-// TestSwitchNilBodyNoLongerPanics verifies that compileSwitch handles
-// nil Body gracefully instead of panicking.
-func TestSwitchNilBodyNoLongerPanics(t *testing.T) {
-	// Create a switch statement with a default case that has nil Body
-	switchNode := &ast.Switch{
-		Value: &ast.Int{Value: 1},
-		Cases: []*ast.Case{
-			{
-				Default: true,
-				Body:    nil, // This should now be handled gracefully
-			},
-		},
-	}
-
-	c, err := New(nil)
-	assert.Nil(t, err)
-
-	// This should NOT panic - it should compile successfully
-	_, err = c.CompileAST(switchNode)
-	assert.Nil(t, err, "Should not panic with nil Body in default case")
-}
-
 // TestOptionalChainingErrorHandling verifies that errors from calculateDelta
 // are properly propagated in optional chaining expressions.
 func TestOptionalChainingErrorHandling(t *testing.T) {

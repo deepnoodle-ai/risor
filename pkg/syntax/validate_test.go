@@ -201,31 +201,6 @@ func TestSyntaxValidator_DisallowIf(t *testing.T) {
 	}
 }
 
-func TestSyntaxValidator_DisallowSwitch(t *testing.T) {
-	tests := []struct {
-		source  string
-		wantErr bool
-	}{
-		{"1 + 2", false},
-		{"switch (x) { case 1: 1 }", true},
-	}
-
-	config := SyntaxConfig{DisallowSwitch: true}
-	validator := NewSyntaxValidator(config)
-
-	for _, tt := range tests {
-		t.Run(tt.source, func(t *testing.T) {
-			program := parse(t, tt.source)
-			errs := validator.Validate(program)
-			if tt.wantErr {
-				assert.True(t, len(errs) > 0, "expected error for: %s", tt.source)
-			} else {
-				assert.Equal(t, len(errs), 0, "unexpected error for: %s", tt.source)
-			}
-		})
-	}
-}
-
 func TestSyntaxValidator_DisallowDestructure(t *testing.T) {
 	tests := []struct {
 		source  string
@@ -457,7 +432,6 @@ func TestZeroValueConfig(t *testing.T) {
 		"x = 2",
 		"function foo() { return 1 }",
 		"if (true) { 1 }",
-		"switch (x) { case 1: 1 }",
 		"try { 1 } catch { 2 }",
 		"let {a} = obj",
 		"[...arr]",

@@ -126,15 +126,6 @@ func (v *SyntaxValidator) checkNode(node ast.Node) *ValidationError {
 			}
 		}
 
-	case *ast.Switch:
-		if v.config.DisallowSwitch {
-			return &ValidationError{
-				Message:  "switch expressions are not allowed",
-				Node:     node,
-				Position: node.Pos(),
-			}
-		}
-
 	case *ast.Spread:
 		if v.config.DisallowSpread {
 			return &ValidationError{

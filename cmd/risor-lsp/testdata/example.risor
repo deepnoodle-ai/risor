@@ -85,13 +85,12 @@ let name = person["name"]
 let age = person["age"]
 println("Person info:", name, age)
 
-// Switch expression
+// Match expression
 let get_day_type = func(day) {
-    switch (day) {
-    case "Saturday", "Sunday":
-        return "weekend"
-    default:
-        return "weekday"
+    match day {
+        "Saturday" => "weekend"
+        "Sunday" => "weekend"
+        _ => "weekday"
     }
 }
 println("Monday is a:", get_day_type("Monday"))

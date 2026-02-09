@@ -17,8 +17,7 @@ type SyntaxConfig struct {
 	DisallowTryCatch bool // try/catch/finally, throw
 
 	// Control flow
-	DisallowIf     bool // if/else expressions
-	DisallowSwitch bool // switch expressions
+	DisallowIf bool // if/else expressions
 
 	// Advanced syntax
 	DisallowDestructure bool // let {a, b} = obj, let [x, y] = arr, function({a, b}) {}
@@ -40,7 +39,6 @@ var (
 		DisallowFuncDef:      true,
 		DisallowTryCatch:     true,
 		DisallowIf:           true,
-		DisallowSwitch:       true,
 		DisallowDestructure:  true,
 		DisallowSpread:       true,
 		DisallowPipe:         true,

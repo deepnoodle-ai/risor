@@ -174,12 +174,12 @@ function test_fibonacci(t) {
         {name: "ten",   input: 10, want: 55},
     ]
 
-    for tc in cases {
+    cases.each(tc => {
         t.run(tc.name, function(t) {
             got := fibonacci(tc.input)
             t.assert_eq(got, tc.want)
         })
-    }
+    })
 }
 ```
 
@@ -200,15 +200,15 @@ Benchmark functions use the `bench_` prefix:
 
 ```risor
 function bench_string_concat(b) {
-    for i in range(b.n) {
+    range(b.n).each(i => {
         result := "hello" + " " + "world"
-    }
+    })
 }
 
 function bench_string_format(b) {
-    for i in range(b.n) {
+    range(b.n).each(i => {
         result := format("{} {}", "hello", "world")
-    }
+    })
 }
 ```
 
@@ -464,12 +464,12 @@ function test_multiply(t) {
         {a: 100, b: 100, want: 10000},
     ]
 
-    for tc in cases {
+    cases.each(tc => {
         t.run(sprintf("%d*%d", tc.a, tc.b), function(t) {
             got := t.ctx.calc.multiply(tc.a, tc.b)
             t.assert_eq(got, tc.want)
         })
-    }
+    })
 }
 
 // Test error handling
@@ -490,9 +490,9 @@ function test_advanced_feature(t) {
 // Benchmark
 function bench_add(b) {
     calc := calculator.new()
-    for i in range(b.n) {
+    range(b.n).each(i => {
         calc.add(i, i)
-    }
+    })
 }
 ```
 

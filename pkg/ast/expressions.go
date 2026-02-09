@@ -332,80 +332,6 @@ func (x *Slice) String() string {
 	return out.String()
 }
 
-// Case is an expression node that describes one case within a switch expression.
-type Case struct {
-	Case    token.Position // position of "case" or "default" keyword
-	Exprs   []Expr         // match expressions; nil for default case
-	Colon   token.Position // position of ":"
-	Body    *Block         // case body
-	Default bool           // true if this is the default case
-}
-
-func (x *Case) exprNode() {}
-
-func (x *Case) Pos() token.Position { return x.Case }
-func (x *Case) End() token.Position {
-	if x.Body != nil {
-		return x.Body.End()
-	}
-	return x.Colon.Advance(1)
-}
-
-func (x *Case) String() string {
-	var out bytes.Buffer
-	if x.Default {
-		out.WriteString("default")
-	} else {
-		out.WriteString("case ")
-		tmp := make([]string, 0, len(x.Exprs))
-		for _, exp := range x.Exprs {
-			tmp = append(tmp, exp.String())
-		}
-		out.WriteString(strings.Join(tmp, ", "))
-	}
-	out.WriteString(":\n")
-	if x.Body != nil {
-		for i, stmt := range x.Body.Stmts {
-			if i > 0 {
-				out.WriteString("\n")
-			}
-			out.WriteString("\t" + stmt.String())
-		}
-	}
-	out.WriteString("\n")
-	return out.String()
-}
-
-// Switch is an expression node that describes a switch between multiple cases.
-type Switch struct {
-	Switch token.Position // position of "switch" keyword
-	Lparen token.Position // position of "("
-	Value  Expr           // switch value
-	Rparen token.Position // position of ")"
-	Lbrace token.Position // position of "{"
-	Cases  []*Case        // case clauses
-	Rbrace token.Position // position of "}"
-}
-
-func (x *Switch) exprNode() {}
-
-func (x *Switch) Pos() token.Position { return x.Switch }
-func (x *Switch) End() token.Position { return x.Rbrace.Advance(1) }
-
-func (x *Switch) String() string {
-	var out bytes.Buffer
-	out.WriteString("switch (")
-	out.WriteString(x.Value.String())
-	out.WriteString(") {\n")
-	for _, choice := range x.Cases {
-		if choice != nil {
-			out.WriteString(choice.String())
-		}
-	}
-	out.WriteString("}")
-	return out.String()
-}
-
 // In is an expression node that checks whether a value is present in a container.
 type In struct {
 	X     Expr           // value to check
@@ -500,9 +426,10 @@ func (p *WildcardPattern) End() token.Position { return p.Underscore.Advance(1) 
 
 func (p *WildcardPattern) String() string { return "_" }
 
-// MatchArm represents one arm of a match expression: pattern => result
+// MatchArm represents one arm of a match expression: pattern [if guard] => result
 type MatchArm struct {
 	Pattern Pattern        // the pattern to match
+	Guard   Expr           // optional guard expression (nil if no guard)
 	Arrow   token.Position // position of "=>"
 	Result  Expr           // the result expression
 }
@@ -513,6 +440,10 @@ func (a *MatchArm) End() token.Position { return a.Result.End() }
 func (a *MatchArm) String() string {
 	var out bytes.Buffer
 	out.WriteString(a.Pattern.String())
+	if a.Guard != nil {
+		out.WriteString(" if ")
+		out.WriteString(a.Guard.String())
+	}
 	out.WriteString(" => ")
 	out.WriteString(a.Result.String())
 	return out.String()

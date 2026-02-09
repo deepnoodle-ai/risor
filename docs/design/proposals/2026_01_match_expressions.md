@@ -2,8 +2,8 @@
 
 ## Problem Statement
 
-Risor currently supports conditional logic through `if` expressions and ternary-style
-constructs. While these work well for simple conditions, they become unwieldy when:
+Risor currently supports conditional logic through `if` expressions. While these work
+well for simple conditions, they become unwieldy when:
 
 1. **Multiple conditions on the same value** — Requires repeated `if/else if` chains
 2. **Structural matching** — Testing object shapes requires manual property access
@@ -509,12 +509,19 @@ func TestObjectPatternMatching(t *testing.T) {
 - Compile to conditional jumps
 - Basic evaluation tests
 
-### Phase 2: Simple `match`
+### Phase 2: Simple `match` (implemented)
 
 - Add `match` keyword
 - Parse literal and wildcard patterns
 - Parse identifier patterns (variable binding)
 - Basic match compilation and evaluation
+
+### Phase 2.5: Guard Expressions (implemented)
+
+- Guard expression parsing (`pattern if condition => result`)
+- Guard evaluation after pattern match
+- If guard fails, continue to next arm
+- `inPatternContext` flag prevents `=>` from being parsed as arrow function in guards
 
 ### Phase 3: Object Patterns
 
@@ -522,10 +529,9 @@ func TestObjectPatternMatching(t *testing.T) {
 - Nested pattern support
 - Pattern matching against maps
 
-### Phase 4: List Patterns and Guards
+### Phase 4: List Patterns
 
 - Parse list patterns with spread operator
-- Guard expression parsing and evaluation
 - Complete test coverage
 
 ### Phase 5: Schema Integration

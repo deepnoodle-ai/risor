@@ -68,7 +68,7 @@
       "patterns": [
         {
           "name": "keyword.control.risor",
-          "match": "\\b(if|else|switch|case|default|var|const|for|func|from|import|return|break|continue|in|range|as|defer|struct|go)\\b"
+          "match": "\\b(catch|const|else|finally|function|if|in|let|match|not|return|struct|throw|try)\\b"
         }
       ]
     },

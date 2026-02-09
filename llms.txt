@@ -241,35 +241,19 @@ function makeCounter() {
 // If/else (is an expression — returns a value)
 let status = if x > 0 { "positive" } else { "non-positive" }
 
-// While loop
-while condition {
-    // ...
-    break    // exit loop
-    continue // skip to next iteration
+// Match expressions (pattern matching with optional guards)
+let label = match x {
+    1 => "one"
+    2 => "two"
+    _ => "other"
 }
 
-// For-in loop
-for item in [1, 2, 3] {
-    print(item)
-}
-for i, item in ["a", "b", "c"] {
-    print(i, item)
-}
-for key, value in {a: 1, b: 2} {
-    print(key, value)
-}
-for i in range(10) {
-    print(i)
-}
-
-// Switch
-switch value {
-case "a":
-    // ...
-case "b", "c":
-    // ...
-default:
-    // ...
+// Match with guard expressions
+match value {
+    x if x > 100 => "large"
+    x if x > 0   => "positive"
+    0             => "zero"
+    _             => "negative"
 }
 ```
 
@@ -529,7 +513,7 @@ regexp.replace(`\d`, "a1b2", "X")      // "aXbX"
 ## Iterator protocol
 
 Maps, ranges, and other types return lazy iterators. Iterators implement the
-Enumerable interface and can be consumed with spread, `list()`, or `for`:
+Enumerable interface and can be consumed with spread or `list()`:
 
 ```js
 let m = {a: 1, b: 2}
@@ -537,13 +521,9 @@ let k = m.keys()              // lazy iterator
 list(k)                       // ["a", "b"]
 [...m.values()]               // [1, 2]
 
-for key, value in m.entries() {
-    print(key, value)
-}
-
-for i in range(5) {
-    print(i)                  // 0, 1, 2, 3, 4
-}
+// Iterate with functional methods
+m.entries().each((k, v) => print(k, v))
+range(5).each(i => print(i))  // 0, 1, 2, 3, 4
 ```
 
 ## Indexing and slicing

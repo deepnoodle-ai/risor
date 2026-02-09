@@ -9,7 +9,7 @@ import (
 // This file contains methods that parse expression constructs:
 // - Identifiers and prefix/infix expressions
 // - Grouped expressions and arrow functions
-// - Control flow expressions (if, switch)
+// - Control flow expressions (if)
 // - Block parsing
 // - Index/slice expressions
 // - Call expressions and pipes
@@ -408,169 +408,6 @@ func (p *Parser) parseBlock() *ast.Block {
 	return &ast.Block{Lbrace: lbrace, Stmts: statements, Rbrace: rbrace}
 }
 
-func (p *Parser) parseSwitch() (ast.Node, bool) {
-	switchPos := p.curToken.StartPosition
-	if !p.expectPeek("switch statement", token.LPAREN) {
-		return nil, false
-	}
-	lparen := p.curToken.StartPosition
-	p.nextToken() // move past the "("
-	switchValue := p.parseExpression(LOWEST)
-	if switchValue == nil {
-		return nil, false
-	}
-	if !p.expectPeek("switch statement", token.RPAREN) {
-		return nil, false
-	}
-	rparen := p.curToken.StartPosition
-	if !p.expectPeek("switch statement", token.LBRACE) {
-		return nil, false
-	}
-	lbrace := p.curToken.StartPosition
-	p.nextToken()
-	p.eatNewlines()
-
-	// Process the switch case statements
-	var cases []*ast.Case
-	var defaultCaseCount int
-
-	for !p.curTokenIs(token.RBRACE) {
-		if p.cancelled() {
-			return nil, false
-		}
-		if p.curTokenIs(token.EOF) {
-			p.setTokenError(p.prevToken, "unterminated switch statement")
-			return nil, false
-		}
-		caseNode, isDefault := p.parseSwitchCase()
-		if caseNode == nil {
-			return nil, false
-		}
-		if isDefault {
-			defaultCaseCount++
-			if defaultCaseCount > 1 {
-				p.setTokenError(p.curToken, "switch statement has multiple default blocks")
-				return nil, false
-			}
-		}
-		cases = append(cases, caseNode)
-	}
-
-	rbrace := p.curToken.StartPosition
-	return &ast.Switch{
-		Switch: switchPos,
-		Lparen: lparen,
-		Value:  switchValue,
-		Rparen: rparen,
-		Lbrace: lbrace,
-		Cases:  cases,
-		Rbrace: rbrace,
-	}, true
-}
-
-// parseSwitchCase parses a single case or default clause in a switch statement.
-// Returns the Case node and whether it's a default case.
-func (p *Parser) parseSwitchCase() (*ast.Case, bool) {
-	if p.curToken.Literal != "case" && p.curToken.Literal != "default" {
-		p.setTokenError(p.curToken, "expected 'case' or 'default' (got %s)", p.curToken.Literal)
-		return nil, false
-	}
-
-	casePos := p.curToken.StartPosition
-	isDefault := p.curTokenIs(token.DEFAULT)
-	var caseExprs []ast.Expr
-
-	if !isDefault {
-		// Parse case expressions (comma-separated)
-		p.nextToken()
-		expr := p.parseExpression(LOWEST)
-		if expr == nil {
-			return nil, false
-		}
-		caseExprs = append(caseExprs, expr)
-		for p.peekTokenIs(token.COMMA) {
-			p.nextToken() // move to comma
-			p.nextToken() // move to expression
-			expr = p.parseExpression(LOWEST)
-			if expr == nil {
-				return nil, false
-			}
-			caseExprs = append(caseExprs, expr)
-		}
-	}
-
-	if !p.expectPeek("switch case", token.COLON) {
-		return nil, false
-	}
-	colonPos := p.curToken.StartPosition
-	p.nextToken()
-	p.eatNewlines()
-
-	// Parse the case body
-	body := p.parseCaseBody()
-	if body == nil && p.hadNewError() {
-		return nil, false
-	}
-
-	return &ast.Case{
-		Case:    casePos,
-		Exprs:   caseExprs,
-		Colon:   colonPos,
-		Body:    body,
-		Default: isDefault,
-	}, isDefault
-}
-
-// parseCaseBody parses the statements in a switch case until the next case/default/rbrace.
-// Returns nil for empty case bodies (which are valid).
-func (p *Parser) parseCaseBody() *ast.Block {
-	// Empty case body is valid
-	if p.curTokenIs(token.CASE) || p.curTokenIs(token.DEFAULT) || p.curTokenIs(token.RBRACE) {
-		return nil
-	}
-
-	blockPos := p.curToken.StartPosition
-	var statements []ast.Node
-
-	for {
-		if p.cancelled() {
-			return nil
-		}
-		// Skip newlines and semicolons
-		for p.curTokenIs(token.NEWLINE) || p.curTokenIs(token.SEMICOLON) {
-			if err := p.nextToken(); err != nil {
-				return nil
-			}
-		}
-		// End of case body?
-		if p.curTokenIs(token.CASE) || p.curTokenIs(token.DEFAULT) ||
-			p.curTokenIs(token.RBRACE) || p.curTokenIs(token.EOF) {
-			break
-		}
-		// Parse one statement
-		stmtErrorCount := len(p.errors)
-		s := p.parseStatement()
-		if s != nil {
-			statements = append(statements, s)
-		} else if len(p.errors) > stmtErrorCount {
-			// Statement failed with error - return nil to propagate error
-			return nil
-		}
-		// Check for proper statement termination
-		if !p.curTokenIs(token.SEMICOLON) && !statementTerminators[p.peekToken.Type] &&
-			!p.peekTokenIs(token.CASE) && !p.peekTokenIs(token.DEFAULT) && !p.peekTokenIs(token.RBRACE) {
-			p.peekError("case statement", token.SEMICOLON, p.peekToken)
-			return nil
-		}
-		if err := p.nextToken(); err != nil {
-			return nil
-		}
-	}
-
-	// Case blocks use same position for both braces (no actual braces in source)
-	return &ast.Block{Lbrace: blockPos, Stmts: statements, Rbrace: blockPos}
-}
-
 func (p *Parser) parseIndex(leftNode ast.Node) (ast.Node, bool) {
 	left, ok := leftNode.(ast.Expr)
 	if !ok {
@@ -880,7 +717,7 @@ func (p *Parser) parseMatch() (ast.Node, bool) {
 	}, true
 }
 
-// parseMatchArm parses a single match arm: pattern => result
+// parseMatchArm parses a single match arm: pattern [if guard] => result
 // Returns the arm and whether it's a default arm (wildcard pattern).
 func (p *Parser) parseMatchArm() (*ast.MatchArm, bool) {
 	pattern := p.parsePattern()
@@ -891,6 +728,21 @@ func (p *Parser) parseMatchArm() (*ast.MatchArm, bool) {
 	isDefault := false
 	if _, ok := pattern.(*ast.WildcardPattern); ok {
 		isDefault = true
+	}
+
+	// Check for optional guard expression: pattern if condition => result
+	var guard ast.Expr
+	if p.peekTokenIs(token.IF) {
+		p.nextToken() // move to "if"
+		p.nextToken() // move past "if" to the guard expression
+		// Set pattern context so => is not parsed as an arrow function
+		p.inPatternContext = true
+		guard = p.parseExpression(LOWEST)
+		p.inPatternContext = false
+		if guard == nil {
+			p.setTokenError(p.curToken, "invalid guard expression in match arm")
+			return nil, false
+		}
 	}
 
 	// Expect =>
@@ -911,6 +763,7 @@ func (p *Parser) parseMatchArm() (*ast.MatchArm, bool) {
 
 	return &ast.MatchArm{
 		Pattern: pattern,
+		Guard:   guard,
 		Arrow:   arrowPos,
 		Result:  result,
 	}, isDefault

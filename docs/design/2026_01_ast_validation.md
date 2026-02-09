@@ -70,7 +70,7 @@ type SyntaxConfig struct {
 
     // Control flow
     DisallowIf           bool // if/else expressions
-    DisallowSwitch       bool // switch expressions
+    DisallowMatch        bool // match expressions
 
     // Advanced syntax
     DisallowDestructure  bool // let {a, b} = obj, let [x, y] = arr, function({a, b}) {}
@@ -315,10 +315,10 @@ func (v *SyntaxValidator) checkNode(node ast.Node) *ValidationError {
             }
         }
 
-    case *ast.Switch:
-        if v.config.DisallowSwitch {
+    case *ast.Match:
+        if v.config.DisallowMatch {
             return &ValidationError{
-                Message:  "switch expressions are not allowed",
+                Message:  "match expressions are not allowed",
                 Node:     node,
                 Position: node.Pos(),
             }

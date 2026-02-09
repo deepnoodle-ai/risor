@@ -132,10 +132,7 @@ func TestMaxDepth(t *testing.T) {
 			function b() {
 				function c() {
 					if (true) {
-						switch (1) {
-							case 1:
-								[1, 2, 3]
-						}
+						[1, 2, 3]
 					}
 				}
 			}
@@ -376,8 +373,6 @@ func TestBadInputs(t *testing.T) {
 		{"0?0:", `parse error: unexpected token "?" following statement`},
 		{"in", `parse error: invalid syntax (unexpected "in")`},
 		{"x in", `parse error: invalid in expression`},
-		{"switch (x) { case 1: \xf5\xf51 case 2: 2 default: 3 }", `syntax error: invalid identifier: �`},
-		{"switch (x) { case 1: 1 case 2: 2 defaultIIIIIII: 3 }", "parse error: unexpected defaultIIIIIII while parsing case statement (expected ;)"},
 		{`{ one: 1
 			two: 2}`, "parse error: unexpected two while parsing map (expected })"},
 		{`[1 2]`, "parse error: unexpected 2 while parsing list (expected ])"},
@@ -407,7 +402,6 @@ func TestIncompleThings(t *testing.T) {
 		{`const x =`, "parse error: assignment is missing a value"},
 		{`function foo( a, b ="steve", `, "parse error: unterminated function parameters"},
 		{`function foo() {`, "parse error: unterminated block statement"},
-		{`switch (foo) { `, "parse error: unterminated switch statement"},
 		{`{`, "parse error: invalid syntax"},
 		{`[`, "parse error: invalid syntax in list"},
 		{`{ "a": "b", "c": "d"`, "parse error: unexpected end of file while parsing map (expected })"},
@@ -459,29 +453,6 @@ func TestInvalidListTermination(t *testing.T) {
 	} else {
 		assert.Equal(t, `parse error: invalid syntax (unexpected "}")`, err.Error())
 	}
-}
-
-func TestMultiDefault(t *testing.T) {
-	input := `
-switch (val) {
-case 1:
-    print("1")
-case 2:
-    print("2")
-default:
-    print("default")
-default:
-    print("oh no!")
-}`
-	_, err := Parse(context.Background(), input, nil)
-	assert.NotNil(t, err)
-
-	parserErr, ok := err.(ParserError)
-	assert.True(t, ok)
-	assert.Equal(t, "parse error: switch statement has multiple default blocks", parserErr.Error())
-	assert.Equal(t, 0, parserErr.StartPosition().Column)
-	assert.Equal(t, 10, parserErr.StartPosition().Line)
-	assert.Equal(t, 10, parserErr.EndPosition().Line)
 }
 
 func TestUnterminatedBacktickString(t *testing.T) {

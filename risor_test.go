@@ -1552,12 +1552,6 @@ func TestWithSyntaxBasicScripting(t *testing.T) {
 		assert.Equal(t, result, int64(42))
 	})
 
-	t.Run("allows switch", func(t *testing.T) {
-		result, err := Eval(ctx, "let x = 2; switch (x) { case 1: 10 case 2: 20 default: 0 }", WithSyntax(BasicScripting))
-		assert.Nil(t, err)
-		assert.Equal(t, result, int64(20))
-	})
-
 	t.Run("allows destructuring", func(t *testing.T) {
 		result, err := Eval(ctx, "let {a, b} = {a: 1, b: 2}; a + b", WithSyntax(BasicScripting))
 		assert.Nil(t, err)

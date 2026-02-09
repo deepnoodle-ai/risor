@@ -360,55 +360,6 @@ func TestSlice(t *testing.T) {
 	assert.Equal(t, slice.String(), "arr[1:]")
 }
 
-func TestCase(t *testing.T) {
-	// Regular case
-	caseExpr := &Case{
-		Case:  token.Position{Line: 1, Column: 1},
-		Exprs: []Expr{&Int{ValuePos: token.Position{Line: 1, Column: 6}, Literal: "1", Value: 1}},
-		Colon: token.Position{Line: 1, Column: 7},
-		Body: &Block{
-			Lbrace: token.Position{Line: 2, Column: 1},
-			Stmts: []Node{
-				&Int{ValuePos: token.Position{Line: 2, Column: 2}, Literal: "42", Value: 42},
-			},
-			Rbrace: token.Position{Line: 2, Column: 4},
-		},
-	}
-
-	s := caseExpr.String()
-	assert.True(t, s != "", "Case.String() should not be empty")
-
-	// Default case
-	defaultCase := &Case{
-		Case:    token.Position{Line: 1, Column: 1},
-		Default: true,
-		Colon:   token.Position{Line: 1, Column: 8},
-		Body: &Block{
-			Lbrace: token.Position{Line: 2, Column: 1},
-			Stmts:  []Node{},
-			Rbrace: token.Position{Line: 2, Column: 2},
-		},
-	}
-
-	s = defaultCase.String()
-	assert.True(t, s != "", "Default Case.String() should not be empty")
-}
-
-func TestSwitch(t *testing.T) {
-	switchExpr := &Switch{
-		Switch: token.Position{Line: 1, Column: 1},
-		Lparen: token.Position{Line: 1, Column: 8},
-		Value:  &Ident{NamePos: token.Position{Line: 1, Column: 9}, Name: "x"},
-		Rparen: token.Position{Line: 1, Column: 10},
-		Lbrace: token.Position{Line: 1, Column: 12},
-		Cases:  []*Case{},
-		Rbrace: token.Position{Line: 1, Column: 14},
-	}
-
-	assert.Equal(t, switchExpr.Pos().Column, 1)
-	assert.Equal(t, switchExpr.End().Column, 15)
-}
-
 func TestIn(t *testing.T) {
 	inExpr := &In{
 		X:     &Ident{NamePos: token.Position{Line: 1, Column: 1}, Name: "x"},
@@ -1001,20 +952,6 @@ func TestInfixNilOperands(t *testing.T) {
 		}
 	}()
 	_ = infix2.End()
-}
-
-func TestCaseNilBody(t *testing.T) {
-	// Case with nil Body
-	caseExpr := &Case{
-		Case:  token.Position{Line: 1, Column: 1},
-		Exprs: []Expr{&Int{ValuePos: token.Position{Line: 1, Column: 6}, Value: 1}},
-		Colon: token.Position{Line: 1, Column: 7},
-		Body:  nil,
-	}
-
-	// End() should use Colon position when Body is nil
-	pos := caseExpr.End()
-	assert.Equal(t, pos.Column, 8) // Colon.Advance(1)
 }
 
 func TestGetAttrNilX(t *testing.T) {

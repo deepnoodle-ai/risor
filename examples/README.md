@@ -17,7 +17,6 @@ risor examples/scripts/<filename>.risor
 | [fibonacci.risor](./scripts/fibonacci.risor)           | Classic recursive Fibonacci                          |
 | [closures.risor](./scripts/closures.risor)             | Closures, memoization, partial application           |
 | [destructuring.risor](./scripts/destructuring.risor)   | Object/array destructuring with defaults and aliases |
-| [switch_conditionals.risor](./scripts/switch_conditionals.risor) | Switch statements and if expressions                 |
 | [numeric_types.risor](./scripts/numeric_types.risor)   | Type coercion, bitwise operations, comparisons       |
 
 ### Collections and Iteration
