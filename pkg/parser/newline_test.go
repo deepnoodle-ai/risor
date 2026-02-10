@@ -208,3 +208,146 @@ func TestMethodChainingInComplexExpressions(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// INFIX OPERATORS AFTER NEWLINE METHOD CHAINING
+// =============================================================================
+// After method chaining across newlines, remaining infix operators on the same
+// line should still be parsed. The chaining loop in parseNode currently exits
+// without falling back to the main infix loop, so operators like |>, +, ==, &&
+// are dropped.
+
+func TestInfixAfterNewlineChain(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			"pipe after newline chain",
+			"let x = items\n.filter(f) |> sorted",
+		},
+		{
+			"addition after newline chain",
+			"let x = a\n.length() + b\n.length()",
+		},
+		{
+			"equality after newline chain",
+			"let x = a\n.name() == b\n.name()",
+		},
+		{
+			"logical and after newline chain",
+			"let x = a\n.valid() && b\n.valid()",
+		},
+		{
+			"logical or after newline chain",
+			"let x = a\n.ready() || fallback",
+		},
+		{
+			"multiply after newline chain",
+			"let x = a\n.count() * 2",
+		},
+		{
+			"comparison after newline chain",
+			"let x = items\n.length() > 0",
+		},
+		{
+			"nullish coalescing after newline chain",
+			"let x = a\n.value() ?? 0",
+		},
+		{
+			"pipe chain after multi-line method chain",
+			`let x = users
+	.filter(u => u.active)
+	.map(u => u.name) |> sorted`,
+		},
+		{
+			"arithmetic after optional chain across newlines",
+			"let x = a\n?.count + 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+		})
+	}
+}
+
+func TestInfixAfterNewlineChainVariations(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		// Starting expression types
+		{
+			"from call result",
+			"let x = f()\n.method() + 1",
+		},
+		{
+			"from list literal",
+			"let x = [1, 2, 3]\n.filter(f) |> first",
+		},
+		{
+			"from grouped expression",
+			`let x = (a + b)
+	.toString() == "5"`,
+		},
+
+		// Chain ending types
+		{
+			"ending with property access",
+			"let x = a\n.length + 1",
+		},
+		{
+			"ending with optional method call",
+			"let x = a\n?.method() + 1",
+		},
+
+		// Expression context (not let)
+		{
+			"bare expression statement",
+			"a\n.ready() || fallback",
+		},
+		{
+			"return statement",
+			"function f() { return a\n.b() + 1 }",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+		})
+	}
+}
+
+func TestInfixAfterNewlineChainAST(t *testing.T) {
+	// Verify the AST structure is correct, not just that it parses
+	t.Run("pipe produces ast.Pipe", func(t *testing.T) {
+		program, err := Parse(context.Background(), "let x = items\n.sort() |> first", nil)
+		assert.Nil(t, err)
+		stmt := program.First().(*ast.Var)
+		_, ok := stmt.Value.(*ast.Pipe)
+		assert.True(t, ok, "Expected Pipe node, got %T", stmt.Value)
+	})
+
+	t.Run("addition produces ast.Infix", func(t *testing.T) {
+		program, err := Parse(context.Background(), "let x = a\n.len() + 1", nil)
+		assert.Nil(t, err)
+		stmt := program.First().(*ast.Var)
+		infix, ok := stmt.Value.(*ast.Infix)
+		assert.True(t, ok, "Expected Infix node, got %T", stmt.Value)
+		assert.Equal(t, "+", infix.Op)
+	})
+
+	t.Run("comparison produces ast.Infix", func(t *testing.T) {
+		program, err := Parse(context.Background(), "let x = a\n.len() == 0", nil)
+		assert.Nil(t, err)
+		stmt := program.First().(*ast.Var)
+		infix, ok := stmt.Value.(*ast.Infix)
+		assert.True(t, ok, "Expected Infix node, got %T", stmt.Value)
+		assert.Equal(t, "==", infix.Op)
+	})
+}

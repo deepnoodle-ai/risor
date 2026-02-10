@@ -438,23 +438,28 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 	if !ok || leftExp == nil {
 		return nil
 	}
-	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
-		infix := p.infixParseFns[p.peekToken.Type]
-		if infix == nil {
-			return leftExp
+	for {
+		// Main infix loop: handle operators on the same line.
+		for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
+			infix := p.infixParseFns[p.peekToken.Type]
+			if infix == nil {
+				return leftExp
+			}
+			if err := p.nextToken(); err != nil {
+				return nil
+			}
+			leftExp, ok = infix(leftExp)
+			if !ok {
+				return nil
+			}
 		}
-		if err := p.nextToken(); err != nil {
-			return nil
+		// Check for chaining operators across newlines (rule 7 in newline policy).
+		// This allows: obj\n.method1()\n.method2()
+		// After chaining completes, loop back to the main infix loop so that
+		// same-line operators (e.g. |>, +, ==) are still picked up.
+		if !p.skipNewlinesForChaining() {
+			break
 		}
-		leftExp, ok = infix(leftExp)
-		if !ok {
-			return nil
-		}
-	}
-	// Check for chaining operators across newlines (rule 7 in newline policy).
-	// This allows: obj\n.method1()\n.method2()
-	for p.skipNewlinesForChaining() {
-		// Found a chaining operator after newlines - continue parsing
 		if precedence >= p.peekPrecedence() {
 			break
 		}
