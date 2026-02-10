@@ -323,6 +323,74 @@ func TestInfixAfterNewlineChainVariations(t *testing.T) {
 	}
 }
 
+func TestPostfixAfterNewlineChain(t *testing.T) {
+	t.Run("increment after newline property chain", func(t *testing.T) {
+		program, err := Parse(context.Background(), "obj\n.field++", nil)
+		assert.Nil(t, err)
+		postfix, ok := program.First().(*ast.Postfix)
+		assert.True(t, ok, "Expected Postfix, got %T", program.First())
+		assert.Equal(t, "++", postfix.Op)
+		// The operand should be a GetAttr (obj.field)
+		_, ok = postfix.X.(*ast.GetAttr)
+		assert.True(t, ok, "Expected GetAttr operand, got %T", postfix.X)
+	})
+
+	t.Run("decrement after newline property chain", func(t *testing.T) {
+		program, err := Parse(context.Background(), "obj\n.count--", nil)
+		assert.Nil(t, err)
+		postfix, ok := program.First().(*ast.Postfix)
+		assert.True(t, ok, "Expected Postfix, got %T", program.First())
+		assert.Equal(t, "--", postfix.Op)
+	})
+
+	t.Run("increment after multi-step newline chain", func(t *testing.T) {
+		program, err := Parse(context.Background(), "a\n.b\n.c++", nil)
+		assert.Nil(t, err)
+		postfix, ok := program.First().(*ast.Postfix)
+		assert.True(t, ok, "Expected Postfix, got %T", program.First())
+		assert.Equal(t, "++", postfix.Op)
+	})
+}
+
+func TestMultiStepNewlineChainThenInfix(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			"three-step chain then addition",
+			"let x = obj\n.a()\n.b()\n.c() + 1",
+		},
+		{
+			"three-step chain then pipe",
+			"let x = items\n.filter(f)\n.map(g)\n.sort() |> first",
+		},
+		{
+			"three-step chain then comparison",
+			"let x = items\n.filter(f)\n.map(g)\n.length() > 0",
+		},
+		{
+			"mixed same-line and newline chains then infix",
+			"let x = obj\n.a().b()\n.c() + 1",
+		},
+		{
+			"newline chain on both sides of infix",
+			"let x = a\n.count() + b\n.count()",
+		},
+		{
+			"newline chain on both sides of comparison",
+			"let x = a\n.name() == b\n.name()",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+		})
+	}
+}
+
 func TestInfixAfterNewlineChainAST(t *testing.T) {
 	// Verify the AST structure is correct, not just that it parses
 	t.Run("pipe produces ast.Pipe", func(t *testing.T) {
