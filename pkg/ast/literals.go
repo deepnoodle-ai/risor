@@ -45,9 +45,9 @@ type Nil struct {
 func (x *Nil) exprNode() {}
 
 func (x *Nil) Pos() token.Position { return x.NilPos }
-func (x *Nil) End() token.Position { return x.NilPos.Advance(3) } // len("nil")
+func (x *Nil) End() token.Position { return x.NilPos.Advance(4) } // len("null")
 
-func (x *Nil) String() string { return "nil" }
+func (x *Nil) String() string { return "null" }
 
 // Bool is an expression node that holds a boolean literal.
 type Bool struct {

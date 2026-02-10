@@ -162,7 +162,7 @@ func TestNil(t *testing.T) {
 
 	n, ok := program.First().(*ast.Nil)
 	assert.True(t, ok)
-	assert.Equal(t, "nil", n.String())
+	assert.Equal(t, "null", n.String())
 }
 
 func TestNull(t *testing.T) {

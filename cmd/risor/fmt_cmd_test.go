@@ -97,9 +97,9 @@ func TestFormatProgram(t *testing.T) {
 			expected: "return 42\n",
 		},
 		{
-			name:     "nil literal",
+			name:     "null literal",
 			input:    "nil",
-			expected: "nil\n",
+			expected: "null\n",
 		},
 		{
 			name:     "bool true",

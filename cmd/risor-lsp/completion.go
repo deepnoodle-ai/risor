@@ -11,7 +11,7 @@ import (
 // Risor keywords for completion
 var risorKeywords = []string{
 	"catch", "const", "else", "false", "finally",
-	"function", "if", "in", "let", "match", "nil", "not", "return", "struct",
+	"function", "if", "in", "let", "match", "nil", "not", "null", "return", "struct",
 	"throw", "true", "try",
 }
 

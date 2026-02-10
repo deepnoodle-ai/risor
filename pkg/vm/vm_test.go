@@ -345,7 +345,7 @@ func TestMatchSpecialValues(t *testing.T) {
 		{`match 3.14 { 3.14 => "pi", _ => "other" }`, object.NewString("pi")},
 
 		// Nil subject
-		{`match nil { nil => "nil", _ => "other" }`, object.NewString("nil")},
+		{`match null { null => "null", _ => "other" }`, object.NewString("null")},
 
 		// Unicode
 		{`match "日本語" { "日本語" => "jp", _ => "other" }`, object.NewString("jp")},

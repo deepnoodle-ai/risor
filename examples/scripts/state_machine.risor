@@ -10,7 +10,7 @@ let transitions = {
 
 function canTransition(from, to) {
     let allowed = transitions[from]
-    return allowed != nil && to in allowed
+    return allowed != null && to in allowed
 }
 
 // Test some transitions

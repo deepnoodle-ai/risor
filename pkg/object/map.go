@@ -40,7 +40,7 @@ func init() {
 	mapMethods.Define("each").
 		Doc("Call function for each key-value pair").
 		Arg("fn").
-		Returns("nil").
+		Returns("null").
 		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
 			callable, ok := args[0].(Callable)
 			if !ok {
@@ -117,7 +117,7 @@ func init() {
 	mapMethods.Define("update").
 		Doc("Merge another map into this one").
 		Arg("other").
-		Returns("nil").
+		Returns("null").
 		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
 			other, ok := args[0].(*Map)
 			if !ok {
@@ -136,7 +136,7 @@ func init() {
 	// Clear all items
 	mapMethods.Define("clear").
 		Doc("Remove all items").
-		Returns("nil").
+		Returns("null").
 		Impl(func(m *Map, ctx context.Context, args ...Object) (Object, error) {
 			m.items = map[string]Object{}
 			return Nil, nil

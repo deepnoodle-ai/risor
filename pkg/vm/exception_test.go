@@ -1490,13 +1490,13 @@ func TestThrowVariousTypes(t *testing.T) {
 			expected: object.NewString("42"),
 		},
 		{
-			name: "throw nil (converted to string)",
+			name: "throw null (converted to string)",
 			input: `
 			let msg = ""
-			try { throw nil } catch e { msg = string(e) }
+			try { throw null } catch (e) { msg = string(e) }
 			msg
 			`,
-			expected: object.NewString("nil"),
+			expected: object.NewString("null"),
 		},
 	}
 

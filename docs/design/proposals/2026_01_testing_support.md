@@ -97,8 +97,8 @@ t.assert(condition)              // Assert condition is truthy
 t.assert(condition, "message")   // Assert with custom message
 t.assert_eq(got, want)           // Assert equality
 t.assert_ne(got, want)           // Assert inequality
-t.assert_nil(value)              // Assert value is nil
-t.assert_not_nil(value)          // Assert value is not nil
+t.assert_nil(value)              // Assert value is null
+t.assert_not_nil(value)          // Assert value is not null
 t.assert_error(err)              // Assert value is an error
 t.assert_no_error(err)           // Assert value is not an error
 t.assert_contains(haystack, needle)  // Assert string/list contains value
@@ -389,7 +389,7 @@ app.Command("test").
 --- PASS: test_subtraction (0.000s)
 === RUN   test_division_by_zero
 --- FAIL: test_division_by_zero (0.001s)
-    calc_test.risor:25: expected error, got nil
+    calc_test.risor:25: expected error, got null
 
 FAIL
 2 passed, 1 failed
@@ -406,7 +406,7 @@ FAIL
     {"name": "test_addition", "status": "pass", "duration": "0.001s"},
     {"name": "test_subtraction", "status": "pass", "duration": "0.000s"},
     {"name": "test_division_by_zero", "status": "fail", "duration": "0.001s",
-     "error": "calc_test.risor:25: expected error, got nil"}
+     "error": "calc_test.risor:25: expected error, got null"}
   ]
 }
 ```
@@ -419,7 +419,7 @@ ok 1 - test_addition
 ok 2 - test_subtraction
 not ok 3 - test_division_by_zero
   ---
-  message: expected error, got nil
+  message: expected error, got null
   at: calc_test.risor:25
   ...
 ```

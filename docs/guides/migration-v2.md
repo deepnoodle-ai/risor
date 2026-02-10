@@ -56,10 +56,10 @@ list.filter(x => x > 0).map(x => x * 2)
 v2 adds the `?.` operator for safe property access.
 
 ```ts
-// v1 - manual nil checks
-let name = nil
-if (user != nil) {
-    if (user.profile != nil) {
+// v1 - manual null checks
+let name = null
+if (user != null) {
+    if (user.profile != null) {
         name = user.profile.name
     }
 }
@@ -90,14 +90,14 @@ if (is_error(result)) {
 // v2 - try is an expression that returns a value
 let result = try {
     riskyOperation()
-} catch e {
+} catch (e) {
     defaultValue
 }
 
 // With finally for cleanup
 try {
     openFile()
-} catch e {
+} catch (e) {
     handleError(e)
 } finally {
     closeFile()  // always runs
@@ -310,7 +310,7 @@ risor.Eval(ctx, source, risor.WithEnv(env))
 | `make(type, size)` | Not needed |
 | `iter(container)` | Use enumeration methods |
 | `is_hashable(value)` | Not needed |
-| `try(func)` | `try { } catch e { }` |
+| `try(func)` | `try { } catch (e) { }` |
 | `print(...)` / `printf(...)` | Provide via custom builtins |
 
 ## New Features
@@ -521,7 +521,7 @@ result, err := risor.Run(ctx, code,
 1. **Update syntax:**
    - [ ] Add parentheses to all `if` conditions
    - [ ] Remove `delete()` calls (no replacement)
-   - [ ] Replace `try()` builtin with `try/catch` blocks
+   - [ ] Replace `try()` builtin with `try/catch` blocks (use `catch (e) {` syntax)
    - [ ] Replace `#` comments with `//`
 
 2. **Replace loops with functional patterns:**

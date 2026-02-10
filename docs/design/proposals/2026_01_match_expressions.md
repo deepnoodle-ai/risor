@@ -62,7 +62,7 @@ For structural matching with optional destructuring and guards:
 let result = match request {
     {method: "GET", path: "/health"} => {status: 200, body: "ok"}
     {method: "GET", auth: {role: "admin"}} => handle_admin_get(request)
-    {method: "POST"} if request.body != nil => handle_post(request)
+    {method: "POST"} if request.body != null => handle_post(request)
     _ => {status: 404, body: "not found"}
 }
 ```
@@ -141,7 +141,7 @@ spread        = "..." identifier?
 | `42` | Exact value 42 | Nothing |
 | `"hello"` | Exact string "hello" | Nothing |
 | `true` / `false` | Boolean values | Nothing |
-| `nil` | Nil value | Nothing |
+| `null` | Null value | Nothing |
 | `x` | Any value | Value to `x` |
 | `_` | Any value (wildcard) | Nothing |
 | `{a, b}` | Object with keys `a` and `b` | Values to `a` and `b` |
@@ -168,7 +168,7 @@ let response = match event {
     {type: "click", target: {id}} => handle_click(id)
     {type: "keydown", key: "Enter"} => submit_form()
     {type: "keydown", key} => handle_key(key)
-    _ => nil
+    _ => null
 }
 
 // With guards
@@ -445,7 +445,7 @@ func TestParseMatchExpression(t *testing.T) {
     }{
         {`match x { 1 => "one", _ => "other" }`, "x", 2},
         {`match obj { {a, b} => a + b, _ => 0 }`, "obj", 2},
-        {`match list { [h, ...t] => h, _ => nil }`, "list", 2},
+        {`match list { [h, ...t] => h, _ => null }`, "list", 2},
     }
     // ...
 }
@@ -725,7 +725,7 @@ let IdSchema = schema(string | int)
 let AdminUserSchema = schema(UserSchema & {role: "admin"})
 
 // Optional wrapper
-let MaybeUserSchema = schema(UserSchema | nil)
+let MaybeUserSchema = schema(UserSchema | null)
 
 // Refinement
 let AdultSchema = schema(UserSchema & {age: int & min(18)})

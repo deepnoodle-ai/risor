@@ -64,7 +64,7 @@ IF:         'if'
 IN:         'in'
 LET:        'let'
 MATCH:      'match'
-NIL:        'nil'
+NIL:        'nil' | 'null'
 NOT:        'not'
 RETURN:     'return'
 STRUCT:     'struct'      (* reserved for future use *)
@@ -190,7 +190,7 @@ BooleanLiteral:
     'true' | 'false'
 
 NilLiteral:
-    'nil'
+    'nil' | 'null'
 ```
 
 #### Strings
@@ -358,7 +358,7 @@ tryStatement:
     'try' block [catchClause] [finallyClause]
 
 catchClause:
-    'catch' [Identifier] block
+    'catch' ['(' Identifier ')' | Identifier] block
 
 finallyClause:
     'finally' block
@@ -812,7 +812,7 @@ Token:
     (* Keywords *)
     | 'catch' | 'const' | 'else' | 'false'
     | 'finally' | 'function' | 'if' | 'in' | 'let' | 'match'
-    | 'nil' | 'not' | 'return' | 'struct' | 'throw'
+    | 'nil' | 'not' | 'null' | 'return' | 'struct' | 'throw'
     | 'true' | 'try'
 
     (* Operators *)
@@ -964,7 +964,7 @@ let result = data |> filter(x => x > 0) |> map(x => x * 2)
 // Try/catch/finally
 try {
     riskyOperation()
-} catch err {
+} catch (err) {
     handleError(err)
 } finally {
     cleanup()

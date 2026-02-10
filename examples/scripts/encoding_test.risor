@@ -48,7 +48,7 @@ function test_json_nested_objects(t) {
 }
 
 function test_json_array(t) {
-    let data = [1, 2, 3, "four", true, nil]
+    let data = [1, 2, 3, "four", true, null]
     let encoded = encode(data, "json")
     let decoded = decode(encoded, "json")
 
@@ -56,7 +56,7 @@ function test_json_array(t) {
     t.assert_eq(decoded[0], 1)
     t.assert_eq(decoded[3], "four")
     t.assert_eq(decoded[4], true)
-    t.assert_eq(decoded[5], nil)
+    t.assert_eq(decoded[5], null)
 }
 
 function test_base64_encode(t) {

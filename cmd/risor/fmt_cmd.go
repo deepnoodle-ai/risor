@@ -320,7 +320,7 @@ func (f *Formatter) formatNode(node ast.Node) {
 		}
 
 	case *ast.Nil:
-		f.buf.WriteString("nil")
+		f.buf.WriteString("null")
 
 	case *ast.String:
 		if n.Template != nil {

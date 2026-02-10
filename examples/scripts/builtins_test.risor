@@ -52,7 +52,7 @@ function test_type_function(t) {
     t.assert_eq(type(true), "bool")
     t.assert_eq(type([1, 2, 3]), "list")
     t.assert_eq(type({a: 1}), "map")
-    t.assert_eq(type(nil), "nil")
+    t.assert_eq(type(null), "null")
 }
 
 // Length function
@@ -98,10 +98,10 @@ function test_range_negative_step(t) {
 
 // Coalesce function
 function test_coalesce(t) {
-    t.assert_eq(coalesce(nil, nil, "default"), "default")
+    t.assert_eq(coalesce(null, null, "default"), "default")
     t.assert_eq(coalesce("first", "second"), "first")
-    t.assert_eq(coalesce(nil, 42), 42)
-    t.assert_eq(coalesce(), nil)
+    t.assert_eq(coalesce(null, 42), 42)
+    t.assert_eq(coalesce(), null)
 }
 
 // Chunk function

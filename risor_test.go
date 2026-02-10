@@ -1467,8 +1467,8 @@ func TestResultConversionEdgeCases(t *testing.T) {
 		assert.Equal(t, goErr.Error(), "test")
 	})
 
-	t.Run("nil returns nil", func(t *testing.T) {
-		result, err := Eval(ctx, "nil")
+	t.Run("null returns nil", func(t *testing.T) {
+		result, err := Eval(ctx, "null")
 		assert.Nil(t, err)
 		assert.Nil(t, result)
 	})

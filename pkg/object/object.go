@@ -46,7 +46,7 @@ const (
 	LIST          Type = "list"
 	MAP           Type = "map"
 	MODULE        Type = "module"
-	NIL           Type = "nil"
+	NIL           Type = "null"
 	PARTIAL       Type = "partial"
 	RANGE         Type = "range"
 	RESULT        Type = "result"

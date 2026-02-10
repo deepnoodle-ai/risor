@@ -88,7 +88,7 @@ with equal values.
 | Type       | Equality Rule                     |
 | ---------- | --------------------------------- |
 | `bool`     | Same boolean value                |
-| `nil`      | Only equal to nil                 |
+| `null`     | Only equal to null                |
 | `time`     | Same time value                   |
 | `error`    | Same error message (not location) |
 | `function` | Identity only (same object)       |
@@ -111,7 +111,7 @@ Comparison operators (`<`, `>`, `<=`, `>=`) require types to be comparable.
 | `list`   | Lexicographic by elements  | No          |
 | `time`   | Chronological              | No          |
 | `error`  | By message string          | No          |
-| `nil`    | Only equal to nil          | No          |
+| `null`   | Only equal to null         | No          |
 
 **Not comparable:** `map`, `function`, `builtin`, `module`
 
@@ -145,7 +145,7 @@ operators.
 
 | Type     | Falsy When                |
 | -------- | ------------------------- |
-| `nil`    | Always                    |
+| `null`   | Always                    |
 | `bool`   | `false`                   |
 | `int`    | `0`                       |
 | `float`  | `0.0`                     |
@@ -177,7 +177,7 @@ Truthiness is evaluated in:
 ```ts
 "" || "default"     // "default" - first truthy value
 "hello" && "world"  // "world" - last value if all truthy
-nil && expensive()  // nil - short-circuits, expensive() not called
+null && expensive()  // null - short-circuits, expensive() not called
 ```
 
 ## Enumeration
@@ -246,12 +246,12 @@ Maps have methods accessible via dot syntax. Methods take priority over keys
 | `keys()` | `() → iter` | Iterator | Iterate over keys (sorted) |
 | `values()` | `() → iter` | Iterator | Iterate over values |
 | `entries()` | `() → iter` | Iterator | Iterate over [key, value] pairs |
-| `each(fn)` | `(fn) → nil` | nil | Call fn(key, value) for each entry |
+| `each(fn)` | `(fn) → null` | null | Call fn(key, value) for each entry |
 | `get(key, default?)` | `(key, default?) → any` | Value | Safe access with optional default |
 | `pop(key, default?)` | `(key, default?) → any` | Value | Remove and return |
 | `setdefault(key, val)` | `(key, value) → any` | Value | Set if missing, return final value |
-| `update(other)` | `(map) → nil` | nil | Merge another map into this one |
-| `clear()` | `() → nil` | nil | Remove all entries |
+| `update(other)` | `(map) → null` | null | Merge another map into this one |
+| `clear()` | `() → null` | null | Remove all entries |
 | `copy()` | `() → map` | Map | Shallow copy |
 
 ### Method Shadowing
@@ -300,7 +300,7 @@ Use `get()` for safe access with a default value:
 let config = {host: "localhost"}
 
 config.get("host")           // "localhost"
-config.get("port")           // nil (key missing)
+config.get("port")           // null (key missing)
 config.get("port", 8080)     // 8080 (default used)
 
 // Versus direct access
@@ -408,10 +408,10 @@ first([1, 2])  // 1
 
 ### Destructuring Semantics
 
-**Missing keys:** Accessing a missing key yields `nil` (or the default if provided).
+**Missing keys:** Accessing a missing key yields `null` (or the default if provided).
 
 ```ts
-let {missing} = {}           // missing == nil
+let {missing} = {}           // missing == null
 let {missing = "default"} = {}  // missing == "default"
 ```
 
@@ -454,11 +454,11 @@ Risor uses a Python-like exception model with `try`, `catch`, `finally`, and
 
 ```ts
 // Try is an expression - returns a value
-let result = try { riskyOperation() } catch e { defaultValue }
+let result = try { riskyOperation() } catch (e) { defaultValue }
 
 // Returns try value on success, catch value on exception
-let x = try { 42 } catch e { -1 }           // x == 42
-let y = try { throw "err" } catch e { -1 }  // y == -1
+let x = try { 42 } catch (e) { -1 }           // x == 42
+let y = try { throw "err" } catch (e) { -1 }  // y == -1
 
 // Finally runs but doesn't affect the return value
 let z = try { 42 } finally { 999 }          // z == 42 (not 999)
@@ -472,8 +472,8 @@ let z = try { 42 } finally { 999 }          // z == 42 (not 999)
 | `kind()`     | string     | Error category (type, name, value, runtime, etc.) |
 | `line()`     | int        | Line number (1-based, 0 if unknown)               |
 | `column()`   | int        | Column number (1-based, 0 if unknown)             |
-| `filename()` | string/nil | Source filename                                   |
-| `source()`   | string/nil | Source line text                                  |
+| `filename()` | string/null | Source filename                                   |
+| `source()`   | string/null | Source line text                                  |
 | `stack()`    | list       | Stack frames as maps                              |
 
 ### For Embedders

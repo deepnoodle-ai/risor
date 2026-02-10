@@ -50,7 +50,7 @@ func init() {
 	rangeAttrs.Define("each").
 		Doc("Call function for each value").
 		Arg("fn").
-		Returns("nil").
+		Returns("null").
 		Impl(func(r *Range, ctx context.Context, args ...Object) (Object, error) {
 			return r.Each(ctx, args[0])
 		})

@@ -70,7 +70,7 @@ risor.WithTransform(t)              // Custom AST transformer
 
 By default, results are converted to native Go types:
 
-- `nil` → `nil`
+- `null` → `nil`
 - `string` → `string`
 - `int` → `int64`
 - `float` → `float64`
@@ -178,7 +178,7 @@ true                   // bool
 3.14                   // float (64-bit)
 "hello"                // string
 `template ${name}`     // template string
-nil                    // nil
+null                   // null
 
 // Numbers support hex, octal, binary
 0xFF                   // hex
@@ -303,7 +303,7 @@ list?.[0]
 // Try/catch/finally
 try {
     risky_operation()
-} catch e {
+} catch (e) {
     print(e.message())
 } finally {
     cleanup()
@@ -361,7 +361,7 @@ Utility:
 - `call(fn, args...)` — Call function dynamically
 - `any(items)` — True if any element is truthy
 - `all(items)` — True if all elements are truthy
-- `coalesce(values...)` — First non-nil argument
+- `coalesce(values...)` — First non-null argument
 
 ## Type methods
 
@@ -402,7 +402,7 @@ items.count(2)                       // count occurrences
 items.index(2)                       // index of first occurrence
 items.filter(x => x > 2)            // new filtered list
 items.map(x => x * 2)               // new mapped list
-items.each(x => print(x))           // iterate (returns nil)
+items.each(x => print(x))           // iterate (returns null)
 items.reduce(0, (acc, x) => acc + x) // reduce to single value
 ```
 

@@ -10,7 +10,7 @@ var syntaxSections = []SyntaxSection{
 			{Syntax: `"hello"`, Type: "string", Notes: "String literal with escapes"},
 			{Syntax: "`raw`", Type: "string", Notes: "Raw string (no escapes)"},
 			{Syntax: "true, false", Type: "bool", Notes: "Boolean literals"},
-			{Syntax: "nil", Type: "nil", Notes: "Null value"},
+			{Syntax: "null", Type: "null", Notes: "Null value"},
 		},
 	},
 	{

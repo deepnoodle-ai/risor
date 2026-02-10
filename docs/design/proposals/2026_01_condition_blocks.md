@@ -175,7 +175,7 @@ They can be used together:
 
 ```javascript
 let valid_order = all {
-    order.customer != nil
+    order.customer != null
     order.total > 0
     all(order.items, item => item.quantity > 0)
     any(order.items, item => item.in_stock)
@@ -291,19 +291,19 @@ function evaluate_access(input) {
 function validate_request(req) {
     let valid = all {
         req.method in ["GET", "POST", "PUT", "DELETE"]
-        req.path != nil
+        req.path != null
         len(req.path) > 0
 
         // Headers validation
         all {
-            req.headers != nil
-            req.headers["content-type"] != nil
+            req.headers != null
+            req.headers["content-type"] != null
         }
 
         // Auth validation
         any {
-            req.headers["authorization"] != nil
-            req.query["api_key"] != nil
+            req.headers["authorization"] != null
+            req.query["api_key"] != null
         }
 
         // Body validation for write methods
@@ -311,7 +311,7 @@ function validate_request(req) {
             req.method == "GET"
             req.method == "DELETE"
             all {
-                req.body != nil
+                req.body != null
                 len(req.body) > 0
             }
         }
@@ -357,8 +357,8 @@ function feature_enabled(feature, user, context) {
 function validate_user(user) {
     all {
         // Required fields
-        user.name != nil
-        user.email != nil
+        user.name != null
+        user.email != null
 
         // Field constraints
         len(user.name) >= 1
@@ -367,7 +367,7 @@ function validate_user(user) {
 
         // Age validation (if provided)
         any {
-            user.age == nil
+            user.age == null
             all {
                 user.age >= 0
                 user.age <= 150
@@ -376,7 +376,7 @@ function validate_user(user) {
 
         // Role validation
         any {
-            user.role == nil
+            user.role == null
             user.role in ["user", "admin", "moderator"]
         }
     }
@@ -396,7 +396,7 @@ let result = match request {
     {method: "POST"} if all {
         request.user.authenticated
         request.user.can_write
-        request.body != nil
+        request.body != null
     } => handle_post(request)
 
     _ => {status: 403, body: "forbidden"}
@@ -432,7 +432,7 @@ function process_order(input) {
     // Validate order state
     require all {
         order.status == "pending"
-        order.items != nil
+        order.items != null
         len(order.items) > 0
         order.total > 0
     } else "invalid order state"
@@ -938,7 +938,7 @@ let allow = if {
 
 Rejected because:
 - Overloads `if` with new semantics
-- Unclear what happens on false (return false? nil?)
+- Unclear what happens on false (return false? null?)
 - `all` is more explicit about intent
 
 ### 3. `and`/`or` Keywords Instead of `all`/`any`

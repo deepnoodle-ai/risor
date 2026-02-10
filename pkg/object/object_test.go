@@ -18,7 +18,7 @@ func TestObjectString(t *testing.T) {
 	}{
 		{True, "true"},
 		{False, "false"},
-		{Nil, "nil"},
+		{Nil, "null"},
 		{NewError(errors.New("kaboom")), "kaboom"},
 		{NewFloat(3.0), "3"},
 		{NewInt(-3), "-3"},
@@ -60,7 +60,7 @@ func TestComparisons(t *testing.T) {
 		{True, False, 1, nil},
 		{False, True, -1, nil},
 		{Nil, Nil, 0, nil},
-		{Nil, True, 0, TypeErrorf("unable to compare nil and bool")},
+		{Nil, True, 0, TypeErrorf("unable to compare null and bool")},
 		{NewInt(1), NewFloat(1.0), 0, nil},
 		{NewInt(1), NewFloat(2.0), -1, nil},
 		{NewInt(1), NewFloat(0.0), 1, nil},
@@ -124,7 +124,7 @@ func TestPrintableValue(t *testing.T) {
 		{NewBool(true), true},
 		{NewBool(false), false},
 		{Errorf("error"), "error"}, // PrintableValue returns error message as string
-		{obj: Nil, expected: "nil"},
+		{obj: Nil, expected: "null"},
 		{obj: NewTime(testTime), expected: "2021-01-01T00:00:00Z"},
 		{obj: NewBuiltin("foo", builtin), expected: "builtin(foo)"},
 		{ // strings printed inside lists are quoted in Risor
@@ -140,7 +140,7 @@ func TestPrintableValue(t *testing.T) {
 				"b": NewString("hello"),
 				"c": Nil,
 			}),
-			expected: `{"a": 42, "b": "hello", "c": nil}`,
+			expected: `{"a": 42, "b": "hello", "c": null}`,
 		},
 	}
 	for _, tc := range cases {

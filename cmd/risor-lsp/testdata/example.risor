@@ -61,13 +61,13 @@ println("Processed message:", upper)
 // Error handling example
 let safe_divide = func(a, b) {
     if (b == 0) {
-        return nil, "cannot divide by zero"
+        return null, "cannot divide by zero"
     }
-    return a / b, nil
+    return a / b, null
 }
 
 let result, err = safe_divide(10, 2)
-if (err != nil) {
+if (err != null) {
     println("Error:", err)
 } else {
     println("Result:", result)

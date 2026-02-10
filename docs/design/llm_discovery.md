@@ -225,7 +225,7 @@ The `risor doc syntax` command provides a comprehensive syntax reference:
         {"syntax": "\"hello\"", "type": "string", "notes": "String literal"},
         {"syntax": "`raw`", "type": "string", "notes": "Raw string (no escapes)"},
         {"syntax": "true, false", "type": "bool", "notes": "Boolean literals"},
-        {"syntax": "nil", "type": "nil", "notes": "Null value"}
+        {"syntax": "null", "type": "null", "notes": "Null value"}
       ]
     },
     {
@@ -262,7 +262,7 @@ The `risor doc syntax` command provides a comprehensive syntax reference:
       "items": [
         {"syntax": "if (cond) { } else { }", "notes": "Conditional (is an expression)"},
         {"syntax": "match val { pat => expr, _ => default }", "notes": "Pattern matching with optional guards"},
-        {"syntax": "try { } catch e { }", "notes": "Error handling"},
+        {"syntax": "try { } catch (e) { }", "notes": "Error handling"},
         {"syntax": "throw error(msg)", "notes": "Raise an error"},
         {"syntax": "return value", "notes": "Return from function"}
       ]
