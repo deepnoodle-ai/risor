@@ -219,9 +219,9 @@ func TestMethodChainingInComplexExpressions(t *testing.T) {
 // INFIX OPERATORS AFTER NEWLINE METHOD CHAINING
 // =============================================================================
 // After method chaining across newlines, remaining infix operators on the same
-// line should still be parsed. The chaining loop in parseNode currently exits
+// line should still be parsed. The chaining loop in parseNode previously exited
 // without falling back to the main infix loop, so operators like |>, +, ==, &&
-// are dropped.
+// were dropped.
 
 func TestInfixAfterNewlineChain(t *testing.T) {
 	tests := []struct {
