@@ -119,10 +119,30 @@ func TestTestContext_AssertNe(t *stdt.T) {
 	})
 }
 
-func TestTestContext_AssertNil(t *stdt.T) {
+func TestTestContext_AssertNull(t *stdt.T) {
 	ctx := context.Background()
 
-	t.Run("passes on nil", func(t *stdt.T) {
+	t.Run("passes on null", func(t *stdt.T) {
+		tc := NewTestContext("test", "test.risor")
+		assertNullFn, _ := tc.GetAttr("assert_null")
+		builtin := assertNullFn.(*object.Builtin)
+
+		_, err := builtin.Call(ctx, object.Nil)
+		assert.Nil(t, err)
+		assert.False(t, tc.Failed())
+	})
+
+	t.Run("fails on non-null", func(t *stdt.T) {
+		tc := NewTestContext("test", "test.risor")
+		assertNullFn, _ := tc.GetAttr("assert_null")
+		builtin := assertNullFn.(*object.Builtin)
+
+		_, err := builtin.Call(ctx, object.NewInt(42))
+		assert.Nil(t, err)
+		assert.True(t, tc.Failed())
+	})
+
+	t.Run("assert_nil alias works", func(t *stdt.T) {
 		tc := NewTestContext("test", "test.risor")
 		assertNilFn, _ := tc.GetAttr("assert_nil")
 		builtin := assertNilFn.(*object.Builtin)
@@ -130,16 +150,6 @@ func TestTestContext_AssertNil(t *stdt.T) {
 		_, err := builtin.Call(ctx, object.Nil)
 		assert.Nil(t, err)
 		assert.False(t, tc.Failed())
-	})
-
-	t.Run("fails on non-nil", func(t *stdt.T) {
-		tc := NewTestContext("test", "test.risor")
-		assertNilFn, _ := tc.GetAttr("assert_nil")
-		builtin := assertNilFn.(*object.Builtin)
-
-		_, err := builtin.Call(ctx, object.NewInt(42))
-		assert.Nil(t, err)
-		assert.True(t, tc.Failed())
 	})
 }
 

@@ -48,8 +48,12 @@ func (t *TestContext) initAttrs() {
 		"assert_ne": object.NewBuiltin("assert_ne", func(_ context.Context, args ...object.Object) (object.Object, error) {
 			return t.builtinAssertNe(args...)
 		}),
+		"assert_null": object.NewBuiltin("assert_null", func(_ context.Context, args ...object.Object) (object.Object, error) {
+			return t.builtinAssertNull(args...)
+		}),
+		// Deprecated: use assert_null instead.
 		"assert_nil": object.NewBuiltin("assert_nil", func(_ context.Context, args ...object.Object) (object.Object, error) {
-			return t.builtinAssertNil(args...)
+			return t.builtinAssertNull(args...)
 		}),
 		"assert_error": object.NewBuiltin("assert_error", func(_ context.Context, args ...object.Object) (object.Object, error) {
 			return t.builtinAssertError(args...)
@@ -208,14 +212,14 @@ func (t *TestContext) builtinAssertNe(args ...object.Object) (object.Object, err
 	return object.Nil, nil
 }
 
-// builtinAssertNil implements t.assert_nil(val, msg?)
-func (t *TestContext) builtinAssertNil(args ...object.Object) (object.Object, error) {
+// builtinAssertNull implements t.assert_null(val, msg?)
+func (t *TestContext) builtinAssertNull(args ...object.Object) (object.Object, error) {
 	if len(args) < 1 || len(args) > 2 {
-		return nil, fmt.Errorf("assert_nil: expected 1-2 arguments, got %d", len(args))
+		return nil, fmt.Errorf("assert_null: expected 1-2 arguments, got %d", len(args))
 	}
 	val := args[0]
 	if val != object.Nil {
-		msg := "expected nil"
+		msg := "expected null"
 		if len(args) == 2 {
 			if s, ok := args[1].(*object.String); ok {
 				msg = s.Value()

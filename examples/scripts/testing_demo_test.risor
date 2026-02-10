@@ -66,17 +66,17 @@ function test_assert_ne_with_message(t) {
 // Null Assertions
 // ============================================================
 
-function test_assert_nil(t) {
-    // t.assert_nil(value) - passes if value is null
-    t.assert_nil(null)
+function test_assert_null(t) {
+    // t.assert_null(value) - passes if value is null
+    t.assert_null(null)
 
     // Note: Map access with missing key throws error in Risor,
-    // so we demonstrate assert_nil with explicit null value
+    // so we demonstrate assert_null with explicit null value
     let maybeNull = null
-    t.assert_nil(maybeNull)
+    t.assert_null(maybeNull)
 }
 
-function test_assert_nil_with_message(t) {
+function test_assert_null_with_message(t) {
     function maybeReturn(flag) {
         if (flag) {
             return "value"
@@ -85,7 +85,7 @@ function test_assert_nil_with_message(t) {
     }
 
     let result = maybeReturn(false)
-    t.assert_nil(result, "function should return null when flag is false")
+    t.assert_null(result, "function should return null when flag is false")
 }
 
 // ============================================================

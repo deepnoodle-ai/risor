@@ -97,8 +97,8 @@ t.assert(condition)              // Assert condition is truthy
 t.assert(condition, "message")   // Assert with custom message
 t.assert_eq(got, want)           // Assert equality
 t.assert_ne(got, want)           // Assert inequality
-t.assert_nil(value)              // Assert value is null
-t.assert_not_nil(value)          // Assert value is not null
+t.assert_null(value)             // Assert value is null
+t.assert_not_null(value)         // Assert value is not null
 t.assert_error(err)              // Assert value is an error
 t.assert_no_error(err)           // Assert value is not an error
 t.assert_contains(haystack, needle)  // Assert string/list contains value
@@ -536,7 +536,7 @@ Minimal viable testing - enough to write and run real tests.
 
 - `risor test` command with file discovery (`*_test.risor`)
 - `test_*` function convention
-- Test context with core assertions (`assert`, `assert_eq`, `assert_ne`, `assert_nil`, `assert_error`)
+- Test context with core assertions (`assert`, `assert_eq`, `assert_ne`, `assert_null`, `assert_error`)
 - Basic text output (PASS/FAIL with source locations)
 - `t.skip()`, `t.fail()`, `t.log()`
 
@@ -546,7 +546,7 @@ Features needed for serious test suites.
 - Fixtures with scopes (`setup`/`teardown`, `setup_file`/`teardown_file`)
 - Sub-tests with `t.run()` for table-driven testing
 - Diff-based error messages for maps and lists
-- Additional assertions (`assert_contains`, `assert_len`, `assert_not_nil`, `assert_no_error`)
+- Additional assertions (`assert_contains`, `assert_len`, `assert_not_null`, `assert_no_error`)
 - JSON and TAP output formats
 - `-run` pattern filtering
 - `-fail-fast` mode
