@@ -30,6 +30,30 @@ func init() {
 		Getter(func(r *Range) Object {
 			return NewInt(r.step)
 		})
+
+	rangeAttrs.Define("map").
+		Doc("Apply function to each value, return new list").
+		Arg("fn").
+		Returns("list").
+		Impl(func(r *Range, ctx context.Context, args ...Object) (Object, error) {
+			return r.Map(ctx, args[0])
+		})
+
+	rangeAttrs.Define("filter").
+		Doc("Return list of values where function returns true").
+		Arg("fn").
+		Returns("list").
+		Impl(func(r *Range, ctx context.Context, args ...Object) (Object, error) {
+			return r.Filter(ctx, args[0])
+		})
+
+	rangeAttrs.Define("each").
+		Doc("Call function for each value").
+		Arg("fn").
+		Returns("nil").
+		Impl(func(r *Range, ctx context.Context, args ...Object) (Object, error) {
+			return r.Each(ctx, args[0])
+		})
 }
 
 // Range represents a lazy sequence of integers, similar to Python's range.
@@ -138,6 +162,85 @@ func (r *Range) Enumerate(ctx context.Context, fn func(key, value Object) bool) 
 			idx++
 		}
 	}
+}
+
+func (r *Range) Map(ctx context.Context, fn Object) (Object, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, newTypeErrorf("range.map() expected a function (%s given)", fn.Type())
+	}
+	var passIndex bool
+	if closure, ok := fn.(*Closure); ok {
+		count := closure.ParameterCount()
+		if count < 1 || count > 2 {
+			return nil, newTypeErrorf("range.map() received an incompatible function")
+		}
+		passIndex = count == 2
+	}
+	result := make([]Object, 0, r.length())
+	var callErr error
+	r.Enumerate(ctx, func(key, value Object) bool {
+		var outputValue Object
+		var err error
+		if passIndex {
+			outputValue, err = callable.Call(ctx, key, value)
+		} else {
+			outputValue, err = callable.Call(ctx, value)
+		}
+		if err != nil {
+			callErr = err
+			return false
+		}
+		result = append(result, outputValue)
+		return true
+	})
+	if callErr != nil {
+		return nil, callErr
+	}
+	return NewList(result), nil
+}
+
+func (r *Range) Filter(ctx context.Context, fn Object) (Object, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, newTypeErrorf("range.filter() expected a function (%s given)", fn.Type())
+	}
+	var result []Object
+	var callErr error
+	r.Enumerate(ctx, func(key, value Object) bool {
+		decision, err := callable.Call(ctx, value)
+		if err != nil {
+			callErr = err
+			return false
+		}
+		if decision.IsTruthy() {
+			result = append(result, value)
+		}
+		return true
+	})
+	if callErr != nil {
+		return nil, callErr
+	}
+	return NewList(result), nil
+}
+
+func (r *Range) Each(ctx context.Context, fn Object) (Object, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, newTypeErrorf("range.each() expected a function (%s given)", fn.Type())
+	}
+	var callErr error
+	r.Enumerate(ctx, func(key, value Object) bool {
+		if _, err := callable.Call(ctx, value); err != nil {
+			callErr = err
+			return false
+		}
+		return true
+	})
+	if callErr != nil {
+		return nil, callErr
+	}
+	return Nil, nil
 }
 
 // Start returns the start value.

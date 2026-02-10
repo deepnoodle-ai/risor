@@ -398,7 +398,7 @@ func TestBuiltinAttrs(t *testing.T) {
 func TestRangeAttrs(t *testing.T) {
 	r := NewRange(0, 10, 2)
 	attrs := r.Attrs()
-	assert.Equal(t, len(attrs), 3)
+	assert.Equal(t, len(attrs), 6)
 
 	// Verify it's a new slice (not the internal one)
 	attrs[0].Name = "modified"

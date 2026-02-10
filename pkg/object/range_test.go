@@ -106,3 +106,71 @@ func TestRangeTruthiness(t *testing.T) {
 	assert.False(t, NewRange(0, 0, 1).IsTruthy())
 	assert.False(t, NewRange(5, 0, 1).IsTruthy())
 }
+
+func TestRangeMap(t *testing.T) {
+	ctx := context.Background()
+	r := NewRange(0, 5, 1)
+
+	// Square each value
+	double := NewBuiltin("double", func(ctx context.Context, args ...Object) (Object, error) {
+		v := args[0].(*Int).Value()
+		return NewInt(v * v), nil
+	})
+
+	result, err := r.Map(ctx, double)
+	assert.Nil(t, err)
+	list := result.(*List)
+	assert.Len(t, list.Value(), 5)
+	expected := []int64{0, 1, 4, 9, 16}
+	for i, item := range list.Value() {
+		assert.Equal(t, item.(*Int).Value(), expected[i])
+	}
+}
+
+func TestRangeFilter(t *testing.T) {
+	ctx := context.Background()
+	r := NewRange(0, 5, 1)
+
+	// Keep values > 2
+	gt2 := NewBuiltin("gt2", func(ctx context.Context, args ...Object) (Object, error) {
+		return NewBool(args[0].(*Int).Value() > 2), nil
+	})
+
+	result, err := r.Filter(ctx, gt2)
+	assert.Nil(t, err)
+	list := result.(*List)
+	assert.Len(t, list.Value(), 2)
+	assert.Equal(t, list.Value()[0].(*Int).Value(), int64(3))
+	assert.Equal(t, list.Value()[1].(*Int).Value(), int64(4))
+}
+
+func TestRangeEach(t *testing.T) {
+	ctx := context.Background()
+	r := NewRange(0, 3, 1)
+
+	var collected []int64
+	collector := NewBuiltin("collect", func(ctx context.Context, args ...Object) (Object, error) {
+		collected = append(collected, args[0].(*Int).Value())
+		return Nil, nil
+	})
+
+	result, err := r.Each(ctx, collector)
+	assert.Nil(t, err)
+	assert.Equal(t, result, Nil)
+	assert.Equal(t, collected, []int64{0, 1, 2})
+}
+
+func TestRangeMethodErrors(t *testing.T) {
+	ctx := context.Background()
+	r := NewRange(0, 5, 1)
+
+	// Non-callable argument
+	_, err := r.Map(ctx, NewInt(42))
+	assert.NotNil(t, err)
+
+	_, err = r.Filter(ctx, NewInt(42))
+	assert.NotNil(t, err)
+
+	_, err = r.Each(ctx, NewInt(42))
+	assert.NotNil(t, err)
+}

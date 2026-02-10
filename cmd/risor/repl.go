@@ -664,6 +664,18 @@ func (app *replApp) printResult(result any) {
 			))
 		}
 
+	case byte:
+		app.runner.Print(tui.Group(
+			tui.Text("%d", v).Style(numberStyle),
+			tui.Text(" byte").Style(typeStyle),
+		))
+
+	case []byte:
+		app.runner.Print(tui.Group(
+			tui.Text("%q", string(v)).Style(stringStyle).Wrap(),
+			tui.Text(" bytes(%d)", len(v)).Style(typeStyle),
+		))
+
 	case []any:
 		app.printList(v, typeStyle)
 
