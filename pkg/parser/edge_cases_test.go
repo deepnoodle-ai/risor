@@ -685,13 +685,16 @@ c`
 	assert.Len(t, pipe.Exprs, 3)
 }
 
-func TestPipeNewlineBeforeOperatorNotAllowed(t *testing.T) {
-	// Newlines BEFORE |> cause the expression to be split
+func TestPipeNewlineBeforeOperatorAllowed(t *testing.T) {
+	// |> is a chaining operator that can follow newlines
 	input := `a
 |> b`
-	_, err := Parse(context.Background(), input, nil)
-	// First statement is just "a", second starts with |> which is a parse error
-	assert.NotNil(t, err)
+	program, err := Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+	pipe, ok := program.First().(*ast.Pipe)
+	assert.True(t, ok, "Expected Pipe, got %T", program.First())
+	assert.Len(t, pipe.Exprs, 2)
 }
 
 func TestPipeWithFunctionCalls(t *testing.T) {

@@ -26,7 +26,7 @@ type (
 //  3. Inside parentheses: leading/trailing newlines allowed: "(\nx + y\n)"
 //  4. Inside brackets/braces: newlines after commas allowed: "[1,\n2]"
 //  5. Postfix operators (++, --) must be on same line as operand
-//  6. Chaining operators (., ?.) can follow newlines: "x\n.method()"
+//  6. Chaining operators (., ?., |>) can follow newlines: "x\n.method()", "x\n|> f"
 //
 // This policy follows "trailing operator continues" semantics common in many
 // languages, avoiding ambiguity about whether "x\n+ y" means one expression
@@ -615,13 +615,14 @@ func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
 }
 
 // isChainingOperator returns true for operators that unambiguously continue
-// an expression when they appear after a newline. These are "safe" to allow
-// across newlines because they can only be infix operators (never prefix).
+// an expression when they appear after a newline. These are member access
+// and pipeline operators: they can only be infix (never prefix), so a newline
+// before them is unambiguously a continuation, not a new statement.
 func isChainingOperator(t token.Type) bool {
-	return t == token.PERIOD || t == token.QUESTION_DOT
+	return t == token.PERIOD || t == token.QUESTION_DOT || t == token.PIPE
 }
 
-// skipNewlinesForChaining checks if a chaining operator (. or ?.) follows
+// skipNewlinesForChaining checks if a chaining operator (., ?., or |>) follows
 // newlines. If found, it skips the newlines and returns true (with peekToken
 // now being the chaining operator). If not found, it returns false without
 // consuming any tokens. This enables method chaining across newlines.

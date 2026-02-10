@@ -125,6 +125,13 @@ func TestMethodChainingAcrossNewlines(t *testing.T) {
 		// Whitespace variations
 		{"tab before dot", "obj\n\t.method()", "obj.method()"},
 		{"spaces and newline", "obj\n   .method()", "obj.method()"},
+
+		// Pipe chaining across newlines
+		{"simple pipe chain", "a\n|> b", "(a |> b)"},
+		{"multi-pipe chain", "a\n|> b\n|> c", "(a |> b |> c)"},
+		{"multiple newlines before pipe", "a\n\n\n|> b", "(a |> b)"},
+		{"method chain then pipe", "obj\n.method()\n|> f", "(obj.method() |> f)"},
+		{"method chain then multi-pipe", "data\n.filter(f)\n.map(g)\n|> sorted\n|> first", "(data.filter(f).map(g) |> sorted |> first)"},
 	}
 
 	for _, tt := range tests {
@@ -148,7 +155,6 @@ func TestMethodChainingDoesNotAffectOtherOperators(t *testing.T) {
 		{"newline before +", "x\n+y", 2},    // +y is unary plus on y (separate stmt)
 		{"newline before -", "x\n-y", 2},    // -y is unary minus on y (separate stmt)
 		{"newline before [", "arr\n[0]", 2}, // [0] is a list literal
-		{"newline before |>", "x\n|> y", 2}, // |> is pipe operator
 		{"newline before (", "f\n(x)", 2},   // (x) is grouped expression
 	}
 

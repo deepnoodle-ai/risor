@@ -264,6 +264,7 @@ let y =`
 //  3. Inside parentheses: leading/trailing newlines are allowed: "(\nx + y\n)"
 //  4. Inside brackets/braces: newlines after commas are allowed: "[1,\n2]"
 //  5. Postfix operators (++, --) must be on same line as operand
+//  6. Chaining operators (., ?., |>) can follow newlines: "x\n.method()", "x\n|> f"
 func TestNewlineHandling(t *testing.T) {
 	validCases := []struct {
 		name     string
@@ -288,6 +289,10 @@ func TestNewlineHandling(t *testing.T) {
 		{"multi-line optional chain", "obj\n?.prop\n?.nested", "obj?.prop?.nested"},
 		{"multi-line mixed chain", "obj\n.method()\n?.prop", "obj.method()?.prop"},
 		{"chain with args", "list.filter(x => x > 0)\n.map(x => x * 2)", "list.filter(function(x) { return (x > 0) }).map(function(x) { return (x * 2) })"},
+		// Pipe chaining across newlines (rule 6, same as . and ?.)
+		{"newline before |>", "a\n|> b", "(a |> b)"},
+		{"multi-line pipe chain", "a\n|> b\n|> c", "(a |> b |> c)"},
+		{"method chain then pipe", "obj\n.method()\n|> f", "(obj.method() |> f)"},
 	}
 
 	for _, tt := range validCases {
