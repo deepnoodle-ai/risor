@@ -21,6 +21,45 @@ func TestBasicUsage(t *testing.T) {
 	assert.Equal(t, result, int64(2))
 }
 
+func TestNullKeyword(t *testing.T) {
+	ctx := context.Background()
+
+	// null evaluates to nil
+	result, err := Eval(ctx, "null")
+	assert.Nil(t, err)
+	assert.Nil(t, result)
+
+	// null == nil
+	result, err = Eval(ctx, "null == nil")
+	assert.Nil(t, err)
+	assert.Equal(t, result, true)
+
+	// null in expressions
+	result, err = Eval(ctx, `null ?? "default"`)
+	assert.Nil(t, err)
+	assert.Equal(t, result, "default")
+}
+
+func TestCatchParenthesized(t *testing.T) {
+	ctx := context.Background()
+	env := WithEnv(Builtins())
+
+	// TypeScript-style: catch (e) { }
+	result, err := Eval(ctx, `try { throw error("boom") } catch (e) { e.message() }`, env)
+	assert.Nil(t, err)
+	assert.Equal(t, result, "boom")
+
+	// Bare identifier still works: catch e { }
+	result, err = Eval(ctx, `try { throw error("boom") } catch e { e.message() }`, env)
+	assert.Nil(t, err)
+	assert.Equal(t, result, "boom")
+
+	// No identifier: catch { }
+	result, err = Eval(ctx, `try { throw error("boom") } catch { "caught" }`, env)
+	assert.Nil(t, err)
+	assert.Equal(t, result, "caught")
+}
+
 func TestBinaryLiterals(t *testing.T) {
 	tests := []struct {
 		input    string

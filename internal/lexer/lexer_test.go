@@ -33,6 +33,31 @@ func TestNil(t *testing.T) {
 	}
 }
 
+func TestNull(t *testing.T) {
+	input := "a = null;"
+	tests := []struct {
+		expectedType    token.Type
+		expectedLiteral string
+	}{
+		{token.IDENT, "a"},
+		{token.ASSIGN, "="},
+		{token.NIL, "null"},
+		{token.SEMICOLON, ";"},
+		{token.EOF, ""},
+	}
+	l := New(input)
+	for i, tt := range tests {
+		tok, err := l.Next()
+		assert.Nil(t, err)
+		if tok.Type != tt.expectedType {
+			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
+		}
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - Literal wrong, expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+	}
+}
+
 func TestNextToken1(t *testing.T) {
 	input := "%=+(){},;?|| &&`/foo`++--***=..&"
 

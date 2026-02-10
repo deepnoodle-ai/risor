@@ -165,6 +165,30 @@ func TestNil(t *testing.T) {
 	assert.Equal(t, "nil", n.String())
 }
 
+func TestNull(t *testing.T) {
+	program, err := Parse(context.Background(), "null", nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	_, ok := program.First().(*ast.Nil)
+	assert.True(t, ok)
+}
+
+func TestNullEqualsNil(t *testing.T) {
+	program, err := Parse(context.Background(), "null == nil", nil)
+	assert.Nil(t, err)
+	assert.Len(t, program.Stmts, 1)
+
+	infix, ok := program.First().(*ast.Infix)
+	assert.True(t, ok)
+	assert.Equal(t, "==", infix.Op)
+
+	_, ok = infix.X.(*ast.Nil)
+	assert.True(t, ok)
+	_, ok = infix.Y.(*ast.Nil)
+	assert.True(t, ok)
+}
+
 func TestString(t *testing.T) {
 	tests := []struct {
 		input    string

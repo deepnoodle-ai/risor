@@ -769,6 +769,9 @@ catch e { e }`,
 }`,
 		`try { throw "err" }
 catch { "handled" }`,
+		// TypeScript-style catch with parentheses
+		`try { throw "err" } catch (e) { e }`,
+		`try { throw "err" } catch (e) { e } finally { "done" }`,
 	}
 	for _, input := range validInputs {
 		t.Run(input, func(t *testing.T) {
@@ -821,6 +824,23 @@ func TestTryWithoutCatchIdent(t *testing.T) {
 	// No catch identifier
 	assert.Nil(t, tryStmt.CatchIdent)
 	assert.NotNil(t, tryStmt.CatchBlock)
+}
+
+func TestTryWithParenthesizedCatchIdent(t *testing.T) {
+	program, err := Parse(context.Background(), `try { risky() } catch (e) { handle(e) }`, nil)
+	assert.Nil(t, err)
+
+	tryStmt, ok := program.First().(*ast.Try)
+	assert.True(t, ok)
+
+	assert.NotNil(t, tryStmt.CatchIdent)
+	assert.Equal(t, "e", tryStmt.CatchIdent.Name)
+	assert.NotNil(t, tryStmt.CatchBlock)
+}
+
+func TestTryWithEmptyParensCatchErrors(t *testing.T) {
+	_, err := Parse(context.Background(), `try { risky() } catch () { handle() }`, nil)
+	assert.NotNil(t, err)
 }
 
 func TestThrow(t *testing.T) {

@@ -370,10 +370,19 @@ func (p *Parser) parseTry() (ast.Node, bool) {
 		p.nextToken() // move to "catch"
 		catchPos = p.curToken.StartPosition
 
-		// Check for optional catch identifier
+		// Check for optional catch identifier: catch e { or catch (e) {
 		if p.peekTokenIs(token.IDENT) {
 			p.nextToken() // move to identifier
 			catchIdent = p.newIdent(p.curToken)
+		} else if p.peekTokenIs(token.LPAREN) {
+			p.nextToken() // move to "("
+			if !p.expectPeek("catch identifier", token.IDENT) {
+				return nil, false
+			}
+			catchIdent = p.newIdent(p.curToken)
+			if !p.expectPeek("catch clause", token.RPAREN) {
+				return nil, false
+			}
 		}
 
 		// Expect opening brace for catch block
