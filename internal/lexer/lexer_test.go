@@ -49,12 +49,8 @@ func TestNull(t *testing.T) {
 	for i, tt := range tests {
 		tok, err := l.Next()
 		assert.Nil(t, err)
-		if tok.Type != tt.expectedType {
-			t.Fatalf("tests[%d] - tokentype wrong, expected=%q, got=%q", i, tt.expectedType, tok.Type)
-		}
-		if tok.Literal != tt.expectedLiteral {
-			t.Fatalf("tests[%d] - Literal wrong, expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
-		}
+		assert.Equal(t, tt.expectedType, tok.Type, fmt.Sprintf("tests[%d] - tokentype wrong", i))
+		assert.Equal(t, tt.expectedLiteral, tok.Literal, fmt.Sprintf("tests[%d] - Literal wrong", i))
 	}
 }
 
