@@ -96,6 +96,10 @@ func String(ctx context.Context, args ...object.Object) (object.Object, error) {
 			return nil, err
 		}
 		return object.NewString(string(bytes)), nil
+	case *object.Byte:
+		return object.NewString(string(rune(arg.Value()))), nil
+	case *object.Bytes:
+		return object.NewString(string(arg.Value())), nil
 	default:
 		if s, ok := arg.(fmt.Stringer); ok {
 			return object.NewString(s.String()), nil

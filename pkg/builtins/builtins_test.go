@@ -381,6 +381,32 @@ func TestString(t *testing.T) {
 	assertObjectEqual(t, result, object.NewString("42"))
 }
 
+func TestStringByte(t *testing.T) {
+	ctx := context.Background()
+
+	// Byte -> character
+	result, err := String(ctx, object.NewByte(65))
+	assert.Nil(t, err)
+	assertObjectEqual(t, result, object.NewString("A"))
+
+	result, err = String(ctx, object.NewByte(104))
+	assert.Nil(t, err)
+	assertObjectEqual(t, result, object.NewString("h"))
+}
+
+func TestStringBytes(t *testing.T) {
+	ctx := context.Background()
+
+	// Bytes -> string
+	result, err := String(ctx, object.NewBytes([]byte("hello")))
+	assert.Nil(t, err)
+	assertObjectEqual(t, result, object.NewString("hello"))
+
+	result, err = String(ctx, object.NewBytes([]byte{}))
+	assert.Nil(t, err)
+	assertObjectEqual(t, result, object.NewString(""))
+}
+
 func TestStringErrors(t *testing.T) {
 	ctx := context.Background()
 	// Too many arguments
