@@ -125,6 +125,13 @@ func TestMethodChainingAcrossNewlines(t *testing.T) {
 		// Whitespace variations
 		{"tab before dot", "obj\n\t.method()", "obj.method()"},
 		{"spaces and newline", "obj\n   .method()", "obj.method()"},
+
+		// Pipe chaining across newlines
+		{"simple pipe chain", "a\n|> b", "(a |> b)"},
+		{"multi-pipe chain", "a\n|> b\n|> c", "(a |> b |> c)"},
+		{"multiple newlines before pipe", "a\n\n\n|> b", "(a |> b)"},
+		{"method chain then pipe", "obj\n.method()\n|> f", "(obj.method() |> f)"},
+		{"method chain then multi-pipe", "data\n.filter(f)\n.map(g)\n|> sorted\n|> first", "(data.filter(f).map(g) |> sorted |> first)"},
 	}
 
 	for _, tt := range tests {
@@ -148,7 +155,6 @@ func TestMethodChainingDoesNotAffectOtherOperators(t *testing.T) {
 		{"newline before +", "x\n+y", 2},    // +y is unary plus on y (separate stmt)
 		{"newline before -", "x\n-y", 2},    // -y is unary minus on y (separate stmt)
 		{"newline before [", "arr\n[0]", 2}, // [0] is a list literal
-		{"newline before |>", "x\n|> y", 2}, // |> is pipe operator
 		{"newline before (", "f\n(x)", 2},   // (x) is grouped expression
 	}
 
@@ -207,4 +213,215 @@ func TestMethodChainingInComplexExpressions(t *testing.T) {
 			assert.Equal(t, program.First().String(), tt.expected)
 		})
 	}
+}
+
+// =============================================================================
+// INFIX OPERATORS AFTER NEWLINE METHOD CHAINING
+// =============================================================================
+// After method chaining across newlines, remaining infix operators on the same
+// line should still be parsed. The chaining loop in parseNode previously exited
+// without falling back to the main infix loop, so operators like |>, +, ==, &&
+// were dropped.
+
+func TestInfixAfterNewlineChain(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			"pipe after newline chain",
+			"let x = items\n.filter(f) |> sorted",
+		},
+		{
+			"addition after newline chain",
+			"let x = a\n.length() + b\n.length()",
+		},
+		{
+			"equality after newline chain",
+			"let x = a\n.name() == b\n.name()",
+		},
+		{
+			"logical and after newline chain",
+			"let x = a\n.valid() && b\n.valid()",
+		},
+		{
+			"logical or after newline chain",
+			"let x = a\n.ready() || fallback",
+		},
+		{
+			"multiply after newline chain",
+			"let x = a\n.count() * 2",
+		},
+		{
+			"comparison after newline chain",
+			"let x = items\n.length() > 0",
+		},
+		{
+			"nullish coalescing after newline chain",
+			"let x = a\n.value() ?? 0",
+		},
+		{
+			"pipe chain after multi-line method chain",
+			`let x = users
+	.filter(u => u.active)
+	.map(u => u.name) |> sorted`,
+		},
+		{
+			"arithmetic after optional chain across newlines",
+			"let x = a\n?.count + 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+		})
+	}
+}
+
+func TestInfixAfterNewlineChainVariations(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		// Starting expression types
+		{
+			"from call result",
+			"let x = f()\n.method() + 1",
+		},
+		{
+			"from list literal",
+			"let x = [1, 2, 3]\n.filter(f) |> first",
+		},
+		{
+			"from grouped expression",
+			`let x = (a + b)
+	.toString() == "5"`,
+		},
+
+		// Chain ending types
+		{
+			"ending with property access",
+			"let x = a\n.length + 1",
+		},
+		{
+			"ending with optional method call",
+			"let x = a\n?.method() + 1",
+		},
+
+		// Expression context (not let)
+		{
+			"bare expression statement",
+			"a\n.ready() || fallback",
+		},
+		{
+			"return statement",
+			"function f() { return a\n.b() + 1 }",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+		})
+	}
+}
+
+func TestPostfixAfterNewlineChain(t *testing.T) {
+	t.Run("increment after newline property chain", func(t *testing.T) {
+		program, err := Parse(context.Background(), "obj\n.field++", nil)
+		assert.Nil(t, err)
+		postfix, ok := program.First().(*ast.Postfix)
+		assert.True(t, ok, "Expected Postfix, got %T", program.First())
+		assert.Equal(t, "++", postfix.Op)
+		// The operand should be a GetAttr (obj.field)
+		_, ok = postfix.X.(*ast.GetAttr)
+		assert.True(t, ok, "Expected GetAttr operand, got %T", postfix.X)
+	})
+
+	t.Run("decrement after newline property chain", func(t *testing.T) {
+		program, err := Parse(context.Background(), "obj\n.count--", nil)
+		assert.Nil(t, err)
+		postfix, ok := program.First().(*ast.Postfix)
+		assert.True(t, ok, "Expected Postfix, got %T", program.First())
+		assert.Equal(t, "--", postfix.Op)
+	})
+
+	t.Run("increment after multi-step newline chain", func(t *testing.T) {
+		program, err := Parse(context.Background(), "a\n.b\n.c++", nil)
+		assert.Nil(t, err)
+		postfix, ok := program.First().(*ast.Postfix)
+		assert.True(t, ok, "Expected Postfix, got %T", program.First())
+		assert.Equal(t, "++", postfix.Op)
+	})
+}
+
+func TestMultiStepNewlineChainThenInfix(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			"three-step chain then addition",
+			"let x = obj\n.a()\n.b()\n.c() + 1",
+		},
+		{
+			"three-step chain then pipe",
+			"let x = items\n.filter(f)\n.map(g)\n.sort() |> first",
+		},
+		{
+			"three-step chain then comparison",
+			"let x = items\n.filter(f)\n.map(g)\n.length() > 0",
+		},
+		{
+			"mixed same-line and newline chains then infix",
+			"let x = obj\n.a().b()\n.c() + 1",
+		},
+		{
+			"newline chain on both sides of infix",
+			"let x = a\n.count() + b\n.count()",
+		},
+		{
+			"newline chain on both sides of comparison",
+			"let x = a\n.name() == b\n.name()",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err, "Should parse: %s", tt.input)
+		})
+	}
+}
+
+func TestInfixAfterNewlineChainAST(t *testing.T) {
+	// Verify the AST structure is correct, not just that it parses
+	t.Run("pipe produces ast.Pipe", func(t *testing.T) {
+		program, err := Parse(context.Background(), "let x = items\n.sort() |> first", nil)
+		assert.Nil(t, err)
+		stmt := program.First().(*ast.Var)
+		_, ok := stmt.Value.(*ast.Pipe)
+		assert.True(t, ok, "Expected Pipe node, got %T", stmt.Value)
+	})
+
+	t.Run("addition produces ast.Infix", func(t *testing.T) {
+		program, err := Parse(context.Background(), "let x = a\n.len() + 1", nil)
+		assert.Nil(t, err)
+		stmt := program.First().(*ast.Var)
+		infix, ok := stmt.Value.(*ast.Infix)
+		assert.True(t, ok, "Expected Infix node, got %T", stmt.Value)
+		assert.Equal(t, "+", infix.Op)
+	})
+
+	t.Run("comparison produces ast.Infix", func(t *testing.T) {
+		program, err := Parse(context.Background(), "let x = a\n.len() == 0", nil)
+		assert.Nil(t, err)
+		stmt := program.First().(*ast.Var)
+		infix, ok := stmt.Value.(*ast.Infix)
+		assert.True(t, ok, "Expected Infix node, got %T", stmt.Value)
+		assert.Equal(t, "==", infix.Op)
+	})
 }

@@ -26,7 +26,7 @@ type (
 //  3. Inside parentheses: leading/trailing newlines allowed: "(\nx + y\n)"
 //  4. Inside brackets/braces: newlines after commas allowed: "[1,\n2]"
 //  5. Postfix operators (++, --) must be on same line as operand
-//  6. Chaining operators (., ?.) can follow newlines: "x\n.method()"
+//  6. Chaining operators (., ?., |>) can follow newlines: "x\n.method()", "x\n|> f"
 //
 // This policy follows "trailing operator continues" semantics common in many
 // languages, avoiding ambiguity about whether "x\n+ y" means one expression
@@ -438,23 +438,28 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 	if !ok || leftExp == nil {
 		return nil
 	}
-	for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
-		infix := p.infixParseFns[p.peekToken.Type]
-		if infix == nil {
-			return leftExp
+	for {
+		// Main infix loop: handle operators on the same line.
+		for !p.peekTokenIs(token.SEMICOLON) && precedence < p.peekPrecedence() {
+			infix := p.infixParseFns[p.peekToken.Type]
+			if infix == nil {
+				return leftExp
+			}
+			if err := p.nextToken(); err != nil {
+				return nil
+			}
+			leftExp, ok = infix(leftExp)
+			if !ok {
+				return nil
+			}
 		}
-		if err := p.nextToken(); err != nil {
-			return nil
+		// Check for chaining operators across newlines (rule 7 in newline policy).
+		// This allows: obj\n.method1()\n.method2()
+		// After chaining completes, loop back to the main infix loop so that
+		// same-line operators (e.g. |>, +, ==) are still picked up.
+		if !p.skipNewlinesForChaining() {
+			break
 		}
-		leftExp, ok = infix(leftExp)
-		if !ok {
-			return nil
-		}
-	}
-	// Check for chaining operators across newlines (rule 7 in newline policy).
-	// This allows: obj\n.method1()\n.method2()
-	for p.skipNewlinesForChaining() {
-		// Found a chaining operator after newlines - continue parsing
 		if precedence >= p.peekPrecedence() {
 			break
 		}
@@ -610,13 +615,14 @@ func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
 }
 
 // isChainingOperator returns true for operators that unambiguously continue
-// an expression when they appear after a newline. These are "safe" to allow
-// across newlines because they can only be infix operators (never prefix).
+// an expression when they appear after a newline. These are member access
+// and pipeline operators: they can only be infix (never prefix), so a newline
+// before them is unambiguously a continuation, not a new statement.
 func isChainingOperator(t token.Type) bool {
-	return t == token.PERIOD || t == token.QUESTION_DOT
+	return t == token.PERIOD || t == token.QUESTION_DOT || t == token.PIPE
 }
 
-// skipNewlinesForChaining checks if a chaining operator (. or ?.) follows
+// skipNewlinesForChaining checks if a chaining operator (., ?., or |>) follows
 // newlines. If found, it skips the newlines and returns true (with peekToken
 // now being the chaining operator). If not found, it returns false without
 // consuming any tokens. This enables method chaining across newlines.
