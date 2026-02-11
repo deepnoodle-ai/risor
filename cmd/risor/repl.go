@@ -623,7 +623,7 @@ func (app *replApp) printResult(result any) {
 
 	case nil:
 		app.runner.Print(tui.Group(
-			tui.Text("nil").Style(boolStyle),
+			tui.Text("null").Style(boolStyle),
 		))
 
 	case int64:

@@ -149,7 +149,7 @@ let y = "hello"`
 
 func TestKeywordsAndBuiltins(t *testing.T) {
 	// Test that our keyword list contains expected Risor keywords
-	expectedKeywords := []string{"let", "function", "if", "else", "return", "true", "false", "nil"}
+	expectedKeywords := []string{"let", "function", "if", "else", "return", "true", "false", "nil", "null"}
 
 	for _, keyword := range expectedKeywords {
 		found := false

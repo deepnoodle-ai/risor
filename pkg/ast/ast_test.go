@@ -413,8 +413,8 @@ func TestNilLiteral(t *testing.T) {
 	}
 
 	assert.Equal(t, nilLit.Pos().Column, 1)
-	assert.Equal(t, nilLit.End().Column, 4)
-	assert.Equal(t, nilLit.String(), "nil")
+	assert.Equal(t, nilLit.End().Column, 5)
+	assert.Equal(t, nilLit.String(), "null")
 }
 
 func TestBoolLiteral(t *testing.T) {

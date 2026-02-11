@@ -29,7 +29,7 @@ Division/modulo by zero now returns `"value error: division by zero"` which is c
 ```javascript
 try {
     let x = 10 / 0
-} catch e {
+} catch (e) {
     // e.message == "value error: division by zero"
 }
 ```
@@ -149,14 +149,14 @@ This is a related issue to Bug 2. If Risor adds loop constructs (for, while), br
 **Example:**
 ```javascript
 // Try as expression - returns value
-let result = try { parseInt(input) } catch e { -1 }
+let result = try { parseInt(input) } catch (e) { -1 }
 
 // Use directly in expressions
-let total = (try { x / y } catch e { 0 }) + offset
+let total = (try { x / y } catch (e) { 0 }) + offset
 
 // In function returns
 function safeParse(s) {
-    return try { int(s) } catch e { 0 }
+    return try { int(s) } catch (e) { 0 }
 }
 
 // Finally doesn't affect return value

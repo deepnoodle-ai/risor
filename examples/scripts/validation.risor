@@ -8,14 +8,14 @@ function validateUsername(name) {
     if (len(name) > 20) {
         return {ok: false, error: "too long"}
     }
-    return {ok: true, error: nil}
+    return {ok: true, error: null}
 }
 
 function validateAge(age) {
     if (age < 0 || age > 150) {
         return {ok: false, error: "invalid age"}
     }
-    return {ok: true, error: nil}
+    return {ok: true, error: null}
 }
 
 {

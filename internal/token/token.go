@@ -136,6 +136,7 @@ var keywords = map[string]Type{
 	"let":      LET,
 	"match":    MATCH,
 	"nil":      NIL,
+	"null":     NIL,
 	"not":      NOT,
 	"return":   RETURN,
 	"struct":   STRUCT,

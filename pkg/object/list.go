@@ -48,7 +48,7 @@ func init() {
 	listMethods.Define("each").
 		Doc("Call function for each item").
 		Arg("fn").
-		Returns("nil").
+		Returns("null").
 		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
 			return ls.Each(ctx, args[0])
 		})
@@ -126,7 +126,7 @@ func init() {
 	listMethods.Define("remove").
 		Doc("Remove first occurrence of item").
 		Arg("item").
-		Returns("nil").
+		Returns("null").
 		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
 			ls.Remove(args[0])
 			return ls, nil

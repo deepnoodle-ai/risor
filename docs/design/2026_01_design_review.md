@@ -169,14 +169,14 @@ throw err
 // Catch to get it as a value
 try {
     might_fail()
-} catch e {
+} catch (e) {
     print(e.message())
 }
 
 // Operations that fail throw automatically
 try {
     let x = 1 + "foo"  // throws type error
-} catch e {
+} catch (e) {
     print(e.message())
 }
 ```

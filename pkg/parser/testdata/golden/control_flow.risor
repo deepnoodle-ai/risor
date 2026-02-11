@@ -9,7 +9,7 @@ if (x > 0) {
 
 try {
     risky()
-} catch e {
+} catch (e) {
     handle(e)
 } finally {
     cleanup()

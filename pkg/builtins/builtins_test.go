@@ -424,7 +424,7 @@ func TestType(t *testing.T) {
 		{object.NewFloat(3.14), "float"},
 		{object.NewString("hello"), "string"},
 		{object.NewBool(true), "bool"},
-		{object.Nil, "nil"},
+		{object.Nil, "null"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {

@@ -10,14 +10,14 @@ Risor uses a Python-like exception model with `try`, `catch`, `finally`, and
 // Basic try/catch
 let result = try {
     riskyOperation()
-} catch e {
+} catch (e) {
     defaultValue
 }
 
 // With finally (for cleanup)
 try {
     openFile()
-} catch e {
+} catch (e) {
     handleError(e)
 } finally {
     closeFile()  // Always runs
@@ -42,27 +42,27 @@ throw error("detailed error message")
 
 ```ts
 // Returns try value on success
-let x = try { 42 } catch e { -1 }  // x == 42
+let x = try { 42 } catch (e) { -1 }  // x == 42
 
 // Returns catch value on exception
-let x = try { throw "err"; 42 } catch e { -1 }  // x == -1
+let x = try { throw "err"; 42 } catch (e) { -1 }  // x == -1
 
 // Finally runs but doesn't affect result
 let x = try { 42 } finally { 999 }  // x == 42 (not 999)
-let x = try { 42 } catch e { -1 } finally { 999 }  // x == 42
+let x = try { 42 } catch (e) { -1 } finally { 999 }  // x == 42
 
 // Use directly in expressions
-let total = (try { a / b } catch e { 0 }) + offset
+let total = (try { a / b } catch (e) { 0 }) + offset
 
 // In function returns
 function safeParse(s) {
-    return try { int(s) } catch e { 0 }
+    return try { int(s) } catch (e) { 0 }
 }
 
 // In list literals
 let values = [
-    try { compute(a) } catch e { 0 },
-    try { compute(b) } catch e { 0 },
+    try { compute(a) } catch (e) { 0 },
+    try { compute(b) } catch (e) { 0 },
 ]
 ```
 
@@ -75,7 +75,7 @@ let result = try {
     let a = 10
     let b = 20
     a + b  // This is the try block's value
-} catch e {
+} catch (e) {
     0
 }
 // result == 30
@@ -108,7 +108,7 @@ The catch block receives the error as a value:
 ```ts
 try {
     throw "oops"
-} catch e {
+} catch (e) {
     print(e.message())  // "oops"
     print(e.kind())     // "runtime error"
 }
@@ -122,8 +122,8 @@ try {
 | `kind()`     | string     | Error category                 |
 | `line()`     | int        | Line number (1-based)          |
 | `column()`   | int        | Column number (1-based)        |
-| `filename()` | string/nil | Source filename                |
-| `source()`   | string/nil | Source line text               |
+| `filename()` | string/null | Source filename                |
+| `source()`   | string/null | Source line text               |
 | `stack()`    | list       | Stack frames as maps           |
 
 ### Error Kinds
@@ -229,7 +229,7 @@ function middle() {
 function outer() {
     try {
         middle()
-    } catch e {
+    } catch (e) {
         print("caught: " + e.message())
     }
 }
@@ -260,7 +260,7 @@ function outer() {
 
 try {
     outer()
-} catch e {
+} catch (e) {
     print("caught")
 }
 
@@ -294,7 +294,7 @@ When try throws with no catch:
 let x = "default"
 try {
     x = try { throw "inner" } finally { cleanup() }
-} catch e {
+} catch (e) {
     // x is still "default" - assignment never completed
 }
 ```
@@ -312,7 +312,7 @@ Many operations can throw runtime errors:
 10 % 0              // value error: division by zero
 
 // Attribute errors
-nil.foo             // type error: attribute "foo" not found on nil
+null.foo             // type error: attribute "foo" not found on null
 
 // Index errors
 [1, 2, 3][10]       // value error: index out of bounds
@@ -323,7 +323,7 @@ All runtime errors are catchable:
 ```ts
 let result = try {
     1 / 0
-} catch e {
+} catch (e) {
     "division failed: " + e.message()
 }
 // result == "division failed: value error: division by zero"
@@ -339,7 +339,7 @@ try {
     function b() { c() }
     function c() { throw "deep error" }
     a()
-} catch e {
+} catch (e) {
     for frame in e.stack() {
         print(frame.function + " at line " + string(frame.line))
     }
@@ -365,10 +365,10 @@ Since try is an expression, always provide a meaningful catch value:
 
 ```ts
 // Good - explicit fallback
-let config = try { loadConfig() } catch e { defaultConfig }
+let config = try { loadConfig() } catch (e) { defaultConfig }
 
-// Avoid - catch returns nil implicitly
-let config = try { loadConfig() } catch e { }  // config could be nil
+// Avoid - catch returns null implicitly
+let config = try { loadConfig() } catch (e) { }  // config could be null
 ```
 
 ### Use Finally for Cleanup
@@ -386,15 +386,15 @@ try {
 
 ```ts
 // Bad - silently ignores errors
-try { riskyOperation() } catch e { }
+try { riskyOperation() } catch (e) { }
 
 // Better - at least log it
-try { riskyOperation() } catch e { log("error: " + e.message()) }
+try { riskyOperation() } catch (e) { log("error: " + e.message()) }
 
 // Best - handle or re-throw
 try {
     riskyOperation()
-} catch e {
+} catch (e) {
     if canRecover(e) {
         recover()
     } else {
@@ -410,7 +410,7 @@ try {
     let data = fetchData()
     let parsed = parse(data)
     process(parsed)
-} catch e {
+} catch (e) {
     // Check error kind for specific handling
     if e.kind() == "type error" {
         print("Invalid data format")

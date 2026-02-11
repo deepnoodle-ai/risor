@@ -1123,7 +1123,7 @@ func TestMatchExpression(t *testing.T) {
 		},
 		{
 			`match nil { nil => "nothing", _ => "something" }`,
-			`match nil { nil => "nothing", _ => "something" }`,
+			`match null { null => "nothing", _ => "something" }`,
 		},
 	}
 

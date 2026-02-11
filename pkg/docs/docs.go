@@ -397,7 +397,7 @@ var docsSyntaxSections = []docsSyntaxSection{
 			{Syntax: `"hello"`, Type: "string", Notes: "String literal with escapes"},
 			{Syntax: "`raw`", Type: "string", Notes: "Raw string (no escapes)"},
 			{Syntax: "true, false", Type: "bool", Notes: "Boolean literals"},
-			{Syntax: "nil", Type: "nil", Notes: "Null value"},
+			{Syntax: "null", Type: "null", Notes: "Null value"},
 		},
 	},
 	{
@@ -434,7 +434,7 @@ var docsSyntaxSections = []docsSyntaxSection{
 		Items: []docsSyntaxItem{
 			{Syntax: "if (cond) { } else { }", Notes: "Conditional (is an expression)"},
 			{Syntax: "switch (val) { case x: ... }", Notes: "Switch statement"},
-			{Syntax: "try { } catch e { }", Notes: "Error handling"},
+			{Syntax: "try { } catch (e) { }", Notes: "Error handling"},
 			{Syntax: "throw error(msg)", Notes: "Raise an error"},
 			{Syntax: "return value", Notes: "Return from function"},
 		},

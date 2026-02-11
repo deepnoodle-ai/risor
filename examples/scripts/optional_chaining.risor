@@ -6,7 +6,7 @@ let guest = {name: "Guest"}
 
 // Safe property access with ?.
 let theme1 = user?.profile?.theme      // "dark"
-let theme2 = guest?.profile?.theme     // nil
+let theme2 = guest?.profile?.theme     // null
 
 // Default with ?? (nullish coalescing)
 let display = guest?.profile?.theme ?? "light"

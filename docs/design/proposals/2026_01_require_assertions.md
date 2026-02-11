@@ -8,13 +8,13 @@ verbose defensive coding:
 
 ```javascript
 // Current approach: manual validation
-if input.user == nil {
+if input.user == null {
     return error("missing user")
 }
-if input.user.role == nil {
+if input.user.role == null {
     return error("missing user.role")
 }
-if input.resource == nil {
+if input.resource == null {
     return error("missing resource")
 }
 
@@ -492,7 +492,7 @@ Make undefined paths return undefined rather than error. Rejected because:
 ### 3. Optional Chaining Only
 
 Use `?.` operator for optional access. Rejected because:
-- Doesn't fail when data is missing (just returns nil)
+- Doesn't fail when data is missing (just returns null)
 - Doesn't bind values
 - Validation becomes implicit, not explicit
 

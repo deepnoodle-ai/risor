@@ -38,16 +38,16 @@ false
 ### find
 
 ```go filename="Function signature"
-find(pattern, str string) string | nil
+find(pattern, str string) string | null
 ```
 
-Returns the first match of the pattern in the string, or nil if no match.
+Returns the first match of the pattern in the string, or null if no match.
 
 ```go filename="Example"
 >>> regexp.find("[0-9]+", "abc123def456")
 "123"
 >>> regexp.find("[0-9]+", "abc")
-nil
+null
 ```
 
 ### find_all
@@ -203,17 +203,17 @@ true
 ##### find
 
 ```go filename="Method signature"
-find(str string) string | nil
+find(str string) string | null
 ```
 
-Returns the first match of the pattern in the string, or nil if no match.
+Returns the first match of the pattern in the string, or null if no match.
 
 ```go filename="Example"
 >>> let r = regexp.compile("[0-9]+")
 >>> r.find("abc123def")
 "123"
 >>> r.find("abc")
-nil
+null
 ```
 
 ##### find_all
@@ -252,17 +252,17 @@ Returns the index of the first match, or -1 if no match. The index is in charact
 ##### groups
 
 ```go filename="Method signature"
-groups(str string) list | nil
+groups(str string) list | null
 ```
 
-Returns the first match and all captured groups, or nil if no match. The first element is the full match, followed by each captured group.
+Returns the first match and all captured groups, or null if no match. The first element is the full match, followed by each captured group.
 
 ```go filename="Example"
 >>> let r = regexp.compile("(\\w+)@(\\w+)")
 >>> r.groups("user@host")
 ["user@host", "user", "host"]
 >>> r.groups("no match")
-nil
+null
 ```
 
 ##### find_all_groups
