@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2"
-	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
 )
@@ -460,14 +459,7 @@ func examplesHandler(ctx *cli.Context) error {
 
 		// Execute the code with print function
 		env := risor.Builtins()
-		env["print"] = object.NewBuiltin("print", func(ctx context.Context, args ...object.Object) (object.Object, error) {
-			parts := make([]string, len(args))
-			for i, arg := range args {
-				parts[i] = arg.Inspect()
-			}
-			fmt.Println(strings.Join(parts, " "))
-			return object.Nil, nil
-		})
+		env["print"] = newPrintBuiltin()
 		result, err := risor.Eval(context.Background(), found.Code, risor.WithEnv(env))
 		if err != nil {
 			fmt.Println(tui.Sprint(tui.Text("Error: %v", err).Style(tui.NewStyle().WithFgRGB(tui.RGB{R: 255, G: 100, B: 100}))))

@@ -12,8 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"context"
+
 	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
 )
@@ -103,6 +106,10 @@ func getRisorOptions(ctx *cli.Context) ([]risor.Option, error) {
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
 	}
+	// Provide print in CLI mode (not available in library mode by design)
+	opts = append(opts, risor.WithEnv(map[string]any{
+		"print": newPrintBuiltin(),
+	}))
 	// Auto-inject stdin as a variable when data is piped and stdin isn't
 	// being used to read code (via --stdin flag).
 	if !ctx.Bool("stdin") && cli.IsPiped() {
@@ -174,6 +181,7 @@ func getReplEnv(ctx *cli.Context) (map[string]any, error) {
 			env[k] = v
 		}
 	}
+	mergeInto(map[string]any{"print": newPrintBuiltin()})
 	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
 		mergeInto(vars)
 	}
@@ -275,4 +283,15 @@ func formatRisorError(ctx *cli.Context, err error) error {
 	}
 
 	return err
+}
+
+func newPrintBuiltin() *object.Builtin {
+	return object.NewBuiltin("print", func(ctx context.Context, args ...object.Object) (object.Object, error) {
+		values := make([]any, len(args))
+		for i, arg := range args {
+			values[i] = object.PrintableValue(arg)
+		}
+		fmt.Println(values...)
+		return object.Nil, nil
+	})
 }
