@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"testing"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
@@ -373,6 +375,8 @@ func TestParseJSONVarFlags(t *testing.T) {
 		{name: "number", input: []string{`n=42`}},
 		{name: "bad json", input: []string{`x=not json`}, expectErr: true},
 		{name: "malformed flag", input: []string{`noequals`}, expectErr: true},
+		{name: "empty key", input: []string{`={"a":1}`}, expectErr: true},
+		{name: "empty value", input: []string{`x=`}, expectErr: true},
 	}
 
 	for _, tt := range tests {
@@ -388,6 +392,30 @@ func TestParseJSONVarFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseJSONVarFlags_Values(t *testing.T) {
+	result, err := parseJSONVarFlags([]string{
+		`obj={"name":"Alice"}`,
+		`arr=[1,2,3]`,
+		`num=42`,
+		`flag=true`,
+		`nothing=null`,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, len(result), 5)
+
+	obj, ok := result["obj"].(map[string]any)
+	assert.True(t, ok)
+	assert.Equal(t, obj["name"], "Alice")
+
+	arr, ok := result["arr"].([]any)
+	assert.True(t, ok)
+	assert.Equal(t, len(arr), 3)
+
+	assert.Equal(t, result["num"], float64(42))
+	assert.Equal(t, result["flag"], true)
+	assert.True(t, result["nothing"] == nil)
 }
 
 func TestParseVarFlags(t *testing.T) {
@@ -421,6 +449,16 @@ func TestParseVarFlags(t *testing.T) {
 			name:      "malformed flag",
 			input:     []string{"noequals"},
 			expectErr: true,
+		},
+		{
+			name:      "empty key",
+			input:     []string{"=value"},
+			expectErr: true,
+		},
+		{
+			name:     "empty value",
+			input:    []string{"key="},
+			expected: map[string]any{"key": ""},
 		},
 	}
 
@@ -544,4 +582,59 @@ func TestGetEvalExpr_MultipleInputs(t *testing.T) {
 	_ = app.ExecuteArgs([]string{"test", "-c", "1+2", "another_expr"})
 	assert.NotNil(t, capturedErr)
 	assert.True(t, contains(capturedErr.Error(), "multiple"))
+}
+
+func TestNewPrintBuiltin(t *testing.T) {
+	fn := newPrintBuiltin()
+	assert.Equal(t, fn.Name(), "print")
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	result, err := fn.Call(context.Background(),
+		object.NewString("hello"),
+		object.NewInt(42),
+		object.NewFloat(3.14),
+		object.True,
+		object.Nil,
+	)
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	assert.True(t, contains(output, "hello"))
+	assert.True(t, contains(output, "42"))
+	assert.True(t, contains(output, "3.14"))
+	assert.True(t, contains(output, "true"))
+	assert.True(t, contains(output, "null"))
+}
+
+func TestNewPrintBuiltin_NoArgs(t *testing.T) {
+	fn := newPrintBuiltin()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	result, err := fn.Call(context.Background())
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	// Should just be a newline
+	assert.Equal(t, buf.String(), "\n")
 }
