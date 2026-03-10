@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	goerrors "errors"
 	"fmt"
@@ -11,8 +12,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"context"
 
 	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"

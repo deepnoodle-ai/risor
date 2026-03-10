@@ -289,7 +289,7 @@ The following modules are removed to make Risor secure by default:
 | `bcrypt` | Password hashing | Provide via custom builtins |
 | `filepath` | Path manipulation | Use string operations |
 | `errors` | Error utilities | Use error() builtin |
-| `fmt` | print/printf | Use custom print builtins |
+| `fmt` | print/printf | `print()` available in CLI; provide via custom builtins in library mode |
 
 **Available modules in v2:** `math`, `rand`, `regexp`
 
@@ -311,7 +311,7 @@ risor.Eval(ctx, source, risor.WithEnv(env))
 | `iter(container)` | Use enumeration methods |
 | `is_hashable(value)` | Not needed |
 | `try(func)` | `try { } catch (e) { }` |
-| `print(...)` / `printf(...)` | Provide via custom builtins |
+| `print(...)` / `printf(...)` | `print()` available in CLI; provide via custom builtins in library mode |
 
 ## New Features
 
@@ -544,7 +544,7 @@ result, err := risor.Run(ctx, code,
 
 5. **Provide needed capabilities:**
    - [ ] Add custom builtins for any I/O operations needed
-   - [ ] Add custom builtins for print/printf if needed
+   - [ ] Add custom builtins for print/printf if needed (note: `print()` is available automatically in CLI mode)
 
 ## Getting Help
 

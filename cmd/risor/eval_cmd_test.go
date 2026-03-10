@@ -485,6 +485,41 @@ func TestEvalHandler_StdinVariable(t *testing.T) {
 	assert.True(t, contains(output, "Alice"))
 }
 
+func TestEvalHandler_Print(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "-c", `print("hello", 42)`})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// print should output without quotes on strings
+	assert.True(t, contains(output, "hello 42"))
+}
+
 func TestGetEvalExpr_MultipleInputs(t *testing.T) {
 	app := cli.New("test").SetColorEnabled(false)
 	var capturedErr error
