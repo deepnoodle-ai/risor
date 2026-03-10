@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,7 +28,7 @@ func evalHandler(ctx *cli.Context) error {
 	}
 
 	// Evaluate
-	result, err := risor.Eval(context.Background(), expr, opts...)
+	result, err := risor.Eval(ctx.Context(), expr, opts...)
 	if err != nil {
 		if outputFormat == "json" {
 			out := map[string]any{

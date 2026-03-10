@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -283,9 +284,7 @@ func TestEvalHandler_JsonOutput_Map(t *testing.T) {
 	output := buf.String()
 
 	// Should output {"hello": "foo"} directly
-	assert.True(t, contains(output, `"hello"`))
-	assert.True(t, contains(output, `"foo"`))
-	assert.True(t, !contains(output, "type"))
+	assert.Equal(t, output, "{\n  \"hello\": \"foo\"\n}\n")
 }
 
 func TestEvalHandler_WithVarFlag(t *testing.T) {
@@ -527,7 +526,8 @@ func TestEvalHandler_StdinVariable(t *testing.T) {
 	output := buf.String()
 
 	// The stdin value is a string, so the output is JSON-encoded with escapes
-	assert.True(t, contains(output, "Alice"))
+	expected, _ := json.Marshal(`{"name": "Alice"}`)
+	assert.Equal(t, output, string(expected)+"\n")
 }
 
 func TestEvalHandler_Print(t *testing.T) {
