@@ -371,6 +371,54 @@ func TestParseVarFlags(t *testing.T) {
 	}
 }
 
+func TestEvalHandler_StdinVariable(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	// Create a pipe to simulate piped stdin
+	stdinR, stdinW, _ := os.Pipe()
+	stdinW.WriteString(`{"name": "Alice"}`)
+	stdinW.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = stdinR
+	defer func() { os.Stdin = oldStdin }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.GlobalFlags(
+		cli.Strings("var", ""),
+		cli.Bool("stdin", ""),
+	)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "-c", "stdin"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// The stdin value is a string, so the output is JSON-encoded with escapes
+	assert.True(t, contains(output, "Alice"))
+}
+
 func TestGetEvalExpr_MultipleInputs(t *testing.T) {
 	app := cli.New("test").SetColorEnabled(false)
 	var capturedErr error

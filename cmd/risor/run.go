@@ -96,6 +96,17 @@ func getRisorOptions(ctx *cli.Context) []risor.Option {
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
 	}
+	// Auto-inject stdin as a variable when data is piped and stdin isn't
+	// being used to read code (via --stdin flag).
+	if !ctx.Bool("stdin") && cli.IsPiped() {
+		data, err := io.ReadAll(os.Stdin)
+		if err == nil && len(data) > 0 {
+			opts = append(opts, risor.WithEnv(map[string]any{
+				"stdin": string(data),
+			}))
+		}
+	}
+	// --var flags come last so they can override auto-detected stdin
 	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
 		opts = append(opts, risor.WithEnv(vars))
 	}
