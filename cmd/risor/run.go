@@ -33,7 +33,7 @@ func runHandler(ctx *cli.Context) error {
 	}
 
 	// Get Risor options
-	opts, err := getRisorOptions(ctx)
+	opts, err := getRisorOptions(ctx, true)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func versionHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func getRisorOptions(ctx *cli.Context) ([]risor.Option, error) {
+func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error) {
 	var opts []risor.Option
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
@@ -111,16 +111,21 @@ func getRisorOptions(ctx *cli.Context) ([]risor.Option, error) {
 	}))
 	// Auto-inject stdin as a variable when data is piped and stdin isn't
 	// being used to read code (via --stdin flag).
-	if !ctx.Bool("stdin") && cli.IsPiped() {
+	if injectStdin && !ctx.Bool("stdin") && cli.IsPiped() {
 		data, err := io.ReadAll(os.Stdin)
-		if err == nil && len(data) > 0 {
+		if err != nil {
+			return nil, fmt.Errorf("reading stdin: %w", err)
+		}
+		if len(data) > 0 {
 			opts = append(opts, risor.WithEnv(map[string]any{
 				"stdin": string(data),
 			}))
 		}
 	}
 	// --var and --var-json flags come last so they can override auto-detected stdin
-	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
+	if vars, err := parseVarFlags(ctx.Strings("var")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
 		opts = append(opts, risor.WithEnv(vars))
 	}
 	if vars, err := parseJSONVarFlags(ctx.Strings("var-json")); err != nil {
@@ -139,8 +144,8 @@ func parseJSONVarFlags(flags []string) (map[string]any, error) {
 	vars := make(map[string]any, len(flags))
 	for _, flag := range flags {
 		key, value, ok := strings.Cut(flag, "=")
-		if !ok {
-			continue
+		if !ok || key == "" {
+			return nil, fmt.Errorf("malformed --var-json flag: expected key=value, got %q", flag)
 		}
 		var parsed any
 		if err := json.Unmarshal([]byte(value), &parsed); err != nil {
@@ -152,19 +157,19 @@ func parseJSONVarFlags(flags []string) (map[string]any, error) {
 }
 
 // parseVarFlags parses --var key=value flags into a map.
-func parseVarFlags(flags []string) map[string]any {
+func parseVarFlags(flags []string) (map[string]any, error) {
 	if len(flags) == 0 {
-		return nil
+		return nil, nil
 	}
 	vars := make(map[string]any, len(flags))
 	for _, flag := range flags {
 		key, value, ok := strings.Cut(flag, "=")
-		if !ok {
-			continue
+		if !ok || key == "" {
+			return nil, fmt.Errorf("malformed --var flag: expected key=value, got %q", flag)
 		}
 		vars[key] = value
 	}
-	return vars
+	return vars, nil
 }
 
 func getReplEnv(ctx *cli.Context) (map[string]any, error) {
@@ -181,7 +186,9 @@ func getReplEnv(ctx *cli.Context) (map[string]any, error) {
 		}
 	}
 	mergeInto(map[string]any{"print": newPrintBuiltin()})
-	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
+	if vars, err := parseVarFlags(ctx.Strings("var")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
 		mergeInto(vars)
 	}
 	if vars, err := parseJSONVarFlags(ctx.Strings("var-json")); err != nil {

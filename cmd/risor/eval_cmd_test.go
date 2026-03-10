@@ -372,6 +372,7 @@ func TestParseJSONVarFlags(t *testing.T) {
 		{name: "array", input: []string{`arr=[1,2,3]`}},
 		{name: "number", input: []string{`n=42`}},
 		{name: "bad json", input: []string{`x=not json`}, expectErr: true},
+		{name: "malformed flag", input: []string{`noequals`}, expectErr: true},
 	}
 
 	for _, tt := range tests {
@@ -391,9 +392,10 @@ func TestParseJSONVarFlags(t *testing.T) {
 
 func TestParseVarFlags(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    []string
-		expected map[string]any
+		name      string
+		input     []string
+		expected  map[string]any
+		expectErr bool
 	}{
 		{
 			name:     "empty",
@@ -416,15 +418,20 @@ func TestParseVarFlags(t *testing.T) {
 			expected: map[string]any{"url": "http://example.com?a=1"},
 		},
 		{
-			name:     "skip invalid",
-			input:    []string{"noequals", "valid=yes"},
-			expected: map[string]any{"valid": "yes"},
+			name:      "malformed flag",
+			input:     []string{"noequals"},
+			expectErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseVarFlags(tt.input)
+			result, err := parseVarFlags(tt.input)
+			if tt.expectErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
 			if tt.expected == nil {
 				assert.True(t, result == nil)
 				return
