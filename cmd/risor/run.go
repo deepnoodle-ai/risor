@@ -31,11 +31,18 @@ func runHandler(ctx *cli.Context) error {
 	}
 
 	// Get Risor options
-	opts := getRisorOptions(ctx)
+	opts, err := getRisorOptions(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Check if we should run REPL
 	if shouldRunRepl(ctx) {
-		return runRepl(ctx.Context(), getReplEnv(ctx))
+		replEnv, err := getReplEnv(ctx)
+		if err != nil {
+			return err
+		}
+		return runRepl(ctx.Context(), replEnv)
 	}
 
 	// Get the code to execute
@@ -91,7 +98,7 @@ func versionHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func getRisorOptions(ctx *cli.Context) []risor.Option {
+func getRisorOptions(ctx *cli.Context) ([]risor.Option, error) {
 	var opts []risor.Option
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
@@ -106,11 +113,36 @@ func getRisorOptions(ctx *cli.Context) []risor.Option {
 			}))
 		}
 	}
-	// --var flags come last so they can override auto-detected stdin
+	// --var and --var-json flags come last so they can override auto-detected stdin
 	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
 		opts = append(opts, risor.WithEnv(vars))
 	}
-	return opts
+	if vars, err := parseJSONVarFlags(ctx.Strings("var-json")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
+		opts = append(opts, risor.WithEnv(vars))
+	}
+	return opts, nil
+}
+
+// parseJSONVarFlags parses --var-json key=value flags, JSON-decoding each value.
+func parseJSONVarFlags(flags []string) (map[string]any, error) {
+	if len(flags) == 0 {
+		return nil, nil
+	}
+	vars := make(map[string]any, len(flags))
+	for _, flag := range flags {
+		key, value, ok := strings.Cut(flag, "=")
+		if !ok {
+			continue
+		}
+		var parsed any
+		if err := json.Unmarshal([]byte(value), &parsed); err != nil {
+			return nil, fmt.Errorf("invalid JSON for variable %q: %w", key, err)
+		}
+		vars[key] = parsed
+	}
+	return vars, nil
 }
 
 // parseVarFlags parses --var key=value flags into a map.
@@ -129,12 +161,12 @@ func parseVarFlags(flags []string) map[string]any {
 	return vars
 }
 
-func getReplEnv(ctx *cli.Context) map[string]any {
+func getReplEnv(ctx *cli.Context) (map[string]any, error) {
 	var env map[string]any
 	if !ctx.Bool("no-default-globals") {
 		env = risor.Builtins()
 	}
-	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
+	mergeInto := func(vars map[string]any) {
 		if env == nil {
 			env = make(map[string]any)
 		}
@@ -142,7 +174,15 @@ func getReplEnv(ctx *cli.Context) map[string]any {
 			env[k] = v
 		}
 	}
-	return env
+	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
+		mergeInto(vars)
+	}
+	if vars, err := parseJSONVarFlags(ctx.Strings("var-json")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
+		mergeInto(vars)
+	}
+	return env, nil
 }
 
 func shouldRunRepl(ctx *cli.Context) bool {

@@ -24,6 +24,7 @@ func main() {
 		cli.String("code", "c").Help("Code to evaluate"),
 		cli.Bool("stdin", "").Help("Read code from stdin"),
 		cli.Strings("var", "").Help("Set a variable (key=value)"),
+		cli.Strings("var-json", "").Help("Set a variable with a JSON value (key=json)"),
 		cli.String("cpu-profile", "").Help("Capture CPU profile"),
 		cli.Bool("no-color", "").Env("NO_COLOR").Help("Disable colored output"),
 		cli.Bool("no-default-globals", "").Help("Disable the standard library"),

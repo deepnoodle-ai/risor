@@ -23,7 +23,10 @@ func evalHandler(ctx *cli.Context) error {
 	quiet := ctx.Bool("quiet")
 
 	// Build options
-	opts := getRisorOptions(ctx)
+	opts, err := getRisorOptions(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Evaluate
 	result, err := risor.Eval(context.Background(), expr, opts...)

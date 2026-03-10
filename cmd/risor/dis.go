@@ -14,7 +14,10 @@ import (
 )
 
 func disHandler(ctx *cli.Context) error {
-	opts := getRisorOptions(ctx)
+	opts, err := getRisorOptions(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Get code from -c flag, --stdin, or file argument
 	code, err := getDisCode(ctx)
