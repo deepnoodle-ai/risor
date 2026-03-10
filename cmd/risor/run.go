@@ -141,11 +141,36 @@ func parseJSONVarFlag(value string) (map[string]any, error) {
 	if value == "" {
 		return nil, nil
 	}
+	if !json.Valid([]byte(value)) {
+		return nil, fmt.Errorf("--var-json: not valid JSON (expected a JSON object, e.g. '{\"key\": \"value\"}')")
+	}
 	var vars map[string]any
 	if err := json.Unmarshal([]byte(value), &vars); err != nil {
-		return nil, fmt.Errorf("--var-json: invalid JSON object: %w", err)
+		return nil, fmt.Errorf("--var-json: expected a JSON object (e.g. '{\"key\": \"value\"}'), got %s", jsonTypeLabel(value))
 	}
 	return vars, nil
+}
+
+func jsonTypeLabel(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) == 0 {
+		return "empty string"
+	}
+	switch value[0] {
+	case '[':
+		return "an array"
+	case '"':
+		return "a string"
+	case 't', 'f':
+		return "a boolean"
+	case 'n':
+		return "null"
+	default:
+		if value[0] == '-' || (value[0] >= '0' && value[0] <= '9') {
+			return "a number"
+		}
+		return "unknown type"
+	}
 }
 
 // parseVarFlags parses --var key=value flags into a map.
