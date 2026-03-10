@@ -196,19 +196,15 @@ func TestFormatterTryCatch(t *testing.T) {
 	assert.True(t, contains(result, "catch"))
 }
 
-func TestFormatterSwitch(t *testing.T) {
-	input := `switch (x) {
-case 1: "one"
-case 2: "two"
-default: "other"
-}`
+func TestFormatterMatch(t *testing.T) {
+	input := `match x { 1 => "one", 2 => "two", _ => "other" }`
 	program, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
 	result := formatProgram(program)
-	assert.True(t, contains(result, "switch"))
-	assert.True(t, contains(result, "case 1:"))
-	assert.True(t, contains(result, "default:"))
+	assert.True(t, contains(result, "match"))
+	assert.True(t, contains(result, `1 => "one"`))
+	assert.True(t, contains(result, `_ => "other"`))
 }
 
 func TestFormatterDestructuring(t *testing.T) {

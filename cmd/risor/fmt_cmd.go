@@ -423,6 +423,34 @@ func (f *Formatter) formatNode(node ast.Node) {
 			f.formatNode(n.Value)
 		}
 
+	case *ast.Match:
+		f.buf.WriteString("match ")
+		f.formatNode(n.Subject)
+		f.buf.WriteString(" {\n")
+		f.indent++
+		allArms := make([]*ast.MatchArm, 0, len(n.Arms)+1)
+		allArms = append(allArms, n.Arms...)
+		if n.Default != nil {
+			allArms = append(allArms, n.Default)
+		}
+		for i, arm := range allArms {
+			if i > 0 {
+				f.buf.WriteString("\n")
+			}
+			f.writeIndent()
+			f.buf.WriteString(arm.Pattern.String())
+			if arm.Guard != nil {
+				f.buf.WriteString(" if ")
+				f.formatNode(arm.Guard)
+			}
+			f.buf.WriteString(" => ")
+			f.formatNode(arm.Result)
+		}
+		f.buf.WriteString("\n")
+		f.indent--
+		f.writeIndent()
+		f.buf.WriteString("}")
+
 	default:
 		// Fallback: print type name
 		fmt.Fprintf(&f.buf, "/* %T */", n)

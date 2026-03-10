@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"errors"
+	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -111,9 +112,10 @@ func TestEvalHandler_JsonOutput(t *testing.T) {
 	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
-	// Should be JSON formatted
-	assert.True(t, contains(output, "value"))
+	// Should be the JSON value directly, not wrapped in {type, value}
 	assert.True(t, contains(output, "42"))
+	assert.True(t, !contains(output, "value"))
+	assert.True(t, !contains(output, "type"))
 }
 
 func TestEvalHandler_Quiet(t *testing.T) {
@@ -215,94 +217,334 @@ func TestEvalHandler_NoInput(t *testing.T) {
 	assert.True(t, contains(err.Error(), "no expression"))
 }
 
-func TestToGoValue(t *testing.T) {
+func TestEvalHandler_JsonOutput_String(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "-o", "json", `"foo"`})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should output "foo" directly, not {"type": "string", "value": "foo"}
+	assert.Equal(t, output, "\"foo\"\n")
+}
+
+func TestEvalHandler_JsonOutput_Map(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "-o", "json", "-c", `{hello: "foo"}`})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should output {"hello": "foo"} directly
+	assert.Equal(t, output, "{\n  \"hello\": \"foo\"\n}\n")
+}
+
+func TestEvalHandler_WithVarFlag(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.GlobalFlags(
+		cli.Strings("var", ""),
+	)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "--var", "name=Alice", "-c", "name"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	assert.True(t, contains(output, "Alice"))
+}
+
+func TestEvalHandler_WithVarJSONFlag(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.GlobalFlags(
+		cli.Strings("var", ""),
+		cli.String("var-json", ""),
+	)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "--var-json", `{"data":{"name":"Alice"}}`, "-c", "data.name"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	assert.True(t, contains(output, "Alice"))
+}
+
+func TestParseJSONVarFlag(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    any
-		expected any
+		name      string
+		input     string
+		expectErr bool
+	}{
+		{name: "empty", input: ""},
+		{name: "object", input: `{"a":1}`},
+		{name: "not json", input: `not json`, expectErr: true},
+		{name: "array", input: `[1,2,3]`, expectErr: true},
+		{name: "number", input: `42`, expectErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parseJSONVarFlag(tt.input)
+			if tt.expectErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
+			if tt.input == "" {
+				assert.True(t, result == nil)
+			}
+		})
+	}
+}
+
+func TestParseJSONVarFlag_Values(t *testing.T) {
+	result, err := parseJSONVarFlag(`{"name":"Alice","count":3,"active":true}`)
+	assert.Nil(t, err)
+	assert.Equal(t, len(result), 3)
+	assert.Equal(t, result["name"], "Alice")
+	assert.Equal(t, result["count"], float64(3))
+	assert.Equal(t, result["active"], true)
+}
+
+func TestParseVarFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     []string
+		expected  map[string]any
+		expectErr bool
 	}{
 		{
-			name:     "nil",
+			name:     "empty",
 			input:    nil,
 			expected: nil,
 		},
 		{
-			name:     "int",
-			input:    object.NewInt(42),
-			expected: int64(42),
+			name:     "single var",
+			input:    []string{"key=value"},
+			expected: map[string]any{"key": "value"},
 		},
 		{
-			name:     "float",
-			input:    object.NewFloat(3.14),
-			expected: 3.14,
+			name:     "multiple vars",
+			input:    []string{"a=hello", "b=world"},
+			expected: map[string]any{"a": "hello", "b": "world"},
 		},
 		{
-			name:     "string",
-			input:    object.NewString("hello"),
-			expected: "hello",
+			name:     "value with equals",
+			input:    []string{"url=http://example.com?a=1"},
+			expected: map[string]any{"url": "http://example.com?a=1"},
 		},
 		{
-			name:     "bool true",
-			input:    object.True,
-			expected: true,
+			name:      "malformed flag",
+			input:     []string{"noequals"},
+			expectErr: true,
 		},
 		{
-			name:     "bool false",
-			input:    object.False,
-			expected: false,
+			name:      "empty key",
+			input:     []string{"=value"},
+			expectErr: true,
 		},
 		{
-			name:     "nil object",
-			input:    object.Nil,
-			expected: nil,
+			name:     "empty value",
+			input:    []string{"key="},
+			expected: map[string]any{"key": ""},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := toGoValue(tt.input)
-			assert.Equal(t, result, tt.expected)
+			result, err := parseVarFlags(tt.input)
+			if tt.expectErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
+			if tt.expected == nil {
+				assert.True(t, result == nil)
+				return
+			}
+			assert.Equal(t, len(result), len(tt.expected))
+			for k, v := range tt.expected {
+				assert.Equal(t, result[k], v)
+			}
 		})
 	}
 }
 
-func TestToGoValue_List(t *testing.T) {
-	list := object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	})
+func TestEvalHandler_StdinVariable(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
 
-	result := toGoValue(list)
-	arr, ok := result.([]any)
-	assert.True(t, ok)
-	assert.Equal(t, len(arr), 3)
-	assert.Equal(t, arr[0], int64(1))
-	assert.Equal(t, arr[1], int64(2))
-	assert.Equal(t, arr[2], int64(3))
+	// Create a pipe to simulate piped stdin
+	stdinR, stdinW, _ := os.Pipe()
+	stdinW.WriteString(`{"name": "Alice"}`)
+	stdinW.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = stdinR
+	defer func() { os.Stdin = oldStdin }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.GlobalFlags(
+		cli.Strings("var", ""),
+		cli.Bool("stdin", ""),
+	)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "-c", "stdin"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// The stdin value is a string, so the output is JSON-encoded with escapes
+	expected, _ := json.Marshal(`{"name": "Alice"}`)
+	assert.Equal(t, output, string(expected)+"\n")
 }
 
-func TestToGoValue_Map(t *testing.T) {
-	m := object.NewMap(map[string]object.Object{
-		"a": object.NewInt(1),
-		"b": object.NewString("hello"),
-	})
+func TestEvalHandler_Print(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
 
-	result := toGoValue(m)
-	mp, ok := result.(map[string]any)
-	assert.True(t, ok)
-	assert.Equal(t, mp["a"], int64(1))
-	assert.Equal(t, mp["b"], "hello")
-}
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
 
-func TestToGoValue_Error(t *testing.T) {
-	err := object.NewError(errors.New("test error"))
-	result := toGoValue(err)
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
 
-	mp, ok := result.(map[string]any)
-	assert.True(t, ok)
-	assert.Equal(t, mp["error"], true)
-	assert.Equal(t, mp["message"], "test error")
+	err := app.ExecuteArgs([]string{"eval", "-c", `print("hello", 42)`})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// print should output without quotes on strings
+	assert.True(t, contains(output, "hello 42"))
 }
 
 func TestGetEvalExpr_MultipleInputs(t *testing.T) {
@@ -322,4 +564,59 @@ func TestGetEvalExpr_MultipleInputs(t *testing.T) {
 	_ = app.ExecuteArgs([]string{"test", "-c", "1+2", "another_expr"})
 	assert.NotNil(t, capturedErr)
 	assert.True(t, contains(capturedErr.Error(), "multiple"))
+}
+
+func TestNewPrintBuiltin(t *testing.T) {
+	fn := newPrintBuiltin()
+	assert.Equal(t, fn.Name(), "print")
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	result, err := fn.Call(context.Background(),
+		object.NewString("hello"),
+		object.NewInt(42),
+		object.NewFloat(3.14),
+		object.True,
+		object.Nil,
+	)
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	assert.True(t, contains(output, "hello"))
+	assert.True(t, contains(output, "42"))
+	assert.True(t, contains(output, "3.14"))
+	assert.True(t, contains(output, "true"))
+	assert.True(t, contains(output, "null"))
+}
+
+func TestNewPrintBuiltin_NoArgs(t *testing.T) {
+	fn := newPrintBuiltin()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	result, err := fn.Call(context.Background())
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	// Should just be a newline
+	assert.Equal(t, buf.String(), "\n")
 }

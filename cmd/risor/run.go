@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	goerrors "errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/deepnoodle-ai/risor/v2"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
 )
@@ -31,11 +33,18 @@ func runHandler(ctx *cli.Context) error {
 	}
 
 	// Get Risor options
-	opts := getRisorOptions(ctx)
+	opts, err := getRisorOptions(ctx, true)
+	if err != nil {
+		return err
+	}
 
 	// Check if we should run REPL
 	if shouldRunRepl(ctx) {
-		return runRepl(ctx.Context(), getReplEnv(ctx))
+		replEnv, err := getReplEnv(ctx)
+		if err != nil {
+			return err
+		}
+		return runRepl(ctx.Context(), replEnv)
 	}
 
 	// Get the code to execute
@@ -91,19 +100,120 @@ func versionHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func getRisorOptions(ctx *cli.Context) []risor.Option {
+func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error) {
 	var opts []risor.Option
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
 	}
-	return opts
+	// Provide print in CLI mode (not available in library mode by design)
+	opts = append(opts, risor.WithEnv(map[string]any{
+		"print": newPrintBuiltin(),
+	}))
+	// Auto-inject stdin as a variable when data is piped and stdin isn't
+	// being used to read code (via --stdin flag).
+	if injectStdin && !ctx.Bool("stdin") && cli.IsPiped() {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return nil, fmt.Errorf("reading stdin: %w", err)
+		}
+		if len(data) > 0 {
+			opts = append(opts, risor.WithEnv(map[string]any{
+				"stdin": string(data),
+			}))
+		}
+	}
+	// --var and --var-json flags come last so they can override auto-detected stdin
+	if vars, err := parseVarFlags(ctx.Strings("var")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
+		opts = append(opts, risor.WithEnv(vars))
+	}
+	if vars, err := parseJSONVarFlag(ctx.String("var-json")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
+		opts = append(opts, risor.WithEnv(vars))
+	}
+	return opts, nil
 }
 
-func getReplEnv(ctx *cli.Context) map[string]any {
-	if ctx.Bool("no-default-globals") {
-		return nil
+// parseJSONVarFlag parses a --var-json flag value as a JSON object.
+func parseJSONVarFlag(value string) (map[string]any, error) {
+	if value == "" {
+		return nil, nil
 	}
-	return risor.Builtins()
+	if !json.Valid([]byte(value)) {
+		return nil, fmt.Errorf("--var-json: not valid JSON (expected a JSON object, e.g. '{\"key\": \"value\"}')")
+	}
+	var vars map[string]any
+	if err := json.Unmarshal([]byte(value), &vars); err != nil {
+		return nil, fmt.Errorf("--var-json: expected a JSON object (e.g. '{\"key\": \"value\"}'), got %s", jsonTypeLabel(value))
+	}
+	return vars, nil
+}
+
+func jsonTypeLabel(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) == 0 {
+		return "empty string"
+	}
+	switch value[0] {
+	case '[':
+		return "an array"
+	case '"':
+		return "a string"
+	case 't', 'f':
+		return "a boolean"
+	case 'n':
+		return "null"
+	default:
+		if value[0] == '-' || (value[0] >= '0' && value[0] <= '9') {
+			return "a number"
+		}
+		return "unknown type"
+	}
+}
+
+// parseVarFlags parses --var key=value flags into a map.
+func parseVarFlags(flags []string) (map[string]any, error) {
+	if len(flags) == 0 {
+		return nil, nil
+	}
+	vars := make(map[string]any, len(flags))
+	for _, flag := range flags {
+		key, value, ok := strings.Cut(flag, "=")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("malformed --var flag: expected key=value, got %q", flag)
+		}
+		vars[key] = value
+	}
+	return vars, nil
+}
+
+func getReplEnv(ctx *cli.Context) (map[string]any, error) {
+	var env map[string]any
+	if !ctx.Bool("no-default-globals") {
+		env = risor.Builtins()
+	}
+	mergeInto := func(vars map[string]any) {
+		if env == nil {
+			env = make(map[string]any)
+		}
+		for k, v := range vars {
+			env[k] = v
+		}
+	}
+	mergeInto(map[string]any{"print": newPrintBuiltin()})
+	if vars, err := parseVarFlags(ctx.Strings("var")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
+		mergeInto(vars)
+	}
+	if vars, err := parseJSONVarFlag(ctx.String("var-json")); err != nil {
+		return nil, err
+	} else if len(vars) > 0 {
+		mergeInto(vars)
+	}
+	return env, nil
 }
 
 func shouldRunRepl(ctx *cli.Context) bool {
@@ -196,4 +306,15 @@ func formatRisorError(ctx *cli.Context, err error) error {
 	}
 
 	return err
+}
+
+func newPrintBuiltin() *object.Builtin {
+	return object.NewBuiltin("print", func(ctx context.Context, args ...object.Object) (object.Object, error) {
+		values := make([]any, len(args))
+		for i, arg := range args {
+			values[i] = object.PrintableValue(arg)
+		}
+		fmt.Println(values...)
+		return object.Nil, nil
+	})
 }
