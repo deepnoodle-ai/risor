@@ -2,11 +2,9 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"testing"
 
-	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
@@ -111,9 +109,10 @@ func TestEvalHandler_JsonOutput(t *testing.T) {
 	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
-	// Should be JSON formatted
-	assert.True(t, contains(output, "value"))
+	// Should be the JSON value directly, not wrapped in {type, value}
 	assert.True(t, contains(output, "42"))
+	assert.True(t, !contains(output, "value"))
+	assert.True(t, !contains(output, "type"))
 }
 
 func TestEvalHandler_Quiet(t *testing.T) {
@@ -215,94 +214,161 @@ func TestEvalHandler_NoInput(t *testing.T) {
 	assert.True(t, contains(err.Error(), "no expression"))
 }
 
-func TestToGoValue(t *testing.T) {
+func TestEvalHandler_JsonOutput_String(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "-o", "json", `"foo"`})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should output "foo" directly, not {"type": "string", "value": "foo"}
+	assert.Equal(t, output, "\"foo\"\n")
+}
+
+func TestEvalHandler_JsonOutput_Map(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "-o", "json", "-c", `{hello: "foo"}`})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	// Should output {"hello": "foo"} directly
+	assert.True(t, contains(output, `"hello"`))
+	assert.True(t, contains(output, `"foo"`))
+	assert.True(t, !contains(output, "type"))
+}
+
+func TestEvalHandler_WithVarFlag(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.GlobalFlags(
+		cli.Strings("var", ""),
+	)
+	app.Command("eval").
+		Args("expr?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("output", "o").Enum("json", "text"),
+			cli.Bool("quiet", "q"),
+		).
+		Run(evalHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := app.ExecuteArgs([]string{"eval", "--var", "name=Alice", "-c", "name"})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	output := buf.String()
+
+	assert.True(t, contains(output, "Alice"))
+}
+
+func TestParseVarFlags(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    any
-		expected any
+		input    []string
+		expected map[string]any
 	}{
 		{
-			name:     "nil",
+			name:     "empty",
 			input:    nil,
 			expected: nil,
 		},
 		{
-			name:     "int",
-			input:    object.NewInt(42),
-			expected: int64(42),
+			name:     "single var",
+			input:    []string{"key=value"},
+			expected: map[string]any{"key": "value"},
 		},
 		{
-			name:     "float",
-			input:    object.NewFloat(3.14),
-			expected: 3.14,
+			name:     "multiple vars",
+			input:    []string{"a=hello", "b=world"},
+			expected: map[string]any{"a": "hello", "b": "world"},
 		},
 		{
-			name:     "string",
-			input:    object.NewString("hello"),
-			expected: "hello",
+			name:     "value with equals",
+			input:    []string{"url=http://example.com?a=1"},
+			expected: map[string]any{"url": "http://example.com?a=1"},
 		},
 		{
-			name:     "bool true",
-			input:    object.True,
-			expected: true,
-		},
-		{
-			name:     "bool false",
-			input:    object.False,
-			expected: false,
-		},
-		{
-			name:     "nil object",
-			input:    object.Nil,
-			expected: nil,
+			name:     "skip invalid",
+			input:    []string{"noequals", "valid=yes"},
+			expected: map[string]any{"valid": "yes"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := toGoValue(tt.input)
-			assert.Equal(t, result, tt.expected)
+			result := parseVarFlags(tt.input)
+			if tt.expected == nil {
+				assert.True(t, result == nil)
+				return
+			}
+			assert.Equal(t, len(result), len(tt.expected))
+			for k, v := range tt.expected {
+				assert.Equal(t, result[k], v)
+			}
 		})
 	}
-}
-
-func TestToGoValue_List(t *testing.T) {
-	list := object.NewList([]object.Object{
-		object.NewInt(1),
-		object.NewInt(2),
-		object.NewInt(3),
-	})
-
-	result := toGoValue(list)
-	arr, ok := result.([]any)
-	assert.True(t, ok)
-	assert.Equal(t, len(arr), 3)
-	assert.Equal(t, arr[0], int64(1))
-	assert.Equal(t, arr[1], int64(2))
-	assert.Equal(t, arr[2], int64(3))
-}
-
-func TestToGoValue_Map(t *testing.T) {
-	m := object.NewMap(map[string]object.Object{
-		"a": object.NewInt(1),
-		"b": object.NewString("hello"),
-	})
-
-	result := toGoValue(m)
-	mp, ok := result.(map[string]any)
-	assert.True(t, ok)
-	assert.Equal(t, mp["a"], int64(1))
-	assert.Equal(t, mp["b"], "hello")
-}
-
-func TestToGoValue_Error(t *testing.T) {
-	err := object.NewError(errors.New("test error"))
-	result := toGoValue(err)
-
-	mp, ok := result.(map[string]any)
-	assert.True(t, ok)
-	assert.Equal(t, mp["error"], true)
-	assert.Equal(t, mp["message"], "test error")
 }
 
 func TestGetEvalExpr_MultipleInputs(t *testing.T) {

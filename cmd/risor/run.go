@@ -96,14 +96,42 @@ func getRisorOptions(ctx *cli.Context) []risor.Option {
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
 	}
+	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
+		opts = append(opts, risor.WithEnv(vars))
+	}
 	return opts
 }
 
-func getReplEnv(ctx *cli.Context) map[string]any {
-	if ctx.Bool("no-default-globals") {
+// parseVarFlags parses --var key=value flags into a map.
+func parseVarFlags(flags []string) map[string]any {
+	if len(flags) == 0 {
 		return nil
 	}
-	return risor.Builtins()
+	vars := make(map[string]any, len(flags))
+	for _, flag := range flags {
+		key, value, ok := strings.Cut(flag, "=")
+		if !ok {
+			continue
+		}
+		vars[key] = value
+	}
+	return vars
+}
+
+func getReplEnv(ctx *cli.Context) map[string]any {
+	var env map[string]any
+	if !ctx.Bool("no-default-globals") {
+		env = risor.Builtins()
+	}
+	if vars := parseVarFlags(ctx.Strings("var")); len(vars) > 0 {
+		if env == nil {
+			env = make(map[string]any)
+		}
+		for k, v := range vars {
+			env[k] = v
+		}
+	}
+	return env
 }
 
 func shouldRunRepl(ctx *cli.Context) bool {
