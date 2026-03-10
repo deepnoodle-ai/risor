@@ -332,7 +332,7 @@ func TestEvalHandler_WithVarJSONFlag(t *testing.T) {
 	app := cli.New("risor").SetColorEnabled(false)
 	app.GlobalFlags(
 		cli.Strings("var", ""),
-		cli.Strings("var-json", ""),
+		cli.String("var-json", ""),
 	)
 	app.Command("eval").
 		Args("expr?").
@@ -348,7 +348,7 @@ func TestEvalHandler_WithVarJSONFlag(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := app.ExecuteArgs([]string{"eval", "--var-json", `data={"name":"Alice"}`, "-c", "data.name"})
+	err := app.ExecuteArgs([]string{"eval", "--var-json", `{"data":{"name":"Alice"}}`, "-c", "data.name"})
 
 	w.Close()
 	os.Stdout = old
@@ -362,59 +362,41 @@ func TestEvalHandler_WithVarJSONFlag(t *testing.T) {
 	assert.True(t, contains(output, "Alice"))
 }
 
-func TestParseJSONVarFlags(t *testing.T) {
+func TestParseJSONVarFlag(t *testing.T) {
 	tests := []struct {
 		name      string
-		input     []string
+		input     string
 		expectErr bool
 	}{
-		{name: "empty", input: nil},
-		{name: "object", input: []string{`data={"a":1}`}},
-		{name: "array", input: []string{`arr=[1,2,3]`}},
-		{name: "number", input: []string{`n=42`}},
-		{name: "bad json", input: []string{`x=not json`}, expectErr: true},
-		{name: "malformed flag", input: []string{`noequals`}, expectErr: true},
-		{name: "empty key", input: []string{`={"a":1}`}, expectErr: true},
-		{name: "empty value", input: []string{`x=`}, expectErr: true},
+		{name: "empty", input: ""},
+		{name: "object", input: `{"a":1}`},
+		{name: "not json", input: `not json`, expectErr: true},
+		{name: "array", input: `[1,2,3]`, expectErr: true},
+		{name: "number", input: `42`, expectErr: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := parseJSONVarFlags(tt.input)
+			result, err := parseJSONVarFlag(tt.input)
 			if tt.expectErr {
 				assert.NotNil(t, err)
 				return
 			}
 			assert.Nil(t, err)
-			if tt.input == nil {
+			if tt.input == "" {
 				assert.True(t, result == nil)
 			}
 		})
 	}
 }
 
-func TestParseJSONVarFlags_Values(t *testing.T) {
-	result, err := parseJSONVarFlags([]string{
-		`obj={"name":"Alice"}`,
-		`arr=[1,2,3]`,
-		`num=42`,
-		`flag=true`,
-		`nothing=null`,
-	})
+func TestParseJSONVarFlag_Values(t *testing.T) {
+	result, err := parseJSONVarFlag(`{"name":"Alice","count":3,"active":true}`)
 	assert.Nil(t, err)
-	assert.Equal(t, len(result), 5)
-
-	obj, ok := result["obj"].(map[string]any)
-	assert.True(t, ok)
-	assert.Equal(t, obj["name"], "Alice")
-
-	arr, ok := result["arr"].([]any)
-	assert.True(t, ok)
-	assert.Equal(t, len(arr), 3)
-
-	assert.Equal(t, result["num"], float64(42))
-	assert.Equal(t, result["flag"], true)
-	assert.True(t, result["nothing"] == nil)
+	assert.Equal(t, len(result), 3)
+	assert.Equal(t, result["name"], "Alice")
+	assert.Equal(t, result["count"], float64(3))
+	assert.Equal(t, result["active"], true)
 }
 
 func TestParseVarFlags(t *testing.T) {

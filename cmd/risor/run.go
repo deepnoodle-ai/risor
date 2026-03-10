@@ -128,7 +128,7 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 	} else if len(vars) > 0 {
 		opts = append(opts, risor.WithEnv(vars))
 	}
-	if vars, err := parseJSONVarFlags(ctx.Strings("var-json")); err != nil {
+	if vars, err := parseJSONVarFlag(ctx.String("var-json")); err != nil {
 		return nil, err
 	} else if len(vars) > 0 {
 		opts = append(opts, risor.WithEnv(vars))
@@ -136,22 +136,14 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 	return opts, nil
 }
 
-// parseJSONVarFlags parses --var-json key=value flags, JSON-decoding each value.
-func parseJSONVarFlags(flags []string) (map[string]any, error) {
-	if len(flags) == 0 {
+// parseJSONVarFlag parses a --var-json flag value as a JSON object.
+func parseJSONVarFlag(value string) (map[string]any, error) {
+	if value == "" {
 		return nil, nil
 	}
-	vars := make(map[string]any, len(flags))
-	for _, flag := range flags {
-		key, value, ok := strings.Cut(flag, "=")
-		if !ok || key == "" {
-			return nil, fmt.Errorf("malformed --var-json flag: expected key=value, got %q", flag)
-		}
-		var parsed any
-		if err := json.Unmarshal([]byte(value), &parsed); err != nil {
-			return nil, fmt.Errorf("invalid JSON for variable %q: %w", key, err)
-		}
-		vars[key] = parsed
+	var vars map[string]any
+	if err := json.Unmarshal([]byte(value), &vars); err != nil {
+		return nil, fmt.Errorf("--var-json: invalid JSON object: %w", err)
 	}
 	return vars, nil
 }
@@ -191,7 +183,7 @@ func getReplEnv(ctx *cli.Context) (map[string]any, error) {
 	} else if len(vars) > 0 {
 		mergeInto(vars)
 	}
-	if vars, err := parseJSONVarFlags(ctx.Strings("var-json")); err != nil {
+	if vars, err := parseJSONVarFlag(ctx.String("var-json")); err != nil {
 		return nil, err
 	} else if len(vars) > 0 {
 		mergeInto(vars)
