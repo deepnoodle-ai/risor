@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.0] - 2026-03-10
+
+### Added
+
+- **null keyword** — first-class null literal for explicit null values (#445)
+- **TypeScript-style catch syntax** — `catch (e)` binds the error variable (#445)
+- **Range iteration methods** — `.each()`, `.map()`, `.filter()` on range objects (#444)
+- **--var CLI flag** — pass variables to scripts from the command line (#454)
+
+### Fixed
+
+- Fix JSON output formatting in CLI (#454)
+- Fix `string(byte)` type conversion (#444)
+
+### Dependencies
+
+- Bump minimatch to 3.1.5 in VSCode extension (#451, #452)
+- Bump @tootallnate/once and @vscode/test-electron in VSCode extension (#453)
+
 ## [2.0.0] - 2026-02-09
 
 Risor v2 is a major release focused on the embedded scripting use case. It
