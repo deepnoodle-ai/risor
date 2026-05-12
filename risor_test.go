@@ -244,7 +244,8 @@ func TestWithEnv(t *testing.T) {
 
 func TestWithEnvAdditive(t *testing.T) {
 	// Test that multiple WithEnv calls are additive
-	result, err := Eval(context.Background(), "x + y",
+	result, err := Eval(
+		context.Background(), "x + y",
 		WithEnv(map[string]any{"x": int64(10)}),
 		WithEnv(map[string]any{"y": int64(20)}),
 	)
@@ -254,7 +255,8 @@ func TestWithEnvAdditive(t *testing.T) {
 
 func TestWithEnvOverride(t *testing.T) {
 	// Test that later WithEnv calls override earlier ones
-	result, err := Eval(context.Background(), "x",
+	result, err := Eval(
+		context.Background(), "x",
 		WithEnv(map[string]any{"x": int64(10)}),
 		WithEnv(map[string]any{"x": int64(99)}),
 	)
@@ -369,7 +371,8 @@ func TestWithTypeRegistry(t *testing.T) {
 		Build()
 
 	// Use the custom registry
-	result, err := Eval(context.Background(), "point.x + point.y",
+	result, err := Eval(
+		context.Background(), "point.x + point.y",
 		WithEnv(map[string]any{"point": Point{X: 10, Y: 20}}),
 		WithTypeRegistry(registry),
 	)
@@ -388,7 +391,8 @@ func (c customValue) RisorValue() object.Object {
 
 func TestRisorValuerIntegration(t *testing.T) {
 	// Types implementing RisorValuer are automatically converted
-	result, err := Eval(context.Background(), "val",
+	result, err := Eval(
+		context.Background(), "val",
 		WithEnv(map[string]any{"val": customValue{data: "test"}}),
 	)
 	assert.Nil(t, err)
@@ -1404,7 +1408,8 @@ func TestWithEnvDuplicateKeysBehavior(t *testing.T) {
 	ctx := context.Background()
 
 	// Last value should win (documented behavior)
-	result, err := Eval(ctx, "x",
+	result, err := Eval(
+		ctx, "x",
 		WithEnv(map[string]any{"x": int64(1)}),
 		WithEnv(map[string]any{"x": int64(2)}),
 		WithEnv(map[string]any{"x": int64(3)}),

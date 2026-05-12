@@ -182,7 +182,8 @@ func runTestFile(ctx context.Context, filename string, runRe *regexp.Regexp) *Fi
 
 	// Compile with standard builtins
 	env := risor.Builtins()
-	code, err := risor.Compile(ctx, string(source),
+	code, err := risor.Compile(
+		ctx, string(source),
 		risor.WithFilename(filename),
 		risor.WithEnv(env),
 	)

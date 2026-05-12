@@ -486,7 +486,8 @@ func docHandlerText(topic string) error {
 			tui.Text("%s", t.Doc).Style(docStyle),
 		}
 		if len(t.Attrs) > 0 {
-			views = append(views,
+			views = append(
+				views,
 				tui.Text(""),
 				tui.Text("METHODS").Style(headingStyle),
 				tui.ForEach(t.Attrs, func(attr object.AttrSpec, _ int) tui.View {
@@ -563,7 +564,8 @@ func docSyntaxText() error {
 	}
 
 	for _, section := range syntaxSections {
-		views = append(views,
+		views = append(
+			views,
 			tui.Text("%s", strings.ToUpper(section.Name)).Style(headingStyle),
 			tui.ForEach(section.Items, func(item SyntaxItem, _ int) tui.View {
 				return tui.Group(
@@ -602,7 +604,8 @@ func docErrorsText() error {
 		// Build views for examples
 		exampleViews := []tui.View{}
 		for _, ex := range pattern.Examples {
-			exampleViews = append(exampleViews,
+			exampleViews = append(
+				exampleViews,
 				tui.Text("  %s", ex.Error).Style(errorStyle),
 				tui.Text("    Bad:  %s", ex.BadCode).Style(nameStyle),
 				tui.Text("    Fix:  %s", ex.Fix).Style(nameStyle),
@@ -611,7 +614,8 @@ func docErrorsText() error {
 			)
 		}
 
-		views = append(views,
+		views = append(
+			views,
 			tui.Text("%s", strings.ToUpper(pattern.Type)).Style(headingStyle),
 			tui.Text("  Pattern: %s", pattern.MessagePattern).Style(docStyle),
 			tui.Stack(causeViews...).Gap(0),
@@ -1101,7 +1105,8 @@ func printFuncDoc(name string, fn object.FuncSpec, titleStyle, headingStyle, nam
 	}
 
 	if fn.Returns != "" {
-		views = append(views,
+		views = append(
+			views,
 			tui.Text(""),
 			tui.Group(
 				tui.Text("Returns: ").Style(headingStyle),
@@ -1111,7 +1116,8 @@ func printFuncDoc(name string, fn object.FuncSpec, titleStyle, headingStyle, nam
 	}
 
 	if fn.Example != "" {
-		views = append(views,
+		views = append(
+			views,
 			tui.Text(""),
 			tui.Text("EXAMPLE").Style(headingStyle),
 			tui.Text("  %s", fn.Example).Style(nameStyle),

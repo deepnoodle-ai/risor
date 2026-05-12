@@ -79,7 +79,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 	switch name {
 	// Testing
 	case "test", "match":
-		return object.NewBuiltin("regexp.test",
+		return object.NewBuiltin(
+			"regexp.test",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("regexp.test: expected 1 argument, got %d", len(args))
@@ -94,7 +95,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// Finding first match
 	case "find":
-		return object.NewBuiltin("regexp.find",
+		return object.NewBuiltin(
+			"regexp.find",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("regexp.find: expected 1 argument, got %d", len(args))
@@ -113,7 +115,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// Finding all matches
 	case "find_all":
-		return object.NewBuiltin("regexp.find_all",
+		return object.NewBuiltin(
+			"regexp.find_all",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) < 1 || len(args) > 2 {
 					return nil, fmt.Errorf("regexp.find_all: expected 1-2 arguments, got %d", len(args))
@@ -140,7 +143,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// Search for index
 	case "search":
-		return object.NewBuiltin("regexp.search",
+		return object.NewBuiltin(
+			"regexp.search",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("regexp.search: expected 1 argument, got %d", len(args))
@@ -161,7 +165,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// Capture groups (renamed from find_submatch)
 	case "groups":
-		return object.NewBuiltin("regexp.groups",
+		return object.NewBuiltin(
+			"regexp.groups",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 1 {
 					return nil, fmt.Errorf("regexp.groups: expected 1 argument, got %d", len(args))
@@ -184,7 +189,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// All matches with capture groups
 	case "find_all_groups":
-		return object.NewBuiltin("regexp.find_all_groups",
+		return object.NewBuiltin(
+			"regexp.find_all_groups",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) < 1 || len(args) > 2 {
 					return nil, fmt.Errorf("regexp.find_all_groups: expected 1-2 arguments, got %d", len(args))
@@ -216,7 +222,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// Replace with optional count
 	case "replace":
-		return object.NewBuiltin("regexp.replace",
+		return object.NewBuiltin(
+			"regexp.replace",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) < 2 || len(args) > 3 {
 					return nil, fmt.Errorf("regexp.replace: expected 2-3 arguments, got %d", len(args))
@@ -259,7 +266,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// Replace all (convenience method, same as replace with count=0)
 	case "replace_all":
-		return object.NewBuiltin("regexp.replace_all",
+		return object.NewBuiltin(
+			"regexp.replace_all",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) != 2 {
 					return nil, fmt.Errorf("regexp.replace_all: expected 2 arguments, got %d", len(args))
@@ -278,7 +286,8 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 
 	// Split
 	case "split":
-		return object.NewBuiltin("regexp.split",
+		return object.NewBuiltin(
+			"regexp.split",
 			func(ctx context.Context, args ...object.Object) (object.Object, error) {
 				if len(args) < 1 || len(args) > 2 {
 					return nil, fmt.Errorf("regexp.split: expected 1-2 arguments, got %d", len(args))
