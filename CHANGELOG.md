@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- Error equality (`==`) now matches a wrapped error against its underlying
+  sentinel, so `err == fs.err_not_exist` works when `err` was returned from a
+  module that wraps an inner error. The previous behavior compared only error
+  message strings, so wrapped sentinels never matched.
+
+### Notes
+
+- Error message wrapping (e.g. via `%w` in the `error()` builtin) is an
+  implementation detail and not part of the stable scripting API. The
+  underlying chain semantics may change in a future major release.
+
 ## [2.1.0] - 2026-03-10
 
 ### Added
