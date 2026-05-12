@@ -590,6 +590,33 @@ func TestClosureManyVariables(t *testing.T) {
 	assert.Equal(t, result, object.NewStringList([]string{"hello", "world", "risor", "go"}))
 }
 
+// Regression for issue #461: when a function has more than DefaultFrameLocals
+// locals, the frame uses heap-allocated extendedLocals storage. Earlier code
+// reused that slice on the next activation of the same frame slot, which
+// trampled cells that previous closures had captured into it.
+func TestClosureCaptureAcrossReusedExtendedFrame(t *testing.T) {
+	result, err := run(context.Background(), `
+	let results = []
+	function makeClosures(a, b, c) {
+		return ((x, y, z) => {
+			let c1 = () => "c1:" + y
+			let c2 = () => "c2:" + y
+			let c3 = () => "c3:" + y
+			let c4 = () => "c4:" + y
+			let c5 = () => "c5:" + y
+			let item = [c1, c2, c3, c4, c5]
+			return item
+		})(a, b, c)
+	}
+	["one", "two", "three"].each(name => {
+		results.append(makeClosures("s", name, "t"))
+	})
+	results.map(cs => cs[1]())
+	`)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewStringList([]string{"c2:one", "c2:two", "c2:three"}))
+}
+
 func TestRecursiveExample1(t *testing.T) {
 	result, err := run(context.Background(), `
 	function twoexp(n) {

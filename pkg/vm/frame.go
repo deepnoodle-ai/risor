@@ -90,7 +90,13 @@ func (f *frame) CaptureLocals() []object.Object {
 		return f.capturedLocals
 	}
 	if f.extendedLocals != nil {
+		// Hand the heap-allocated slice to the cells, then drop our reference
+		// so the next ActivateCode on this frame slot allocates fresh storage
+		// instead of zeroing this slice and trampling the captured values.
+		// f.locals shares the same backing array, so the running function can
+		// keep reading and writing locals normally.
 		f.capturedLocals = f.extendedLocals
+		f.extendedLocals = nil
 		return f.capturedLocals
 	}
 	newStorage := make([]object.Object, len(f.locals))
