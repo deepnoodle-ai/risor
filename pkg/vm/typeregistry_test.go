@@ -49,7 +49,8 @@ func TestWithTypeRegistryOption(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Run with custom registry - the value should be doubled
-	vm, err := New(code,
+	vm, err := New(
+		code,
 		WithGlobals(map[string]any{"x": 21}),
 		WithTypeRegistry(customRegistry),
 	)
@@ -87,7 +88,8 @@ func TestTypeRegistryWithGlobalConversion(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Run with custom registry
-	vm, err := New(code,
+	vm, err := New(
+		code,
 		WithGlobals(map[string]any{"point": Point{X: 10, Y: 20}}),
 		WithTypeRegistry(registry),
 	)
@@ -120,7 +122,8 @@ func TestRisorValuerWithVM(t *testing.T) {
 	code, err := compiler.Compile(ast, &compiler.Config{GlobalNames: []string{"point"}})
 	assert.Nil(t, err)
 
-	vm, err := New(code,
+	vm, err := New(
+		code,
 		WithGlobals(map[string]any{"point": customPoint{X: 6, Y: 7}}),
 	)
 	assert.Nil(t, err)

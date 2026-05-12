@@ -575,7 +575,8 @@ func TestNewPrintBuiltin(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	result, err := fn.Call(context.Background(),
+	result, err := fn.Call(
+		context.Background(),
 		object.NewString("hello"),
 		object.NewInt(42),
 		object.NewFloat(3.14),

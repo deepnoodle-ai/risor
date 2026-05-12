@@ -1013,7 +1013,8 @@ func TestContainers(t *testing.T) {
 		{`{"foo": "bar"}["foo"]`, object.NewString("bar")},
 		{`{foo: "bar"}["foo"]`, object.NewString("bar")},
 		{`[1, 2, 3, 4, 5].filter(function(x) { x > 3 })`, object.NewList(
-			[]object.Object{object.NewInt(4), object.NewInt(5)})},
+			[]object.Object{object.NewInt(4), object.NewInt(5)},
+		)},
 	}
 	runTests(t, tests)
 }
@@ -1073,7 +1074,8 @@ func TestQuicksort(t *testing.T) {
 				object.NewInt(3),
 				object.NewInt(5),
 				object.NewInt(10),
-			}))
+			},
+		))
 }
 
 func TestAndShortCircuit(t *testing.T) {

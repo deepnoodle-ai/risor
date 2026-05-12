@@ -2,6 +2,7 @@ package object
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
@@ -166,6 +167,12 @@ func (e *Error) Equals(other Object) bool {
 	otherError, ok := other.(*Error)
 	if !ok {
 		return false
+	}
+	// Match wrapped sentinels in either direction, then fall back to message
+	// equality for script-created errors. The chain-walking is an
+	// implementation detail and may change; see docs/direction/v3-notes.md.
+	if errors.Is(e.err, otherError.err) || errors.Is(otherError.err, e.err) {
+		return true
 	}
 	return e.Message().Value() == otherError.Message().Value()
 }
