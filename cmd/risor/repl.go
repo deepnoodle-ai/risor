@@ -519,8 +519,8 @@ func (app *replApp) handleCommand(input string) []tui.Cmd {
 		// Display methods with signatures
 		for _, attr := range attrs {
 			var sig string
-			if len(attr.Args) > 0 {
-				sig = fmt.Sprintf(".%s(%s)", attr.Name, strings.Join(attr.Args, ", "))
+			if args := attr.DisplayArgs(); len(args) > 0 {
+				sig = fmt.Sprintf(".%s(%s)", attr.Name, strings.Join(args, ", "))
 			} else {
 				sig = fmt.Sprintf(".%s()", attr.Name)
 			}

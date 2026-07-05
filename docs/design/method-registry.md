@@ -73,6 +73,8 @@ func (r *AttrRegistry[T]) GetAttr(self T, name string) (Object, bool)
 func (b *AttrBuilder[T]) Doc(doc string) *AttrBuilder[T]
 func (b *AttrBuilder[T]) Arg(name string) *AttrBuilder[T]
 func (b *AttrBuilder[T]) Args(names ...string) *AttrBuilder[T]
+func (b *AttrBuilder[T]) OptionalArg(name string) *AttrBuilder[T]
+func (b *AttrBuilder[T]) Variadic(name string) *AttrBuilder[T]
 func (b *AttrBuilder[T]) Returns(typ string) *AttrBuilder[T]
 
 // Impl registers a callable method.
@@ -105,6 +107,28 @@ func init() {
             return s.ToLower(), nil
         })
 }
+```
+
+**Argument arities.** Argument count is validated automatically before `Impl`
+runs, so implementations can index `args` directly. A definition may declare:
+
+- `Arg(name)` / `Args(names...)` — required arguments (all must be provided).
+- `OptionalArg(name)` — an optional argument; must follow all required ones.
+- `Variadic(name)` — a final argument accepting any number of values (zero or
+  more). Required arguments may precede it, but nothing may follow it. Only one
+  variadic argument is allowed.
+
+```go
+// path.join(sep, *parts) — one required arg, then a variadic tail.
+pathAttrs.Define("join").
+    Doc("Join parts with a separator").
+    Arg("sep").
+    Variadic("parts").
+    Returns("string").
+    Impl(func(p *Path, ctx context.Context, args ...Object) (Object, error) {
+        // args[0] is sep; args[1:] are the (possibly empty) parts.
+        ...
+    })
 ```
 
 **Properties** (read-only attributes that return values directly):
@@ -196,27 +220,6 @@ func NewMethodRegistry[T any](typeName string) *AttrRegistry[T] {
 ```
 
 ## Future Extensions
-
-### Variadic Methods
-
-```go
-stringAttrs.Define("format").
-    Doc("Format with arguments").
-    Arg("template").
-    Variadic().
-    Returns("string").
-    Impl(...)
-```
-
-### Optional Arguments
-
-```go
-listAttrs.Define("pop").
-    Doc("Remove and return item").
-    OptionalArg("index", NewInt(-1)).
-    Returns("any").
-    Impl(...)
-```
 
 ### Writable Properties
 

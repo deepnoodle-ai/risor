@@ -491,7 +491,7 @@ func docHandlerText(topic string) error {
 				tui.Text(""),
 				tui.Text("METHODS").Style(headingStyle),
 				tui.ForEach(t.Attrs, func(attr object.AttrSpec, _ int) tui.View {
-					sig := formatSignature(attr.Name, attr.Args)
+					sig := formatSignature(attr.Name, attr.DisplayArgs())
 					return tui.Group(
 						tui.Text("  .%s", sig).Style(nameStyle),
 						tui.Text("  %s", attr.Doc).Style(docStyle),
@@ -1003,7 +1003,7 @@ func typesMarkdown() string {
 			sb.WriteString("| Method | Description |\n")
 			sb.WriteString("|--------|-------------|\n")
 			for _, attr := range t.Attrs {
-				sig := formatSignature(attr.Name, attr.Args)
+				sig := formatSignature(attr.Name, attr.DisplayArgs())
 				sb.WriteString(fmt.Sprintf("| `.%s` | %s |\n", sig, attr.Doc))
 			}
 			sb.WriteString("\n")
@@ -1074,7 +1074,7 @@ func typeMarkdown(t object.TypeSpec) string {
 		sb.WriteString("| Method | Description |\n")
 		sb.WriteString("|--------|-------------|\n")
 		for _, attr := range t.Attrs {
-			sig := formatSignature(attr.Name, attr.Args)
+			sig := formatSignature(attr.Name, attr.DisplayArgs())
 			sb.WriteString(fmt.Sprintf("| `.%s` | %s |\n", sig, attr.Doc))
 		}
 	}

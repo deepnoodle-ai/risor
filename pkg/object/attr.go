@@ -1,5 +1,7 @@
 package object
 
+import "slices"
+
 // AttrSpec describes an attribute available on an object.
 // This provides metadata for introspection, documentation, and tooling.
 type AttrSpec struct {
@@ -13,8 +15,25 @@ type AttrSpec struct {
 	// Empty for attributes that take no arguments.
 	Args []string
 
+	// Variadic reports whether the final argument accepts any number of
+	// values (zero or more). When true, the last entry in Args names the
+	// variadic parameter.
+	Variadic bool
+
 	// Returns describes the return type (e.g., "list", "string", "bool").
 	Returns string
+}
+
+// DisplayArgs returns the argument names formatted for display, with the final
+// argument suffixed with "..." when the attribute is variadic. The returned
+// slice is safe to modify; it never aliases Args.
+func (s AttrSpec) DisplayArgs() []string {
+	if !s.Variadic || len(s.Args) == 0 {
+		return slices.Clone(s.Args)
+	}
+	args := slices.Clone(s.Args)
+	args[len(args)-1] += "..."
+	return args
 }
 
 // FuncSpec describes a builtin function.
