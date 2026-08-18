@@ -1,8 +1,8 @@
 export GIT_REVISION=$(shell git rev-parse --short HEAD)
 export VERSION=$(shell git describe --tags --always --dirty | sed 's/^v//')
 
-# Packages to exclude from testing (examples, benchmarks)
-TEST_EXCLUDE := examples tests/benchmarks
+# Packages to exclude from testing (examples, benchmarks, JavaScript dependencies)
+TEST_EXCLUDE := examples tests/benchmarks vscode
 
 .PHONY: test
 test:
@@ -66,6 +66,11 @@ format:
 .PHONY: release
 release:
 	goreleaser release --clean -p 2
+
+.PHONY: release-snapshot
+release-snapshot:
+	goreleaser check
+	goreleaser release --snapshot --clean -p 2
 
 .PHONY: generate
 generate:

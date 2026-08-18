@@ -1,9 +1,12 @@
 package main
 
-import "github.com/deepnoodle-ai/risor/v2/pkg/object"
+import (
+	"github.com/deepnoodle-ai/risor/v2/pkg/docs"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+)
 
 // Version is the current Risor version.
-const docVersion = "2.0.0"
+const docVersion = docs.Version
 
 // QuickReference provides a concise overview of Risor for quick orientation.
 type QuickReference struct {
