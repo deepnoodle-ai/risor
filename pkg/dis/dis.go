@@ -107,25 +107,25 @@ func Print(instructions []Instruction, writer io.Writer) {
 		if instr.Constant != nil {
 			switch c := instr.Constant.(type) {
 			case int64:
-				values = append(values, color.Colorize(color.Yellow, fmt.Sprintf("%d", c)))
+				values = append(values, color.Yellow.Sprintf("%d", c))
 			case float64:
-				values = append(values, color.Colorize(color.Yellow, fmt.Sprintf("%f", c)))
+				values = append(values, color.Yellow.Sprintf("%f", c))
 			case string:
 				if len(c) > 80 {
 					c = c[:77] + "..."
 				}
-				values = append(values, color.Colorize(color.Green, fmt.Sprintf("%q", c)))
+				values = append(values, color.Green.Sprintf("%q", c))
 			case *bytecode.Function:
 				name := c.Name()
 				if name == "" {
 					name = italic("<anonymous>")
 				}
-				values = append(values, color.Colorize(color.Magenta, fmt.Sprintf("func:%s", name)))
+				values = append(values, color.Magenta.Sprintf("func:%s", name))
 			default:
 				values = append(values, bold(fmt.Sprintf("%v", c)))
 			}
 		} else if instr.Annotation != "" {
-			values = append(values, color.Colorize(color.BrightCyan, fmt.Sprintf("%v", instr.Annotation)))
+			values = append(values, color.BrightCyan.Sprintf("%v", instr.Annotation))
 		} else {
 			values = append(values, "")
 		}

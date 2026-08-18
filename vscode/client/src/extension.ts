@@ -110,17 +110,10 @@ export async function activate(context: ExtensionContext) {
         fileEvents: workspace.createFileSystemWatcher("**/*.{risor,rsr}"),
       },
       // Enable detailed tracing to debug diagnostic issues
-      traceOutputChannel: {
-        name: "Risor Language Server Trace",
-        // Implementation of OutputChannel interface for console logging
-        append: (value: string) => console.log("[LSP TRACE]", value),
-        appendLine: (value: string) => console.log("[LSP TRACE]", value),
-        clear: () => console.log("[LSP TRACE] CLEARED"),
-        show: () => { },
-        hide: () => { },
-        dispose: () => { },
-        replace: (value: string) => console.log("[LSP TRACE REPLACE]", value),
-      },
+      traceOutputChannel: window.createOutputChannel(
+        "Risor Language Server Trace",
+        { log: true }
+      ),
     };
 
     // Create the language client and start the client.
@@ -135,8 +128,9 @@ export async function activate(context: ExtensionContext) {
     client.start();
   } catch (error) {
     console.error("Failed to activate extension:", error);
+    const message = error instanceof Error ? error.message : String(error);
     window.showErrorMessage(
-      `Failed to activate Risor Language Server: ${error.message}`
+      `Failed to activate Risor Language Server: ${message}`
     );
   }
 }
