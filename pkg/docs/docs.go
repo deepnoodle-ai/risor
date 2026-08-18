@@ -68,7 +68,7 @@ func (d *Documentation) Data() any {
 }
 
 // Version is the current Risor version.
-const Version = "2.0.0"
+const Version = "2.2.0"
 
 // docsRisorInfo provides basic Risor information.
 type docsRisorInfo struct {

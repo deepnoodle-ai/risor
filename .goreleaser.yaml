@@ -9,7 +9,11 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+        -X main.commit={{ .Commit }}
+        -X main.date={{ .Date }}
     goos:
       - linux
       - windows
@@ -21,9 +25,10 @@ builds:
     main: .
 archives:
   - id: "standard"
-    builds:
+    ids:
       - "standard"
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -33,7 +38,8 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 checksum:
   name_template: "checksums.txt"
 snapshot:
@@ -44,18 +50,30 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
-brews:
-  - skip_upload: false
+homebrew_casks:
+  - name: risor
+    ids:
+      - "standard"
+    binaries:
+      - risor
+    skip_upload: false
     repository:
       owner: deepnoodle-ai
       name: homebrew-risor
     commit_author:
       name: Curtis Myzie
       email: info@cmds.dev
-    directory: Formula
+    directory: Casks
+    url:
+      verified: github.com/deepnoodle-ai/risor/
     homepage: "https://github.com/deepnoodle-ai/risor"
     description: "An embedded scripting language for Go projects"
-    license: "Apache-2.0"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/risor"]
+          end
 # The lines beneath this are called `modelines`. See `:help modeline`
 # Feel free to remove those if you don't want/use them.
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json

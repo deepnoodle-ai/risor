@@ -111,7 +111,7 @@ Level 2: Deep Dive (risor doc <topic>)
 ```json
 {
   "risor": {
-    "version": "2.0.0",
+    "version": "2.2.0",
     "description": "Fast embedded scripting language for Go",
     "execution_model": "source → lexer → parser → compiler → bytecode → vm"
   },

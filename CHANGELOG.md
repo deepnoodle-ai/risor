@@ -6,12 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-17
+
+### Added
+
+- **Variadic method definitions** — Go embedders can use
+  `AttrBuilder.Variadic(name)` to define object methods that accept zero or more
+  trailing arguments (#467).
+
+### Changed
+
+- The VS Code extension now requires VS Code 1.91 or newer and uses the current
+  language client and TypeScript toolchain (#475).
+
 ### Fixed
 
 - Error equality (`==`) now matches a wrapped error against its underlying
   sentinel, so `err == fs.err_not_exist` works when `err` was returned from a
   module that wraps an inner error. The previous behavior compared only error
-  message strings, so wrapped sentinels never matched.
+  message strings, so wrapped sentinels never matched (#463).
+- Closures with more than eight local variables now preserve their captured
+  values when a VM frame is reused for another function call (#462).
+
+### Documentation
+
+- Added a practical guide to memory limits, including isolation boundaries,
+  in-process safeguards, and the limits of timeout and step-count controls
+  (#474).
+
+### Dependencies
+
+- Updated Go and VS Code extension dependencies, clearing the repository's
+  known dependency security alerts at release preparation time (#475).
 
 ### Notes
 
