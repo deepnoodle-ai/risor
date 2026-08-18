@@ -45,10 +45,10 @@ func runRepl(ctx context.Context, env map[string]any) error {
 		historyPath: historyPath,
 	}
 
-	app.runner = tui.NewInlineApp(tui.InlineAppConfig{
-		BracketedPaste: true,
-		KittyKeyboard:  true,
-	})
+	app.runner = tui.NewInlineApp(
+		tui.WithInlineBracketedPaste(true),
+		tui.WithInlineKittyKeyboard(true),
+	)
 
 	// Print branded header
 	app.runner.Print(app.headerView())
