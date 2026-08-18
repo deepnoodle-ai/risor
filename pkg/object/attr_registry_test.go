@@ -147,6 +147,127 @@ func TestAttrRegistrySingleArg(t *testing.T) {
 	assert.Contains(t, err.Error(), "expected 1 argument")
 }
 
+// TestAttrRegistryVariadic tests methods that accept any number of arguments.
+func TestAttrRegistryVariadic(t *testing.T) {
+	type testObj struct{}
+	registry := NewAttrRegistry[*testObj]("test")
+
+	// Pure variadic: zero or more args.
+	registry.Define("collect").
+		Variadic("items").
+		Impl(func(obj *testObj, ctx context.Context, args ...Object) (Object, error) {
+			return NewInt(int64(len(args))), nil
+		})
+
+	obj := &testObj{}
+	method, ok := registry.GetAttr(obj, "collect")
+	assert.True(t, ok)
+	builtin := method.(*Builtin)
+	ctx := context.Background()
+
+	// Zero args is allowed.
+	result, err := builtin.Call(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(0))
+
+	// Many args are allowed.
+	result, err = builtin.Call(ctx, NewInt(1), NewInt(2), NewInt(3))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(3))
+
+	// Spec metadata reflects the variadic tail.
+	spec, ok := FindAttr(registry.Specs(), "collect")
+	assert.True(t, ok)
+	assert.True(t, spec.Variadic)
+	assert.Equal(t, spec.Args, []string{"items"})
+	assert.Equal(t, spec.DisplayArgs(), []string{"items..."})
+}
+
+// TestAttrRegistryVariadicWithRequired tests required args preceding a variadic tail.
+func TestAttrRegistryVariadicWithRequired(t *testing.T) {
+	type testObj struct{}
+	registry := NewAttrRegistry[*testObj]("test")
+
+	// One required arg, then a variadic tail (min 1, unbounded max).
+	registry.Define("join").
+		Arg("sep").
+		Variadic("parts").
+		Impl(func(obj *testObj, ctx context.Context, args ...Object) (Object, error) {
+			return NewInt(int64(len(args))), nil
+		})
+
+	obj := &testObj{}
+	method, _ := registry.GetAttr(obj, "join")
+	builtin := method.(*Builtin)
+	ctx := context.Background()
+
+	// Just the required arg is allowed (zero variadic values).
+	result, err := builtin.Call(ctx, NewString(","))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(1))
+
+	// Required arg plus extra values.
+	result, err = builtin.Call(ctx, NewString(","), NewInt(1), NewInt(2))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(3))
+
+	// Missing the required arg is an error.
+	_, err = builtin.Call(ctx)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "expected at least 1 argument")
+
+	spec, ok := FindAttr(registry.Specs(), "join")
+	assert.True(t, ok)
+	assert.True(t, spec.Variadic)
+	assert.Equal(t, spec.DisplayArgs(), []string{"sep", "parts..."})
+}
+
+// TestAttrRegistryVariadicAtLeastPlural tests the plural "at least N" message.
+func TestAttrRegistryVariadicAtLeastPlural(t *testing.T) {
+	type testObj struct{}
+	registry := NewAttrRegistry[*testObj]("test")
+
+	registry.Define("f").
+		Args("a", "b").
+		Variadic("rest").
+		Impl(func(obj *testObj, ctx context.Context, args ...Object) (Object, error) {
+			return Nil, nil
+		})
+
+	obj := &testObj{}
+	method, _ := registry.GetAttr(obj, "f")
+	builtin := method.(*Builtin)
+
+	_, err := builtin.Call(context.Background(), NewInt(1))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "expected at least 2 arguments")
+}
+
+// TestAttrRegistryVariadicOrdering tests the builder ordering panics.
+func TestAttrRegistryVariadicOrdering(t *testing.T) {
+	type testObj struct{}
+
+	// Required arg cannot follow a variadic.
+	assert.Panics(t, func() {
+		NewAttrRegistry[*testObj]("test").Define("bad").Variadic("rest").Arg("x")
+	})
+
+	// Optional arg cannot follow a variadic.
+	assert.Panics(t, func() {
+		NewAttrRegistry[*testObj]("test").Define("bad").Variadic("rest").OptionalArg("x")
+	})
+
+	// Variadic cannot follow an optional arg.
+	assert.Panics(t, func() {
+		NewAttrRegistry[*testObj]("test").Define("bad").OptionalArg("x").Variadic("rest")
+	})
+
+	// Only one variadic is allowed.
+	assert.Panics(t, func() {
+		NewAttrRegistry[*testObj]("test").Define("bad").Variadic("a").Variadic("b")
+	})
+}
+
 // TestArgHelper tests the Arg helper function.
 func TestArgHelper(t *testing.T) {
 	args := []Object{NewInt(42), NewString("hello")}

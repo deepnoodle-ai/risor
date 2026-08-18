@@ -3,6 +3,7 @@ package object
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 )
 
@@ -12,6 +13,7 @@ type AttrDef[T any] struct {
 	Spec       AttrSpec
 	IsProperty bool
 	MinArgs    int // Minimum required arguments (for optional arg support)
+	MaxArgs    int // Maximum allowed arguments (math.MaxInt for variadic methods)
 	// For methods:
 	MethodImpl func(self T, ctx context.Context, args ...Object) (Object, error)
 	// For properties:
@@ -31,7 +33,8 @@ type AttrBuilder[T any] struct {
 	name        string
 	doc         string
 	args        []string
-	optionalIdx int // Index where optional args start (0 means all required)
+	optionalIdx int  // Index where optional args start (0 means all required)
+	variadic    bool // Whether the final argument accepts any number of values
 	returns     string
 }
 
@@ -73,7 +76,7 @@ func (r *AttrRegistry[T]) GetAttr(self T, name string) (Object, bool) {
 
 	// Method: wrap in Builtin with argument validation
 	minArgs := attr.MinArgs
-	maxArgs := len(attr.Spec.Args)
+	maxArgs := attr.MaxArgs
 	fullName := r.typeName + "." + name
 	return &Builtin{
 		name: fullName,
@@ -93,8 +96,12 @@ func (b *AttrBuilder[T]) Doc(doc string) *AttrBuilder[T] {
 }
 
 // Arg adds a required argument by name (for methods).
-// Panics if called after OptionalArg (required args must come first).
+// Panics if called after OptionalArg or Variadic (required args must come first).
 func (b *AttrBuilder[T]) Arg(name string) *AttrBuilder[T] {
+	if b.variadic {
+		panic(fmt.Sprintf("%s.%s: required argument %q cannot follow a variadic argument",
+			b.registry.typeName, b.name, name))
+	}
 	if b.optionalIdx > 0 {
 		panic(fmt.Sprintf("%s.%s: required argument %q cannot follow optional arguments",
 			b.registry.typeName, b.name, name))
@@ -104,8 +111,12 @@ func (b *AttrBuilder[T]) Arg(name string) *AttrBuilder[T] {
 }
 
 // Args adds multiple required arguments (for methods).
-// Panics if called after OptionalArg (required args must come first).
+// Panics if called after OptionalArg or Variadic (required args must come first).
 func (b *AttrBuilder[T]) Args(names ...string) *AttrBuilder[T] {
+	if b.variadic {
+		panic(fmt.Sprintf("%s.%s: required arguments cannot follow a variadic argument",
+			b.registry.typeName, b.name))
+	}
 	if b.optionalIdx > 0 {
 		panic(fmt.Sprintf("%s.%s: required arguments cannot follow optional arguments",
 			b.registry.typeName, b.name))
@@ -116,11 +127,34 @@ func (b *AttrBuilder[T]) Args(names ...string) *AttrBuilder[T] {
 
 // OptionalArg adds an optional argument by name (for methods).
 // Optional args must come after all required args.
+// Panics if called after Variadic.
 func (b *AttrBuilder[T]) OptionalArg(name string) *AttrBuilder[T] {
+	if b.variadic {
+		panic(fmt.Sprintf("%s.%s: optional argument %q cannot follow a variadic argument",
+			b.registry.typeName, b.name, name))
+	}
 	if b.optionalIdx == 0 {
 		// First optional arg - mark where optional args start
 		b.optionalIdx = len(b.args) + 1 // +1 because we use 0 as "not set"
 	}
+	b.args = append(b.args, name)
+	return b
+}
+
+// Variadic adds a final argument that accepts any number of values (zero or
+// more). Required arguments (via Arg/Args) may precede it, but no further
+// arguments may be added afterward. Panics if called after OptionalArg or a
+// prior Variadic.
+func (b *AttrBuilder[T]) Variadic(name string) *AttrBuilder[T] {
+	if b.variadic {
+		panic(fmt.Sprintf("%s.%s: only one variadic argument is allowed",
+			b.registry.typeName, b.name))
+	}
+	if b.optionalIdx > 0 {
+		panic(fmt.Sprintf("%s.%s: variadic argument %q cannot follow optional arguments",
+			b.registry.typeName, b.name, name))
+	}
+	b.variadic = true
 	b.args = append(b.args, name)
 	return b
 }
@@ -140,17 +174,23 @@ func (b *AttrBuilder[T]) Impl(fn func(T, context.Context, ...Object) (Object, er
 		panic(fmt.Sprintf("%s: attribute %q already registered", r.typeName, b.name))
 	}
 	spec := AttrSpec{
-		Name:    b.name,
-		Doc:     b.doc,
-		Args:    b.args,
-		Returns: b.returns,
+		Name:     b.name,
+		Doc:      b.doc,
+		Args:     b.args,
+		Variadic: b.variadic,
+		Returns:  b.returns,
 	}
-	// Calculate minimum required args
+	// Calculate the allowed argument-count range.
 	minArgs := len(b.args)
 	if b.optionalIdx > 0 {
 		minArgs = b.optionalIdx - 1 // -1 because optionalIdx is 1-indexed
 	}
-	r.attrs[b.name] = AttrDef[T]{Spec: spec, MinArgs: minArgs, MethodImpl: fn}
+	maxArgs := len(b.args)
+	if b.variadic {
+		minArgs-- // the variadic parameter itself is not required
+		maxArgs = math.MaxInt
+	}
+	r.attrs[b.name] = AttrDef[T]{Spec: spec, MinArgs: minArgs, MaxArgs: maxArgs, MethodImpl: fn}
 	r.specs = append(r.specs, spec)
 }
 
@@ -187,6 +227,12 @@ func argsError(methodName string, expected, got int) error {
 func argsRangeError(methodName string, min, max, got int) error {
 	if min == max {
 		return argsError(methodName, min, got)
+	}
+	if max == math.MaxInt {
+		if min == 1 {
+			return fmt.Errorf("%s: expected at least 1 argument, got %d", methodName, got)
+		}
+		return fmt.Errorf("%s: expected at least %d arguments, got %d", methodName, min, got)
 	}
 	return fmt.Errorf("%s: expected %d to %d arguments, got %d", methodName, min, max, got)
 }
