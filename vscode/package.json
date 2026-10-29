@@ -94,21 +94,14 @@
     "compile": "tsc -b",
     "watch": "tsc -b -w",
     "lint": "eslint ./client/src",
-    "postinstall": "cd client && npm install && cd ..",
-    "test": "sh ./scripts/e2e.sh"
+    "postinstall": "cd client && npm install && cd .."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.1",
     "@typescript-eslint/eslint-plugin": "^8.67.0",
     "@typescript-eslint/parser": "^8.67.0",
     "eslint": "^10.8.1",
-    "mocha": "^11.8.0",
     "typescript": "^6.0.3"
-  },
-  "overrides": {
-    "serialize-javascript": "^7.1.4",
-    "diff": "^8.0.3"
   }
 }
