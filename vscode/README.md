@@ -19,7 +19,8 @@ The extension runs `risor-lsp`, the Risor language server. It ships with the
 - **GitHub release:** download the archive for your platform from
   [Risor releases](https://github.com/deepnoodle-ai/risor/releases) and put
   `risor-lsp` on your `PATH`.
-- **From source:** clone the repository and run `go install ./cmd/risor-lsp`.
+- **From source:** clone the repository and, from its root, run
+  `go install ./cmd/risor-lsp`.
 
 The extension looks for `risor-lsp` on your `PATH`. To use a binary somewhere
 else, set `risor.languageServerPath` in your settings. Reload the window after
