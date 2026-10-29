@@ -55,19 +55,30 @@ func main() {
 
 // openLogFile opens the server log in the user cache directory, for example
 // ~/Library/Caches/risor/risor-lsp.log on macOS. Editors start the server in
-// the workspace folder, so the log must not go in the working directory.
+// the workspace folder, so the log must not go in the working directory. The
+// log can hold workspace paths and LSP traffic, so only the owner can read it.
 func openLogFile() (*os.File, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return nil, err
 	}
 	dir := filepath.Join(cacheDir, "risor")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	return os.OpenFile(
+	f, err := os.OpenFile(
 		filepath.Join(dir, "risor-lsp.log"),
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
-		0o644,
+		0o600,
 	)
+	if err != nil {
+		return nil, err
+	}
+	// OpenFile keeps the mode of an existing file. Tighten a log that an
+	// earlier version created with broader permissions.
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }
