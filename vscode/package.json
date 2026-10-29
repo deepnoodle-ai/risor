@@ -84,7 +84,7 @@
           "scope": "resource",
           "type": "string",
           "default": "",
-          "description": "Custom path to the risor-lsp binary. If empty, the extension will attempt to find or install it automatically."
+          "description": "Custom path to the risor-lsp binary. If empty, the extension looks for risor-lsp on PATH."
         }
       }
     }

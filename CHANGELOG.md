@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- Release archives and the Homebrew cask now include `risor-lsp`, the Risor
+  language server, next to `risor`. The language server writes its log to the
+  user cache directory instead of the working directory.
+
+### Fixed
+
+- The VS Code extension no longer runs a `go install` command that always
+  failed. When it cannot find `risor-lsp`, it shows install steps and a link to
+  the `risor.languageServerPath` setting.
+
 ## [2.2.0] - 2026-08-17
 
 ### Added

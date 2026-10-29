@@ -23,10 +23,30 @@ builds:
         goarch: arm64
     dir: ./cmd/risor
     main: .
+  - id: "lsp"
+    binary: risor-lsp
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+    goos:
+      - linux
+      - windows
+      - darwin
+    ignore:
+      - goos: windows
+        goarch: arm64
+    dir: ./cmd/risor-lsp
+    main: .
 archives:
   - id: "standard"
     ids:
       - "standard"
+      - "lsp"
     formats:
       - tar.gz
     name_template: >-
@@ -56,6 +76,7 @@ homebrew_casks:
       - "standard"
     binaries:
       - risor
+      - risor-lsp
     skip_upload: false
     repository:
       owner: deepnoodle-ai
@@ -73,6 +94,7 @@ homebrew_casks:
         install: |
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/risor"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/risor-lsp"]
           end
 # The lines beneath this are called `modelines`. See `:help modeline`
 # Feel free to remove those if you don't want/use them.
