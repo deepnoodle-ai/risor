@@ -1,4 +1,11 @@
-import { workspace, ExtensionContext, window } from "vscode";
+import {
+  workspace,
+  ExtensionContext,
+  window,
+  env,
+  Uri,
+  commands,
+} from "vscode";
 import { exec } from "child_process";
 import { promisify } from "util";
 
@@ -10,11 +17,12 @@ import {
 
 const execAsync = promisify(exec);
 
+const installGuideUrl =
+  "https://github.com/deepnoodle-ai/risor/tree/main/vscode#language-server";
+
 let client: LanguageClient;
 
-async function findOrInstallLanguageServer(
-  context: ExtensionContext
-): Promise<string> {
+async function findLanguageServer(): Promise<string | undefined> {
   // Check if user has configured a custom path
   const config = workspace.getConfiguration("risor");
   const customPath = config.get<string>("languageServerPath");
@@ -23,7 +31,7 @@ async function findOrInstallLanguageServer(
     return customPath;
   }
 
-  // First, try to find risor-lsp in PATH (cross-platform)
+  // Try to find risor-lsp in PATH (cross-platform)
   try {
     const command =
       process.platform === "win32" ? "where risor-lsp" : "which risor-lsp";
@@ -33,50 +41,37 @@ async function findOrInstallLanguageServer(
       return "risor-lsp";
     }
   } catch (error) {
-    console.log("risor-lsp not found in PATH, attempting installation...");
+    console.log("risor-lsp not found in PATH");
   }
 
-  // Check if go is available
-  try {
-    await execAsync("go version");
-  } catch (error) {
-    window.showErrorMessage(
-      "Risor Language Server requires Go to be installed. Please install Go and try again, or install risor-lsp manually."
+  return undefined;
+}
+
+async function showInstallHelp(): Promise<void> {
+  const installGuide = "Installation Guide";
+  const setPath = "Set Path";
+  const choice = await window.showWarningMessage(
+    "Risor Language Server (risor-lsp) was not found. Install it with Homebrew (brew install --cask deepnoodle-ai/risor/risor) or from the Risor GitHub release, then reload the window. Syntax highlighting works without it.",
+    installGuide,
+    setPath
+  );
+  if (choice === installGuide) {
+    await env.openExternal(Uri.parse(installGuideUrl));
+  } else if (choice === setPath) {
+    await commands.executeCommand(
+      "workbench.action.openSettings",
+      "risor.languageServerPath"
     );
-    throw new Error("Go not found", { cause: error });
   }
-
-  // Try to install via go install
-  try {
-    window.showInformationMessage("Installing Risor Language Server...");
-    await execAsync(
-      "go install github.com/deepnoodle-ai/risor/v2/cmd/risor-lsp@v1.8.1"
-    );
-
-    // Verify installation
-    const verifyCommand =
-      process.platform === "win32" ? "where risor-lsp" : "which risor-lsp";
-    const { stdout } = await execAsync(verifyCommand);
-    if (stdout.trim()) {
-      window.showInformationMessage(
-        "Risor Language Server installed successfully!"
-      );
-      return "risor-lsp";
-    }
-  } catch (error) {
-    console.error("Failed to install risor-lsp via go install:", error);
-    window.showErrorMessage(
-      "Failed to install Risor Language Server automatically. Please run: go install github.com/deepnoodle-ai/risor/v2/cmd/risor-lsp@v1.8.1"
-    );
-    throw error;
-  }
-
-  throw new Error("Could not find or install risor-lsp");
 }
 
 export async function activate(context: ExtensionContext) {
   try {
-    const serverCommand = await findOrInstallLanguageServer(context);
+    const serverCommand = await findLanguageServer();
+    if (!serverCommand) {
+      void showInstallHelp();
+      return;
+    }
 
     // The debug options for the server
     // --inspect=6009: runs the server in Node's Inspector mode so VS Code can attach to the server for debugging

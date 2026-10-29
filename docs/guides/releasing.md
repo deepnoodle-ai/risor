@@ -51,8 +51,10 @@ scripts/tag.sh v2.x.x
 ```
 
 The helper refuses dirty worktrees, non-`main` branches, commits that differ
-from `origin/main`, and existing tags. Risor v2 publishes one repository tag;
-the CLI archives are built from `cmd/risor` by GoReleaser.
+from `origin/main`, and existing tags. Risor v2 publishes one repository tag.
+GoReleaser builds the `risor` CLI from `cmd/risor` and the `risor-lsp` language
+server from `cmd/risor-lsp`. Each archive and the Homebrew cask include both
+binaries.
 
 ### 3. Run GoReleaser
 

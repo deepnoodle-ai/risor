@@ -1,13 +1,14 @@
 // This package implements a Risor language server.
-// This is very much a work in progress. The VSCode extension is
-// usable as-is but only for syntax highlighting. The language server
-// does not currently install when the extension is installed.
+// It ships in the Risor release archives and the Homebrew cask next to
+// the risor CLI. The VSCode extension finds it on PATH.
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/jdbaldry/go-language-server-protocol/jsonrpc2"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
@@ -15,23 +16,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// version is set at build time by GoReleaser.
+var version = "dev"
+
 func main() {
 	name := "risor-language-server"
-	version := "dev"
 
-	logFile, err := os.OpenFile(
-		fmt.Sprintf("%s.log", name),
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
-		0o666,
-	)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	logOutput := io.Discard
+	if logFile, err := openLogFile(); err == nil {
+		defer logFile.Close()
+		logOutput = logFile
 	}
-	defer logFile.Close()
 
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	log.Logger = log.Output(logFile)
+	log.Logger = log.Output(logOutput)
 
 	ctx := context.Background()
 	stream := jsonrpc2.NewHeaderStream(NewDefaultStdio())
@@ -53,4 +51,34 @@ func main() {
 	if err := conn.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
+}
+
+// openLogFile opens the server log in the user cache directory, for example
+// ~/Library/Caches/risor/risor-lsp.log on macOS. Editors start the server in
+// the workspace folder, so the log must not go in the working directory. The
+// log can hold workspace paths and LSP traffic, so only the owner can read it.
+func openLogFile() (*os.File, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(cacheDir, "risor")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(
+		filepath.Join(dir, "risor-lsp.log"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0o600,
+	)
+	if err != nil {
+		return nil, err
+	}
+	// OpenFile keeps the mode of an existing file. Tighten a log that an
+	// earlier version created with broader permissions.
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }
