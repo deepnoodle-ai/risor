@@ -15,7 +15,7 @@ highlighting and connects to the Risor language server for editor features.
 The extension runs `risor-lsp`, the Risor language server. It ships with the
 `risor` CLI in each Risor release.
 
-- **Homebrew (macOS and Linux):** `brew install deepnoodle-ai/risor/risor`
+- **Homebrew (macOS and Linux):** `brew install --cask deepnoodle-ai/risor/risor`
 - **GitHub release:** download the archive for your platform from
   [Risor releases](https://github.com/deepnoodle-ai/risor/releases) and put
   `risor-lsp` on your `PATH`.

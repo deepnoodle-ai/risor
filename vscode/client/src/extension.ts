@@ -51,7 +51,7 @@ async function showInstallHelp(): Promise<void> {
   const installGuide = "Installation Guide";
   const setPath = "Set Path";
   const choice = await window.showWarningMessage(
-    "Risor Language Server (risor-lsp) was not found. Install it with Homebrew (brew install deepnoodle-ai/risor/risor) or from the Risor GitHub release, then reload the window. Syntax highlighting works without it.",
+    "Risor Language Server (risor-lsp) was not found. Install it with Homebrew (brew install --cask deepnoodle-ai/risor/risor) or from the Risor GitHub release, then reload the window. Syntax highlighting works without it.",
     installGuide,
     setPath
   );
