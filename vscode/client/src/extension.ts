@@ -43,7 +43,7 @@ async function findOrInstallLanguageServer(
     window.showErrorMessage(
       "Risor Language Server requires Go to be installed. Please install Go and try again, or install risor-lsp manually."
     );
-    throw new Error("Go not found");
+    throw new Error("Go not found", { cause: error });
   }
 
   // Try to install via go install
