@@ -74,7 +74,10 @@ func newVM(ctx context.Context, source string, opts ...runOpts) (*VirtualMachine
 	for k := range globals {
 		globalNames = append(globalNames, k)
 	}
-	main, err := compiler.Compile(ast, &compiler.Config{GlobalNames: globalNames})
+	main, err := compiler.Compile(ast, &compiler.Config{
+		GlobalNames: globalNames,
+		Source:      source,
+	})
 	if err != nil {
 		return nil, err
 	}

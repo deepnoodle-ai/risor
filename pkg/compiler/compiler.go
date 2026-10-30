@@ -105,6 +105,12 @@ type Compiler struct {
 	// every input so far. It is zero when source is empty.
 	sourceOffset int
 
+	// lineOffset is the number of lines in the main code's source before
+	// source. Recorded locations and compile errors add it to the line, so
+	// that they give lines of the main code's source, which holds every input
+	// so far in the REPL. It is zero when source is empty.
+	lineOffset int
+
 	// rootByteOffsets maps rune offsets in the root source to byte offsets,
 	// since AST positions are rune offsets. It has one entry per rune plus a
 	// final entry for the end of the source. It is nil when the source is all
@@ -134,7 +140,9 @@ type Config struct {
 	// Filename is the source filename, used for error messages.
 	Filename string
 
-	// Source is the original source code, used for better error messages.
+	// Source is the original source code. Errors show the line of source
+	// they occur on. Without it, errors give the line and column but no
+	// source line.
 	Source string
 
 	// Code is an existing code object to compile into. This is used for
@@ -226,21 +234,20 @@ func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 		c.failure = nil
 	}
 
-	// Use original source if available (better error messages with actual code),
-	// otherwise fall back to AST string representation.
-	nodeSource := c.source
-	if nodeSource == "" {
-		nodeSource = node.String()
-	}
-
-	if c.main.source == "" {
-		c.main.source = nodeSource
-	} else {
-		c.main.source = fmt.Sprintf("%s\n%s", c.main.source, nodeSource)
-	}
+	// Store the original source, so that errors show the lines they occur
+	// on. Without it, store no source: text regenerated from the AST would
+	// not match the line and column numbers (#540). In the REPL, the main
+	// code's source holds every input so far, joined by newlines.
 	c.sourceOffset = 0
+	c.lineOffset = 0
 	if c.source != "" {
-		c.sourceOffset = len(c.main.source) - len(nodeSource)
+		if c.main.source == "" {
+			c.main.source = c.source
+		} else {
+			c.lineOffset = strings.Count(c.main.source, "\n") + 1
+			c.main.source = c.main.source + "\n" + c.source
+		}
+		c.sourceOffset = len(c.main.source) - len(c.source)
 	}
 	if c.filename != "" {
 		c.main.filename = c.filename
@@ -2261,7 +2268,7 @@ func (c *Compiler) getCurrentLocation() SourceLocation {
 	}
 	pos := c.currentNode.Pos()
 	end := c.currentNode.End()
-	lineNum := pos.LineNumber()
+	lineNum := pos.LineNumber() + c.lineOffset
 
 	// EndColumn is only meaningful if the end is on the same line
 	endColumn := 0
@@ -2359,7 +2366,7 @@ func (c *Compiler) formatErrorWithCode(code errors.ErrorCode, msg string, pos to
 		Code:        code,
 		Message:     msg,
 		Filename:    filename,
-		Line:        pos.LineNumber(),
+		Line:        pos.LineNumber() + c.lineOffset,
 		Column:      pos.ColumnNumber(),
 		SourceLine:  c.getSourceLine(pos.Line),
 		Suggestions: suggestions,
@@ -2384,22 +2391,13 @@ func (c *Compiler) formatUndefinedVariableError(name string, pos token.Position)
 	)
 }
 
-// getSourceLine retrieves a specific line from the source code.
-// lineNum is 0-indexed.
+// getSourceLine retrieves a specific line from the source being compiled.
+// lineNum is 0-indexed. It returns an empty string if there is no source.
 func (c *Compiler) getSourceLine(lineNum int) string {
-	// Prefer the original source if available
-	source := c.source
-	if source == "" {
-		source = c.current.source
-	}
-	if source == "" {
-		source = c.main.source
-	}
-	if source == "" {
+	if c.source == "" {
 		return ""
 	}
-
-	lines := strings.Split(source, "\n")
+	lines := strings.Split(c.source, "\n")
 	if lineNum < 0 || lineNum >= len(lines) {
 		return ""
 	}
@@ -2408,16 +2406,10 @@ func (c *Compiler) getSourceLine(lineNum int) string {
 
 // SetSource sets the original source code for better error messages.
 // This should be called before CompileAST when the original source is available.
+// Give the source for every input or for none: after inputs with source, an
+// input without it gets locations that point at lines of the earlier inputs.
 func (c *Compiler) SetSource(source string) {
 	c.source = source
-}
-
-// getRootSource returns the best available source for line lookups.
-func (c *Compiler) getRootSource() string {
-	if c.source != "" {
-		return c.source
-	}
-	return c.main.source
 }
 
 // rootByteOffset converts a rune offset in the root source to a byte offset.
@@ -2453,21 +2445,15 @@ func (c *Compiler) rootRuneCount(source string) int {
 // extractFunctionBodySource attempts to extract the function body content from
 // the original source using AST positions. This extracts the inner content of
 // the block (without braces), or the expression of an arrow function with an
-// expression body. Falls back to node.Body.String() if extraction fails.
+// expression body. Falls back to node.Body.String() if there is no original
+// source or extraction fails.
 //
-// The result is a slice of the root source, not a copy, so nested functions
-// share its memory. When the original source was given, start and end give
-// the result's byte range within the main code's source. Otherwise, and for
-// the fallback, both are zero.
+// The result is a slice of the original source, not a copy, so nested
+// functions share its memory. start and end give the result's byte range
+// within the main code's source. For the fallback, both are zero.
 func (c *Compiler) extractFunctionBodySource(node *ast.Func) (source string, start, end int) {
-	rootSource := c.getRootSource()
+	rootSource := c.source
 	if rootSource == "" {
-		return node.Body.String(), 0, 0
-	}
-	// Without the original source, the root source is built from the AST
-	// text, which AST positions do not index. An expression body uses its
-	// AST text, as it did before it had positions (#540).
-	if c.source == "" && isExpressionBody(node.Body) {
 		return node.Body.String(), 0, 0
 	}
 	runeCount := c.rootRuneCount(rootSource)
@@ -2507,9 +2493,6 @@ func (c *Compiler) extractFunctionBodySource(node *ast.Func) (source string, sta
 		return node.Body.String(), 0, 0
 	}
 
-	if c.source == "" {
-		return rootSource[start:end], 0, 0
-	}
 	return rootSource[start:end], start + c.sourceOffset, end + c.sourceOffset
 }
 

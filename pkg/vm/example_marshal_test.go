@@ -12,10 +12,14 @@ import (
 
 func Example_marshalBytecode() {
 	ctx := context.Background()
-	program, _ := parser.Parse(ctx, `
+	source := `
 	function tail(first, ...rest) { return rest }
-	try { throw "boom" } catch e { tail(1, 2, x) }`, nil)
-	code, _ := compiler.Compile(program, &compiler.Config{GlobalNames: []string{"x"}})
+	try { throw "boom" } catch e { tail(1, 2, x) }`
+	program, _ := parser.Parse(ctx, source, nil)
+	code, _ := compiler.Compile(program, &compiler.Config{
+		GlobalNames: []string{"x"},
+		Source:      source, // errors show the line they occur on
+	})
 
 	data, _ := bytecode.Marshal(code)
 	loaded, _ := bytecode.Unmarshal(data)

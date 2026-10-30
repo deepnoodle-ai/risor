@@ -91,8 +91,9 @@
 //
 // Example:
 //
-//	// Compile source to bytecode
-//	code, err := compiler.Compile(ast)
+//	// Compile source to bytecode. Pass the source so that errors show the
+//	// line they occur on.
+//	code, err := compiler.Compile(ast, &compiler.Config{Source: source})
 //	if err != nil {
 //	    return err
 //	}

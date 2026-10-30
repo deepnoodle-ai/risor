@@ -314,23 +314,28 @@ func handleSigForProfiler() {
 // formatRisorError formats a Risor error with colors and professional styling.
 func formatRisorError(ctx *cli.Context, err error) error {
 	useColor := !ctx.Bool("no-color") && color.ShouldColorize(os.Stderr)
-	formatter := errors.NewFormatter(useColor)
+	if formatted := formattedErrors(err); formatted != nil {
+		return goerrors.New(errors.NewFormatter(useColor).FormatMultiple(formatted))
+	}
+	return err
+}
 
+// formattedErrors converts a Risor error to the errors to display, or returns
+// nil if err is not a Risor error.
+func formattedErrors(err error) []*errors.FormattedError {
 	// Check for multi-error types (parser errors with multiple errors)
 	if multiErr, ok := err.(interface {
 		ToFormattedMultiple() []*errors.FormattedError
 	}); ok {
-		formatted := multiErr.ToFormattedMultiple()
-		return goerrors.New(formatter.FormatMultiple(formatted))
+		return multiErr.ToFormattedMultiple()
 	}
 
 	// Check for single formattable errors (StructuredError, CompileError, etc.)
 	if formattable, ok := err.(errors.FormattableError); ok {
-		formatted := formattable.ToFormatted()
-		return goerrors.New(formatter.Format(formatted))
+		return []*errors.FormattedError{formattable.ToFormatted()}
 	}
 
-	return err
+	return nil
 }
 
 func newPrintBuiltin() *object.Builtin {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
@@ -69,6 +70,18 @@ func (v *replVM) vmOpts() []vm.Option {
 		opts = append(opts, vm.WithInstructionOffset(v.nextIP))
 	}
 	return opts
+}
+
+// lineOffset returns the number of lines in the inputs compiled so far.
+// Runtime and compile errors count lines from the start of the session, as
+// the compiler joins the inputs with newlines. Parse errors count lines from
+// the start of the input, so the REPL adds this to them.
+func (v *replVM) lineOffset() int {
+	source := v.compiler.Code().Source()
+	if source == "" {
+		return 0
+	}
+	return strings.Count(source, "\n") + 1
 }
 
 // Eval evaluates source code within this VM's context.

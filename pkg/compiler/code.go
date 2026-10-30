@@ -38,9 +38,8 @@ type Code struct {
 	// stores each attribute name once.
 	nameIndex map[string]uint16
 
-	// rootSource points to the full original source from the root Code.
-	// Used for accurate line lookups in function bodies. Child codes set
-	// this to their parent's rootSource (or parent's source if rootSource is nil).
+	// rootSource points to the source of the root Code, which line numbers
+	// in every code refer to. It is nil for the root itself.
 	rootSource *string
 
 	// sourceStart and sourceEnd give the byte range of source within the
@@ -151,9 +150,9 @@ func (c *Code) Parent() *Code {
 
 func (c *Code) newChild(name, source, funcID string) *Code {
 	// Propagate rootSource from parent: if parent has a rootSource, use it;
-	// otherwise use parent's source as the root.
+	// otherwise the parent is the root, so use its source.
 	rootSrc := c.rootSource
-	if rootSrc == nil && c.source != "" {
+	if rootSrc == nil {
 		rootSrc = &c.source
 	}
 	child := &Code{
@@ -303,17 +302,18 @@ func (c *Code) LocationsCount() int {
 }
 
 // GetSourceLine returns the source code line at the given 1-based line number.
-// If the line is out of range, an empty string is returned.
-// It tries rootSource first (for accurate line lookup in nested functions),
-// then falls back to the local source.
+// If the line is out of range or there is no source, an empty string is
+// returned. Line numbers refer to the root code's source, also in nested
+// functions.
 func (c *Code) GetSourceLine(lineNum int) string {
 	return sourceLine(strings.Split(c.lineSource(), "\n"), lineNum)
 }
 
 // lineSource returns the source that line numbers in c refer to: the root
-// source if c has one, and otherwise its own source.
+// code's source. A function's own source is its body, which line numbers do
+// not index.
 func (c *Code) lineSource() string {
-	if c.rootSource != nil && *c.rootSource != "" {
+	if c.rootSource != nil {
 		return *c.rootSource
 	}
 	return c.source
