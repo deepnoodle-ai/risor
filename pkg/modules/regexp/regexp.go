@@ -102,7 +102,9 @@ func Replace(ctx context.Context, args ...object.Object) (object.Object, error) 
 // string, so replacement text is never re-matched.
 //
 // The result size is checked against the byte limit in ctx before it is built,
-// using a streaming pass that does not hold all matches in memory.
+// using a streaming pass that does not hold all matches in memory. Replacing
+// fewer than all matches with a replacement that references groups holds the
+// group indices of count matches, so count is bounded by the byte limit.
 func replace(ctx context.Context, r *regexp.Regexp, str, repl string, count int) (object.Object, error) {
 	if count < 0 {
 		return object.NewString(str), nil
@@ -138,10 +140,29 @@ func replace(ctx context.Context, r *regexp.Regexp, str, repl string, count int)
 	if count == 0 || count >= matches {
 		return object.NewString(r.ReplaceAllString(str, repl)), nil
 	}
-	// Replace only the first count matches. Their indices are held in memory,
-	// so bound how many there can be.
-	if err := object.CheckListLength(ctx, count); err != nil {
-		return nil, err
+	// Replace only the first count matches.
+	indices := 2 * (r.NumSubexp() + 1)
+	if refs == 0 {
+		// The expansion does not depend on the match, so replace in one
+		// streaming pass that holds no match indices.
+		expanded := string(r.ExpandString(nil, repl, "", make([]int, indices)))
+		replaced := 0
+		return object.NewString(r.ReplaceAllStringFunc(str, func(m string) string {
+			if replaced == count {
+				return m
+			}
+			replaced++
+			return expanded
+		})), nil
+	}
+	// Expanding group references needs each match's group indices. Go's
+	// regexp package can only report them for all matches at once, so the
+	// indices of count matches are held in memory. Bound them by the byte
+	// limit: each match costs a slice header plus 8 bytes per index.
+	perMatch := int64(24 + 8*indices)
+	if maxCount := maxBytes / perMatch; int64(count) > maxCount {
+		return nil, object.ValueErrorf("regexp.replace: count too large (%d exceeds limit of %d for this pattern)",
+			count, maxCount)
 	}
 	var result []byte
 	last := 0

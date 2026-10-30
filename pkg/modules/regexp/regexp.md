@@ -88,7 +88,7 @@ replace(pattern, str, repl string) string
 replace(pattern, str, repl string, count int) string
 ```
 
-Replaces matches in the string. With 3 arguments, replaces all matches. With 4 arguments, replaces up to count matches (0 means all).
+Replaces matches in the string. With 3 arguments, replaces all matches. With 4 arguments, replaces up to count matches (0 means all). A result larger than the byte limit (see `risor.WithLimits`) raises a value error. When `repl` references groups and count is less than the number of matches, count is also bounded by the byte limit.
 
 The replacement string can use `$1`, `$2`, etc. for captured groups.
 
@@ -287,7 +287,7 @@ replace(str, repl string) string
 replace(str, repl string, count int) string
 ```
 
-Replaces matches in the string. With 2 arguments, replaces all matches. With 3 arguments, replaces up to count matches (0 means all).
+Replaces matches in the string. With 2 arguments, replaces all matches. With 3 arguments, replaces up to count matches (0 means all). A result larger than the byte limit (see `risor.WithLimits`) raises a value error. When `repl` references groups and count is less than the number of matches, count is also bounded by the byte limit.
 
 ```go filename="Example"
 >>> let r = regexp.compile("[0-9]+")
