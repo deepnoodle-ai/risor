@@ -218,26 +218,41 @@ func listTooLargeError(maxLen int64) error {
 	return newValueErrorf("list too large (exceeds limit of %d elements)", maxLen)
 }
 
-// ExpandRanges returns obj with each range, including ranges nested in lists
-// and maps, replaced by a list of its values. It returns a value error if a
-// range is longer than the list length limit in ctx. Call it before
-// Interface when a range must convert to its values: Range.Interface has no
-// context, so it cannot apply the configured limit. Lists and maps that
-// contain no range are returned unchanged.
+// ExpandRanges returns obj with each range, including ranges nested in lists,
+// maps, and iterators, replaced by a list of its values. Iterators are
+// replaced by a list of the values they yield. It returns a value error if a
+// range or iterator yields more values than the list length limit in ctx, and
+// ErrNestingDepth if obj is nested more deeply than MaxNestingDepth. Call it
+// before Interface when a range must convert to its values: Range.Interface
+// has no context, so it cannot apply the configured limit. Lists and maps
+// that contain no range or iterator are returned unchanged.
 func ExpandRanges(ctx context.Context, obj Object) (Object, error) {
 	switch obj.(type) {
-	case *Range, *List, *Map:
-		return expandRanges(ctx, obj, map[Object]Object{})
+	case *Range, *List, *Map, *Iter:
+		return expandRanges(ctx, obj, map[Object]Object{}, 1)
 	}
 	return obj, nil
 }
 
-// expandRanges does the work of ExpandRanges. seen maps each list and map
-// already visited to its result, so a shared container is expanded once and
-// a container that contains itself does not recurse forever.
-func expandRanges(ctx context.Context, obj Object, seen map[Object]Object) (Object, error) {
+// expandRanges does the work of ExpandRanges. seen maps each list, map, and
+// iterator already visited to its result, so a shared container is expanded
+// once and a container that contains itself does not recurse forever. depth
+// counts the containers enclosing obj, including obj itself.
+func expandRanges(ctx context.Context, obj Object, seen map[Object]Object, depth int) (Object, error) {
+	if isNestedContainer(obj) {
+		if result, ok := seen[obj]; ok {
+			return result, nil
+		}
+		if depth > MaxNestingDepth {
+			return nil, ErrNestingDepth
+		}
+	}
 	switch obj := obj.(type) {
 	case *Range:
+		// The range becomes a list, which counts toward the nesting depth
+		if depth > MaxNestingDepth {
+			return nil, ErrNestingDepth
+		}
 		if maxLen := GetLimits(ctx).MaxListLength; obj.length() > uint64(maxLen) {
 			return nil, newValueErrorf("range too large (exceeds limit of %d elements)", maxLen)
 		}
@@ -246,14 +261,24 @@ func expandRanges(ctx context.Context, obj Object, seen map[Object]Object) (Obje
 			return nil, err
 		}
 		return NewList(values), nil
-	case *List:
-		if result, ok := seen[obj]; ok {
-			return result, nil
+	case *Iter:
+		values, err := CollectValues(ctx, obj)
+		if err != nil {
+			return nil, err
 		}
+		list := NewList(values)
+		seen[obj] = list
+		expanded, err := expandRanges(ctx, list, seen, depth)
+		if err != nil {
+			return nil, err
+		}
+		seen[obj] = expanded
+		return expanded, nil
+	case *List:
 		seen[obj] = obj
 		var items []Object
 		for i, item := range obj.items {
-			expanded, err := expandRanges(ctx, item, seen)
+			expanded, err := expandRanges(ctx, item, seen, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -269,13 +294,10 @@ func expandRanges(ctx context.Context, obj Object, seen map[Object]Object) (Obje
 		}
 		return seen[obj], nil
 	case *Map:
-		if result, ok := seen[obj]; ok {
-			return result, nil
-		}
 		seen[obj] = obj
 		var items map[string]Object
 		for key, value := range obj.items {
-			expanded, err := expandRanges(ctx, value, seen)
+			expanded, err := expandRanges(ctx, value, seen, depth+1)
 			if err != nil {
 				return nil, err
 			}

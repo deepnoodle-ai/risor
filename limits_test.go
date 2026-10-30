@@ -121,6 +121,8 @@ func TestWithLimitsRangeConversion(t *testing.T) {
 		`error("%v", {a: range(11)})`,
 		`encode(range(11), "json")`,
 		`encode({a: [range(11)]}, "json")`,
+		`encode({a: range(11)}.values(), "json")`,
+		`sprintf("%v", {a: range(11)}.values())`,
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.NotNil(t, err, src)

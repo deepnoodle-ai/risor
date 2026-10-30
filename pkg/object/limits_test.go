@@ -234,6 +234,57 @@ func TestExpandRanges(t *testing.T) {
 	assert.Equal(t, got.(*List).items[0].Inspect(), "[0, 1, 2]")
 }
 
+func TestExpandRangesDepth(t *testing.T) {
+	ctx := context.Background()
+
+	// The depth limit matches ToInterface on the result: a range becomes a
+	// list, so MaxNestingDepth-1 lists around a range pass, and one more fails
+	nest := func(n int) Object {
+		var obj Object = NewRange(0, 2, 1)
+		for i := 0; i < n; i++ {
+			obj = NewList([]Object{obj})
+		}
+		return obj
+	}
+	expanded, err := ExpandRanges(ctx, nest(MaxNestingDepth-1))
+	assert.Nil(t, err)
+	_, err = ToInterface(expanded)
+	assert.Nil(t, err)
+	_, err = ExpandRanges(ctx, nest(MaxNestingDepth))
+	assert.ErrorIs(t, err, ErrNestingDepth)
+
+	// A deeply nested value stops at the limit instead of recursing
+	var deep Object = NewInt(1)
+	for i := 0; i < 1_000_000; i++ {
+		deep = NewList([]Object{deep})
+	}
+	_, err = ExpandRanges(ctx, deep)
+	assert.ErrorIs(t, err, ErrNestingDepth)
+}
+
+func TestExpandRangesIterator(t *testing.T) {
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+
+	// An iterator becomes a list of its values, with ranges expanded
+	m := NewMap(map[string]Object{"a": NewRange(0, 3, 1)})
+	got, err := ExpandRanges(ctx, NewMapValueIter(m))
+	assert.Nil(t, err)
+	assert.Equal(t, got.Interface(), []any{[]any{int64(0), int64(1), int64(2)}})
+
+	// A range yielded by an iterator gets the limit
+	m = NewMap(map[string]Object{"a": NewRange(0, 11, 1)})
+	_, err = ExpandRanges(ctx, NewMapValueIter(m))
+	assertValueError(t, err, "range too large")
+	_, err = ExpandRanges(ctx, NewList([]Object{NewMapValueIter(m)}))
+	assertValueError(t, err, "range too large")
+
+	// An iterator stored in the map it iterates does not recurse forever
+	self := NewMap(map[string]Object{})
+	self.items["v"] = NewMapValueIter(self)
+	_, err = ExpandRanges(ctx, self)
+	assert.Nil(t, err)
+}
+
 // Range.Enumerate stops promptly when the context is canceled.
 func TestRangeEnumerateContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
