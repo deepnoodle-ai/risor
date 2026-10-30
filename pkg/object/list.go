@@ -3,7 +3,6 @@ package object
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -155,10 +154,6 @@ func init() {
 type List struct {
 	// items holds the list of objects
 	items []Object
-
-	// Used to avoid the possibility of infinite recursion when inspecting.
-	// Similar to the usage of Py_ReprEnter in CPython.
-	inspectActive bool
 }
 
 func (ls *List) Attrs() []AttrSpec {
@@ -181,25 +176,38 @@ func (ls *List) Value() []Object {
 	return ls.items
 }
 
+// Inspect returns a string representation of the list. A nested container
+// that is already being printed (a cycle), or that is nested more deeply than
+// MaxNestingDepth, is shown as [...] or {...}.
 func (ls *List) Inspect() string {
-	// A list can contain itself. Detect if we're already inspecting the list
-	// and return a placeholder if so.
-	if ls.inspectActive {
-		return "[...]"
-	}
-	ls.inspectActive = true
-	defer func() { ls.inspectActive = false }()
+	return ls.inspect(nil)
+}
 
+func (ls *List) inspect(path nestPath[Object]) string {
 	var out bytes.Buffer
-	items := make([]string, 0)
+	items := make([]string, 0, len(ls.items))
 	for _, e := range ls.items {
-		items = append(items, e.Inspect())
+		if isNestedContainer(e) {
+			var err error
+			if path, err = path.descend(ls, e); err != nil {
+				items = append(items, inspectPlaceholder(e))
+				continue
+			}
+		}
+		items = append(items, inspectNested(e, path))
 	}
 	out.WriteString("[")
 	out.WriteString(strings.Join(items, ", "))
 	out.WriteString("]")
 	return out.String()
 }
+
+// The functional methods below (Map, Filter, Each, Reduce) and Enumerate
+// visit indices 0 through n-1, where n is the length of the list when
+// iteration starts. Each step reads the element currently at that index, and
+// iteration stops early if the callback shrinks the list. Elements appended
+// during iteration are not visited. This matches Map iteration, which visits
+// the keys present at the start, skipping any that are deleted along the way.
 
 func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
 	callable, ok := fn.(Callable)
@@ -215,8 +223,13 @@ func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
 		}
 		passIndex = count == 2
 	}
-	result := make([]Object, 0, len(ls.items))
-	for i, value := range ls.items {
+	n := len(ls.items)
+	result := make([]Object, 0, n)
+	for i := 0; i < n && i < len(ls.items); i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		value := ls.items[i]
 		var outputValue Object
 		var err error
 		if passIndex {
@@ -238,7 +251,12 @@ func (ls *List) Filter(ctx context.Context, fn Object) (Object, error) {
 		return nil, newTypeErrorf("list.filter() expected a function (%s given)", fn.Type())
 	}
 	var result []Object
-	for _, value := range ls.items {
+	n := len(ls.items)
+	for i := 0; i < n && i < len(ls.items); i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		value := ls.items[i]
 		decision, err := callable.Call(ctx, value)
 		if err != nil {
 			return nil, err
@@ -255,8 +273,12 @@ func (ls *List) Each(ctx context.Context, fn Object) (Object, error) {
 	if !ok {
 		return nil, newTypeErrorf("list.each() expected a function (%s given)", fn.Type())
 	}
-	for _, value := range ls.items {
-		if _, err := callable.Call(ctx, value); err != nil {
+	n := len(ls.items)
+	for i := 0; i < n && i < len(ls.items); i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if _, err := callable.Call(ctx, ls.items[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -269,8 +291,12 @@ func (ls *List) Reduce(ctx context.Context, initial Object, fn Object) (Object, 
 		return nil, newTypeErrorf("list.reduce() expected a function (%s given)", fn.Type())
 	}
 	accumulator := initial
-	for _, value := range ls.items {
-		result, err := callable.Call(ctx, accumulator, value)
+	n := len(ls.items)
+	for i := 0; i < n && i < len(ls.items); i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		result, err := callable.Call(ctx, accumulator, ls.items[i])
 		if err != nil {
 			return nil, err
 		}
@@ -351,7 +377,7 @@ func (ls *List) Pop(index int64) (Object, error) {
 		return nil, err
 	}
 	result := ls.items[idx]
-	ls.items = append(ls.items[:idx], ls.items[idx+1:]...)
+	ls.removeAt(idx)
 	return result, nil
 }
 
@@ -361,7 +387,17 @@ func (ls *List) Remove(obj Object) {
 	if index == -1 {
 		return
 	}
-	ls.items = append(ls.items[:index], ls.items[index+1:]...)
+	ls.removeAt(index)
+}
+
+// removeAt removes the item at a valid index, shifting later items down. The
+// vacated tail slot is cleared so the backing array doesn't keep the last item
+// reachable.
+func (ls *List) removeAt(idx int64) {
+	last := len(ls.items) - 1
+	copy(ls.items[idx:], ls.items[idx+1:])
+	ls.items[last] = nil
+	ls.items = ls.items[:last]
 }
 
 // Reverse reverses the order of the list.
@@ -371,19 +407,46 @@ func (ls *List) Reverse() {
 	}
 }
 
+// Interface converts the list to a []any, converting items recursively. It
+// returns nil if the list is nested more deeply than MaxNestingDepth or
+// contains a cycle; use ToInterface to get the error instead.
 func (ls *List) Interface() interface{} {
+	result, err := ls.toInterface(nil)
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
+func (ls *List) toInterface(path nestPath[Object]) (any, error) {
 	items := make([]interface{}, 0, len(ls.items))
 	for _, item := range ls.items {
-		items = append(items, item.Interface())
+		if isNestedContainer(item) {
+			var err error
+			if path, err = path.descend(ls, item); err != nil {
+				return nil, err
+			}
+		}
+		value, err := toInterface(item, path)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, value)
 	}
-	return items
+	return items, nil
 }
 
 func (ls *List) String() string {
 	return ls.Inspect()
 }
 
+// Compare compares two lists, first by length and then item by item. It
+// returns ErrNestingDepth if the lists are too deeply nested or cyclic.
 func (ls *List) Compare(other Object) (int, error) {
+	return ls.compare(other, nil)
+}
+
+func (ls *List) compare(other Object, path nestPath[objectPair]) (int, error) {
 	otherList, ok := other.(*List)
 	if !ok {
 		return 0, TypeErrorf("unable to compare list and %s", other.Type())
@@ -394,11 +457,23 @@ func (ls *List) Compare(other Object) (int, error) {
 		return -1, nil
 	}
 	for i := 0; i < len(ls.items); i++ {
-		comparable, ok := ls.items[i].(Comparable)
-		if !ok {
-			return 0, TypeErrorf("%s object is not comparable", ls.items[i].Type())
+		item, otherItem := ls.items[i], otherList.items[i]
+		var comp int
+		var err error
+		if itemList, ok := item.(*List); ok {
+			// Only lists are both comparable and nested, so only they need
+			// to track the traversal path.
+			if path, err = path.descend(objectPair{ls, otherList}, objectPair{item, otherItem}); err != nil {
+				return 0, NewError(err)
+			}
+			comp, err = itemList.compare(otherItem, path)
+		} else {
+			comparable, ok := item.(Comparable)
+			if !ok {
+				return 0, TypeErrorf("%s object is not comparable", item.Type())
+			}
+			comp, err = comparable.Compare(otherItem)
 		}
-		comp, err := comparable.Compare(otherList.items[i])
 		if err != nil {
 			return 0, err
 		}
@@ -409,7 +484,13 @@ func (ls *List) Compare(other Object) (int, error) {
 	return 0, nil
 }
 
+// Equals reports whether other is a list with equal items. It returns false
+// if the lists are too deeply nested or cyclic.
 func (ls *List) Equals(other Object) bool {
+	return ls.equals(other, nil)
+}
+
+func (ls *List) equals(other Object, path nestPath[objectPair]) bool {
 	otherList, ok := other.(*List)
 	if !ok {
 		return false
@@ -419,7 +500,13 @@ func (ls *List) Equals(other Object) bool {
 	}
 	for i, v := range ls.items {
 		otherV := otherList.items[i]
-		if !Equals(v, otherV) {
+		if isNestedContainer(v) {
+			var err error
+			if path, err = path.descend(objectPair{ls, otherList}, objectPair{v, otherV}); err != nil {
+				return false
+			}
+		}
+		if !equalsNested(v, otherV, path) {
 			return false
 		}
 	}
@@ -495,7 +582,7 @@ func (ls *List) DelItem(key Object) *Error {
 	if err != nil {
 		return Errorf(err.Error())
 	}
-	ls.items = append(ls.items[:idx], ls.items[idx+1:]...)
+	ls.removeAt(idx)
 	return nil
 }
 
@@ -518,9 +605,16 @@ func (ls *List) Size() int {
 	return len(ls.items)
 }
 
+// Enumerate calls fn for each index and item, following the iteration rules
+// described above List.Map. It stops early if ctx is canceled; callers should
+// check ctx.Err() afterwards.
 func (ls *List) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
-	for i, item := range ls.items {
-		if !fn(NewInt(int64(i)), item) {
+	n := len(ls.items)
+	for i := 0; i < n && i < len(ls.items); i++ {
+		if ctx.Err() != nil {
+			return
+		}
+		if !fn(NewInt(int64(i)), ls.items[i]) {
 			return
 		}
 	}
@@ -549,8 +643,33 @@ func (ls *List) runOperationList(opType op.BinaryOpType, right *List) (Object, e
 	}
 }
 
+// MarshalJSON encodes the list as a JSON array. It returns ErrNestingDepth if
+// the list is too deeply nested or contains a cycle.
 func (ls *List) MarshalJSON() ([]byte, error) {
-	return json.Marshal(ls.items)
+	return ls.marshalJSON(nil)
+}
+
+func (ls *List) marshalJSON(path nestPath[Object]) ([]byte, error) {
+	var out bytes.Buffer
+	out.WriteByte('[')
+	for i, item := range ls.items {
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		if isNestedContainer(item) {
+			var err error
+			if path, err = path.descend(ls, item); err != nil {
+				return nil, err
+			}
+		}
+		data, err := marshalJSONNested(item, path)
+		if err != nil {
+			return nil, err
+		}
+		out.Write(data)
+	}
+	out.WriteByte(']')
+	return out.Bytes(), nil
 }
 
 func NewList(items []Object) *List {

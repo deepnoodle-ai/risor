@@ -33,14 +33,33 @@ func (it *Iter) String() string {
 	return it.Inspect()
 }
 
+// Interface collects the iterator's values into a []any. It returns nil if a
+// value is nested more deeply than MaxNestingDepth or contains a cycle; use
+// ToInterface to get the error instead.
 func (it *Iter) Interface() any {
-	// Collect to slice for Go interop
+	result, err := it.toInterface(nil)
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
+func (it *Iter) toInterface(path nestPath[Object]) (any, error) {
 	var items []any
+	var err error
 	it.Enumerate(context.Background(), func(key, value Object) bool {
-		items = append(items, value.Interface())
+		var item any
+		item, err = toInterface(value, path)
+		if err != nil {
+			return false
+		}
+		items = append(items, item)
 		return true
 	})
-	return items
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (it *Iter) Equals(other Object) bool {
@@ -84,13 +103,19 @@ func NewIter(desc string, gen func(ctx context.Context, fn func(key, value Objec
 // NewMapKeyIter creates an iterator over map keys.
 func NewMapKeyIter(m *Map) *Iter {
 	return NewIter("map.keys", func(ctx context.Context, fn func(key, value Object) bool) {
-		for i, k := range m.SortedKeys() {
+		i := 0
+		for _, k := range m.SortedKeys() {
 			if ctx.Err() != nil {
 				return
+			}
+			// Skip keys deleted during iteration
+			if _, ok := m.items[k]; !ok {
+				continue
 			}
 			if !fn(NewInt(int64(i)), NewString(k)) {
 				return
 			}
+			i++
 		}
 	})
 }
@@ -98,13 +123,20 @@ func NewMapKeyIter(m *Map) *Iter {
 // NewMapValueIter creates an iterator over map values.
 func NewMapValueIter(m *Map) *Iter {
 	return NewIter("map.values", func(ctx context.Context, fn func(key, value Object) bool) {
-		for i, k := range m.SortedKeys() {
+		i := 0
+		for _, k := range m.SortedKeys() {
 			if ctx.Err() != nil {
 				return
 			}
-			if !fn(NewInt(int64(i)), m.items[k]) {
+			// Skip keys deleted during iteration
+			value, ok := m.items[k]
+			if !ok {
+				continue
+			}
+			if !fn(NewInt(int64(i)), value) {
 				return
 			}
+			i++
 		}
 	})
 }
@@ -112,14 +144,21 @@ func NewMapValueIter(m *Map) *Iter {
 // NewMapItemIter creates an iterator over map [key, value] pairs.
 func NewMapItemIter(m *Map) *Iter {
 	return NewIter("map.entries", func(ctx context.Context, fn func(key, value Object) bool) {
-		for i, k := range m.SortedKeys() {
+		i := 0
+		for _, k := range m.SortedKeys() {
 			if ctx.Err() != nil {
 				return
 			}
-			pair := NewList([]Object{NewString(k), m.items[k]})
+			// Skip keys deleted during iteration
+			value, ok := m.items[k]
+			if !ok {
+				continue
+			}
+			pair := NewList([]Object{NewString(k), value})
 			if !fn(NewInt(int64(i)), pair) {
 				return
 			}
+			i++
 		}
 	})
 }
