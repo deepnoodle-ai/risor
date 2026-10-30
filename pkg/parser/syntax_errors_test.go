@@ -37,6 +37,12 @@ func TestLexerErrorReportedOnceAtPosition(t *testing.T) {
 		// a chained method call
 		{"x = a\n  .b\n~", "unexpected character: '~'", 3, 1},
 		{"let x = foo\n12abc", "invalid decimal literal: 12abc", 2, 1},
+		// A lexer error read by a lookahead inside parentheses is kept, so
+		// the parser adds no misleading error on the newline before it
+		{"x = (a\n~)", "unexpected character: '~'", 2, 1},
+		{"f(a\n~)", "unexpected character: '~'", 2, 1},
+		{"x = 1\n/* oops", "unterminated multi-line comment", 2, 1},
+		{"x = 1 /* oops\n y", "unterminated multi-line comment", 1, 7},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -47,6 +53,17 @@ func TestLexerErrorReportedOnceAtPosition(t *testing.T) {
 			assert.Equal(t, errs[0].StartPosition().ColumnNumber(), tt.column)
 		})
 	}
+}
+
+// A lexer error kept from a lookahead does not hide a different lexer error
+// later in the input.
+func TestLexerErrorAfterLookaheadKeepsLaterErrors(t *testing.T) {
+	errs := parseErrors(t, "x = (a\n~)\ny = ~")
+	assert.Len(t, errs, 2)
+	assert.Equal(t, errs[0].StartPosition().LineNumber(), 2)
+	assert.Equal(t, errs[0].StartPosition().ColumnNumber(), 1)
+	assert.Equal(t, errs[1].StartPosition().LineNumber(), 3)
+	assert.Equal(t, errs[1].StartPosition().ColumnNumber(), 5)
 }
 
 // A bad token inside an expression is reported once, by the lexer, without

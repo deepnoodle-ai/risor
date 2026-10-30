@@ -92,6 +92,12 @@ type Parser struct {
 	// Used by inner methods to detect if an error was added during this statement.
 	stmtErrorCount int
 
+	// lexErrorEnd is the byte offset just past the start of the last lexer
+	// error read. The lexer moves forward except when a lookahead restore
+	// rewinds it, so a lexer error that starts before this offset was
+	// already read once and is not reported again.
+	lexErrorEnd int
+
 	// prefixParseFns holds a map of parsing methods for
 	// prefix-based syntax.
 	prefixParseFns map[token.Type]prefixParseFn
@@ -223,8 +229,14 @@ func (p *Parser) nextToken() error {
 		return nil // success
 	}
 	// The lexer encountered an error. We consider all lexer errors
-	// "syntax errors" and parsing will now be considered broken. Past the
-	// error limit, drop it without the cost of copying its source line.
+	// "syntax errors" and parsing will now be considered broken. A
+	// lookahead restore can make the lexer read the same bad input again;
+	// report it only the first time. Past the error limit, drop it without
+	// the cost of copying its source line.
+	if p.peekToken.StartPosition.Char < p.lexErrorEnd {
+		return err
+	}
+	p.lexErrorEnd = p.peekToken.StartPosition.Char + 1
 	if p.tooManyErrors() {
 		return err
 	}
@@ -267,8 +279,10 @@ func (p *Parser) Parse(ctx context.Context) (*ast.Program, error) {
 		stmt := p.parseStatementStrict()
 		if stmt != nil {
 			statements = append(statements, stmt)
-		} else if p.hadNewError() {
-			// Statement failed - synchronize and continue
+		} else if p.hadNewError() || p.curTokenIs(token.ILLEGAL) {
+			// Statement failed - synchronize and continue. A statement that
+			// stops at a bad token also failed, even when its lexer error
+			// was recorded earlier by a lookahead.
 			p.synchronize()
 		}
 		p.nextToken()
@@ -610,20 +624,19 @@ func (p *Parser) eatNewlines() {
 }
 
 // saveState saves the parser and lexer state for a lookahead and returns a
-// function that restores it. Restoring also drops errors that the lookahead
-// recorded, since the tokens will be read and reported again.
+// function that restores it. Restoring keeps the lexer errors that the
+// lookahead recorded. nextToken does not report them again when the lexer
+// reads the same tokens a second time.
 func (p *Parser) saveState() func() {
 	savedPrev := p.prevToken
 	savedCur := p.curToken
 	savedPeek := p.peekToken
 	savedLexer := p.l.SaveState()
-	savedErrors := len(p.errors)
 	return func() {
 		p.prevToken = savedPrev
 		p.curToken = savedCur
 		p.peekToken = savedPeek
 		p.l.RestoreState(savedLexer)
-		p.errors = p.errors[:savedErrors]
 	}
 }
 
