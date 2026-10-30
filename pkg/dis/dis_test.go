@@ -8,6 +8,7 @@ import (
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
+	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
@@ -51,4 +52,30 @@ func TestFunctionDissasembly(t *testing.T) {
 +--------+--------------+----------+----------+
 `)
 	assert.Equal(t, result, expected+"\n")
+}
+
+func TestDisassembleLoadAttrOrNil(t *testing.T) {
+	ast, err := parser.Parse(context.Background(), `let o = {}; o?.missing`, nil)
+	assert.Nil(t, err)
+	code, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+	instructions, err := Disassemble(code)
+	assert.Nil(t, err)
+	var found bool
+	for _, instr := range instructions {
+		if instr.Name == "LOAD_ATTR_OR_NIL" {
+			found = true
+			assert.Equal(t, instr.Annotation, "missing")
+		}
+	}
+	assert.True(t, found)
+}
+
+func TestDisassembleInvalidInstructions(t *testing.T) {
+	code := bytecode.NewCode(bytecode.CodeParams{
+		Instructions: []op.Code{op.Nop, op.LoadConst},
+	})
+	_, err := Disassemble(code)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "truncated LOAD_CONST instruction at offset 1")
 }

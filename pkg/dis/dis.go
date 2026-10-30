@@ -49,7 +49,7 @@ func Disassemble(code *bytecode.Code) ([]Instruction, error) {
 			if err != nil {
 				return nil, err
 			}
-		case "LOAD_ATTR", "STORE_ATTR":
+		case "LOAD_ATTR", "LOAD_ATTR_OR_NIL", "STORE_ATTR":
 			nameIndex := int(val[1])
 			name, err := getName(code, nameIndex)
 			if err != nil {
@@ -76,6 +76,9 @@ func Disassemble(code *bytecode.Code) ([]Instruction, error) {
 			Constant:   constant,
 		})
 		offset += len(val)
+	}
+	if err := iter.Err(); err != nil {
+		return nil, err
 	}
 	return instructions, nil
 }

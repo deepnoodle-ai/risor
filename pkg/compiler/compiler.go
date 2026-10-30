@@ -647,9 +647,9 @@ func (c *Compiler) compileObjectDestructure(node *ast.ObjectDestructure) error {
 
 		// Load the property - use LoadAttrOrNil if there's a default to avoid errors
 		if binding.Default != nil {
-			c.emit(op.LoadAttrOrNil, c.current.addName(binding.Key))
+			c.emit(op.LoadAttrOrNil, c.addName(binding.Key))
 		} else {
-			c.emit(op.LoadAttr, c.current.addName(binding.Key))
+			c.emit(op.LoadAttr, c.addName(binding.Key))
 		}
 
 		// Handle default value if present
@@ -817,9 +817,9 @@ func (c *Compiler) emitObjectDestructurePreamble(param *ast.ObjectDestructurePar
 
 		// Load the property - use LoadAttrOrNil if there's a default to avoid errors
 		if binding.Default != nil {
-			c.emit(op.LoadAttrOrNil, c.current.addName(binding.Key))
+			c.emit(op.LoadAttrOrNil, c.addName(binding.Key))
 		} else {
-			c.emit(op.LoadAttr, c.current.addName(binding.Key))
+			c.emit(op.LoadAttr, c.addName(binding.Key))
 		}
 
 		// Handle default value if present
@@ -1196,7 +1196,7 @@ func (c *Compiler) compilePostfix(node *ast.Postfix) error {
 
 	case *ast.GetAttr:
 		// Attribute expression: obj.x++
-		idx := c.current.addName(x.Attr.Name)
+		idx := c.addName(x.Attr.Name)
 		// 1. Load the current attribute value, keeping the object
 		if err := c.compile(x.X); err != nil {
 			return err
@@ -1373,7 +1373,7 @@ func (c *Compiler) emitObjectCall(node *ast.ObjectCall) (int, error) {
 	name := method.Fun.String()
 	// Restore currentNode so LoadAttr gets the method name position
 	c.currentNode = method.Fun
-	c.emit(op.LoadAttr, c.current.addName(name))
+	c.emit(op.LoadAttr, c.addName(name))
 	if err := c.compileCallArgs(method); err != nil {
 		return 0, err
 	}
@@ -1392,7 +1392,7 @@ func (c *Compiler) compileGetAttr(node *ast.GetAttr) error {
 	}
 	// Restore currentNode so LoadAttr gets the attribute name position
 	c.currentNode = node.Attr
-	idx := c.current.addName(node.Attr.Name)
+	idx := c.addName(node.Attr.Name)
 	if node.Optional {
 		c.emit(op.LoadAttrOrNil, idx)
 	} else {
@@ -1900,7 +1900,7 @@ func (c *Compiler) compileAssign(node *ast.Assign) error {
 }
 
 func (c *Compiler) compileSetAttr(node *ast.SetAttr) error {
-	idx := c.current.addName(node.Attr.Name)
+	idx := c.addName(node.Attr.Name)
 
 	if node.Op == "=" {
 		// Simple assignment: compile value, compile object, store attr
@@ -2151,7 +2151,7 @@ func (c *Compiler) compilePartialObjectCall(node *ast.ObjectCall) error {
 	}
 	method := node.Call
 	name := method.Fun.String()
-	c.emit(op.LoadAttr, c.current.addName(name))
+	c.emit(op.LoadAttr, c.addName(name))
 	args := method.Args
 	argc := len(args)
 	if argc > MaxArgs {
@@ -2174,6 +2174,17 @@ func (c *Compiler) constant(obj any) uint16 {
 	}
 	code.constants = append(code.constants, obj)
 	return uint16(len(code.constants) - 1)
+}
+
+// addName returns the index of an attribute name in the current code's names
+// table. Like constant, it records a failure if the table is full.
+func (c *Compiler) addName(name string) uint16 {
+	idx, err := c.current.addName(name)
+	if err != nil {
+		c.failure = err
+		return 0
+	}
+	return idx
 }
 
 func (c *Compiler) emit(opcode op.Code, operands ...uint16) int {

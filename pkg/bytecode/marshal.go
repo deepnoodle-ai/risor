@@ -16,13 +16,22 @@ func Marshal(code *Code) ([]byte, error) {
 	return json.Marshal(state)
 }
 
-// Unmarshal converts a JSON representation into a Code object.
+// Unmarshal converts a JSON representation into a Code object. It returns an
+// error if the data is malformed or if the code fails the checks of
+// [Validate]. See Validate for what these checks do not cover.
 func Unmarshal(data []byte) (*Code, error) {
 	var state codeState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, err
 	}
-	return codeFromState(&state)
+	code, err := codeFromState(&state)
+	if err != nil {
+		return nil, err
+	}
+	if err := Validate(code); err != nil {
+		return nil, err
+	}
+	return code, nil
 }
 
 // Serialization types
@@ -98,6 +107,7 @@ type codeDef struct {
 	GlobalCount       int                   `json:"global_count"`
 	GlobalNames       []string              `json:"global_names,omitempty"`
 	LocalNames        []string              `json:"local_names,omitempty"`
+	EnvKeys           []string              `json:"env_keys,omitempty"`
 	ExceptionHandlers []exceptionHandlerDef `json:"exception_handlers,omitempty"`
 }
 
@@ -191,6 +201,7 @@ func stateFromCode(code *Code) (*codeState, error) {
 			GlobalCount:       c.GlobalCount(),
 			GlobalNames:       globalNames,
 			LocalNames:        localNames,
+			EnvKeys:           c.EnvKeys(),
 			ExceptionHandlers: handlers,
 		}
 	}
@@ -199,6 +210,10 @@ func stateFromCode(code *Code) (*codeState, error) {
 }
 
 func codeFromState(state *codeState) (*Code, error) {
+	if err := checkCodeTree(state.Codes); err != nil {
+		return nil, err
+	}
+
 	// Build bottom-up: process codes in reverse order so children are built before parents.
 	// In the flattened representation, children always come after their parent,
 	// so reversing ensures we build children first.
@@ -261,11 +276,43 @@ func codeFromState(state *codeState) (*Code, error) {
 			GlobalCount:       def.GlobalCount,
 			GlobalNames:       def.GlobalNames,
 			LocalNames:        def.LocalNames,
+			EnvKeys:           def.EnvKeys,
 			ExceptionHandlers: handlers,
 		})
 	}
 
 	return codes[0], nil
+}
+
+// checkCodeTree checks that the flattened code blocks form a tree rooted at
+// the first block: each other block is the child of exactly one block that
+// comes before it. This is the order Flatten produces, and it lets
+// codeFromState build every child before its parent.
+func checkCodeTree(defs []*codeDef) error {
+	if len(defs) == 0 {
+		return fmt.Errorf("invalid bytecode: no code blocks")
+	}
+	hasParent := make([]bool, len(defs))
+	for i, def := range defs {
+		if def == nil {
+			return fmt.Errorf("invalid bytecode: code block %d is null", i)
+		}
+		for _, childIdx := range def.ChildIndices {
+			if childIdx <= i || childIdx >= len(defs) {
+				return fmt.Errorf("invalid bytecode: code block %d has invalid child index %d", i, childIdx)
+			}
+			if hasParent[childIdx] {
+				return fmt.Errorf("invalid bytecode: code block %d has more than one parent", childIdx)
+			}
+			hasParent[childIdx] = true
+		}
+	}
+	for i := 1; i < len(defs); i++ {
+		if !hasParent[i] {
+			return fmt.Errorf("invalid bytecode: code block %d has no parent", i)
+		}
+	}
+	return nil
 }
 
 func marshalConstants(code *Code, codeIndexMap map[*Code]int) ([]json.RawMessage, error) {
@@ -399,9 +446,15 @@ func unmarshalConstantImmutable(data json.RawMessage, codes []*Code) (any, error
 		if err != nil {
 			return nil, err
 		}
+		// The function's code must already be built: a block after the one
+		// that holds this constant.
 		var fnCode *Code
 		if d.Value.CodeIndex >= 0 && d.Value.CodeIndex < len(codes) {
 			fnCode = codes[d.Value.CodeIndex]
+		}
+		if fnCode == nil {
+			return nil, fmt.Errorf("invalid bytecode: function %q has invalid code index %d",
+				d.Value.Name, d.Value.CodeIndex)
 		}
 		fn := NewFunction(FunctionParams{
 			ID:         d.Value.ID,
