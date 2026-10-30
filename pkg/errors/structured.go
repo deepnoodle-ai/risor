@@ -3,7 +3,6 @@ package errors
 import (
 	"bytes"
 	"fmt"
-	"strings"
 )
 
 // ErrorKind represents the category of an error.
@@ -85,10 +84,10 @@ func (e *StructuredError) FriendlyErrorMessage() string {
 		msg.WriteString(e.Location.Source)
 		msg.WriteString("\n")
 		if e.Location.Column > 0 {
-			pad, width := caretSpan(e.Location.Source, e.Location.Column, e.Location.EndColumn)
+			pad, carets := caretLine(e.Location.Source, e.Location.Column, e.Location.EndColumn)
 			msg.WriteString(" | ")
-			msg.WriteString(strings.Repeat(" ", pad))
-			msg.WriteString(strings.Repeat("^", width))
+			msg.WriteString(pad)
+			msg.WriteString(carets)
 			msg.WriteString("\n")
 		}
 	}
