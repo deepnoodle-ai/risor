@@ -2316,7 +2316,8 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 		return err
 	}
 
-	// Emit PopExcept (normal completion - removes exception handler)
+	// Emit PopExcept (normal completion). This removes the exception handler,
+	// or if there is a finally block, marks the handler as running finally.
 	// The try block's value remains on stack
 	c.emit(op.PopExcept)
 
@@ -2365,6 +2366,14 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 
 		// Exit scope (catch block's value remains on stack)
 		code.symbols = code.symbols.parent
+
+		// With a finally block, the handler stays active during catch so a
+		// throw or return there still runs finally. Mark catch as complete
+		// before falling through, so finally runs exactly once and
+		// EndFinally pops the handler.
+		if node.FinallyBlock != nil {
+			c.emit(op.PopExcept)
+		}
 	}
 
 	// After catch, we fall through to finally (if present) or to end

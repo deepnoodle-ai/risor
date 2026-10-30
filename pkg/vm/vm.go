@@ -26,6 +26,14 @@ const (
 	// It grows dynamically up to MaxFrameDepth as needed.
 	InitialFrameCapacity = 16
 
+	// InitialExcStackCapacity is the initial size of the exception stack.
+	// It grows dynamically up to excStackLimit as needed.
+	InitialExcStackCapacity = 8
+
+	// MaxExcHandlersPerFrame bounds the exception stack relative to the
+	// call frame depth limit (on average, per frame).
+	MaxExcHandlersPerFrame = 4
+
 	// DefaultContextCheckInterval is the number of instructions between
 	// deterministic checks of ctx.Done(). Set to 0 to disable.
 	DefaultContextCheckInterval = 1000
@@ -119,6 +127,7 @@ type exceptionFrame struct {
 	handler       *bytecode.ExceptionHandler
 	code          *loadedCode   // The code object containing this handler
 	fp            int           // Frame pointer when handler was pushed
+	sp            int           // Stack pointer when handler was pushed
 	pendingError  *object.Error // Error to re-throw after finally (if any)
 	pendingReturn object.Object // Value to return after finally (if any)
 	inCatch       bool          // Are we currently executing a catch block?
@@ -150,7 +159,7 @@ func createVM(options []Option) (*VirtualMachine, error) {
 		loadedCode:           map[*bytecode.Code]*loadedCode{},
 		contextCheckInterval: DefaultContextCheckInterval,
 		frames:               make([]frame, InitialFrameCapacity),
-		excStack:             make([]exceptionFrame, 8), // Small initial exception stack
+		excStack:             make([]exceptionFrame, InitialExcStackCapacity),
 	}
 	if err := vm.applyOptions(options); err != nil {
 		return nil, err
@@ -742,55 +751,13 @@ evalLoop:
 				continue
 			}
 		case op.ReturnValue:
-			activeFrame := vm.activeFrame
-
-			// Check for finally blocks that need to run before returning.
-			// We need to find exception frames for the current function frame
-			// that have finally blocks we haven't run yet.
-			if vm.excStackSize > 0 {
-				for i := vm.excStackSize - 1; i >= 0; i-- {
-					excFrame := &vm.excStack[i]
-					// Only consider handlers for the current function frame
-					if excFrame.fp != vm.fp || excFrame.code != vm.activeCode {
-						break
-					}
-					// If there's a finally block and we're not already in it
-					if excFrame.handler.FinallyStart > 0 && !excFrame.inFinally {
-						// Save the return value and jump to finally
-						returnValue := vm.pop()
-						excFrame.pendingReturn = returnValue
-						excFrame.inFinally = true
-						vm.ip = excFrame.handler.FinallyStart
-						// Don't return - continue execution in the finally block
-						continue evalLoop
-					}
-				}
+			// Run any pending finally blocks in this function first. The
+			// return completes when the outermost finally reaches EndFinally.
+			if vm.unwindForReturn() {
+				continue evalLoop
 			}
-
-			// Call observer if present and configured to observe returns (before we lose the frame info)
-			if vm.observer != nil && vm.observerConfig.ObserveReturns {
-				funcName := ""
-				if activeFrame.fn != nil {
-					funcName = activeFrame.fn.Name()
-				}
-				event := ReturnEvent{
-					FunctionName: funcName,
-					Location:     vm.getCurrentLocation(),
-					FrameDepth:   vm.fp,
-				}
-				if !vm.observer.OnReturn(event) {
-					return fmt.Errorf("execution halted by observer")
-				}
-			}
-
-			returnAddr := activeFrame.returnAddr
-			returnSp := activeFrame.returnSp
-			returnFp := vm.fp - 1
-			vm.resumeFrame(returnFp, returnAddr, returnSp)
-			if returnAddr == StopSignal {
-				// If StopSignal is found as the return address, it means the
-				// current eval call should stop.
-				return nil
+			if stop, err := vm.returnFromFrame(); err != nil || stop {
+				return err
 			}
 		case op.PopJumpForwardIfTrue:
 			tos := vm.pop()
@@ -1129,23 +1096,34 @@ evalLoop:
 			if handler == nil {
 				// Create a temporary handler based on offsets
 				handler = &bytecode.ExceptionHandler{
-					TryStart:     baseIP,
-					CatchStart:   baseIP + int(catchOffset),
-					FinallyStart: baseIP + int(finallyOffset),
-					CatchVarIdx:  -1,
+					TryStart:    baseIP,
+					CatchStart:  baseIP + int(catchOffset),
+					CatchVarIdx: -1,
+				}
+				if finallyOffset > 0 {
+					handler.FinallyStart = baseIP + int(finallyOffset)
 				}
 			}
 
-			vm.excStack[vm.excStackSize] = exceptionFrame{
-				handler: handler,
-				code:    vm.activeCode,
-				fp:      vm.fp,
+			if err := vm.pushExceptionFrame(handler); err != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
-			vm.excStackSize++
 		case op.PopExcept:
-			// Pop exception handler (normal completion of try block)
+			// Normal completion of a try or catch block. If the handler has a
+			// finally block, keep the frame and mark it as running finally so
+			// that EndFinally can pop it and a throw or return inside finally
+			// does not re-enter this handler. Otherwise, pop the handler.
 			if vm.excStackSize > 0 {
-				vm.excStackSize--
+				excFrame := &vm.excStack[vm.excStackSize-1]
+				if excFrame.handler.FinallyStart > 0 {
+					excFrame.inCatch = false
+					excFrame.inFinally = true
+				} else {
+					vm.popExceptionFrame()
+				}
 			}
 		case op.Throw:
 			// Throw the value on TOS as an exception
@@ -1167,70 +1145,34 @@ evalLoop:
 				return err
 			}
 		case op.EndFinally:
-			// End of finally block - check for pending return or exception
-			if vm.excStackSize > 0 {
-				excFrame := &vm.excStack[vm.excStackSize-1]
+			// End of a finally block. The handler's frame is on top of the
+			// exception stack in the inFinally state; pop it, then complete
+			// any pending return or re-raise any pending exception.
+			if vm.excStackSize == 0 {
+				continue
+			}
+			excFrame := &vm.excStack[vm.excStackSize-1]
+			if !excFrame.inFinally || excFrame.fp != vm.fp || excFrame.code != vm.activeCode {
+				continue
+			}
+			pendingReturn := excFrame.pendingReturn
+			pendingErr := excFrame.pendingError
+			vm.popExceptionFrame()
 
-				// Handle pending return (return statement was executed in try/catch)
-				if excFrame.inFinally && excFrame.pendingReturn != nil {
-					// Complete the pending return
-					returnValue := excFrame.pendingReturn
-					excFrame.pendingReturn = nil
-					excFrame.inFinally = false
-					excFrame.inCatch = false
-					vm.excStackSize-- // Pop this handler
-
-					// Push return value back onto stack and perform return
-					vm.push(returnValue)
-
-					activeFrame := vm.activeFrame
-
-					// Call observer if present and configured to observe returns
-					if vm.observer != nil && vm.observerConfig.ObserveReturns {
-						funcName := ""
-						if activeFrame.fn != nil {
-							funcName = activeFrame.fn.Name()
-						}
-						event := ReturnEvent{
-							FunctionName: funcName,
-							Location:     vm.getCurrentLocation(),
-							FrameDepth:   vm.fp,
-						}
-						if !vm.observer.OnReturn(event) {
-							return fmt.Errorf("execution halted by observer")
-						}
-					}
-
-					returnAddr := activeFrame.returnAddr
-					returnSp := activeFrame.returnSp
-					returnFp := vm.fp - 1
-					vm.resumeFrame(returnFp, returnAddr, returnSp)
-					if returnAddr == StopSignal {
-						return nil
-					}
+			if pendingErr != nil {
+				if err := vm.handleException(pendingErr); err != nil {
+					return err
+				}
+				continue
+			}
+			if pendingReturn != nil {
+				// Continue the return, running any outer finally blocks
+				vm.push(pendingReturn)
+				if vm.unwindForReturn() {
 					continue evalLoop
 				}
-
-				// Handle pending error (exception was thrown, no catch, finally ran)
-				if excFrame.inFinally && excFrame.pendingError != nil {
-					// Re-raise the pending error
-					pendingErr := excFrame.pendingError
-					excFrame.pendingError = nil
-					excFrame.inFinally = false
-					vm.excStackSize-- // Pop this handler
-
-					// Try to find another handler
-					if err := vm.handleException(pendingErr); err != nil {
-						return err
-					}
-					continue evalLoop
-				}
-
-				// Normal finally completion (from try or catch falling through)
-				if excFrame.inFinally || excFrame.inCatch {
-					excFrame.inFinally = false
-					excFrame.inCatch = false
-					vm.excStackSize--
+				if stop, err := vm.returnFromFrame(); err != nil || stop {
+					return err
 				}
 			}
 		default:
@@ -1753,8 +1695,115 @@ func (vm *VirtualMachine) panicToError(r any) error {
 	return object.NewStructuredError(kind, friendlyMsg, loc, stack)
 }
 
+// excStackLimit returns the maximum number of active exception handlers.
+func (vm *VirtualMachine) excStackLimit() int {
+	frameDepth := MaxFrameDepth
+	if vm.maxFrameDepth > 0 && vm.maxFrameDepth < MaxFrameDepth {
+		frameDepth = vm.maxFrameDepth
+	}
+	return frameDepth * MaxExcHandlersPerFrame
+}
+
+// pushExceptionFrame pushes a handler for the active frame onto the exception
+// stack, growing the stack if needed. Returns an error if the limit is reached.
+func (vm *VirtualMachine) pushExceptionFrame(handler *bytecode.ExceptionHandler) error {
+	if vm.excStackSize >= len(vm.excStack) {
+		limit := vm.excStackLimit()
+		if vm.excStackSize >= limit {
+			return fmt.Errorf("%w: exception handler depth limit of %d exceeded",
+				ErrStackOverflow, limit)
+		}
+		newCap := min(max(len(vm.excStack)*2, InitialExcStackCapacity), limit)
+		newStack := make([]exceptionFrame, newCap)
+		copy(newStack, vm.excStack[:vm.excStackSize])
+		vm.excStack = newStack
+	}
+	vm.excStack[vm.excStackSize] = exceptionFrame{
+		handler: handler,
+		code:    vm.activeCode,
+		fp:      vm.fp,
+		sp:      vm.sp,
+	}
+	vm.excStackSize++
+	return nil
+}
+
+// popExceptionFrame removes the top exception frame, clearing its references.
+func (vm *VirtualMachine) popExceptionFrame() {
+	vm.excStackSize--
+	vm.excStack[vm.excStackSize] = exceptionFrame{}
+}
+
+// restoreStack truncates the operand stack to the given stack pointer.
+func (vm *VirtualMachine) restoreStack(sp int) {
+	for i := vm.sp; i > sp; i-- {
+		vm.stack[i] = nil
+	}
+	vm.sp = sp
+}
+
+// unwindForReturn prepares the active frame to return the value on TOS. It
+// pops this frame's exception handlers, innermost first. Handlers already
+// running finally are discarded, so a return inside finally overrides any
+// pending return or exception. If a handler with a finally block that has not
+// run is found, the return value is saved on it, execution jumps to its
+// finally block, and true is returned. EndFinally resumes the return.
+func (vm *VirtualMachine) unwindForReturn() bool {
+	for vm.excStackSize > 0 {
+		excFrame := &vm.excStack[vm.excStackSize-1]
+		if excFrame.fp != vm.fp || excFrame.code != vm.activeCode {
+			break
+		}
+		if excFrame.handler.FinallyStart > 0 && !excFrame.inFinally {
+			excFrame.pendingReturn = vm.pop()
+			excFrame.inCatch = false
+			excFrame.inFinally = true
+			vm.restoreStack(excFrame.sp)
+			vm.ip = excFrame.handler.FinallyStart
+			return true
+		}
+		vm.popExceptionFrame()
+	}
+	return false
+}
+
+// returnFromFrame returns from the active frame with the value on TOS.
+// It reports stop=true if the current eval call should stop.
+func (vm *VirtualMachine) returnFromFrame() (stop bool, err error) {
+	activeFrame := vm.activeFrame
+
+	// Call observer if present and configured to observe returns (before we lose the frame info)
+	if vm.observer != nil && vm.observerConfig.ObserveReturns {
+		funcName := ""
+		if activeFrame.fn != nil {
+			funcName = activeFrame.fn.Name()
+		}
+		event := ReturnEvent{
+			FunctionName: funcName,
+			Location:     vm.getCurrentLocation(),
+			FrameDepth:   vm.fp,
+		}
+		if !vm.observer.OnReturn(event) {
+			return true, fmt.Errorf("execution halted by observer")
+		}
+	}
+
+	returnAddr := activeFrame.returnAddr
+	returnSp := activeFrame.returnSp
+	returnFp := vm.fp - 1
+	vm.resumeFrame(returnFp, returnAddr, returnSp)
+	// If StopSignal is found as the return address, it means the current
+	// eval call should stop.
+	return returnAddr == StopSignal, nil
+}
+
 // handleException handles a thrown exception by finding an appropriate handler.
 // If no handler is found, the error is returned to propagate up the call stack.
+//
+// A handler's frame moves through these states: in the try block, in the
+// catch block (kept on the stack only when there is a finally block), and in
+// the finally block. An exception never re-enters the block it was thrown from
+// or an earlier one.
 func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 	// Look for an exception handler on the exception stack
 	for vm.excStackSize > 0 {
@@ -1762,10 +1811,9 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 
 		// Check if this handler is for the current frame
 		if excFrame.fp != vm.fp || excFrame.code != vm.activeCode {
-			// Handler is for a different frame
-			if excFrame.fp > vm.fp {
-				// Handler is for a deeper frame we've returned from - pop it as stale
-				vm.excStackSize--
+			if excFrame.fp >= vm.fp {
+				// Handler is for a frame we've returned from - pop it as stale
+				vm.popExceptionFrame()
 				continue
 			}
 			// Handler is for a caller frame - let error propagate up
@@ -1774,50 +1822,47 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 		}
 
 		handler := excFrame.handler
+		hasCatch := handler.CatchStart > 0 && handler.CatchStart != handler.FinallyStart
+		hasFinally := handler.FinallyStart > 0
 
-		// If we have a catch block and we're not already in it, enter catch
-		// When catch completes normally, exception is considered handled
-		if handler.CatchStart > 0 && handler.CatchStart != handler.FinallyStart && !excFrame.inCatch {
-			// If there's a finally block, keep the frame on the stack so that
-			// return statements in catch can trigger the finally block.
-			// EndFinally will pop the frame after finally completes.
-			if handler.FinallyStart > 0 {
-				excFrame.inCatch = true
-			} else {
-				// No finally block - pop the handler since catch will fully handle it
-				vm.excStackSize--
-			}
-
-			// Push error onto stack for catch block
-			vm.push(errObj)
-			vm.ip = handler.CatchStart
-			return nil
-		}
-
-		// Exception thrown while in catch block - go to finally if available
-		// (The exception from catch replaces the original exception)
-		if excFrame.inCatch && handler.FinallyStart > 0 && !excFrame.inFinally {
-			// Store the new error for re-raising after finally
+		switch {
+		case excFrame.inFinally:
+			// Exception thrown in finally replaces any pending return or
+			// exception. This handler is done; try the next one.
+			vm.popExceptionFrame()
+		case excFrame.inCatch:
+			// Exception thrown in catch (only kept in this state when there
+			// is a finally block). Run finally, then re-raise.
 			excFrame.pendingError = errObj
 			excFrame.inCatch = false
 			excFrame.inFinally = true
+			vm.restoreStack(excFrame.sp)
 			vm.ip = handler.FinallyStart
 			return nil
-		}
-
-		// No catch block (or already in catch), but we have finally - run finally with pending error
-		if handler.FinallyStart > 0 && !excFrame.inFinally {
-			// Store the pending error for re-raising after finally
+		case hasCatch:
+			// Exception thrown in try: enter catch. If there's a finally
+			// block, keep the frame so that a throw or return in catch still
+			// runs finally. Otherwise catch fully handles the exception.
+			vm.restoreStack(excFrame.sp)
+			if hasFinally {
+				excFrame.inCatch = true
+			} else {
+				vm.popExceptionFrame()
+			}
+			vm.push(errObj)
+			vm.ip = handler.CatchStart
+			return nil
+		case hasFinally:
+			// No catch block: run finally, then re-raise
 			excFrame.pendingError = errObj
 			excFrame.inFinally = true
-
-			// Go to finally
+			vm.restoreStack(excFrame.sp)
 			vm.ip = handler.FinallyStart
 			return nil
+		default:
+			// No handler available, pop and try next
+			vm.popExceptionFrame()
 		}
-
-		// No handler available, pop and try next
-		vm.excStackSize--
 	}
 
 	// No handler found, return the error to propagate up

@@ -136,6 +136,71 @@ This is a related issue to Bug 2. If Risor adds loop constructs (for, while), br
 
 ---
 
+## Bug 4: Exception Handler Stack Overflowed at 8 Handlers
+
+**Status:** ✅ FIXED (#486)
+
+**Severity:** Critical
+
+**Description:**
+The exception handler stack had a fixed size of 8. Recursion through `try` deeper than 8 levels failed with a Go `index out of range` error. The stack now grows as needed, up to 4 handlers per allowed call frame (4096 by default). Past the cap, the script gets a catchable stack overflow error.
+
+**Tests:** `vm/exception_unwinding_test.go:TestExcStackGrows`, `TestExcStackBounded`
+
+---
+
+## Bug 5: Throw Mid-Expression Left Values on the Operand Stack
+
+**Status:** ✅ FIXED (#486)
+
+**Severity:** High
+
+**Description:**
+A handler did not save the operand stack position. A throw in the middle of an expression left partial values on the stack, so `100 + (try { 1 + (2 + fail()) } catch e { 5 })` gave `7` instead of `105`. A handler now restores the stack position when it catches.
+
+**Tests:** `vm/exception_unwinding_test.go:TestExcRestoresStackPointer`
+
+---
+
+## Bug 6: Return Ran Only the Innermost Finally
+
+**Status:** ✅ FIXED (#486)
+
+**Severity:** High
+
+**Description:**
+A `return` inside nested `try`/`finally` blocks ran only the innermost `finally`. It now runs every enclosing `finally` in the frame, innermost first. A `return` inside a `finally` replaces the pending return value.
+
+**Tests:** `vm/exception_unwinding_test.go:TestReturnRunsAllFinallyBlocks`, `TestReturnInsideFinally`
+
+---
+
+## Bug 7: Exception Handlers Leaked
+
+**Status:** ✅ FIXED (#486)
+
+**Severity:** High
+
+**Description:**
+Several paths left a handler on the stack after the `try` ended: a `return` inside `finally`, a `return` from a `try` with only a `catch`, and a `catch` that fell through to `finally`. A leaked handler made a later throw run the old `finally` again. A normal `try` exit inside an outer `catch` or `finally` also popped the outer handler. Every `try` shape now leaves the stack as it found it.
+
+**Tests:** `vm/exception_unwinding_test.go:TestCatchFallthroughToFinally`, `TestNestedTryInsideHandlers`, `TestExcStackNoLeak`
+
+---
+
+## Bug 8: Throw in Finally Re-entered Catch
+
+**Status:** ✅ FIXED (#486)
+
+**Severity:** Medium
+
+**Description:**
+When both `catch` and `finally` threw, the VM re-entered the `catch` and re-threw its error. The error from `finally` now propagates, as in JavaScript, Python, and Java.
+
+**Tests:** `vm/exception_unwinding_test.go:TestThrowInFinallyAfterCatchThrow`
+
+---
+
 ## Enhancement: Try as Expression (Kotlin-style)
 
 **Status:** ✅ IMPLEMENTED
@@ -195,6 +260,7 @@ All tests now pass with the fixes applied.
 
 1. ~~**Bug 2 (finally on return)**~~ - ✅ Fixed
 2. ~~**Bug 1 (division by zero)**~~ - ✅ Fixed
+3. ~~**Bugs 4-8 (handler stack unwinding)**~~ - ✅ Fixed
 
 ---
 

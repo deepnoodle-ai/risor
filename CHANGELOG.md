@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - The VS Code extension no longer runs a `go install` command that always
   failed. When it cannot find `risor-lsp`, it shows install steps and a link to
   the `risor.languageServerPath` setting.
+- `try`/`catch`/`finally` now unwinds correctly at any depth. An exception
+  thrown from a deep call is caught by the right handler, with the operand stack
+  restored. A `return` now runs every enclosing `finally` block, and an error
+  thrown from `finally` replaces an error thrown from `catch`. Active exception
+  handlers are capped at 4 per allowed call frame (4096 by default); past the
+  cap, the script gets a catchable stack overflow error (#486).
 
 ## [2.2.0] - 2026-08-17
 
