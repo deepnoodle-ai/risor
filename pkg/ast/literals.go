@@ -40,13 +40,19 @@ func (x *Float) String() string { return x.Literal }
 
 // Nil is an expression node that holds a nil literal.
 type Nil struct {
-	NilPos token.Position // position of "nil" keyword
+	NilPos  token.Position // position of the "nil" or "null" keyword
+	Literal string         // "nil" or "null"; empty means "null"
 }
 
 func (x *Nil) exprNode() {}
 
 func (x *Nil) Pos() token.Position { return x.NilPos }
-func (x *Nil) End() token.Position { return x.NilPos.Advance(4) } // len("null")
+func (x *Nil) End() token.Position {
+	if x.Literal == "" {
+		return x.NilPos.Advance(len("null"))
+	}
+	return x.NilPos.Advance(utf8.RuneCountInString(x.Literal))
+}
 
 func (x *Nil) String() string { return "null" }
 
