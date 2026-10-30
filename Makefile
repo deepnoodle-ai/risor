@@ -6,11 +6,15 @@ TEST_EXCLUDE := examples tests/benchmarks vscode
 
 # Test the packages of every module in go.work in one run, so one coverage
 # profile covers them all. TEST_EXCLUDE drops the examples/go/* modules.
+# Each go list result is captured first, so a module that go list cannot
+# load fails the target instead of silently dropping out of the run.
 .PHONY: test
 test:
+	mods=$$(go list -m -f '{{.Dir}}/...') || exit 1; \
+	pkgs=$$(go list $$mods) || exit 1; \
 	gotestsum --junitfile /tmp/test-reports/unit-tests.xml \
 		-- -coverprofile=coverage.out -covermode=atomic \
-		$$(go list $$(go list -m -f '{{.Dir}}/...') | grep -v -E '$(subst $(eval ) ,|,$(TEST_EXCLUDE))')
+		$$(printf '%s\n' "$$pkgs" | grep -v -E '$(subst $(eval ) ,|,$(TEST_EXCLUDE))')
 
 .PHONY: pprof
 pprof:
