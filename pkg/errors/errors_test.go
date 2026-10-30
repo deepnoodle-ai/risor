@@ -301,6 +301,18 @@ func TestStructuredError_FriendlyErrorMessage_ClampsColumns(t *testing.T) {
 	}
 }
 
+// Columns count runes, so a column past a non-ASCII line is clamped to the
+// line's rune count, not its byte count.
+func TestCaretSpan_ClampsToRunes(t *testing.T) {
+	pad, width := caretSpan("éé", 100, 0)
+	assert.Equal(t, pad, 2)
+	assert.Equal(t, width, 1)
+
+	pad, width = caretSpan("x = éé", 5, 100)
+	assert.Equal(t, pad, 4)
+	assert.Equal(t, width, 3)
+}
+
 func TestCaretSpan_ColumnBeforeLine(t *testing.T) {
 	pad, width := caretSpan("let x = 1", -3, 0)
 	assert.Equal(t, pad, 0)

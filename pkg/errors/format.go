@@ -3,6 +3,7 @@ package errors
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/color"
 )
@@ -340,9 +341,10 @@ func (f *Formatter) FormatMultiple(errs []*FormattedError) string {
 // is exclusive; an endColumn that is not after column gives one caret. Both
 // are clamped to the line, so the caret line is never longer than text plus
 // one character, even for a location built by hand or read from untrusted
-// bytecode. A column before the line is treated as column 1.
+// bytecode. A column before the line is treated as column 1. Columns count
+// runes, as the lexer does, so the clamp counts runes too.
 func caretSpan(text string, column, endColumn int) (pad, width int) {
-	limit := len(text)
+	limit := utf8.RuneCountInString(text)
 	column = max(column, 1)
 	pad = min(column-1, limit)
 	width = 1
