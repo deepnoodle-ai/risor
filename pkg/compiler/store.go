@@ -184,7 +184,9 @@ func codeFromState(state *state) (*Code, error) {
 	if err != nil {
 		return nil, err
 	}
-	linkSymbols(table)
+	if err := linkSymbols(table); err != nil {
+		return nil, err
+	}
 	tables := flattenSymbolTables(table, nil)
 	// tablesByID maps each stored table ID to its table, for codes that name
 	// their table by ID, as older versions did. It is built on first use.
@@ -228,6 +230,15 @@ func codeFromState(state *state) (*Code, error) {
 				return nil, fmt.Errorf("invalid code: code block %d has symbol table index %d, want 0 to %d", i, idx, len(tables)-1)
 			}
 			codeSymbols = tables[idx]
+		}
+		// A code uses the table of its own scope: the root table for the
+		// root code, and a function's table for a function. Block tables
+		// only nest inside those.
+		if i == 0 && codeSymbols != table {
+			return nil, fmt.Errorf("invalid code: root code does not use the root symbol table")
+		}
+		if codeSymbols.isBlock {
+			return nil, fmt.Errorf("invalid code: code block %d uses a block symbol table", i)
 		}
 		// The first code block is the root. Every other block names a
 		// parent that appears before it, so the blocks form a tree.
@@ -615,18 +626,36 @@ func symbolTableFromDefinition(def *symbolTableDef) (*SymbolTable, error) {
 // linkSymbols makes each by-name entry of the table and its children the same
 // *Symbol as the indexed entry it names. Marshaling stores the two separately,
 // and code such as Code.GlobalNames compares them by pointer.
-func linkSymbols(table *SymbolTable) {
-	local := table.LocalTable()
-	for name, sym := range table.symbolsByName {
-		if int(sym.index) < len(local.symbols) {
-			if indexed := local.symbols[sym.index]; indexed != nil && indexed.name == sym.name {
-				table.symbolsByName[name] = indexed
-			}
+//
+// It returns an error if the two disagree: an indexed symbol whose index is
+// not its position, or a by-name entry that does not name an indexed symbol
+// of the same name. A block's by-name entries name symbols of the enclosing
+// function's table, which holds the block's slots.
+func linkSymbols(table *SymbolTable) error {
+	for i, sym := range table.symbols {
+		if sym != nil && int(sym.index) != i {
+			return fmt.Errorf("invalid symbol table: symbol %q at position %d has index %d",
+				sym.name, i, sym.index)
 		}
 	}
-	for _, child := range table.children {
-		linkSymbols(child)
+	local := table.LocalTable()
+	for name, sym := range table.symbolsByName {
+		var indexed *Symbol
+		if int(sym.index) < len(local.symbols) {
+			indexed = local.symbols[sym.index]
+		}
+		if indexed == nil || indexed.name != name || sym.name != name {
+			return fmt.Errorf("invalid symbol table: symbol %q does not match the symbol at index %d",
+				name, sym.index)
+		}
+		table.symbolsByName[name] = indexed
 	}
+	for _, child := range table.children {
+		if err := linkSymbols(child); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // symbolFromDefinition returns nil for a nil def, the form of an unused slot.

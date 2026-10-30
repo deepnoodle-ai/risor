@@ -51,6 +51,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -190,6 +191,10 @@ func New(cfg *Config) (*Compiler, error) {
 			name:    "__main__",
 			symbols: NewSymbolTable(),
 		}
+	} else {
+		// Continue numbering functions after those already in the code, so
+		// that new functions do not reuse their IDs.
+		c.funcIndex = maxFunctionIndex(c.main)
 	}
 	// Insert any supplied names for globals into the symbol table
 	sort.Strings(c.globalNames)
@@ -207,6 +212,23 @@ func New(cfg *Config) (*Compiler, error) {
 	// Start compiling into the main code object
 	c.current = c.main
 	return c, nil
+}
+
+// maxFunctionIndex returns the largest function index among the function IDs
+// in code and its descendants, or zero if there are none. The compiler
+// formats each function ID as a decimal index, so IDs in another form cannot
+// collide with the IDs it generates.
+func maxFunctionIndex(code *Code) int {
+	maxIndex := 0
+	if index, err := strconv.Atoi(code.functionID); err == nil && index > maxIndex {
+		maxIndex = index
+	}
+	for _, child := range code.children {
+		if index := maxFunctionIndex(child); index > maxIndex {
+			maxIndex = index
+		}
+	}
+	return maxIndex
 }
 
 // Code returns the compiled code for the entrypoint.
