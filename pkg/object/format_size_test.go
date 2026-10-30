@@ -2,6 +2,7 @@ package object
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -60,6 +61,26 @@ func TestCheckFormatSize(t *testing.T) {
 	// The walk stops even when the limit is used up
 	assert.Equal(t, formatSize(selfCell, nil, 0), uint64(2))
 	assert.Equal(t, formatSize(holder, nil, 0), uint64(4))
+
+	// An error counts its message, as Inspect prints it
+	e := NewError(errors.New(strings.Repeat("a", 600)))
+	assert.Equal(t, formatSize(e, nil, 1024), uint64(600))
+	assert.NotNil(t, CheckFormatSize(ctx, "string", NewList([]Object{e, e})))
+	assert.Nil(t, CheckFormatSize(ctx, "string", NewList([]Object{e})))
+}
+
+// A list that repeats one error prints its message each time, so the bounds
+// of Inspect, InspectWithLimits, and InspectMessage count the messages.
+func TestInspectSharedError(t *testing.T) {
+	// 2^30 copies of a 1 KiB message
+	shared := NewList([]Object{NewError(errors.New(strings.Repeat("a", 1024)))})
+	for range 30 {
+		shared = NewList([]Object{shared, shared})
+	}
+	assert.Equal(t, shared.Inspect(), "[...]")
+	assert.Equal(t, InspectMessage(shared), "[...]")
+	assert.Equal(t, InspectWithLimits(context.Background(), shared), "[...]")
+	assert.NotNil(t, CheckFormatSize(context.Background(), "string", shared))
 }
 
 // Inspect and String have no context, so they bound the text of a list, map,

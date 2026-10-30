@@ -491,3 +491,26 @@ func TestThrowAndAssertSharedReferencesBounded(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, `[1, {"a": 2}]`)
 }
+
+// An error prints its whole message, so a list that repeats one error is
+// counted by its messages (#583).
+func TestSharedErrorBounded(t *testing.T) {
+	build := "let e = error(\"a\".repeat(1 << 20))\n" +
+		"let a = list(range(10)).reduce([e], (acc, i) => [acc, acc])\n"
+
+	// 1024 copies of a 1 MiB message is over the 64 MiB limit
+	_, err := Eval(context.Background(), build+"string(a)", WithEnv(Builtins()))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "string result too large"), err.Error())
+
+	result, err := Eval(context.Background(),
+		build+"try { throw a } catch e { e.message() }", WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, "[...]")
+
+	// string() of one error is its message, with no size check
+	result, err = Eval(context.Background(), build+"len(string(e))",
+		WithEnv(Builtins()), WithLimits(Limits{MaxBytesSize: 2 << 20}))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(1<<20))
+}

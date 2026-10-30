@@ -656,8 +656,8 @@ func TestNewPrintBuiltin_SizeLimit(t *testing.T) {
 	assert.Equal(t, buf.String(), "[1]\n")
 }
 
-// print formats a list with the byte limit in ctx, so a limit raised above
-// the default bound of Inspect applies (#583).
+// print formats a list or cell with the byte limit in ctx, so a limit raised
+// above the default bound of Inspect applies (#583).
 func TestNewPrintBuiltin_RaisedLimit(t *testing.T) {
 	fn := newPrintBuiltin()
 
@@ -674,12 +674,17 @@ func TestNewPrintBuiltin_RaisedLimit(t *testing.T) {
 
 	ctx := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: 2 * object.DefaultMaxBytesSize})
 	s := object.NewString(strings.Repeat("a", object.DefaultMaxBytesSize))
-	_, err := fn.Call(ctx, object.NewList([]object.Object{s}))
+	list := object.NewList([]object.Object{s})
+	var value object.Object = list
+	_, errList := fn.Call(ctx, list)
+	_, errCell := fn.Call(ctx, object.NewCell(&value))
 
 	w.Close()
 	os.Stdout = old
 
-	assert.Nil(t, err)
-	// [""] and a newline
-	assert.Equal(t, <-done, object.DefaultMaxBytesSize+5)
+	assert.Nil(t, errList)
+	assert.Nil(t, errCell)
+	// The list adds 2 brackets, 2 quotes, and a newline to the string. The
+	// cell adds 6 more bytes for "cell(" and ")".
+	assert.Equal(t, <-done, 2*(object.DefaultMaxBytesSize+5)+6)
 }

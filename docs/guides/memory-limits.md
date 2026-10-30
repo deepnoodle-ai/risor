@@ -561,7 +561,9 @@ not strings print as a placeholder once the count passes 4,194,304, as the
 arguments of `object.Errorf` do. A `print` builtin that you add to the
 environment should call `object.CheckFormatSize(ctx, ...)` first and format
 with `object.InspectWithLimits`, as the CLI does, so that `WithLimits`
-applies. `sorted` and `chunk`
+applies. A list or map that is an argument of a partial function still prints
+with the default bound, so it can print as a placeholder under a raised
+`MaxBytesSize`. `sorted` and `chunk`
 are not capped, so you should not put them over lists into the environment.
 
 **Methods that charge after the fact.** Only `repeat`, `string()`, string

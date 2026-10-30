@@ -87,7 +87,8 @@ func CheckBytesSize(ctx context.Context, name string, size int) error {
 // the error message.
 //
 // The count is a lower bound of the size of the text: a string or bytes
-// value counts its length, and every other value counts one byte. A
+// value counts its length, an error counts the length of its message, and
+// every other value counts one byte. A
 // container referenced more than once counts each time it is referenced, as
 // the text repeats it. The walk stops as soon as the count passes the limit,
 // so its cost is bounded by the limit too.
@@ -114,6 +115,9 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 		return uint64(len(obj.value))
 	case *Bytes:
 		return uint64(len(obj.value))
+	case *Error:
+		// Inspect and String print the message
+		return uint64(len(obj.Message().Value()))
 	case *List:
 		total := uint64(2)
 		for _, item := range obj.items {
