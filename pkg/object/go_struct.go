@@ -144,9 +144,11 @@ func (g *GoStruct) SetAttr(name string, value Object) error {
 }
 
 // SetAttrContext sets a field, converting value with the limits in ctx.
-// The VM calls it only when the object's concrete type is *GoStruct. A host
-// type that embeds or wraps a GoStruct keeps its own SetAttr, so field
-// assignments through it use the default limits.
+// The VM calls it only when the object's concrete type is exactly *GoStruct.
+// For any other type, including one that embeds *GoStruct, the VM calls
+// SetAttr: the type's own SetAttr if it defines one, or the promoted
+// GoStruct.SetAttr if not. Both use the default limits, not the limits in
+// ctx, which is the behavior before SetAttrContext existed.
 func (g *GoStruct) SetAttrContext(ctx context.Context, name string, value Object) error {
 	meta := getStructMeta(g.structType)
 
