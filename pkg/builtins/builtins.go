@@ -163,6 +163,10 @@ func Any(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case object.Enumerable:
 		found := false
 		arg.Enumerate(ctx, func(key, value object.Object) bool {
+			// Some types, such as strings, enumerate without checking ctx
+			if ctx.Err() != nil {
+				return false
+			}
 			if value.IsTruthy() {
 				found = true
 				return false
@@ -195,6 +199,10 @@ func All(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case object.Enumerable:
 		allTruthy := true
 		arg.Enumerate(ctx, func(key, value object.Object) bool {
+			// Some types, such as strings, enumerate without checking ctx
+			if ctx.Err() != nil {
+				return false
+			}
 			if !value.IsTruthy() {
 				allTruthy = false
 				return false

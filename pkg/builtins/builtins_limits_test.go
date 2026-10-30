@@ -81,6 +81,38 @@ func TestBuiltinsContextCancellation(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
+// All() and any() stop promptly on cancellation, also for values whose
+// enumeration does not check the context, such as strings.
+func TestAllAnyCancelIgnoringEnumerable(t *testing.T) {
+	visits := 0
+	ignoresCtx := object.NewIter("ignores ctx", func(ctx context.Context, fn func(key, value object.Object) bool) {
+		for i := 0; i < 1_000_000; i++ {
+			visits++
+			if !fn(object.NewInt(int64(i)), object.True) {
+				return
+			}
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := All(ctx, ignoresCtx)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, visits, 1)
+
+	visits = 0
+	falsy := object.NewIter("ignores ctx", func(ctx context.Context, fn func(key, value object.Object) bool) {
+		for i := 0; i < 1_000_000; i++ {
+			visits++
+			if !fn(object.NewInt(int64(i)), object.False) {
+				return
+			}
+		}
+	})
+	_, err = Any(ctx, falsy)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, visits, 1)
+}
+
 // Sorted() stops calling the comparator after the first error and
 // does not call it at all once the context is canceled.
 func TestSortedShortCircuit(t *testing.T) {
