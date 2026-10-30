@@ -34,6 +34,9 @@ each time, so `[l, l]` costs `2 + 2 * len(l)` elements. All arguments of one
 call share the cap, so `f(...[l, l])` costs `2 * len(l)`. Exceeding the cap
 raises a value error whose message contains "value too large to convert". A
 script can catch it with `try`/`catch` and check `e.kind() == "value error"`.
+The script result is converted after the script ends, so the script cannot
+catch that error. It comes back to the Go caller as a `*errors.StructuredError`
+of kind `value error`, with no source location.
 
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.

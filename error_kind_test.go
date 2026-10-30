@@ -130,6 +130,40 @@ func TestErrorShapeCause(t *testing.T) {
 	assert.True(t, errors.As(err, &indexErr))
 }
 
+// An error from converting the script result to a Go value has the same
+// shape as a runtime error, with no location (#528).
+func TestErrorShapeResultConversion(t *testing.T) {
+	ctx := context.Background()
+	limits := WithLimits(Limits{MaxListLength: 10})
+	_, err := Eval(ctx, "range(11)", WithEnv(Builtins()), limits)
+	var se *object.StructuredError
+	assert.True(t, errors.As(err, &se))
+	assert.Equal(t, se.Kind, object.ErrValue)
+	assert.Equal(t, se.Message, "value too large to convert (exceeds limit of 10 elements)")
+	assert.True(t, se.Location.IsZero())
+	var valueErr *object.ValueError
+	assert.True(t, errors.As(err, &valueErr))
+	assert.Equal(t, err.Error(), "value error: value too large to convert (exceeds limit of 10 elements)")
+
+	// Run converts the result the same way
+	code, err := Compile(ctx, "range(11)", WithEnv(Builtins()))
+	assert.Nil(t, err)
+	_, err = Run(ctx, code, WithEnv(Builtins()), limits)
+	assert.True(t, errors.As(err, &se))
+	assert.True(t, errors.As(err, &valueErr))
+
+	// A result that contains itself
+	_, err = Eval(ctx, "let a = []; a.append(a); a")
+	assert.True(t, errors.As(err, &se))
+	assert.Equal(t, se.Kind, object.ErrValue)
+	assert.True(t, errors.As(err, &valueErr))
+	assert.True(t, errors.Is(err, object.ErrNestingDepth))
+
+	// A context error comes back unchanged, as it does from the VM
+	assert.Equal(t, conversionError(context.Canceled), context.Canceled)
+	assert.Equal(t, conversionError(context.DeadlineExceeded), context.DeadlineExceeded)
+}
+
 type kindBox struct {
 	Items []int64
 }

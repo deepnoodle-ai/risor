@@ -537,7 +537,8 @@ if err != nil {
     case *errors.CompileError:
         // Compilation failed (syntax, etc.)
     case *errors.StructuredError:
-        // Runtime error with location info
+        // Runtime error. Location is zero for an error that converts the
+        // result to a Go value (see exceptions.md, "Errors in Go").
         fmt.Println(e.Message)
         fmt.Println(e.Kind)      // "type error", "runtime error", etc.
         fmt.Println(e.Location)  // File, line, column

@@ -418,9 +418,15 @@ overflows (`risor.ErrStackOverflow`) are not script errors. Check them with
 on where the script was when it stopped, these errors come back either as the
 plain error or as a `*errors.StructuredError` that wraps it.
 
-`risor.Eval` converts the script's result to a Go value after the script ends.
-An error from that conversion, such as a result too large to convert, has no
-source location and is not a `*errors.StructuredError`.
+`risor.Eval` and `risor.Run` convert the script's result to a Go value after
+the script ends. An error from that conversion, such as a result too large to
+convert or one that contains itself, is also a `*errors.StructuredError` with
+the typed error as its cause. It has no source location, because no single
+expression owns the result, so its `Error()` string has no location suffix:
+
+```
+value error: value too large to convert (exceeds limit of 10 elements)
+```
 
 ## Best Practices
 
