@@ -118,13 +118,28 @@ try {
 
 | Attribute    | Type       | Description                    |
 |--------------|------------|--------------------------------|
-| `message()`  | string     | Error message                  |
+| `message()`  | string     | Error message, without the kind or location |
 | `kind()`     | string     | Error category                 |
 | `line()`     | int        | Line number (1-based)          |
 | `column()`   | int        | Column number (1-based)        |
 | `filename()` | string/null | Source filename                |
 | `source()`   | string/null | Source line text               |
 | `stack()`    | list       | Stack frames as maps           |
+
+`message()` returns only the message text. It does not start with the kind and
+does not end with the location. Use `kind()`, `line()`, and `column()` for
+those. Converting an error to a string, as in `string(e)` or `"failed: " + e`,
+also gives the message.
+
+```ts
+try {
+    [1, 2, 3][10]
+} catch (e) {
+    print(e.kind())     // "value error"
+    print(e.message())  // "index out of range: 10"
+    print(e.line())     // 2
+}
+```
 
 ### Error Kinds
 
@@ -133,7 +148,12 @@ try {
 | `"type error"` | Type mismatch (e.g., `1 + "foo"`) |
 | `"value error"` | Invalid value (e.g., division by zero) |
 | `"name error"` | Undefined variable |
-| `"runtime error"` | General runtime error |
+| `"runtime error"` | General runtime error, including a thrown value |
+
+An index error has the kind `"value error"`. A host function or a Go struct
+field can wrap a type or value error with more context, for example
+`argument 1: value too large to convert`. The error keeps the kind of the
+wrapped error.
 
 ### Catch Without Variable
 
@@ -314,8 +334,8 @@ Many operations can throw runtime errors:
 // Attribute errors
 null.foo            // type error: attribute "foo" not found on null object
 
-// Index errors
-[1, 2, 3][10]       // index error: index out of range: 10
+// Index errors (kind "value error")
+[1, 2, 3][10]       // value error: index out of range: 10
 ```
 
 All runtime errors are catchable:
@@ -326,7 +346,7 @@ let result = try {
 } catch (e) {
     "division failed: " + e.message()
 }
-// result == "division failed: value error: division by zero"
+// result == "division failed: division by zero"
 ```
 
 ## Stack Traces
@@ -356,6 +376,43 @@ Each stack frame contains:
 - `line` - Line number
 - `column` - Column number
 - `filename` - Source filename (if known)
+
+## Errors in Go
+
+Every error that a script raises while it runs comes back from `risor.Eval` as
+an `*errors.StructuredError`, with the source location of the operation that
+raised it. Its `Error()` string
+names the kind once and ends with the location:
+
+```
+value error: index out of range: 10 (1:11)
+```
+
+When a type, value, or index error caused the runtime error, it is the
+`Cause` of the structured error. Use `errors.As` to find either one:
+
+```go
+_, err := risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
+
+var se *errors.StructuredError
+if errors.As(err, &se) {
+    fmt.Println(se.Kind, se.Message, se.Location.Line, se.Location.Column)
+}
+
+var valueErr *errors.ValueError
+if errors.As(err, &valueErr) {
+    // A value error, also when a host function wrapped it
+}
+```
+
+Do not type-assert the returned error to `*errors.TypeError`,
+`*errors.ValueError`, or `*errors.IndexError`. The typed error is the cause,
+not the returned error. An error that a host function returns stays in the
+chain too, so `errors.Is` finds it.
+
+`risor.Eval` converts the script's result to a Go value after the script ends.
+An error from that conversion, such as a result too large to convert, has no
+source location and is not a `*errors.StructuredError`.
 
 ## Best Practices
 

@@ -235,8 +235,9 @@ result
 	assert.Nil(t, err)
 
 	resultStr := obj.Inspect()
-	// The caught error should contain location information
-	assert.True(t, strings.Contains(resultStr, "type error"), "Should contain error message")
+	// The string of a caught error is its message, without the kind
+	assert.True(t, strings.Contains(resultStr, "unsupported operation"), "Should contain error message")
+	assert.False(t, strings.Contains(resultStr, "type error"), "Should not contain the kind")
 }
 
 // TestAttributeErrorLocation verifies attribute errors have location

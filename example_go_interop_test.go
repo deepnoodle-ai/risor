@@ -36,5 +36,5 @@ func Example_goInterop() {
 	// Go nil <nil>
 	// 1 <nil>
 	// 1.5s <nil>
-	// <nil> func(interface {}) string: argument 1: type error: cannot convert function to a Go value
+	// <nil> type error: func(interface {}) string: argument 1: cannot convert function to a Go value (1:1)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -131,12 +132,14 @@ func (e *Error) Type() Type {
 	return ERROR
 }
 
+// Inspect and String show the message only, like message(). Error returns
+// the full Go error string, with the kind and location.
 func (e *Error) Inspect() string {
-	return fmt.Sprintf("error(%q)", e.err.Error())
+	return fmt.Sprintf("error(%q)", e.Message().Value())
 }
 
 func (e *Error) String() string {
-	return e.err.Error()
+	return e.Message().Value()
 }
 
 func (e *Error) Value() error {
@@ -177,7 +180,13 @@ func (e *Error) Equals(other Object) bool {
 	return e.Message().Value() == otherError.Message().Value()
 }
 
+// Message returns the error message. For an error of a known kind, the
+// message leaves out the kind and the source location, which kind() and
+// line() and column() return.
 func (e *Error) Message() *String {
+	if e.structured != nil {
+		return NewString(e.structured.Message)
+	}
 	return NewString(e.err.Error())
 }
 
@@ -209,27 +218,52 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 	return nil, TypeErrorf("unable to marshal error")
 }
 
+// NewError creates an Error from a Go error. It finds the error kind with
+// errors.As, so a TypeError, ValueError, IndexError, or StructuredError keeps
+// its kind when another error wraps it.
 func NewError(err error) *Error {
-	switch err := err.(type) {
-	case *Error: // unwrap to get the inner error, to avoid unhelpful nesting
-		return &Error{err: err.Unwrap(), structured: err.structured}
-	case *StructuredError:
-		return &Error{err: err, structured: err}
-	case *TypeError:
-		return newKindError(err, ErrType, err.Err)
-	case *ValueError:
-		return newKindError(err, ErrValue, err.Err)
-	case *IndexError:
-		return newKindError(err, ErrValue, err.Err) // Index errors are a kind of value error
-	default:
-		return &Error{err: err}
+	if e, ok := err.(*Error); ok { // unwrap to get the inner error, to avoid unhelpful nesting
+		return &Error{err: e.Unwrap(), structured: e.structured}
 	}
+	var se *StructuredError
+	if errors.As(err, &se) {
+		if se == err {
+			return &Error{err: err, structured: se}
+		}
+		structured := NewStructuredError(se.Kind, kindMessage(err, se, se.Message), se.Location, se.Stack)
+		structured.Cause = err
+		return &Error{err: err, structured: structured}
+	}
+	var typeErr *TypeError
+	if errors.As(err, &typeErr) {
+		return newKindError(err, ErrType, kindMessage(err, typeErr, typeErr.Err.Error()))
+	}
+	var valueErr *ValueError
+	if errors.As(err, &valueErr) {
+		return newKindError(err, ErrValue, kindMessage(err, valueErr, valueErr.Err.Error()))
+	}
+	var indexErr *IndexError
+	if errors.As(err, &indexErr) {
+		// Index errors are a kind of value error
+		return newKindError(err, ErrValue, kindMessage(err, indexErr, indexErr.Err.Error()))
+	}
+	return &Error{err: err}
+}
+
+// kindMessage returns the message of err without the kind prefix and location
+// of inner, which err is or wraps. When err wraps inner, the context that err
+// adds stays: "argument 1: value error: x" becomes "argument 1: x".
+func kindMessage(err, inner error, msg string) string {
+	if err == inner {
+		return msg
+	}
+	return strings.Replace(err.Error(), inner.Error(), msg, 1)
 }
 
 // newKindError creates an Error for an error of a known kind. The structured
 // message leaves out the kind prefix, because StructuredError adds the kind.
-func newKindError(err error, kind ErrorKind, msg error) *Error {
-	structured := NewStructuredError(kind, msg.Error(), SourceLocation{}, nil)
+func newKindError(err error, kind ErrorKind, msg string) *Error {
+	structured := NewStructuredError(kind, msg, SourceLocation{}, nil)
 	structured.Cause = err
 	return &Error{err: err, structured: structured}
 }

@@ -742,9 +742,7 @@ evalLoop:
 			a := vm.pop()
 			result, err := object.Compare(opType, a, b)
 			if err != nil {
-				// Wrap the error with location info if it's a simple type error
-				wrappedErr := vm.wrapError(err)
-				if herr := vm.tryHandleError(wrappedErr); herr != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
 				continue
@@ -756,9 +754,7 @@ evalLoop:
 			a := vm.pop()
 			result, err := object.BinaryOp(ctx, opType, a, b)
 			if err != nil {
-				// Wrap the error with location info if it's a simple type error
-				wrappedErr := vm.wrapError(err)
-				if herr := vm.tryHandleError(wrappedErr); herr != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
 				continue
@@ -994,7 +990,7 @@ evalLoop:
 			}
 			result, err := container.GetItem(idx)
 			if err != nil {
-				if herr := vm.handleException(err); herr != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
 				continue
@@ -1012,7 +1008,7 @@ evalLoop:
 				continue
 			}
 			if err := container.SetItem(idx, rhs); err != nil {
-				if herr := vm.handleException(err); herr != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
 				continue
@@ -1088,7 +1084,7 @@ evalLoop:
 			slice := object.Slice{Start: start, Stop: stop}
 			result, err := container.GetSlice(slice)
 			if err != nil {
-				if herr := vm.handleException(err); herr != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
 				continue
@@ -1207,16 +1203,18 @@ evalLoop:
 			// Throw the value on TOS as an exception
 			tosObj := vm.pop()
 
-			// Convert to error if needed
-			var errObj *object.Error
+			// Convert to an error with the location of the throw. A
+			// re-thrown error keeps the location where it was first raised.
+			var thrown error
 			switch v := tosObj.(type) {
 			case *object.Error:
-				errObj = v
+				thrown = v
 			case *object.String:
-				errObj = object.NewError(fmt.Errorf("%s", v.Value()))
+				thrown = errors.New(v.Value())
 			default:
-				errObj = object.NewError(fmt.Errorf("%s", tosObj.Inspect()))
+				thrown = errors.New(tosObj.Inspect())
 			}
+			errObj := object.NewError(vm.wrapError(thrown))
 
 			// Handle the exception
 			if err := vm.handleException(errObj); err != nil {
@@ -1752,9 +1750,12 @@ func (vm *VirtualMachine) runtimeError(kind object.ErrorKind, format string, arg
 	return object.NewStructuredErrorf(kind, vm.getCurrentLocation(), vm.captureStack(), format, args...)
 }
 
-// typeError creates a type error with location and stack trace.
+// typeError creates a type error with location and stack trace. Its cause is
+// a TypeError, so errors.As finds the kind.
 func (vm *VirtualMachine) typeError(format string, args ...any) *object.StructuredError {
-	return vm.runtimeError(object.ErrType, format, args...)
+	se := vm.runtimeError(object.ErrType, format, args...)
+	se.Cause = object.NewTypeError(errors.New(se.Message))
+	return se
 }
 
 // evalError creates an evaluation error with location and stack trace.
@@ -1762,18 +1763,29 @@ func (vm *VirtualMachine) evalError(format string, args ...any) *object.Structur
 	return vm.runtimeError(object.ErrRuntime, format, args...)
 }
 
-// wrapError wraps an existing error with location and stack trace.
-// It determines the error kind from the error type. The original error is
-// kept as the cause, so errors.As still finds it.
+// wrapError gives an error a source location and stack trace. Every runtime
+// error goes through it, so Go callers and scripts see one error shape.
+//
+// An error that already has a location, such as one raised in a called
+// function, is returned as is. Otherwise the result is a StructuredError at
+// the current location. Its kind and message come from object.NewError, and
+// its cause is the original error, so errors.As still finds it.
 func (vm *VirtualMachine) wrapError(err error) *object.StructuredError {
-	// NewError finds the kind and the message without its kind prefix, also
-	// for an *object.Error that holds a TypeError or ValueError, and for a
-	// *object.StructuredError, which gets the current location here.
+	if e, ok := err.(*object.Error); ok {
+		err = e.Value()
+	}
+	if se, ok := err.(*object.StructuredError); ok && !se.Location.IsZero() {
+		return se
+	}
 	kind, msg := object.ErrRuntime, err.Error()
+	loc, stack := vm.getCurrentLocation(), vm.captureStack()
 	if s := object.NewError(err).Structured(); s != nil {
 		kind, msg = s.Kind, s.Message
+		if !s.Location.IsZero() {
+			loc, stack = s.Location, s.Stack
+		}
 	}
-	se := object.NewStructuredError(kind, msg, vm.getCurrentLocation(), vm.captureStack())
+	se := object.NewStructuredError(kind, msg, loc, stack)
 	se.Cause = err
 	return se
 }
@@ -2012,7 +2024,5 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 // If a handler is found and jumped to, returns nil (exception was handled).
 // If no handler is found, returns the error to propagate up.
 func (vm *VirtualMachine) tryHandleError(err error) error {
-	// Convert error to object.Error
-	errObj := object.NewError(err)
-	return vm.handleException(errObj)
+	return vm.handleException(object.NewError(vm.wrapError(err)))
 }
