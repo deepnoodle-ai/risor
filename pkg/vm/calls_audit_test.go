@@ -264,3 +264,27 @@ func TestAuditCallIgnoresStaleExceptionHandlers(t *testing.T) {
 	assert.Nil(t, result)
 	assert.Equal(t, vm.excStackSize, 0)
 }
+
+// A closure called before Run loads its code early. Run must still share one
+// globals array with that code, so the closure sees globals that Run assigns.
+func TestCallBeforeRunSharesGlobalsWithRun(t *testing.T) {
+	ctx := context.Background()
+	bc := compileSource(t, "let g = 1\nfunction f() { return g }\ng = 2\nf()")
+	fn := findFunction(bc)
+	assert.NotNil(t, fn)
+
+	machine, err := New(bc)
+	assert.Nil(t, err)
+	result, err := machine.Call(ctx, object.NewClosure(fn), nil)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.Nil)
+
+	assert.Nil(t, machine.Run(ctx))
+	tos, ok := machine.TOS()
+	assert.True(t, ok)
+	assert.Equal(t, tos, object.NewInt(2))
+
+	result, err = machine.Call(ctx, object.NewClosure(fn), nil)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(2))
+}

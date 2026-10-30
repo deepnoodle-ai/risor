@@ -1570,6 +1570,11 @@ func (vm *VirtualMachine) reloadCode(main *bytecode.Code) *loadedCode {
 	delete(vm.loadedCode, main)
 	newWrappedMain := vm.loadCode(main)
 	copy(newWrappedMain.Globals, oldWrappedMain.Globals)
+	// Function code loaded earlier (e.g. by Call before Run) shares the old
+	// globals slice. Point it at the new one so all code sees the same globals.
+	for _, lc := range vm.loadedCode {
+		lc.Globals = newWrappedMain.Globals
+	}
 	return newWrappedMain
 }
 
