@@ -53,6 +53,19 @@ func TestErrorKindOnce(t *testing.T) {
 	}
 }
 
+// Two errors with the same message and different kinds are not equal.
+func TestErrorEqualsKind(t *testing.T) {
+	ctx := context.Background()
+	opts := []Option{WithEnv(Builtins())}
+	result, err := Eval(ctx, `
+		let a = try { [1][5] } catch e { e }
+		let b = try { [2][5] } catch e { e }
+		[a == error("index out of range: 5"), a == b]
+	`, opts...)
+	assert.Nil(t, err)
+	assert.Equal(t, result, []any{false, true})
+}
+
 // Every runtime error from Eval is a *StructuredError with a location. Its
 // cause is the typed error when there is one, so errors.As finds both (#504).
 func TestErrorShape(t *testing.T) {

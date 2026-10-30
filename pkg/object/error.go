@@ -89,11 +89,17 @@ func init() {
 		Doc("Get the error kind (e.g., 'type', 'value', 'error')").
 		Returns("string").
 		Impl(func(e *Error, ctx context.Context, args ...Object) (Object, error) {
-			if e.structured != nil {
-				return NewString(e.structured.Kind.String()), nil
-			}
-			return NewString("error"), nil
+			return NewString(e.kind()), nil
 		})
+}
+
+// kind returns the error kind that kind() reports. An error of no known kind
+// is "error".
+func (e *Error) kind() string {
+	if e.structured != nil {
+		return e.structured.Kind.String()
+	}
+	return "error"
 }
 
 // Error wraps a Go error interface and implements Object.
@@ -172,12 +178,14 @@ func (e *Error) Equals(other Object) bool {
 		return false
 	}
 	// Match wrapped sentinels in either direction, then fall back to message
-	// equality for script-created errors. The chain-walking is an
+	// and kind equality for script-created errors. The message leaves out the
+	// kind, so the kind must match too. The chain-walking is an
 	// implementation detail and may change; see docs/direction/v3-notes.md.
 	if errors.Is(e.err, otherError.err) || errors.Is(otherError.err, e.err) {
 		return true
 	}
-	return e.Message().Value() == otherError.Message().Value()
+	return e.kind() == otherError.kind() &&
+		e.Message().Value() == otherError.Message().Value()
 }
 
 // Message returns the error message. For an error of a known kind, the

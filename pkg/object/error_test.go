@@ -19,6 +19,20 @@ func TestErrorEquals(t *testing.T) {
 	assert.False(t, e.Equals(other2))
 }
 
+func TestErrorEqualsKind(t *testing.T) {
+	// Same message, different kinds: not equal.
+	plain := NewError(errors.New("index out of range: 5"))
+	value := NewError(IndexErrorf("index out of range: 5"))
+	typed := NewError(TypeErrorf("index out of range: 5"))
+	assert.Equal(t, plain.Message().Value(), value.Message().Value())
+	assert.False(t, plain.Equals(value))
+	assert.False(t, value.Equals(plain))
+	assert.False(t, value.Equals(typed))
+
+	// Same message, same kind: equal.
+	assert.True(t, value.Equals(NewError(ValueErrorf("index out of range: 5"))))
+}
+
 func TestErrorEqualsIdentity(t *testing.T) {
 	e := NewError(errors.New("boom"))
 	assert.True(t, e.Equals(e))
