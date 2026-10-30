@@ -333,6 +333,11 @@ func TestSortContext(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 
+	// A sort too short to reach a periodic check still reports cancellation
+	err = SortContext(ctx, []Object{NewInt(2), NewInt(1)})
+	assert.NotNil(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+
 	assert.Nil(t, Sort(items))
 	assert.Equal(t, items[0].(*Int).Value(), int64(1))
 

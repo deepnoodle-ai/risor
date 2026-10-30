@@ -46,5 +46,11 @@ func SortContext(ctx context.Context, items []Object) *Error {
 		}
 		return result == -1
 	})
+	// Short sorts may never reach a periodic check
+	if sortErr == nil {
+		if err := ctx.Err(); err != nil {
+			sortErr = NewError(err)
+		}
+	}
 	return sortErr
 }
