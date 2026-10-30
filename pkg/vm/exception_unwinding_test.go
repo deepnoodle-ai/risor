@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
@@ -52,18 +53,36 @@ func TestExcStackGrows(t *testing.T) {
 
 // The exception stack is bounded, and overflowing it is a clean error.
 func TestExcStackBounded(t *testing.T) {
-	ctx := context.Background()
-	vm, err := newVM(ctx, `
+	recurse := `
 	function recurse(n) {
 		try { try { try { try { try { return recurse(n + 1) } catch e { throw e } } catch e { throw e } } catch e { throw e } } catch e { throw e } } catch e { throw e }
 	}
-	recurse(0)
-	`)
-	assert.Nil(t, err)
-	vm.maxFrameDepth = 64
-	err = vm.Run(ctx)
-	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "exception handler depth")
+	`
+
+	t.Run("uncaught", func(t *testing.T) {
+		ctx := context.Background()
+		vm, err := newVM(ctx, recurse+"recurse(0)")
+		assert.Nil(t, err)
+		vm.maxFrameDepth = 64
+		err = vm.Run(ctx)
+		assert.NotNil(t, err)
+		assert.Contains(t, err.Error(), "exception handler depth")
+	})
+
+	t.Run("caught", func(t *testing.T) {
+		ctx := context.Background()
+		vm, err := newVM(ctx, recurse+`try { recurse(0) } catch e { "caught: " + string(e) }`)
+		assert.Nil(t, err)
+		vm.maxFrameDepth = 64
+		assert.Nil(t, vm.Run(ctx))
+		assert.Equal(t, vm.excStackSize, 0)
+		result, ok := vm.TOS()
+		assert.True(t, ok)
+		s, ok := result.(*object.String)
+		assert.True(t, ok)
+		assert.True(t, strings.HasPrefix(s.Value(), "caught: "))
+		assert.Contains(t, s.Value(), "exception handler depth")
+	})
 }
 
 // A throw mid-expression must restore the operand stack.
