@@ -14,10 +14,8 @@ import (
 	"time"
 
 	"github.com/deepnoodle-ai/risor/v2"
-	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
-	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
 )
@@ -50,7 +48,11 @@ func runHandler(ctx *cli.Context) error {
 	}
 
 	// Get Risor options
-	opts, err := getRisorOptions(ctx, usesStdin(code))
+	opts, err := getRisorOptions(ctx)
+	if err != nil {
+		return err
+	}
+	opts, err = withPipedStdin(ctx, code, opts)
 	if err != nil {
 		return err
 	}
@@ -102,7 +104,7 @@ func versionHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error) {
+func getRisorOptions(ctx *cli.Context) ([]risor.Option, error) {
 	var opts []risor.Option
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
@@ -111,22 +113,6 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 	opts = append(opts, risor.WithEnv(map[string]any{
 		"print": newPrintBuiltin(),
 	}))
-	// Auto-inject stdin as a variable when data is piped and stdin isn't
-	// being used to read code (via --stdin flag). Callers pass injectStdin
-	// only when the script reads stdin, since reading blocks until the pipe
-	// closes.
-	if injectStdin && !ctx.Bool("stdin") && cli.IsPiped() {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return nil, fmt.Errorf("reading stdin: %w", err)
-		}
-		if len(data) > 0 {
-			opts = append(opts, risor.WithEnv(map[string]any{
-				"stdin": string(data),
-			}))
-		}
-	}
-	// --var and --var-json flags come last so they can override auto-detected stdin
 	if vars, err := parseVarFlags(ctx.Strings("var")); err != nil {
 		return nil, err
 	} else if len(vars) > 0 {
@@ -140,21 +126,39 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 	return opts, nil
 }
 
-// usesStdin reports whether code refers to the stdin variable. Code that
-// does not parse is reported as not using it; evaluation reports the error.
-func usesStdin(code string) bool {
-	program, err := parser.Parse(context.Background(), code, nil)
+// withPipedStdin adds piped input as the stdin variable when stdin isn't
+// being used to read code (via --stdin flag) and the code reads the global
+// stdin. Reading blocks until the pipe closes, so code that doesn't read
+// stdin must not trigger it.
+func withPipedStdin(ctx *cli.Context, code string, opts []risor.Option) ([]risor.Option, error) {
+	if ctx.Bool("stdin") || !cli.IsPiped() || !readsStdin(code, opts) {
+		return opts, nil
+	}
+	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
+		return nil, fmt.Errorf("reading stdin: %w", err)
+	}
+	if len(data) > 0 {
+		opts = append(opts, risor.WithEnv(map[string]any{
+			"stdin": string(data),
+		}))
+	}
+	return opts, nil
+}
+
+// readsStdin reports whether code reads a global stdin variable that opts
+// don't define. The compiler resolves the name, so a map key, a parameter, or
+// the script's own variable named stdin doesn't count, and neither does a
+// stdin set with --var. Code that fails to compile for another reason is
+// reported as not reading stdin; evaluation reports the error.
+func readsStdin(code string, opts []risor.Option) bool {
+	ctx := context.Background()
+	if _, err := risor.Compile(ctx, code, opts...); err == nil {
 		return false
 	}
-	found := false
-	ast.Inspect(program, func(node ast.Node) bool {
-		if ident, ok := node.(*ast.Ident); ok && ident.Name == "stdin" {
-			found = true
-		}
-		return !found
-	})
-	return found
+	withStdin := append(opts[:len(opts):len(opts)], risor.WithEnv(map[string]any{"stdin": ""}))
+	_, err := risor.Compile(ctx, code, withStdin...)
+	return err == nil
 }
 
 // parseJSONVarFlag parses a --var-json flag value as a JSON object.

@@ -14,6 +14,17 @@ var (
 )
 
 func main() {
+	if err := newApp().Execute(); err != nil {
+		if cli.IsHelpRequested(err) {
+			return
+		}
+		printError(err.Error())
+		os.Exit(cli.GetExitCode(err))
+	}
+}
+
+// newApp builds the risor CLI with all of its commands and flags.
+func newApp() *cli.App {
 	app := cli.New("risor").
 		Description("Fast and flexible scripting for Go developers").
 		Version(version).
@@ -152,13 +163,7 @@ func main() {
 		).
 		Run(benchHandler)
 
-	if err := app.Execute(); err != nil {
-		if cli.IsHelpRequested(err) {
-			return
-		}
-		printError(err.Error())
-		os.Exit(cli.GetExitCode(err))
-	}
+	return app
 }
 
 func printError(msg string) {

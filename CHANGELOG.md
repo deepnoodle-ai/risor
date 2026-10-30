@@ -214,15 +214,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `errors.As` now finds the `*object.TypeError` or `*object.ValueError` in such
   an error (#494).
 - `risor <file>`, `risor -c`, and `risor eval` read piped stdin into the
-  `stdin` variable only when the script refers to `stdin`. Before, they always
-  read it, so a script that ignored stdin did not finish until the pipe closed,
-  and blocked forever on a pipe that stayed open (#505).
+  `stdin` variable only when the script reads a global `stdin` that `--var` or
+  `--var-json` does not set. A map key, a parameter, or the script's own
+  variable named `stdin` does not count. Before, they always read it, so a
+  script that ignored stdin did not finish until the pipe closed, and blocked
+  forever on a pipe that stayed open. A script that declared its own `stdin`
+  failed with "variable already exists" when input was piped (#505).
 - `risor dis --func` finds functions defined inside other functions.
-- `risor lint` reports a `let` or `const` in a function that is never used
+- `risor lint` reports a `let` or `const` that its function never reads
   (`unused-variable`). Top-level variables are not reported, since a host can
-  read them after the run. Names that start with `_` are not reported. Lint
-  issue lines and columns from syntax checks are now 1-based, like the
-  line-level checks.
+  read them after the run. Names that start with `_` are not reported. The
+  check matches names within each function, so a variable shadowed by a
+  same-named one in the same function may not be reported. Lint issue lines and
+  columns from syntax checks are now 1-based, like the line-level checks.
 - `cmd/risor-docs` reads modules from `pkg/modules`.
 
 ## [2.2.0] - 2026-08-17

@@ -302,3 +302,34 @@ let x = 2`
 	assert.Equal(t, issues[0].Column, 5)
 	assert.Equal(t, issues[0].Message, `variable "x" shadows declaration on line 1`)
 }
+
+func TestLintProgram_UnusedVariablePerFunction(t *testing.T) {
+	// "result" is read in g, but f's "result" is still unused.
+	code := `function f() {
+    let result = 1
+    return 0
+}
+function g() {
+    let result = 2
+    return result
+}`
+	issues := lintIssuesByRule(t, code, "unused-variable")
+	assert.Equal(t, len(issues), 1)
+	assert.Equal(t, issues[0].Line, 2)
+}
+
+func TestLintProgram_UnusedVariableMapKeyAndAssign(t *testing.T) {
+	code := `function f() {
+    let key = 1
+    let written = 2
+    let counted = 3
+    written = 4
+    counted += 1
+    let m = {key: 5, counted}
+    return m
+}`
+	issues := lintIssuesByRule(t, code, "unused-variable")
+	assert.Equal(t, len(issues), 2)
+	assert.Equal(t, issues[0].Message, `variable "key" is declared but never used`)
+	assert.Equal(t, issues[1].Message, `variable "written" is declared but never used`)
+}

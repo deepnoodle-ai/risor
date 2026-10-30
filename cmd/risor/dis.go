@@ -14,7 +14,7 @@ import (
 )
 
 func disHandler(ctx *cli.Context) error {
-	opts, err := getRisorOptions(ctx, false)
+	opts, err := getRisorOptions(ctx)
 	if err != nil {
 		return err
 	}

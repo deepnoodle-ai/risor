@@ -116,13 +116,12 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 	lines := strings.Split(source, "\n")
 
 	declared := make(map[string]int)        // name -> line, for shadow detection
-	used := make(map[string]bool)           // names referenced anywhere
 	constants := make(map[string]bool)      // track constants for reassignment check
 	shadowWarnings := make(map[string]bool) // prevent duplicate shadow warnings
 
-	// Declarations inside function bodies, checked for unused variables.
-	// Top-level variables are skipped: a host may read them after the run.
-	var funcDecls []*ast.Ident
+	// Function-local declarations that the function never reads. Top-level
+	// variables are skipped: a host may read them after the run.
+	var unused []*ast.Ident
 
 	// Visit all nodes
 	ast.Inspect(program, func(node ast.Node) bool {
@@ -167,15 +166,16 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 						Level:   "error",
 					})
 				}
-				used[name] = true
 			}
-
-		case *ast.Ident:
-			used[n.Name] = true
 
 		case *ast.Func:
 			if n.Body != nil {
-				funcDecls = append(funcDecls, localDecls(n.Body)...)
+				reads := namesRead(n.Body)
+				for _, ident := range localDecls(n.Body) {
+					if !reads[ident.Name] && !strings.HasPrefix(ident.Name, "_") {
+						unused = append(unused, ident)
+					}
+				}
 			}
 			// Check for functions without return
 			if n.Name != nil && n.Body != nil {
@@ -245,10 +245,7 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 	})
 
 	// Check for unused variables
-	for _, ident := range funcDecls {
-		if used[ident.Name] || strings.HasPrefix(ident.Name, "_") {
-			continue
-		}
+	for _, ident := range unused {
 		issues = append(issues, LintIssue{
 			Line:    ident.Pos().LineNumber(),
 			Column:  ident.Pos().ColumnNumber(),
@@ -314,6 +311,37 @@ func localDecls(body *ast.Block) []*ast.Ident {
 		}
 		return true
 	})
+	return names
+}
+
+// namesRead returns the names that body reads, including within nested
+// functions, which may read the enclosing function's variables. Identifier
+// map keys are literal names, and a plain "=" assignment writes its name
+// without reading it, so neither counts.
+func namesRead(body *ast.Block) map[string]bool {
+	names := make(map[string]bool)
+	var visit func(ast.Node) bool
+	visit = func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.Ident:
+			names[n.Name] = true
+		case *ast.Map:
+			for _, item := range n.Items {
+				ast.Inspect(item.Value, visit)
+			}
+			return false
+		case *ast.Assign:
+			if n.Op != "=" || n.Name == nil {
+				return true
+			}
+			if n.Value != nil {
+				ast.Inspect(n.Value, visit)
+			}
+			return false
+		}
+		return true
+	}
+	ast.Inspect(body, visit)
 	return names
 }
 
