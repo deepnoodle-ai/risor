@@ -90,6 +90,7 @@ func TestJsonEncodeRejectsValuesWithoutJSONForm(t *testing.T) {
 			object.NewList([]object.Object{value}),
 			object.NewMap(map[string]object.Object{"k": value}),
 			object.NewList([]object.Object{object.NewMap(map[string]object.Object{"k": value})}),
+			object.NewMapValueIter(object.NewMap(map[string]object.Object{"k": value})),
 		} {
 			_, err := Encode(ctx, wrapped, jsonName)
 			assert.NotNil(t, err, wrapped.Inspect())
