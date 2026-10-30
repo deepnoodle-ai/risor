@@ -746,7 +746,7 @@ evalLoop:
 					if herr := vm.tryHandleError(vm.evalError("expected cell")); herr != nil {
 						return herr
 					}
-					continue
+					continue evalLoop
 				}
 			}
 			fn := vm.activeCode.Constants[constIndex].(*object.Closure)
@@ -907,13 +907,17 @@ evalLoop:
 			}
 			vm.push(object.NewList(items))
 		case op.BuildMap:
-			count := vm.fetch()
+			// Insert the pairs in source order, so that a later duplicate
+			// key wins, as it does for MapSet.
+			count := int(vm.fetch())
+			base := vm.sp - count*2 + 1
 			items := make(map[string]object.Object, count)
-			for i := uint16(0); i < count; i++ {
-				v := vm.pop()
-				k := vm.pop()
+			for i := 0; i < count; i++ {
+				k := vm.stack[base+i*2]
+				v := vm.stack[base+i*2+1]
 				items[k.(*object.String).Value()] = v
 			}
+			vm.restoreStack(base - 1)
 			vm.push(object.NewMap(items))
 		case op.ListAppend:
 			// Append TOS to list at TOS-1
