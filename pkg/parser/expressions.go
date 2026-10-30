@@ -256,7 +256,7 @@ func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructure
 					binding.Alias = v.Name
 				}
 			case *ast.DefaultValue:
-				// Shorthand with default: {a = expr}
+				// Default in an arrow function destructuring parameter: {a = expr}
 				binding.Default = v.Default
 			default:
 				p.setTokenError(p.curToken, "expected identifier or default in destructuring pattern")

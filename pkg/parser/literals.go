@@ -320,7 +320,9 @@ func (p *Parser) parseMap() (ast.Node, bool) {
 	return &ast.Map{Lbrace: lbrace, Items: items, Rbrace: rbrace}, true
 }
 
-// parseMapItem parses a single map item: spread (...obj), shorthand (a), shorthand with default (a = expr), or key-value (a: b).
+// parseMapItem parses a single map item: spread (...obj), shorthand (a),
+// key-value (a: b), or a default (a = expr), which is allowed only in an arrow
+// function destructuring parameter.
 func (p *Parser) parseMapItem(allowDefaults bool) *ast.MapItem {
 	// Check for spread expression
 	if p.curTokenIs(token.SPREAD) {
@@ -337,7 +339,8 @@ func (p *Parser) parseMapItem(allowDefaults bool) *ast.MapItem {
 	}
 
 	// Check for shorthand syntax: {a, b} means {a: a, b: b}
-	// Also handles shorthand with default: {a = 1} for destructuring
+	// Also handles a default, {a = 1}, in an arrow function destructuring
+	// parameter
 	if p.curTokenIs(token.IDENT) {
 		// Simple shorthand: {a} or {a, b}
 		if p.peekTokenIs(token.COMMA) || p.peekTokenIs(token.RBRACE) || p.peekTokenIs(token.NEWLINE) {
@@ -350,7 +353,7 @@ func (p *Parser) parseMapItem(allowDefaults bool) *ast.MapItem {
 			return &ast.MapItem{Key: key, Value: ident}
 		}
 
-		// Shorthand with default: {a = expr} - used in destructuring
+		// Default in an arrow function destructuring parameter: {a = expr}
 		if p.peekTokenIs(token.ASSIGN) {
 			ident := p.newIdent(p.curToken)
 			if !allowDefaults {
