@@ -35,8 +35,11 @@ func (it *Iter) String() string {
 
 // Interface collects the iterator's values into a []any. It returns nil if a
 // value is nested more deeply than MaxNestingDepth, contains a cycle, or the
-// result has more than DefaultMaxListLength elements in total; use
-// ToInterface to get the error instead.
+// result has more than DefaultMaxListLength elements in total. It has no
+// context, so it uses the default limits, not the limits set with
+// risor.WithLimits, and it cannot be canceled. Code that has a context
+// should call ToInterface, which applies the limits in the context and
+// returns the error.
 func (it *Iter) Interface() any {
 	return interfaceOrNil(it)
 }

@@ -362,4 +362,82 @@ func TestWithLimitsStructEmbedderKeepsSetAttr(t *testing.T) {
 	_, err = Eval(context.Background(), `box.Items = [1, 2, 3]`, env, limits)
 	assert.Nil(t, err)
 	assert.Equal(t, len(box.Items), 3)
+
+	// The override did not opt in to AttrAssigner, so the default limits
+	// apply, not WithLimits
+	_, err = Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Items), 11)
+}
+
+// plainBox embeds *object.GoStruct and defines neither SetAttr nor
+// AssignAttr.
+type plainBox struct {
+	*object.GoStruct
+}
+
+// An embedder that does not opt in gets the promoted GoStruct.SetAttr, which
+// uses the default limits (#499).
+func TestWithLimitsStructEmbedderDefaultLimits(t *testing.T) {
+	box := &limitsBox{}
+	plain := &plainBox{object.NewGoStruct(reflect.ValueOf(box), object.DefaultRegistry())}
+	env := WithEnv(map[string]any{"box": plain})
+	limits := WithLimits(Limits{MaxListLength: 10})
+
+	_, err := Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Items), 11)
+}
+
+// assignBox embeds *object.GoStruct, blocks a field in both SetAttr and
+// AssignAttr, and opts in to the VM context with AssignAttr.
+type assignBox struct {
+	*object.GoStruct
+	setAttrCalls int
+}
+
+var _ object.AttrAssigner = (*assignBox)(nil)
+
+func (b *assignBox) SetAttr(name string, value object.Object) error {
+	b.setAttrCalls++
+	if name == "Grid" {
+		return object.TypeErrorf("field %q is read-only", name)
+	}
+	return b.GoStruct.SetAttr(name, value)
+}
+
+func (b *assignBox) AssignAttr(ctx context.Context, name string, value object.Object) error {
+	if name == "Grid" {
+		return object.TypeErrorf("field %q is read-only", name)
+	}
+	return b.GoStruct.SetAttrContext(ctx, name, value)
+}
+
+// An embedder that implements AttrAssigner gets the limits from WithLimits
+// on field assignment (#499).
+func TestWithLimitsStructEmbedderAssignAttr(t *testing.T) {
+	box := &limitsBox{}
+	assigner := &assignBox{GoStruct: object.NewGoStruct(reflect.ValueOf(box), object.DefaultRegistry())}
+	env := WithEnv(map[string]any{"box": assigner})
+	limits := WithLimits(Limits{MaxListLength: 10})
+
+	// A value over the limit fails and leaves the field unchanged
+	_, err := Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`, env, limits)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+	assert.Equal(t, len(box.Items), 0)
+
+	// A value at the limit is set
+	_, err = Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Items), 10)
+
+	// AssignAttr blocks the field
+	_, err = Eval(context.Background(), `box.Grid = [[1]]`, env, limits)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "read-only"), err.Error())
+	assert.Equal(t, len(box.Grid), 0)
+
+	// The VM called AssignAttr, not SetAttr
+	assert.Equal(t, assigner.setAttrCalls, 0)
 }

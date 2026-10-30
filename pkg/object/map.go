@@ -342,7 +342,9 @@ func (m *Map) Size() int {
 // Interface converts the map to a map[string]any, converting values
 // recursively. It returns nil if the map is nested more deeply than
 // MaxNestingDepth, contains a cycle, or has more than DefaultMaxListLength
-// elements in total; use ToInterface to get the error.
+// elements in total. It has no context, so it uses the default limits, not
+// the limits set with risor.WithLimits. Code that has a context should call
+// ToInterface, which applies the limits in the context and returns the error.
 func (m *Map) Interface() interface{} {
 	return interfaceOrNil(m)
 }

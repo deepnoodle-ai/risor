@@ -745,11 +745,16 @@ evalLoop:
 			value := vm.pop()
 			name := vm.activeCode.Names[idx]
 			var err error
-			// Only *GoStruct itself gets the ctx. A host type that embeds
-			// it is a different type and keeps its own SetAttr.
-			if gs, ok := obj.(*object.GoStruct); ok {
-				err = gs.SetAttrContext(ctx, name, value)
-			} else {
+			// *GoStruct gets the ctx directly. Any other type gets it only
+			// if it implements AttrAssigner. *GoStruct does not define
+			// AssignAttr, so a type that embeds it cannot get AssignAttr
+			// by promotion, and a SetAttr override on that type still runs.
+			switch o := obj.(type) {
+			case *object.GoStruct:
+				err = o.SetAttrContext(ctx, name, value)
+			case object.AttrAssigner:
+				err = o.AssignAttr(ctx, name, value)
+			default:
 				err = obj.SetAttr(name, value)
 			}
 			if err != nil {

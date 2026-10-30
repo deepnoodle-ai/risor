@@ -110,3 +110,34 @@ func TestErrorMessage(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "a")
 }
+
+// Errorf formats an Object argument as Risor prints it. A primitive formats
+// as its Go value, so verbs such as %d and %q work.
+func TestErrorfObjectArgs(t *testing.T) {
+	list := NewList([]Object{NewInt(1), NewString("a")})
+	m := NewMap(map[string]Object{"k": NewInt(2)})
+	err := Errorf("bad %v and %v", list, m)
+	assert.Equal(t, err.Error(), `bad [1, "a"] and {"k": 2}`)
+
+	err = Errorf("%q has %d items, %v", NewString("x"), NewInt(3), True)
+	assert.Equal(t, err.Error(), `"x" has 3 items, true`)
+
+	assert.Equal(t, Errorf("got %v", Nil).Error(), "got null")
+	assert.Equal(t, Errorf("got %s", "plain").Error(), "got plain")
+}
+
+// Errorf does not convert an Object to Go, so the conversion limits do not
+// apply. Before, a value that failed to convert formatted as <nil>.
+func TestErrorfNoConversion(t *testing.T) {
+	// A range longer than DefaultMaxListLength
+	long := NewRange(0, DefaultMaxListLength+1, 1)
+	assert.Nil(t, long.Interface())
+	assert.Equal(t, Errorf("bad %v", long).Error(),
+		fmt.Sprintf("bad range(%d)", DefaultMaxListLength+1))
+
+	// A list that contains itself
+	cyclic := NewList([]Object{NewInt(1)})
+	cyclic.Append(cyclic)
+	assert.Nil(t, cyclic.Interface())
+	assert.Equal(t, Errorf("bad %v", cyclic).Error(), "bad [1, [...]]")
+}

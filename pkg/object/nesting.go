@@ -98,7 +98,8 @@ func ToJSONValue(ctx context.Context, obj Object) (any, error) {
 }
 
 // interfaceOrNil converts obj with the default limits and returns nil on
-// error. Interface methods of containers use it.
+// error. Interface methods of containers use it. Code that has a context
+// must call ToInterface instead, so that the limits in the context apply.
 func interfaceOrNil(obj Object) any {
 	result, err := toInterface(obj, nil, newConvBudget(context.Background()))
 	if err != nil {
@@ -117,6 +118,12 @@ func toInterface(obj Object, path nestPath[Object], b *convBudget) (any, error) 
 		return obj.toInterface(path, b)
 	case *Range:
 		return obj.toInterface(b)
+	case *Cell:
+		// Cell.Interface would convert the value with the default limits
+		if obj.value == nil {
+			return nil, nil
+		}
+		return toInterface(*obj.value, path, b)
 	}
 	if !b.jsonOnly {
 		return obj.Interface(), nil

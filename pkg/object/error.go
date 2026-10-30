@@ -212,11 +212,17 @@ func (e *Error) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 	return nil, newTypeErrorf("unsupported operation for error: %v", opType)
 }
 
+// Errorf returns an Error with a message formatted as fmt.Errorf does. An
+// Object argument is formatted with PrintableValue: a string, int, float,
+// byte, bool, or error formats as its Go value, so verbs such as %d and %q
+// work. Any other Object formats as Risor prints it, so a list formats as
+// [1, 2] and a map as {"a": 1}. Errorf does not convert an Object to Go, so
+// a large or cyclic container does not fail or format as <nil>.
 func Errorf(format string, a ...interface{}) *Error {
 	var args []interface{}
 	for _, arg := range a {
 		if obj, ok := arg.(Object); ok {
-			args = append(args, obj.Interface())
+			args = append(args, PrintableValue(obj))
 		} else {
 			args = append(args, arg)
 		}
