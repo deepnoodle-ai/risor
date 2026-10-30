@@ -83,3 +83,30 @@ func TestEvalCyclicBuiltinArgs(t *testing.T) {
 		assert.True(t, errors.Is(err, object.ErrNestingDepth), src)
 	}
 }
+
+// A map that holds an iterator over itself is a cycle when converted, encoded,
+// or formatted. Printing and comparing it do not visit the iterator's values.
+func TestEvalCyclicIterator(t *testing.T) {
+	ctx := context.Background()
+	env := Builtins()
+	for _, src := range []string{
+		`let m = {}; m["v"] = m.values(); m`,
+		`let m = {}; m["e"] = m.entries(); m`,
+		`let m = {}; m["v"] = m.values(); m["v"]`,
+		`let m = {}; let a = [m.values()]; m["a"] = a; a`,
+		`let m = {}; m["v"] = m.values(); encode(m, "json")`,
+		`let m = {}; m["v"] = m.values(); sprintf("%v", m)`,
+		`let m = {}; m["v"] = m.values(); error("bad: %v", m)`,
+	} {
+		_, err := Eval(ctx, src, WithEnv(env))
+		assert.True(t, errors.Is(err, object.ErrNestingDepth), src)
+	}
+
+	result, err := Eval(ctx, `let m = {}; m["v"] = m.values(); m == m`)
+	assert.Nil(t, err)
+	assert.Equal(t, result, true)
+
+	result, err = Eval(ctx, `let m = {}; m["v"] = m.values(); m`, WithRawResult())
+	assert.Nil(t, err)
+	assert.Equal(t, result.(object.Object).Inspect(), `{"v": iter(map.values)}`)
+}

@@ -2,10 +2,10 @@ package object
 
 import "encoding/json"
 
-// MaxNestingDepth is the maximum number of nested containers (lists and maps,
-// counting the outermost one) that recursive operations will traverse. It
-// applies to Equals, Compare, MarshalJSON, ToInterface, and conversion between
-// Risor and Go values. A container that contains itself, directly or
+// MaxNestingDepth is the maximum number of nested containers (lists, maps, and
+// iterators, counting the outermost one) that recursive operations will
+// traverse. It applies to Equals, Compare, MarshalJSON, ToInterface, and
+// conversion between Risor and Go values. A container that contains itself, directly or
 // indirectly, is treated as exceeding the limit.
 const MaxNestingDepth = 128
 
@@ -46,9 +46,12 @@ func (p nestPath[T]) descend(parent, child T) (nestPath[T], error) {
 // objectPair is a pair of containers being compared by Equals or Compare.
 type objectPair [2]Object
 
+// isNestedContainer reports whether obj holds other objects that a recursive
+// operation may descend into. An iterator counts, since converting it visits
+// the values it yields, and those may include the iterator itself.
 func isNestedContainer(obj Object) bool {
 	switch obj.(type) {
-	case *List, *Map:
+	case *List, *Map, *Iter:
 		return true
 	}
 	return false
@@ -106,8 +109,12 @@ func inspectNested(obj Object, path nestPath[Object]) string {
 // inspectPlaceholder is printed in place of a container that is already being
 // printed (a cycle) or that is nested more deeply than MaxNestingDepth.
 func inspectPlaceholder(obj Object) string {
-	if _, ok := obj.(*Map); ok {
+	switch obj := obj.(type) {
+	case *Map:
 		return "{...}"
+	case *Iter:
+		// Inspecting an iterator does not visit its values, so it is safe
+		return obj.Inspect()
 	}
 	return "[...]"
 }

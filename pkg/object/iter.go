@@ -48,6 +48,11 @@ func (it *Iter) toInterface(path nestPath[Object]) (any, error) {
 	var items []any
 	var err error
 	it.Enumerate(context.Background(), func(key, value Object) bool {
+		if isNestedContainer(value) {
+			if path, err = path.descend(it, value); err != nil {
+				return false
+			}
+		}
 		var item any
 		item, err = toInterface(value, path)
 		if err != nil {

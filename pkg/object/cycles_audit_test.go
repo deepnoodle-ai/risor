@@ -1,6 +1,7 @@
 package object
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -225,6 +226,61 @@ func TestCycleFromGo(t *testing.T) {
 	obj, err := r.FromGo([]any{shared, shared, [2]any{shared, shared}})
 	assert.Nil(t, err)
 	assert.Equal(t, obj.Inspect(), "[[1], [1], [[1], [1]]]")
+}
+
+// An iterator stored in the map it iterates yields the map, which holds the
+// iterator again. Converting it must stop at the cycle.
+func TestCycleThroughIterator(t *testing.T) {
+	values := NewMap(nil)
+	values.Set("v", NewMapValueIter(values))
+	entries := NewMap(nil)
+	entries.Set("e", NewMapItemIter(entries))
+	var self *Iter
+	self = NewIter("self", func(ctx context.Context, fn func(key, value Object) bool) {
+		fn(NewInt(0), self)
+	})
+	inList := NewList(nil)
+	inMap := NewMap(map[string]Object{"list": inList})
+	inList.Append(NewMapValueIter(inMap))
+
+	for _, obj := range []Object{values, entries, self, inList, values.items["v"]} {
+		assert.Nil(t, obj.Interface())
+		_, err := ToInterface(obj)
+		assert.True(t, errors.Is(err, ErrNestingDepth), obj.Inspect())
+		for _, target := range []reflect.Type{
+			reflect.TypeOf((*any)(nil)).Elem(),
+			reflect.TypeOf(map[string]any{}),
+			reflect.TypeOf([]any{}),
+		} {
+			_, err := DefaultRegistry().ToGo(obj, target)
+			assert.NotNil(t, err)
+		}
+	}
+	_, err := DefaultRegistry().ToGo(values, reflect.TypeOf(map[string]any{}))
+	assert.True(t, errors.Is(err, ErrNestingDepth))
+
+	// Inspect, Equals, and MarshalJSON do not visit an iterator's values
+	assert.Equal(t, values.Inspect(), `{"v": iter(map.values)}`)
+	assert.Equal(t, inList.Inspect(), "[iter(map.values)]")
+	assert.True(t, values.Equals(values))
+	assert.False(t, values.Equals(entries))
+	assert.True(t, inList.Equals(inList))
+	data, err := json.Marshal(values)
+	assert.Nil(t, err)
+	assert.Equal(t, string(data), `{"v":{}}`)
+
+	// An iterator at the depth limit prints as itself, not as [...]
+	deep := NewList([]Object{self})
+	for i := 1; i < MaxNestingDepth; i++ {
+		deep = NewList([]Object{deep})
+	}
+	assert.Contains(t, deep.Inspect(), "iter(self)")
+
+	// An iterator over plain values still converts
+	plain := NewMap(map[string]Object{"a": NewList([]Object{NewInt(1)})})
+	result, err := ToInterface(NewMapValueIter(plain))
+	assert.Nil(t, err)
+	assert.Equal(t, result, []any{[]any{int64(1)}})
 }
 
 func TestInspectConcurrent(t *testing.T) {
