@@ -340,9 +340,10 @@ func (f *Formatter) FormatMultiple(errs []*FormattedError) string {
 // is exclusive; an endColumn that is not after column gives one caret. Both
 // are clamped to the line, so the caret line is never longer than text plus
 // one character, even for a location built by hand or read from untrusted
-// bytecode. column must be positive.
+// bytecode. A column before the line is treated as column 1.
 func caretSpan(text string, column, endColumn int) (pad, width int) {
 	limit := len(text)
+	column = max(column, 1)
 	pad = min(column-1, limit)
 	width = 1
 	if endColumn > column {

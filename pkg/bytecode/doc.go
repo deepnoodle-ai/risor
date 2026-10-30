@@ -70,6 +70,10 @@
 //     recursion can allocate about 1 GB. Bound this with the maximum frame
 //     depth (risor.WithMaxStackDepth or vm.WithMaxFrameDepth) and the value
 //     limits (WithLimits).
+//   - Columns are not checked against the source line, since code compiled
+//     without its original source can have columns past the stored lines.
+//     Risor's error formatting clamps carets to the line. A host that draws
+//     its own caret from a location's Column or EndColumn must clamp it too.
 //   - Loading itself uses memory in proportion to the input, by a large
 //     factor: a 27 MB input used about 1.2 GB to load. Limit the size of
 //     untrusted input before you call Unmarshal.

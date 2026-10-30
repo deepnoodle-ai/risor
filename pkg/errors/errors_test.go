@@ -264,7 +264,8 @@ func TestStructuredError_FriendlyErrorMessage_ZeroLocation(t *testing.T) {
 
 // A location from untrusted bytecode or built by hand may have a column far
 // past its source line. The caret line is clamped to the line rather than
-// padded out to the column.
+// padded out to the column. The columns are 1<<16 rather than larger, so a
+// broken clamp costs about 64 KB and fails the length check.
 func TestStructuredError_FriendlyErrorMessage_ClampsColumns(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -272,9 +273,9 @@ func TestStructuredError_FriendlyErrorMessage_ClampsColumns(t *testing.T) {
 		endColumn int
 		caret     string
 	}{
-		{"huge column", 1 << 40, 0, " | " + strings.Repeat(" ", 15) + "^\n"},
-		{"huge column and end column", 1 << 40, 1<<40 + 5, " | " + strings.Repeat(" ", 15) + "^\n"},
-		{"huge end column", 9, 1 << 40, " | " + strings.Repeat(" ", 8) + "^^^^^^^^\n"},
+		{"column past line", 1 << 16, 0, " | " + strings.Repeat(" ", 15) + "^\n"},
+		{"column and end column past line", 1 << 16, 1<<16 + 5, " | " + strings.Repeat(" ", 15) + "^\n"},
+		{"end column past line", 9, 1 << 16, " | " + strings.Repeat(" ", 8) + "^^^^^^^^\n"},
 		{"in range", 5, 8, " |     ^^^\n"},
 	}
 	for _, tt := range tests {
@@ -298,6 +299,12 @@ func TestStructuredError_FriendlyErrorMessage_ClampsColumns(t *testing.T) {
 			assert.Contains(t, formatted, strings.TrimPrefix(tt.caret, " | "))
 		})
 	}
+}
+
+func TestCaretSpan_ColumnBeforeLine(t *testing.T) {
+	pad, width := caretSpan("let x = 1", -3, 0)
+	assert.Equal(t, pad, 0)
+	assert.Equal(t, width, 1)
 }
 
 func TestStructuredError_Unwrap(t *testing.T) {
