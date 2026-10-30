@@ -162,10 +162,12 @@ func stateFromCode(code *Code) (*codeState, error) {
 			names[j] = c.NameAt(j)
 		}
 
-		// Only root code stores global names. Reading the field rather than
-		// GlobalNameAt keeps the root's names from being written once per
-		// function.
-		globalNames := copyStrings(c.globalNames)
+		// Global names are written once, on the first code, which becomes
+		// the root when unmarshaled. Every other code reads the root's names.
+		var globalNames []string
+		if i == 0 {
+			globalNames = copyStrings(c.Root().globalNames)
+		}
 
 		localNames := make([]string, c.LocalNameCount())
 		for j := 0; j < c.LocalNameCount(); j++ {
@@ -259,6 +261,13 @@ func codeFromState(state *codeState) (*Code, error) {
 			return nil, err
 		}
 
+		// Only the root uses global names. Names on other code, as written
+		// by older versions, are ignored.
+		var globalNames []string
+		if i == 0 {
+			globalNames = def.GlobalNames
+		}
+
 		codes[i] = NewCode(CodeParams{
 			ID:                def.ID,
 			Name:              def.Name,
@@ -274,7 +283,7 @@ func codeFromState(state *codeState) (*Code, error) {
 			MaxCallArgs:       def.MaxCallArgs,
 			LocalCount:        def.LocalCount,
 			GlobalCount:       def.GlobalCount,
-			GlobalNames:       def.GlobalNames,
+			GlobalNames:       globalNames,
 			LocalNames:        def.LocalNames,
 			EnvKeys:           def.EnvKeys,
 			ExceptionHandlers: handlers,

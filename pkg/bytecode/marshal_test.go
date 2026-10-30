@@ -354,7 +354,8 @@ func TestMarshalUnmarshalEmptyLocalNames(t *testing.T) {
 }
 
 func TestMarshalWritesGlobalNamesOnceForRoot(t *testing.T) {
-	child := NewCode(CodeParams{ID: "child", GlobalCount: 1})
+	// The child's own names are ignored: code reads its root's names.
+	child := NewCode(CodeParams{ID: "child", GlobalCount: 1, GlobalNames: []string{"child_name"}})
 	root := NewCode(CodeParams{
 		ID:          "root",
 		GlobalCount: 1,
@@ -364,8 +365,24 @@ func TestMarshalWritesGlobalNamesOnceForRoot(t *testing.T) {
 	data, err := Marshal(root)
 	assert.Nil(t, err)
 	assert.Equal(t, strings.Count(string(data), "some_global_name"), 1)
+	assert.False(t, strings.Contains(string(data), "child_name"))
 
 	restored, err := Unmarshal(data)
 	assert.Nil(t, err)
 	assert.Equal(t, restored.ChildAt(0).GlobalNameAt(0), "some_global_name")
+}
+
+func TestMarshalChildCodeKeepsRootGlobalNames(t *testing.T) {
+	child := NewCode(CodeParams{ID: "child", GlobalCount: 1})
+	NewCode(CodeParams{
+		ID:          "root",
+		GlobalCount: 1,
+		GlobalNames: []string{"x"},
+		Children:    []*Code{child},
+	})
+	data, err := Marshal(child)
+	assert.Nil(t, err)
+	restored, err := Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, restored.GlobalNameAt(0), "x")
 }

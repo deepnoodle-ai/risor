@@ -72,9 +72,12 @@ type CodeParams struct {
 	MaxCallArgs  int
 	LocalCount   int
 	GlobalCount  int
-	GlobalNames  []string
-	LocalNames   []string
-	EnvKeys      []string // Names of globals from compile-time env (for validation)
+	// GlobalNames names each global slot. Only root code uses it: every
+	// code shares the root's globals, and its GlobalNameAt, GlobalNameCount
+	// and GlobalNames read the root's names. Leave it nil for other code.
+	GlobalNames []string
+	LocalNames  []string
+	EnvKeys     []string // Names of globals from compile-time env (for validation)
 
 	ExceptionHandlers []ExceptionHandler
 }
