@@ -4,8 +4,8 @@ export VERSION=$(shell git describe --tags --always --dirty | sed 's/^v//')
 # Packages to exclude from testing (examples, benchmarks, JavaScript dependencies)
 TEST_EXCLUDE := examples tests/benchmarks vscode
 
-# Test the packages of every module in go.work (the root module and the
-# separate cmd/* modules) in one run, so one coverage profile covers them all.
+# Test the packages of every module in go.work in one run, so one coverage
+# profile covers them all. TEST_EXCLUDE drops the examples/go/* modules.
 .PHONY: test
 test:
 	gotestsum --junitfile /tmp/test-reports/unit-tests.xml \
