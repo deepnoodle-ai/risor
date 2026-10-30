@@ -212,3 +212,15 @@ func TestNestedMatchPatternContext(t *testing.T) {
 		})
 	}
 }
+
+// A statement cut short by the end of the input reports an error, even when
+// the inner parser that failed did not report one.
+func TestStatementAtEOFReportsError(t *testing.T) {
+	for _, input := range []string{"return if (", "return if (\n", "x = 1\nreturn if ("} {
+		t.Run(input, func(t *testing.T) {
+			errs := parseErrors(t, input)
+			assert.Len(t, errs, 1)
+			assert.Contains(t, errs[0].Message(), "unexpected end of file")
+		})
+	}
+}

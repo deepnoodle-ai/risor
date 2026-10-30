@@ -276,7 +276,18 @@ func (p *Parser) Parse(ctx context.Context) (*ast.Program, error) {
 		}
 		// Track error count for this statement so inner methods can detect new errors
 		p.stmtErrorCount = len(p.errors)
+		blankLine := p.curTokenIs(token.NEWLINE)
 		stmt := p.parseStatementStrict()
+		if stmt == nil && !blankLine && !p.hadNewError() && !p.curTokenIs(token.ILLEGAL) {
+			// A statement that failed without reporting an error, such as
+			// one cut short by the end of the input. Report it, so that a
+			// failed statement is never dropped silently.
+			if p.curTokenIs(token.EOF) {
+				p.setTokenError(p.curToken, "unexpected end of file")
+			} else {
+				p.setTokenError(p.curToken, "invalid syntax")
+			}
+		}
 		if stmt != nil {
 			statements = append(statements, stmt)
 		} else if p.hadNewError() || p.curTokenIs(token.ILLEGAL) {
