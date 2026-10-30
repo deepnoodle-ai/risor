@@ -23,6 +23,14 @@ risor.Eval(ctx, src,
     risor.WithLimits(risor.Limits{MaxBytesSize: 1 << 20, MaxListLength: 100_000}))
 ```
 
+`MaxListLength` also caps each conversion of a value to Go: a script result,
+a host function argument, and the values passed to `sprintf`, `error`, and
+`encode`. One conversion may produce at most `MaxListLength` elements in total,
+counting every list item, map entry, and range element. A list referenced more
+than once counts each time, so `[l, l]` costs `2 + 2 * len(l)` elements.
+Exceeding the cap raises a `value error` that starts with "value too large to
+convert".
+
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.
 
@@ -524,9 +532,11 @@ Lambda, or rlimit from the top of this guide in place.
 **Shared list structure.** `a = [a, a]` repeated thirty times is a few lines of
 source, allocates almost nothing, and reports `len(a) == 2`. The list literal
 is built inside a VM instruction, so there is no call for the transform to
-wrap. It stays harmless until something expands it, which is why you should not
-put `string`, `sorted`, `encode` or `chunk` over lists into the environment. If
-you need `string()` on arbitrary values, this approach is not enough for you.
+wrap. It stays harmless until something expands it. Converting it to Go (`encode`,
+`sprintf`, a host function argument, or the script result) stops at
+`MaxListLength` elements. `string()` and printing are not capped, so you should
+not put `string`, `sorted` or `chunk` over lists into the environment. If you
+need `string()` on arbitrary values, this approach is not enough for you.
 
 **Methods that charge after the fact.** Only `repeat` has its output size
 checked before the work happens. Any method whose output size isn't a cheap

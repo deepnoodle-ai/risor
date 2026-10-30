@@ -15,9 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `split`, spread, or `list(range(...))`. Operations that add one item, such as
   `append`, are not capped. Defaults: 64 MiB and 4,194,304 elements. Exceeding a
   cap raises a catchable `value error` (#491).
+- **`risor.WithLimits`** caps the size of the string, bytes, or list value one
+  operation can produce. Defaults: 64 MiB and 4,194,304 elements. Exceeding a
+  cap raises a catchable `value error` (#491). The list cap also bounds the
+  total elements of one conversion to Go, such as a script result, a host
+  function argument, or `sprintf`/`encode` input, counting shared lists each
+  time they appear (#495).
 
 ### Changed
 
+- `object.ToInterface` and `TypeRegistry.ToGo` take a `context.Context`, whose
+  limits bound the conversion. `ToGo` converts a range to a slice or array
+  (#495).
 - Release archives and the Homebrew cask now include `risor-lsp`, the Risor
   language server, next to `risor`. The language server writes its log to the
   user cache directory instead of the working directory.
