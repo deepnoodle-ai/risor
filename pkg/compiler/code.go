@@ -193,16 +193,21 @@ func (c *Code) Global(index int) *Symbol {
 	return c.symbols.Root().Symbol(uint16(index))
 }
 
+// GlobalNames returns the name of each global slot. A variable declared in a
+// block at the top level gets a slot name from bytecode.BlockGlobalName, so it
+// is never mistaken for the root variable with the same name.
 func (c *Code) GlobalNames() []string {
 	root := c.symbols.Root()
 	count := root.Count()
 	names := make([]string, count)
 	for i := uint16(0); i < count; i++ {
 		sym := root.Symbol(i)
-		if sym != nil {
+		if sym == nil {
+			names[i] = BlankIdentifier // Slot for discarded value
+		} else if rootSym, ok := root.Get(sym.Name()); ok && rootSym == sym {
 			names[i] = sym.Name()
 		} else {
-			names[i] = BlankIdentifier // Slot for discarded value
+			names[i] = bytecode.BlockGlobalName(sym.Name(), int(i))
 		}
 	}
 	return names

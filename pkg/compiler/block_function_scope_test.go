@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -36,9 +37,10 @@ func TestBlockFunctionNotHoisted(t *testing.T) {
 	assert.Nil(t, err)
 	count := 0
 	for i := 0; i < code.GlobalCount(); i++ {
-		if code.GlobalNameAt(i) == "foo" {
+		if code.GlobalNameAt(i) == bytecode.BlockGlobalName("foo", i) {
 			count++
 		}
 	}
 	assert.Equal(t, count, 1)
+	assert.Len(t, code.GlobalNames(), 0)
 }

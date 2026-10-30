@@ -1,6 +1,7 @@
 package bytecode
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
@@ -33,7 +34,8 @@ type Code struct {
 	// Exception handlers for try/catch/finally
 	exceptionHandlers []ExceptionHandler
 
-	// Global variable names (only set on root code)
+	// Global variable names (only set on root code). A slot for a variable
+	// declared in a block has a name from BlockGlobalName.
 	globalNames []string
 
 	// Local variable names (for debugging/disassembly)
@@ -304,14 +306,35 @@ func (c *Code) Stats() Stats {
 	}
 }
 
-// GlobalNames returns a copy of all global variable names.
+// GlobalNames returns a copy of the names of the root (top-level) global
+// variables. It excludes the slots of variables declared in blocks.
 func (c *Code) GlobalNames() []string {
-	if len(c.globalNames) == 0 {
-		return nil
+	var names []string
+	for _, name := range c.globalNames {
+		if !IsBlockGlobalName(name) {
+			names = append(names, name)
+		}
 	}
-	names := make([]string, len(c.globalNames))
-	copy(names, c.globalNames)
 	return names
+}
+
+// blockGlobalSeparator cannot occur in an identifier, so a block global name
+// never equals the name of a root global.
+const blockGlobalSeparator = "#"
+
+// BlockGlobalName returns the global slot name for a variable that is declared
+// in a block at the top level of a script, such as in an if or try block. The
+// name is "<name>#<slot index>". It is unique within the code, so a block
+// variable never shadows a root variable with the same name when globals are
+// looked up or carried over by name.
+func BlockGlobalName(name string, index int) string {
+	return name + blockGlobalSeparator + strconv.Itoa(index)
+}
+
+// IsBlockGlobalName returns true if name is a global slot name made by
+// BlockGlobalName.
+func IsBlockGlobalName(name string) bool {
+	return strings.Contains(name, blockGlobalSeparator)
 }
 
 // EnvKeys returns a copy of the global names that were provided via the
