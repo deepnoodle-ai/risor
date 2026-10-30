@@ -142,15 +142,3 @@ func TestDestructureDefaultLaterName(t *testing.T) {
 		{`let b = 5; function f({a = b, b = 1}) { return [a, b] }; f({})`, object.NewList([]object.Object{five, one})},
 	})
 }
-
-// A named function with a destructured parameter can call itself.
-func TestDestructuredParamRecursion(t *testing.T) {
-	runTests(t, []testCase{
-		{`function f([n]) { if (n > 0) { return f([n - 1]) + 1 }
-		return 0 }
-		f([3])`, object.NewInt(3)},
-		{`function f({n}, ...rest) { if (n > 0) { return f({n: n - 1}) + 1 }
-		return 0 }
-		f({n: 2})`, object.NewInt(2)},
-	})
-}

@@ -241,11 +241,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   now a compile error (`undefined variable "b"`), the same as in `let`, unless
   an outer `b` exists. This applies to array patterns, as in
   `function f([a = b, b = 1])`, and to object patterns, as in
-  `function f({a = b, b})`. Before, the object form compiled and its default
-  read an unset value (#517).
-- A named function with a destructured parameter, such as
-  `function f([n]) { ... f([n - 1]) ... }`, can call itself. Before, the call
-  failed with "object is not callable" (#517).
+  `function f({a = b, b = 1})`. Before, both forms compiled and gave `a` a
+  wrong value without an error. With a body of `return [a, b]` and an empty
+  argument, the array form returned `[1, 1]` and the object form returned
+  `[null, 1]` (#517).
 - Compiling a function no longer modifies the caller's AST (#517).
 
 ## [2.2.0] - 2026-08-17
