@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A spread call to a builtin with more than 256 arguments now fails with a
   catchable "max args limit" error, as calls to Risor functions already did
   (#487).
+- The parser now reports more inputs as parse errors: an operator chain (such
+  as `a.b.c`, `f()()` or `1 + 2 + 3`) or an `else if` chain longer than the
+  depth limit, a guard on the default match arm `_`, and an empty template
+  interpolation `${}`. The depth limit is 500 by default; raise it with
+  `parser.Config.MaxDepth`. Before, a long chain could crash the host with a Go
+  stack overflow (#488).
 
 ### Fixed
 
