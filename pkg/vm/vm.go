@@ -321,7 +321,7 @@ func (vm *VirtualMachine) TypeRegistry() *object.TypeRegistry {
 
 func (vm *VirtualMachine) Run(ctx context.Context) (err error) {
 	if vm.main == nil {
-		return fmt.Errorf("no main code available")
+		return fmt.Errorf("no main code available: Run requires code given to New, or use RunCode")
 	}
 	return vm.runCodeInternal(ctx, vm.main, false)
 }

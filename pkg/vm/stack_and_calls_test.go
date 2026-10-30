@@ -318,3 +318,12 @@ func TestCallOnNewEmptyAfterRunCode(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, object.NewInt(15))
 }
+
+// Run on a VM from NewEmpty must fail with an error that tells the caller
+// how to give it code.
+func TestRunOnNewEmptyNeedsMainCode(t *testing.T) {
+	machine, err := NewEmpty()
+	assert.Nil(t, err)
+	err = machine.Run(context.Background())
+	assert.ErrorContains(t, err, "Run requires code given to New, or use RunCode")
+}
