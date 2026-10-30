@@ -6,8 +6,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// Tests for audit finding H-22: Walk and Preorder must visit the default
-// arm's guard and must never pass a nil node to visitors.
+// Walk and Preorder must visit the default arm's guard and must never pass a
+// nil node to visitors.
 
 func walkNodes(root Node) []Node {
 	var nodes []Node
@@ -26,7 +26,7 @@ func preorderNodes(root Node) []Node {
 	return nodes
 }
 
-func TestAuditWalkVisitsMatchDefaultGuard(t *testing.T) {
+func TestWalkVisitsMatchDefaultGuard(t *testing.T) {
 	guard := &Ident{Name: "forbidden"}
 	match := &Match{
 		Subject: &Ident{Name: "x"},
@@ -46,7 +46,7 @@ func TestAuditWalkVisitsMatchDefaultGuard(t *testing.T) {
 	}
 }
 
-func TestAuditWalkSkipsNilTemplateExprs(t *testing.T) {
+func TestWalkSkipsNilTemplateExprs(t *testing.T) {
 	x := &Ident{Name: "x"}
 	str := &String{Exprs: []Expr{nil, x, nil}}
 	for name, nodes := range map[string][]Node{

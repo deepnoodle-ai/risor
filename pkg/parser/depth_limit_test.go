@@ -11,9 +11,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// Tests for audit findings C-05, C-06, H-22 and M-05: every AST the parser
-// accepts must be bounded by MaxDepth so it can be walked, stringified and
-// compiled without overflowing the Go stack.
+// Every AST the parser accepts must be bounded by MaxDepth so it can be
+// walked, stringified and compiled without overflowing the Go stack.
 
 // longChains returns inputs that build left-deep ASTs of n levels from a
 // single parseNode frame.
@@ -46,7 +45,7 @@ func exercise(t *testing.T, prog *ast.Program) {
 	assert.True(t, count > 0)
 }
 
-func TestAuditLongChainsRejected(t *testing.T) {
+func TestLongChainsRejected(t *testing.T) {
 	ctx := context.Background()
 	for name, input := range longChains(500_000) {
 		t.Run(name, func(t *testing.T) {
@@ -62,7 +61,7 @@ func TestAuditLongChainsRejected(t *testing.T) {
 	}
 }
 
-func TestAuditChainsWithinLimitAccepted(t *testing.T) {
+func TestChainsWithinLimitAccepted(t *testing.T) {
 	ctx := context.Background()
 	for name, input := range longChains(parser.DefaultMaxDepth - 10) {
 		t.Run(name, func(t *testing.T) {
@@ -73,7 +72,7 @@ func TestAuditChainsWithinLimitAccepted(t *testing.T) {
 	}
 }
 
-func TestAuditChainDepthSmallLimit(t *testing.T) {
+func TestChainDepthSmallLimit(t *testing.T) {
 	ctx := context.Background()
 	_, err := parser.Parse(ctx, "x.a.a.a", &parser.Config{MaxDepth: 10})
 	assert.Nil(t, err)
@@ -84,7 +83,7 @@ func TestAuditChainDepthSmallLimit(t *testing.T) {
 
 // Chain depth and nesting depth share one budget, so mixing them cannot
 // exceed MaxDepth either.
-func TestAuditChainInsideNesting(t *testing.T) {
+func TestChainInsideNesting(t *testing.T) {
 	ctx := context.Background()
 	input := strings.Repeat("(", 300) + "x" + strings.Repeat(".a", 300) + strings.Repeat(")", 300)
 	_, err := parser.Parse(ctx, input, nil)
@@ -94,7 +93,7 @@ func TestAuditChainInsideNesting(t *testing.T) {
 
 // Multiple statements each get the full budget; the chain budget is
 // released when a statement finishes.
-func TestAuditChainBudgetReleased(t *testing.T) {
+func TestChainBudgetReleased(t *testing.T) {
 	ctx := context.Background()
 	line := "x" + strings.Repeat(".a", 50) + "\n"
 	prog, err := parser.Parse(ctx, strings.Repeat(line, 100), &parser.Config{MaxDepth: 60})
@@ -112,7 +111,7 @@ func elseIfChain(n int) string {
 	return sb.String()
 }
 
-func TestAuditElseIfChainRejected(t *testing.T) {
+func TestElseIfChainRejected(t *testing.T) {
 	ctx := context.Background()
 	input := elseIfChain(500_000)
 	for _, cfg := range []*parser.Config{nil, {MaxDepth: 10}} {
@@ -125,7 +124,7 @@ func TestAuditElseIfChainRejected(t *testing.T) {
 	}
 }
 
-func TestAuditElseIfChainWithinLimitAccepted(t *testing.T) {
+func TestElseIfChainWithinLimitAccepted(t *testing.T) {
 	ctx := context.Background()
 	prog, err := parser.Parse(ctx, elseIfChain(parser.DefaultMaxDepth-10), nil)
 	assert.Nil(t, err)
@@ -137,7 +136,7 @@ func TestAuditElseIfChainWithinLimitAccepted(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestAuditMatchDefaultGuardRejected(t *testing.T) {
+func TestMatchDefaultGuardRejected(t *testing.T) {
 	ctx := context.Background()
 	_, err := parser.Parse(ctx, "match x { 1 => 2, _ if forbidden() => 3 }", nil)
 	assert.NotNil(t, err)
@@ -148,7 +147,7 @@ func TestAuditMatchDefaultGuardRejected(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestAuditEmptyTemplateInterpolationRejected(t *testing.T) {
+func TestEmptyTemplateInterpolationRejected(t *testing.T) {
 	ctx := context.Background()
 	for _, input := range []string{"`${}`", "`a${ }b`", "`${x}${}`"} {
 		_, err := parser.Parse(ctx, input, nil)
@@ -161,7 +160,7 @@ func TestAuditEmptyTemplateInterpolationRejected(t *testing.T) {
 
 // Template interpolations are parsed by a nested parser, which must inherit
 // the remaining depth budget instead of starting over at DefaultMaxDepth.
-func TestAuditTemplateInheritsDepthBudget(t *testing.T) {
+func TestTemplateInheritsDepthBudget(t *testing.T) {
 	ctx := context.Background()
 	inner := strings.Repeat("(", 30) + "x" + strings.Repeat(")", 30)
 	_, err := parser.Parse(ctx, "`${"+inner+"}`", &parser.Config{MaxDepth: 10})
