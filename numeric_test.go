@@ -119,3 +119,50 @@ func TestByteFromString(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid literal for byte()", src)
 	}
 }
+
+// byte(float) truncates toward zero, then wraps modulo 256 like byte(int).
+// The result must not depend on the platform's float-to-integer conversion.
+func TestByteFromFloat(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		src  string
+		want byte
+	}{
+		{`byte(0.0)`, 0},
+		{`byte(65.0)`, 65},
+		{`byte(255.0)`, 255},
+		{`byte(66.5)`, 66},
+		{`byte(255.9)`, 255},
+		{`byte(-0.5)`, 0},
+		{`byte(-1.0)`, 255},
+		{`byte(-1.5)`, 255},
+		{`byte(-256.0)`, 0},
+		{`byte(-257.0)`, 255},
+		{`byte(256.0)`, 0},
+		{`byte(300.0)`, 44},
+		{`byte(300.7)`, 44},
+		{`byte(float("4503599627370497"))`, 1},    // 2^52 + 1
+		{`byte(float("9223372036854775808"))`, 0}, // 2^63, above int64
+		{`byte(float("1e300"))`, 0},
+		{`byte(float("-1e300"))`, 0},
+	}
+	for _, tc := range cases {
+		result, err := Eval(ctx, tc.src, WithEnv(Builtins()))
+		assert.Nil(t, err, tc.src)
+		assert.Equal(t, result, tc.want, tc.src)
+	}
+
+	result, err := Eval(ctx, `bytes([300.0, -1.0, 66.5])`, WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, []byte{44, 255, 66})
+
+	for _, tc := range []struct{ src, msg string }{
+		{`byte(math.nan)`, "cannot convert NaN to byte"},
+		{`byte(math.inf)`, "cannot convert +Inf to byte"},
+		{`byte(-math.inf)`, "cannot convert -Inf to byte"},
+	} {
+		_, err := Eval(ctx, tc.src, WithEnv(Builtins()))
+		assert.NotNil(t, err, tc.src)
+		assert.Contains(t, err.Error(), "value error: "+tc.msg, tc.src)
+	}
+}

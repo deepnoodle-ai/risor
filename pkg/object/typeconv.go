@@ -63,7 +63,7 @@ func AsByte(obj Object) (byte, error) {
 	case *Byte:
 		return obj.value, nil
 	case *Float:
-		return byte(obj.value), nil
+		return floatToByte(obj.value)
 	case *String:
 		if len(obj.value) != 1 {
 			return 0, newTypeErrorf("expected a single byte string (length %d)", len(obj.value))
@@ -72,6 +72,21 @@ func AsByte(obj Object) (byte, error) {
 	default:
 		return 0, newTypeErrorf("expected a byte (%s given)", obj.Type())
 	}
+}
+
+// floatToByte converts f the way byte(int) treats an integer: truncate toward
+// zero, then wrap modulo 256. Go leaves out-of-range float-to-integer
+// conversion to the platform, so the wrap is done in float64, where math.Mod
+// is exact. NaN and ±Inf have no integer value and raise a value error.
+func floatToByte(f float64) (byte, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, newValueErrorf("cannot convert %v to byte", f)
+	}
+	m := math.Mod(math.Trunc(f), 256) // an integer in (-256, 256)
+	if m < 0 {
+		m += 256
+	}
+	return byte(m), nil
 }
 
 func AsFloat(obj Object) (float64, error) {
