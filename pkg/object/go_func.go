@@ -21,6 +21,8 @@ type GoFunc struct {
 	hasContext bool          // First param is context.Context
 	hasError   bool          // Last return is error
 	registry   *TypeRegistry // For type conversion
+	recv       reflect.Value // Receiver, if fn is a method bound by GoStruct
+	method     int           // Method index on recv's type, if recv is set
 }
 
 // NewGoFunc creates a new GoFunc wrapping the given Go function.
@@ -75,6 +77,14 @@ func (g *GoFunc) Equals(other Object) bool {
 	otherFunc, ok := other.(*GoFunc)
 	if !ok {
 		return false
+	}
+	if g.recv.IsValid() || otherFunc.recv.IsValid() {
+		// All bound methods have the same code pointer, so compare the
+		// receiver and method instead
+		return g.recv.IsValid() && otherFunc.recv.IsValid() &&
+			g.recv.Type() == otherFunc.recv.Type() &&
+			g.recv.Pointer() == otherFunc.recv.Pointer() &&
+			g.method == otherFunc.method
 	}
 	return g.fn.Pointer() == otherFunc.fn.Pointer()
 }
@@ -170,11 +180,11 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 		nonVariadicCount := g.numIn - 1
 		for i := 0; i < nonVariadicCount; i++ {
 			targetType := fnType.In(startIdx + i)
-			goVal, err := g.registry.toGoPath(args[i], targetType, nil, budget)
+			goVal, err := g.registry.toGoValue(args[i], targetType, nil, budget)
 			if err != nil {
 				return nil, fmt.Errorf("%s: argument %d: %w", g.name, i+1, err)
 			}
-			callArgs = append(callArgs, reflect.ValueOf(goVal))
+			callArgs = append(callArgs, goVal)
 		}
 
 		// Build variadic slice
@@ -182,22 +192,22 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 		elemType := variadicType.Elem()
 		variadicSlice := reflect.MakeSlice(variadicType, 0, len(args)-nonVariadicCount)
 		for i := nonVariadicCount; i < len(args); i++ {
-			goVal, err := g.registry.toGoPath(args[i], elemType, nil, budget)
+			goVal, err := g.registry.toGoValue(args[i], elemType, nil, budget)
 			if err != nil {
 				return nil, fmt.Errorf("%s: variadic argument %d: %w", g.name, i+1, err)
 			}
-			variadicSlice = reflect.Append(variadicSlice, reflect.ValueOf(goVal))
+			variadicSlice = reflect.Append(variadicSlice, goVal)
 		}
 		callArgs = append(callArgs, variadicSlice)
 	} else {
 		// Convert all arguments
 		for i := 0; i < len(args); i++ {
 			targetType := fnType.In(startIdx + i)
-			goVal, err := g.registry.toGoPath(args[i], targetType, nil, budget)
+			goVal, err := g.registry.toGoValue(args[i], targetType, nil, budget)
 			if err != nil {
 				return nil, fmt.Errorf("%s: argument %d: %w", g.name, i+1, err)
 			}
-			callArgs = append(callArgs, reflect.ValueOf(goVal))
+			callArgs = append(callArgs, goVal)
 		}
 	}
 
@@ -212,8 +222,10 @@ func (g *GoFunc) processResults(results []reflect.Value) (Object, error) {
 
 	// Check for error in last position
 	if g.hasError {
+		// IsZero, unlike IsNil, accepts an error of a value type, such as
+		// syscall.Errno, whose zero value means no error.
 		errVal := results[numOut-1]
-		if !errVal.IsNil() {
+		if !errVal.IsZero() {
 			return nil, errVal.Interface().(error)
 		}
 		results = results[:numOut-1]

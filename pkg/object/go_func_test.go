@@ -911,14 +911,10 @@ func TestGoFunc_InterfaceParameter(t *testing.T) {
 	registry := DefaultRegistry()
 	goFunc := NewGoFunc(reflect.ValueOf(fn), "stringify", registry)
 
-	// Note: Passing Nil to an interface parameter causes a panic because
-	// reflect.Call requires a valid Value. This is a known limitation.
-	// Interface parameters work when you pass actual values that implement
-	// the interface.
-	_, err := goFunc.Call(context.Background(), Nil)
-	// This returns an error due to the reflection limitation
-	assert.NotNil(t, err)
-	assert.Contains(t, err.Error(), "panic")
+	// Nil converts to a nil interface value
+	result, err := goFunc.Call(context.Background(), Nil)
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*String).Value(), "nil")
 }
 
 func TestGoFunc_ZeroValues(t *testing.T) {

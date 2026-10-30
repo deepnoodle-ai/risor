@@ -19,6 +19,9 @@ import (
 var (
 	errorInterface   = reflect.TypeOf((*error)(nil)).Elem()
 	contextInterface = reflect.TypeOf((*context.Context)(nil)).Elem()
+	bytesType        = reflect.TypeOf([]byte(nil))
+	anySliceType     = reflect.TypeOf([]any(nil))
+	anyMapType       = reflect.TypeOf(map[string]any(nil))
 )
 
 // *****************************************************************************
@@ -262,8 +265,28 @@ func (r *TypeRegistry) fromGoPath(v any, path []goRef) (Object, error) {
 	return r.fromGoByKind(v, typ, path)
 }
 
+// fromGoField converts an addressable struct field. A field that holds a
+// struct by value becomes a GoStruct that points at the field, so writes
+// through it change the enclosing struct, not a copy. A struct type with a
+// registered converter, such as time.Time, or one that implements
+// RisorValuer converts as FromGo does.
+func (r *TypeRegistry) fromGoField(field reflect.Value) (Object, error) {
+	if field.Kind() == reflect.Struct && field.CanAddr() {
+		if _, ok := r.fromGo[field.Type()]; !ok {
+			if _, ok := field.Interface().(RisorValuer); !ok {
+				return NewGoStruct(field.Addr(), r), nil
+			}
+		}
+	}
+	return r.FromGo(field.Interface())
+}
+
 func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type, path []goRef) (Object, error) {
 	rv := reflect.ValueOf(v)
+
+	if isSyncType(typ) {
+		return nil, fmt.Errorf("unsupported type: %s (sync types are not available to scripts)", typ)
+	}
 
 	switch typ.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -403,13 +426,86 @@ func (r *TypeRegistry) toGoPath(obj Object, targetType reflect.Type, path nestPa
 		return reflect.Zero(targetType).Interface(), nil
 	}
 
+	// A wrapped Go value passes back to Go as itself
+	if v, ok := unwrapGo(obj, targetType); ok {
+		return v, nil
+	}
+
 	// Check for registered converter
 	if fn, ok := r.toGo[targetType]; ok {
 		return fn(obj, targetType)
 	}
 
+	// A wrapped Go value of another type is a type error. A pointer target
+	// is left to toGoPointer, which converts to the element type, such as
+	// any for *any.
+	if targetType.Kind() != reflect.Ptr {
+		switch obj := obj.(type) {
+		case *GoStruct:
+			return nil, newTypeErrorf("cannot use %s as %s", obj.value.Type(), targetType)
+		case *GoFunc:
+			return nil, newTypeErrorf("cannot use %s as %s", obj.fnType, targetType)
+		}
+	}
+
 	// Handle by kind
 	return r.toGoByKind(obj, targetType, path, b)
+}
+
+// toGoValue converts obj as toGoPath does and returns the result as a
+// reflect.Value of type target, ready to pass to Set, Append, or Call.
+func (r *TypeRegistry) toGoValue(obj Object, target reflect.Type, path nestPath[Object], b *convBudget) (reflect.Value, error) {
+	v, err := r.toGoPath(obj, target, path, b)
+	if err != nil {
+		return reflect.Value{}, err
+	}
+	return reflectValue(v, target)
+}
+
+// reflectValue returns v as a reflect.Value of type t. A nil v, which is what
+// null converts to for an interface target, becomes the zero value of t, so
+// that it is never the invalid reflect.Value that Set, Append, and Call reject.
+func reflectValue(v any, t reflect.Type) (reflect.Value, error) {
+	if v == nil {
+		return reflect.Zero(t), nil
+	}
+	rv := reflect.ValueOf(v)
+	if !rv.Type().AssignableTo(t) {
+		return reflect.Value{}, newTypeErrorf("cannot use %s as %s", rv.Type(), t)
+	}
+	return rv, nil
+}
+
+// unwrapGo returns the Go value that a GoStruct or GoFunc wraps, if it can be
+// assigned to target. A struct target receives a copy of the struct.
+func unwrapGo(obj Object, target reflect.Type) (any, bool) {
+	switch obj := obj.(type) {
+	case *GoStruct:
+		if obj.value.Type().AssignableTo(target) {
+			return obj.value.Interface(), true
+		}
+		if !obj.value.IsNil() && obj.structType.AssignableTo(target) {
+			return obj.value.Elem().Interface(), true
+		}
+	case *GoFunc:
+		if obj.fnType.AssignableTo(target) {
+			return obj.fn.Interface(), true
+		}
+	}
+	return nil, false
+}
+
+// convertTo converts v to target when target is a defined type, such as
+// time.Duration, whose underlying type is the type of v.
+func convertTo(v any, err error, target reflect.Type) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Type() == target {
+		return v, nil
+	}
+	return rv.Convert(target).Interface(), nil
 }
 
 func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath[Object], b *convBudget) (any, error) {
@@ -417,11 +513,14 @@ func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64:
-		return toNumeric(obj, target)
+		v, err := toNumeric(obj, target)
+		return convertTo(v, err, target)
 	case reflect.Bool:
-		return toBool(obj)
+		v, err := toBool(obj)
+		return convertTo(v, err, target)
 	case reflect.String:
-		return toGoString(obj)
+		v, err := toGoString(obj)
+		return convertTo(v, err, target)
 	case reflect.Slice:
 		return r.toGoSlice(obj, target, path, b)
 	case reflect.Array:
@@ -432,8 +531,22 @@ func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath
 		return r.toGoPointer(obj, target, path, b)
 	case reflect.Interface:
 		if target.NumMethod() == 0 {
-			// any / interface{}
-			return toInterface(obj, path, b)
+			// any / interface{}. Lists and maps convert element by element
+			// as []any and map[string]any, so that a nested value without a
+			// Go form is an error here too.
+			switch obj.(type) {
+			case *List:
+				return r.toGoSlice(obj, anySliceType, path, b)
+			case *Map:
+				return r.toGoMap(obj, anyMapType, path, b)
+			}
+			v, err := toInterface(obj, path, b)
+			if err == nil && v == nil {
+				// Only null may become Go nil. Closures, builtins, and
+				// modules have no Go value.
+				return nil, newTypeErrorf("cannot convert %s to a Go value", obj.Type())
+			}
+			return v, err
 		}
 		// Check for specific interfaces
 		if target.Implements(errorInterface) {
@@ -453,13 +566,14 @@ func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type, path nestPath[
 		return reflect.Zero(target).Interface(), nil
 	}
 
-	// Special case: []byte from Bytes or String
-	if target.Elem().Kind() == reflect.Uint8 {
+	// Special case: []byte, or a defined type such as json.RawMessage, from
+	// Bytes or String
+	if bytesType.ConvertibleTo(target) {
 		switch v := obj.(type) {
 		case *Bytes:
-			return v.value, nil
+			return convertTo(v.value, nil, target)
 		case *String:
-			return []byte(v.value), nil
+			return convertTo([]byte(v.value), nil, target)
 		}
 	}
 
@@ -477,14 +591,14 @@ func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type, path nestPath[
 				return nil, err
 			}
 		}
-		elem, err := r.toGoPath(item, elemType, path, b)
+		elem, err := r.toGoValue(item, elemType, path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert slice element %d: %w", i, err)
 		}
-		slice = reflect.Append(slice, reflect.ValueOf(elem))
+		slice = reflect.Append(slice, elem)
 	}
 	return slice.Interface(), nil
 }
@@ -504,14 +618,14 @@ func (r *TypeRegistry) toGoArray(obj Object, target reflect.Type, path nestPath[
 				return nil, err
 			}
 		}
-		elem, err := r.toGoPath(item, elemType, path, b)
+		elem, err := r.toGoValue(item, elemType, path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert array element %d: %w", i, err)
 		}
-		array.Index(i).Set(reflect.ValueOf(elem))
+		array.Index(i).Set(elem)
 	}
 	return array.Interface(), nil
 }
@@ -533,6 +647,7 @@ func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Ob
 	if err := b.take(uint64(m.Size())); err != nil {
 		return nil, err
 	}
+	keyType := target.Key()
 	valueType := target.Elem()
 	result := reflect.MakeMapWithSize(target, m.Size())
 
@@ -543,14 +658,15 @@ func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Ob
 				return nil, err
 			}
 		}
-		goValue, err := r.toGoPath(v, valueType, path, b)
+		goValue, err := r.toGoValue(v, valueType, path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert map value for key %q: %w", k, err)
 		}
-		result.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(goValue))
+		// A null value stores the zero value. It never deletes the key.
+		result.SetMapIndex(reflect.ValueOf(k).Convert(keyType), goValue)
 	}
 	return result.Interface(), nil
 }
@@ -561,13 +677,13 @@ func (r *TypeRegistry) toGoPointer(obj Object, target reflect.Type, path nestPat
 	}
 
 	elemType := target.Elem()
-	elem, err := r.toGoPath(obj, elemType, path, b)
+	elem, err := r.toGoValue(obj, elemType, path, b)
 	if err != nil {
 		return nil, err
 	}
 
 	ptr := reflect.New(elemType)
-	ptr.Elem().Set(reflect.ValueOf(elem))
+	ptr.Elem().Set(elem)
 	return ptr.Interface(), nil
 }
 

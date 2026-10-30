@@ -89,6 +89,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   out its globals the same way (as in the REPL). Before, the function read the
   slots of the new code at the same indexes and could return a wrong value
   with no error (#502).
+- A struct field that holds another struct by value, such as `emp.Address`,
+  is now the live field, not a copy. Scripts can now write to nested host
+  structs and call their pointer-receiver methods: `emp.Address.City = "X"`
+  changes `emp`. A value read earlier also sees later writes: after
+  `let old = emp.Address`, setting `emp.Address.City` changes `old.City` too.
+  Assigning one host struct value to another, such as
+  `a.Address = b.Address`, now copies it; before, it was an error.
 
 ### Fixed
 
@@ -115,6 +122,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Building source locations for code no longer splits the whole source once
   per instruction. `bytecode.Code.GetSourceLine` splits the source once. New
   `bytecode.Code.Root` returns the root code.
+- Script values passed to Go functions, struct fields, slices, and maps no
+  longer cause reflect panics:
+  - `null` for an `any` or other interface target becomes Go `nil`. A `null`
+    map value stores `nil` under its key; before, the key was dropped.
+  - A function, builtin, or module for an `any` target is a type error
+    ("cannot convert function to a Go value"), also when it is nested in a
+    list or map. Before, it was a recovered panic, or a silent `nil`.
+    `Object.Interface()` and `object.ToInterface` still give `nil` for these
+    values.
+  - Defined types whose underlying type is a number, bool, string, or `[]byte`,
+    such as `time.Duration` or `json.RawMessage`, convert, as do map keys of a
+    defined string type.
+  - A Go struct or Go function from the host passes back to a Go parameter or
+    field of its type, or an interface it implements. A struct target gets a
+    copy of the struct. One of another type is a type error ("cannot use
+    *app.Address as app.Employee").
+  - A registered `ToGo` converter that returns a value of the wrong type is a
+    type error.
+- A Go function whose error result is a value type, such as `syscall.Errno`,
+  no longer panics. Its zero value means no error.
+- Methods from two different Go structs no longer compare equal.
+- Scripts can no longer reach a host value of a `sync` or `sync/atomic` type,
+  such as a `sync.Mutex` field. These fields are hidden from scripts, methods
+  promoted from an embedded `sync` type are hidden, and `FromGo` returns an
+  error for such a value. Before, a script could call `Unlock` on an unlocked
+  mutex field, a fatal error that exits the host process (#511).
 
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root

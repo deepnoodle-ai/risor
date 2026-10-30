@@ -2030,3 +2030,53 @@ func TestBasicScriptingLoops(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, int64(6)) // 1 + 2 + 3
 }
+
+// Script values passed to Go functions convert without reflect panics.
+func TestGoInteropFromScript(t *testing.T) {
+	ctx := context.Background()
+	stored := map[string]any{}
+	env := map[string]any{
+		"is_nil":  func(v any) bool { return v == nil },
+		"store":   func(m map[string]any) { stored = m },
+		"seconds": func(d time.Duration) float64 { return d.Seconds() },
+	}
+
+	result, err := Eval(ctx, `is_nil(null)`, WithEnv(env))
+	assert.Nil(t, err)
+	assert.Equal(t, result, true)
+
+	_, err = Eval(ctx, `store({a: null})`, WithEnv(env))
+	assert.Nil(t, err)
+	value, ok := stored["a"]
+	assert.True(t, ok)
+	assert.Nil(t, value)
+
+	result, err = Eval(ctx, `seconds(2000000000)`, WithEnv(env))
+	assert.Nil(t, err)
+	assert.Equal(t, result, 2.0)
+
+	_, err = Eval(ctx, `is_nil(function() {})`, WithEnv(env))
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "cannot convert function to a Go value")
+	assert.False(t, strings.Contains(err.Error(), "panic"))
+}
+
+// A script cannot lock or unlock a host mutex, so the host neither hangs nor
+// crashes (#511).
+func TestHostMutexNotReachable(t *testing.T) {
+	type guarded struct {
+		Mu sync.Mutex
+		N  int
+	}
+	g := &guarded{N: 1}
+	env := map[string]any{"g": g}
+	for _, script := range []string{`g.Mu.Lock()`, `g.Mu.Unlock()`, `g.Mu = null`} {
+		_, err := Eval(context.Background(), script, WithEnv(env))
+		assert.NotNil(t, err, script)
+	}
+	result, err := Eval(context.Background(), `g.N`, WithEnv(env))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(1))
+	assert.True(t, g.Mu.TryLock())
+	g.Mu.Unlock()
+}
