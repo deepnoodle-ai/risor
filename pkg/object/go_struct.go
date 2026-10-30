@@ -29,25 +29,72 @@ func getStructMeta(structType reflect.Type) *structMeta {
 		methods: make(map[string]int),
 	}
 
-	// Index fields
+	// Index fields. Fields of sync and sync/atomic types are left out, so a
+	// script cannot lock, unlock, or copy a host's locks.
 	for i := range structType.NumField() {
 		field := structType.Field(i)
-		if field.IsExported() {
+		if field.IsExported() && !isSyncType(field.Type) {
 			meta.fields[field.Name] = i
 		}
 	}
 
-	// Index methods on pointer type (includes both pointer and value receiver methods)
+	// Index methods on pointer type (includes both pointer and value receiver
+	// methods), except those promoted from an embedded sync type
+	syncMethods := map[string]bool{}
+	addSyncMethods(structType, syncMethods, map[reflect.Type]bool{})
 	ptrType := reflect.PointerTo(structType)
 	for i := range ptrType.NumMethod() {
 		method := ptrType.Method(i)
-		if method.IsExported() {
+		if method.IsExported() && !syncMethods[method.Name] {
 			meta.methods[method.Name] = i
 		}
 	}
 
 	structMetaCache.Store(structType, meta)
 	return meta
+}
+
+// isSyncType reports whether t, or the type t points to, is from package sync
+// or sync/atomic. Scripts never see values of these types: a script that
+// locks a host mutex can hang the host, and unlocking an unlocked mutex is a
+// fatal error that recover cannot catch.
+func isSyncType(t reflect.Type) bool {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.PkgPath() == "sync" || t.PkgPath() == "sync/atomic"
+}
+
+// addSyncMethods adds to names the methods that structType promotes from a
+// sync or sync/atomic type embedded at any depth.
+func addSyncMethods(structType reflect.Type, names map[string]bool, seen map[reflect.Type]bool) {
+	if seen[structType] {
+		return
+	}
+	seen[structType] = true
+	for i := range structType.NumField() {
+		field := structType.Field(i)
+		if !field.Anonymous {
+			continue
+		}
+		t := field.Type
+		if isSyncType(t) {
+			ptrType := t
+			if ptrType.Kind() != reflect.Ptr {
+				ptrType = reflect.PointerTo(t)
+			}
+			for j := range ptrType.NumMethod() {
+				names[ptrType.Method(j).Name] = true
+			}
+			continue
+		}
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+		if t.Kind() == reflect.Struct {
+			addSyncMethods(t, names, seen)
+		}
+	}
 }
 
 // GoStruct wraps a Go struct for use in Risor.

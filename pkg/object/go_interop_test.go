@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,6 +136,30 @@ func TestGoInterop_NoGoValueToAny(t *testing.T) {
 	}
 }
 
+// A value without a Go form nested in a list or map is the same error when
+// the target is a plain any.
+func TestGoInterop_NestedNoGoValueToAny(t *testing.T) {
+	closure := NewClosure(bytecode.NewFunction(bytecode.FunctionParams{}))
+	values := []Object{
+		NewList([]Object{NewInt(1), closure}),
+		NewMap(map[string]Object{"f": closure}),
+		NewList([]Object{NewMap(map[string]Object{"f": closure})}),
+	}
+	for _, value := range values {
+		_, err := callGo(t, func(v any) {}, value)
+		assert.NotNil(t, err)
+		noPanic(t, err)
+		assert.Contains(t, err.Error(), "cannot convert function to a Go value")
+	}
+
+	// Lists and maps of plain values still convert as before
+	result, err := DefaultRegistry().ToGo(context.Background(),
+		NewList([]Object{NewInt(1), NewMap(map[string]Object{"a": Nil})}),
+		reflect.TypeOf((*any)(nil)).Elem())
+	assert.Nil(t, err)
+	assert.Equal(t, result, []any{int64(1), map[string]any{"a": nil}})
+}
+
 // A registered converter that returns the wrong type gives an error, not a
 // panic.
 func TestGoInterop_ConverterWrongType(t *testing.T) {
@@ -244,6 +270,10 @@ func TestGoInterop_GoStructRoundTrip(t *testing.T) {
 	_, err = callGo(t, func(p *testPerson) {}, s)
 	assert.NotNil(t, err)
 	noPanic(t, err)
+
+	_, err = callGo(t, func(p testPerson) {}, s)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "cannot use *object.testStringerStruct as object.testPerson")
 }
 
 func TestGoInterop_GoStructToField(t *testing.T) {
@@ -353,4 +383,67 @@ func TestGoInterop_TimeConversion(t *testing.T) {
 	result, err := callGo(t, func(t time.Time) int { return t.Year() }, obj)
 	assert.Nil(t, err)
 	assert.Equal(t, result, NewInt(2026))
+}
+
+// =============================================================================
+// SYNC TYPES
+// =============================================================================
+
+type testGuarded struct {
+	Mu    sync.Mutex
+	RW    *sync.RWMutex
+	Count atomic.Int64
+	N     int
+}
+
+type testEmbedsMutex struct {
+	sync.Mutex
+	N int
+}
+
+func (e *testEmbedsMutex) Get() int { return e.N }
+
+type testEmbedsDeep struct {
+	testEmbedsMutex
+}
+
+// Scripts cannot reach a host's sync or sync/atomic values, so they cannot
+// lock, unlock, or copy them.
+func TestGoInterop_SyncFieldsHidden(t *testing.T) {
+	g := &testGuarded{RW: &sync.RWMutex{}}
+	s := NewGoStruct(reflect.ValueOf(g), DefaultRegistry())
+	for _, name := range []string{"Mu", "RW", "Count"} {
+		_, ok := s.GetAttr(name)
+		assert.False(t, ok, name)
+		assert.NotNil(t, s.SetAttr(name, Nil), name)
+		for _, spec := range s.Attrs() {
+			assert.NotEqual(t, spec.Name, name)
+		}
+	}
+	n, ok := s.GetAttr("N")
+	assert.True(t, ok)
+	assert.Equal(t, n, NewInt(0))
+	assert.True(t, g.Mu.TryLock())
+}
+
+func TestGoInterop_EmbeddedSyncMethodsHidden(t *testing.T) {
+	for _, v := range []any{&testEmbedsMutex{N: 1}, &testEmbedsDeep{testEmbedsMutex{N: 1}}} {
+		s := NewGoStruct(reflect.ValueOf(v), DefaultRegistry())
+		for _, name := range []string{"Lock", "Unlock", "TryLock", "Mutex"} {
+			_, ok := s.GetAttr(name)
+			assert.False(t, ok, name)
+		}
+		result, err := s.CallMethod(context.Background(), "Get")
+		assert.Nil(t, err)
+		assert.Equal(t, result, NewInt(1))
+	}
+}
+
+func TestGoInterop_SyncValuesNotConverted(t *testing.T) {
+	var locker sync.Locker = &sync.Mutex{}
+	for _, v := range []any{&sync.Mutex{}, &sync.WaitGroup{}, &atomic.Int64{}, locker} {
+		_, err := DefaultRegistry().FromGo(v)
+		assert.NotNil(t, err)
+		assert.Contains(t, err.Error(), "sync types are not available to scripts")
+	}
 }

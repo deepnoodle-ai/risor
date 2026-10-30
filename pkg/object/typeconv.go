@@ -20,6 +20,8 @@ var (
 	errorInterface   = reflect.TypeOf((*error)(nil)).Elem()
 	contextInterface = reflect.TypeOf((*context.Context)(nil)).Elem()
 	bytesType        = reflect.TypeOf([]byte(nil))
+	anySliceType     = reflect.TypeOf([]any(nil))
+	anyMapType       = reflect.TypeOf(map[string]any(nil))
 )
 
 // *****************************************************************************
@@ -282,6 +284,10 @@ func (r *TypeRegistry) fromGoField(field reflect.Value) (Object, error) {
 func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type, path []goRef) (Object, error) {
 	rv := reflect.ValueOf(v)
 
+	if isSyncType(typ) {
+		return nil, fmt.Errorf("unsupported type: %s (sync types are not available to scripts)", typ)
+	}
+
 	switch typ.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return NewInt(rv.Int()), nil
@@ -430,6 +436,18 @@ func (r *TypeRegistry) toGoPath(obj Object, targetType reflect.Type, path nestPa
 		return fn(obj, targetType)
 	}
 
+	// A wrapped Go value of another type is a type error. A pointer target
+	// is left to toGoPointer, which converts to the element type, such as
+	// any for *any.
+	if targetType.Kind() != reflect.Ptr {
+		switch obj := obj.(type) {
+		case *GoStruct:
+			return nil, newTypeErrorf("cannot use %s as %s", obj.value.Type(), targetType)
+		case *GoFunc:
+			return nil, newTypeErrorf("cannot use %s as %s", obj.fnType, targetType)
+		}
+	}
+
 	// Handle by kind
 	return r.toGoByKind(obj, targetType, path, b)
 }
@@ -513,7 +531,15 @@ func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath
 		return r.toGoPointer(obj, target, path, b)
 	case reflect.Interface:
 		if target.NumMethod() == 0 {
-			// any / interface{}
+			// any / interface{}. Lists and maps convert element by element
+			// as []any and map[string]any, so that a nested value without a
+			// Go form is an error here too.
+			switch obj.(type) {
+			case *List:
+				return r.toGoSlice(obj, anySliceType, path, b)
+			case *Map:
+				return r.toGoMap(obj, anyMapType, path, b)
+			}
 			v, err := toInterface(obj, path, b)
 			if err == nil && v == nil {
 				// Only null may become Go nil. Closures, builtins, and
