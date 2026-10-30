@@ -187,12 +187,16 @@ func NewClosure(fn *bytecode.Function) *Closure {
 	var defaults []Object
 	var defaultsCount int
 	for i := 0; i < fn.DefaultCount(); i++ {
-		value := fn.Default(i)
-		if value != nil {
+		switch value := fn.Default(i); value.(type) {
+		case nil:
+			// The parameter has no default
+			defaults = append(defaults, nil)
+		case bytecode.NilDefault:
+			defaultsCount++
+			defaults = append(defaults, Nil)
+		default:
 			defaultsCount++
 			defaults = append(defaults, FromGoType(value))
-		} else {
-			defaults = append(defaults, nil)
 		}
 	}
 

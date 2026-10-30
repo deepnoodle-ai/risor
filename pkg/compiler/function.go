@@ -44,7 +44,8 @@ func (f *Function) Default(index int) any {
 }
 
 // RequiredArgsCount returns the minimum number of arguments required.
-// A parameter requires an argument if it has no default value (nil in defaults array).
+// A parameter requires an argument if it has no default value (nil in defaults
+// array). A null default is bytecode.NilDefault, not nil.
 func (f *Function) RequiredArgsCount() int {
 	// Count non-nil defaults (nil means no default for that parameter)
 	// Only consider defaults up to the parameter count to avoid negative results

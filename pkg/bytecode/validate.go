@@ -342,7 +342,7 @@ func validateConstant(constant any) error {
 		}
 		for _, d := range c.defaults {
 			switch d.(type) {
-			case nil, bool, int, int64, float64, string:
+			case nil, NilDefault, bool, int, int64, float64, string:
 			default:
 				return fmt.Errorf("function %q has a default of unsupported type %T", c.name, d)
 			}

@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+// NilDefault is the default value of a parameter declared with a null
+// default, as in function f(a = null). In a function's defaults, a nil entry
+// means that the parameter has no default, so a null default needs a value of
+// its own.
+type NilDefault struct{}
+
+// String returns "null", the Risor spelling of the value.
+func (NilDefault) String() string { return "null" }
+
 // Function represents a compiled function template.
 // It is immutable after creation and contains all the static information
 // needed to create closures at runtime.
@@ -35,8 +44,8 @@ func NewFunction(params FunctionParams) *Function {
 	parameters := copyStrings(params.Parameters)
 	defaults := copyAny(params.Defaults)
 
-	// Count non-nil defaults to compute required args correctly.
-	// A parameter with a nil default still requires an argument.
+	// Count non-nil defaults to compute required args correctly. A nil entry
+	// means the parameter has no default; a null default is NilDefault.
 	defaultsWithValue := 0
 	for _, d := range defaults {
 		if d != nil {
@@ -85,8 +94,8 @@ func (f *Function) DefaultCount() int {
 	return len(f.defaults)
 }
 
-// Default returns the default value at the given index.
-// May return nil if no default is set for that parameter.
+// Default returns the default value at the given index. It returns nil if
+// the parameter has no default, and NilDefault if its default is null.
 func (f *Function) Default(index int) any {
 	return f.defaults[index]
 }
