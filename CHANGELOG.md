@@ -64,6 +64,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A string and bytes compare the same way in both directions:
   `"a" == bytes("a")` is now true, like `bytes("a") == "a"`, and `<`, `>`,
   `in`, and `list.index` work with a string on either side.
+- Go API: `TypeError`, `ValueError`, and `IndexError` in `pkg/errors` now add
+  their kind in `Error()`, and `Err` holds the message without the kind. For
+  example, `NewTypeError(errors.New("x")).Error()` now returns
+  `"type error: x"`. Before, it returned `"x"`. `TypeErrorf` and the other
+  `...Errorf` functions return the same text as before. If your code puts the
+  kind in the wrapped error, as in `NewValueError(errors.New("value error:
+  bad"))`, the kind now shows twice. Remove it from the wrapped error (#494).
 
 ### Fixed
 
@@ -144,10 +151,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - An error from an operator such as `+` or `<` now shows its kind once, for
   example `type error: unsupported operation for string: + on type map`.
   Before, it showed `type error: type error: ...`, and a failed comparison
-  showed `runtime error: type error: ...`. For Go callers, `errors.As` now
-  finds the `*object.TypeError` or `*object.ValueError` in such an error. A
-  `TypeError`, `ValueError`, or `IndexError` now keeps its message in `Err`
-  without the kind, and its `Error` method adds the kind (#494).
+  showed `runtime error: type error: ...`, and `e.kind()` in a `catch` block
+  returned `"runtime error"` instead of `"type error"`. For Go callers,
+  `errors.As` now finds the `*object.TypeError` or `*object.ValueError` in such
+  an error (#494).
 
 ## [2.2.0] - 2026-08-17
 
