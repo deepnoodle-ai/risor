@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -491,7 +492,13 @@ func TestUnmarshalOldFormatLocationSource(t *testing.T) {
 // built without source does. It gets an empty source line, and a runtime
 // error at that location is reported without a snippet.
 func TestUnmarshalLocationWithoutSourceLine(t *testing.T) {
-	for _, line := range []int{-1, 0, 2, 1 << 40} {
+	lines := []int{-1, 0, 2}
+	if strconv.IntSize == 64 {
+		// A line beyond any source. It does not fit in a 32-bit int.
+		var large int64 = 1 << 40
+		lines = append(lines, int(large))
+	}
+	for _, line := range lines {
 		t.Run(fmt.Sprint(line), func(t *testing.T) {
 			// Instructions: LOAD_CONST 0, LOAD_CONST 1, BINARY_OP add,
 			// RETURN_VALUE, which fails at run time: int + string.
