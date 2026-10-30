@@ -51,7 +51,9 @@ func compileBytes(t *testing.T, prog *ast.Program, src string) uint64 {
 // than time, so machine load does not affect it. Eight times the functions
 // must allocate well under 64 times as much. Both quadratic paths fixed in
 // #531 exceed the bound at these sizes: splitting the source for each
-// instruction, and building the global names for each function.
+// instruction, and building the global names for each function. It does not
+// see quadratic work that does not allocate; BenchmarkCompileManyFunctions
+// measures time.
 func TestCompileWorkLinearInFunctionCount(t *testing.T) {
 	const small, large = 100, 800
 	smallProg, smallSrc := parseManyFunctions(t, small)
@@ -62,6 +64,8 @@ func TestCompileWorkLinearInFunctionCount(t *testing.T) {
 
 	ratio := float64(largeBytes) / float64(smallBytes)
 	t.Logf("%d functions: %d bytes, %d functions: %d bytes, ratio %.1f", small, smallBytes, large, largeBytes, ratio)
+	// Linear code gives 8.4. A higher bound would miss smaller quadratic
+	// terms: one of 8n² bytes already gives about 11.6.
 	assert.True(t, ratio < 12, "compile allocations grew %.1fx for %dx the functions", ratio, large/small)
 }
 
