@@ -178,6 +178,8 @@ func inspectNested(obj Object, path nestPath[Object]) string {
 		return obj.inspect(path)
 	case *Map:
 		return obj.inspect(path)
+	case *Cell:
+		return obj.inspect(path)
 	}
 	return obj.Inspect()
 }
@@ -188,6 +190,8 @@ func inspectPlaceholder(obj Object) string {
 	switch obj := obj.(type) {
 	case *Map:
 		return "{...}"
+	case *Cell:
+		return "cell(...)"
 	case *Iter:
 		// Inspecting an iterator does not visit its values, so it is safe
 		return obj.Inspect()
