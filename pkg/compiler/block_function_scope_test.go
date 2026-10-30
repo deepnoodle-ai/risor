@@ -9,10 +9,10 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// Audit C-04: a function declared inside a top-level block is scoped to that
+// A function declared inside a top-level block is scoped to that
 // block. It must not be hoisted into the root symbol table, where it would
 // occupy a global slot that is never initialized.
-func TestAuditBlockFunctionNotHoisted(t *testing.T) {
+func TestBlockFunctionNotHoisted(t *testing.T) {
 	parsed, err := parser.Parse(context.Background(), "function foo() { return 42 }\nfoo", nil)
 	assert.Nil(t, err)
 	assert.Len(t, parsed.Stmts, 2)

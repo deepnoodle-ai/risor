@@ -15,11 +15,9 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// Tests for audit findings C-04, H-01, H-08, and H-09.
-
-// C-04: reading a hoisted function before its declaration executes must yield
+// Reading a hoisted function before its declaration executes must yield
 // object.Nil, never a raw Go nil.
-func TestAuditGlobalReadBeforeInit(t *testing.T) {
+func TestGlobalReadBeforeInit(t *testing.T) {
 	result, err := run(context.Background(), `
 	let f = foo
 	function foo() { return 1 }
@@ -30,8 +28,8 @@ func TestAuditGlobalReadBeforeInit(t *testing.T) {
 	assert.Equal(t, result, object.Nil)
 }
 
-// C-04: globals that are never assigned must be initialized to object.Nil.
-func TestAuditUnassignedGlobalsAreNil(t *testing.T) {
+// Globals that are never assigned must be initialized to object.Nil.
+func TestUnassignedGlobalsAreNil(t *testing.T) {
 	vm, err := newVM(context.Background(), `
 	let x = foo
 	function foo() { return 1 }
@@ -43,8 +41,8 @@ func TestAuditUnassignedGlobalsAreNil(t *testing.T) {
 	}
 }
 
-// C-04: unassigned locals must be initialized to object.Nil.
-func TestAuditUnassignedLocalsAreNil(t *testing.T) {
+// Unassigned locals must be initialized to object.Nil.
+func TestUnassignedLocalsAreNil(t *testing.T) {
 	small := "function f() { let a = 1; let b = 2; return a + b }"
 	large := "function f() { let a = 1; let b = 2; let c = 3; let d = 4; let e = 5; " +
 		"let g = 6; let h = 7; let i = 8; let j = 9; let k = 10; return a }"
@@ -67,26 +65,26 @@ func TestAuditUnassignedLocalsAreNil(t *testing.T) {
 	}
 }
 
-// H-01: pushing past MaxStackDepth between periodic checks must return
+// Pushing past MaxStackDepth between periodic checks must return
 // ErrStackOverflow rather than panicking.
-func TestAuditValueStackOverflowPush(t *testing.T) {
+func TestValueStackOverflowPush(t *testing.T) {
 	elems := strings.TrimSuffix(strings.Repeat("1,", MaxStackDepth+10), ",")
 	_, err := run(context.Background(), "["+elems+"]")
 	assert.NotNil(t, err)
 	assert.True(t, errors.Is(err, ErrStackOverflow), "got %v", err)
 }
 
-// H-01: the overflow inside a callback must not double-panic in the deferred
+// The overflow inside a callback must not double-panic in the deferred
 // frame restore of callFunction.
-func TestAuditValueStackOverflowInCallback(t *testing.T) {
+func TestValueStackOverflowInCallback(t *testing.T) {
 	elems := strings.TrimSuffix(strings.Repeat("1,", MaxStackDepth+10), ",")
 	_, err := run(context.Background(), "[1].map(x => ["+elems+"])")
 	assert.NotNil(t, err)
 	assert.True(t, errors.Is(err, ErrStackOverflow), "got %v", err)
 }
 
-// H-01: Unpack must bounds-check before pushing.
-func TestAuditValueStackOverflowUnpack(t *testing.T) {
+// Unpack must bounds-check before pushing.
+func TestValueStackOverflowUnpack(t *testing.T) {
 	n := MaxStackDepth + 10
 	names := make([]string, n)
 	for i := range names {
@@ -97,9 +95,9 @@ func TestAuditValueStackOverflowUnpack(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrStackOverflow), "got %v", err)
 }
 
-// H-08: a named function with the maximum parameter count plus a rest
+// A named function with the maximum parameter count plus a rest
 // parameter must not overflow vm.tmp.
-func TestAuditMaxParamsWithRestParam(t *testing.T) {
+func TestMaxParamsWithRestParam(t *testing.T) {
 	for _, count := range []int{compiler.MaxArgs - 1, compiler.MaxArgs} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			params := make([]string, count)
@@ -119,8 +117,8 @@ func TestAuditMaxParamsWithRestParam(t *testing.T) {
 	}
 }
 
-// H-08: CallSpread must enforce MaxArgs for all callables.
-func TestAuditCallSpreadMaxArgs(t *testing.T) {
+// CallSpread must enforce MaxArgs for all callables.
+func TestCallSpreadMaxArgs(t *testing.T) {
 	called := false
 	fn := object.NewBuiltin("count", func(ctx context.Context, args ...object.Object) (object.Object, error) {
 		called = true
@@ -138,8 +136,8 @@ func TestAuditCallSpreadMaxArgs(t *testing.T) {
 	assert.Equal(t, result, object.NewInt(MaxArgs))
 }
 
-// H-09: vm.Call before vm.Run must work (or fail cleanly), not panic.
-func TestAuditCallBeforeRun(t *testing.T) {
+// vm.Call before vm.Run must work (or fail cleanly), not panic.
+func TestCallBeforeRun(t *testing.T) {
 	bc := compileSource(t, "function add(a, b) { return a + b }")
 	fn := findFunction(bc)
 	assert.NotNil(t, fn)
@@ -152,9 +150,9 @@ func TestAuditCallBeforeRun(t *testing.T) {
 	assert.Equal(t, result, object.NewInt(3))
 }
 
-// H-09: vm.Call on a fresh VM (sp == -1) must leave the stack balanced
+// vm.Call on a fresh VM (sp == -1) must leave the stack balanced
 // across repeated calls, including calls that fail.
-func TestAuditCallStackBalanced(t *testing.T) {
+func TestCallStackBalanced(t *testing.T) {
 	ctx := context.Background()
 	machine, err := newVM(ctx, `
 	function ok(x) { return x * 2 }
@@ -181,8 +179,8 @@ func TestAuditCallStackBalanced(t *testing.T) {
 	}
 }
 
-// H-09: a failing callback must not leave values on the caller's stack.
-func TestAuditCallbackErrorLeavesStackClean(t *testing.T) {
+// A failing callback must not leave values on the caller's stack.
+func TestCallbackErrorLeavesStackClean(t *testing.T) {
 	ctx := context.Background()
 	machine, err := newVM(ctx, `function bad(x) { return 1 + (2 + (x + "s")) }`)
 	assert.Nil(t, err)
@@ -241,7 +239,7 @@ func (o *haltInTryObserver) OnStep(event StepEvent) bool {
 // An observer halt inside a try block ends the run without unwinding its
 // handler. A later Call must not let that stale handler catch errors thrown by
 // the called function.
-func TestAuditCallIgnoresStaleExceptionHandlers(t *testing.T) {
+func TestCallIgnoresStaleExceptionHandlers(t *testing.T) {
 	ctx := context.Background()
 	ast, err := parser.Parse(ctx, `
 	function fail() { throw "boom" }
