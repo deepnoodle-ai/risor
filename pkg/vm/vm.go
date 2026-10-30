@@ -344,6 +344,10 @@ func (vm *VirtualMachine) start(ctx context.Context) error {
 	// Each run has its own step budget
 	vm.stepCount = 0
 	vm.stepCheckCounter = 0
+	// Each run reports its first line and samples from its own start
+	vm.sampleCount = 0
+	vm.lastObservedCode = nil
+	vm.lastObservedLine = 0
 	vm.checkEvery = vm.nextCheckInterval()
 	vm.valueStackLimit = vm.maxValueStackDepth
 	if vm.valueStackLimit <= 0 || vm.valueStackLimit > MaxStackDepth {
@@ -1485,6 +1489,12 @@ func (vm *VirtualMachine) Call(
 	// A previous run that was halted inside a try block may have left its
 	// handlers behind. No script frames are active between runs, so drop them.
 	vm.excStackSize = 0
+	// The call comes from Go, so it has no call site in the script. Restore
+	// the active code afterward, even if the call fails before it activates
+	// a frame, so that Get still reads the globals.
+	prevCode := vm.activeCode
+	vm.activeCode = nil
+	defer func() { vm.activeCode = prevCode }()
 	return vm.callFunction(vm.initContext(ctx), fn, args)
 }
 
@@ -1574,21 +1584,33 @@ func (vm *VirtualMachine) callFunction(
 	}
 	argc = localCount
 
+	// The call site, read before the frame of the function is active
+	var callSite object.SourceLocation
+	if vm.observer != nil {
+		callSite = vm.getCurrentLocation()
+	}
+
 	// Activate a frame for the function call
 	if _, err := vm.activateFunction(vm.fp+1, 0, fn, vm.tmp[:argc]); err != nil {
 		return nil, err
 	}
 
-	// Call observer if present and configured to observe calls
-	if vm.observer != nil && vm.observerConfig.ObserveCalls {
-		event := CallEvent{
-			FunctionName: fn.Name(),
-			ArgCount:     len(args),
-			Location:     vm.getCurrentLocation(),
-			FrameDepth:   vm.fp + 1,
-		}
-		if !vm.observer.OnCall(event) {
-			return nil, ErrObserverHalt
+	if vm.observer != nil {
+		// StepOnLine reports the first line of every call, even when the
+		// same function last ran on that line, as a callback does.
+		vm.lastObservedCode = nil
+
+		// Call observer if configured to observe calls
+		if vm.observerConfig.ObserveCalls {
+			event := CallEvent{
+				FunctionName: fn.Name(),
+				ArgCount:     len(args),
+				Location:     callSite,
+				FrameDepth:   vm.fp + 1,
+			}
+			if !vm.observer.OnCall(event) {
+				return nil, ErrObserverHalt
+			}
 		}
 	}
 
@@ -1598,6 +1620,14 @@ func (vm *VirtualMachine) callFunction(
 
 	// Evaluate the function code then return the result from TOS
 	if err := vm.eval(ctx); err != nil {
+		// The frame is still active if the function exits with an error
+		// rather than a return. Report the return, so that every OnCall
+		// has a matching OnReturn.
+		if vm.fp > baseFP && !errors.Is(err, ErrObserverHalt) {
+			if herr := vm.observeErrorReturn(fn, baseFP); herr != nil {
+				return nil, herr
+			}
+		}
 		return nil, err
 	}
 	if vm.sp <= baseSP {
@@ -1617,6 +1647,23 @@ func (vm *VirtualMachine) fillDefaults(fn *object.Closure, from, to int) {
 		}
 		vm.tmp[i] = value
 	}
+}
+
+// observeErrorReturn reports to the observer that fn returned with an error
+// to the frame at baseFP. It returns ErrObserverHalt if the observer halts.
+func (vm *VirtualMachine) observeErrorReturn(fn *object.Closure, baseFP int) error {
+	if vm.observer == nil || !vm.observerConfig.ObserveReturns {
+		return nil
+	}
+	event := ReturnEvent{
+		FunctionName: fn.Name(),
+		Location:     vm.getCurrentLocation(),
+		FrameDepth:   baseFP + 1,
+	}
+	if !vm.observer.OnReturn(event) {
+		return ErrObserverHalt
+	}
+	return nil
 }
 
 // Call a callable object with the given arguments. Returns an error if the
