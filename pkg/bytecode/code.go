@@ -25,6 +25,11 @@ type Code struct {
 	filename     string
 	functionID   string
 
+	// sourceStart and sourceEnd give the byte range of source within the
+	// root code's source. Both are zero when source is not a slice of it.
+	sourceStart int
+	sourceEnd   int
+
 	// Source map: one location per instruction for error reporting
 	locations []SourceLocation
 
@@ -66,12 +71,18 @@ type CodeParams struct {
 	Constants    []any
 	Names        []string
 	Source       string
-	Filename     string
-	FunctionID   string
-	Locations    []SourceLocation
-	MaxCallArgs  int
-	LocalCount   int
-	GlobalCount  int
+	// SourceStart and SourceEnd give the byte range of Source within the
+	// source of the root code, when Source is a slice of it, as it is for
+	// the body of a compiled function. Marshal writes the range in place of
+	// the text when it gives Source. Leave both zero otherwise.
+	SourceStart int
+	SourceEnd   int
+	Filename    string
+	FunctionID  string
+	Locations   []SourceLocation
+	MaxCallArgs int
+	LocalCount  int
+	GlobalCount int
 	// GlobalNames names each global slot. Only root code uses it: every
 	// code shares the root's globals, and its GlobalNameAt, GlobalNameCount
 	// and GlobalNames read the root's names. NewCode drops the names of each
@@ -103,6 +114,8 @@ func NewCode(params CodeParams) *Code {
 		constants:         copyAny(params.Constants),
 		names:             copyStrings(params.Names),
 		source:            params.Source,
+		sourceStart:       params.SourceStart,
+		sourceEnd:         params.SourceEnd,
 		filename:          params.Filename,
 		functionID:        params.FunctionID,
 		locations:         copyLocations(params.Locations),

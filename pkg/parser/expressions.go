@@ -316,14 +316,18 @@ func (p *Parser) parseArrowBody(arrowPos token.Position, params []ast.FuncParam,
 		}
 	} else {
 		// Expression body: (x) => x + 1
-		// Wrap in implicit return
+		// Wrap in implicit return. The block has no braces, so it and the
+		// return span the expression: Lbrace and Return are at its first
+		// character and Rbrace at its last.
+		exprStart := p.curToken.StartPosition
 		expr := p.parseExpression(LOWEST)
 		if expr == nil {
 			p.setTokenError(p.curToken, "invalid arrow function body")
 			return nil, false
 		}
-		returnStmt := &ast.Return{Return: arrowPos, Value: expr}
-		body = &ast.Block{Lbrace: arrowPos, Stmts: []ast.Node{returnStmt}, Rbrace: arrowPos}
+		exprLast := p.curToken.EndPosition // the token's last character
+		returnStmt := &ast.Return{Return: exprStart, Value: expr}
+		body = &ast.Block{Lbrace: exprStart, Stmts: []ast.Node{returnStmt}, Rbrace: exprLast}
 	}
 
 	if defaults == nil {

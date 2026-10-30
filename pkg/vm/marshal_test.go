@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -491,7 +492,13 @@ func TestUnmarshalOldFormatLocationSource(t *testing.T) {
 // built without source does. It gets an empty source line, and a runtime
 // error at that location is reported without a snippet.
 func TestUnmarshalLocationWithoutSourceLine(t *testing.T) {
-	for _, line := range []int{-1, 0, 2, 1 << 40} {
+	lines := []int{-1, 0, 2}
+	if strconv.IntSize == 64 {
+		// A line beyond any source. It does not fit in a 32-bit int.
+		var large int64 = 1 << 40
+		lines = append(lines, int(large))
+	}
+	for _, line := range lines {
 		t.Run(fmt.Sprint(line), func(t *testing.T) {
 			// Instructions: LOAD_CONST 0, LOAD_CONST 1, BINARY_OP add,
 			// RETURN_VALUE, which fails at run time: int + string.
@@ -540,4 +547,307 @@ func TestUnmarshalAcceptsColumnsPastStoredSource(t *testing.T) {
 	result, err := Run(context.Background(), restored)
 	assert.Nil(t, err)
 	assert.Equal(t, result, object.NewInt(2))
+}
+
+// nestedFunctions returns a script with functions nested depth levels deep.
+// Each level adds the same amount of text.
+func nestedFunctions(depth int) string {
+	var b strings.Builder
+	for i := 0; i < depth; i++ {
+		fmt.Fprintf(&b, "function f%d() {\n\tlet pad%d = \"%s\"\n", i, i, strings.Repeat("x", 200))
+	}
+	b.WriteString("return 1\n")
+	for i := depth - 1; i >= 0; i-- {
+		if i < depth-1 {
+			fmt.Fprintf(&b, "return f%d\n", i+1)
+		}
+		b.WriteString("}\n")
+	}
+	b.WriteString("f0")
+	return b.String()
+}
+
+// nestedArrows returns a script with arrow functions that have an expression
+// body nested depth levels deep. Each level adds the same amount of text.
+func nestedArrows(depth int) string {
+	var b strings.Builder
+	b.WriteString("let f = ")
+	for i := 0; i < depth; i++ {
+		fmt.Fprintf(&b, "a%d => [\"%s\", ", i, strings.Repeat("x", 200))
+	}
+	b.WriteString("1")
+	b.WriteString(strings.Repeat("]", depth))
+	return b.String()
+}
+
+// Marshaled output must not repeat a function's body text for each function
+// it is nested in. That made the size grow with depth times source size.
+// Small inputs only: 4x the depth must give about 4x the output, not 16x.
+func TestMarshalSizeLinearInNestingDepth(t *testing.T) {
+	t.Run("functions", func(t *testing.T) { checkSizeLinearInDepth(t, nestedFunctions) })
+	t.Run("arrows", func(t *testing.T) { checkSizeLinearInDepth(t, nestedArrows) })
+}
+
+func checkSizeLinearInDepth(t *testing.T, script func(depth int) string) {
+	t.Helper()
+	small := compileLinesSource(t, script(10))
+	large := compileLinesSource(t, script(40))
+
+	smallBytecode, err := bytecode.Marshal(small.ToBytecode())
+	assert.Nil(t, err)
+	largeBytecode, err := bytecode.Marshal(large.ToBytecode())
+	assert.Nil(t, err)
+	ratio := float64(len(largeBytecode)) / float64(len(smallBytecode))
+	assert.True(t, ratio < 6, "bytecode.Marshal size ratio %.1f", ratio)
+
+	smallCompiler, err := compiler.MarshalCode(small)
+	assert.Nil(t, err)
+	largeCompiler, err := compiler.MarshalCode(large)
+	assert.Nil(t, err)
+	ratio = float64(len(largeCompiler)) / float64(len(smallCompiler))
+	assert.True(t, ratio < 6, "compiler.MarshalCode size ratio %.1f", ratio)
+}
+
+const nestedSourceScript = `let s = "日本語"
+function outer(a) {
+	function inner(b) {
+		return b + "s"
+	}
+	return inner(a)
+}
+let double = x => (x + 1) * 2
+let pick = [1].map(x => x)
+let text = () => ` + "`a\nb`" + `
+outer(1)
+`
+
+// functionSources returns the source of each code in code, in Flatten order.
+func functionSources(code *bytecode.Code) []string {
+	var sources []string
+	for _, c := range code.Flatten() {
+		sources = append(sources, c.Source())
+	}
+	return sources
+}
+
+// compilerSources returns the source of each code in code, in Flatten order.
+func compilerSources(code *compiler.Code) []string {
+	var sources []string
+	for _, c := range code.Flatten() {
+		sources = append(sources, c.Source())
+	}
+	return sources
+}
+
+// Function source and error locations are the same after a round trip in
+// both marshaled formats. A second round trip gives the same data, so the
+// restored function sources are slices of the restored root source.
+func TestMarshalRoundTripKeepsFunctionSource(t *testing.T) {
+	code := compileLinesSource(t, nestedSourceScript)
+	expectedSources := compilerSources(code)
+	assert.Equal(t, expectedSources[1:], []string{
+		"function inner(b) {\n\t\treturn b + \"s\"\n\t}\n\treturn inner(a)",
+		"return b + \"s\"",
+		"(x + 1) * 2",
+		"x",
+		"`a\nb`",
+	})
+	expected := runError(t, code.ToBytecode())
+
+	data, err := bytecode.Marshal(code.ToBytecode())
+	assert.Nil(t, err)
+	assert.True(t, strings.Contains(string(data), `"source_range"`))
+	restored, err := bytecode.Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, functionSources(restored), expectedSources)
+	actual := runError(t, restored)
+	assert.Equal(t, actual.Location, expected.Location)
+	assert.Equal(t, actual.FriendlyErrorMessage(), expected.FriendlyErrorMessage())
+	again, err := bytecode.Marshal(restored)
+	assert.Nil(t, err)
+	assert.Equal(t, string(again), string(data))
+
+	data, err = compiler.MarshalCode(code)
+	assert.Nil(t, err)
+	assert.True(t, strings.Contains(string(data), `"source_range"`))
+	restoredCode, err := compiler.UnmarshalCode(data)
+	assert.Nil(t, err)
+	assert.Equal(t, compilerSources(restoredCode), expectedSources)
+	actual = runError(t, restoredCode.ToBytecode())
+	assert.Equal(t, actual.Location, expected.Location)
+	assert.Equal(t, actual.FriendlyErrorMessage(), expected.FriendlyErrorMessage())
+	again, err = compiler.MarshalCode(restoredCode)
+	assert.Nil(t, err)
+	assert.Equal(t, string(again), string(data))
+}
+
+// editCodeDefs decodes marshaled data, calls edit on each code definition in
+// the list under key, and encodes the result.
+func editCodeDefs(t *testing.T, data []byte, key string, edit func(i int, def map[string]any, rootSource string)) []byte {
+	t.Helper()
+	var state map[string]any
+	assert.Nil(t, json.Unmarshal(data, &state))
+	defs := state[key].([]any)
+	rootSource := defs[0].(map[string]any)["source"].(string)
+	for i, def := range defs {
+		edit(i, def.(map[string]any), rootSource)
+	}
+	edited, err := json.Marshal(state)
+	assert.Nil(t, err)
+	return edited
+}
+
+// toOldSourceFormat replaces each source range with the source text, as older
+// versions wrote it.
+func toOldSourceFormat(i int, def map[string]any, rootSource string) {
+	r, ok := def["source_range"].([]any)
+	if !ok {
+		return
+	}
+	def["source"] = rootSource[int(r[0].(float64)):int(r[1].(float64))]
+	delete(def, "source_range")
+}
+
+// Older versions wrote the source text of every code. Unmarshal still reads it.
+func TestUnmarshalOldFormatFunctionSource(t *testing.T) {
+	code := compileLinesSource(t, nestedSourceScript)
+	expectedSources := compilerSources(code)
+
+	data, err := bytecode.Marshal(code.ToBytecode())
+	assert.Nil(t, err)
+	old := editCodeDefs(t, data, "codes", toOldSourceFormat)
+	assert.False(t, strings.Contains(string(old), `"source_range"`))
+	restored, err := bytecode.Unmarshal(old)
+	assert.Nil(t, err)
+	assert.Equal(t, functionSources(restored), expectedSources)
+
+	data, err = compiler.MarshalCode(code)
+	assert.Nil(t, err)
+	old = editCodeDefs(t, data, "code", toOldSourceFormat)
+	assert.False(t, strings.Contains(string(old), `"source_range"`))
+	restoredCode, err := compiler.UnmarshalCode(old)
+	assert.Nil(t, err)
+	assert.Equal(t, compilerSources(restoredCode), expectedSources)
+}
+
+// Unmarshal rejects a source range outside the root source, a source range
+// without exactly two elements, a source range on the root, and a code with
+// both a source and a source range.
+func TestUnmarshalRejectsBadSourceRange(t *testing.T) {
+	code := compileLinesSource(t, nestedSourceScript)
+	bytecodeData, err := bytecode.Marshal(code.ToBytecode())
+	assert.Nil(t, err)
+	compilerData, err := compiler.MarshalCode(code)
+	assert.Nil(t, err)
+
+	setRange := func(start, end int) func(int, map[string]any, string) {
+		return func(i int, def map[string]any, rootSource string) {
+			if i == 1 {
+				def["source_range"] = []int{start, end}
+			}
+		}
+	}
+	setElems := func(elems ...int) func(int, map[string]any, string) {
+		return func(i int, def map[string]any, rootSource string) {
+			if i == 1 {
+				def["source_range"] = append([]int{}, elems...)
+			}
+		}
+	}
+	n := len(nestedSourceScript)
+	tests := []struct {
+		name string
+		edit func(int, map[string]any, string)
+		want string
+	}{
+		{"negative start", setRange(-1, 2), "outside the root source"},
+		{"start after end", setRange(3, 2), "outside the root source"},
+		{"end after root", setRange(0, n+1), "outside the root source"},
+		{"empty", setElems(), "want 2"},
+		{"one element", setElems(0), "want 2"},
+		{"three elements", setElems(0, 1, 2), "want 2"},
+		{"root", func(i int, def map[string]any, rootSource string) {
+			if i == 0 {
+				def["source_range"] = []int{0, 1}
+			}
+		}, "root code"},
+		{"source and range", func(i int, def map[string]any, rootSource string) {
+			if i == 1 {
+				def["source"] = "x"
+			}
+		}, "both source and source range"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := bytecode.Unmarshal(editCodeDefs(t, bytecodeData, "codes", tt.edit))
+			assert.NotNil(t, err)
+			assert.True(t, strings.Contains(err.Error(), tt.want), err.Error())
+
+			_, err = compiler.UnmarshalCode(editCodeDefs(t, compilerData, "code", tt.edit))
+			assert.NotNil(t, err)
+			assert.True(t, strings.Contains(err.Error(), tt.want), err.Error())
+		})
+	}
+
+	// A range that ends at the end of the root source is valid.
+	_, err = bytecode.Unmarshal(editCodeDefs(t, bytecodeData, "codes", setRange(0, n)))
+	assert.Nil(t, err)
+}
+
+// In the REPL each input is compiled into the same main code, whose source
+// grows with each input. Function source ranges from every input are written
+// as ranges into the final source.
+func TestMarshalSourceRangesAcrossInputs(t *testing.T) {
+	c, err := compiler.New(nil)
+	assert.Nil(t, err)
+	var code *compiler.Code
+	for _, input := range []string{"let f = x => x + 1", "function g(y) { return f(y) }", "let h = () => g(2)"} {
+		program, err := parser.Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+		c.SetSource(input)
+		code, err = c.CompileAST(program)
+		assert.Nil(t, err)
+	}
+	expectedSources := compilerSources(code)
+	assert.Equal(t, expectedSources[1:], []string{"x + 1", "return f(y)", "g(2)"})
+
+	data, err := bytecode.Marshal(code.ToBytecode())
+	assert.Nil(t, err)
+	assert.Equal(t, strings.Count(string(data), `"source_range"`), 3)
+	restored, err := bytecode.Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, functionSources(restored), expectedSources)
+
+	data, err = compiler.MarshalCode(code)
+	assert.Nil(t, err)
+	assert.Equal(t, strings.Count(string(data), `"source_range"`), 3)
+	restoredCode, err := compiler.UnmarshalCode(data)
+	assert.Nil(t, err)
+	assert.Equal(t, compilerSources(restoredCode), expectedSources)
+}
+
+// Code built by hand with no source range, or with a range that does not
+// give its source, is marshaled with its source text.
+func TestMarshalWritesSourceTextWithoutValidRange(t *testing.T) {
+	for _, r := range [][2]int{{0, 0}, {0, 3}, {2, 100}} {
+		child := bytecode.NewCode(bytecode.CodeParams{
+			ID:           "child",
+			Instructions: []op.Code{op.Nil, op.ReturnValue},
+			Source:       "body",
+			SourceStart:  r[0],
+			SourceEnd:    r[1],
+		})
+		root := bytecode.NewCode(bytecode.CodeParams{
+			ID:           "main",
+			Children:     []*bytecode.Code{child},
+			Instructions: []op.Code{op.Nil, op.ReturnValue},
+			Source:       "let a = 1; body",
+		})
+		data, err := bytecode.Marshal(root)
+		assert.Nil(t, err)
+		assert.False(t, strings.Contains(string(data), `"source_range"`))
+		restored, err := bytecode.Unmarshal(data)
+		assert.Nil(t, err)
+		assert.Equal(t, restored.ChildAt(0).Source(), "body")
+	}
 }

@@ -122,7 +122,11 @@ type exceptionHandlerDef struct {
 	CatchVarIdx  int `json:"catch_var_idx"`
 }
 
-// Flat form of a Code object used in marshaling.
+// Flat form of a Code object used in marshaling. It holds the source text of
+// a code in Source, or in SourceRange the byte range of its source within the
+// root code's source. The compiler records that range for each function body,
+// so nested functions do not repeat their body text at each level. Older
+// versions wrote the text of every code.
 type codeDef struct {
 	ID            string            `json:"id,omitempty"`
 	Name          string            `json:"name"`
@@ -133,6 +137,7 @@ type codeDef struct {
 	Constants     []json.RawMessage `json:"constants,omitempty"`
 	Names         []string          `json:"names,omitempty"`
 	Source        string            `json:"source,omitempty"`
+	SourceRange   []int             `json:"source_range,omitempty"`
 	Filename      string            `json:"filename,omitempty"`
 	Locations     []locationDef     `json:"locations,omitempty"`
 	MaxCallArgs   uint16            `json:"max_call_args,omitempty"`
@@ -205,6 +210,25 @@ func codeFromState(state *state) (*Code, error) {
 		if err != nil {
 			return nil, err
 		}
+		source := c.Source
+		var sourceStart, sourceEnd int
+		if r := c.SourceRange; r != nil {
+			if i == 0 {
+				return nil, fmt.Errorf("invalid code: root code has a source range")
+			}
+			if c.Source != "" {
+				return nil, fmt.Errorf("invalid code: code %q has both source and source range", c.ID)
+			}
+			if len(r) != 2 {
+				return nil, fmt.Errorf("invalid code: code %q has a source range with %d elements, want 2", c.ID, len(r))
+			}
+			rootSource := codes[0].source
+			if r[0] < 0 || r[0] > r[1] || r[1] > len(rootSource) {
+				return nil, fmt.Errorf("invalid code: code %q has source range %v outside the root source", c.ID, r)
+			}
+			source = rootSource[r[0]:r[1]]
+			sourceStart, sourceEnd = r[0], r[1]
+		}
 
 		// Reconstruct rootSource pointer from parent (same logic as newChild)
 		var rootSource *string
@@ -232,7 +256,9 @@ func codeFromState(state *state) (*Code, error) {
 			constants:    constants,
 			names:        copyStrings(c.Names),
 			nameIndex:    nameIndex,
-			source:       c.Source,
+			source:       source,
+			sourceStart:  sourceStart,
+			sourceEnd:    sourceEnd,
 			filename:     c.Filename,
 			rootSource:   rootSource,
 			maxCallArgs:  c.MaxCallArgs,
@@ -540,7 +566,12 @@ func stateFromCode(code *Code) (*state, error) {
 		SymbolTable: definitionFromSymbolTable(code.symbols),
 	}
 	allCode := code.Flatten()
-	for _, code := range allCode {
+	for i, code := range allCode {
+		source := code.source
+		var sourceRange []int
+		if i > 0 && rootSourceRange(code, allCode[0]) {
+			source, sourceRange = "", []int{code.sourceStart, code.sourceEnd}
+		}
 		constants, err := marshalConstants(code.constants)
 		if err != nil {
 			return nil, err
@@ -553,7 +584,8 @@ func stateFromCode(code *Code) (*state, error) {
 			Instructions:  CopyInstructions(code.instructions),
 			Name:          code.name,
 			Names:         copyStrings(code.names),
-			Source:        code.source,
+			Source:        source,
+			SourceRange:   sourceRange,
 			Filename:      code.filename,
 			Locations:     locationsToDefs(code.locations),
 			MaxCallArgs:   code.maxCallArgs,
@@ -567,6 +599,20 @@ func stateFromCode(code *Code) (*state, error) {
 		state.Code = append(state.Code, cdef)
 	}
 	return state, nil
+}
+
+// rootSourceRange reports whether c has a source range that MarshalCode can
+// write in place of its source text: root is the root code, the range is
+// within its source, and the range gives c's source. The comparison is quick
+// when c's source shares the root's memory, as it does for compiled code.
+func rootSourceRange(c, root *Code) bool {
+	if root.parent != nil || c.sourceEnd <= c.sourceStart {
+		return false
+	}
+	if c.sourceStart < 0 || c.sourceEnd > len(root.source) {
+		return false
+	}
+	return root.source[c.sourceStart:c.sourceEnd] == c.source
 }
 
 func definitionFromSymbolTable(table *SymbolTable) *symbolTableDef {

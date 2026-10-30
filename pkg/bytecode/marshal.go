@@ -92,6 +92,11 @@ type exceptionHandlerDef struct {
 	CatchVarIdx  int `json:"catch_var_idx"`
 }
 
+// codeDef holds the source text of a code in Source, or in SourceRange the
+// byte range of its source within the root code's source. The compiler
+// records that range for each function body, so nested functions do not
+// repeat their body text at each level. A code without a range, such as one
+// built by hand, holds its text. Older versions wrote the text of every code.
 type codeDef struct {
 	ID                string                `json:"id"`
 	Name              string                `json:"name"`
@@ -102,6 +107,7 @@ type codeDef struct {
 	Constants         []json.RawMessage     `json:"constants"`
 	Names             []string              `json:"names"`
 	Source            string                `json:"source,omitempty"`
+	SourceRange       []int                 `json:"source_range,omitempty"`
 	Filename          string                `json:"filename,omitempty"`
 	Locations         []locationDef         `json:"locations,omitempty"`
 	MaxCallArgs       int                   `json:"max_call_args"`
@@ -185,6 +191,12 @@ func stateFromCode(code *Code) (*codeState, error) {
 			childIndices = append(childIndices, codeIndexMap[child])
 		}
 
+		source := c.Source()
+		var sourceRange []int
+		if i > 0 && rootSourceRange(c, code) {
+			source, sourceRange = "", []int{c.sourceStart, c.sourceEnd}
+		}
+
 		state.Codes[i] = &codeDef{
 			ID:                c.ID(),
 			Name:              c.Name(),
@@ -194,7 +206,8 @@ func stateFromCode(code *Code) (*codeState, error) {
 			Instructions:      instructions,
 			Constants:         constants,
 			Names:             names,
-			Source:            c.Source(),
+			Source:            source,
+			SourceRange:       sourceRange,
 			Filename:          c.Filename(),
 			Locations:         locations,
 			MaxCallArgs:       c.MaxCallArgs(),
@@ -221,8 +234,28 @@ func codeFromState(state *codeState) (*Code, error) {
 	codes := make([]*Code, len(state.Codes))
 
 	// Process in reverse order (children before parents)
+	rootSource := state.Codes[0].Source
 	for i := len(state.Codes) - 1; i >= 0; i-- {
 		def := state.Codes[i]
+
+		source := def.Source
+		var sourceStart, sourceEnd int
+		if r := def.SourceRange; r != nil {
+			if i == 0 {
+				return nil, fmt.Errorf("invalid bytecode: root code block has a source range")
+			}
+			if def.Source != "" {
+				return nil, fmt.Errorf("invalid bytecode: code block %d has both source and source range", i)
+			}
+			if len(r) != 2 {
+				return nil, fmt.Errorf("invalid bytecode: code block %d has a source range with %d elements, want 2", i, len(r))
+			}
+			if r[0] < 0 || r[0] > r[1] || r[1] > len(rootSource) {
+				return nil, fmt.Errorf("invalid bytecode: code block %d has source range %v outside the root source", i, r)
+			}
+			source = rootSource[r[0]:r[1]]
+			sourceStart, sourceEnd = r[0], r[1]
+		}
 
 		handlers := make([]ExceptionHandler, len(def.ExceptionHandlers))
 		for j, h := range def.ExceptionHandlers {
@@ -271,7 +304,9 @@ func codeFromState(state *codeState) (*Code, error) {
 			Instructions:      def.Instructions,
 			Constants:         constants,
 			Names:             def.Names,
-			Source:            def.Source,
+			Source:            source,
+			SourceStart:       sourceStart,
+			SourceEnd:         sourceEnd,
 			Filename:          def.Filename,
 			Locations:         locations,
 			MaxCallArgs:       def.MaxCallArgs,
@@ -316,6 +351,20 @@ func checkCodeTree(defs []*codeDef) error {
 		}
 	}
 	return nil
+}
+
+// rootSourceRange reports whether c has a source range that Marshal can write
+// in place of its source text: root is the root code, the range is within its
+// source, and the range gives c's source. The comparison is quick when c's
+// source shares the root's memory, as it does for compiled code.
+func rootSourceRange(c, root *Code) bool {
+	if root.parent != nil || c.sourceEnd <= c.sourceStart {
+		return false
+	}
+	if c.sourceStart < 0 || c.sourceEnd > len(root.source) {
+		return false
+	}
+	return root.source[c.sourceStart:c.sourceEnd] == c.source
 }
 
 func marshalConstants(code *Code, codeIndexMap map[*Code]int) ([]json.RawMessage, error) {

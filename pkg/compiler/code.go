@@ -43,6 +43,12 @@ type Code struct {
 	// this to their parent's rootSource (or parent's source if rootSource is nil).
 	rootSource *string
 
+	// sourceStart and sourceEnd give the byte range of source within the
+	// root code's source, when source is a slice of it. Both are zero
+	// otherwise. Marshaling writes the range in place of the text.
+	sourceStart int
+	sourceEnd   int
+
 	// Source map: one location per instruction for error reporting
 	locations []errors.SourceLocation
 
@@ -415,6 +421,8 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code, globalNames [
 		Constants:         constants,
 		Names:             c.names,
 		Source:            c.source,
+		SourceStart:       c.sourceStart,
+		SourceEnd:         c.sourceEnd,
 		Filename:          c.filename,
 		FunctionID:        c.functionID,
 		Locations:         locations,
