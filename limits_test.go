@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -280,4 +281,79 @@ func TestDefaultLimitsSharedReferences(t *testing.T) {
 	_, err := Eval(context.Background(), src, WithEnv(Builtins()))
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+}
+
+type limitsBox struct {
+	Items []int64
+	Grid  [][]int64
+}
+
+// Setting a field of a Go struct converts the value with the limits from
+// WithLimits (#497).
+func TestWithLimitsStructField(t *testing.T) {
+	ctx := context.Background()
+	limits := WithLimits(Limits{MaxListLength: 10})
+
+	box := &limitsBox{}
+	_, err := Eval(ctx, `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`,
+		WithEnv(map[string]any{"box": box}), limits)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+	assert.Equal(t, len(box.Items), 0)
+
+	// The error is catchable
+	result, err := Eval(ctx, `
+	let r = "none"
+	try { box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] } catch e { r = e.message() }
+	r
+	`, WithEnv(map[string]any{"box": box}), limits)
+	assert.Nil(t, err)
+	assert.True(t, strings.Contains(result.(string), "value too large to convert"), result)
+
+	// A value within the limit is set
+	_, err = Eval(ctx, `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`,
+		WithEnv(map[string]any{"box": box}), limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Items), 10)
+
+	// Without WithLimits, the default limit applies: 1025 + 1025*4096
+	// elements exceeds 4,194,304
+	box = &limitsBox{}
+	envMap := Builtins()
+	envMap["box"] = box
+	_, err = Eval(ctx, `let l = list(range(4096)); box.Grid = list(range(1025)).map(i => l)`,
+		WithEnv(envMap))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+	assert.Equal(t, len(box.Grid), 0)
+}
+
+// guardedBox embeds *object.GoStruct and overrides SetAttr to block a field.
+type guardedBox struct {
+	*object.GoStruct
+}
+
+func (g *guardedBox) SetAttr(name string, value object.Object) error {
+	if name == "Grid" {
+		return object.TypeErrorf("field %q is read-only", name)
+	}
+	return g.GoStruct.SetAttr(name, value)
+}
+
+func TestWithLimitsStructEmbedderKeepsSetAttr(t *testing.T) {
+	box := &limitsBox{}
+	guarded := &guardedBox{object.NewGoStruct(reflect.ValueOf(box), object.DefaultRegistry())}
+	env := WithEnv(map[string]any{"box": guarded})
+	limits := WithLimits(Limits{MaxListLength: 10})
+
+	// The host override runs and blocks the write
+	_, err := Eval(context.Background(), `box.Grid = [[1]]`, env, limits)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "read-only"), err.Error())
+	assert.Equal(t, len(box.Grid), 0)
+
+	// Other fields go through the override to GoStruct.SetAttr
+	_, err = Eval(context.Background(), `box.Items = [1, 2, 3]`, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Items), 3)
 }

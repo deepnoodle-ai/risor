@@ -137,7 +137,19 @@ func (g *GoStruct) GetAttr(name string) (Object, bool) {
 	return nil, false
 }
 
+// SetAttr sets a field with the default limits. The VM calls SetAttrContext
+// instead when the object is a *GoStruct.
 func (g *GoStruct) SetAttr(name string, value Object) error {
+	return g.SetAttrContext(context.Background(), name, value)
+}
+
+// SetAttrContext sets a field, converting value with the limits in ctx.
+// The VM calls it only when the object's concrete type is exactly *GoStruct.
+// For any other type, including one that embeds *GoStruct, the VM calls
+// SetAttr: the type's own SetAttr if it defines one, or the promoted
+// GoStruct.SetAttr if not. Both use the default limits, not the limits in
+// ctx, which is the behavior before SetAttrContext existed.
+func (g *GoStruct) SetAttrContext(ctx context.Context, name string, value Object) error {
 	meta := getStructMeta(g.structType)
 
 	idx, ok := meta.fields[name]
@@ -150,8 +162,7 @@ func (g *GoStruct) SetAttr(name string, value Object) error {
 		return TypeErrorf("field %q of %s is not settable", name, g.structType.Name())
 	}
 
-	// SetAttr has no context, so the default limits apply.
-	goVal, err := g.registry.ToGo(context.Background(), value, fieldVal.Type())
+	goVal, err := g.registry.ToGo(ctx, value, fieldVal.Type())
 	if err != nil {
 		return fmt.Errorf("cannot set field %q: %w", name, err)
 	}

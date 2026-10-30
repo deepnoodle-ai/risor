@@ -71,6 +71,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `repeat`, `range`, `list(range(...))`, spread, `+`, `rand.bytes`, and similar
   operations no longer crash the host with huge allocations. `range`,
   `rand.int`, and `math.abs` no longer overflow int64 (#491).
+- Setting a field of a Go struct from a script now converts the value with the
+  limits from `risor.WithLimits`, not the defaults. This applies only to a
+  value whose type is exactly `*object.GoStruct`. Any other type, including one
+  that embeds `*object.GoStruct`, uses its `SetAttr` (its own or the promoted
+  one) and the default limits, as before (#497).
 
 ## [2.2.0] - 2026-08-17
 

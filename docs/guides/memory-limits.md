@@ -23,15 +23,18 @@ risor.Eval(ctx, src,
     risor.WithLimits(risor.Limits{MaxBytesSize: 1 << 20, MaxListLength: 100_000}))
 ```
 
-`MaxListLength` also caps each conversion of a value to Go: a script result,
-a host function argument, and the values passed to `sprintf`, `error`, and
-`encode`. One conversion may produce at most `MaxListLength` elements in total,
-counting every list item, map entry, and range element. A list referenced more
-than once counts each time, so `[l, l]` costs `2 + 2 * len(l)` elements. All
-arguments of one call share the cap, so `f(...[l, l])` costs `2 * len(l)`.
-Exceeding the cap raises a `value error` that starts with "value too large to
-convert". Setting a field of a Go struct converts with the default limits,
-not the ones from `WithLimits`.
+`MaxListLength` also caps each conversion of a value to Go: a script result, a
+host function argument, a value assigned to a field of a Go struct, and the
+values passed to `sprintf`, `error`, and `encode`. The struct field case applies
+only to a value whose type is exactly `*object.GoStruct`. A host type that
+embeds `*object.GoStruct` uses the default limits for field assignment. One
+conversion may produce at most `MaxListLength` elements in total, counting every
+list item, map entry, and range element. A list referenced more than once counts
+each time, so `[l, l]` costs `2 + 2 * len(l)` elements. All arguments of one
+call share the cap, so `f(...[l, l])` costs `2 * len(l)`. Exceeding the cap
+raises an error whose message contains "value too large to convert". A script
+can catch it with `try`/`catch`. Match on the message, not on `e.kind()`: the
+kind is not the same for every conversion.
 
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.
