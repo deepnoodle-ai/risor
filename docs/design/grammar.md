@@ -493,7 +493,7 @@ argument:
     | spreadExpr
 
 spreadExpr:
-    '...' expression
+    '...' prefixExpr    (* only in list items, map items, and call arguments *)
 
 indexSuffix:
     '[' expression ']'
@@ -563,7 +563,6 @@ mapItem:
     mapKeyValue
     | mapShorthand
     | mapSpread
-    | mapDefaultValue
 
 mapKeyValue:
     expression ':' expression
@@ -572,10 +571,7 @@ mapShorthand:
     Identifier
 
 mapSpread:
-    '...' expression
-
-mapDefaultValue:
-    Identifier '=' expression
+    spreadExpr
 ```
 
 #### Function Literals
@@ -593,9 +589,7 @@ arrowFunction:
 
 arrowParams:
     Identifier
-    | '(' [parameterList] ')'
-    | objectDestructureParam
-    | arrayDestructureParam
+    | '(' [parameterList] ')'    (* destructuring parameters need parentheses *)
 
 arrowBody:
     expression

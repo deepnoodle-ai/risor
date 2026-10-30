@@ -415,9 +415,26 @@ func (c *Compiler) compile(node ast.Node) error {
 	case *ast.BadStmt:
 		return c.formatError("syntax error in statement", node.Pos())
 	default:
-		panic(fmt.Sprintf("compile error: unknown ast node type: %T", node))
+		// The parser never produces these in an expression position, but
+		// hand-built ASTs can. Report an error rather than panicking.
+		if node == nil {
+			return c.formatError("unexpected empty node", token.Position{})
+		}
+		return c.formatError(fmt.Sprintf("unexpected %s", describeNode(node)), node.Pos())
 	}
 	return nil
+}
+
+// describeNode names an AST node that is not valid where it appears.
+func describeNode(node ast.Node) string {
+	switch node.(type) {
+	case *ast.Spread:
+		return "spread expression (only valid in list literals, map literals, and call arguments)"
+	case *ast.DefaultValue:
+		return "default value (only valid in destructuring patterns)"
+	default:
+		return fmt.Sprintf("node type %T", node)
+	}
 }
 
 func (c *Compiler) currentPosition() int {
@@ -1210,6 +1227,15 @@ func (c *Compiler) compilePrefix(node *ast.Prefix) error {
 }
 
 func (c *Compiler) compileCall(node *ast.Call) error {
+	if err := c.compile(node.Fun); err != nil {
+		return err
+	}
+	return c.compileCallArgs(node)
+}
+
+// compileCallArgs compiles the arguments of a call and emits the call
+// instruction. The callee must already be on the stack.
+func (c *Compiler) compileCallArgs(node *ast.Call) error {
 	args := node.Args
 	argc := len(args)
 	if argc > MaxArgs {
@@ -1223,10 +1249,6 @@ func (c *Compiler) compileCall(node *ast.Call) error {
 			hasSpread = true
 			break
 		}
-	}
-
-	if err := c.compile(node.Fun); err != nil {
-		return err
 	}
 
 	if !hasSpread {
@@ -1284,20 +1306,8 @@ func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 	// Restore currentNode so LoadAttr gets the method name position
 	c.currentNode = method.Fun
 	c.emit(op.LoadAttr, c.current.addName(name))
-	args := method.Args
-	argc := len(args)
-	if argc > MaxArgs {
-		return c.formatError(fmt.Sprintf("max args limit of %d exceeded (got %d)", MaxArgs, argc), node.Pos())
-	}
-	for _, arg := range args {
-		if err := c.compile(arg); err != nil {
-			return err
-		}
-	}
-	if c.current.pipeActive {
-		c.emit(op.Partial, uint16(len(args)))
-	} else {
-		c.emit(op.Call, uint16(len(args)))
+	if err := c.compileCallArgs(method); err != nil {
+		return err
 	}
 	if node.Optional {
 		c.emit(op.Nop)

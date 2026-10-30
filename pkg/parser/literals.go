@@ -148,7 +148,9 @@ func (p *Parser) parseString() (ast.Node, bool) {
 
 func (p *Parser) parseList() (ast.Node, bool) {
 	lbrack := p.curToken.StartPosition
-	items := p.parseExprList(token.RBRACKET)
+	allowDefaults := p.destructureCandidate
+	p.destructureCandidate = false
+	items := p.parseExprList(token.RBRACKET, allowDefaults)
 	if items == nil {
 		return nil, false
 	}
@@ -158,9 +160,10 @@ func (p *Parser) parseList() (ast.Node, bool) {
 
 // parseExprList parses a comma-separated list of expressions until the end token.
 // It wraps parseNodeList and ensures all items are expressions.
-// Special case: Assign nodes with simple ident LHS are converted to DefaultValue
-// to support array destructuring with defaults in arrow functions: ([a = 1]) => ...
-func (p *Parser) parseExprList(end token.Type) []ast.Expr {
+// Special case: if allowDefaults is set, Assign nodes with simple ident LHS are
+// converted to DefaultValue to support array destructuring with defaults in
+// arrow functions: ([a = 1]) => ...
+func (p *Parser) parseExprList(end token.Type, allowDefaults bool) []ast.Expr {
 	nodes := p.parseNodeList(end)
 	if nodes == nil {
 		return nil
@@ -175,6 +178,11 @@ func (p *Parser) parseExprList(end token.Type) []ast.Expr {
 		// Handle Assign with simple ident LHS - convert to DefaultValue
 		// This supports array destructuring defaults: [a = 1]
 		if assign, ok := node.(*ast.Assign); ok && assign.Name != nil && assign.Op == "=" {
+			if !allowDefaults {
+				p.setDefaultValueError(assign.Name)
+				return nil
+			}
+			p.noteCandidateDefault(assign.Name)
 			exprs[i] = &ast.DefaultValue{
 				Name:    assign.Name,
 				Default: assign.Value,
@@ -207,7 +215,7 @@ func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 		return list
 	}
 	p.nextToken()
-	node := p.parseNode(LOWEST)
+	node := p.parseListElement()
 	if node == nil {
 		if !p.hadNewError() {
 			p.setTokenError(p.curToken, "invalid syntax in list")
@@ -234,7 +242,7 @@ func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
-		node = p.parseNode(LOWEST)
+		node = p.parseListElement()
 		if node == nil {
 			return nil
 		}
@@ -254,6 +262,8 @@ func (p *Parser) parseNodeList(end token.Type) []ast.Node {
 
 func (p *Parser) parseMap() (ast.Node, bool) {
 	lbrace := p.curToken.StartPosition
+	allowDefaults := p.destructureCandidate
+	p.destructureCandidate = false
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
 			return nil, false
@@ -270,7 +280,7 @@ func (p *Parser) parseMap() (ast.Node, bool) {
 	items := []ast.MapItem{}
 
 	// Parse first item (could be spread or key-value)
-	item := p.parseMapItem()
+	item := p.parseMapItem(allowDefaults)
 	if item == nil {
 		return nil, false
 	}
@@ -298,7 +308,7 @@ func (p *Parser) parseMap() (ast.Node, bool) {
 		}
 		p.nextToken() // move to the key or spread
 
-		item := p.parseMapItem()
+		item := p.parseMapItem(allowDefaults)
 		if item == nil {
 			return nil, false
 		}
@@ -320,8 +330,10 @@ func (p *Parser) parseMap() (ast.Node, bool) {
 	return &ast.Map{Lbrace: lbrace, Items: items, Rbrace: rbrace}, true
 }
 
-// parseMapItem parses a single map item: spread (...obj), shorthand (a), shorthand with default (a = expr), or key-value (a: b).
-func (p *Parser) parseMapItem() *ast.MapItem {
+// parseMapItem parses a single map item: spread (...obj), shorthand (a),
+// key-value (a: b), or a default (a = expr), which is allowed only in an arrow
+// function destructuring parameter.
+func (p *Parser) parseMapItem(allowDefaults bool) *ast.MapItem {
 	// Check for spread expression
 	if p.curTokenIs(token.SPREAD) {
 		spreadNode, ok := p.parseSpread()
@@ -337,7 +349,8 @@ func (p *Parser) parseMapItem() *ast.MapItem {
 	}
 
 	// Check for shorthand syntax: {a, b} means {a: a, b: b}
-	// Also handles shorthand with default: {a = 1} for destructuring
+	// Also handles a default, {a = 1}, in an arrow function destructuring
+	// parameter
 	if p.curTokenIs(token.IDENT) {
 		// Simple shorthand: {a} or {a, b}
 		if p.peekTokenIs(token.COMMA) || p.peekTokenIs(token.RBRACE) || p.peekTokenIs(token.NEWLINE) {
@@ -350,9 +363,14 @@ func (p *Parser) parseMapItem() *ast.MapItem {
 			return &ast.MapItem{Key: key, Value: ident}
 		}
 
-		// Shorthand with default: {a = expr} - used in destructuring
+		// Default in an arrow function destructuring parameter: {a = expr}
 		if p.peekTokenIs(token.ASSIGN) {
 			ident := p.newIdent(p.curToken)
+			if !allowDefaults {
+				p.setDefaultValueError(ident)
+				return nil
+			}
+			p.noteCandidateDefault(ident)
 			key := &ast.String{
 				ValuePos: ident.Pos(),
 				Literal:  ident.Name,
@@ -676,6 +694,46 @@ func (p *Parser) parseSpread() (ast.Node, bool) {
 		return nil, false
 	}
 	return &ast.Spread{Ellipsis: ellipsis, X: value}, true
+}
+
+// parseListElement parses one element of a list literal or call argument
+// list, where a spread expression is allowed.
+func (p *Parser) parseListElement() ast.Node {
+	if p.curTokenIs(token.SPREAD) {
+		node, ok := p.parseSpread()
+		if !ok {
+			return nil
+		}
+		return node
+	}
+	return p.parseNode(LOWEST)
+}
+
+// parseMisplacedSpread is the prefix function for '...'. Contexts that
+// allow spread parse it directly, so reaching this is always an error.
+func (p *Parser) parseMisplacedSpread() (ast.Node, bool) {
+	p.setTokenError(p.curToken, "spread operator (...) is only allowed in list literals, map literals, and call arguments")
+	return nil, false
+}
+
+// noteCandidateDefault records a default parsed in a destructuring candidate.
+// parseGroupedExpr reports it if the group is not arrow function parameters.
+func (p *Parser) noteCandidateDefault(name *ast.Ident) {
+	if p.candidateDefault == nil {
+		p.candidateDefault = name
+	}
+}
+
+// setDefaultValueError reports a `name = value` default where only arrow
+// function destructuring parameters allow one.
+func (p *Parser) setDefaultValueError(name *ast.Ident) {
+	tok := token.Token{
+		Type:          token.IDENT,
+		Literal:       name.Name,
+		StartPosition: name.NamePos,
+		EndPosition:   name.NamePos.Advance(len(name.Name) - 1),
+	}
+	p.setTokenError(tok, "default value for %q is only allowed in arrow function destructuring parameters", name.Name)
 }
 
 func (p *Parser) parseNewline() (ast.Node, bool) {

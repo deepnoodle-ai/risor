@@ -107,9 +107,15 @@ func (p *Parser) parseGroupedExpr() (ast.Node, bool) {
 		return nil, false
 	}
 
+	// Track defaults in this group's destructuring candidates separately
+	// from any enclosing group.
+	outerDefault := p.candidateDefault
+	p.candidateDefault = nil
+	defer func() { p.candidateDefault = outerDefault }()
+
 	// Parse first item - could be expression or arrow param with default
 	// Use parseNode instead of parseExpression to allow Assign nodes for defaults
-	firstItem := p.parseNode(LOWEST)
+	firstItem := p.parseGroupItem()
 	if firstItem == nil {
 		return nil, false
 	}
@@ -123,7 +129,7 @@ func (p *Parser) parseGroupedExpr() (ast.Node, bool) {
 		p.nextToken() // move past ','
 		// Skip newlines after comma
 		p.eatNewlines()
-		item := p.parseNode(LOWEST)
+		item := p.parseGroupItem()
 		if item == nil {
 			return nil, false
 		}
@@ -143,6 +149,12 @@ func (p *Parser) parseGroupedExpr() (ast.Node, bool) {
 		return p.parseArrowParams(openParen, items)
 	}
 
+	// Defaults like [a = 1] are only valid in arrow function parameters
+	if p.candidateDefault != nil {
+		p.setDefaultValueError(p.candidateDefault)
+		return nil, false
+	}
+
 	// Not an arrow function - must be a single grouped expression
 	if len(items) > 1 {
 		p.setTokenError(p.curToken, "comma-separated expressions require arrow function syntax: (x, y) => ...")
@@ -157,6 +169,16 @@ func (p *Parser) parseGroupedExpr() (ast.Node, bool) {
 	}
 
 	return expr, true
+}
+
+// parseGroupItem parses one item of a grouped expression. A list or map
+// literal item may be an arrow function destructuring parameter, so it is
+// allowed to hold defaults until parseGroupedExpr knows whether '=>' follows.
+func (p *Parser) parseGroupItem() ast.Node {
+	p.destructureCandidate = p.curTokenIs(token.LBRACKET) || p.curTokenIs(token.LBRACE)
+	item := p.parseNode(LOWEST)
+	p.destructureCandidate = false
+	return item
 }
 
 // parseArrowParams validates items as arrow function parameters and parses the body
@@ -234,7 +256,7 @@ func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructure
 					binding.Alias = v.Name
 				}
 			case *ast.DefaultValue:
-				// Shorthand with default: {a = expr}
+				// Default in an arrow function destructuring parameter: {a = expr}
 				binding.Default = v.Default
 			default:
 				p.setTokenError(p.curToken, "expected identifier or default in destructuring pattern")

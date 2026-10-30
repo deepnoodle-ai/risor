@@ -418,9 +418,9 @@ func TestSpreadOperatorEdgeCases(t *testing.T) {
 		{"[...arr]", false, "spread in list"},
 		{"{...obj}", false, "spread in map"},
 		{"f(...args)", false, "spread in call"},
-		// Note: [......arr] parses as [...(...arr)] which is valid (spread of spread)
-		{"[......arr]", false, "double spread parses as nested spread"},
-		{"...x", false, "standalone spread is expression"},
+		// Spread is only valid directly in list/map literals and call arguments
+		{"[......arr]", true, "nested spread is an error"},
+		{"...x", true, "standalone spread is an error"},
 	}
 
 	for _, tt := range tests {

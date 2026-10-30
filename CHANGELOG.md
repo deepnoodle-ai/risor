@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Method calls accept spread arguments: `obj.method(...args)` and
+  `obj?.method(...args)` (#489).
+
 ### Changed
 
 - Release archives and the Homebrew cask now include `risor-lsp`, the Risor
@@ -38,6 +43,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   out of range" panic. Reading a global before it is assigned, a function with
   255 parameters and a rest parameter, and `vm.Call` before `vm.Run` no longer
   crash the host (#487).
+- A misplaced `...` (such as `let a = ...x` or `[...a + b]`) is now a syntax
+  error. So is a default in a list or map literal (such as `[a = 1]`), except
+  in an arrow function parameter like `([a = 1]) => a`. Before, these caused a
+  compiler panic. Write `[...(a + b)]` to spread an expression (#489).
 
 ## [2.2.0] - 2026-08-17
 

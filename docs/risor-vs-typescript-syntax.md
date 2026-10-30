@@ -204,10 +204,11 @@ let x = 0o52   // octal 42
 ### Map literal key semantics
 
 Risor map literals use `{key: value}` syntax that looks identical to TypeScript
-object literals, but Risor also supports:
+object literals, with these differences:
 
-- **Shorthand with `=`**: `{a = 1, b = 2}` in destructuring contexts within map
-  literals. This is not valid TypeScript object literal syntax.
+- **No `=` defaults in map literals**: `{a = 1}` is a syntax error in a map
+  literal, as it is in TypeScript. Defaults are valid only in destructuring:
+  `let {a = 1} = obj`, `function f({a = 1}) {}`, and `({a = 1}) => a`.
 
 - **Identifier keys are always strings**: In Risor, `{a: 1}` creates a map with
   string key `"a"`. This matches TypeScript's behavior for simple cases, but
