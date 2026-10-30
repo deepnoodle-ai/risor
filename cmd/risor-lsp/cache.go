@@ -41,7 +41,8 @@ type cache struct {
 	diagRunning sync.Map
 }
 
-// put adds or replaces a document in the cache.
+// put adds or replaces a document in the cache. Cached documents are shared
+// across goroutines, so a document must not be changed once it is put.
 // Documents are only replaced if the new document version is greater than the currently
 // cached version.
 func (c *cache) put(new *document) error {
@@ -70,4 +71,11 @@ func (c *cache) get(uri protocol.DocumentURI) (*document, error) {
 	}
 
 	return doc, nil
+}
+
+// remove deletes a document from the cache.
+func (c *cache) remove(uri protocol.DocumentURI) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.docs, uri)
 }

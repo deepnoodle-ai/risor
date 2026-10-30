@@ -79,11 +79,11 @@ func findIdentInNode(node ast.Node, line, column int) string {
 		// Also check if we can find any identifiers by traversing the statement
 		return findIdentInNodeRecursive(n, line, column)
 	case *ast.Assign:
-		name := n.Name.Name
+		name := assignName(n)
 		pos := n.Pos()
 		endPos := n.End()
 
-		if pos.LineNumber() == line && pos.ColumnNumber() <= column && column <= endPos.ColumnNumber() {
+		if name != "" && pos.LineNumber() == line && pos.ColumnNumber() <= column && column <= endPos.ColumnNumber() {
 			return name
 		}
 		// Also check the value expression
@@ -183,9 +183,7 @@ func getSymbolInfo(symbol string, program *ast.Program) string {
 	for _, stmt := range program.Stmts {
 		switch s := stmt.(type) {
 		case *ast.Assign:
-			assignName := s.Name.Name
-
-			if assignName == symbol {
+			if assignName(s) == symbol {
 				return fmt.Sprintf("**%s** - Variable\n\nAssigned in this file", symbol)
 			}
 		case *ast.Var:

@@ -108,7 +108,7 @@ func extractVariables(program *ast.Program) []string {
 				variableSet[name] = true
 			}
 		case *ast.Assign:
-			name := s.Name.Name
+			name := assignName(s)
 			if name != "" && !variableSet[name] {
 				variables = append(variables, name)
 				variableSet[name] = true
@@ -129,7 +129,7 @@ func extractFunctions(program *ast.Program) []string {
 		case *ast.Assign:
 			// Check if we're assigning a function to a variable
 			if _, ok := s.Value.(*ast.Func); ok {
-				name := s.Name.Name
+				name := assignName(s)
 				if name != "" && !functionSet[name] {
 					functions = append(functions, name)
 					functionSet[name] = true

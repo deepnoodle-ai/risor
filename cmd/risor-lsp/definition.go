@@ -32,6 +32,7 @@ func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionPara
 	// Find the definition of the symbol
 	def := findDefinition(doc.ast, symbol)
 	if def != nil {
+		def.URI = params.TextDocument.URI
 		return []protocol.Location{*def}, nil
 	}
 
@@ -61,7 +62,7 @@ func findDefinition(program *ast.Program, symbol string) *protocol.Location {
 				}
 			}
 		case *ast.Assign:
-			name := s.Name.Name
+			name := assignName(s)
 			if name == symbol {
 				pos := s.Pos()
 				return &protocol.Location{
