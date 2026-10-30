@@ -86,20 +86,22 @@ func init() {
 		})
 
 	errorMethods.Define("kind").
-		Doc("Get the error kind (e.g., 'type', 'value', 'error')").
+		Doc("Get the error kind (e.g., 'type error', 'value error', 'runtime error')").
 		Returns("string").
 		Impl(func(e *Error, ctx context.Context, args ...Object) (Object, error) {
 			return NewString(e.kind()), nil
 		})
 }
 
-// kind returns the error kind that kind() reports. An error of no known kind
-// is "error".
+// kind returns the error kind that kind() reports. An error of no known
+// kind, such as one made by error("msg"), is a "runtime error": that is the
+// kind the VM gives it when it is thrown, so throwing an error doesn't
+// change its kind or what it equals.
 func (e *Error) kind() string {
 	if e.structured != nil {
 		return e.structured.Kind.String()
 	}
-	return "error"
+	return ErrRuntime.String()
 }
 
 // Error wraps a Go error interface and implements Object.

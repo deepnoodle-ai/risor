@@ -66,6 +66,29 @@ func TestErrorEqualsKind(t *testing.T) {
 	assert.Equal(t, result, []any{false, true})
 }
 
+// An error made with error("msg") has the kind a thrown error gets, so
+// throwing it changes neither its kind nor what it equals.
+func TestScriptErrorKindSurvivesThrow(t *testing.T) {
+	ctx := context.Background()
+	opts := []Option{WithEnv(Builtins())}
+	result, err := Eval(ctx, `
+		let e1 = error("boom")
+		let e2 = try { throw error("boom") } catch e { e }
+		let e3 = try { throw "boom" } catch e { e }
+		[e1.kind(), e2.kind(), e1 == error("boom"), e2 == e1, e1 == e2, e3 == e1]
+	`, opts...)
+	assert.Nil(t, err)
+	assert.Equal(t, result, []any{"runtime error", "runtime error", true, true, true, true})
+
+	// A typed error still differs from an untyped one with the same message
+	result, err = Eval(ctx, `
+		let a = try { 1 / 0 } catch e { e }
+		[a.kind(), a == error(a.message())]
+	`, opts...)
+	assert.Nil(t, err)
+	assert.Equal(t, result, []any{"value error", false})
+}
+
 // Every runtime error from Eval is a *StructuredError with a location. Its
 // cause is the typed error when there is one, so errors.As finds both (#504).
 func TestErrorShape(t *testing.T) {

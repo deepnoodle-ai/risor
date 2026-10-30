@@ -151,6 +151,10 @@ try {
 | `"name error"` | Undefined variable |
 | `"runtime error"` | General runtime error, including a thrown value |
 
+An error made with `error("msg")` has the kind `"runtime error"` before and
+after it is thrown, so `error("boom")` equals the error caught from
+`throw error("boom")`.
+
 An index error has the kind `"value error"`. A host function or a Go struct
 field can wrap a type or value error with more context, for example
 `argument 1: value too large to convert`. The error keeps the kind of the
