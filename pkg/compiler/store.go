@@ -240,6 +240,10 @@ func codeFromState(state *state) (*Code, error) {
 
 			exceptionHandlers: exceptionHandlersFromDefs(c.ExceptionHandlers),
 		}
+		// Like lineSource, use the root source when it is set, and otherwise
+		// the code's own source. A non-empty rootSource is the parent's
+		// rootSource or the parent's own source, as built above. Either way
+		// it is the parent's line source, so the parent's lines apply.
 		if rootSource != nil && *rootSource != "" {
 			lines[code] = lines[parent]
 		} else {
