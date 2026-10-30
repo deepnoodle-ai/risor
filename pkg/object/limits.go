@@ -133,6 +133,16 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 			}
 		}
 		return total
+	case *Partial:
+		// Inspect prints every argument of a partial
+		total := uint64(1)
+		for _, arg := range obj.args {
+			total += formatSize(arg, path, limit-min(total, limit))
+			if total > limit {
+				return total
+			}
+		}
+		return total
 	}
 	return 1
 }

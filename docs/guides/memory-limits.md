@@ -553,8 +553,9 @@ environment.
 **Methods that charge after the fact.** Only `repeat`, `string()`, string
 templates, and `encode` have their output size checked before the work
 happens. `decode` builds the whole value and then checks its lists, so its
-peak is a constant factor above its input, which `MaxBytesSize` already caps. Any method whose output size isn't a cheap
-function of its inputs allocates first and charges second. In practice its
+peak is a constant factor above its input, which `MaxBytesSize` already
+caps. Any method whose output size isn't a cheap function of its inputs
+allocates first and charges second. In practice its
 inputs are already inside the budget, so this costs you a constant factor
 rather than leaving an unbounded hole, but it does mean the peak is higher than
 the number you set.

@@ -18,6 +18,9 @@ func TestCheckFormatSize(t *testing.T) {
 		NewMap(map[string]Object{"a": s, "b": s})))
 	assert.NotNil(t, CheckFormatSize(ctx, "string", s, s))
 
+	// A partial counts its arguments
+	assert.NotNil(t, CheckFormatSize(ctx, "string", NewPartial(NewInt(1), []Object{s, s})))
+
 	// A list that doubles 60 times is rejected without walking 2^60 items
 	l := NewList([]Object{NewInt(1)})
 	for i := 0; i < 60; i++ {
