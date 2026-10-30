@@ -222,6 +222,10 @@ func (x *Return) String() string {
 
 // Block is a node that holds a sequence of statements. This is used to
 // represent the body of a function, loop, or a conditional.
+//
+// The body of an arrow function with an expression body, such as x => x + 1,
+// has no braces. Its block holds one Return, and Lbrace and the Return are at
+// the first character of the expression and Rbrace at its last.
 type Block struct {
 	Lbrace token.Position // position of "{"
 	Stmts  []Node         // statements in the block

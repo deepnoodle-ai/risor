@@ -1308,3 +1308,64 @@ func TestFunctionSourceWithoutPositions(t *testing.T) {
 	}
 	assert.True(t, found)
 }
+
+// Without the original source, an arrow function with an expression body has
+// its AST text as its source and no source range.
+func TestArrowFunctionSourceWithoutSource(t *testing.T) {
+	program, err := parser.Parse(context.Background(), "let f = x => x + 1", nil)
+	assert.Nil(t, err)
+	c, err := New(nil)
+	assert.Nil(t, err)
+	code, err := c.CompileAST(program)
+	assert.Nil(t, err)
+	child := code.children[0]
+	assert.Equal(t, child.Source(), "return (x + 1)")
+	assert.Equal(t, child.sourceEnd, 0)
+}
+
+// A compile with no source after one with a source does not use the earlier
+// input's offset. That made slicing the function source go out of range.
+func TestCompileWithoutSourceAfterSource(t *testing.T) {
+	c, err := New(nil)
+	assert.Nil(t, err)
+	// The long first input makes the second input's offset large, and makes
+	// the main code's source long enough to hold the positions below.
+	for _, input := range []string{"let a = 1 // " + strings.Repeat("x", 400), "let b = 2"} {
+		program, err := parser.Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+		c.SetSource(input)
+		_, err = c.CompileAST(program)
+		assert.Nil(t, err)
+	}
+	input := strings.Repeat(" ", 200) + "function f() { return 1 }"
+	program, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	c.SetSource("")
+	code, err := c.CompileAST(program)
+	assert.Nil(t, err)
+	assert.Equal(t, code.children[0].sourceEnd, 0)
+}
+
+// In the REPL, a function's source is a slice of its own input, not of the
+// main code's source, which holds every input so far. Its range points into
+// the main code's source.
+func TestFunctionSourceSlicesItsOwnInput(t *testing.T) {
+	c, err := New(nil)
+	assert.Nil(t, err)
+	var code *Code
+	inputs := []string{"function f() { return 1 }", "let g = () => f() + 1"}
+	for _, input := range inputs {
+		program, err := parser.Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+		c.SetSource(input)
+		code, err = c.CompileAST(program)
+		assert.Nil(t, err)
+	}
+	child := code.children[1]
+	src := child.Source()
+	assert.Equal(t, src, "f() + 1")
+	inputStart := uintptr(unsafe.Pointer(unsafe.StringData(inputs[1])))
+	p := uintptr(unsafe.Pointer(unsafe.StringData(src)))
+	assert.True(t, p >= inputStart && p+uintptr(len(src)) <= inputStart+uintptr(len(inputs[1])))
+	assert.Equal(t, code.source[child.sourceStart:child.sourceEnd], src)
+}

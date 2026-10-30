@@ -1409,3 +1409,16 @@ func TestMatchGuards(t *testing.T) {
 		assert.Nil(t, matchExpr.Default.Guard)
 	})
 }
+
+// The body of an arrow function with an expression body spans the expression,
+// including parentheses around its first operand.
+func TestArrowExpressionBodyPositions(t *testing.T) {
+	source := "let f = x => (a) + b"
+	program, err := Parse(context.Background(), source, nil)
+	assert.Nil(t, err)
+	fn := program.First().(*ast.Var).Value.(*ast.Func)
+	body := fn.Body
+	assert.Equal(t, source[body.Pos().Char:body.End().Char], "(a) + b")
+	ret := body.Stmts[0].(*ast.Return)
+	assert.Equal(t, ret.Pos(), body.Lbrace)
+}

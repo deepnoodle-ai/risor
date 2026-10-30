@@ -100,9 +100,9 @@ type Compiler struct {
 	// Original source code (for better error messages)
 	source string
 
-	// sourceOffset is the byte offset of the root source, as returned by
-	// getRootSource, within the main code's source. They differ in the REPL,
-	// where the main code's source holds every input so far.
+	// sourceOffset is the byte offset of source within the main code's
+	// source. They differ in the REPL, where the main code's source holds
+	// every input so far. It is zero when source is empty.
 	sourceOffset int
 
 	// rootByteOffsets maps rune offsets in the root source to byte offsets,
@@ -238,6 +238,7 @@ func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 	} else {
 		c.main.source = fmt.Sprintf("%s\n%s", c.main.source, nodeSource)
 	}
+	c.sourceOffset = 0
 	if c.source != "" {
 		c.sourceOffset = len(c.main.source) - len(nodeSource)
 	}
@@ -2454,12 +2455,19 @@ func (c *Compiler) rootRuneCount(source string) int {
 // the block (without braces), or the expression of an arrow function with an
 // expression body. Falls back to node.Body.String() if extraction fails.
 //
-// The result is a slice of the main code's source, not a copy, so nested
-// functions share its memory. start and end give the slice's byte range
-// within the main code's source. Both are zero for the fallback.
+// The result is a slice of the root source, not a copy, so nested functions
+// share its memory. When the original source was given, start and end give
+// the result's byte range within the main code's source. Otherwise, and for
+// the fallback, both are zero.
 func (c *Compiler) extractFunctionBodySource(node *ast.Func) (source string, start, end int) {
 	rootSource := c.getRootSource()
 	if rootSource == "" {
+		return node.Body.String(), 0, 0
+	}
+	// Without the original source, the root source is built from the AST
+	// text, which AST positions do not index. An expression body uses its
+	// AST text, as it did before it had positions (#540).
+	if c.source == "" && isExpressionBody(node.Body) {
 		return node.Body.String(), 0, 0
 	}
 	runeCount := c.rootRuneCount(rootSource)
@@ -2499,9 +2507,10 @@ func (c *Compiler) extractFunctionBodySource(node *ast.Func) (source string, sta
 		return node.Body.String(), 0, 0
 	}
 
-	start += c.sourceOffset
-	end += c.sourceOffset
-	return c.main.source[start:end], start, end
+	if c.source == "" {
+		return rootSource[start:end], 0, 0
+	}
+	return rootSource[start:end], start + c.sourceOffset, end + c.sourceOffset
 }
 
 // isExpressionBody reports whether block is the body the parser builds for an
