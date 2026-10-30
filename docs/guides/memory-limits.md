@@ -551,9 +551,15 @@ wrap. It stays harmless until something expands it. Converting it to Go (`encode
 `MaxListLength` elements. `string()`, string templates, and `encode` count the
 size of the text before they build it, counting each reference again, and
 stop at `MaxBytesSize`. That count walks the value, so it can take up to
-`MaxBytesSize` steps of Go code before the error. Printing is not capped, so
-you should not put `print`, `sorted` or `chunk` over lists into the
-environment.
+`MaxBytesSize` steps of Go code before the error. In Go code, `Inspect()` and
+`String()` on a list, map, or cell, and so `%v`, have no context. They use
+the same count with the default `MaxBytesSize`, and print a placeholder such
+as `[...]` past it. A thrown value and an `assert` message that are not
+strings print as a placeholder once the count passes 4,194,304, as the
+arguments of `object.Errorf` do. A `print` builtin that you add to the
+environment should call `object.CheckFormatSize(ctx, ...)` first, as the one
+in the `risor` CLI does, so that `WithLimits` applies. `sorted` and `chunk`
+are not capped, so you should not put them over lists into the environment.
 
 **Methods that charge after the fact.** Only `repeat`, `string()`, string
 templates, and `encode` have their output size checked before the work
@@ -572,8 +578,9 @@ you can actually afford to lose.
 **`WithTimeout` is not a hard bound.** Independently of memory, a builtin whose
 runtime grows faster than its input can run past the deadline. The VM sets a
 halt flag from a goroutine but only reads it between instructions, so Go code
-running inside a builtin cannot be interrupted. Printing the shared
-structure above will run for minutes under a two-second timeout.
+running inside a builtin cannot be interrupted. For example, `string()` of the
+shared structure above walks up to `MaxBytesSize` values before it fails,
+which takes about two seconds with the default limits.
 
 **The transform is coupled to AST node shapes.** If a node type is added to
 `pkg/ast` in a future release, the rewrite may silently stop covering some

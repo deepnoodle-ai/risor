@@ -246,6 +246,19 @@ func Errorf(format string, a ...interface{}) *Error {
 	return &Error{err: fmt.Errorf(format, args...)}
 }
 
+// InspectMessage returns the text of obj for an error message, such as the
+// message of a thrown value that is not a string. It returns the text that
+// obj.Inspect returns, or a placeholder, [...] or {...}, if the counted size
+// of the text exceeds errorfMaxTextSize, the bound that Errorf applies to its
+// arguments. That bound is smaller than the bound of Inspect, so a value that
+// repeats shared references cannot make a large message.
+func InspectMessage(obj Object) string {
+	if formatSize(obj, nil, errorfMaxTextSize) > errorfMaxTextSize {
+		return inspectPlaceholder(obj)
+	}
+	return inspectNested(obj, nil)
+}
+
 func (e *Error) MarshalJSON() ([]byte, error) {
 	return nil, TypeErrorf("unable to marshal error")
 }

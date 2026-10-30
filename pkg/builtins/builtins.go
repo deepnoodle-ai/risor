@@ -148,7 +148,7 @@ func Assert(ctx context.Context, args ...object.Object) (object.Object, error) {
 			case *object.String:
 				return nil, fmt.Errorf("%s", arg.Value())
 			default:
-				return nil, fmt.Errorf("%s", args[1].Inspect())
+				return nil, fmt.Errorf("%s", object.InspectMessage(args[1]))
 			}
 		}
 		return nil, fmt.Errorf("assertion failed")

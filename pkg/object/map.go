@@ -175,9 +175,10 @@ func (m *Map) Type() Type {
 
 // Inspect returns a string representation of the map. A nested container
 // that is already being printed (a cycle), or that is nested more deeply than
-// MaxNestingDepth, is shown as [...] or {...}.
+// MaxNestingDepth, is shown as [...] or {...}. A map whose text would be too
+// large is shown as {...}, with the same bound as List.Inspect.
 func (m *Map) Inspect() string {
-	return m.inspect(nil)
+	return inspectBounded(m)
 }
 
 func (m *Map) inspect(path nestPath[Object]) string {

@@ -28,9 +28,10 @@ func (c *Cell) IsTruthy() bool {
 // Inspect returns a string representation of the cell and its value. A
 // container that is already being printed (a cycle), such as the cell itself,
 // or that is nested more deeply than MaxNestingDepth, is shown as a
-// placeholder.
+// placeholder. A cell whose text would be too large is shown as cell(...),
+// with the same bound as List.Inspect.
 func (c *Cell) Inspect() string {
-	return c.inspect(nil)
+	return inspectBounded(c)
 }
 
 func (c *Cell) inspect(path nestPath[Object]) string {

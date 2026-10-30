@@ -2,6 +2,8 @@ package object
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -58,4 +60,76 @@ func TestCheckFormatSize(t *testing.T) {
 	// The walk stops even when the limit is used up
 	assert.Equal(t, formatSize(selfCell, nil, 0), uint64(2))
 	assert.Equal(t, formatSize(holder, nil, 0), uint64(4))
+}
+
+// Inspect and String have no context, so they bound the text of a list, map,
+// or cell with the default byte limit and print a placeholder past it (#583).
+func TestInspectSharedReferencesBounded(t *testing.T) {
+	// Each level references the previous one twice, so the full text would
+	// repeat the 1 KiB string 2^40 times. The walk stops after about 2^16.
+	shared := NewList([]Object{NewString(strings.Repeat("a", 1024))})
+	for range 40 {
+		shared = NewList([]Object{shared, shared})
+	}
+	assert.Equal(t, shared.Inspect(), "[...]")
+	assert.Equal(t, shared.String(), "[...]")
+	assert.Equal(t, fmt.Sprintf("%v", shared), "[...]")
+
+	m := NewMap(map[string]Object{"a": shared})
+	assert.Equal(t, m.Inspect(), "{...}")
+	assert.Equal(t, m.String(), "{...}")
+
+	var value Object = shared
+	cell := NewCell(&value)
+	assert.Equal(t, cell.Inspect(), "cell(...)")
+	assert.Equal(t, cell.String(), "cell(...)")
+
+	// A container that holds the large one is bounded as a whole
+	outer := NewList([]Object{NewInt(1), shared})
+	assert.Equal(t, outer.Inspect(), "[...]")
+
+	// A small value with shared references still prints in full
+	small := NewList([]Object{NewInt(1)})
+	pair := NewList([]Object{small, small})
+	assert.Equal(t, pair.Inspect(), "[[1], [1]]")
+	assert.Equal(t, NewMap(map[string]Object{"a": pair}).Inspect(), `{"a": [[1], [1]]}`)
+}
+
+func TestInspectBound(t *testing.T) {
+	// A list counts 2 for its brackets, and a string counts its length
+	s := NewString(strings.Repeat("a", inspectMaxSize-2))
+	assert.Equal(t, formatSize(NewList([]Object{s}), nil, inspectMaxSize), uint64(inspectMaxSize))
+	assert.Equal(t, NewList([]Object{s, NewInt(1)}).Inspect(), "[...]")
+
+	// A value far over the bound of InspectMessage still prints in full
+	big := NewList([]Object{NewString(strings.Repeat("a", errorfMaxTextSize))})
+	assert.Equal(t, len(big.Inspect()), errorfMaxTextSize+4)
+}
+
+// InspectMessage bounds the text of a value for an error message, as Errorf
+// bounds its arguments (#583).
+func TestInspectMessage(t *testing.T) {
+	assert.Equal(t, InspectMessage(NewInt(1)), "1")
+	assert.Equal(t, InspectMessage(NewFloat(1e21)), "1000000000000000000000")
+	assert.Equal(t, InspectMessage(NewString("a")), `"a"`)
+	assert.Equal(t, InspectMessage(NewList([]Object{NewInt(1), NewString("a")})), `[1, "a"]`)
+
+	// The full text would repeat the innermost list 2^40 times
+	shared := NewList([]Object{NewInt(1)})
+	for range 40 {
+		shared = NewList([]Object{shared, shared})
+	}
+	assert.Equal(t, InspectMessage(shared), "[...]")
+	assert.Equal(t, InspectMessage(NewMap(map[string]Object{"a": shared})), "{...}")
+
+	// A list counts 2 for its brackets, and a string counts its length
+	s := NewString(strings.Repeat("a", errorfMaxTextSize-2))
+	atBound := NewList([]Object{s})
+	assert.Equal(t, InspectMessage(atBound), atBound.Inspect())
+	assert.Equal(t, InspectMessage(NewList([]Object{s, NewInt(1)})), "[...]")
+
+	// A cycle prints as Inspect prints it
+	cyclic := NewList([]Object{NewInt(1)})
+	cyclic.Append(cyclic)
+	assert.Equal(t, InspectMessage(cyclic), "[1, [...]]")
 }

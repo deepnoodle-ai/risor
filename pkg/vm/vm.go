@@ -1341,7 +1341,9 @@ evalLoop:
 			case *object.String:
 				thrown = errors.New(v.Value())
 			default:
-				thrown = errors.New(tosObj.Inspect())
+				// A value whose text is too large prints as a placeholder,
+				// as in object.Errorf, so the throw still raises it
+				thrown = errors.New(object.InspectMessage(tosObj))
 			}
 			errObj := object.NewError(vm.wrapError(thrown))
 

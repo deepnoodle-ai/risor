@@ -340,6 +340,12 @@ func formattedErrors(err error) []*errors.FormattedError {
 
 func newPrintBuiltin() *object.Builtin {
 	return object.NewBuiltin("print", func(ctx context.Context, args ...object.Object) (object.Object, error) {
+		// Check before formatting, as string() does, so that a value whose
+		// text is too large, such as a list that holds one list many
+		// times, is never formatted
+		if err := object.CheckFormatSize(ctx, "print", args...); err != nil {
+			return nil, err
+		}
 		values := make([]any, len(args))
 		for i, arg := range args {
 			values[i] = object.PrintableValue(arg)

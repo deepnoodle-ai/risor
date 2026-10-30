@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -449,4 +450,25 @@ func TestWithLimitsStructEmbedderAssignAttr(t *testing.T) {
 
 	// The VM called AssignAttr, not SetAttr
 	assert.Equal(t, assigner.setAttrCalls, 0)
+}
+
+// Throwing a value, or failing an assert with a message, that is not a string
+// prints the value into the error message. A value that repeats shared
+// references prints as a placeholder, as object.Errorf does (#583).
+func TestThrowAndAssertSharedReferencesBounded(t *testing.T) {
+	for _, levels := range []int{22, 40} {
+		build := fmt.Sprintf("let a = list(range(%d)).reduce([1], (acc, i) => [acc, acc])\n", levels)
+		for _, raise := range []string{`throw a`, `assert(false, a)`} {
+			src := build + "try { " + raise + " } catch e { e.message() }"
+			result, err := Eval(context.Background(), src, WithEnv(Builtins()))
+			assert.Nil(t, err)
+			assert.Equal(t, result, "[...]")
+		}
+	}
+
+	// A small value still prints in full
+	result, err := Eval(context.Background(),
+		`try { throw [1, {a: 2}] } catch e { e.message() }`, WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, `[1, {"a": 2}]`)
 }
