@@ -55,7 +55,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   variable at the top level of a module does not resolve as `module.name`.
   `Code.GlobalNames` no longer has one entry per slot, so its indexes do not
   always match `GlobalNameAt`. To read every slot name, use `GlobalCount` and
-  `GlobalNameAt` (#492).
+  `GlobalNameAt`. An env key of the form `name#digits`, such as `step#1`, is
+  not visible to `vm.Get` or `GlobalNames` (#492).
 
 - The VS Code extension no longer runs a `go install` command that always
   failed. When it cannot find `risor-lsp`, it shows install steps and a link to
