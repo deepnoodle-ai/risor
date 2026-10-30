@@ -80,6 +80,26 @@ func TestDidCloseRemovesDocument(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// A change or save that arrives after a close, for example when the server
+// handles them at the same time, does not put the closed document back.
+func TestChangeAfterCloseDoesNotRestoreDocument(t *testing.T) {
+	c := newCache()
+	uri := protocol.DocumentURI("file:///closed.risor")
+	doc := newDocument(context.Background(), protocol.TextDocumentItem{URI: uri, Text: "let x = 1", Version: 2})
+	assert.Error(t, c.replace(doc))
+	_, err := c.get(uri)
+	assert.Error(t, err)
+
+	assert.NoError(t, c.put(doc))
+	newer := newDocument(context.Background(), protocol.TextDocumentItem{URI: uri, Text: "let x = 2", Version: 3})
+	assert.NoError(t, c.replace(newer))
+	older := newDocument(context.Background(), protocol.TextDocumentItem{URI: uri, Text: "let x = 0", Version: 1})
+	assert.Error(t, c.replace(older))
+	got, err := c.get(uri)
+	assert.NoError(t, err)
+	assert.Equal(t, got.item.Text, "let x = 2")
+}
+
 // Changes and saves replace the cached document rather than changing it, so
 // the diagnostics goroutines and other requests can read it at the same time.
 // Run with -race.

@@ -147,7 +147,7 @@ func (s *Server) DidChange(ctx context.Context, params *protocol.DidChangeTextDo
 
 	// Reparse the document
 	doc := newDocument(ctx, item)
-	if err := s.cache.put(doc); err != nil {
+	if err := s.cache.replace(doc); err != nil {
 		log.Error().Err(err).Str("uri", string(params.TextDocument.URI)).Msg("failed to cache changed document")
 		return err
 	}
@@ -246,7 +246,7 @@ func (s *Server) DidSave(ctx context.Context, params *protocol.DidSaveTextDocume
 	item := old.item
 	item.Text = *params.Text
 	doc := newDocument(ctx, item)
-	if err := s.cache.put(doc); err != nil {
+	if err := s.cache.replace(doc); err != nil {
 		log.Error().Err(err).Str("uri", string(params.TextDocument.URI)).Msg("failed to cache saved document")
 		return err
 	}
