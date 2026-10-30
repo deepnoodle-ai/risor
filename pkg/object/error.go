@@ -212,9 +212,13 @@ func (e *Error) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 	return nil, newTypeErrorf("unsupported operation for error: %v", opType)
 }
 
-// errorfMaxTextSize bounds the text of each Object argument to Errorf. It
-// matches DefaultMaxListLength, the element budget that bounded these
-// arguments when Errorf converted them with Interface.
+// errorfMaxTextSize bounds the text of each Object argument to Errorf. It is
+// compared with formatSize, which counts a lower bound of the size of the
+// text, as CheckFormatSize does: a string or bytes value counts its length,
+// and every other value, such as an int, float, or bool, counts one. So the
+// real text can be several times larger than this bound. It matches
+// DefaultMaxListLength, the element budget that bounded these arguments when
+// Errorf converted them with Interface.
 const errorfMaxTextSize = DefaultMaxListLength
 
 // Errorf returns an Error with a message formatted as fmt.Errorf does. An
@@ -223,7 +227,7 @@ const errorfMaxTextSize = DefaultMaxListLength
 // work. Any other Object formats as Risor prints it, so a list formats as
 // [1, 2] and a map as {"a": 1}. Errorf does not convert an Object to Go, so
 // a large or cyclic container does not fail or format as <nil>. An Object
-// whose text would exceed errorfMaxTextSize formats as a placeholder, [...]
+// whose counted size exceeds errorfMaxTextSize formats as a placeholder, [...]
 // or {...}, so a container that repeats shared references cannot make Errorf
 // build an unbounded message.
 func Errorf(format string, a ...interface{}) *Error {
