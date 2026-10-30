@@ -10,8 +10,8 @@ import (
 )
 
 type Job struct {
-	ID    string
-	Items []int
+	ID      string
+	Batches [][]int
 }
 
 // JobObject wraps a Job. Its AssignAttr receives the VM context, so field
@@ -35,14 +35,16 @@ func Example_attrAssigner() {
 	env := risor.WithEnv(map[string]any{"job": obj})
 	limits := risor.WithLimits(risor.Limits{MaxListLength: 3})
 
-	for _, src := range []string{`job.Items = [1, 2, 3, 4]`, `job.Items = [1, 2, 3]`, `job.ID = "b2"`} {
+	// Converting a value to Go counts every list and item, so [[1, 2], [3]]
+	// counts 5 elements and [[1, 2]] counts 3
+	for _, src := range []string{`job.Batches = [[1, 2], [3]]`, `job.Batches = [[1, 2]]`, `job.ID = "b2"`} {
 		_, err := risor.Eval(context.Background(), src, env, limits)
 		fmt.Println(src, "->", err)
 	}
-	fmt.Println(job.ID, job.Items)
+	fmt.Println(job.ID, job.Batches)
 	// Output:
-	// job.Items = [1, 2, 3, 4] -> value error: cannot set field "Items": value too large to convert (exceeds limit of 3 elements) (1:1)
-	// job.Items = [1, 2, 3] -> <nil>
+	// job.Batches = [[1, 2], [3]] -> value error: cannot set field "Batches": failed to convert slice element 0: value too large to convert (exceeds limit of 3 elements) (1:1)
+	// job.Batches = [[1, 2]] -> <nil>
 	// job.ID = "b2" -> type error: field "ID" is read-only (1:1)
-	// a1 [1 2 3]
+	// a1 [[1 2]]
 }

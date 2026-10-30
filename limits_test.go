@@ -286,7 +286,16 @@ func TestDefaultLimitsSharedReferences(t *testing.T) {
 type limitsBox struct {
 	Items []int64
 	Grid  [][]int64
+	Rows  [][]int64
 }
+
+// With MaxListLength 10, each list literal below is within the limit, so the
+// script can build it. Converting it to Go counts every element: rowsOver
+// has 3 rows and 9 items, 12 in total, and rowsAtLimit has 10.
+const (
+	rowsOver    = `box.Rows = [[1, 2, 3, 4], [1, 2, 3, 4], [1]]`
+	rowsAtLimit = `box.Rows = [[1, 2, 3, 4], [1, 2, 3, 4]]`
+)
 
 // Setting a field of a Go struct converts the value with the limits from
 // WithLimits (#497).
@@ -365,9 +374,9 @@ func TestWithLimitsStructEmbedderKeepsSetAttr(t *testing.T) {
 
 	// The override did not opt in to AttrAssigner, so the default limits
 	// apply, not WithLimits
-	_, err = Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`, env, limits)
+	_, err = Eval(context.Background(), rowsOver, env, limits)
 	assert.Nil(t, err)
-	assert.Equal(t, len(box.Items), 11)
+	assert.Equal(t, len(box.Rows), 3)
 }
 
 // plainBox embeds *object.GoStruct and defines neither SetAttr nor
@@ -384,9 +393,9 @@ func TestWithLimitsStructEmbedderDefaultLimits(t *testing.T) {
 	env := WithEnv(map[string]any{"box": plain})
 	limits := WithLimits(Limits{MaxListLength: 10})
 
-	_, err := Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`, env, limits)
+	_, err := Eval(context.Background(), rowsOver, env, limits)
 	assert.Nil(t, err)
-	assert.Equal(t, len(box.Items), 11)
+	assert.Equal(t, len(box.Rows), 3)
 }
 
 // assignBox embeds *object.GoStruct, blocks a field in both SetAttr and
@@ -422,15 +431,15 @@ func TestWithLimitsStructEmbedderAssignAttr(t *testing.T) {
 	limits := WithLimits(Limits{MaxListLength: 10})
 
 	// A value over the limit fails and leaves the field unchanged
-	_, err := Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`, env, limits)
+	_, err := Eval(context.Background(), rowsOver, env, limits)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
-	assert.Equal(t, len(box.Items), 0)
+	assert.Equal(t, len(box.Rows), 0)
 
 	// A value at the limit is set
-	_, err = Eval(context.Background(), `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`, env, limits)
+	_, err = Eval(context.Background(), rowsAtLimit, env, limits)
 	assert.Nil(t, err)
-	assert.Equal(t, len(box.Items), 10)
+	assert.Equal(t, len(box.Rows), 2)
 
 	// AssignAttr blocks the field
 	_, err = Eval(context.Background(), `box.Grid = [[1]]`, env, limits)

@@ -141,3 +141,21 @@ func TestErrorfNoConversion(t *testing.T) {
 	assert.Nil(t, cyclic.Interface())
 	assert.Equal(t, Errorf("bad %v", cyclic).Error(), "bad [1, [...]]")
 }
+
+func TestErrorfSharedReferencesBounded(t *testing.T) {
+	// Each level references the previous one twice, so the full text would
+	// repeat the innermost list 2^40 times
+	shared := NewList([]Object{NewInt(1)})
+	for range 40 {
+		shared = NewList([]Object{shared, shared})
+	}
+	assert.Equal(t, Errorf("bad %v", shared).Error(), "bad [...]")
+
+	m := NewMap(map[string]Object{"a": shared})
+	assert.Equal(t, Errorf("bad %v", m).Error(), "bad {...}")
+
+	// A small value with shared references still formats in full
+	small := NewList([]Object{NewInt(1)})
+	pair := NewList([]Object{small, small})
+	assert.Equal(t, Errorf("bad %v", pair).Error(), "bad [[1], [1]]")
+}
