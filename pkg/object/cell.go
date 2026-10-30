@@ -1,8 +1,6 @@
 package object
 
 import (
-	"fmt"
-
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
 
@@ -27,15 +25,31 @@ func (c *Cell) IsTruthy() bool {
 	return true
 }
 
+// Inspect returns a string representation of the cell and its value. A
+// container that is already being printed (a cycle), such as the cell itself,
+// or that is nested more deeply than MaxNestingDepth, is shown as a
+// placeholder.
 func (c *Cell) Inspect() string {
-	return c.String()
+	return c.inspect(nil)
 }
 
-func (c *Cell) String() string {
+func (c *Cell) inspect(path nestPath[Object]) string {
 	if c.value == nil {
 		return "cell()"
 	}
-	return fmt.Sprintf("cell(%s)", *c.value)
+	value := *c.value
+	if isNestedContainer(value) {
+		p, err := path.descend(c, value)
+		if err != nil {
+			return "cell(" + inspectPlaceholder(value) + ")"
+		}
+		path = p
+	}
+	return "cell(" + inspectNested(value, path) + ")"
+}
+
+func (c *Cell) String() string {
+	return c.Inspect()
 }
 
 func (c *Cell) Value() Object {
@@ -56,11 +70,11 @@ func (c *Cell) Type() Type {
 	return CELL
 }
 
+// Interface returns the Go value of the cell's value. It returns nil if the
+// cell is empty, or if its value contains the cell or is too large to
+// convert; see ToInterface.
 func (c *Cell) Interface() interface{} {
-	if c.value == nil {
-		return nil
-	}
-	return (*c.value).Interface()
+	return interfaceOrNil(c)
 }
 
 func (c *Cell) Equals(other Object) bool {

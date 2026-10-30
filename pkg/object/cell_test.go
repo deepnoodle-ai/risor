@@ -58,3 +58,39 @@ func TestCellInterface(t *testing.T) {
 	nilCell := NewCell(nil)
 	assert.Nil(t, nilCell.Interface())
 }
+
+func TestCellInspect(t *testing.T) {
+	var obj Object = NewList([]Object{NewInt(1), NewString("a")})
+	c := NewCell(&obj)
+	assert.Equal(t, c.Inspect(), `cell([1, "a"])`)
+	assert.Equal(t, c.String(), `cell([1, "a"])`)
+	assert.Equal(t, c.Interface(), []any{int64(1), "a"})
+}
+
+func TestCellHoldsItself(t *testing.T) {
+	var self Object
+	c := NewCell(&self)
+	self = c
+
+	assert.Equal(t, c.Inspect(), "cell(cell(...))")
+	assert.Equal(t, c.String(), "cell(cell(...))")
+	assert.Nil(t, c.Interface())
+	assert.Equal(t, Errorf("bad %v", c).Error(), "bad cell(cell(...))")
+}
+
+func TestCellListCycle(t *testing.T) {
+	// list -> cell -> list
+	var value Object
+	c := NewCell(&value)
+	ls := NewList([]Object{c})
+	value = ls
+
+	assert.Equal(t, ls.Inspect(), "[cell([...])]")
+	assert.Equal(t, ls.String(), "[cell([...])]")
+	assert.Equal(t, c.Inspect(), "cell([cell(...)])")
+	assert.Equal(t, c.String(), "cell([cell(...)])")
+	assert.Nil(t, ls.Interface())
+	assert.Nil(t, c.Interface())
+	assert.Equal(t, Errorf("bad %v", ls).Error(), "bad [cell([...])]")
+	assert.Equal(t, Errorf("bad %v", c).Error(), "bad cell([cell(...)])")
+}
