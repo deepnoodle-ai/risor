@@ -70,7 +70,11 @@ type Object interface {
 	// Inspect returns a string representation of the given object.
 	Inspect() string
 
-	// Interface converts the given object to a native Go value.
+	// Interface converts the given object to a native Go value. It has no
+	// context, so a container (list, map, iterator, or range) is converted
+	// with the default limits, not the limits set with risor.WithLimits.
+	// Code that has a context should call ToInterface instead, which applies
+	// the limits in the context and returns an error in place of nil.
 	Interface() interface{}
 
 	// Returns true if the given object is equal to this object.
@@ -84,7 +88,9 @@ type Object interface {
 	// GetAttr returns the attribute with the given name from this object.
 	GetAttr(name string) (Object, bool)
 
-	// SetAttr sets the attribute with the given name on this object.
+	// SetAttr sets the attribute with the given name on this object. The VM
+	// calls it for an assignment such as obj.name = value, unless the object
+	// implements AttrAssigner.
 	SetAttr(name string, value Object) error
 
 	// IsTruthy returns true if the object is considered "truthy".
@@ -168,6 +174,34 @@ func CompareTypes(a, b Object) int {
 // AttrResolver is an interface used to resolve dynamic attributes on an object.
 type AttrResolver interface {
 	ResolveAttr(ctx context.Context, name string) (Object, error)
+}
+
+// AttrAssigner is an optional interface for an object that wants the VM's
+// context when a script assigns one of its attributes, as in obj.name = value.
+// The context carries the limits set with risor.WithLimits, and is canceled
+// when the script is canceled.
+//
+// When an object implements AttrAssigner, the VM calls AssignAttr for an
+// attribute assignment and does not call SetAttr. So AssignAttr must enforce
+// the same rules as the type's SetAttr. For example, if SetAttr blocks a
+// read-only field, AssignAttr must block it too.
+//
+// *GoStruct does not implement AttrAssigner, on purpose. A host type that
+// embeds *GoStruct gets the context only if it defines AssignAttr itself. An
+// embedder that defines only SetAttr keeps it: the VM calls that SetAttr,
+// which uses the default limits. To apply the limits, the embedder defines
+// AssignAttr and delegates to GoStruct.SetAttrContext:
+//
+//	func (b *Box) AssignAttr(ctx context.Context, name string, value object.Object) error {
+//		if name == "ID" {
+//			return object.TypeErrorf("field %q is read-only", name)
+//		}
+//		return b.GoStruct.SetAttrContext(ctx, name, value)
+//	}
+//
+// Code that calls SetAttr directly, outside the VM, does not call AssignAttr.
+type AttrAssigner interface {
+	AssignAttr(ctx context.Context, name string, value Object) error
 }
 
 type ResolveAttrFunc func(ctx context.Context, name string) (Object, error)

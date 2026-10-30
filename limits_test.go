@@ -286,7 +286,16 @@ func TestDefaultLimitsSharedReferences(t *testing.T) {
 type limitsBox struct {
 	Items []int64
 	Grid  [][]int64
+	Rows  [][]int64
 }
+
+// With MaxListLength 10, each list literal below is within the limit, so the
+// script can build it. Converting it to Go counts every element: rowsOver
+// has 3 rows and 9 items, 12 in total, and rowsAtLimit has 10.
+const (
+	rowsOver    = `box.Rows = [[1, 2, 3, 4], [1, 2, 3, 4], [1]]`
+	rowsAtLimit = `box.Rows = [[1, 2, 3, 4], [1, 2, 3, 4]]`
+)
 
 // Setting a field of a Go struct converts the value with the limits from
 // WithLimits (#497).
@@ -362,4 +371,82 @@ func TestWithLimitsStructEmbedderKeepsSetAttr(t *testing.T) {
 	_, err = Eval(context.Background(), `box.Items = [1, 2, 3]`, env, limits)
 	assert.Nil(t, err)
 	assert.Equal(t, len(box.Items), 3)
+
+	// The override did not opt in to AttrAssigner, so the default limits
+	// apply, not WithLimits
+	_, err = Eval(context.Background(), rowsOver, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Rows), 3)
+}
+
+// plainBox embeds *object.GoStruct and defines neither SetAttr nor
+// AssignAttr.
+type plainBox struct {
+	*object.GoStruct
+}
+
+// An embedder that does not opt in gets the promoted GoStruct.SetAttr, which
+// uses the default limits (#499).
+func TestWithLimitsStructEmbedderDefaultLimits(t *testing.T) {
+	box := &limitsBox{}
+	plain := &plainBox{object.NewGoStruct(reflect.ValueOf(box), object.DefaultRegistry())}
+	env := WithEnv(map[string]any{"box": plain})
+	limits := WithLimits(Limits{MaxListLength: 10})
+
+	_, err := Eval(context.Background(), rowsOver, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Rows), 3)
+}
+
+// assignBox embeds *object.GoStruct, blocks a field in both SetAttr and
+// AssignAttr, and opts in to the VM context with AssignAttr.
+type assignBox struct {
+	*object.GoStruct
+	setAttrCalls int
+}
+
+var _ object.AttrAssigner = (*assignBox)(nil)
+
+func (b *assignBox) SetAttr(name string, value object.Object) error {
+	b.setAttrCalls++
+	if name == "Grid" {
+		return object.TypeErrorf("field %q is read-only", name)
+	}
+	return b.GoStruct.SetAttr(name, value)
+}
+
+func (b *assignBox) AssignAttr(ctx context.Context, name string, value object.Object) error {
+	if name == "Grid" {
+		return object.TypeErrorf("field %q is read-only", name)
+	}
+	return b.GoStruct.SetAttrContext(ctx, name, value)
+}
+
+// An embedder that implements AttrAssigner gets the limits from WithLimits
+// on field assignment (#499).
+func TestWithLimitsStructEmbedderAssignAttr(t *testing.T) {
+	box := &limitsBox{}
+	assigner := &assignBox{GoStruct: object.NewGoStruct(reflect.ValueOf(box), object.DefaultRegistry())}
+	env := WithEnv(map[string]any{"box": assigner})
+	limits := WithLimits(Limits{MaxListLength: 10})
+
+	// A value over the limit fails and leaves the field unchanged
+	_, err := Eval(context.Background(), rowsOver, env, limits)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+	assert.Equal(t, len(box.Rows), 0)
+
+	// A value at the limit is set
+	_, err = Eval(context.Background(), rowsAtLimit, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Rows), 2)
+
+	// AssignAttr blocks the field
+	_, err = Eval(context.Background(), `box.Grid = [[1]]`, env, limits)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "read-only"), err.Error())
+	assert.Equal(t, len(box.Grid), 0)
+
+	// The VM called AssignAttr, not SetAttr
+	assert.Equal(t, assigner.setAttrCalls, 0)
 }

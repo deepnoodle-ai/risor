@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 )
 
-// MaxNestingDepth is the maximum number of nested containers (lists, maps, and
-// iterators, counting the outermost one) that recursive operations will
+// MaxNestingDepth is the maximum number of nested containers (lists, maps,
+// iterators, and cells, counting the outermost one) that recursive operations will
 // traverse. It applies to Equals, Compare, MarshalJSON, ToInterface, and
 // conversion between Risor and Go values. A container that contains itself, directly or
 // indirectly, is treated as exceeding the limit.
@@ -51,10 +51,12 @@ type objectPair [2]Object
 
 // isNestedContainer reports whether obj holds other objects that a recursive
 // operation may descend into. An iterator counts, since converting it visits
-// the values it yields, and those may include the iterator itself.
+// the values it yields, and those may include the iterator itself. A cell
+// counts, since converting or measuring it visits its value, and that value
+// may hold the cell.
 func isNestedContainer(obj Object) bool {
 	switch obj.(type) {
-	case *List, *Map, *Iter:
+	case *List, *Map, *Iter, *Cell:
 		return true
 	}
 	return false
@@ -98,7 +100,8 @@ func ToJSONValue(ctx context.Context, obj Object) (any, error) {
 }
 
 // interfaceOrNil converts obj with the default limits and returns nil on
-// error. Interface methods of containers use it.
+// error. Interface methods of containers use it. Code that has a context
+// must call ToInterface instead, so that the limits in the context apply.
 func interfaceOrNil(obj Object) any {
 	result, err := toInterface(obj, nil, newConvBudget(context.Background()))
 	if err != nil {
@@ -117,6 +120,22 @@ func toInterface(obj Object, path nestPath[Object], b *convBudget) (any, error) 
 		return obj.toInterface(path, b)
 	case *Range:
 		return obj.toInterface(b)
+	case *Cell:
+		// Cell.Interface would convert the value with the default limits.
+		// The cell goes on the path, so a cell that holds itself, directly
+		// or through a container, returns ErrNestingDepth.
+		if obj.value == nil {
+			return nil, nil
+		}
+		value := *obj.value
+		if isNestedContainer(value) {
+			p, err := path.descend(obj, value)
+			if err != nil {
+				return nil, err
+			}
+			path = p
+		}
+		return toInterface(value, path, b)
 	}
 	if !b.jsonOnly {
 		return obj.Interface(), nil

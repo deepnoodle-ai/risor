@@ -28,8 +28,13 @@ risor.Eval(ctx, src,
 `MaxListLength` also caps each conversion of a value to Go: a script result, a
 host function argument, a value assigned to a field of a Go struct, and the
 values passed to `sprintf`, `error`, and `encode`. The struct field case applies
-only to a value whose type is exactly `*object.GoStruct`. A host type that
-embeds `*object.GoStruct` uses the default limits for field assignment. One
+to a value whose type is exactly `*object.GoStruct`, and to a host type that
+implements `object.AttrAssigner`. A host type that embeds `*object.GoStruct`
+gets the limits only if it defines its own `AssignAttr`, which can delegate to
+`GoStruct.SetAttrContext`. Without `AssignAttr`, the VM calls its `SetAttr`,
+which uses the default limits. In Go code, `Interface()` on a list, map,
+iterator, or range also uses the default limits, because it has no context.
+Call `object.ToInterface(ctx, obj)` to apply the limits in `ctx`. One
 conversion may produce at most `MaxListLength` elements in total, counting every
 list item, map entry, and range element. A list referenced more than once counts
 each time, so `[l, l]` costs `2 + 2 * len(l)` elements. All arguments of one

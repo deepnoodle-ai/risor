@@ -97,9 +97,10 @@ func (r *Range) Inspect() string {
 }
 
 // Interface returns the range values as a []int64. It has no context, so it
-// cannot see configured limits: ranges longer than DefaultMaxListLength are
-// not materialized and return nil. Use ToInterface to apply the limit in a
-// context and get a value error instead.
+// uses the default limits, not the limits set with risor.WithLimits: a range
+// longer than DefaultMaxListLength is not materialized and returns nil. Code
+// that has a context should call ToInterface, which applies the limits in
+// the context and returns a value error instead.
 func (r *Range) Interface() any {
 	return interfaceOrNil(r)
 }

@@ -432,3 +432,34 @@ func TestSortContext(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.ErrorContains(t, err, "compare")
 }
+
+// ToInterface converts the value in a Cell with the limits in ctx, not with
+// the default limits of Cell.Interface.
+func TestToInterfaceCell(t *testing.T) {
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 2})
+	var value Object = NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	_, err := ToInterface(ctx, NewCell(&value))
+	assertValueError(t, err, "value too large to convert (exceeds limit of 2 elements)")
+
+	value = NewList([]Object{NewInt(1)})
+	got, err := ToInterface(ctx, NewCell(&value))
+	assert.Nil(t, err)
+	assert.Equal(t, got, []any{int64(1)})
+
+	got, err = ToInterface(ctx, NewCell(nil))
+	assert.Nil(t, err)
+	assert.Nil(t, got)
+
+	// A cell that holds itself, directly or through a list, is a cycle
+	var self Object
+	selfCell := NewCell(&self)
+	self = selfCell
+	_, err = ToInterface(ctx, selfCell)
+	assert.ErrorIs(t, err, ErrNestingDepth)
+
+	var held Object
+	holder := NewList([]Object{NewCell(&held)})
+	held = holder
+	_, err = ToInterface(ctx, holder)
+	assert.ErrorIs(t, err, ErrNestingDepth)
+}
