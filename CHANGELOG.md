@@ -237,9 +237,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   earlier name, as in `let [x = 10, y = x + 1] = []`. This applies to `let`
   and to function parameters. Before, defaults ran right to left, and
   `let [x = 10, y = x + 1] = []` failed with `undefined variable "x"`.
-  In a function parameter, a default that names a later destructured name,
-  as in `function f([a = b, b = 1])`, is now a compile error (`undefined
-  variable "b"`), the same as in `let`, unless an outer `b` exists (#517).
+  In a function parameter, a default that names a later destructured name is
+  now a compile error (`undefined variable "b"`), the same as in `let`, unless
+  an outer `b` exists. This applies to array patterns, as in
+  `function f([a = b, b = 1])`, and to object patterns, as in
+  `function f({a = b, b})`. Before, the object form compiled and its default
+  read an unset value (#517).
 - A named function with a destructured parameter, such as
   `function f([n]) { ... f([n - 1]) ... }`, can call itself. Before, the call
   failed with "object is not callable" (#517).
