@@ -19,9 +19,9 @@ func WithInstructionOffset(offset int) Option {
 }
 
 // WithGlobals provides global variables with the given names. When passed to
-// RunCode, a global only adds a name the VM does not have yet. It does not
-// replace the value of a global the VM already holds, which a script may have
-// changed.
+// RunCode, a value replaces the current value for that name, including a
+// value that a script changed. Globals that the call does not name keep the
+// values that earlier runs left in them.
 func WithGlobals(globals map[string]any) Option {
 	return func(vm *VirtualMachine) {
 		for name, value := range globals {
