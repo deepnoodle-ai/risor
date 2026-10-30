@@ -115,6 +115,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Building source locations for code no longer splits the whole source once
   per instruction. `bytecode.Code.GetSourceLine` splits the source once. New
   `bytecode.Code.Root` returns the root code.
+- Script values passed to Go functions, struct fields, slices, and maps no
+  longer cause reflect panics:
+  - `null` for an `any` or other interface target becomes Go `nil`. A `null`
+    map value stores `nil` under its key; before, the key was dropped.
+  - A function, builtin, or module for an `any` target is a type error
+    ("cannot convert function to a Go value"). Before, it was a recovered
+    panic, or a silent `nil` from `TypeRegistry.ToGo`.
+  - Defined types whose underlying type is a number, bool, string, or `[]byte`,
+    such as `time.Duration` or `json.RawMessage`, convert, as do map keys of a
+    defined string type.
+  - A Go struct or Go function from the host passes back to a Go parameter or
+    field of its type, or an interface it implements. A struct target gets a
+    copy of the struct.
+  - A registered `ToGo` converter that returns a value of the wrong type is a
+    type error.
+- A Go function whose error result is a value type, such as `syscall.Errno`,
+  no longer panics. Its zero value means no error.
+- Methods from two different Go structs no longer compare equal.
+- Reading a struct field that holds another struct by value, such as
+  `emp.Address`, returns that field, not a copy, so setting `emp.Address.City`
+  changes `emp`.
 
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root

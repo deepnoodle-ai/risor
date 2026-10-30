@@ -95,8 +95,10 @@ func (g *GoStruct) Equals(other Object) bool {
 	if !ok {
 		return false
 	}
-	// Compare by pointer identity
-	return g.value.Pointer() == otherStruct.value.Pointer()
+	// Compare by pointer identity. A struct field at offset 0 has the same
+	// address as its enclosing struct, so the types must match too.
+	return g.structType == otherStruct.structType &&
+		g.value.Pointer() == otherStruct.value.Pointer()
 }
 
 func (g *GoStruct) Attrs() []AttrSpec {
@@ -120,7 +122,7 @@ func (g *GoStruct) GetAttr(name string) (Object, bool) {
 	// Check for field first
 	if idx, ok := meta.fields[name]; ok {
 		fieldVal := g.value.Elem().Field(idx)
-		obj, err := g.registry.FromGo(fieldVal.Interface())
+		obj, err := g.registry.fromGoField(fieldVal)
 		if err != nil {
 			return nil, false
 		}
@@ -131,7 +133,9 @@ func (g *GoStruct) GetAttr(name string) (Object, bool) {
 	if idx, ok := meta.methods[name]; ok {
 		method := g.value.Method(idx)
 		methodName := fmt.Sprintf("%s.%s", g.structType.Name(), name)
-		return NewGoFunc(method, methodName, g.registry), true
+		fn := NewGoFunc(method, methodName, g.registry)
+		fn.recv, fn.method = g.value, idx
+		return fn, true
 	}
 
 	return nil, false
@@ -166,8 +170,11 @@ func (g *GoStruct) SetAttrContext(ctx context.Context, name string, value Object
 	if err != nil {
 		return fmt.Errorf("cannot set field %q: %w", name, err)
 	}
-
-	fieldVal.Set(reflect.ValueOf(goVal))
+	rv, err := reflectValue(goVal, fieldVal.Type())
+	if err != nil {
+		return fmt.Errorf("cannot set field %q: %w", name, err)
+	}
+	fieldVal.Set(rv)
 	return nil
 }
 
