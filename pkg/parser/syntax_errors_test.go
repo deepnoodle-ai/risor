@@ -2,7 +2,9 @@ package parser
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -28,13 +30,13 @@ func TestLexerErrorReportedOnceAtPosition(t *testing.T) {
 		column  int
 	}{
 		{"x = 1\ny = ~2", "unexpected character: '~'", 2, 5},
-		{"let a = 1\nlet b = 12abc", "invalid decimal literal: 12a", 2, 9},
+		{"let a = 1\nlet b = 12abc", "invalid decimal literal: 12abc", 2, 9},
 		{"x\n~", "unexpected character: '~'", 2, 1},
 		{"x\n~\ny", "unexpected character: '~'", 2, 1},
 		// A lexer error after a newline is not reported by the lookahead for
 		// a chained method call
 		{"x = a\n  .b\n~", "unexpected character: '~'", 3, 1},
-		{"let x = foo\n12abc", "invalid decimal literal: 12a", 2, 1},
+		{"let x = foo\n12abc", "invalid decimal literal: 12abc", 2, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -44,6 +46,46 @@ func TestLexerErrorReportedOnceAtPosition(t *testing.T) {
 			assert.Equal(t, errs[0].StartPosition().LineNumber(), tt.line)
 			assert.Equal(t, errs[0].StartPosition().ColumnNumber(), tt.column)
 		})
+	}
+}
+
+// A bad token inside an expression is reported once, by the lexer, without
+// follow-on parse errors.
+func TestLexerErrorInExpressionReportedOnce(t *testing.T) {
+	tests := []struct {
+		input  string
+		line   int
+		column int
+	}{
+		{"x = 1 + ~", 1, 9},
+		{"1 +\n@", 2, 1},
+		{"x.y = ~", 1, 7},
+		{"f(1, ~)", 1, 6},
+		{"let x = [1, 2abc]", 1, 13},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			errs := parseErrors(t, tt.input)
+			assert.Len(t, errs, 1)
+			_, ok := errs[0].(*SyntaxError)
+			assert.True(t, ok)
+			assert.Equal(t, errs[0].StartPosition().LineNumber(), tt.line)
+			assert.Equal(t, errs[0].StartPosition().ColumnNumber(), tt.column)
+		})
+	}
+}
+
+// Lexer errors stop at MaxErrors, and a long line of bad input parses fast.
+func TestLexerErrorsRespectMaxErrors(t *testing.T) {
+	for _, input := range []string{
+		"x = " + strings.Repeat("~", 100_000),
+		"x = 1 " + strings.Repeat("1a ", 35_000),
+		strings.Repeat("~\n", 50_000),
+	} {
+		start := time.Now()
+		errs := parseErrors(t, input)
+		assert.True(t, len(errs) <= MaxErrors)
+		assert.True(t, time.Since(start) < time.Second)
 	}
 }
 

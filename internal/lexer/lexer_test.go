@@ -2,6 +2,7 @@ package lexer
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -416,8 +417,8 @@ func TestInvalidIntegers(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"42.foo()", "invalid decimal literal: 42.f"},
-		{"12ab", "invalid decimal literal: 12a"},
+		{"42.foo()", "invalid decimal literal: 42.foo"},
+		{"12ab", "invalid decimal literal: 12ab"},
 		{"0x1aZ", "invalid decimal literal: 0x1aZ"},
 		{"078", "invalid decimal literal: 078"},
 	}
@@ -699,7 +700,7 @@ func TestInvalidIdentifiers(t *testing.T) {
 		err   string
 	}{
 		{"⺶", "invalid identifier: ⺶"},
-		{"foo⺶bar", "invalid identifier: foo⺶"},
+		{"foo⺶bar", "invalid identifier: foo⺶bar"},
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
@@ -784,9 +785,9 @@ func TestInvalids(t *testing.T) {
 	tests := []test{
 		{"\x01", "invalid identifier: \x01"},
 		{"4.f", "invalid decimal literal: 4.f"},
-		{"4a.f", "invalid decimal literal: 4a"},
-		{"0x.1", "invalid decimal literal: 0x."},
-		{"0b.1", "invalid decimal literal: 0b."},
+		{"4a.f", "invalid decimal literal: 4a.f"},
+		{"0x.1", "invalid decimal literal: 0x.1"},
+		{"0b.1", "invalid decimal literal: 0b.1"},
 		{`"foo`, "unterminated string literal"},
 		{"`foo", "unterminated string literal"},
 		{"'foo", "unterminated string literal"},
@@ -1750,11 +1751,27 @@ func TestLexerErrorsAdvance(t *testing.T) {
 			}
 			assert.Equal(t, tok.Type, token.ILLEGAL)
 			assert.Equal(t, tok.Literal, tt.literal)
+			// The error names the whole token, not part of it
+			assert.True(t, strings.Contains(err.Error(), tt.literal))
 			assert.Equal(t, tok.StartPosition.Line, tt.line)
 			assert.Equal(t, tok.StartPosition.Column, tt.column)
 			next, err := l.Next()
 			assert.Nil(t, err)
 			assert.Equal(t, next.Literal, tt.next)
 		})
+	}
+}
+
+// Comments are skipped in a loop, so many in a row can't overflow the stack
+func TestManyConsecutiveComments(t *testing.T) {
+	for _, comment := range []string{"/**/", "// c\n"} {
+		l := New(strings.Repeat(comment, 2_000_000) + "1")
+		tok, err := l.Next()
+		for tok.Type == token.NEWLINE {
+			tok, err = l.Next()
+		}
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Type, token.INT)
+		assert.Equal(t, tok.Literal, "1")
 	}
 }

@@ -223,7 +223,11 @@ func (p *Parser) nextToken() error {
 		return nil // success
 	}
 	// The lexer encountered an error. We consider all lexer errors
-	// "syntax errors" and parsing will now be considered broken.
+	// "syntax errors" and parsing will now be considered broken. Past the
+	// error limit, drop it without the cost of copying its source line.
+	if p.tooManyErrors() {
+		return err
+	}
 	p.addError(NewSyntaxError(ErrorOpts{
 		Cause:         err,
 		File:          p.l.Filename(),
@@ -288,8 +292,15 @@ func (p *Parser) registerInfix(tokenType token.Type, fn infixParseFn) {
 // MaxErrors is the maximum number of errors to collect before stopping.
 const MaxErrors = 10
 
-// addError appends an error to the errors slice.
+// addError appends an error to the errors slice. A parse error that follows a
+// lexer error in the same statement is dropped, since it is only a result of
+// the bad token the lexer already reported.
 func (p *Parser) addError(err ParserError) {
+	if _, isLexerError := err.(*SyntaxError); !isLexerError && p.hadNewError() {
+		if _, ok := p.errors[len(p.errors)-1].(*SyntaxError); ok {
+			return
+		}
+	}
 	p.errors = append(p.errors, err)
 }
 
@@ -311,7 +322,7 @@ func (p *Parser) hadNewError() bool {
 // synchronize skips tokens until a statement boundary is reached.
 // This is used for error recovery to continue parsing after an error.
 func (p *Parser) synchronize() {
-	for !p.curTokenIs(token.EOF) {
+	for !p.curTokenIs(token.EOF) && !p.tooManyErrors() {
 		// Stop at statement terminators
 		if statementTerminators[p.curToken.Type] {
 			return

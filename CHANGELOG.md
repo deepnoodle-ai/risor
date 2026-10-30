@@ -256,10 +256,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `[null, 1]` (#517).
 - Compiling a function no longer modifies the caller's AST (#517).
 - Lexer errors, such as `~`, `12abc`, or an invalid identifier, are now
-  reported once, at the line and column of the bad input, and parsing continues
-  after it. Before, one bad character was reported up to ten times at line 1,
-  column 1. A lexer error on the line after an expression is no longer reported
-  twice.
+  reported once, at the line and column of the bad input, with no follow-on
+  parse errors for the same statement, and parsing continues after it. The
+  message names the whole bad token, such as `invalid decimal literal: 12abc`
+  (before: `12a`). Before, one bad character was reported up to ten times at
+  line 1, column 1. A lexer error on the line after an expression is no longer
+  reported twice.
 - Two multi-line comments in a row, such as `/* a */ /* b */`, now lex
   correctly, and `/*/` no longer closes the comment it opens. A source with
   only a comment no longer panics when the parser reports an error.

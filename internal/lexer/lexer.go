@@ -142,25 +142,24 @@ func (l *Lexer) Position() token.Position {
 // Next returns the next Token from the input that is being lexed.
 func (l *Lexer) Next() (token.Token, error) {
 	var tok token.Token
-	l.skipTabsAndSpaces()
-	l.tokenStartPosition = l.Position()
-
-	// skip shebang line (only at start of file)
-	if l.ch == rune('#') && l.peekChar() == rune('!') && l.line == 0 && l.position <= 1 {
-		l.skipComment()
-		return l.Next()
-	}
-
-	// skip single-line comments
-	if l.ch == rune('/') && l.peekChar() == rune('/') {
-		l.skipComment()
-		return l.Next()
-	}
-
-	// multi-line comments
-	if l.ch == rune('/') && l.peekChar() == rune('*') {
-		l.skipMultiLineComment()
-		return l.Next()
+	// Skip whitespace and comments. This is a loop, not recursion, so that
+	// many comments in a row can't overflow the stack.
+	for {
+		l.skipTabsAndSpaces()
+		l.tokenStartPosition = l.Position()
+		switch {
+		case l.ch == rune('#') && l.peekChar() == rune('!') && l.line == 0 && l.position <= 1:
+			// shebang line (only at start of file)
+			l.skipComment()
+			continue
+		case l.ch == rune('/') && l.peekChar() == rune('/'):
+			l.skipComment()
+			continue
+		case l.ch == rune('/') && l.peekChar() == rune('*'):
+			l.skipMultiLineComment()
+			continue
+		}
+		break
 	}
 
 	if l.prevToken.Type == token.EOF {
@@ -365,8 +364,7 @@ func (l *Lexer) Next() (token.Token, error) {
 		if isDigit(l.ch) {
 			tok, err = l.readDecimal()
 			if err != nil {
-				l.skipInvalidRun()
-				return l.illegal(err)
+				return l.illegalRun("invalid decimal literal", true)
 			}
 			l.readChar()
 			l.prevToken = tok
@@ -374,8 +372,7 @@ func (l *Lexer) Next() (token.Token, error) {
 		}
 		ident, err := l.readIdentifier()
 		if err != nil {
-			l.skipInvalidRun()
-			return l.illegal(err)
+			return l.illegalRun("invalid identifier", false)
 		}
 		if ident == "as" && l.prevToken.Type == token.PERIOD {
 			tok = l.newToken(token.IDENT, ident)
@@ -401,12 +398,20 @@ func (l *Lexer) illegal(err error) (token.Token, error) {
 	return tok, err
 }
 
-// skipInvalidRun advances over the rest of an invalid number or identifier,
-// so that it is reported as one error.
-func (l *Lexer) skipInvalidRun() {
-	for isIdentifier(l.peekChar()) || l.peekChar() > unicode.MaxASCII {
+// illegalRun returns an ILLEGAL token for an invalid number or identifier. It
+// advances over the rest of the run of identifier and non-ASCII characters
+// (and periods, for a number), so that the run is reported as one error, and
+// the error names the whole token.
+func (l *Lexer) illegalRun(what string, number bool) (token.Token, error) {
+	for {
+		next := l.peekChar()
+		if !isIdentifier(next) && next <= unicode.MaxASCII && (!number || next != '.') {
+			break
+		}
 		l.readChar()
 	}
+	literal := string(l.characters[l.tokenStartPosition.Char : l.position+1])
+	return l.illegal(fmt.Errorf("%s: %s", what, literal))
 }
 
 // Advance one character in the input string. Calling this when
