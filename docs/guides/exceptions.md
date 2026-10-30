@@ -128,8 +128,9 @@ try {
 
 `message()` returns only the message text. It does not start with the kind and
 does not end with the location. Use `kind()`, `line()`, and `column()` for
-those. Converting an error to a string, as in `string(e)` or `"failed: " + e`,
-also gives the message.
+those. `string(e)` and template interpolation, as in `` `failed: ${e}` ``,
+also give the message only. `print(e)` shows the kind, the message, and the
+location, for debugging.
 
 ```ts
 try {
@@ -409,6 +410,11 @@ Do not type-assert the returned error to `*errors.TypeError`,
 `*errors.ValueError`, or `*errors.IndexError`. The typed error is the cause,
 not the returned error. An error that a host function returns stays in the
 chain too, so `errors.Is` finds it.
+
+Check timeouts, cancellation, and step limits with `errors.Is`, for example
+`errors.Is(err, context.DeadlineExceeded)`. Depending on where the script was
+when it stopped, these errors come back either as the plain error or as a
+`*errors.StructuredError` that wraps it.
 
 `risor.Eval` converts the script's result to a Go value after the script ends.
 An error from that conversion, such as a result too large to convert, has no

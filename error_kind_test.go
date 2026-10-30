@@ -31,7 +31,7 @@ func TestErrorKindOnce(t *testing.T) {
 		{`1 / 0`, "value error", "division by zero", "1:5"},
 		{`[1, 2, 3, 4, 5, 6] + [1, 2, 3, 4, 5]`, "value error", "list too large (exceeds limit of 10 elements)", "1:35"},
 		{`"aaaaaa" + "aaaaa"`, "value error", "string concatenation result too large (11 bytes exceeds limit of 10)", "1:12"},
-		{`"a".repeat(-1)`, "value error", "negative repeat count", "1:13"},
+		{`"a".repeat(-1)`, "value error", "negative repeat count", "1:5"},
 		{`1 << -1`, "value error", "negative shift count", "1:7"},
 		{`byte(1) >> -1`, "value error", "negative shift count", "1:13"},
 		// Index errors are a kind of value error
@@ -69,7 +69,10 @@ func TestErrorShape(t *testing.T) {
 		{`-"a"`, true, false, false, 1, 2},
 		{`{}.nope`, true, false, false, 1, 4},
 		{`let x = 1; x.y = 2`, true, false, false, 1, 12},
-		{`"a".repeat(-1)`, false, true, false, 1, 13},
+		{`"a".repeat(-1)`, false, true, false, 1, 5},
+		// A call error points at the callee, not the last argument
+		{"\"a\".repeat(\n  -1)", false, true, false, 1, 5},
+		{"int(\n  \"x\")", false, true, false, 1, 1},
 		{`[1][5]`, false, false, true, 1, 5},
 		{`{"a": 1}[1]`, true, false, false, 1, 10},
 		{`throw "oops"`, false, false, false, 1, 7},

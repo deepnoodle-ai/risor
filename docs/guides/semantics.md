@@ -510,7 +510,7 @@ let z = try { 42 } finally { 999 }          // z == 42 (not 999)
 
 | Attribute    | Type       | Description                                       |
 | ------------ | ---------- | ------------------------------------------------- |
-| `message()`  | string     | Error message                                     |
+| `message()`  | string     | Error message, without the kind or location       |
 | `kind()`     | string     | Error category (type, name, value, runtime, etc.) |
 | `line()`     | int        | Line number (1-based, 0 if unknown)               |
 | `column()`   | int        | Column number (1-based, 0 if unknown)             |
