@@ -719,6 +719,213 @@ func TestClosureCaptureAcrossMultipleLevels(t *testing.T) {
 	}
 }
 
+// A frame and the closures that capture its locals must see each other's
+// writes while the frame runs, and the closures must keep sharing the
+// variables after the frame returns.
+func TestClosureSharedWrites(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   object.Object
+	}{
+		{
+			name: "frame and closure write while the frame runs",
+			source: `
+			function f() {
+				let n = 1
+				let get = () => n
+				let set = v => { n = v }
+				n = 2
+				let a = get()
+				set(3)
+				return [a, n]
+			}
+			f()`,
+			want: object.NewList([]object.Object{object.NewInt(2), object.NewInt(3)}),
+		},
+		{
+			name: "closures share a variable after the frame returns",
+			source: `
+			function f() {
+				let n = 1
+				let get = () => n
+				let set = v => { n = v }
+				n = 2
+				return [get, set]
+			}
+			let [get, set] = f()
+			let a = get()
+			set(5)
+			[a, get()]`,
+			want: object.NewList([]object.Object{object.NewInt(2), object.NewInt(5)}),
+		},
+		{
+			name: "only some locals are captured",
+			source: `
+			function f(a, b, c) {
+				let d = a + b
+				let inc = () => { c++; return c }
+				let e = d + c
+				return [inc, () => c * 10 + e]
+			}
+			let [inc, read] = f(1, 2, 3)
+			inc(); inc()
+			read()`,
+			want: object.NewInt(56),
+		},
+		{
+			name: "frame with extended locals",
+			source: `
+			function f(a, b, c, d, e, f2, g, h, i, j) {
+				let x = a
+				let get = () => x + j
+				let set = v => { x = v }
+				x = x + 1
+				return [get, set]
+			}
+			let [get, set] = f(1, 0, 0, 0, 0, 0, 0, 0, 0, 100)
+			let a = get()
+			set(10)
+			[a, get()]`,
+			want: object.NewList([]object.Object{object.NewInt(102), object.NewInt(110)}),
+		},
+		{
+			name: "each call captures its own variables",
+			source: `
+			function mk(i) { let x = i; return [() => x, v => { x = v }] }
+			let a = mk(1)
+			let b = mk(2)
+			a[1](10)
+			let c = mk(3)
+			[a[0](), b[0](), c[0]()]`,
+			want: object.NewList([]object.Object{object.NewInt(10), object.NewInt(2), object.NewInt(3)}),
+		},
+		{
+			name: "loop callbacks write a captured variable",
+			source: `
+			function f() {
+				let total = 0
+				let read = () => total
+				range(5).each(i => { total += i })
+				return [total, read]
+			}
+			let [total, read] = f()
+			[total, read()]`,
+			want: object.NewList([]object.Object{object.NewInt(10), object.NewInt(10)}),
+		},
+		{
+			name: "loop creates closures over loop values",
+			source: `
+			function f() {
+				let base = 100
+				let fns = range(3).map(i => () => base + i)
+				base = 200
+				return fns
+			}
+			f().map(fn => fn())`,
+			want: object.NewList([]object.Object{object.NewInt(200), object.NewInt(201), object.NewInt(202)}),
+		},
+		{
+			name: "nested closures share a variable",
+			source: `
+			function outer() {
+				let n = 0
+				function middle() {
+					let inc = () => { n++ }
+					inc()
+					return [inc, () => n]
+				}
+				let [inc, read] = middle()
+				inc()
+				n = n * 10
+				return [inc, read, () => n]
+			}
+			let [inc, read, read2] = outer()
+			inc()
+			[read(), read2()]`,
+			want: object.NewList([]object.Object{object.NewInt(21), object.NewInt(21)}),
+		},
+		{
+			name: "recursive frames capture separately",
+			source: `
+			function f(n) {
+				let x = n
+				let get = () => x
+				if (n == 0) { return [get] }
+				let rest = f(n - 1)
+				x = x * 10
+				return [get, ...rest]
+			}
+			f(3).map(g => g())`,
+			want: object.NewList([]object.Object{
+				object.NewInt(30), object.NewInt(20), object.NewInt(10), object.NewInt(0),
+			}),
+		},
+		{
+			name: "closure captured before an error is caught",
+			source: `
+			let saved = null
+			function f() {
+				let n = 1
+				saved = () => n
+				n = 2
+				throw "boom"
+			}
+			try { f() } catch e { }
+			function g(a, b) { let c = a + b; return () => c }
+			g(1, 2)
+			saved()`,
+			want: object.NewInt(2),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.source)
+			assert.Nil(t, err)
+			assert.Equal(t, result, tt.want)
+		})
+	}
+}
+
+// A closure made by a frame that a failed run left active keeps its
+// variables when a later call reuses the frame.
+func TestClosureFromFailedRun(t *testing.T) {
+	ctx := context.Background()
+	code := compileSource(t, `
+	let saved = null
+	function f() {
+		let n = 1
+		saved = [() => n, v => { n = v }]
+		n = 2
+		throw "boom"
+	}
+	function g(a) { let b = a; return () => b }
+	f()
+	`)
+	machine, err := New(code)
+	assert.Nil(t, err)
+	assert.NotNil(t, machine.Run(ctx))
+
+	savedObj, err := machine.Get("saved")
+	assert.Nil(t, err)
+	saved := savedObj.(*object.List).Value()
+	get, set := saved[0].(*object.Closure), saved[1].(*object.Closure)
+	gObj, err := machine.Get("g")
+	assert.Nil(t, err)
+
+	// g runs in the frame that f left behind
+	_, err = machine.Call(ctx, gObj.(*object.Closure), []object.Object{object.NewInt(7)})
+	assert.Nil(t, err)
+	value, err := machine.Call(ctx, get, nil)
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(2))
+	_, err = machine.Call(ctx, set, []object.Object{object.NewInt(3)})
+	assert.Nil(t, err)
+	value, err = machine.Call(ctx, get, nil)
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(3))
+}
+
 // A named function with destructured parameters must be able to call itself.
 func TestRecursiveWithDestructuredParams(t *testing.T) {
 	tests := []struct {

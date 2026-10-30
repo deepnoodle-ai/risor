@@ -52,6 +52,15 @@ func (c *Cell) Set(value Object) {
 	*c.value = value
 }
 
+// Move copies the cell's value to dst, then makes the cell read and write
+// dst instead of its previous location.
+func (c *Cell) Move(dst *Object) {
+	if c.value != nil {
+		*dst = *c.value
+	}
+	c.value = dst
+}
+
 func (c *Cell) Type() Type {
 	return CELL
 }

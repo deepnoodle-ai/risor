@@ -69,6 +69,10 @@ func compileWithHighLocal(t *testing.T, source, fnName, local string) *bytecode.
 			if (opcode == op.LoadFast || opcode == op.StoreFast) && int(instrs[ip+1].(float64)) == slot {
 				instrs[ip+1] = float64(highSlot)
 			}
+			// A cell for the current frame (0 frames back) refers to a local
+			if opcode == op.MakeCell && int(instrs[ip+1].(float64)) == slot && instrs[ip+2].(float64) == 0 {
+				instrs[ip+1] = float64(highSlot)
+			}
 			ip += 1 + op.GetInfo(opcode).OperandCount
 		}
 		c["local_count"] = maxLocalCount
@@ -236,6 +240,45 @@ func TestLocalsBudgetUnwoundFramesReleaseLocals(t *testing.T) {
 		})
 		runtime.KeepAlive(vm)
 	})
+}
+
+// A closure must keep only the locals it captures alive, not the locals slice
+// of the frame that made it. Each call to big has 64K locals, so keeping that
+// slice for each of the 200 closures would keep about 200 MB alive.
+func TestClosuresReleaseFrameLocals(t *testing.T) {
+	code := compileWithHighLocal(t, `
+	function big(i) {
+		let x = i
+		let get = () => x
+		x = x * 10
+		return [get, v => { x = v }]
+	}
+	let keep = range(200).map(i => big(i))
+	keep[7][1](-7)
+	[keep[3][0](), keep[7][0](), len(keep)]
+	`, "big", "x")
+	vm, err := New(code, WithGlobals(basicBuiltins()))
+	assert.Nil(t, err)
+	assertLocalsReleased(t, func() {
+		assert.Nil(t, vm.Run(context.Background()))
+	})
+	result, ok := vm.TOS()
+	assert.True(t, ok)
+	assert.Equal(t, result, object.NewList([]object.Object{
+		object.NewInt(30), object.NewInt(-7), object.NewInt(200),
+	}))
+
+	// The closures still share x after the frames return
+	keep, err := vm.Get("keep")
+	assert.Nil(t, err)
+	pair := keep.(*object.List).Value()[5].(*object.List).Value()
+	get, set := pair[0].(*object.Closure), pair[1].(*object.Closure)
+	_, err = vm.Call(context.Background(), set, []object.Object{object.NewInt(55)})
+	assert.Nil(t, err)
+	value, err := vm.Call(context.Background(), get, nil)
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(55))
+	runtime.KeepAlive(vm)
 }
 
 // Ordinary recursion is unaffected by the default budget.
