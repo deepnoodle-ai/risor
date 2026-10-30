@@ -144,17 +144,19 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 		}
 		return total
 	case *Cell:
-		// Inspect prints the value in the cell
+		// Inspect prints the value in the cell. The cell goes on the path,
+		// so a cell that holds itself, directly or through a container, is
+		// counted once.
 		if obj.value == nil {
 			return 1
 		}
-		return 1 + formatSize(*obj.value, path, limit-min(1, limit))
+		return 1 + nestedFormatSize(obj, *obj.value, &path, limit-min(1, limit))
 	}
 	return 1
 }
 
 func nestedFormatSize(parent, item Object, path *nestPath[Object], limit uint64) uint64 {
-	if !isNestedContainer(item) {
+	if _, isCell := item.(*Cell); !isCell && !isNestedContainer(item) {
 		return formatSize(item, nil, limit)
 	}
 	p, err := path.descend(parent, item)
