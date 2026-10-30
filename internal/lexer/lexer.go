@@ -160,6 +160,7 @@ func (l *Lexer) Next() (token.Token, error) {
 	// multi-line comments
 	if l.ch == rune('/') && l.peekChar() == rune('*') {
 		l.skipMultiLineComment()
+		return l.Next()
 	}
 
 	if l.prevToken.Type == token.EOF {
@@ -305,7 +306,7 @@ func (l *Lexer) Next() (token.Token, error) {
 			tok = l.newToken(token.GT, string(l.ch))
 		}
 	case rune('~'):
-		return token.Token{}, fmt.Errorf("unexpected character: %q", l.ch)
+		return l.illegal(fmt.Errorf("unexpected character: %q", l.ch))
 	case rune('!'):
 		if l.peekChar() == rune('=') {
 			ch := l.ch
@@ -364,7 +365,8 @@ func (l *Lexer) Next() (token.Token, error) {
 		if isDigit(l.ch) {
 			tok, err = l.readDecimal()
 			if err != nil {
-				return token.Token{}, err
+				l.skipInvalidRun()
+				return l.illegal(err)
 			}
 			l.readChar()
 			l.prevToken = tok
@@ -372,7 +374,8 @@ func (l *Lexer) Next() (token.Token, error) {
 		}
 		ident, err := l.readIdentifier()
 		if err != nil {
-			return token.Token{}, err
+			l.skipInvalidRun()
+			return l.illegal(err)
 		}
 		if ident == "as" && l.prevToken.Type == token.PERIOD {
 			tok = l.newToken(token.IDENT, ident)
@@ -386,6 +389,24 @@ func (l *Lexer) Next() (token.Token, error) {
 	l.readChar()
 	l.prevToken = tok
 	return tok, nil
+}
+
+// illegal returns an ILLEGAL token that spans from the token start through the
+// current character, along with the given error. It advances past the current
+// character so that the next call to Next makes progress.
+func (l *Lexer) illegal(err error) (token.Token, error) {
+	tok := l.newToken(token.ILLEGAL, string(l.characters[l.tokenStartPosition.Char:l.position+1]))
+	l.readChar()
+	l.prevToken = tok
+	return tok, err
+}
+
+// skipInvalidRun advances over the rest of an invalid number or identifier,
+// so that it is reported as one error.
+func (l *Lexer) skipInvalidRun() {
+	for isIdentifier(l.peekChar()) || l.peekChar() > unicode.MaxASCII {
+		l.readChar()
+	}
 }
 
 // Advance one character in the input string. Calling this when
@@ -472,6 +493,9 @@ func (l *Lexer) skipComment() {
 
 // Consume all tokens until we've had the close of a multi-line comment
 func (l *Lexer) skipMultiLineComment() {
+	// Move past the opening "/*" so that its "*" can't close the comment.
+	l.readChar()
+	l.readChar()
 	found := false
 	for !found {
 		// break at the end of our input.
@@ -617,27 +641,26 @@ func (l *Lexer) readString(end rune) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			sb.WriteByte(byte(num))
+			sb.WriteRune(rune(num))
 		case rune('1'):
 			num, err := l.readEscapeSequence(2, 8)
 			if err != nil {
 				return "", err
 			}
-			sb.WriteByte(byte(0o100 + num))
+			sb.WriteRune(rune(0o100 + num))
 		case rune('2'):
 			num, err := l.readEscapeSequence(2, 8)
 			if err != nil {
 				return "", err
 			}
-			sb.WriteByte(byte(0o200 + num))
+			sb.WriteRune(rune(0o200 + num))
 		case rune('3'):
 			num, err := l.readEscapeSequence(2, 8)
 			if err != nil {
 				return "", err
 			}
-			// This will never overflow byte, because max of 2 octals is 0o77,
-			// and 255 in octal is 0o377.
-			sb.WriteByte(byte(0o300 + num))
+			// Like \x, an octal escape is a code point in U+0000 to U+00FF.
+			sb.WriteRune(rune(0o300 + num))
 		default:
 			return "", fmt.Errorf("invalid escape sequence: %q", l.ch)
 		}
@@ -706,33 +729,19 @@ func (l *Lexer) GetLineText(t token.Token) string {
 		return ""
 	}
 
-	// This is the position where the token begins
-	tokenStart := t.StartPosition
-
-	// Guard against programming errors. Raise panics to catch mistakes early.
-	// Note that for the EOF token, the char offset will be equal to the number
-	// of chars in the input, hence the ">" and not ">=".
-	if tokenStart.Char < 0 || tokenStart.Char > len(l.characters)+1 {
-		panic(fmt.Errorf("invalid token start position: %d token: %q input length: %d",
-			tokenStart.Char, t.Type, len(l.characters)))
-	}
-	if tokenStart.Line < 0 {
-		panic(fmt.Errorf("invalid token start line: %d", tokenStart.Line))
-	}
-
-	// Find the start of the line containing the given token
-	start := tokenStart.Char
+	// Find the start of the line containing the given token. The EOF token
+	// starts one past the last character, so look up the line of that last
+	// character. Clamp the offset so that a bad position can't panic.
+	start := t.StartPosition.Char
 	if t.Type == token.EOF {
 		start--
 	}
+	start = max(0, min(start, len(l.characters)))
+	end := start
 	for start > 0 && l.characters[start-1] != rune('\n') {
 		start--
 	}
 	// Find the end of that line
-	end := tokenStart.Char
-	if t.Type == token.EOF {
-		end--
-	}
 	for end < len(l.characters) && l.characters[end] != rune('\n') {
 		end++
 	}

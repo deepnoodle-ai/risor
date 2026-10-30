@@ -39,7 +39,7 @@ SingleLineComment:
     '//' {<any character excluding CR and LF>}
 
 MultiLineComment:
-    '/*' {MultiLineComment | <any character>} '*/'
+    '/*' {<any character>} '*/'    (* not nested; the first '*/' ends it *)
 
 WS:
     <one of: SPACE U+0020, TAB U+0009>
@@ -760,7 +760,7 @@ Risor uses newlines as statement terminators. The following rules govern how new
 ### Comments
 
 - Single-line comments: `// comment until end of line`
-- Multi-line comments: `/* comment */` (may be nested)
+- Multi-line comments: `/* comment */` (not nested)
 - Shebang: `#!/usr/bin/env risor` (only at file start, line 1)
 
 ### String Escape Sequences
@@ -778,10 +778,13 @@ Risor uses newlines as statement terminators. The following rules govern how new
 | `\e` | Escape (0x1B) |
 | `\'` | Single quote |
 | `\"` | Double quote |
-| `\xHH` | Byte with hex value HH |
+| `\xHH` | Code point U+0000 to U+00FF with hex value HH |
 | `\uHHHH` | Unicode code point HHHH |
 | `\UHHHHHHHH` | Unicode code point HHHHHHHH |
-| `\OOO` | Byte with octal value OOO (000-377) |
+| `\OOO` | Code point U+0000 to U+00FF with octal value OOO (000-377) |
+
+Strings hold UTF-8 text, so `\xHH` and `\OOO` produce a code point, not a raw
+byte: `"\377"` and `"\xff"` are both `"ÿ"`, which is two bytes in UTF-8.
 
 ### Template Strings
 

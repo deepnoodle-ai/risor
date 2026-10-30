@@ -96,6 +96,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `let old = emp.Address`, setting `emp.Address.City` changes `old.City` too.
   Assigning one host struct value to another, such as
   `a.Address = b.Address`, now copies it; before, it was an error.
+- The parser now rejects a missing comma between function parameters or
+  between the items of a destructuring parameter, such as `function(a b) {}`,
+  `function({a b}) {}`, and `function([a b]) {}`. Before, these parsed as if
+  the comma were there. An arrow function parameter with a compound
+  assignment, such as `(x += 1) => x`, is now a parse error. Before, it parsed
+  as the default `x = 1`.
+- An octal string escape above `\177`, such as `"\377"`, now produces the code
+  point U+0080 to U+00FF, encoded as UTF-8, as `\xHH` escapes already did.
+  Before, it wrote one raw byte, which made the string invalid UTF-8.
 
 ### Fixed
 
@@ -246,6 +255,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   argument, the array form returned `[1, 1]` and the object form returned
   `[null, 1]` (#517).
 - Compiling a function no longer modifies the caller's AST (#517).
+- Lexer errors, such as `~`, `12abc`, or an invalid identifier, are now
+  reported once, at the line and column of the bad input, and parsing continues
+  after it. Before, one bad character was reported up to ten times at line 1,
+  column 1. A lexer error on the line after an expression is no longer reported
+  twice.
+- Two multi-line comments in a row, such as `/* a */ /* b */`, now lex
+  correctly, and `/*/` no longer closes the comment it opens. A source with
+  only a comment no longer panics when the parser reports an error.
+- `({a: b = 1}) => b`, an alias with a default in an arrow function
+  destructuring parameter, now parses.
+- A `match` nested in the pattern or guard of another `match` no longer breaks
+  the parsing of the outer `match`.
+- The source text that compiled code stores for a function (its `Code.Source`)
+  is now correct when multi-byte characters come before the function. Before,
+  it held the wrong part of the script.
+- `risor-lsp` no longer crashes on an index assignment such as `arr[0] = 1`,
+  and no longer has a data race when a document changes while diagnostics are
+  published. It removes a closed document from its cache, and go to definition
+  now returns the document URI.
 
 ## [2.2.0] - 2026-08-17
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
@@ -1218,4 +1219,22 @@ func TestCompileASTRollbackIncrementalREPL(t *testing.T) {
 	assert.False(t, found)
 	_, found = c.main.symbols.Get("bar")
 	assert.False(t, found)
+}
+
+// AST positions are rune offsets, so a function's source must be sliced by
+// runes when multi-byte characters come before it.
+func TestFunctionSourceAfterMultiByteChars(t *testing.T) {
+	source := "let s = \"héllo wörld 日本語\"\nfunction f(x) { return x + 1 }"
+	program, err := parser.Parse(context.Background(), source, nil)
+	assert.Nil(t, err)
+	code, err := Compile(program, &Config{Source: source})
+	assert.Nil(t, err)
+	var fn *bytecode.Function
+	for i := 0; i < code.ConstantCount(); i++ {
+		if f, ok := code.ConstantAt(i).(*bytecode.Function); ok {
+			fn = f
+		}
+	}
+	assert.NotNil(t, fn)
+	assert.Equal(t, fn.Code().Source(), "return x + 1")
 }

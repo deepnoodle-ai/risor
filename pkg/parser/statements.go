@@ -253,8 +253,9 @@ func (p *Parser) parseAssignmentValue() ast.Expr {
 	p.eatNewlines()
 	result := p.parseExpression(LOWEST)
 	if result == nil {
-		// Only add error if none was added during parsing
-		if !p.hadNewError() {
+		// Only add error if none was added during parsing. The lexer has
+		// already reported an illegal token.
+		if !p.hadNewError() && !p.curTokenIs(token.ILLEGAL) {
 			p.setError(NewParserError(ErrorOpts{
 				ErrType:       "parse error",
 				Message:       "assignment is missing a value",
@@ -288,8 +289,9 @@ func (p *Parser) parseReturn() *ast.Return {
 func (p *Parser) parseExpressionStatement() ast.Node {
 	expr := p.parseNode(LOWEST)
 	if expr == nil {
-		// Only add error if none was added during parsing
-		if !p.hadNewError() {
+		// Only add error if none was added during parsing. The lexer has
+		// already reported an illegal token.
+		if !p.hadNewError() && !p.curTokenIs(token.ILLEGAL) {
 			p.setTokenError(p.curToken, "invalid syntax")
 		}
 		return nil

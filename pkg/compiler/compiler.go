@@ -98,6 +98,11 @@ type Compiler struct {
 	// Original source code (for better error messages)
 	source string
 
+	// rootRunes caches the root source as runes, since AST positions are rune
+	// offsets. rootRunesOf is the string it was converted from.
+	rootRunes   []rune
+	rootRunesOf string
+
 	// Current AST node being compiled (used for source map tracking)
 	currentNode ast.Node
 }
@@ -2366,13 +2371,24 @@ func (c *Compiler) getRootSource() string {
 	return c.main.source
 }
 
+// getRootSourceRunes returns the root source as runes, for slicing by AST
+// positions, which are rune offsets.
+func (c *Compiler) getRootSourceRunes() []rune {
+	source := c.getRootSource()
+	if source != c.rootRunesOf || c.rootRunes == nil {
+		c.rootRunes = []rune(source)
+		c.rootRunesOf = source
+	}
+	return c.rootRunes
+}
+
 // extractFunctionBodySource attempts to extract the function body content from
 // the original source using AST positions. This extracts the inner content of
 // the block (without braces) to match what node.Body.String() produces.
 // Falls back to node.Body.String() if extraction fails.
 func (c *Compiler) extractFunctionBodySource(node *ast.Func) string {
-	rootSource := c.getRootSource()
-	if rootSource == "" {
+	rootSource := c.getRootSourceRunes()
+	if len(rootSource) == 0 {
 		return node.Body.String()
 	}
 
@@ -2394,7 +2410,7 @@ func (c *Compiler) extractFunctionBodySource(node *ast.Func) string {
 	}
 
 	// Extract and trim leading/trailing whitespace
-	content := strings.TrimSpace(rootSource[bodyStart:bodyEnd])
+	content := strings.TrimSpace(string(rootSource[bodyStart:bodyEnd]))
 	if content == "" {
 		return node.Body.String()
 	}

@@ -205,12 +205,11 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	return p
 }
 
-// advanceToken moves to the next token from the lexer without error checking.
-// Used internally by synchronize() during error recovery.
+// advanceToken moves to the next token from the lexer. Used internally by
+// synchronize() during error recovery. Lexer errors are still recorded, since
+// the lexer always advances past the bad input.
 func (p *Parser) advanceToken() {
-	p.prevToken = p.curToken
-	p.curToken = p.peekToken
-	p.peekToken, _ = p.l.Next()
+	p.nextToken()
 }
 
 // nextToken moves to the next token from the lexer, updating all of
@@ -533,14 +532,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 }
 
 func (p *Parser) illegalToken() (ast.Node, bool) {
-	p.setError(NewParserError(ErrorOpts{
-		ErrType:       "parse error",
-		Message:       fmt.Sprintf("illegal token %s", p.curToken.Literal),
-		File:          p.l.Filename(),
-		StartPosition: p.curToken.StartPosition,
-		EndPosition:   p.curToken.EndPosition,
-		SourceCode:    p.l.GetLineText(p.curToken),
-	}))
+	// The lexer reported the error when it produced this token.
 	return nil, false
 }
 
@@ -606,6 +598,24 @@ func (p *Parser) eatNewlines() {
 	}
 }
 
+// saveState saves the parser and lexer state for a lookahead and returns a
+// function that restores it. Restoring also drops errors that the lookahead
+// recorded, since the tokens will be read and reported again.
+func (p *Parser) saveState() func() {
+	savedPrev := p.prevToken
+	savedCur := p.curToken
+	savedPeek := p.peekToken
+	savedLexer := p.l.SaveState()
+	savedErrors := len(p.errors)
+	return func() {
+		p.prevToken = savedPrev
+		p.curToken = savedCur
+		p.peekToken = savedPeek
+		p.l.RestoreState(savedLexer)
+		p.errors = p.errors[:savedErrors]
+	}
+}
+
 // skipNewlinesAndPeek checks if the given token type appears after optional
 // newlines. If found, it skips the newlines and returns true (with peekToken
 // now being the target). If not found, it returns false without consuming
@@ -619,18 +629,12 @@ func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
 	if !p.peekTokenIs(token.NEWLINE) {
 		return false
 	}
-	// Save parser and lexer state
-	savedCur := p.curToken
-	savedPeek := p.peekToken
-	savedLexer := p.l.SaveState()
+	restore := p.saveState()
 
 	// Skip through newlines
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
-			// Restore state on error
-			p.curToken = savedCur
-			p.peekToken = savedPeek
-			p.l.RestoreState(savedLexer)
+			restore()
 			return false
 		}
 	}
@@ -642,9 +646,7 @@ func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
 	}
 
 	// Target not found - restore state
-	p.curToken = savedCur
-	p.peekToken = savedPeek
-	p.l.RestoreState(savedLexer)
+	restore()
 	return false
 }
 
@@ -665,18 +667,12 @@ func (p *Parser) skipNewlinesForChaining() bool {
 	if !p.peekTokenIs(token.NEWLINE) {
 		return false
 	}
-	// Save parser and lexer state
-	savedCur := p.curToken
-	savedPeek := p.peekToken
-	savedLexer := p.l.SaveState()
+	restore := p.saveState()
 
 	// Skip through newlines
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
-			// Restore state on error
-			p.curToken = savedCur
-			p.peekToken = savedPeek
-			p.l.RestoreState(savedLexer)
+			restore()
 			return false
 		}
 	}
@@ -688,8 +684,6 @@ func (p *Parser) skipNewlinesForChaining() bool {
 	}
 
 	// Not a chaining operator - restore state
-	p.curToken = savedCur
-	p.peekToken = savedPeek
-	p.l.RestoreState(savedLexer)
+	restore()
 	return false
 }
