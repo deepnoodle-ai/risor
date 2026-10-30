@@ -57,16 +57,13 @@ func Error(ctx context.Context, args ...object.Object) (object.Object, error) {
 }
 
 // formatArgs converts args to Go values for use with fmt-style formatting.
+// It converts the arguments as one list, so they share one element budget.
 func formatArgs(ctx context.Context, args []object.Object) ([]interface{}, error) {
-	fmtArgs := make([]interface{}, len(args))
-	for i, v := range args {
-		goVal, err := object.ToInterface(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		fmtArgs[i] = goVal
+	goVal, err := object.ToInterface(ctx, object.NewList(args))
+	if err != nil {
+		return nil, err
 	}
-	return fmtArgs, nil
+	return goVal.([]interface{}), nil
 }
 
 func List(ctx context.Context, args ...object.Object) (object.Object, error) {

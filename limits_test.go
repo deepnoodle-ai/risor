@@ -231,6 +231,49 @@ func TestWithLimitsSharedReferences(t *testing.T) {
 	}
 }
 
+// The arguments of one builtin or host call share one element budget, so a
+// spread call cannot pass many references to a large list. Two references to
+// a 4-element list cost 2*4 = 8 elements, or 2 + 2*4 = 10 for sprintf, which
+// also counts the argument list. Three references cost 12 or more.
+func TestWithLimitsSpreadArguments(t *testing.T) {
+	ctx := context.Background()
+	limits := WithLimits(Limits{MaxListLength: 10})
+	envMap := Builtins()
+	envMap["count2"] = func(a, b any) int { return len(a.([]any)) + len(b.([]any)) }
+	envMap["count3"] = func(a, b, c any) int { return 3 }
+	envMap["countAll"] = func(vs ...any) int { return len(vs) }
+	env := WithEnv(envMap)
+
+	under := `let l = [1, 2, 3, 4]; `
+	for src, want := range map[string]any{
+		under + `sprintf("%v %v", ...[l, l])`: "[1 2 3 4] [1 2 3 4]",
+		under + `count2(...[l, l])`:           int64(8),
+		under + `countAll(...[l, l])`:         int64(2),
+	} {
+		result, err := Eval(ctx, src, env, limits)
+		assert.Nil(t, err, src)
+		assert.Equal(t, result, want, src)
+	}
+
+	over := `let l = [1, 2, 3, 4]; `
+	for _, src := range []string{
+		over + `sprintf("%v %v %v", ...[l, l, l])`,
+		over + `error("%v %v %v", ...[l, l, l])`,
+		over + `count3(...[l, l, l])`,
+		over + `countAll(...[l, l, l])`,
+	} {
+		_, err := Eval(ctx, src, env, limits)
+		assert.NotNil(t, err, src)
+		assert.True(t, strings.Contains(err.Error(), "value too large to convert"), src)
+	}
+
+	// 63 references to a 100-element list cost 63 + 6300 elements
+	src := `let l = list(range(100)); sprintf("%v", ...list(range(63)).map(i => l))`
+	_, err := Eval(ctx, src, env, WithLimits(Limits{MaxListLength: 1000}))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+}
+
 // Without WithLimits, a list that references one large list many times
 // fails to convert instead of building billions of elements.
 func TestDefaultLimitsSharedReferences(t *testing.T) {

@@ -27,9 +27,11 @@ risor.Eval(ctx, src,
 a host function argument, and the values passed to `sprintf`, `error`, and
 `encode`. One conversion may produce at most `MaxListLength` elements in total,
 counting every list item, map entry, and range element. A list referenced more
-than once counts each time, so `[l, l]` costs `2 + 2 * len(l)` elements.
+than once counts each time, so `[l, l]` costs `2 + 2 * len(l)` elements. All
+arguments of one call share the cap, so `f(...[l, l])` costs `2 * len(l)`.
 Exceeding the cap raises a `value error` that starts with "value too large to
-convert".
+convert". Setting a field of a Go struct converts with the default limits,
+not the ones from `WithLimits`.
 
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.

@@ -16,8 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `append`, are not capped. Defaults: 64 MiB and 4,194,304 elements. Exceeding a
   cap raises a catchable `value error` (#491).
   The list cap also bounds the total elements of one conversion to Go, such as
-  a script result, a host function argument, or `sprintf` and `encode` input,
-  counting a shared list each time it appears (#496).
+  a script result, the arguments of a host function call, or `sprintf` and
+  `encode` input, counting a shared list each time it appears (#496).
 
 ### Changed
 
