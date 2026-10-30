@@ -301,22 +301,22 @@ func (c *Code) LocationsCount() int {
 // It tries rootSource first (for accurate line lookup in nested functions),
 // then falls back to the local source.
 func (c *Code) GetSourceLine(lineNum int) string {
-	if lineNum < 1 {
-		return ""
+	return sourceLine(strings.Split(c.lineSource(), "\n"), lineNum)
+}
+
+// lineSource returns the source that line numbers in c refer to: the root
+// source if c has one, and otherwise its own source.
+func (c *Code) lineSource() string {
+	if c.rootSource != nil && *c.rootSource != "" {
+		return *c.rootSource
 	}
-	// Try rootSource first for accurate line lookup in function bodies
-	source := ""
-	if c.rootSource != nil {
-		source = *c.rootSource
-	}
-	if source == "" {
-		source = c.source
-	}
-	if source == "" {
-		return ""
-	}
-	lines := strings.Split(source, "\n")
-	if lineNum > len(lines) {
+	return c.source
+}
+
+// sourceLine returns the given 1-based line of lines, or an empty string if
+// the line is out of range or there is no source.
+func sourceLine(lines []string, lineNum int) string {
+	if lineNum < 1 || lineNum > len(lines) {
 		return ""
 	}
 	return lines[lineNum-1]
@@ -396,6 +396,14 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Cod
 		}
 	}
 
+	// Global names are a property of the root, which every code shares.
+	// Building them for each function would make compile time grow with the
+	// number of functions times the number of globals.
+	var globalNames []string
+	if c.parent == nil {
+		globalNames = c.GlobalNames()
+	}
+
 	// Step 5: Create the immutable bytecode.Code with all data
 	bc := bytecode.NewCode(bytecode.CodeParams{
 		ID:                c.id,
@@ -412,7 +420,7 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Cod
 		MaxCallArgs:       int(c.maxCallArgs),
 		LocalCount:        c.LocalsCount(),
 		GlobalCount:       c.GlobalsCount(),
-		GlobalNames:       c.GlobalNames(),
+		GlobalNames:       globalNames,
 		LocalNames:        c.LocalNames(),
 		EnvKeys:           c.envKeys,
 		ExceptionHandlers: handlers,

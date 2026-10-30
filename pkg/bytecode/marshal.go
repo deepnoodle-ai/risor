@@ -162,10 +162,10 @@ func stateFromCode(code *Code) (*codeState, error) {
 			names[j] = c.NameAt(j)
 		}
 
-		globalNames := make([]string, c.GlobalNameCount())
-		for j := 0; j < c.GlobalNameCount(); j++ {
-			globalNames[j] = c.GlobalNameAt(j)
-		}
+		// Only root code stores global names. Reading the field rather than
+		// GlobalNameAt keeps the root's names from being written once per
+		// function.
+		globalNames := copyStrings(c.globalNames)
 
 		localNames := make([]string, c.LocalNameCount())
 		for j := 0; j < c.LocalNameCount(); j++ {

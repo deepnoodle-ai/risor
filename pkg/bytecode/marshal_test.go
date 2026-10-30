@@ -1,9 +1,11 @@
 package bytecode
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestMarshalUnmarshalRoundTrip(t *testing.T) {
@@ -349,4 +351,21 @@ func TestMarshalUnmarshalEmptyLocalNames(t *testing.T) {
 	if restored.LocalNameCount() != 0 {
 		t.Errorf("expected 0 local names, got %v", restored.LocalNameCount())
 	}
+}
+
+func TestMarshalWritesGlobalNamesOnceForRoot(t *testing.T) {
+	child := NewCode(CodeParams{ID: "child", GlobalCount: 1})
+	root := NewCode(CodeParams{
+		ID:          "root",
+		GlobalCount: 1,
+		GlobalNames: []string{"some_global_name"},
+		Children:    []*Code{child},
+	})
+	data, err := Marshal(root)
+	assert.Nil(t, err)
+	assert.Equal(t, strings.Count(string(data), "some_global_name"), 1)
+
+	restored, err := Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, restored.ChildAt(0).GlobalNameAt(0), "some_global_name")
 }

@@ -36,8 +36,10 @@ type Code struct {
 	// Exception handlers for try/catch/finally
 	exceptionHandlers []ExceptionHandler
 
-	// Global variable names (only set on root code). A slot for a variable
-	// declared in a block has a name from BlockGlobalName.
+	// Global variable names, set only on root code. Every code shares the
+	// root's globals, so the accessors on other code read the root's names.
+	// A slot for a variable declared in a block has a name from
+	// BlockGlobalName.
 	globalNames []string
 
 	// Local variable names (for debugging/disassembly)
@@ -225,18 +227,20 @@ func (c *Code) ExceptionHandlerAt(index int) ExceptionHandler {
 	return c.exceptionHandlers[index]
 }
 
-// GlobalNameCount returns the number of global variable names.
+// GlobalNameCount returns the number of global variable names of the root
+// code.
 func (c *Code) GlobalNameCount() int {
-	return len(c.globalNames)
+	return len(c.Root().globalNames)
 }
 
-// GlobalNameAt returns the global variable name at the given index.
-// Returns an empty string if the index is out of range.
+// GlobalNameAt returns the global variable name at the given index, from the
+// root code. Returns an empty string if the index is out of range.
 func (c *Code) GlobalNameAt(index int) string {
-	if index < 0 || index >= len(c.globalNames) {
+	names := c.Root().globalNames
+	if index < 0 || index >= len(names) {
 		return ""
 	}
-	return c.globalNames[index]
+	return names[index]
 }
 
 // LocalNameCount returns the number of local variable names.
@@ -325,7 +329,7 @@ func (c *Code) Stats() Stats {
 // GlobalCount and GlobalNameAt.
 func (c *Code) GlobalNames() []string {
 	var names []string
-	for _, name := range c.globalNames {
+	for _, name := range c.Root().globalNames {
 		if !IsBlockGlobalName(name) {
 			names = append(names, name)
 		}
