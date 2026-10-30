@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"unsafe"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
@@ -125,9 +124,9 @@ type exceptionHandlerDef struct {
 
 // Flat form of a Code object used in marshaling. It holds the source text of
 // a code in Source, or in SourceRange the byte range of its source within the
-// source of the first code, the root. A function's source is a slice of the
-// root source, so it is written as a range and nested functions do not repeat
-// their body text at each level. Older versions wrote the text of every code.
+// root code's source. The compiler records that range for each function body,
+// so nested functions do not repeat their body text at each level. Older
+// versions wrote the text of every code.
 type codeDef struct {
 	ID            string            `json:"id,omitempty"`
 	Name          string            `json:"name"`
@@ -212,6 +211,7 @@ func codeFromState(state *state) (*Code, error) {
 			return nil, err
 		}
 		source := c.Source
+		var sourceStart, sourceEnd int
 		if r := c.SourceRange; r != nil {
 			if i == 0 {
 				return nil, fmt.Errorf("invalid code: root code has a source range")
@@ -224,6 +224,7 @@ func codeFromState(state *state) (*Code, error) {
 				return nil, fmt.Errorf("invalid code: code %q has source range %v outside the root source", c.ID, *r)
 			}
 			source = rootSource[r[0]:r[1]]
+			sourceStart, sourceEnd = r[0], r[1]
 		}
 
 		// Reconstruct rootSource pointer from parent (same logic as newChild)
@@ -253,6 +254,8 @@ func codeFromState(state *state) (*Code, error) {
 			names:        copyStrings(c.Names),
 			nameIndex:    nameIndex,
 			source:       source,
+			sourceStart:  sourceStart,
+			sourceEnd:    sourceEnd,
 			filename:     c.Filename,
 			rootSource:   rootSource,
 			maxCallArgs:  c.MaxCallArgs,
@@ -563,10 +566,8 @@ func stateFromCode(code *Code) (*state, error) {
 	for i, code := range allCode {
 		source := code.source
 		var sourceRange *[2]int
-		if i > 0 {
-			if r, ok := sliceRange(allCode[0].source, source); ok {
-				source, sourceRange = "", &r
-			}
+		if i > 0 && rootSourceRange(code, allCode[0]) {
+			source, sourceRange = "", &[2]int{code.sourceStart, code.sourceEnd}
 		}
 		constants, err := marshalConstants(code.constants)
 		if err != nil {
@@ -597,19 +598,18 @@ func stateFromCode(code *Code) (*state, error) {
 	return state, nil
 }
 
-// sliceRange returns the byte range of s within root if s is a slice of root,
-// sharing its memory. It does not search root for a copy of s.
-func sliceRange(root, s string) ([2]int, bool) {
-	if s == "" || len(s) > len(root) {
-		return [2]int{}, false
+// rootSourceRange reports whether c has a source range that MarshalCode can
+// write in place of its source text: root is the root code, the range is
+// within its source, and the range gives c's source. The comparison is quick
+// when c's source shares the root's memory, as it does for compiled code.
+func rootSourceRange(c, root *Code) bool {
+	if root.parent != nil || c.sourceEnd <= c.sourceStart {
+		return false
 	}
-	rootStart := uintptr(unsafe.Pointer(unsafe.StringData(root)))
-	p := uintptr(unsafe.Pointer(unsafe.StringData(s)))
-	if p < rootStart || p-rootStart > uintptr(len(root)-len(s)) {
-		return [2]int{}, false
+	if c.sourceStart < 0 || c.sourceEnd > len(root.source) {
+		return false
 	}
-	start := int(p - rootStart)
-	return [2]int{start, start + len(s)}, true
+	return root.source[c.sourceStart:c.sourceEnd] == c.source
 }
 
 func definitionFromSymbolTable(table *SymbolTable) *symbolTableDef {

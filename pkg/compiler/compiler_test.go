@@ -1272,3 +1272,39 @@ func TestNestedFunctionSourceSharesRootSource(t *testing.T) {
 		"return 1",
 	})
 }
+
+// An arrow function with an expression body has the expression as its source,
+// a slice of the root source, including parentheses around its first operand.
+func TestArrowFunctionExpressionSource(t *testing.T) {
+	source := "let s = \"日本語\"\nlet f = x => (x + 1) * 2\nlet g = () => { return 1 }"
+	program, err := parser.Parse(context.Background(), source, nil)
+	assert.Nil(t, err)
+	code, err := Compile(program, &Config{Source: source})
+	assert.Nil(t, err)
+	var sources []string
+	for i := 0; i < code.ConstantCount(); i++ {
+		if f, ok := code.ConstantAt(i).(*bytecode.Function); ok {
+			sources = append(sources, f.Code().Source())
+		}
+	}
+	assert.Equal(t, sources, []string{"(x + 1) * 2", "return 1"})
+}
+
+// A function body built without positions falls back to its AST text.
+func TestFunctionSourceWithoutPositions(t *testing.T) {
+	fn := &ast.Func{
+		Params: []ast.FuncParam{&ast.Ident{Name: "x"}},
+		Body:   &ast.Block{Stmts: []ast.Node{&ast.Return{Value: &ast.Ident{Name: "x"}}}},
+	}
+	program := &ast.Program{Stmts: []ast.Node{&ast.Var{Name: &ast.Ident{Name: "f"}, Value: fn}}}
+	code, err := Compile(program, &Config{Source: "let f = x => x"})
+	assert.Nil(t, err)
+	found := false
+	for i := 0; i < code.ConstantCount(); i++ {
+		if f, ok := code.ConstantAt(i).(*bytecode.Function); ok {
+			assert.Equal(t, f.Code().Source(), "return x")
+			found = true
+		}
+	}
+	assert.True(t, found)
+}

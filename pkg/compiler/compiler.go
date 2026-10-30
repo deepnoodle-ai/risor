@@ -52,6 +52,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
@@ -98,6 +99,11 @@ type Compiler struct {
 
 	// Original source code (for better error messages)
 	source string
+
+	// sourceOffset is the byte offset of the root source, as returned by
+	// getRootSource, within the main code's source. They differ in the REPL,
+	// where the main code's source holds every input so far.
+	sourceOffset int
 
 	// rootByteOffsets maps rune offsets in the root source to byte offsets,
 	// since AST positions are rune offsets. It has one entry per rune plus a
@@ -231,6 +237,9 @@ func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 		c.main.source = nodeSource
 	} else {
 		c.main.source = fmt.Sprintf("%s\n%s", c.main.source, nodeSource)
+	}
+	if c.source != "" {
+		c.sourceOffset = len(c.main.source) - len(nodeSource)
 	}
 	if c.filename != "" {
 		c.main.filename = c.filename
@@ -1558,8 +1567,9 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	// Extract source from original if available for better error messages.
 	c.funcIndex++
 	functionID := fmt.Sprintf("%d", c.funcIndex)
-	bodySource := c.extractFunctionBodySource(node)
+	bodySource, sourceStart, sourceEnd := c.extractFunctionBodySource(node)
 	code := c.current.newChild(functionName, bodySource, functionID)
+	code.sourceStart, code.sourceEnd = sourceStart, sourceEnd
 
 	// Setting current here means subsequent calls to compile will add to this
 	// code object instead of the parent.
@@ -2441,45 +2451,70 @@ func (c *Compiler) rootRuneCount(source string) int {
 
 // extractFunctionBodySource attempts to extract the function body content from
 // the original source using AST positions. This extracts the inner content of
-// the block (without braces) to match what node.Body.String() produces.
-// Falls back to node.Body.String() if extraction fails.
+// the block (without braces), or the expression of an arrow function with an
+// expression body. Falls back to node.Body.String() if extraction fails.
 //
-// The result is a slice of the root source, not a copy, so nested functions
-// share the root source's memory.
-func (c *Compiler) extractFunctionBodySource(node *ast.Func) string {
+// The result is a slice of the main code's source, not a copy, so nested
+// functions share its memory. start and end give the slice's byte range
+// within the main code's source. Both are zero for the fallback.
+func (c *Compiler) extractFunctionBodySource(node *ast.Func) (source string, start, end int) {
 	rootSource := c.getRootSource()
 	if rootSource == "" {
-		return node.Body.String()
+		return node.Body.String(), 0, 0
 	}
 	runeCount := c.rootRuneCount(rootSource)
 
 	// Extract inner content of the block (skip the braces).
 	// Lbrace is at the '{', Rbrace is at the '}'.
 	// We want the content from after '{' to before '}'.
+	// An expression body has no braces: Lbrace is at its first character
+	// and Rbrace at its last, so the content includes both.
 	// These are rune offsets.
 	bodyStart := node.Body.Lbrace.Char + 1 // Skip '{'
 	bodyEnd := node.Body.Rbrace.Char       // Before '}'
+	if isExpressionBody(node.Body) {
+		bodyStart = node.Body.Lbrace.Char
+		bodyEnd = node.Body.Rbrace.Char + 1
+	}
 
 	// Validate bounds
 	if bodyStart < 0 || bodyStart >= runeCount {
-		return node.Body.String()
+		return node.Body.String(), 0, 0
 	}
 	if bodyEnd > runeCount {
 		bodyEnd = runeCount
 	}
 	if bodyEnd <= bodyStart {
-		return node.Body.String()
+		return node.Body.String(), 0, 0
 	}
 
-	// Extract and trim leading/trailing whitespace
-	start := c.rootByteOffset(rootSource, bodyStart)
-	end := c.rootByteOffset(rootSource, bodyEnd)
-	content := strings.TrimSpace(rootSource[start:end])
-	if content == "" {
-		return node.Body.String()
+	// Trim leading/trailing whitespace, keeping track of the byte range.
+	start = c.rootByteOffset(rootSource, bodyStart)
+	end = c.rootByteOffset(rootSource, bodyEnd)
+	content := rootSource[start:end]
+	trimmed := strings.TrimLeftFunc(content, unicode.IsSpace)
+	start += len(content) - len(trimmed)
+	end = start + len(strings.TrimRightFunc(trimmed, unicode.IsSpace))
+	if end == start {
+		return node.Body.String(), 0, 0
 	}
 
-	return content
+	start += c.sourceOffset
+	end += c.sourceOffset
+	return c.main.source[start:end], start, end
+}
+
+// isExpressionBody reports whether block is the body the parser builds for an
+// arrow function with an expression body: a single return, at the same
+// position as the block, which has no braces. A block without positions, as
+// one built by hand may be, is not: an expression body never starts at the
+// start of the source.
+func isExpressionBody(block *ast.Block) bool {
+	if len(block.Stmts) != 1 || !block.Lbrace.IsValid() {
+		return false
+	}
+	ret, ok := block.Stmts[0].(*ast.Return)
+	return ok && ret.Return == block.Lbrace
 }
 
 func (c *Compiler) compileTry(node *ast.Try) error {

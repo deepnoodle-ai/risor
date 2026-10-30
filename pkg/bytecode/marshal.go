@@ -3,7 +3,6 @@ package bytecode
 import (
 	"encoding/json"
 	"fmt"
-	"unsafe"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -94,10 +93,10 @@ type exceptionHandlerDef struct {
 }
 
 // codeDef holds the source text of a code in Source, or in SourceRange the
-// byte range of its source within the source of the first code, which becomes
-// the root when unmarshaled. A function's source is a slice of the root
-// source, so it is written as a range and nested functions do not repeat
-// their body text at each level. Older versions wrote the text of every code.
+// byte range of its source within the root code's source. The compiler
+// records that range for each function body, so nested functions do not
+// repeat their body text at each level. A code without a range, such as one
+// built by hand, holds its text. Older versions wrote the text of every code.
 type codeDef struct {
 	ID                string                `json:"id"`
 	Name              string                `json:"name"`
@@ -194,10 +193,8 @@ func stateFromCode(code *Code) (*codeState, error) {
 
 		source := c.Source()
 		var sourceRange *[2]int
-		if i > 0 {
-			if r, ok := sliceRange(allCodes[0].Source(), source); ok {
-				source, sourceRange = "", &r
-			}
+		if i > 0 && rootSourceRange(c, code) {
+			source, sourceRange = "", &[2]int{c.sourceStart, c.sourceEnd}
 		}
 
 		state.Codes[i] = &codeDef{
@@ -242,6 +239,7 @@ func codeFromState(state *codeState) (*Code, error) {
 		def := state.Codes[i]
 
 		source := def.Source
+		var sourceStart, sourceEnd int
 		if r := def.SourceRange; r != nil {
 			if i == 0 {
 				return nil, fmt.Errorf("invalid bytecode: root code block has a source range")
@@ -253,6 +251,7 @@ func codeFromState(state *codeState) (*Code, error) {
 				return nil, fmt.Errorf("invalid bytecode: code block %d has source range %v outside the root source", i, *r)
 			}
 			source = rootSource[r[0]:r[1]]
+			sourceStart, sourceEnd = r[0], r[1]
 		}
 
 		handlers := make([]ExceptionHandler, len(def.ExceptionHandlers))
@@ -303,6 +302,8 @@ func codeFromState(state *codeState) (*Code, error) {
 			Constants:         constants,
 			Names:             def.Names,
 			Source:            source,
+			SourceStart:       sourceStart,
+			SourceEnd:         sourceEnd,
 			Filename:          def.Filename,
 			Locations:         locations,
 			MaxCallArgs:       def.MaxCallArgs,
@@ -349,19 +350,18 @@ func checkCodeTree(defs []*codeDef) error {
 	return nil
 }
 
-// sliceRange returns the byte range of s within root if s is a slice of root,
-// sharing its memory. It does not search root for a copy of s.
-func sliceRange(root, s string) ([2]int, bool) {
-	if s == "" || len(s) > len(root) {
-		return [2]int{}, false
+// rootSourceRange reports whether c has a source range that Marshal can write
+// in place of its source text: root is the root code, the range is within its
+// source, and the range gives c's source. The comparison is quick when c's
+// source shares the root's memory, as it does for compiled code.
+func rootSourceRange(c, root *Code) bool {
+	if root.parent != nil || c.sourceEnd <= c.sourceStart {
+		return false
 	}
-	rootStart := uintptr(unsafe.Pointer(unsafe.StringData(root)))
-	p := uintptr(unsafe.Pointer(unsafe.StringData(s)))
-	if p < rootStart || p-rootStart > uintptr(len(root)-len(s)) {
-		return [2]int{}, false
+	if c.sourceStart < 0 || c.sourceEnd > len(root.source) {
+		return false
 	}
-	start := int(p - rootStart)
-	return [2]int{start, start + len(s)}, true
+	return root.source[c.sourceStart:c.sourceEnd] == c.source
 }
 
 func marshalConstants(code *Code, codeIndexMap map[*Code]int) ([]json.RawMessage, error) {

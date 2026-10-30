@@ -560,12 +560,31 @@ func nestedFunctions(depth int) string {
 	return b.String()
 }
 
+// nestedArrows returns a script with arrow functions that have an expression
+// body nested depth levels deep. Each level adds the same amount of text.
+func nestedArrows(depth int) string {
+	var b strings.Builder
+	b.WriteString("let f = ")
+	for i := 0; i < depth; i++ {
+		fmt.Fprintf(&b, "a%d => [\"%s\", ", i, strings.Repeat("x", 200))
+	}
+	b.WriteString("1")
+	b.WriteString(strings.Repeat("]", depth))
+	return b.String()
+}
+
 // Marshaled output must not repeat a function's body text for each function
 // it is nested in. That made the size grow with depth times source size.
 // Small inputs only: 4x the depth must give about 4x the output, not 16x.
 func TestMarshalSizeLinearInNestingDepth(t *testing.T) {
-	small := compileLinesSource(t, nestedFunctions(10))
-	large := compileLinesSource(t, nestedFunctions(40))
+	t.Run("functions", func(t *testing.T) { checkSizeLinearInDepth(t, nestedFunctions) })
+	t.Run("arrows", func(t *testing.T) { checkSizeLinearInDepth(t, nestedArrows) })
+}
+
+func checkSizeLinearInDepth(t *testing.T, script func(depth int) string) {
+	t.Helper()
+	small := compileLinesSource(t, script(10))
+	large := compileLinesSource(t, script(40))
 
 	smallBytecode, err := bytecode.Marshal(small.ToBytecode())
 	assert.Nil(t, err)
@@ -589,6 +608,9 @@ function outer(a) {
 	}
 	return inner(a)
 }
+let double = x => (x + 1) * 2
+let pick = [1].map(x => x)
+let text = () => ` + "`a\nb`" + `
 outer(1)
 `
 
@@ -619,6 +641,9 @@ func TestMarshalRoundTripKeepsFunctionSource(t *testing.T) {
 	assert.Equal(t, expectedSources[1:], []string{
 		"function inner(b) {\n\t\treturn b + \"s\"\n\t}\n\treturn inner(a)",
 		"return b + \"s\"",
+		"(x + 1) * 2",
+		"x",
+		"`a\nb`",
 	})
 	expected := runError(t, code.ToBytecode())
 
@@ -749,4 +774,62 @@ func TestUnmarshalRejectsBadSourceRange(t *testing.T) {
 	// A range that ends at the end of the root source is valid.
 	_, err = bytecode.Unmarshal(editCodeDefs(t, bytecodeData, "codes", setRange(0, n)))
 	assert.Nil(t, err)
+}
+
+// In the REPL each input is compiled into the same main code, whose source
+// grows with each input. Function source ranges from every input are written
+// as ranges into the final source.
+func TestMarshalSourceRangesAcrossInputs(t *testing.T) {
+	c, err := compiler.New(nil)
+	assert.Nil(t, err)
+	var code *compiler.Code
+	for _, input := range []string{"let f = x => x + 1", "function g(y) { return f(y) }", "let h = () => g(2)"} {
+		program, err := parser.Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+		c.SetSource(input)
+		code, err = c.CompileAST(program)
+		assert.Nil(t, err)
+	}
+	expectedSources := compilerSources(code)
+	assert.Equal(t, expectedSources[1:], []string{"x + 1", "return f(y)", "g(2)"})
+
+	data, err := bytecode.Marshal(code.ToBytecode())
+	assert.Nil(t, err)
+	assert.Equal(t, strings.Count(string(data), `"source_range"`), 3)
+	restored, err := bytecode.Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, functionSources(restored), expectedSources)
+
+	data, err = compiler.MarshalCode(code)
+	assert.Nil(t, err)
+	assert.Equal(t, strings.Count(string(data), `"source_range"`), 3)
+	restoredCode, err := compiler.UnmarshalCode(data)
+	assert.Nil(t, err)
+	assert.Equal(t, compilerSources(restoredCode), expectedSources)
+}
+
+// Code built by hand with no source range, or with a range that does not
+// give its source, is marshaled with its source text.
+func TestMarshalWritesSourceTextWithoutValidRange(t *testing.T) {
+	for _, r := range [][2]int{{0, 0}, {0, 3}, {2, 100}} {
+		child := bytecode.NewCode(bytecode.CodeParams{
+			ID:           "child",
+			Instructions: []op.Code{op.Nil, op.ReturnValue},
+			Source:       "body",
+			SourceStart:  r[0],
+			SourceEnd:    r[1],
+		})
+		root := bytecode.NewCode(bytecode.CodeParams{
+			ID:           "main",
+			Children:     []*bytecode.Code{child},
+			Instructions: []op.Code{op.Nil, op.ReturnValue},
+			Source:       "let a = 1; body",
+		})
+		data, err := bytecode.Marshal(root)
+		assert.Nil(t, err)
+		assert.False(t, strings.Contains(string(data), `"source_range"`))
+		restored, err := bytecode.Unmarshal(data)
+		assert.Nil(t, err)
+		assert.Equal(t, restored.ChildAt(0).Source(), "body")
+	}
 }
