@@ -1688,20 +1688,19 @@ func (vm *VirtualMachine) evalError(format string, args ...any) *object.Structur
 }
 
 // wrapError wraps an existing error with location and stack trace.
-// It determines the error kind from the error type.
+// It determines the error kind from the error type. The original error is
+// kept as the cause, so errors.As still finds it.
 func (vm *VirtualMachine) wrapError(err error) *object.StructuredError {
-	kind := object.ErrRuntime
-	msg := err.Error()
-
-	switch err.(type) {
-	case *object.TypeError:
-		kind = object.ErrType
-	case *object.ValueError:
-		kind = object.ErrValue
-	case *object.IndexError:
-		kind = object.ErrValue // Index errors are a kind of value error
+	// NewError finds the kind and the message without its kind prefix, also
+	// for an *object.Error that holds a TypeError or ValueError, and for a
+	// *object.StructuredError, which gets the current location here.
+	kind, msg := object.ErrRuntime, err.Error()
+	if s := object.NewError(err).Structured(); s != nil {
+		kind, msg = s.Kind, s.Message
 	}
-	return object.NewStructuredError(kind, msg, vm.getCurrentLocation(), vm.captureStack())
+	se := object.NewStructuredError(kind, msg, vm.getCurrentLocation(), vm.captureStack())
+	se.Cause = err
+	return se
 }
 
 // panicToError converts a recovered panic value to a structured error.

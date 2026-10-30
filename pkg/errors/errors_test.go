@@ -703,7 +703,7 @@ func TestNewArgsError(t *testing.T) {
 
 func TestNewTypeError(t *testing.T) {
 	err := NewTypeError(EvalErrorf("test"))
-	assert.Contains(t, err.Error(), "test")
+	assert.Equal(t, err.Error(), "type error: test")
 	assert.Equal(t, err.Unwrap().Error(), "test")
 }
 
@@ -711,7 +711,9 @@ func TestNewTypeError(t *testing.T) {
 
 func TestValueError(t *testing.T) {
 	err := ValueErrorf("division by zero")
-	assert.Contains(t, err.Error(), "value error: division by zero")
+	assert.Equal(t, err.Error(), "value error: division by zero")
+	// Err holds the message without the kind
+	assert.Equal(t, err.Err.Error(), "division by zero")
 
 	// Test Unwrap
 	underlying := err.Unwrap()

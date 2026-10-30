@@ -136,12 +136,15 @@ func ArgsErrorf(format string, args ...any) *ArgsError {
 }
 
 // TypeError is used to indicate an invalid type was supplied.
+//
+// Err holds the message without the error kind. Error adds the "type error: "
+// prefix, so code that shows the kind separately should read Err.
 type TypeError struct {
 	Err error
 }
 
 func (t *TypeError) Error() string {
-	return t.Err.Error()
+	return "type error: " + t.Err.Error()
 }
 
 func (t *TypeError) Unwrap() error {
@@ -153,17 +156,20 @@ func NewTypeError(err error) *TypeError {
 }
 
 func TypeErrorf(format string, args ...any) *TypeError {
-	return NewTypeError(fmt.Errorf("type error: "+format, args...))
+	return NewTypeError(fmt.Errorf(format, args...))
 }
 
 // ValueError is used to indicate an invalid value for an operation.
 // Examples: division by zero, invalid argument values.
+//
+// Err holds the message without the error kind. Error adds the
+// "value error: " prefix.
 type ValueError struct {
 	Err error
 }
 
 func (v *ValueError) Error() string {
-	return v.Err.Error()
+	return "value error: " + v.Err.Error()
 }
 
 func (v *ValueError) Unwrap() error {
@@ -175,16 +181,19 @@ func NewValueError(err error) *ValueError {
 }
 
 func ValueErrorf(format string, args ...any) *ValueError {
-	return NewValueError(fmt.Errorf("value error: "+format, args...))
+	return NewValueError(fmt.Errorf(format, args...))
 }
 
 // IndexError is used to indicate an index is out of bounds.
+//
+// Err holds the message without the error kind. Error adds the
+// "index error: " prefix.
 type IndexError struct {
 	Err error
 }
 
 func (i *IndexError) Error() string {
-	return i.Err.Error()
+	return "index error: " + i.Err.Error()
 }
 
 func (i *IndexError) Unwrap() error {
@@ -196,5 +205,5 @@ func NewIndexError(err error) *IndexError {
 }
 
 func IndexErrorf(format string, args ...any) *IndexError {
-	return NewIndexError(fmt.Errorf("index error: "+format, args...))
+	return NewIndexError(fmt.Errorf(format, args...))
 }
