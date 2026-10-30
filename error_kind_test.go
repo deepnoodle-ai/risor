@@ -33,6 +33,8 @@ func TestErrorKindOnce(t *testing.T) {
 		{`[1, 2, 3, 4, 5, 6] + [1, 2, 3, 4, 5]`, "value error: list too large (exceeds limit of 10 elements)", " (1:35)", "value error"},
 		{`"aaaaaa" + "aaaaa"`, "value error: string concatenation result too large (11 bytes exceeds limit of 10)", " (1:12)", "value error"},
 		{`"a".repeat(-1)`, "value error: negative repeat count", "", "value error"},
+		{`1 << -1`, "value error: negative shift count", " (1:7)", "value error"},
+		{`byte(1) >> -1`, "value error: negative shift count", " (1:13)", "value error"},
 		// Index errors are a kind of value error
 		{`[1][5]`, "index error: index out of range: 5", "", "value error"},
 		{`{"a": 1}[1]`, "type error: map key must be a string (got int)", "", "type error"},
