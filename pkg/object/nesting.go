@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 )
 
-// MaxNestingDepth is the maximum number of nested containers (lists, maps, and
-// iterators, counting the outermost one) that recursive operations will
+// MaxNestingDepth is the maximum number of nested containers (lists, maps,
+// iterators, and cells, counting the outermost one) that recursive operations will
 // traverse. It applies to Equals, Compare, MarshalJSON, ToInterface, and
 // conversion between Risor and Go values. A container that contains itself, directly or
 // indirectly, is treated as exceeding the limit.
