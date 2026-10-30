@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestNewCodeImmutability(t *testing.T) {
@@ -222,5 +223,15 @@ func TestLocationAt(t *testing.T) {
 	loc = code.LocationAt(100)
 	if loc.Line != 0 || loc.Column != 0 {
 		t.Errorf("expected zero location for 100, got {%d, %d}", loc.Line, loc.Column)
+	}
+}
+
+func TestIsBlockGlobalName(t *testing.T) {
+	assert.True(t, IsBlockGlobalName(BlockGlobalName("foo", 3)))
+	assert.True(t, IsBlockGlobalName(BlockGlobalName("_x1", 12)))
+	for _, name := range []string{
+		"foo", "a#b", "#3", "foo#", "1x#3", "a b#3", "foo#3x", "foo#-3", "a#b#3",
+	} {
+		assert.False(t, IsBlockGlobalName(name), name)
 	}
 }

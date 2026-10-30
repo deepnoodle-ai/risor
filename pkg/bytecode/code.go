@@ -3,6 +3,7 @@ package bytecode
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -337,14 +338,34 @@ func BlockGlobalName(name string, index int) string {
 	return name + blockGlobalSeparator + strconv.Itoa(index)
 }
 
-// IsBlockGlobalName returns true if name is a global slot name made by
-// BlockGlobalName.
+// IsBlockGlobalName returns true if name has the exact form that
+// BlockGlobalName makes: an identifier, "#", and one or more decimal digits.
+// Other names that contain "#", such as the env key "a#b", are not block
+// global names.
 //
 // It is exported for use by the compiler and the VM. The "#" form is an
 // implementation detail, not a stable API: hosts must not build or parse
 // these names.
 func IsBlockGlobalName(name string) bool {
-	return strings.Contains(name, blockGlobalSeparator)
+	prefix, suffix, found := strings.Cut(name, blockGlobalSeparator)
+	if !found || prefix == "" || suffix == "" {
+		return false
+	}
+	for i, ch := range prefix {
+		if ch == '_' || unicode.IsLetter(ch) {
+			continue
+		}
+		if i > 0 && unicode.IsDigit(ch) {
+			continue
+		}
+		return false
+	}
+	for _, ch := range suffix {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // EnvKeys returns a copy of the global names that were provided via the

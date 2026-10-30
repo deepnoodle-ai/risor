@@ -63,6 +63,23 @@ func TestBlockVariableIsNotAGlobal(t *testing.T) {
 	assert.False(t, slices.Contains(vm.main.GlobalNames(), "bar"))
 }
 
+// An env key that contains "#" but is not of the block slot form stays
+// visible to Get and GlobalNames.
+func TestEnvKeyWithHashIsAGlobal(t *testing.T) {
+	ctx := context.Background()
+	vm, err := newVM(ctx, `if (true) { let bar = 1 }; 1`, runOpts{
+		Globals: map[string]any{"a#b": 42},
+	})
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(ctx))
+
+	value, err := vm.Get("a#b")
+	assert.Nil(t, err)
+	assert.Equal(t, value, object.NewInt(42))
+	assert.True(t, slices.Contains(vm.GlobalNames(), "a#b"))
+	assert.True(t, slices.Contains(vm.main.GlobalNames(), "a#b"))
+}
+
 // RunCode carries root globals into the next code. A block variable from the
 // first code must not replace a root variable with the same name.
 func TestRunCodeCarriesRootGlobalNotBlockGlobal(t *testing.T) {
