@@ -247,7 +247,7 @@ func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructure
 			// function parameters and let destructuring reject it too.
 			if k.Closing.IsValid() || k.Template != nil {
 				tok := token.Token{StartPosition: k.Pos(), EndPosition: k.Pos()}
-				p.setTokenError(tok, "expected identifier in destructuring pattern (got %s)", k.String())
+				p.setTokenError(tok, "expected identifier in destructuring pattern")
 				return nil
 			}
 			keyName = k.Value
