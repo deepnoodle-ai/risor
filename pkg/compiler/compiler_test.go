@@ -668,6 +668,37 @@ func TestEndColumn_SpansToken(t *testing.T) {
 	}
 }
 
+// A non-ASCII string literal's location spans its runes and quotes, and
+// the expression after it on the same line keeps the right columns.
+func TestEndColumn_CountsRunes(t *testing.T) {
+	input := `let s = "éé"; s.x`
+
+	c, err := New(&Config{Filename: "test.risor"})
+	assert.Nil(t, err)
+	c.SetSource(input)
+
+	ast, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+
+	code, err := c.CompileAST(ast)
+	assert.Nil(t, err)
+
+	var foundString, foundIdent bool
+	for i := 0; i < code.LocationsCount(); i++ {
+		loc := code.LocationAt(i)
+		switch loc.Column {
+		case 9: // "éé"
+			foundString = true
+			assert.Equal(t, loc.EndColumn, 13)
+		case 15: // s
+			foundIdent = true
+			assert.Equal(t, loc.EndColumn, 16)
+		}
+	}
+	assert.True(t, foundString)
+	assert.True(t, foundIdent)
+}
+
 func TestRootSource_PreservedInFunctions(t *testing.T) {
 	// Test that original source is preserved in function bodies
 	input := `// Comment line 1
