@@ -195,6 +195,17 @@ func TestCodeStats(t *testing.T) {
 	}
 }
 
+func TestChildCodeStatsReportsRootGlobalCount(t *testing.T) {
+	child := NewCode(CodeParams{ID: "child"})
+	root := NewCode(CodeParams{
+		ID:          "root",
+		GlobalCount: 3,
+		Children:    []*Code{child},
+	})
+	assert.Equal(t, child.Stats().GlobalCount, 3)
+	assert.Equal(t, root.Stats().GlobalCount, 3)
+}
+
 func TestLocationAt(t *testing.T) {
 	code := NewCode(CodeParams{
 		Locations: []SourceLocation{
