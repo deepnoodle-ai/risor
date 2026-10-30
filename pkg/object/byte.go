@@ -120,7 +120,7 @@ func (b *Byte) runOperationByte(opType op.BinaryOpType, right byte) (Object, err
 	case op.Xor:
 		return NewByte(b.value ^ right), nil
 	case op.Power:
-		return NewByte(byte(math.Pow(float64(b.value), float64(right)))), nil
+		return NewByte(byte(intPow(int64(b.value), int64(right)))), nil
 	case op.LShift:
 		return NewByte(b.value << right), nil
 	case op.RShift:
@@ -160,7 +160,7 @@ func (b *Byte) runOperationInt(opType op.BinaryOpType, right int64) (Object, err
 			// float, as for int ** int.
 			return NewFloat(math.Pow(float64(b.value), float64(right))), nil
 		}
-		return NewInt(int64(math.Pow(float64(b.value), float64(right)))), nil
+		return NewInt(intPow(int64(b.value), right)), nil
 	case op.LShift:
 		if right < 0 {
 			return nil, newValueErrorf("negative shift count")

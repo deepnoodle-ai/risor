@@ -127,7 +127,7 @@ func (i *Int) runOperationInt(opType op.BinaryOpType, right int64) (Object, erro
 			// float, as in Python: 2 ** -1 is 0.5 and 0 ** -1 is +Inf.
 			return NewFloat(math.Pow(float64(i.value), float64(right))), nil
 		}
-		return NewInt(int64(math.Pow(float64(i.value), float64(right)))), nil
+		return NewInt(intPow(i.value, right)), nil
 	case op.LShift:
 		if right < 0 {
 			return nil, newValueErrorf("negative shift count")
@@ -204,4 +204,22 @@ func init() {
 	for i := range negativeCacheSize {
 		negativeCache[i] = &Int{value: int64(-i - 1)}
 	}
+}
+
+// intPow returns base ** exp for exp >= 0, computed exactly in int64 by
+// repeated squaring. Like int multiplication, a result that doesn't fit in
+// int64 wraps around. math.Pow would round through float64, which loses
+// precision above 2^53.
+func intPow(base, exp int64) int64 {
+	result := int64(1)
+	for exp > 0 {
+		if exp&1 == 1 {
+			result *= base
+		}
+		exp >>= 1
+		if exp > 0 {
+			base *= base
+		}
+	}
+	return result
 }

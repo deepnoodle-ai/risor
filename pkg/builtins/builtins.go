@@ -401,7 +401,7 @@ func Byte(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Float:
 		return object.NewByte(byte(obj.Value())), nil
 	case *object.String:
-		if i, err := strconv.ParseInt(obj.Value(), 0, 8); err == nil {
+		if i, err := strconv.ParseUint(obj.Value(), 0, 8); err == nil {
 			return object.NewByte(byte(i)), nil
 		}
 		return nil, object.ValueErrorf("invalid literal for byte(): %q", obj.Value())
