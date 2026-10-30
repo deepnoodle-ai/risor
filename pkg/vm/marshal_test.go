@@ -101,6 +101,33 @@ func TestCompilerMarshalRoundTripRuns(t *testing.T) {
 	assert.Equal(t, runRoundTrip(t, restored).Inspect(), expected.Inspect())
 }
 
+// Only the root block is unnamed. A user function named __main__ keeps its
+// name slot after a round trip, so its compiled local count still validates.
+func TestCompilerMarshalRoundTripFunctionNamedMain(t *testing.T) {
+	program, err := parser.Parse(context.Background(), `
+function __main__() { return 1 }
+__main__()
+`, nil)
+	assert.Nil(t, err)
+	c, err := compiler.New(nil)
+	assert.Nil(t, err)
+	code, err := c.CompileAST(program)
+	assert.Nil(t, err)
+
+	data, err := compiler.MarshalCode(code)
+	assert.Nil(t, err)
+	restoredCode, err := compiler.UnmarshalCode(data)
+	assert.Nil(t, err)
+	codes := restoredCode.Flatten()
+	assert.Equal(t, len(codes), 2)
+	assert.False(t, codes[0].IsNamed())
+	assert.True(t, codes[1].IsNamed())
+	assert.Equal(t, codes[1].CodeName(), "__main__")
+	result, err := Run(context.Background(), restoredCode.ToBytecode())
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(1))
+}
+
 // Validation does not cover the types of values on the stack. A fault like
 // a non-string map key must still come back as an error, not a crash.
 func TestRunUncheckedBytecodeFaultReturnsError(t *testing.T) {

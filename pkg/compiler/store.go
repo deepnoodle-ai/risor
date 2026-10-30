@@ -218,7 +218,7 @@ func codeFromState(state *state) (*Code, error) {
 			id:           c.ID,
 			parent:       parent,
 			name:         c.Name,
-			isNamed:      c.Name != "" && c.Name != "__main__",
+			isNamed:      parent != nil && c.Name != "", // only the root is unnamed
 			functionID:   c.FunctionID,
 			symbols:      codeSymbols,
 			instructions: CopyInstructions(c.Instructions),
