@@ -123,6 +123,12 @@ result, err := risor.Eval(ctx, source,
     risor.WithEnv(risor.Builtins()),
     risor.WithMaxStackDepth(100))
 
+// Limit the size of strings and lists that one size-amplifying operation
+// (repeat, join, +, split, spread, list(range(...))) can produce
+result, err := risor.Eval(ctx, source,
+    risor.WithEnv(risor.Builtins()),
+    risor.WithLimits(risor.Limits{MaxBytesSize: 1 << 20, MaxListLength: 100_000}))
+
 // Set timeout
 result, err := risor.Eval(ctx, source,
     risor.WithEnv(risor.Builtins()),

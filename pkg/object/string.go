@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -44,7 +46,7 @@ func init() {
 		Doc("Split on whitespace").
 		Returns("list").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Fields(), nil
+			return s.Fields(ctx)
 		})
 
 	stringMethods.Define("has_prefix").
@@ -76,7 +78,7 @@ func init() {
 		Arg("items").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Join(args[0])
+			return s.Join(ctx, args[0])
 		})
 
 	stringMethods.Define("last_index").
@@ -92,7 +94,7 @@ func init() {
 		Arg("count").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Repeat(args[0])
+			return s.Repeat(ctx, args[0])
 		})
 
 	stringMethods.Define("replace_all").
@@ -100,7 +102,7 @@ func init() {
 		Args("old", "new").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.ReplaceAll(args[0], args[1])
+			return s.ReplaceAll(ctx, args[0], args[1])
 		})
 
 	stringMethods.Define("split").
@@ -108,7 +110,7 @@ func init() {
 		Arg("sep").
 		Returns("list").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Split(args[0])
+			return s.Split(ctx, args[0])
 		})
 
 	stringMethods.Define("to_lower").
@@ -316,15 +318,23 @@ func (s *String) Count(obj Object) (Object, error) {
 	return NewInt(int64(strings.Count(s.value, substr))), nil
 }
 
-func (s *String) Join(obj Object) (Object, error) {
+func (s *String) Join(ctx context.Context, obj Object) (Object, error) {
 	ls, err := AsList(obj)
 	if err != nil {
 		return nil, err
 	}
 	var strs []string
-	for _, item := range ls.Value() {
+	var size uint64
+	for i, item := range ls.Value() {
 		itemStr, err := AsString(item)
 		if err != nil {
+			return nil, err
+		}
+		size += uint64(len(itemStr))
+		if i > 0 {
+			size += uint64(len(s.value))
+		}
+		if err := checkBytesSize(GetLimits(ctx), "string.join()", size); err != nil {
 			return nil, err
 		}
 		strs = append(strs, itemStr)
@@ -332,16 +342,46 @@ func (s *String) Join(obj Object) (Object, error) {
 	return NewString(strings.Join(strs, s.value)), nil
 }
 
-func (s *String) Split(obj Object) (Object, error) {
+// Split splits s around each instance of the separator. It returns a value
+// error if the result would exceed the list length limit in ctx.
+func (s *String) Split(ctx context.Context, obj Object) (Object, error) {
 	sep, err := AsString(obj)
 	if err != nil {
+		return nil, err
+	}
+	// Count the parts first: strings.SplitN with a positive n allocates for n
+	// parts, not for the number of separators it finds.
+	n := strings.Count(s.value, sep) + 1
+	if sep == "" {
+		n = utf8.RuneCountInString(s.value)
+	}
+	if err := CheckListLength(ctx, n); err != nil {
 		return nil, err
 	}
 	return NewStringList(strings.Split(s.value, sep)), nil
 }
 
-func (s *String) Fields() Object {
-	return NewStringList(strings.Fields(s.value))
+// Fields splits s around runs of white space. It returns a value error if
+// the result would exceed the list length limit in ctx.
+func (s *String) Fields(ctx context.Context) (Object, error) {
+	if err := CheckListLength(ctx, countFields(s.value)); err != nil {
+		return nil, err
+	}
+	return NewStringList(strings.Fields(s.value)), nil
+}
+
+// countFields returns the number of fields strings.Fields would return.
+func countFields(s string) int {
+	n := 0
+	inField := false
+	for _, r := range s {
+		space := unicode.IsSpace(r)
+		if !space && !inField {
+			n++
+		}
+		inField = !space
+	}
+	return n
 }
 
 func (s *String) Index(obj Object) (Object, error) {
@@ -360,13 +400,17 @@ func (s *String) LastIndex(obj Object) (Object, error) {
 	return NewInt(int64(strings.LastIndex(s.value, substr))), nil
 }
 
-func (s *String) ReplaceAll(old, new Object) (Object, error) {
+func (s *String) ReplaceAll(ctx context.Context, old, new Object) (Object, error) {
 	oldStr, err := AsString(old)
 	if err != nil {
 		return nil, err
 	}
 	newStr, err := AsString(new)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkReplaceSize(GetLimits(ctx), "string.replace_all()", len(s.value), len(oldStr), len(newStr),
+		strings.Count(s.value, oldStr)); err != nil {
 		return nil, err
 	}
 	return NewString(strings.ReplaceAll(s.value, oldStr, newStr)), nil
@@ -408,13 +452,16 @@ func (s *String) TrimSpace() Object {
 	return NewString(strings.TrimSpace(s.value))
 }
 
-func (s *String) Repeat(obj Object) (Object, error) {
+func (s *String) Repeat(ctx context.Context, obj Object) (Object, error) {
 	count, err := AsInt(obj)
 	if err != nil {
 		return nil, err
 	}
 	if count < 0 {
 		return nil, newValueErrorf("negative repeat count")
+	}
+	if err := checkRepeatSize(GetLimits(ctx), "string.repeat()", len(s.value), count); err != nil {
+		return nil, err
 	}
 	return NewString(strings.Repeat(s.value, int(count))), nil
 }

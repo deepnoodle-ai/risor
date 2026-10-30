@@ -36,3 +36,21 @@ func GetCallFunc(ctx context.Context) (CallFunc, bool) {
 	}
 	return nil, false
 }
+
+const limitsKey = contextKey("risor:limits")
+
+// WithLimits stores allocation limits in the context. Zero or negative fields
+// use the defaults. The VM attaches its configured limits this way, and
+// operations that can produce large values read them with GetLimits.
+func WithLimits(ctx context.Context, limits Limits) context.Context {
+	return context.WithValue(ctx, limitsKey, limits.withDefaults())
+}
+
+// GetLimits returns the allocation limits stored in the context, or
+// DefaultLimits if none are set.
+func GetLimits(ctx context.Context) Limits {
+	if limits, ok := ctx.Value(limitsKey).(Limits); ok {
+		return limits
+	}
+	return DefaultLimits()
+}

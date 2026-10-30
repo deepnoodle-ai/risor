@@ -1,6 +1,7 @@
 package object
 
 import (
+	"context"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
@@ -42,7 +43,7 @@ func TestAndOperator(t *testing.T) {
 		{NewBool(true), NewInt(0), NewInt(0)},
 	}
 	for _, tc := range testCases {
-		result, err := BinaryOp(op.And, tc.left, tc.right)
+		result, err := BinaryOp(context.Background(), op.And, tc.left, tc.right)
 		assert.NoError(t, err)
 		assert.Equal(t, result, tc.want)
 	}
@@ -67,7 +68,7 @@ func TestOrOperator(t *testing.T) {
 		{NewBool(true), NewInt(0), NewBool(true)},
 	}
 	for _, tc := range testCases {
-		result, err := BinaryOp(op.Or, tc.left, tc.right)
+		result, err := BinaryOp(context.Background(), op.Or, tc.left, tc.right)
 		assert.NoError(t, err)
 		assert.Equal(t, result, tc.want)
 	}

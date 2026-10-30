@@ -101,6 +101,10 @@ func encodeHex(ctx context.Context, obj object.Object) (object.Object, error) {
 }
 
 func encodeJSON(ctx context.Context, obj object.Object) (object.Object, error) {
+	obj, err := object.ExpandRanges(ctx, obj)
+	if err != nil {
+		return nil, err
+	}
 	nativeObject, err := object.ToInterface(obj)
 	if err != nil {
 		return nil, err

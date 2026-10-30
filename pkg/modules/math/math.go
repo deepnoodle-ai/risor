@@ -16,6 +16,9 @@ func Abs(ctx context.Context, args ...object.Object) (object.Object, error) {
 	switch arg := args[0].(type) {
 	case *object.Int:
 		v := arg.Value()
+		if v == math.MinInt64 {
+			return nil, object.ValueErrorf("math.abs: integer overflow (abs of %d is not representable)", v)
+		}
 		if v < 0 {
 			v = -v
 		}

@@ -153,7 +153,7 @@ Shuffles a list in place and returns it.
 bytes(n int) list
 ```
 
-Returns a list of n random bytes (integers 0-255).
+Returns a list of n random bytes (integers 0-255). n must be non-negative and no larger than the list length limit (4194304 by default; see `risor.WithLimits`).
 
 ```go filename="Example"
 >>> rand.bytes(4)

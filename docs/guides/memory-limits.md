@@ -1,15 +1,30 @@
 # Limiting Memory in Untrusted Scripts
 
-Risor bounds instruction count (`WithMaxSteps`) and wall-clock time
-(`WithTimeout`). It does not bound allocation, and it has no `WithMaxMemory`.
-A single instruction can allocate gigabytes:
+Risor bounds instruction count (`WithMaxSteps`), wall-clock time
+(`WithTimeout`), and the size of the value a single operation may produce
+(`WithLimits`). It does not bound total allocation, and it has no
+`WithMaxMemory`.
+
+`WithLimits` caps the operations that can turn a small input into a huge
+output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes, and
+building lists with `list()`, `keys()`, spread, `+`, `extend`,
+`range(...).map`, `split`, `fields`, the `regexp` find and split functions,
+and `rand.bytes`. The defaults are 64 MiB for a string or bytes value and
+4,194,304 list elements. Exceeding a cap raises a `value error`:
 
 ```go
-// runs fine, returns a result, allocates 5.4 GB
+// fails with "list too large (exceeds limit of 4194304 elements)"
 risor.Eval(ctx, `len(list(range(50000000)))`,
-    risor.WithMaxSteps(1000),
     risor.WithEnv(risor.Builtins()))
+
+// tighter caps for untrusted scripts
+risor.Eval(ctx, src,
+    risor.WithEnv(risor.Builtins()),
+    risor.WithLimits(risor.Limits{MaxBytesSize: 1 << 20, MaxListLength: 100_000}))
 ```
+
+These caps apply to each operation, not to the script as a whole. A script that
+loops through callbacks can still make many values, each just under the cap.
 
 That is not a problem when you trust the script. It matters when you don't, and
 this guide is for that case: you want to run scripts you didn't write, in your
@@ -99,10 +114,10 @@ cases outright. `list(range(N))` is the single most expensive thing a script
 can do, because every element of a list is an interface header plus a boxed
 value, roughly 100× the per-element cost of a string.
 
-One thing this does **not** do: it does not remove type methods.
-`"a".repeat(1000000000)` still works no matter what is in the environment,
-because methods resolve through `GetAttr` on the object rather than through the
-environment. Layer 3 is what handles those.
+One thing this does **not** do: it does not remove type methods. Methods such
+as `repeat` resolve through `GetAttr` on the object rather than through the
+environment. `WithLimits` caps the size of each result, and Layer 3 is what
+budgets them as a group.
 
 ## Layer 2: turn off syntax you don't need
 
@@ -361,7 +376,7 @@ func guardAdd(b *Budget) func(context.Context, ...object.Object) (object.Object,
                 return nil, err
             }
         }
-        return object.BinaryOp(op.Add, left, right)
+        return object.BinaryOp(ctx, op.Add, left, right)
     }
 }
 
@@ -491,8 +506,9 @@ Against a 10 MB budget, with the environment from Layer 1:
 | `` len(`${a}${a}`) `` | 0 MB | rejected at validation |
 | `[1,2,3].map(x => x * 2)` | 0 MB | rejected at validation |
 
-Without any of this, the chained `+` case allocates 572 MB and the `repeat`
-case about 950 MB.
+Without any of this, the chained `+` case allocates 572 MB. The default
+`WithLimits` caps refuse the `repeat` case on their own, but each `+` stays
+under the 64 MiB cap, so only the budget stops the chain.
 
 Good numbers, and still not a guarantee. Everything in that table is a case
 somebody thought to test. The section below is the list of cases where this

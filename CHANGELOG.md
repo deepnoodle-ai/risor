@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - Method calls accept spread arguments: `obj.method(...args)` and
   `obj?.method(...args)` (#489).
+- **`risor.WithLimits`** caps the string, bytes, or list value that one
+  size-amplifying operation can produce, such as `repeat`, `join`, `+`,
+  `split`, spread, or `list(range(...))`. Operations that add one item, such as
+  `append`, are not capped. Defaults: 64 MiB and 4,194,304 elements. Exceeding a
+  cap raises a catchable `value error` (#491).
 
 ### Changed
 
@@ -27,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   interpolation `${}`. The depth limit is 500 by default; raise it with
   `parser.Config.MaxDepth`. Before, a long chain could crash the host with a Go
   stack overflow (#488).
+- Go API: to apply `WithLimits`, these now take a `context.Context` as their
+  first argument: `object.BinaryOp`, `String.Join`, `Repeat`, `ReplaceAll`,
+  `Split`, and `Fields`, and `Bytes.Repeat`, `Replace`, and `ReplaceAll`.
+  `String.Fields` also returns an error (#491).
 
 ### Fixed
 
@@ -52,6 +61,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   value, encoding it as JSON, or formatting it with `sprintf` returns a nesting
   error, as does any value nested more than 128 levels deep. `==` on a cyclic
   value returns `false` (#490).
+- `repeat`, `range`, `list(range(...))`, spread, `+`, `rand.bytes`, and similar
+  operations no longer crash the host with huge allocations. `range`,
+  `rand.int`, and `math.abs` no longer overflow int64 (#491).
 
 ## [2.2.0] - 2026-08-17
 
