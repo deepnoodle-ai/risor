@@ -58,9 +58,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `GlobalNameAt`. An env key of the form `name#digits`, such as `step#1`, is
   not visible to `vm.Get` or `GlobalNames` (#492).
 - The `vm.NewEmpty` doc comment no longer says that functions can be called
-  directly with `Call`. `Call` needs main code from `Run` or `RunCode` first.
-  On a VM with no main code, `Call` now returns an error that says so, and the
-  error from `Run` says to give code to `New` or use `RunCode` (#493).
+  directly with `Call`. `Call` needs code given to `New` or loaded with
+  `RunCode` first. On a VM with no main code, `Call` now returns an error that
+  says so, and the error from `Run` says to give code to `New` or use `RunCode`
+  (#493).
 
 - The VS Code extension no longer runs a `go install` command that always
   failed. When it cannot find `risor-lsp`, it shows install steps and a link to

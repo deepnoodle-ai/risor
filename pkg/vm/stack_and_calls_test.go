@@ -299,7 +299,7 @@ func TestCallOnNewEmptyNeedsMainCode(t *testing.T) {
 	result, err := machine.Call(context.Background(), object.NewClosure(fn),
 		[]object.Object{object.NewInt(2)})
 	assert.Nil(t, result)
-	assert.ErrorContains(t, err, "Call requires code loaded with Run or RunCode")
+	assert.ErrorContains(t, err, "Call requires code given to New, or loaded with RunCode")
 }
 
 // After RunCode loads main code on a NewEmpty VM, Call works and the function
