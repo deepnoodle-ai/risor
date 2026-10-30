@@ -93,6 +93,15 @@ func TestUnmarshalCodeRejectsInconsistentSymbols(t *testing.T) {
 			"root code does not use the root symbol table",
 		},
 		{
+			"by-name symbol in a function table names another symbol",
+			`{"code":[{"id":"main","symbol_table_id":"","constants":[{"type":"function","value":{"id":"1"}}]},` +
+				`{"id":"main.0","parent_id":"main","function_id":"1","symbol_table_id":"f"}],` +
+				`"symbol_table":{"symbols":[],"symbols_by_name":{},` +
+				`"children":[{"id":"f","symbols":[{"name":"y","index":0}],` +
+				`"symbols_by_name":{"x":{"name":"x","index":0}}}]}}`,
+			`symbol "x" does not match the symbol at index 0`,
+		},
+		{
 			"function code uses a block table",
 			`{"code":[{"id":"main","symbol_table_id":"","constants":[{"type":"function","value":{"id":"1"}}]},` +
 				`{"id":"main.0","parent_id":"main","function_id":"1","symbol_table_id":"b"}],` +
