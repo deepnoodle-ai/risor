@@ -149,7 +149,7 @@ try {
 | `"type error"` | Type mismatch (e.g., `1 + "foo"`) |
 | `"value error"` | Invalid value (e.g., division by zero) |
 | `"name error"` | Undefined variable |
-| `"runtime error"` | General runtime error, including a thrown value |
+| `"runtime error"` | General runtime error, including a thrown value and an `error("msg")` value |
 
 An error made with `error("msg")` has the kind `"runtime error"` before and
 after it is thrown, so `error("boom")` equals the error caught from
