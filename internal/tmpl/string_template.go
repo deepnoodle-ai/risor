@@ -9,6 +9,8 @@ type Fragment struct {
 	value string
 	// isVariable is true if this is an expression, false if it is raw text.
 	isVariable bool
+	// offset is the index, in runes, of the start of value in the template.
+	offset int
 }
 
 // Value returns the fragment text. If the fragment is an expression, this will
@@ -20,6 +22,12 @@ func (f *Fragment) Value() string {
 // IsVariable returns true if this is an expression, false if it is raw text.
 func (f *Fragment) IsVariable() bool {
 	return f.isVariable
+}
+
+// Offset returns the index, in runes, where the fragment text starts in the
+// template. For an expression, this is the index just after the "${".
+func (f *Fragment) Offset() int {
+	return f.offset
 }
 
 // Template defines a string template which may contain any number of
@@ -43,55 +51,70 @@ func (t *Template) Fragments() []*Fragment {
 }
 
 // Parse parses a string into a Template struct. The string may contain 0-N
-// expressions in the form ${expression}.
+// expressions in the form ${expression}. An expression ends at the "}" that
+// matches its "${". Braces inside the expression, and braces inside its string
+// literals, do not end it.
 func Parse(s string) (*Template, error) {
 	runes := []rune(s)
-
-	getChar := func(index int) rune {
-		if index < 0 || index >= len(runes) {
-			return 0
-		}
-		return runes[index]
-	}
-
 	template := &Template{value: s}
 
-	// Iterate through all runes in the string to find ${variable}s. We build up
-	// a list of string "fragments", which are either raw text or variables.
-	var curFragment *Fragment
+	// textStart is the start of the raw text that precedes the next expression
+	textStart := 0
+	addText := func(end int) {
+		if end > textStart {
+			template.fragments = append(template.fragments, &Fragment{
+				value:  string(runes[textStart:end]),
+				offset: textStart,
+			})
+		}
+	}
 	for i := 0; i < len(runes); i++ {
-		char := getChar(i)
-		peekChar := getChar(i + 1)
-		if char == '$' && peekChar == '{' {
-			// Start of an expression ${...}
-			if curFragment != nil && curFragment.IsVariable() {
-				return nil, fmt.Errorf("invalid '${' in template: %v", s)
-			}
-			curFragment = &Fragment{
-				isVariable: true,
-				value:      "",
-			}
-			template.fragments = append(template.fragments, curFragment)
-			i++ // Skip the '{' as well
-			continue
-		} else if char == '}' && curFragment != nil && curFragment.IsVariable() {
-			// End of an expression
-			curFragment = nil
+		if runes[i] != '$' || i+1 >= len(runes) || runes[i+1] != '{' {
 			continue
 		}
-		// Append current character to the current fragment
-		if curFragment == nil {
-			curFragment = &Fragment{
-				isVariable: false,
-				value:      "",
-			}
-			template.fragments = append(template.fragments, curFragment)
+		addText(i)
+		start := i + 2 // skip the "${"
+		end, ok := expressionEnd(runes, start)
+		if !ok {
+			return nil, fmt.Errorf("missing '}' in template: %v", s)
 		}
-		curFragment.value += string(char)
+		template.fragments = append(template.fragments, &Fragment{
+			value:      string(runes[start:end]),
+			isVariable: true,
+			offset:     start,
+		})
+		i = end // the closing '}'
+		textStart = end + 1
 	}
-
-	if curFragment != nil && curFragment.isVariable {
-		return nil, fmt.Errorf("missing '}' in template: %v", s)
-	}
+	addText(len(runes))
 	return template, nil
+}
+
+// expressionEnd returns the index of the '}' that closes the expression
+// starting at the given index. It skips nested braces and string literals.
+// It returns false if the expression is not closed.
+func expressionEnd(runes []rune, start int) (int, bool) {
+	depth := 0
+	for i := start; i < len(runes); i++ {
+		switch r := runes[i]; r {
+		case '{':
+			depth++
+		case '}':
+			if depth == 0 {
+				return i, true
+			}
+			depth--
+		case '"', '\'':
+			// Skip to the closing quote. A backslash escapes the next rune.
+			for i++; i < len(runes) && runes[i] != r; i++ {
+				if runes[i] == '\\' {
+					i++
+				}
+			}
+			if i >= len(runes) {
+				return 0, false
+			}
+		}
+	}
+	return 0, false
 }
