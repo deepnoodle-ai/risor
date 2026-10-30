@@ -89,6 +89,11 @@ type VirtualMachine struct {
 	// between runs and when the context cannot be canceled.
 	done <-chan struct{}
 
+	// traceBaseFP is the lowest frame that stack traces include. Call sets
+	// it above frame zero, which holds the main code of an earlier run and
+	// is not part of the call.
+	traceBaseFP int
+
 	// requestedIP stores the starting instruction pointer requested via
 	// WithInstructionOffset. This survives resetForNewCode() and is applied
 	// when activating code. Used by REPL to skip past previously executed code.
@@ -482,6 +487,11 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 	defer func() {
 		if r := recover(); r != nil {
 			err = vm.panicToError(r)
+		}
+		// A run that fails can stop in the middle of an expression. Drop
+		// its operands, so that a later Call has the whole value stack.
+		if err != nil {
+			vm.restoreStack(-1)
 		}
 		vm.stop()
 	}()
@@ -1446,13 +1456,23 @@ func (vm *VirtualMachine) Call(
 	fn *object.Closure,
 	args []object.Object,
 ) (result object.Object, err error) {
+	// Apply timeout to context if configured
+	if vm.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, vm.timeout)
+		defer cancel()
+	}
 	if err := vm.start(ctx); err != nil {
 		return nil, err
 	}
+	// Frame zero holds the main code of an earlier run, which is not part
+	// of this call, so stack traces start above it.
+	vm.traceBaseFP = vm.fp + 1
 	defer func() {
 		if r := recover(); r != nil {
 			err = vm.panicToError(r)
 		}
+		vm.traceBaseFP = 0
 		vm.stop()
 	}()
 	// The main code owns the globals array that function code shares, so it
@@ -1826,7 +1846,7 @@ func (vm *VirtualMachine) captureStack() []object.StackFrame {
 	var frames []object.StackFrame
 
 	// Walk through all active frames
-	for i := vm.fp; i >= 0; i-- {
+	for i := vm.fp; i >= vm.traceBaseFP; i-- {
 		frame := &vm.frames[i]
 		if frame.code == nil {
 			continue
