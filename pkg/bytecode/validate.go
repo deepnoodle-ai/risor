@@ -3,6 +3,7 @@ package bytecode
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -30,11 +31,16 @@ const maxParameters = 256
 //     LOAD_CONST gives zero. The root has no free variables. A block that no
 //     instruction loads is not checked, and the VM still checks each index
 //     at run time, since a host can call a function with fewer captures.
-//   - Jump targets, PUSH_EXCEPT targets, and exception handler positions
-//     are the start of an instruction or the end of the code.
+//   - Jump targets and the try start and end of exception handlers are the
+//     start of an instruction or the end of the code. PUSH_EXCEPT targets
+//     and the catch and finally starts of exception handlers are the start
+//     of an instruction: an exception that lands on the end of the code
+//     would stop it and lose the exception.
 //   - Constants have a type the VM supports, and each function constant
-//     has code, at most 256 parameters, no more defaults than parameters,
-//     and only nil, bool, int, float, or string defaults.
+//     has code that is a child of the block that holds the constant, at
+//     most 256 parameters, either no defaults or one per parameter, and
+//     only nil, bool, int, float, or string defaults. A block that is not a
+//     child would not survive [Marshal].
 //   - The local count of each block is no larger than the block needs: its
 //     highest local operand, or its function's parameters and rest
 //     parameter, plus one slot for a named function's own name. The root
@@ -173,6 +179,10 @@ func (v *validator) validateCode(code *Code) error {
 		if err := validateConstant(constant); err != nil {
 			return fmt.Errorf("constant %d: %w", i, err)
 		}
+		if fn, ok := constant.(*Function); ok && !slices.Contains(code.children, fn.code) {
+			return fmt.Errorf("constant %d: function %q code is not a child of this block",
+				i, fn.name)
+		}
 	}
 
 	// First pass: decode every instruction and mark where each one starts.
@@ -197,6 +207,10 @@ func (v *validator) validateCode(code *Code) error {
 	}
 	isTarget := func(target int) bool {
 		return target >= 0 && target <= n && starts[target]
+	}
+	// An exception handler must start an instruction, not the end of code
+	isHandler := func(target int) bool {
+		return target < n && isTarget(target)
 	}
 
 	// Second pass: check each operand.
@@ -240,9 +254,9 @@ func (v *validator) validateCode(code *Code) error {
 				err = fmt.Errorf("jump target %d is not an instruction", target)
 			}
 		case op.PushExcept:
-			if target := pos + operand(1); !isTarget(target) {
+			if target := pos + operand(1); !isHandler(target) {
 				err = fmt.Errorf("catch target %d is not an instruction", target)
-			} else if operand(2) > 0 && !isTarget(pos+operand(2)) {
+			} else if operand(2) > 0 && !isHandler(pos+operand(2)) {
 				err = fmt.Errorf("finally target %d is not an instruction", pos+operand(2))
 			}
 		}
@@ -260,8 +274,10 @@ func (v *validator) validateCode(code *Code) error {
 	}
 
 	for i, h := range code.exceptionHandlers {
+		// A catch or finally start of 0 means there is none
 		if h.TryStart > h.TryEnd || !isTarget(h.TryStart) || !isTarget(h.TryEnd) ||
-			!isTarget(h.CatchStart) || !isTarget(h.FinallyStart) {
+			(h.CatchStart != 0 && !isHandler(h.CatchStart)) ||
+			(h.FinallyStart != 0 && !isHandler(h.FinallyStart)) {
 			return fmt.Errorf("exception handler %d has an invalid position", i)
 		}
 	}
@@ -318,8 +334,11 @@ func validateConstant(constant any) error {
 			return fmt.Errorf("function %q has %d parameters (max %d)",
 				c.name, len(c.parameters), maxParameters)
 		}
-		if len(c.defaults) > len(c.parameters) {
-			return fmt.Errorf("function %q has more defaults than parameters", c.name)
+		// Defaults are indexed by parameter, so a shorter list would leave
+		// optional parameters without a value
+		if len(c.defaults) != 0 && len(c.defaults) != len(c.parameters) {
+			return fmt.Errorf("function %q has %d defaults for %d parameters",
+				c.name, len(c.defaults), len(c.parameters))
 		}
 		for _, d := range c.defaults {
 			switch d.(type) {

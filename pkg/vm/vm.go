@@ -1462,12 +1462,7 @@ func (vm *VirtualMachine) callFunction(
 		}
 		copy(vm.tmp[:copyCount], args[:copyCount])
 
-		// Fill in defaults for missing regular params
-		if copyCount < paramsCount {
-			for i := copyCount; i < fn.DefaultCount(); i++ {
-				vm.tmp[i] = fn.Default(i)
-			}
-		}
+		vm.fillDefaults(fn, copyCount, paramsCount)
 
 		// Collect remaining args into rest param list
 		var restArgs []object.Object
@@ -1481,11 +1476,7 @@ func (vm *VirtualMachine) callFunction(
 	} else {
 		// No rest param - original behavior
 		copy(vm.tmp[:argc], args)
-		if argc < paramsCount {
-			for i := argc; i < fn.DefaultCount(); i++ {
-				vm.tmp[i] = fn.Default(i)
-			}
-		}
+		vm.fillDefaults(fn, argc, paramsCount)
 		localCount = paramsCount
 	}
 
@@ -1526,6 +1517,19 @@ func (vm *VirtualMachine) callFunction(
 		return object.Nil, nil
 	}
 	return vm.pop(), nil
+}
+
+// fillDefaults sets vm.tmp[from:to], the parameters the caller did not pass,
+// to their defaults. A parameter without a default gets Nil, so a frame never
+// sees a raw Go nil or a value left in vm.tmp by an earlier call.
+func (vm *VirtualMachine) fillDefaults(fn *object.Closure, from, to int) {
+	for i := from; i < to; i++ {
+		value := fn.Default(i)
+		if value == nil {
+			value = object.Nil
+		}
+		vm.tmp[i] = value
+	}
 }
 
 // Call a callable object with the given arguments. Returns an error if the
@@ -2009,6 +2013,12 @@ func (vm *VirtualMachine) returnFromFrame() (stop bool, err error) {
 		if !vm.observer.OnReturn(event) {
 			return true, fmt.Errorf("execution halted by observer")
 		}
+	}
+
+	// The root frame has no caller. The compiler never returns from it, but
+	// bytecode may: end the run with the value on TOS as its result.
+	if vm.fp == 0 {
+		return true, nil
 	}
 
 	returnAddr := activeFrame.returnAddr
