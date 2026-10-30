@@ -380,24 +380,12 @@ func TestCallEmptyWithNewlines(t *testing.T) {
 	assert.Len(t, call.Args, 0)
 }
 
+// Risor has no keyword arguments. `a=1` is an assignment, which is not a
+// valid argument.
 func TestCallWithKeywordArgs(t *testing.T) {
-	input := `foo(a=1, b=2)`
-	program, err := Parse(context.Background(), input, nil)
-	assert.Nil(t, err)
-	assert.Len(t, program.Stmts, 1)
-
-	call, ok := program.First().(*ast.Call)
-	assert.True(t, ok)
-	assert.Equal(t, "foo", call.Fun.String())
-
-	args := call.Args
-	assert.Len(t, args, 2)
-
-	arg0 := args[0].(*ast.Assign)
-	assert.Equal(t, "a = 1", arg0.String())
-
-	arg1 := args[1].(*ast.Assign)
-	assert.Equal(t, "b = 2", arg1.String())
+	_, err := Parse(context.Background(), `foo(a=1, b=2)`, nil)
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "expected an expression in call arguments (got an assignment)")
 }
 
 func TestPipe(t *testing.T) {
@@ -407,7 +395,7 @@ func TestPipe(t *testing.T) {
 		expectedIdents []string
 	}{
 		{"let x = foo |> bar;", "ident", []string{"foo", "bar"}},
-		{`let x = foo() |> bar(name="foo") |> baz(y=4);`, "call", []string{"foo", "bar", "baz"}},
+		{`let x = foo() |> bar("foo") |> baz(4);`, "call", []string{"foo", "bar", "baz"}},
 		{`let x = a() |> b();`, "call", []string{"a", "b"}},
 	}
 	for _, tt := range tests {

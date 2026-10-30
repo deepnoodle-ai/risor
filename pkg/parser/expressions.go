@@ -497,6 +497,14 @@ func (p *Parser) parseCall(functionNode ast.Node) (ast.Node, bool) {
 	if arguments == nil {
 		return nil, false
 	}
+	// A statement such as `x = 1` or `x++` produces no value, so it
+	// cannot be an argument.
+	for _, arg := range arguments {
+		if _, ok := arg.(ast.Expr); !ok {
+			p.setNodeError(arg, "expected an expression in call arguments (got %s)", statementDescription(arg))
+			return nil, false
+		}
+	}
 	rparen := p.curToken.StartPosition
 	return &ast.Call{Fun: function, Lparen: lparen, Args: arguments, Rparen: rparen}, true
 }

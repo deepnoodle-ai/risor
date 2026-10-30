@@ -584,6 +584,31 @@ func (p *Parser) setTokenError(t token.Token, msg string, args ...interface{}) a
 	return nil
 }
 
+// setNodeError reports an error that spans the given node. The span ends on
+// the node's first line when the node covers several lines.
+func (p *Parser) setNodeError(node ast.Node, msg string, args ...interface{}) ast.Node {
+	start, end := node.Pos(), node.End()
+	// Node end positions are exclusive, while error end positions are inclusive
+	if end.Line == start.Line && end.Char > start.Char {
+		end = end.Advance(-1)
+	} else {
+		end = start
+	}
+	return p.setTokenError(token.Token{StartPosition: start, EndPosition: end}, msg, args...)
+}
+
+// statementDescription names a statement node for an error message.
+func statementDescription(node ast.Node) string {
+	switch n := node.(type) {
+	case *ast.Assign, *ast.SetAttr:
+		return "an assignment"
+	case *ast.Postfix:
+		return fmt.Sprintf("a %s statement", n.Op)
+	default:
+		return "a statement"
+	}
+}
+
 // newIdent creates a new Ident node from a token.
 func (p *Parser) newIdent(tok token.Token) *ast.Ident {
 	return &ast.Ident{NamePos: tok.StartPosition, Name: tok.Literal}
