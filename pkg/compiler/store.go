@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unsafe"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
@@ -122,7 +123,11 @@ type exceptionHandlerDef struct {
 	CatchVarIdx  int `json:"catch_var_idx"`
 }
 
-// Flat form of a Code object used in marshaling.
+// Flat form of a Code object used in marshaling. It holds the source text of
+// a code in Source, or in SourceRange the byte range of its source within the
+// source of the first code, the root. A function's source is a slice of the
+// root source, so it is written as a range and nested functions do not repeat
+// their body text at each level. Older versions wrote the text of every code.
 type codeDef struct {
 	ID            string            `json:"id,omitempty"`
 	Name          string            `json:"name"`
@@ -133,6 +138,7 @@ type codeDef struct {
 	Constants     []json.RawMessage `json:"constants,omitempty"`
 	Names         []string          `json:"names,omitempty"`
 	Source        string            `json:"source,omitempty"`
+	SourceRange   *[2]int           `json:"source_range,omitempty"`
 	Filename      string            `json:"filename,omitempty"`
 	Locations     []locationDef     `json:"locations,omitempty"`
 	MaxCallArgs   uint16            `json:"max_call_args,omitempty"`
@@ -205,6 +211,20 @@ func codeFromState(state *state) (*Code, error) {
 		if err != nil {
 			return nil, err
 		}
+		source := c.Source
+		if r := c.SourceRange; r != nil {
+			if i == 0 {
+				return nil, fmt.Errorf("invalid code: root code has a source range")
+			}
+			if c.Source != "" {
+				return nil, fmt.Errorf("invalid code: code %q has both source and source range", c.ID)
+			}
+			rootSource := codes[0].source
+			if r[0] < 0 || r[0] > r[1] || r[1] > len(rootSource) {
+				return nil, fmt.Errorf("invalid code: code %q has source range %v outside the root source", c.ID, *r)
+			}
+			source = rootSource[r[0]:r[1]]
+		}
 
 		// Reconstruct rootSource pointer from parent (same logic as newChild)
 		var rootSource *string
@@ -232,7 +252,7 @@ func codeFromState(state *state) (*Code, error) {
 			constants:    constants,
 			names:        copyStrings(c.Names),
 			nameIndex:    nameIndex,
-			source:       c.Source,
+			source:       source,
 			filename:     c.Filename,
 			rootSource:   rootSource,
 			maxCallArgs:  c.MaxCallArgs,
@@ -540,7 +560,14 @@ func stateFromCode(code *Code) (*state, error) {
 		SymbolTable: definitionFromSymbolTable(code.symbols),
 	}
 	allCode := code.Flatten()
-	for _, code := range allCode {
+	for i, code := range allCode {
+		source := code.source
+		var sourceRange *[2]int
+		if i > 0 {
+			if r, ok := sliceRange(allCode[0].source, source); ok {
+				source, sourceRange = "", &r
+			}
+		}
 		constants, err := marshalConstants(code.constants)
 		if err != nil {
 			return nil, err
@@ -553,7 +580,8 @@ func stateFromCode(code *Code) (*state, error) {
 			Instructions:  CopyInstructions(code.instructions),
 			Name:          code.name,
 			Names:         copyStrings(code.names),
-			Source:        code.source,
+			Source:        source,
+			SourceRange:   sourceRange,
 			Filename:      code.filename,
 			Locations:     locationsToDefs(code.locations),
 			MaxCallArgs:   code.maxCallArgs,
@@ -567,6 +595,21 @@ func stateFromCode(code *Code) (*state, error) {
 		state.Code = append(state.Code, cdef)
 	}
 	return state, nil
+}
+
+// sliceRange returns the byte range of s within root if s is a slice of root,
+// sharing its memory. It does not search root for a copy of s.
+func sliceRange(root, s string) ([2]int, bool) {
+	if s == "" || len(s) > len(root) {
+		return [2]int{}, false
+	}
+	rootStart := uintptr(unsafe.Pointer(unsafe.StringData(root)))
+	p := uintptr(unsafe.Pointer(unsafe.StringData(s)))
+	if p < rootStart || p-rootStart > uintptr(len(root)-len(s)) {
+		return [2]int{}, false
+	}
+	start := int(p - rootStart)
+	return [2]int{start, start + len(s)}, true
 }
 
 func definitionFromSymbolTable(table *SymbolTable) *symbolTableDef {
