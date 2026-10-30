@@ -74,7 +74,8 @@ type CodeParams struct {
 	GlobalCount  int
 	// GlobalNames names each global slot. Only root code uses it: every
 	// code shares the root's globals, and its GlobalNameAt, GlobalNameCount
-	// and GlobalNames read the root's names. Leave it nil for other code.
+	// and GlobalNames read the root's names. NewCode drops the names of each
+	// child it attaches, so names passed for child code are not kept.
 	GlobalNames []string
 	LocalNames  []string
 	EnvKeys     []string // Names of globals from compile-time env (for validation)
@@ -114,9 +115,11 @@ func NewCode(params CodeParams) *Code {
 		exceptionHandlers: copyHandlers(params.ExceptionHandlers),
 	}
 
-	// Set parent reference on all children for source lookups
+	// Set parent reference on all children for source lookups. Children
+	// read the root's global names, so drop any names they were given.
 	for _, child := range code.children {
 		child.parent = code
+		child.globalNames = nil
 	}
 
 	return code

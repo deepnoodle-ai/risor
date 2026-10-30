@@ -261,13 +261,8 @@ func codeFromState(state *codeState) (*Code, error) {
 			return nil, err
 		}
 
-		// Only the root uses global names. Names on other code, as written
-		// by older versions, are ignored.
-		var globalNames []string
-		if i == 0 {
-			globalNames = def.GlobalNames
-		}
-
+		// Older versions wrote global names on every code. NewCode drops
+		// them from each child, so only the root's names are kept.
 		codes[i] = NewCode(CodeParams{
 			ID:                def.ID,
 			Name:              def.Name,
@@ -283,7 +278,7 @@ func codeFromState(state *codeState) (*Code, error) {
 			MaxCallArgs:       def.MaxCallArgs,
 			LocalCount:        def.LocalCount,
 			GlobalCount:       def.GlobalCount,
-			GlobalNames:       globalNames,
+			GlobalNames:       def.GlobalNames,
 			LocalNames:        def.LocalNames,
 			EnvKeys:           def.EnvKeys,
 			ExceptionHandlers: handlers,
