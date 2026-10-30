@@ -723,9 +723,35 @@ func TestGoFunc_Equals(t *testing.T) {
 	goFunc2 := NewGoFunc(reflect.ValueOf(fn), "fn", registry)
 	goFunc3 := NewGoFunc(reflect.ValueOf(func() {}), "fn", registry)
 
-	assert.True(t, goFunc1.Equals(goFunc2))
+	// Two wrappers of the same func value are different objects
+	assert.True(t, goFunc1.Equals(goFunc1))
+	assert.False(t, goFunc1.Equals(goFunc2))
 	assert.False(t, goFunc1.Equals(goFunc3))
 	assert.False(t, goFunc1.Equals(NewInt(1)))
+}
+
+type testCounter struct{ n int }
+
+func (c *testCounter) Get() int { return c.n }
+
+//go:noinline
+func testMakeAdder(n int) func(int) int {
+	return func(x int) int { return x + n }
+}
+
+// Closures from one function literal, and method values of different
+// receivers, share a code pointer but are different functions.
+func TestGoFunc_EqualsSameCodePointer(t *testing.T) {
+	registry := DefaultRegistry()
+	add1 := NewGoFunc(reflect.ValueOf(testMakeAdder(1)), "add1", registry)
+	add2 := NewGoFunc(reflect.ValueOf(testMakeAdder(2)), "add2", registry)
+	assert.False(t, add1.Equals(add2))
+	assert.True(t, add1.Equals(add1))
+
+	get1 := NewGoFunc(reflect.ValueOf((&testCounter{1}).Get), "get1", registry)
+	get2 := NewGoFunc(reflect.ValueOf((&testCounter{2}).Get), "get2", registry)
+	assert.False(t, get1.Equals(get2))
+	assert.True(t, get1.Equals(get1))
 }
 
 func TestGoFunc_Inspect(t *testing.T) {

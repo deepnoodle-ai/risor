@@ -86,7 +86,9 @@ func (g *GoFunc) Equals(other Object) bool {
 			g.recv.Pointer() == otherFunc.recv.Pointer() &&
 			g.method == otherFunc.method
 	}
-	return g.fn.Pointer() == otherFunc.fn.Pointer()
+	// Go closures made from one function literal share a code pointer, and
+	// Go cannot compare func values, so compare by identity
+	return g == otherFunc
 }
 
 func (g *GoFunc) Attrs() []AttrSpec {
