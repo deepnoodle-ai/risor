@@ -65,10 +65,10 @@ func TestStringGetItem(t *testing.T) {
 		expected    string
 		expectedErr string
 	}{
-		{"", 0, "", "index error: index out of range: 0"},
+		{"", 0, "", "index out of range: 0"},
 		{"a", 0, "a", ""},
 		{"a", -1, "a", ""},
-		{"a", -2, "a", "index error: index out of range: -2"},
+		{"a", -2, "a", "index out of range: -2"},
 		{"012345", 5, "5", ""},
 		{"012345", -1, "5", ""},
 		{"012345", -2, "4", ""},

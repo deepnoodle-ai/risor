@@ -32,9 +32,8 @@ conversion may produce at most `MaxListLength` elements in total, counting every
 list item, map entry, and range element. A list referenced more than once counts
 each time, so `[l, l]` costs `2 + 2 * len(l)` elements. All arguments of one
 call share the cap, so `f(...[l, l])` costs `2 * len(l)`. Exceeding the cap
-raises an error whose message contains "value too large to convert". A script
-can catch it with `try`/`catch`. Match on the message, not on `e.kind()`: the
-kind is not the same for every conversion.
+raises a value error whose message contains "value too large to convert". A
+script can catch it with `try`/`catch` and check `e.kind() == "value error"`.
 
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.

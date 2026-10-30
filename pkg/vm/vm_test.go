@@ -1165,10 +1165,10 @@ func TestTryTypeError(t *testing.T) {
 	`
 	result, err := run(context.Background(), code)
 	assert.NoError(t, err)
-	// Check that the error message contains the expected content (may include location info)
+	// The string of a caught error is its message, without the kind or location
 	resultStr, ok := result.(*object.String)
 	assert.True(t, ok)
-	assert.Contains(t, resultStr.Value(), "type error: attribute \"append\" not found on int object")
+	assert.Equal(t, resultStr.Value(), "attribute \"append\" not found on int object")
 }
 
 func TestTryUnsupportedOperation(t *testing.T) {
@@ -1180,10 +1180,10 @@ func TestTryUnsupportedOperation(t *testing.T) {
 	`
 	result, err := run(context.Background(), code)
 	assert.NoError(t, err)
-	// Check that the error message contains the expected content (may include location info)
+	// The string of a caught error is its message, without the kind or location
 	resultStr, ok := result.(*object.String)
 	assert.True(t, ok)
-	assert.Contains(t, resultStr.Value(), "type error: unsupported operation for list: + on type int")
+	assert.Equal(t, resultStr.Value(), "unsupported operation for list: + on type int")
 }
 
 func TestTryWithErrorValues(t *testing.T) {
@@ -1209,7 +1209,7 @@ func TestStringTemplateWithThrow(t *testing.T) {
 	` + "`the err string is: ${raise(\"oops\")}. sad!`"
 	_, err := run(context.Background(), code)
 	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "oops")
+	assert.Equal(t, err.Error(), "runtime error: oops (2:30)")
 }
 
 func TestStringTemplateWithErrorValue(t *testing.T) {
@@ -1854,7 +1854,7 @@ func TestIncrementalEvaluation(t *testing.T) {
 func TestModifyModule(t *testing.T) {
 	_, err := run(context.Background(), `math.max = 123`)
 	assert.Error(t, err)
-	assert.Equal(t, err.Error(), "type error: cannot modify module attributes")
+	assert.Equal(t, err.Error(), "type error: cannot modify module attributes (1:1)")
 }
 
 func TestFreeVariables(t *testing.T) {

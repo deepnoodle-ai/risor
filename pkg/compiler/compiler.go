@@ -1307,6 +1307,8 @@ func (c *Compiler) compileCallArgs(node *ast.Call) error {
 				return err
 			}
 		}
+		// An error from the call points at the call, not the last argument
+		c.currentNode = node
 		if c.current.pipeActive {
 			c.emit(op.Partial, uint16(argc))
 		} else {
@@ -1336,6 +1338,7 @@ func (c *Compiler) compileCallArgs(node *ast.Call) error {
 		// For pipe, we can't easily support spread (would need PartialSpread)
 		return c.formatError("spread arguments not supported in pipe expressions", node.Pos())
 	}
+	c.currentNode = node
 	c.emit(op.CallSpread)
 	return nil
 }
