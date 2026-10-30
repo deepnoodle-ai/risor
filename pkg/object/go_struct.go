@@ -83,7 +83,13 @@ func promotedFromSync(structType reflect.Type, name string) bool {
 					continue
 				}
 				if isSyncType(field.Type) {
-					if _, ok := reflect.PointerTo(derefType(field.Type)).MethodByName(name); ok {
+					// A pointer to an interface type has no methods, so look
+					// up an embedded interface such as sync.Locker directly.
+					ft := derefType(field.Type)
+					if ft.Kind() != reflect.Interface {
+						ft = reflect.PointerTo(ft)
+					}
+					if _, ok := ft.MethodByName(name); ok {
 						fromSync = true
 					}
 					continue

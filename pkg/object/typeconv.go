@@ -240,13 +240,20 @@ func enterGo(path []goRef, ref goRef) ([]goRef, error) {
 
 // fromGoPath converts v, where path holds the Go values enclosing it.
 func (r *TypeRegistry) fromGoPath(v any, path []goRef) (Object, error) {
-	if v == nil {
+	// A nil pointer is null, whatever its type. Check before the interface
+	// checks below: a typed nil Object must not reach the VM, and calling
+	// RisorValue or a registered converter on a nil receiver can panic.
+	if isNilValue(v) {
 		return Nil, nil
 	}
 
 	// Check if value implements RisorValuer
 	if rv, ok := v.(RisorValuer); ok {
-		return rv.RisorValue(), nil
+		obj := rv.RisorValue()
+		if isNilValue(obj) {
+			return Nil, nil
+		}
+		return obj, nil
 	}
 
 	// Check if value is already an Object
@@ -263,6 +270,15 @@ func (r *TypeRegistry) fromGoPath(v any, path []goRef) (Object, error) {
 
 	// Handle by kind for common cases
 	return r.fromGoByKind(v, typ, path)
+}
+
+// isNilValue reports whether v is nil or a nil pointer.
+func isNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 // fromGoField converts an addressable struct field. A field that holds a
@@ -574,6 +590,28 @@ func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type, path nestPath[
 			return convertTo(v.value, nil, target)
 		case *String:
 			return convertTo([]byte(v.value), nil, target)
+		}
+	}
+	// A slice of a defined byte type, such as []Role where Role is uint8.
+	// fromGoSlice converts these to Bytes, so accept Bytes back. Go doesn't
+	// allow converting []byte to []Role directly, so copy element by element.
+	if target.Elem().Kind() == reflect.Uint8 {
+		var data []byte
+		ok := true
+		switch v := obj.(type) {
+		case *Bytes:
+			data = v.value
+		case *String:
+			data = []byte(v.value)
+		default:
+			ok = false
+		}
+		if ok {
+			slice := reflect.MakeSlice(target, len(data), len(data))
+			for i, c := range data {
+				slice.Index(i).SetUint(uint64(c))
+			}
+			return slice.Interface(), nil
 		}
 	}
 
