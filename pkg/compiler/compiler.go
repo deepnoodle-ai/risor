@@ -108,6 +108,13 @@ type Compiler struct {
 	rootOffsetsOf   string
 	rootOffsetsSet  bool
 
+	// sourceLines is linesOf split into lines. It is cached so that the
+	// source is split once per compilation rather than once per emitted
+	// instruction. In the REPL the root source grows with each input, which
+	// rebuilds it.
+	sourceLines []string
+	linesOf     string
+
 	// Current AST node being compiled (used for source map tracking)
 	currentNode ast.Node
 }
@@ -2256,8 +2263,20 @@ func (c *Compiler) getCurrentLocation() SourceLocation {
 		Line:      lineNum,
 		Column:    pos.ColumnNumber(),
 		EndColumn: endColumn,
-		Source:    c.current.GetSourceLine(lineNum),
+		Source:    c.sourceLine(lineNum),
 	}
+}
+
+// sourceLine returns the given 1-based line of the source that the current
+// code's line numbers refer to. It gives the same result as
+// c.current.GetSourceLine without splitting the source on every call.
+func (c *Compiler) sourceLine(lineNum int) string {
+	source := c.current.lineSource()
+	if c.sourceLines == nil || source != c.linesOf {
+		c.sourceLines = strings.Split(source, "\n")
+		c.linesOf = source
+	}
+	return sourceLine(c.sourceLines, lineNum)
 }
 
 func makeInstruction(opcode op.Code, operands ...uint16) []op.Code {

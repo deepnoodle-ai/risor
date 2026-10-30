@@ -235,3 +235,19 @@ func TestIsBlockGlobalName(t *testing.T) {
 		assert.False(t, IsBlockGlobalName(name), name)
 	}
 }
+
+func TestChildCodeReadsRootGlobalNames(t *testing.T) {
+	child := NewCode(CodeParams{ID: "child", GlobalCount: 2})
+	root := NewCode(CodeParams{
+		ID:          "root",
+		GlobalCount: 2,
+		GlobalNames: []string{"x", BlockGlobalName("y", 1)},
+		Children:    []*Code{child},
+	})
+	assert.Equal(t, child.GlobalNameCount(), 2)
+	assert.Equal(t, child.GlobalNameAt(0), "x")
+	assert.Equal(t, child.GlobalNameAt(1), BlockGlobalName("y", 1))
+	assert.Equal(t, child.GlobalNameAt(2), "")
+	assert.Equal(t, child.GlobalNames(), []string{"x"})
+	assert.Equal(t, child.GlobalNames(), root.GlobalNames())
+}

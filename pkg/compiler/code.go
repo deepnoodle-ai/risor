@@ -301,22 +301,22 @@ func (c *Code) LocationsCount() int {
 // It tries rootSource first (for accurate line lookup in nested functions),
 // then falls back to the local source.
 func (c *Code) GetSourceLine(lineNum int) string {
-	if lineNum < 1 {
-		return ""
+	return sourceLine(strings.Split(c.lineSource(), "\n"), lineNum)
+}
+
+// lineSource returns the source that line numbers in c refer to: the root
+// source if c has one, and otherwise its own source.
+func (c *Code) lineSource() string {
+	if c.rootSource != nil && *c.rootSource != "" {
+		return *c.rootSource
 	}
-	// Try rootSource first for accurate line lookup in function bodies
-	source := ""
-	if c.rootSource != nil {
-		source = *c.rootSource
-	}
-	if source == "" {
-		source = c.source
-	}
-	if source == "" {
-		return ""
-	}
-	lines := strings.Split(source, "\n")
-	if lineNum > len(lines) {
+	return c.source
+}
+
+// sourceLine returns the given 1-based line of lines, or an empty string if
+// the line is out of range or there is no source.
+func sourceLine(lines []string, lineNum int) string {
+	if lineNum < 1 || lineNum > len(lines) {
 		return ""
 	}
 	return lines[lineNum-1]
@@ -336,18 +336,27 @@ func (c *Code) AddExceptionHandler(handler *ExceptionHandler) {
 // This recursively converts all child code blocks and Function constants.
 // The conversion is done bottom-up to ensure true immutability - children
 // are fully constructed before their parent.
+//
+// The result is a root bytecode.Code, even when c is a child (for example
+// from Flatten or Function.Code), so it always gets the global names.
 func (c *Code) ToBytecode() *bytecode.Code {
 	// Build a map from compiler.Code to bytecode.Code for function linking
 	codeMap := make(map[*Code]*bytecode.Code)
-	return c.toBytecodeWithMap(codeMap)
+	// Global names are a property of the root, which every code shares.
+	// Building them for each function would make compile time grow with the
+	// number of functions times the number of globals, so only the top-level
+	// target of the conversion gets them.
+	return c.toBytecodeWithMap(codeMap, c.GlobalNames())
 }
 
-func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Code {
+// toBytecodeWithMap converts c and its children. globalNames is set only for
+// the top-level target of the conversion and is nil for its children.
+func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code, globalNames []string) *bytecode.Code {
 	// Step 1: Recursively convert all children first (bottom-up construction)
 	// This ensures child bytecode.Code objects exist before we need them for constants
 	children := make([]*bytecode.Code, len(c.children))
 	for i, child := range c.children {
-		children[i] = child.toBytecodeWithMap(codeMap)
+		children[i] = child.toBytecodeWithMap(codeMap, nil)
 	}
 
 	// Step 2: Convert exception handlers
@@ -412,7 +421,7 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Cod
 		MaxCallArgs:       int(c.maxCallArgs),
 		LocalCount:        c.LocalsCount(),
 		GlobalCount:       c.GlobalsCount(),
-		GlobalNames:       c.GlobalNames(),
+		GlobalNames:       globalNames,
 		LocalNames:        c.LocalNames(),
 		EnvKeys:           c.envKeys,
 		ExceptionHandlers: handlers,

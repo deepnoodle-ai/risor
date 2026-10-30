@@ -1,9 +1,12 @@
 package bytecode
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestMarshalUnmarshalRoundTrip(t *testing.T) {
@@ -349,4 +352,56 @@ func TestMarshalUnmarshalEmptyLocalNames(t *testing.T) {
 	if restored.LocalNameCount() != 0 {
 		t.Errorf("expected 0 local names, got %v", restored.LocalNameCount())
 	}
+}
+
+func TestMarshalWritesGlobalNamesOnceForRoot(t *testing.T) {
+	// The child's own names are ignored: code reads its root's names.
+	child := NewCode(CodeParams{ID: "child", GlobalCount: 1, GlobalNames: []string{"child_name"}})
+	root := NewCode(CodeParams{
+		ID:          "root",
+		GlobalCount: 1,
+		GlobalNames: []string{"some_global_name"},
+		Children:    []*Code{child},
+	})
+	data, err := Marshal(root)
+	assert.Nil(t, err)
+	assert.Equal(t, strings.Count(string(data), "some_global_name"), 1)
+	assert.False(t, strings.Contains(string(data), "child_name"))
+
+	restored, err := Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, restored.ChildAt(0).GlobalNameAt(0), "some_global_name")
+}
+
+func TestMarshalChildCodeKeepsRootGlobalNames(t *testing.T) {
+	child := NewCode(CodeParams{ID: "child", GlobalCount: 1})
+	NewCode(CodeParams{
+		ID:          "root",
+		GlobalCount: 1,
+		GlobalNames: []string{"x"},
+		Children:    []*Code{child},
+	})
+	data, err := Marshal(child)
+	assert.Nil(t, err)
+	restored, err := Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, restored.GlobalNameAt(0), "x")
+}
+
+func TestUnmarshalOldFormatIgnoresChildGlobalNames(t *testing.T) {
+	// Older versions wrote global names on every code, not only the root.
+	state := codeState{Codes: []*codeDef{
+		{ID: "root", GlobalCount: 1, GlobalNames: []string{"root_name"}, ChildIndices: []int{1}},
+		{ID: "child", GlobalCount: 1, GlobalNames: []string{"old_child_name"}},
+	}}
+	data, err := json.Marshal(state)
+	assert.Nil(t, err)
+
+	restored, err := Unmarshal(data)
+	assert.Nil(t, err)
+	child := restored.ChildAt(0)
+	assert.Equal(t, restored.GlobalNameAt(0), "root_name")
+	assert.Equal(t, child.GlobalNameAt(0), "root_name")
+	assert.Equal(t, child.GlobalNames(), []string{"root_name"})
+	assert.Nil(t, child.globalNames)
 }
