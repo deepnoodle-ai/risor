@@ -176,12 +176,12 @@ func TestValidate(t *testing.T) {
 					{Line: 1, Column: 1}, {Line: 1, Column: 1 << 40},
 				}}),
 			}}),
-			`invalid bytecode in "child": location 1 has an invalid column (1099511627776 to 0)`,
+			`invalid bytecode in "child": location 1 has an invalid column (column 1099511627776, end column 0)`,
 		},
 		{
 			"negative column",
 			NewCode(CodeParams{Locations: []SourceLocation{{Line: 1, Column: -1}}}),
-			"location 0 has an invalid column (-1 to 0)",
+			"location 0 has an invalid column (column -1, end column 0)",
 		},
 		{
 			"child global checked against root",

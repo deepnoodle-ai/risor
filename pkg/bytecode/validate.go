@@ -254,7 +254,7 @@ func (v *validator) validateCode(code *Code) error {
 	for i, loc := range code.locations {
 		if loc.Column < 0 || loc.Column > math.MaxInt32 ||
 			loc.EndColumn < 0 || loc.EndColumn > math.MaxInt32 {
-			return fmt.Errorf("location %d has an invalid column (%d to %d)",
+			return fmt.Errorf("location %d has an invalid column (column %d, end column %d)",
 				i, loc.Column, loc.EndColumn)
 		}
 	}
