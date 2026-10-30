@@ -41,16 +41,40 @@
 // # Loading Bytecode
 //
 // [Marshal] writes a Code and its descendants as JSON, and [Unmarshal] reads
-// it back. Unmarshal never panics on malformed input. It checks that the code
-// blocks form a tree and then calls [Validate], which checks that every
-// instruction is complete and refers to a constant, name, local, global,
-// function, or jump target that exists. Malformed input returns an error.
+// it back. Unmarshal returns an error for malformed input instead of
+// panicking. It checks that the code blocks form a tree and then calls
+// [Validate], which checks that:
 //
-// These checks are structural. They do not check how instructions use the
-// value stack or the types of values at run time. The VM turns such faults
-// into errors rather than crashing the host, but bytecode from an untrusted
-// source is not a sandbox guarantee. Where you can, compile untrusted source
-// instead of loading untrusted bytecode.
+//   - every instruction is complete and has a known opcode
+//   - every constant, name, local, and global operand is in range
+//   - every jump and exception handler target starts an instruction
+//   - constants have supported types and functions have valid code
+//   - no block declares more local slots than it uses
+//
+// These checks are structural. They do not make bytecode from an untrusted
+// source safe to run. Know these limits before you load it:
+//
+//   - Loading does not check how instructions use the value stack or the
+//     types of values at run time. The VM reports such faults as errors, but
+//     the behavior of code that causes them is not specified.
+//   - Bytecode can read and write any variable slot of its own program,
+//     including the globals the host passed in and variables declared with
+//     const. It can also
+//     capture the local variables of a calling frame. The compiler never
+//     emits such code, so rules that the compiler enforces, such as "a script
+//     cannot reassign a constant", do not hold for loaded bytecode. Bytecode
+//     cannot reach the host beyond the values in its env.
+//   - Validation does not bound memory use. A function can use up to 65,535
+//     local slots, and each call frame allocates all of them, so deep
+//     recursion can allocate about 1 GB. Bound this with the maximum frame
+//     depth (risor.WithMaxStackDepth or vm.WithMaxFrameDepth) and the value
+//     limits (WithLimits).
+//   - Loading itself uses memory in proportion to the input, by a large
+//     factor: a 27 MB input used about 1.2 GB to load. Limit the size of
+//     untrusted input before you call Unmarshal.
+//
+// Where you can, compile untrusted source instead of loading untrusted
+// bytecode.
 //
 // # Usage
 //

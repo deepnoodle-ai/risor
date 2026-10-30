@@ -20,11 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `encode` input, counting a shared list each time it appears (#496).
 - **`bytecode.Validate`** checks that a `*bytecode.Code` is well formed:
   known opcodes with all operands, constant, name, local, and global indexes
-  in range, jump and exception handler targets on instruction boundaries, and
-  supported constant types. It does not check stack use or run-time value
-  types, so validated bytecode from an untrusted source is still not a
-  sandbox. `InstructionIter.Err` (in `bytecode` and `compiler`) reports why an
-  iteration stopped early.
+  in range, jump and exception handler targets on instruction boundaries,
+  supported constant types, and no more local slots than a block uses. It
+  does not check stack use or run-time value types, and it does not bound
+  memory use. The `bytecode` package documentation lists what this means for
+  bytecode from an untrusted source. `InstructionIter.Err` (in `bytecode` and
+  `compiler`) reports why an iteration stopped early.
 
 ### Changed
 

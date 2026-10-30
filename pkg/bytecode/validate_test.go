@@ -80,6 +80,18 @@ func TestValidate(t *testing.T) {
 	})
 	assert.Nil(t, Validate(valid))
 
+	// Local counts the compiler emits: parameter and rest slots, a named
+	// function's own slot, and one root local per global.
+	named := NewCode(CodeParams{ID: "main.0", Name: "g", IsNamed: true, LocalCount: 3})
+	assert.Nil(t, Validate(NewCode(CodeParams{
+		GlobalCount: 4,
+		LocalCount:  4,
+		Children:    []*Code{named},
+		Constants: []any{NewFunction(FunctionParams{
+			Name: "g", Parameters: []string{"a"}, RestParam: "r", Code: named,
+		})},
+	})))
+
 	tests := []struct {
 		name string
 		code *Code
@@ -123,6 +135,18 @@ func TestValidate(t *testing.T) {
 				Name: "f", Code: NewCode(CodeParams{Name: "body", Instructions: []op.Code{op.LoadFast, 0}}),
 			})}}),
 			`invalid bytecode in "body": LOAD_FAST at offset 0: local index 0 out of range`,
+		},
+		{
+			"local count larger than used",
+			NewCode(CodeParams{Children: []*Code{
+				NewCode(CodeParams{Name: "child", LocalCount: 3, Instructions: []op.Code{op.LoadFast, 1}}),
+			}}),
+			"local count 3 is larger than the 2 locals the code uses",
+		},
+		{
+			"root locals beyond globals",
+			NewCode(CodeParams{Name: "main", GlobalCount: 2, LocalCount: 3}),
+			"local count 3 is larger than the 2 locals",
 		},
 		{
 			"child global checked against root",

@@ -299,7 +299,7 @@ func TestMarshalUnmarshalLocalNames(t *testing.T) {
 	code := NewCode(CodeParams{
 		ID:           "test",
 		Name:         "testFunc",
-		Instructions: []op.Code{op.LoadFast, 0, op.LoadFast, 1, op.ReturnValue},
+		Instructions: []op.Code{op.LoadFast, 0, op.LoadFast, 1, op.StoreFast, 2, op.ReturnValue},
 		LocalCount:   3,
 		LocalNames:   []string{"x", "y", "result"},
 	})

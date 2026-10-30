@@ -28,59 +28,86 @@ const maxParameters = 256
 //   - Constants have a type the VM supports, and each function constant
 //     has code, at most 256 parameters, no more defaults than parameters,
 //     and only nil, bool, int, float, or string defaults.
-//   - Local and global counts are in the range of a uint16 operand.
+//   - The local count of each block is no larger than the block needs: its
+//     highest local operand, or its function's parameters and rest
+//     parameter, plus one slot for a named function's own name. The root
+//     may also have one local per global, as the compiler emits. The VM
+//     gives every call frame this many slots, so a larger count would only
+//     waste memory.
+//   - The local and global counts are in the range of a uint16 operand.
 //
 // Validate does not check how instructions use the value stack, the types of
 // values at run time, or free variable and cell operands, which depend on
-// run-time state. The VM reports those faults as errors. Validated bytecode
-// from an untrusted source is therefore not a sandbox: it cannot crash the
-// host, but it can do anything a compiled script could do, and its behavior
-// on such faults is not specified. Compile untrusted source instead of
-// loading untrusted bytecode where you can.
+// run-time state. See the package documentation for what this means for
+// bytecode from an untrusted source.
 func Validate(code *Code) error {
 	if code == nil {
 		return fmt.Errorf("invalid bytecode: nil code")
 	}
 	v := &validator{
+		root:        code,
 		globalCount: code.GlobalCount(),
-		seen:        map[*Code]bool{},
+		paramSlots:  map[*Code]int{},
 	}
-	return v.validate(code)
-}
-
-type validator struct {
-	globalCount int
-	seen        map[*Code]bool
-}
-
-func (v *validator) validate(code *Code) error {
-	if v.seen[code] {
-		return nil
+	codes, err := v.collect(code)
+	if err != nil {
+		return err
 	}
-	v.seen[code] = true
-	if err := v.validateCode(code); err != nil {
-		name := code.Name()
-		if name == "" {
-			name = code.ID()
-		}
-		return fmt.Errorf("invalid bytecode in %q: %w", name, err)
-	}
-	for _, child := range code.children {
-		if child == nil {
-			return fmt.Errorf("invalid bytecode in %q: nil child", code.Name())
-		}
-		if err := v.validate(child); err != nil {
-			return err
-		}
-	}
-	for _, constant := range code.constants {
-		if fn, ok := constant.(*Function); ok {
-			if err := v.validate(fn.code); err != nil {
-				return err
+	for _, c := range codes {
+		if err := v.validateCode(c); err != nil {
+			name := c.Name()
+			if name == "" {
+				name = c.ID()
 			}
+			return fmt.Errorf("invalid bytecode in %q: %w", name, err)
 		}
 	}
 	return nil
+}
+
+type validator struct {
+	root        *Code
+	globalCount int
+	// paramSlots maps a function's code to the local slots its parameters
+	// and rest parameter fill when the function is called.
+	paramSlots map[*Code]int
+}
+
+// collect returns every code block reachable from root, through children and
+// function constants, and fills in v.paramSlots. It uses a work list rather
+// than recursion, since the nesting depth comes from the input.
+func (v *validator) collect(root *Code) ([]*Code, error) {
+	seen := map[*Code]bool{root: true}
+	codes := []*Code{root}
+	for i := 0; i < len(codes); i++ {
+		code := codes[i]
+		next := make([]*Code, 0, len(code.children))
+		for _, child := range code.children {
+			if child == nil {
+				return nil, fmt.Errorf("invalid bytecode in %q: nil child", code.Name())
+			}
+			next = append(next, child)
+		}
+		for _, constant := range code.constants {
+			fn, ok := constant.(*Function)
+			if !ok || fn.code == nil {
+				continue // validateConstant reports a function without code
+			}
+			slots := len(fn.parameters)
+			if fn.restParam != "" {
+				slots++
+			}
+			v.paramSlots[fn.code] = max(v.paramSlots[fn.code], slots)
+			next = append(next, fn.code)
+		}
+		for _, c := range next {
+			if !seen[c] {
+				seen[c] = true
+				codes = append(codes, c)
+			}
+		}
+	}
+	return codes, nil
 }
 
 func (v *validator) validateCode(code *Code) error {
@@ -112,6 +139,9 @@ func (v *validator) validateCode(code *Code) error {
 		decoded = append(decoded, instr)
 		offsets = append(offsets, pos)
 		pos += len(instr)
+	}
+	if err := v.checkLocalCount(code, decoded); err != nil {
+		return err
 	}
 	isTarget := func(target int) bool {
 		return target >= 0 && target <= n && starts[target]
@@ -165,6 +195,37 @@ func (v *validator) validateCode(code *Code) error {
 			!isTarget(h.CatchStart) || !isTarget(h.FinallyStart) {
 			return fmt.Errorf("exception handler %d has an invalid position", i)
 		}
+	}
+	return nil
+}
+
+// checkLocalCount checks that the local count is no larger than the code
+// needs. See Validate for the rule. It must match what the compiler emits:
+// a named function may have its name slot after locals that no instruction
+// uses, such as a destructured parameter's hidden slot, so the name slot is
+// added after taking the maximum.
+func (v *validator) checkLocalCount(code *Code, decoded [][]op.Code) error {
+	needed := v.paramSlots[code]
+	for _, instr := range decoded {
+		switch instr[0] {
+		case op.LoadFast, op.StoreFast:
+			needed = max(needed, int(instr[1])+1)
+		case op.MakeCell:
+			// A cell for the current frame (0 frames back) refers to a local
+			if instr[2] == 0 {
+				needed = max(needed, int(instr[1])+1)
+			}
+		}
+	}
+	if code.isNamed {
+		needed++
+	}
+	if code == v.root {
+		needed = max(needed, code.globalCount)
+	}
+	if code.localCount > needed {
+		return fmt.Errorf("local count %d is larger than the %d locals the code uses",
+			code.localCount, needed)
 	}
 	return nil
 }
