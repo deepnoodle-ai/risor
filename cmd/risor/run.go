@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/deepnoodle-ai/risor/v2"
+	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/color"
 )
@@ -32,12 +34,6 @@ func runHandler(ctx *cli.Context) error {
 		handleSigForProfiler()
 	}
 
-	// Get Risor options
-	opts, err := getRisorOptions(ctx, true)
-	if err != nil {
-		return err
-	}
-
 	// Check if we should run REPL
 	if shouldRunRepl(ctx) {
 		replEnv, err := getReplEnv(ctx)
@@ -49,6 +45,12 @@ func runHandler(ctx *cli.Context) error {
 
 	// Get the code to execute
 	code, err := getRisorCode(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Get Risor options
+	opts, err := getRisorOptions(ctx, usesStdin(code))
 	if err != nil {
 		return err
 	}
@@ -110,7 +112,9 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 		"print": newPrintBuiltin(),
 	}))
 	// Auto-inject stdin as a variable when data is piped and stdin isn't
-	// being used to read code (via --stdin flag).
+	// being used to read code (via --stdin flag). Callers pass injectStdin
+	// only when the script reads stdin, since reading blocks until the pipe
+	// closes.
 	if injectStdin && !ctx.Bool("stdin") && cli.IsPiped() {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -134,6 +138,23 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 		opts = append(opts, risor.WithEnv(vars))
 	}
 	return opts, nil
+}
+
+// usesStdin reports whether code refers to the stdin variable. Code that
+// does not parse is reported as not using it; evaluation reports the error.
+func usesStdin(code string) bool {
+	program, err := parser.Parse(context.Background(), code, nil)
+	if err != nil {
+		return false
+	}
+	found := false
+	ast.Inspect(program, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok && ident.Name == "stdin" {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // parseJSONVarFlag parses a --var-json flag value as a JSON object.

@@ -213,6 +213,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   returned `"runtime error"` instead of `"type error"`. For Go callers,
   `errors.As` now finds the `*object.TypeError` or `*object.ValueError` in such
   an error (#494).
+- `risor <file>`, `risor -c`, and `risor eval` read piped stdin into the
+  `stdin` variable only when the script refers to `stdin`. Before, they always
+  read it, so a script that ignored stdin did not finish until the pipe closed,
+  and blocked forever on a pipe that stayed open (#505).
+- `risor dis --func` finds functions defined inside other functions.
+- `risor lint` reports a `let` or `const` in a function that is never used
+  (`unused-variable`). Top-level variables are not reported, since a host can
+  read them after the run. Names that start with `_` are not reported. Lint
+  issue lines and columns from syntax checks are now 1-based, like the
+  line-level checks.
+- `cmd/risor-docs` reads modules from `pkg/modules`.
 
 ## [2.2.0] - 2026-08-17
 

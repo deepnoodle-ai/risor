@@ -59,3 +59,46 @@ func TestDisassembly(t *testing.T) {
 `
 	assert.Equal(t, capturedOutput, strings.TrimPrefix(expected, "\n"))
 }
+
+func TestDisassemblyNestedFunc(t *testing.T) {
+	oldEnabled := color.Enabled
+	color.Enabled = false
+	defer func() { color.Enabled = oldEnabled }()
+
+	app := cli.New("risor").SetColorEnabled(false)
+	app.Command("dis").
+		Args("file?").
+		Flags(
+			cli.String("code", "c"),
+			cli.Bool("stdin", ""),
+			cli.String("func", ""),
+		).
+		Run(disHandler)
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := `function outer() {
+    function inner() { return 7 }
+    return inner()
+}`
+	err := app.ExecuteArgs([]string{"dis", "--func", "inner", "-c", code})
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	expected := `
++--------+--------------+----------+------+
+| OFFSET |    OPCODE    | OPERANDS | INFO |
++--------+--------------+----------+------+
+|      0 | LOAD_CONST   |        0 | 7    |
+|      2 | RETURN_VALUE |          |      |
++--------+--------------+----------+------+
+`
+	assert.Equal(t, buf.String(), strings.TrimPrefix(expected, "\n"))
+}
