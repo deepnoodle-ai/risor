@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -348,11 +349,16 @@ func (s *String) Split(ctx context.Context, obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	parts := strings.SplitN(s.value, sep, LimitCount(ctx, -1))
-	if err := CheckListLength(ctx, len(parts)); err != nil {
+	// Count the parts first: strings.SplitN with a positive n allocates for n
+	// parts, not for the number of separators it finds.
+	n := strings.Count(s.value, sep) + 1
+	if sep == "" {
+		n = utf8.RuneCountInString(s.value)
+	}
+	if err := CheckListLength(ctx, n); err != nil {
 		return nil, err
 	}
-	return NewStringList(parts), nil
+	return NewStringList(strings.Split(s.value, sep)), nil
 }
 
 // Fields splits s around runs of white space. It returns a value error if

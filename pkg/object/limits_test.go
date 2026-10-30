@@ -3,6 +3,7 @@ package object
 import (
 	"context"
 	"math"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -232,6 +233,21 @@ func TestExpandRanges(t *testing.T) {
 	got, err = ExpandRanges(ctx, cyclic)
 	assert.Nil(t, err)
 	assert.Equal(t, got.(*List).items[0].Inspect(), "[0, 1, 2]")
+}
+
+// Split allocates for the parts it finds, not for the list length limit.
+func TestStringSplitAllocation(t *testing.T) {
+	ctx := context.Background()
+	s := NewString(strings.Repeat("a", 1<<22))
+	sep := NewString(",")
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	result, err := s.Split(ctx, sep)
+	runtime.ReadMemStats(&after)
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*List).Size(), 1)
+	// Before, SplitN allocated 4M slots (64 MiB) for this one-part result
+	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(1<<20))
 }
 
 func TestExpandRangesDepth(t *testing.T) {
