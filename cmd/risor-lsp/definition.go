@@ -47,7 +47,7 @@ func findDefinition(program *ast.Program, symbol string) *protocol.Location {
 		case *ast.Var:
 			name := s.Name.Name
 			if name == symbol {
-				pos := s.Pos()
+				pos := s.Name.Pos()
 				return &protocol.Location{
 					URI: "", // Will be filled in by caller
 					Range: protocol.Range{
