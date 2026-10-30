@@ -329,12 +329,20 @@ const blockGlobalSeparator = "#"
 // name is "<name>#<slot index>". It is unique within the code, so a block
 // variable never shadows a root variable with the same name when globals are
 // looked up or carried over by name.
+//
+// It is exported for use by the compiler and the VM. The "#" form is an
+// implementation detail, not a stable API: hosts must not build or parse
+// these names.
 func BlockGlobalName(name string, index int) string {
 	return name + blockGlobalSeparator + strconv.Itoa(index)
 }
 
 // IsBlockGlobalName returns true if name is a global slot name made by
 // BlockGlobalName.
+//
+// It is exported for use by the compiler and the VM. The "#" form is an
+// implementation detail, not a stable API: hosts must not build or parse
+// these names.
 func IsBlockGlobalName(name string) bool {
 	return strings.Contains(name, blockGlobalSeparator)
 }
