@@ -67,6 +67,36 @@ func TestDefinitionHasURI(t *testing.T) {
 	assert.Equal(t, locations[0].URI, uri)
 }
 
+// The definition range of a non-ASCII name spans its characters.
+func TestDefinitionRangeCountsRunes(t *testing.T) {
+	s := newTestServer()
+	uri := protocol.DocumentURI("file:///def-runes.risor")
+	openTestDocument(t, s, uri, "café = 1\ncafé")
+
+	locations, err := s.Definition(context.Background(), &protocol.DefinitionParams{
+		TextDocumentPositionParams: position(uri, 1, 0),
+	})
+	assert.NoError(t, err)
+	assert.Len(t, locations, 1)
+	assert.Equal(t, locations[0].Range.Start.Character, uint32(0))
+	assert.Equal(t, locations[0].Range.End.Character, uint32(4))
+}
+
+// A let definition range covers the name, not the let keyword.
+func TestDefinitionRangeStartsAtLetName(t *testing.T) {
+	s := newTestServer()
+	uri := protocol.DocumentURI("file:///def-let.risor")
+	openTestDocument(t, s, uri, "let café = 1\ncafé")
+
+	locations, err := s.Definition(context.Background(), &protocol.DefinitionParams{
+		TextDocumentPositionParams: position(uri, 1, 0),
+	})
+	assert.NoError(t, err)
+	assert.Len(t, locations, 1)
+	assert.Equal(t, locations[0].Range.Start.Character, uint32(4))
+	assert.Equal(t, locations[0].Range.End.Character, uint32(8))
+}
+
 func TestDidCloseRemovesDocument(t *testing.T) {
 	s := newTestServer()
 	uri := protocol.DocumentURI("file:///close.risor")

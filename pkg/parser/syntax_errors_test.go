@@ -180,6 +180,14 @@ func TestArrowParamAliasWithDefault(t *testing.T) {
 	}
 }
 
+// The error for a non-ASCII name spans the name's runes, not its bytes.
+func TestDefaultValueErrorSpansRunes(t *testing.T) {
+	errs := parseErrors(t, "[ñame = 1]")
+	start, end := errs[0].StartPosition(), errs[0].EndPosition()
+	assert.Equal(t, start.Column, 1)
+	assert.Equal(t, end.Column, 4) // inclusive: the last rune of "ñame"
+}
+
 // A match nested in a pattern or guard must not clobber the outer pattern
 // context, and '=>' still starts an arrow function in its arm results.
 func TestNestedMatchPatternContext(t *testing.T) {

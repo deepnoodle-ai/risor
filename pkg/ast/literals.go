@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/internal/tmpl"
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
@@ -19,7 +20,7 @@ type Int struct {
 func (x *Int) exprNode() {}
 
 func (x *Int) Pos() token.Position { return x.ValuePos }
-func (x *Int) End() token.Position { return x.ValuePos.Advance(len(x.Literal)) }
+func (x *Int) End() token.Position { return x.ValuePos.Advance(utf8.RuneCountInString(x.Literal)) }
 
 func (x *Int) String() string { return x.Literal }
 
@@ -33,7 +34,7 @@ type Float struct {
 func (x *Float) exprNode() {}
 
 func (x *Float) Pos() token.Position { return x.ValuePos }
-func (x *Float) End() token.Position { return x.ValuePos.Advance(len(x.Literal)) }
+func (x *Float) End() token.Position { return x.ValuePos.Advance(utf8.RuneCountInString(x.Literal)) }
 
 func (x *Float) String() string { return x.Literal }
 
@@ -59,7 +60,7 @@ type Bool struct {
 func (x *Bool) exprNode() {}
 
 func (x *Bool) Pos() token.Position { return x.ValuePos }
-func (x *Bool) End() token.Position { return x.ValuePos.Advance(len(x.Literal)) }
+func (x *Bool) End() token.Position { return x.ValuePos.Advance(utf8.RuneCountInString(x.Literal)) }
 
 func (x *Bool) String() string { return x.Literal }
 
@@ -90,7 +91,8 @@ func (x *DefaultValue) String() string {
 // String is an expression node that holds a string literal.
 type String struct {
 	ValuePos token.Position // position of opening quote
-	Literal  string         // the raw literal including quotes
+	Closing  token.Position // position of closing quote; unset for a map shorthand key
+	Literal  string         // the unescaped string contents, without quotes; not the source text
 	Value    string         // the unquoted string value
 	Template *tmpl.Template // template if this is a template string
 	Exprs    []Expr         // embedded expressions for templates
@@ -99,7 +101,12 @@ type String struct {
 func (x *String) exprNode() {}
 
 func (x *String) Pos() token.Position { return x.ValuePos }
-func (x *String) End() token.Position { return x.ValuePos.Advance(len(x.Literal)) }
+func (x *String) End() token.Position {
+	if x.Closing.IsValid() {
+		return x.Closing.Advance(1)
+	}
+	return x.ValuePos.Advance(utf8.RuneCountInString(x.Literal))
+}
 
 func (x *String) String() string { return fmt.Sprintf("%q", x.Value) }
 

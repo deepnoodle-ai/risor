@@ -6,10 +6,10 @@ type Type string
 
 // Position points to a particular location in an input string.
 type Position struct {
-	Char      int    // byte offset within the file
-	LineStart int    // byte offset of the start of the current line
+	Char      int    // rune offset within the file
+	LineStart int    // rune offset of the start of the current line
 	Line      int    // 0-indexed line number
-	Column    int    // 0-indexed column number
+	Column    int    // 0-indexed column number, counted in runes
 	File      string // filename
 }
 
@@ -23,7 +23,8 @@ func (p Position) ColumnNumber() int {
 	return p.Column + 1
 }
 
-// Advance returns a new Position advanced by n bytes.
+// Advance returns a new Position advanced by n runes, matching the
+// lexer, which counts offsets and columns in runes.
 // Used for computing End positions from a start position.
 // Note: This assumes the advance does not cross line boundaries.
 func (p Position) Advance(n int) Position {

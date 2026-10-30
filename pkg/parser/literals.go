@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/internal/tmpl"
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
@@ -83,6 +84,7 @@ func (p *Parser) parseString() (ast.Node, bool) {
 	if strToken.Type == token.STRING {
 		return &ast.String{
 			ValuePos: strToken.StartPosition,
+			Closing:  strToken.EndPosition,
 			Literal:  strToken.Literal,
 			Value:    strToken.Literal,
 		}, true
@@ -91,6 +93,7 @@ func (p *Parser) parseString() (ast.Node, bool) {
 	if !strings.Contains(strToken.Literal, "${") {
 		return &ast.String{
 			ValuePos: strToken.StartPosition,
+			Closing:  strToken.EndPosition,
 			Literal:  strToken.Literal,
 			Value:    strToken.Literal,
 		}, true
@@ -139,6 +142,7 @@ func (p *Parser) parseString() (ast.Node, bool) {
 	}
 	return &ast.String{
 		ValuePos: strToken.StartPosition,
+		Closing:  strToken.EndPosition,
 		Literal:  strToken.Literal,
 		Value:    strToken.Literal,
 		Template: tmpl,
@@ -762,7 +766,7 @@ func (p *Parser) setDefaultValueError(name *ast.Ident) {
 		Type:          token.IDENT,
 		Literal:       name.Name,
 		StartPosition: name.NamePos,
-		EndPosition:   name.NamePos.Advance(len(name.Name) - 1),
+		EndPosition:   name.NamePos.Advance(utf8.RuneCountInString(name.Name) - 1),
 	}
 	p.setTokenError(tok, "default value for %q is only allowed in arrow function destructuring parameters", name.Name)
 }

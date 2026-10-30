@@ -1135,3 +1135,21 @@ func TestAssignNilNameAndIndex(t *testing.T) {
 	}()
 	_ = assign.Pos()
 }
+
+// End positions count runes, matching the lexer's columns.
+func TestEndCountsRunes(t *testing.T) {
+	pos := token.Position{Char: 8, Line: 0, Column: 8}
+
+	closing := token.Position{Char: 11, Line: 0, Column: 11}
+	str := &String{ValuePos: pos, Closing: closing, Literal: "éé", Value: "éé"}
+	assert.Equal(t, str.End().Column, 12)
+	assert.Equal(t, str.End().Char, 12)
+
+	// A map shorthand key has no quotes and ends after its name.
+	key := &String{ValuePos: pos, Literal: "café", Value: "café"}
+	assert.Equal(t, key.End().Column, 12)
+
+	ident := &Ident{NamePos: pos, Name: "café"}
+	assert.Equal(t, ident.End().Column, 12)
+	assert.Equal(t, ident.End().Char, 12)
+}

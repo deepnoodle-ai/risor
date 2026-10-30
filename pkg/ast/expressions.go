@@ -3,6 +3,7 @@ package ast
 import (
 	"bytes"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
 )
@@ -16,7 +17,7 @@ type Ident struct {
 func (x *Ident) exprNode() {}
 
 func (x *Ident) Pos() token.Position { return x.NamePos }
-func (x *Ident) End() token.Position { return x.NamePos.Advance(len(x.Name)) }
+func (x *Ident) End() token.Position { return x.NamePos.Advance(utf8.RuneCountInString(x.Name)) }
 
 func (x *Ident) String() string { return x.Name }
 
@@ -35,7 +36,7 @@ func (x *Prefix) End() token.Position {
 	if x.X != nil {
 		return x.X.End()
 	}
-	return x.OpPos.Advance(len(x.Op))
+	return x.OpPos.Advance(utf8.RuneCountInString(x.Op))
 }
 
 func (x *Prefix) String() string {
@@ -95,7 +96,7 @@ func (x *Infix) End() token.Position {
 	if x.Y != nil {
 		return x.Y.End()
 	}
-	return x.OpPos.Advance(len(x.Op))
+	return x.OpPos.Advance(utf8.RuneCountInString(x.Op))
 }
 
 func (x *Infix) String() string {

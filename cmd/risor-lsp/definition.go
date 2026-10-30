@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
@@ -46,7 +47,7 @@ func findDefinition(program *ast.Program, symbol string) *protocol.Location {
 		case *ast.Var:
 			name := s.Name.Name
 			if name == symbol {
-				pos := s.Pos()
+				pos := s.Name.Pos()
 				return &protocol.Location{
 					URI: "", // Will be filled in by caller
 					Range: protocol.Range{
@@ -56,7 +57,7 @@ func findDefinition(program *ast.Program, symbol string) *protocol.Location {
 						},
 						End: protocol.Position{
 							Line:      uint32(pos.LineNumber() - 1),
-							Character: uint32(pos.ColumnNumber() + len(name) - 1),
+							Character: uint32(pos.ColumnNumber() + utf8.RuneCountInString(name) - 1),
 						},
 					},
 				}
@@ -74,7 +75,7 @@ func findDefinition(program *ast.Program, symbol string) *protocol.Location {
 						},
 						End: protocol.Position{
 							Line:      uint32(pos.LineNumber() - 1),
-							Character: uint32(pos.ColumnNumber() + len(name) - 1),
+							Character: uint32(pos.ColumnNumber() + utf8.RuneCountInString(name) - 1),
 						},
 					},
 				}
