@@ -1,7 +1,7 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with
-code in this repository.
+This file provides guidance to coding agents when working with code in this
+repository.
 
 ## Project Overview
 
@@ -159,6 +159,16 @@ func TestExample(t *testing.T) {
     assert.True(t, condition)
 }
 ```
+
+## Changelog
+
+Pull requests do not edit `CHANGELOG.md`. Every PR edits the same `Unreleased`
+section, so each merge makes the other open PRs conflict.
+
+Instead, describe the user-visible change in the PR title and description. PRs
+are squash-merged, so the PR title becomes the commit message on `main`. At
+release time, the `Unreleased` section is written from the PRs merged since the
+last release. See [docs/guides/releasing.md](docs/guides/releasing.md).
 
 ## Releasing
 
