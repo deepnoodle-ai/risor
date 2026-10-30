@@ -47,14 +47,7 @@ func (b *Byte) String() string {
 func (b *Byte) Compare(other Object) (int, error) {
 	switch other := other.(type) {
 	case *Float:
-		thisFloat := float64(b.value)
-		if thisFloat == other.value {
-			return 0, nil
-		}
-		if thisFloat > other.value {
-			return 1, nil
-		}
-		return -1, nil
+		return compareIntFloat(int64(b.value), other.value), nil
 	case *Int:
 		thisInt := int64(b.value)
 		if thisInt == other.value {
@@ -164,8 +157,14 @@ func (b *Byte) runOperationInt(opType op.BinaryOpType, right int64) (Object, err
 	case op.Power:
 		return NewInt(int64(math.Pow(float64(b.value), float64(right)))), nil
 	case op.LShift:
+		if right < 0 {
+			return nil, newValueErrorf("negative shift count")
+		}
 		return NewInt(int64(b.value) << right), nil
 	case op.RShift:
+		if right < 0 {
+			return nil, newValueErrorf("negative shift count")
+		}
 		return NewInt(int64(b.value) >> right), nil
 	case op.BitwiseAnd:
 		return NewInt(int64(b.value) & right), nil

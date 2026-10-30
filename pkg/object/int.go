@@ -49,14 +49,7 @@ func (i *Int) String() string {
 func (i *Int) Compare(other Object) (int, error) {
 	switch other := other.(type) {
 	case *Float:
-		thisFloat := float64(i.value)
-		if thisFloat == other.value {
-			return 0, nil
-		}
-		if thisFloat > other.value {
-			return 1, nil
-		}
-		return -1, nil
+		return compareIntFloat(i.value, other.value), nil
 	case *Int:
 		if i.value == other.value {
 			return 0, nil
@@ -83,7 +76,7 @@ func (i *Int) Equals(other Object) bool {
 	case *Int:
 		return i.value == other.value
 	case *Float:
-		return float64(i.value) == other.value
+		return !math.IsNaN(other.value) && compareIntFloat(i.value, other.value) == 0
 	case *Byte:
 		return i.value == int64(other.value)
 	}
@@ -131,9 +124,15 @@ func (i *Int) runOperationInt(opType op.BinaryOpType, right int64) (Object, erro
 	case op.Power:
 		return NewInt(int64(math.Pow(float64(i.value), float64(right)))), nil
 	case op.LShift:
-		return NewInt(i.value << uint(right)), nil
+		if right < 0 {
+			return nil, newValueErrorf("negative shift count")
+		}
+		return NewInt(i.value << right), nil
 	case op.RShift:
-		return NewInt(i.value >> uint(right)), nil
+		if right < 0 {
+			return nil, newValueErrorf("negative shift count")
+		}
+		return NewInt(i.value >> right), nil
 	case op.BitwiseAnd:
 		return NewInt(i.value & right), nil
 	case op.BitwiseOr:
@@ -155,7 +154,7 @@ func (i *Int) runOperationFloat(opType op.BinaryOpType, right float64) (Object, 
 	case op.Divide:
 		return NewFloat(iValue / right), nil
 	case op.Power:
-		return NewInt(int64(math.Pow(float64(i.value), float64(right)))), nil
+		return NewFloat(math.Pow(iValue, right)), nil
 	default:
 		return nil, newTypeErrorf("unsupported operation for int: %v on type float", opType)
 	}
