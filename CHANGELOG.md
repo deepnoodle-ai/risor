@@ -46,11 +46,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, and the globals that
-  `RunCode` carries over now use the root (top-level) variable when a variable
-  declared in a block, such as in an `if` or `try` block, has the same name.
+- `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
+  carries over, and `object.NewModule` attribute lookup now use the root
+  (top-level) variable when a variable declared in a block, such as in an `if`
+  or `try` block, has the same name.
   Before, `vm.Get("foo")` could return the block value, and so could the REPL.
-  A block variable is not a global, so `vm.Get` does not find it.
+  A block variable is not a global, so `vm.Get` does not find it, and a block
+  variable at the top level of a module does not resolve as `module.name`.
   `Code.GlobalNames` no longer has one entry per slot, so its indexes do not
   always match `GlobalNameAt`. To read every slot name, use `GlobalCount` and
   `GlobalNameAt` (#492).
