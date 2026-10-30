@@ -1,6 +1,7 @@
 package bytecode
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -9,6 +10,12 @@ import (
 )
 
 func TestUnmarshalMalformedReturnsError(t *testing.T) {
+	// A column of 1<<40 fits in an int on 64-bit targets, so Validate rejects
+	// it. On 32-bit targets the JSON decoder rejects it first.
+	hugeColumn := "invalid column"
+	if strconv.IntSize == 32 {
+		hugeColumn = "cannot unmarshal number"
+	}
 	tests := []struct {
 		name string
 		data string
@@ -56,9 +63,9 @@ func TestUnmarshalMalformedReturnsError(t *testing.T) {
 			`{"codes":[{"instructions":[1],"exception_handlers":[{"try_start":0,"try_end":5}]}]}`,
 			"exception handler 0",
 		},
-		{"huge column", `{"codes":[{"locations":[{"line":1,"column":1099511627776}]}]}`, "location 0 has an invalid column"},
+		{"huge column", `{"codes":[{"locations":[{"line":1,"column":1099511627776}]}]}`, hugeColumn},
 		{"negative column", `{"codes":[{"locations":[{"line":1,"column":-1}]}]}`, "location 0 has an invalid column"},
-		{"huge end column", `{"codes":[{"locations":[{"line":1,"column":1,"end_column":1099511627776}]}]}`, "invalid column"},
+		{"huge end column", `{"codes":[{"locations":[{"line":1,"column":1,"end_column":1099511627776}]}]}`, hugeColumn},
 		{"negative end column", `{"codes":[{"locations":[{"line":1,"column":1,"end_column":-5}]}]}`, "invalid column"},
 		{"bad json", `{"codes":`, "unexpected end"},
 		{"unknown constant type", `{"codes":[{"constants":[{"type":"x"}]}]}`, "unknown constant type"},
@@ -170,15 +177,6 @@ func TestValidate(t *testing.T) {
 			"local count 3 is larger than the 2 locals",
 		},
 		{
-			"huge column in a child",
-			NewCode(CodeParams{Source: "x", Children: []*Code{
-				NewCode(CodeParams{Name: "child", Locations: []SourceLocation{
-					{Line: 1, Column: 1}, {Line: 1, Column: 1 << 40},
-				}}),
-			}}),
-			`invalid bytecode in "child": location 1 has an invalid column (column 1099511627776, end column 0)`,
-		},
-		{
 			"negative column",
 			NewCode(CodeParams{Locations: []SourceLocation{{Line: 1, Column: -1}}}),
 			"location 0 has an invalid column (column -1, end column 0)",
@@ -190,6 +188,23 @@ func TestValidate(t *testing.T) {
 			}}),
 			"global index 1 out of range",
 		},
+	}
+	// A column past math.MaxInt32 only fits in an int on 64-bit targets.
+	if strconv.IntSize == 64 {
+		huge := int64(1) << 40
+		tests = append(tests, struct {
+			name string
+			code *Code
+			want string
+		}{
+			"huge column in a child",
+			NewCode(CodeParams{Source: "x", Children: []*Code{
+				NewCode(CodeParams{Name: "child", Locations: []SourceLocation{
+					{Line: 1, Column: 1}, {Line: 1, Column: int(huge)},
+				}}),
+			}}),
+			`invalid bytecode in "child": location 1 has an invalid column (column 1099511627776, end column 0)`,
+		})
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
