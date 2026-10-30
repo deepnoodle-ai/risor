@@ -56,6 +56,8 @@ func TestStringIndexesCountRunes(t *testing.T) {
 		{`let s = "日本語"; s[s.index("語")]`, "語"},
 		{`let s = "héllo"; s[s.last_index("l"):]`, "lo"},
 		{`let s = "héllo"; len(s) == s.last_index("")`, true},
+		{`keys("héllo")`, []any{int64(0), int64(1), int64(2), int64(3), int64(4)}},
+		{`let s = "héllo"; keys(s).map(i => s[i])`, []any{"h", "é", "l", "l", "o"}},
 		{`bytes("héllo").contains_rune("é")`, true},
 		{`bytes("héllo").contains_rune("日")`, false},
 		{`bytes("héllo").index_rune("é")`, int64(1)},
