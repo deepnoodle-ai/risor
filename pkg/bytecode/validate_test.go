@@ -39,6 +39,17 @@ func TestUnmarshalMalformedReturnsError(t *testing.T) {
 			`{"codes":[{"constants":[{"type":"function","value":{"name":"f","code_index":0}}]}]}`,
 			"invalid code index",
 		},
+		{
+			"function code is a grandchild",
+			`{"codes":[{"child_indices":[1],"constants":[{"type":"function","value":{"name":"f","code_index":2}}]},` +
+				`{"child_indices":[2]},{}]}`,
+			`function "f" code is not a child of this block`,
+		},
+		{
+			"handler catch start at end",
+			`{"codes":[{"instructions":[1],"exception_handlers":[{"try_start":0,"try_end":1,"catch_start":1}]}]}`,
+			"exception handler 0",
+		},
 		{"unknown opcode", `{"codes":[{"instructions":[999]}]}`, "unknown opcode 999"},
 		{"invalid opcode", `{"codes":[{"instructions":[0]}]}`, "unknown opcode 0"},
 		{"truncated instruction", `{"codes":[{"instructions":[24]}]}`, "truncated LOAD_CONST"},
@@ -131,7 +142,55 @@ func TestValidate(t *testing.T) {
 			NewCode(CodeParams{Constants: []any{NewFunction(FunctionParams{
 				Name: "f", Defaults: []any{int64(1)}, Code: fnCode,
 			})}}),
-			"more defaults than parameters",
+			"1 defaults for 0 parameters",
+		},
+		{
+			"fewer defaults than parameters",
+			NewCode(CodeParams{Children: []*Code{fnCode}, Constants: []any{NewFunction(FunctionParams{
+				Name: "f", Parameters: []string{"x", "y"}, Defaults: []any{int64(99)}, Code: fnCode,
+			})}}),
+			`function "f" has 1 defaults for 2 parameters`,
+		},
+		{
+			"function code is not a child",
+			NewCode(CodeParams{Constants: []any{fn}}),
+			`constant 0: function "f" code is not a child of this block`,
+		},
+		{
+			"function code is a child of another block",
+			NewCode(CodeParams{Children: []*Code{
+				fnCode,
+				NewCode(CodeParams{Name: "other", Constants: []any{fn}}),
+			}}),
+			`invalid bytecode in "other": constant 0: function "f" code is not a child`,
+		},
+		{
+			"catch target at end",
+			NewCode(CodeParams{Instructions: []op.Code{op.PushExcept, 3, 0}}),
+			"catch target 3 is not an instruction",
+		},
+		{
+			"finally target at end",
+			NewCode(CodeParams{Instructions: []op.Code{op.PushExcept, 3, 4, op.Nop}}),
+			"finally target 4 is not an instruction",
+		},
+		{
+			"handler catch start at end",
+			NewCode(CodeParams{
+				Instructions:      []op.Code{op.Nop, op.Nop},
+				ExceptionHandlers: []ExceptionHandler{{TryStart: 0, TryEnd: 1, CatchStart: 2, CatchVarIdx: -1}},
+			}),
+			"exception handler 0 has an invalid position",
+		},
+		{
+			"handler finally start at end",
+			NewCode(CodeParams{
+				Instructions: []op.Code{op.Nop, op.Nop},
+				ExceptionHandlers: []ExceptionHandler{
+					{TryStart: 0, TryEnd: 1, CatchStart: 1, FinallyStart: 2, CatchVarIdx: -1},
+				},
+			}),
+			"exception handler 0 has an invalid position",
 		},
 		{
 			"function default",
@@ -142,9 +201,12 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			"invalid function code",
-			NewCode(CodeParams{Constants: []any{NewFunction(FunctionParams{
-				Name: "f", Code: NewCode(CodeParams{Name: "body", Instructions: []op.Code{op.LoadFast, 0}}),
-			})}}),
+			func() *Code {
+				body := NewCode(CodeParams{Name: "body", Instructions: []op.Code{op.LoadFast, 0}})
+				return NewCode(CodeParams{Children: []*Code{body}, Constants: []any{NewFunction(FunctionParams{
+					Name: "f", Code: body,
+				})}})
+			}(),
 			`invalid bytecode in "body": LOAD_FAST at offset 0: local index 0 out of range`,
 		},
 		{
@@ -156,12 +218,14 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			"free variable of a function loaded without captures",
-			NewCode(CodeParams{
-				Instructions: []op.Code{op.LoadConst, 0},
-				Constants: []any{NewFunction(FunctionParams{
-					Name: "f", Code: NewCode(CodeParams{Name: "body", Instructions: []op.Code{op.LoadFree, 0}}),
-				})},
-			}),
+			func() *Code {
+				body := NewCode(CodeParams{Name: "body", Instructions: []op.Code{op.LoadFree, 0}})
+				return NewCode(CodeParams{
+					Instructions: []op.Code{op.LoadConst, 0},
+					Children:     []*Code{body},
+					Constants:    []any{NewFunction(FunctionParams{Name: "f", Code: body})},
+				})
+			}(),
 			`invalid bytecode in "body": LOAD_FREE at offset 0: free variable index 0 out of range (count 0)`,
 		},
 		{
