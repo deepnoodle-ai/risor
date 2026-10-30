@@ -3,11 +3,15 @@ package vm
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
+	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
@@ -348,4 +352,162 @@ func compileFuzzSeed(f *testing.F) *compiler.Code {
 	code, err := c.CompileAST(program)
 	assert.Nil(f, err)
 	return code
+}
+
+func compileLinesSource(t *testing.T, source string) *compiler.Code {
+	t.Helper()
+	program, err := parser.Parse(context.Background(), source, nil)
+	assert.Nil(t, err)
+	c, err := compiler.New(&compiler.Config{Filename: "lines.risor", Source: source})
+	assert.Nil(t, err)
+	code, err := c.CompileAST(program)
+	assert.Nil(t, err)
+	return code
+}
+
+// oneLineFunctions returns a script on one line that defines n functions.
+func oneLineFunctions(n int) string {
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "function f%d(a) { return a + %d }; ", i, i)
+	}
+	return b.String()
+}
+
+// Marshaled output must not repeat the source line for every instruction.
+// When the script is on one line, that made the size grow with the square of
+// the source size. Small inputs only: 4x the functions must give about 4x the
+// output, not 16x.
+func TestMarshalSizeLinearOnOneLine(t *testing.T) {
+	small := compileLinesSource(t, oneLineFunctions(25))
+	large := compileLinesSource(t, oneLineFunctions(100))
+
+	smallBytecode, err := bytecode.Marshal(small.ToBytecode())
+	assert.Nil(t, err)
+	largeBytecode, err := bytecode.Marshal(large.ToBytecode())
+	assert.Nil(t, err)
+	ratio := float64(len(largeBytecode)) / float64(len(smallBytecode))
+	assert.True(t, ratio < 6, "bytecode.Marshal size ratio %.1f", ratio)
+
+	smallCompiler, err := compiler.MarshalCode(small)
+	assert.Nil(t, err)
+	largeCompiler, err := compiler.MarshalCode(large)
+	assert.Nil(t, err)
+	ratio = float64(len(largeCompiler)) / float64(len(smallCompiler))
+	assert.True(t, ratio < 6, "compiler.MarshalCode size ratio %.1f", ratio)
+}
+
+const sourceLinesScript = `let x = 1
+function outer() {
+	function inner(a) {
+		return a + "s"
+	}
+	return inner(x)
+}
+outer()
+`
+
+// runError runs code and returns the runtime error it raises.
+func runError(t *testing.T, code *bytecode.Code) *errors.StructuredError {
+	t.Helper()
+	_, err := Run(context.Background(), code)
+	assert.NotNil(t, err)
+	var structured *errors.StructuredError
+	assert.True(t, stderrors.As(err, &structured))
+	return structured
+}
+
+// A runtime error after a round trip shows the same source line and caret as
+// before it, in both marshaled formats.
+func TestMarshalRoundTripKeepsSourceLines(t *testing.T) {
+	code := compileLinesSource(t, sourceLinesScript)
+	expected := runError(t, code.ToBytecode())
+	assert.Equal(t, expected.Location.Line, 4)
+	assert.Equal(t, expected.Location.Source, `		return a + "s"`)
+	assert.Equal(t, expected.Location.Filename, "lines.risor")
+	expectedMessage := expected.FriendlyErrorMessage()
+
+	data, err := bytecode.Marshal(code.ToBytecode())
+	assert.Nil(t, err)
+	restored, err := bytecode.Unmarshal(data)
+	assert.Nil(t, err)
+	actual := runError(t, restored)
+	assert.Equal(t, actual.Location, expected.Location)
+	assert.Equal(t, actual.FriendlyErrorMessage(), expectedMessage)
+
+	data, err = compiler.MarshalCode(code)
+	assert.Nil(t, err)
+	restoredCode, err := compiler.UnmarshalCode(data)
+	assert.Nil(t, err)
+	// Compare each restored source line with the script text, not with a
+	// lookup on the restored code, so a wrong line source fails here.
+	scriptLines := strings.Split(sourceLinesScript, "\n")
+	checked := 0
+	for _, c := range restoredCode.Flatten() {
+		for i := 0; i < c.LocationsCount(); i++ {
+			loc := c.LocationAt(i)
+			if loc.Line < 1 {
+				continue
+			}
+			assert.Equal(t, loc.Source, scriptLines[loc.Line-1], "line %d", loc.Line)
+			checked++
+		}
+	}
+	assert.True(t, checked > 0)
+	actual = runError(t, restoredCode.ToBytecode())
+	assert.Equal(t, actual.Location, expected.Location)
+	assert.Equal(t, actual.FriendlyErrorMessage(), expectedMessage)
+}
+
+// Older versions wrote the filename and source line of every location.
+// Unmarshal still reads that data, and takes source lines from the code's
+// source rather than from the location.
+func TestUnmarshalOldFormatLocationSource(t *testing.T) {
+	bytecodeData := `{"codes":[{"id":"main","name":"main","instructions":[` +
+		fmt.Sprint(int(op.Nil)) + `,` + fmt.Sprint(int(op.ReturnValue)) +
+		`],"constants":[],"names":[],"source":"let x = 1","filename":"old.risor",` +
+		`"locations":[{"filename":"old.risor","line":1,"column":5,"source":"stale"},` +
+		`{"filename":"old.risor","line":1,"column":1,"source":"stale"}]}]}`
+	restored, err := bytecode.Unmarshal([]byte(bytecodeData))
+	assert.Nil(t, err)
+	assert.Equal(t, restored.LocationAt(0).Column, 5)
+	assert.Equal(t, restored.GetSourceLine(restored.LocationAt(0).Line), "let x = 1")
+
+	data, err := compiler.MarshalCode(compileLinesSource(t, "let x = 1\nx"))
+	assert.Nil(t, err)
+	old := strings.ReplaceAll(string(data), `"line":`, `"source":"stale","line":`)
+	assert.True(t, strings.Contains(old, `"source":"stale"`))
+	restoredCode, err := compiler.UnmarshalCode([]byte(old))
+	assert.Nil(t, err)
+	assert.True(t, restoredCode.LocationsCount() > 0)
+	for i := 0; i < restoredCode.LocationsCount(); i++ {
+		loc := restoredCode.LocationAt(i)
+		assert.Equal(t, loc.Source, restoredCode.GetSourceLine(loc.Line))
+		assert.NotEqual(t, loc.Source, "stale")
+	}
+}
+
+// A location whose line number has no source line passes validation, as code
+// built without source does. It gets an empty source line, and a runtime
+// error at that location is reported without a snippet.
+func TestUnmarshalLocationWithoutSourceLine(t *testing.T) {
+	for _, line := range []int{-1, 0, 2, 1 << 40} {
+		t.Run(fmt.Sprint(line), func(t *testing.T) {
+			// Instructions: LOAD_CONST 0, LOAD_CONST 1, BINARY_OP add,
+			// RETURN_VALUE, which fails at run time: int + string.
+			data := fmt.Sprintf(`{"codes":[{"id":"main","name":"main","instructions":[%d,0,%d,1,%d,%d,%d],`+
+				`"constants":[{"type":"int","value":1},{"type":"string","value":"s"}],"names":[],`+
+				`"source":"1 + \"s\"","locations":[{"line":%d,"column":3},{"line":%d,"column":3},`+
+				`{"line":%d,"column":3},{"line":%d,"column":3},{"line":%d,"column":3},{"line":%d,"column":3},{"line":%d,"column":3}]}]}`,
+				op.LoadConst, op.LoadConst, op.BinaryOp, op.Add, op.ReturnValue,
+				line, line, line, line, line, line, line)
+			code, err := bytecode.Unmarshal([]byte(data))
+			assert.Nil(t, err)
+			assert.Nil(t, bytecode.Validate(code))
+			assert.Equal(t, code.GetSourceLine(line), "")
+			runErr := runError(t, code)
+			assert.Equal(t, runErr.Location.Source, "")
+			assert.False(t, strings.Contains(runErr.FriendlyErrorMessage(), " | "))
+		})
+	}
 }

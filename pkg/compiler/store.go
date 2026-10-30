@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
@@ -101,13 +102,15 @@ type symbolTableDef struct {
 	Children      []*symbolTableDef     `json:"children,omitempty"`
 }
 
-// locationDef is used to marshal a SourceLocation.
+// locationDef is used to marshal a SourceLocation. It does not hold the
+// source line: UnmarshalCode looks it up from the line number, so a script on
+// one line is not written once per instruction. Older versions wrote the
+// source line of each location. UnmarshalCode ignores it.
 type locationDef struct {
 	Filename  string `json:"filename,omitempty"`
 	Line      int    `json:"line"`
 	Column    int    `json:"column"`
 	EndColumn int    `json:"end_column,omitempty"`
-	Source    string `json:"source,omitempty"`
 }
 
 // exceptionHandlerDef is used to marshal an ExceptionHandler.
@@ -170,6 +173,10 @@ func codeFromState(state *state) (*Code, error) {
 	}
 	functionsByID := map[string]ownedFunction{}
 	codesByID := map[string]*Code{}
+	// lines maps each code to the lines of its line source. A child whose
+	// line source is the root source shares its parent's lines, so the root
+	// source is split once rather than once per code.
+	lines := map[*Code][]string{}
 	for i, c := range state.Code {
 		if c == nil {
 			return nil, fmt.Errorf("invalid code: code block %d is null", i)
@@ -228,12 +235,21 @@ func codeFromState(state *state) (*Code, error) {
 			source:       c.Source,
 			filename:     c.Filename,
 			rootSource:   rootSource,
-			locations:    locationsFromDefs(c.Locations),
 			maxCallArgs:  c.MaxCallArgs,
 			envKeys:      copyStrings(c.EnvKeys),
 
 			exceptionHandlers: exceptionHandlersFromDefs(c.ExceptionHandlers),
 		}
+		// Like lineSource, use the root source when it is set, and otherwise
+		// the code's own source. A non-empty rootSource is the parent's
+		// rootSource or the parent's own source, as built above. Either way
+		// it is the parent's line source, so the parent's lines apply.
+		if rootSource != nil && *rootSource != "" {
+			lines[code] = lines[parent]
+		} else {
+			lines[code] = strings.Split(code.source, "\n")
+		}
+		code.locations = locationsFromDefs(c.Locations, lines[code])
 		codesByID[code.id] = code
 		codes = append(codes, code)
 		if parent != nil {
@@ -625,7 +641,9 @@ func copyStrings(src []string) []string {
 	return dst
 }
 
-func locationsFromDefs(defs []locationDef) []errors.SourceLocation {
+// locationsFromDefs converts location definitions, taking each source line
+// from lines, the lines of the code's line source.
+func locationsFromDefs(defs []locationDef, lines []string) []errors.SourceLocation {
 	if defs == nil {
 		return nil
 	}
@@ -636,7 +654,7 @@ func locationsFromDefs(defs []locationDef) []errors.SourceLocation {
 			Line:      def.Line,
 			Column:    def.Column,
 			EndColumn: def.EndColumn,
-			Source:    def.Source,
+			Source:    sourceLine(lines, def.Line),
 		}
 	}
 	return locs
@@ -653,7 +671,6 @@ func locationsToDefs(locs []errors.SourceLocation) []locationDef {
 			Line:      loc.Line,
 			Column:    loc.Column,
 			EndColumn: loc.EndColumn,
-			Source:    loc.Source,
 		}
 	}
 	return defs
