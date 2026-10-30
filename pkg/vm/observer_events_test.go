@@ -63,6 +63,20 @@ let x = 1
 	assert.Equal(t, observer.Calls[0].Location, object.SourceLocation{})
 }
 
+// A Call that fails its argument checks leaves the VM able to read globals.
+func TestFailedCallKeepsGlobals(t *testing.T) {
+	code := compileObserved(t, `function add(a, b) { return a + b }`)
+	vm, err := New(code, WithGlobals(basicBuiltins()))
+	assert.Nil(t, err)
+	assert.Nil(t, vm.Run(context.Background()))
+	fn, err := vm.Get("add")
+	assert.Nil(t, err)
+	_, err = vm.Call(context.Background(), fn.(*object.Closure), nil)
+	assert.NotNil(t, err)
+	_, err = vm.Get("add")
+	assert.Nil(t, err)
+}
+
 // A function that exits with an exception still reports OnReturn, so every
 // OnCall has a matching OnReturn.
 func TestObserverReturnOnException(t *testing.T) {

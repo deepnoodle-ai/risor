@@ -1468,9 +1468,12 @@ func (vm *VirtualMachine) Call(
 	// A previous run that was halted inside a try block may have left its
 	// handlers behind. No script frames are active between runs, so drop them.
 	vm.excStackSize = 0
-	// The call comes from Go, so it has no call site in the script. The
-	// frame restore at the end of the call sets the active code again.
+	// The call comes from Go, so it has no call site in the script. Restore
+	// the active code afterward, even if the call fails before it activates
+	// a frame, so that Get still reads the globals.
+	prevCode := vm.activeCode
 	vm.activeCode = nil
+	defer func() { vm.activeCode = prevCode }()
 	return vm.callFunction(vm.initContext(ctx), fn, args)
 }
 
