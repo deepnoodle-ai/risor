@@ -23,6 +23,13 @@ const maxParameters = 256
 //     Global operands are checked against the global count of code, the
 //     root, since every block shares the root's globals.
 //   - LOAD_CLOSURE refers to a function constant.
+//   - LOAD_CELL, LOAD_FREE, and STORE_FREE index the free variables of the
+//     closure that runs the code. A block that some instruction loads as a
+//     function must have fewer free variables than the smallest capture
+//     count of those loads: LOAD_CLOSURE gives its capture count, and
+//     LOAD_CONST gives zero. The root has no free variables. A block that no
+//     instruction loads is not checked, and the VM still checks each index
+//     at run time, since a host can call a function with fewer captures.
 //   - Jump targets, PUSH_EXCEPT targets, and exception handler positions
 //     are the start of an instruction or the end of the code.
 //   - Constants have a type the VM supports, and each function constant
@@ -37,8 +44,8 @@ const maxParameters = 256
 //   - The local and global counts are in the range of a uint16 operand.
 //
 // Validate does not check how instructions use the value stack, the types of
-// values at run time, or free variable and cell operands, which depend on
-// run-time state. See the package documentation for what this means for
+// values at run time, or MAKE_CELL operands for an enclosing frame (frames
+// back > 0), which depend on the call stack at run time. See the package documentation for what this means for
 // bytecode from an untrusted source.
 func Validate(code *Code) error {
 	if code == nil {
@@ -53,6 +60,7 @@ func Validate(code *Code) error {
 	if err != nil {
 		return err
 	}
+	v.freeCounts = freeCounts(code, codes)
 	for _, c := range codes {
 		if err := v.validateCode(c); err != nil {
 			name := c.Name()
@@ -71,6 +79,45 @@ type validator struct {
 	// paramSlots maps a function's code to the local slots its parameters
 	// and rest parameter fill when the function is called.
 	paramSlots map[*Code]int
+	// freeCounts maps a code block to the fewest free variables a closure
+	// that runs it may have. A block that is not in the map is not checked.
+	freeCounts map[*Code]int
+}
+
+// freeCounts returns, for each code block that an instruction loads as a
+// function, the smallest number of free variables it is loaded with. It
+// skips instructions it cannot decode or check, since validateCode reports
+// them.
+func freeCounts(root *Code, codes []*Code) map[*Code]int {
+	counts := map[*Code]int{root: 0}
+	record := func(code *Code, constIdx, count int) {
+		if constIdx >= len(code.constants) {
+			return
+		}
+		fn, ok := code.constants[constIdx].(*Function)
+		if !ok || fn.code == nil {
+			return
+		}
+		if prev, ok := counts[fn.code]; !ok || count < prev {
+			counts[fn.code] = count
+		}
+	}
+	for _, code := range codes {
+		for pos := 0; pos < len(code.instructions); {
+			instr, err := decodeInstruction(code.instructions, pos)
+			if err != nil {
+				break
+			}
+			switch instr[0] {
+			case op.LoadClosure:
+				record(code, int(instr[1]), int(instr[2]))
+			case op.LoadConst:
+				record(code, int(instr[1]), 0)
+			}
+			pos += len(instr)
+		}
+	}
+	return counts
 }
 
 // collect returns every code block reachable from root, through children and
@@ -166,6 +213,10 @@ func (v *validator) validateCode(code *Code) error {
 			// A cell for the current frame (0 frames back) refers to a local
 			if operand(2) == 0 {
 				err = checkIndex("local", operand(1), code.localCount)
+			}
+		case op.LoadCell, op.LoadFree, op.StoreFree:
+			if count, ok := v.freeCounts[code]; ok {
+				err = checkIndex("free variable", operand(1), count)
 			}
 		case op.LoadClosure:
 			idx := operand(1)

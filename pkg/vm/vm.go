@@ -721,7 +721,15 @@ evalLoop:
 			locals := frame.CaptureLocals()
 			vm.push(object.NewCell(&locals[symbolIndex]))
 		case op.LoadCell:
-			vm.push(vm.activeFrame.fn.FreeVar(int(vm.fetch())))
+			idx := int(vm.fetch())
+			fn := vm.activeFrame.fn
+			if fn == nil || idx >= fn.FreeVarCount() {
+				if herr := vm.tryHandleError(vm.evalError("no free variable at index %d", idx)); herr != nil {
+					return herr
+				}
+				continue
+			}
+			vm.push(fn.FreeVar(idx))
 		case op.Nil:
 			vm.push(object.Nil)
 		case op.True:

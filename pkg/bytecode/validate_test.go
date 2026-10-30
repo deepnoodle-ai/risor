@@ -144,6 +144,16 @@ func TestValidate(t *testing.T) {
 			"MAKE_CELL at offset 0: local index 2 out of range",
 		},
 		{
+			"free variable of a function loaded without captures",
+			NewCode(CodeParams{
+				Instructions: []op.Code{op.LoadConst, 0},
+				Constants: []any{NewFunction(FunctionParams{
+					Name: "f", Code: NewCode(CodeParams{Name: "body", Instructions: []op.Code{op.LoadFree, 0}}),
+				})},
+			}),
+			`invalid bytecode in "body": LOAD_FREE at offset 0: free variable index 0 out of range (count 0)`,
+		},
+		{
 			"local count larger than used",
 			NewCode(CodeParams{Children: []*Code{
 				NewCode(CodeParams{Name: "child", LocalCount: 3, Instructions: []op.Code{op.LoadFast, 1}}),

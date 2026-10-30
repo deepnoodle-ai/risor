@@ -181,6 +181,131 @@ func TestUnmarshalRejectsOversizedLocalCount(t *testing.T) {
 		`invalid bytecode in "f": local count 65535 is larger than the 3 locals the code uses`)
 }
 
+// Closures that capture a variable two or more function levels out, from the
+// tests for #512. The intermediate functions pass the cell on with LOAD_CELL.
+var loadCellSources = []struct {
+	source string
+	want   object.Object
+}{
+	{`
+	function f1() {
+		let a = 1; let b = 42
+		return function f2() { return function f3() { return b } }
+	}
+	f1()()()`, object.NewInt(42)},
+	{`
+	function f1() {
+		let x = "deep"
+		return () => () => () => x
+	}
+	f1()()()()`, object.NewString("deep")},
+	{`
+	function f1() {
+		let a = "a"
+		return function f2() {
+			let b = "b"
+			return function f3() { return () => a + b }
+		}
+	}
+	f1()()()()`, object.NewString("ab")},
+	{`
+	function counter() {
+		let n = 0
+		return {
+			inc: () => () => { n++; return n },
+			read: () => () => n,
+		}
+	}
+	let c = counter()
+	let inc = c.inc()
+	inc(); inc(); inc()
+	c.read()()`, object.NewInt(3)},
+}
+
+func compileLoadCellSource(t *testing.T, source string) *bytecode.Code {
+	t.Helper()
+	program, err := parser.Parse(context.Background(), source, nil)
+	assert.Nil(t, err)
+	code, err := compiler.Compile(program, nil)
+	assert.Nil(t, err)
+	return code
+}
+
+// loadCellOperands returns the position of each LOAD_CELL operand in the
+// marshaled instructions of each code block.
+func loadCellOperands(t *testing.T, state map[string]any) [][2]int {
+	t.Helper()
+	var found [][2]int
+	for i, c := range state["codes"].([]any) {
+		instrs, _ := c.(map[string]any)["instructions"].([]any)
+		for pos := 0; pos < len(instrs); {
+			opcode := op.Code(instrs[pos].(float64))
+			if opcode == op.LoadCell {
+				found = append(found, [2]int{i, pos + 1})
+			}
+			pos += 1 + op.GetInfo(opcode).OperandCount
+		}
+	}
+	return found
+}
+
+func TestLoadCellClosuresValidateAfterRoundTrip(t *testing.T) {
+	for _, tt := range loadCellSources {
+		code := compileLoadCellSource(t, tt.source)
+		assert.Nil(t, bytecode.Validate(code))
+		data, err := bytecode.Marshal(code)
+		assert.Nil(t, err)
+
+		var state map[string]any
+		assert.Nil(t, json.Unmarshal(data, &state))
+		assert.True(t, len(loadCellOperands(t, state)) > 0, "no LOAD_CELL in compiled code")
+
+		restored, err := bytecode.Unmarshal(data)
+		assert.Nil(t, err)
+		assert.Nil(t, bytecode.Validate(restored))
+		result, err := Run(context.Background(), restored)
+		assert.Nil(t, err)
+		assert.Equal(t, result, tt.want)
+	}
+}
+
+func TestUnmarshalRejectsLoadCellOutOfRange(t *testing.T) {
+	data, err := bytecode.Marshal(compileLoadCellSource(t, loadCellSources[0].source))
+	assert.Nil(t, err)
+
+	// f2 is created with one captured cell, so its LOAD_CELL may only use
+	// free variable index 0. Point it at index 1.
+	var state map[string]any
+	assert.Nil(t, json.Unmarshal(data, &state))
+	operands := loadCellOperands(t, state)
+	assert.Equal(t, len(operands), 1)
+	codes := state["codes"].([]any)
+	instrs := codes[operands[0][0]].(map[string]any)["instructions"].([]any)
+	assert.Equal(t, instrs[operands[0][1]], float64(0))
+	instrs[operands[0][1]] = 1
+	data, err = json.Marshal(state)
+	assert.Nil(t, err)
+
+	_, err = bytecode.Unmarshal(data)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), `invalid bytecode in "f2": LOAD_CELL at offset 0: `+
+		`free variable index 1 out of range (count 1)`)
+}
+
+// The VM checks LOAD_CELL at run time too, for code that skipped Validate
+// or a function a host calls with fewer captures than the script gives it.
+func TestRunUncheckedLoadCellReturnsError(t *testing.T) {
+	code := bytecode.NewCode(bytecode.CodeParams{
+		ID:           "main",
+		Name:         "main",
+		Instructions: []op.Code{op.LoadCell, 0},
+	})
+	assert.NotNil(t, bytecode.Validate(code))
+	_, err := Run(context.Background(), code)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "runtime error: no free variable at index 0")
+}
+
 // runFuzzedCode runs code with tight limits. The VM must return, with or
 // without an error, and never panic past Run.
 func runFuzzedCode(code *bytecode.Code) {
