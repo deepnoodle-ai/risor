@@ -209,6 +209,11 @@ func codeFromState(state *state) (*Code, error) {
 			}
 		}
 
+		nameIndex, err := newNameIndex(c.Names)
+		if err != nil {
+			return nil, fmt.Errorf("invalid code: code %q: %w", c.ID, err)
+		}
+
 		code := &Code{
 			id:           c.ID,
 			parent:       parent,
@@ -219,7 +224,7 @@ func codeFromState(state *state) (*Code, error) {
 			instructions: CopyInstructions(c.Instructions),
 			constants:    constants,
 			names:        copyStrings(c.Names),
-			nameIndex:    newNameIndex(c.Names),
+			nameIndex:    nameIndex,
 			source:       c.Source,
 			filename:     c.Filename,
 			rootSource:   rootSource,
@@ -264,9 +269,14 @@ func codeFromState(state *state) (*Code, error) {
 }
 
 // newNameIndex returns the index map for a names table, or nil if it is empty.
-func newNameIndex(names []string) map[string]uint16 {
+// It returns an error if the table has more names than a uint16 operand can
+// index, the same limit that Code.addName enforces.
+func newNameIndex(names []string) (map[string]uint16, error) {
 	if len(names) == 0 {
-		return nil
+		return nil, nil
+	}
+	if len(names) > math.MaxUint16 {
+		return nil, fmt.Errorf("%d attribute names exceeds the limit of %d", len(names), math.MaxUint16)
 	}
 	index := make(map[string]uint16, len(names))
 	for i, name := range names {
@@ -274,7 +284,7 @@ func newNameIndex(names []string) map[string]uint16 {
 			index[name] = uint16(i)
 		}
 	}
-	return index
+	return index, nil
 }
 
 func exceptionHandlersFromDefs(defs []exceptionHandlerDef) []*ExceptionHandler {
@@ -469,7 +479,6 @@ func symbolTableFromDefinition(def *symbolTableDef) (*SymbolTable, error) {
 	return table, nil
 }
 
-// symbolFromDefinition returns nil for a nil def, the form of an unused slot.
 // linkSymbols makes each by-name entry of the table and its children the same
 // *Symbol as the indexed entry it names. Marshaling stores the two separately,
 // and code such as Code.GlobalNames compares them by pointer.
@@ -487,6 +496,7 @@ func linkSymbols(table *SymbolTable) {
 	}
 }
 
+// symbolFromDefinition returns nil for a nil def, the form of an unused slot.
 func symbolFromDefinition(def *symbolDef) *Symbol {
 	if def == nil {
 		return nil

@@ -237,6 +237,27 @@ func TestUnmarshalCodeMalformedReturnsError(t *testing.T) {
 	}
 }
 
+func TestUnmarshalCodeRejectsTooManyNames(t *testing.T) {
+	table := `"symbol_table":{"symbols":[],"symbols_by_name":{}}`
+	build := func(n int) string {
+		names := make([]string, n)
+		for i := range names {
+			names[i] = fmt.Sprintf("%q", fmt.Sprintf("n%d", i))
+		}
+		return `{"code":[{"id":"main","symbol_table_id":"","names":[` +
+			strings.Join(names, ",") + `]}],` + table + `}`
+	}
+
+	code, err := UnmarshalCode([]byte(build(math.MaxUint16)))
+	assert.Nil(t, err)
+	assert.Len(t, code.names, math.MaxUint16)
+
+	code, err = UnmarshalCode([]byte(build(math.MaxUint16 + 1)))
+	assert.Nil(t, code)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "65536 attribute names exceeds the limit of 65535"), err.Error())
+}
+
 func TestAddNameDeduplicates(t *testing.T) {
 	code, err := compileSource(`
 	let o = {a: 1, b: 2}
