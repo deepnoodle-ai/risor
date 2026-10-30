@@ -484,3 +484,87 @@ func TestGoInterop_SyncValuesNotConverted(t *testing.T) {
 		assert.Contains(t, err.Error(), "sync types are not available to scripts")
 	}
 }
+
+type testEmbedsLocker struct {
+	sync.Locker
+	Name string
+}
+
+// An embedded sync.Locker is an interface, and its promoted Lock and Unlock
+// are hidden like those of an embedded sync.Mutex.
+func TestGoInterop_EmbeddedSyncInterfaceMethodsHidden(t *testing.T) {
+	mu := &sync.Mutex{}
+	obj, err := DefaultRegistry().FromGo(&testEmbedsLocker{Locker: mu, Name: "test"})
+	assert.Nil(t, err)
+	s := obj.(*GoStruct)
+	for _, name := range []string{"Lock", "Unlock", "Locker"} {
+		_, ok := s.GetAttr(name)
+		assert.False(t, ok, name)
+		for _, spec := range s.Attrs() {
+			assert.NotEqual(t, spec.Name, name)
+		}
+	}
+	name, ok := s.GetAttr("Name")
+	assert.True(t, ok)
+	assert.Equal(t, name, NewString("test"))
+	assert.True(t, mu.TryLock())
+}
+
+type testNilValuer struct{ n int }
+
+func (v *testNilValuer) RisorValue() Object { return NewInt(int64(v.n)) }
+
+type testNilResultValuer struct{}
+
+func (testNilResultValuer) RisorValue() Object { return (*List)(nil) }
+
+// A typed nil pointer converts to null, even when its type is an Object or a
+// RisorValuer.
+func TestGoInterop_TypedNilPointerIsNull(t *testing.T) {
+	r := DefaultRegistry()
+	for _, v := range []any{
+		(*List)(nil),
+		(*String)(nil),
+		(*testNilValuer)(nil),
+		(*bytecode.Function)(nil),
+		testNilResultValuer{},
+	} {
+		obj, err := r.FromGo(v)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, Object(Nil), "%T", v)
+	}
+	obj, err := r.FromGo(&testNilValuer{n: 3})
+	assert.Nil(t, err)
+	assert.Equal(t, obj, Object(NewInt(3)))
+}
+
+type testByteRole uint8
+
+// A slice of a defined uint8 type converts to bytes and back.
+func TestGoInterop_DefinedByteSliceRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	r := DefaultRegistry()
+	obj, err := r.FromGo([]testByteRole{1, 2, 3})
+	assert.Nil(t, err)
+	assert.Equal(t, obj, Object(NewBytes([]byte{1, 2, 3})))
+
+	v, err := r.ToGo(ctx, obj, reflect.TypeOf([]testByteRole{}))
+	assert.Nil(t, err)
+	assert.Equal(t, v, []testByteRole{1, 2, 3})
+
+	v, err = r.ToGo(ctx, NewString("ab"), reflect.TypeOf([]testByteRole{}))
+	assert.Nil(t, err)
+	assert.Equal(t, v, []testByteRole{'a', 'b'})
+
+	v, err = r.ToGo(ctx, NewBytes(nil), reflect.TypeOf([]testByteRole{}))
+	assert.Nil(t, err)
+	assert.Equal(t, v, []testByteRole{})
+
+	type config struct{ Roles []testByteRole }
+	cfg := &config{Roles: []testByteRole{1, 2, 3}}
+	s := NewGoStruct(reflect.ValueOf(cfg), r)
+	roles, ok := s.GetAttr("Roles")
+	assert.True(t, ok)
+	assert.Nil(t, s.SetAttr("Roles", roles))
+	assert.Equal(t, cfg.Roles, []testByteRole{1, 2, 3})
+}
