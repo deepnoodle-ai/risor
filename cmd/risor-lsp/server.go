@@ -71,20 +71,9 @@ func (s *Server) publishDocumentDiagnostics(uri protocol.DocumentURI, doc *docum
 	if doc.err != nil {
 		log.Info().Err(doc.err).Msg("publishDiagnostics: Found parse error")
 		if parseErr, ok := doc.err.(parser.ParserError); ok {
-			startPos := parseErr.StartPosition()
-			endPos := parseErr.EndPosition()
-
+			lines := newLineIndex(doc.item.Text)
 			diagnostic := protocol.Diagnostic{
-				Range: protocol.Range{
-					Start: protocol.Position{
-						Line:      uint32(startPos.LineNumber() - 1),   // LSP uses 0-based line numbers
-						Character: uint32(startPos.ColumnNumber() - 1), // LSP uses 0-based column numbers
-					},
-					End: protocol.Position{
-						Line:      uint32(endPos.LineNumber() - 1),
-						Character: uint32(endPos.ColumnNumber() - 1),
-					},
-				},
+				Range:    lines.lspRange(parseErr.StartPosition(), parseErr.EndPosition()),
 				Severity: 1, // Error
 				Source:   "risor-lsp",
 				Message:  parseErr.Message(),

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
 	"github.com/rs/zerolog/log"
@@ -54,16 +55,16 @@ func (s *Server) Formatting(ctx context.Context, params *protocol.DocumentFormat
 		return nil, nil
 	}
 
-	// Calculate the range for the entire document
-	lines = strings.Split(text, "\n")
+	// The edit replaces the entire document, through the end of its last line
+	index := newLineIndex(text)
 	lastLine := len(lines) - 1
-	lastChar := len(lines[lastLine])
+	lastColumn := utf8.RuneCountInString(lines[lastLine])
 
 	return []protocol.TextEdit{
 		{
 			Range: protocol.Range{
 				Start: protocol.Position{Line: 0, Character: 0},
-				End:   protocol.Position{Line: uint32(lastLine), Character: uint32(lastChar)},
+				End:   index.lspPosition(lastLine+1, lastColumn+1),
 			},
 			NewText: formattedText,
 		},
