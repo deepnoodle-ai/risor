@@ -125,7 +125,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `op.GetInfo` returns an empty `Info` for an unknown opcode, including one
   above 255.
 - The compiler stores each attribute name once per code block, and a code
-  block with more than 65,534 distinct attribute names is a compile error.
+  block with more than 65,535 distinct attribute names is a compile error.
 
 ### Fixed
 
@@ -184,7 +184,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   code with a discarded `_` variable, and the unmarshaled code maps each global
   to the same name as the original. Before, unmarshaled code could call a
   function with a rest parameter with the wrong arguments, and
-  `risor.Run` could not check the env of unmarshaled code.
+  `risor.Run` could not check the env of unmarshaled code. Blobs saved by
+  v2.2.0 still lack this data and load without an error, so hosts that cache
+  compiled scripts must recompile them after upgrading.
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root
   (top-level) variable when a variable declared in a block, such as in an `if`
