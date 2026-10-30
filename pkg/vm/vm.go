@@ -59,7 +59,7 @@ type VirtualMachine struct {
 	loadedCode   map[*bytecode.Code]*loadedCode
 	running      bool
 	runMutex     sync.Mutex
-	tmp          [MaxArgs]object.Object
+	tmp          [MaxArgs + 2]object.Object // args + rest param + function name
 	stack        [MaxStackDepth]object.Object
 	frames       []frame // Dynamically sized, grows up to MaxFrameDepth
 
@@ -449,7 +449,7 @@ func (vm *VirtualMachine) resetForNewCode() {
 		vm.frames[i] = frame{}
 	}
 	// Clear tmp array
-	for i := 0; i < MaxArgs; i++ {
+	for i := range vm.tmp {
 		vm.tmp[i] = nil
 	}
 }
@@ -744,6 +744,13 @@ evalLoop:
 			}
 			args := list.Value()
 			obj := vm.pop()
+			if len(args) > MaxArgs {
+				if herr := vm.tryHandleError(vm.evalError("max args limit of %d exceeded (got %d)",
+					MaxArgs, len(args))); herr != nil {
+					return herr
+				}
+				continue
+			}
 			if err := vm.callObject(ctx, obj, args); err != nil {
 				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
@@ -1055,6 +1062,10 @@ evalLoop:
 				}
 				continue
 			}
+			// Exactly nameCount values are pushed below
+			if int64(vm.sp)+nameCount >= MaxStackDepth {
+				return ErrStackOverflow
+			}
 			count := int64(0)
 			// For maps, unpack yields keys; for other containers, unpack yields values
 			if m, ok := containerObj.(*object.Map); ok {
@@ -1221,7 +1232,12 @@ func (vm *VirtualMachine) pop() object.Object {
 	return obj
 }
 
+// push places obj on top of the value stack. Overflowing the stack panics with
+// ErrStackOverflow, which panicToError reports as-is.
 func (vm *VirtualMachine) push(obj object.Object) {
+	if vm.sp+1 >= MaxStackDepth {
+		panic(ErrStackOverflow)
+	}
 	vm.sp++
 	vm.stack[vm.sp] = obj
 }
@@ -1258,6 +1274,15 @@ func (vm *VirtualMachine) Call(
 		}
 		vm.stop()
 	}()
+	// The main code owns the globals array that function code shares, so it
+	// must be loaded even if Run has not been called yet.
+	if vm.main == nil {
+		return nil, fmt.Errorf("no main code available")
+	}
+	vm.loadCode(vm.main)
+	// A previous run that was halted inside a try block may have left its
+	// handlers behind. No script frames are active between runs, so drop them.
+	vm.excStackSize = 0
 	return vm.callFunction(vm.initContext(ctx), fn, args)
 }
 
@@ -1291,18 +1316,19 @@ func (vm *VirtualMachine) callFunction(
 	baseIP := vm.ip
 	baseSP := vm.sp
 
-	// Restore the previous frame when done.
-	// If panicking, capture the stack trace before restoring the frame.
+	// Restore the previous frame when done. The result is returned to the
+	// Go caller rather than left on the stack, so anything above baseSP is
+	// discarded. If panicking, capture the stack trace before restoring.
 	defer func() {
 		if r := recover(); r != nil {
 			// Capture stack while frames are still intact
 			if vm.panicStack == nil {
 				vm.panicStack = vm.captureStack()
 			}
-			vm.resumeFrame(baseFP, baseIP, baseSP)
+			vm.restoreFrame(baseFP, baseIP, baseSP)
 			panic(r) // Re-panic to continue unwinding
 		}
-		vm.resumeFrame(baseFP, baseIP, baseSP)
+		vm.restoreFrame(baseFP, baseIP, baseSP)
 	}()
 
 	// Assemble frame local variables in vm.tmp. The local variable order is:
@@ -1381,6 +1407,9 @@ func (vm *VirtualMachine) callFunction(
 	if err := vm.eval(ctx); err != nil {
 		return nil, err
 	}
+	if vm.sp <= baseSP {
+		return object.Nil, nil
+	}
 	return vm.pop(), nil
 }
 
@@ -1426,22 +1455,29 @@ func (vm *VirtualMachine) callObject(
 }
 
 // Resume the frame at the given frame pointer, restoring the given IP and SP.
+// The value on top of the stack (the return value of the previous frame) is
+// carried over onto the resumed frame's stack.
 func (vm *VirtualMachine) resumeFrame(fp, ip, sp int) *frame {
 	// The return value of the previous frame is on the top of the stack
 	var frameResult object.Object = nil
 	if vm.sp > sp {
 		frameResult = vm.pop()
 	}
-	// Remove any items left on the stack by the previous frame
-	for i := vm.sp; i > sp; i-- {
-		vm.stack[i] = nil
-	}
-	vm.sp = sp
+	vm.restoreFrame(fp, ip, sp)
 	// Push the frame result back onto the stack
 	if frameResult != nil {
 		vm.push(frameResult)
 	}
-	// Activate the resumed frame
+	return vm.activeFrame
+}
+
+// restoreFrame activates the frame at the given frame pointer, restoring the
+// given IP and SP. Any values above sp are discarded.
+func (vm *VirtualMachine) restoreFrame(fp, ip, sp int) *frame {
+	for i := vm.sp; i > sp; i-- {
+		vm.stack[i] = nil
+	}
+	vm.sp = sp
 	vm.fp = fp
 	vm.ip = ip
 	vm.activeFrame = &vm.frames[fp]
@@ -1534,6 +1570,11 @@ func (vm *VirtualMachine) reloadCode(main *bytecode.Code) *loadedCode {
 	delete(vm.loadedCode, main)
 	newWrappedMain := vm.loadCode(main)
 	copy(newWrappedMain.Globals, oldWrappedMain.Globals)
+	// Function code loaded earlier (e.g. by Call before Run) shares the old
+	// globals slice. Point it at the new one so all code sees the same globals.
+	for _, lc := range vm.loadedCode {
+		lc.Globals = newWrappedMain.Globals
+	}
 	return newWrappedMain
 }
 
