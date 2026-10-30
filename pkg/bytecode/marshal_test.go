@@ -147,9 +147,14 @@ func TestMarshalUnmarshalWithDefaults(t *testing.T) {
 }
 
 func TestMarshalUnmarshalExceptionHandlers(t *testing.T) {
+	// Handler positions must fall within the instructions
+	instructions := make([]op.Code, 32)
+	for i := range instructions {
+		instructions[i] = op.Nop
+	}
 	code := NewCode(CodeParams{
 		ID:           "test",
-		Instructions: []op.Code{op.Nop, op.Nop, op.Nop},
+		Instructions: instructions,
 		ExceptionHandlers: []ExceptionHandler{
 			{TryStart: 0, TryEnd: 5, CatchStart: 6, FinallyStart: 10, CatchVarIdx: 0},
 			{TryStart: 20, TryEnd: 30, CatchStart: 31, FinallyStart: 0, CatchVarIdx: -1},

@@ -3,6 +3,7 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
@@ -32,6 +33,10 @@ type Code struct {
 	source       string
 	functionID   string
 	filename     string // The source file this code came from
+
+	// nameIndex maps each entry of names to its index, so that addName
+	// stores each attribute name once.
+	nameIndex map[string]uint16
 
 	// rootSource points to the full original source from the root Code.
 	// Used for accurate line lookups in function bodies. Child codes set
@@ -88,6 +93,9 @@ func (c *Code) snapshot() codeSnapshot {
 func (c *Code) restore(s codeSnapshot) {
 	c.instructions = c.instructions[:s.instructionLen]
 	c.constants = c.constants[:s.constantLen]
+	for _, name := range c.names[s.nameLen:] {
+		delete(c.nameIndex, name)
+	}
 	c.names = c.names[:s.nameLen]
 	c.locations = c.locations[:s.locationLen]
 	c.children = c.children[:s.childLen]
@@ -104,9 +112,23 @@ func (c *Code) CodeName() string {
 	return c.name
 }
 
-func (c *Code) addName(name string) uint16 {
+// addName returns the index of name in the names table, adding it if it is
+// not there yet. It returns an error if the table is full: name operands are
+// uint16, and the compiler reserves math.MaxUint16 as a placeholder.
+func (c *Code) addName(name string) (uint16, error) {
+	if idx, ok := c.nameIndex[name]; ok {
+		return idx, nil
+	}
+	if len(c.names) >= math.MaxUint16 {
+		return 0, fmt.Errorf("compile error: number of attribute names exceeded limits")
+	}
+	if c.nameIndex == nil {
+		c.nameIndex = map[string]uint16{}
+	}
+	idx := uint16(len(c.names))
 	c.names = append(c.names, name)
-	return uint16(len(c.names) - 1)
+	c.nameIndex[name] = idx
+	return idx, nil
 }
 
 func (c *Code) IsNamed() bool {

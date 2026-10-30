@@ -3,7 +3,9 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -18,12 +20,21 @@ func MarshalCode(code *Code) ([]byte, error) {
 }
 
 // UnmarshalCode converts a JSON representation of a Code object into a Code.
+// It returns an error if the data is malformed or if the bytecode it holds
+// fails the checks of [bytecode.Validate].
 func UnmarshalCode(data []byte) (*Code, error) {
 	var def state
 	if err := json.Unmarshal(data, &def); err != nil {
 		return nil, err
 	}
-	return codeFromState(&def)
+	code, err := codeFromState(&def)
+	if err != nil {
+		return nil, err
+	}
+	if err := bytecode.Validate(code.ToBytecode()); err != nil {
+		return nil, err
+	}
+	return code, nil
 }
 
 // Used to marshal a Function.
@@ -32,6 +43,7 @@ type functionDef struct {
 	Name       string            `json:"name"`
 	Parameters []string          `json:"parameters"`
 	Defaults   []json.RawMessage `json:"defaults"`
+	RestParam  string            `json:"rest_param,omitempty"`
 }
 
 type constantDef struct {
@@ -98,6 +110,15 @@ type locationDef struct {
 	Source    string `json:"source,omitempty"`
 }
 
+// exceptionHandlerDef is used to marshal an ExceptionHandler.
+type exceptionHandlerDef struct {
+	TryStart     int `json:"try_start"`
+	TryEnd       int `json:"try_end"`
+	CatchStart   int `json:"catch_start"`
+	FinallyStart int `json:"finally_start"`
+	CatchVarIdx  int `json:"catch_var_idx"`
+}
+
 // Flat form of a Code object used in marshaling.
 type codeDef struct {
 	ID            string            `json:"id,omitempty"`
@@ -109,9 +130,12 @@ type codeDef struct {
 	Constants     []json.RawMessage `json:"constants,omitempty"`
 	Names         []string          `json:"names,omitempty"`
 	Source        string            `json:"source,omitempty"`
+	Filename      string            `json:"filename,omitempty"`
 	Locations     []locationDef     `json:"locations,omitempty"`
 	MaxCallArgs   uint16            `json:"max_call_args,omitempty"`
 	EnvKeys       []string          `json:"env_keys,omitempty"`
+
+	ExceptionHandlers []exceptionHandlerDef `json:"exception_handlers,omitempty"`
 }
 
 // A representation of a Code object that can be marshalled more easily.
@@ -122,21 +146,53 @@ type state struct {
 
 // Builds a Code object from its marshalled state.
 func codeFromState(state *state) (*Code, error) {
+	if len(state.Code) == 0 {
+		return nil, fmt.Errorf("invalid code: no code blocks")
+	}
+	if state.SymbolTable == nil {
+		return nil, fmt.Errorf("invalid code: missing symbol table")
+	}
+	if state.SymbolTable.IsBlock {
+		return nil, fmt.Errorf("invalid symbol table: root table is a block")
+	}
 	table, err := symbolTableFromDefinition(state.SymbolTable)
 	if err != nil {
 		return nil, err
 	}
+	linkSymbols(table)
 	codes := make([]*Code, 0, len(state.Code))
-	functionsByID := map[string]*Function{}
+	// functionsByID maps a function ID to the function and the code that
+	// holds it as a constant. The function's own code must be a child of
+	// that code, which is the shape the compiler produces.
+	type ownedFunction struct {
+		fn    *Function
+		owner *Code
+	}
+	functionsByID := map[string]ownedFunction{}
 	codesByID := map[string]*Code{}
-	for _, c := range state.Code {
+	for i, c := range state.Code {
+		if c == nil {
+			return nil, fmt.Errorf("invalid code: code block %d is null", i)
+		}
+		if _, dup := codesByID[c.ID]; dup {
+			return nil, fmt.Errorf("invalid code: duplicate code id %q", c.ID)
+		}
 		codeSymbols, found := table.FindTable(c.SymbolTableID)
 		if !found {
 			return nil, fmt.Errorf("symbol table not found: %s", c.SymbolTableID)
 		}
-		parent, found := codesByID[c.ParentID]
-		if !found && c.ParentID != "" {
-			return nil, fmt.Errorf("parent code not found: %s", c.ParentID)
+		// The first code block is the root. Every other block names a
+		// parent that appears before it, so the blocks form a tree.
+		var parent *Code
+		if i == 0 {
+			if c.ParentID != "" {
+				return nil, fmt.Errorf("invalid code: root code has a parent: %s", c.ParentID)
+			}
+		} else {
+			parent, found = codesByID[c.ParentID]
+			if !found {
+				return nil, fmt.Errorf("parent code not found: %q", c.ParentID)
+			}
 		}
 		constants, err := unmarshalConstants(c.Constants)
 		if err != nil {
@@ -163,11 +219,15 @@ func codeFromState(state *state) (*Code, error) {
 			instructions: CopyInstructions(c.Instructions),
 			constants:    constants,
 			names:        copyStrings(c.Names),
+			nameIndex:    newNameIndex(c.Names),
 			source:       c.Source,
+			filename:     c.Filename,
 			rootSource:   rootSource,
 			locations:    locationsFromDefs(c.Locations),
 			maxCallArgs:  c.MaxCallArgs,
 			envKeys:      copyStrings(c.EnvKeys),
+
+			exceptionHandlers: exceptionHandlersFromDefs(c.ExceptionHandlers),
 		}
 		codesByID[code.id] = code
 		codes = append(codes, code)
@@ -176,20 +236,79 @@ func codeFromState(state *state) (*Code, error) {
 		}
 		for _, constant := range constants {
 			if fn, ok := constant.(*Function); ok {
-				functionsByID[fn.id] = fn
+				if _, dup := functionsByID[fn.id]; dup {
+					return nil, fmt.Errorf("invalid code: duplicate function id %q", fn.id)
+				}
+				functionsByID[fn.id] = ownedFunction{fn: fn, owner: code}
 			}
 		}
 	}
 	for _, c := range codes {
 		if c.functionID != "" {
-			fn, found := functionsByID[c.functionID]
+			owned, found := functionsByID[c.functionID]
 			if !found {
 				return nil, fmt.Errorf("function not found: %s", c.functionID)
 			}
-			fn.code = c
+			if owned.owner != c.parent || owned.fn.code != nil {
+				return nil, fmt.Errorf("invalid code: function %q has an invalid code block", c.functionID)
+			}
+			owned.fn.code = c
+		}
+	}
+	for id, owned := range functionsByID {
+		if owned.fn.code == nil {
+			return nil, fmt.Errorf("invalid code: function %q has no code block", id)
 		}
 	}
 	return codes[0], nil
+}
+
+// newNameIndex returns the index map for a names table, or nil if it is empty.
+func newNameIndex(names []string) map[string]uint16 {
+	if len(names) == 0 {
+		return nil
+	}
+	index := make(map[string]uint16, len(names))
+	for i, name := range names {
+		if _, ok := index[name]; !ok {
+			index[name] = uint16(i)
+		}
+	}
+	return index
+}
+
+func exceptionHandlersFromDefs(defs []exceptionHandlerDef) []*ExceptionHandler {
+	if defs == nil {
+		return nil
+	}
+	handlers := make([]*ExceptionHandler, len(defs))
+	for i, def := range defs {
+		handlers[i] = &ExceptionHandler{
+			TryStart:     def.TryStart,
+			TryEnd:       def.TryEnd,
+			CatchStart:   def.CatchStart,
+			FinallyStart: def.FinallyStart,
+			CatchVarIdx:  def.CatchVarIdx,
+		}
+	}
+	return handlers
+}
+
+func exceptionHandlersToDefs(handlers []*ExceptionHandler) []exceptionHandlerDef {
+	if handlers == nil {
+		return nil
+	}
+	defs := make([]exceptionHandlerDef, len(handlers))
+	for i, h := range handlers {
+		defs[i] = exceptionHandlerDef{
+			TryStart:     h.TryStart,
+			TryEnd:       h.TryEnd,
+			CatchStart:   h.CatchStart,
+			FinallyStart: h.FinallyStart,
+			CatchVarIdx:  h.CatchVarIdx,
+		}
+	}
+	return defs
 }
 
 func unmarshalConstant(constant json.RawMessage) (any, error) {
@@ -229,6 +348,9 @@ func unmarshalConstant(constant json.RawMessage) (any, error) {
 		if err := json.Unmarshal(constant, &def); err != nil {
 			return nil, err
 		}
+		if def.Value == nil {
+			return nil, fmt.Errorf("invalid function constant: missing value")
+		}
 		defaults, err := unmarshalConstants(def.Value.Defaults)
 		if err != nil {
 			return nil, err
@@ -238,6 +360,7 @@ func unmarshalConstant(constant json.RawMessage) (any, error) {
 			Name:       def.Value.Name,
 			Parameters: def.Value.Parameters,
 			Defaults:   defaults,
+			RestParam:  def.Value.RestParam,
 		})
 		return f, nil
 	default:
@@ -303,6 +426,12 @@ func marshalConstants(constants []any) ([]json.RawMessage, error) {
 }
 
 func symbolTableFromDefinition(def *symbolTableDef) (*SymbolTable, error) {
+	if def == nil {
+		return nil, fmt.Errorf("invalid symbol table: null")
+	}
+	if len(def.Symbols) > math.MaxUint16 {
+		return nil, fmt.Errorf("invalid symbol table: too many symbols")
+	}
 	table := &SymbolTable{
 		id:            def.ID,
 		symbolsByName: map[string]*Symbol{},
@@ -315,10 +444,16 @@ func symbolTableFromDefinition(def *symbolTableDef) (*SymbolTable, error) {
 		table.symbols = append(table.symbols, obj)
 	}
 	for name, symbol := range def.SymbolsByName {
+		if symbol == nil {
+			return nil, fmt.Errorf("invalid symbol table: null symbol %q", name)
+		}
 		obj := symbolFromDefinition(symbol)
 		table.symbolsByName[name] = obj
 	}
 	for _, resolution := range def.Free {
+		if resolution == nil || resolution.Symbol == nil {
+			return nil, fmt.Errorf("invalid symbol table: null free variable")
+		}
 		obj := resolutionFromDefinition(resolution)
 		table.free = append(table.free, obj)
 		table.freeByName[obj.symbol.name] = obj
@@ -334,7 +469,28 @@ func symbolTableFromDefinition(def *symbolTableDef) (*SymbolTable, error) {
 	return table, nil
 }
 
+// symbolFromDefinition returns nil for a nil def, the form of an unused slot.
+// linkSymbols makes each by-name entry of the table and its children the same
+// *Symbol as the indexed entry it names. Marshaling stores the two separately,
+// and code such as Code.GlobalNames compares them by pointer.
+func linkSymbols(table *SymbolTable) {
+	local := table.LocalTable()
+	for name, sym := range table.symbolsByName {
+		if int(sym.index) < len(local.symbols) {
+			if indexed := local.symbols[sym.index]; indexed != nil && indexed.name == sym.name {
+				table.symbolsByName[name] = indexed
+			}
+		}
+	}
+	for _, child := range table.children {
+		linkSymbols(child)
+	}
+}
+
 func symbolFromDefinition(def *symbolDef) *Symbol {
+	if def == nil {
+		return nil
+	}
 	return &Symbol{
 		name:       def.Name,
 		index:      def.Index,
@@ -372,9 +528,12 @@ func stateFromCode(code *Code) (*state, error) {
 			Name:          code.name,
 			Names:         copyStrings(code.names),
 			Source:        code.source,
+			Filename:      code.filename,
 			Locations:     locationsToDefs(code.locations),
 			MaxCallArgs:   code.maxCallArgs,
 			EnvKeys:       copyStrings(code.envKeys),
+
+			ExceptionHandlers: exceptionHandlersToDefs(code.exceptionHandlers),
 		}
 		if code.parent != nil {
 			cdef.ParentID = code.parent.id
@@ -411,7 +570,11 @@ func definitionFromSymbolTable(table *SymbolTable) *symbolTableDef {
 	}
 }
 
+// definitionFromSymbol returns nil for a nil symbol, the form of an unused slot.
 func definitionFromSymbol(symbol *Symbol) *symbolDef {
+	if symbol == nil {
+		return nil
+	}
 	return &symbolDef{
 		Name:       symbol.name,
 		Index:      symbol.index,
@@ -430,6 +593,7 @@ func definitionFromFunction(function *Function) (*functionDef, error) {
 		Name:       function.name,
 		Parameters: copyStrings(function.parameters),
 		Defaults:   defaults,
+		RestParam:  function.restParam,
 	}, nil
 }
 

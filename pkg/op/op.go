@@ -262,7 +262,11 @@ func init() {
 	}
 }
 
-// GetInfo returns information about the given opcode.
+// GetInfo returns information about the given opcode. For an unknown opcode,
+// it returns an Info with an empty Name and an OperandCount of zero.
 func GetInfo(op Code) Info {
+	if int(op) >= len(infos) || infos[op].Name == "" {
+		return Info{Code: op}
+	}
 	return infos[op]
 }

@@ -195,3 +195,12 @@ func TestCompareOpTypeConstants(t *testing.T) {
 	assert.Equal(t, GreaterThan, CompareOpType(5))
 	assert.Equal(t, GreaterThanOrEqual, CompareOpType(6))
 }
+
+func TestGetInfoUnknownOpcode(t *testing.T) {
+	for _, code := range []Code{Invalid, Code(5), Code(255), Code(256), Code(65535)} {
+		info := GetInfo(code)
+		assert.Equal(t, info.Name, "")
+		assert.Equal(t, info.OperandCount, 0)
+		assert.Equal(t, info.Code, code)
+	}
+}

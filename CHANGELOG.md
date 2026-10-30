@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   The list cap also bounds the total elements of one conversion to Go, such as
   a script result, the arguments of a host function call, or `sprintf` and
   `encode` input, counting a shared list each time it appears (#496).
+- **`bytecode.Validate`** checks that a `*bytecode.Code` is well formed:
+  known opcodes with all operands, constant, name, local, and global indexes
+  in range, jump and exception handler targets on instruction boundaries, and
+  supported constant types. It does not check stack use or run-time value
+  types, so validated bytecode from an untrusted source is still not a
+  sandbox. `InstructionIter.Err` (in `bytecode` and `compiler`) reports why an
+  iteration stopped early.
 
 ### Changed
 
@@ -108,6 +115,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A multi-line comment with no closing `*/` is now a syntax error,
   `unterminated multi-line comment`, at the opening `/*`. Before, the comment
   silently ran to the end of the file.
+- `bytecode.Unmarshal` and `compiler.UnmarshalCode` now validate what they load
+  and return an error for malformed input, such as a missing code block, an
+  out-of-range index, an unknown opcode, or a jump to the middle of an
+  instruction. Before, such input could panic or load code that panicked when
+  run. `InstructionIter.Next` stops at an unknown opcode or a truncated
+  instruction instead of panicking, and `dis.Disassemble` returns that error.
+  `op.GetInfo` returns an empty `Info` for an unknown opcode, including one
+  above 255.
+- The compiler stores each attribute name once per code block, and a code
+  block with more than 65,534 distinct attribute names is a compile error.
 
 ### Fixed
 
@@ -161,6 +178,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   error for such a value. Before, a script could call `Unlock` on an unlocked
   mutex field, a fatal error that exits the host process (#511).
 
+- `bytecode.Marshal` now keeps `EnvKeys`, and `compiler.MarshalCode` keeps
+  rest parameters, exception handlers, and the filename. It no longer panics on
+  code with a discarded `_` variable, and the unmarshaled code maps each global
+  to the same name as the original. Before, unmarshaled code could call a
+  function with a rest parameter with the wrong arguments, and
+  `risor.Run` could not check the env of unmarshaled code.
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root
   (top-level) variable when a variable declared in a block, such as in an `if`

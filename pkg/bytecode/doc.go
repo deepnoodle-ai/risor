@@ -38,6 +38,20 @@
 // circular dependencies with the object package. Constants are stored as
 // []any and converted to object.Object by the VM at load time.
 //
+// # Loading Bytecode
+//
+// [Marshal] writes a Code and its descendants as JSON, and [Unmarshal] reads
+// it back. Unmarshal never panics on malformed input. It checks that the code
+// blocks form a tree and then calls [Validate], which checks that every
+// instruction is complete and refers to a constant, name, local, global,
+// function, or jump target that exists. Malformed input returns an error.
+//
+// These checks are structural. They do not check how instructions use the
+// value stack or the types of values at run time. The VM turns such faults
+// into errors rather than crashing the host, but bytecode from an untrusted
+// source is not a sandbox guarantee. Where you can, compile untrusted source
+// instead of loading untrusted bytecode.
+//
 // # Usage
 //
 // The compiler produces bytecode.Code which can be:
