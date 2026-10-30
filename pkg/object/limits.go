@@ -1,6 +1,10 @@
 package object
 
-import "context"
+import (
+	"context"
+	"maps"
+	"slices"
+)
 
 // Allocation limits guard the host process against scripts that request huge
 // allocations in a single operation (e.g. "a".repeat(1 << 40) or
@@ -184,4 +188,80 @@ func CheckListLength(ctx context.Context, n int) error {
 
 func listTooLargeError(maxLen int64) error {
 	return newValueErrorf("list too large (exceeds limit of %d elements)", maxLen)
+}
+
+// ExpandRanges returns obj with each range, including ranges nested in lists
+// and maps, replaced by a list of its values. It returns a value error if a
+// range is longer than the list length limit in ctx. Call it before
+// Interface when a range must convert to its values: Range.Interface has no
+// context, so it cannot apply the configured limit. Lists and maps that
+// contain no range are returned unchanged.
+func ExpandRanges(ctx context.Context, obj Object) (Object, error) {
+	switch obj.(type) {
+	case *Range, *List, *Map:
+		return expandRanges(ctx, obj, map[Object]Object{})
+	}
+	return obj, nil
+}
+
+// expandRanges does the work of ExpandRanges. seen maps each list and map
+// already visited to its result, so a shared container is expanded once and
+// a container that contains itself does not recurse forever.
+func expandRanges(ctx context.Context, obj Object, seen map[Object]Object) (Object, error) {
+	switch obj := obj.(type) {
+	case *Range:
+		if maxLen := GetLimits(ctx).MaxListLength; obj.length() > uint64(maxLen) {
+			return nil, newValueErrorf("range too large (exceeds limit of %d elements)", maxLen)
+		}
+		values, err := CollectValues(ctx, obj)
+		if err != nil {
+			return nil, err
+		}
+		return NewList(values), nil
+	case *List:
+		if result, ok := seen[obj]; ok {
+			return result, nil
+		}
+		seen[obj] = obj
+		var items []Object
+		for i, item := range obj.items {
+			expanded, err := expandRanges(ctx, item, seen)
+			if err != nil {
+				return nil, err
+			}
+			if expanded != item && items == nil {
+				items = slices.Clone(obj.items)
+			}
+			if items != nil {
+				items[i] = expanded
+			}
+		}
+		if items != nil {
+			seen[obj] = NewList(items)
+		}
+		return seen[obj], nil
+	case *Map:
+		if result, ok := seen[obj]; ok {
+			return result, nil
+		}
+		seen[obj] = obj
+		var items map[string]Object
+		for key, value := range obj.items {
+			expanded, err := expandRanges(ctx, value, seen)
+			if err != nil {
+				return nil, err
+			}
+			if expanded != value && items == nil {
+				items = maps.Clone(obj.items)
+			}
+			if items != nil {
+				items[key] = expanded
+			}
+		}
+		if items != nil {
+			seen[obj] = NewMap(items)
+		}
+		return seen[obj], nil
+	}
+	return obj, nil
 }

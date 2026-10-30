@@ -199,6 +199,41 @@ func TestAuditRangeInterfaceLimit(t *testing.T) {
 	assert.Equal(t, NewRange(0, 3, 1).Interface(), []int64{0, 1, 2})
 }
 
+func TestExpandRanges(t *testing.T) {
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+
+	// Scalars and containers without ranges are returned unchanged
+	s := NewString("a")
+	got, err := ExpandRanges(ctx, s)
+	assert.Nil(t, err)
+	assert.True(t, got == s)
+	plain := NewList([]Object{NewInt(1), NewMap(map[string]Object{"a": NewInt(2)})})
+	got, err = ExpandRanges(ctx, plain)
+	assert.Nil(t, err)
+	assert.True(t, got == plain)
+
+	// Nested ranges are replaced by lists, and the input is not modified
+	r := NewRange(0, 3, 1)
+	nested := NewList([]Object{NewInt(1), NewMap(map[string]Object{"r": r})})
+	got, err = ExpandRanges(ctx, nested)
+	assert.Nil(t, err)
+	assert.Equal(t, got.Interface(), []any{int64(1), map[string]any{"r": []any{int64(0), int64(1), int64(2)}}})
+	assert.True(t, nested.items[1].(*Map).items["r"] == r)
+
+	// A range over the limit is a value error, also when nested
+	_, err = ExpandRanges(ctx, NewRange(0, 11, 1))
+	assertValueError(t, err, "range too large (exceeds limit of 10 elements)")
+	_, err = ExpandRanges(ctx, NewList([]Object{NewRange(0, 1<<60, 1)}))
+	assertValueError(t, err, "range too large")
+
+	// A list that contains itself does not recurse forever
+	cyclic := NewList([]Object{r})
+	cyclic.items = append(cyclic.items, cyclic)
+	got, err = ExpandRanges(ctx, cyclic)
+	assert.Nil(t, err)
+	assert.Equal(t, got.(*List).items[0].Inspect(), "[0, 1, 2]")
+}
+
 // H-21: Range.Enumerate stops promptly when the context is canceled.
 func TestAuditRangeEnumerateContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

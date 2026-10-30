@@ -31,7 +31,7 @@ func Sprintf(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if err != nil {
 		return nil, err
 	}
-	fmtArgs, err := formatArgs(args[1:])
+	fmtArgs, err := formatArgs(ctx, args[1:])
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func Error(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmtArgs, err := formatArgs(args[1:])
+	fmtArgs, err := formatArgs(ctx, args[1:])
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +57,13 @@ func Error(ctx context.Context, args ...object.Object) (object.Object, error) {
 }
 
 // formatArgs converts args to Go values for use with fmt-style formatting.
-func formatArgs(args []object.Object) ([]interface{}, error) {
+func formatArgs(ctx context.Context, args []object.Object) ([]interface{}, error) {
 	fmtArgs := make([]interface{}, len(args))
 	for i, v := range args {
+		v, err := object.ExpandRanges(ctx, v)
+		if err != nil {
+			return nil, err
+		}
 		goVal, err := object.ToInterface(v)
 		if err != nil {
 			return nil, err

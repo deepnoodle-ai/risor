@@ -79,3 +79,42 @@ func TestWithLimitsCatchable(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, "value error")
 }
+
+func TestWithLimitsRangeConversion(t *testing.T) {
+	ctx := context.Background()
+	limits := WithLimits(Limits{MaxListLength: 10})
+	env := WithEnv(Builtins())
+
+	// Ranges within the limit convert to their values, also when nested
+	for src, want := range map[string]string{
+		`sprintf("%v", range(3))`:              "[0 1 2]",
+		`sprintf("%v", [range(3)])`:            "[[0 1 2]]",
+		`error("%v", {a: range(3)}).message()`: "map[a:[0 1 2]]",
+		`encode({a: [range(3)]}, "json")`:      `{"a":[[0,1,2]]}`,
+	} {
+		result, err := Eval(ctx, src, env, limits)
+		assert.Nil(t, err, src)
+		assert.Equal(t, result, want, src)
+	}
+
+	// Ranges over the limit raise a value error instead of converting to nil
+	for _, src := range []string{
+		`sprintf("%v", range(11))`,
+		`sprintf("%v", [1, range(11)])`,
+		`error("%v", {a: range(11)})`,
+		`encode(range(11), "json")`,
+		`encode({a: [range(11)]}, "json")`,
+	} {
+		_, err := Eval(ctx, src, env, limits)
+		assert.NotNil(t, err, src)
+		assert.True(t, strings.Contains(err.Error(), "range too large"), src)
+	}
+
+	// A raised limit lets a range above the default limit convert
+	src := `len(sprintf("%v", range(4194305)))` // DefaultMaxListLength + 1
+	_, err := Eval(ctx, src, env)
+	assert.NotNil(t, err)
+	result, err := Eval(ctx, src, env, WithLimits(Limits{MaxListLength: 8 << 20}))
+	assert.Nil(t, err)
+	assert.True(t, result.(int64) > 4194305)
+}

@@ -96,8 +96,10 @@ func (r *Range) Inspect() string {
 	return fmt.Sprintf("range(%d, %d, %d)", r.start, r.stop, r.step)
 }
 
-// Interface returns the range values as a []int64. Ranges longer than
-// DefaultMaxListLength are not materialized and return nil.
+// Interface returns the range values as a []int64. It has no context, so it
+// cannot see configured limits: ranges longer than DefaultMaxListLength are
+// not materialized and return nil. Use ExpandRanges first to apply the limit
+// in a context and get a value error instead.
 func (r *Range) Interface() any {
 	n := r.length()
 	if n > DefaultMaxListLength {
