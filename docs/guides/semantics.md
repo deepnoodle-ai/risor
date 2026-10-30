@@ -56,6 +56,13 @@ is `byte(0)`.
 
 **No implicit narrowing:** Float values are never implicitly converted to int.
 
+**Converting to byte:** `byte(x)` with an int wraps modulo 256, so
+`byte(300)` is `byte(44)` and `byte(-1)` is `byte(255)`. A float is truncated
+toward zero and then wraps the same way: `byte(300.7)` is `byte(44)` and
+`byte(-1.5)` is `byte(255)`. `byte(math.nan)`, `byte(math.inf)`, and
+`byte(-math.inf)` raise a value error. `bytes([...])` wraps int and float
+items the same way.
+
 **Shifts:** A negative shift count raises a value error: `1 << -1` and
 `byte(1) >> -1` both fail with "negative shift count".
 

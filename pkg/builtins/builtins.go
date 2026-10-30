@@ -416,7 +416,11 @@ func Byte(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Byte:
 		return object.NewByte(obj.Value()), nil
 	case *object.Float:
-		return object.NewByte(byte(obj.Value())), nil
+		b, err := object.AsByte(obj)
+		if err != nil {
+			return nil, err
+		}
+		return object.NewByte(b), nil
 	case *object.String:
 		// ParseUint rejects a sign, so allow a leading "+" as ParseInt did
 		if i, err := strconv.ParseUint(strings.TrimPrefix(obj.Value(), "+"), 0, 8); err == nil {
