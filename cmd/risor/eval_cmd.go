@@ -22,7 +22,11 @@ func evalHandler(ctx *cli.Context) error {
 	quiet := ctx.Bool("quiet")
 
 	// Build options
-	opts, err := getRisorOptions(ctx, true)
+	opts, err := getRisorOptions(ctx)
+	if err != nil {
+		return err
+	}
+	opts, err = withPipedStdin(ctx, expr, opts)
 	if err != nil {
 		return err
 	}

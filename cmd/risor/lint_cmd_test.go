@@ -241,3 +241,95 @@ func TestGetLintCode_NoInput(t *testing.T) {
 		assert.Equal(t, issue.Column, 5)
 	})
 }
+
+func lintIssuesByRule(t *testing.T, code, rule string) []LintIssue {
+	t.Helper()
+	program, err := parser.Parse(context.Background(), code, nil)
+	assert.Nil(t, err)
+	var found []LintIssue
+	for _, issue := range lintProgram(program, code) {
+		if issue.Rule == rule {
+			found = append(found, issue)
+		}
+	}
+	return found
+}
+
+func TestLintProgram_UnusedVariable(t *testing.T) {
+	code := `function f() {
+    let unused = 1
+    const alsoUnused = 2
+    let used = 3
+    let _ignored = 4
+    return used
+}`
+	issues := lintIssuesByRule(t, code, "unused-variable")
+	assert.Equal(t, len(issues), 2)
+	assert.Equal(t, issues[0].Line, 2)
+	assert.Equal(t, issues[0].Column, 9)
+	assert.Equal(t, issues[0].Level, "warning")
+	assert.Equal(t, issues[0].Message, `variable "unused" is declared but never used`)
+	assert.Equal(t, issues[1].Message, `variable "alsoUnused" is declared but never used`)
+}
+
+func TestLintProgram_UnusedVariableNestedFunc(t *testing.T) {
+	code := `function outer() {
+    let captured = 1
+    function inner() {
+        let deep = 2
+        return captured
+    }
+    return inner()
+}`
+	issues := lintIssuesByRule(t, code, "unused-variable")
+	assert.Equal(t, len(issues), 1)
+	assert.Equal(t, issues[0].Message, `variable "deep" is declared but never used`)
+}
+
+func TestLintProgram_UnusedVariableSkipsTopLevel(t *testing.T) {
+	// A host may read top-level variables after the script runs.
+	code := `let result = 42`
+	issues := lintIssuesByRule(t, code, "unused-variable")
+	assert.Equal(t, len(issues), 0)
+}
+
+func TestLintProgram_PositionsAreOneBased(t *testing.T) {
+	code := `let x = 1
+let x = 2`
+	issues := lintIssuesByRule(t, code, "variable-shadow")
+	assert.Equal(t, len(issues), 1)
+	assert.Equal(t, issues[0].Line, 2)
+	assert.Equal(t, issues[0].Column, 5)
+	assert.Equal(t, issues[0].Message, `variable "x" shadows declaration on line 1`)
+}
+
+func TestLintProgram_UnusedVariablePerFunction(t *testing.T) {
+	// "result" is read in g, but f's "result" is still unused.
+	code := `function f() {
+    let result = 1
+    return 0
+}
+function g() {
+    let result = 2
+    return result
+}`
+	issues := lintIssuesByRule(t, code, "unused-variable")
+	assert.Equal(t, len(issues), 1)
+	assert.Equal(t, issues[0].Line, 2)
+}
+
+func TestLintProgram_UnusedVariableMapKeyAndAssign(t *testing.T) {
+	code := `function f() {
+    let key = 1
+    let written = 2
+    let counted = 3
+    written = 4
+    counted += 1
+    let m = {key: 5, counted}
+    return m
+}`
+	issues := lintIssuesByRule(t, code, "unused-variable")
+	assert.Equal(t, len(issues), 2)
+	assert.Equal(t, issues[0].Message, `variable "key" is declared but never used`)
+	assert.Equal(t, issues[1].Message, `variable "written" is declared but never used`)
+}

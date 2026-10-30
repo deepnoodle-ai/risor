@@ -23,8 +23,11 @@ func genMeta(names []string) []byte {
 	return metaJSON
 }
 
+// modulesDir is where module sources live, relative to the repository root.
+const modulesDir = "pkg/modules"
+
 func listModules() ([]string, error) {
-	mods, err := os.ReadDir("modules")
+	mods, err := os.ReadDir(modulesDir)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +38,7 @@ func listModules() ([]string, error) {
 			if name == "all" {
 				continue
 			}
-			names = append(names, filepath.Join("modules", name))
+			names = append(names, filepath.Join(modulesDir, name))
 		}
 	}
 	return names, nil

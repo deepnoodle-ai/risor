@@ -115,11 +115,13 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 	var issues []LintIssue
 	lines := strings.Split(source, "\n")
 
-	// Track declared variables for unused detection
-	declared := make(map[string]int)        // name -> line
-	used := make(map[string]bool)           // name -> was used
+	declared := make(map[string]int)        // name -> line, for shadow detection
 	constants := make(map[string]bool)      // track constants for reassignment check
 	shadowWarnings := make(map[string]bool) // prevent duplicate shadow warnings
+
+	// Function-local declarations that the function never reads. Top-level
+	// variables are skipped: a host may read them after the run.
+	var unused []*ast.Ident
 
 	// Visit all nodes
 	ast.Inspect(program, func(node ast.Node) bool {
@@ -130,13 +132,13 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 		switch n := node.(type) {
 		case *ast.Var:
 			name := n.Name.Name
-			line := n.Name.Pos().Line
+			line := n.Name.Pos().LineNumber()
 
 			// Check for shadowing
 			if prevLine, exists := declared[name]; exists && !shadowWarnings[name] {
 				issues = append(issues, LintIssue{
 					Line:    line,
-					Column:  n.Name.Pos().Column,
+					Column:  n.Name.Pos().ColumnNumber(),
 					Rule:    "variable-shadow",
 					Message: fmt.Sprintf("variable %q shadows declaration on line %d", name, prevLine),
 					Level:   "warning",
@@ -144,13 +146,11 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 				shadowWarnings[name] = true
 			}
 			declared[name] = line
-			used[name] = false
 
 		case *ast.Const:
 			name := n.Name.Name
-			line := n.Name.Pos().Line
+			line := n.Name.Pos().LineNumber()
 			declared[name] = line
-			used[name] = false
 			constants[name] = true
 
 		case *ast.Assign:
@@ -159,20 +159,24 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 				// Check for constant reassignment
 				if constants[name] {
 					issues = append(issues, LintIssue{
-						Line:    n.Name.Pos().Line,
-						Column:  n.Name.Pos().Column,
+						Line:    n.Name.Pos().LineNumber(),
+						Column:  n.Name.Pos().ColumnNumber(),
 						Rule:    "const-reassign",
 						Message: fmt.Sprintf("cannot reassign constant %q", name),
 						Level:   "error",
 					})
 				}
-				used[name] = true
 			}
 
-		case *ast.Ident:
-			used[n.Name] = true
-
 		case *ast.Func:
+			if n.Body != nil {
+				reads := namesRead(n.Body)
+				for _, ident := range localDecls(n.Body) {
+					if !reads[ident.Name] && !strings.HasPrefix(ident.Name, "_") {
+						unused = append(unused, ident)
+					}
+				}
+			}
 			// Check for functions without return
 			if n.Name != nil && n.Body != nil {
 				hasReturn := false
@@ -191,8 +195,8 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 			// Check for empty blocks
 			if n.Consequence != nil && len(n.Consequence.Stmts) == 0 {
 				issues = append(issues, LintIssue{
-					Line:    n.Consequence.Pos().Line,
-					Column:  n.Consequence.Pos().Column,
+					Line:    n.Consequence.Pos().LineNumber(),
+					Column:  n.Consequence.Pos().ColumnNumber(),
 					Rule:    "empty-block",
 					Message: "empty if block",
 					Level:   "warning",
@@ -200,8 +204,8 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 			}
 			if n.Alternative != nil && len(n.Alternative.Stmts) == 0 {
 				issues = append(issues, LintIssue{
-					Line:    n.Alternative.Pos().Line,
-					Column:  n.Alternative.Pos().Column,
+					Line:    n.Alternative.Pos().LineNumber(),
+					Column:  n.Alternative.Pos().ColumnNumber(),
 					Rule:    "empty-block",
 					Message: "empty else block",
 					Level:   "warning",
@@ -214,8 +218,8 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 				if rightIdent, ok := n.Y.(*ast.Ident); ok {
 					if leftIdent.Name == rightIdent.Name {
 						issues = append(issues, LintIssue{
-							Line:    n.Pos().Line,
-							Column:  n.Pos().Column,
+							Line:    n.Pos().LineNumber(),
+							Column:  n.Pos().ColumnNumber(),
 							Rule:    "self-compare",
 							Message: fmt.Sprintf("comparing %q to itself", leftIdent.Name),
 							Level:   "warning",
@@ -228,8 +232,8 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 			// Check for very long strings
 			if len(n.Value) > 1000 {
 				issues = append(issues, LintIssue{
-					Line:    n.Pos().Line,
-					Column:  n.Pos().Column,
+					Line:    n.Pos().LineNumber(),
+					Column:  n.Pos().ColumnNumber(),
 					Rule:    "long-string",
 					Message: fmt.Sprintf("string literal is very long (%d characters)", len(n.Value)),
 					Level:   "warning",
@@ -239,6 +243,17 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 
 		return true
 	})
+
+	// Check for unused variables
+	for _, ident := range unused {
+		issues = append(issues, LintIssue{
+			Line:    ident.Pos().LineNumber(),
+			Column:  ident.Pos().ColumnNumber(),
+			Rule:    "unused-variable",
+			Message: fmt.Sprintf("variable %q is declared but never used", ident.Name),
+			Level:   "warning",
+		})
+	}
 
 	// Check line-level issues
 	for i, line := range lines {
@@ -279,6 +294,55 @@ func lintProgram(program *ast.Program, source string) []LintIssue {
 	}
 
 	return issues
+}
+
+// localDecls returns the names declared with let or const within body.
+// Nested functions are skipped; each is collected when it is visited.
+func localDecls(body *ast.Block) []*ast.Ident {
+	var names []*ast.Ident
+	ast.Inspect(body, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.Func:
+			return false
+		case *ast.Var:
+			names = append(names, n.Name)
+		case *ast.Const:
+			names = append(names, n.Name)
+		}
+		return true
+	})
+	return names
+}
+
+// namesRead returns the names that body reads, including within nested
+// functions, which may read the enclosing function's variables. Identifier
+// map keys are literal names, and a plain "=" assignment writes its name
+// without reading it, so neither counts.
+func namesRead(body *ast.Block) map[string]bool {
+	names := make(map[string]bool)
+	var visit func(ast.Node) bool
+	visit = func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.Ident:
+			names[n.Name] = true
+		case *ast.Map:
+			for _, item := range n.Items {
+				ast.Inspect(item.Value, visit)
+			}
+			return false
+		case *ast.Assign:
+			if n.Op != "=" || n.Name == nil {
+				return true
+			}
+			if n.Value != nil {
+				ast.Inspect(n.Value, visit)
+			}
+			return false
+		}
+		return true
+	}
+	ast.Inspect(body, visit)
+	return names
 }
 
 func printLintResults(filename string, issues []LintIssue, outputFormat string) {

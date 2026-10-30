@@ -32,12 +32,6 @@ func runHandler(ctx *cli.Context) error {
 		handleSigForProfiler()
 	}
 
-	// Get Risor options
-	opts, err := getRisorOptions(ctx, true)
-	if err != nil {
-		return err
-	}
-
 	// Check if we should run REPL
 	if shouldRunRepl(ctx) {
 		replEnv, err := getReplEnv(ctx)
@@ -49,6 +43,16 @@ func runHandler(ctx *cli.Context) error {
 
 	// Get the code to execute
 	code, err := getRisorCode(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Get Risor options
+	opts, err := getRisorOptions(ctx)
+	if err != nil {
+		return err
+	}
+	opts, err = withPipedStdin(ctx, code, opts)
 	if err != nil {
 		return err
 	}
@@ -100,7 +104,7 @@ func versionHandler(ctx *cli.Context) error {
 	return nil
 }
 
-func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error) {
+func getRisorOptions(ctx *cli.Context) ([]risor.Option, error) {
 	var opts []risor.Option
 	if !ctx.Bool("no-default-globals") {
 		opts = append(opts, risor.WithEnv(risor.Builtins()))
@@ -109,20 +113,6 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 	opts = append(opts, risor.WithEnv(map[string]any{
 		"print": newPrintBuiltin(),
 	}))
-	// Auto-inject stdin as a variable when data is piped and stdin isn't
-	// being used to read code (via --stdin flag).
-	if injectStdin && !ctx.Bool("stdin") && cli.IsPiped() {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return nil, fmt.Errorf("reading stdin: %w", err)
-		}
-		if len(data) > 0 {
-			opts = append(opts, risor.WithEnv(map[string]any{
-				"stdin": string(data),
-			}))
-		}
-	}
-	// --var and --var-json flags come last so they can override auto-detected stdin
 	if vars, err := parseVarFlags(ctx.Strings("var")); err != nil {
 		return nil, err
 	} else if len(vars) > 0 {
@@ -134,6 +124,41 @@ func getRisorOptions(ctx *cli.Context, injectStdin bool) ([]risor.Option, error)
 		opts = append(opts, risor.WithEnv(vars))
 	}
 	return opts, nil
+}
+
+// withPipedStdin adds piped input as the stdin variable when stdin isn't
+// being used to read code (via --stdin flag) and the code reads the global
+// stdin. Reading blocks until the pipe closes, so code that doesn't read
+// stdin must not trigger it.
+func withPipedStdin(ctx *cli.Context, code string, opts []risor.Option) ([]risor.Option, error) {
+	if ctx.Bool("stdin") || !cli.IsPiped() || !readsStdin(code, opts) {
+		return opts, nil
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("reading stdin: %w", err)
+	}
+	if len(data) > 0 {
+		opts = append(opts, risor.WithEnv(map[string]any{
+			"stdin": string(data),
+		}))
+	}
+	return opts, nil
+}
+
+// readsStdin reports whether code reads a global stdin variable that opts
+// don't define. The compiler resolves the name, so a map key, a parameter, or
+// the script's own variable named stdin doesn't count, and neither does a
+// stdin set with --var. Code that fails to compile for another reason is
+// reported as not reading stdin; evaluation reports the error.
+func readsStdin(code string, opts []risor.Option) bool {
+	ctx := context.Background()
+	if _, err := risor.Compile(ctx, code, opts...); err == nil {
+		return false
+	}
+	withStdin := append(opts[:len(opts):len(opts)], risor.WithEnv(map[string]any{"stdin": ""}))
+	_, err := risor.Compile(ctx, code, withStdin...)
+	return err == nil
 }
 
 // parseJSONVarFlag parses a --var-json flag value as a JSON object.

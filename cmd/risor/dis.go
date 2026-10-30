@@ -14,7 +14,7 @@ import (
 )
 
 func disHandler(ctx *cli.Context) error {
-	opts, err := getRisorOptions(ctx, false)
+	opts, err := getRisorOptions(ctx)
 	if err != nil {
 		return err
 	}
@@ -34,17 +34,7 @@ func disHandler(ctx *cli.Context) error {
 
 	// If a function name was provided, disassemble its code only
 	if funcName := ctx.String("func"); funcName != "" {
-		var fn *bytecode.Function
-		for i := 0; i < compiledCode.ConstantCount(); i++ {
-			obj, ok := compiledCode.ConstantAt(i).(*bytecode.Function)
-			if !ok {
-				continue
-			}
-			if obj.Name() == funcName {
-				fn = obj
-				break
-			}
-		}
+		fn := findFunction(compiledCode, funcName)
 		if fn == nil {
 			return fmt.Errorf("function %q not found", funcName)
 		}
@@ -57,6 +47,19 @@ func disHandler(ctx *cli.Context) error {
 		return err
 	}
 	dis.Print(instructions, os.Stdout)
+	return nil
+}
+
+// findFunction returns the first function named name in code or in any code
+// nested within it, so functions defined inside other functions are found.
+func findFunction(code *bytecode.Code, name string) *bytecode.Function {
+	for _, c := range code.Flatten() {
+		for i := 0; i < c.ConstantCount(); i++ {
+			if fn, ok := c.ConstantAt(i).(*bytecode.Function); ok && fn.Name() == name {
+				return fn
+			}
+		}
+	}
 	return nil
 }
 
