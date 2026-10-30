@@ -706,6 +706,22 @@ func TestResolveIntSlice(t *testing.T) {
 	// Negative stop out of range
 	_, _, err = ResolveIntSlice(Slice{Start: NewInt(0), Stop: NewInt(-10)}, 5)
 	assert.NotNil(t, err)
+
+	// Empty container
+	start, stop, err = ResolveIntSlice(Slice{}, 0)
+	assert.Nil(t, err)
+	assert.Equal(t, start, int64(0))
+	assert.Equal(t, stop, int64(0))
+
+	// Empty slice at the end
+	start, stop, err = ResolveIntSlice(Slice{Start: NewInt(5), Stop: NewInt(5)}, 5)
+	assert.Nil(t, err)
+	assert.Equal(t, start, int64(5))
+	assert.Equal(t, stop, int64(5))
+
+	// Start past the end
+	_, _, err = ResolveIntSlice(Slice{Start: NewInt(6)}, 5)
+	assert.NotNil(t, err)
 }
 
 // mockCallFunc creates a context with a CallFunc that invokes the closure.

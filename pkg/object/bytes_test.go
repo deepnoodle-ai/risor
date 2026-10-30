@@ -380,6 +380,13 @@ func TestBytesGetAttrContainsRune(t *testing.T) {
 	result, err = containsRune.(*Builtin).Call(ctx, NewString("z"))
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bool).value, false)
+
+	// Multi-byte rune
+	b = NewBytes([]byte("héllo"))
+	containsRune, _ = b.GetAttr("contains_rune")
+	result, err = containsRune.(*Builtin).Call(ctx, NewString("é"))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Bool).value, true)
 }
 
 func TestBytesGetAttrContainsRuneError(t *testing.T) {
@@ -586,6 +593,16 @@ func TestBytesGetAttrIndexRune(t *testing.T) {
 	result, err = indexRune.(*Builtin).Call(ctx, NewString("z"))
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*Int).Value(), int64(-1))
+
+	// Multi-byte rune: the result is a byte index
+	b = NewBytes([]byte("héllo"))
+	indexRune, _ = b.GetAttr("index_rune")
+	result, err = indexRune.(*Builtin).Call(ctx, NewString("é"))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(1))
+	result, err = indexRune.(*Builtin).Call(ctx, NewString("l"))
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Int).Value(), int64(3))
 }
 
 func TestBytesGetAttrIndexRuneError(t *testing.T) {
@@ -602,6 +619,10 @@ func TestBytesGetAttrIndexRuneError(t *testing.T) {
 	assert.NotNil(t, err)
 
 	// Must be single character
+	_, err = indexRune.(*Builtin).Call(ctx, NewString("é!"))
+	assert.NotNil(t, err)
+	_, err = indexRune.(*Builtin).Call(ctx, NewString("\xff"))
+	assert.NotNil(t, err)
 	_, err = indexRune.(*Builtin).Call(ctx, NewString("abc"))
 	assert.NotNil(t, err)
 }

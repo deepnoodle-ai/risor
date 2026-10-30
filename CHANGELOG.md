@@ -46,6 +46,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- Slices that select nothing at the end of a value, such as `""[:]`, `[][:]`,
+  and `"ab"[2:2]`, now return an empty string, list, or bytes. Before, they
+  failed with "start index is out of range".
+- String `index()` and `last_index()` now return a rune index, the same unit
+  that `s[i]`, slicing, and `len(s)` use. Before, they returned a byte offset,
+  so `"héllo".index("l")` was 3 instead of 2. Go API: `String.Enumerate` passes
+  rune indexes as keys instead of byte offsets.
+- Bytes `contains_rune()` and `index_rune()` accept multi-byte runes such as
+  `"é"`. Before, they rejected any rune that is more than one byte in UTF-8.
+  `index_rune()` still returns a byte index, the unit that bytes use.
+
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root
   (top-level) variable when a variable declared in a block, such as in an `if`

@@ -66,7 +66,7 @@ func init() {
 		})
 
 	stringMethods.Define("index").
-		Doc("Find first index of substring (-1 if not found)").
+		Doc("Find first rune index of substring (-1 if not found)").
 		Arg("substr").
 		Returns("int").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
@@ -82,7 +82,7 @@ func init() {
 		})
 
 	stringMethods.Define("last_index").
-		Doc("Find last index of substring (-1 if not found)").
+		Doc("Find last rune index of substring (-1 if not found)").
 		Arg("substr").
 		Returns("int").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
@@ -389,7 +389,7 @@ func (s *String) Index(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewInt(int64(strings.Index(s.value, substr))), nil
+	return NewInt(s.runeIndex(strings.Index(s.value, substr))), nil
 }
 
 func (s *String) LastIndex(obj Object) (Object, error) {
@@ -397,7 +397,17 @@ func (s *String) LastIndex(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewInt(int64(strings.LastIndex(s.value, substr))), nil
+	return NewInt(s.runeIndex(strings.LastIndex(s.value, substr))), nil
+}
+
+// runeIndex converts a byte offset into s to a rune index, the unit that
+// s[i], slicing, and len(s) use. A negative offset (not found) is returned
+// as -1.
+func (s *String) runeIndex(byteOffset int) int64 {
+	if byteOffset < 0 {
+		return -1
+	}
+	return int64(utf8.RuneCountInString(s.value[:byteOffset]))
 }
 
 func (s *String) ReplaceAll(ctx context.Context, old, new Object) (Object, error) {
@@ -470,11 +480,14 @@ func (s *String) Len() *Int {
 	return NewInt(int64(len([]rune(s.value))))
 }
 
+// Enumerate calls fn for each rune, with its rune index as the key.
 func (s *String) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
-	for i, r := range s.value {
-		if !fn(NewInt(int64(i)), NewString(string(r))) {
+	i := int64(0)
+	for _, r := range s.value {
+		if !fn(NewInt(i), NewString(string(r))) {
 			return
 		}
+		i++
 	}
 }
 

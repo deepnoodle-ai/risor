@@ -1,6 +1,7 @@
 package object
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -83,4 +84,17 @@ func TestStringGetItem(t *testing.T) {
 			assert.Equal(t, resultStr.Value(), tc.expected, msg)
 		}
 	}
+}
+
+func TestStringEnumerateRuneIndexes(t *testing.T) {
+	s := NewString("héllo")
+	var keys []int64
+	var values []string
+	s.Enumerate(context.Background(), func(key, value Object) bool {
+		keys = append(keys, key.(*Int).Value())
+		values = append(values, value.(*String).Value())
+		return true
+	})
+	assert.Equal(t, keys, []int64{0, 1, 2, 3, 4})
+	assert.Equal(t, values, []string{"h", "é", "l", "l", "o"})
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -100,7 +101,7 @@ func init() {
 		})
 
 	bytesMethods.Define("index_rune").
-		Doc("Find first index of rune (-1 if not found)").
+		Doc("Find first byte index of rune (-1 if not found)").
 		Arg("r").
 		Returns("int").
 		Impl(func(b *Bytes, ctx context.Context, args ...Object) (Object, error) {
@@ -328,10 +329,11 @@ func (b *Bytes) ContainsRune(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(s) != 1 {
+	r, ok := singleRune(s)
+	if !ok {
 		return nil, fmt.Errorf("bytes.contains_rune: argument must be a single character")
 	}
-	return NewBool(bytes.ContainsRune(b.value, rune(s[0]))), nil
+	return NewBool(bytes.ContainsRune(b.value, r)), nil
 }
 
 func (b *Bytes) Count(obj Object) (Object, error) {
@@ -390,10 +392,20 @@ func (b *Bytes) IndexRune(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(s) != 1 {
+	r, ok := singleRune(s)
+	if !ok {
 		return nil, fmt.Errorf("bytes.index_rune: argument must be a single character")
 	}
-	return NewInt(int64(bytes.IndexRune(b.value, rune(s[0])))), nil
+	return NewInt(int64(bytes.IndexRune(b.value, r))), nil
+}
+
+// singleRune returns the rune in s if s holds exactly one UTF-8 encoded rune.
+func singleRune(s string) (rune, bool) {
+	r, size := utf8.DecodeRuneInString(s)
+	if size == 0 || size != len(s) || (r == utf8.RuneError && size == 1) {
+		return 0, false
+	}
+	return r, true
 }
 
 func (b *Bytes) Repeat(ctx context.Context, obj Object) (Object, error) {
