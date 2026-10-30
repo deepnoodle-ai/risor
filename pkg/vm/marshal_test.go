@@ -511,3 +511,33 @@ func TestUnmarshalLocationWithoutSourceLine(t *testing.T) {
 		})
 	}
 }
+
+// Code compiled without its original source stores the program's string
+// form, whose lines can be shorter than the columns of its locations. Such
+// code must still load, so Unmarshal does not check columns against source
+// lines.
+func TestUnmarshalAcceptsColumnsPastStoredSource(t *testing.T) {
+	indent := strings.Repeat(" ", 40)
+	program, err := parser.Parse(context.Background(),
+		indent+"let x = 1\n"+indent+"x + 1", nil)
+	assert.Nil(t, err)
+	code, err := compiler.Compile(program, nil)
+	assert.Nil(t, err)
+
+	pastLine := false
+	for i := 0; i < code.LocationCount(); i++ {
+		loc := code.LocationAt(i)
+		if loc.Column > len(code.GetSourceLine(loc.Line))+1 {
+			pastLine = true
+		}
+	}
+	assert.True(t, pastLine)
+
+	data, err := bytecode.Marshal(code)
+	assert.Nil(t, err)
+	restored, err := bytecode.Unmarshal(data)
+	assert.Nil(t, err)
+	result, err := Run(context.Background(), restored)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(2))
+}

@@ -42,6 +42,11 @@ const maxParameters = 256
 //     gives every call frame this many slots, so a larger count would only
 //     waste memory.
 //   - The local and global counts are in the range of a uint16 operand.
+//   - Source location columns and end columns are from 0 to [math.MaxInt32].
+//     They are not checked against the source text, since code compiled
+//     without its original source stores a reformatted copy whose lines
+//     may be shorter than the columns. Error formatting clamps carets to
+//     the source line instead.
 //
 // Validate does not check how instructions use the value stack, the types of
 // values at run time, or MAKE_CELL operands for an enclosing frame (frames
@@ -243,6 +248,14 @@ func (v *validator) validateCode(code *Code) error {
 		}
 		if err != nil {
 			return fmt.Errorf("%s at offset %d: %w", op.GetInfo(opcode).Name, pos, err)
+		}
+	}
+
+	for i, loc := range code.locations {
+		if loc.Column < 0 || loc.Column > math.MaxInt32 ||
+			loc.EndColumn < 0 || loc.EndColumn > math.MaxInt32 {
+			return fmt.Errorf("location %d has an invalid column (column %d, end column %d)",
+				i, loc.Column, loc.EndColumn)
 		}
 	}
 

@@ -262,6 +262,63 @@ func TestStructuredError_FriendlyErrorMessage_ZeroLocation(t *testing.T) {
 	assert.False(t, strings.Contains(result, "(0:0)"))
 }
 
+// A location from untrusted bytecode or built by hand may have a column far
+// past its source line. The caret line is clamped to the line rather than
+// padded out to the column. The columns are 1<<16 rather than larger, so a
+// broken clamp costs about 64 KB and fails the length check.
+func TestStructuredError_FriendlyErrorMessage_ClampsColumns(t *testing.T) {
+	tests := []struct {
+		name      string
+		column    int
+		endColumn int
+		caret     string
+	}{
+		{"column past line", 1 << 16, 0, " | " + strings.Repeat(" ", 15) + "^\n"},
+		{"column and end column past line", 1 << 16, 1<<16 + 5, " | " + strings.Repeat(" ", 15) + "^\n"},
+		{"end column past line", 9, 1 << 16, " | " + strings.Repeat(" ", 8) + "^^^^^^^^\n"},
+		{"in range", 5, 8, " |     ^^^\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &StructuredError{
+				Kind:    ErrRuntime,
+				Message: "boom",
+				Location: SourceLocation{
+					Line:      1,
+					Column:    tt.column,
+					EndColumn: tt.endColumn,
+					Source:    "let x = foo + 1",
+				},
+			}
+			result := err.FriendlyErrorMessage()
+			assert.True(t, len(result) < 200, len(result))
+			assert.True(t, strings.HasSuffix(result, tt.caret), result)
+
+			formatted := NewFormatter(false).Format(err.ToFormatted())
+			assert.True(t, len(formatted) < 200, len(formatted))
+			assert.Contains(t, formatted, strings.TrimPrefix(tt.caret, " | "))
+		})
+	}
+}
+
+// Columns count runes, so a column past a non-ASCII line is clamped to the
+// line's rune count, not its byte count.
+func TestCaretSpan_ClampsToRunes(t *testing.T) {
+	pad, width := caretSpan("éé", 100, 0)
+	assert.Equal(t, pad, 2)
+	assert.Equal(t, width, 1)
+
+	pad, width = caretSpan("x = éé", 5, 100)
+	assert.Equal(t, pad, 4)
+	assert.Equal(t, width, 3)
+}
+
+func TestCaretSpan_ColumnBeforeLine(t *testing.T) {
+	pad, width := caretSpan("let x = 1", -3, 0)
+	assert.Equal(t, pad, 0)
+	assert.Equal(t, width, 1)
+}
+
 func TestStructuredError_Unwrap(t *testing.T) {
 	cause := NewEvalError(EvalErrorf("underlying error"))
 	err := &StructuredError{
