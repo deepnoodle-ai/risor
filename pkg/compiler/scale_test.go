@@ -3,9 +3,9 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
@@ -29,38 +29,40 @@ func parseManyFunctions(tb testing.TB, n int) (*ast.Program, string) {
 	return prog, src
 }
 
-// fastestCompile returns the fastest of several compiles of prog, to reduce
-// noise from the scheduler and the garbage collector.
-func fastestCompile(t *testing.T, prog *ast.Program, src string) time.Duration {
+// compileBytes returns the fewest bytes allocated by several compiles of prog.
+// Bytes allocated measure the work done without depending on machine load,
+// and taking the fewest guards against allocations by other goroutines.
+func compileBytes(t *testing.T, prog *ast.Program, src string) uint64 {
 	t.Helper()
-	best := time.Duration(1<<63 - 1)
+	best := uint64(1<<64 - 1)
+	var before, after runtime.MemStats
 	for i := 0; i < 3; i++ {
-		start := time.Now()
+		runtime.ReadMemStats(&before)
 		_, err := Compile(prog, &Config{Source: src})
+		runtime.ReadMemStats(&after)
 		assert.Nil(t, err)
-		best = min(best, time.Since(start))
+		best = min(best, after.TotalAlloc-before.TotalAlloc)
 	}
 	return best
 }
 
-// TestCompileTimeLinearInFunctionCount guards against compile time that grows
-// with the square of the number of functions. Eight times the functions must
-// take well under 64 times as long. It compares two sizes on the same machine
-// rather than checking an absolute time.
-func TestCompileTimeLinearInFunctionCount(t *testing.T) {
-	if testing.Short() {
-		t.Skip("timing test")
-	}
-	const small, large = 1000, 8000
+// TestCompileWorkLinearInFunctionCount guards against compile work that grows
+// with the square of the number of functions. It counts bytes allocated rather
+// than time, so machine load does not affect it. Eight times the functions
+// must allocate well under 64 times as much. Both quadratic paths fixed in
+// #531 exceed the bound at these sizes: splitting the source for each
+// instruction, and building the global names for each function.
+func TestCompileWorkLinearInFunctionCount(t *testing.T) {
+	const small, large = 100, 800
 	smallProg, smallSrc := parseManyFunctions(t, small)
 	largeProg, largeSrc := parseManyFunctions(t, large)
 
-	smallTime := fastestCompile(t, smallProg, smallSrc)
-	largeTime := fastestCompile(t, largeProg, largeSrc)
+	smallBytes := compileBytes(t, smallProg, smallSrc)
+	largeBytes := compileBytes(t, largeProg, largeSrc)
 
-	ratio := float64(largeTime) / float64(smallTime)
-	t.Logf("%d functions: %v, %d functions: %v, ratio %.1f", small, smallTime, large, largeTime, ratio)
-	assert.True(t, ratio < 24, "compile time grew %.1fx for %dx the functions", ratio, large/small)
+	ratio := float64(largeBytes) / float64(smallBytes)
+	t.Logf("%d functions: %d bytes, %d functions: %d bytes, ratio %.1f", small, smallBytes, large, largeBytes, ratio)
+	assert.True(t, ratio < 12, "compile allocations grew %.1fx for %dx the functions", ratio, large/small)
 }
 
 func BenchmarkCompileManyFunctions(b *testing.B) {
