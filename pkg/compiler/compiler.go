@@ -94,6 +94,11 @@ type Compiler struct {
 	// Increments with each function compiled
 	funcIndex int
 
+	// hoisted holds the function declarations that the first pass added to
+	// the symbol table, so that compileFunc stores them in the symbols
+	// already claimed for them. Any other named function claims a new symbol.
+	hoisted map[*ast.Func]bool
+
 	// Source filename
 	filename string
 
@@ -254,6 +259,7 @@ func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 	}
 
 	// First pass: collect function declarations to allow forward references
+	c.hoisted = map[*ast.Func]bool{}
 	if err := c.collectFunctionDeclarations(node); err != nil {
 		rollback()
 		return nil, err
@@ -298,6 +304,7 @@ func (c *Compiler) collectFunctionDeclarations(node ast.Node) error {
 			if _, err := c.current.symbols.InsertConstant(functionName); err != nil {
 				return err
 			}
+			c.hoisted[node] = true
 		}
 	}
 	return nil
@@ -1193,9 +1200,15 @@ func (c *Compiler) compilePostfix(node *ast.Postfix) error {
 	case *ast.Ident:
 		// Simple variable: x++
 		name := x.Name
+		if IsBlankIdentifier(name) {
+			return c.formatError(fmt.Sprintf("cannot use _ with %s", node.Op), node.Pos())
+		}
 		resolution, found := c.current.symbols.Resolve(name)
 		if !found {
 			return c.formatUndefinedVariableError(name, node.Pos())
+		}
+		if resolution.symbol.IsConstant() {
+			return c.formatError(fmt.Sprintf("cannot assign to constant %q", name), node.Pos())
 		}
 		// Push the named variable onto the stack
 		c.emitLoad(resolution)
@@ -1762,10 +1775,14 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	// If the function was named, we store it as a named variable in the current
 	// code. Otherwise, we just leave it on the stack.
 	if code.isNamed {
-		// Check if the function name already exists in the symbol table
-		// (it would have been added in the first pass for forward references)
-		funcSymbol, found := c.current.symbols.Get(functionName)
-		if !found {
+		// A top-level declaration already has a symbol from the first pass,
+		// which allows forward references. Any other named function claims a
+		// new symbol, which fails if the name is already in use in this scope.
+		var funcSymbol *Symbol
+		if c.hoisted[node] {
+			funcSymbol, _ = c.current.symbols.Get(functionName)
+		}
+		if funcSymbol == nil {
 			var err error
 			funcSymbol, err = c.current.symbols.InsertConstant(functionName)
 			if err != nil {
