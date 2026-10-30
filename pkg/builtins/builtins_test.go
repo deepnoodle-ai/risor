@@ -960,3 +960,17 @@ func TestRangeWithList(t *testing.T) {
 		assert.Equal(t, v.(*object.Int).Value(), expected[i])
 	}
 }
+
+func TestListBuiltinsStopOnCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	keep := object.NewBuiltin("keep", func(ctx context.Context, args ...object.Object) (object.Object, error) {
+		return object.True, nil
+	})
+	_, err := Any(ctx, object.NewList([]object.Object{object.False, object.False}))
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = All(ctx, object.NewList([]object.Object{object.True, object.True}))
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = Filter(ctx, object.NewList([]object.Object{object.True}), keep)
+	assert.ErrorIs(t, err, context.Canceled)
+}

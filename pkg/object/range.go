@@ -188,13 +188,9 @@ func (r *Range) Map(ctx context.Context, fn Object) (Object, error) {
 	if !ok {
 		return nil, newTypeErrorf("range.map() expected a function (%s given)", fn.Type())
 	}
-	var passIndex bool
-	if closure, ok := fn.(*Closure); ok {
-		count := closure.ParameterCount()
-		if count < 1 || count > 2 {
-			return nil, newTypeErrorf("range.map() received an incompatible function")
-		}
-		passIndex = count == 2
+	passIndex, err := mapPassesIndex(fn, "range.map()")
+	if err != nil {
+		return nil, err
 	}
 	n := r.length()
 	if maxLen := GetLimits(ctx).MaxListLength; n > uint64(maxLen) {

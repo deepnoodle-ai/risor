@@ -146,7 +146,7 @@ func init() {
 		Doc("Sort list in place").
 		Returns("list").
 		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
-			if err := Sort(ls.items); err != nil {
+			if err := SortContext(ctx, ls.items); err != nil {
 				return nil, err
 			}
 			return ls, nil
@@ -212,19 +212,36 @@ func (ls *List) inspect(path nestPath[Object]) string {
 // during iteration are not visited. This matches Map iteration, which visits
 // the keys present at the start, skipping any that are deleted along the way.
 
+// mapPassesIndex reports whether a map() callback is called with (index,
+// value) rather than (value). A closure gets the index only when it requires
+// exactly two arguments; optional and rest parameters don't count, so
+// function(x, mult = 2) and function(...args) are called with the value
+// alone. A closure that can't be called with one or two arguments is a type
+// error. Other callables always get the value alone.
+func mapPassesIndex(fn Object, method string) (bool, error) {
+	closure, ok := fn.(*Closure)
+	if !ok {
+		return false, nil
+	}
+	switch required := closure.RequiredArgsCount(); {
+	case required == 2:
+		return true, nil
+	case required > 2:
+		return false, newTypeErrorf("%s received an incompatible function", method)
+	case closure.ParameterCount() == 0 && !closure.HasRestParam():
+		return false, newTypeErrorf("%s received an incompatible function", method)
+	}
+	return false, nil
+}
+
 func (ls *List) Map(ctx context.Context, fn Object) (Object, error) {
 	callable, ok := fn.(Callable)
 	if !ok {
 		return nil, newTypeErrorf("list.map() expected a function (%s given)", fn.Type())
 	}
-	// Closures can accept (index, value) if they have 2 parameters
-	var passIndex bool
-	if closure, ok := fn.(*Closure); ok {
-		count := closure.ParameterCount()
-		if count < 1 || count > 2 {
-			return nil, newTypeErrorf("list.map() received an incompatible function")
-		}
-		passIndex = count == 2
+	passIndex, err := mapPassesIndex(fn, "list.map()")
+	if err != nil {
+		return nil, err
 	}
 	n := len(ls.items)
 	result := make([]Object, 0, n)
@@ -569,7 +586,7 @@ func (ls *List) SetItem(key, value Object) *Error {
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
-		return Errorf(err.Error())
+		return NewError(err)
 	}
 	ls.items[idx] = value
 	return nil
@@ -583,7 +600,7 @@ func (ls *List) DelItem(key Object) *Error {
 	}
 	idx, err := ResolveIndex(indexObj.value, int64(len(ls.items)))
 	if err != nil {
-		return Errorf(err.Error())
+		return NewError(err)
 	}
 	ls.removeAt(idx)
 	return nil

@@ -145,6 +145,9 @@ func Any(ctx context.Context, args ...object.Object) (object.Object, error) {
 	switch arg := args[0].(type) {
 	case *object.List:
 		for _, val := range arg.Value() {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if val.IsTruthy() {
 				return object.True, nil
 			}
@@ -181,6 +184,9 @@ func All(ctx context.Context, args ...object.Object) (object.Object, error) {
 	switch arg := args[0].(type) {
 	case *object.List:
 		for _, val := range arg.Value() {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			if !val.IsTruthy() {
 				return object.False, nil
 			}
@@ -221,15 +227,8 @@ func Filter(ctx context.Context, args ...object.Object) (object.Object, error) {
 	var result []object.Object
 	switch container := args[0].(type) {
 	case *object.List:
-		for _, val := range container.Value() {
-			decision, err := fn.Call(ctx, val)
-			if err != nil {
-				return nil, err
-			}
-			if decision.IsTruthy() {
-				result = append(result, val)
-			}
-		}
+		// The callback may mutate the list, which List.Filter handles
+		return container.Filter(ctx, args[1])
 	case object.Enumerable:
 		var filterErr error
 		container.Enumerate(ctx, func(key, value object.Object) bool {
