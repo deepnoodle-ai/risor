@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Release archives and the Homebrew cask now include `risor-lsp`, the Risor
   language server, next to `risor`. The language server writes its log to the
   user cache directory instead of the working directory.
+- `vm.Get` returns `object.Nil` for a global that is not yet assigned, instead
+  of a Go nil (#487).
+- A spread call to a builtin with more than 256 arguments now fails with a
+  catchable "max args limit" error, as calls to Risor functions already did
+  (#487).
 
 ### Fixed
 
@@ -23,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   thrown from `finally` replaces an error thrown from `catch`. Active exception
   handlers are capped at 4 per allowed call frame (4096 by default); past the
   cap, the script gets a catchable stack overflow error (#486).
+- A value stack overflow now returns `ErrStackOverflow` instead of an "index
+  out of range" panic. Reading a global before it is assigned, a function with
+  255 parameters and a rest parameter, and `vm.Call` before `vm.Run` no longer
+  crash the host (#487).
 
 ## [2.2.0] - 2026-08-17
 
