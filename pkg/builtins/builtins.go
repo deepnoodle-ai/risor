@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 )
@@ -400,7 +401,8 @@ func Byte(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Float:
 		return object.NewByte(byte(obj.Value())), nil
 	case *object.String:
-		if i, err := strconv.ParseInt(obj.Value(), 0, 8); err == nil {
+		// ParseUint rejects a sign, so allow a leading "+" as ParseInt did
+		if i, err := strconv.ParseUint(strings.TrimPrefix(obj.Value(), "+"), 0, 8); err == nil {
 			return object.NewByte(byte(i)), nil
 		}
 		return nil, object.ValueErrorf("invalid literal for byte(): %q", obj.Value())

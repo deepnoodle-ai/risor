@@ -49,6 +49,11 @@ exponent is zero or positive. When the exponent is negative, the result is a
 float, as in Python: `2 ** -1` is `0.5` and `2 ** -2` is `0.25`. The same rule
 applies to `byte ** int`. `0 ** -1` is `+Inf`, the same as `0 ** -1.0`.
 
+**Integer overflow wraps:** Int arithmetic wraps around on overflow, as in Go,
+and `**` follows the same rule: `2 ** 63` is `-9223372036854775808` and
+`2 ** 64` is `0`. Byte arithmetic wraps modulo 256, so `byte(16) ** byte(2)`
+is `byte(0)`.
+
 **No implicit narrowing:** Float values are never implicitly converted to int.
 
 **Shifts:** A negative shift count raises a value error: `1 << -1` and
@@ -231,6 +236,9 @@ enumeration builtins like `keys()`, `values()`, `list()`, `sorted()`, and
 | `string` | Byte order                         | Index (int)  | Character (string) |
 | `bytes`  | Byte order                         | Index (int)  | Byte value         |
 | `range`  | Arithmetic sequence                | Index (int)  | Generated integer  |
+
+**Slices are copies:** Slicing a list or bytes value, as in `b[1:4]`, returns
+a new value. Changing the slice does not change the original.
 
 **Map enumeration is deterministic:** Keys are sorted alphabetically, not in
 insertion order. This ensures reproducible behavior across runs.

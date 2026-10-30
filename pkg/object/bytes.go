@@ -247,7 +247,10 @@ func (b *Bytes) GetSlice(slice Slice) (Object, *Error) {
 	if err != nil {
 		return nil, NewError(err)
 	}
-	return NewBytes(b.value[start:stop]), nil
+	// Copy, so that mutating the slice doesn't mutate b
+	value := make([]byte, stop-start)
+	copy(value, b.value[start:stop])
+	return NewBytes(value), nil
 }
 
 func (b *Bytes) SetItem(key, value Object) *Error {
@@ -258,6 +261,11 @@ func (b *Bytes) SetItem(key, value Object) *Error {
 	index, err := ResolveIndex(indexObj.value, int64(len(b.value)))
 	if err != nil {
 		return NewError(err)
+	}
+	// b[i] reads a byte, so accept a byte back
+	if v, ok := value.(*Byte); ok {
+		b.value[index] = v.value
+		return nil
 	}
 	data, convErr := AsBytes(value)
 	if convErr != nil {
