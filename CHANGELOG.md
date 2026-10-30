@@ -55,7 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   rune indexes as keys instead of byte offsets.
 - Bytes `contains_rune()` and `index_rune()` accept multi-byte runes such as
   `"é"`. Before, they rejected any rune that is more than one byte in UTF-8.
-  `index_rune()` still returns a byte index, the unit that bytes use.
+  `index_rune()` still returns a byte index, the unit that bytes use. A
+  string that is not one valid UTF-8 rune, such as `"\xff"`, now raises an
+  error. Before, `"\xff"` searched for U+00FF.
 
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root
