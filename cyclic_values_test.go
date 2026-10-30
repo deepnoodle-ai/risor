@@ -9,8 +9,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// End-to-end tests for audit findings C-02 (cyclic containers) and C-03 (map
-// changes during iteration).
+// End-to-end tests for cyclic containers and for map changes during
+// iteration.
 
 func TestEvalCyclicResult(t *testing.T) {
 	ctx := context.Background()

@@ -8,8 +8,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// Tests for audit findings C-03 (map changes during iteration), M-09 (list
-// changes during iteration), and H-21 (context checks in container iteration).
+// Tests for changes to maps and lists during iteration, and for context
+// checks in container iteration.
 
 // callback wraps a Go function as a builtin for use with List/Map methods.
 func callback(fn func(args ...Object) Object) *Builtin {

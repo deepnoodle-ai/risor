@@ -11,8 +11,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// Tests for audit findings C-02 (cyclic containers), H-14 (DefaultRegistry
-// init race), and H-15 (Inspect data race).
+// Tests for cyclic and deeply nested containers, and for concurrent use of
+// Inspect and DefaultRegistry.
 
 func selfList() *List {
 	a := NewList(nil)
