@@ -312,10 +312,10 @@ Many operations can throw runtime errors:
 10 % 0              // value error: division by zero
 
 // Attribute errors
-null.foo             // type error: attribute "foo" not found on null
+null.foo            // type error: attribute "foo" not found on null object
 
 // Index errors
-[1, 2, 3][10]       // value error: index out of bounds
+[1, 2, 3][10]       // index error: index out of range: 10
 ```
 
 All runtime errors are catchable:
