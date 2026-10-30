@@ -2,6 +2,7 @@ package regexp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -56,7 +57,7 @@ func (r *Regexp) Equals(other object.Object) bool {
 }
 
 func (r *Regexp) MarshalJSON() ([]byte, error) {
-	return []byte(r.value.String()), nil
+	return json.Marshal(r.value.String())
 }
 
 func (r *Regexp) RunOperation(opType op.BinaryOpType, right object.Object) (object.Object, error) {

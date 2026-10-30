@@ -225,6 +225,9 @@ type convBudget struct {
 	ctx       context.Context
 	remaining int64
 	limit     int64
+	// jsonOnly makes the conversion reject values that have no JSON form;
+	// see ToJSONValue.
+	jsonOnly bool
 }
 
 // newConvBudget returns a budget of the list length limit in ctx.

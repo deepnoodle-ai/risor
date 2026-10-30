@@ -2,6 +2,7 @@ package regexp
 
 import (
 	"context"
+	"encoding/json"
 	"regexp"
 	"testing"
 
@@ -682,7 +683,17 @@ func TestRegexpMarshalJSON(t *testing.T) {
 	r := NewRegexp(regexp.MustCompile(`foo`))
 	data, err := r.MarshalJSON()
 	assert.Nil(t, err)
-	assert.Equal(t, string(data), "foo")
+	assert.Equal(t, string(data), `"foo"`)
+
+	// The pattern is a JSON string, escaped as needed, so the result is
+	// valid JSON on its own and inside other values
+	r = NewRegexp(regexp.MustCompile(`^"a\d+"$`))
+	data, err = json.Marshal(map[string]any{"re": r})
+	assert.Nil(t, err)
+	assert.Equal(t, string(data), `{"re":"^\"a\\d+\"$"}`)
+	var decoded map[string]string
+	assert.Nil(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, decoded["re"], `^"a\d+"$`)
 }
 
 func TestRegexpRunOperation(t *testing.T) {

@@ -101,12 +101,9 @@ func encodeHex(ctx context.Context, obj object.Object) (object.Object, error) {
 }
 
 func encodeJSON(ctx context.Context, obj object.Object) (object.Object, error) {
-	nativeObject, err := object.ToInterface(ctx, obj)
+	nativeObject, err := object.ToJSONValue(ctx, obj)
 	if err != nil {
 		return nil, err
-	}
-	if nativeObject == nil {
-		return nil, object.ValueErrorf("encode() does not support %T", obj)
 	}
 	jsonBytes, err := json.Marshal(nativeObject)
 	if err != nil {
@@ -270,7 +267,9 @@ func decodeJSON(ctx context.Context, obj object.Object) (object.Object, error) {
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
 		return nil, err
 	}
-	return object.FromGoType(result), nil
+	// FromGo fails if the JSON is nested more deeply than MaxNestingDepth.
+	// Return that as an error: FromGoType would return it as a value.
+	return object.DefaultRegistry().FromGo(result)
 }
 
 func decodeCsv(ctx context.Context, obj object.Object) (object.Object, error) {
