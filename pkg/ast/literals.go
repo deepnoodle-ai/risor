@@ -63,8 +63,11 @@ func (x *Bool) End() token.Position { return x.ValuePos.Advance(len(x.Literal)) 
 
 func (x *Bool) String() string { return x.Literal }
 
-// DefaultValue is an expression node used in map shorthand syntax {a = expr}.
-// It represents an identifier with a default value, used for destructuring.
+// DefaultValue is an identifier with a default value, such as `a = 1` in
+// `([a = 1]) => a` or `({a = 1}) => a`. The parser produces it only inside a
+// list or map literal that becomes an arrow function destructuring parameter,
+// and converts it to a parameter default, so it does not appear in a parsed
+// program.
 type DefaultValue struct {
 	Name    *Ident // the identifier
 	Default Expr   // the default value expression
