@@ -2318,7 +2318,11 @@ func normalizeFunctionBlock(node *ast.Block) []ast.Node {
 	// 2. If there are no return statements, append one implicitly
 	// 3. An implicit return will return either the value of the
 	//    last expression, or nil if the last statement is not an expression.
-	returnNil := &ast.Return{Value: &ast.Nil{}}
+	//
+	// An implicit "return nil" takes the position of the closing brace, so
+	// its instructions map to the end of the function rather than to an
+	// unset position, which reads as line 1, column 1.
+	returnNil := &ast.Return{Return: node.Rbrace, Value: &ast.Nil{NilPos: node.Rbrace}}
 	statements := node.Stmts
 	count := len(statements)
 	if count == 0 {
