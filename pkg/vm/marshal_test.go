@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -850,4 +851,276 @@ func TestMarshalWritesSourceTextWithoutValidRange(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, restored.ChildAt(0).Source(), "body")
 	}
+}
+
+// nestedNamedCalls returns a script with named functions nested depth levels
+// deep and almost no text per level. Each level calls the next, so the
+// script returns 1.
+func nestedNamedCalls(depth int) string {
+	return strings.Repeat("function f() { ", depth) + "return 1" +
+		strings.Repeat("\n}\nreturn f()", depth-1) + "\n}\nf()"
+}
+
+// nestedArrowCalls returns a script with arrow functions nested depth levels
+// deep and almost no text per level. It calls each level, so the script
+// returns 1.
+func nestedArrowCalls(depth int) string {
+	return "let f = " + strings.Repeat("() => ", depth) + "1\nf" + strings.Repeat("()", depth)
+}
+
+// stringBytes returns the total length of the string values in JSON data.
+func stringBytes(t *testing.T, data []byte) int {
+	t.Helper()
+	var value any
+	assert.Nil(t, json.Unmarshal(data, &value))
+	var total func(v any) int
+	total = func(v any) int {
+		switch v := v.(type) {
+		case string:
+			return len(v)
+		case []any:
+			n := 0
+			for _, e := range v {
+				n += total(e)
+			}
+			return n
+		case map[string]any:
+			n := 0
+			for _, e := range v {
+				n += total(e)
+			}
+			return n
+		}
+		return 0
+	}
+	return total(value)
+}
+
+// Marshaled code and symbol table IDs must not hold the path from the root.
+// That made the output grow with the square of the nesting depth, even with
+// almost no text per level. Small inputs only: 2x the depth must give about
+// 2x the output and 2x the string values, which held the IDs. The ratios are
+// about 2.0 for both. With path IDs, the size ratio was 2.04 to 2.38, and the
+// string ratio 2.55 to 3.24.
+func TestMarshalSizeLinearInIDDepth(t *testing.T) {
+	t.Run("functions", func(t *testing.T) { checkIDsLinearInDepth(t, nestedNamedCalls) })
+	t.Run("arrows", func(t *testing.T) { checkIDsLinearInDepth(t, nestedArrowCalls) })
+}
+
+func checkIDsLinearInDepth(t *testing.T, script func(depth int) string) {
+	t.Helper()
+	small := compileLinesSource(t, script(25))
+	large := compileLinesSource(t, script(50))
+	check := func(format string, smallData, largeData []byte) {
+		ratio := float64(len(largeData)) / float64(len(smallData))
+		assert.True(t, ratio < 2.1, "%s size ratio %.2f", format, ratio)
+		ratio = float64(stringBytes(t, largeData)) / float64(stringBytes(t, smallData))
+		assert.True(t, ratio < 2.2, "%s string bytes ratio %.2f", format, ratio)
+	}
+
+	smallBytecode, err := bytecode.Marshal(small.ToBytecode())
+	assert.Nil(t, err)
+	largeBytecode, err := bytecode.Marshal(large.ToBytecode())
+	assert.Nil(t, err)
+	check("bytecode.Marshal", smallBytecode, largeBytecode)
+	restored, err := bytecode.Unmarshal(largeBytecode)
+	assert.Nil(t, err)
+	result, err := Run(context.Background(), restored)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(1))
+
+	smallCompiler, err := compiler.MarshalCode(small)
+	assert.Nil(t, err)
+	largeCompiler, err := compiler.MarshalCode(large)
+	assert.Nil(t, err)
+	check("compiler.MarshalCode", smallCompiler, largeCompiler)
+	restoredCode, err := compiler.UnmarshalCode(largeCompiler)
+	assert.Nil(t, err)
+	result, err = Run(context.Background(), restoredCode.ToBytecode())
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(1))
+}
+
+// codeIDsScript has sibling functions, functions declared in a block, and
+// nested arrows, so code IDs, parents and symbol tables are not all on one
+// path.
+const codeIDsScript = `function a() { return 1 }
+function b() { return 2 }
+let r = 0
+if (true) {
+	function c(x) {
+		let g = y => z => x + y + z
+		return g(1)(2)
+	}
+	r = c(3)
+}
+[a(), b(), r, (() => () => 4)()()]
+`
+
+// bytecodeTree describes each code in code, in Flatten order, by its ID, its
+// function ID, and the IDs of its children.
+func bytecodeTree(code *bytecode.Code) []string {
+	var tree []string
+	for _, c := range code.Flatten() {
+		var children []string
+		for i := 0; i < c.ChildCount(); i++ {
+			children = append(children, c.ChildAt(i).ID())
+		}
+		tree = append(tree, fmt.Sprintf("%s fn=%q children=%v", c.ID(), c.FunctionID(), children))
+	}
+	return tree
+}
+
+// compilerTree describes each code in code, in Flatten order, by its ID, its
+// function ID, and the ID of its parent.
+func compilerTree(code *compiler.Code) []string {
+	var tree []string
+	for _, c := range code.Flatten() {
+		parent := "-"
+		if c.Parent() != nil {
+			parent = c.Parent().ID()
+		}
+		tree = append(tree, fmt.Sprintf("%s fn=%q parent=%s", c.ID(), c.FunctionID(), parent))
+	}
+	return tree
+}
+
+// Code IDs, parents and functions are the same after a round trip in both
+// marshaled formats, although neither writes the path-shaped IDs. A second
+// round trip gives the same data.
+func TestMarshalRoundTripKeepsCodeIDs(t *testing.T) {
+	code := compileLinesSource(t, codeIDsScript)
+	assert.Equal(t, compilerTree(code), []string{
+		`__main__ fn="" parent=-`,
+		`__main__.0 fn="1" parent=__main__`,
+		`__main__.1 fn="2" parent=__main__`,
+		`__main__.2 fn="3" parent=__main__`,
+		`__main__.2.0 fn="4" parent=__main__.2`,
+		`__main__.2.0.0 fn="5" parent=__main__.2.0`,
+		`__main__.3 fn="6" parent=__main__`,
+		`__main__.3.0 fn="7" parent=__main__.3`,
+	})
+	original := code.ToBytecode()
+	expected, err := Run(context.Background(), original)
+	assert.Nil(t, err)
+	assert.Equal(t, expected.Inspect(), "[1, 2, 6, 4]")
+
+	data, err := bytecode.Marshal(original)
+	assert.Nil(t, err)
+	assert.False(t, strings.Contains(string(data), "__main__."))
+	restored, err := bytecode.Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, bytecodeTree(restored), bytecodeTree(original))
+	result, err := Run(context.Background(), restored)
+	assert.Nil(t, err)
+	assert.Equal(t, result.Inspect(), expected.Inspect())
+	again, err := bytecode.Marshal(restored)
+	assert.Nil(t, err)
+	assert.Equal(t, string(again), string(data))
+
+	data, err = compiler.MarshalCode(code)
+	assert.Nil(t, err)
+	for _, s := range []string{"__main__.", "root.", `"parent_id"`, `"symbol_table_id"`} {
+		assert.False(t, strings.Contains(string(data), s), s)
+	}
+	restoredCode, err := compiler.UnmarshalCode(data)
+	assert.Nil(t, err)
+	assert.Equal(t, compilerTree(restoredCode), compilerTree(code))
+	result, err = Run(context.Background(), restoredCode.ToBytecode())
+	assert.Nil(t, err)
+	assert.Equal(t, result.Inspect(), expected.Inspect())
+	again, err = compiler.MarshalCode(restoredCode)
+	assert.Nil(t, err)
+	assert.Equal(t, string(again), string(data))
+}
+
+// Older versions wrote the ID of every code in the bytecode format.
+// Unmarshal still reads it.
+func TestUnmarshalOldFormatCodeIDs(t *testing.T) {
+	original := compileLinesSource(t, codeIDsScript).ToBytecode()
+	codes := original.Flatten()
+	data, err := bytecode.Marshal(original)
+	assert.Nil(t, err)
+	old := editCodeDefs(t, data, "codes", func(i int, def map[string]any, rootSource string) {
+		def["id"] = codes[i].ID()
+	})
+	assert.True(t, strings.Contains(string(old), `"id":"__main__.2.0.0"`))
+	restored, err := bytecode.Unmarshal(old)
+	assert.Nil(t, err)
+	assert.Equal(t, bytecodeTree(restored), bytecodeTree(original))
+}
+
+// codeChain returns marshaled data in each format for a chain of depth codes,
+// each the only child of the one before it, without IDs.
+func codeChain(depth int) (bytecodeData, compilerData []byte) {
+	body := fmt.Sprintf(`"instructions":[%d,%d]`, op.Nil, op.ReturnValue)
+	var b, c strings.Builder
+	b.WriteString(`{"codes":[`)
+	c.WriteString(`{"code":[{"id":"__main__","symbol_table_index":0,` + body + `}`)
+	for i := 0; i < depth; i++ {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		if i < depth-1 {
+			fmt.Fprintf(&b, `{%s,"child_indices":[%d]}`, body, i+1)
+		} else {
+			fmt.Fprintf(&b, `{%s}`, body)
+		}
+		if i > 0 {
+			fmt.Fprintf(&c, `,{"parent_index":%d,"symbol_table_index":0,%s}`, i-1, body)
+		}
+	}
+	b.WriteString(`]}`)
+	c.WriteString(`],"symbol_table":{"id":"root","symbols":[],"symbols_by_name":{}}}`)
+	return []byte(b.String()), []byte(c.String())
+}
+
+// loadBytes returns the fewest bytes allocated by several calls of load.
+// Bytes allocated measure the work done without depending on machine load,
+// and taking the fewest guards against allocations by other goroutines.
+func loadBytes(t *testing.T, load func() error) uint64 {
+	t.Helper()
+	best := uint64(1<<64 - 1)
+	var before, after runtime.MemStats
+	for i := 0; i < 3; i++ {
+		runtime.ReadMemStats(&before)
+		err := load()
+		runtime.ReadMemStats(&after)
+		assert.Nil(t, err)
+		best = min(best, after.TotalAlloc-before.TotalAlloc)
+	}
+	return best
+}
+
+// Loading code without stored IDs must not build the ID of each code: an ID
+// holds the path from the root, so a short input with deep nesting would use
+// memory that grows with the square of the depth. Eight times the depth must
+// allocate about eight times as much. Building the IDs gives about 30 times.
+func TestUnmarshalMemoryLinearInNestingDepth(t *testing.T) {
+	const small, large = 1000, 8000
+	smallBytecode, smallCompiler := codeChain(small)
+	largeBytecode, largeCompiler := codeChain(large)
+
+	check := func(format string, load func([]byte) error, smallData, largeData []byte) {
+		smallBytes := loadBytes(t, func() error { return load(smallData) })
+		largeBytes := loadBytes(t, func() error { return load(largeData) })
+		ratio := float64(largeBytes) / float64(smallBytes)
+		t.Logf("%s: depth %d: %d bytes, depth %d: %d bytes, ratio %.1f", format, small, smallBytes, large, largeBytes, ratio)
+		assert.True(t, ratio < 12, "%s allocations grew %.1fx for %dx the depth", format, ratio, large/small)
+	}
+	check("bytecode.Unmarshal", func(data []byte) error {
+		_, err := bytecode.Unmarshal(data)
+		return err
+	}, smallBytecode, largeBytecode)
+	check("compiler.UnmarshalCode", func(data []byte) error {
+		_, err := compiler.UnmarshalCode(data)
+		return err
+	}, smallCompiler, largeCompiler)
+
+	code, err := bytecode.Unmarshal(smallBytecode)
+	assert.Nil(t, err)
+	assert.Equal(t, code.ChildAt(0).ChildAt(0).ChildAt(0).ID(), ".0.0.0")
+	restored, err := compiler.UnmarshalCode(smallCompiler)
+	assert.Nil(t, err)
+	assert.Equal(t, restored.Flatten()[3].ID(), "__main__.0.0.0")
 }

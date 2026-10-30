@@ -12,11 +12,14 @@ import (
 // Code represents a compiled code block (module, function body, etc.).
 // It is immutable after creation and safe for concurrent use.
 type Code struct {
+	// id is the ID given to NewCode. It is empty for a child whose ID is
+	// derived from its parent's ID and its position. See ID.
 	id       string
 	name     string
 	isNamed  bool
 	children []*Code
 	parent   *Code // Parent code (nil for root)
+	position int   // Index among the parent's children
 
 	instructions []op.Code
 	constants    []any
@@ -63,6 +66,11 @@ type Code struct {
 
 // CodeParams contains parameters for creating a new Code.
 type CodeParams struct {
+	// ID identifies the code. Leave it empty for a child code to give it the
+	// ID the compiler gives function code: its parent's ID, a dot, and its
+	// index among the parent's children, such as "__main__.0.1". The compiler
+	// leaves it empty for every child, so that the IDs of nested code are not
+	// stored at each level.
 	ID           string
 	Name         string
 	IsNamed      bool
@@ -130,17 +138,36 @@ func NewCode(params CodeParams) *Code {
 
 	// Set parent reference on all children for source lookups. Children
 	// read the root's global names, so drop any names they were given.
-	for _, child := range code.children {
+	for i, child := range code.children {
 		child.parent = code
+		child.position = i
 		child.globalNames = nil
 	}
 
 	return code
 }
 
-// ID returns the unique identifier for this code block.
+// ID returns the unique identifier for this code block. A child created
+// without an ID has its parent's ID, a dot, and its index among the parent's
+// children. That ID is built on each call, not stored, so the memory used by
+// IDs does not grow with the square of the nesting depth.
 func (c *Code) ID() string {
-	return c.id
+	if c.id != "" || c.parent == nil {
+		return c.id
+	}
+	var positions []int
+	code := c
+	for code.id == "" && code.parent != nil {
+		positions = append(positions, code.position)
+		code = code.parent
+	}
+	var b strings.Builder
+	b.WriteString(code.id)
+	for i := len(positions) - 1; i >= 0; i-- {
+		b.WriteByte('.')
+		b.WriteString(strconv.Itoa(positions[i]))
+	}
+	return b.String()
 }
 
 // Name returns the name of this code block.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
@@ -21,10 +22,13 @@ type ExceptionHandler struct {
 }
 
 type Code struct {
+	// id is empty for a child whose ID is derived from its parent's ID and
+	// its position, as it is for every compiled child. See ID.
 	id           string
 	name         string
 	isNamed      bool
 	parent       *Code
+	position     int // Index among the parent's children
 	children     []*Code
 	symbols      *SymbolTable
 	instructions []op.Code
@@ -109,8 +113,36 @@ func (c *Code) restore(s codeSnapshot) {
 	c.maxCallArgs = s.maxCallArgs
 }
 
+// ID returns the ID of the code. The root has the ID it was created with,
+// such as "__main__". A child has its parent's ID, a dot, and its index among
+// the parent's children, such as "__main__.0.1". A child's ID is built on each
+// call, not stored, so the memory used by IDs does not grow with the square of
+// the nesting depth. A child loaded by UnmarshalCode from older data has the
+// ID stored there.
 func (c *Code) ID() string {
-	return c.id
+	if c.id != "" || c.parent == nil {
+		return c.id
+	}
+	var positions []int
+	code := c
+	for code.id == "" && code.parent != nil {
+		positions = append(positions, code.position)
+		code = code.parent
+	}
+	return pathID(code.id, positions)
+}
+
+// pathID returns base followed by a dot and each position, from the last
+// position to the first. Callers collect positions from a node up to the
+// nearest ancestor with a stored ID, which is base.
+func pathID(base string, positions []int) string {
+	var b strings.Builder
+	b.WriteString(base)
+	for i := len(positions) - 1; i >= 0; i-- {
+		b.WriteByte('.')
+		b.WriteString(strconv.Itoa(positions[i]))
+	}
+	return b.String()
 }
 
 func (c *Code) CodeName() string {
@@ -156,10 +188,10 @@ func (c *Code) newChild(name, source, funcID string) *Code {
 		rootSrc = &c.source
 	}
 	child := &Code{
-		id:         fmt.Sprintf("%s.%d", c.id, len(c.children)),
 		name:       name,
 		isNamed:    name != "",
 		parent:     c,
+		position:   len(c.children),
 		symbols:    c.symbols.NewChild(),
 		source:     source,
 		functionID: funcID,
@@ -351,18 +383,21 @@ func (c *Code) ToBytecode() *bytecode.Code {
 	// Global names are a property of the root, which every code shares.
 	// Building them for each function would make compile time grow with the
 	// number of functions times the number of globals, so only the top-level
-	// target of the conversion gets them.
-	return c.toBytecodeWithMap(codeMap, c.GlobalNames())
+	// target of the conversion gets them. The target is a root, so it gets
+	// its full ID. Each child keeps its stored ID, which is empty when the ID
+	// is derived from its position: bytecode.Code derives the same ID.
+	return c.toBytecodeWithMap(codeMap, c.ID(), c.GlobalNames())
 }
 
-// toBytecodeWithMap converts c and its children. globalNames is set only for
-// the top-level target of the conversion and is nil for its children.
-func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code, globalNames []string) *bytecode.Code {
+// toBytecodeWithMap converts c and its children, giving the result the ID id.
+// globalNames is set only for the top-level target of the conversion and is
+// nil for its children.
+func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code, id string, globalNames []string) *bytecode.Code {
 	// Step 1: Recursively convert all children first (bottom-up construction)
 	// This ensures child bytecode.Code objects exist before we need them for constants
 	children := make([]*bytecode.Code, len(c.children))
 	for i, child := range c.children {
-		children[i] = child.toBytecodeWithMap(codeMap, nil)
+		children[i] = child.toBytecodeWithMap(codeMap, child.id, nil)
 	}
 
 	// Step 2: Convert exception handlers
@@ -413,7 +448,7 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code, globalNames [
 
 	// Step 5: Create the immutable bytecode.Code with all data
 	bc := bytecode.NewCode(bytecode.CodeParams{
-		ID:                c.id,
+		ID:                id,
 		Name:              c.name,
 		IsNamed:           c.isNamed,
 		Children:          children,

@@ -2,6 +2,7 @@ package bytecode
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -404,4 +405,74 @@ func TestUnmarshalOldFormatIgnoresChildGlobalNames(t *testing.T) {
 	assert.Equal(t, child.GlobalNameAt(0), "root_name")
 	assert.Equal(t, child.GlobalNames(), []string{"root_name"})
 	assert.Nil(t, child.globalNames)
+}
+
+func codeIDs(code *Code) []string {
+	var ids []string
+	for _, c := range code.Flatten() {
+		ids = append(ids, c.ID())
+	}
+	return ids
+}
+
+// A child created without an ID has its parent's ID, a dot, and its index
+// among the parent's children. Marshal writes the ID of the first code and
+// the IDs that codes were given, and the IDs are the same after a round trip.
+func TestChildCodeDerivesID(t *testing.T) {
+	leaf := func(id string, children ...*Code) *Code {
+		return NewCode(CodeParams{
+			ID:           id,
+			Children:     children,
+			Instructions: []op.Code{op.Nil, op.ReturnValue},
+		})
+	}
+	root := leaf(
+		"main",
+		leaf("", leaf(""), leaf("")),
+		leaf("custom", leaf("", leaf(""))),
+		leaf("main.2"),
+	)
+	want := []string{"main", "main.0", "main.0.0", "main.0.1", "custom", "custom.0", "custom.0.0", "main.2"}
+	assert.Equal(t, codeIDs(root), want)
+	unnamedRoot := leaf("", leaf(""))
+	assert.Equal(t, codeIDs(unnamedRoot), []string{"", ".0"})
+
+	data, err := Marshal(root)
+	assert.Nil(t, err)
+	var state map[string][]map[string]any
+	assert.Nil(t, json.Unmarshal(data, &state))
+	var written []any
+	for _, def := range state["codes"] {
+		written = append(written, def["id"])
+	}
+	assert.Equal(t, written, []any{"main", nil, nil, nil, "custom", nil, nil, "main.2"})
+
+	restored, err := Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, codeIDs(restored), want)
+	again, err := Marshal(restored)
+	assert.Nil(t, err)
+	assert.Equal(t, string(again), string(data))
+
+	// Marshaling a child writes its full ID, since it becomes a root.
+	data, err = Marshal(root.ChildAt(1).ChildAt(0))
+	assert.Nil(t, err)
+	restored, err = Unmarshal(data)
+	assert.Nil(t, err)
+	assert.Equal(t, codeIDs(restored), []string{"custom.0", "custom.0.0"})
+}
+
+// Unmarshal derives the ID of a child without one from its parent's ID and
+// its position. A root without an ID has the empty ID.
+func TestUnmarshalDerivesMissingIDs(t *testing.T) {
+	body := fmt.Sprintf(`"instructions":[%d,%d]`, op.Nil, op.ReturnValue)
+	data := `{"codes":[` +
+		`{` + body + `,"child_indices":[1,3]},` +
+		`{` + body + `,"child_indices":[2]},` +
+		`{` + body + `},` +
+		`{"id":"x",` + body + `,"child_indices":[4]},` +
+		`{` + body + `}]}`
+	restored, err := Unmarshal([]byte(data))
+	assert.Nil(t, err)
+	assert.Equal(t, codeIDs(restored), []string{"", ".0", ".0.0", "x", "x.0"})
 }
