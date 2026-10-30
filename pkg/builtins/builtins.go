@@ -31,9 +31,9 @@ func Sprintf(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if err != nil {
 		return nil, err
 	}
-	fmtArgs := make([]interface{}, len(args)-1)
-	for i, v := range args[1:] {
-		fmtArgs[i] = v.Interface()
+	fmtArgs, err := formatArgs(args[1:])
+	if err != nil {
+		return nil, err
 	}
 	result := object.NewString(fmt.Sprintf(fs, fmtArgs...))
 	return result, nil
@@ -49,11 +49,24 @@ func Error(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmtArgs := make([]interface{}, len(args)-1)
-	for i, v := range args[1:] {
-		fmtArgs[i] = v.Interface()
+	fmtArgs, err := formatArgs(args[1:])
+	if err != nil {
+		return nil, err
 	}
 	return object.NewError(fmt.Errorf(fs, fmtArgs...)), nil
+}
+
+// formatArgs converts args to Go values for use with fmt-style formatting.
+func formatArgs(args []object.Object) ([]interface{}, error) {
+	fmtArgs := make([]interface{}, len(args))
+	for i, v := range args {
+		goVal, err := object.ToInterface(v)
+		if err != nil {
+			return nil, err
+		}
+		fmtArgs[i] = goVal
+	}
+	return fmtArgs, nil
 }
 
 func List(ctx context.Context, args ...object.Object) (object.Object, error) {

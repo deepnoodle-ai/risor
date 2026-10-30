@@ -69,3 +69,17 @@ func TestEvalMapDeleteDuringIteration(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, []any{int64(1), int64(3)})
 }
+
+// Builtins that convert their arguments to Go values report the nesting error
+// instead of a misleading "not supported" error or a "<nil>" in the output.
+func TestEvalCyclicBuiltinArgs(t *testing.T) {
+	ctx := context.Background()
+	for _, src := range []string{
+		`let a = []; a.append(a); encode(a, "json")`,
+		`let a = []; a.append(a); sprintf("%v", a)`,
+		`let a = []; a.append(a); error("bad: %v", a)`,
+	} {
+		_, err := Eval(ctx, src, WithEnv(Builtins()))
+		assert.True(t, errors.Is(err, object.ErrNestingDepth), src)
+	}
+}
