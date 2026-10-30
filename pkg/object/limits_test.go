@@ -449,4 +449,17 @@ func TestToInterfaceCell(t *testing.T) {
 	got, err = ToInterface(ctx, NewCell(nil))
 	assert.Nil(t, err)
 	assert.Nil(t, got)
+
+	// A cell that holds itself, directly or through a list, is a cycle
+	var self Object
+	selfCell := NewCell(&self)
+	self = selfCell
+	_, err = ToInterface(ctx, selfCell)
+	assert.ErrorIs(t, err, ErrNestingDepth)
+
+	var held Object
+	holder := NewList([]Object{NewCell(&held)})
+	held = holder
+	_, err = ToInterface(ctx, holder)
+	assert.ErrorIs(t, err, ErrNestingDepth)
 }

@@ -51,10 +51,12 @@ type objectPair [2]Object
 
 // isNestedContainer reports whether obj holds other objects that a recursive
 // operation may descend into. An iterator counts, since converting it visits
-// the values it yields, and those may include the iterator itself.
+// the values it yields, and those may include the iterator itself. A cell
+// counts, since converting or measuring it visits its value, and that value
+// may hold the cell.
 func isNestedContainer(obj Object) bool {
 	switch obj.(type) {
-	case *List, *Map, *Iter:
+	case *List, *Map, *Iter, *Cell:
 		return true
 	}
 	return false
@@ -119,11 +121,21 @@ func toInterface(obj Object, path nestPath[Object], b *convBudget) (any, error) 
 	case *Range:
 		return obj.toInterface(b)
 	case *Cell:
-		// Cell.Interface would convert the value with the default limits
+		// Cell.Interface would convert the value with the default limits.
+		// The cell goes on the path, so a cell that holds itself, directly
+		// or through a container, returns ErrNestingDepth.
 		if obj.value == nil {
 			return nil, nil
 		}
-		return toInterface(*obj.value, path, b)
+		value := *obj.value
+		if isNestedContainer(value) {
+			p, err := path.descend(obj, value)
+			if err != nil {
+				return nil, err
+			}
+			path = p
+		}
+		return toInterface(value, path, b)
 	}
 	if !b.jsonOnly {
 		return obj.Interface(), nil

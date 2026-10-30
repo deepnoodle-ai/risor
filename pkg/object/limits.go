@@ -156,7 +156,7 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 }
 
 func nestedFormatSize(parent, item Object, path *nestPath[Object], limit uint64) uint64 {
-	if _, isCell := item.(*Cell); !isCell && !isNestedContainer(item) {
+	if !isNestedContainer(item) {
 		return formatSize(item, nil, limit)
 	}
 	p, err := path.descend(parent, item)
