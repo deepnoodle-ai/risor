@@ -109,6 +109,17 @@ type Parser struct {
 	// inPatternContext is true when parsing match patterns, which disables
 	// arrow function parsing (since => is the arm separator in match)
 	inPatternContext bool
+
+	// destructureCandidate is set by parseGroupedExpr just before parsing an
+	// item that starts with '[' or '{'. That literal may become an arrow
+	// function destructuring parameter, so it may hold defaults: ([a = 1]) => a.
+	// The literal consumes the flag so nested literals don't inherit it.
+	destructureCandidate bool
+
+	// candidateDefault is the first default parsed in a destructuring
+	// candidate of the innermost grouped expression. If it is set, the group
+	// must be arrow function parameters.
+	candidateDefault *ast.Ident
 }
 
 // New returns a Parser for the program provided by the given Lexer.
@@ -151,7 +162,7 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	p.registerPrefix(token.STRING, p.parseString)
 	p.registerPrefix(token.MATCH, p.parseMatch)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
-	p.registerPrefix(token.SPREAD, p.parseSpread)
+	p.registerPrefix(token.SPREAD, p.parseMisplacedSpread)
 	p.registerPrefix(token.TRY, p.parseTry)
 
 	// Register infix functions

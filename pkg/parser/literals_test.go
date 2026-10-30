@@ -539,21 +539,22 @@ func TestMapShorthand(t *testing.T) {
 	})
 
 	t.Run("shorthand with default", func(t *testing.T) {
-		// {a = 10} should produce a DefaultValue
-		program, err := Parse(context.Background(), "{a = 10}", nil)
+		// {a = 10} is only valid as an arrow function destructuring parameter
+		_, err := Parse(context.Background(), "{a = 10}", nil)
+		assert.NotNil(t, err)
+
+		program, err := Parse(context.Background(), "({a = 10}) => a", nil)
 		assert.Nil(t, err)
 
-		m, ok := program.First().(*ast.Map)
+		fn, ok := program.First().(*ast.Func)
 		assert.True(t, ok)
-		assert.Len(t, m.Items, 1)
+		assert.Len(t, fn.Params, 1)
 
-		key, ok := m.Items[0].Key.(*ast.String)
+		param, ok := fn.Params[0].(*ast.ObjectDestructureParam)
 		assert.True(t, ok)
-		assert.Equal(t, key.Value, "a")
-
-		defaultVal, ok := m.Items[0].Value.(*ast.DefaultValue)
-		assert.True(t, ok)
-		assert.Equal(t, defaultVal.Name.Name, "a")
+		assert.Len(t, param.Bindings, 1)
+		assert.Equal(t, param.Bindings[0].Key, "a")
+		assert.NotNil(t, param.Bindings[0].Default)
 	})
 }
 
