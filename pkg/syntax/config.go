@@ -11,7 +11,7 @@ type SyntaxConfig struct {
 	// Functions
 	DisallowReturn   bool // return statements
 	DisallowFuncDef  bool // function declarations and arrow functions
-	DisallowFuncCall bool // calling functions (rare)
+	DisallowFuncCall bool // calling functions, including with a pipe: x |> f (rare)
 
 	// Error handling
 	DisallowTryCatch bool // try/catch/finally, throw
@@ -21,7 +21,7 @@ type SyntaxConfig struct {
 
 	// Advanced syntax
 	DisallowDestructure bool // let {a, b} = obj, let [x, y] = arr, function({a, b}) {}
-	DisallowSpread      bool // ...arr, ...obj
+	DisallowSpread      bool // ...arr, ...obj, and rest parameters: function f(...args) {}
 	DisallowPipe        bool // value | fn1 | fn2
 	DisallowTemplates   bool // `hello ${name}`
 }
