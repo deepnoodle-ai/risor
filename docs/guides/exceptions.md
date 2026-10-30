@@ -380,8 +380,9 @@ Each stack frame contains:
 
 ## Errors in Go
 
-Every error that a script raises while it runs comes back from `risor.Eval` as
-an `*errors.StructuredError`, with the source location of the operation that
+An error that a script raises while it runs, such as a type, value, or index
+error or a thrown value, comes back from `risor.Eval` as an
+`*errors.StructuredError`, with the source location of the operation that
 raised it. Its `Error()` string
 names the kind once and ends with the location:
 
@@ -411,10 +412,11 @@ Do not type-assert the returned error to `*errors.TypeError`,
 not the returned error. An error that a host function returns stays in the
 chain too, so `errors.Is` finds it.
 
-Check timeouts, cancellation, and step limits with `errors.Is`, for example
-`errors.Is(err, context.DeadlineExceeded)`. Depending on where the script was
-when it stopped, these errors come back either as the plain error or as a
-`*errors.StructuredError` that wraps it.
+Timeouts, cancellation, step limits (`risor.ErrStepLimitExceeded`), and stack
+overflows (`risor.ErrStackOverflow`) are not script errors. Check them with
+`errors.Is`, for example `errors.Is(err, context.DeadlineExceeded)`. Depending
+on where the script was when it stopped, these errors come back either as the
+plain error or as a `*errors.StructuredError` that wraps it.
 
 `risor.Eval` converts the script's result to a Go value after the script ends.
 An error from that conversion, such as a result too large to convert, has no

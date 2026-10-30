@@ -93,7 +93,7 @@ var errorPatterns = []ErrorPattern{
 	},
 	{
 		Type:           "index_error",
-		MessagePattern: "index out of bounds",
+		MessagePattern: "value error: index out of range: N",
 		Causes: []string{
 			"Accessing list element beyond its length",
 			"Negative index without proper handling",
@@ -101,7 +101,7 @@ var errorPatterns = []ErrorPattern{
 		},
 		Examples: []ErrorExample{
 			{
-				Error:       "index error: index 5 out of bounds for list of length 3",
+				Error:       "value error: index out of range: 5",
 				BadCode:     `let items = [1, 2, 3]; items[5]`,
 				Fix:         `let items = [1, 2, 3]; items[2]`,
 				Explanation: "List indices are 0-based; length 3 means valid indices are 0, 1, 2",
