@@ -137,6 +137,13 @@ func TestValidate(t *testing.T) {
 			`invalid bytecode in "body": LOAD_FAST at offset 0: local index 0 out of range`,
 		},
 		{
+			"make cell local out of range",
+			NewCode(CodeParams{Children: []*Code{
+				NewCode(CodeParams{Name: "child", Instructions: []op.Code{op.MakeCell, 2, 0}}),
+			}}),
+			"MAKE_CELL at offset 0: local index 2 out of range",
+		},
+		{
 			"local count larger than used",
 			NewCode(CodeParams{Children: []*Code{
 				NewCode(CodeParams{Name: "child", LocalCount: 3, Instructions: []op.Code{op.LoadFast, 1}}),

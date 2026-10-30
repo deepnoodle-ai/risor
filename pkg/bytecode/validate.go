@@ -162,6 +162,11 @@ func (v *validator) validateCode(code *Code) error {
 			err = checkIndex("local", operand(1), code.localCount)
 		case op.LoadGlobal, op.StoreGlobal:
 			err = checkIndex("global", operand(1), v.globalCount)
+		case op.MakeCell:
+			// A cell for the current frame (0 frames back) refers to a local
+			if operand(2) == 0 {
+				err = checkIndex("local", operand(1), code.localCount)
+			}
 		case op.LoadClosure:
 			idx := operand(1)
 			if err = checkIndex("constant", idx, len(code.constants)); err == nil {
