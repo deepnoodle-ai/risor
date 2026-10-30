@@ -87,6 +87,16 @@ func ToInterfaces(ctx context.Context, objs []Object) ([]any, error) {
 	return result, nil
 }
 
+// ToJSONValue converts obj to a Go value for encoding/json, as ToInterface
+// does, with the same nesting and element limits. null converts to nil. It
+// returns a type error if obj is, or contains, a value with no JSON form: a
+// function, builtin, module, or error.
+func ToJSONValue(ctx context.Context, obj Object) (any, error) {
+	b := newConvBudget(ctx)
+	b.jsonOnly = true
+	return toInterface(obj, nil, b)
+}
+
 // interfaceOrNil converts obj with the default limits and returns nil on
 // error. Interface methods of containers use it.
 func interfaceOrNil(obj Object) any {
@@ -108,7 +118,19 @@ func toInterface(obj Object, path nestPath[Object], b *convBudget) (any, error) 
 	case *Range:
 		return obj.toInterface(b)
 	}
-	return obj.Interface(), nil
+	if !b.jsonOnly {
+		return obj.Interface(), nil
+	}
+	// An error's Go value is a Go error, which encoding/json would write as
+	// {}. Other values whose Go value is nil, apart from null, have none.
+	if _, ok := obj.(*Error); ok {
+		return nil, newTypeErrorf("cannot encode %s as JSON", obj.Type())
+	}
+	v := obj.Interface()
+	if v == nil && obj.Type() != NIL {
+		return nil, newTypeErrorf("cannot encode %s as JSON", obj.Type())
+	}
+	return v, nil
 }
 
 func equalsNested(a, b Object, path nestPath[objectPair]) bool {
