@@ -148,3 +148,51 @@ func TestConcurrentChangesAndReads(t *testing.T) {
 	assert.Equal(t, doc.item.Version, int32(51))
 	assert.Equal(t, doc.item.Text, "let x = 49\nx")
 }
+
+// recordingClient records the diagnostics the server publishes.
+type recordingClient struct {
+	protocol.ClientCloser
+	mu        sync.Mutex
+	published []*protocol.PublishDiagnosticsParams
+}
+
+func (c *recordingClient) PublishDiagnostics(_ context.Context, params *protocol.PublishDiagnosticsParams) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.published = append(c.published, params)
+	return nil
+}
+
+// A publisher that read a document before it was replaced or closed does not
+// send that document's diagnostics, which would overwrite newer ones.
+func TestStaleDiagnosticsAreNotPublished(t *testing.T) {
+	ctx := context.Background()
+	client := &recordingClient{}
+	s := newTestServer()
+	s.client = client
+	uri := protocol.DocumentURI("file:///stale.risor")
+	doc := func(text string, version int32) *document {
+		return newDocument(ctx, protocol.TextDocumentItem{URI: uri, Text: text, Version: version})
+	}
+
+	// Replaced: the old document's error is not sent.
+	stale := doc("let x = (", 1)
+	assert.Error(t, stale.err)
+	assert.NoError(t, s.cache.put(stale))
+	current := doc("let x = 1", 2)
+	assert.NoError(t, s.cache.replace(current))
+	s.publishDocumentDiagnostics(uri, stale)
+	assert.Len(t, client.published, 0)
+
+	// Closed: the last document's diagnostics are not sent either.
+	s.cache.remove(uri)
+	s.publishDocumentDiagnostics(uri, current)
+	assert.Len(t, client.published, 0)
+
+	// The current document's diagnostics are sent.
+	reopened := doc("let x = (", 3)
+	assert.NoError(t, s.cache.put(reopened))
+	s.publishDocumentDiagnostics(uri, reopened)
+	assert.Len(t, client.published, 1)
+	assert.Len(t, client.published[0].Diagnostics, 1)
+}
