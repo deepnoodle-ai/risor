@@ -36,6 +36,10 @@ type Lexer struct {
 	// A rune slice of our input string
 	characters []rune
 
+	// The whole source that characters is a prefix of. It differs from
+	// characters only in a Lexer made by Sub.
+	source []rune
+
 	// Previous token
 	prevToken token.Token
 
@@ -67,8 +71,10 @@ func WithFile(file string) Option {
 
 // New returns a Lexer instance for the given string input.
 func New(input string, options ...Option) *Lexer {
+	characters := []rune(input)
 	l := &Lexer{
-		characters:   []rune(input),
+		characters:   characters,
+		source:       characters,
 		column:       -1, // -1 = before the first column
 		position:     -1, // -1 = before the first character
 		nextPosition: 0,  //  0 = read the first character next
@@ -78,6 +84,27 @@ func New(input string, options ...Option) *Lexer {
 	}
 	l.readChar()
 	return l
+}
+
+// Sub returns a Lexer that reads this Lexer's input from start up to, but not
+// including, the character index end. The end index is its end of input.
+// Token positions are positions in the whole input, and GetLineText returns
+// lines of the whole input. A parser uses it to parse an interpolation
+// inside a template string.
+func (l *Lexer) Sub(start token.Position, end int) *Lexer {
+	end = max(start.Char, min(end, len(l.source)))
+	s := &Lexer{
+		characters:   l.source[:end:end],
+		source:       l.source,
+		file:         l.file,
+		line:         start.Line,
+		lineStart:    start.LineStart,
+		column:       start.Column - 1, // readChar moves to start.Column
+		position:     start.Char - 1,
+		nextPosition: start.Char,
+	}
+	s.readChar()
+	return s
 }
 
 // Filename returns the name of the file being read.
@@ -746,7 +773,9 @@ func (l *Lexer) peekCharN(n int) rune {
 
 // GetLineText returns the text of the line containing the given token.
 func (l *Lexer) GetLineText(t token.Token) string {
-	if len(l.characters) == 0 {
+	// Use the whole source, so that a Sub lexer returns whole lines too
+	chars := l.source
+	if len(chars) == 0 {
 		return ""
 	}
 
@@ -757,17 +786,17 @@ func (l *Lexer) GetLineText(t token.Token) string {
 	if t.Type == token.EOF {
 		start--
 	}
-	start = max(0, min(start, len(l.characters)))
+	start = max(0, min(start, len(chars)))
 	end := start
-	for start > 0 && l.characters[start-1] != rune('\n') {
+	for start > 0 && chars[start-1] != rune('\n') {
 		start--
 	}
 	// Find the end of that line
-	for end < len(l.characters) && l.characters[end] != rune('\n') {
+	for end < len(chars) && chars[end] != rune('\n') {
 		end++
 	}
 	// Return the line, excluding the newline character
-	return string(l.characters[start:end])
+	return string(chars[start:end])
 }
 
 func isIdentifier(ch rune) bool {

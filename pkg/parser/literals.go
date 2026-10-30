@@ -104,6 +104,10 @@ func (p *Parser) parseString() (ast.Node, bool) {
 		p.setTokenError(strToken, "%s", err.Error())
 		return nil, false
 	}
+	// The template text starts just after the opening backtick. Fragment
+	// offsets count runes in that text.
+	textRunes := []rune(strToken.Literal)
+	textStart := strToken.StartPosition.Advance(1)
 	var exprs []ast.Expr
 	for _, e := range tmpl.Fragments() {
 		if !e.IsVariable() {
@@ -115,12 +119,17 @@ func (p *Parser) parseString() (ast.Node, bool) {
 			p.setTokenError(strToken, "maximum nesting depth exceeded")
 			return nil, false
 		}
-		tmplAst, err := Parse(p.ctx, e.Value(), &Config{
+		// Parse the expression in place in the source, so that its AST
+		// positions and errors refer to the source and not to the fragment.
+		start := advancePosition(textStart, textRunes[:e.Offset()])
+		end := start.Char + utf8.RuneCountInString(e.Value())
+		sub := New(p.l.Sub(start, end), &Config{
 			Filename: p.l.Filename(),
 			MaxDepth: remaining,
 		})
+		tmplAst, err := sub.Parse(p.ctx)
 		if err != nil {
-			p.setTokenError(strToken, "in template interpolation: %s", err.Error())
+			p.addInterpolationError(strToken, err)
 			return nil, false
 		}
 		statements := tmplAst.Stmts
@@ -148,6 +157,46 @@ func (p *Parser) parseString() (ast.Node, bool) {
 		Template: tmpl,
 		Exprs:    exprs,
 	}, true
+}
+
+// advancePosition returns the position just after the given runes, which
+// start at pos in the source.
+func advancePosition(pos token.Position, runes []rune) token.Position {
+	for _, r := range runes {
+		if r == '\n' {
+			pos = token.Position{
+				Char:      pos.Char + 1,
+				LineStart: pos.Char + 1,
+				Line:      pos.Line + 1,
+				Column:    0,
+				File:      pos.File,
+			}
+		} else {
+			pos = pos.Advance(1)
+		}
+	}
+	return pos
+}
+
+// addInterpolationError reports the error from parsing an interpolation of
+// the template string strToken. Its position is already a source position.
+// Later errors in the same interpolation are usually caused by the first, so
+// only the first is reported.
+func (p *Parser) addInterpolationError(strToken token.Token, err error) {
+	errs, ok := err.(*Errors)
+	if !ok || errs.Count() == 0 {
+		p.setTokenError(strToken, "in template interpolation: %s", err.Error())
+		return
+	}
+	e := errs.First()
+	p.setError(NewParserError(ErrorOpts{
+		ErrType:       e.Type(),
+		Message:       "in template interpolation: " + e.Message(),
+		File:          e.File(),
+		StartPosition: e.StartPosition(),
+		EndPosition:   e.EndPosition(),
+		SourceCode:    e.SourceCode(),
+	}))
 }
 
 func (p *Parser) parseList() (ast.Node, bool) {
