@@ -154,35 +154,14 @@ func TestLocalsBudgetUncaught(t *testing.T) {
 	assert.Contains(t, err.Error(), "local variable limit of 262140 slots exceeded")
 }
 
-// Frames that have returned must not keep large locals alive. Otherwise a
-// script could fill every frame slot with 64K locals, one call chain at a
-// time, while each chain stays within the budget.
-func TestLocalsBudgetReturnedFramesReleaseLocals(t *testing.T) {
-	// mid has more locals than fit in a frame's fixed storage, so its frames
-	// would reuse a large slice left behind by deep. Calling chains from the
-	// deepest to the shallowest leaves a deep frame at each depth.
-	code := compileWithHighLocal(t, `
-	function deep() {
-		let big = 1
-		return big
-	}
-	function mid(n, target) {
-		let a = 1; let b = 2; let c = 3; let d = 4; let e = 5; let f = 6; let g = 7
-		if (n == target) { return deep() }
-		return mid(n + 1, target)
-	}
-	range(500, 0, -1).each(k => mid(0, k))
-	`, "deep", "big")
-
-	vm, err := New(code, WithGlobals(basicBuiltins()))
-	assert.Nil(t, err)
+// assertLocalsReleased runs f and checks that it leaves less than 16 MiB of
+// heap alive. Keeping a 64K-slot frame at each of 500 depths would keep about
+// 500 MB alive.
+func assertLocalsReleased(t *testing.T, f func()) {
+	t.Helper()
 	before := heapInUse()
-	assert.Nil(t, vm.Run(context.Background()))
+	f()
 	after := heapInUse()
-	runtime.KeepAlive(vm)
-
-	// Retaining a deep frame at each of the 500 depths would keep about
-	// 500 MB alive.
 	var retained uint64
 	if after > before {
 		retained = after - before
@@ -190,6 +169,76 @@ func TestLocalsBudgetReturnedFramesReleaseLocals(t *testing.T) {
 	limit := uint64(16 << 20)
 	t.Logf("retained %d bytes (limit %d)", retained, limit)
 	assert.True(t, retained < limit, "retained %d bytes, limit %d", retained, limit)
+}
+
+// chainSource defines chain(k), which calls deep at depth k, and gives deep
+// the body deepBody. mid has more locals than fit in a frame's fixed storage,
+// so its frames would reuse a large slice left behind by deep. Calling chains
+// from the deepest to the shallowest leaves a deep frame at each depth, unless
+// frames release their large locals when they become inactive.
+func chainSource(deepBody string) string {
+	return `
+	function deep() {
+		let big = 1
+		` + deepBody + `
+	}
+	function mid(n, target) {
+		let a = 1; let b = 2; let c = 3; let d = 4; let e = 5; let f = 6; let g = 7
+		if (n == target) { return deep() }
+		return mid(n + 1, target)
+	}
+	function chain(k) { return mid(0, k) }
+	`
+}
+
+// Frames that have returned must not keep large locals alive. Otherwise a
+// script could fill every frame slot with 64K locals, one call chain at a
+// time, while each chain stays within the budget.
+func TestLocalsBudgetReturnedFramesReleaseLocals(t *testing.T) {
+	code := compileWithHighLocal(t, chainSource("return big")+`
+	range(500, 0, -1).each(k => chain(k))
+	`, "deep", "big")
+	vm, err := New(code, WithGlobals(basicBuiltins()))
+	assert.Nil(t, err)
+	assertLocalsReleased(t, func() {
+		assert.Nil(t, vm.Run(context.Background()))
+	})
+	runtime.KeepAlive(vm)
+}
+
+// Frames that an error unwinds must release their large locals too, whether
+// the script catches the error or the error reaches the host.
+func TestLocalsBudgetUnwoundFramesReleaseLocals(t *testing.T) {
+	t.Run("caught", func(t *testing.T) {
+		code := compileWithHighLocal(t, chainSource(`throw "boom"`)+`
+		range(500, 0, -1).each(k => try { chain(k) } catch e { 0 })
+		`, "deep", "big")
+		vm, err := New(code, WithGlobals(basicBuiltins()))
+		assert.Nil(t, err)
+		assertLocalsReleased(t, func() {
+			assert.Nil(t, vm.Run(context.Background()))
+		})
+		runtime.KeepAlive(vm)
+	})
+
+	t.Run("host", func(t *testing.T) {
+		code := compileWithHighLocal(t, chainSource(`throw "boom"`), "deep", "big")
+		vm, err := New(code, WithGlobals(basicBuiltins()))
+		assert.Nil(t, err)
+		assert.Nil(t, vm.Run(context.Background()))
+		chainObj, err := vm.Get("chain")
+		assert.Nil(t, err)
+		chain := chainObj.(*object.Closure)
+		assertLocalsReleased(t, func() {
+			for k := 500; k > 0; k-- {
+				args := []object.Object{object.NewInt(int64(k))}
+				_, err := vm.Call(context.Background(), chain, args)
+				assert.NotNil(t, err)
+				assert.Contains(t, err.Error(), "boom")
+			}
+		})
+		runtime.KeepAlive(vm)
+	})
 }
 
 // Ordinary recursion is unaffected by the default budget.
