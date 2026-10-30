@@ -175,9 +175,7 @@ func Min(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		if v < minVal {
-			minVal = v
-		}
+		minVal = math.Min(minVal, v)
 	}
 	return object.NewFloat(minVal), nil
 }
@@ -207,9 +205,7 @@ func Max(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		if v > maxVal {
-			maxVal = v
-		}
+		maxVal = math.Max(maxVal, v)
 	}
 	return object.NewFloat(maxVal), nil
 }

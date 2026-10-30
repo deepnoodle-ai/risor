@@ -55,6 +55,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - Every ordered comparison with NaN (`<`, `<=`, `>`, `>=`) is false, as in
     IEEE 754. Before, `math.nan < 1.0` and `1.0 < math.nan` were both true.
     `sorted` and `list.sort` put NaN after all other numbers.
+  - `math.min` and `math.max` return NaN when any argument is NaN. Before,
+    the result depended on the argument order.
 - A string and bytes compare the same way in both directions:
   `"a" == bytes("a")` is now true, like `bytes("a") == "a"`, and `<`, `>`,
   `in`, and `list.index` work with a string on either side.

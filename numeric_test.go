@@ -27,6 +27,14 @@ func TestNumericAndBytesOperators(t *testing.T) {
 		{`math.nan == math.nan`, false},
 		{`math.nan != math.nan`, true},
 		{`string(sorted([3.0, math.nan, 1, math.nan, 2.0]))`, "[1, 2, 3, NaN, NaN]"},
+		// Inside lists, elements use the sort order: NaN is above every
+		// number and equal to itself. Equality still follows IEEE 754.
+		{`[math.nan] > [1.0]`, true},
+		{`[1.0] < [math.nan]`, true},
+		{`[math.nan] <= [math.nan]`, true},
+		{`[math.nan] == [math.nan]`, false},
+		{`"a".compare(bytes("b"))`, int64(-1)},
+		{`[math.min(1, math.nan), math.max(math.nan, 1)].map(x => math.is_nan(x))`, []any{true, true}},
 		// int ** float is a float
 		{`2 ** 0.5`, 1.4142135623730951},
 		{`2 ** -1.0`, 0.5},

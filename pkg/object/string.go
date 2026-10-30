@@ -15,7 +15,7 @@ var stringMethods = NewMethodRegistry[*String]("string")
 
 func init() {
 	stringMethods.Define("compare").
-		Doc("Compare to another string (-1, 0, or 1)").
+		Doc("Compare to a string or bytes (-1, 0, or 1)").
 		Arg("other").
 		Returns("int").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
