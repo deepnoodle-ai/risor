@@ -155,6 +155,11 @@ func (b *Byte) runOperationInt(opType op.BinaryOpType, right int64) (Object, err
 	case op.Xor:
 		return NewInt(int64(b.value) ^ right), nil
 	case op.Power:
+		if right < 0 {
+			// A negative exponent gives a fraction, so the result is a
+			// float, as for int ** int.
+			return NewFloat(math.Pow(float64(b.value), float64(right))), nil
+		}
 		return NewInt(int64(math.Pow(float64(b.value), float64(right)))), nil
 	case op.LShift:
 		if right < 0 {

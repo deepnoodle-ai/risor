@@ -38,6 +38,13 @@ func TestNumericAndBytesOperators(t *testing.T) {
 		// int ** float is a float
 		{`2 ** 0.5`, 1.4142135623730951},
 		{`2 ** -1.0`, 0.5},
+		// int ** negative int is a float; int ** non-negative int is an int
+		{`2 ** -1`, 0.5},
+		{`2 ** -2`, 0.25},
+		{`byte(2) ** -1`, 0.5},
+		{`2 ** 3`, int64(8)},
+		{`2 ** 0`, int64(1)},
+		{`[0 ** -1 == math.inf, 0 ** -1.0 == math.inf]`, []any{true, true}},
 		// int == float is exact above 2^53
 		{`[9007199254740992 == 9007199254740992.0, 9007199254740992.0 == 9007199254740993, 9007199254740993 > 9007199254740992.0]`, []any{true, false, true}},
 	}

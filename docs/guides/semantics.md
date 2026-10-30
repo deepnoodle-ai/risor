@@ -44,6 +44,11 @@ Arithmetic operations follow these rules:
 | `<<` `>>` (shift)      | Yes | No    | Yes  | int/byte only |
 | `&` `\|` `^` (bitwise) | Yes | No    | Yes  | int/byte only |
 
+**Power with a negative int exponent:** `int ** int` is an int when the
+exponent is zero or positive. When the exponent is negative, the result is a
+float, as in Python: `2 ** -1` is `0.5` and `2 ** -2` is `0.25`. The same rule
+applies to `byte ** int`. `0 ** -1` is `+Inf`, the same as `0 ** -1.0`.
+
 **No implicit narrowing:** Float values are never implicitly converted to int.
 
 **Shifts:** A negative shift count raises a value error: `1 << -1` and

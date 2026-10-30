@@ -109,6 +109,27 @@ func TestIntPowerFloat(t *testing.T) {
 	assert.Equal(t, result, NewFloat(8))
 }
 
+func TestIntPowerNegativeInt(t *testing.T) {
+	result, err := NewInt(2).RunOperation(op.Power, NewInt(-1))
+	assert.Nil(t, err)
+	assert.Equal(t, result, NewFloat(0.5))
+	result, err = NewInt(2).RunOperation(op.Power, NewInt(-2))
+	assert.Nil(t, err)
+	assert.Equal(t, result, NewFloat(0.25))
+	result, err = NewInt(0).RunOperation(op.Power, NewInt(-1))
+	assert.Nil(t, err)
+	assert.Equal(t, result, NewFloat(math.Inf(1)))
+	result, err = NewByte(2).RunOperation(op.Power, NewInt(-1))
+	assert.Nil(t, err)
+	assert.Equal(t, result, NewFloat(0.5))
+	result, err = NewInt(2).RunOperation(op.Power, NewInt(3))
+	assert.Nil(t, err)
+	assert.Equal(t, result, NewInt(8))
+	result, err = NewInt(2).RunOperation(op.Power, NewInt(0))
+	assert.Nil(t, err)
+	assert.Equal(t, result, NewInt(1))
+}
+
 func TestIntFloatExactComparison(t *testing.T) {
 	const big = int64(1) << 53 // 9007199254740992
 	bigInt := NewInt(big)

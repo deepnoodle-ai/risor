@@ -49,6 +49,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
     with a Go runtime error.
   - `int ** float` returns a float: `2 ** 0.5` is `1.4142135623730951`. Before,
     the result was cut to an int (`1`).
+  - `int ** int` with a negative exponent returns a float, as in Python:
+    `2 ** -1` is `0.5`, and `0 ** -1` is `+Inf`, the same as `0 ** -1.0`.
+    `byte ** int` follows the same rule. Before, the result was cut to an int
+    (`0`). A zero or positive exponent still gives an int.
   - `int == float` and int/float ordering compare exactly. Before, the int was
     converted to float64 first, which rounds above 2^53, so
     `9007199254740993 == 9007199254740992.0` was true.

@@ -122,6 +122,11 @@ func (i *Int) runOperationInt(opType op.BinaryOpType, right int64) (Object, erro
 	case op.Xor:
 		return NewInt(i.value ^ right), nil
 	case op.Power:
+		if right < 0 {
+			// A negative exponent gives a fraction, so the result is a
+			// float, as in Python: 2 ** -1 is 0.5 and 0 ** -1 is +Inf.
+			return NewFloat(math.Pow(float64(i.value), float64(right))), nil
+		}
 		return NewInt(int64(math.Pow(float64(i.value), float64(right)))), nil
 	case op.LShift:
 		if right < 0 {
