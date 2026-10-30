@@ -913,6 +913,13 @@ evalLoop:
 			vm.ip = base - delta
 		case op.BuildList:
 			count := vm.fetch()
+			if err := object.CheckListLength(ctx, int(count)); err != nil {
+				vm.restoreStack(vm.sp - int(count))
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
+			}
 			items := make([]object.Object, count)
 			for i := uint16(0); i < count; i++ {
 				items[count-1-i] = vm.pop()
@@ -938,6 +945,12 @@ evalLoop:
 			list, ok := listObj.(*object.List)
 			if !ok {
 				if herr := vm.tryHandleError(vm.typeError("cannot append to non-list (got %s)", listObj.Type())); herr != nil {
+					return herr
+				}
+				continue
+			}
+			if err := object.CheckListLength(ctx, len(list.Value())+1); err != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
 				continue
@@ -1114,7 +1127,19 @@ evalLoop:
 			vm.swap(int(vm.fetch()))
 		case op.BuildString:
 			count := vm.fetch()
+			// Check before formatting, so that an operand whose text is too
+			// large, such as a list that holds one string many times, is
+			// never formatted
+			operands := vm.stack[vm.sp-int(count)+1 : vm.sp+1]
+			if err := object.CheckFormatSize(ctx, "string template", operands...); err != nil {
+				vm.restoreStack(vm.sp - int(count))
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
+			}
 			items := make([]string, count)
+			size := 0
 			for i := uint16(0); i < count; i++ {
 				dst := count - 1 - i
 				obj := vm.pop()
@@ -1127,6 +1152,13 @@ evalLoop:
 				default:
 					items[dst] = obj.Inspect()
 				}
+				size += len(items[dst])
+			}
+			if err := object.CheckBytesSize(ctx, "string template", size); err != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(object.NewString(strings.Join(items, "")))
 		case op.Slice:

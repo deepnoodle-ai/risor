@@ -6,11 +6,13 @@ Risor bounds instruction count (`WithMaxSteps`), wall-clock time
 `WithMaxMemory`.
 
 `WithLimits` caps the operations that can turn a small input into a huge
-output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes, and
-building lists with `list()`, `keys()`, spread, `+`, `extend`,
-`range(...).map`, `split`, `fields`, the `regexp` find and split functions,
-and `rand.bytes`. The defaults are 64 MiB for a string or bytes value and
-4,194,304 list elements. Exceeding a cap raises a `value error`:
+output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes, string
+templates, `sprintf`, `string()` of a list or map, and `encode`, and building
+lists with list literals, `list()`, `keys()`, spread, `+`, `extend`,
+`append`, `insert`, `range(...).map`, `split`, `fields`, the `regexp` find
+and split functions, `decode`, and `rand.bytes`. The defaults are 64 MiB for
+a string or bytes value and 4,194,304 list elements. Exceeding a cap raises a
+`value error`:
 
 ```go
 // fails with "list too large (exceeds limit of 4194304 elements)"
@@ -541,13 +543,19 @@ source, allocates almost nothing, and reports `len(a) == 2`. The list literal
 is built inside a VM instruction, so there is no call for the transform to
 wrap. It stays harmless until something expands it. Converting it to Go (`encode`,
 `sprintf`, a host function argument, or the script result) stops at
-`MaxListLength` elements. `string()` and printing are not capped, so you should
-not put `string`, `sorted` or `chunk` over lists into the environment. If you
-need `string()` on arbitrary values, this approach is not enough for you.
+`MaxListLength` elements. `string()`, string templates, and `encode` count the
+size of the text before they build it, counting each reference again, and
+stop at `MaxBytesSize`. That count walks the value, so it can take up to
+`MaxBytesSize` steps of Go code before the error. Printing is not capped, so
+you should not put `print`, `sorted` or `chunk` over lists into the
+environment.
 
-**Methods that charge after the fact.** Only `repeat` has its output size
-checked before the work happens. Any method whose output size isn't a cheap
-function of its inputs allocates first and charges second. In practice its
+**Methods that charge after the fact.** Only `repeat`, `string()`, string
+templates, and `encode` have their output size checked before the work
+happens. `decode` builds the whole value and then checks its lists, so its
+peak is a constant factor above its input, which `MaxBytesSize` already
+caps. Any method whose output size isn't a cheap function of its inputs
+allocates first and charges second. In practice its
 inputs are already inside the budget, so this costs you a constant factor
 rather than leaving an unbounded hole, but it does mean the peak is higher than
 the number you set.
@@ -559,7 +567,7 @@ you can actually afford to lose.
 **`WithTimeout` is not a hard bound.** Independently of memory, a builtin whose
 runtime grows faster than its input can run past the deadline. The VM sets a
 halt flag from a goroutine but only reads it between instructions, so Go code
-running inside a builtin cannot be interrupted. `string()` over the shared
+running inside a builtin cannot be interrupted. Printing the shared
 structure above will run for minutes under a two-second timeout.
 
 **The transform is coupled to AST node shapes.** If a node type is added to

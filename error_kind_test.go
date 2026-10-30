@@ -204,7 +204,7 @@ func TestErrorKindWrapped(t *testing.T) {
 		msg string
 	}{
 		{`count(range(11))`, "func([]int64) int: argument 1: value too large to convert (exceeds limit of 10 elements)"},
-		{`box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`, `cannot set field "Items": value too large to convert (exceeds limit of 10 elements)`},
+		{`box.Items = range(11)`, `cannot set field "Items": value too large to convert (exceeds limit of 10 elements)`},
 	}
 	for _, tt := range tests {
 		caught, err := Eval(ctx, "try { "+tt.src+" } catch e { [e.kind(), e.message()] }", opts...)

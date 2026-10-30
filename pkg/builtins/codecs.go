@@ -73,7 +73,25 @@ func Encode(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if codecErr != nil {
 		return nil, codecErr
 	}
-	return codec.Encode(ctx, args[0])
+	// Check before encoding, so that a value whose encoding is too large,
+	// such as a list that holds one string many times, is never encoded
+	if err := object.CheckFormatSize(ctx, "encode", args[0]); err != nil {
+		return nil, err
+	}
+	result, err := codec.Encode(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	switch result := result.(type) {
+	case *object.String:
+		err = object.CheckBytesSize(ctx, "encode", len(result.Value()))
+	case *object.Bytes:
+		err = object.CheckBytesSize(ctx, "encode", len(result.Value()))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func encodeBase64(ctx context.Context, obj object.Object) (object.Object, error) {
@@ -214,7 +232,39 @@ func Decode(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if codecErr != nil {
 		return nil, codecErr
 	}
-	return codec.Decode(ctx, args[0])
+	result, err := codec.Decode(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	if err := checkDecodedLists(ctx, result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// checkDecodedLists returns a value error if obj, or a list or map nested in
+// it, holds a list longer than the list length limit in ctx. Decoding can
+// produce a list with one element for every two bytes of input.
+func checkDecodedLists(ctx context.Context, obj object.Object) error {
+	switch obj := obj.(type) {
+	case *object.List:
+		items := obj.Value()
+		if err := object.CheckListLength(ctx, len(items)); err != nil {
+			return err
+		}
+		for _, item := range items {
+			if err := checkDecodedLists(ctx, item); err != nil {
+				return err
+			}
+		}
+	case *object.Map:
+		for _, value := range obj.Value() {
+			if err := checkDecodedLists(ctx, value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func decodeBase64(ctx context.Context, obj object.Object) (object.Object, error) {

@@ -294,9 +294,15 @@ func TestWithLimitsStructField(t *testing.T) {
 	ctx := context.Background()
 	limits := WithLimits(Limits{MaxListLength: 10})
 
+	// A list literal longer than the limit fails before the conversion,
+	// so the tests use a range, which converts without becoming a list.
 	box := &limitsBox{}
-	_, err := Eval(ctx, `box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]`,
-		WithEnv(map[string]any{"box": box}), limits)
+	boxEnv := func() Option {
+		env := Builtins()
+		env["box"] = box
+		return WithEnv(env)
+	}
+	_, err := Eval(ctx, `box.Items = range(11)`, boxEnv(), limits)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
 	assert.Equal(t, len(box.Items), 0)
@@ -304,9 +310,9 @@ func TestWithLimitsStructField(t *testing.T) {
 	// The error is catchable
 	result, err := Eval(ctx, `
 	let r = "none"
-	try { box.Items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] } catch e { r = e.message() }
+	try { box.Items = range(11) } catch e { r = e.message() }
 	r
-	`, WithEnv(map[string]any{"box": box}), limits)
+	`, boxEnv(), limits)
 	assert.Nil(t, err)
 	assert.True(t, strings.Contains(result.(string), "value too large to convert"), result)
 
