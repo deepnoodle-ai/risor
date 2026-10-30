@@ -176,7 +176,9 @@ type ResolveAttrFunc func(ctx context.Context, name string) (Object, error)
 // context to set an attribute. When an object implements it, the VM calls
 // SetAttrContext instead of SetAttr, so the attribute assignment can use the
 // limits from WithLimits or observe cancellation. SetAttr must still work
-// without a context and use the default limits.
+// without a context and use the default limits. A type that wraps a GoStruct
+// and forwards SetAttr must also implement AttrSetter and forward
+// SetAttrContext, or field assignments use the default limits.
 type AttrSetter interface {
 	SetAttrContext(ctx context.Context, name string, value Object) error
 }
