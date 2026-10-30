@@ -17,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   cap raises a catchable `value error` (#491).
   The list cap also bounds the total elements of one conversion to Go, such as
   a script result, a host function argument, or `sprintf` and `encode` input,
-  counting a shared list each time it appears (#495).
+  counting a shared list each time it appears (#496).
 
 ### Changed
 
@@ -41,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `String.Fields` also returns an error (#491).
 - `object.ToInterface` and `TypeRegistry.ToGo` take a `context.Context`, whose
   limits bound the conversion. `ToGo` converts a range to a slice or array
-  (#495).
+  (#496).
 
 ### Fixed
 
