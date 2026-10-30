@@ -51,7 +51,7 @@ func Int(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if max <= min {
 			return nil, fmt.Errorf("rand.int: max must be greater than min, got min=%d max=%d", min, max)
 		}
-		return object.NewInt(min + rand.Int63n(max-min)), nil
+		return object.NewInt(between(min, max-1)), nil
 	default:
 		return nil, fmt.Errorf("rand.int: expected 0-2 arguments, got %d", len(args))
 	}
@@ -74,7 +74,25 @@ func Randint(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if b < a {
 		return nil, fmt.Errorf("rand.randint: b must be >= a, got a=%d b=%d", a, b)
 	}
-	return object.NewInt(a + rand.Int63n(b-a+1)), nil
+	return object.NewInt(between(a, b)), nil
+}
+
+// between returns a random integer in [lo, hi] inclusive. lo must be <= hi.
+// The span is computed in uint64 so that ranges wider than math.MaxInt64,
+// up to the full int64 range, do not overflow.
+func between(lo, hi int64) int64 {
+	span := uint64(hi) - uint64(lo)
+	if span < math.MaxInt64 {
+		return lo + rand.Int63n(int64(span)+1)
+	}
+	// The span does not fit Int63n. Rejection-sample from the full uint64
+	// range; at least half of all values are accepted.
+	for {
+		v := rand.Uint64()
+		if v <= span {
+			return int64(uint64(lo) + v)
+		}
+	}
 }
 
 // Uniform returns a random float in [a, b].
@@ -214,6 +232,10 @@ func Shuffle(ctx context.Context, args ...object.Object) (object.Object, error) 
 	return ls, nil
 }
 
+// maxBytes is the largest n accepted by Bytes. The result is a list with one
+// object per byte, so this bounds a single call to a few tens of MiB.
+const maxBytes = 1 << 20
+
 // Bytes returns a list of n random bytes (0-255).
 // Useful for generating random data.
 func Bytes(ctx context.Context, args ...object.Object) (object.Object, error) {
@@ -227,11 +249,16 @@ func Bytes(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if n < 0 {
 		return nil, fmt.Errorf("rand.bytes: n must be non-negative, got %d", n)
 	}
-	if n > math.MaxInt32 {
-		return nil, fmt.Errorf("rand.bytes: n too large, got %d", n)
+	if n > maxBytes {
+		return nil, object.ValueErrorf("rand.bytes: n too large (%d exceeds limit of %d)", n, maxBytes)
 	}
 	result := make([]object.Object, n)
 	for i := range n {
+		if i%1024 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
 		result[i] = object.NewInt(int64(rand.Intn(256)))
 	}
 	return object.NewList(result), nil

@@ -207,6 +207,9 @@ func (b *Bytes) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 func (b *Bytes) runOperationBytes(opType op.BinaryOpType, right *Bytes) (Object, error) {
 	switch opType {
 	case op.Add:
+		if err := checkBytesSize("bytes concatenation", uint64(len(b.value))+uint64(len(right.value))); err != nil {
+			return nil, err
+		}
 		result := make([]byte, len(b.value)+len(right.value))
 		copy(result, b.value)
 		copy(result[len(b.value):], right.value)
@@ -219,6 +222,9 @@ func (b *Bytes) runOperationBytes(opType op.BinaryOpType, right *Bytes) (Object,
 func (b *Bytes) runOperationString(opType op.BinaryOpType, right *String) (Object, error) {
 	switch opType {
 	case op.Add:
+		if err := checkBytesSize("bytes concatenation", uint64(len(b.value))+uint64(len(right.value))); err != nil {
+			return nil, err
+		}
 		rightBytes := []byte(right.value)
 		result := make([]byte, len(b.value)+len(rightBytes))
 		copy(result, b.value)
@@ -404,6 +410,9 @@ func (b *Bytes) Repeat(obj Object) (Object, error) {
 	if count < 0 {
 		return nil, newValueErrorf("negative repeat count")
 	}
+	if err := checkRepeatSize("bytes.repeat()", len(b.value), count); err != nil {
+		return nil, err
+	}
 	return NewBytes(bytes.Repeat(b.value, int(count))), nil
 }
 
@@ -420,6 +429,13 @@ func (b *Bytes) Replace(old, new, count Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	matches := bytes.Count(b.value, oldBytes)
+	if n >= 0 && n < int64(matches) {
+		matches = int(n)
+	}
+	if err := checkReplaceSize("bytes.replace()", len(b.value), len(oldBytes), len(newBytes), matches); err != nil {
+		return nil, err
+	}
 	return NewBytes(bytes.Replace(b.value, oldBytes, newBytes, int(n))), nil
 }
 
@@ -430,6 +446,10 @@ func (b *Bytes) ReplaceAll(old, new Object) (Object, error) {
 	}
 	newBytes, err := AsBytes(new)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkReplaceSize("bytes.replace_all()", len(b.value), len(oldBytes), len(newBytes),
+		bytes.Count(b.value, oldBytes)); err != nil {
 		return nil, err
 	}
 	return NewBytes(bytes.ReplaceAll(b.value, oldBytes, newBytes)), nil

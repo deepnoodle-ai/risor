@@ -84,11 +84,10 @@ func List(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if !ok {
 		return nil, object.TypeErrorf("list() expected an enumerable (%s given)", args[0].Type())
 	}
-	var items []object.Object
-	enumerable.Enumerate(ctx, func(key, value object.Object) bool {
-		items = append(items, value)
-		return true
-	})
+	items, err := object.CollectValues(ctx, enumerable)
+	if err != nil {
+		return nil, err
+	}
 	return object.NewList(items), nil
 }
 
@@ -166,6 +165,9 @@ func Any(ctx context.Context, args ...object.Object) (object.Object, error) {
 			}
 			return true
 		})
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if found {
 			return object.True, nil
 		}
@@ -195,6 +197,9 @@ func All(ctx context.Context, args ...object.Object) (object.Object, error) {
 			}
 			return true
 		})
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !allTruthy {
 			return object.False, nil
 		}
@@ -233,12 +238,19 @@ func Filter(ctx context.Context, args ...object.Object) (object.Object, error) {
 				return false
 			}
 			if decision.IsTruthy() {
+				if err := object.CheckListLength(len(result) + 1); err != nil {
+					filterErr = err
+					return false
+				}
 				result = append(result, value)
 			}
 			return true
 		})
 		if filterErr != nil {
 			return nil, filterErr
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 	default:
 		return nil, object.TypeErrorf("filter() argument must be a container (%s given)", args[0].Type())
@@ -284,6 +296,13 @@ func Sorted(ctx context.Context, args ...object.Object) (object.Object, error) {
 		}
 		var sortErr error
 		sort.SliceStable(resultItems, func(i, j int) bool {
+			if sortErr != nil {
+				return false
+			}
+			if err := ctx.Err(); err != nil {
+				sortErr = err
+				return false
+			}
 			result, err := callable.Call(ctx, resultItems[i], resultItems[j])
 			if err != nil {
 				sortErr = err
@@ -295,7 +314,7 @@ func Sorted(ctx context.Context, args ...object.Object) (object.Object, error) {
 			return nil, sortErr
 		}
 	} else {
-		if err := object.Sort(resultItems); err != nil {
+		if err := object.SortContext(ctx, resultItems); err != nil {
 			return nil, err
 		}
 	}
@@ -356,11 +375,10 @@ func Keys(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.List:
 		return arg.Keys(), nil
 	case object.Enumerable:
-		var keys []object.Object
-		arg.Enumerate(ctx, func(key, value object.Object) bool {
-			keys = append(keys, key)
-			return true
-		})
+		keys, err := object.CollectKeys(ctx, arg)
+		if err != nil {
+			return nil, err
+		}
 		return object.NewList(keys), nil
 	default:
 		return nil, object.TypeErrorf("keys() unsupported argument (%s given)", args[0].Type())

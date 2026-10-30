@@ -153,7 +153,7 @@ Shuffles a list in place and returns it.
 bytes(n int) list
 ```
 
-Returns a list of n random bytes (integers 0-255).
+Returns a list of n random bytes (integers 0-255). n must be between 0 and 1048576 (1 << 20).
 
 ```go filename="Example"
 >>> rand.bytes(4)

@@ -246,21 +246,7 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 					count = int(c)
 				}
 
-				if count == 0 {
-					return object.NewString(r.value.ReplaceAllString(strValue, replaceValue)), nil
-				}
-
-				// Replace up to count matches
-				result := strValue
-				for i := 0; i < count; i++ {
-					loc := r.value.FindStringIndex(result)
-					if loc == nil {
-						break
-					}
-					expanded := r.value.ReplaceAllString(result[loc[0]:loc[1]], replaceValue)
-					result = result[:loc[0]] + expanded + result[loc[1]:]
-				}
-				return object.NewString(result), nil
+				return replace(ctx, r.value, strValue, replaceValue, count)
 			},
 		), true
 
@@ -280,7 +266,7 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 				if err != nil {
 					return nil, err
 				}
-				return object.NewString(r.value.ReplaceAllString(strValue, replaceValue)), nil
+				return replace(ctx, r.value, strValue, replaceValue, 0)
 			},
 		), true
 

@@ -96,9 +96,14 @@ func (r *Range) Inspect() string {
 	return fmt.Sprintf("range(%d, %d, %d)", r.start, r.stop, r.step)
 }
 
+// Interface returns the range values as a []int64. Ranges longer than
+// MaxListLength are not materialized and return nil.
 func (r *Range) Interface() any {
-	// Return a slice of the range values
-	var result []int64
+	n := r.length()
+	if n > MaxListLength {
+		return nil
+	}
+	result := make([]int64, 0, n)
 	r.Enumerate(context.Background(), func(key, value Object) bool {
 		result = append(result, value.(*Int).Value())
 		return true
@@ -129,38 +134,39 @@ func (r *Range) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 	return nil, newTypeErrorf("unsupported operation for range: %v", opType)
 }
 
-// length returns the number of elements in the range.
-func (r *Range) length() int64 {
+// length returns the number of elements in the range. The arithmetic is done
+// in uint64 so that ranges spanning more than math.MaxInt64 (or with a step of
+// math.MinInt64) do not overflow.
+func (r *Range) length() uint64 {
 	if r.step > 0 {
 		if r.start >= r.stop {
 			return 0
 		}
-		return (r.stop - r.start + r.step - 1) / r.step
+		diff := uint64(r.stop) - uint64(r.start)
+		return (diff-1)/uint64(r.step) + 1
 	}
 	// step < 0
 	if r.start <= r.stop {
 		return 0
 	}
-	return (r.start - r.stop - r.step - 1) / (-r.step)
+	diff := uint64(r.start) - uint64(r.stop)
+	return (diff-1)/(-uint64(r.step)) + 1
 }
 
-// Enumerate iterates over the range values.
+// Enumerate iterates over the range values. It iterates by element count, so
+// values near the int64 limits do not wrap around, and stops early if ctx is
+// canceled. Callers should check ctx.Err() after Enumerate returns.
 func (r *Range) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
-	idx := int64(0)
-	if r.step > 0 {
-		for val := r.start; val < r.stop; val += r.step {
-			if !fn(NewInt(idx), NewInt(val)) {
-				return
-			}
-			idx++
+	n := r.length()
+	val := r.start
+	for i := uint64(0); i < n; i++ {
+		if i%ctxCheckInterval == 0 && i > 0 && ctx.Err() != nil {
+			return
 		}
-	} else {
-		for val := r.start; val > r.stop; val += r.step {
-			if !fn(NewInt(idx), NewInt(val)) {
-				return
-			}
-			idx++
+		if !fn(NewInt(int64(i)), NewInt(val)) {
+			return
 		}
+		val += r.step // may wrap after the last element; never used then
 	}
 }
 
@@ -177,7 +183,11 @@ func (r *Range) Map(ctx context.Context, fn Object) (Object, error) {
 		}
 		passIndex = count == 2
 	}
-	result := make([]Object, 0, r.length())
+	n := r.length()
+	if n > MaxListLength {
+		return nil, listTooLargeError()
+	}
+	result := make([]Object, 0, n)
 	var callErr error
 	r.Enumerate(ctx, func(key, value Object) bool {
 		var outputValue Object
@@ -197,6 +207,9 @@ func (r *Range) Map(ctx context.Context, fn Object) (Object, error) {
 	if callErr != nil {
 		return nil, callErr
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return NewList(result), nil
 }
 
@@ -214,12 +227,19 @@ func (r *Range) Filter(ctx context.Context, fn Object) (Object, error) {
 			return false
 		}
 		if decision.IsTruthy() {
+			if len(result) >= MaxListLength {
+				callErr = listTooLargeError()
+				return false
+			}
 			result = append(result, value)
 		}
 		return true
 	})
 	if callErr != nil {
 		return nil, callErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return NewList(result), nil
 }
@@ -239,6 +259,9 @@ func (r *Range) Each(ctx context.Context, fn Object) (Object, error) {
 	})
 	if callErr != nil {
 		return nil, callErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return Nil, nil
 }

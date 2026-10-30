@@ -239,6 +239,9 @@ func (s *String) RunOperation(opType op.BinaryOpType, right Object) (Object, err
 func (s *String) runOperationString(opType op.BinaryOpType, right *String) (Object, error) {
 	switch opType {
 	case op.Add:
+		if err := checkBytesSize("string concatenation", uint64(len(s.value))+uint64(len(right.value))); err != nil {
+			return nil, err
+		}
 		return NewString(s.value + right.value), nil
 	default:
 		return nil, newTypeErrorf("unsupported operation for string: %v on type %s", opType, right.Type())
@@ -322,9 +325,17 @@ func (s *String) Join(obj Object) (Object, error) {
 		return nil, err
 	}
 	var strs []string
-	for _, item := range ls.Value() {
+	var size uint64
+	for i, item := range ls.Value() {
 		itemStr, err := AsString(item)
 		if err != nil {
+			return nil, err
+		}
+		size += uint64(len(itemStr))
+		if i > 0 {
+			size += uint64(len(s.value))
+		}
+		if err := checkBytesSize("string.join()", size); err != nil {
 			return nil, err
 		}
 		strs = append(strs, itemStr)
@@ -367,6 +378,10 @@ func (s *String) ReplaceAll(old, new Object) (Object, error) {
 	}
 	newStr, err := AsString(new)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkReplaceSize("string.replace_all()", len(s.value), len(oldStr), len(newStr),
+		strings.Count(s.value, oldStr)); err != nil {
 		return nil, err
 	}
 	return NewString(strings.ReplaceAll(s.value, oldStr, newStr)), nil
@@ -415,6 +430,9 @@ func (s *String) Repeat(obj Object) (Object, error) {
 	}
 	if count < 0 {
 		return nil, newValueErrorf("negative repeat count")
+	}
+	if err := checkRepeatSize("string.repeat()", len(s.value), count); err != nil {
+		return nil, err
 	}
 	return NewString(strings.Repeat(s.value, int(count))), nil
 }

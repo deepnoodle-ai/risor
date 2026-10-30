@@ -82,7 +82,8 @@ NaN
 abs(x number) number
 ```
 
-Returns the absolute value of x.
+Returns the absolute value of x. For an int equal to the minimum int64 value, whose
+absolute value is not representable, a value error is raised.
 
 ```go filename="Example"
 >>> math.abs(-2)

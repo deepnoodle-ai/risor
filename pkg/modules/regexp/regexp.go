@@ -93,22 +93,79 @@ func Replace(ctx context.Context, args ...object.Object) (object.Object, error) 
 		count = int(c)
 	}
 
-	if count == 0 {
+	return replace(ctx, r, str, repl, count)
+}
+
+// replace replaces up to count non-overlapping matches of r in str with repl,
+// expanding $1, $2, etc. A count of 0 replaces all matches and a negative
+// count replaces none. Matches are found in a single pass over the original
+// string, so replacement text is never re-matched.
+//
+// The result size is checked against object.MaxBytesSize before it is built,
+// using a streaming pass that does not hold all matches in memory.
+func replace(ctx context.Context, r *regexp.Regexp, str, repl string, count int) (object.Object, error) {
+	if count < 0 {
+		return object.NewString(str), nil
+	}
+	lit, refs := replacementShape(r, repl)
+	var matches int
+	var canceled, tooLarge bool
+	size := int64(len(str))
+	r.ReplaceAllStringFunc(str, func(m string) string {
+		if canceled {
+			return ""
+		}
+		if matches%1024 == 0 && ctx.Err() != nil {
+			canceled = true
+			return ""
+		}
+		if !tooLarge && (count == 0 || matches < count) {
+			// Each group reference expands to at most the match length.
+			size += int64(lit) + int64(refs)*int64(len(m)) - int64(len(m))
+			tooLarge = size > object.MaxBytesSize
+		}
+		matches++
+		return ""
+	})
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if tooLarge {
+		return nil, object.ValueErrorf("regexp.replace: result too large (exceeds limit of %d bytes)",
+			object.MaxBytesSize)
+	}
+	if count == 0 || count >= matches {
 		return object.NewString(r.ReplaceAllString(str, repl)), nil
 	}
-
-	// Replace up to count matches
-	result := str
-	for i := 0; i < count; i++ {
-		loc := r.FindStringIndex(result)
-		if loc == nil {
-			break
-		}
-		// Expand replacement (handles $1, $2, etc.)
-		expanded := r.ReplaceAllString(result[loc[0]:loc[1]], repl)
-		result = result[:loc[0]] + expanded + result[loc[1]:]
+	// Replace only the first count matches. Their indices are held in memory,
+	// so bound how many there can be.
+	if err := object.CheckListLength(count); err != nil {
+		return nil, err
 	}
-	return object.NewString(result), nil
+	var result []byte
+	last := 0
+	for _, m := range r.FindAllStringSubmatchIndex(str, count) {
+		result = append(result, str[last:m[0]]...)
+		result = r.ExpandString(result, repl, str, m)
+		last = m[1]
+	}
+	result = append(result, str[last:]...)
+	return object.NewString(string(result)), nil
+}
+
+// replacementShape returns the number of literal bytes repl expands to and
+// the number of group references it contains, by expanding it once with
+// empty groups and once with single-byte groups.
+func replacementShape(r *regexp.Regexp, repl string) (lit, refs int) {
+	n := 2 * (r.NumSubexp() + 1)
+	empty := make([]int, n)
+	one := make([]int, n)
+	for i := 1; i < n; i += 2 {
+		one[i] = 1
+	}
+	lit = len(r.ExpandString(nil, repl, "", empty))
+	refs = len(r.ExpandString(nil, repl, "x", one)) - lit
+	return lit, refs
 }
 
 // Split splits a string by a pattern.
