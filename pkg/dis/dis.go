@@ -177,7 +177,9 @@ func getLocalVariableName(code *bytecode.Code, index int) (string, error) {
 }
 
 func getGlobalVariableName(code *bytecode.Code, index int) (string, error) {
-	if code.GlobalCount() <= index {
+	// Every code shares the root's globals, and only the root must record
+	// how many there are.
+	if code.Root().GlobalCount() <= index {
 		return "", fmt.Errorf("global variable index out of range: %d", index)
 	}
 	return code.GlobalNameAt(index), nil
