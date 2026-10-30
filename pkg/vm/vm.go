@@ -63,6 +63,10 @@ type VirtualMachine struct {
 	stack        [MaxStackDepth]object.Object
 	frames       []frame // Dynamically sized, grows up to MaxFrameDepth
 
+	// stopWatcher ends the goroutine that watches the context of the
+	// current run. It is nil when no watcher is running.
+	stopWatcher func()
+
 	// requestedIP stores the starting instruction pointer requested via
 	// WithInstructionOffset. This survives resetForNewCode() and is applied
 	// when activating code. Used by REPL to skip past previously executed code.
@@ -179,7 +183,8 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 		return fmt.Errorf("vm is already running")
 	}
 
-	// Apply options
+	// Apply options. inputGlobals collects only the globals given now.
+	vm.inputGlobals = map[string]any{}
 	for _, opt := range options {
 		opt(vm)
 	}
@@ -187,11 +192,17 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 	// Configure observer if present
 	vm.configureObserver()
 
-	// Convert globals to Risor objects using the type registry
-	var err error
-	vm.globals, err = object.AsObjectsWithRegistry(vm.inputGlobals, vm.TypeRegistry())
+	// Convert globals to Risor objects using the type registry. A provided
+	// global only adds a name the VM does not have yet. It never replaces a
+	// value the VM already holds, which a script may have changed.
+	globals, err := object.AsObjectsWithRegistry(vm.inputGlobals, vm.TypeRegistry())
 	if err != nil {
 		return fmt.Errorf("invalid global provided: %v", err)
+	}
+	for name, value := range globals {
+		if _, exists := vm.globals[name]; !exists {
+			vm.globals[name] = value
+		}
 	}
 	return nil
 }
@@ -293,13 +304,28 @@ func (vm *VirtualMachine) start(ctx context.Context) error {
 	}
 	vm.running = true
 	vm.startCount++
-	// Halt execution when the context is cancelled
-	vm.halt = 0
+	// Each run has its own step budget
+	vm.stepCount = 0
+	vm.stepCheckCounter = 0
+	// Halt execution when the context is cancelled. The watcher goroutine
+	// ends when the run stops, so a later cancellation of this context
+	// cannot halt another run.
+	atomic.StoreInt32(&vm.halt, 0)
 	if doneChan := ctx.Done(); doneChan != nil {
+		stopChan := make(chan struct{})
+		exited := make(chan struct{})
 		go func() {
-			<-doneChan
-			atomic.StoreInt32(&vm.halt, 1)
+			defer close(exited)
+			select {
+			case <-doneChan:
+				atomic.StoreInt32(&vm.halt, 1)
+			case <-stopChan:
+			}
 		}()
+		vm.stopWatcher = func() {
+			close(stopChan)
+			<-exited
+		}
 	}
 	return nil
 }
@@ -307,6 +333,10 @@ func (vm *VirtualMachine) start(ctx context.Context) error {
 func (vm *VirtualMachine) stop() {
 	vm.runMutex.Lock()
 	defer vm.runMutex.Unlock()
+	if vm.stopWatcher != nil {
+		vm.stopWatcher()
+		vm.stopWatcher = nil
+	}
 	vm.running = false
 }
 
@@ -329,6 +359,9 @@ func (vm *VirtualMachine) Run(ctx context.Context) (err error) {
 // RunCode runs the given compiled code object on the VM. This allows running
 // multiple different code objects on the same VM instance sequentially.
 // The VM must not be currently running when this method is called.
+//
+// Globals carry over between runs by name, with the values that earlier runs
+// left in them.
 func (vm *VirtualMachine) RunCode(ctx context.Context, codeToRun *bytecode.Code, opts ...Option) (err error) {
 	if err := vm.applyOptions(opts); err != nil {
 		return err
@@ -415,30 +448,14 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 }
 
 // resetForNewCode resets the VM state for running a new code object
-// while preserving any globals that were defined during previous runs.
-// Globals provided via WithGlobals take precedence over preserved values.
+// while preserving the globals of previous runs, including any values that
+// a script changed.
 func (vm *VirtualMachine) resetForNewCode() {
-	// Preserve globals from the current main code before resetting.
-	// Only set globals that don't already exist in vm.globals, so that
-	// values provided via WithGlobals take precedence.
-	if vm.activeCode != nil {
-		for i := 0; i < vm.activeCode.GlobalCount(); i++ {
-			name := vm.activeCode.GlobalNameAt(i)
-			if value := vm.activeCode.Globals[i]; value != nil {
-				if vm.globals == nil {
-					vm.globals = make(map[string]object.Object)
-				}
-				if _, exists := vm.globals[name]; !exists {
-					vm.globals[name] = value
-				}
-			}
-		}
-	}
+	vm.saveGlobals()
 
 	vm.sp = -1
 	vm.ip = 0
 	vm.fp = 0
-	vm.halt = 0
 	vm.activeFrame = nil
 	vm.activeCode = nil
 	vm.loadedCode = map[*bytecode.Code]*loadedCode{}
@@ -455,6 +472,20 @@ func (vm *VirtualMachine) resetForNewCode() {
 	// Clear tmp array
 	for i := range vm.tmp {
 		vm.tmp[i] = nil
+	}
+}
+
+// saveGlobals copies the current values of the main code's globals into
+// vm.globals, which holds the globals by name across runs.
+func (vm *VirtualMachine) saveGlobals() {
+	main, ok := vm.loadedCode[vm.main]
+	if !ok {
+		return
+	}
+	for i, value := range main.Globals {
+		if value != nil {
+			vm.globals[main.GlobalNameAt(i)] = value
+		}
 	}
 }
 
@@ -1574,10 +1605,45 @@ func (vm *VirtualMachine) loadCode(bc *bytecode.Code) *loadedCode {
 	if vm.main == bc {
 		c = loadRootCode(bc, vm.globals)
 	} else {
-		c = loadChildCode(vm.loadedCode[vm.main], bc)
+		c = loadChildCode(vm.globalsRoot(bc), bc)
 	}
 	vm.loadedCode[bc] = c
 	return c
+}
+
+// globalsRoot returns the loaded code whose globals the given function code
+// uses. Function code addresses globals by slot index in the layout of its
+// own root code. It shares the main code's globals when the main code has
+// the same layout for those slots, as when the REPL compiles each input as
+// an extension of the previous one. Otherwise, such as after RunCode loads
+// unrelated code, its root is loaded on its own with the current values of
+// the VM's globals by name.
+func (vm *VirtualMachine) globalsRoot(bc *bytecode.Code) *loadedCode {
+	root := bc.Root()
+	if vm.main != nil && (root == vm.main || sameGlobalLayout(root, vm.main)) {
+		return vm.loadCode(vm.main)
+	}
+	if lc, ok := vm.loadedCode[root]; ok {
+		return lc
+	}
+	vm.saveGlobals()
+	lc := loadRootCode(root, vm.globals)
+	vm.loadedCode[root] = lc
+	return lc
+}
+
+// sameGlobalLayout reports whether main names each global slot of root the
+// same way root does.
+func sameGlobalLayout(root, main *bytecode.Code) bool {
+	if root.GlobalCount() > main.GlobalCount() {
+		return false
+	}
+	for i := 0; i < root.GlobalCount(); i++ {
+		if root.GlobalNameAt(i) != main.GlobalNameAt(i) {
+			return false
+		}
+	}
+	return true
 }
 
 // Reloads the main code while preserving global variables. This happens as
@@ -1593,8 +1659,11 @@ func (vm *VirtualMachine) reloadCode(main *bytecode.Code) *loadedCode {
 	copy(newWrappedMain.Globals, oldWrappedMain.Globals)
 	// Function code loaded earlier (e.g. by Call before Run) shares the old
 	// globals slice. Point it at the new one so all code sees the same globals.
+	// Code that uses the globals of another root keeps them.
 	for _, lc := range vm.loadedCode {
-		lc.Globals = newWrappedMain.Globals
+		if sharesGlobals(lc.Globals, oldWrappedMain.Globals) {
+			lc.Globals = newWrappedMain.Globals
+		}
 	}
 	return newWrappedMain
 }
@@ -1940,4 +2009,9 @@ func (vm *VirtualMachine) tryHandleError(err error) error {
 	// Convert error to object.Error
 	errObj := object.NewError(err)
 	return vm.handleException(errObj)
+}
+
+// sharesGlobals reports whether two globals slices are the same array.
+func sharesGlobals(a, b []object.Object) bool {
+	return len(a) > 0 && len(b) > 0 && &a[0] == &b[0]
 }

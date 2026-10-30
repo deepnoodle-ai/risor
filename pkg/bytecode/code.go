@@ -3,6 +3,7 @@ package bytecode
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
@@ -46,6 +47,11 @@ type Code struct {
 	// environment at compile time (as opposed to globals defined in the
 	// script itself). Used for validation at run time.
 	envKeys []string
+
+	// sourceLines holds the source split into lines. It is computed once,
+	// on first use, and only on root code.
+	sourceLines     []string
+	sourceLinesOnce sync.Once
 }
 
 // CodeParams contains parameters for creating a new Code.
@@ -267,27 +273,32 @@ func (c *Code) GetSourceLine(lineNum int) string {
 		return ""
 	}
 
-	// Try to get source from root for accurate line lookups in nested functions
-	source := c.getRootSource()
-	if source == "" {
-		return ""
-	}
-
-	lines := strings.Split(source, "\n")
+	// Use the source of the root for accurate line lookups in nested functions
+	lines := c.Root().lines()
 	if lineNum > len(lines) {
 		return ""
 	}
 	return lines[lineNum-1]
 }
 
-// getRootSource returns the source from the root code for accurate line lookups.
-func (c *Code) getRootSource() string {
-	// Walk up to root to get the full source
+// lines returns the source split into lines, splitting it on first use.
+func (c *Code) lines() []string {
+	c.sourceLinesOnce.Do(func() {
+		if c.source != "" {
+			c.sourceLines = strings.Split(c.source, "\n")
+		}
+	})
+	return c.sourceLines
+}
+
+// Root returns the root (entrypoint) code that contains this code. The root
+// of a root code is itself.
+func (c *Code) Root() *Code {
 	root := c
 	for root.parent != nil {
 		root = root.parent
 	}
-	return root.source
+	return root
 }
 
 // Stats returns statistics about this code block.

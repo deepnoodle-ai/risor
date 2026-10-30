@@ -309,3 +309,25 @@ func TestReplVMBlockVariables(t *testing.T) {
 	assert.Equal(t, result, int64(5))
 	assert.False(t, slices.Contains(vm.GlobalNames(), "y"))
 }
+
+// A function from an earlier input shares the globals of later inputs, so
+// its writes are visible, and a builtin the script replaced stays replaced.
+func TestReplVMFunctionWritesGlobalsAcrossInputs(t *testing.T) {
+	ctx := context.Background()
+	vm, err := newReplVM(risor.Builtins())
+	assert.Nil(t, err)
+
+	_, err = vm.Eval(ctx, "let n = 0; function inc() { n++; return n }")
+	assert.Nil(t, err)
+	_, err = vm.Eval(ctx, "inc(); inc()")
+	assert.Nil(t, err)
+	result, err := vm.Eval(ctx, "n")
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(2))
+
+	_, err = vm.Eval(ctx, "len = 42")
+	assert.Nil(t, err)
+	result, err = vm.Eval(ctx, "len")
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(42))
+}

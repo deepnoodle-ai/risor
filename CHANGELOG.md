@@ -71,6 +71,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `...Errorf` functions return the same text as before. If your code puts the
   kind in the wrapped error, as in `NewValueError(errors.New("value error:
   bad"))`, the kind now shows twice. Remove it from the wrapped error (#494).
+- Across `RunCode` calls on one VM, a global that a script changed keeps its
+  new value. A `WithGlobals` value passed to `RunCode` only adds a name the VM
+  does not have yet. Before, `RunCode` reset such globals to the values from
+  `WithGlobals`, so in the REPL a reassigned builtin such as `len` reverted on
+  the next input. Globals now carry over through any number of runs, not only
+  to the next one.
+- `WithMaxSteps` limits each run (`Run`, `RunCode`, or `Call`). Before, the
+  step count was never reset, so later runs on a reused VM failed early.
 
 ### Fixed
 
@@ -90,6 +98,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `index_rune()` still returns a byte index, the unit that bytes use. A
   string that is not one valid UTF-8 rune, such as `"\xff"`, now raises an
   error. Before, `"\xff"` searched for U+00FF.
+- A run on a VM no longer leaves behind a goroutine that waits for the context
+  to be canceled. Canceling the context of a finished run no longer halts a
+  later run on the same VM, which before could stop with no error and a wrong
+  result.
+- `vm.Call` on a function from code that `RunCode` has since replaced now reads
+  the function's own globals, with their current values by name. Before, it
+  read the slots of the new code at the same indexes and could return a wrong
+  value with no error (#502).
+- Building source locations for code no longer splits the whole source once
+  per instruction. `bytecode.Code.GetSourceLine` splits the source once. New
+  `bytecode.Code.Root` returns the root code.
 
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root
