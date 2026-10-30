@@ -439,12 +439,21 @@ func TestMarshalRoundTripKeepsSourceLines(t *testing.T) {
 	assert.Nil(t, err)
 	restoredCode, err := compiler.UnmarshalCode(data)
 	assert.Nil(t, err)
+	// Compare each restored source line with the script text, not with a
+	// lookup on the restored code, so a wrong line source fails here.
+	scriptLines := strings.Split(sourceLinesScript, "\n")
+	checked := 0
 	for _, c := range restoredCode.Flatten() {
 		for i := 0; i < c.LocationsCount(); i++ {
 			loc := c.LocationAt(i)
-			assert.Equal(t, loc.Source, c.GetSourceLine(loc.Line))
+			if loc.Line < 1 {
+				continue
+			}
+			assert.Equal(t, loc.Source, scriptLines[loc.Line-1], "line %d", loc.Line)
+			checked++
 		}
 	}
+	assert.True(t, checked > 0)
 	actual = runError(t, restoredCode.ToBytecode())
 	assert.Equal(t, actual.Location, expected.Location)
 	assert.Equal(t, actual.FriendlyErrorMessage(), expectedMessage)
