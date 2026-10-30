@@ -13,6 +13,11 @@ const (
 	// locals when heap allocation is needed. This provides headroom for future
 	// calls to reduce allocation churn for functions with varying local counts.
 	MinExtendedLocalsCapacity = 32
+
+	// MaxRetainedLocals is the largest locals slice a frame keeps for reuse
+	// after its function returns. Larger slices are dropped on return, so
+	// inactive frames hold at most this many slots each.
+	MaxRetainedLocals = 256
 )
 
 type frame struct {
@@ -20,6 +25,7 @@ type frame struct {
 	returnSp       int
 	callSiteIP     int // IP of the call instruction in the caller's code (for stack traces)
 	localsCount    uint16
+	localsTotal    int // Local slots in this frame and all active frames below it
 	fn             *object.Closure
 	code           *loadedCode
 	storage        [DefaultFrameLocals]object.Object
@@ -82,6 +88,16 @@ func (f *frame) ActivateFunction(fn *object.Closure, code *loadedCode, returnAdd
 	f.callSiteIP = returnAddr
 	// Initialize any local variables that were provided
 	copy(f.locals, localValues)
+}
+
+// releaseLocals drops the frame's locals if they are too large to keep for
+// reuse. Call it only on a frame that is no longer active.
+func (f *frame) releaseLocals() {
+	if cap(f.extendedLocals) > MaxRetainedLocals || cap(f.locals) > MaxRetainedLocals {
+		f.locals = nil
+		f.extendedLocals = nil
+		f.capturedLocals = nil
+	}
 }
 
 func (f *frame) Locals() []object.Object {

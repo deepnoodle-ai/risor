@@ -66,10 +66,13 @@
 //     cannot reassign a constant", do not hold for loaded bytecode. Bytecode
 //     cannot reach the host beyond the values in its env.
 //   - Validation does not bound memory use. A function can use up to 65,535
-//     local slots, and each call frame allocates all of them, so deep
-//     recursion can allocate about 1 GB. Bound this with the maximum frame
-//     depth (risor.WithMaxStackDepth or vm.WithMaxFrameDepth) and the value
-//     limits (WithLimits).
+//     local slots, and each call frame allocates all of them. The VM bounds
+//     the local slots of all active call frames together, by default to
+//     vm.DefaultMaxLocals (4,194,304 slots, 64 MiB), and a call that would
+//     exceed the bound fails with a stack overflow error. Lower it with
+//     vm.WithMaxLocals. Bound other memory with the maximum frame depth
+//     (risor.WithMaxStackDepth or vm.WithMaxFrameDepth) and the value limits
+//     (WithLimits).
 //   - Columns are not checked against the source line, since code compiled
 //     without its original source can have columns past the stored lines.
 //     Risor's error formatting clamps carets to the line. A host that draws

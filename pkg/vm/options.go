@@ -129,6 +129,20 @@ func WithMaxFrameDepth(n int) Option {
 	}
 }
 
+// WithMaxLocals sets the maximum total number of local variable slots across
+// all active function call frames. Each call checks the budget before its
+// frame allocates locals, and returns ErrStackOverflow if the call would
+// exceed it. Script try/catch can catch the error. The entry frame of a run
+// does not count. Zero (the default) or a negative value uses DefaultMaxLocals.
+//
+// Compiled source rarely comes near the default. The budget matters for
+// loaded bytecode, where one function can use up to 65,535 slots.
+func WithMaxLocals(n int) Option {
+	return func(vm *VirtualMachine) {
+		vm.maxLocals = n
+	}
+}
+
 // WithTimeout sets a timeout for VM execution.
 // If the timeout is exceeded, the VM will return context.DeadlineExceeded.
 // A value of 0 (default) means no timeout.
