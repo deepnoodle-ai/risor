@@ -1600,23 +1600,23 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		}
 	}
 
+	// Add the function's own name to its symbol table. This supports recursive
+	// calls to the function. IMPORTANT: This must come right after the rest
+	// param because the VM places the function object at the next index.
+	if code.isNamed {
+		if _, err := code.symbols.InsertConstant(functionName); err != nil {
+			return err
+		}
+	}
+
 	// Add all destructured variable names to the symbol table.
-	// These come after rest param since the destructuring preamble will
-	// store extracted values into these local variables.
+	// These come last since the destructuring preamble will store extracted
+	// values into these local variables.
 	for _, di := range destructureParams {
 		for _, name := range di.param.ParamNames() {
 			if _, err := code.symbols.InsertVariable(name); err != nil {
 				return err
 			}
-		}
-	}
-
-	// Add the function's own name to its symbol table. This supports recursive
-	// calls to the function. Later when we create the function object, we'll
-	// add the object value to the table.
-	if code.isNamed {
-		if _, err := code.symbols.InsertConstant(functionName); err != nil {
-			return err
 		}
 	}
 
@@ -1648,11 +1648,29 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 
 	// Emit the code to load the function object onto the stack. If there are
 	// free variables, we use LoadClosure, otherwise we use LoadConst.
+	//
+	// Each free variable is captured from the enclosing function, which is
+	// the active frame when the closure is created. The variable is either a
+	// local of the enclosing function or, when it is defined further out, one
+	// of its free variables. Resolving it here makes it a free variable of the
+	// enclosing function if it wasn't one already, so the cell passes through
+	// every function level between the definition and this closure.
 	freeCount := code.symbols.FreeCount()
 	if freeCount > 0 {
 		for i := uint16(0); i < freeCount; i++ {
-			resolution := code.symbols.Free(i)
-			c.emit(op.MakeCell, resolution.symbol.Index(), uint16(resolution.depth-1))
+			name := code.symbols.Free(i).symbol.Name()
+			resolution, found := c.current.symbols.Resolve(name)
+			if !found {
+				return c.formatError(fmt.Sprintf("undefined variable %q", name), node.Pos())
+			}
+			switch resolution.scope {
+			case Local:
+				c.emit(op.MakeCell, resolution.symbol.Index(), 0)
+			case Free:
+				c.emit(op.LoadCell, uint16(resolution.freeIndex))
+			default:
+				return c.formatError(fmt.Sprintf("invalid capture of global variable %q", name), node.Pos())
+			}
 		}
 		c.emit(op.LoadClosure, c.constant(fn), freeCount)
 	} else {

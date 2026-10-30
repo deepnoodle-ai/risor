@@ -681,6 +681,8 @@ evalLoop:
 			frame := &vm.frames[frameIndex]
 			locals := frame.CaptureLocals()
 			vm.push(object.NewCell(&locals[symbolIndex]))
+		case op.LoadCell:
+			vm.push(vm.activeFrame.fn.FreeVar(int(vm.fetch())))
 		case op.Nil:
 			vm.push(object.Nil)
 		case op.True:

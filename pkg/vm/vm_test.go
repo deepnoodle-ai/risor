@@ -617,6 +617,239 @@ func TestClosureCaptureAcrossReusedExtendedFrame(t *testing.T) {
 	assert.Equal(t, result, object.NewStringList([]string{"c2:one", "c2:two", "c2:three"}))
 }
 
+// A closure must capture a variable from its lexical scope, even when two or
+// more function levels separate it from the definition and the defining
+// function has already returned.
+func TestClosureCaptureAcrossMultipleLevels(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   object.Object
+	}{
+		{
+			name: "intermediate does not reference the variable",
+			source: `
+			function f1() {
+				let a = 1; let b = 42
+				return function f2() { return function f3() { return b } }
+			}
+			f1()()()`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "intermediate also references the variable",
+			source: `
+			function f1() {
+				let a = 1; let b = 42
+				return function f2() { let c = b; return function f3() { return b + c } }
+			}
+			f1()()()`,
+			want: object.NewInt(84),
+		},
+		{
+			name: "called from a deeper frame",
+			source: `
+			function f1() {
+				let a = 1; let b = 42
+				return function f2() { return function f3() { return b } }
+			}
+			let f2 = f1()
+			function caller(x, y, z) { return f2() }
+			caller(7, 8, 9)()`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "four levels",
+			source: `
+			function f1() {
+				let x = "deep"
+				return () => () => () => x
+			}
+			f1()()()()`,
+			want: object.NewString("deep"),
+		},
+		{
+			name: "variables from different levels",
+			source: `
+			function f1() {
+				let a = "a"
+				return function f2() {
+					let b = "b"
+					return function f3() { return () => a + b }
+				}
+			}
+			f1()()()()`,
+			want: object.NewString("ab"),
+		},
+		{
+			name: "writes are shared across levels",
+			source: `
+			function counter() {
+				let n = 0
+				return {
+					inc: () => () => { n++; return n },
+					read: () => () => n,
+				}
+			}
+			let c = counter()
+			let inc = c.inc()
+			inc(); inc(); inc()
+			c.read()()`,
+			want: object.NewInt(3),
+		},
+		{
+			name: "captured inside a block",
+			source: `
+			function f1() {
+				let b = 5
+				if (true) {
+					return function f2() { return function f3() { return b } }
+				}
+			}
+			f1()()()`,
+			want: object.NewInt(5),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.source)
+			assert.Nil(t, err)
+			assert.Equal(t, result, tt.want)
+		})
+	}
+}
+
+// A named function with destructured parameters must be able to call itself.
+func TestRecursiveWithDestructuredParams(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   object.Object
+	}{
+		{
+			name: "object destructure",
+			source: `
+			function sum({n}) { if (n <= 0) { return 0 }; return n + sum({n: n - 1}) }
+			sum({n: 3})`,
+			want: object.NewInt(6),
+		},
+		{
+			name: "array destructure",
+			source: `
+			function sum([n, acc]) { if (n <= 0) { return acc }; return sum([n - 1, acc + n]) }
+			sum([4, 0])`,
+			want: object.NewInt(10),
+		},
+		{
+			name: "destructure with rest param",
+			source: `
+			function count({n}, ...rest) { if (n <= 0) { return len(rest) }; return count({n: n - 1}, ...rest) }
+			count({n: 2}, 1, 2, 3)`,
+			want: object.NewInt(3),
+		},
+		{
+			name: "plain param after destructure",
+			source: `
+			function f({a}, b) { if (b == 0) { return a }; return f({a: a + b}, b - 1) }
+			f({a: 0}, 3)`,
+			want: object.NewInt(6),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.source)
+			assert.Nil(t, err)
+			assert.Equal(t, result, tt.want)
+		})
+	}
+}
+
+// A closure inside a named function captures a destructured parameter. The
+// self slot sits before the destructured locals, so the captured cell must
+// point at the parameter, not at the function itself.
+func TestClosureCapturesDestructuredParam(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   object.Object
+	}{
+		{
+			name: "object destructure, closure reads",
+			source: `
+			function f({a, b}) { let g = () => a * 10 + b; return g() }
+			f({a: 4, b: 2})`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "array destructure, closure reads",
+			source: `
+			function f([a, b]) { let g = () => a * 10 + b; return g() }
+			f([4, 2])`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "object destructure, closure writes",
+			source: `
+			function f({n}) { let inc = () => { n = n + 1 }; inc(); inc(); return n }
+			f({n: 40})`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "array destructure, closure writes",
+			source: `
+			function f([n, step]) { let inc = () => { n = n + step }; inc(); inc(); return n }
+			f([40, 1])`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "object destructure, closure outlives call",
+			source: `
+			function counter({start}) { return () => { start++; return start } }
+			let c = counter({start: 10}); c(); c()`,
+			want: object.NewInt(12),
+		},
+		{
+			name: "object destructure, closure recurses through function",
+			source: `
+			function sum({n}) {
+				let rest = function() { if (n <= 0) { return 0 }; return sum({n: n - 1}) }
+				return n + rest()
+			}
+			sum({n: 4})`,
+			want: object.NewInt(10),
+		},
+		{
+			name: "array destructure, closure writes and function recurses",
+			source: `
+			function sum([n, acc]) {
+				let add = () => { acc = acc + n }
+				if (n <= 0) { return acc }
+				add()
+				return sum([n - 1, acc])
+			}
+			sum([4, 0])`,
+			want: object.NewInt(10),
+		},
+		{
+			name: "closure captures function name and destructured param",
+			source: `
+			function fact([n]) {
+				let step = function() { if (n <= 1) { return 1 }; return n * fact([n - 1]) }
+				return step()
+			}
+			fact([5])`,
+			want: object.NewInt(120),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.source)
+			assert.Nil(t, err)
+			assert.Equal(t, result, tt.want)
+		})
+	}
+}
+
 func TestRecursiveExample1(t *testing.T) {
 	result, err := run(context.Background(), `
 	function twoexp(n) {

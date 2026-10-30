@@ -83,6 +83,7 @@ const (
 	// Closures
 	LoadClosure Code = 120
 	MakeCell    Code = 121
+	LoadCell    Code = 122 // Push the active closure's free variable cell
 
 	// Partials
 	Partial Code = 130
@@ -226,6 +227,7 @@ func init() {
 		{LoadFree, "LOAD_FREE", 1},
 		{LoadGlobal, "LOAD_GLOBAL", 1},
 		{MakeCell, "MAKE_CELL", 2},
+		{LoadCell, "LOAD_CELL", 1},
 		{Nil, "NIL", 0},
 		{Nop, "NOP", 0},
 		{Partial, "PARTIAL", 1},

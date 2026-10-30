@@ -65,6 +65,7 @@ func TestGetInfoAllOpcodes(t *testing.T) {
 		{True, "TRUE", 0},
 		{LoadClosure, "LOAD_CLOSURE", 2},
 		{MakeCell, "MAKE_CELL", 2},
+		{LoadCell, "LOAD_CELL", 1},
 		{Partial, "PARTIAL", 1},
 		{PushExcept, "PUSH_EXCEPT", 2},
 		{PopExcept, "POP_EXCEPT", 0},
