@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -653,4 +654,32 @@ func TestNewPrintBuiltin_SizeLimit(t *testing.T) {
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
 	assert.Equal(t, buf.String(), "[1]\n")
+}
+
+// print formats a list with the byte limit in ctx, so a limit raised above
+// the default bound of Inspect applies (#583).
+func TestNewPrintBuiltin_RaisedLimit(t *testing.T) {
+	fn := newPrintBuiltin()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Read while print writes, since the text is larger than the pipe
+	done := make(chan int)
+	go func() {
+		n, _ := io.Copy(io.Discard, r)
+		done <- int(n)
+	}()
+
+	ctx := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: 2 * object.DefaultMaxBytesSize})
+	s := object.NewString(strings.Repeat("a", object.DefaultMaxBytesSize))
+	_, err := fn.Call(ctx, object.NewList([]object.Object{s}))
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, err)
+	// [""] and a newline
+	assert.Equal(t, <-done, object.DefaultMaxBytesSize+5)
 }

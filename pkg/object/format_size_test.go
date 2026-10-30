@@ -106,6 +106,40 @@ func TestInspectBound(t *testing.T) {
 	assert.Equal(t, len(big.Inspect()), errorfMaxTextSize+4)
 }
 
+// InspectWithLimits bounds a list, map, or cell with the byte limit in ctx
+// instead of the default bound of Inspect (#583).
+func TestInspectWithLimits(t *testing.T) {
+	s := NewString(strings.Repeat("a", 600))
+	list := NewList([]Object{s, s})
+	m := NewMap(map[string]Object{"a": s, "b": s})
+	var value Object = list
+	cell := NewCell(&value)
+
+	// A limit below the text prints a placeholder
+	low := WithLimits(context.Background(), Limits{MaxBytesSize: 1024})
+	assert.Equal(t, InspectWithLimits(low, list), "[...]")
+	assert.Equal(t, InspectWithLimits(low, m), "{...}")
+	assert.Equal(t, InspectWithLimits(low, cell), "cell(...)")
+
+	// Other values print as Inspect prints them, whatever their size
+	assert.Equal(t, InspectWithLimits(low, NewString(strings.Repeat("a", 2000))),
+		NewString(strings.Repeat("a", 2000)).Inspect())
+	assert.Equal(t, InspectWithLimits(low, NewInt(1)), "1")
+
+	// A limit above the text prints it in full
+	high := WithLimits(context.Background(), Limits{MaxBytesSize: 4096})
+	assert.Equal(t, InspectWithLimits(high, list), list.Inspect())
+	assert.Equal(t, InspectWithLimits(high, m), m.Inspect())
+	assert.Equal(t, InspectWithLimits(high, cell), cell.Inspect())
+
+	// A limit above the default bound of Inspect prints text that Inspect
+	// prints as a placeholder
+	big := NewList([]Object{NewString(strings.Repeat("a", inspectMaxSize))})
+	assert.Equal(t, big.Inspect(), "[...]")
+	raised := WithLimits(context.Background(), Limits{MaxBytesSize: 2 * inspectMaxSize})
+	assert.Equal(t, len(InspectWithLimits(raised, big)), inspectMaxSize+4)
+}
+
 // InspectMessage bounds the text of a value for an error message, as Errorf
 // bounds its arguments (#583).
 func TestInspectMessage(t *testing.T) {

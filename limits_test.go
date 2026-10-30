@@ -79,6 +79,25 @@ func TestWithLimitsRaised(t *testing.T) {
 	assert.Equal(t, result, int64(object.DefaultMaxBytesSize+1))
 }
 
+// string() and string templates format a list or map with the byte limit in
+// ctx, not the default bound of Inspect, so a raised limit applies (#583).
+func TestWithLimitsRaisedFormat(t *testing.T) {
+	ctx := context.Background()
+	raised := WithLimits(Limits{MaxBytesSize: 128 << 20})
+	// The text of a container that holds a 65 MiB string is over the default
+	// bound of Inspect, so before the fix each of these printed a placeholder
+	for expr, want := range map[string]int64{
+		"string([s])":    65<<20 + 4, // [""]
+		"`${[s]}`":       65<<20 + 4,
+		"string({a: s})": 65<<20 + 9, // {"a": ""}
+	} {
+		src := "let s = \"a\".repeat(65 << 20)\nlen(" + expr + ")"
+		result, err := Eval(ctx, src, WithEnv(Builtins()), raised)
+		assert.Nil(t, err, expr)
+		assert.Equal(t, result, want, expr)
+	}
+}
+
 func TestWithLimitsZeroFieldsUseDefaults(t *testing.T) {
 	ctx := context.Background()
 	limits := WithLimits(Limits{MaxBytesSize: 10})

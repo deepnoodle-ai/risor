@@ -554,11 +554,14 @@ stop at `MaxBytesSize`. That count walks the value, so it can take up to
 `MaxBytesSize` steps of Go code before the error. In Go code, `Inspect()` and
 `String()` on a list, map, or cell, and so `%v`, have no context. They use
 the same count with the default `MaxBytesSize`, and print a placeholder such
-as `[...]` past it. A thrown value and an `assert` message that are not
-strings print as a placeholder once the count passes 4,194,304, as the
+as `[...]` past it. `object.InspectWithLimits(ctx, obj)` uses the
+`MaxBytesSize` in `ctx` instead, so `string()`, string templates, and the
+`risor` CLI `print` use it. A thrown value and an `assert` message that are
+not strings print as a placeholder once the count passes 4,194,304, as the
 arguments of `object.Errorf` do. A `print` builtin that you add to the
-environment should call `object.CheckFormatSize(ctx, ...)` first, as the one
-in the `risor` CLI does, so that `WithLimits` applies. `sorted` and `chunk`
+environment should call `object.CheckFormatSize(ctx, ...)` first and format
+with `object.InspectWithLimits`, as the CLI does, so that `WithLimits`
+applies. `sorted` and `chunk`
 are not capped, so you should not put them over lists into the environment.
 
 **Methods that charge after the fact.** Only `repeat`, `string()`, string

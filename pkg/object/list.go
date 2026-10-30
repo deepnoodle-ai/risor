@@ -189,7 +189,7 @@ func (ls *List) Value() []Object {
 // that is already being printed (a cycle), or that is nested more deeply than
 // MaxNestingDepth, is shown as [...] or {...}. A list whose text would be
 // too large is shown as [...]. The bound is DefaultMaxBytesSize, counted as
-// CheckFormatSize counts. Call CheckFormatSize to apply the limits in a
+// CheckFormatSize counts. Call InspectWithLimits to apply the byte limit in a
 // context.
 func (ls *List) Inspect() string {
 	return inspectBounded(ls)

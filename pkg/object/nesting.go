@@ -187,15 +187,33 @@ func inspectNested(obj Object, path nestPath[Object]) string {
 // inspectMaxSize bounds the text that Inspect and String print for a list,
 // map, or cell. They have no context, so they use the default byte limit,
 // compared with formatSize as CheckFormatSize compares it. So a value that
-// string() and string templates accept with the default limits prints in
-// full, and a value that repeats shared references, whose text grows
-// exponentially, prints as a placeholder.
+// repeats shared references, whose text grows exponentially, prints as a
+// placeholder. InspectWithLimits uses the byte limit in a context instead.
 const inspectMaxSize = DefaultMaxBytesSize
+
+// InspectWithLimits returns the text that obj.Inspect returns, but bounds a
+// list, map, or cell with the byte limit in ctx instead of the default byte
+// limit, so a limit raised with WithLimits applies. Past the limit, it prints
+// a placeholder, as Inspect does. To fail instead, call CheckFormatSize first,
+// as string(), string templates, and the CLI print do.
+func InspectWithLimits(ctx context.Context, obj Object) string {
+	switch obj.(type) {
+	case *List, *Map, *Cell:
+		return inspectWithin(obj, uint64(GetLimits(ctx).MaxBytesSize))
+	}
+	return obj.Inspect()
+}
 
 // inspectBounded returns the text of obj, a list, map, or cell, or a
 // placeholder if the counted size of its text exceeds inspectMaxSize.
 func inspectBounded(obj Object) string {
-	if formatSize(obj, nil, inspectMaxSize) > inspectMaxSize {
+	return inspectWithin(obj, inspectMaxSize)
+}
+
+// inspectWithin returns the text of obj, a list, map, or cell, or a
+// placeholder if the counted size of its text exceeds limit.
+func inspectWithin(obj Object, limit uint64) string {
+	if formatSize(obj, nil, limit) > limit {
 		return inspectPlaceholder(obj)
 	}
 	return inspectNested(obj, nil)

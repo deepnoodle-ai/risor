@@ -1187,7 +1187,8 @@ evalLoop:
 				case *object.String:
 					items[dst] = obj.Value()
 				default:
-					items[dst] = obj.Inspect()
+					// Apply the byte limit in ctx, not the default of Inspect
+					items[dst] = object.InspectWithLimits(ctx, obj)
 				}
 				size += len(items[dst])
 			}

@@ -117,9 +117,13 @@ func String(ctx context.Context, args ...object.Object) (object.Object, error) {
 			return nil, err
 		}
 		var s string
-		if stringer, ok := arg.(fmt.Stringer); ok {
-			s = stringer.String()
-		} else {
+		switch v := arg.(type) {
+		case *object.List, *object.Map:
+			// Apply the byte limit in ctx, not the default of Inspect
+			s = object.InspectWithLimits(ctx, arg)
+		case fmt.Stringer:
+			s = v.String()
+		default:
 			s = arg.Inspect()
 		}
 		if _, ok := arg.(object.Container); ok {
