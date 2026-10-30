@@ -92,8 +92,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   separate it from the variable's definition, such as `() => () => x`. Before,
   calling the inner closure after the outer function returned read a local of
   whatever frame was on the call stack, returning a wrong value or failing with
-  "no frame at depth". The compiler emits a new `LOAD_CELL` opcode that passes
-  a captured variable through each function level.
+  "no frame at depth". Recompile stored bytecode to get this fix. Older
+  versions of Risor cannot run bytecode saved by this version. A function now
+  uses one capture slot for each outer variable, however often it refers to it.
 - A named function with destructured parameters, such as
   `function f({n}) { ... f({n: n - 1}) }`, can now call itself. Before, the
   call failed with "object is not callable".

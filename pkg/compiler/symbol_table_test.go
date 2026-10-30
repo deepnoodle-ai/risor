@@ -131,6 +131,51 @@ func TestFreeVarWithBlocks(t *testing.T) {
 	assert.Equal(t, innerBlock.FreeCount(), uint16(0))
 }
 
+func TestFreeVarReusedAcrossBlocks(t *testing.T) {
+	// Several references to the same outer variable, from the function body
+	// or from its blocks, share one free slot.
+	main := NewSymbolTable()
+	outerFunc := main.NewChild()
+	innerFunc := outerFunc.NewChild()
+	body := innerFunc.NewBlock()
+	nested := body.NewBlock()
+
+	outerFunc.InsertVariable("a", 42)
+
+	first, found := body.Resolve("a")
+	assert.True(t, found)
+	second, found := body.Resolve("a")
+	assert.True(t, found)
+	third, found := nested.Resolve("a")
+	assert.True(t, found)
+
+	assert.Equal(t, innerFunc.FreeCount(), uint16(1))
+	assert.True(t, first == second)
+	assert.True(t, first == third)
+}
+
+func TestFreeVarShadowedByBlock(t *testing.T) {
+	// A block variable between the reference and the function table hides
+	// a free variable of the same name.
+	main := NewSymbolTable()
+	outerFunc := main.NewChild()
+	innerFunc := outerFunc.NewChild()
+	body := innerFunc.NewBlock()
+	middle := body.NewBlock()
+	inner := middle.NewBlock()
+
+	outerFunc.InsertVariable("a", 42)
+	_, found := body.Resolve("a")
+	assert.True(t, found)
+
+	middle.InsertVariable("a", 7)
+	res, found := inner.Resolve("a")
+	assert.True(t, found)
+	assert.Equal(t, res.Scope(), Local)
+	assert.Equal(t, res.Symbol().Value(), 7)
+	assert.Equal(t, innerFunc.FreeCount(), uint16(1))
+}
+
 func TestConstant(t *testing.T) {
 	main := NewSymbolTable()
 	outerFunc := main.NewChild()

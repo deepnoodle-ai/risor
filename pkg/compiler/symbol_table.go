@@ -262,6 +262,14 @@ func (t *SymbolTable) Resolve(name string) (*Resolution, bool) {
 			activeFunc.free = append(activeFunc.free, rs)
 			return rs, true
 		}
+		// Free variables are recorded on the function table, not on its
+		// blocks. Reuse an existing free slot once the search reaches the
+		// function table, so that blocks in between can still shadow it.
+		if ancestor == activeFunc {
+			if rs, ok := activeFunc.freeByName[name]; ok {
+				return rs, true
+			}
+		}
 	}
 }
 
