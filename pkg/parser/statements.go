@@ -333,8 +333,14 @@ func (p *Parser) parsePostfix(leftNode ast.Node) ast.Node {
 		p.setTokenError(p.curToken, "invalid operand for postfix operator")
 		return nil
 	}
-	switch expr.(type) {
-	case *ast.Ident, *ast.Index, *ast.GetAttr:
+	switch expr := expr.(type) {
+	case *ast.GetAttr:
+		// Like assignment, ++ and -- do not support optional chaining
+		if expr.Optional {
+			p.setTokenError(p.curToken, "cannot apply postfix operator to an optional chain")
+			return nil
+		}
+	case *ast.Ident, *ast.Index:
 		// Valid assignable expressions
 	default:
 		p.setTokenError(p.curToken, "cannot apply postfix operator to this expression")
