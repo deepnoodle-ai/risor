@@ -34,6 +34,19 @@ func TestWithLimitsBuildOperations(t *testing.T) {
 		assert.True(t, strings.Contains(err.Error(), "too large"), "%s: %v", src, err)
 	}
 
+	// The size of the text is checked before the text is built
+	big := WithLimits(Limits{MaxBytesSize: 1024})
+	for _, src := range []string{
+		"let s = 'x'.repeat(600); string([s, s, s, s])",
+		"let s = 'x'.repeat(600); encode([s, s, s, s], 'json')",
+		"let s = 'x'.repeat(600); let l = [s, s, s, s]; `${l}`",
+		"let s = 'x'.repeat(600); `${s}${s}`",
+	} {
+		_, err := Eval(ctx, src, env, big)
+		assert.NotNil(t, err, src)
+		assert.True(t, strings.Contains(err.Error(), "too large"), "%s: %v", src, err)
+	}
+
 	// Values at the limit are allowed
 	for _, src := range []string{
 		"let a = '12345'; `${a}${a}${a}`",

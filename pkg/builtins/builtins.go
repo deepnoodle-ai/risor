@@ -110,14 +110,18 @@ func String(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Bytes:
 		return object.NewString(string(arg.Value())), nil
 	default:
+		// Formatting a container can produce a string much larger than
+		// the container, such as a list that holds one string many times.
+		// Check before the string is built.
+		if err := object.CheckFormatSize(ctx, "string", arg); err != nil {
+			return nil, err
+		}
 		var s string
 		if stringer, ok := arg.(fmt.Stringer); ok {
 			s = stringer.String()
 		} else {
-			s = args[0].Inspect()
+			s = arg.Inspect()
 		}
-		// Formatting a container can produce a string much larger than
-		// the container, such as a list that holds one string many times.
 		if _, ok := arg.(object.Container); ok {
 			if err := object.CheckBytesSize(ctx, "string", len(s)); err != nil {
 				return nil, err

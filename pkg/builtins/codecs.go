@@ -73,6 +73,11 @@ func Encode(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if codecErr != nil {
 		return nil, codecErr
 	}
+	// Check before encoding, so that a value whose encoding is too large,
+	// such as a list that holds one string many times, is never encoded
+	if err := object.CheckFormatSize(ctx, "encode", args[0]); err != nil {
+		return nil, err
+	}
 	result, err := codec.Encode(ctx, args[0])
 	if err != nil {
 		return nil, err

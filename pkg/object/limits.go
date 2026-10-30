@@ -80,6 +80,75 @@ func CheckBytesSize(ctx context.Context, name string, size int) error {
 	return checkBytesSize(GetLimits(ctx), name, uint64(size))
 }
 
+// CheckFormatSize returns a value error if formatting objs as text, with
+// Inspect or as JSON, would produce more bytes than the byte limit in ctx.
+// It walks the values without building the text, so it rejects a value whose
+// text is too large before that text exists. name describes the operation in
+// the error message.
+//
+// The count is a lower bound of the size of the text: a string or bytes
+// value counts its length, and every other value counts one byte. A
+// container referenced more than once counts each time it is referenced, as
+// the text repeats it. The walk stops as soon as the count passes the limit,
+// so its cost is bounded by the limit too.
+func CheckFormatSize(ctx context.Context, name string, objs ...Object) error {
+	l := GetLimits(ctx)
+	limit := uint64(l.MaxBytesSize)
+	var total uint64
+	for _, obj := range objs {
+		total += formatSize(obj, nil, limit-min(total, limit))
+		if total > limit {
+			break
+		}
+	}
+	return checkBytesSize(l, name, total)
+}
+
+// formatSize returns a lower bound of the size of the text of obj. It stops
+// counting once the count passes limit. path holds the containers being
+// walked, so a cycle or a value nested too deeply is counted once, as
+// Inspect prints it as a placeholder.
+func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
+	switch obj := obj.(type) {
+	case *String:
+		return uint64(len(obj.value))
+	case *Bytes:
+		return uint64(len(obj.value))
+	case *List:
+		total := uint64(2)
+		for _, item := range obj.items {
+			total += nestedFormatSize(obj, item, &path, limit-min(total, limit))
+			if total > limit {
+				return total
+			}
+		}
+		return total
+	case *Map:
+		total := uint64(2)
+		for key, value := range obj.items {
+			total += uint64(len(key))
+			total += nestedFormatSize(obj, value, &path, limit-min(total, limit))
+			if total > limit {
+				return total
+			}
+		}
+		return total
+	}
+	return 1
+}
+
+func nestedFormatSize(parent, item Object, path *nestPath[Object], limit uint64) uint64 {
+	if !isNestedContainer(item) {
+		return formatSize(item, nil, limit)
+	}
+	p, err := path.descend(parent, item)
+	*path = p
+	if err != nil {
+		return 1
+	}
+	return formatSize(item, p, limit)
+}
+
 // checkRepeatSize returns an error if repeating a value of unit bytes count
 // times would overflow or exceed the byte limit. count must be non-negative.
 func checkRepeatSize(l Limits, name string, unit int, count int64) error {

@@ -1115,6 +1115,17 @@ evalLoop:
 			vm.swap(int(vm.fetch()))
 		case op.BuildString:
 			count := vm.fetch()
+			// Check before formatting, so that an operand whose text is too
+			// large, such as a list that holds one string many times, is
+			// never formatted
+			operands := vm.stack[vm.sp-int(count)+1 : vm.sp+1]
+			if err := object.CheckFormatSize(ctx, "string template", operands...); err != nil {
+				vm.restoreStack(vm.sp - int(count))
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
+			}
 			items := make([]string, count)
 			size := 0
 			for i := uint16(0); i < count; i++ {
