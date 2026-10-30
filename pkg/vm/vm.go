@@ -43,6 +43,11 @@ var (
 	ErrGlobalNotFound    = errors.New("global not found")
 	ErrStepLimitExceeded = errors.New("step limit exceeded")
 	ErrStackOverflow     = errors.New("stack overflow")
+
+	// ErrReplacedCode is returned when a function from code that RunCode
+	// replaced is called, and the globals of that code are laid out
+	// differently from the globals of the loaded code.
+	ErrReplacedCode = errors.New("function belongs to code that RunCode replaced")
 )
 
 type VirtualMachine struct {
@@ -183,6 +188,10 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 		return fmt.Errorf("vm is already running")
 	}
 
+	// Save the globals of the loaded code first, so that the globals given
+	// now replace them.
+	vm.saveGlobals()
+
 	// Apply options. inputGlobals collects only the globals given now.
 	vm.inputGlobals = map[string]any{}
 	for _, opt := range options {
@@ -193,16 +202,14 @@ func (vm *VirtualMachine) applyOptions(options []Option) error {
 	vm.configureObserver()
 
 	// Convert globals to Risor objects using the type registry. A provided
-	// global only adds a name the VM does not have yet. It never replaces a
-	// value the VM already holds, which a script may have changed.
+	// global replaces the value the VM holds for that name, including a
+	// value that a script changed.
 	globals, err := object.AsObjectsWithRegistry(vm.inputGlobals, vm.TypeRegistry())
 	if err != nil {
 		return fmt.Errorf("invalid global provided: %v", err)
 	}
 	for name, value := range globals {
-		if _, exists := vm.globals[name]; !exists {
-			vm.globals[name] = value
-		}
+		vm.globals[name] = value
 	}
 	return nil
 }
@@ -361,7 +368,10 @@ func (vm *VirtualMachine) Run(ctx context.Context) (err error) {
 // The VM must not be currently running when this method is called.
 //
 // Globals carry over between runs by name, with the values that earlier runs
-// left in them.
+// left in them. A global given with WithGlobals replaces the value for that
+// name. A function from replaced code can still be called if its globals are
+// laid out the same way as the globals of the new code. Otherwise the call
+// fails with ErrReplacedCode.
 func (vm *VirtualMachine) RunCode(ctx context.Context, codeToRun *bytecode.Code, opts ...Option) (err error) {
 	if err := vm.applyOptions(opts); err != nil {
 		return err
@@ -448,11 +458,9 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 }
 
 // resetForNewCode resets the VM state for running a new code object
-// while preserving the globals of previous runs, including any values that
-// a script changed.
+// while preserving the globals of previous runs. The caller must save the
+// globals with saveGlobals first.
 func (vm *VirtualMachine) resetForNewCode() {
-	vm.saveGlobals()
-
 	vm.sp = -1
 	vm.ip = 0
 	vm.fp = 0
@@ -1312,6 +1320,11 @@ func (vm *VirtualMachine) fetch() uint16 {
 // since it could be a closure over variables there. If this VM is already
 // running, an error is returned. Call needs main code, given to New or loaded
 // with RunCode, and returns an error if the VM has none.
+//
+// The function must come from the loaded main code, or from code whose
+// globals are laid out the same way, as in a REPL where each input extends
+// the previous one. A function from code that RunCode replaced, with a
+// different layout, returns ErrReplacedCode.
 func (vm *VirtualMachine) Call(
 	ctx context.Context,
 	fn *object.Closure,
@@ -1582,7 +1595,16 @@ func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Closure, local
 	if err := vm.ensureFrameCapacity(fp); err != nil {
 		return nil, err
 	}
-	code := vm.loadCode(fn.Code())
+	code, ok := vm.loadedCode[fn.Code()]
+	if !ok {
+		// Function code reads globals by slot index, so it can only run
+		// with the globals of the main code if the slots match.
+		root := fn.Code().Root()
+		if vm.main == nil || (root != vm.main && !sameGlobalLayout(root, vm.main)) {
+			return nil, ErrReplacedCode
+		}
+		code = vm.loadCode(fn.Code())
+	}
 	returnAddr := vm.ip
 	returnSp := vm.sp
 	vm.fp = fp
@@ -1605,31 +1627,10 @@ func (vm *VirtualMachine) loadCode(bc *bytecode.Code) *loadedCode {
 	if vm.main == bc {
 		c = loadRootCode(bc, vm.globals)
 	} else {
-		c = loadChildCode(vm.globalsRoot(bc), bc)
+		c = loadChildCode(vm.loadedCode[vm.main], bc)
 	}
 	vm.loadedCode[bc] = c
 	return c
-}
-
-// globalsRoot returns the loaded code whose globals the given function code
-// uses. Function code addresses globals by slot index in the layout of its
-// own root code. It shares the main code's globals when the main code has
-// the same layout for those slots, as when the REPL compiles each input as
-// an extension of the previous one. Otherwise, such as after RunCode loads
-// unrelated code, its root is loaded on its own with the current values of
-// the VM's globals by name.
-func (vm *VirtualMachine) globalsRoot(bc *bytecode.Code) *loadedCode {
-	root := bc.Root()
-	if vm.main != nil && (root == vm.main || sameGlobalLayout(root, vm.main)) {
-		return vm.loadCode(vm.main)
-	}
-	if lc, ok := vm.loadedCode[root]; ok {
-		return lc
-	}
-	vm.saveGlobals()
-	lc := loadRootCode(root, vm.globals)
-	vm.loadedCode[root] = lc
-	return lc
 }
 
 // sameGlobalLayout reports whether main names each global slot of root the
@@ -1659,11 +1660,8 @@ func (vm *VirtualMachine) reloadCode(main *bytecode.Code) *loadedCode {
 	copy(newWrappedMain.Globals, oldWrappedMain.Globals)
 	// Function code loaded earlier (e.g. by Call before Run) shares the old
 	// globals slice. Point it at the new one so all code sees the same globals.
-	// Code that uses the globals of another root keeps them.
 	for _, lc := range vm.loadedCode {
-		if sharesGlobals(lc.Globals, oldWrappedMain.Globals) {
-			lc.Globals = newWrappedMain.Globals
-		}
+		lc.Globals = newWrappedMain.Globals
 	}
 	return newWrappedMain
 }
@@ -2009,9 +2007,4 @@ func (vm *VirtualMachine) tryHandleError(err error) error {
 	// Convert error to object.Error
 	errObj := object.NewError(err)
 	return vm.handleException(errObj)
-}
-
-// sharesGlobals reports whether two globals slices are the same array.
-func sharesGlobals(a, b []object.Object) bool {
-	return len(a) > 0 && len(b) > 0 && &a[0] == &b[0]
 }

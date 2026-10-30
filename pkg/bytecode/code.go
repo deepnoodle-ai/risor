@@ -292,7 +292,8 @@ func (c *Code) lines() []string {
 }
 
 // Root returns the root (entrypoint) code that contains this code. The root
-// of a root code is itself.
+// of a root code is itself. Function code addresses globals by slot index in
+// the layout of its root code, so the root tells which globals it expects.
 func (c *Code) Root() *Code {
 	root := c
 	for root.parent != nil {

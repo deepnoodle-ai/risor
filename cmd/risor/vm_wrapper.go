@@ -26,6 +26,11 @@ type replVM struct {
 	// This allows incremental compilation where new code is appended
 	// and we skip past previously executed (or errored) code.
 	nextIP int
+
+	// envApplied is true once env was given to the VM. The VM keeps the
+	// globals between inputs, so env is given only once. Giving it again
+	// would undo changes, such as a reassigned builtin.
+	envApplied bool
 }
 
 // newReplVM creates a new REPL VM with the given environment.
@@ -56,8 +61,9 @@ func newReplVM(env map[string]any) (*replVM, error) {
 
 func (v *replVM) vmOpts() []vm.Option {
 	var opts []vm.Option
-	if len(v.env) > 0 {
+	if len(v.env) > 0 && !v.envApplied {
 		opts = append(opts, vm.WithGlobals(v.env))
+		v.envApplied = true
 	}
 	if v.nextIP > 0 {
 		opts = append(opts, vm.WithInstructionOffset(v.nextIP))

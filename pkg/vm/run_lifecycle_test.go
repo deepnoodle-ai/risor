@@ -126,7 +126,7 @@ func TestRepeatedCanceledRunsNoRace(t *testing.T) {
 }
 
 // A global that a script changed keeps its new value in the next RunCode,
-// even when WithGlobals provides the same name again.
+// unless that RunCode gives the name again with WithGlobals.
 func TestRunCodeKeepsChangedGlobals(t *testing.T) {
 	ctx := context.Background()
 	globals := map[string]any{"x": 1}
@@ -140,16 +140,53 @@ func TestRunCodeKeepsChangedGlobals(t *testing.T) {
 	result, _ := machine.TOS()
 	assert.Equal(t, result, object.NewInt(5))
 
-	// The REPL passes its environment again on every input.
+	// A value given to RunCode replaces the value the script set.
 	assert.Nil(t, machine.RunCode(ctx, read, WithGlobals(globals)))
 	result, _ = machine.TOS()
-	assert.Equal(t, result, object.NewInt(5))
+	assert.Equal(t, result, object.NewInt(1))
 
-	// WithGlobals on RunCode still adds names the VM does not have yet.
+	// WithGlobals on RunCode also adds new names.
 	assert.Nil(t, machine.RunCode(ctx, compileWithGlobals(t, "x + y", "x", "y"),
 		WithGlobals(map[string]any{"y": 10})))
 	result, _ = machine.TOS()
-	assert.Equal(t, result, object.NewInt(15))
+	assert.Equal(t, result, object.NewInt(11))
+}
+
+// A host that reuses a VM and gives per-run input with WithGlobals sees the
+// input of the current run, never the input of an earlier run.
+func TestRunCodeUsesCurrentInput(t *testing.T) {
+	ctx := context.Background()
+	code := compileWithGlobals(t, "user", "user")
+	machine, err := New(code)
+	assert.Nil(t, err)
+	for _, user := range []string{"alice", "bob", "carol"} {
+		result, err := RunCodeOnVM(ctx, machine, code, WithGlobals(map[string]any{"user": user}))
+		assert.Nil(t, err)
+		assert.Equal(t, result, object.NewString(user))
+	}
+}
+
+// A builtin that a script replaced is restored when the host gives it again.
+func TestRunCodeRestoresReplacedBuiltin(t *testing.T) {
+	ctx := context.Background()
+	machine, _ := newBuiltinsVM(t, `
+		let stash = []
+		len = function(x) { stash.append(x); return 0 }`, nil)
+	assert.Nil(t, machine.Run(ctx))
+
+	globals := basicBuiltins()
+	var names []string
+	for k := range globals {
+		names = append(names, k)
+	}
+	code := compileWithGlobals(t, `len("secret")`, names...)
+	result, err := RunCodeOnVM(ctx, machine, code, WithGlobals(globals))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(6))
+
+	stash, err := RunCodeOnVM(ctx, machine, compileWithGlobals(t, "stash", "stash"))
+	assert.Nil(t, err)
+	assert.Equal(t, stash.Inspect(), "[]")
 }
 
 // Globals carry forward across more than one RunCode, not only to the next.
@@ -184,9 +221,10 @@ func TestMaxStepsAppliesPerRun(t *testing.T) {
 	}
 }
 
-// Issue #502: a function from code that RunCode replaced must read its own
-// globals, not the slots of the new code at the same indexes.
-func TestCallAfterRunCodeReadsFunctionGlobals(t *testing.T) {
+// Issue #502: a function from code that RunCode replaced, with a different
+// global layout, cannot be called. It would read the slots of the new code at
+// the same indexes.
+func TestCallAfterRunCodeRejectsReplacedFunction(t *testing.T) {
 	ctx := context.Background()
 	x := compileSource(t, "let g = 1\nfunction get() { return g }")
 	y := compileSource(t, "let other = 42\nlet zz = 7")
@@ -201,15 +239,17 @@ func TestCallAfterRunCodeReadsFunctionGlobals(t *testing.T) {
 	assert.Equal(t, result, object.NewInt(1))
 
 	assert.Nil(t, machine.RunCode(ctx, y))
-	result, err = machine.Call(ctx, get.(*object.Closure), nil)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewInt(1))
+	_, err = machine.Call(ctx, get.(*object.Closure), nil)
+	assert.True(t, errors.Is(err, ErrReplacedCode))
 
-	// Run reloads y. The function keeps reading its own globals.
+	// Run reloads y. The function is still rejected.
 	assert.Nil(t, machine.Run(ctx))
-	result, err = machine.Call(ctx, get.(*object.Closure), nil)
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.NewInt(1))
+	_, err = machine.Call(ctx, get.(*object.Closure), nil)
+	assert.True(t, errors.Is(err, ErrReplacedCode))
+
+	// A script that calls the function, carried over as a global, fails too.
+	err = machine.RunCode(ctx, compileWithGlobals(t, "let other = 1\nget()", "get"))
+	assert.True(t, errors.Is(err, ErrReplacedCode))
 }
 
 // A function from earlier code whose globals are laid out the same way as the

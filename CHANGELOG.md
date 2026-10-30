@@ -72,13 +72,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   kind in the wrapped error, as in `NewValueError(errors.New("value error:
   bad"))`, the kind now shows twice. Remove it from the wrapped error (#494).
 - Across `RunCode` calls on one VM, a global that a script changed keeps its
-  new value. A `WithGlobals` value passed to `RunCode` only adds a name the VM
-  does not have yet. Before, `RunCode` reset such globals to the values from
-  `WithGlobals`, so in the REPL a reassigned builtin such as `len` reverted on
-  the next input. Globals now carry over through any number of runs, not only
-  to the next one.
-- `WithMaxSteps` limits each run (`Run`, `RunCode`, or `Call`). Before, the
-  step count was never reset, so later runs on a reused VM failed early.
+  new value, unless the `RunCode` call gives that name again with
+  `WithGlobals`. A value given with `WithGlobals` always replaces the current
+  value, so per-run input is never stale, and a builtin that a script replaced
+  is restored when the host gives it again. Before, `RunCode` reset every
+  global ever given with `WithGlobals` to the last value given, and other globals
+  carried over only to the next run. The REPL now gives its environment only
+  on the first input, so a reassigned builtin such as `len` stays reassigned.
+- `WithMaxSteps` now limits each `Run`, `RunCode`, or `Call` separately.
+  Before, the step count was never reset, so later runs on a reused VM failed
+  early. A host that wants one total cap across many calls, such as a loop
+  that calls an untrusted callback, must count the calls itself or use a
+  context deadline.
+- `vm.Call`, or a script call, on a function from code that `RunCode`
+  replaced now returns the new `vm.ErrReplacedCode`, unless the new code lays
+  out its globals the same way (as in the REPL). Before, the function read the
+  slots of the new code at the same indexes and could return a wrong value
+  with no error (#502).
 
 ### Fixed
 
@@ -102,10 +112,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   to be canceled. Canceling the context of a finished run no longer halts a
   later run on the same VM, which before could stop with no error and a wrong
   result.
-- `vm.Call` on a function from code that `RunCode` has since replaced now reads
-  the function's own globals, with their current values by name. Before, it
-  read the slots of the new code at the same indexes and could return a wrong
-  value with no error (#502).
 - Building source locations for code no longer splits the whole source once
   per instruction. `bytecode.Code.GetSourceLine` splits the source once. New
   `bytecode.Code.Root` returns the root code.
