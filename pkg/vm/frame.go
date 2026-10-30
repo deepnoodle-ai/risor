@@ -20,6 +20,10 @@ const (
 	MaxRetainedLocals = 256
 )
 
+// cellScanLimit is the most cells a frame searches one by one. A frame with
+// more cells indexes them by slot, so that each capture costs O(1).
+const cellScanLimit = 8
+
 type frame struct {
 	returnAddr     int
 	returnSp       int
@@ -32,6 +36,7 @@ type frame struct {
 	locals         []object.Object
 	extendedLocals []object.Object
 	cells          []capturedCell // Cells that refer to this frame's locals
+	cellsBySlot    []*object.Cell // Index of cells by slot, if len(cells) > cellScanLimit
 }
 
 // capturedCell is a cell that refers to one slot of a frame's locals.
@@ -109,6 +114,9 @@ func (f *frame) releaseLocals() {
 	if cap(f.cells) > MaxRetainedLocals {
 		f.cells = nil
 	}
+	if cap(f.cellsBySlot) > MaxRetainedLocals {
+		f.cellsBySlot = nil
+	}
 }
 
 func (f *frame) Locals() []object.Object {
@@ -123,9 +131,15 @@ func (f *frame) CaptureLocal(slot uint16) (*object.Cell, bool) {
 	if int(slot) >= len(f.locals) {
 		return nil, false
 	}
-	for _, c := range f.cells {
-		if c.slot == slot {
-			return c.cell, true
+	if len(f.cellsBySlot) > 0 {
+		if cell := f.cellsBySlot[slot]; cell != nil {
+			return cell, true
+		}
+	} else {
+		for _, c := range f.cells {
+			if c.slot == slot {
+				return c.cell, true
+			}
 		}
 	}
 	if len(f.cells) == 0 && f.localsCount <= DefaultFrameLocals {
@@ -141,7 +155,25 @@ func (f *frame) CaptureLocal(slot uint16) (*object.Cell, bool) {
 	}
 	cell := object.NewCell(&f.locals[slot])
 	f.cells = append(f.cells, capturedCell{slot: slot, cell: cell})
+	if len(f.cellsBySlot) > 0 {
+		f.cellsBySlot[slot] = cell
+	} else if len(f.cells) > cellScanLimit {
+		f.indexCells()
+	}
 	return cell, true
+}
+
+// indexCells indexes the frame's cells by slot. The index has an entry for
+// each local, and releaseCells clears the entries it set, so the index
+// starts empty when the frame reuses it.
+func (f *frame) indexCells() {
+	if cap(f.cellsBySlot) < len(f.locals) {
+		f.cellsBySlot = make([]*object.Cell, len(f.locals))
+	}
+	f.cellsBySlot = f.cellsBySlot[:len(f.locals)]
+	for _, c := range f.cells {
+		f.cellsBySlot[c.slot] = c.cell
+	}
 }
 
 // releaseCells moves the values of the captured locals into a new slice that
@@ -150,12 +182,23 @@ func (f *frame) CaptureLocal(slot uint16) (*object.Cell, bool) {
 // variables the frame captured, not the frame's whole locals slice, and the
 // frame can reuse its locals without trampling the captured values.
 func (f *frame) releaseCells() {
-	if len(f.cells) == 0 {
-		return
+	// This check runs on every return, so keep it small enough to inline
+	if len(f.cells) > 0 {
+		f.moveCells()
 	}
+}
+
+//go:noinline
+func (f *frame) moveCells() {
 	values := make([]object.Object, len(f.cells))
 	for i, c := range f.cells {
 		c.cell.Move(&values[i])
+	}
+	if len(f.cellsBySlot) > 0 {
+		for _, c := range f.cells {
+			f.cellsBySlot[c.slot] = nil
+		}
+		f.cellsBySlot = f.cellsBySlot[:0]
 	}
 	clear(f.cells)
 	f.cells = f.cells[:0]

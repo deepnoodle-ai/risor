@@ -2,6 +2,8 @@ package vm
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -885,6 +887,52 @@ func TestClosureSharedWrites(t *testing.T) {
 			assert.Equal(t, result, tt.want)
 		})
 	}
+}
+
+// A call that captures more locals than cellScanLimit indexes its cells by
+// slot. Each slot must still have one cell that the frame and all of its
+// closures share, and a later call that reuses the frame must start with no
+// cells.
+func TestClosureCapturesManySlots(t *testing.T) {
+	const n = 4 * cellScanLimit
+	var decls, incs, names, frameWrites strings.Builder
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&decls, "let v%d = base + %d\n", i, i)
+		fmt.Fprintf(&incs, "() => { v%d++ }, ", i)
+		fmt.Fprintf(&names, "v%d, ", i)
+		fmt.Fprintf(&frameWrites, "v%d += 1000\n", i)
+	}
+	source := fmt.Sprintf(`
+	function many(base) {
+		%s
+		let incs = [%s]
+		let read = () => [%s]
+		incs.each(f => f())
+		let inFrame = [%s]
+		%s
+		return [inFrame, read(), incs, read]
+	}
+	let a = many(0)
+	let b = many(100)
+	a[2].each(f => f())
+	[a[0], a[1], a[3](), b[3]()]
+	`, decls.String(), incs.String(), names.String(), names.String(), frameWrites.String())
+
+	ints := func(offset int) object.Object {
+		items := make([]object.Object, n)
+		for i := range items {
+			items[i] = object.NewInt(int64(i + offset))
+		}
+		return object.NewList(items)
+	}
+	result, err := run(context.Background(), source)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewList([]object.Object{
+		ints(1),          // the frame sees the closures' writes
+		ints(1001),       // the closures see the frame's writes
+		ints(1002),       // the closures still share each slot after return
+		ints(100 + 1001), // the second call has its own cells
+	}))
 }
 
 // A closure made by a frame that a failed run left active keeps its
