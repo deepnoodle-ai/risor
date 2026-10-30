@@ -230,20 +230,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `cmd/risor-docs` reads modules from `pkg/modules`.
 - Compound assignment and postfix operators evaluate the receiver and index
   expressions once. Before, `arr[next()] += 1` and `get().x++` called `next`
-  or `get` twice, and could read one item and write another.
+  or `get` twice, and could read one item and write another (#517).
 - `x |> obj?.method()` returns `nil` when `obj` is `nil`, instead of failing
-  with "object is not callable".
+  with "object is not callable" (#517).
 - Array destructuring defaults run left to right, and a default can use an
   earlier name, as in `let [x = 10, y = x + 1] = []`. This applies to `let`
   and to function parameters. Before, defaults ran right to left, and
   `let [x = 10, y = x + 1] = []` failed with `undefined variable "x"`.
   In a function parameter, a default that names a later destructured name,
   as in `function f([a = b, b = 1])`, is now a compile error (`undefined
-  variable "b"`), the same as in `let`, unless an outer `b` exists.
+  variable "b"`), the same as in `let`, unless an outer `b` exists (#517).
 - A named function with a destructured parameter, such as
   `function f([n]) { ... f([n - 1]) ... }`, can call itself. Before, the call
-  failed with "object is not callable".
-- Compiling a function no longer modifies the caller's AST.
+  failed with "object is not callable" (#517).
+- Compiling a function no longer modifies the caller's AST (#517).
 
 ## [2.2.0] - 2026-08-17
 
