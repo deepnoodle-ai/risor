@@ -79,3 +79,30 @@ func TestDisassembleInvalidInstructions(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Equal(t, err.Error(), "truncated LOAD_CONST instruction at offset 1")
 }
+
+// Child code reads the root's globals, so it can disassemble a global load
+// even when only the root records the global count.
+func TestDisassembleChildGlobals(t *testing.T) {
+	build := func(index op.Code) *bytecode.Code {
+		child := bytecode.NewCode(bytecode.CodeParams{
+			ID:           "main.0",
+			Instructions: []op.Code{op.LoadGlobal, index, op.ReturnValue},
+		})
+		root := bytecode.NewCode(bytecode.CodeParams{
+			ID:          "main",
+			Children:    []*bytecode.Code{child},
+			GlobalCount: 2,
+			GlobalNames: []string{"a", "b"},
+		})
+		return root.ChildAt(0)
+	}
+
+	instructions, err := Disassemble(build(1))
+	assert.Nil(t, err)
+	assert.Equal(t, instructions[0].Name, "LOAD_GLOBAL")
+	assert.Equal(t, instructions[0].Annotation, "b")
+
+	// An index past the root's globals is still an error.
+	_, err = Disassemble(build(2))
+	assert.NotNil(t, err)
+}
