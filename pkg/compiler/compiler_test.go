@@ -699,6 +699,43 @@ func TestEndColumn_CountsRunes(t *testing.T) {
 	assert.True(t, foundIdent)
 }
 
+// A string literal's location ends after its closing quote in the source,
+// even when escapes or template expressions make the source text longer
+// than the string's contents.
+func TestEndColumn_StringSpansSource(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		end   int
+	}{
+		{"escaped", `let s = "a\n"; s.x`, 14},
+		{"template", "let s = `é${1}`; s.x", 16},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := New(&Config{Filename: "test.risor"})
+			assert.Nil(t, err)
+			c.SetSource(tt.input)
+
+			ast, err := parser.Parse(context.Background(), tt.input, nil)
+			assert.Nil(t, err)
+
+			code, err := c.CompileAST(ast)
+			assert.Nil(t, err)
+
+			var found bool
+			for i := 0; i < code.LocationsCount(); i++ {
+				loc := code.LocationAt(i)
+				if loc.Column == 9 {
+					found = true
+					assert.Equal(t, loc.EndColumn, tt.end)
+				}
+			}
+			assert.True(t, found)
+		})
+	}
+}
+
 func TestRootSource_PreservedInFunctions(t *testing.T) {
 	// Test that original source is preserved in function bodies
 	input := `// Comment line 1
