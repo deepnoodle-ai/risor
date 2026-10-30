@@ -531,7 +531,7 @@ func Compile(ctx context.Context, source string, opts ...Option) (*bytecode.Code
 // For types without a Go equivalent (closures, modules, errors, etc.),
 // the Inspect() string representation is returned. A List or Map nested more
 // deeply than object.MaxNestingDepth, or one that contains itself, cannot be
-// converted and Run returns object.ErrNestingDepth.
+// converted, and errors.Is(err, object.ErrNestingDepth) is true.
 //
 // A conversion error is a *errors.StructuredError with no location, and the
 // typed error (for example *errors.ValueError) is its cause, so errors.As and
@@ -592,8 +592,12 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 // conversionError gives an error from converting the result the same shape as
 // a runtime error: a StructuredError whose cause is the original error, so
 // errors.As finds both. It has no location, because the conversion runs after
-// the script has finished and no one expression owns the result.
+// the script has finished and no one expression owns the result. A context
+// error is returned unchanged, as the VM returns it.
 func conversionError(err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
 	if se := object.NewError(err).Structured(); se != nil {
 		return se
 	}

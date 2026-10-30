@@ -158,6 +158,10 @@ func TestErrorShapeResultConversion(t *testing.T) {
 	assert.Equal(t, se.Kind, object.ErrValue)
 	assert.True(t, errors.As(err, &valueErr))
 	assert.True(t, errors.Is(err, object.ErrNestingDepth))
+
+	// A context error comes back unchanged, as it does from the VM
+	assert.Equal(t, conversionError(context.Canceled), context.Canceled)
+	assert.Equal(t, conversionError(context.DeadlineExceeded), context.DeadlineExceeded)
 }
 
 type kindBox struct {
