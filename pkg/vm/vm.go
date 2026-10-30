@@ -458,11 +458,15 @@ func (vm *VirtualMachine) resetForNewCode() {
 	}
 }
 
-// Get a global variable by name as a Risor Object.
+// Get a root (top-level) global variable by name as a Risor Object. A
+// variable declared in a block, such as in an if or try block, is not a global.
 func (vm *VirtualMachine) Get(name string) (object.Object, error) {
 	code := vm.activeCode
 	if code == nil {
 		return nil, errors.New("no active code")
+	}
+	if bytecode.IsBlockGlobalName(name) {
+		return nil, fmt.Errorf("%w: %q", ErrGlobalNotFound, name)
 	}
 	globalCount := code.GlobalCount()
 	for i := 0; i < globalCount; i++ {
@@ -473,18 +477,14 @@ func (vm *VirtualMachine) Get(name string) (object.Object, error) {
 	return nil, fmt.Errorf("%w: %q", ErrGlobalNotFound, name)
 }
 
-// GlobalNames returns the names of all global variables in the active code.
+// GlobalNames returns the names of the root (top-level) global variables in
+// the active code. Variables declared in blocks are not included.
 func (vm *VirtualMachine) GlobalNames() []string {
 	code := vm.activeCode
 	if code == nil {
 		return nil
 	}
-	count := code.GlobalCount()
-	names := make([]string, 0, count)
-	for i := 0; i < count; i++ {
-		names = append(names, code.GlobalNameAt(i))
-	}
-	return names
+	return code.GlobalNames()
 }
 
 // Evaluate the active code. The caller must initialize the following variables

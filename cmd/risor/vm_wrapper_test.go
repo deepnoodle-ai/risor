@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2"
@@ -281,4 +282,30 @@ func TestReplVMCyclicResult(t *testing.T) {
 	assert.Nil(t, err)
 	_, err = vm.Call(context.Background(), "self")
 	assert.True(t, errors.Is(err, object.ErrNestingDepth))
+}
+
+// TestReplVMBlockVariables tests that a block variable from one input does
+// not replace a root variable with the same name in a later input (#492),
+// and that a closure over a block variable still works in a later input.
+func TestReplVMBlockVariables(t *testing.T) {
+	ctx := context.Background()
+	vm, err := newReplVM(nil)
+	assert.Nil(t, err)
+
+	_, err = vm.Eval(ctx, "try { let foo = 1 } catch e {}; let foo = 2")
+	assert.Nil(t, err)
+	result, err := vm.Eval(ctx, "foo")
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(2))
+
+	value, err := vm.Get("foo")
+	assert.Nil(t, err)
+	assert.Equal(t, value, int64(2))
+
+	_, err = vm.Eval(ctx, "let f = nil; if (true) { let y = 5; f = () => y }")
+	assert.Nil(t, err)
+	result, err = vm.Eval(ctx, "f()")
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(5))
+	assert.False(t, slices.Contains(vm.GlobalNames(), "y"))
 }
