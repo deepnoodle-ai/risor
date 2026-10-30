@@ -1691,11 +1691,9 @@ func (vm *VirtualMachine) evalError(format string, args ...any) *object.Structur
 // It determines the error kind from the error type. The original error is
 // kept as the cause, so errors.As still finds it.
 func (vm *VirtualMachine) wrapError(err error) *object.StructuredError {
-	if se, ok := err.(*object.StructuredError); ok {
-		return se
-	}
 	// NewError finds the kind and the message without its kind prefix, also
-	// for an *object.Error that holds a TypeError or ValueError.
+	// for an *object.Error that holds a TypeError or ValueError, and for a
+	// *object.StructuredError, which gets the current location here.
 	kind, msg := object.ErrRuntime, err.Error()
 	if s := object.NewError(err).Structured(); s != nil {
 		kind, msg = s.Kind, s.Message

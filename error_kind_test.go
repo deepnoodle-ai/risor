@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
@@ -77,4 +78,32 @@ func TestErrorKindStructured(t *testing.T) {
 	assert.Equal(t, se.Message, "list too large (exceeds limit of 2 elements)")
 	var valueErr *object.ValueError
 	assert.True(t, errors.As(err, &valueErr))
+}
+
+// opErrObject is a Go object whose RunOperation returns a StructuredError
+// that has no location.
+type opErrObject struct {
+	*object.Int
+}
+
+func (o *opErrObject) RunOperation(opType op.BinaryOpType, right object.Object) (object.Object, error) {
+	return nil, object.NewStructuredError(object.ErrValue, "custom failure", object.SourceLocation{}, nil)
+}
+
+// The VM stamps the operator location on a StructuredError from a Go object.
+// As for the other operator errors above, the column is the column of the
+// right operand.
+func TestErrorKindStructuredFromGoObject(t *testing.T) {
+	ctx := context.Background()
+	env := map[string]any{"obj": &opErrObject{Int: object.NewInt(1)}}
+
+	_, err := Eval(ctx, "let a = 1\n  obj + 1", WithEnv(env))
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "value error: custom failure (2:9)")
+	var se *object.StructuredError
+	assert.True(t, errors.As(err, &se))
+	assert.Equal(t, se.Kind, object.ErrValue)
+	assert.Equal(t, se.Message, "custom failure")
+	assert.Equal(t, se.Location.Line, 2)
+	assert.Equal(t, se.Location.Column, 9)
 }
