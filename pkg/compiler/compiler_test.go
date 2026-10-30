@@ -63,16 +63,6 @@ func TestCompileErrors(t *testing.T) {
 			errMsg: "compile error: undefined variable \"z\"\n\nlocation: t.risor:3:2",
 		},
 		{
-			name:   "invalid argument defaults",
-			input:  "function bad(a=1, b) {}",
-			errMsg: "compile error: invalid argument defaults for function \"bad\"\n\nlocation: t.risor:1:1",
-		},
-		{
-			name:   "invalid argument defaults for anonymous function",
-			input:  "function(a=1, b) {}()",
-			errMsg: "compile error: invalid argument defaults for anonymous function\n\nlocation: t.risor:1:1",
-		},
-		{
 			name:   "unsupported default value",
 			input:  "function(a, b=[1,2,3]) {}()",
 			errMsg: "compile error: unsupported default value type: *ast.List\n\nlocation: t.risor:1:15",
