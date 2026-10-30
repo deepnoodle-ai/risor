@@ -22,8 +22,8 @@ func runAndCheckExcStack(t *testing.T, source string) object.Object {
 	return result
 }
 
-// C-01: the exception stack must grow beyond its initial capacity.
-func TestAuditExcStackGrows(t *testing.T) {
+// The exception stack must grow beyond its initial capacity.
+func TestExcStackGrows(t *testing.T) {
 	t.Run("recursion through try", func(t *testing.T) {
 		result := runAndCheckExcStack(t, `
 		function recurse(n) {
@@ -50,8 +50,8 @@ func TestAuditExcStackGrows(t *testing.T) {
 	})
 }
 
-// C-01: the exception stack is bounded, and overflowing it is a clean error.
-func TestAuditExcStackBounded(t *testing.T) {
+// The exception stack is bounded, and overflowing it is a clean error.
+func TestExcStackBounded(t *testing.T) {
 	ctx := context.Background()
 	vm, err := newVM(ctx, `
 	function recurse(n) {
@@ -66,8 +66,8 @@ func TestAuditExcStackBounded(t *testing.T) {
 	assert.Contains(t, err.Error(), "exception handler depth")
 }
 
-// H-02: a throw mid-expression must restore the operand stack.
-func TestAuditExcRestoresStackPointer(t *testing.T) {
+// A throw mid-expression must restore the operand stack.
+func TestExcRestoresStackPointer(t *testing.T) {
 	result := runAndCheckExcStack(t, `
 	function fail() { throw "x" }
 	100 + (try { 1 + (2 + fail()) } catch e { 5 })
@@ -80,8 +80,8 @@ func TestAuditExcRestoresStackPointer(t *testing.T) {
 	assert.Equal(t, result, object.NewInt(105))
 }
 
-// H-03: return through nested finally blocks runs every finally.
-func TestAuditReturnRunsAllFinallyBlocks(t *testing.T) {
+// A return through nested finally blocks runs every finally.
+func TestReturnRunsAllFinallyBlocks(t *testing.T) {
 	result := runAndCheckExcStack(t, `
 	let log = []
 	function f() {
@@ -101,8 +101,8 @@ func TestAuditReturnRunsAllFinallyBlocks(t *testing.T) {
 	assert.Equal(t, result.Inspect(), `[1, ["a", "b"]]`)
 }
 
-// H-04: return inside a finally overrides the pending return and pops the frame.
-func TestAuditReturnInsideFinally(t *testing.T) {
+// A return inside a finally overrides the pending return and pops the frame.
+func TestReturnInsideFinally(t *testing.T) {
 	result := runAndCheckExcStack(t, `
 	let log = []
 	function f() {
@@ -126,8 +126,8 @@ func TestAuditReturnInsideFinally(t *testing.T) {
 	assert.Equal(t, result, object.NewInt(100))
 }
 
-// H-05: catch falling through to finally runs finally exactly once.
-func TestAuditCatchFallthroughToFinally(t *testing.T) {
+// A catch falling through to finally runs finally exactly once.
+func TestCatchFallthroughToFinally(t *testing.T) {
 	result := runAndCheckExcStack(t, `
 	let count = 0
 	function f() {
@@ -161,7 +161,7 @@ func TestAuditCatchFallthroughToFinally(t *testing.T) {
 
 // A try that completes normally inside an outer catch or finally must not
 // consume the outer handler's frame.
-func TestAuditNestedTryInsideHandlers(t *testing.T) {
+func TestNestedTryInsideHandlers(t *testing.T) {
 	result := runAndCheckExcStack(t, `
 	let log = []
 	try {
@@ -198,7 +198,7 @@ func TestAuditNestedTryInsideHandlers(t *testing.T) {
 }
 
 // A throw inside finally (after catch threw) must not re-enter the catch.
-func TestAuditThrowInFinallyAfterCatchThrow(t *testing.T) {
+func TestThrowInFinallyAfterCatchThrow(t *testing.T) {
 	result := runAndCheckExcStack(t, `
 	let log = []
 	let r = try {
@@ -220,7 +220,7 @@ func TestAuditThrowInFinallyAfterCatchThrow(t *testing.T) {
 }
 
 // Repeated execution of every try shape must leave the exception stack empty.
-func TestAuditExcStackNoLeak(t *testing.T) {
+func TestExcStackNoLeak(t *testing.T) {
 	result := runAndCheckExcStack(t, `
 	function retTry() { try { return 1 } catch e { return 0 } }
 	function retTryFinally() { try { return 1 } finally { 0 } }
