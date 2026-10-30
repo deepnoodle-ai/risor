@@ -141,6 +141,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A named function with destructured parameters, such as
   `function f({n}) { ... f({n: n - 1}) }`, can now call itself. Before, the
   call failed with "object is not callable".
+- An error from an operator such as `+` or `<` now shows its kind once, for
+  example `type error: unsupported operation for string: + on type map`.
+  Before, it showed `type error: type error: ...`, and a failed comparison
+  showed `runtime error: type error: ...`. For Go callers, `errors.As` now
+  finds the `*object.TypeError` or `*object.ValueError` in such an error. A
+  `TypeError`, `ValueError`, or `IndexError` now keeps its message in `Err`
+  without the kind, and its `Error` method adds the kind (#494).
 
 ## [2.2.0] - 2026-08-17
 

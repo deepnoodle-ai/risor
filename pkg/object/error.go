@@ -216,14 +216,22 @@ func NewError(err error) *Error {
 	case *StructuredError:
 		return &Error{err: err, structured: err}
 	case *TypeError:
-		return &Error{err: err, structured: NewStructuredError(ErrType, err.Error(), SourceLocation{}, nil)}
+		return newKindError(err, ErrType, err.Err)
 	case *ValueError:
-		return &Error{err: err, structured: NewStructuredError(ErrValue, err.Error(), SourceLocation{}, nil)}
+		return newKindError(err, ErrValue, err.Err)
 	case *IndexError:
-		return &Error{err: err, structured: NewStructuredError(ErrValue, err.Error(), SourceLocation{}, nil)}
+		return newKindError(err, ErrValue, err.Err) // Index errors are a kind of value error
 	default:
 		return &Error{err: err}
 	}
+}
+
+// newKindError creates an Error for an error of a known kind. The structured
+// message leaves out the kind prefix, because StructuredError adds the kind.
+func newKindError(err error, kind ErrorKind, msg error) *Error {
+	structured := NewStructuredError(kind, msg.Error(), SourceLocation{}, nil)
+	structured.Cause = err
+	return &Error{err: err, structured: structured}
 }
 
 // NewErrorFromStructured creates a new Error from a StructuredError.
