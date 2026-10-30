@@ -137,7 +137,7 @@ type codeDef struct {
 	Constants     []json.RawMessage `json:"constants,omitempty"`
 	Names         []string          `json:"names,omitempty"`
 	Source        string            `json:"source,omitempty"`
-	SourceRange   *[2]int           `json:"source_range,omitempty"`
+	SourceRange   []int             `json:"source_range,omitempty"`
 	Filename      string            `json:"filename,omitempty"`
 	Locations     []locationDef     `json:"locations,omitempty"`
 	MaxCallArgs   uint16            `json:"max_call_args,omitempty"`
@@ -219,9 +219,12 @@ func codeFromState(state *state) (*Code, error) {
 			if c.Source != "" {
 				return nil, fmt.Errorf("invalid code: code %q has both source and source range", c.ID)
 			}
+			if len(r) != 2 {
+				return nil, fmt.Errorf("invalid code: code %q has a source range with %d elements, want 2", c.ID, len(r))
+			}
 			rootSource := codes[0].source
 			if r[0] < 0 || r[0] > r[1] || r[1] > len(rootSource) {
-				return nil, fmt.Errorf("invalid code: code %q has source range %v outside the root source", c.ID, *r)
+				return nil, fmt.Errorf("invalid code: code %q has source range %v outside the root source", c.ID, r)
 			}
 			source = rootSource[r[0]:r[1]]
 			sourceStart, sourceEnd = r[0], r[1]
@@ -565,9 +568,9 @@ func stateFromCode(code *Code) (*state, error) {
 	allCode := code.Flatten()
 	for i, code := range allCode {
 		source := code.source
-		var sourceRange *[2]int
+		var sourceRange []int
 		if i > 0 && rootSourceRange(code, allCode[0]) {
-			source, sourceRange = "", &[2]int{code.sourceStart, code.sourceEnd}
+			source, sourceRange = "", []int{code.sourceStart, code.sourceEnd}
 		}
 		constants, err := marshalConstants(code.constants)
 		if err != nil {

@@ -107,7 +107,7 @@ type codeDef struct {
 	Constants         []json.RawMessage     `json:"constants"`
 	Names             []string              `json:"names"`
 	Source            string                `json:"source,omitempty"`
-	SourceRange       *[2]int               `json:"source_range,omitempty"`
+	SourceRange       []int                 `json:"source_range,omitempty"`
 	Filename          string                `json:"filename,omitempty"`
 	Locations         []locationDef         `json:"locations,omitempty"`
 	MaxCallArgs       int                   `json:"max_call_args"`
@@ -192,9 +192,9 @@ func stateFromCode(code *Code) (*codeState, error) {
 		}
 
 		source := c.Source()
-		var sourceRange *[2]int
+		var sourceRange []int
 		if i > 0 && rootSourceRange(c, code) {
-			source, sourceRange = "", &[2]int{c.sourceStart, c.sourceEnd}
+			source, sourceRange = "", []int{c.sourceStart, c.sourceEnd}
 		}
 
 		state.Codes[i] = &codeDef{
@@ -247,8 +247,11 @@ func codeFromState(state *codeState) (*Code, error) {
 			if def.Source != "" {
 				return nil, fmt.Errorf("invalid bytecode: code block %d has both source and source range", i)
 			}
+			if len(r) != 2 {
+				return nil, fmt.Errorf("invalid bytecode: code block %d has a source range with %d elements, want 2", i, len(r))
+			}
 			if r[0] < 0 || r[0] > r[1] || r[1] > len(rootSource) {
-				return nil, fmt.Errorf("invalid bytecode: code block %d has source range %v outside the root source", i, *r)
+				return nil, fmt.Errorf("invalid bytecode: code block %d has source range %v outside the root source", i, r)
 			}
 			source = rootSource[r[0]:r[1]]
 			sourceStart, sourceEnd = r[0], r[1]

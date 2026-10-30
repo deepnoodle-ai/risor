@@ -730,8 +730,9 @@ func TestUnmarshalOldFormatFunctionSource(t *testing.T) {
 	assert.Equal(t, compilerSources(restoredCode), expectedSources)
 }
 
-// Unmarshal rejects a source range outside the root source, a source range on
-// the root, and a code with both a source and a source range.
+// Unmarshal rejects a source range outside the root source, a source range
+// without exactly two elements, a source range on the root, and a code with
+// both a source and a source range.
 func TestUnmarshalRejectsBadSourceRange(t *testing.T) {
 	code := compileLinesSource(t, nestedSourceScript)
 	bytecodeData, err := bytecode.Marshal(code.ToBytecode())
@@ -746,6 +747,13 @@ func TestUnmarshalRejectsBadSourceRange(t *testing.T) {
 			}
 		}
 	}
+	setElems := func(elems ...int) func(int, map[string]any, string) {
+		return func(i int, def map[string]any, rootSource string) {
+			if i == 1 {
+				def["source_range"] = append([]int{}, elems...)
+			}
+		}
+	}
 	n := len(nestedSourceScript)
 	tests := []struct {
 		name string
@@ -755,6 +763,9 @@ func TestUnmarshalRejectsBadSourceRange(t *testing.T) {
 		{"negative start", setRange(-1, 2), "outside the root source"},
 		{"start after end", setRange(3, 2), "outside the root source"},
 		{"end after root", setRange(0, n+1), "outside the root source"},
+		{"empty", setElems(), "want 2"},
+		{"one element", setElems(0), "want 2"},
+		{"three elements", setElems(0, 1, 2), "want 2"},
 		{"root", func(i int, def map[string]any, rootSource string) {
 			if i == 0 {
 				def["source_range"] = []int{0, 1}
