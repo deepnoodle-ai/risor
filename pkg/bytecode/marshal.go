@@ -74,12 +74,14 @@ type functionDef struct {
 	CodeIndex  int               `json:"code_index"` // Index into codes array
 }
 
+// locationDef holds only positions. Source lines come from the root code's
+// source, so a script on one line is not written once per instruction.
+// Older versions also wrote the filename and source line of each location.
+// Unmarshal ignores them.
 type locationDef struct {
-	Filename  string `json:"filename,omitempty"`
-	Line      int    `json:"line"`
-	Column    int    `json:"column"`
-	EndColumn int    `json:"end_column,omitempty"`
-	Source    string `json:"source,omitempty"`
+	Line      int `json:"line"`
+	Column    int `json:"column"`
+	EndColumn int `json:"end_column,omitempty"`
 }
 
 type exceptionHandlerDef struct {
@@ -145,15 +147,12 @@ func stateFromCode(code *Code) (*codeState, error) {
 		}
 
 		locations := make([]locationDef, c.LocationCount())
-		filename := c.Filename()
 		for j := 0; j < c.LocationCount(); j++ {
 			loc := c.LocationAt(j)
 			locations[j] = locationDef{
-				Filename:  filename,
 				Line:      loc.Line,
 				Column:    loc.Column,
 				EndColumn: loc.EndColumn,
-				Source:    c.GetSourceLine(loc.Line),
 			}
 		}
 
