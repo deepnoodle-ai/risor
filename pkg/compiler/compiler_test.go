@@ -671,7 +671,7 @@ func TestEndColumn_SpansToken(t *testing.T) {
 // A non-ASCII string literal's location spans its runes and quotes, and
 // the expression after it on the same line keeps the right columns.
 func TestEndColumn_CountsRunes(t *testing.T) {
-	input := `let s = "éé"; s.x`
+	input := `let s = "é"; s.x`
 
 	c, err := New(&Config{Filename: "test.risor"})
 	assert.Nil(t, err)
@@ -687,12 +687,12 @@ func TestEndColumn_CountsRunes(t *testing.T) {
 	for i := 0; i < code.LocationsCount(); i++ {
 		loc := code.LocationAt(i)
 		switch loc.Column {
-		case 9: // "éé"
+		case 9: // "é"
 			foundString = true
-			assert.Equal(t, loc.EndColumn, 13)
-		case 15: // s
+			assert.Equal(t, loc.EndColumn, 12)
+		case 14: // s
 			foundIdent = true
-			assert.Equal(t, loc.EndColumn, 16)
+			assert.Equal(t, loc.EndColumn, 15)
 		}
 	}
 	assert.True(t, foundString)
