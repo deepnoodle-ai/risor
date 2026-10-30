@@ -142,24 +142,26 @@ func (l *Lexer) Position() token.Position {
 // Next returns the next Token from the input that is being lexed.
 func (l *Lexer) Next() (token.Token, error) {
 	var tok token.Token
-	l.skipTabsAndSpaces()
-	l.tokenStartPosition = l.Position()
-
-	// skip shebang line (only at start of file)
-	if l.ch == rune('#') && l.peekChar() == rune('!') && l.line == 0 && l.position <= 1 {
-		l.skipComment()
-		return l.Next()
-	}
-
-	// skip single-line comments
-	if l.ch == rune('/') && l.peekChar() == rune('/') {
-		l.skipComment()
-		return l.Next()
-	}
-
-	// multi-line comments
-	if l.ch == rune('/') && l.peekChar() == rune('*') {
-		l.skipMultiLineComment()
+	// Skip whitespace and comments. This is a loop, not recursion, so that
+	// many comments in a row can't overflow the stack.
+	for {
+		l.skipTabsAndSpaces()
+		l.tokenStartPosition = l.Position()
+		switch {
+		case l.ch == rune('#') && l.peekChar() == rune('!') && l.line == 0 && l.position <= 1:
+			// shebang line (only at start of file)
+			l.skipComment()
+			continue
+		case l.ch == rune('/') && l.peekChar() == rune('/'):
+			l.skipComment()
+			continue
+		case l.ch == rune('/') && l.peekChar() == rune('*'):
+			if !l.skipMultiLineComment() {
+				return l.unterminatedComment()
+			}
+			continue
+		}
+		break
 	}
 
 	if l.prevToken.Type == token.EOF {
@@ -305,7 +307,7 @@ func (l *Lexer) Next() (token.Token, error) {
 			tok = l.newToken(token.GT, string(l.ch))
 		}
 	case rune('~'):
-		return token.Token{}, fmt.Errorf("unexpected character: %q", l.ch)
+		return l.illegal(fmt.Errorf("unexpected character: %q", l.ch))
 	case rune('!'):
 		if l.peekChar() == rune('=') {
 			ch := l.ch
@@ -364,7 +366,7 @@ func (l *Lexer) Next() (token.Token, error) {
 		if isDigit(l.ch) {
 			tok, err = l.readDecimal()
 			if err != nil {
-				return token.Token{}, err
+				return l.illegalRun("invalid decimal literal", true)
 			}
 			l.readChar()
 			l.prevToken = tok
@@ -372,7 +374,7 @@ func (l *Lexer) Next() (token.Token, error) {
 		}
 		ident, err := l.readIdentifier()
 		if err != nil {
-			return token.Token{}, err
+			return l.illegalRun("invalid identifier", false)
 		}
 		if ident == "as" && l.prevToken.Type == token.PERIOD {
 			tok = l.newToken(token.IDENT, ident)
@@ -386,6 +388,32 @@ func (l *Lexer) Next() (token.Token, error) {
 	l.readChar()
 	l.prevToken = tok
 	return tok, nil
+}
+
+// illegal returns an ILLEGAL token that spans from the token start through the
+// current character, along with the given error. It advances past the current
+// character so that the next call to Next makes progress.
+func (l *Lexer) illegal(err error) (token.Token, error) {
+	tok := l.newToken(token.ILLEGAL, string(l.characters[l.tokenStartPosition.Char:l.position+1]))
+	l.readChar()
+	l.prevToken = tok
+	return tok, err
+}
+
+// illegalRun returns an ILLEGAL token for an invalid number or identifier. It
+// advances over the rest of the run of identifier and non-ASCII characters
+// (and periods, for a number), so that the run is reported as one error, and
+// the error names the whole token.
+func (l *Lexer) illegalRun(what string, number bool) (token.Token, error) {
+	for {
+		next := l.peekChar()
+		if !isIdentifier(next) && next <= unicode.MaxASCII && (!number || next != '.') {
+			break
+		}
+		l.readChar()
+	}
+	literal := string(l.characters[l.tokenStartPosition.Char : l.position+1])
+	return l.illegal(fmt.Errorf("%s: %s", what, literal))
 }
 
 // Advance one character in the input string. Calling this when
@@ -470,23 +498,40 @@ func (l *Lexer) skipComment() {
 	l.skipTabsAndSpaces()
 }
 
-// Consume all tokens until we've had the close of a multi-line comment
-func (l *Lexer) skipMultiLineComment() {
-	found := false
-	for !found {
-		// break at the end of our input.
-		if l.ch == rune(0) {
-			found = true
+// skipMultiLineComment consumes a multi-line comment through its closing
+// "*/". It returns false if the input ends before the comment is closed.
+func (l *Lexer) skipMultiLineComment() bool {
+	// Move past the opening "/*" so that its "*" can't close the comment.
+	l.readChar()
+	l.readChar()
+	for {
+		// The input ended inside the comment.
+		if l.ch == rune(0) && l.position >= len(l.characters) {
+			return false
 		}
-		// otherwise keep going until we find "*/"
 		if l.ch == '*' && l.peekChar() == '/' {
-			found = true
 			// Our current position is "*", so skip forward to consume the "/"
 			l.readChar()
+			l.readChar()
+			l.skipTabsAndSpaces()
+			return true
 		}
 		l.readChar()
 	}
-	l.skipTabsAndSpaces()
+}
+
+// unterminatedComment returns an ILLEGAL token for a multi-line comment that
+// is not closed. The token spans the opening "/*", so that the error points
+// at it. The lexer is at the end of the input, so the next token is EOF.
+func (l *Lexer) unterminatedComment() (token.Token, error) {
+	tok := token.Token{
+		Type:          token.ILLEGAL,
+		Literal:       "/*",
+		StartPosition: l.tokenStartPosition,
+		EndPosition:   l.tokenStartPosition.Advance(2),
+	}
+	l.prevToken = tok
+	return tok, fmt.Errorf("unterminated multi-line comment")
 }
 
 // Read a decimal, hex, octal, or binary number
@@ -617,27 +662,26 @@ func (l *Lexer) readString(end rune) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			sb.WriteByte(byte(num))
+			sb.WriteRune(rune(num))
 		case rune('1'):
 			num, err := l.readEscapeSequence(2, 8)
 			if err != nil {
 				return "", err
 			}
-			sb.WriteByte(byte(0o100 + num))
+			sb.WriteRune(rune(0o100 + num))
 		case rune('2'):
 			num, err := l.readEscapeSequence(2, 8)
 			if err != nil {
 				return "", err
 			}
-			sb.WriteByte(byte(0o200 + num))
+			sb.WriteRune(rune(0o200 + num))
 		case rune('3'):
 			num, err := l.readEscapeSequence(2, 8)
 			if err != nil {
 				return "", err
 			}
-			// This will never overflow byte, because max of 2 octals is 0o77,
-			// and 255 in octal is 0o377.
-			sb.WriteByte(byte(0o300 + num))
+			// Like \x, an octal escape is a code point in U+0000 to U+00FF.
+			sb.WriteRune(rune(0o300 + num))
 		default:
 			return "", fmt.Errorf("invalid escape sequence: %q", l.ch)
 		}
@@ -706,33 +750,19 @@ func (l *Lexer) GetLineText(t token.Token) string {
 		return ""
 	}
 
-	// This is the position where the token begins
-	tokenStart := t.StartPosition
-
-	// Guard against programming errors. Raise panics to catch mistakes early.
-	// Note that for the EOF token, the char offset will be equal to the number
-	// of chars in the input, hence the ">" and not ">=".
-	if tokenStart.Char < 0 || tokenStart.Char > len(l.characters)+1 {
-		panic(fmt.Errorf("invalid token start position: %d token: %q input length: %d",
-			tokenStart.Char, t.Type, len(l.characters)))
-	}
-	if tokenStart.Line < 0 {
-		panic(fmt.Errorf("invalid token start line: %d", tokenStart.Line))
-	}
-
-	// Find the start of the line containing the given token
-	start := tokenStart.Char
+	// Find the start of the line containing the given token. The EOF token
+	// starts one past the last character, so look up the line of that last
+	// character. Clamp the offset so that a bad position can't panic.
+	start := t.StartPosition.Char
 	if t.Type == token.EOF {
 		start--
 	}
+	start = max(0, min(start, len(l.characters)))
+	end := start
 	for start > 0 && l.characters[start-1] != rune('\n') {
 		start--
 	}
 	// Find the end of that line
-	end := tokenStart.Char
-	if t.Type == token.EOF {
-		end--
-	}
 	for end < len(l.characters) && l.characters[end] != rune('\n') {
 		end++
 	}

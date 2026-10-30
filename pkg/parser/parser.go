@@ -92,6 +92,12 @@ type Parser struct {
 	// Used by inner methods to detect if an error was added during this statement.
 	stmtErrorCount int
 
+	// lexErrorEnd is the byte offset just past the start of the last lexer
+	// error read. The lexer moves forward except when a lookahead restore
+	// rewinds it, so a lexer error that starts before this offset was
+	// already read once and is not reported again.
+	lexErrorEnd int
+
 	// prefixParseFns holds a map of parsing methods for
 	// prefix-based syntax.
 	prefixParseFns map[token.Type]prefixParseFn
@@ -205,12 +211,11 @@ func New(l *lexer.Lexer, cfg *Config) *Parser {
 	return p
 }
 
-// advanceToken moves to the next token from the lexer without error checking.
-// Used internally by synchronize() during error recovery.
+// advanceToken moves to the next token from the lexer. Used internally by
+// synchronize() during error recovery. Lexer errors are still recorded, since
+// the lexer always advances past the bad input.
 func (p *Parser) advanceToken() {
-	p.prevToken = p.curToken
-	p.curToken = p.peekToken
-	p.peekToken, _ = p.l.Next()
+	p.nextToken()
 }
 
 // nextToken moves to the next token from the lexer, updating all of
@@ -224,7 +229,17 @@ func (p *Parser) nextToken() error {
 		return nil // success
 	}
 	// The lexer encountered an error. We consider all lexer errors
-	// "syntax errors" and parsing will now be considered broken.
+	// "syntax errors" and parsing will now be considered broken. A
+	// lookahead restore can make the lexer read the same bad input again;
+	// report it only the first time. Past the error limit, drop it without
+	// the cost of copying its source line.
+	if p.peekToken.StartPosition.Char < p.lexErrorEnd {
+		return err
+	}
+	p.lexErrorEnd = p.peekToken.StartPosition.Char + 1
+	if p.tooManyErrors() {
+		return err
+	}
 	p.addError(NewSyntaxError(ErrorOpts{
 		Cause:         err,
 		File:          p.l.Filename(),
@@ -261,11 +276,24 @@ func (p *Parser) Parse(ctx context.Context) (*ast.Program, error) {
 		}
 		// Track error count for this statement so inner methods can detect new errors
 		p.stmtErrorCount = len(p.errors)
+		blankLine := p.curTokenIs(token.NEWLINE)
 		stmt := p.parseStatementStrict()
+		if stmt == nil && !blankLine && !p.hadNewError() && !p.curTokenIs(token.ILLEGAL) {
+			// A statement that failed without reporting an error, such as
+			// one cut short by the end of the input. Report it, so that a
+			// failed statement is never dropped silently.
+			if p.curTokenIs(token.EOF) {
+				p.setTokenError(p.curToken, "unexpected end of file")
+			} else {
+				p.setTokenError(p.curToken, "invalid syntax")
+			}
+		}
 		if stmt != nil {
 			statements = append(statements, stmt)
-		} else if p.hadNewError() {
-			// Statement failed - synchronize and continue
+		} else if p.hadNewError() || p.curTokenIs(token.ILLEGAL) {
+			// Statement failed - synchronize and continue. A statement that
+			// stops at a bad token also failed, even when its lexer error
+			// was recorded earlier by a lookahead.
 			p.synchronize()
 		}
 		p.nextToken()
@@ -289,8 +317,15 @@ func (p *Parser) registerInfix(tokenType token.Type, fn infixParseFn) {
 // MaxErrors is the maximum number of errors to collect before stopping.
 const MaxErrors = 10
 
-// addError appends an error to the errors slice.
+// addError appends an error to the errors slice. A parse error that follows a
+// lexer error in the same statement is dropped, since it is only a result of
+// the bad token the lexer already reported.
 func (p *Parser) addError(err ParserError) {
+	if _, isLexerError := err.(*SyntaxError); !isLexerError && p.hadNewError() {
+		if _, ok := p.errors[len(p.errors)-1].(*SyntaxError); ok {
+			return
+		}
+	}
 	p.errors = append(p.errors, err)
 }
 
@@ -312,7 +347,7 @@ func (p *Parser) hadNewError() bool {
 // synchronize skips tokens until a statement boundary is reached.
 // This is used for error recovery to continue parsing after an error.
 func (p *Parser) synchronize() {
-	for !p.curTokenIs(token.EOF) {
+	for !p.curTokenIs(token.EOF) && !p.tooManyErrors() {
 		// Stop at statement terminators
 		if statementTerminators[p.curToken.Type] {
 			return
@@ -533,14 +568,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 }
 
 func (p *Parser) illegalToken() (ast.Node, bool) {
-	p.setError(NewParserError(ErrorOpts{
-		ErrType:       "parse error",
-		Message:       fmt.Sprintf("illegal token %s", p.curToken.Literal),
-		File:          p.l.Filename(),
-		StartPosition: p.curToken.StartPosition,
-		EndPosition:   p.curToken.EndPosition,
-		SourceCode:    p.l.GetLineText(p.curToken),
-	}))
+	// The lexer reported the error when it produced this token.
 	return nil, false
 }
 
@@ -606,6 +634,23 @@ func (p *Parser) eatNewlines() {
 	}
 }
 
+// saveState saves the parser and lexer state for a lookahead and returns a
+// function that restores it. Restoring keeps the lexer errors that the
+// lookahead recorded. nextToken does not report them again when the lexer
+// reads the same tokens a second time.
+func (p *Parser) saveState() func() {
+	savedPrev := p.prevToken
+	savedCur := p.curToken
+	savedPeek := p.peekToken
+	savedLexer := p.l.SaveState()
+	return func() {
+		p.prevToken = savedPrev
+		p.curToken = savedCur
+		p.peekToken = savedPeek
+		p.l.RestoreState(savedLexer)
+	}
+}
+
 // skipNewlinesAndPeek checks if the given token type appears after optional
 // newlines. If found, it skips the newlines and returns true (with peekToken
 // now being the target). If not found, it returns false without consuming
@@ -619,18 +664,12 @@ func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
 	if !p.peekTokenIs(token.NEWLINE) {
 		return false
 	}
-	// Save parser and lexer state
-	savedCur := p.curToken
-	savedPeek := p.peekToken
-	savedLexer := p.l.SaveState()
+	restore := p.saveState()
 
 	// Skip through newlines
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
-			// Restore state on error
-			p.curToken = savedCur
-			p.peekToken = savedPeek
-			p.l.RestoreState(savedLexer)
+			restore()
 			return false
 		}
 	}
@@ -642,9 +681,7 @@ func (p *Parser) skipNewlinesAndPeek(targetType token.Type) bool {
 	}
 
 	// Target not found - restore state
-	p.curToken = savedCur
-	p.peekToken = savedPeek
-	p.l.RestoreState(savedLexer)
+	restore()
 	return false
 }
 
@@ -665,18 +702,12 @@ func (p *Parser) skipNewlinesForChaining() bool {
 	if !p.peekTokenIs(token.NEWLINE) {
 		return false
 	}
-	// Save parser and lexer state
-	savedCur := p.curToken
-	savedPeek := p.peekToken
-	savedLexer := p.l.SaveState()
+	restore := p.saveState()
 
 	// Skip through newlines
 	for p.peekTokenIs(token.NEWLINE) {
 		if err := p.nextToken(); err != nil {
-			// Restore state on error
-			p.curToken = savedCur
-			p.peekToken = savedPeek
-			p.l.RestoreState(savedLexer)
+			restore()
 			return false
 		}
 	}
@@ -688,8 +719,6 @@ func (p *Parser) skipNewlinesForChaining() bool {
 	}
 
 	// Not a chaining operator - restore state
-	p.curToken = savedCur
-	p.peekToken = savedPeek
-	p.l.RestoreState(savedLexer)
+	restore()
 	return false
 }

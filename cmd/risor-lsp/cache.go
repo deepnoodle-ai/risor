@@ -41,7 +41,8 @@ type cache struct {
 	diagRunning sync.Map
 }
 
-// put adds or replaces a document in the cache.
+// put adds or replaces a document in the cache. Cached documents are shared
+// across goroutines, so a document must not be changed once it is put.
 // Documents are only replaced if the new document version is greater than the currently
 // cached version.
 func (c *cache) put(new *document) error {
@@ -59,6 +60,26 @@ func (c *cache) put(new *document) error {
 	return nil
 }
 
+// replace replaces a document that is already in the cache, with the same
+// version rule as put. It returns an error if the document is not in the
+// cache, for example because it was closed, so that a change that arrives
+// after a close does not put the closed document back.
+func (c *cache) replace(new *document) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	uri := new.item.URI
+	old, ok := c.docs[uri]
+	if !ok {
+		return fmt.Errorf("document %s not found in cache", uri)
+	}
+	if old.item.Version > new.item.Version {
+		return errors.New("newer version of the document is already in the cache")
+	}
+	c.docs[uri] = new
+	return nil
+}
+
 // get retrieves a document from the cache.
 func (c *cache) get(uri protocol.DocumentURI) (*document, error) {
 	c.mu.Lock()
@@ -70,4 +91,11 @@ func (c *cache) get(uri protocol.DocumentURI) (*document, error) {
 	}
 
 	return doc, nil
+}
+
+// remove deletes a document from the cache.
+func (c *cache) remove(uri protocol.DocumentURI) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.docs, uri)
 }

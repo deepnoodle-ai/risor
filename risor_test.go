@@ -658,6 +658,15 @@ func TestArrowFunctionDestructureParam(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, int64(103), result)
 	})
+
+	t.Run("arrow with alias and default", func(t *testing.T) {
+		result, err := Eval(ctx, `
+			let fn = ({a: b = 1, c}) => [b, c]
+			[fn({c: 2}), fn({a: 5, c: 3})]
+		`)
+		assert.Nil(t, err)
+		assert.Equal(t, []any{[]any{int64(1), int64(2)}, []any{int64(5), int64(3)}}, result)
+	})
 }
 
 // =============================================================================

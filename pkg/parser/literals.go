@@ -400,6 +400,23 @@ func (p *Parser) parseMapItem(allowDefaults bool) *ast.MapItem {
 		return nil
 	}
 	p.nextToken() // move to the value
+	// Alias with a default in an arrow function destructuring parameter:
+	// {a: b = expr}
+	if p.curTokenIs(token.IDENT) && p.peekTokenIs(token.ASSIGN) {
+		alias := p.newIdent(p.curToken)
+		if !allowDefaults {
+			p.setDefaultValueError(alias)
+			return nil
+		}
+		p.noteCandidateDefault(alias)
+		p.nextToken() // move to '='
+		p.nextToken() // move to the default expression
+		defaultExpr := p.parseExpression(LOWEST)
+		if defaultExpr == nil {
+			return nil
+		}
+		return &ast.MapItem{Key: key, Value: &ast.DefaultValue{Name: alias, Default: defaultExpr}}
+	}
 	value := p.parseExpression(LOWEST)
 	if value == nil {
 		return nil
@@ -500,9 +517,8 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 				return nil, nil, nil
 			}
 			params = append(params, param)
-			if p.curTokenIs(token.COMMA) {
-				p.nextToken()
-				p.eatNewlines()
+			if !p.endListItem(token.RPAREN, "function parameters") {
+				return nil, nil, nil
 			}
 			continue
 		}
@@ -514,9 +530,8 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 				return nil, nil, nil
 			}
 			params = append(params, param)
-			if p.curTokenIs(token.COMMA) {
-				p.nextToken()
-				p.eatNewlines()
+			if !p.endListItem(token.RPAREN, "function parameters") {
+				return nil, nil, nil
 			}
 			continue
 		}
@@ -541,9 +556,8 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 			defaults[ident.String()] = expr
 			p.nextToken()
 		}
-		if p.curTokenIs(token.COMMA) {
-			p.nextToken()
-			p.eatNewlines()
+		if !p.endListItem(token.RPAREN, "function parameters") {
+			return nil, nil, nil
 		}
 	}
 	return defaults, params, restParam
@@ -601,9 +615,8 @@ func (p *Parser) parseObjectDestructureParam() *ast.ObjectDestructureParam {
 
 		bindings = append(bindings, binding)
 
-		if p.curTokenIs(token.COMMA) {
-			p.nextToken()
-			p.eatNewlines()
+		if !p.endListItem(token.RBRACE, "destructuring pattern") {
+			return nil
 		}
 	}
 
@@ -662,9 +675,8 @@ func (p *Parser) parseArrayDestructureParam() *ast.ArrayDestructureParam {
 
 		elements = append(elements, elem)
 
-		if p.curTokenIs(token.COMMA) {
-			p.nextToken()
-			p.eatNewlines()
+		if !p.endListItem(token.RBRACKET, "array destructuring pattern") {
+			return nil
 		}
 	}
 
@@ -714,6 +726,25 @@ func (p *Parser) parseListElement() ast.Node {
 func (p *Parser) parseMisplacedSpread() (ast.Node, bool) {
 	p.setTokenError(p.curToken, "spread operator (...) is only allowed in list literals, map literals, and call arguments")
 	return nil, false
+}
+
+// endListItem moves past the comma that follows an item of a function
+// parameter list or destructuring pattern, along with any newlines around it.
+// The current token must be a comma or the closing token; otherwise it reports
+// an error and returns false. At the end of the input it returns true, so the
+// caller reports the unterminated list.
+func (p *Parser) endListItem(end token.Type, context string) bool {
+	p.eatNewlines()
+	switch p.curToken.Type {
+	case token.COMMA:
+		p.nextToken()
+		p.eatNewlines()
+		return true
+	case end, token.EOF:
+		return true
+	}
+	p.setTokenError(p.curToken, "expected ',' or '%s' in %s (got %s)", end, context, tokenDescription(p.curToken))
+	return false
 }
 
 // noteCandidateDefault records a default parsed in a destructuring candidate.

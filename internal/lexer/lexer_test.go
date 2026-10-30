@@ -2,7 +2,9 @@ package lexer
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -415,8 +417,8 @@ func TestInvalidIntegers(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"42.foo()", "invalid decimal literal: 42.f"},
-		{"12ab", "invalid decimal literal: 12a"},
+		{"42.foo()", "invalid decimal literal: 42.foo"},
+		{"12ab", "invalid decimal literal: 12ab"},
 		{"0x1aZ", "invalid decimal literal: 0x1aZ"},
 		{"078", "invalid decimal literal: 078"},
 	}
@@ -663,6 +665,7 @@ func TestStringTypes(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, tok.Type, tt.expectedType)
 			assert.Equal(t, tok.Literal, tt.expectedLiteral)
+			assert.True(t, utf8.ValidString(tok.Literal))
 		})
 	}
 }
@@ -697,7 +700,7 @@ func TestInvalidIdentifiers(t *testing.T) {
 		err   string
 	}{
 		{"⺶", "invalid identifier: ⺶"},
-		{"foo⺶bar", "invalid identifier: foo⺶"},
+		{"foo⺶bar", "invalid identifier: foo⺶bar"},
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.input), func(t *testing.T) {
@@ -727,11 +730,11 @@ func TestEscapeSequences(t *testing.T) {
 		{"hex", `"\xFF"`, "ÿ"},
 		{"unicode16", `"\u672C"`, "本"}, // No clue what it means. Found it here: https://go.dev/ref/spec#String_literals
 		{"unicode32", `"\U0001F63C"`, "😼"},
-		{"octal3", `"\300"`, "\300"},
-		{"octal2", `"\241"`, "\241"},
+		{"octal3", `"\300"`, "À"}, // Like \x, octal escapes above \177 are code points, not bytes
+		{"octal2", `"\241"`, "¡"},
 		{"octal1", `"\141"`, "a"},
 		{"octal0", `"\041"`, "!"},
-		{"octalmax", `"\377"`, "\377"},
+		{"octalmax", `"\377"`, "ÿ"},
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("%d-%s", i, tt.name), func(t *testing.T) {
@@ -782,9 +785,9 @@ func TestInvalids(t *testing.T) {
 	tests := []test{
 		{"\x01", "invalid identifier: \x01"},
 		{"4.f", "invalid decimal literal: 4.f"},
-		{"4a.f", "invalid decimal literal: 4a"},
-		{"0x.1", "invalid decimal literal: 0x."},
-		{"0b.1", "invalid decimal literal: 0b."},
+		{"4a.f", "invalid decimal literal: 4a.f"},
+		{"0x.1", "invalid decimal literal: 0x.1"},
+		{"0b.1", "invalid decimal literal: 0b.1"},
 		{`"foo`, "unterminated string literal"},
 		{"`foo", "unterminated string literal"},
 		{"'foo", "unterminated string literal"},
@@ -1366,18 +1369,41 @@ func TestMultipleEOFReads(t *testing.T) {
 }
 
 func TestUnterminatedMultiLineComment(t *testing.T) {
-	// Unterminated multi-line comment should eventually hit EOF
-	l := New("a /* unterminated comment")
+	// An unterminated multi-line comment is an error that points at the
+	// opening "/*". The next token is EOF.
+	l := New("a\nb /* unterminated\ncomment")
 
 	tok, err := l.Next()
 	assert.Nil(t, err)
 	assert.Equal(t, tok.Type, token.IDENT)
 	assert.Equal(t, tok.Literal, "a")
+	tok, err = l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.NEWLINE)
+	tok, err = l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Literal, "b")
 
-	// The comment consumes everything until EOF
+	tok, err = l.Next()
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "unterminated multi-line comment")
+	assert.Equal(t, tok.Type, token.ILLEGAL)
+	assert.Equal(t, tok.Literal, "/*")
+	assert.Equal(t, tok.StartPosition.LineNumber(), 2)
+	assert.Equal(t, tok.StartPosition.ColumnNumber(), 3)
+	assert.Equal(t, tok.EndPosition.ColumnNumber(), 5)
+	assert.Equal(t, l.GetLineText(tok), "b /* unterminated")
+
 	tok, err = l.Next()
 	assert.Nil(t, err)
 	assert.Equal(t, tok.Type, token.EOF)
+
+	// A comment that is only "/*", or one that holds a NUL byte, is also
+	// unterminated
+	for _, input := range []string{"/*", "/*/", "/* a \x00 b"} {
+		_, err := New(input).Next()
+		assert.NotNil(t, err)
+	}
 }
 
 func TestShebangNotAtStart(t *testing.T) {
@@ -1671,5 +1697,103 @@ func TestSlashEquals(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, tok.Type, exp.typ, "token %d type", i)
 		assert.Equal(t, tok.Literal, exp.literal, "token %d literal", i)
+	}
+}
+
+func TestGetLineTextNeverPanics(t *testing.T) {
+	// A comment-only input yields an EOF token at offset 0
+	l := New("/* comment */")
+	tok, err := l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.EOF)
+	assert.Equal(t, l.GetLineText(tok), "/* comment */")
+
+	// Out-of-range positions are clamped
+	for _, char := range []int{-5, -1, 0, 100} {
+		for _, typ := range []token.Type{token.EOF, token.IDENT} {
+			tok := token.Token{Type: typ, StartPosition: token.Position{Char: char, Line: -1}}
+			assert.Equal(t, New("ab\ncd").GetLineText(tok), map[bool]string{true: "ab", false: "cd"}[char <= 0])
+		}
+	}
+}
+
+func TestConsecutiveMultiLineComments(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []token.Type
+	}{
+		{"/* a */ /* b */ x", []token.Type{token.IDENT, token.EOF}},
+		{"/* a *//* b */x", []token.Type{token.IDENT, token.EOF}},
+		{"/* a */ // b\nx", []token.Type{token.NEWLINE, token.IDENT, token.EOF}},
+		{"/**/x", []token.Type{token.IDENT, token.EOF}},
+		// "/*/" does not close the comment it opens
+		{"/*/ x */ y", []token.Type{token.IDENT, token.EOF}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			for _, expected := range tt.expected {
+				tok, err := l.Next()
+				assert.Nil(t, err)
+				assert.Equal(t, tok.Type, expected)
+			}
+		})
+	}
+	// The token after a comment starts after the comment
+	l := New("/* a */ /* b */ x")
+	tok, err := l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Literal, "x")
+	assert.Equal(t, tok.StartPosition.Column, 16)
+}
+
+func TestLexerErrorsAdvance(t *testing.T) {
+	tests := []struct {
+		input   string
+		literal string
+		line    int
+		column  int
+		next    string
+	}{
+		{"x\n  ~ y", "~", 1, 2, "y"},
+		{"a = 12abc + b", "12abc", 0, 4, "+"},
+		{"a = 42.foo + b", "42.foo", 0, 4, "+"},
+		{"a = 0x1aZq + b", "0x1aZq", 0, 4, "+"},
+		{"a = \x01 + b", "\x01", 0, 4, "+"},
+		{"a = abc€d + b", "abc€d", 0, 4, "+"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := New(tt.input)
+			var tok token.Token
+			var err error
+			for err == nil {
+				tok, err = l.Next()
+				assert.NotEqual(t, tok.Type, token.EOF)
+			}
+			assert.Equal(t, tok.Type, token.ILLEGAL)
+			assert.Equal(t, tok.Literal, tt.literal)
+			// The error names the whole token, not part of it
+			assert.True(t, strings.Contains(err.Error(), tt.literal))
+			assert.Equal(t, tok.StartPosition.Line, tt.line)
+			assert.Equal(t, tok.StartPosition.Column, tt.column)
+			next, err := l.Next()
+			assert.Nil(t, err)
+			assert.Equal(t, next.Literal, tt.next)
+		})
+	}
+}
+
+// Comments are skipped in a loop, so many in a row can't overflow the stack
+func TestManyConsecutiveComments(t *testing.T) {
+	for _, comment := range []string{"/**/", "// c\n"} {
+		l := New(strings.Repeat(comment, 2_000_000) + "1")
+		tok, err := l.Next()
+		for tok.Type == token.NEWLINE {
+			tok, err = l.Next()
+		}
+		assert.Nil(t, err)
+		assert.Equal(t, tok.Type, token.INT)
+		assert.Equal(t, tok.Literal, "1")
 	}
 }

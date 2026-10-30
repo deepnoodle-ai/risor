@@ -192,7 +192,7 @@ func (p *Parser) parseArrowParams(arrowPos token.Position, items []ast.Node) (as
 			params = append(params, v)
 		case *ast.Assign:
 			// Handle default parameter: x = value
-			if v.Name == nil {
+			if v.Name == nil || v.Op != "=" {
 				p.setTokenError(p.curToken, "invalid arrow function parameter")
 				return nil, false
 			}
@@ -256,7 +256,11 @@ func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructure
 					binding.Alias = v.Name
 				}
 			case *ast.DefaultValue:
-				// Default in an arrow function destructuring parameter: {a = expr}
+				// Default in an arrow function destructuring parameter:
+				// {a = expr} or {a: b = expr}
+				if v.Name.Name != keyName {
+					binding.Alias = v.Name.Name
+				}
 				binding.Default = v.Default
 			default:
 				p.setTokenError(p.curToken, "expected identifier or default in destructuring pattern")
@@ -412,6 +416,8 @@ func (p *Parser) parseIf() (ast.Node, bool) {
 
 func (p *Parser) parseBlock() *ast.Block {
 	lbrace := p.curToken.StartPosition
+	// A block in a match pattern, such as a function body, is not a pattern
+	defer p.setPatternContext(false)()
 	statements := []ast.Node{}
 	if err := p.nextToken(); err != nil { // Move past the '{'
 		return nil
@@ -661,6 +667,10 @@ func (p *Parser) parseOptionalChain(objNode ast.Node) (ast.Node, bool) {
 func (p *Parser) parseMatch() (ast.Node, bool) {
 	matchPos := p.curToken.StartPosition
 
+	// A match nested in an outer pattern or guard has its own contexts: '=>'
+	// may start an arrow function in its subject and arm results.
+	defer p.setPatternContext(false)()
+
 	// Parse the subject expression
 	p.nextToken()
 	subject := p.parseExpression(LOWEST)
@@ -769,9 +779,9 @@ func (p *Parser) parseMatchArm() (*ast.MatchArm, bool) {
 		p.nextToken() // move to "if"
 		p.nextToken() // move past "if" to the guard expression
 		// Set pattern context so => is not parsed as an arrow function
-		p.inPatternContext = true
+		restore := p.setPatternContext(true)
 		guard = p.parseExpression(LOWEST)
-		p.inPatternContext = false
+		restore()
 		if guard == nil {
 			p.setTokenError(p.curToken, "invalid guard expression in match arm")
 			return nil, false
@@ -802,6 +812,15 @@ func (p *Parser) parseMatchArm() (*ast.MatchArm, bool) {
 	}, isDefault
 }
 
+// setPatternContext sets whether '=>' ends a match pattern or guard, rather
+// than starting an arrow function. It returns a function that restores the
+// previous setting, so that nested match expressions can't clobber it.
+func (p *Parser) setPatternContext(inPattern bool) func() {
+	saved := p.inPatternContext
+	p.inPatternContext = inPattern
+	return func() { p.inPatternContext = saved }
+}
+
 // parsePattern parses a pattern for a match arm.
 // Patterns can be arbitrary expressions (evaluated at runtime for comparison).
 // The special identifier "_" is the wildcard pattern that matches anything.
@@ -819,9 +838,9 @@ func (p *Parser) parsePattern() ast.Pattern {
 
 	// Set pattern context to prevent arrow function parsing
 	// (since => is the match arm separator)
-	p.inPatternContext = true
+	restore := p.setPatternContext(true)
 	expr := p.parseExpression(LOWEST)
-	p.inPatternContext = false
+	restore()
 
 	if expr == nil {
 		return nil

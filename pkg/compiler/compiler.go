@@ -52,6 +52,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
@@ -97,6 +98,15 @@ type Compiler struct {
 
 	// Original source code (for better error messages)
 	source string
+
+	// rootByteOffsets maps rune offsets in the root source to byte offsets,
+	// since AST positions are rune offsets. It has one entry per rune plus a
+	// final entry for the end of the source. It is nil when the source is all
+	// ASCII, where the two offsets are equal. rootOffsetsOf is the source it
+	// was built from, and rootOffsetsSet reports whether it was built.
+	rootByteOffsets []int
+	rootOffsetsOf   string
+	rootOffsetsSet  bool
 
 	// Current AST node being compiled (used for source map tracking)
 	currentNode ast.Node
@@ -2366,35 +2376,72 @@ func (c *Compiler) getRootSource() string {
 	return c.main.source
 }
 
+// rootByteOffset converts a rune offset in the root source to a byte offset.
+// The offset must be in the range [0, number of runes].
+func (c *Compiler) rootByteOffset(source string, runeOffset int) int {
+	if !c.rootOffsetsSet || source != c.rootOffsetsOf {
+		c.rootByteOffsets = nil
+		if utf8.RuneCountInString(source) != len(source) {
+			offsets := make([]int, 0, utf8.RuneCountInString(source)+1)
+			for i := range source {
+				offsets = append(offsets, i)
+			}
+			c.rootByteOffsets = append(offsets, len(source))
+		}
+		c.rootOffsetsOf = source
+		c.rootOffsetsSet = true
+	}
+	if c.rootByteOffsets == nil {
+		return runeOffset
+	}
+	return c.rootByteOffsets[runeOffset]
+}
+
+// rootRuneCount returns the number of runes in the root source.
+func (c *Compiler) rootRuneCount(source string) int {
+	c.rootByteOffset(source, 0)
+	if c.rootByteOffsets == nil {
+		return len(source)
+	}
+	return len(c.rootByteOffsets) - 1
+}
+
 // extractFunctionBodySource attempts to extract the function body content from
 // the original source using AST positions. This extracts the inner content of
 // the block (without braces) to match what node.Body.String() produces.
 // Falls back to node.Body.String() if extraction fails.
+//
+// The result is a slice of the root source, not a copy, so nested functions
+// share the root source's memory.
 func (c *Compiler) extractFunctionBodySource(node *ast.Func) string {
 	rootSource := c.getRootSource()
 	if rootSource == "" {
 		return node.Body.String()
 	}
+	runeCount := c.rootRuneCount(rootSource)
 
 	// Extract inner content of the block (skip the braces).
 	// Lbrace is at the '{', Rbrace is at the '}'.
 	// We want the content from after '{' to before '}'.
+	// These are rune offsets.
 	bodyStart := node.Body.Lbrace.Char + 1 // Skip '{'
 	bodyEnd := node.Body.Rbrace.Char       // Before '}'
 
 	// Validate bounds
-	if bodyStart < 0 || bodyStart >= len(rootSource) {
+	if bodyStart < 0 || bodyStart >= runeCount {
 		return node.Body.String()
 	}
-	if bodyEnd > len(rootSource) {
-		bodyEnd = len(rootSource)
+	if bodyEnd > runeCount {
+		bodyEnd = runeCount
 	}
 	if bodyEnd <= bodyStart {
 		return node.Body.String()
 	}
 
 	// Extract and trim leading/trailing whitespace
-	content := strings.TrimSpace(rootSource[bodyStart:bodyEnd])
+	start := c.rootByteOffset(rootSource, bodyStart)
+	end := c.rootByteOffset(rootSource, bodyEnd)
+	content := strings.TrimSpace(rootSource[start:end])
 	if content == "" {
 		return node.Body.String()
 	}

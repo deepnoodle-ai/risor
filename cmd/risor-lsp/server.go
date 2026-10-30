@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/jdbaldry/go-language-server-protocol/lsp/protocol"
@@ -14,6 +15,12 @@ type Server struct {
 	version string
 	client  protocol.ClientCloser
 	cache   *cache
+
+	// publishMu orders diagnostic publications. A publisher checks that its
+	// document is still the cached one and sends while holding it, so that
+	// diagnostics for a replaced or closed document are never sent after
+	// the diagnostics that superseded them.
+	publishMu sync.Mutex
 }
 
 func (s *Server) queueDiagnostics(uri protocol.DocumentURI) {
@@ -24,6 +31,8 @@ func (s *Server) queueDiagnostics(uri protocol.DocumentURI) {
 // forceClearDiagnostics explicitly clears all diagnostics for a URI
 func (s *Server) forceClearDiagnostics(uri protocol.DocumentURI) {
 	log.Info().Str("uri", string(uri)).Msg("=== forceClearDiagnostics: EXPLICITLY CLEARING ALL DIAGNOSTICS ===")
+	s.publishMu.Lock()
+	defer s.publishMu.Unlock()
 
 	if s.client != nil {
 		diagnosticsParams := &protocol.PublishDiagnosticsParams{
@@ -50,7 +59,12 @@ func (s *Server) publishDiagnostics(uri protocol.DocumentURI) {
 		log.Error().Err(err).Str("uri", string(uri)).Msg("failed to get document for diagnostics")
 		return
 	}
+	s.publishDocumentDiagnostics(uri, doc)
+}
 
+// publishDocumentDiagnostics publishes the diagnostics for doc, unless doc is
+// no longer the cached document for uri.
+func (s *Server) publishDocumentDiagnostics(uri protocol.DocumentURI, doc *document) {
 	var diagnostics []protocol.Diagnostic
 
 	// Check for parse errors
@@ -103,6 +117,13 @@ func (s *Server) publishDiagnostics(uri protocol.DocumentURI) {
 
 	log.Info().Int("diagnostic_count", len(diagnostics)).Str("uri", string(uri)).Msg("=== SENDING DIAGNOSTICS TO VSCODE ===")
 
+	s.publishMu.Lock()
+	defer s.publishMu.Unlock()
+	if current, err := s.cache.get(uri); err != nil || current != doc {
+		log.Info().Str("uri", string(uri)).Msg("publishDiagnostics: document was replaced or closed, not publishing")
+		return
+	}
+
 	// Publish diagnostics to the client
 	if s.client != nil {
 		params := &protocol.PublishDiagnosticsParams{
@@ -110,7 +131,7 @@ func (s *Server) publishDiagnostics(uri protocol.DocumentURI) {
 			Diagnostics: diagnostics,
 		}
 
-		err = s.client.PublishDiagnostics(context.Background(), params)
+		err := s.client.PublishDiagnostics(context.Background(), params)
 		if err != nil {
 			log.Error().Err(err).Str("uri", string(uri)).Msg("!!! FAILED TO PUBLISH DIAGNOSTICS !!!")
 		} else {
@@ -124,29 +145,33 @@ func (s *Server) publishDiagnostics(uri protocol.DocumentURI) {
 }
 
 func (s *Server) DidChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
-	doc, err := s.cache.get(params.TextDocument.URI)
+	old, err := s.cache.get(params.TextDocument.URI)
 	if err != nil {
 		log.Error().Err(err).Str("uri", string(params.TextDocument.URI)).Msg("failed to get document for change")
 		return err
 	}
 
-	// Apply changes to the document
+	// Cached documents are read by other goroutines, so build a new document
+	// rather than changing the cached one.
+	item := old.item
 	for _, change := range params.ContentChanges {
 		if change.Range == nil {
 			// Full document update
-			doc.item.Text = change.Text
+			item.Text = change.Text
 		} else {
 			// Incremental update - for now, we'll treat it as full update
 			// TODO: Implement proper incremental updates
-			doc.item.Text = change.Text
+			item.Text = change.Text
 		}
 	}
-
-	// Update version
-	doc.item.Version = params.TextDocument.Version
+	item.Version = params.TextDocument.Version
 
 	// Reparse the document
-	doc.ast, doc.err = parser.Parse(ctx, doc.item.Text, nil)
+	doc := newDocument(ctx, item)
+	if err := s.cache.replace(doc); err != nil {
+		log.Error().Err(err).Str("uri", string(params.TextDocument.URI)).Msg("failed to cache changed document")
+		return err
+	}
 	if doc.err != nil {
 		log.Error().Err(doc.err).Msg("parse program failed after change")
 	} else {
@@ -162,12 +187,8 @@ func (s *Server) DidChange(ctx context.Context, params *protocol.DidChangeTextDo
 func (s *Server) DidOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) (err error) {
 	defer s.queueDiagnostics(params.TextDocument.URI)
 	log.Info().Str("filename", params.TextDocument.URI.SpanURI().Filename()).Msg("DidOpen")
-	doc := &document{
-		item:                 params.TextDocument,
-		linesChangedSinceAST: map[int]bool{},
-	}
+	doc := newDocument(ctx, params.TextDocument)
 	if params.TextDocument.Text != "" {
-		doc.ast, doc.err = parser.Parse(ctx, params.TextDocument.Text, nil)
 		if doc.err != nil {
 			log.Error().Err(doc.err).Msg("parse program failed")
 		} else {
@@ -175,6 +196,18 @@ func (s *Server) DidOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 		}
 	}
 	return s.cache.put(doc)
+}
+
+// newDocument returns a document for the given item, with its text parsed.
+func newDocument(ctx context.Context, item protocol.TextDocumentItem) *document {
+	doc := &document{
+		item:                 item,
+		linesChangedSinceAST: map[int]bool{},
+	}
+	if item.Text != "" {
+		doc.ast, doc.err = parser.Parse(ctx, item.Text, nil)
+	}
+	return doc
 }
 
 func (s *Server) Initialize(ctx context.Context, params *protocol.ParamInitialize) (*protocol.InitializeResult, error) {
@@ -222,17 +255,22 @@ func (s *Server) DidSave(ctx context.Context, params *protocol.DidSaveTextDocume
 	log.Info().Int("text_length", len(*params.Text)).Str("uri", string(params.TextDocument.URI)).Msg("DidSave: Text provided - will re-parse")
 
 	// If text is provided, re-parse the document
-	doc, err := s.cache.get(params.TextDocument.URI)
+	old, err := s.cache.get(params.TextDocument.URI)
 	if err != nil {
 		log.Error().Err(err).Str("uri", string(params.TextDocument.URI)).Msg("failed to get document for save")
 		return err
 	}
 
-	log.Info().Str("old_text_length", fmt.Sprintf("%d", len(doc.item.Text))).Str("new_text_length", fmt.Sprintf("%d", len(*params.Text))).Msg("DidSave: Updating document text")
+	log.Info().Str("old_text_length", fmt.Sprintf("%d", len(old.item.Text))).Str("new_text_length", fmt.Sprintf("%d", len(*params.Text))).Msg("DidSave: Updating document text")
 
-	// Update document text and re-parse
-	doc.item.Text = *params.Text
-	doc.ast, doc.err = parser.Parse(ctx, *params.Text, nil)
+	// Replace the cached document with one for the saved text
+	item := old.item
+	item.Text = *params.Text
+	doc := newDocument(ctx, item)
+	if err := s.cache.replace(doc); err != nil {
+		log.Error().Err(err).Str("uri", string(params.TextDocument.URI)).Msg("failed to cache saved document")
+		return err
+	}
 	if doc.err != nil {
 		log.Error().Err(doc.err).Str("uri", string(params.TextDocument.URI)).Msg("parse program failed after save - will publish error diagnostic")
 	} else {
@@ -249,7 +287,13 @@ func (s *Server) DidSave(ctx context.Context, params *protocol.DidSaveTextDocume
 func (s *Server) DidClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
 	log.Info().Str("filename", params.TextDocument.URI.SpanURI().Filename()).Str("uri", string(params.TextDocument.URI)).Msg("=== DidClose START - force clearing diagnostics ===")
 
+	// Remove the document first, so that a pending publisher does not send
+	// its diagnostics after they are cleared.
+	s.cache.remove(params.TextDocument.URI)
+
 	// Clear diagnostics for closed document
+	s.publishMu.Lock()
+	defer s.publishMu.Unlock()
 	if s.client != nil {
 		diagnosticsParams := &protocol.PublishDiagnosticsParams{
 			URI:         params.TextDocument.URI,

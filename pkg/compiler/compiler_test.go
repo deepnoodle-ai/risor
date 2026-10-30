@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
+	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
@@ -1218,4 +1220,55 @@ func TestCompileASTRollbackIncrementalREPL(t *testing.T) {
 	assert.False(t, found)
 	_, found = c.main.symbols.Get("bar")
 	assert.False(t, found)
+}
+
+// AST positions are rune offsets, so a function's source must be sliced by
+// runes when multi-byte characters come before it.
+func TestFunctionSourceAfterMultiByteChars(t *testing.T) {
+	source := "let s = \"héllo wörld 日本語\"\nfunction f(x) { return x + 1 }"
+	program, err := parser.Parse(context.Background(), source, nil)
+	assert.Nil(t, err)
+	code, err := Compile(program, &Config{Source: source})
+	assert.Nil(t, err)
+	var fn *bytecode.Function
+	for i := 0; i < code.ConstantCount(); i++ {
+		if f, ok := code.ConstantAt(i).(*bytecode.Function); ok {
+			fn = f
+		}
+	}
+	assert.NotNil(t, fn)
+	assert.Equal(t, fn.Code().Source(), "return x + 1")
+}
+
+// A function's source is a slice of the root source, not a copy, so nested
+// functions do not each retain their own copy of the body.
+func TestNestedFunctionSourceSharesRootSource(t *testing.T) {
+	source := "let s = \"日本語\"\nfunction a() { function b() { function c() { return 1 }\nreturn c }\nreturn b }"
+	program, err := parser.Parse(context.Background(), source, nil)
+	assert.Nil(t, err)
+	code, err := Compile(program, &Config{Source: source})
+	assert.Nil(t, err)
+
+	rootStart := uintptr(unsafe.Pointer(unsafe.StringData(source)))
+	rootEnd := rootStart + uintptr(len(source))
+	var sources []string
+	var walk func(code *bytecode.Code)
+	walk = func(code *bytecode.Code) {
+		for i := 0; i < code.ConstantCount(); i++ {
+			if f, ok := code.ConstantAt(i).(*bytecode.Function); ok {
+				src := f.Code().Source()
+				sources = append(sources, src)
+				p := uintptr(unsafe.Pointer(unsafe.StringData(src)))
+				assert.True(t, p >= rootStart && p+uintptr(len(src)) <= rootEnd,
+					"function source is a copy: %q", src)
+				walk(f.Code())
+			}
+		}
+	}
+	walk(code)
+	assert.Equal(t, sources, []string{
+		"function b() { function c() { return 1 }\nreturn c }\nreturn b",
+		"function c() { return 1 }\nreturn c",
+		"return 1",
+	})
 }

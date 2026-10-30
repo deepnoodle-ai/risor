@@ -63,7 +63,7 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 		// We could enhance this to traverse into expressions to find function literals
 
 		case *ast.Assign:
-			name := stmt.Name.Name
+			name := assignName(stmt)
 			if name != "" {
 				pos := stmt.Pos()
 				endPos := stmt.End()
@@ -110,4 +110,13 @@ func getLastToken(stmt ast.Stmt) token.Token {
 	// This is a simplified approach - in a real implementation,
 	// you'd want to traverse the AST to find the actual last token
 	return token.Token{} // Return empty token as fallback
+}
+
+// assignName returns the variable name an assignment sets, or "" for an
+// index assignment such as arr[0] = 1, which has no name.
+func assignName(s *ast.Assign) string {
+	if s.Name == nil {
+		return ""
+	}
+	return s.Name.Name
 }
