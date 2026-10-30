@@ -47,7 +47,15 @@ func init() {
 				return nil, newTypeErrorf("map.each() expected a function (%s given)", args[0].Type())
 			}
 			for _, k := range m.SortedKeys() {
-				if _, err := callable.Call(ctx, NewString(k), m.items[k]); err != nil {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				// Skip keys deleted by an earlier callback
+				value, ok := m.items[k]
+				if !ok {
+					continue
+				}
+				if _, err := callable.Call(ctx, NewString(k), value); err != nil {
 					return nil, err
 				}
 			}
@@ -151,32 +159,40 @@ func init() {
 		})
 }
 
+// Map is a string-keyed map of objects.
+//
+// Iteration (each, keys, values, entries, Enumerate) visits the keys present
+// when iteration starts, in sorted order. Keys deleted during iteration are
+// skipped, keys added during iteration are not visited, and each step reads
+// the key's current value.
 type Map struct {
 	items map[string]Object
-
-	// Used to avoid the possibility of infinite recursion when inspecting.
-	// Similar to the usage of Py_ReprEnter in CPython.
-	inspectActive bool
 }
 
 func (m *Map) Type() Type {
 	return MAP
 }
 
+// Inspect returns a string representation of the map. A nested container
+// that is already being printed (a cycle), or that is nested more deeply than
+// MaxNestingDepth, is shown as [...] or {...}.
 func (m *Map) Inspect() string {
-	// A map can contain itself. Detect if we're already inspecting the map
-	// and return a placeholder if so.
-	if m.inspectActive {
-		return "{...}"
-	}
-	m.inspectActive = true
-	defer func() { m.inspectActive = false }()
+	return m.inspect(nil)
+}
 
+func (m *Map) inspect(path nestPath[Object]) string {
 	var out bytes.Buffer
-	pairs := make([]string, 0)
+	pairs := make([]string, 0, len(m.items))
 	for _, k := range m.SortedKeys() {
 		v := m.items[k]
-		pairs = append(pairs, fmt.Sprintf("%q: %s", k, v.Inspect()))
+		if isNestedContainer(v) {
+			var err error
+			if path, err = path.descend(m, v); err != nil {
+				pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectPlaceholder(v)))
+				continue
+			}
+		}
+		pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectNested(v, path)))
 	}
 	out.WriteString("{")
 	out.WriteString(strings.Join(pairs, ", "))
@@ -323,15 +339,42 @@ func (m *Map) Size() int {
 	return len(m.items)
 }
 
+// Interface converts the map to a map[string]any, converting values
+// recursively. It returns nil if the map is nested more deeply than
+// MaxNestingDepth or contains a cycle; use ToInterface to get the error.
 func (m *Map) Interface() interface{} {
-	result := make(map[string]any, len(m.items))
-	for k, v := range m.items {
-		result[k] = v.Interface()
+	result, err := m.toInterface(nil)
+	if err != nil {
+		return nil
 	}
 	return result
 }
 
+func (m *Map) toInterface(path nestPath[Object]) (any, error) {
+	result := make(map[string]any, len(m.items))
+	for k, v := range m.items {
+		if isNestedContainer(v) {
+			var err error
+			if path, err = path.descend(m, v); err != nil {
+				return nil, err
+			}
+		}
+		value, err := toInterface(v, path)
+		if err != nil {
+			return nil, err
+		}
+		result[k] = value
+	}
+	return result, nil
+}
+
+// Equals reports whether other is a map with the same keys and equal values.
+// It returns false if the maps are too deeply nested or cyclic.
 func (m *Map) Equals(other Object) bool {
+	return m.equals(other, nil)
+}
+
+func (m *Map) equals(other Object, path nestPath[objectPair]) bool {
 	otherMap, ok := other.(*Map)
 	if !ok {
 		return false
@@ -344,7 +387,13 @@ func (m *Map) Equals(other Object) bool {
 		if !found {
 			return false
 		}
-		if !v.Equals(otherValue) {
+		if isNestedContainer(v) {
+			var err error
+			if path, err = path.descend(objectPair{m, otherMap}, objectPair{v, otherValue}); err != nil {
+				return false
+			}
+		}
+		if !equalsNested(v, otherValue, path) {
 			return false
 		}
 	}
@@ -411,9 +460,19 @@ func (m *Map) Len() *Int {
 	return NewInt(int64(len(m.items)))
 }
 
+// Enumerate calls fn for each key and value, following the iteration rules
+// described on Map. It stops early if ctx is canceled; callers should check
+// ctx.Err() afterwards.
 func (m *Map) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
 	for _, k := range m.SortedKeys() {
-		if !fn(NewString(k), m.items[k]) {
+		if ctx.Err() != nil {
+			return
+		}
+		value, ok := m.items[k]
+		if !ok {
+			continue
+		}
+		if !fn(NewString(k), value) {
 			return
 		}
 	}
@@ -427,8 +486,39 @@ func (m *Map) StringKeys() []string {
 	return keys
 }
 
+// MarshalJSON encodes the map as a JSON object with sorted keys. It returns
+// ErrNestingDepth if the map is too deeply nested or contains a cycle.
 func (m *Map) MarshalJSON() ([]byte, error) {
-	return json.Marshal(m.items)
+	return m.marshalJSON(nil)
+}
+
+func (m *Map) marshalJSON(path nestPath[Object]) ([]byte, error) {
+	var out bytes.Buffer
+	out.WriteByte('{')
+	for i, k := range m.SortedKeys() {
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		key, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		out.Write(key)
+		out.WriteByte(':')
+		v := m.items[k]
+		if isNestedContainer(v) {
+			if path, err = path.descend(m, v); err != nil {
+				return nil, err
+			}
+		}
+		data, err := marshalJSONNested(v, path)
+		if err != nil {
+			return nil, err
+		}
+		out.Write(data)
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
 }
 
 func NewMap(m map[string]Object) *Map {

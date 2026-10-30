@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -100,8 +101,15 @@ func (v *replVM) Eval(ctx context.Context, source string) (any, error) {
 	// Errors are values. If an unhandled exception occurred, it was returned
 	// from RunCode above. An error on TOS is just a value (created but not thrown).
 
-	// Convert to Go value
-	interfaceVal := result.Interface()
+	// Convert to Go value. A cyclic or too deeply nested value cannot be
+	// converted, so show its string representation, which marks the cycle.
+	interfaceVal, err := object.ToInterface(result)
+	if errors.Is(err, object.ErrNestingDepth) {
+		return result.Inspect(), nil
+	}
+	if err != nil {
+		return nil, err
+	}
 
 	// For objects that don't have a Go equivalent (modules, closures),
 	// return their string representation so the REPL can display them
@@ -157,7 +165,7 @@ func (v *replVM) Run(ctx context.Context, code *bytecode.Code) (any, error) {
 		return nil, nil
 	}
 
-	return result.Interface(), nil
+	return object.ToInterface(result)
 }
 
 // Call invokes a function defined in the VM's context by name.
@@ -185,7 +193,7 @@ func (v *replVM) Call(ctx context.Context, name string, args ...any) (any, error
 		return nil, err
 	}
 
-	return result.Interface(), nil
+	return object.ToInterface(result)
 }
 
 // Get retrieves a global variable by name from the VM's context.
@@ -194,7 +202,7 @@ func (v *replVM) Get(name string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return obj.Interface(), nil
+	return object.ToInterface(obj)
 }
 
 // GlobalNames returns the names of all global variables in the VM's context.

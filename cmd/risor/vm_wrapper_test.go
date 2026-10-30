@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2"
+	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
@@ -256,4 +258,27 @@ func TestReplVMTranscriptReproduction(t *testing.T) {
 	result, err = vm.Eval(ctx, "[1,2,3].map(x => x < 3)")
 	assert.Nil(t, err)
 	assert.Equal(t, result, []any{true, true, false})
+}
+
+// TestReplVMCyclicResult tests that the REPL shows a cyclic value with the
+// cycle marked, and that Get and Call report the nesting error.
+func TestReplVMCyclicResult(t *testing.T) {
+	vm, err := newReplVM(risor.Builtins())
+	assert.Nil(t, err)
+
+	result, err := vm.Eval(context.Background(), "let a = []; a.append(a); a")
+	assert.Nil(t, err)
+	assert.Equal(t, result, "[[...]]")
+
+	result, err = vm.Eval(context.Background(), `let m = {}; m["v"] = m.values(); m`)
+	assert.Nil(t, err)
+	assert.Equal(t, result, `{"v": iter(map.values)}`)
+
+	_, err = vm.Get("a")
+	assert.True(t, errors.Is(err, object.ErrNestingDepth))
+
+	_, err = vm.Eval(context.Background(), "function self() { return a }")
+	assert.Nil(t, err)
+	_, err = vm.Call(context.Background(), "self")
+	assert.True(t, errors.Is(err, object.ErrNestingDepth))
 }

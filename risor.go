@@ -502,7 +502,9 @@ func Compile(ctx context.Context, source string, opts ...Option) (*bytecode.Code
 //   - Time → time.Time
 //
 // For types without a Go equivalent (closures, modules, errors, etc.),
-// the Inspect() string representation is returned.
+// the Inspect() string representation is returned. A List or Map nested more
+// deeply than object.MaxNestingDepth, or one that contains itself, cannot be
+// converted and Run returns object.ErrNestingDepth.
 //
 // Use WithRawResult() to receive the object.Object directly without conversion.
 func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) {
@@ -522,13 +524,25 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 		return nil, err
 	}
 
+	// Guard against a VM that returns no result object
+	if result == nil {
+		if o.rawResult {
+			return object.Nil, nil
+		}
+		return nil, nil
+	}
+
 	// Return raw object.Object if requested
 	if o.rawResult {
 		return result, nil
 	}
 
-	// Convert to Go value
-	interfaceVal := result.Interface()
+	// Convert to Go value. This fails if the result is too deeply nested or
+	// contains a cycle (object.ErrNestingDepth).
+	interfaceVal, err := object.ToInterface(result)
+	if err != nil {
+		return nil, err
+	}
 	// For objects that don't have a Go equivalent (modules, closures),
 	// return their string representation
 	if interfaceVal == nil {

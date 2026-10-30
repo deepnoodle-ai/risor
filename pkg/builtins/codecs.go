@@ -101,7 +101,10 @@ func encodeHex(ctx context.Context, obj object.Object) (object.Object, error) {
 }
 
 func encodeJSON(ctx context.Context, obj object.Object) (object.Object, error) {
-	nativeObject := obj.Interface()
+	nativeObject, err := object.ToInterface(obj)
+	if err != nil {
+		return nil, err
+	}
 	if nativeObject == nil {
 		return nil, object.ValueErrorf("encode() does not support %T", obj)
 	}
