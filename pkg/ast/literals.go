@@ -92,7 +92,7 @@ func (x *DefaultValue) String() string {
 type String struct {
 	ValuePos token.Position // position of opening quote
 	Closing  token.Position // position of closing quote; unset for a map shorthand key
-	Literal  string         // the string contents, without quotes
+	Literal  string         // the unescaped string contents, without quotes; not the source text
 	Value    string         // the unquoted string value
 	Template *tmpl.Template // template if this is a template string
 	Exprs    []Expr         // embedded expressions for templates
