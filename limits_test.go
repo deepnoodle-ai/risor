@@ -55,7 +55,9 @@ func TestWithLimitsLowered(t *testing.T) {
 		`regexp.split("", "aaaaaaaaaa")`,
 		`regexp.find_all("a", "aaaaaaaaaaa", 10)`,
 		`regexp.compile("a").find_all("aaaaaaaaaaa", 10)`,
-		`regexp.compile("(a)").find_all_groups("aaaaa")`,
+		// len() keeps the result conversion, which counts the nested
+		// lists too, within the limit
+		`len(regexp.compile("(a)").find_all_groups("aaaaa"))`,
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.Nil(t, err, src)
@@ -116,7 +118,8 @@ func TestWithLimitsRangeConversion(t *testing.T) {
 		assert.Equal(t, result, want, src)
 	}
 
-	// Ranges over the limit raise a value error instead of converting to nil
+	// Ranges over the limit raise a value error instead of converting to nil.
+	// A list counts its items too: [1, range(11)] has 13 elements.
 	for _, src := range []string{
 		`sprintf("%v", range(11))`,
 		`sprintf("%v", [1, range(11)])`,
@@ -128,7 +131,7 @@ func TestWithLimitsRangeConversion(t *testing.T) {
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.NotNil(t, err, src)
-		assert.True(t, strings.Contains(err.Error(), "range too large"), src)
+		assert.True(t, strings.Contains(err.Error(), "value too large to convert"), src)
 	}
 
 	// A raised limit lets a range above the default limit convert
@@ -144,17 +147,18 @@ func TestWithLimitsRangeToHostFunc(t *testing.T) {
 	ctx := context.Background()
 	limits := WithLimits(Limits{MaxListLength: 10})
 	envMap := Builtins()
+	// A range converts to []int64 for an any parameter
 	envMap["count"] = func(v any) int {
-		items, _ := v.([]any)
+		items, _ := v.([]int64)
 		return len(items)
 	}
 	envMap["countInts"] = func(v []int64) int { return len(v) }
 	envMap["countPtr"] = func(v *any) int {
-		items, _ := (*v).([]any)
+		items, _ := (*v).([]int64)
 		return len(items)
 	}
 	envMap["countNested"] = func(v []any) int {
-		items, _ := v[0].([]any)
+		items, _ := v[0].([]int64)
 		return len(items)
 	}
 	env := WithEnv(envMap)
@@ -181,6 +185,99 @@ func TestWithLimitsRangeToHostFunc(t *testing.T) {
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.NotNil(t, err, src)
-		assert.True(t, strings.Contains(err.Error(), "range too large"), src)
+		assert.True(t, strings.Contains(err.Error(), "value too large to convert"), src)
 	}
+}
+
+// One conversion of a value to Go counts every element it produces against
+// MaxListLength, including the elements of a list each time it is
+// referenced. A list holding a 3-element list twice has 2 + 2*3 = 8
+// elements; three times, it has 3 + 3*3 = 12.
+func TestWithLimitsSharedReferences(t *testing.T) {
+	ctx := context.Background()
+	limits := WithLimits(Limits{MaxListLength: 10})
+	envMap := Builtins()
+	envMap["count"] = func(v any) int { return len(v.([]any)) }
+	envMap["countNested"] = func(v [][]int64) int { return len(v) }
+	env := WithEnv(envMap)
+
+	under := `let l = [1, 2, 3]; `
+	for src, want := range map[string]any{
+		under + `sprintf("%v", [l, l])`:        "[[1 2 3] [1 2 3]]",
+		under + `encode([l, l], "json")`:       "[[1,2,3],[1,2,3]]",
+		under + `[l, l]`:                       []any{[]any{int64(1), int64(2), int64(3)}, []any{int64(1), int64(2), int64(3)}},
+		under + `count([l, l])`:                int64(2),
+		under + `countNested([l, l])`:          int64(2),
+		`let r = range(6); sprintf("%v", [r])`: "[[0 1 2 3 4 5]]",
+	} {
+		result, err := Eval(ctx, src, env, limits)
+		assert.Nil(t, err, src)
+		assert.Equal(t, result, want, src)
+	}
+
+	over := `let l = [1, 2, 3]; `
+	for _, src := range []string{
+		over + `sprintf("%v", [l, l, l])`,
+		over + `encode([l, l, l], "json")`,
+		over + `[l, l, l]`,
+		over + `count([l, l, l])`,
+		over + `countNested([l, l, l])`,
+		`let r = range(6); sprintf("%v", [r, r])`, // 2 + 2*6 = 14
+		`let r = range(6); [r, r]`,
+	} {
+		_, err := Eval(ctx, src, env, limits)
+		assert.NotNil(t, err, src)
+		assert.True(t, strings.Contains(err.Error(), "value too large to convert (exceeds limit of 10 elements)"), src)
+	}
+}
+
+// The arguments of one builtin or host call share one element budget, so a
+// spread call cannot pass many references to a large list. Two references to
+// a 4-element list cost 2*4 = 8 elements. Three references cost 12.
+func TestWithLimitsSpreadArguments(t *testing.T) {
+	ctx := context.Background()
+	limits := WithLimits(Limits{MaxListLength: 10})
+	envMap := Builtins()
+	envMap["count2"] = func(a, b any) int { return len(a.([]any)) + len(b.([]any)) }
+	envMap["count3"] = func(a, b, c any) int { return 3 }
+	envMap["countAll"] = func(vs ...any) int { return len(vs) }
+	env := WithEnv(envMap)
+
+	under := `let l = [1, 2, 3, 4]; `
+	for src, want := range map[string]any{
+		under + `sprintf("%v %v", ...[l, l])`: "[1 2 3 4] [1 2 3 4]",
+		under + `count2(...[l, l])`:           int64(8),
+		under + `countAll(...[l, l])`:         int64(2),
+	} {
+		result, err := Eval(ctx, src, env, limits)
+		assert.Nil(t, err, src)
+		assert.Equal(t, result, want, src)
+	}
+
+	over := `let l = [1, 2, 3, 4]; `
+	for _, src := range []string{
+		over + `sprintf("%v %v %v", ...[l, l, l])`,
+		over + `error("%v %v %v", ...[l, l, l])`,
+		over + `count3(...[l, l, l])`,
+		over + `countAll(...[l, l, l])`,
+	} {
+		_, err := Eval(ctx, src, env, limits)
+		assert.NotNil(t, err, src)
+		assert.True(t, strings.Contains(err.Error(), "value too large to convert"), src)
+	}
+
+	// 63 references to a 100-element list cost 6300 elements
+	src := `let l = list(range(100)); sprintf("%v", ...list(range(63)).map(i => l))`
+	_, err := Eval(ctx, src, env, WithLimits(Limits{MaxListLength: 1000}))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+}
+
+// Without WithLimits, a list that references one large list many times
+// fails to convert instead of building billions of elements.
+func TestDefaultLimitsSharedReferences(t *testing.T) {
+	src := `let l = list(range(4096)); list(range(4096)).map(i => l)`
+	_, err := Eval(context.Background(), src, WithEnv(Builtins()))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
 }

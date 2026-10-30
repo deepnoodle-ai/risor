@@ -93,7 +93,7 @@ func TestMapIteratorsDeleteDuringIteration(t *testing.T) {
 		return true
 	})
 	assert.Len(t, collected, 1)
-	_, err := ToInterface(NewList(collected))
+	_, err := ToInterface(context.Background(), NewList(collected))
 	assert.Nil(t, err)
 }
 

@@ -565,8 +565,13 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 	}
 
 	// Convert to Go value. This fails if the result is too deeply nested or
-	// contains a cycle (object.ErrNestingDepth).
-	interfaceVal, err := object.ToInterface(result)
+	// contains a cycle (object.ErrNestingDepth), or has more elements in
+	// total than the list length limit.
+	convCtx := ctx
+	if o.limits != nil {
+		convCtx = object.WithLimits(ctx, *o.limits)
+	}
+	interfaceVal, err := object.ToInterface(convCtx, result)
 	if err != nil {
 		return nil, err
 	}

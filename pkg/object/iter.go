@@ -34,27 +34,28 @@ func (it *Iter) String() string {
 }
 
 // Interface collects the iterator's values into a []any. It returns nil if a
-// value is nested more deeply than MaxNestingDepth or contains a cycle; use
+// value is nested more deeply than MaxNestingDepth, contains a cycle, or the
+// result has more than DefaultMaxListLength elements in total; use
 // ToInterface to get the error instead.
 func (it *Iter) Interface() any {
-	result, err := it.toInterface(nil)
-	if err != nil {
-		return nil
-	}
-	return result
+	return interfaceOrNil(it)
 }
 
-func (it *Iter) toInterface(path nestPath[Object]) (any, error) {
+func (it *Iter) toInterface(path nestPath[Object], b *convBudget) (any, error) {
 	var items []any
 	var err error
-	it.Enumerate(context.Background(), func(key, value Object) bool {
+	it.Enumerate(b.ctx, func(key, value Object) bool {
+		// An iterator's length is unknown, so charge each item as it comes.
+		if err = b.take(1); err != nil {
+			return false
+		}
 		if isNestedContainer(value) {
 			if path, err = path.descend(it, value); err != nil {
 				return false
 			}
 		}
 		var item any
-		item, err = toInterface(value, path)
+		item, err = toInterface(value, path, b)
 		if err != nil {
 			return false
 		}
@@ -62,6 +63,9 @@ func (it *Iter) toInterface(path nestPath[Object]) (any, error) {
 		return true
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err := b.ctx.Err(); err != nil {
 		return nil, err
 	}
 	return items, nil

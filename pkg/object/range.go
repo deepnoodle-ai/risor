@@ -98,18 +98,29 @@ func (r *Range) Inspect() string {
 
 // Interface returns the range values as a []int64. It has no context, so it
 // cannot see configured limits: ranges longer than DefaultMaxListLength are
-// not materialized and return nil. Use ExpandRanges first to apply the limit
-// in a context and get a value error instead.
+// not materialized and return nil. Use ToInterface to apply the limit in a
+// context and get a value error instead.
 func (r *Range) Interface() any {
+	return interfaceOrNil(r)
+}
+
+func (r *Range) toInterface(b *convBudget) (any, error) {
 	n := r.length()
-	if n > DefaultMaxListLength {
-		return nil
+	if err := b.take(n); err != nil {
+		return nil, err
 	}
+	return r.values(n), nil
+}
+
+// values returns the first n values of the range. n must not exceed the
+// range length.
+func (r *Range) values(n uint64) []int64 {
 	result := make([]int64, 0, n)
-	r.Enumerate(context.Background(), func(key, value Object) bool {
-		result = append(result, value.(*Int).Value())
-		return true
-	})
+	value := r.start
+	for i := uint64(0); i < n; i++ {
+		result = append(result, value)
+		value += r.step
+	}
 	return result
 }
 

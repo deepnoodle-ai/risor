@@ -153,6 +153,10 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 
 	var callArgs []reflect.Value
 
+	// All arguments share one element budget, so a spread call cannot
+	// convert more than the list length limit in total.
+	budget := newConvBudget(ctx)
+
 	// Add context if needed
 	startIdx := 0
 	if g.hasContext {
@@ -166,7 +170,7 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 		nonVariadicCount := g.numIn - 1
 		for i := 0; i < nonVariadicCount; i++ {
 			targetType := fnType.In(startIdx + i)
-			goVal, err := g.toGoArg(ctx, args[i], targetType)
+			goVal, err := g.registry.toGoPath(args[i], targetType, nil, budget)
 			if err != nil {
 				return nil, fmt.Errorf("%s: argument %d: %w", g.name, i+1, err)
 			}
@@ -178,7 +182,7 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 		elemType := variadicType.Elem()
 		variadicSlice := reflect.MakeSlice(variadicType, 0, len(args)-nonVariadicCount)
 		for i := nonVariadicCount; i < len(args); i++ {
-			goVal, err := g.toGoArg(ctx, args[i], elemType)
+			goVal, err := g.registry.toGoPath(args[i], elemType, nil, budget)
 			if err != nil {
 				return nil, fmt.Errorf("%s: variadic argument %d: %w", g.name, i+1, err)
 			}
@@ -189,7 +193,7 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 		// Convert all arguments
 		for i := 0; i < len(args); i++ {
 			targetType := fnType.In(startIdx + i)
-			goVal, err := g.toGoArg(ctx, args[i], targetType)
+			goVal, err := g.registry.toGoPath(args[i], targetType, nil, budget)
 			if err != nil {
 				return nil, fmt.Errorf("%s: argument %d: %w", g.name, i+1, err)
 			}
@@ -198,27 +202,6 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 	}
 
 	return callArgs, nil
-}
-
-// toGoArg converts a script argument to the Go parameter type. For a
-// parameter that can hold a range's values (any, or a slice, array, map, or
-// pointer that may contain one), it first expands ranges with ExpandRanges,
-// so the list length limit in ctx applies. Range.Interface has no context
-// and returns nil for a range over the default limit.
-func (g *GoFunc) toGoArg(ctx context.Context, arg Object, target reflect.Type) (any, error) {
-	switch target.Kind() {
-	case reflect.Interface:
-		if target.NumMethod() != 0 {
-			break
-		}
-		fallthrough
-	case reflect.Slice, reflect.Array, reflect.Map, reflect.Ptr:
-		var err error
-		if arg, err = ExpandRanges(ctx, arg); err != nil {
-			return nil, err
-		}
-	}
-	return g.registry.ToGo(arg, target)
 }
 
 func (g *GoFunc) processResults(results []reflect.Value) (Object, error) {

@@ -3,6 +3,7 @@ package object
 import (
 	"context"
 	"math"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -200,39 +201,127 @@ func TestRangeInterfaceLimit(t *testing.T) {
 	assert.Equal(t, NewRange(0, 3, 1).Interface(), []int64{0, 1, 2})
 }
 
-func TestExpandRanges(t *testing.T) {
+func repeatList(item Object, n int) *List {
+	items := make([]Object, n)
+	for i := range items {
+		items[i] = item
+	}
+	return NewList(items)
+}
+
+// One conversion counts every element it produces, including those of a
+// container that is referenced more than once.
+func TestToInterfaceBudget(t *testing.T) {
 	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+	inner := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
 
-	// Scalars and containers without ranges are returned unchanged
-	s := NewString("a")
-	got, err := ExpandRanges(ctx, s)
+	// 2 + 2*3 = 8 elements
+	got, err := ToInterface(ctx, repeatList(inner, 2))
 	assert.Nil(t, err)
-	assert.True(t, got == s)
-	plain := NewList([]Object{NewInt(1), NewMap(map[string]Object{"a": NewInt(2)})})
-	got, err = ExpandRanges(ctx, plain)
-	assert.Nil(t, err)
-	assert.True(t, got == plain)
+	assert.Equal(t, got, []any{[]any{int64(1), int64(2), int64(3)}, []any{int64(1), int64(2), int64(3)}})
 
-	// Nested ranges are replaced by lists, and the input is not modified
-	r := NewRange(0, 3, 1)
-	nested := NewList([]Object{NewInt(1), NewMap(map[string]Object{"r": r})})
-	got, err = ExpandRanges(ctx, nested)
-	assert.Nil(t, err)
-	assert.Equal(t, got.Interface(), []any{int64(1), map[string]any{"r": []any{int64(0), int64(1), int64(2)}}})
-	assert.True(t, nested.items[1].(*Map).items["r"] == r)
+	// 3 + 3*3 = 12 elements
+	_, err = ToInterface(ctx, repeatList(inner, 3))
+	assertValueError(t, err, "value too large to convert (exceeds limit of 10 elements)")
 
-	// A range over the limit is a value error, also when nested
-	_, err = ExpandRanges(ctx, NewRange(0, 11, 1))
-	assertValueError(t, err, "range too large (exceeds limit of 10 elements)")
-	_, err = ExpandRanges(ctx, NewList([]Object{NewRange(0, 1<<60, 1)}))
-	assertValueError(t, err, "range too large")
-
-	// A list that contains itself does not recurse forever
-	cyclic := NewList([]Object{r})
-	cyclic.items = append(cyclic.items, cyclic)
-	got, err = ExpandRanges(ctx, cyclic)
+	// Ranges count their elements: 1 + 6 = 7, then 2 + 2*6 = 14
+	r := NewRange(0, 6, 1)
+	got, err = ToInterface(ctx, NewList([]Object{r}))
 	assert.Nil(t, err)
-	assert.Equal(t, got.(*List).items[0].Inspect(), "[0, 1, 2]")
+	assert.Equal(t, got, []any{[]int64{0, 1, 2, 3, 4, 5}})
+	_, err = ToInterface(ctx, repeatList(r, 2))
+	assertValueError(t, err, "value too large to convert")
+	_, err = ToInterface(ctx, NewRange(0, 1<<60, 1))
+	assertValueError(t, err, "value too large to convert")
+
+	// Map entries and iterator items count too: 1 + 5*2 = 11
+	m := NewMap(map[string]Object{"a": inner, "b": NewInt(1)})
+	_, err = ToInterface(ctx, NewMap(map[string]Object{"x": m, "y": NewInt(1)}))
+	assert.Nil(t, err)
+	_, err = ToInterface(ctx, NewMapValueIter(NewMap(map[string]Object{
+		"a": inner, "b": inner, "c": inner,
+	})))
+	assertValueError(t, err, "value too large to convert")
+}
+
+// Under the default limits, a list that references one list many times is
+// rejected once the budget is spent, instead of building billions of
+// elements. Interface returns nil in that case.
+func TestToInterfaceBudgetDefault(t *testing.T) {
+	inner := repeatList(NewInt(1), 1<<12)
+	outer := repeatList(inner, 1<<20) // 1<<32 elements in total
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := ToInterface(context.Background(), outer)
+	runtime.ReadMemStats(&after)
+	assertValueError(t, err, "value too large to convert")
+	// The budget bounds the work at about DefaultMaxListLength elements
+	// (64 MiB of interface slots), far below the 64 GiB without it.
+	assert.True(t, after.TotalAlloc-before.TotalAlloc < 256<<20)
+
+	assert.Nil(t, outer.Interface())
+}
+
+func TestToGoBudget(t *testing.T) {
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+	reg := DefaultRegistry()
+	inner := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
+	sliceType := reflect.TypeOf([][]int64{})
+
+	got, err := reg.ToGo(ctx, repeatList(inner, 2), sliceType)
+	assert.Nil(t, err)
+	assert.Equal(t, got, [][]int64{{1, 2, 3}, {1, 2, 3}})
+	_, err = reg.ToGo(ctx, repeatList(inner, 3), sliceType)
+	assertValueError(t, err, "value too large to convert (exceeds limit of 10 elements)")
+
+	// An any target converts as ToInterface does
+	_, err = reg.ToGo(ctx, repeatList(inner, 3), reflect.TypeOf((*any)(nil)).Elem())
+	assertValueError(t, err, "value too large to convert")
+
+	// A range converts to a slice or array like a list of its values
+	got, err = reg.ToGo(ctx, NewRange(0, 4, 1), reflect.TypeOf([]int{}))
+	assert.Nil(t, err)
+	assert.Equal(t, got, []int{0, 1, 2, 3})
+	got, err = reg.ToGo(ctx, NewRange(5, 0, -1), reflect.TypeOf([2]int64{}))
+	assert.Nil(t, err)
+	assert.Equal(t, got, [2]int64{5, 4})
+	got, err = reg.ToGo(ctx, NewRange(0, 2, 1), reflect.TypeOf(&[]int64{}))
+	assert.Nil(t, err)
+	assert.Equal(t, *got.(*[]int64), []int64{0, 1})
+	_, err = reg.ToGo(ctx, repeatList(NewRange(0, 6, 1), 2), sliceType)
+	assertValueError(t, err, "value too large to convert")
+	_, err = reg.ToGo(ctx, NewRange(0, 1<<60, 1), reflect.TypeOf([]int64{}))
+	assertValueError(t, err, "value too large to convert")
+
+	// An array charges only the elements it holds
+	_, err = reg.ToGo(ctx, NewRange(0, 1<<60, 1), reflect.TypeOf([3]int64{}))
+	assert.Nil(t, err)
+
+	// Map entries count
+	mapType := reflect.TypeOf(map[string][]int64{})
+	_, err = reg.ToGo(ctx, NewMap(map[string]Object{"a": inner, "b": inner}), mapType)
+	assert.Nil(t, err)
+	_, err = reg.ToGo(ctx, NewMap(map[string]Object{"a": inner, "b": inner, "c": inner}), mapType)
+	assertValueError(t, err, "value too large to convert")
+}
+
+// ToInterfaces shares one budget across its values and converts each value
+// at the same nesting depth as ToInterface.
+func TestToInterfaces(t *testing.T) {
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+	inner := NewList([]Object{NewInt(1), NewInt(2), NewInt(3), NewInt(4)})
+
+	got, err := ToInterfaces(ctx, []Object{inner, inner, NewInt(5)})
+	assert.Nil(t, err)
+	assert.Equal(t, got, []any{[]any{int64(1), int64(2), int64(3), int64(4)}, []any{int64(1), int64(2), int64(3), int64(4)}, int64(5)})
+	_, err = ToInterfaces(ctx, []Object{inner, inner, inner})
+	assertValueError(t, err, "value too large to convert (exceeds limit of 10 elements)")
+
+	_, err = ToInterfaces(context.Background(), []Object{nestedLists(MaxNestingDepth)})
+	assert.Nil(t, err)
+	_, err = ToInterfaces(context.Background(), []Object{nestedLists(MaxNestingDepth + 1)})
+	assert.ErrorIs(t, err, ErrNestingDepth)
 }
 
 // Split allocates for the parts it finds, not for the list length limit.
@@ -250,11 +339,10 @@ func TestStringSplitAllocation(t *testing.T) {
 	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(1<<20))
 }
 
-func TestExpandRangesDepth(t *testing.T) {
+// Conversion stops at the nesting limit, also when ranges are converted
+// inside the walk, instead of recursing into a deeply nested value.
+func TestToInterfaceRangeDepth(t *testing.T) {
 	ctx := context.Background()
-
-	// The depth limit matches ToInterface on the result: a range becomes a
-	// list, so MaxNestingDepth-1 lists around a range pass, and one more fails
 	nest := func(n int) Object {
 		var obj Object = NewRange(0, 2, 1)
 		for i := 0; i < n; i++ {
@@ -262,43 +350,41 @@ func TestExpandRangesDepth(t *testing.T) {
 		}
 		return obj
 	}
-	expanded, err := ExpandRanges(ctx, nest(MaxNestingDepth-1))
+	_, err := ToInterface(ctx, nest(MaxNestingDepth-1))
 	assert.Nil(t, err)
-	_, err = ToInterface(expanded)
-	assert.Nil(t, err)
-	_, err = ExpandRanges(ctx, nest(MaxNestingDepth))
+	_, err = ToInterface(ctx, nest(MaxNestingDepth+1))
 	assert.ErrorIs(t, err, ErrNestingDepth)
 
-	// A deeply nested value stops at the limit instead of recursing
 	var deep Object = NewInt(1)
 	for i := 0; i < 1_000_000; i++ {
 		deep = NewList([]Object{deep})
 	}
-	_, err = ExpandRanges(ctx, deep)
+	_, err = ToInterface(ctx, deep)
+	assert.ErrorIs(t, err, ErrNestingDepth)
+	_, err = DefaultRegistry().ToGo(ctx, deep, reflect.TypeOf([]any{}))
 	assert.ErrorIs(t, err, ErrNestingDepth)
 }
 
-func TestExpandRangesIterator(t *testing.T) {
+// Ranges yielded by an iterator count toward the conversion budget.
+func TestToInterfaceIteratorRanges(t *testing.T) {
 	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
 
-	// An iterator becomes a list of its values, with ranges expanded
 	m := NewMap(map[string]Object{"a": NewRange(0, 3, 1)})
-	got, err := ExpandRanges(ctx, NewMapValueIter(m))
+	got, err := ToInterface(ctx, NewMapValueIter(m))
 	assert.Nil(t, err)
-	assert.Equal(t, got.Interface(), []any{[]any{int64(0), int64(1), int64(2)}})
+	assert.Equal(t, got, []any{[]int64{0, 1, 2}})
 
-	// A range yielded by an iterator gets the limit
 	m = NewMap(map[string]Object{"a": NewRange(0, 11, 1)})
-	_, err = ExpandRanges(ctx, NewMapValueIter(m))
-	assertValueError(t, err, "range too large")
-	_, err = ExpandRanges(ctx, NewList([]Object{NewMapValueIter(m)}))
-	assertValueError(t, err, "range too large")
+	_, err = ToInterface(ctx, NewMapValueIter(m))
+	assertValueError(t, err, "too large")
+	_, err = ToInterface(ctx, NewList([]Object{NewMapValueIter(m)}))
+	assertValueError(t, err, "too large")
 
-	// An iterator stored in the map it iterates does not recurse forever
+	// An iterator stored in the map it iterates stops at the cycle
 	self := NewMap(map[string]Object{})
 	self.items["v"] = NewMapValueIter(self)
-	_, err = ExpandRanges(ctx, self)
-	assert.Nil(t, err)
+	_, err = ToInterface(ctx, self)
+	assert.ErrorIs(t, err, ErrNestingDepth)
 }
 
 // Range.Enumerate stops promptly when the context is canceled.

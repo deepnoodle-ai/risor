@@ -150,7 +150,8 @@ func (g *GoStruct) SetAttr(name string, value Object) error {
 		return TypeErrorf("field %q of %s is not settable", name, g.structType.Name())
 	}
 
-	goVal, err := g.registry.ToGo(value, fieldVal.Type())
+	// SetAttr has no context, so the default limits apply.
+	goVal, err := g.registry.ToGo(context.Background(), value, fieldVal.Type())
 	if err != nil {
 		return fmt.Errorf("cannot set field %q: %w", name, err)
 	}

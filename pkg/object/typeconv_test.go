@@ -1,6 +1,7 @@
 package object
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -19,7 +20,7 @@ func TestTypeRegistryFloat64(t *testing.T) {
 	})
 
 	t.Run("ToGo", func(t *testing.T) {
-		result, err := registry.ToGo(NewFloat(3.0), reflect.TypeOf(float64(0)))
+		result, err := registry.ToGo(context.Background(), NewFloat(3.0), reflect.TypeOf(float64(0)))
 		assert.Nil(t, err)
 		assert.Equal(t, result, 3.0)
 	})
@@ -47,7 +48,7 @@ func TestTypeRegistryMapString(t *testing.T) {
 			"c": NewString("cod"),
 			"d": NewString("deer"),
 		})
-		result, err := registry.ToGo(risorMap, reflect.TypeOf(map[string]string{}))
+		result, err := registry.ToGo(context.Background(), risorMap, reflect.TypeOf(map[string]string{}))
 		assert.Nil(t, err)
 		assert.Equal(t, result, map[string]string{
 			"c": "cod",
@@ -67,7 +68,7 @@ func TestTypeRegistryPointer(t *testing.T) {
 	})
 
 	t.Run("ToGo pointer", func(t *testing.T) {
-		result, err := registry.ToGo(NewFloat(3.0), reflect.TypeOf((*float64)(nil)))
+		result, err := registry.ToGo(context.Background(), NewFloat(3.0), reflect.TypeOf((*float64)(nil)))
 		assert.Nil(t, err)
 		ptr, ok := result.(*float64)
 		assert.True(t, ok)
@@ -75,11 +76,11 @@ func TestTypeRegistryPointer(t *testing.T) {
 	})
 
 	t.Run("ToGo multiple pointers are independent", func(t *testing.T) {
-		result1, err := registry.ToGo(NewFloat(3.0), reflect.TypeOf((*float64)(nil)))
+		result1, err := registry.ToGo(context.Background(), NewFloat(3.0), reflect.TypeOf((*float64)(nil)))
 		assert.Nil(t, err)
 		ptr1 := result1.(*float64)
 
-		result2, err := registry.ToGo(NewFloat(4.0), reflect.TypeOf((*float64)(nil)))
+		result2, err := registry.ToGo(context.Background(), NewFloat(4.0), reflect.TypeOf((*float64)(nil)))
 		assert.Nil(t, err)
 		ptr2 := result2.(*float64)
 
@@ -145,7 +146,7 @@ func TestTypeRegistrySlice(t *testing.T) {
 			NewFloat(9.0),
 			NewFloat(-8.0),
 		})
-		result, err := registry.ToGo(list, reflect.TypeOf([]float64{}))
+		result, err := registry.ToGo(context.Background(), list, reflect.TypeOf([]float64{}))
 		assert.Nil(t, err)
 		assert.Equal(t, result, []float64{9.0, -8.0})
 	})
@@ -162,7 +163,7 @@ func TestTypeRegistryTime(t *testing.T) {
 	})
 
 	t.Run("ToGo", func(t *testing.T) {
-		result, err := registry.ToGo(NewTime(now), reflect.TypeOf(time.Time{}))
+		result, err := registry.ToGo(context.Background(), NewTime(now), reflect.TypeOf(time.Time{}))
 		assert.Nil(t, err)
 		goTime, ok := result.(time.Time)
 		assert.True(t, ok)
@@ -181,7 +182,7 @@ func TestTypeRegistryBytes(t *testing.T) {
 	})
 
 	t.Run("ToGo", func(t *testing.T) {
-		result, err := registry.ToGo(NewBytes([]byte("abc")), reflect.TypeOf([]byte{}))
+		result, err := registry.ToGo(context.Background(), NewBytes([]byte("abc")), reflect.TypeOf([]byte{}))
 		assert.Nil(t, err)
 		goBuf, ok := result.([]byte)
 		assert.True(t, ok)
@@ -209,7 +210,7 @@ func TestTypeRegistryArrayInt(t *testing.T) {
 			NewInt(-1),
 			NewInt(-2),
 		})
-		result, err := registry.ToGo(list, reflect.TypeOf([4]int{}))
+		result, err := registry.ToGo(context.Background(), list, reflect.TypeOf([4]int{}))
 		assert.Nil(t, err)
 		goArray, ok := result.([4]int)
 		assert.True(t, ok)
@@ -235,7 +236,7 @@ func TestTypeRegistryArrayFloat64(t *testing.T) {
 			NewFloat(-1),
 			NewFloat(-2),
 		})
-		result, err := registry.ToGo(list, reflect.TypeOf([2]float64{}))
+		result, err := registry.ToGo(context.Background(), list, reflect.TypeOf([2]float64{}))
 		assert.Nil(t, err)
 		goArray, ok := result.([2]float64)
 		assert.True(t, ok)
@@ -341,32 +342,32 @@ func TestTypeRegistryToGo(t *testing.T) {
 	registry := DefaultRegistry()
 
 	t.Run("int conversion", func(t *testing.T) {
-		result, err := registry.ToGo(NewInt(42), reflect.TypeOf(int(0)))
+		result, err := registry.ToGo(context.Background(), NewInt(42), reflect.TypeOf(int(0)))
 		assert.Nil(t, err)
 		assert.Equal(t, result, 42)
 	})
 
 	t.Run("int to float64", func(t *testing.T) {
-		result, err := registry.ToGo(NewInt(42), reflect.TypeOf(float64(0)))
+		result, err := registry.ToGo(context.Background(), NewInt(42), reflect.TypeOf(float64(0)))
 		assert.Nil(t, err)
 		assert.Equal(t, result, 42.0)
 	})
 
 	t.Run("float to int", func(t *testing.T) {
-		result, err := registry.ToGo(NewFloat(3.7), reflect.TypeOf(int(0)))
+		result, err := registry.ToGo(context.Background(), NewFloat(3.7), reflect.TypeOf(int(0)))
 		assert.Nil(t, err)
 		assert.Equal(t, result, 3) // truncated
 	})
 
 	t.Run("string", func(t *testing.T) {
-		result, err := registry.ToGo(NewString("hello"), reflect.TypeOf(""))
+		result, err := registry.ToGo(context.Background(), NewString("hello"), reflect.TypeOf(""))
 		assert.Nil(t, err)
 		assert.Equal(t, result, "hello")
 	})
 
 	t.Run("list to slice", func(t *testing.T) {
 		list := NewList([]Object{NewInt(1), NewInt(2), NewInt(3)})
-		result, err := registry.ToGo(list, reflect.TypeOf([]int{}))
+		result, err := registry.ToGo(context.Background(), list, reflect.TypeOf([]int{}))
 		assert.Nil(t, err)
 		assert.Equal(t, result, []int{1, 2, 3})
 	})
@@ -398,7 +399,7 @@ func TestRegistryBuilder(t *testing.T) {
 	})
 
 	t.Run("custom ToGo", func(t *testing.T) {
-		result, err := registry.ToGo(NewInt(42), reflect.TypeOf(CustomType{}))
+		result, err := registry.ToGo(context.Background(), NewInt(42), reflect.TypeOf(CustomType{}))
 		assert.Nil(t, err)
 		ct, ok := result.(CustomType)
 		assert.True(t, ok)
@@ -504,19 +505,19 @@ func TestTypeRegistryNilHandling(t *testing.T) {
 	})
 
 	t.Run("ToGo nil to pointer", func(t *testing.T) {
-		result, err := registry.ToGo(Nil, reflect.TypeOf((*int)(nil)))
+		result, err := registry.ToGo(context.Background(), Nil, reflect.TypeOf((*int)(nil)))
 		assert.Nil(t, err)
 		assert.Nil(t, result)
 	})
 
 	t.Run("ToGo nil to slice", func(t *testing.T) {
-		result, err := registry.ToGo(Nil, reflect.TypeOf([]int{}))
+		result, err := registry.ToGo(context.Background(), Nil, reflect.TypeOf([]int{}))
 		assert.Nil(t, err)
 		assert.Nil(t, result)
 	})
 
 	t.Run("ToGo nil to map", func(t *testing.T) {
-		result, err := registry.ToGo(Nil, reflect.TypeOf(map[string]int{}))
+		result, err := registry.ToGo(context.Background(), Nil, reflect.TypeOf(map[string]int{}))
 		assert.Nil(t, err)
 		assert.Nil(t, result)
 	})
@@ -600,7 +601,7 @@ func TestTypeRegistryAllNumericTypes(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				result, err := registry.ToGo(NewInt(42), tt.targetType)
+				result, err := registry.ToGo(context.Background(), NewInt(42), tt.targetType)
 				assert.Nil(t, err)
 				assert.Equal(t, result, tt.expected)
 			})
@@ -621,7 +622,7 @@ func TestTypeRegistryAllNumericTypes(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				result, err := registry.ToGo(NewInt(42), tt.targetType)
+				result, err := registry.ToGo(context.Background(), NewInt(42), tt.targetType)
 				assert.Nil(t, err)
 				assert.Equal(t, result, tt.expected)
 			})
@@ -629,13 +630,13 @@ func TestTypeRegistryAllNumericTypes(t *testing.T) {
 	})
 
 	t.Run("ToGo Byte to numeric", func(t *testing.T) {
-		result, err := registry.ToGo(NewByte(42), reflect.TypeOf(int(0)))
+		result, err := registry.ToGo(context.Background(), NewByte(42), reflect.TypeOf(int(0)))
 		assert.Nil(t, err)
 		assert.Equal(t, result, 42)
 	})
 
 	t.Run("ToGo Float to all int types", func(t *testing.T) {
-		result, err := registry.ToGo(NewFloat(42.9), reflect.TypeOf(int(0)))
+		result, err := registry.ToGo(context.Background(), NewFloat(42.9), reflect.TypeOf(int(0)))
 		assert.Nil(t, err)
 		assert.Equal(t, result, 42) // truncated
 	})
@@ -661,7 +662,7 @@ func TestTypeRegistryEmptyContainers(t *testing.T) {
 	})
 
 	t.Run("ToGo empty list to slice", func(t *testing.T) {
-		result, err := registry.ToGo(NewList([]Object{}), reflect.TypeOf([]int{}))
+		result, err := registry.ToGo(context.Background(), NewList([]Object{}), reflect.TypeOf([]int{}))
 		assert.Nil(t, err)
 		slice, ok := result.([]int)
 		assert.True(t, ok)
@@ -669,7 +670,7 @@ func TestTypeRegistryEmptyContainers(t *testing.T) {
 	})
 
 	t.Run("ToGo empty map", func(t *testing.T) {
-		result, err := registry.ToGo(NewMap(map[string]Object{}), reflect.TypeOf(map[string]int{}))
+		result, err := registry.ToGo(context.Background(), NewMap(map[string]Object{}), reflect.TypeOf(map[string]int{}))
 		assert.Nil(t, err)
 		m, ok := result.(map[string]int)
 		assert.True(t, ok)
@@ -695,39 +696,39 @@ func TestTypeRegistryErrorCases(t *testing.T) {
 	})
 
 	t.Run("ToGo type mismatch - string to int", func(t *testing.T) {
-		_, err := registry.ToGo(NewString("hello"), reflect.TypeOf(int(0)))
+		_, err := registry.ToGo(context.Background(), NewString("hello"), reflect.TypeOf(int(0)))
 		assert.NotNil(t, err)
 	})
 
 	t.Run("ToGo type mismatch - int to string", func(t *testing.T) {
-		_, err := registry.ToGo(NewInt(42), reflect.TypeOf(""))
+		_, err := registry.ToGo(context.Background(), NewInt(42), reflect.TypeOf(""))
 		assert.NotNil(t, err)
 	})
 
 	t.Run("ToGo type mismatch - string to bool", func(t *testing.T) {
-		_, err := registry.ToGo(NewString("true"), reflect.TypeOf(true))
+		_, err := registry.ToGo(context.Background(), NewString("true"), reflect.TypeOf(true))
 		assert.NotNil(t, err)
 	})
 
 	t.Run("ToGo list with wrong element type", func(t *testing.T) {
 		list := NewList([]Object{NewString("not an int")})
-		_, err := registry.ToGo(list, reflect.TypeOf([]int{}))
+		_, err := registry.ToGo(context.Background(), list, reflect.TypeOf([]int{}))
 		assert.NotNil(t, err)
 	})
 
 	t.Run("ToGo map with wrong value type", func(t *testing.T) {
 		m := NewMap(map[string]Object{"a": NewString("not an int")})
-		_, err := registry.ToGo(m, reflect.TypeOf(map[string]int{}))
+		_, err := registry.ToGo(context.Background(), m, reflect.TypeOf(map[string]int{}))
 		assert.NotNil(t, err)
 	})
 
 	t.Run("ToGo non-list to slice", func(t *testing.T) {
-		_, err := registry.ToGo(NewString("hello"), reflect.TypeOf([]int{}))
+		_, err := registry.ToGo(context.Background(), NewString("hello"), reflect.TypeOf([]int{}))
 		assert.NotNil(t, err)
 	})
 
 	t.Run("ToGo non-map to map", func(t *testing.T) {
-		_, err := registry.ToGo(NewString("hello"), reflect.TypeOf(map[string]int{}))
+		_, err := registry.ToGo(context.Background(), NewString("hello"), reflect.TypeOf(map[string]int{}))
 		assert.NotNil(t, err)
 	})
 }
@@ -736,7 +737,7 @@ func TestTypeRegistryBytesFromString(t *testing.T) {
 	registry := DefaultRegistry()
 
 	t.Run("ToGo String to []byte", func(t *testing.T) {
-		result, err := registry.ToGo(NewString("hello"), reflect.TypeOf([]byte{}))
+		result, err := registry.ToGo(context.Background(), NewString("hello"), reflect.TypeOf([]byte{}))
 		assert.Nil(t, err)
 		assert.Equal(t, result, []byte("hello"))
 	})
@@ -746,7 +747,7 @@ func TestTypeRegistryTimeFromString(t *testing.T) {
 	registry := DefaultRegistry()
 
 	t.Run("ToGo String to time.Time", func(t *testing.T) {
-		result, err := registry.ToGo(NewString("2024-01-15T10:30:00Z"), reflect.TypeOf(time.Time{}))
+		result, err := registry.ToGo(context.Background(), NewString("2024-01-15T10:30:00Z"), reflect.TypeOf(time.Time{}))
 		assert.Nil(t, err)
 		tm, ok := result.(time.Time)
 		assert.True(t, ok)
@@ -756,7 +757,7 @@ func TestTypeRegistryTimeFromString(t *testing.T) {
 	})
 
 	t.Run("ToGo invalid time string", func(t *testing.T) {
-		_, err := registry.ToGo(NewString("not a time"), reflect.TypeOf(time.Time{}))
+		_, err := registry.ToGo(context.Background(), NewString("not a time"), reflect.TypeOf(time.Time{}))
 		assert.NotNil(t, err)
 	})
 }
@@ -765,7 +766,7 @@ func TestTypeRegistryInterface(t *testing.T) {
 	registry := DefaultRegistry()
 
 	t.Run("ToGo to any interface", func(t *testing.T) {
-		result, err := registry.ToGo(NewInt(42), reflect.TypeOf((*any)(nil)).Elem())
+		result, err := registry.ToGo(context.Background(), NewInt(42), reflect.TypeOf((*any)(nil)).Elem())
 		assert.Nil(t, err)
 		// Should return the Object's Interface() value
 		assert.Equal(t, result, int64(42))
@@ -773,7 +774,7 @@ func TestTypeRegistryInterface(t *testing.T) {
 
 	t.Run("ToGo to error interface", func(t *testing.T) {
 		errObj := Errorf("test error")
-		result, err := registry.ToGo(errObj, reflect.TypeOf((*error)(nil)).Elem())
+		result, err := registry.ToGo(context.Background(), errObj, reflect.TypeOf((*error)(nil)).Elem())
 		assert.Nil(t, err)
 		goErr, ok := result.(error)
 		assert.True(t, ok)
@@ -781,7 +782,7 @@ func TestTypeRegistryInterface(t *testing.T) {
 	})
 
 	t.Run("ToGo String to error interface", func(t *testing.T) {
-		result, err := registry.ToGo(NewString("error message"), reflect.TypeOf((*error)(nil)).Elem())
+		result, err := registry.ToGo(context.Background(), NewString("error message"), reflect.TypeOf((*error)(nil)).Elem())
 		assert.Nil(t, err)
 		goErr, ok := result.(error)
 		assert.True(t, ok)
@@ -831,7 +832,7 @@ func TestTypeRegistryNestedStructures(t *testing.T) {
 		})
 
 		targetType := reflect.TypeOf(map[string]map[string][]int{})
-		result, err := registry.ToGo(nested, targetType)
+		result, err := registry.ToGo(context.Background(), nested, targetType)
 		assert.Nil(t, err)
 
 		m := result.(map[string]map[string][]int)

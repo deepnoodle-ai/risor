@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `split`, spread, or `list(range(...))`. Operations that add one item, such as
   `append`, are not capped. Defaults: 64 MiB and 4,194,304 elements. Exceeding a
   cap raises a catchable `value error` (#491).
+  The list cap also bounds the total elements of one conversion to Go, such as
+  a script result, the arguments of a host function call, or `sprintf` and
+  `encode` input, counting a shared list each time it appears (#496).
 
 ### Changed
 
@@ -36,6 +39,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   first argument: `object.BinaryOp`, `String.Join`, `Repeat`, `ReplaceAll`,
   `Split`, and `Fields`, and `Bytes.Repeat`, `Replace`, and `ReplaceAll`.
   `String.Fields` also returns an error (#491).
+- `object.ToInterface` and `TypeRegistry.ToGo` take a `context.Context`, whose
+  limits bound the conversion. `ToGo` converts a range to a slice or array.
+  New `object.ToInterfaces` converts several values with one shared budget
+  (#496).
 
 ### Fixed
 

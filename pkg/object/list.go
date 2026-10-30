@@ -411,17 +411,17 @@ func (ls *List) Reverse() {
 }
 
 // Interface converts the list to a []any, converting items recursively. It
-// returns nil if the list is nested more deeply than MaxNestingDepth or
-// contains a cycle; use ToInterface to get the error instead.
+// returns nil if the list is nested more deeply than MaxNestingDepth,
+// contains a cycle, or has more than DefaultMaxListLength elements in total;
+// use ToInterface to get the error instead.
 func (ls *List) Interface() interface{} {
-	result, err := ls.toInterface(nil)
-	if err != nil {
-		return nil
-	}
-	return result
+	return interfaceOrNil(ls)
 }
 
-func (ls *List) toInterface(path nestPath[Object]) (any, error) {
+func (ls *List) toInterface(path nestPath[Object], b *convBudget) (any, error) {
+	if err := b.take(uint64(len(ls.items))); err != nil {
+		return nil, err
+	}
 	items := make([]interface{}, 0, len(ls.items))
 	for _, item := range ls.items {
 		if isNestedContainer(item) {
@@ -430,7 +430,7 @@ func (ls *List) toInterface(path nestPath[Object]) (any, error) {
 				return nil, err
 			}
 		}
-		value, err := toInterface(item, path)
+		value, err := toInterface(item, path, b)
 		if err != nil {
 			return nil, err
 		}
