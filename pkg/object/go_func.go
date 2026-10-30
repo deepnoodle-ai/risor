@@ -13,8 +13,9 @@ var _ Callable = (*GoFunc)(nil) // Ensure that *GoFunc implements Callable
 // GoFunc wraps an arbitrary Go function for use in Risor.
 // It uses reflection to handle argument conversion and function calls.
 //
-// A GoFunc equals only itself, so each read of a func-typed Go struct field,
-// like each call of a Go function that returns a func, gives a new value.
+// A GoFunc equals only itself, and each conversion of a Go function gives a
+// new value. So a func-typed Go struct field read twice gives two values that
+// are not equal.
 type GoFunc struct {
 	fn         reflect.Value // The Go function
 	fnType     reflect.Type  // Cached type info
