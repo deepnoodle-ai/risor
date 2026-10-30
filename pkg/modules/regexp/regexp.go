@@ -199,7 +199,10 @@ func Split(ctx context.Context, args ...object.Object) (object.Object, error) {
 		n = int(nVal)
 	}
 
-	parts := r.Split(str, n)
+	parts := r.Split(str, object.LimitCount(ctx, n))
+	if err := object.CheckListLength(ctx, len(parts)); err != nil {
+		return nil, err
+	}
 	result := make([]object.Object, len(parts))
 	for i, part := range parts {
 		result[i] = object.NewString(part)
@@ -262,7 +265,10 @@ func FindAll(ctx context.Context, args ...object.Object) (object.Object, error) 
 		n = int(nVal)
 	}
 
-	matches := r.FindAllString(str, n)
+	matches := r.FindAllString(str, object.LimitCount(ctx, n))
+	if err := object.CheckListLength(ctx, len(matches)); err != nil {
+		return nil, err
+	}
 	result := make([]object.Object, len(matches))
 	for i, m := range matches {
 		result[i] = object.NewString(m)

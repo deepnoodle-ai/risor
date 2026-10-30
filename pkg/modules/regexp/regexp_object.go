@@ -3,6 +3,7 @@ package regexp
 import (
 	"context"
 	"fmt"
+	"math"
 	"regexp"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
@@ -133,8 +134,12 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 					}
 					n = int(i64)
 				}
+				found := r.value.FindAllString(strValue, object.LimitCount(ctx, n))
+				if err := object.CheckListLength(ctx, len(found)); err != nil {
+					return nil, err
+				}
 				var matches []object.Object
-				for _, match := range r.value.FindAllString(strValue, n) {
+				for _, match := range found {
 					matches = append(matches, object.NewString(match))
 				}
 				return object.NewList(matches), nil
@@ -207,7 +212,17 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 					}
 					n = int(i64)
 				}
+				// Each match is a list of every group, so the limit applies
+				// to the number of matches times the number of groups.
+				groups := r.value.NumSubexp() + 1
+				maxMatches := object.GetLimits(ctx).MaxListLength / int64(groups)
+				if n < 0 || int64(n) > maxMatches {
+					n = int(min(maxMatches, math.MaxInt-1)) + 1
+				}
 				allSubmatches := r.value.FindAllStringSubmatch(strValue, n)
+				if err := object.CheckListLength(ctx, len(allSubmatches)*groups); err != nil {
+					return nil, err
+				}
 				var result []object.Object
 				for _, submatches := range allSubmatches {
 					var group []object.Object
@@ -290,7 +305,10 @@ func (r *Regexp) GetAttr(name string) (object.Object, bool) {
 					}
 					n = int(i64)
 				}
-				matches := r.value.Split(strValue, n)
+				matches := r.value.Split(strValue, object.LimitCount(ctx, n))
+				if err := object.CheckListLength(ctx, len(matches)); err != nil {
+					return nil, err
+				}
 				matchObjects := make([]object.Object, 0, len(matches))
 				for _, match := range matches {
 					matchObjects = append(matchObjects, object.NewString(match))

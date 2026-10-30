@@ -7,8 +7,9 @@ Risor bounds instruction count (`WithMaxSteps`), wall-clock time
 
 `WithLimits` caps the operations that can turn a small input into a huge
 output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes, and
-building lists with `list()`, `keys()`, spread, `range(...).map`, and
-`rand.bytes`. The defaults are 64 MiB for a string or bytes value and
+building lists with `list()`, `keys()`, spread, `+`, `extend`,
+`range(...).map`, `split`, `fields`, the `regexp` find and split functions,
+and `rand.bytes`. The defaults are 64 MiB for a string or bytes value and
 4,194,304 list elements. Exceeding a cap raises a `value error`:
 
 ```go

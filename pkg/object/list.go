@@ -61,6 +61,9 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
+			if err := CheckListLength(ctx, len(ls.items)+len(other.items)); err != nil {
+				return nil, err
+			}
 			ls.Extend(other)
 			return ls, nil
 		})

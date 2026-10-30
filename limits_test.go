@@ -25,6 +25,15 @@ func TestWithLimitsLowered(t *testing.T) {
 		`range(11).map(x => x)`,
 		`rand.bytes(11)`,
 		`regexp.replace("a", "aaaaaaaaaaa", "xx")`,
+		`[1, 2, 3, 4, 5, 6] + [1, 2, 3, 4, 5]`,
+		`[1, 2, 3, 4, 5, 6].extend([1, 2, 3, 4, 5])`,
+		`"aaaaaaaaaaa".split("")`,
+		`"a a a a a a a a a a a".fields()`,
+		`regexp.split("", "aaaaaaaaaaa")`,
+		`regexp.find_all("a", "aaaaaaaaaaa")`,
+		`regexp.compile("").split("aaaaaaaaaaa")`,
+		`regexp.compile("a").find_all("aaaaaaaaaaa")`,
+		`regexp.compile("(a)").find_all_groups("aaaaaa")`,
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.NotNil(t, err, src)
@@ -37,6 +46,14 @@ func TestWithLimitsLowered(t *testing.T) {
 		`"aaaaa" + "aaaaa"`,
 		`list(range(10))`,
 		`rand.bytes(10)`,
+		`[1, 2, 3, 4, 5] + [1, 2, 3, 4, 5]`,
+		`[1, 2, 3, 4, 5].extend([1, 2, 3, 4, 5])`,
+		`"aaaaaaaaaa".split("")`,
+		`"a a a a a a a a a a".fields()`,
+		`regexp.split("", "aaaaaaaaaa")`,
+		`regexp.find_all("a", "aaaaaaaaaaa", 10)`,
+		`regexp.compile("a").find_all("aaaaaaaaaaa", 10)`,
+		`regexp.compile("(a)").find_all_groups("aaaaa")`,
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.Nil(t, err, src)

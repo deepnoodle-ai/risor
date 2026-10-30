@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -44,7 +45,7 @@ func init() {
 		Doc("Split on whitespace").
 		Returns("list").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Fields(), nil
+			return s.Fields(ctx)
 		})
 
 	stringMethods.Define("has_prefix").
@@ -108,7 +109,7 @@ func init() {
 		Arg("sep").
 		Returns("list").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Split(args[0])
+			return s.Split(ctx, args[0])
 		})
 
 	stringMethods.Define("to_lower").
@@ -340,16 +341,41 @@ func (s *String) Join(ctx context.Context, obj Object) (Object, error) {
 	return NewString(strings.Join(strs, s.value)), nil
 }
 
-func (s *String) Split(obj Object) (Object, error) {
+// Split splits s around each instance of the separator. It returns a value
+// error if the result would exceed the list length limit in ctx.
+func (s *String) Split(ctx context.Context, obj Object) (Object, error) {
 	sep, err := AsString(obj)
 	if err != nil {
 		return nil, err
 	}
-	return NewStringList(strings.Split(s.value, sep)), nil
+	parts := strings.SplitN(s.value, sep, LimitCount(ctx, -1))
+	if err := CheckListLength(ctx, len(parts)); err != nil {
+		return nil, err
+	}
+	return NewStringList(parts), nil
 }
 
-func (s *String) Fields() Object {
-	return NewStringList(strings.Fields(s.value))
+// Fields splits s around runs of white space. It returns a value error if
+// the result would exceed the list length limit in ctx.
+func (s *String) Fields(ctx context.Context) (Object, error) {
+	if err := CheckListLength(ctx, countFields(s.value)); err != nil {
+		return nil, err
+	}
+	return NewStringList(strings.Fields(s.value)), nil
+}
+
+// countFields returns the number of fields strings.Fields would return.
+func countFields(s string) int {
+	n := 0
+	inField := false
+	for _, r := range s {
+		space := unicode.IsSpace(r)
+		if !space && !inField {
+			n++
+		}
+		inField = !space
+	}
+	return n
 }
 
 func (s *String) Index(obj Object) (Object, error) {

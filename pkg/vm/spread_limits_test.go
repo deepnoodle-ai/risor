@@ -69,3 +69,17 @@ func TestLimitsFromContextAndOption(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, object.NewString(strings.Repeat("a", 11)))
 }
+
+// Doubling a list with + or extend stops at the list length limit instead of
+// building 2^30 elements.
+func TestListDoublingLimit(t *testing.T) {
+	for _, src := range []string{
+		`let a = [0]; range(30).each(i => { a = a + a })`,
+		`let a = [0]; range(30).each(i => { a.extend(a) })`,
+		`let a = [0]; range(30).each(i => { a = [...a, ...a] })`,
+	} {
+		_, err := run(context.Background(), src)
+		assert.NotNil(t, err, src)
+		assert.True(t, strings.Contains(err.Error(), "list too large"), src)
+	}
+}

@@ -3,6 +3,7 @@ package object
 import (
 	"context"
 	"maps"
+	"math"
 	"slices"
 )
 
@@ -13,8 +14,9 @@ import (
 //
 // The limits apply to operations whose output size can be much larger than
 // their input: repeating, replacing, joining, and concatenating strings and
-// bytes, and materializing lazy sequences into lists. Exceeding a limit
-// returns a value error.
+// bytes, concatenating and extending lists, splitting strings into lists, and
+// materializing lazy sequences into lists. Exceeding a limit returns a value
+// error.
 const (
 	// DefaultMaxBytesSize is the default maximum size, in bytes, of a string
 	// or bytes value produced by a size-amplifying operation. 64 MiB is far
@@ -22,8 +24,8 @@ const (
 	// small relative to host memory.
 	DefaultMaxBytesSize = 64 << 20
 
-	// DefaultMaxListLength is the default maximum number of elements produced
-	// when a sequence is materialized into a list. Each element occupies a
+	// DefaultMaxListLength is the default maximum number of elements in a
+	// list produced by a size-amplifying operation. Each element occupies a
 	// 16-byte interface slot on 64-bit platforms, so 1<<22 (4,194,304)
 	// elements matches DefaultMaxBytesSize: 64 MiB of slots.
 	DefaultMaxListLength = 1 << 22
@@ -36,8 +38,8 @@ type Limits struct {
 	// produced by a size-amplifying operation.
 	MaxBytesSize int64
 
-	// MaxListLength is the maximum number of elements produced when a
-	// sequence is materialized into a list.
+	// MaxListLength is the maximum number of elements in a list produced by
+	// a size-amplifying operation.
 	MaxListLength int64
 }
 
@@ -102,9 +104,15 @@ func checkReplaceSize(l Limits, name string, inputLen, oldLen, newLen, n int) er
 }
 
 // checkConcatSize returns an error if concatenating a and b would produce a
-// string or bytes value larger than the byte limit. Other operand types are
-// not checked.
+// string or bytes value larger than the byte limit, or a list longer than the
+// list length limit. Other operand types are not checked.
 func checkConcatSize(l Limits, a, b Object) error {
+	if aList, ok := a.(*List); ok {
+		if bList, ok := b.(*List); ok {
+			return checkListLength(l, uint64(len(aList.items))+uint64(len(bList.items)))
+		}
+		return nil
+	}
 	aLen, aOk := byteLen(a)
 	bLen, bOk := byteLen(b)
 	if !aOk || !bOk {
@@ -180,10 +188,30 @@ func collect(ctx context.Context, e Enumerable, keys bool) ([]Object, error) {
 // CheckListLength returns a value error if a list of n elements would exceed
 // the list length limit in ctx.
 func CheckListLength(ctx context.Context, n int) error {
-	if maxLen := GetLimits(ctx).MaxListLength; int64(n) > maxLen {
-		return listTooLargeError(maxLen)
+	return checkListLength(GetLimits(ctx), uint64(n))
+}
+
+func checkListLength(l Limits, n uint64) error {
+	if n > uint64(l.MaxListLength) {
+		return listTooLargeError(l.MaxListLength)
 	}
 	return nil
+}
+
+// LimitCount returns the count to pass to a Go function that takes a maximum
+// number of results, such as strings.SplitN or regexp.FindAllString, so that
+// it returns at most one result more than the list length limit in ctx. n is
+// the requested count, and a negative n means no maximum. Check the length of
+// the result with CheckListLength.
+func LimitCount(ctx context.Context, n int) int {
+	maxLen := GetLimits(ctx).MaxListLength
+	if maxLen >= math.MaxInt {
+		return n
+	}
+	if n < 0 || int64(n) > maxLen {
+		return int(maxLen) + 1
+	}
+	return n
 }
 
 func listTooLargeError(maxLen int64) error {
