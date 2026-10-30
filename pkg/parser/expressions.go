@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"math"
+
 	"github.com/deepnoodle-ai/risor/v2/internal/token"
 	"github.com/deepnoodle-ai/risor/v2/pkg/ast"
 )
@@ -39,6 +41,14 @@ func (p *Parser) parsePrefixExpr() (ast.Node, bool) {
 	op := p.curToken.Literal
 	if err := p.nextToken(); err != nil {
 		return nil, false
+	}
+	// math.MinInt64 has no positive literal, so -9223372036854775808 is one
+	// negative literal. This applies only if no operator that binds tighter
+	// than unary minus follows: -9223372036854775808 ** 2 is -(2^63 ** 2).
+	if op == "-" && p.curTokenIs(token.INT) && p.peekPrecedence() < POWER {
+		if magnitude, err := parseIntMagnitude(p.curToken.Literal); err == nil && magnitude == minInt64Magnitude {
+			return &ast.Int{ValuePos: opPos, Literal: "-" + p.curToken.Literal, Value: math.MinInt64}, true
+		}
 	}
 	// Parse the operand. For unary minus/plus, if followed by **, we need
 	// special handling to match Python semantics: -2**2 = -(2**2), not (-2)**2.

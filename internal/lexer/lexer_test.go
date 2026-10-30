@@ -421,6 +421,15 @@ func TestInvalidIntegers(t *testing.T) {
 		{"12ab", "invalid decimal literal: 12ab"},
 		{"0x1aZ", "invalid decimal literal: 0x1aZ"},
 		{"078", "invalid decimal literal: 078"},
+		// A hex or binary prefix needs a digit, and appears once
+		{"0x", "invalid decimal literal: 0x"},
+		{"0b", "invalid decimal literal: 0b"},
+		{"0x;", "invalid decimal literal: 0x"},
+		{"0x1x2", "invalid decimal literal: 0x1x2"},
+		{"0xx1", "invalid decimal literal: 0xx1"},
+		{"0b1b0", "invalid decimal literal: 0b1b0"},
+		{"0bb1", "invalid decimal literal: 0bb1"},
+		{"0b12", "invalid decimal literal: 0b12"},
 	}
 	for _, tt := range tests {
 		l := New(tt.input)

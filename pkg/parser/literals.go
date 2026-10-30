@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -22,19 +23,29 @@ import (
 // - Spread expressions
 // - Reserved keyword handling
 
+// parseIntMagnitude parses an integer literal, which has no sign.
+func parseIntMagnitude(lit string) (uint64, error) {
+	if strings.HasPrefix(lit, "0x") {
+		return strconv.ParseUint(lit[2:], 16, 64) // hexadecimal
+	} else if strings.HasPrefix(lit, "0b") {
+		return strconv.ParseUint(lit[2:], 2, 64) // binary
+	} else if strings.HasPrefix(lit, "0") && len(lit) > 1 {
+		return strconv.ParseUint(lit[1:], 8, 64) // octal
+	}
+	return strconv.ParseUint(lit, 10, 64) // decimal
+}
+
+// minInt64Magnitude is the magnitude of math.MinInt64. It is one more than
+// math.MaxInt64, so only a negated literal may have it.
+const minInt64Magnitude = uint64(math.MaxInt64) + 1
+
 func (p *Parser) parseInt() (ast.Node, bool) {
 	tok, lit := p.curToken, p.curToken.Literal
-	var value int64
-	var err error
-	if strings.HasPrefix(lit, "0x") {
-		value, err = strconv.ParseInt(lit[2:], 16, 64) // hexadecimal
-	} else if strings.HasPrefix(lit, "0b") {
-		value, err = strconv.ParseInt(lit[2:], 2, 64) // binary
-	} else if strings.HasPrefix(lit, "0") && len(lit) > 1 {
-		value, err = strconv.ParseInt(lit[1:], 8, 64) // octal
-	} else {
-		value, err = strconv.ParseInt(lit, 10, 64) // decimal
+	magnitude, err := parseIntMagnitude(lit)
+	if err == nil && magnitude > math.MaxInt64 {
+		err = strconv.ErrRange
 	}
+	value := int64(magnitude)
 	if err != nil {
 		p.setError(NewParserError(ErrorOpts{
 			ErrType:       "parse error",
@@ -75,7 +86,7 @@ func (p *Parser) parseBoolean() (ast.Node, bool) {
 }
 
 func (p *Parser) parseNil() (ast.Node, bool) {
-	return &ast.Nil{NilPos: p.curToken.StartPosition}, true
+	return &ast.Nil{NilPos: p.curToken.StartPosition, Literal: p.curToken.Literal}, true
 }
 
 func (p *Parser) parseString() (ast.Node, bool) {

@@ -543,11 +543,11 @@ func (l *Lexer) readNumber(onlyDecimal bool) (NumberType, string, error) {
 	if !onlyDecimal {
 		if l.ch == '0' && l.peekChar() == 'x' {
 			// 0x prefix => hexadecimal
-			accept = "0x123456789abcdefABCDEF"
+			accept = "0123456789abcdefABCDEF"
 			numberType = NumberTypeHex
 		} else if l.ch == '0' && l.peekChar() == 'b' {
 			// 0b prefix => binary
-			accept = "0b01"
+			accept = "01"
 			numberType = NumberTypeBinary
 		} else if l.ch == '0' && l.peekChar() != '.' {
 			// 0 prefix => octal
@@ -555,11 +555,22 @@ func (l *Lexer) readNumber(onlyDecimal bool) (NumberType, string, error) {
 			numberType = NumberTypeOctal
 		}
 	}
-	for strings.Contains(accept, string(l.peekChar())) {
+	// Read the 'x' or 'b' of a prefix once, so that it can't repeat
+	if numberType == NumberTypeHex || numberType == NumberTypeBinary {
 		l.readChar()
 		str += string(l.ch)
 	}
+	digits := 0
+	for strings.ContainsRune(accept, l.peekChar()) {
+		l.readChar()
+		str += string(l.ch)
+		digits++
+	}
 	trailing := l.peekChar()
+	if digits == 0 && (numberType == NumberTypeHex || numberType == NumberTypeBinary) {
+		// A prefix needs at least one digit: "0x" is not a number
+		return NumberTypeInvalid, "", fmt.Errorf("invalid decimal literal: %s", str)
+	}
 	if unicode.IsLetter(trailing) || unicode.IsNumber(trailing) {
 		return NumberTypeInvalid, "", fmt.Errorf("invalid decimal literal: %s%c", str, trailing)
 	}
