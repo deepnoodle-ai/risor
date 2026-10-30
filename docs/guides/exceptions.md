@@ -364,11 +364,13 @@ catch them, and no `finally` block runs when one is raised:
 - An observer halts execution
 - A function from code that `RunCode` replaced is called
 
-These errors reach the Go caller unchanged, so `errors.Is` finds them, such as
+Once the run's context is canceled, any error ends the run, even one that a
+host function returns. Use `errors.Is` to identify these errors, such as
 `vm.ErrStepLimitExceeded`, `vm.ErrStackOverflow`, `vm.ErrObserverHalt`, or
-`context.Canceled`. A context error that a host function returns while the
-run's context is still live, such as the timeout of a request the function
-made, is an ordinary error that the script can catch.
+`context.Canceled`. An error raised in a called function has the source
+location and stack trace of the script. A context error that a host function
+returns while the run's context is still live, such as the timeout of a
+request the function made, is an ordinary error that the script can catch.
 
 ## Stack Traces
 

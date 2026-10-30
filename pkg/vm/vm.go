@@ -2111,10 +2111,16 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 // tryHandleError attempts to handle an error via exception handling.
 // If a handler is found and jumped to, returns nil (exception was handled).
 // If no handler is found, returns the error to propagate up. An error that
-// ends the run is returned as is, without running any catch or finally block.
+// ends the run is returned without running any catch or finally block. It
+// gets the source location and stack trace like any other error, except
+// that a context error is returned as is, so that callers can compare it
+// with context.Canceled or context.DeadlineExceeded directly.
 func (vm *VirtualMachine) tryHandleError(err error) error {
 	if vm.isFatal(err) {
-		return err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		return vm.wrapError(err)
 	}
 	return vm.handleException(object.NewError(vm.wrapError(err)))
 }
@@ -2125,26 +2131,20 @@ func (vm *VirtualMachine) tryHandleError(err error) error {
 // cancellation of the run's context. Errors raised in called functions reach
 // the caller's frame through tryHandleError, so this check covers them too.
 //
-// A context error ends the run only when the run's context is done. A host
-// function can return a context error of its own, such as the timeout of a
-// request it made, and the script can catch that.
+// Once the run's context is done, every error ends the run, whatever its
+// type. A host function can return a context error of its own, such as the
+// timeout of a request it made, while the run's context is live, and the
+// script can catch that.
 func (vm *VirtualMachine) isFatal(err error) bool {
-	switch {
-	case errors.Is(err, ErrStepLimitExceeded),
-		errors.Is(err, ErrStackOverflow),
-		errors.Is(err, ErrReplacedCode),
-		errors.Is(err, ErrObserverHalt):
-		return true
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		if vm.done == nil {
-			return false
-		}
+	if vm.done != nil {
 		select {
 		case <-vm.done:
 			return true
 		default:
-			return false
 		}
 	}
-	return false
+	return errors.Is(err, ErrStepLimitExceeded) ||
+		errors.Is(err, ErrStackOverflow) ||
+		errors.Is(err, ErrReplacedCode) ||
+		errors.Is(err, ErrObserverHalt)
 }
