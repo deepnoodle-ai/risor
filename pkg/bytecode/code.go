@@ -307,7 +307,9 @@ func (c *Code) Stats() Stats {
 }
 
 // GlobalNames returns a copy of the names of the root (top-level) global
-// variables. It excludes the slots of variables declared in blocks.
+// variables. It excludes the slots of variables declared in blocks, so index i
+// of the result does not always match slot i. To read every slot name, use
+// GlobalCount and GlobalNameAt.
 func (c *Code) GlobalNames() []string {
 	var names []string
 	for _, name := range c.globalNames {

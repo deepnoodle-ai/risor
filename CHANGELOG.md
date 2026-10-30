@@ -50,7 +50,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `RunCode` carries over now use the root (top-level) variable when a variable
   declared in a block, such as in an `if` or `try` block, has the same name.
   Before, `vm.Get("foo")` could return the block value, and so could the REPL.
-  A block variable is not a global, so `vm.Get` does not find it (#492).
+  A block variable is not a global, so `vm.Get` does not find it.
+  `Code.GlobalNames` no longer has one entry per slot, so its indexes do not
+  always match `GlobalNameAt`. To read every slot name, use `GlobalCount` and
+  `GlobalNameAt` (#492).
 
 - The VS Code extension no longer runs a `go install` command that always
   failed. When it cannot find `risor-lsp`, it shows install steps and a link to
