@@ -392,15 +392,14 @@ func (s *String) Index(obj Object) (Object, error) {
 	if utf8.ValidString(substr) {
 		return NewInt(s.runeIndex(strings.Index(s.value, substr))), nil
 	}
-	starts := s.runeStarts()
 	for from := 0; from <= len(s.value); {
 		off := strings.Index(s.value[from:], substr)
 		if off < 0 {
 			break
 		}
 		off += from
-		if starts[off] >= 0 && starts[off+len(substr)] >= 0 {
-			return NewInt(int64(starts[off])), nil
+		if s.isRuneBoundary(off) && s.isRuneBoundary(off+len(substr)) {
+			return NewInt(s.runeIndex(off)), nil
 		}
 		from = off + 1
 	}
@@ -415,14 +414,13 @@ func (s *String) LastIndex(obj Object) (Object, error) {
 	if utf8.ValidString(substr) {
 		return NewInt(s.runeIndex(strings.LastIndex(s.value, substr))), nil
 	}
-	starts := s.runeStarts()
 	for end := len(s.value); end >= 0; {
 		off := strings.LastIndex(s.value[:end], substr)
 		if off < 0 {
 			break
 		}
-		if starts[off] >= 0 && starts[off+len(substr)] >= 0 {
-			return NewInt(int64(starts[off])), nil
+		if s.isRuneBoundary(off) && s.isRuneBoundary(off+len(substr)) {
+			return NewInt(s.runeIndex(off)), nil
 		}
 		end = off + len(substr) - 1
 	}
@@ -441,22 +439,27 @@ func (s *String) runeIndex(byteOffset int) int64 {
 	return int64(utf8.RuneCountInString(s.value[:byteOffset]))
 }
 
-// runeStarts maps each byte offset in s, plus len(s), to the rune index
-// that starts there, or -1 when the offset is inside a rune. Index and
-// LastIndex use it for an invalid UTF-8 substring, which can match inside
-// a rune of s. They skip those matches, so s[i] accepts every result.
-func (s *String) runeStarts() []int {
-	starts := make([]int, len(s.value)+1)
-	for i := range starts {
-		starts[i] = -1
+// isRuneBoundary reports whether the byte offset i in s starts a rune (or
+// is len(s)), using the same decoding as a range loop: a valid sequence is
+// one rune, and each invalid byte is one rune. Index and LastIndex use it
+// for an invalid UTF-8 substring, which can match inside a rune of s. They
+// skip those matches, so s[i] accepts every result. The check looks back
+// at most utf8.UTFMax-1 bytes, so it allocates nothing.
+func (s *String) isRuneBoundary(i int) bool {
+	v := s.value
+	if i <= 0 || i >= len(v) || utf8.RuneStart(v[i]) {
+		return true
 	}
-	n := 0
-	for i := range s.value {
-		starts[i] = n
-		n++
+	// v[i] is a continuation byte. It is inside a rune only when the
+	// nearest preceding non-continuation byte begins a valid sequence that
+	// extends past i. A non-continuation byte always starts a rune.
+	for j := i - 1; j >= 0 && j > i-utf8.UTFMax; j-- {
+		if utf8.RuneStart(v[j]) {
+			_, size := utf8.DecodeRuneInString(v[j:])
+			return j+size <= i
+		}
 	}
-	starts[len(s.value)] = n
-	return starts
+	return true
 }
 
 func (s *String) ReplaceAll(ctx context.Context, old, new Object) (Object, error) {

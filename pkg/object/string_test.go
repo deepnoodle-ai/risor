@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -97,6 +98,66 @@ func TestStringEnumerateRuneIndexes(t *testing.T) {
 	})
 	assert.Equal(t, keys, []int64{0, 1, 2, 3, 4})
 	assert.Equal(t, values, []string{"h", "é", "l", "l", "o"})
+}
+
+func TestStringIndexInvalidUTF8MatchesReference(t *testing.T) {
+	// The reference maps each byte offset to the rune index that a range
+	// loop starts there, or -1 inside a rune. Index and LastIndex must give
+	// the first and last match whose both ends are rune starts.
+	reference := func(s, substr string) (int64, int64) {
+		starts := make([]int, len(s)+1)
+		for i := range starts {
+			starts[i] = -1
+		}
+		n := 0
+		for i := range s {
+			starts[i] = n
+			n++
+		}
+		starts[len(s)] = n
+		first, last := int64(-1), int64(-1)
+		for off := 0; off+len(substr) <= len(s); off++ {
+			if s[off:off+len(substr)] != substr || starts[off] < 0 || starts[off+len(substr)] < 0 {
+				continue
+			}
+			if first < 0 {
+				first = int64(starts[off])
+			}
+			last = int64(starts[off])
+		}
+		return first, last
+	}
+	// These bytes form valid 2-, 3- and 4-byte runes ("\xc3\xa9", "\xe2\x80\x80",
+	// "\xf0\x9f\x80\x80") and invalid sequences.
+	alphabet := []byte{'a', 0xc3, 0xa9, 0xe2, 0xf0, 0x9f, 0x80, 0xff}
+	var build func(prefix []byte, depth int, out *[]string)
+	build = func(prefix []byte, depth int, out *[]string) {
+		*out = append(*out, string(prefix))
+		if depth == 0 {
+			return
+		}
+		for _, b := range alphabet {
+			build(append(append([]byte{}, prefix...), b), depth-1, out)
+		}
+	}
+	var hay, needles []string
+	build(nil, 4, &hay)
+	build(nil, 2, &needles)
+	for _, h := range hay {
+		s := NewString(h)
+		for _, sub := range needles {
+			if utf8.ValidString(sub) {
+				continue
+			}
+			wantFirst, wantLast := reference(h, sub)
+			first, err := s.Index(NewString(sub))
+			assert.Nil(t, err)
+			assert.Equal(t, first, NewInt(wantFirst), "index %q in %q", sub, h)
+			last, err := s.LastIndex(NewString(sub))
+			assert.Nil(t, err)
+			assert.Equal(t, last, NewInt(wantLast), "last_index %q in %q", sub, h)
+		}
+	}
 }
 
 func TestStringIndexInvalidUTF8(t *testing.T) {
