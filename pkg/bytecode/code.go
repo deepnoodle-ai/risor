@@ -352,7 +352,9 @@ func (c *Code) Root() *Code {
 	return root
 }
 
-// Stats returns statistics about this code block.
+// Stats returns statistics about this code block. GlobalCount is the global
+// count of the root code, since every code shares the root's globals. The other
+// fields count this code block only, not its children.
 func (c *Code) Stats() Stats {
 	functionCount := 0
 	for i := 0; i < c.ConstantCount(); i++ {
@@ -363,7 +365,7 @@ func (c *Code) Stats() Stats {
 	return Stats{
 		InstructionCount: c.InstructionCount(),
 		ConstantCount:    c.ConstantCount(),
-		GlobalCount:      c.GlobalCount(),
+		GlobalCount:      c.Root().GlobalCount(),
 		FunctionCount:    functionCount,
 		SourceBytes:      len(c.source),
 	}
