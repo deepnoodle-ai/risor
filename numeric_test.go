@@ -105,13 +105,15 @@ func TestByteFromString(t *testing.T) {
 		{`byte("0x80")`, 0x80},
 		{`byte("0xff")`, 0xff},
 		{`byte("0b101")`, 5},
+		{`byte("+5")`, 5},
+		{`byte("+0xff")`, 0xff},
 	}
 	for _, tc := range cases {
 		result, err := Eval(ctx, tc.src, WithEnv(Builtins()))
 		assert.Nil(t, err, tc.src)
 		assert.Equal(t, result, tc.want, tc.src)
 	}
-	for _, src := range []string{`byte("256")`, `byte("-1")`, `byte("-128")`, `byte("0x100")`, `byte("x")`} {
+	for _, src := range []string{`byte("256")`, `byte("-1")`, `byte("-128")`, `byte("0x100")`, `byte("x")`, `byte("++5")`, `byte("+-5")`, `byte("+")`} {
 		_, err := Eval(ctx, src, WithEnv(Builtins()))
 		assert.NotNil(t, err, src)
 		assert.Contains(t, err.Error(), "invalid literal for byte()", src)
