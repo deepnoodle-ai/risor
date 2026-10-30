@@ -143,6 +143,12 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 			}
 		}
 		return total
+	case *Cell:
+		// Inspect prints the value in the cell
+		if obj.value == nil {
+			return 1
+		}
+		return 1 + formatSize(*obj.value, path, limit-min(1, limit))
 	}
 	return 1
 }

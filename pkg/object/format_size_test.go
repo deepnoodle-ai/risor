@@ -32,4 +32,13 @@ func TestCheckFormatSize(t *testing.T) {
 	cyclic := NewList([]Object{NewInt(1)})
 	cyclic.Append(cyclic)
 	assert.Nil(t, CheckFormatSize(ctx, "string", cyclic))
+
+	// A cell counts its value, as Inspect prints it
+	var value Object = NewList([]Object{s, s})
+	assert.NotNil(t, CheckFormatSize(ctx, "string", NewCell(&value)))
+	value = l
+	assert.NotNil(t, CheckFormatSize(ctx, "string", NewCell(&value)))
+	value = NewList([]Object{s})
+	assert.Nil(t, CheckFormatSize(ctx, "string", NewCell(&value)))
+	assert.Nil(t, CheckFormatSize(ctx, "string", NewCell(nil)))
 }
