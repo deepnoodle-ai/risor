@@ -9,7 +9,9 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
@@ -381,6 +383,7 @@ func (app *replApp) submit() []tui.Cmd {
 	}
 
 	// Try to evaluate - check if input is incomplete
+	lineOffset := app.vm.lineOffset()
 	start := time.Now()
 	result, err := app.vm.Eval(app.ctx, input)
 	elapsed := time.Since(start)
@@ -415,7 +418,7 @@ func (app *replApp) submit() []tui.Cmd {
 
 	// Print result
 	if err != nil {
-		app.runner.Print(tui.Text("%s", err.Error()).Fg(tui.ColorRed).Wrap())
+		app.runner.Print(tui.Text("%s", formatReplError(err, lineOffset)).Fg(tui.ColorRed).Wrap())
 	} else if result != nil {
 		app.printResult(result)
 	}
@@ -428,6 +431,29 @@ func (app *replApp) submit() []tui.Cmd {
 	}
 
 	return nil
+}
+
+// formatReplError formats err for the REPL, with the source line and a caret
+// under the failing text. Parse errors count lines from the start of the
+// input, so lineOffset, the number of lines in the earlier inputs, shifts
+// them to count from the start of the session like other errors.
+func formatReplError(err error, lineOffset int) string {
+	formatted := formattedErrors(err)
+	if formatted == nil {
+		return err.Error()
+	}
+	if _, ok := err.(*parser.Errors); ok {
+		for _, fe := range formatted {
+			if fe.Line > 0 {
+				fe.Line += lineOffset
+			}
+			for i := range fe.SourceLines {
+				fe.SourceLines[i].Number += lineOffset
+			}
+		}
+	}
+	text := errors.NewFormatter(false).FormatMultiple(formatted)
+	return strings.TrimRight(text, "\n")
 }
 
 // isIncompleteInput returns true if the error indicates the input is incomplete

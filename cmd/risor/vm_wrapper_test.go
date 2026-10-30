@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2"
+	rerrors "github.com/deepnoodle-ai/risor/v2/pkg/errors"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -332,8 +333,9 @@ func TestReplVMFunctionWritesGlobalsAcrossInputs(t *testing.T) {
 	assert.Equal(t, result, int64(42))
 }
 
-// A runtime error shows the line of the input it occurs in, also in a
-// function defined by an earlier input (#540).
+// In the REPL, errors count lines from the start of the session and show
+// the text of the input they occur in, also in a function defined by an
+// earlier input (#540).
 func TestReplVMErrorShowsItsInputLine(t *testing.T) {
 	vm, err := newReplVM(risor.Builtins())
 	assert.Nil(t, err)
@@ -344,15 +346,47 @@ func TestReplVMErrorShowsItsInputLine(t *testing.T) {
 	_, err = vm.Eval(ctx, "let a = 1")
 	assert.Nil(t, err)
 
+	// Runtime error in a later input: lines 1-3 are f, line 4 is a.
+	offset := vm.lineOffset()
+	assert.Equal(t, offset, 4)
 	_, err = vm.Eval(ctx, "      a.foo()")
 	var se *object.StructuredError
 	assert.True(t, errors.As(err, &se))
-	assert.Equal(t, se.Location.Source, "      a.foo()")
+	assert.Equal(t, se.Location.Line, 5)
 	assert.Equal(t, se.Location.Column, 9)
-	assert.Contains(t, se.FriendlyErrorMessage(), " |         ^^^\n")
+	assert.Equal(t, se.Location.Source, "      a.foo()")
+	shown := formatReplError(err, offset)
+	assert.Contains(t, shown, "--> 5:9\n")
+	assert.Contains(t, shown, " 5 |       a.foo()\n")
+	assert.Contains(t, shown, "   |         ^^^")
 
+	// Runtime error in a function from the first input.
 	_, err = vm.Eval(ctx, "f(1)")
 	assert.True(t, errors.As(err, &se))
+	assert.Equal(t, se.Location.Line, 2)
 	assert.Equal(t, se.Location.Source, "  return v.missing")
-	assert.Equal(t, se.Stack[len(se.Stack)-1].Location.Source, "f(1)")
+	last := se.Stack[len(se.Stack)-1].Location
+	assert.Equal(t, last.Line, 6)
+	assert.Equal(t, last.Source, "f(1)")
+
+	// Compile error in a later input. The failed input is not kept, so the
+	// next input starts on the same line.
+	offset = vm.lineOffset()
+	assert.Equal(t, offset, 6)
+	_, err = vm.Eval(ctx, "  nope + 1")
+	var ce *rerrors.CompileError
+	assert.True(t, errors.As(err, &ce))
+	assert.Equal(t, ce.Line, 7)
+	assert.Equal(t, ce.SourceLine, "  nope + 1")
+	shown = formatReplError(err, offset)
+	assert.Contains(t, shown, " 7 |   nope + 1\n")
+	assert.Contains(t, shown, "--> unknown:7:3\n")
+	assert.Contains(t, shown, "   |   ^\n")
+
+	// Parse error in a later input.
+	assert.Equal(t, vm.lineOffset(), 6)
+	_, err = vm.Eval(ctx, "let = 1")
+	assert.NotNil(t, err)
+	shown = formatReplError(err, offset)
+	assert.Contains(t, shown, " 7 | let = 1\n")
 }

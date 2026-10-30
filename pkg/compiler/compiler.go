@@ -106,9 +106,9 @@ type Compiler struct {
 	sourceOffset int
 
 	// lineOffset is the number of lines in the main code's source before
-	// source. Recorded locations add it to the line, so that they give lines
-	// of the main code's source, which holds every input so far in the REPL.
-	// It is zero when source is empty.
+	// source. Recorded locations and compile errors add it to the line, so
+	// that they give lines of the main code's source, which holds every input
+	// so far in the REPL. It is zero when source is empty.
 	lineOffset int
 
 	// rootByteOffsets maps rune offsets in the root source to byte offsets,
@@ -2366,7 +2366,7 @@ func (c *Compiler) formatErrorWithCode(code errors.ErrorCode, msg string, pos to
 		Code:        code,
 		Message:     msg,
 		Filename:    filename,
-		Line:        pos.LineNumber(),
+		Line:        pos.LineNumber() + c.lineOffset,
 		Column:      pos.ColumnNumber(),
 		SourceLine:  c.getSourceLine(pos.Line),
 		Suggestions: suggestions,
@@ -2406,6 +2406,8 @@ func (c *Compiler) getSourceLine(lineNum int) string {
 
 // SetSource sets the original source code for better error messages.
 // This should be called before CompileAST when the original source is available.
+// Give the source for every input or for none: after inputs with source, an
+// input without it gets locations that point at lines of the earlier inputs.
 func (c *Compiler) SetSource(source string) {
 	c.source = source
 }
