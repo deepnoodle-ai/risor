@@ -306,6 +306,24 @@ func TestToGoBudget(t *testing.T) {
 	assertValueError(t, err, "value too large to convert")
 }
 
+// ToInterfaces shares one budget across its values and converts each value
+// at the same nesting depth as ToInterface.
+func TestToInterfaces(t *testing.T) {
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+	inner := NewList([]Object{NewInt(1), NewInt(2), NewInt(3), NewInt(4)})
+
+	got, err := ToInterfaces(ctx, []Object{inner, inner, NewInt(5)})
+	assert.Nil(t, err)
+	assert.Equal(t, got, []any{[]any{int64(1), int64(2), int64(3), int64(4)}, []any{int64(1), int64(2), int64(3), int64(4)}, int64(5)})
+	_, err = ToInterfaces(ctx, []Object{inner, inner, inner})
+	assertValueError(t, err, "value too large to convert (exceeds limit of 10 elements)")
+
+	_, err = ToInterfaces(context.Background(), []Object{nestedLists(MaxNestingDepth)})
+	assert.Nil(t, err)
+	_, err = ToInterfaces(context.Background(), []Object{nestedLists(MaxNestingDepth + 1)})
+	assert.ErrorIs(t, err, ErrNestingDepth)
+}
+
 // Split allocates for the parts it finds, not for the list length limit.
 func TestStringSplitAllocation(t *testing.T) {
 	ctx := context.Background()

@@ -40,7 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `Split`, and `Fields`, and `Bytes.Repeat`, `Replace`, and `ReplaceAll`.
   `String.Fields` also returns an error (#491).
 - `object.ToInterface` and `TypeRegistry.ToGo` take a `context.Context`, whose
-  limits bound the conversion. `ToGo` converts a range to a slice or array
+  limits bound the conversion. `ToGo` converts a range to a slice or array.
+  New `object.ToInterfaces` converts several values with one shared budget
   (#496).
 
 ### Fixed

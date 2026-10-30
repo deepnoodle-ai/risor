@@ -71,6 +71,22 @@ func ToInterface(ctx context.Context, obj Object) (any, error) {
 	return toInterface(obj, nil, newConvBudget(ctx))
 }
 
+// ToInterfaces converts each of objs as ToInterface does. All of objs share
+// one element budget, so the total across them is bounded by the list length
+// limit in ctx.
+func ToInterfaces(ctx context.Context, objs []Object) ([]any, error) {
+	b := newConvBudget(ctx)
+	result := make([]any, len(objs))
+	for i, obj := range objs {
+		value, err := toInterface(obj, nil, b)
+		if err != nil {
+			return nil, err
+		}
+		result[i] = value
+	}
+	return result, nil
+}
+
 // interfaceOrNil converts obj with the default limits and returns nil on
 // error. Interface methods of containers use it.
 func interfaceOrNil(obj Object) any {

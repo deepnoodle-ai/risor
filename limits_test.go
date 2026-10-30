@@ -233,8 +233,7 @@ func TestWithLimitsSharedReferences(t *testing.T) {
 
 // The arguments of one builtin or host call share one element budget, so a
 // spread call cannot pass many references to a large list. Two references to
-// a 4-element list cost 2*4 = 8 elements, or 2 + 2*4 = 10 for sprintf, which
-// also counts the argument list. Three references cost 12 or more.
+// a 4-element list cost 2*4 = 8 elements. Three references cost 12.
 func TestWithLimitsSpreadArguments(t *testing.T) {
 	ctx := context.Background()
 	limits := WithLimits(Limits{MaxListLength: 10})
@@ -267,7 +266,7 @@ func TestWithLimitsSpreadArguments(t *testing.T) {
 		assert.True(t, strings.Contains(err.Error(), "value too large to convert"), src)
 	}
 
-	// 63 references to a 100-element list cost 63 + 6300 elements
+	// 63 references to a 100-element list cost 6300 elements
 	src := `let l = list(range(100)); sprintf("%v", ...list(range(63)).map(i => l))`
 	_, err := Eval(ctx, src, env, WithLimits(Limits{MaxListLength: 1000}))
 	assert.NotNil(t, err)
