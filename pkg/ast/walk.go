@@ -125,7 +125,9 @@ func Walk(v Visitor, node Node) {
 	case *String:
 		// String may contain template expressions
 		for _, expr := range n.Exprs {
-			Walk(v, expr)
+			if expr != nil {
+				Walk(v, expr)
+			}
 		}
 	case *Prefix:
 		if n.X != nil {
@@ -218,6 +220,9 @@ func Walk(v Visitor, node Node) {
 		}
 		if n.Default != nil {
 			Walk(v, n.Default.Pattern)
+			if n.Default.Guard != nil {
+				Walk(v, n.Default.Guard)
+			}
 			Walk(v, n.Default.Result)
 		}
 	case *LiteralPattern:
@@ -499,6 +504,9 @@ func Preorder(root Node) iter.Seq[Node] {
 					if !visit(node.Default.Pattern) {
 						return false
 					}
+					if node.Default.Guard != nil && !visit(node.Default.Guard) {
+						return false
+					}
 					if !visit(node.Default.Result) {
 						return false
 					}
@@ -546,7 +554,7 @@ func Preorder(root Node) iter.Seq[Node] {
 				}
 			case *String:
 				for _, expr := range node.Exprs {
-					if !visit(expr) {
+					if expr != nil && !visit(expr) {
 						return false
 					}
 				}

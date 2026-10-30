@@ -346,7 +346,13 @@ func (p *Parser) parseIf() (ast.Node, bool) {
 		if p.peekTokenIs(token.IF) { // this is an "else if"
 			p.nextToken() // move to the "if"
 			nestedIfPos := p.curToken.StartPosition
+			// The nested if bypasses parseNode, so account for its depth here
+			if !p.enterDepth() {
+				p.depth--
+				return nil, false
+			}
 			nestedIf, ok := p.parseIf()
+			p.depth--
 			if !ok {
 				return nil, false
 			}
@@ -733,6 +739,11 @@ func (p *Parser) parseMatchArm() (*ast.MatchArm, bool) {
 	// Check for optional guard expression: pattern if condition => result
 	var guard ast.Expr
 	if p.peekTokenIs(token.IF) {
+		if isDefault {
+			// The default arm must match unconditionally
+			p.setTokenError(p.peekToken, "match default arm (_) cannot have a guard")
+			return nil, false
+		}
 		p.nextToken() // move to "if"
 		p.nextToken() // move past "if" to the guard expression
 		// Set pattern context so => is not parsed as an arrow function

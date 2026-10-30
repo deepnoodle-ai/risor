@@ -44,7 +44,10 @@ type Config struct {
 	Filename string
 
 	// MaxDepth is the maximum nesting depth for parsing.
-	// This prevents stack overflow on deeply nested input.
+	// This prevents stack overflow on deeply nested input, both while parsing
+	// and in later recursive passes over the AST (walking, compiling).
+	// Operator chains such as a.b.c, f()() and 1+2+3, and else-if chains,
+	// count toward the limit one level per link.
 	// If 0, DefaultMaxDepth (500) is used.
 	MaxDepth int
 }
@@ -420,14 +423,14 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 	if p.curToken.Type == token.EOF || p.hadNewError() {
 		return nil
 	}
-	// Check recursion depth
-	p.depth++
-	if p.depth > p.maxDepth {
-		p.setTokenError(p.curToken, "maximum nesting depth exceeded")
-		p.depth--
+	// Check recursion depth. Each infix or postfix operator applied below
+	// also adds a level, since a chain like a.b.c or 1+2+3 builds a left-deep
+	// AST from this one frame. The whole budget is released on return.
+	entryDepth := p.depth
+	defer func() { p.depth = entryDepth }()
+	if !p.enterDepth() {
 		return nil
 	}
-	defer func() { p.depth-- }()
 
 	prefix := p.prefixParseFns[p.curToken.Type]
 	if prefix == nil {
@@ -444,6 +447,9 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 			infix := p.infixParseFns[p.peekToken.Type]
 			if infix == nil {
 				return leftExp
+			}
+			if !p.enterDepth() {
+				return nil
 			}
 			if err := p.nextToken(); err != nil {
 				return nil
@@ -467,6 +473,9 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 		if infix == nil {
 			break
 		}
+		if !p.enterDepth() {
+			return nil
+		}
 		if err := p.nextToken(); err != nil {
 			return nil
 		}
@@ -477,10 +486,24 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 	}
 	// Check for postfix operators (++ or --)
 	if p.peekTokenIs(token.PLUS_PLUS) || p.peekTokenIs(token.MINUS_MINUS) {
+		if !p.enterDepth() {
+			return nil
+		}
 		p.nextToken()
 		return p.parsePostfix(leftExp)
 	}
 	return leftExp
+}
+
+// enterDepth adds one level of nesting and reports whether it is within
+// maxDepth. Callers must restore p.depth when the nested construct ends.
+func (p *Parser) enterDepth() bool {
+	p.depth++
+	if p.depth > p.maxDepth {
+		p.setTokenError(p.curToken, "maximum nesting depth exceeded")
+		return false
+	}
+	return true
 }
 
 func (p *Parser) parseExpression(precedence int) ast.Expr {
