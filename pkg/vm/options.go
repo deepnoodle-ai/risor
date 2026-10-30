@@ -63,6 +63,17 @@ func WithTypeRegistry(registry *object.TypeRegistry) Option {
 	}
 }
 
+// WithLimits sets the allocation limits for operations that can produce large
+// values, such as string.repeat(), concatenation, and list(range(...)).
+// Exceeding a limit raises a value error in the script. Zero or negative
+// fields use the defaults (see object.DefaultLimits). Without this option,
+// limits stored in the context with object.WithLimits apply.
+func WithLimits(limits object.Limits) Option {
+	return func(vm *VirtualMachine) {
+		vm.limits = &limits
+	}
+}
+
 // WithMaxSteps sets the maximum number of instructions the VM will execute.
 // If the limit is exceeded, the VM will return ErrStepLimitExceeded.
 // A value of 0 (default) means unlimited.

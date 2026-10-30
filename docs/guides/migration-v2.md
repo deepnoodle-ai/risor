@@ -412,6 +412,11 @@ result, err := risor.Eval(ctx, source, risor.WithTimeout(100*time.Millisecond))
 if errors.Is(err, context.DeadlineExceeded) {
     // Script timed out
 }
+
+// Cap the size of strings and lists a single operation can produce.
+// Defaults: 64 MiB and 4,194,304 elements. Exceeding a cap raises a value error.
+result, err := risor.Eval(ctx, source,
+    risor.WithLimits(risor.Limits{MaxBytesSize: 1 << 20, MaxListLength: 100_000}))
 ```
 
 ### Execution Observer

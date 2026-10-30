@@ -238,7 +238,7 @@ func Filter(ctx context.Context, args ...object.Object) (object.Object, error) {
 				return false
 			}
 			if decision.IsTruthy() {
-				if err := object.CheckListLength(len(result) + 1); err != nil {
+				if err := object.CheckListLength(ctx, len(result)+1); err != nil {
 					filterErr = err
 					return false
 				}

@@ -23,39 +23,39 @@ func assertValueError(t *testing.T, err error, substr string) {
 // panicking or attempting a huge allocation.
 func TestAuditStringRepeatLimits(t *testing.T) {
 	s := NewString("ab")
-	_, err := s.Repeat(NewInt(1 << 62))
+	_, err := s.Repeat(context.Background(), NewInt(1<<62))
 	assertValueError(t, err, "too large")
 
-	_, err = NewString("a").Repeat(NewInt(1 << 32))
+	_, err = NewString("a").Repeat(context.Background(), NewInt(1<<32))
 	assertValueError(t, err, "too large")
 
-	_, err = NewString("a").Repeat(NewInt(MaxBytesSize + 1))
+	_, err = NewString("a").Repeat(context.Background(), NewInt(DefaultMaxBytesSize+1))
 	assertValueError(t, err, "too large")
 
-	_, err = s.Repeat(NewInt(-1))
+	_, err = s.Repeat(context.Background(), NewInt(-1))
 	assertValueError(t, err, "negative")
 
-	result, err := s.Repeat(NewInt(3))
+	result, err := s.Repeat(context.Background(), NewInt(3))
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "ababab")
 
-	result, err = NewString("").Repeat(NewInt(math.MaxInt64))
+	result, err = NewString("").Repeat(context.Background(), NewInt(math.MaxInt64))
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "")
 }
 
 func TestAuditBytesRepeatLimits(t *testing.T) {
 	b := NewBytes([]byte("ab"))
-	_, err := b.Repeat(NewInt(1 << 62))
+	_, err := b.Repeat(context.Background(), NewInt(1<<62))
 	assertValueError(t, err, "too large")
 
-	_, err = NewBytes([]byte("a")).Repeat(NewInt(1 << 32))
+	_, err = NewBytes([]byte("a")).Repeat(context.Background(), NewInt(1<<32))
 	assertValueError(t, err, "too large")
 
-	_, err = b.Repeat(NewInt(-1))
+	_, err = b.Repeat(context.Background(), NewInt(-1))
 	assertValueError(t, err, "negative")
 
-	result, err := b.Repeat(NewInt(2))
+	result, err := b.Repeat(context.Background(), NewInt(2))
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bytes).Value(), []byte("abab"))
 }
@@ -65,14 +65,14 @@ func TestAuditStringAmplificationLimits(t *testing.T) {
 	big := NewString(strings.Repeat("x", 100))
 
 	// 1 MiB input with each byte replaced by 100 bytes -> 100 MiB.
-	_, err := input.ReplaceAll(NewString("a"), big)
+	_, err := input.ReplaceAll(context.Background(), NewString("a"), big)
 	assertValueError(t, err, "too large")
 
 	// Empty old string matches between every rune.
-	_, err = input.ReplaceAll(NewString(""), big)
+	_, err = input.ReplaceAll(context.Background(), NewString(""), big)
 	assertValueError(t, err, "too large")
 
-	result, err := NewString("aXa").ReplaceAll(NewString("X"), NewString("YY"))
+	result, err := NewString("aXa").ReplaceAll(context.Background(), NewString("X"), NewString("YY"))
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*String).Value(), "aYYa")
 
@@ -81,12 +81,12 @@ func TestAuditStringAmplificationLimits(t *testing.T) {
 	for i := range items {
 		items[i] = NewString("")
 	}
-	_, err = NewString(strings.Repeat("-", 1<<20)).Join(NewList(items))
+	_, err = NewString(strings.Repeat("-", 1<<20)).Join(context.Background(), NewList(items))
 	assertValueError(t, err, "too large")
 
 	// Concatenation past the limit.
-	half := NewString(strings.Repeat("a", MaxBytesSize/2+1))
-	_, err = half.RunOperation(op.Add, half)
+	half := NewString(strings.Repeat("a", DefaultMaxBytesSize/2+1))
+	_, err = BinaryOp(context.Background(), op.Add, half, half)
 	assertValueError(t, err, "too large")
 }
 
@@ -94,19 +94,19 @@ func TestAuditBytesAmplificationLimits(t *testing.T) {
 	input := NewBytes([]byte(strings.Repeat("a", 1<<20)))
 	big := NewBytes([]byte(strings.Repeat("x", 100)))
 
-	_, err := input.ReplaceAll(NewBytes([]byte("a")), big)
+	_, err := input.ReplaceAll(context.Background(), NewBytes([]byte("a")), big)
 	assertValueError(t, err, "too large")
 
-	_, err = input.Replace(NewBytes([]byte("a")), big, NewInt(-1))
+	_, err = input.Replace(context.Background(), NewBytes([]byte("a")), big, NewInt(-1))
 	assertValueError(t, err, "too large")
 
 	// A bounded count keeps the result small.
-	result, err := input.Replace(NewBytes([]byte("a")), big, NewInt(2))
+	result, err := input.Replace(context.Background(), NewBytes([]byte("a")), big, NewInt(2))
 	assert.Nil(t, err)
 	assert.Equal(t, len(result.(*Bytes).Value()), 1<<20+2*99)
 
-	half := NewBytes([]byte(strings.Repeat("a", MaxBytesSize/2+1)))
-	_, err = half.RunOperation(op.Add, half)
+	half := NewBytes([]byte(strings.Repeat("a", DefaultMaxBytesSize/2+1)))
+	_, err = BinaryOp(context.Background(), op.Add, half, half)
 	assertValueError(t, err, "too large")
 }
 
@@ -179,7 +179,7 @@ func TestAuditCollectLimits(t *testing.T) {
 	_, err = CollectKeys(ctx, NewRange(0, 1<<60, 1))
 	assertValueError(t, err, "list too large")
 
-	_, err = CollectValues(ctx, NewRange(0, MaxListLength+1, 1))
+	_, err = CollectValues(ctx, NewRange(0, DefaultMaxListLength+1, 1))
 	assertValueError(t, err, "list too large")
 
 	values, err := CollectValues(ctx, NewRange(0, 3, 1))
@@ -190,8 +190,8 @@ func TestAuditCollectLimits(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, NewList(keys).Inspect(), "[0, 1]")
 
-	assert.Nil(t, CheckListLength(MaxListLength))
-	assertValueError(t, CheckListLength(MaxListLength+1), "list too large")
+	assert.Nil(t, CheckListLength(context.Background(), DefaultMaxListLength))
+	assertValueError(t, CheckListLength(context.Background(), DefaultMaxListLength+1), "list too large")
 }
 
 func TestAuditRangeInterfaceLimit(t *testing.T) {

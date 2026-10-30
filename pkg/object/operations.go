@@ -1,6 +1,8 @@
 package object
 
 import (
+	"context"
+
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
 
@@ -38,7 +40,8 @@ func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 }
 
 // BinaryOp performs a binary operation on two objects, given an operator.
-func BinaryOp(opType op.BinaryOpType, a, b Object) (Object, error) {
+// Concatenating strings or bytes is checked against the limits in ctx.
+func BinaryOp(ctx context.Context, opType op.BinaryOpType, a, b Object) (Object, error) {
 	switch opType {
 	case op.And:
 		aTruthy := a.IsTruthy()
@@ -55,6 +58,10 @@ func BinaryOp(opType op.BinaryOpType, a, b Object) (Object, error) {
 			return a, nil
 		}
 		return b, nil
+	case op.Add:
+		if err := checkConcatSize(GetLimits(ctx), a, b); err != nil {
+			return nil, err
+		}
 	}
 	return a.RunOperation(opType, b)
 }

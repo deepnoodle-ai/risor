@@ -18,7 +18,7 @@ func TestAuditBytesLimit(t *testing.T) {
 	assert.ErrorAs(t, err, &ve)
 	assert.ErrorContains(t, err, "too large")
 
-	_, err = Bytes(ctx, object.NewInt(maxBytes+1))
+	_, err = Bytes(ctx, object.NewInt(object.DefaultMaxListLength+1))
 	assert.ErrorContains(t, err, "too large")
 
 	result, err := Bytes(ctx, object.NewInt(16))
@@ -27,7 +27,7 @@ func TestAuditBytesLimit(t *testing.T) {
 
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	_, err = Bytes(canceled, object.NewInt(maxBytes))
+	_, err = Bytes(canceled, object.NewInt(object.DefaultMaxListLength))
 	assert.ErrorIs(t, err, context.Canceled)
 }
 

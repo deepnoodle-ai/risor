@@ -98,6 +98,10 @@ type VirtualMachine struct {
 	// If nil, object.DefaultRegistry() is used.
 	typeRegistry *object.TypeRegistry
 
+	// limits bounds the size of values a single operation may produce. When
+	// nil, limits already in the context (or the defaults) apply.
+	limits *object.Limits
+
 	// Resource limits
 	maxSteps int64 // Maximum instructions. 0 = unlimited.
 	// maxValueStackDepth limits the value stack depth (vm.sp).
@@ -693,7 +697,7 @@ evalLoop:
 			opType := op.BinaryOpType(vm.fetch())
 			b := vm.pop()
 			a := vm.pop()
-			result, err := object.BinaryOp(opType, a, b)
+			result, err := object.BinaryOp(ctx, opType, a, b)
 			if err != nil {
 				// Wrap the error with location info if it's a simple type error
 				wrappedErr := vm.wrapError(err)
@@ -856,7 +860,7 @@ evalLoop:
 			}
 			existing := list.Value()
 			if err == nil {
-				err = object.CheckListLength(len(existing) + len(items))
+				err = object.CheckListLength(ctx, len(existing)+len(items))
 			}
 			if err != nil {
 				if herr := vm.tryHandleError(err); herr != nil {
@@ -1585,6 +1589,9 @@ func (vm *VirtualMachine) reloadCode(main *bytecode.Code) *loadedCode {
 }
 
 func (vm *VirtualMachine) initContext(ctx context.Context) context.Context {
+	if vm.limits != nil {
+		ctx = object.WithLimits(ctx, *vm.limits)
+	}
 	return object.WithCallFunc(ctx, vm.callFunction)
 }
 

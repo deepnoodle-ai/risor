@@ -5,11 +5,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// C-10: spreading a range into a list literal must enforce MaxListLength
+// C-10: spreading a range into a list literal must enforce the list length limit
 // instead of materializing an unbounded slice.
 func TestAuditSpreadRangeLimit(t *testing.T) {
 	_, err := run(context.Background(), `[...range(1 << 23)]`)
@@ -48,4 +50,22 @@ func TestAuditSpreadRangeCanceled(t *testing.T) {
 	cancel()
 	_, err := run(ctx, `[...range(1 << 22)]`)
 	assert.NotNil(t, err)
+}
+
+// Limits stored in the context apply, and vm.WithLimits takes precedence
+// over them.
+func TestLimitsFromContextAndOption(t *testing.T) {
+	ast, err := parser.Parse(context.Background(), `"a".repeat(11)`, nil)
+	assert.Nil(t, err)
+	code, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	small := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: 10})
+	_, err = Run(small, code)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "too large"))
+
+	result, err := Run(small, code, WithLimits(object.Limits{MaxBytesSize: 20}))
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewString(strings.Repeat("a", 11)))
 }

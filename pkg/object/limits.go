@@ -12,62 +12,119 @@ import "context"
 // bytes, and materializing lazy sequences into lists. Exceeding a limit
 // returns a value error.
 const (
-	// MaxBytesSize is the maximum size, in bytes, of a string or bytes value
-	// produced by a size-amplifying operation. 64 MiB is far beyond typical
-	// embedded scripting needs while keeping a single result small relative
-	// to host memory.
-	MaxBytesSize = 64 << 20
+	// DefaultMaxBytesSize is the default maximum size, in bytes, of a string
+	// or bytes value produced by a size-amplifying operation. 64 MiB is far
+	// beyond typical embedded scripting needs while keeping a single result
+	// small relative to host memory.
+	DefaultMaxBytesSize = 64 << 20
 
-	// MaxListLength is the maximum number of elements produced when a lazy
-	// sequence (such as a range) is materialized into a list. Each element
-	// occupies a 16-byte interface slot on 64-bit platforms, so 1<<22
-	// (4,194,304) elements matches MaxBytesSize: 64 MiB of slots.
-	MaxListLength = 1 << 22
+	// DefaultMaxListLength is the default maximum number of elements produced
+	// when a sequence is materialized into a list. Each element occupies a
+	// 16-byte interface slot on 64-bit platforms, so 1<<22 (4,194,304)
+	// elements matches DefaultMaxBytesSize: 64 MiB of slots.
+	DefaultMaxListLength = 1 << 22
 )
+
+// Limits bounds the size of the values a single operation may produce. A zero
+// or negative field uses the corresponding default.
+type Limits struct {
+	// MaxBytesSize is the maximum size, in bytes, of a string or bytes value
+	// produced by a size-amplifying operation.
+	MaxBytesSize int64
+
+	// MaxListLength is the maximum number of elements produced when a
+	// sequence is materialized into a list.
+	MaxListLength int64
+}
+
+// DefaultLimits returns the limits used when none are configured.
+func DefaultLimits() Limits {
+	return Limits{
+		MaxBytesSize:  DefaultMaxBytesSize,
+		MaxListLength: DefaultMaxListLength,
+	}
+}
+
+// withDefaults returns l with zero or negative fields replaced by defaults.
+func (l Limits) withDefaults() Limits {
+	if l.MaxBytesSize <= 0 {
+		l.MaxBytesSize = DefaultMaxBytesSize
+	}
+	if l.MaxListLength <= 0 {
+		l.MaxListLength = DefaultMaxListLength
+	}
+	return l
+}
 
 // ctxCheckInterval is how many iterations long-running Go-side loops run
 // between ctx.Err() checks.
 const ctxCheckInterval = 1024
 
-// checkBytesSize returns a value error if size exceeds MaxBytesSize.
-func checkBytesSize(name string, size uint64) error {
-	if size > MaxBytesSize {
+// checkBytesSize returns a value error if size exceeds the byte limit.
+func checkBytesSize(l Limits, name string, size uint64) error {
+	if size > uint64(l.MaxBytesSize) {
 		return newValueErrorf("%s result too large (%d bytes exceeds limit of %d)",
-			name, size, MaxBytesSize)
+			name, size, l.MaxBytesSize)
 	}
 	return nil
 }
 
 // checkRepeatSize returns an error if repeating a value of unit bytes count
-// times would overflow or exceed MaxBytesSize. count must be non-negative.
-func checkRepeatSize(name string, unit int, count int64) error {
+// times would overflow or exceed the byte limit. count must be non-negative.
+func checkRepeatSize(l Limits, name string, unit int, count int64) error {
 	if unit == 0 || count == 0 {
 		return nil
 	}
-	if uint64(count) > MaxBytesSize/uint64(unit) {
+	if uint64(count) > uint64(l.MaxBytesSize)/uint64(unit) {
 		return newValueErrorf("%s result too large (exceeds limit of %d bytes)",
-			name, MaxBytesSize)
+			name, l.MaxBytesSize)
 	}
 	return nil
 }
 
 // checkReplaceSize returns an error if replacing n occurrences of a substring of
 // length oldLen with one of length newLen, in an input of length inputLen,
-// would produce a result larger than MaxBytesSize.
-func checkReplaceSize(name string, inputLen, oldLen, newLen, n int) error {
+// would produce a result larger than the byte limit.
+func checkReplaceSize(l Limits, name string, inputLen, oldLen, newLen, n int) error {
 	if newLen <= oldLen || n == 0 {
 		return nil
 	}
 	growth := uint64(newLen - oldLen)
-	if uint64(n) > MaxBytesSize/growth {
+	if uint64(n) > uint64(l.MaxBytesSize)/growth {
 		return newValueErrorf("%s result too large (exceeds limit of %d bytes)",
-			name, MaxBytesSize)
+			name, l.MaxBytesSize)
 	}
-	return checkBytesSize(name, uint64(inputLen)+uint64(n)*growth)
+	return checkBytesSize(l, name, uint64(inputLen)+uint64(n)*growth)
+}
+
+// checkConcatSize returns an error if concatenating a and b would produce a
+// string or bytes value larger than the byte limit. Other operand types are
+// not checked.
+func checkConcatSize(l Limits, a, b Object) error {
+	aLen, aOk := byteLen(a)
+	bLen, bOk := byteLen(b)
+	if !aOk || !bOk {
+		return nil
+	}
+	name := "string concatenation"
+	if _, ok := a.(*Bytes); ok {
+		name = "bytes concatenation"
+	}
+	return checkBytesSize(l, name, uint64(aLen)+uint64(bLen))
+}
+
+func byteLen(obj Object) (int, bool) {
+	switch obj := obj.(type) {
+	case *String:
+		return len(obj.value), true
+	case *Bytes:
+		return len(obj.value), true
+	}
+	return 0, false
 }
 
 // CollectValues enumerates e and returns its values as a slice. It returns a
-// value error if the result would exceed MaxListLength elements, and returns
+// value error if the result would exceed the list length limit, and returns
 // ctx.Err() if the context is canceled during enumeration.
 func CollectValues(ctx context.Context, e Enumerable) ([]Object, error) {
 	return collect(ctx, e, false)
@@ -80,20 +137,21 @@ func CollectKeys(ctx context.Context, e Enumerable) ([]Object, error) {
 }
 
 func collect(ctx context.Context, e Enumerable, keys bool) ([]Object, error) {
+	maxLen := GetLimits(ctx).MaxListLength
 	var items []Object
 	if r, ok := e.(*Range); ok {
 		// Ranges know their length up front, so reject oversized ranges
 		// without enumerating them.
 		n := r.length()
-		if n > MaxListLength {
-			return nil, listTooLargeError()
+		if n > uint64(maxLen) {
+			return nil, listTooLargeError(maxLen)
 		}
 		items = make([]Object, 0, n)
 	}
 	var limitErr error
 	e.Enumerate(ctx, func(key, value Object) bool {
-		if len(items) >= MaxListLength {
-			limitErr = listTooLargeError()
+		if int64(len(items)) >= maxLen {
+			limitErr = listTooLargeError(maxLen)
 			return false
 		}
 		if keys {
@@ -116,14 +174,14 @@ func collect(ctx context.Context, e Enumerable, keys bool) ([]Object, error) {
 }
 
 // CheckListLength returns a value error if a list of n elements would exceed
-// MaxListLength.
-func CheckListLength(n int) error {
-	if n > MaxListLength {
-		return listTooLargeError()
+// the list length limit in ctx.
+func CheckListLength(ctx context.Context, n int) error {
+	if maxLen := GetLimits(ctx).MaxListLength; int64(n) > maxLen {
+		return listTooLargeError(maxLen)
 	}
 	return nil
 }
 
-func listTooLargeError() error {
-	return newValueErrorf("list too large (exceeds limit of %d elements)", MaxListLength)
+func listTooLargeError(maxLen int64) error {
+	return newValueErrorf("list too large (exceeds limit of %d elements)", maxLen)
 }

@@ -40,6 +40,10 @@ type (
 	TransformerFunc  = syntax.TransformerFunc
 )
 
+// Limits bounds the size of values a single operation may produce. See
+// WithLimits.
+type Limits = object.Limits
+
 // Re-export presets.
 var (
 	ExpressionOnly = syntax.ExpressionOnly
@@ -60,6 +64,7 @@ type options struct {
 	maxSteps      int64
 	maxStackDepth int
 	timeout       time.Duration
+	limits        *object.Limits
 	// AST validation and transformation
 	syntaxConfig *syntax.SyntaxConfig
 	validators   []syntax.Validator
@@ -106,6 +111,9 @@ func (o *options) vmOpts() []vm.Option {
 	}
 	if o.timeout > 0 {
 		opts = append(opts, vm.WithTimeout(o.timeout))
+	}
+	if o.limits != nil {
+		opts = append(opts, vm.WithLimits(*o.limits))
 	}
 	return opts
 }
@@ -251,6 +259,25 @@ func WithMaxStackDepth(n int) Option {
 func WithTimeout(d time.Duration) Option {
 	return func(o *options) {
 		o.timeout = d
+	}
+}
+
+// WithLimits sets allocation limits for operations that can produce large
+// values from small inputs: repeating, replacing, joining, and concatenating
+// strings and bytes, and building lists from ranges and other sequences.
+// Exceeding a limit raises a value error that scripts can catch.
+// Zero or negative fields use the defaults: 64 MiB for strings and bytes,
+// and 4,194,304 list elements.
+//
+// Example:
+//
+//	result, err := risor.Eval(ctx, source, risor.WithLimits(risor.Limits{
+//	    MaxBytesSize:  256 << 20,
+//	    MaxListLength: 1 << 24,
+//	}))
+func WithLimits(limits Limits) Option {
+	return func(o *options) {
+		o.limits = &limits
 	}
 }
 

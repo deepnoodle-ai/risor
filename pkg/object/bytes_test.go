@@ -634,12 +634,12 @@ func TestBytesRepeatNegativeCount(t *testing.T) {
 	b := NewBytes([]byte("ab"))
 
 	// Negative count should return an error
-	_, err := b.Repeat(NewInt(-1))
+	_, err := b.Repeat(context.Background(), NewInt(-1))
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "negative repeat count")
 
 	// Zero count is valid
-	result, err := b.Repeat(NewInt(0))
+	result, err := b.Repeat(context.Background(), NewInt(0))
 	assert.Nil(t, err)
 	assert.Equal(t, result.(*Bytes).Value(), []byte{})
 }

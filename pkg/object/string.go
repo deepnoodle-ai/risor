@@ -76,7 +76,7 @@ func init() {
 		Arg("items").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Join(args[0])
+			return s.Join(ctx, args[0])
 		})
 
 	stringMethods.Define("last_index").
@@ -92,7 +92,7 @@ func init() {
 		Arg("count").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.Repeat(args[0])
+			return s.Repeat(ctx, args[0])
 		})
 
 	stringMethods.Define("replace_all").
@@ -100,7 +100,7 @@ func init() {
 		Args("old", "new").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
-			return s.ReplaceAll(args[0], args[1])
+			return s.ReplaceAll(ctx, args[0], args[1])
 		})
 
 	stringMethods.Define("split").
@@ -239,9 +239,6 @@ func (s *String) RunOperation(opType op.BinaryOpType, right Object) (Object, err
 func (s *String) runOperationString(opType op.BinaryOpType, right *String) (Object, error) {
 	switch opType {
 	case op.Add:
-		if err := checkBytesSize("string concatenation", uint64(len(s.value))+uint64(len(right.value))); err != nil {
-			return nil, err
-		}
 		return NewString(s.value + right.value), nil
 	default:
 		return nil, newTypeErrorf("unsupported operation for string: %v on type %s", opType, right.Type())
@@ -319,7 +316,7 @@ func (s *String) Count(obj Object) (Object, error) {
 	return NewInt(int64(strings.Count(s.value, substr))), nil
 }
 
-func (s *String) Join(obj Object) (Object, error) {
+func (s *String) Join(ctx context.Context, obj Object) (Object, error) {
 	ls, err := AsList(obj)
 	if err != nil {
 		return nil, err
@@ -335,7 +332,7 @@ func (s *String) Join(obj Object) (Object, error) {
 		if i > 0 {
 			size += uint64(len(s.value))
 		}
-		if err := checkBytesSize("string.join()", size); err != nil {
+		if err := checkBytesSize(GetLimits(ctx), "string.join()", size); err != nil {
 			return nil, err
 		}
 		strs = append(strs, itemStr)
@@ -371,7 +368,7 @@ func (s *String) LastIndex(obj Object) (Object, error) {
 	return NewInt(int64(strings.LastIndex(s.value, substr))), nil
 }
 
-func (s *String) ReplaceAll(old, new Object) (Object, error) {
+func (s *String) ReplaceAll(ctx context.Context, old, new Object) (Object, error) {
 	oldStr, err := AsString(old)
 	if err != nil {
 		return nil, err
@@ -380,7 +377,7 @@ func (s *String) ReplaceAll(old, new Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkReplaceSize("string.replace_all()", len(s.value), len(oldStr), len(newStr),
+	if err := checkReplaceSize(GetLimits(ctx), "string.replace_all()", len(s.value), len(oldStr), len(newStr),
 		strings.Count(s.value, oldStr)); err != nil {
 		return nil, err
 	}
@@ -423,7 +420,7 @@ func (s *String) TrimSpace() Object {
 	return NewString(strings.TrimSpace(s.value))
 }
 
-func (s *String) Repeat(obj Object) (Object, error) {
+func (s *String) Repeat(ctx context.Context, obj Object) (Object, error) {
 	count, err := AsInt(obj)
 	if err != nil {
 		return nil, err
@@ -431,7 +428,7 @@ func (s *String) Repeat(obj Object) (Object, error) {
 	if count < 0 {
 		return nil, newValueErrorf("negative repeat count")
 	}
-	if err := checkRepeatSize("string.repeat()", len(s.value), count); err != nil {
+	if err := checkRepeatSize(GetLimits(ctx), "string.repeat()", len(s.value), count); err != nil {
 		return nil, err
 	}
 	return NewString(strings.Repeat(s.value, int(count))), nil

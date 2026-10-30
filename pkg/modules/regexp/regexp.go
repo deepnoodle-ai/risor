@@ -101,12 +101,13 @@ func Replace(ctx context.Context, args ...object.Object) (object.Object, error) 
 // count replaces none. Matches are found in a single pass over the original
 // string, so replacement text is never re-matched.
 //
-// The result size is checked against object.MaxBytesSize before it is built,
+// The result size is checked against the byte limit in ctx before it is built,
 // using a streaming pass that does not hold all matches in memory.
 func replace(ctx context.Context, r *regexp.Regexp, str, repl string, count int) (object.Object, error) {
 	if count < 0 {
 		return object.NewString(str), nil
 	}
+	maxBytes := object.GetLimits(ctx).MaxBytesSize
 	lit, refs := replacementShape(r, repl)
 	var matches int
 	var canceled, tooLarge bool
@@ -122,7 +123,7 @@ func replace(ctx context.Context, r *regexp.Regexp, str, repl string, count int)
 		if !tooLarge && (count == 0 || matches < count) {
 			// Each group reference expands to at most the match length.
 			size += int64(lit) + int64(refs)*int64(len(m)) - int64(len(m))
-			tooLarge = size > object.MaxBytesSize
+			tooLarge = size > maxBytes
 		}
 		matches++
 		return ""
@@ -132,14 +133,14 @@ func replace(ctx context.Context, r *regexp.Regexp, str, repl string, count int)
 	}
 	if tooLarge {
 		return nil, object.ValueErrorf("regexp.replace: result too large (exceeds limit of %d bytes)",
-			object.MaxBytesSize)
+			maxBytes)
 	}
 	if count == 0 || count >= matches {
 		return object.NewString(r.ReplaceAllString(str, repl)), nil
 	}
 	// Replace only the first count matches. Their indices are held in memory,
 	// so bound how many there can be.
-	if err := object.CheckListLength(count); err != nil {
+	if err := object.CheckListLength(ctx, count); err != nil {
 		return nil, err
 	}
 	var result []byte

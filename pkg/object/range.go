@@ -97,10 +97,10 @@ func (r *Range) Inspect() string {
 }
 
 // Interface returns the range values as a []int64. Ranges longer than
-// MaxListLength are not materialized and return nil.
+// DefaultMaxListLength are not materialized and return nil.
 func (r *Range) Interface() any {
 	n := r.length()
-	if n > MaxListLength {
+	if n > DefaultMaxListLength {
 		return nil
 	}
 	result := make([]int64, 0, n)
@@ -184,8 +184,8 @@ func (r *Range) Map(ctx context.Context, fn Object) (Object, error) {
 		passIndex = count == 2
 	}
 	n := r.length()
-	if n > MaxListLength {
-		return nil, listTooLargeError()
+	if maxLen := GetLimits(ctx).MaxListLength; n > uint64(maxLen) {
+		return nil, listTooLargeError(maxLen)
 	}
 	result := make([]Object, 0, n)
 	var callErr error
@@ -227,8 +227,8 @@ func (r *Range) Filter(ctx context.Context, fn Object) (Object, error) {
 			return false
 		}
 		if decision.IsTruthy() {
-			if len(result) >= MaxListLength {
-				callErr = listTooLargeError()
+			if maxLen := GetLimits(ctx).MaxListLength; int64(len(result)) >= maxLen {
+				callErr = listTooLargeError(maxLen)
 				return false
 			}
 			result = append(result, value)

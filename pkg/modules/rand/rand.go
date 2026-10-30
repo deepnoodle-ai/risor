@@ -232,10 +232,6 @@ func Shuffle(ctx context.Context, args ...object.Object) (object.Object, error) 
 	return ls, nil
 }
 
-// maxBytes is the largest n accepted by Bytes. The result is a list with one
-// object per byte, so this bounds a single call to a few tens of MiB.
-const maxBytes = 1 << 20
-
 // Bytes returns a list of n random bytes (0-255).
 // Useful for generating random data.
 func Bytes(ctx context.Context, args ...object.Object) (object.Object, error) {
@@ -249,8 +245,10 @@ func Bytes(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if n < 0 {
 		return nil, fmt.Errorf("rand.bytes: n must be non-negative, got %d", n)
 	}
-	if n > maxBytes {
-		return nil, object.ValueErrorf("rand.bytes: n too large (%d exceeds limit of %d)", n, maxBytes)
+	// The result is a list with one object per byte, so n is bounded by the
+	// list length limit.
+	if maxLen := object.GetLimits(ctx).MaxListLength; n > maxLen {
+		return nil, object.ValueErrorf("rand.bytes: n too large (%d exceeds limit of %d)", n, maxLen)
 	}
 	result := make([]object.Object, n)
 	for i := range n {
