@@ -4,17 +4,20 @@ export VERSION=$(shell git describe --tags --always --dirty | sed 's/^v//')
 # Packages to exclude from testing (examples, benchmarks, JavaScript dependencies)
 TEST_EXCLUDE := examples tests/benchmarks vscode
 
-# Test the packages of every module in go.work in one run, so one coverage
-# profile covers them all. TEST_EXCLUDE drops the examples/go/* modules.
-# Each go list result is captured first, so a module that go list cannot
-# load fails the target instead of silently dropping out of the run.
+# Shell snippet that sets $pkgs to the packages of every module in go.work,
+# so one coverage profile covers them all. TEST_EXCLUDE drops the
+# examples/go/* modules. Each go list result is captured first, so a module
+# that go list cannot load fails the target instead of silently dropping out
+# of the run. Shared by test and cover so both measure the same packages.
+LIST_PKGS = mods=$$(go list -m -f '{{.Dir}}/...') || exit 1; \
+	pkgs=$$(go list $$mods) || exit 1; \
+	pkgs=$$(printf '%s\n' "$$pkgs" | grep -v -E '$(subst $(eval ) ,|,$(TEST_EXCLUDE))')
+
 .PHONY: test
 test:
-	mods=$$(go list -m -f '{{.Dir}}/...') || exit 1; \
-	pkgs=$$(go list $$mods) || exit 1; \
+	$(LIST_PKGS); \
 	gotestsum --junitfile /tmp/test-reports/unit-tests.xml \
-		-- -coverprofile=coverage.out -covermode=atomic \
-		$$(printf '%s\n' "$$pkgs" | grep -v -E '$(subst $(eval ) ,|,$(TEST_EXCLUDE))')
+		-- -coverprofile=coverage.out -covermode=atomic $$pkgs
 
 .PHONY: pprof
 pprof:
@@ -62,7 +65,8 @@ update-deps:
 
 .PHONY: cover
 cover:
-	go test -coverprofile cover.out ./...
+	$(LIST_PKGS); \
+	go test -coverprofile cover.out $$pkgs
 	go tool cover -html=cover.out
 
 .PHONY: format
