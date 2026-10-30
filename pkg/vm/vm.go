@@ -37,6 +37,16 @@ const (
 	// DefaultContextCheckInterval is the number of instructions between
 	// deterministic checks of ctx.Done(). Set to 0 to disable.
 	DefaultContextCheckInterval = 1000
+
+	// DefaultMaxLocals is the default maximum number of local variable slots
+	// across all active function call frames. Each slot is a 16-byte
+	// interface value on 64-bit platforms, so 1<<22 (4,194,304) slots is
+	// 64 MiB, matching object.DefaultMaxListLength. Compiled source rarely
+	// uses more than a few dozen slots per function, so a full stack of
+	// MaxFrameDepth frames fits with room to spare. Loaded bytecode can use
+	// up to 65,535 slots per function, so without this bound a deep
+	// recursion could reserve about 1 GB.
+	DefaultMaxLocals = 1 << 22
 )
 
 var (
@@ -119,7 +129,10 @@ type VirtualMachine struct {
 	// maxFrameDepth limits the call frame depth (vm.fp).
 	// A value of 0 uses the global MaxFrameDepth constant.
 	maxFrameDepth int
-	timeout       time.Duration // Execution timeout. 0 = no timeout.
+	// maxLocals limits the total local variable slots across all active
+	// function call frames. A value of 0 uses DefaultMaxLocals.
+	maxLocals int
+	timeout   time.Duration // Execution timeout. 0 = no timeout.
 
 	// Step counting state for resource limits. These fields are stored on the
 	// VM (rather than as local variables in eval) so that step counting persists
@@ -1548,6 +1561,11 @@ func (vm *VirtualMachine) restoreFrame(fp, ip, sp int) *frame {
 	for i := vm.sp; i > sp; i-- {
 		vm.stack[i] = nil
 	}
+	// Frames above fp are no longer active. Drop their large locals so that
+	// only active frames, which the locals budget bounds, hold large slices.
+	for i := fp + 1; i <= vm.fp && i < len(vm.frames); i++ {
+		vm.frames[i].releaseLocals()
+	}
 	vm.sp = sp
 	vm.fp = fp
 	vm.ip = ip
@@ -1582,8 +1600,18 @@ func (vm *VirtualMachine) ensureFrameCapacity(fp int) error {
 	return nil
 }
 
+// localsLimit returns the maximum total local variable slots across all
+// active function call frames.
+func (vm *VirtualMachine) localsLimit() int {
+	if vm.maxLocals > 0 {
+		return vm.maxLocals
+	}
+	return DefaultMaxLocals
+}
+
 // Activate a frame with the given code. This is typically used to begin
-// running the entrypoint for a module or script.
+// running the entrypoint for a module or script. The entry frame does not
+// count toward the locals budget.
 func (vm *VirtualMachine) activateCode(fp, ip int, code *loadedCode) (*frame, error) {
 	if err := vm.ensureFrameCapacity(fp); err != nil {
 		return nil, err
@@ -1592,6 +1620,7 @@ func (vm *VirtualMachine) activateCode(fp, ip int, code *loadedCode) (*frame, er
 	vm.ip = ip
 	vm.activeFrame = &vm.frames[fp]
 	vm.activeFrame.ActivateCode(code)
+	vm.activeFrame.localsTotal = 0
 	vm.activeCode = code
 	return vm.activeFrame, nil
 }
@@ -1611,12 +1640,24 @@ func (vm *VirtualMachine) activateFunction(fp, ip int, fn *object.Closure, local
 		}
 		code = vm.loadCode(fn.Code())
 	}
+	// Check the locals budget before the frame allocates its locals. The
+	// total is derived from the caller's frame, so returning or unwinding
+	// to the caller restores the caller's total with no bookkeeping.
+	localsTotal := code.LocalsCount()
+	if fp > 0 {
+		localsTotal += vm.frames[fp-1].localsTotal
+	}
+	if limit := vm.localsLimit(); localsTotal > limit {
+		return nil, fmt.Errorf("%w: local variable limit of %d slots exceeded",
+			ErrStackOverflow, limit)
+	}
 	returnAddr := vm.ip
 	returnSp := vm.sp
 	vm.fp = fp
 	vm.ip = ip
 	vm.activeFrame = &vm.frames[fp]
 	vm.activeFrame.ActivateFunction(fn, code, returnAddr, returnSp, locals)
+	vm.activeFrame.localsTotal = localsTotal
 	vm.activeCode = code
 	return vm.activeFrame, nil
 }
