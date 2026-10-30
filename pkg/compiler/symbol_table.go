@@ -23,8 +23,11 @@ func IsBlankIdentifier(name string) bool {
 // symbolsByName, because symbols defined in nested blocks don't use a name
 // in the enclosing table.
 type SymbolTable struct {
+	// id is empty for a child whose ID is derived from its parent's ID and
+	// its position, as it is for every child the compiler creates. See ID.
 	id            string
 	parent        *SymbolTable
+	position      int // Index among the parent's children
 	children      []*SymbolTable
 	symbolsByName map[string]*Symbol
 	freeByName    map[string]*Resolution
@@ -36,8 +39,8 @@ type SymbolTable struct {
 // NewChild creates a new symbol table that is a child of the current table.
 func (t *SymbolTable) NewChild() *SymbolTable {
 	child := &SymbolTable{
-		id:            fmt.Sprintf("%s.%d", t.ID(), len(t.children)),
 		parent:        t,
+		position:      len(t.children),
 		symbolsByName: map[string]*Symbol{},
 		freeByName:    map[string]*Resolution{},
 		symbols:       []*Symbol{},
@@ -56,8 +59,23 @@ func (t *SymbolTable) NewBlock() *SymbolTable {
 	return child
 }
 
+// ID returns the ID of the table. The root has the ID it was created with,
+// "root". A child has its parent's ID, a dot, and its index among the
+// parent's children, such as "root.0.1". A child's ID is built on each call,
+// not stored, so the memory used by IDs does not grow with the square of the
+// nesting depth. A child loaded by UnmarshalCode from older data has the ID
+// stored there.
 func (t *SymbolTable) ID() string {
-	return t.id
+	if t.id != "" || t.parent == nil {
+		return t.id
+	}
+	var positions []int
+	table := t
+	for table.id == "" && table.parent != nil {
+		positions = append(positions, table.position)
+		table = table.parent
+	}
+	return pathID(table.id, positions)
 }
 
 func (t *SymbolTable) claimIndex(s *Symbol) (uint16, error) {
@@ -214,10 +232,6 @@ func (t *SymbolTable) Resolve(name string) (*Resolution, bool) {
 	}
 	// Access the enclosing function, if any
 	activeFunc, inFunc := t.GetFunction()
-	var activeFuncID string
-	if activeFunc != nil {
-		activeFuncID = activeFunc.ID()
-	}
 	// Check if the symbol is defined directly in this table
 	if s, ok := t.symbolsByName[name]; ok {
 		var scope Scope
@@ -244,13 +258,12 @@ func (t *SymbolTable) Resolve(name string) (*Resolution, bool) {
 			// Symbol is undefined in all ancestors
 			return nil, false
 		}
-		ancestorFuncID, _ := ancestor.GetFunctionID()
 		if sym, ok := ancestor.symbolsByName[name]; ok {
 			if ancestor.IsGlobal() {
 				// Global variable
 				return &Resolution{symbol: sym, scope: Global}, true
 			}
-			if inFunc && ancestorFuncID == activeFuncID {
+			if ancestorFunc, _ := ancestor.GetFunction(); inFunc && ancestorFunc == activeFunc {
 				// Local variable
 				return &Resolution{symbol: sym, scope: Local}, true
 			}
@@ -320,7 +333,7 @@ func (t *SymbolTable) Free(index uint16) *Resolution {
 // FindTable returns the table with the specified ID. This may be the
 // current table or any child table.
 func (t *SymbolTable) FindTable(id string) (*SymbolTable, bool) {
-	if t.id == id {
+	if t.ID() == id {
 		return t, true
 	}
 	for _, child := range t.children {

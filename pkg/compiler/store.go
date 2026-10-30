@@ -92,7 +92,12 @@ type resolutionDef struct {
 	FreeIndex int        `json:"free_index"`
 }
 
-// Used to marshal a SymbolTable.
+// Used to marshal a SymbolTable. ID is empty for a child table whose ID is
+// derived from its parent's ID and its position, as it is for every child
+// the compiler creates (see SymbolTable.ID). The ID of such a table holds the
+// path from the root table, so writing it for each table would make the
+// output grow with the square of the nesting depth. The root holds its ID.
+// Older versions wrote the ID of every table. UnmarshalCode keeps them.
 type symbolTableDef struct {
 	ID            string                `json:"id,omitempty"`
 	Symbols       []*symbolDef          `json:"symbols"`
@@ -127,21 +132,33 @@ type exceptionHandlerDef struct {
 // root code's source. The compiler records that range for each function body,
 // so nested functions do not repeat their body text at each level. Older
 // versions wrote the text of every code.
+//
+// A code refers to its parent by ParentIndex, the parent's index in the code
+// list, and to its symbol table by SymbolTableIndex, the table's index in a
+// depth-first, pre-order walk of the symbol table tree. ID is empty for a
+// child whose ID is derived from its parent's ID and its position, as it is
+// for compiled code (see Code.ID). Code and table IDs hold the path from the
+// root, so writing them would make the output grow with the square of the
+// nesting depth. Older versions wrote every ID, and referred to the parent
+// and the symbol table by ID in ParentID and SymbolTableID. UnmarshalCode
+// still reads them.
 type codeDef struct {
-	ID            string            `json:"id,omitempty"`
-	Name          string            `json:"name"`
-	ParentID      string            `json:"parent_id,omitempty"`
-	SymbolTableID string            `json:"symbol_table_id"`
-	FunctionID    string            `json:"function_id,omitempty"`
-	Instructions  []op.Code         `json:"instructions,omitempty"`
-	Constants     []json.RawMessage `json:"constants,omitempty"`
-	Names         []string          `json:"names,omitempty"`
-	Source        string            `json:"source,omitempty"`
-	SourceRange   []int             `json:"source_range,omitempty"`
-	Filename      string            `json:"filename,omitempty"`
-	Locations     []locationDef     `json:"locations,omitempty"`
-	MaxCallArgs   uint16            `json:"max_call_args,omitempty"`
-	EnvKeys       []string          `json:"env_keys,omitempty"`
+	ID               string            `json:"id,omitempty"`
+	Name             string            `json:"name"`
+	ParentIndex      *int              `json:"parent_index,omitempty"`
+	ParentID         string            `json:"parent_id,omitempty"`
+	SymbolTableIndex *int              `json:"symbol_table_index,omitempty"`
+	SymbolTableID    string            `json:"symbol_table_id,omitempty"`
+	FunctionID       string            `json:"function_id,omitempty"`
+	Instructions     []op.Code         `json:"instructions,omitempty"`
+	Constants        []json.RawMessage `json:"constants,omitempty"`
+	Names            []string          `json:"names,omitempty"`
+	Source           string            `json:"source,omitempty"`
+	SourceRange      []int             `json:"source_range,omitempty"`
+	Filename         string            `json:"filename,omitempty"`
+	Locations        []locationDef     `json:"locations,omitempty"`
+	MaxCallArgs      uint16            `json:"max_call_args,omitempty"`
+	EnvKeys          []string          `json:"env_keys,omitempty"`
 
 	ExceptionHandlers []exceptionHandlerDef `json:"exception_handlers,omitempty"`
 }
@@ -168,6 +185,10 @@ func codeFromState(state *state) (*Code, error) {
 		return nil, err
 	}
 	linkSymbols(table)
+	tables := flattenSymbolTables(table, nil)
+	// tablesByID maps each stored table ID to its table, for codes that name
+	// their table by ID, as older versions did. It is built on first use.
+	var tablesByID map[string]*SymbolTable
 	codes := make([]*Code, 0, len(state.Code))
 	// functionsByID maps a function ID to the function and the code that
 	// holds it as a constant. The function's own code must be a child of
@@ -177,6 +198,8 @@ func codeFromState(state *state) (*Code, error) {
 		owner *Code
 	}
 	functionsByID := map[string]ownedFunction{}
+	// codesByID maps the root's ID and each stored child ID to its code, for
+	// codes that name their parent by ID, as older versions did.
 	codesByID := map[string]*Code{}
 	// lines maps each code to the lines of its line source. Every child's
 	// line source is the root source, so children share their parent's lines
@@ -186,24 +209,58 @@ func codeFromState(state *state) (*Code, error) {
 		if c == nil {
 			return nil, fmt.Errorf("invalid code: code block %d is null", i)
 		}
-		if _, dup := codesByID[c.ID]; dup {
-			return nil, fmt.Errorf("invalid code: duplicate code id %q", c.ID)
-		}
-		codeSymbols, found := table.FindTable(c.SymbolTableID)
-		if !found {
-			return nil, fmt.Errorf("symbol table not found: %s", c.SymbolTableID)
+		var codeSymbols *SymbolTable
+		if c.SymbolTableIndex == nil {
+			if tablesByID == nil {
+				tablesByID = symbolTablesByID(tables)
+			}
+			var found bool
+			codeSymbols, found = tablesByID[c.SymbolTableID]
+			if !found {
+				return nil, fmt.Errorf("symbol table not found: %s", c.SymbolTableID)
+			}
+		} else {
+			if c.SymbolTableID != "" {
+				return nil, fmt.Errorf("invalid code: code block %d has both symbol table index and symbol table id", i)
+			}
+			idx := *c.SymbolTableIndex
+			if idx < 0 || idx >= len(tables) {
+				return nil, fmt.Errorf("invalid code: code block %d has symbol table index %d, want 0 to %d", i, idx, len(tables)-1)
+			}
+			codeSymbols = tables[idx]
 		}
 		// The first code block is the root. Every other block names a
 		// parent that appears before it, so the blocks form a tree.
 		var parent *Code
 		if i == 0 {
+			if c.ParentIndex != nil {
+				return nil, fmt.Errorf("invalid code: root code has a parent index: %d", *c.ParentIndex)
+			}
 			if c.ParentID != "" {
 				return nil, fmt.Errorf("invalid code: root code has a parent: %s", c.ParentID)
 			}
+		} else if c.ParentIndex != nil {
+			if c.ParentID != "" {
+				return nil, fmt.Errorf("invalid code: code block %d has both parent index and parent id", i)
+			}
+			p := *c.ParentIndex
+			if p < 0 || p >= i {
+				return nil, fmt.Errorf("invalid code: code block %d has parent index %d, want a code block before it", i, p)
+			}
+			parent = codes[p]
 		} else {
+			var found bool
 			parent, found = codesByID[c.ParentID]
 			if !found {
 				return nil, fmt.Errorf("parent code not found: %q", c.ParentID)
+			}
+		}
+		// A child without a stored ID derives it from its parent's ID and
+		// its position. Stored IDs must be unique, so that a parent named
+		// by ID is not ambiguous.
+		if i == 0 || c.ID != "" {
+			if _, dup := codesByID[c.ID]; dup {
+				return nil, fmt.Errorf("invalid code: duplicate code id %q", c.ID)
 			}
 		}
 		constants, err := unmarshalConstants(c.Constants)
@@ -217,14 +274,14 @@ func codeFromState(state *state) (*Code, error) {
 				return nil, fmt.Errorf("invalid code: root code has a source range")
 			}
 			if c.Source != "" {
-				return nil, fmt.Errorf("invalid code: code %q has both source and source range", c.ID)
+				return nil, fmt.Errorf("invalid code: code block %d has both source and source range", i)
 			}
 			if len(r) != 2 {
-				return nil, fmt.Errorf("invalid code: code %q has a source range with %d elements, want 2", c.ID, len(r))
+				return nil, fmt.Errorf("invalid code: code block %d has a source range with %d elements, want 2", i, len(r))
 			}
 			rootSource := codes[0].source
 			if r[0] < 0 || r[0] > r[1] || r[1] > len(rootSource) {
-				return nil, fmt.Errorf("invalid code: code %q has source range %v outside the root source", c.ID, r)
+				return nil, fmt.Errorf("invalid code: code block %d has source range %v outside the root source", i, r)
 			}
 			source = rootSource[r[0]:r[1]]
 			sourceStart, sourceEnd = r[0], r[1]
@@ -242,7 +299,7 @@ func codeFromState(state *state) (*Code, error) {
 
 		nameIndex, err := newNameIndex(c.Names)
 		if err != nil {
-			return nil, fmt.Errorf("invalid code: code %q: %w", c.ID, err)
+			return nil, fmt.Errorf("invalid code: code block %d: %w", i, err)
 		}
 
 		code := &Code{
@@ -274,9 +331,12 @@ func codeFromState(state *state) (*Code, error) {
 			lines[code] = strings.Split(code.source, "\n")
 		}
 		code.locations = locationsFromDefs(c.Locations, lines[code])
-		codesByID[code.id] = code
+		if i == 0 || c.ID != "" {
+			codesByID[c.ID] = code
+		}
 		codes = append(codes, code)
 		if parent != nil {
+			code.position = len(parent.children)
 			parent.children = append(parent.children, code)
 		}
 		for _, constant := range constants {
@@ -306,6 +366,35 @@ func codeFromState(state *state) (*Code, error) {
 		}
 	}
 	return codes[0], nil
+}
+
+// flattenSymbolTables appends table and its descendants to tables in
+// depth-first, pre-order: each table comes before its children, and its
+// children are in order. A code's symbol_table_index is an index into it.
+func flattenSymbolTables(table *SymbolTable, tables []*SymbolTable) []*SymbolTable {
+	tables = append(tables, table)
+	for _, child := range table.children {
+		tables = flattenSymbolTables(child, tables)
+	}
+	return tables
+}
+
+// symbolTablesByID maps the ID of the root, the first of tables, and each
+// stored ID of the other tables to the first table that has it, the table
+// that FindTable returns. Older versions stored the ID of every table. It
+// does not build derived IDs, which would take memory that grows with the
+// square of the nesting depth.
+func symbolTablesByID(tables []*SymbolTable) map[string]*SymbolTable {
+	byID := make(map[string]*SymbolTable, len(tables))
+	for i, table := range tables {
+		if i > 0 && table.id == "" {
+			continue
+		}
+		if _, ok := byID[table.id]; !ok {
+			byID[table.id] = table
+		}
+	}
+	return byID
 }
 
 // newNameIndex returns the index map for a names table, or nil if it is empty.
@@ -475,6 +564,9 @@ func marshalConstants(constants []any) ([]json.RawMessage, error) {
 	return dst, nil
 }
 
+// symbolTableFromDefinition builds the symbol table tree that def defines. A
+// child table without a stored ID derives it from its parent's ID and its
+// position.
 func symbolTableFromDefinition(def *symbolTableDef) (*SymbolTable, error) {
 	if def == nil {
 		return nil, fmt.Errorf("invalid symbol table: null")
@@ -508,13 +600,14 @@ func symbolTableFromDefinition(def *symbolTableDef) (*SymbolTable, error) {
 		table.free = append(table.free, obj)
 		table.freeByName[obj.symbol.name] = obj
 	}
-	for _, child := range def.Children {
+	for j, child := range def.Children {
 		obj, err := symbolTableFromDefinition(child)
 		if err != nil {
 			return nil, err
 		}
 		table.children = append(table.children, obj)
 		obj.parent = table
+		obj.position = j
 	}
 	return table, nil
 }
@@ -563,8 +656,22 @@ func stateFromCode(code *Code) (*state, error) {
 		Code:        []*codeDef{},
 		SymbolTable: definitionFromSymbolTable(code.symbols),
 	}
+	tableIndices := map[*SymbolTable]int{}
+	for i, table := range flattenSymbolTables(code.symbols, nil) {
+		tableIndices[table] = i
+	}
 	allCode := code.Flatten()
+	codeIndices := make(map[*Code]int, len(allCode))
 	for i, code := range allCode {
+		codeIndices[code] = i
+	}
+	// parentIndices holds the index of each code's parent. Flatten puts a
+	// parent before its children, so each is set before it is read.
+	parentIndices := make([]int, len(allCode))
+	for i, code := range allCode {
+		for _, child := range code.children {
+			parentIndices[codeIndices[child]] = i
+		}
 		source := code.source
 		var sourceRange []int
 		if i > 0 && rootSourceRange(code, allCode[0]) {
@@ -575,24 +682,38 @@ func stateFromCode(code *Code) (*state, error) {
 			return nil, err
 		}
 		cdef := &codeDef{
-			ID:            code.id,
-			Constants:     constants,
-			FunctionID:    code.functionID,
-			SymbolTableID: code.symbols.ID(),
-			Instructions:  CopyInstructions(code.instructions),
-			Name:          code.name,
-			Names:         copyStrings(code.names),
-			Source:        source,
-			SourceRange:   sourceRange,
-			Filename:      code.filename,
-			Locations:     locationsToDefs(code.locations),
-			MaxCallArgs:   code.maxCallArgs,
-			EnvKeys:       copyStrings(code.envKeys),
+			Constants:    constants,
+			FunctionID:   code.functionID,
+			Instructions: CopyInstructions(code.instructions),
+			Name:         code.name,
+			Names:        copyStrings(code.names),
+			Source:       source,
+			SourceRange:  sourceRange,
+			Filename:     code.filename,
+			Locations:    locationsToDefs(code.locations),
+			MaxCallArgs:  code.maxCallArgs,
+			EnvKeys:      copyStrings(code.envKeys),
 
 			ExceptionHandlers: exceptionHandlersToDefs(code.exceptionHandlers),
 		}
-		if code.parent != nil {
-			cdef.ParentID = code.parent.id
+		// The first code becomes the root when unmarshaled, so it holds its
+		// full ID. Every other code holds only a stored ID.
+		if i == 0 {
+			cdef.ID = code.ID()
+		} else {
+			cdef.ID = code.id
+		}
+		if i > 0 {
+			parentIdx := parentIndices[i]
+			cdef.ParentIndex = &parentIdx
+		}
+		// A code's table is in its root code's table tree, as the compiler
+		// builds it. If it is not, write the table's ID as older versions
+		// did, and UnmarshalCode reports that the table is not found.
+		if idx, ok := tableIndices[code.symbols]; ok {
+			cdef.SymbolTableIndex = &idx
+		} else {
+			cdef.SymbolTableID = code.symbols.ID()
 		}
 		state.Code = append(state.Code, cdef)
 	}
@@ -613,7 +734,18 @@ func rootSourceRange(c, root *Code) bool {
 	return root.source[c.sourceStart:c.sourceEnd] == c.source
 }
 
+// definitionFromSymbolTable returns the definition of table and its children.
+// table becomes the root when unmarshaled, so it holds its full ID. Each
+// child holds only a stored ID.
 func definitionFromSymbolTable(table *SymbolTable) *symbolTableDef {
+	def := symbolTableDefinition(table)
+	def.ID = table.ID()
+	return def
+}
+
+// symbolTableDefinition returns the definition of table and its children,
+// with the stored ID of each.
+func symbolTableDefinition(table *SymbolTable) *symbolTableDef {
 	free := make([]*resolutionDef, 0, len(table.free))
 	for _, resolution := range table.free {
 		free = append(free, definitionFromResolution(resolution))
@@ -628,10 +760,10 @@ func definitionFromSymbolTable(table *SymbolTable) *symbolTableDef {
 	}
 	children := make([]*symbolTableDef, 0, len(table.children))
 	for _, child := range table.children {
-		children = append(children, definitionFromSymbolTable(child))
+		children = append(children, symbolTableDefinition(child))
 	}
 	return &symbolTableDef{
-		ID:            table.ID(),
+		ID:            table.id,
 		Symbols:       symbols,
 		SymbolsByName: symbolsByName,
 		Free:          free,

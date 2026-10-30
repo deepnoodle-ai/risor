@@ -97,8 +97,14 @@ type exceptionHandlerDef struct {
 // records that range for each function body, so nested functions do not
 // repeat their body text at each level. A code without a range, such as one
 // built by hand, holds its text. Older versions wrote the text of every code.
+//
+// ID is empty for a child whose ID is derived from its parent's ID and its
+// position, as it is for compiled code (see [Code.ID]). The ID of compiled
+// code holds the path from the root, so writing it for each code would make
+// the output grow with the square of the nesting depth. The first code holds
+// its ID. Older versions wrote the ID of every code. Unmarshal keeps them.
 type codeDef struct {
-	ID                string                `json:"id"`
+	ID                string                `json:"id,omitempty"`
 	Name              string                `json:"name"`
 	IsNamed           bool                  `json:"is_named,omitempty"`
 	ChildIndices      []int                 `json:"child_indices,omitempty"` // Indices of children in codes array
@@ -191,6 +197,13 @@ func stateFromCode(code *Code) (*codeState, error) {
 			childIndices = append(childIndices, codeIndexMap[child])
 		}
 
+		// The first code becomes the root when unmarshaled, so it holds its
+		// full ID. Every other code holds only an ID it was given.
+		id := c.id
+		if i == 0 {
+			id = c.ID()
+		}
+
 		source := c.Source()
 		var sourceRange []int
 		if i > 0 && rootSourceRange(c, code) {
@@ -198,7 +211,7 @@ func stateFromCode(code *Code) (*codeState, error) {
 		}
 
 		state.Codes[i] = &codeDef{
-			ID:                c.ID(),
+			ID:                id,
 			Name:              c.Name(),
 			IsNamed:           c.IsNamed(),
 			ChildIndices:      childIndices,
