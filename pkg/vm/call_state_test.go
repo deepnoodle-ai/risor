@@ -47,6 +47,25 @@ func TestFailedRunClearsValueStack(t *testing.T) {
 	assert.Equal(t, len(result.(*object.List).Value()), 10)
 }
 
+// A run that fails inside a function returns to frame zero, so Get reads
+// the globals of the main code, and a later Call starts above frame zero.
+func TestFailedRunInFunctionRestoresFrame(t *testing.T) {
+	ctx := context.Background()
+	vm, err := newVM(ctx, `function f() { 1 + "bad" }
+function g() { return 7 }
+f()`)
+	assert.Nil(t, err)
+	assert.NotNil(t, vm.Run(ctx))
+	assert.Equal(t, vm.fp, 0)
+	assert.Equal(t, vm.sp, -1)
+
+	obj, err := vm.Get("g")
+	assert.Nil(t, err)
+	result, err := vm.Call(ctx, obj.(*object.Closure), nil)
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(7))
+}
+
 // The stack trace of an error in Call starts at the called function. It
 // does not include the main code that an earlier Run finished.
 func TestCallStackTraceOmitsMain(t *testing.T) {

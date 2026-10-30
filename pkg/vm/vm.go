@@ -1400,7 +1400,8 @@ func (vm *VirtualMachine) SetIP(value int) error {
 
 // TOS returns the top-of-stack object if there is one, without modifying the
 // stack. The returned bool value indicates whether there was a valid TOS. This
-// only works on a stopped VM. If the VM is running, (nil, false) is returned.
+// only works on a stopped VM. If the VM is running, or the last run failed,
+// (nil, false) is returned.
 func (vm *VirtualMachine) TOS() (object.Object, bool) {
 	vm.runMutex.Lock()
 	defer vm.runMutex.Unlock()
