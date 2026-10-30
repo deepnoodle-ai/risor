@@ -533,6 +533,10 @@ func Compile(ctx context.Context, source string, opts ...Option) (*bytecode.Code
 // deeply than object.MaxNestingDepth, or one that contains itself, cannot be
 // converted and Run returns object.ErrNestingDepth.
 //
+// A conversion error is a *errors.StructuredError with no location, and the
+// typed error (for example *errors.ValueError) is its cause, so errors.As and
+// errors.Is find both.
+//
 // Use WithRawResult() to receive the object.Object directly without conversion.
 func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) {
 	if code == nil {
@@ -573,7 +577,7 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 	}
 	interfaceVal, err := object.ToInterface(convCtx, result)
 	if err != nil {
-		return nil, err
+		return nil, conversionError(err)
 	}
 	// For objects that don't have a Go equivalent (modules, closures),
 	// return their string representation
@@ -583,6 +587,19 @@ func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) 
 		}
 	}
 	return interfaceVal, nil
+}
+
+// conversionError gives an error from converting the result the same shape as
+// a runtime error: a StructuredError whose cause is the original error, so
+// errors.As finds both. It has no location, because the conversion runs after
+// the script has finished and no one expression owns the result.
+func conversionError(err error) error {
+	if se := object.NewError(err).Structured(); se != nil {
+		return se
+	}
+	se := object.NewStructuredError(object.ErrRuntime, err.Error(), object.SourceLocation{}, nil)
+	se.Cause = err
+	return se
 }
 
 // Eval is a convenience function that compiles and runs source code.
