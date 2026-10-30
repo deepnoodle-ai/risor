@@ -176,7 +176,8 @@ min(x, y, ... number) number
 min(list) number
 ```
 
-Returns the smallest of the given values. Accepts multiple arguments or a list.
+Returns the smallest of the given values. Accepts multiple arguments or a list. If any value
+is NaN, the result is NaN.
 
 ```go filename="Example"
 >>> math.min(3, 1, 4, 1, 5)
@@ -192,7 +193,8 @@ max(x, y, ... number) number
 max(list) number
 ```
 
-Returns the largest of the given values. Accepts multiple arguments or a list.
+Returns the largest of the given values. Accepts multiple arguments or a list. If any value
+is NaN, the result is NaN.
 
 ```go filename="Example"
 >>> math.max(3, 1, 4, 1, 5)

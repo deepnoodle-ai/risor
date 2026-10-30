@@ -15,7 +15,7 @@ var stringMethods = NewMethodRegistry[*String]("string")
 
 func init() {
 	stringMethods.Define("compare").
-		Doc("Compare to another string (-1, 0, or 1)").
+		Doc("Compare to a string or bytes (-1, 0, or 1)").
 		Arg("other").
 		Returns("int").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
@@ -204,25 +204,24 @@ func (s *String) Interface() interface{} {
 }
 
 func (s *String) Compare(other Object) (int, error) {
-	otherStr, ok := other.(*String)
-	if !ok {
+	switch other := other.(type) {
+	case *String:
+		return strings.Compare(s.value, other.value), nil
+	case *Bytes:
+		return strings.Compare(s.value, string(other.value)), nil
+	default:
 		return 0, TypeErrorf("unable to compare string and %s", other.Type())
 	}
-	if s.value == otherStr.value {
-		return 0, nil
-	}
-	if s.value > otherStr.value {
-		return 1, nil
-	}
-	return -1, nil
 }
 
 func (s *String) Equals(other Object) bool {
-	otherString, ok := other.(*String)
-	if !ok {
-		return false
+	switch other := other.(type) {
+	case *String:
+		return s.value == other.value
+	case *Bytes:
+		return s.value == string(other.value)
 	}
-	return s.value == otherString.value
+	return false
 }
 
 func (s *String) IsTruthy() bool {

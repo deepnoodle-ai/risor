@@ -2,6 +2,7 @@ package object
 
 import (
 	"context"
+	"math"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -24,6 +25,14 @@ func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Compare sorts NaN last, but as in IEEE 754 every ordered comparison
+	// involving NaN is false.
+	if isNaN(a) || isNaN(b) {
+		switch opType {
+		case op.LessThan, op.LessThanOrEqual, op.GreaterThan, op.GreaterThanOrEqual:
+			return False, nil
+		}
+	}
 
 	switch opType {
 	case op.LessThan:
@@ -37,6 +46,11 @@ func Compare(opType op.CompareOpType, a, b Object) (Object, error) {
 	default:
 		return nil, EvalErrorf("eval error: unknown object comparison operator: %d", opType)
 	}
+}
+
+func isNaN(obj Object) bool {
+	f, ok := obj.(*Float)
+	return ok && math.IsNaN(f.value)
 }
 
 // BinaryOp performs a binary operation on two objects, given an operator.

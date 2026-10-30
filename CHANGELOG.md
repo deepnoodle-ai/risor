@@ -43,6 +43,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   limits bound the conversion. `ToGo` converts a range to a slice or array.
   New `object.ToInterfaces` converts several values with one shared budget
   (#496).
+- Numeric operators and comparisons:
+  - A negative shift count (`1 << -1`, `byte(1) >> -1`) raises a catchable
+    `value error`. Before, an int shift returned 0 and a byte shift crashed
+    with a Go runtime error.
+  - `int ** float` returns a float: `2 ** 0.5` is `1.4142135623730951`. Before,
+    the result was cut to an int (`1`).
+  - `int ** int` with a negative exponent returns a float, as in Python:
+    `2 ** -1` is `0.5`, and `0 ** -1` is `+Inf`, the same as `0 ** -1.0`.
+    `byte ** int` follows the same rule. Before, the result was cut to an int
+    (`0`). A zero or positive exponent still gives an int.
+  - `int == float` and int/float ordering compare exactly. Before, the int was
+    converted to float64 first, which rounds above 2^53, so
+    `9007199254740993 == 9007199254740992.0` was true.
+  - Every ordered comparison with NaN (`<`, `<=`, `>`, `>=`) is false, as in
+    IEEE 754. Before, `math.nan < 1.0` and `1.0 < math.nan` were both true.
+    `sorted` and `list.sort` put NaN after all other numbers.
+  - `math.min` and `math.max` return NaN when any argument is NaN. Before,
+    the result depended on the argument order.
+- A string and bytes compare the same way in both directions:
+  `"a" == bytes("a")` is now true, like `bytes("a") == "a"`, and `<`, `>`,
+  `in`, and `list.index` work with a string on either side.
 
 ### Fixed
 

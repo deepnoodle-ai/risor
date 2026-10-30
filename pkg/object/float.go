@@ -48,31 +48,11 @@ func (f *Float) String() string {
 func (f *Float) Compare(other Object) (int, error) {
 	switch other := other.(type) {
 	case *Float:
-		if f.value == other.value {
-			return 0, nil
-		}
-		if f.value > other.value {
-			return 1, nil
-		}
-		return -1, nil
+		return compareFloats(f.value, other.value), nil
 	case *Int:
-		otherFloat := float64(other.value)
-		if f.value == otherFloat {
-			return 0, nil
-		}
-		if f.value > otherFloat {
-			return 1, nil
-		}
-		return -1, nil
+		return -compareIntFloat(other.value, f.value), nil
 	case *Byte:
-		otherFloat := float64(other.value)
-		if f.value == otherFloat {
-			return 0, nil
-		}
-		if f.value > otherFloat {
-			return 1, nil
-		}
-		return -1, nil
+		return -compareIntFloat(int64(other.value), f.value), nil
 	default:
 		return 0, TypeErrorf("unable to compare float and %s", other.Type())
 	}
@@ -81,7 +61,7 @@ func (f *Float) Compare(other Object) (int, error) {
 func (f *Float) Equals(other Object) bool {
 	switch other := other.(type) {
 	case *Int:
-		return f.value == float64(other.value)
+		return !math.IsNaN(f.value) && compareIntFloat(other.value, f.value) == 0
 	case *Float:
 		return f.value == other.value
 	case *Byte:
@@ -127,6 +107,53 @@ func (f *Float) runOperationFloat(opType op.BinaryOpType, right float64) (Object
 
 func (f *Float) MarshalJSON() ([]byte, error) {
 	return json.Marshal(f.value)
+}
+
+// compareFloats orders a and b like Compare: NaN sorts after every other
+// value and equal to itself, so sorting is well defined. The comparison
+// operators do not use this order for NaN; see isUnordered.
+func compareFloats(a, b float64) int {
+	aNaN, bNaN := math.IsNaN(a), math.IsNaN(b)
+	switch {
+	case aNaN && bNaN:
+		return 0
+	case aNaN:
+		return 1
+	case bNaN:
+		return -1
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
+}
+
+// compareIntFloat orders i and f exactly, without converting i to float64,
+// which would round integers above 2^53. NaN sorts after every integer.
+func compareIntFloat(i int64, f float64) int {
+	switch {
+	case math.IsNaN(f):
+		return -1
+	case f >= 1<<63:
+		return -1
+	case f < -(1 << 63):
+		return 1
+	}
+	// f is within int64 range, so its integer part converts exactly
+	t := math.Trunc(f)
+	ti := int64(t)
+	switch {
+	case i < ti:
+		return -1
+	case i > ti:
+		return 1
+	case f > t:
+		return -1
+	case f < t:
+		return 1
+	}
+	return 0
 }
 
 func NewFloat(value float64) *Float {

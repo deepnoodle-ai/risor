@@ -1,0 +1,72 @@
+package risor
+
+import (
+	"context"
+	"testing"
+
+	"github.com/deepnoodle-ai/wonton/assert"
+)
+
+func TestNumericAndBytesOperators(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		src  string
+		want any
+	}{
+		// Bytes and strings compare symmetrically
+		{`bytes("a") == "a"`, true},
+		{`"a" == bytes("a")`, true},
+		{`"a" < bytes("b")`, true},
+		{`bytes("a") < "b"`, true},
+		{`let ls = [bytes("a")]; ["a" in ls, ls.index("a")]`, []any{true, int64(0)}},
+		// Every ordered comparison with NaN is false
+		{`math.nan < 1.0`, false},
+		{`1.0 < math.nan`, false},
+		{`1 >= math.nan`, false},
+		{`math.nan <= math.nan`, false},
+		{`math.nan == math.nan`, false},
+		{`math.nan != math.nan`, true},
+		{`string(sorted([3.0, math.nan, 1, math.nan, 2.0]))`, "[1, 2, 3, NaN, NaN]"},
+		// Inside lists, elements use the sort order: NaN is above every
+		// number and equal to itself. Equality still follows IEEE 754.
+		{`[math.nan] > [1.0]`, true},
+		{`[1.0] < [math.nan]`, true},
+		{`[math.nan] <= [math.nan]`, true},
+		{`[math.nan] == [math.nan]`, false},
+		{`"a".compare(bytes("b"))`, int64(-1)},
+		{`[math.min(1, math.nan), math.max(math.nan, 1)].map(x => math.is_nan(x))`, []any{true, true}},
+		// int ** float is a float
+		{`2 ** 0.5`, 1.4142135623730951},
+		{`2 ** -1.0`, 0.5},
+		// int ** negative int is a float; int ** non-negative int is an int
+		{`2 ** -1`, 0.5},
+		{`2 ** -2`, 0.25},
+		{`byte(2) ** -1`, 0.5},
+		{`2 ** 3`, int64(8)},
+		{`2 ** 0`, int64(1)},
+		{`[0 ** -1 == math.inf, 0 ** -1.0 == math.inf]`, []any{true, true}},
+		// int == float is exact above 2^53
+		{`[9007199254740992 == 9007199254740992.0, 9007199254740992.0 == 9007199254740993, 9007199254740993 > 9007199254740992.0]`, []any{true, false, true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.src, func(t *testing.T) {
+			result, err := Eval(ctx, tc.src, WithEnv(Builtins()))
+			assert.Nil(t, err)
+			assert.Equal(t, result, tc.want)
+		})
+	}
+}
+
+func TestNegativeShiftIsValueError(t *testing.T) {
+	ctx := context.Background()
+	for _, src := range []string{`1 << -1`, `1 >> -1`, `byte(1) << -1`, `byte(1) >> -1`} {
+		t.Run(src, func(t *testing.T) {
+			_, err := Eval(ctx, src, WithEnv(Builtins()))
+			assert.NotNil(t, err)
+			assert.Contains(t, err.Error(), "negative shift count")
+		})
+	}
+	result, err := Eval(ctx, `try { 1 << -1 } catch e { e.kind() }`, WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, "value error")
+}

@@ -323,6 +323,20 @@ func TestMax(t *testing.T) {
 	assert.Equal(t, f.Value(), 8.0)
 }
 
+func TestMinMaxNaN(t *testing.T) {
+	ctx := context.Background()
+	nan := object.NewFloat(math.NaN())
+	one := object.NewFloat(1)
+	// NaN in any position gives NaN, as with Go's math.Min and math.Max
+	for _, fn := range []object.BuiltinFunction{Min, Max} {
+		for _, args := range [][]object.Object{{nan, one}, {one, nan}, {one, nan, one}} {
+			result, err := fn(ctx, args...)
+			assert.Nil(t, err)
+			assert.True(t, math.IsNaN(result.(*object.Float).Value()))
+		}
+	}
+}
+
 func TestMaxErrors(t *testing.T) {
 	ctx := context.Background()
 	_, err := Max(ctx)

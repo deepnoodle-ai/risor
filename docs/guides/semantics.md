@@ -31,8 +31,8 @@ Arithmetic operations follow these rules:
 | `byte`  | `int`   | `int`   | Byte promoted to int64   |
 | `byte`  | `float` | `float` | Byte promoted to float64 |
 
-**Key principle:** When float is involved, the result is float (except power
-with int base, which returns int).
+**Key principle:** When float is involved, the result is float. `2 ** 0.5` is
+`1.4142135623730951`.
 
 **Supported operations:**
 
@@ -44,7 +44,15 @@ with int base, which returns int).
 | `<<` `>>` (shift)      | Yes | No    | Yes  | int/byte only |
 | `&` `\|` `^` (bitwise) | Yes | No    | Yes  | int/byte only |
 
+**Power with a negative int exponent:** `int ** int` is an int when the
+exponent is zero or positive. When the exponent is negative, the result is a
+float, as in Python: `2 ** -1` is `0.5` and `2 ** -2` is `0.25`. The same rule
+applies to `byte ** int`. `0 ** -1` is `+Inf`, the same as `0 ** -1.0`.
+
 **No implicit narrowing:** Float values are never implicitly converted to int.
+
+**Shifts:** A negative shift count raises a value error: `1 << -1` and
+`byte(1) >> -1` both fail with "negative shift count".
 
 ## Equality
 
@@ -61,7 +69,12 @@ Every type implements `Equals(other Object) bool`. Equality is symmetric: if
 5.0 == byte(5)  // true - float equals byte
 ```
 
-Numeric types are compared by value after converting to a common representation.
+Numeric types are compared by exact value. An int is not rounded to float64
+first, so `9007199254740993 == 9007199254740992.0` is false, and equality is
+transitive.
+
+NaN is not equal to anything, itself included: `math.nan == math.nan` is false
+and `math.nan != math.nan` is true, as in IEEE 754.
 
 **Strings and bytes:**
 
@@ -69,6 +82,7 @@ Numeric types are compared by value after converting to a common representation.
 "hello" == "hello"               // true
 bytes("hello") == bytes("hello") // true
 bytes("hello") == "hello"        // true - bytes can equal string
+"hello" == bytes("hello")        // true - in either order
 ```
 
 **Containers** (deep equality):
@@ -105,7 +119,7 @@ Comparison operators (`<`, `>`, `<=`, `>=`) require types to be comparable.
 | `int`    | Numeric order              | float, byte |
 | `float`  | Numeric order              | int, byte   |
 | `byte`   | Numeric order              | int, float  |
-| `string` | Lexicographic (byte order) | No          |
+| `string` | Lexicographic (byte order) | bytes       |
 | `bytes`  | Lexicographic              | string      |
 | `bool`   | `false < true`             | No          |
 | `list`   | Lexicographic by elements  | No          |
@@ -114,6 +128,15 @@ Comparison operators (`<`, `>`, `<=`, `>=`) require types to be comparable.
 | `null`   | Only equal to null         | No          |
 
 **Not comparable:** `map`, `function`, `builtin`, `module`
+
+**NaN:** Every ordered comparison with NaN is false. `math.nan < 1.0`,
+`1.0 < math.nan`, and `math.nan >= math.nan` are all false. To give sorting a
+well-defined order, `sorted()` and `list.sort()` place NaN after every other
+number, and list ordering compares elements in that same order.
+
+```ts
+sorted([3.0, math.nan, 1, 2.0])  // [1, 2, 3, NaN]
+```
 
 Comparing incompatible types throws a type error:
 
