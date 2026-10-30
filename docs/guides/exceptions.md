@@ -357,8 +357,9 @@ Some errors stop the script itself rather than one operation. A script cannot
 catch them, and no `finally` block runs when one is raised:
 
 - The step limit is exceeded (`WithMaxSteps`)
-- The call stack, value stack, or exception handler stack overflows
-  (`WithMaxStackDepth` and the built-in limits)
+- The call stack, value stack, exception handler stack, or local variable
+  budget overflows (`WithMaxStackDepth`, `WithMaxLocals`, and the built-in
+  limits)
 - The run's context is canceled or its timeout expires
 - An observer halts execution
 - A function from code that `RunCode` replaced is called
