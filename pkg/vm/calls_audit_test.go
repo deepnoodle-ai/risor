@@ -10,6 +10,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
+	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -211,4 +212,55 @@ func findFunction(bc *bytecode.Code) *bytecode.Function {
 		}
 	}
 	return nil
+}
+
+// haltInTryObserver halts execution once, on the first step after a try block
+// pushes its exception handler.
+type haltInTryObserver struct {
+	NoOpObserver
+	inTry  bool
+	halted bool
+}
+
+func (o *haltInTryObserver) Config() ObserverConfig {
+	return NewObserverConfig(StepAll)
+}
+
+func (o *haltInTryObserver) OnStep(event StepEvent) bool {
+	if o.halted {
+		return true
+	}
+	if o.inTry {
+		o.halted = true
+		return false
+	}
+	o.inTry = event.Opcode == op.PushExcept
+	return true
+}
+
+// An observer halt inside a try block ends the run without unwinding its
+// handler. A later Call must not let that stale handler catch errors thrown by
+// the called function.
+func TestAuditCallIgnoresStaleExceptionHandlers(t *testing.T) {
+	ctx := context.Background()
+	ast, err := parser.Parse(ctx, `
+	function fail() { throw "boom" }
+	try { 1 } catch e { 99 }
+	`, nil)
+	assert.Nil(t, err)
+	main, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+	vm, err := New(main, WithObserver(&haltInTryObserver{}))
+	assert.Nil(t, err)
+	assert.NotNil(t, vm.Run(ctx))
+
+	obj, err := vm.Get("fail")
+	assert.Nil(t, err)
+	fn, ok := obj.(*object.Closure)
+	assert.True(t, ok)
+	result, err := vm.Call(ctx, fn, nil)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "boom"))
+	assert.Nil(t, result)
+	assert.Equal(t, vm.excStackSize, 0)
 }

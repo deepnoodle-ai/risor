@@ -1280,6 +1280,9 @@ func (vm *VirtualMachine) Call(
 		return nil, fmt.Errorf("no main code available")
 	}
 	vm.loadCode(vm.main)
+	// A previous run that was halted inside a try block may have left its
+	// handlers behind. No script frames are active between runs, so drop them.
+	vm.excStackSize = 0
 	return vm.callFunction(vm.initContext(ctx), fn, args)
 }
 
