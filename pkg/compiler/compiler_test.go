@@ -189,15 +189,17 @@ func TestCompoundAssignmentWithIndex(t *testing.T) {
 		{op.LoadConst, 1}, // 2
 		{op.BuildList, 2},
 		{op.StoreGlobal, 0}, // store into 'test'
-		{op.LoadGlobal, 0},  // load 'test'
-		{op.LoadConst, 2},   // load index 0
+		{op.LoadGlobal, 0},  // load 'test' (once)
+		{op.LoadConst, 2},   // load index 0 (once)
+		{op.Copy, 1},        // copy 'test'
+		{op.Copy, 1},        // copy index
 		{op.BinarySubscr},   // get test[0]
 		{op.LoadConst, 3},   // load 3
 		{op.BinaryOp, op.Code(op.Multiply)},
-		{op.LoadGlobal, 0}, // load 'test' again
-		{op.LoadConst, 4},  // load index 0
-		{op.StoreSubscr},   // store result back in test[0]
-		{op.Nil},           // implicit return value
+		{op.Swap, 2},     // [result, index, test]
+		{op.Swap, 1},     // [result, test, index]
+		{op.StoreSubscr}, // store result back in test[0]
+		{op.Nil},         // implicit return value
 	}
 
 	c, err := New(nil)

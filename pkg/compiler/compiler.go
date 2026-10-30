@@ -712,13 +712,51 @@ func (c *Compiler) compileArrayDestructure(node *ast.ArrayDestructure) error {
 	// Emit the Unpack opcode to unpack the array onto the stack
 	c.emit(op.Unpack, uint16(len(elements)))
 
-	// Store each value in reverse order (like MultiVar)
-	for i := len(elements) - 1; i >= 0; i-- {
-		element := elements[i]
-		varName := element.Name.Name
+	return c.emitArrayDestructureStores(elements, hasDefaults, func(element ast.ArrayDestructureElement) error {
+		sym, err := c.current.symbols.InsertVariable(element.Name.Name)
+		if err != nil {
+			return err
+		}
+		// Blank identifier "_" returns nil - discard the value
+		if sym == nil {
+			c.emit(op.PopTop)
+			return nil
+		}
+		if c.current.parent == nil {
+			c.emit(op.StoreGlobal, sym.Index())
+		} else {
+			c.emit(op.StoreFast, sym.Index())
+		}
+		return nil
+	})
+}
 
-		// Handle default value if present
-		if hasDefaults && element.Default != nil {
+// emitArrayDestructureStores stores the values that op.Unpack pushed for
+// elements. The store callback pops TOS into the element's variable.
+//
+// Without defaults, values are popped in reverse order, since Unpack leaves
+// the last element at TOS. With defaults, elements are handled left to
+// right so that defaults run in source order and can refer to earlier
+// names: each value is copied to TOS in turn, and the unpacked values are
+// popped at the end.
+func (c *Compiler) emitArrayDestructureStores(
+	elements []ast.ArrayDestructureElement,
+	hasDefaults bool,
+	store func(ast.ArrayDestructureElement) error,
+) error {
+	if !hasDefaults {
+		for i := len(elements) - 1; i >= 0; i-- {
+			if err := store(elements[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	n := len(elements)
+	for i, element := range elements {
+		// Copy element i to TOS. The n unpacked values stay below it.
+		c.emit(op.Copy, uint16(n-1-i))
+		if element.Default != nil {
 			// Stack has the value at TOS. Check if it's nil.
 			c.emit(op.Copy, 0) // Duplicate the value
 			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
@@ -734,21 +772,12 @@ func (c *Compiler) compileArrayDestructure(node *ast.ArrayDestructure) error {
 			}
 			c.changeOperand(jumpPos, delta)
 		}
-
-		sym, err := c.current.symbols.InsertVariable(varName)
-		if err != nil {
+		if err := store(element); err != nil {
 			return err
 		}
-		// Blank identifier "_" returns nil - discard the value
-		if sym == nil {
-			c.emit(op.PopTop)
-			continue
-		}
-		if c.current.parent == nil {
-			c.emit(op.StoreGlobal, sym.Index())
-		} else {
-			c.emit(op.StoreFast, sym.Index())
-		}
+	}
+	for range elements {
+		c.emit(op.PopTop)
 	}
 	return nil
 }
@@ -813,12 +842,13 @@ func (c *Compiler) emitObjectDestructurePreamble(param *ast.ObjectDestructurePar
 			continue
 		}
 
-		// Find the variable (already inserted in symbol table during setup)
-		resolution, found := c.current.symbols.Resolve(varName)
-		if !found {
-			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
+		// Insert the variable only now, after its default was compiled, so a
+		// default cannot see this name or a later one (as with let).
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
 		}
-		c.emit(op.StoreFast, resolution.symbol.Index())
+		c.emit(op.StoreFast, sym.Index())
 	}
 
 	// Pop the remaining object from the stack
@@ -836,43 +866,29 @@ func (c *Compiler) emitArrayDestructurePreamble(param *ast.ArrayDestructureParam
 	// Emit the Unpack opcode to unpack the array onto the stack
 	c.emit(op.Unpack, uint16(len(elements)))
 
-	// Store each value in reverse order (like MultiVar)
-	for i := len(elements) - 1; i >= 0; i-- {
-		element := elements[i]
-		varName := element.Name.Name
-
-		// Handle default value if present
-		if element.Default != nil {
-			// Stack has the value at TOS. Check if it's nil.
-			c.emit(op.Copy, 0) // Duplicate the value
-			jumpPos := c.emit(op.PopJumpForwardIfNotNil, Placeholder)
-			// If nil, pop the nil value and use the default
-			c.emit(op.PopTop)
-			if err := c.compile(element.Default); err != nil {
-				return err
-			}
-			c.emit(op.Nop)
-			delta, err := c.calculateDelta(jumpPos)
-			if err != nil {
-				return err
-			}
-			c.changeOperand(jumpPos, delta)
+	hasDefaults := false
+	for _, elem := range elements {
+		if elem.Default != nil {
+			hasDefaults = true
+			break
 		}
-
+	}
+	return c.emitArrayDestructureStores(elements, hasDefaults, func(element ast.ArrayDestructureElement) error {
+		varName := element.Name.Name
 		// Blank identifier "_" - discard the value
 		if IsBlankIdentifier(varName) {
 			c.emit(op.PopTop)
-			continue
+			return nil
 		}
-
-		// Find the variable (already inserted in symbol table during setup)
-		resolution, found := c.current.symbols.Resolve(varName)
-		if !found {
-			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
+		// Insert the variable only now, after its default was compiled, so a
+		// default cannot see this name or a later one (as with let).
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
 		}
-		c.emit(op.StoreFast, resolution.symbol.Index())
-	}
-	return nil
+		c.emit(op.StoreFast, sym.Index())
+		return nil
+	})
 }
 
 func (c *Compiler) compileMatch(node *ast.Match) error {
@@ -1081,6 +1097,14 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 	// Iterate over the remaining expressions. Each should eval to a function.
 	// TODO: may need to compile to a partial as well.
 	for i := 1; i < len(exprs); i++ {
+		// An optional method call (obj?.method()) whose object is nil
+		// short-circuits the stage: its result is nil, and nothing is called.
+		if call, ok := exprs[i].(*ast.ObjectCall); ok && call.Optional {
+			if err := c.compileOptionalPipeStage(call); err != nil {
+				return err
+			}
+			continue
+		}
 		// Compile the current expression, pushing a function as TOS
 		if err := c.compile(exprs[i]); err != nil {
 			return err
@@ -1090,6 +1114,32 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 		c.emit(op.Swap, 1)
 		c.emit(op.Call, 1)
 	}
+	return nil
+}
+
+// compileOptionalPipeStage compiles a pipe stage of the form obj?.method().
+// When obj is nil, the stack holds [arg, nil] instead of [arg, partial], so
+// the argument is dropped and nil becomes the stage result.
+func (c *Compiler) compileOptionalPipeStage(call *ast.ObjectCall) error {
+	nilJumpPos, err := c.emitObjectCall(call)
+	if err != nil {
+		return err
+	}
+	c.emit(op.Swap, 1)
+	c.emit(op.Call, 1)
+	endJumpPos := c.emit(op.JumpForward, Placeholder)
+	delta, err := c.calculateDelta(nilJumpPos)
+	if err != nil {
+		return err
+	}
+	c.changeOperand(nilJumpPos, delta)
+	c.emit(op.Swap, 1)
+	c.emit(op.PopTop)
+	delta, err = c.calculateDelta(endJumpPos)
+	if err != nil {
+		return err
+	}
+	c.changeOperand(endJumpPos, delta)
 	return nil
 }
 
@@ -1124,41 +1174,30 @@ func (c *Compiler) compilePostfix(node *ast.Postfix) error {
 
 	case *ast.Index:
 		// Index expression: arr[i]++
-		// 1. Load the current value
-		if err := c.compile(x.X); err != nil {
+		// 1. Load the current value, keeping the container and index
+		if err := c.emitLoadIndexKeep(x); err != nil {
 			return err
 		}
-		if err := c.compile(x.Index); err != nil {
-			return err
-		}
-		c.emit(op.BinarySubscr)
 		// 2. Add the increment amount
 		c.emit(op.LoadConst, c.constant(amount))
 		c.emit(op.BinaryOp, uint16(op.Add))
 		// 3. Store back
-		if err := c.compile(x.X); err != nil {
-			return err
-		}
-		if err := c.compile(x.Index); err != nil {
-			return err
-		}
-		c.emit(op.StoreSubscr)
+		c.emitStoreIndexKept()
 
 	case *ast.GetAttr:
 		// Attribute expression: obj.x++
 		idx := c.current.addName(x.Attr.Name)
-		// 1. Load the current attribute value
+		// 1. Load the current attribute value, keeping the object
 		if err := c.compile(x.X); err != nil {
 			return err
 		}
+		c.emit(op.Copy, 0)
 		c.emit(op.LoadAttr, idx)
 		// 2. Add the increment amount
 		c.emit(op.LoadConst, c.constant(amount))
 		c.emit(op.BinaryOp, uint16(op.Add))
-		// 3. Store back
-		if err := c.compile(x.X); err != nil {
-			return err
-		}
+		// 3. Store back: StoreAttr expects [value, obj]
+		c.emit(op.Swap, 1)
 		c.emit(op.StoreAttr, idx)
 
 	default:
@@ -1292,14 +1331,33 @@ func (c *Compiler) compileCallArgs(node *ast.Call) error {
 }
 
 func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
-	if err := c.compile(node.X); err != nil {
+	nilJumpPos, err := c.emitObjectCall(node)
+	if err != nil {
 		return err
 	}
+	if node.Optional {
+		c.emit(op.Nop)
+		delta, err := c.calculateDelta(nilJumpPos)
+		if err != nil {
+			return err
+		}
+		c.changeOperand(nilJumpPos, delta)
+	}
+	return nil
+}
+
+// emitObjectCall emits the method call in node. For an optional call (?.)
+// it returns the position of the jump taken when the object is nil, which
+// the caller must patch. On that path the nil object is left on the stack.
+func (c *Compiler) emitObjectCall(node *ast.ObjectCall) (int, error) {
+	if err := c.compile(node.X); err != nil {
+		return 0, err
+	}
 	// Handle optional chaining (?.)
-	var jumpPos int
+	var nilJumpPos int
 	if node.Optional {
 		c.emit(op.Copy, 0)
-		jumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
+		nilJumpPos = c.emit(op.PopJumpForwardIfNil, Placeholder)
 	}
 	method := node.Call
 	name := method.Fun.String()
@@ -1307,14 +1365,9 @@ func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 	c.currentNode = method.Fun
 	c.emit(op.LoadAttr, c.current.addName(name))
 	if err := c.compileCallArgs(method); err != nil {
-		return err
+		return 0, err
 	}
-	if node.Optional {
-		c.emit(op.Nop)
-		delta, _ := c.calculateDelta(jumpPos)
-		c.changeOperand(jumpPos, delta)
-	}
-	return nil
+	return nilJumpPos, nil
 }
 
 func (c *Compiler) compileGetAttr(node *ast.GetAttr) error {
@@ -1609,19 +1662,10 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		}
 	}
 
-	// Add all destructured variable names to the symbol table.
-	// These come last since the destructuring preamble will store extracted
-	// values into these local variables.
-	for _, di := range destructureParams {
-		for _, name := range di.param.ParamNames() {
-			if _, err := code.symbols.InsertVariable(name); err != nil {
-				return err
-			}
-		}
-	}
-
 	// Emit destructuring preamble for any destructured parameters
-	// This runs at the start of the function to extract values into local vars
+	// This runs at the start of the function to extract values into local vars.
+	// The preamble adds each destructured name to the symbol table after
+	// compiling its default, so the names come after the function's own name.
 	for _, di := range destructureParams {
 		if err := c.emitDestructurePreamble(di.param, di.index); err != nil {
 			return err
@@ -1723,14 +1767,10 @@ func (c *Compiler) compileSetItem(node *ast.Assign) error {
 
 	// Handle compound operators (*=, +=, etc.)
 	if node.Op != "=" {
-		// 1. Load the current value: test[0]
-		if err := c.compile(index.X); err != nil {
+		// 1. Load the current value: test[0], keeping the container and index
+		if err := c.emitLoadIndexKeep(index); err != nil {
 			return err
 		}
-		if err := c.compile(index.Index); err != nil {
-			return err
-		}
-		c.emit(op.BinarySubscr)
 
 		// 2. Load the RHS value
 		if err := c.compile(node.Value); err != nil {
@@ -1750,14 +1790,16 @@ func (c *Compiler) compileSetItem(node *ast.Assign) error {
 		default:
 			return c.formatError(fmt.Sprintf("unsupported compound assignment operator: %s", node.Op), node.Pos())
 		}
-	} else {
-		// Simple assignment
-		if err := c.compile(node.Value); err != nil {
-			return err
-		}
+
+		// 4. Store the result back
+		c.emitStoreIndexKept()
+		return nil
 	}
 
-	// 4. Store the result back
+	// Simple assignment
+	if err := c.compile(node.Value); err != nil {
+		return err
+	}
 	if err := c.compile(index.X); err != nil {
 		return err
 	}
@@ -1766,6 +1808,32 @@ func (c *Compiler) compileSetItem(node *ast.Assign) error {
 	}
 	c.emit(op.StoreSubscr)
 	return nil
+}
+
+// emitLoadIndexKeep evaluates the container and index of node once and
+// loads the item, leaving [container, index, item] on the stack. This lets
+// compound assignment and postfix operators read and write the same item
+// without evaluating the container or index expressions twice.
+func (c *Compiler) emitLoadIndexKeep(node *ast.Index) error {
+	if err := c.compile(node.X); err != nil {
+		return err
+	}
+	if err := c.compile(node.Index); err != nil {
+		return err
+	}
+	c.emit(op.Copy, 1)
+	c.emit(op.Copy, 1)
+	c.emit(op.BinarySubscr)
+	return nil
+}
+
+// emitStoreIndexKept stores TOS into the container and index left below it
+// by emitLoadIndexKeep. StoreSubscr expects [value, container, index], so
+// [container, index, value] is rotated into that order first.
+func (c *Compiler) emitStoreIndexKept() {
+	c.emit(op.Swap, 2) // [value, index, container]
+	c.emit(op.Swap, 1) // [value, container, index]
+	c.emit(op.StoreSubscr)
 }
 
 func (c *Compiler) compileAssign(node *ast.Assign) error {
@@ -1836,11 +1904,12 @@ func (c *Compiler) compileSetAttr(node *ast.SetAttr) error {
 		return nil
 	}
 
-	// Compound assignment: load current value, apply operation, store result
-	// First, load current attribute value
+	// Compound assignment: load current value, apply operation, store result.
+	// The object is evaluated once and kept on the stack for the store.
 	if err := c.compile(node.X); err != nil {
 		return err
 	}
+	c.emit(op.Copy, 0)
 	c.emit(op.LoadAttr, idx)
 
 	// Compile the RHS value
@@ -1860,10 +1929,8 @@ func (c *Compiler) compileSetAttr(node *ast.SetAttr) error {
 		c.emit(op.BinaryOp, uint16(op.Divide))
 	}
 
-	// Compile the object again and store the attribute
-	if err := c.compile(node.X); err != nil {
-		return err
-	}
+	// StoreAttr expects [value, obj]
+	c.emit(op.Swap, 1)
 	c.emit(op.StoreAttr, idx)
 	return nil
 }
@@ -2207,14 +2274,19 @@ func normalizeFunctionBlock(node *ast.Block) []ast.Node {
 	// There are two cases to handle:
 	//  1. The last statement is an expression (return that value)
 	//  2. The last statement is not an expression (return nil)
+	// Build a new slice so the caller's AST is never modified.
 	last := statements[count-1]
 	switch last := last.(type) {
 	case ast.Expr:
-		statements[count-1] = &ast.Return{Value: last}
+		result := make([]ast.Node, count)
+		copy(result, statements[:count-1])
+		result[count-1] = &ast.Return{Value: last}
+		return result
 	default:
-		statements = append(statements, returnNil)
+		result := make([]ast.Node, count, count+1)
+		copy(result, statements)
+		return append(result, returnNil)
 	}
-	return statements
 }
 
 // formatError creates a detailed error message including file, line and column information

@@ -157,3 +157,40 @@ func TestCatchVarIdxWithIdentifier(t *testing.T) {
 	// The handler's CatchVarIdx should be >= 0 (has catch variable)
 	assert.True(t, handlers[0].CatchVarIdx >= 0, "CatchVarIdx should be >= 0 when catch has identifier")
 }
+
+// TestCompileDoesNotMutateAST verifies that compiling a function whose body
+// ends in an expression leaves the caller's AST unchanged.
+func TestCompileDoesNotMutateAST(t *testing.T) {
+	for _, src := range []string{
+		`function f() { 1 + 2 }`,
+		`function f() { let x = 1 }`,
+		`let f = () => { 1 + 2 }`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			program, err := parser.Parse(context.Background(), src, nil)
+			assert.Nil(t, err)
+			before := program.String()
+			_, err = Compile(program, nil)
+			assert.Nil(t, err)
+			assert.Equal(t, program.String(), before)
+			// Compiling the same AST twice gives the same result
+			_, err = Compile(program, nil)
+			assert.Nil(t, err)
+			assert.Equal(t, program.String(), before)
+		})
+	}
+
+	// The body block is unchanged, including spare capacity in its slice
+	body := &ast.Block{Stmts: make([]ast.Node, 1, 4)}
+	body.Stmts[0] = &ast.Int{Value: 1}
+	normalized := normalizeFunctionBlock(body)
+	assert.Equal(t, len(normalized), 1)
+	_, isInt := body.Stmts[0].(*ast.Int)
+	assert.True(t, isInt)
+
+	body = &ast.Block{Stmts: make([]ast.Node, 1, 4)}
+	body.Stmts[0] = &ast.Var{Name: &ast.Ident{Name: "x"}, Value: &ast.Int{Value: 1}}
+	normalized = normalizeFunctionBlock(body)
+	assert.Equal(t, len(normalized), 2)
+	assert.Nil(t, body.Stmts[:2][1])
+}

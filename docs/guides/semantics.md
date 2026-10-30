@@ -331,6 +331,15 @@ config.port                  // Error: attribute "port" not found
 config["port"]               // Error: key "port" not found
 ```
 
+Optional chaining (`?.`) gives `null` when the object is `null` or when the
+attribute is missing. A missing method in a call is still an error:
+
+```ts
+config?.port                 // null (attribute missing)
+config?.port?.value          // null
+config?.missing()            // Error: attribute "missing" not found
+```
+
 ## Map Shorthand Syntax
 
 Maps support shorthand syntax when keys match variable names:
@@ -463,6 +472,16 @@ let [a, b] = [1, 2, 3]      // runtime error: count mismatch
 let [a, b, _] = [1, 2, 3]   // ok: a == 1, b == 2
 let [a, b, c] = [1, 2]      // runtime error: count mismatch
 let [a, b, c = 0] = [1, 2]  // ok: c gets default
+```
+
+**Defaults:** Defaults run left to right, and a default can use a name bound
+earlier in the same pattern. A later name is not yet defined, so it refers to
+an outer variable, or is a compile error if there is none. Function parameters
+follow the same rules.
+
+```ts
+let [x = 10, y = x + 1] = []  // x == 10, y == 11
+let [a = b, b = 1] = []       // compile error: undefined variable "b"
 ```
 
 ## Error Handling
