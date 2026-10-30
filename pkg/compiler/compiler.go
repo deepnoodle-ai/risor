@@ -1112,9 +1112,6 @@ func (c *Compiler) compileString(node *ast.String) error {
 }
 
 func (c *Compiler) compilePipe(node *ast.Pipe) error {
-	if c.current.pipeActive {
-		return c.formatError("invalid nested pipe", node.Pos())
-	}
 	exprs := node.Exprs
 	if len(exprs) < 2 {
 		return c.formatError("the pipe operator requires at least two expressions", node.Pos())
@@ -1123,25 +1120,39 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 	if err := c.compile(exprs[0]); err != nil {
 		return err
 	}
-	// Set the pipe active flag for the remainder of the pipe
-	c.current.pipeActive = true
-	defer func() {
-		c.current.pipeActive = false
-	}()
 	// Iterate over the remaining expressions. Each should eval to a function.
-	// TODO: may need to compile to a partial as well.
+	//
+	// A stage that is a call, such as f(x) or obj.method(x), compiles to a
+	// partial that the piped value then completes. Only the stage's own call
+	// is a partial. Calls in its callee, receiver, or arguments are ordinary
+	// calls.
 	for i := 1; i < len(exprs); i++ {
-		// An optional method call (obj?.method()) whose object is nil
-		// short-circuits the stage: its result is nil, and nothing is called.
-		if call, ok := exprs[i].(*ast.ObjectCall); ok && call.Optional {
-			if err := c.compileOptionalPipeStage(call); err != nil {
+		switch stage := exprs[i].(type) {
+		case *ast.Call:
+			if err := c.compile(stage.Fun); err != nil {
 				return err
 			}
-			continue
-		}
-		// Compile the current expression, pushing a function as TOS
-		if err := c.compile(exprs[i]); err != nil {
-			return err
+			if err := c.compileCallArgs(stage, true); err != nil {
+				return err
+			}
+		case *ast.ObjectCall:
+			// An optional method call (obj?.method()) whose object is nil
+			// short-circuits the stage: its result is nil, and nothing is
+			// called.
+			if stage.Optional {
+				if err := c.compileOptionalPipeStage(stage); err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := c.emitObjectCall(stage, true); err != nil {
+				return err
+			}
+		default:
+			// Compile the current expression, pushing a function as TOS
+			if err := c.compile(stage); err != nil {
+				return err
+			}
 		}
 		// Swap the function (TOS) with the argument below it on the stack
 		// and then call the function with one argument
@@ -1155,7 +1166,7 @@ func (c *Compiler) compilePipe(node *ast.Pipe) error {
 // When obj is nil, the stack holds [arg, nil] instead of [arg, partial], so
 // the argument is dropped and nil becomes the stage result.
 func (c *Compiler) compileOptionalPipeStage(call *ast.ObjectCall) error {
-	nilJumpPos, err := c.emitObjectCall(call)
+	nilJumpPos, err := c.emitObjectCall(call, true)
 	if err != nil {
 		return err
 	}
@@ -1303,12 +1314,13 @@ func (c *Compiler) compileCall(node *ast.Call) error {
 	if err := c.compile(node.Fun); err != nil {
 		return err
 	}
-	return c.compileCallArgs(node)
+	return c.compileCallArgs(node, false)
 }
 
 // compileCallArgs compiles the arguments of a call and emits the call
-// instruction. The callee must already be on the stack.
-func (c *Compiler) compileCallArgs(node *ast.Call) error {
+// instruction. The callee must already be on the stack. If partial is true,
+// it emits a partial application instead, for a pipe stage.
+func (c *Compiler) compileCallArgs(node *ast.Call, partial bool) error {
 	args := node.Args
 	argc := len(args)
 	if argc > MaxArgs {
@@ -1333,7 +1345,7 @@ func (c *Compiler) compileCallArgs(node *ast.Call) error {
 		}
 		// An error from the call points at the call, not the last argument
 		c.currentNode = node
-		if c.current.pipeActive {
+		if partial {
 			c.emit(op.Partial, uint16(argc))
 		} else {
 			c.emit(op.Call, uint16(argc))
@@ -1358,7 +1370,7 @@ func (c *Compiler) compileCallArgs(node *ast.Call) error {
 			c.emit(op.ListAppend)
 		}
 	}
-	if c.current.pipeActive {
+	if partial {
 		// For pipe, we can't easily support spread (would need PartialSpread)
 		return c.formatError("spread arguments not supported in pipe expressions", node.Pos())
 	}
@@ -1368,7 +1380,7 @@ func (c *Compiler) compileCallArgs(node *ast.Call) error {
 }
 
 func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
-	nilJumpPos, err := c.emitObjectCall(node)
+	nilJumpPos, err := c.emitObjectCall(node, false)
 	if err != nil {
 		return err
 	}
@@ -1386,7 +1398,8 @@ func (c *Compiler) compileObjectCall(node *ast.ObjectCall) error {
 // emitObjectCall emits the method call in node. For an optional call (?.)
 // it returns the position of the jump taken when the object is nil, which
 // the caller must patch. On that path the nil object is left on the stack.
-func (c *Compiler) emitObjectCall(node *ast.ObjectCall) (int, error) {
+// If partial is true, it emits a partial application instead of the call.
+func (c *Compiler) emitObjectCall(node *ast.ObjectCall, partial bool) (int, error) {
 	if err := c.compile(node.X); err != nil {
 		return 0, err
 	}
@@ -1401,7 +1414,7 @@ func (c *Compiler) emitObjectCall(node *ast.ObjectCall) (int, error) {
 	// Restore currentNode so LoadAttr gets the method name position
 	c.currentNode = method.Fun
 	c.emit(op.LoadAttr, c.addName(name))
-	if err := c.compileCallArgs(method); err != nil {
+	if err := c.compileCallArgs(method, partial); err != nil {
 		return 0, err
 	}
 	return nilJumpPos, nil
@@ -2154,45 +2167,6 @@ func (c *Compiler) compileNullish(node *ast.Infix) error {
 		return err
 	}
 	c.changeOperand(jumpPos, delta)
-	return nil
-}
-
-func (c *Compiler) compilePartial(call *ast.Call) error {
-	args := call.Args
-	argc := len(args)
-	if argc > MaxArgs {
-		return c.formatError(fmt.Sprintf("max args limit of %d exceeded (got %d)", MaxArgs, argc), call.Pos())
-	}
-	if err := c.compile(call.Fun); err != nil {
-		return err
-	}
-	for _, arg := range args {
-		if err := c.compile(arg); err != nil {
-			return err
-		}
-	}
-	c.emit(op.Partial, uint16(argc))
-	return nil
-}
-
-func (c *Compiler) compilePartialObjectCall(node *ast.ObjectCall) error {
-	if err := c.compile(node.X); err != nil {
-		return err
-	}
-	method := node.Call
-	name := method.Fun.String()
-	c.emit(op.LoadAttr, c.addName(name))
-	args := method.Args
-	argc := len(args)
-	if argc > MaxArgs {
-		return c.formatError(fmt.Sprintf("max args limit of %d exceeded (got %d)", MaxArgs, argc), node.Pos())
-	}
-	for _, arg := range args {
-		if err := c.compile(arg); err != nil {
-			return err
-		}
-	}
-	c.emit(op.Partial, uint16(len(args)))
 	return nil
 }
 

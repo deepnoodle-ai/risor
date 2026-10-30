@@ -64,9 +64,6 @@ type Code struct {
 	// envKeys stores the names of globals from the compile-time env.
 	// Only set on root code. Used for validation at run time.
 	envKeys []string
-
-	// Used during compilation only
-	pipeActive bool
 }
 
 // codeSnapshot captures the state of a Code object for rollback.
