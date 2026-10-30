@@ -47,6 +47,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   error. So is a default in a list or map literal (such as `[a = 1]`), except
   in an arrow function parameter like `([a = 1]) => a`. Before, these caused a
   compiler panic. Write `[...(a + b)]` to spread an expression (#489).
+- Cyclic lists and maps no longer crash the host with a stack overflow.
+  Printing one shows `[...]` or `{...}` at the cycle. Converting it to a Go
+  value, encoding it as JSON, or formatting it with `sprintf` returns a nesting
+  error, as does any value nested more than 128 levels deep. `==` on a cyclic
+  value returns `false` (#490).
 
 ## [2.2.0] - 2026-08-17
 
