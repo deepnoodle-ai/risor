@@ -389,7 +389,22 @@ func (s *String) Index(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewInt(s.runeIndex(strings.Index(s.value, substr))), nil
+	if utf8.ValidString(substr) {
+		return NewInt(s.runeIndex(strings.Index(s.value, substr))), nil
+	}
+	starts := s.runeStarts()
+	for from := 0; from <= len(s.value); {
+		off := strings.Index(s.value[from:], substr)
+		if off < 0 {
+			break
+		}
+		off += from
+		if starts[off] >= 0 && starts[off+len(substr)] >= 0 {
+			return NewInt(int64(starts[off])), nil
+		}
+		from = off + 1
+	}
+	return NewInt(-1), nil
 }
 
 func (s *String) LastIndex(obj Object) (Object, error) {
@@ -397,17 +412,51 @@ func (s *String) LastIndex(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewInt(s.runeIndex(strings.LastIndex(s.value, substr))), nil
+	if utf8.ValidString(substr) {
+		return NewInt(s.runeIndex(strings.LastIndex(s.value, substr))), nil
+	}
+	starts := s.runeStarts()
+	for end := len(s.value); end >= 0; {
+		off := strings.LastIndex(s.value[:end], substr)
+		if off < 0 {
+			break
+		}
+		if starts[off] >= 0 && starts[off+len(substr)] >= 0 {
+			return NewInt(int64(starts[off])), nil
+		}
+		end = off + len(substr) - 1
+	}
+	return NewInt(-1), nil
 }
 
 // runeIndex converts a byte offset into s to a rune index, the unit that
 // s[i], slicing, and len(s) use. A negative offset (not found) is returned
-// as -1.
+// as -1. The offset must fall on a rune boundary. A match of a valid UTF-8
+// substring always does: a valid substring cannot start or end inside a
+// rune of s, because invalid bytes in s decode as one rune each.
 func (s *String) runeIndex(byteOffset int) int64 {
 	if byteOffset < 0 {
 		return -1
 	}
 	return int64(utf8.RuneCountInString(s.value[:byteOffset]))
+}
+
+// runeStarts maps each byte offset in s, plus len(s), to the rune index
+// that starts there, or -1 when the offset is inside a rune. Index and
+// LastIndex use it for an invalid UTF-8 substring, which can match inside
+// a rune of s. They skip those matches, so s[i] accepts every result.
+func (s *String) runeStarts() []int {
+	starts := make([]int, len(s.value)+1)
+	for i := range starts {
+		starts[i] = -1
+	}
+	n := 0
+	for i := range s.value {
+		starts[i] = n
+		n++
+	}
+	starts[len(s.value)] = n
+	return starts
 }
 
 func (s *String) ReplaceAll(ctx context.Context, old, new Object) (Object, error) {

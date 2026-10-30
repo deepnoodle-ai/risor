@@ -98,3 +98,36 @@ func TestStringEnumerateRuneIndexes(t *testing.T) {
 	assert.Equal(t, keys, []int64{0, 1, 2, 3, 4})
 	assert.Equal(t, values, []string{"h", "é", "l", "l", "o"})
 }
+
+func TestStringIndexInvalidUTF8(t *testing.T) {
+	// "\xc3\xa9" is "é". An invalid UTF-8 substring can match inside it.
+	// Index and LastIndex skip those matches, so s[i] accepts each result.
+	tests := []struct {
+		s, substr   string
+		first, last int64
+	}{
+		{"\xc3\xa9", "\xa9", -1, -1},
+		{"\xc3\xa9", "\xc3", -1, -1},
+		{"\xc3\xa9\xa9", "\xa9", 1, 1},
+		{"\xa9\xc3\xa9\xa9", "\xa9", 0, 2},
+		{"a\xffb\xff", "\xff", 1, 3},
+		{"a\xffb", "\xffb", 1, 1},
+	}
+	for _, tc := range tests {
+		s := NewString(tc.s)
+		first, err := s.Index(NewString(tc.substr))
+		assert.Nil(t, err)
+		assert.Equal(t, first, NewInt(tc.first), "index %q in %q", tc.substr, tc.s)
+		last, err := s.LastIndex(NewString(tc.substr))
+		assert.Nil(t, err)
+		assert.Equal(t, last, NewInt(tc.last), "last_index %q in %q", tc.substr, tc.s)
+		for _, i := range []int64{tc.first, tc.last} {
+			if i < 0 {
+				continue
+			}
+			item, err := s.GetItem(NewInt(i))
+			assert.Nil(t, err)
+			assert.Equal(t, item.(*String).Value(), string([]rune(tc.substr)[0]))
+		}
+	}
+}

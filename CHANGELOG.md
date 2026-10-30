@@ -51,8 +51,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   failed with "start index is out of range".
 - String `index()` and `last_index()` now return a rune index, the same unit
   that `s[i]`, slicing, and `len(s)` use. Before, they returned a byte offset,
-  so `"héllo".index("l")` was 3 instead of 2. Go API: `String.Enumerate` passes
-  rune indexes as keys instead of byte offsets.
+  so `"héllo".index("l")` was 3 instead of 2. `keys(s)` on a string also
+  returns rune indexes: `keys("héllo")` is now `[0, 1, 2, 3, 4]` instead of
+  `[0, 1, 3, 4, 5]`. Go API: `String.Enumerate` passes rune indexes as keys
+  instead of byte offsets. When the substring is not valid UTF-8, `index()`
+  and `last_index()` skip a match that starts or ends inside a character, so
+  `s[i]` accepts every result.
 - Bytes `contains_rune()` and `index_rune()` accept multi-byte runes such as
   `"é"`. Before, they rejected any rune that is more than one byte in UTF-8.
   `index_rune()` still returns a byte index, the unit that bytes use. A
