@@ -132,7 +132,8 @@ func WithMaxFrameDepth(n int) Option {
 // WithMaxLocals sets the maximum total number of local variable slots across
 // all active function call frames. Each call checks the budget before its
 // frame allocates locals, and returns ErrStackOverflow if the call would
-// exceed it. Script try/catch can catch the error. The entry frame of a run
+// exceed it. The error ends the run: script try/catch cannot catch it, and
+// finally blocks do not run. The entry frame of a run
 // does not count. Zero (the default) or a negative value uses DefaultMaxLocals.
 //
 // Compiled source rarely comes near the default. The budget matters for

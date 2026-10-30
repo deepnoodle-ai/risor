@@ -2,7 +2,7 @@ package vm
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
@@ -69,19 +69,16 @@ func TestExcStackBounded(t *testing.T) {
 		assert.Contains(t, err.Error(), "exception handler depth")
 	})
 
-	t.Run("caught", func(t *testing.T) {
+	// Overflowing the exception stack is a stack overflow, which ends the
+	// run. A catch block in a caller cannot catch it.
+	t.Run("not catchable", func(t *testing.T) {
 		ctx := context.Background()
 		vm, err := newVM(ctx, recurse+`try { recurse(0) } catch e { "caught: " + string(e) }`)
 		assert.Nil(t, err)
 		vm.maxFrameDepth = 64
-		assert.Nil(t, vm.Run(ctx))
-		assert.Equal(t, vm.excStackSize, 0)
-		result, ok := vm.TOS()
-		assert.True(t, ok)
-		s, ok := result.(*object.String)
-		assert.True(t, ok)
-		assert.True(t, strings.HasPrefix(s.Value(), "caught: "))
-		assert.Contains(t, s.Value(), "exception handler depth")
+		err = vm.Run(ctx)
+		assert.True(t, errors.Is(err, ErrStackOverflow), "got %v", err)
+		assert.Contains(t, err.Error(), "exception handler depth")
 	})
 }
 

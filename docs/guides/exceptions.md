@@ -171,7 +171,8 @@ try {
 
 ## Finally Block
 
-The `finally` block **always runs**, regardless of how the try/catch exits:
+The `finally` block **always runs**, regardless of how the try/catch exits
+(except for [errors that end the run](#errors-that-end-the-run)):
 
 - Normal completion of try
 - Exception caught by catch
@@ -339,7 +340,8 @@ null.foo            // type error: attribute "foo" not found on null object
 [1, 2, 3][10]       // value error: index out of range: 10
 ```
 
-All runtime errors are catchable:
+Runtime errors are catchable, except the
+[errors that end the run](#errors-that-end-the-run):
 
 ```ts
 let result = try {
@@ -349,6 +351,27 @@ let result = try {
 }
 // result == "division failed: division by zero"
 ```
+
+### Errors That End the Run
+
+Some errors stop the script itself rather than one operation. A script cannot
+catch them, and no `finally` block runs when one is raised:
+
+- The step limit is exceeded (`WithMaxSteps`)
+- The call stack, value stack, exception handler stack, or local variable
+  budget overflows (`WithMaxStackDepth`, `WithMaxLocals`, and the built-in
+  limits)
+- The run's context is canceled or its timeout expires
+- An observer halts execution
+- A function from code that `RunCode` replaced is called
+
+Once the run's context is canceled, any error ends the run, even one that a
+host function returns. Use `errors.Is` to identify these errors, such as
+`vm.ErrStepLimitExceeded`, `vm.ErrStackOverflow`, `vm.ErrObserverHalt`, or
+`context.Canceled`. An error raised in a called function has the source
+location and stack trace of the script. A context error that a host function
+returns while the run's context is still live, such as the timeout of a
+request the function made, is an ordinary error that the script can catch.
 
 ## Stack Traces
 

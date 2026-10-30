@@ -114,8 +114,9 @@ function deep(n) {
 `
 
 // Recursing into a function that uses a very high local slot stops at the
-// locals budget with a catchable error, instead of reserving 64K slots for
-// each of up to MaxFrameDepth frames (about 1 GB).
+// locals budget, instead of reserving 64K slots for each of up to
+// MaxFrameDepth frames (about 1 GB). The error is a stack overflow, which
+// ends the run, so the script's catch block does not catch it.
 func TestLocalsBudgetStopsHighSlotRecursion(t *testing.T) {
 	code := compileWithHighLocal(t, highLocalRecursion+`
 	let r = "none"
@@ -123,12 +124,10 @@ func TestLocalsBudgetStopsHighSlotRecursion(t *testing.T) {
 	r
 	`, "deep", "big")
 
-	var result object.Object
 	var runErr error
 	allocated := heapAllocBytes(func() {
-		result, runErr = Run(context.Background(), code, WithGlobals(basicBuiltins()))
+		_, runErr = Run(context.Background(), code, WithGlobals(basicBuiltins()))
 	})
-	assert.Nil(t, runErr)
 
 	// The budget admits DefaultMaxLocals slots of 16 bytes each. Allow twice
 	// that for everything else. Without the budget this allocates about
@@ -137,10 +136,8 @@ func TestLocalsBudgetStopsHighSlotRecursion(t *testing.T) {
 	t.Logf("allocated %d bytes (limit %d)", allocated, limit)
 	assert.True(t, allocated < limit, "allocated %d bytes, limit %d", allocated, limit)
 
-	s, ok := result.(*object.String)
-	assert.True(t, ok, "got %v", result)
-	assert.Contains(t, s.Value(), "stack overflow")
-	assert.Contains(t, s.Value(), "local variable limit")
+	assert.True(t, errors.Is(runErr, ErrStackOverflow), "got %v", runErr)
+	assert.Contains(t, runErr.Error(), "local variable limit")
 }
 
 // Uncaught, the error reaches the host as ErrStackOverflow. WithMaxLocals
@@ -258,18 +255,23 @@ func TestLocalsBudgetOrdinaryRecursion(t *testing.T) {
 // The budget counts only active frames: slots come back when frames return,
 // including when an error unwinds them.
 func TestLocalsBudgetRecoversAfterReturn(t *testing.T) {
-	// f uses three slots per frame (n, x, and its own name), so a budget of
-	// 200 admits a recursion of 60 but not 120.
+	// f and g use three slots per frame (n, x, and their own name), so a
+	// budget of 200 admits a recursion of 60 but not 120.
 	source := `
 	function f(n) {
 		let x = n
 		if (n <= 0) { return 0 }
 		return f(n - 1) + 1
 	}
+	function g(n) {
+		let x = n
+		if (n <= 0) { throw "boom" }
+		return g(n - 1) + 1
+	}
 	let results = []
 	results.append(f(60))
 	results.append(f(60))
-	results.append(try { f(120) } catch e { string(e) })
+	results.append(try { g(60) } catch e { string(e) })
 	results.append(f(60))
 	results.append(range(3).map(i => f(60)))
 	results
@@ -291,10 +293,25 @@ func TestLocalsBudgetRecoversAfterReturn(t *testing.T) {
 	assert.Equal(t, len(items), 5)
 	assert.Equal(t, items[0], object.NewInt(60))
 	assert.Equal(t, items[1], object.NewInt(60))
-	assert.True(t, strings.Contains(items[2].Inspect(), "local variable limit of 200 slots exceeded"),
-		"got %s", items[2].Inspect())
+	assert.True(t, strings.Contains(items[2].Inspect(), "boom"), "got %s", items[2].Inspect())
 	assert.Equal(t, items[3], object.NewInt(60))
 	assert.Equal(t, items[4].Inspect(), "[60, 60, 60]")
+
+	// Exceeding the budget ends the run, even inside a try block
+	program, err = parser.Parse(context.Background(), `
+	function f(n) {
+		let x = n
+		if (n <= 0) { return 0 }
+		return f(n - 1) + 1
+	}
+	try { f(120) } catch e { 0 }
+	`, nil)
+	assert.Nil(t, err)
+	code, err = compiler.Compile(program, nil)
+	assert.Nil(t, err)
+	_, err = Run(context.Background(), code, WithMaxLocals(200))
+	assert.True(t, errors.Is(err, ErrStackOverflow), "got %v", err)
+	assert.Contains(t, err.Error(), "local variable limit of 200 slots exceeded")
 }
 
 // Calls from the host with VM.Call share the budget with the script.
