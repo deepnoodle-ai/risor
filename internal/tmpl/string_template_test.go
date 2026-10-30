@@ -87,6 +87,10 @@ func TestParseNestedBraces(t *testing.T) {
 		{`${ 1 /* { ' */ }`, ` 1 /* { ' */ `},
 		{`${ 1 /* } */ }`, ` 1 /* } */ `},
 		{`${ 4 / 2 }`, ` 4 / 2 `},
+		// Comment markers inside a string are string text
+		{`${ "a//b" }`, ` "a//b" `},
+		{`${ "/* x" }`, ` "/* x" `},
+		{`${ '//}' }`, ` '//}' `},
 	}
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
