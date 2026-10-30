@@ -60,3 +60,21 @@ func TestReturnFromRootFrame(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, object.NewInt(5))
 }
+
+// A later Run on the same VM does not resume after a return from the root
+// frame.
+func TestRunAfterReturnFromRootFrame(t *testing.T) {
+	main := bytecode.NewCode(bytecode.CodeParams{
+		Instructions: []op.Code{op.LoadConst, 0, op.ReturnValue, op.LoadConst, 1},
+		Constants:    []any{int64(5), int64(6)},
+	})
+	vm, err := New(main)
+	assert.Nil(t, err)
+	ctx := context.Background()
+	assert.Nil(t, vm.Run(ctx))
+	assert.Equal(t, vm.GetIP(), 5)
+	assert.Nil(t, vm.Run(ctx))
+	result, ok := vm.TOS()
+	assert.True(t, ok)
+	assert.Equal(t, result, object.NewInt(5))
+}

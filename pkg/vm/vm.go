@@ -2016,8 +2016,11 @@ func (vm *VirtualMachine) returnFromFrame() (stop bool, err error) {
 	}
 
 	// The root frame has no caller. The compiler never returns from it, but
-	// bytecode may: end the run with the value on TOS as its result.
+	// bytecode may: end the run with the value on TOS as its result. Move
+	// the IP to the end, so a later Run on this VM does not resume after the
+	// return.
 	if vm.fp == 0 {
+		vm.ip = len(vm.activeCode.Instructions)
 		return true, nil
 	}
 
