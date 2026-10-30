@@ -171,7 +171,8 @@ try {
 
 ## Finally Block
 
-The `finally` block **always runs**, regardless of how the try/catch exits:
+The `finally` block **always runs**, regardless of how the try/catch exits
+(except for [errors that end the run](#errors-that-end-the-run)):
 
 - Normal completion of try
 - Exception caught by catch
@@ -349,6 +350,24 @@ let result = try {
 }
 // result == "division failed: division by zero"
 ```
+
+### Errors That End the Run
+
+Some errors stop the script itself rather than one operation. A script cannot
+catch them, and no `finally` block runs when one is raised:
+
+- The step limit is exceeded (`WithMaxSteps`)
+- The call stack, value stack, or exception handler stack overflows
+  (`WithMaxStackDepth` and the built-in limits)
+- The run's context is canceled or its timeout expires
+- An observer halts execution
+- A function from code that `RunCode` replaced is called
+
+These errors reach the Go caller unchanged, so `errors.Is` finds them, such as
+`vm.ErrStepLimitExceeded`, `vm.ErrStackOverflow`, `vm.ErrObserverHalt`, or
+`context.Canceled`. A context error that a host function returns while the
+run's context is still live, such as the timeout of a request the function
+made, is an ordinary error that the script can catch.
 
 ## Stack Traces
 

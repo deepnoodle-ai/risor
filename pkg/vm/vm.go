@@ -58,6 +58,9 @@ var (
 	// replaced is called, and the globals of that code are laid out
 	// differently from the globals of the loaded code.
 	ErrReplacedCode = errors.New("function belongs to code that RunCode replaced")
+
+	// ErrObserverHalt is returned when an observer callback returns false.
+	ErrObserverHalt = errors.New("execution halted by observer")
 )
 
 type VirtualMachine struct {
@@ -81,6 +84,10 @@ type VirtualMachine struct {
 	// stopWatcher ends the goroutine that watches the context of the
 	// current run. It is nil when no watcher is running.
 	stopWatcher func()
+
+	// done is the Done channel of the context of the current run. It is nil
+	// between runs and when the context cannot be canceled.
+	done <-chan struct{}
 
 	// requestedIP stores the starting instruction pointer requested via
 	// WithInstructionOffset. This survives resetForNewCode() and is applied
@@ -296,7 +303,7 @@ func (vm *VirtualMachine) dispatchObserver(opcode op.Code) error {
 		FrameDepth: vm.fp + 1,
 	}
 	if !vm.observer.OnStep(event) {
-		return fmt.Errorf("execution halted by observer")
+		return ErrObserverHalt
 	}
 	return nil
 }
@@ -341,7 +348,8 @@ func (vm *VirtualMachine) start(ctx context.Context) error {
 	// ends when the run stops, so a later cancellation of this context
 	// cannot halt another run.
 	atomic.StoreInt32(&vm.halt, 0)
-	if doneChan := ctx.Done(); doneChan != nil {
+	vm.done = ctx.Done()
+	if doneChan := vm.done; doneChan != nil {
 		stopChan := make(chan struct{})
 		exited := make(chan struct{})
 		go func() {
@@ -419,6 +427,7 @@ func (vm *VirtualMachine) stop() {
 		vm.stopWatcher()
 		vm.stopWatcher = nil
 	}
+	vm.done = nil
 	vm.running = false
 }
 
@@ -481,6 +490,9 @@ func (vm *VirtualMachine) runCodeInternal(ctx context.Context, codeToRun *byteco
 	if resetState && vm.startCount > 1 {
 		vm.resetForNewCode()
 	}
+	// A previous run that ended inside a try block may have left its
+	// handlers behind. No script frames are active between runs, so drop them.
+	vm.excStackSize = 0
 
 	// Update main if we're running different code (e.g., via RunCode)
 	if resetState && codeToRun != vm.main {
@@ -1514,7 +1526,7 @@ func (vm *VirtualMachine) callFunction(
 			FrameDepth:   vm.fp + 1,
 		}
 		if !vm.observer.OnCall(event) {
-			return nil, fmt.Errorf("execution halted by observer")
+			return nil, ErrObserverHalt
 		}
 	}
 
@@ -2011,7 +2023,7 @@ func (vm *VirtualMachine) returnFromFrame() (stop bool, err error) {
 			FrameDepth:   vm.fp,
 		}
 		if !vm.observer.OnReturn(event) {
-			return true, fmt.Errorf("execution halted by observer")
+			return true, ErrObserverHalt
 		}
 	}
 
@@ -2098,7 +2110,41 @@ func (vm *VirtualMachine) handleException(errObj *object.Error) error {
 
 // tryHandleError attempts to handle an error via exception handling.
 // If a handler is found and jumped to, returns nil (exception was handled).
-// If no handler is found, returns the error to propagate up.
+// If no handler is found, returns the error to propagate up. An error that
+// ends the run is returned as is, without running any catch or finally block.
 func (vm *VirtualMachine) tryHandleError(err error) error {
+	if vm.isFatal(err) {
+		return err
+	}
 	return vm.handleException(object.NewError(vm.wrapError(err)))
+}
+
+// isFatal reports whether err ends the run. A script cannot catch such an
+// error, and its finally blocks do not run, so a script cannot use them to
+// keep running past a resource limit, a halt by the observer, or the
+// cancellation of the run's context. Errors raised in called functions reach
+// the caller's frame through tryHandleError, so this check covers them too.
+//
+// A context error ends the run only when the run's context is done. A host
+// function can return a context error of its own, such as the timeout of a
+// request it made, and the script can catch that.
+func (vm *VirtualMachine) isFatal(err error) bool {
+	switch {
+	case errors.Is(err, ErrStepLimitExceeded),
+		errors.Is(err, ErrStackOverflow),
+		errors.Is(err, ErrReplacedCode),
+		errors.Is(err, ErrObserverHalt):
+		return true
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		if vm.done == nil {
+			return false
+		}
+		select {
+		case <-vm.done:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
