@@ -60,11 +60,7 @@ func Error(ctx context.Context, args ...object.Object) (object.Object, error) {
 func formatArgs(ctx context.Context, args []object.Object) ([]interface{}, error) {
 	fmtArgs := make([]interface{}, len(args))
 	for i, v := range args {
-		v, err := object.ExpandRanges(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		goVal, err := object.ToInterface(v)
+		goVal, err := object.ToInterface(ctx, v)
 		if err != nil {
 			return nil, err
 		}

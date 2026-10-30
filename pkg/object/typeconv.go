@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"sync"
 	"time"
@@ -384,15 +385,19 @@ func (r *TypeRegistry) fromGoMap(rv reflect.Value, path []goRef) (Object, error)
 	return NewMap(result), nil
 }
 
-// ToGo converts a Risor Object to a Go value of the specified type. It returns
+// ToGo converts a Risor Object to a Go value of the specified type. A range
+// converts to a slice or array as a list of its values does. It returns
 // ErrNestingDepth if obj is nested more deeply than MaxNestingDepth or
-// contains a cycle.
-func (r *TypeRegistry) ToGo(obj Object, targetType reflect.Type) (any, error) {
-	return r.toGoPath(obj, targetType, nil)
+// contains a cycle. It returns a value error if the result would have more
+// elements in total than the list length limit in ctx, counted as for
+// ToInterface. Registered converters are called as is and are not counted.
+func (r *TypeRegistry) ToGo(ctx context.Context, obj Object, targetType reflect.Type) (any, error) {
+	return r.toGoPath(obj, targetType, nil, newConvBudget(ctx))
 }
 
-// toGoPath converts obj, where path holds the containers enclosing it.
-func (r *TypeRegistry) toGoPath(obj Object, targetType reflect.Type, path nestPath[Object]) (any, error) {
+// toGoPath converts obj, where path holds the containers enclosing it and b
+// is the element budget of the conversion.
+func (r *TypeRegistry) toGoPath(obj Object, targetType reflect.Type, path nestPath[Object], b *convBudget) (any, error) {
 	// Handle nil
 	if obj == nil || obj.Type() == NIL {
 		return reflect.Zero(targetType).Interface(), nil
@@ -404,10 +409,10 @@ func (r *TypeRegistry) toGoPath(obj Object, targetType reflect.Type, path nestPa
 	}
 
 	// Handle by kind
-	return r.toGoByKind(obj, targetType, path)
+	return r.toGoByKind(obj, targetType, path, b)
 }
 
-func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath[Object]) (any, error) {
+func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath[Object], b *convBudget) (any, error) {
 	switch target.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
@@ -418,17 +423,17 @@ func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath
 	case reflect.String:
 		return toGoString(obj)
 	case reflect.Slice:
-		return r.toGoSlice(obj, target, path)
+		return r.toGoSlice(obj, target, path, b)
 	case reflect.Array:
-		return r.toGoArray(obj, target, path)
+		return r.toGoArray(obj, target, path, b)
 	case reflect.Map:
-		return r.toGoMap(obj, target, path)
+		return r.toGoMap(obj, target, path, b)
 	case reflect.Ptr:
-		return r.toGoPointer(obj, target, path)
+		return r.toGoPointer(obj, target, path, b)
 	case reflect.Interface:
 		if target.NumMethod() == 0 {
 			// any / interface{}
-			return toInterface(obj, path)
+			return toInterface(obj, path, b)
 		}
 		// Check for specific interfaces
 		if target.Implements(errorInterface) {
@@ -443,7 +448,7 @@ func (r *TypeRegistry) toGoByKind(obj Object, target reflect.Type, path nestPath
 	}
 }
 
-func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type, path nestPath[Object]) (any, error) {
+func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type, path nestPath[Object], b *convBudget) (any, error) {
 	if obj.Type() == NIL {
 		return reflect.Zero(target).Interface(), nil
 	}
@@ -458,21 +463,21 @@ func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type, path nestPath[
 		}
 	}
 
-	list, ok := obj.(*List)
-	if !ok {
-		return nil, newTypeErrorf("expected a list, got %s", obj.Type())
+	items, err := sequenceItems(obj, math.MaxInt, b)
+	if err != nil {
+		return nil, err
 	}
 
 	elemType := target.Elem()
-	slice := reflect.MakeSlice(target, 0, len(list.items))
-	for i, item := range list.items {
+	slice := reflect.MakeSlice(target, 0, len(items))
+	for i, item := range items {
 		if isNestedContainer(item) {
 			var err error
-			if path, err = path.descend(list, item); err != nil {
+			if path, err = path.descend(obj, item); err != nil {
 				return nil, err
 			}
 		}
-		elem, err := r.toGoPath(item, elemType, path)
+		elem, err := r.toGoPath(item, elemType, path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
@@ -484,27 +489,22 @@ func (r *TypeRegistry) toGoSlice(obj Object, target reflect.Type, path nestPath[
 	return slice.Interface(), nil
 }
 
-func (r *TypeRegistry) toGoArray(obj Object, target reflect.Type, path nestPath[Object]) (any, error) {
-	list, ok := obj.(*List)
-	if !ok {
-		return nil, newTypeErrorf("expected a list, got %s", obj.Type())
-	}
-
+func (r *TypeRegistry) toGoArray(obj Object, target reflect.Type, path nestPath[Object], b *convBudget) (any, error) {
 	elemType := target.Elem()
-	arrayLen := target.Len()
+	items, err := sequenceItems(obj, target.Len(), b)
+	if err != nil {
+		return nil, err
+	}
 	array := reflect.New(target).Elem()
 
-	for i, item := range list.items {
-		if i >= arrayLen {
-			break
-		}
+	for i, item := range items {
 		if isNestedContainer(item) {
 			var err error
-			if path, err = path.descend(list, item); err != nil {
+			if path, err = path.descend(obj, item); err != nil {
 				return nil, err
 			}
 		}
-		elem, err := r.toGoPath(item, elemType, path)
+		elem, err := r.toGoPath(item, elemType, path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
@@ -516,7 +516,7 @@ func (r *TypeRegistry) toGoArray(obj Object, target reflect.Type, path nestPath[
 	return array.Interface(), nil
 }
 
-func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Object]) (any, error) {
+func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Object], b *convBudget) (any, error) {
 	if obj.Type() == NIL {
 		return reflect.Zero(target).Interface(), nil
 	}
@@ -530,6 +530,9 @@ func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Ob
 		return nil, fmt.Errorf("unsupported map key type: %s", target.Key())
 	}
 
+	if err := b.take(uint64(m.Size())); err != nil {
+		return nil, err
+	}
 	valueType := target.Elem()
 	result := reflect.MakeMapWithSize(target, m.Size())
 
@@ -540,7 +543,7 @@ func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Ob
 				return nil, err
 			}
 		}
-		goValue, err := r.toGoPath(v, valueType, path)
+		goValue, err := r.toGoPath(v, valueType, path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
@@ -552,13 +555,13 @@ func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Ob
 	return result.Interface(), nil
 }
 
-func (r *TypeRegistry) toGoPointer(obj Object, target reflect.Type, path nestPath[Object]) (any, error) {
+func (r *TypeRegistry) toGoPointer(obj Object, target reflect.Type, path nestPath[Object], b *convBudget) (any, error) {
 	if obj.Type() == NIL {
 		return reflect.Zero(target).Interface(), nil
 	}
 
 	elemType := target.Elem()
-	elem, err := r.toGoPath(obj, elemType, path)
+	elem, err := r.toGoPath(obj, elemType, path, b)
 	if err != nil {
 		return nil, err
 	}
@@ -566,6 +569,32 @@ func (r *TypeRegistry) toGoPointer(obj Object, target reflect.Type, path nestPat
 	ptr := reflect.New(elemType)
 	ptr.Elem().Set(reflect.ValueOf(elem))
 	return ptr.Interface(), nil
+}
+
+// sequenceItems returns up to max items of a list, or values of a range, for
+// conversion to a Go slice or array. It charges them to b before building
+// any range values.
+func sequenceItems(obj Object, max int, b *convBudget) ([]Object, error) {
+	switch obj := obj.(type) {
+	case *List:
+		items := obj.items[:min(len(obj.items), max)]
+		if err := b.take(uint64(len(items))); err != nil {
+			return nil, err
+		}
+		return items, nil
+	case *Range:
+		n := min(obj.length(), uint64(max))
+		if err := b.take(n); err != nil {
+			return nil, err
+		}
+		values := obj.values(n)
+		items := make([]Object, len(values))
+		for i, v := range values {
+			items[i] = NewInt(v)
+		}
+		return items, nil
+	}
+	return nil, newTypeErrorf("expected a list, got %s", obj.Type())
 }
 
 // toNumeric handles all numeric conversions.

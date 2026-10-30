@@ -2,9 +2,7 @@ package object
 
 import (
 	"context"
-	"maps"
 	"math"
-	"slices"
 )
 
 // Allocation limits guard the host process against scripts that request huge
@@ -218,100 +216,30 @@ func listTooLargeError(maxLen int64) error {
 	return newValueErrorf("list too large (exceeds limit of %d elements)", maxLen)
 }
 
-// ExpandRanges returns obj with each range, including ranges nested in lists,
-// maps, and iterators, replaced by a list of its values. Iterators are
-// replaced by a list of the values they yield. It returns a value error if a
-// range or iterator yields more values than the list length limit in ctx, and
-// ErrNestingDepth if obj is nested more deeply than MaxNestingDepth. Call it
-// before Interface when a range must convert to its values: Range.Interface
-// has no context, so it cannot apply the configured limit. Lists and maps
-// that contain no range or iterator are returned unchanged.
-func ExpandRanges(ctx context.Context, obj Object) (Object, error) {
-	switch obj.(type) {
-	case *Range, *List, *Map, *Iter:
-		return expandRanges(ctx, obj, map[Object]Object{}, 1)
-	}
-	return obj, nil
+// convBudget bounds the total number of elements that one conversion of a
+// value to Go may produce. It counts every list item, map entry, iterator
+// item, and range element, including those of a container that is referenced
+// more than once. Without a total bound, a small value that references one
+// large list many times converts to a huge Go value.
+type convBudget struct {
+	ctx       context.Context
+	remaining int64
+	limit     int64
 }
 
-// expandRanges does the work of ExpandRanges. seen maps each list, map, and
-// iterator already visited to its result, so a shared container is expanded
-// once and a container that contains itself does not recurse forever. depth
-// counts the containers enclosing obj, including obj itself.
-func expandRanges(ctx context.Context, obj Object, seen map[Object]Object, depth int) (Object, error) {
-	if isNestedContainer(obj) {
-		if result, ok := seen[obj]; ok {
-			return result, nil
-		}
-		if depth > MaxNestingDepth {
-			return nil, ErrNestingDepth
-		}
+// newConvBudget returns a budget of the list length limit in ctx.
+func newConvBudget(ctx context.Context) *convBudget {
+	limit := GetLimits(ctx).MaxListLength
+	return &convBudget{ctx: ctx, remaining: limit, limit: limit}
+}
+
+// take charges n elements to the budget. It returns a value error if the
+// budget has fewer than n elements left. Call it before allocating, so an
+// oversized container is never built.
+func (b *convBudget) take(n uint64) error {
+	if n > uint64(b.remaining) {
+		return newValueErrorf("value too large to convert (exceeds limit of %d elements)", b.limit)
 	}
-	switch obj := obj.(type) {
-	case *Range:
-		// The range becomes a list, which counts toward the nesting depth
-		if depth > MaxNestingDepth {
-			return nil, ErrNestingDepth
-		}
-		if maxLen := GetLimits(ctx).MaxListLength; obj.length() > uint64(maxLen) {
-			return nil, newValueErrorf("range too large (exceeds limit of %d elements)", maxLen)
-		}
-		values, err := CollectValues(ctx, obj)
-		if err != nil {
-			return nil, err
-		}
-		return NewList(values), nil
-	case *Iter:
-		values, err := CollectValues(ctx, obj)
-		if err != nil {
-			return nil, err
-		}
-		list := NewList(values)
-		seen[obj] = list
-		expanded, err := expandRanges(ctx, list, seen, depth)
-		if err != nil {
-			return nil, err
-		}
-		seen[obj] = expanded
-		return expanded, nil
-	case *List:
-		seen[obj] = obj
-		var items []Object
-		for i, item := range obj.items {
-			expanded, err := expandRanges(ctx, item, seen, depth+1)
-			if err != nil {
-				return nil, err
-			}
-			if expanded != item && items == nil {
-				items = slices.Clone(obj.items)
-			}
-			if items != nil {
-				items[i] = expanded
-			}
-		}
-		if items != nil {
-			seen[obj] = NewList(items)
-		}
-		return seen[obj], nil
-	case *Map:
-		seen[obj] = obj
-		var items map[string]Object
-		for key, value := range obj.items {
-			expanded, err := expandRanges(ctx, value, seen, depth+1)
-			if err != nil {
-				return nil, err
-			}
-			if expanded != value && items == nil {
-				items = maps.Clone(obj.items)
-			}
-			if items != nil {
-				items[key] = expanded
-			}
-		}
-		if items != nil {
-			seen[obj] = NewMap(items)
-		}
-		return seen[obj], nil
-	}
-	return obj, nil
+	b.remaining -= int64(n)
+	return nil
 }

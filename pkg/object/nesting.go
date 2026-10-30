@@ -1,6 +1,9 @@
 package object
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+)
 
 // MaxNestingDepth is the maximum number of nested containers (lists, maps, and
 // iterators, counting the outermost one) that recursive operations will
@@ -58,20 +61,36 @@ func isNestedContainer(obj Object) bool {
 }
 
 // ToInterface converts obj to a Go value, as Object.Interface does, but
-// returns ErrNestingDepth instead of a nil result when obj is too deeply
-// nested or contains a cycle.
-func ToInterface(obj Object) (any, error) {
-	return toInterface(obj, nil)
+// returns an error instead of a nil result. It returns ErrNestingDepth when
+// obj is too deeply nested or contains a cycle. It returns a value error when
+// the result would have more elements in total than the list length limit in
+// ctx. The total counts every list item, map entry, iterator item, and range
+// element, and counts a container again each time it is referenced. If ctx
+// is canceled while an iterator is converted, it returns ctx.Err().
+func ToInterface(ctx context.Context, obj Object) (any, error) {
+	return toInterface(obj, nil, newConvBudget(ctx))
 }
 
-func toInterface(obj Object, path nestPath[Object]) (any, error) {
+// interfaceOrNil converts obj with the default limits and returns nil on
+// error. Interface methods of containers use it.
+func interfaceOrNil(obj Object) any {
+	result, err := toInterface(obj, nil, newConvBudget(context.Background()))
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
+func toInterface(obj Object, path nestPath[Object], b *convBudget) (any, error) {
 	switch obj := obj.(type) {
 	case *List:
-		return obj.toInterface(path)
+		return obj.toInterface(path, b)
 	case *Map:
-		return obj.toInterface(path)
+		return obj.toInterface(path, b)
 	case *Iter:
-		return obj.toInterface(path)
+		return obj.toInterface(path, b)
+	case *Range:
+		return obj.toInterface(b)
 	}
 	return obj.Interface(), nil
 }

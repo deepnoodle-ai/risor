@@ -341,16 +341,16 @@ func (m *Map) Size() int {
 
 // Interface converts the map to a map[string]any, converting values
 // recursively. It returns nil if the map is nested more deeply than
-// MaxNestingDepth or contains a cycle; use ToInterface to get the error.
+// MaxNestingDepth, contains a cycle, or has more than DefaultMaxListLength
+// elements in total; use ToInterface to get the error.
 func (m *Map) Interface() interface{} {
-	result, err := m.toInterface(nil)
-	if err != nil {
-		return nil
-	}
-	return result
+	return interfaceOrNil(m)
 }
 
-func (m *Map) toInterface(path nestPath[Object]) (any, error) {
+func (m *Map) toInterface(path nestPath[Object], b *convBudget) (any, error) {
+	if err := b.take(uint64(len(m.items))); err != nil {
+		return nil, err
+	}
 	result := make(map[string]any, len(m.items))
 	for k, v := range m.items {
 		if isNestedContainer(v) {
@@ -359,7 +359,7 @@ func (m *Map) toInterface(path nestPath[Object]) (any, error) {
 				return nil, err
 			}
 		}
-		value, err := toInterface(v, path)
+		value, err := toInterface(v, path, b)
 		if err != nil {
 			return nil, err
 		}

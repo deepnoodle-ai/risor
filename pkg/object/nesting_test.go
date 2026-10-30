@@ -62,7 +62,7 @@ func TestCycleInspect(t *testing.T) {
 func TestCycleInterface(t *testing.T) {
 	for _, obj := range []Object{selfList(), selfMap(), mixedCycle()} {
 		assert.Nil(t, obj.Interface())
-		_, err := ToInterface(obj)
+		_, err := ToInterface(context.Background(), obj)
 		assert.True(t, errors.Is(err, ErrNestingDepth))
 	}
 
@@ -71,20 +71,20 @@ func TestCycleInterface(t *testing.T) {
 	a := NewList(nil)
 	a.Append(a)
 	a.Append(a)
-	_, err := ToInterface(a)
+	_, err := ToInterface(context.Background(), a)
 	assert.True(t, errors.Is(err, ErrNestingDepth))
 
 	// An iterator over a cyclic map's values
-	_, err = ToInterface(NewMapValueIter(selfMap()))
+	_, err = ToInterface(context.Background(), NewMapValueIter(selfMap()))
 	assert.True(t, errors.Is(err, ErrNestingDepth))
 }
 
 func TestNestingDepthLimit(t *testing.T) {
-	v, err := ToInterface(nestedLists(MaxNestingDepth))
+	v, err := ToInterface(context.Background(), nestedLists(MaxNestingDepth))
 	assert.Nil(t, err)
 	assert.NotNil(t, v)
 
-	_, err = ToInterface(nestedLists(MaxNestingDepth + 1))
+	_, err = ToInterface(context.Background(), nestedLists(MaxNestingDepth+1))
 	assert.True(t, errors.Is(err, ErrNestingDepth))
 
 	_, err = nestedLists(MaxNestingDepth + 1).MarshalJSON()
@@ -92,7 +92,7 @@ func TestNestingDepthLimit(t *testing.T) {
 
 	// A shared container that is not a cycle converts normally
 	inner := NewMap(map[string]Object{"x": NewInt(1)})
-	v, err = ToInterface(NewList([]Object{inner, inner}))
+	v, err = ToInterface(context.Background(), NewList([]Object{inner, inner}))
 	assert.Nil(t, err)
 	assert.Equal(t, v, []any{map[string]any{"x": int64(1)}, map[string]any{"x": int64(1)}})
 }
@@ -174,16 +174,16 @@ func TestCycleToGo(t *testing.T) {
 	}
 	for _, target := range targets {
 		for _, obj := range []Object{selfList(), selfMap(), mixedCycle()} {
-			_, err := r.ToGo(obj, target)
+			_, err := r.ToGo(context.Background(), obj, target)
 			assert.NotNil(t, err)
 		}
 	}
-	_, err := r.ToGo(selfList(), reflect.TypeOf([]any{}))
+	_, err := r.ToGo(context.Background(), selfList(), reflect.TypeOf([]any{}))
 	assert.True(t, errors.Is(err, ErrNestingDepth))
 	// The depth error is not wrapped once per level
 	assert.Equal(t, err.Error(), ErrNestingDepth.Error())
 
-	_, err = r.ToGo(mixedCycle(), reflect.TypeOf([]map[string]any{}))
+	_, err = r.ToGo(context.Background(), mixedCycle(), reflect.TypeOf([]map[string]any{}))
 	assert.True(t, errors.Is(err, ErrNestingDepth))
 }
 
@@ -245,18 +245,18 @@ func TestCycleThroughIterator(t *testing.T) {
 
 	for _, obj := range []Object{values, entries, self, inList, values.items["v"]} {
 		assert.Nil(t, obj.Interface())
-		_, err := ToInterface(obj)
+		_, err := ToInterface(context.Background(), obj)
 		assert.True(t, errors.Is(err, ErrNestingDepth), obj.Inspect())
 		for _, target := range []reflect.Type{
 			reflect.TypeOf((*any)(nil)).Elem(),
 			reflect.TypeOf(map[string]any{}),
 			reflect.TypeOf([]any{}),
 		} {
-			_, err := DefaultRegistry().ToGo(obj, target)
+			_, err := DefaultRegistry().ToGo(context.Background(), obj, target)
 			assert.NotNil(t, err)
 		}
 	}
-	_, err := DefaultRegistry().ToGo(values, reflect.TypeOf(map[string]any{}))
+	_, err := DefaultRegistry().ToGo(context.Background(), values, reflect.TypeOf(map[string]any{}))
 	assert.True(t, errors.Is(err, ErrNestingDepth))
 
 	// Inspect, Equals, and MarshalJSON do not visit an iterator's values
@@ -278,7 +278,7 @@ func TestCycleThroughIterator(t *testing.T) {
 
 	// An iterator over plain values still converts
 	plain := NewMap(map[string]Object{"a": NewList([]Object{NewInt(1)})})
-	result, err := ToInterface(NewMapValueIter(plain))
+	result, err := ToInterface(context.Background(), NewMapValueIter(plain))
 	assert.Nil(t, err)
 	assert.Equal(t, result, []any{[]any{int64(1)}})
 }
@@ -299,7 +299,7 @@ func TestInspectConcurrent(t *testing.T) {
 				assert.Equal(t, ls.Inspect(), `[{"x": 1}, 2, {"list": [...]}]`)
 				assert.Equal(t, m.Inspect(), `{"list": [{"x": 1}, 2, {...}]}`)
 				_ = ls.Equals(ls)
-				_, _ = ToInterface(ls)
+				_, _ = ToInterface(context.Background(), ls)
 			}
 		}()
 	}
