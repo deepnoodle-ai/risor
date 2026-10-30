@@ -105,6 +105,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - An octal string escape above `\177`, such as `"\377"`, now produces the code
   point U+0080 to U+00FF, encoded as UTF-8, as `\xHH` escapes already did.
   Before, it wrote one raw byte, which made the string invalid UTF-8.
+- A multi-line comment with no closing `*/` is now a syntax error,
+  `unterminated multi-line comment`, at the opening `/*`. Before, the comment
+  silently ran to the end of the file.
 
 ### Fixed
 

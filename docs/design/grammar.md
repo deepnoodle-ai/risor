@@ -39,7 +39,8 @@ SingleLineComment:
     '//' {<any character excluding CR and LF>}
 
 MultiLineComment:
-    '/*' {<any character>} '*/'    (* not nested; the first '*/' ends it *)
+    '/*' {<any character>} '*/'    (* not nested; the first '*/' ends it;
+                                      a '/*' with no '*/' is an error *)
 
 WS:
     <one of: SPACE U+0020, TAB U+0009>

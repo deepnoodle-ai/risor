@@ -1369,18 +1369,41 @@ func TestMultipleEOFReads(t *testing.T) {
 }
 
 func TestUnterminatedMultiLineComment(t *testing.T) {
-	// Unterminated multi-line comment should eventually hit EOF
-	l := New("a /* unterminated comment")
+	// An unterminated multi-line comment is an error that points at the
+	// opening "/*". The next token is EOF.
+	l := New("a\nb /* unterminated\ncomment")
 
 	tok, err := l.Next()
 	assert.Nil(t, err)
 	assert.Equal(t, tok.Type, token.IDENT)
 	assert.Equal(t, tok.Literal, "a")
+	tok, err = l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Type, token.NEWLINE)
+	tok, err = l.Next()
+	assert.Nil(t, err)
+	assert.Equal(t, tok.Literal, "b")
 
-	// The comment consumes everything until EOF
+	tok, err = l.Next()
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "unterminated multi-line comment")
+	assert.Equal(t, tok.Type, token.ILLEGAL)
+	assert.Equal(t, tok.Literal, "/*")
+	assert.Equal(t, tok.StartPosition.LineNumber(), 2)
+	assert.Equal(t, tok.StartPosition.ColumnNumber(), 3)
+	assert.Equal(t, tok.EndPosition.ColumnNumber(), 5)
+	assert.Equal(t, l.GetLineText(tok), "b /* unterminated")
+
 	tok, err = l.Next()
 	assert.Nil(t, err)
 	assert.Equal(t, tok.Type, token.EOF)
+
+	// A comment that is only "/*", or one that holds a NUL byte, is also
+	// unterminated
+	for _, input := range []string{"/*", "/*/", "/* a \x00 b"} {
+		_, err := New(input).Next()
+		assert.NotNil(t, err)
+	}
 }
 
 func TestShebangNotAtStart(t *testing.T) {
@@ -1704,7 +1727,6 @@ func TestConsecutiveMultiLineComments(t *testing.T) {
 		{"/* a */ // b\nx", []token.Type{token.NEWLINE, token.IDENT, token.EOF}},
 		{"/**/x", []token.Type{token.IDENT, token.EOF}},
 		// "/*/" does not close the comment it opens
-		{"/*/ x", []token.Type{token.EOF}},
 		{"/*/ x */ y", []token.Type{token.IDENT, token.EOF}},
 	}
 	for _, tt := range tests {

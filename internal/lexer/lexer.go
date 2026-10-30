@@ -156,7 +156,9 @@ func (l *Lexer) Next() (token.Token, error) {
 			l.skipComment()
 			continue
 		case l.ch == rune('/') && l.peekChar() == rune('*'):
-			l.skipMultiLineComment()
+			if !l.skipMultiLineComment() {
+				return l.unterminatedComment()
+			}
 			continue
 		}
 		break
@@ -496,26 +498,40 @@ func (l *Lexer) skipComment() {
 	l.skipTabsAndSpaces()
 }
 
-// Consume all tokens until we've had the close of a multi-line comment
-func (l *Lexer) skipMultiLineComment() {
+// skipMultiLineComment consumes a multi-line comment through its closing
+// "*/". It returns false if the input ends before the comment is closed.
+func (l *Lexer) skipMultiLineComment() bool {
 	// Move past the opening "/*" so that its "*" can't close the comment.
 	l.readChar()
 	l.readChar()
-	found := false
-	for !found {
-		// break at the end of our input.
-		if l.ch == rune(0) {
-			found = true
+	for {
+		// The input ended inside the comment.
+		if l.ch == rune(0) && l.position >= len(l.characters) {
+			return false
 		}
-		// otherwise keep going until we find "*/"
 		if l.ch == '*' && l.peekChar() == '/' {
-			found = true
 			// Our current position is "*", so skip forward to consume the "/"
 			l.readChar()
+			l.readChar()
+			l.skipTabsAndSpaces()
+			return true
 		}
 		l.readChar()
 	}
-	l.skipTabsAndSpaces()
+}
+
+// unterminatedComment returns an ILLEGAL token for a multi-line comment that
+// is not closed. The token spans the opening "/*", so that the error points
+// at it. The lexer is at the end of the input, so the next token is EOF.
+func (l *Lexer) unterminatedComment() (token.Token, error) {
+	tok := token.Token{
+		Type:          token.ILLEGAL,
+		Literal:       "/*",
+		StartPosition: l.tokenStartPosition,
+		EndPosition:   l.tokenStartPosition.Advance(2),
+	}
+	l.prevToken = tok
+	return tok, fmt.Errorf("unterminated multi-line comment")
 }
 
 // Read a decimal, hex, octal, or binary number
