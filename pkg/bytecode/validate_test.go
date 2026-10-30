@@ -56,6 +56,10 @@ func TestUnmarshalMalformedReturnsError(t *testing.T) {
 			`{"codes":[{"instructions":[1],"exception_handlers":[{"try_start":0,"try_end":5}]}]}`,
 			"exception handler 0",
 		},
+		{"huge column", `{"codes":[{"locations":[{"line":1,"column":1099511627776}]}]}`, "location 0 has an invalid column"},
+		{"negative column", `{"codes":[{"locations":[{"line":1,"column":-1}]}]}`, "location 0 has an invalid column"},
+		{"huge end column", `{"codes":[{"locations":[{"line":1,"column":1,"end_column":1099511627776}]}]}`, "invalid column"},
+		{"negative end column", `{"codes":[{"locations":[{"line":1,"column":1,"end_column":-5}]}]}`, "invalid column"},
 		{"bad json", `{"codes":`, "unexpected end"},
 		{"unknown constant type", `{"codes":[{"constants":[{"type":"x"}]}]}`, "unknown constant type"},
 	}
@@ -164,6 +168,20 @@ func TestValidate(t *testing.T) {
 			"root locals beyond globals",
 			NewCode(CodeParams{Name: "main", GlobalCount: 2, LocalCount: 3}),
 			"local count 3 is larger than the 2 locals",
+		},
+		{
+			"huge column in a child",
+			NewCode(CodeParams{Source: "x", Children: []*Code{
+				NewCode(CodeParams{Name: "child", Locations: []SourceLocation{
+					{Line: 1, Column: 1}, {Line: 1, Column: 1 << 40},
+				}}),
+			}}),
+			`invalid bytecode in "child": location 1 has an invalid column (1099511627776 to 0)`,
+		},
+		{
+			"negative column",
+			NewCode(CodeParams{Locations: []SourceLocation{{Line: 1, Column: -1}}}),
+			"location 0 has an invalid column (-1 to 0)",
 		},
 		{
 			"child global checked against root",

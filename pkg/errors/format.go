@@ -218,17 +218,10 @@ func (f *Formatter) writeSource(b *strings.Builder, err *FormattedError, lineNum
 				b.WriteString(" | ")
 			}
 
-			// Spaces to reach the error column
-			caretPad := strings.Repeat(" ", err.Column-1)
-			b.WriteString(caretPad)
-
-			// Carets under the error
-			// EndColumn is exclusive (points after last char), so no +1 needed
-			caretLen := 1
-			if err.EndColumn > err.Column {
-				caretLen = err.EndColumn - err.Column
-			}
-			carets := strings.Repeat("^", caretLen)
+			// Spaces to reach the error column, then carets under the error
+			pad, width := caretSpan(line.Text, err.Column, err.EndColumn)
+			b.WriteString(strings.Repeat(" ", pad))
+			carets := strings.Repeat("^", width)
 			if f.UseColor {
 				b.WriteString(colorCaret.Apply(carets))
 			} else {
@@ -340,4 +333,21 @@ func (f *Formatter) FormatMultiple(errs []*FormattedError) string {
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+// caretSpan returns the number of spaces before the carets and the number of
+// carets that underline a location in text. column is 1-based and endColumn
+// is exclusive; an endColumn that is not after column gives one caret. Both
+// are clamped to the line, so the caret line is never longer than text plus
+// one character, even for a location built by hand or read from untrusted
+// bytecode. column must be positive.
+func caretSpan(text string, column, endColumn int) (pad, width int) {
+	limit := len(text)
+	pad = min(column-1, limit)
+	width = 1
+	if endColumn > column {
+		width = endColumn - column
+	}
+	width = max(min(width, limit+1-pad), 1)
+	return pad, width
 }

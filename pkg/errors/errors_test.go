@@ -262,6 +262,44 @@ func TestStructuredError_FriendlyErrorMessage_ZeroLocation(t *testing.T) {
 	assert.False(t, strings.Contains(result, "(0:0)"))
 }
 
+// A location from untrusted bytecode or built by hand may have a column far
+// past its source line. The caret line is clamped to the line rather than
+// padded out to the column.
+func TestStructuredError_FriendlyErrorMessage_ClampsColumns(t *testing.T) {
+	tests := []struct {
+		name      string
+		column    int
+		endColumn int
+		caret     string
+	}{
+		{"huge column", 1 << 40, 0, " | " + strings.Repeat(" ", 15) + "^\n"},
+		{"huge column and end column", 1 << 40, 1<<40 + 5, " | " + strings.Repeat(" ", 15) + "^\n"},
+		{"huge end column", 9, 1 << 40, " | " + strings.Repeat(" ", 8) + "^^^^^^^^\n"},
+		{"in range", 5, 8, " |     ^^^\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &StructuredError{
+				Kind:    ErrRuntime,
+				Message: "boom",
+				Location: SourceLocation{
+					Line:      1,
+					Column:    tt.column,
+					EndColumn: tt.endColumn,
+					Source:    "let x = foo + 1",
+				},
+			}
+			result := err.FriendlyErrorMessage()
+			assert.True(t, len(result) < 200, len(result))
+			assert.True(t, strings.HasSuffix(result, tt.caret), result)
+
+			formatted := NewFormatter(false).Format(err.ToFormatted())
+			assert.True(t, len(formatted) < 200, len(formatted))
+			assert.Contains(t, formatted, strings.TrimPrefix(tt.caret, " | "))
+		})
+	}
+}
+
 func TestStructuredError_Unwrap(t *testing.T) {
 	cause := NewEvalError(EvalErrorf("underlying error"))
 	err := &StructuredError{

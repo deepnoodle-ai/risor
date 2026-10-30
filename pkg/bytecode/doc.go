@@ -50,6 +50,7 @@
 //   - every jump and exception handler target starts an instruction
 //   - constants have supported types and functions have valid code
 //   - no block declares more local slots than it uses
+//   - source location columns are not negative or larger than a 32-bit int
 //
 // These checks are structural. They do not make bytecode from an untrusted
 // source safe to run. Know these limits before you load it:

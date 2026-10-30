@@ -85,15 +85,10 @@ func (e *StructuredError) FriendlyErrorMessage() string {
 		msg.WriteString(e.Location.Source)
 		msg.WriteString("\n")
 		if e.Location.Column > 0 {
+			pad, width := caretSpan(e.Location.Source, e.Location.Column, e.Location.EndColumn)
 			msg.WriteString(" | ")
-			msg.WriteString(strings.Repeat(" ", e.Location.Column-1))
-			// Use multi-character underline if EndColumn is set
-			// EndColumn is exclusive (points after last char), so no +1 needed
-			caretLen := 1
-			if e.Location.EndColumn > e.Location.Column {
-				caretLen = e.Location.EndColumn - e.Location.Column
-			}
-			msg.WriteString(strings.Repeat("^", caretLen))
+			msg.WriteString(strings.Repeat(" ", pad))
+			msg.WriteString(strings.Repeat("^", width))
 			msg.WriteString("\n")
 		}
 	}
