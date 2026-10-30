@@ -88,6 +88,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   value whose type is exactly `*object.GoStruct`. Any other type, including one
   that embeds `*object.GoStruct`, uses its `SetAttr` (its own or the promoted
   one) and the default limits, as before (#497).
+- A closure now captures the right variable when two or more function levels
+  separate it from the variable's definition, such as `() => () => x`. Before,
+  calling the inner closure after the outer function returned read a local of
+  whatever frame was on the call stack, returning a wrong value or failing with
+  "no frame at depth". The compiler emits a new `LOAD_CELL` opcode that passes
+  a captured variable through each function level.
+- A named function with destructured parameters, such as
+  `function f({n}) { ... f({n: n - 1}) }`, can now call itself. Before, the
+  call failed with "object is not callable".
 
 ## [2.2.0] - 2026-08-17
 
