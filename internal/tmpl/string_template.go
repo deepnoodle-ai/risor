@@ -91,12 +91,46 @@ func Parse(s string) (*Template, error) {
 }
 
 // expressionEnd returns the index of the '}' that closes the expression
-// starting at the given index. It skips nested braces and string literals.
-// It returns false if the expression is not closed.
+// starting at the given index. It skips nested braces, string literals and
+// comments. A "//" comment ends at a newline or at the '}' that closes the
+// expression, so `${ x // note }` is closed. A "/* */" comment ends only at
+// "*/". It returns false if the expression is not closed.
 func expressionEnd(runes []rune, start int) (int, bool) {
 	depth := 0
+	inLineComment := false
 	for i := start; i < len(runes); i++ {
-		switch r := runes[i]; r {
+		r := runes[i]
+		if inLineComment {
+			switch {
+			case r == '\n':
+				inLineComment = false
+			case r == '}' && depth == 0:
+				return i, true
+			}
+			continue
+		}
+		next := rune(0)
+		if i+1 < len(runes) {
+			next = runes[i+1]
+		}
+		switch {
+		case r == '/' && next == '/':
+			inLineComment = true
+			i++
+			continue
+		case r == '/' && next == '*':
+			// Skip to the "*/" that ends the comment
+			i += 2
+			for i+1 < len(runes) && (runes[i] != '*' || runes[i+1] != '/') {
+				i++
+			}
+			if i+1 >= len(runes) {
+				return 0, false
+			}
+			i++ // the '/' of "*/"
+			continue
+		}
+		switch r {
 		case '{':
 			depth++
 		case '}':

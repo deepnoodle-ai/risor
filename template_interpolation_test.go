@@ -27,6 +27,9 @@ func TestTemplateInterpolationWithBraces(t *testing.T) {
 		{"`${ match 2 { 2 => \"two\", _ => \"other\" } }`", "two"},
 		{"`${ try { throw \"e\" } catch e { \"caught\" } }`", "caught"},
 		{"`${ {a: {b: 1}}.a.b }-${ 2 }`", "1-2"},
+		{"`${ 1 // it's }`", "1"},
+		{"`${ 1 /* { */ }`", "1"},
+		{"`${ 1 // }`", "1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

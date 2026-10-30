@@ -80,6 +80,13 @@ func TestParseNestedBraces(t *testing.T) {
 		{`${ '\'}' }`, ` '\'}' `},
 		{`${ "it's" }`, ` "it's" `},
 		{`${ [1].map(x => { return {v: x} }) }`, ` [1].map(x => { return {v: x} }) `},
+		// Comments: quotes and braces in them are ignored
+		{`${ 1 // it's }`, ` 1 // it's `},
+		{`${ 1 // { }`, ` 1 // { `},
+		{"${ 1 // it's {\n }", " 1 // it's {\n "},
+		{`${ 1 /* { ' */ }`, ` 1 /* { ' */ `},
+		{`${ 1 /* } */ }`, ` 1 /* } */ `},
+		{`${ 4 / 2 }`, ` 4 / 2 `},
 	}
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
@@ -103,6 +110,7 @@ func TestParseStringErrors(t *testing.T) {
 		{"a${0} ${cd", `missing '}' in template: a${0} ${cd`},
 		{"${ {a: 1 }", `missing '}' in template: ${ {a: 1 }`},
 		{`${ "} }`, `missing '}' in template: ${ "} }`},
+		{`${ 1 /* } }`, `missing '}' in template: ${ 1 /* } }`},
 	}
 	for _, tc := range tests {
 		_, err := Parse(tc.input)
