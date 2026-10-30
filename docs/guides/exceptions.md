@@ -340,7 +340,8 @@ null.foo            // type error: attribute "foo" not found on null object
 [1, 2, 3][10]       // value error: index out of range: 10
 ```
 
-All runtime errors are catchable:
+Runtime errors are catchable, except the
+[errors that end the run](#errors-that-end-the-run):
 
 ```ts
 let result = try {
