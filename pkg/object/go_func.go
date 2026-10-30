@@ -12,6 +12,10 @@ var _ Callable = (*GoFunc)(nil) // Ensure that *GoFunc implements Callable
 
 // GoFunc wraps an arbitrary Go function for use in Risor.
 // It uses reflection to handle argument conversion and function calls.
+//
+// A GoFunc equals only itself, and each conversion of a Go function gives a
+// new value. So a func-typed Go struct field read twice gives two values that
+// are not equal.
 type GoFunc struct {
 	fn         reflect.Value // The Go function
 	fnType     reflect.Type  // Cached type info
@@ -86,7 +90,9 @@ func (g *GoFunc) Equals(other Object) bool {
 			g.recv.Pointer() == otherFunc.recv.Pointer() &&
 			g.method == otherFunc.method
 	}
-	return g.fn.Pointer() == otherFunc.fn.Pointer()
+	// Go closures made from one function literal share a code pointer, and
+	// Go cannot compare func values, so compare by identity
+	return g == otherFunc
 }
 
 func (g *GoFunc) Attrs() []AttrSpec {

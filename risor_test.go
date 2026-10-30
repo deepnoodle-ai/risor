@@ -2089,3 +2089,52 @@ func TestHostMutexNotReachable(t *testing.T) {
 	assert.True(t, g.Mu.TryLock())
 	g.Mu.Unlock()
 }
+
+//go:noinline
+func goFuncTestAdder(n int) func(int) int {
+	return func(x int) int { return x + n }
+}
+
+// Go closures made from one function literal are different functions in a
+// script, and one global is equal to itself on every read.
+func TestGoFuncEquality(t *testing.T) {
+	env := map[string]any{"add1": goFuncTestAdder(1), "add2": goFuncTestAdder(2)}
+	tests := []struct {
+		input    string
+		expected any
+	}{
+		{"add1 == add2", false},
+		{"add1 != add2", true},
+		{"add1 == add1", true},
+		{"[add1, add2].index(add2)", int64(1)},
+		{"[add1, add1].count(add1)", int64(2)},
+		{"add2 in [add1, add2]", true},
+		{"add2 in [add1]", false},
+		{"{a: add1}.a == add1", true},
+	}
+	for _, tt := range tests {
+		result, err := Eval(context.Background(), tt.input, WithEnv(env))
+		assert.Nil(t, err, "input: %s", tt.input)
+		assert.Equal(t, result, tt.expected, "input: %s", tt.input)
+	}
+}
+
+type goFuncTestHolder struct{ F func() int }
+
+// Each read of a func-typed struct field converts it again, so two reads are
+// not equal. A script reads the field once to compare it.
+func TestGoFuncStructFieldEquality(t *testing.T) {
+	env := map[string]any{"h": &goFuncTestHolder{F: func() int { return 1 }}}
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"h.F == h.F", false},
+		{"let f = h.F; f == f", true},
+	}
+	for _, tt := range tests {
+		result, err := Eval(context.Background(), tt.input, WithEnv(env))
+		assert.Nil(t, err, "input: %s", tt.input)
+		assert.Equal(t, result, tt.expected, "input: %s", tt.input)
+	}
+}
