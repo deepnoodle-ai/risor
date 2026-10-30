@@ -901,6 +901,13 @@ evalLoop:
 			vm.ip = base - delta
 		case op.BuildList:
 			count := vm.fetch()
+			if err := object.CheckListLength(ctx, int(count)); err != nil {
+				vm.restoreStack(vm.sp - int(count))
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
+			}
 			items := make([]object.Object, count)
 			for i := uint16(0); i < count; i++ {
 				items[count-1-i] = vm.pop()
@@ -926,6 +933,12 @@ evalLoop:
 			list, ok := listObj.(*object.List)
 			if !ok {
 				if herr := vm.tryHandleError(vm.typeError("cannot append to non-list (got %s)", listObj.Type())); herr != nil {
+					return herr
+				}
+				continue
+			}
+			if err := object.CheckListLength(ctx, len(list.Value())+1); err != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
 				continue
@@ -1103,6 +1116,7 @@ evalLoop:
 		case op.BuildString:
 			count := vm.fetch()
 			items := make([]string, count)
+			size := 0
 			for i := uint16(0); i < count; i++ {
 				dst := count - 1 - i
 				obj := vm.pop()
@@ -1115,6 +1129,13 @@ evalLoop:
 				default:
 					items[dst] = obj.Inspect()
 				}
+				size += len(items[dst])
+			}
+			if err := object.CheckBytesSize(ctx, "string template", size); err != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
 			}
 			vm.push(object.NewString(strings.Join(items, "")))
 		case op.Slice:

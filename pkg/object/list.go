@@ -17,6 +17,9 @@ func init() {
 		Arg("item").
 		Returns("list").
 		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
+			if err := CheckListLength(ctx, len(ls.items)+1); err != nil {
+				return nil, err
+			}
 			ls.Append(args[0])
 			return ls, nil
 		})
@@ -91,6 +94,9 @@ func init() {
 		Impl(func(ls *List, ctx context.Context, args ...Object) (Object, error) {
 			index, err := AsInt(args[0])
 			if err != nil {
+				return nil, err
+			}
+			if err := CheckListLength(ctx, len(ls.items)+1); err != nil {
 				return nil, err
 			}
 			ls.Insert(index, args[1])

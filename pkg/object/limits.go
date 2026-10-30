@@ -73,6 +73,13 @@ func checkBytesSize(l Limits, name string, size uint64) error {
 	return nil
 }
 
+// CheckBytesSize returns a value error if a string or bytes value of size
+// bytes would exceed the byte limit in ctx. name describes the operation in
+// the error message.
+func CheckBytesSize(ctx context.Context, name string, size int) error {
+	return checkBytesSize(GetLimits(ctx), name, uint64(size))
+}
+
 // checkRepeatSize returns an error if repeating a value of unit bytes count
 // times would overflow or exceed the byte limit. count must be non-negative.
 func checkRepeatSize(l Limits, name string, unit int, count int64) error {

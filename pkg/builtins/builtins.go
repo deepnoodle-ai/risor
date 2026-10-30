@@ -36,8 +36,11 @@ func Sprintf(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if err != nil {
 		return nil, err
 	}
-	result := object.NewString(fmt.Sprintf(fs, fmtArgs...))
-	return result, nil
+	result := fmt.Sprintf(fs, fmtArgs...)
+	if err := object.CheckBytesSize(ctx, "sprintf", len(result)); err != nil {
+		return nil, err
+	}
+	return object.NewString(result), nil
 }
 
 // Error creates an error value without throwing it. Use throw to raise the error.
@@ -107,10 +110,20 @@ func String(ctx context.Context, args ...object.Object) (object.Object, error) {
 	case *object.Bytes:
 		return object.NewString(string(arg.Value())), nil
 	default:
-		if s, ok := arg.(fmt.Stringer); ok {
-			return object.NewString(s.String()), nil
+		var s string
+		if stringer, ok := arg.(fmt.Stringer); ok {
+			s = stringer.String()
+		} else {
+			s = args[0].Inspect()
 		}
-		return object.NewString(args[0].Inspect()), nil
+		// Formatting a container can produce a string much larger than
+		// the container, such as a list that holds one string many times.
+		if _, ok := arg.(object.Container); ok {
+			if err := object.CheckBytesSize(ctx, "string", len(s)); err != nil {
+				return nil, err
+			}
+		}
+		return object.NewString(s), nil
 	}
 }
 
