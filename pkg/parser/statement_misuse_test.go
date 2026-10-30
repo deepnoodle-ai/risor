@@ -36,6 +36,17 @@ func TestStatementCallArgumentRejected(t *testing.T) {
 	}
 }
 
+// A spread operand must be an expression too. parseSpread rejects a
+// statement operand before parseCall sees the argument.
+func TestSpreadOfStatementRejected(t *testing.T) {
+	for _, input := range []string{`f(...i++)`, `f(1, ...i--)`, `[...i++]`, `{...i++}`} {
+		t.Run(input, func(t *testing.T) {
+			errs := parseErrors(t, input)
+			assert.Equal(t, errs[0].Message(), "expected expression")
+		})
+	}
+}
+
 // Expressions that look like statements remain valid call arguments.
 func TestExpressionCallArgumentsAccepted(t *testing.T) {
 	for _, input := range []string{
