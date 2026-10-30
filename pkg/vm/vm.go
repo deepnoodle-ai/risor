@@ -116,6 +116,9 @@ type VirtualMachine struct {
 	// maxValueStackDepth limits the value stack depth (vm.sp).
 	// A value of 0 uses the global MaxStackDepth constant.
 	maxValueStackDepth int
+	// valueStackLimit is the effective value stack limit for the current
+	// run: maxValueStackDepth clamped to MaxStackDepth. push checks it.
+	valueStackLimit int
 	// maxFrameDepth limits the call frame depth (vm.fp).
 	// A value of 0 uses the global MaxFrameDepth constant.
 	maxFrameDepth int
@@ -128,11 +131,12 @@ type VirtualMachine struct {
 	// eval recursively. Without VM-level counters, each callback would start
 	// with fresh counters, allowing infinite iterations to bypass step limits.
 	//
-	// Note: Step counting is approximate for performance. Steps are counted in
-	// batches of contextCheckInterval, so actual execution may exceed maxSteps
-	// by up to (contextCheckInterval - 1) instructions before detection.
-	stepCount        int64 // Approximate total instructions executed across all eval calls
+	// Steps are counted in batches for performance. A batch ends after
+	// checkEvery instructions, or sooner if fewer steps remain under
+	// maxSteps, so the step limit is exact.
+	stepCount        int64 // Instructions counted at the end of earlier batches
 	stepCheckCounter int   // Instructions since last periodic check
+	checkEvery       int   // Instructions between periodic checks. 0 = never.
 }
 
 // exceptionFrame represents an active exception handler on the exception stack.
@@ -173,6 +177,7 @@ func createVM(options []Option) (*VirtualMachine, error) {
 		contextCheckInterval: DefaultContextCheckInterval,
 		frames:               make([]frame, InitialFrameCapacity),
 		excStack:             make([]exceptionFrame, InitialExcStackCapacity),
+		valueStackLimit:      MaxStackDepth,
 	}
 	if err := vm.applyOptions(options); err != nil {
 		return nil, err
@@ -314,6 +319,11 @@ func (vm *VirtualMachine) start(ctx context.Context) error {
 	// Each run has its own step budget
 	vm.stepCount = 0
 	vm.stepCheckCounter = 0
+	vm.checkEvery = vm.nextCheckInterval()
+	vm.valueStackLimit = vm.maxValueStackDepth
+	if vm.valueStackLimit <= 0 || vm.valueStackLimit > MaxStackDepth {
+		vm.valueStackLimit = MaxStackDepth
+	}
 	// Halt execution when the context is cancelled. The watcher goroutine
 	// ends when the run stops, so a later cancellation of this context
 	// cannot halt another run.
@@ -334,6 +344,58 @@ func (vm *VirtualMachine) start(ctx context.Context) error {
 			<-exited
 		}
 	}
+	return nil
+}
+
+// nextCheckInterval returns the number of instructions to run before the
+// next periodic check. The check runs every contextCheckInterval
+// instructions, and also on the first instruction past the step limit.
+// It returns 0 if no check is needed.
+func (vm *VirtualMachine) nextCheckInterval() int {
+	interval := int64(vm.contextCheckInterval)
+	if interval < 0 {
+		interval = 0
+	}
+	if vm.maxSteps > 0 {
+		// Check on the instruction that would exceed the limit
+		remaining := vm.maxSteps - vm.stepCount + 1
+		if remaining < 1 {
+			remaining = 1
+		}
+		if interval == 0 || remaining < interval {
+			interval = remaining
+		}
+	}
+	return int(interval)
+}
+
+// periodicCheck runs every checkEvery instructions. It checks the context
+// and the step limit, and sets the length of the next batch.
+func (vm *VirtualMachine) periodicCheck(ctx context.Context) error {
+	steps := vm.stepCheckCounter
+	vm.stepCheckCounter = 0
+
+	// Context cancellation check
+	if doneChan := ctx.Done(); doneChan != nil {
+		select {
+		case <-doneChan:
+			atomic.StoreInt32(&vm.halt, 1)
+			return ctx.Err()
+		default:
+		}
+	}
+
+	// Step limit check. The instruction about to run is counted in steps.
+	if vm.maxSteps > 0 {
+		vm.stepCount += int64(steps)
+		if vm.stepCount > vm.maxSteps {
+			// Fail every later instruction too, so the limit holds even if
+			// a caller keeps running after this error.
+			vm.checkEvery = 1
+			return ErrStepLimitExceeded
+		}
+	}
+	vm.checkEvery = vm.nextCheckInterval()
 	return nil
 }
 
@@ -536,16 +598,6 @@ func (vm *VirtualMachine) GlobalNames() []string {
 // Assuming this function returns without error, the result of the evaluation
 // will be on the top of the stack.
 func (vm *VirtualMachine) eval(ctx context.Context) error {
-	// Use VM fields for step counting so counts persist across recursive calls
-	checkInterval := vm.contextCheckInterval
-	doneChan := ctx.Done()
-
-	// Calculate effective value stack limit
-	maxValueStackDepth := vm.maxValueStackDepth
-	if maxValueStackDepth == 0 || maxValueStackDepth > MaxStackDepth {
-		maxValueStackDepth = MaxStackDepth
-	}
-
 	// Run to the end of the active code
 evalLoop:
 	for vm.ip < len(vm.activeCode.Instructions) {
@@ -554,36 +606,15 @@ evalLoop:
 			return ctx.Err()
 		}
 
-		// Periodic checks (context, steps, stack) every N instructions.
+		// Periodic checks (context, steps) every checkEvery instructions.
 		// This amortizes the cost of resource limit checking.
 		// Using VM fields ensures counts persist across recursive eval calls
 		// (e.g., when callbacks are invoked via list.each(), list.map(), etc.)
-		if checkInterval > 0 {
+		if vm.checkEvery > 0 {
 			vm.stepCheckCounter++
-			if vm.stepCheckCounter >= checkInterval {
-				vm.stepCheckCounter = 0
-
-				// Context cancellation check
-				if doneChan != nil {
-					select {
-					case <-doneChan:
-						atomic.StoreInt32(&vm.halt, 1)
-						return ctx.Err()
-					default:
-					}
-				}
-
-				// Step limit check
-				if vm.maxSteps > 0 {
-					vm.stepCount += int64(checkInterval)
-					if vm.stepCount > vm.maxSteps {
-						return ErrStepLimitExceeded
-					}
-				}
-
-				// Value stack depth check
-				if vm.sp >= maxValueStackDepth {
-					return ErrStackOverflow
+			if vm.stepCheckCounter >= vm.checkEvery {
+				if err := vm.periodicCheck(ctx); err != nil {
+					return err
 				}
 			}
 		}
@@ -1126,7 +1157,7 @@ evalLoop:
 				continue
 			}
 			// Exactly nameCount values are pushed below
-			if int64(vm.sp)+nameCount >= MaxStackDepth {
+			if int64(vm.sp)+nameCount >= int64(vm.valueStackLimit) {
 				return ErrStackOverflow
 			}
 			count := int64(0)
@@ -1297,10 +1328,10 @@ func (vm *VirtualMachine) pop() object.Object {
 	return obj
 }
 
-// push places obj on top of the value stack. Overflowing the stack panics with
-// ErrStackOverflow, which panicToError reports as-is.
+// push places obj on top of the value stack. Exceeding the value stack limit
+// panics with ErrStackOverflow, which panicToError reports as-is.
 func (vm *VirtualMachine) push(obj object.Object) {
-	if vm.sp+1 >= MaxStackDepth {
+	if vm.sp+1 >= vm.valueStackLimit {
 		panic(ErrStackOverflow)
 	}
 	vm.sp++
