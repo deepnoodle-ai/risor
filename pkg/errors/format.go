@@ -219,10 +219,9 @@ func (f *Formatter) writeSource(b *strings.Builder, err *FormattedError, lineNum
 				b.WriteString(" | ")
 			}
 
-			// Spaces to reach the error column, then carets under the error
-			pad, width := caretSpan(line.Text, err.Column, err.EndColumn)
-			b.WriteString(strings.Repeat(" ", pad))
-			carets := strings.Repeat("^", width)
+			// Padding to reach the error column, then carets under the error
+			pad, carets := caretLine(line.Text, err.Column, err.EndColumn)
+			b.WriteString(pad)
 			if f.UseColor {
 				b.WriteString(colorCaret.Apply(carets))
 			} else {
@@ -336,13 +335,37 @@ func (f *Formatter) FormatMultiple(errs []*FormattedError) string {
 	return b.String()
 }
 
-// caretSpan returns the number of spaces before the carets and the number of
-// carets that underline a location in text. column is 1-based and endColumn
-// is exclusive; an endColumn that is not after column gives one caret. Both
-// are clamped to the line, so the caret line is never longer than text plus
-// one character, even for a location built by hand or read from untrusted
-// bytecode. A column before the line is treated as column 1. Columns count
-// runes, as the lexer does, so the clamp counts runes too.
+// caretLine returns the padding and the carets that underline a location in
+// text, as caretSpan measures it. The padding is built from text itself: each
+// tab before the location is kept and every other rune becomes one space. A
+// terminal then expands the tabs in the padding as it expands the tabs in the
+// source line above, so the carets line up under the location on lines
+// indented with tabs.
+func caretLine(text string, column, endColumn int) (pad, carets string) {
+	n, width := caretSpan(text, column, endColumn)
+	var b strings.Builder
+	b.Grow(n)
+	for _, r := range text {
+		if n == 0 {
+			break
+		}
+		if r == '\t' {
+			b.WriteByte('\t')
+		} else {
+			b.WriteByte(' ')
+		}
+		n--
+	}
+	return b.String(), strings.Repeat("^", width)
+}
+
+// caretSpan returns the number of runes of text before the carets and the
+// number of carets that underline a location in text. column is 1-based and
+// endColumn is exclusive; an endColumn that is not after column gives one
+// caret. Both are clamped to the line, so the caret line is never longer than
+// text plus one character, even for a location built by hand or read from
+// untrusted bytecode. A column before the line is treated as column 1. Columns
+// count runes, as the lexer does, so the clamp counts runes too.
 func caretSpan(text string, column, endColumn int) (pad, width int) {
 	limit := utf8.RuneCountInString(text)
 	column = max(column, 1)

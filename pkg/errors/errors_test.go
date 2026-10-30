@@ -319,6 +319,75 @@ func TestCaretSpan_ColumnBeforeLine(t *testing.T) {
 	assert.Equal(t, width, 1)
 }
 
+// The caret padding is built from the source line: each tab before the
+// location is kept and every other rune becomes one space. A terminal then
+// expands the tabs in both lines alike, so the carets stay under the location.
+func TestCaretLine(t *testing.T) {
+	tests := []struct {
+		name      string
+		text      string
+		column    int
+		endColumn int
+		pad       string
+		carets    string
+	}{
+		{"no indent", "let x = foo", 9, 12, "        ", "^^^"},
+		{"tab indent", "\t\ta.foo()", 3, 8, "\t\t", "^^^^^"},
+		{"mixed tabs and spaces", " \t  \tx", 6, 7, " \t  \t", "^"},
+		{"tab after code", "x =\tfoo", 5, 8, "   \t", "^^^"},
+		{"multi-byte before token", "é = ü + bad", 9, 12, "        ", "^^^"},
+		{"tabs and multi-byte", "\t\"日本\" +\tbad", 9, 12, "\t      \t", "^^^"},
+		{"column past tab line", "\tx", 1 << 16, 0, "\t ", "^"},
+		{"column before line", "\tx", -3, 0, "", "^"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pad, carets := caretLine(tt.text, tt.column, tt.endColumn)
+			assert.Equal(t, pad, tt.pad)
+			assert.Equal(t, carets, tt.carets)
+		})
+	}
+}
+
+// Both formatters pad the caret line the same way, so the carets line up
+// under the failing token on lines indented with tabs or holding multi-byte
+// runes.
+func TestCaretLine_Formatters(t *testing.T) {
+	tests := []struct {
+		name      string
+		source    string
+		column    int
+		endColumn int
+		caret     string
+	}{
+		{"tab indent", "\t\ta.foo()", 3, 8, "\t\t^^^^^"},
+		{"mixed tabs and spaces", "  \t if\tbad", 8, 11, "  \t   \t^^^"},
+		{"multi-byte before token", "let s = \"héllo\" + bad", 19, 22, strings.Repeat(" ", 18) + "^^^"},
+		{"tabs and multi-byte", "\t\"日本\" +\tbad", 9, 12, "\t      \t^^^"},
+		{"column past tab line", "\tx", 1 << 16, 0, "\t ^"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &StructuredError{
+				Kind:    ErrRuntime,
+				Message: "boom",
+				Location: SourceLocation{
+					Line:      1,
+					Column:    tt.column,
+					EndColumn: tt.endColumn,
+					Source:    tt.source,
+				},
+			}
+			friendly := err.FriendlyErrorMessage()
+			assert.True(t, strings.HasSuffix(friendly, " | "+tt.caret+"\n"), friendly)
+
+			formatted := NewFormatter(false).Format(err.ToFormatted())
+			assert.Contains(t, formatted, " | "+tt.source+"\n")
+			assert.Contains(t, formatted, " | "+tt.caret+"\n")
+		})
+	}
+}
+
 func TestStructuredError_Unwrap(t *testing.T) {
 	cause := NewEvalError(EvalErrorf("underlying error"))
 	err := &StructuredError{

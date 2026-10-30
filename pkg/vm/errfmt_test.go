@@ -802,3 +802,23 @@ runner()
 	assert.Equal(t, structErr.Stack[0].Function, "handler")
 	assert.Equal(t, structErr.Stack[0].Location.Line, 5)
 }
+
+// A runtime error on a line indented with tabs keeps the tabs in the caret
+// padding, so a terminal places the carets under the failing code.
+func TestRuntimeErrorCaretOnTabIndentedLine(t *testing.T) {
+	code := "let a = 1\n\t\ta.foo()\n"
+	_, err := run(context.Background(), code)
+	assert.NotNil(t, err)
+
+	var structErr *errors.StructuredError
+	if !goerrors.As(err, &structErr) {
+		t.Fatalf("Expected StructuredError, got %T: %v", err, err)
+	}
+	assert.Equal(t, structErr.Location.Source, "\t\ta.foo()")
+
+	friendly := structErr.FriendlyErrorMessage()
+	assert.Contains(t, friendly, " | \t\ta.foo()\n | \t\t  ^^^\n")
+
+	formatted := errors.NewFormatter(false).Format(structErr.ToFormatted())
+	assert.Contains(t, formatted, " 2 | \t\ta.foo()\n   | \t\t  ^^^\n")
+}
