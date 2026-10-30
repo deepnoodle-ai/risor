@@ -185,6 +185,7 @@ func (p *Parser) parseGroupItem() ast.Node {
 func (p *Parser) parseArrowParams(arrowPos token.Position, items []ast.Node) (ast.Node, bool) {
 	params := make([]ast.FuncParam, 0, len(items))
 	defaults := make(map[string]ast.Expr)
+	var check paramDefaultsCheck
 
 	for _, item := range items {
 		switch v := item.(type) {
@@ -216,6 +217,10 @@ func (p *Parser) parseArrowParams(arrowPos token.Position, items []ast.Node) (as
 			p.setTokenError(p.curToken, "invalid arrow function parameter: expected identifier or destructuring pattern")
 			return nil, false
 		}
+		_, hasDefault := item.(*ast.Assign)
+		if !p.checkParamDefault(&check, params[len(params)-1], hasDefault) {
+			return nil, false
+		}
 	}
 
 	return p.parseArrowBody(arrowPos, params, defaults)
@@ -237,7 +242,14 @@ func (p *Parser) convertMapToDestructureParam(m *ast.Map) *ast.ObjectDestructure
 		case *ast.Ident:
 			keyName = k.Name
 		case *ast.String:
-			// Shorthand syntax: {a, b} produces String keys
+			// Shorthand syntax: {a, b} produces String keys with no closing
+			// quote. A quoted or template key is not an identifier, and
+			// function parameters and let destructuring reject it too.
+			if k.Closing.IsValid() || k.Template != nil {
+				tok := token.Token{StartPosition: k.Pos(), EndPosition: k.Pos()}
+				p.setTokenError(tok, "expected identifier in destructuring pattern (got %s)", k.String())
+				return nil
+			}
 			keyName = k.Value
 		default:
 			p.setTokenError(p.curToken, "expected identifier in destructuring pattern")

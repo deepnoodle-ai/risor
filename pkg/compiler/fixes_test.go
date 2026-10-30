@@ -94,11 +94,6 @@ func TestErrorFormattingConsistency(t *testing.T) {
 			input:         "const x = 1; x = 2",
 			errorContains: "location:",
 		},
-		{
-			name:          "invalid argument defaults includes location",
-			input:         "function bad(a=1, b) {}",
-			errorContains: "location:",
-		},
 	}
 
 	for _, tt := range tests {

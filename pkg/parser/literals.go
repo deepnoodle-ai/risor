@@ -463,6 +463,44 @@ func (p *Parser) parseFunc() (ast.Node, bool) {
 	}, true
 }
 
+// paramDefaultsCheck tracks the defaults seen so far in a parameter list.
+type paramDefaultsCheck struct {
+	sawDefault      bool // a parameter with a default came before
+	sawBlankDefault bool // a "_" parameter with a default came before
+}
+
+// checkParamDefault checks the next parameter of a list against the ones
+// before it. A parameter without a default may not follow one with a
+// default. Defaults are keyed by parameter name, so only one "_" parameter
+// may have a default. It reports an error and returns false if the check fails.
+func (p *Parser) checkParamDefault(c *paramDefaultsCheck, param ast.FuncParam, hasDefault bool) bool {
+	tok := token.Token{StartPosition: param.Pos(), EndPosition: param.Pos()}
+	ident, isIdent := param.(*ast.Ident)
+	if isIdent {
+		tok.EndPosition = ident.NamePos.Advance(utf8.RuneCountInString(ident.Name) - 1)
+	}
+	if !hasDefault {
+		if c.sawDefault {
+			name := "destructuring parameter"
+			if isIdent {
+				name = fmt.Sprintf("parameter %q", ident.Name)
+			}
+			p.setTokenError(tok, "%s needs a default value, since a parameter before it has one", name)
+			return false
+		}
+		return true
+	}
+	c.sawDefault = true
+	if isIdent && ident.Name == "_" {
+		if c.sawBlankDefault {
+			p.setTokenError(tok, "only one %q parameter can have a default value", "_")
+			return false
+		}
+		c.sawBlankDefault = true
+	}
+	return true
+}
+
 func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.Ident) {
 	// If the next parameter is ")", then there are no parameters
 	if p.peekTokenIs(token.RPAREN) {
@@ -472,6 +510,7 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 	defaults := map[string]ast.Expr{}
 	params := make([]ast.FuncParam, 0)
 	var restParam *ast.Ident
+	var check paramDefaultsCheck
 	p.nextToken()
 	p.eatNewlines()
 	for !p.curTokenIs(token.RPAREN) { // Keep going until we find a ")"
@@ -517,7 +556,7 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 		// Check for object destructuring parameter: {a, b}
 		if p.curTokenIs(token.LBRACE) {
 			param := p.parseObjectDestructureParam()
-			if param == nil {
+			if param == nil || !p.checkParamDefault(&check, param, false) {
 				return nil, nil, nil
 			}
 			params = append(params, param)
@@ -530,7 +569,7 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 		// Check for array destructuring parameter: [a, b]
 		if p.curTokenIs(token.LBRACKET) {
 			param := p.parseArrayDestructureParam()
-			if param == nil {
+			if param == nil || !p.checkParamDefault(&check, param, false) {
 				return nil, nil, nil
 			}
 			params = append(params, param)
@@ -557,8 +596,13 @@ func (p *Parser) parseFuncParams() (map[string]ast.Expr, []ast.FuncParam, *ast.I
 			if expr == nil {
 				return nil, nil, nil
 			}
+			if !p.checkParamDefault(&check, ident, true) {
+				return nil, nil, nil
+			}
 			defaults[ident.String()] = expr
 			p.nextToken()
+		} else if !p.checkParamDefault(&check, ident, false) {
+			return nil, nil, nil
 		}
 		if !p.endListItem(token.RPAREN, "function parameters") {
 			return nil, nil, nil
