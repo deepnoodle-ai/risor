@@ -22,8 +22,8 @@ func assertValueError(t *testing.T, err error, substr string) {
 	assert.ErrorContains(t, err, substr)
 }
 
-// C-10: materializing a huge range fails fast with a value error.
-func TestAuditListKeysRangeLimit(t *testing.T) {
+// Materializing a huge range fails fast with a value error.
+func TestListKeysRangeLimit(t *testing.T) {
 	ctx := context.Background()
 	_, err := List(ctx, hugeRange())
 	assertValueError(t, err, "list too large")
@@ -40,8 +40,8 @@ func TestAuditListKeysRangeLimit(t *testing.T) {
 	assert.Equal(t, result.Inspect(), "[0, 1, 2]")
 }
 
-// H-21: builtins that enumerate stop and report ctx errors.
-func TestAuditBuiltinsContextCancellation(t *testing.T) {
+// Builtins that enumerate stop and report ctx errors.
+func TestBuiltinsContextCancellation(t *testing.T) {
 	truthy := object.NewBuiltin("truthy", func(ctx context.Context, args ...object.Object) (object.Object, error) {
 		return object.True, nil
 	})
@@ -81,9 +81,9 @@ func TestAuditBuiltinsContextCancellation(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-// M-14: sorted() stops calling the comparator after the first error and
+// Sorted() stops calling the comparator after the first error and
 // does not call it at all once the context is canceled.
-func TestAuditSortedShortCircuit(t *testing.T) {
+func TestSortedShortCircuit(t *testing.T) {
 	items := make([]object.Object, 1000)
 	for i := range items {
 		items[i] = object.NewInt(int64(i))

@@ -10,7 +10,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-func auditReplace(t *testing.T, args ...object.Object) string {
+func replaceString(t *testing.T, args ...object.Object) string {
 	t.Helper()
 	result, err := Replace(context.Background(), args...)
 	assert.Nil(t, err)
@@ -21,19 +21,19 @@ func str(v string) object.Object { return object.NewString(v) }
 
 func num(v int64) object.Object { return object.NewInt(v) }
 
-// H-20: replace with a count matches the original string once and never
+// Replace with a count matches the original string once and never
 // re-matches its own replacement text.
-func TestAuditReplaceCountSinglePass(t *testing.T) {
-	assert.Equal(t, auditReplace(t, str("a"), str("ab"), str("aa"), num(3)), "aab")
-	assert.Equal(t, auditReplace(t, str("^"), str("abc"), str("X"), num(3)), "Xabc")
-	assert.Equal(t, auditReplace(t, str(""), str("abc"), str("-"), num(2)), "-a-bc")
-	assert.Equal(t, auditReplace(t, str("[0-9]+"), str("a1b2c3"), str("X"), num(2)), "aXbXc3")
-	assert.Equal(t, auditReplace(t, str("[0-9]+"), str("a1b2c3"), str("X")), "aXbXcX")
-	assert.Equal(t, auditReplace(t, str("[0-9]+"), str("a1b2c3"), str("X"), num(0)), "aXbXcX")
-	assert.Equal(t, auditReplace(t, str("[0-9]+"), str("a1b2c3"), str("X"), num(-1)), "a1b2c3")
-	assert.Equal(t, auditReplace(t, str(`(\w+)@(\w+)`), str("a@b c@d"), str("$2:$1"), num(1)), "b:a c@d")
+func TestReplaceCountSinglePass(t *testing.T) {
+	assert.Equal(t, replaceString(t, str("a"), str("ab"), str("aa"), num(3)), "aab")
+	assert.Equal(t, replaceString(t, str("^"), str("abc"), str("X"), num(3)), "Xabc")
+	assert.Equal(t, replaceString(t, str(""), str("abc"), str("-"), num(2)), "-a-bc")
+	assert.Equal(t, replaceString(t, str("[0-9]+"), str("a1b2c3"), str("X"), num(2)), "aXbXc3")
+	assert.Equal(t, replaceString(t, str("[0-9]+"), str("a1b2c3"), str("X")), "aXbXcX")
+	assert.Equal(t, replaceString(t, str("[0-9]+"), str("a1b2c3"), str("X"), num(0)), "aXbXcX")
+	assert.Equal(t, replaceString(t, str("[0-9]+"), str("a1b2c3"), str("X"), num(-1)), "a1b2c3")
+	assert.Equal(t, replaceString(t, str(`(\w+)@(\w+)`), str("a@b c@d"), str("$2:$1"), num(1)), "b:a c@d")
 	// Anchors are evaluated against the whole string, not the match alone.
-	assert.Equal(t, auditReplace(t, str(`b$`), str("abab"), str("X"), num(1)), "abaX")
+	assert.Equal(t, replaceString(t, str(`b$`), str("abab"), str("X"), num(1)), "abaX")
 
 	re, err := Compile(context.Background(), str("a"))
 	assert.Nil(t, err)
@@ -44,7 +44,7 @@ func TestAuditReplaceCountSinglePass(t *testing.T) {
 	assert.Equal(t, result.(*object.String).Value(), "aab")
 }
 
-func TestAuditReplaceLimits(t *testing.T) {
+func TestReplaceLimits(t *testing.T) {
 	ctx := context.Background()
 	input := str(strings.Repeat("a", 1<<16))
 	_, err := Replace(ctx, str("a"), input, str(strings.Repeat("x", 2048)))

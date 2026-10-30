@@ -10,8 +10,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// C-11: rand.bytes caps n and honors context cancellation.
-func TestAuditBytesLimit(t *testing.T) {
+// Rand.bytes caps n and honors context cancellation.
+func TestBytesLimit(t *testing.T) {
 	ctx := context.Background()
 	_, err := Bytes(ctx, object.NewInt(math.MaxInt32))
 	var ve *errors.ValueError
@@ -31,8 +31,8 @@ func TestAuditBytesLimit(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-// H-20: spans wider than math.MaxInt64 must not overflow or panic.
-func TestAuditIntSpanOverflow(t *testing.T) {
+// Spans wider than math.MaxInt64 must not overflow or panic.
+func TestIntSpanOverflow(t *testing.T) {
 	ctx := context.Background()
 	for range 100 {
 		result, err := Int(ctx, object.NewInt(-10), object.NewInt(math.MaxInt64))

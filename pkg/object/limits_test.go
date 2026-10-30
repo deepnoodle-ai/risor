@@ -19,9 +19,9 @@ func assertValueError(t *testing.T, err error, substr string) {
 	assert.ErrorContains(t, err, substr)
 }
 
-// C-09: repeat must reject overflowing and oversized counts instead of
+// Repeat must reject overflowing and oversized counts instead of
 // panicking or attempting a huge allocation.
-func TestAuditStringRepeatLimits(t *testing.T) {
+func TestStringRepeatLimits(t *testing.T) {
 	s := NewString("ab")
 	_, err := s.Repeat(context.Background(), NewInt(1<<62))
 	assertValueError(t, err, "too large")
@@ -44,7 +44,7 @@ func TestAuditStringRepeatLimits(t *testing.T) {
 	assert.Equal(t, result.(*String).Value(), "")
 }
 
-func TestAuditBytesRepeatLimits(t *testing.T) {
+func TestBytesRepeatLimits(t *testing.T) {
 	b := NewBytes([]byte("ab"))
 	_, err := b.Repeat(context.Background(), NewInt(1<<62))
 	assertValueError(t, err, "too large")
@@ -60,7 +60,7 @@ func TestAuditBytesRepeatLimits(t *testing.T) {
 	assert.Equal(t, result.(*Bytes).Value(), []byte("abab"))
 }
 
-func TestAuditStringAmplificationLimits(t *testing.T) {
+func TestStringAmplificationLimits(t *testing.T) {
 	input := NewString(strings.Repeat("a", 1<<20))
 	big := NewString(strings.Repeat("x", 100))
 
@@ -90,7 +90,7 @@ func TestAuditStringAmplificationLimits(t *testing.T) {
 	assertValueError(t, err, "too large")
 }
 
-func TestAuditBytesAmplificationLimits(t *testing.T) {
+func TestBytesAmplificationLimits(t *testing.T) {
 	input := NewBytes([]byte(strings.Repeat("a", 1<<20)))
 	big := NewBytes([]byte(strings.Repeat("x", 100)))
 
@@ -119,8 +119,8 @@ func collectRange(r *Range, max int) []int64 {
 	return values
 }
 
-// C-10: length must not overflow and enumeration must not wrap around.
-func TestAuditRangeLengthOverflow(t *testing.T) {
+// Length must not overflow and enumeration must not wrap around.
+func TestRangeLengthOverflow(t *testing.T) {
 	full := NewRange(math.MinInt64, math.MaxInt64, 1)
 	assert.Equal(t, full.length(), uint64(math.MaxUint64))
 	assert.True(t, full.IsTruthy())
@@ -142,7 +142,7 @@ func TestAuditRangeLengthOverflow(t *testing.T) {
 	assert.Equal(t, NewRange(5, 6, -1).length(), uint64(0))
 }
 
-func TestAuditRangeEnumerateNoWraparound(t *testing.T) {
+func TestRangeEnumerateNoWraparound(t *testing.T) {
 	r := NewRange(9223372036854775800, math.MaxInt64, 10)
 	assert.Equal(t, collectRange(r, 10), []int64{9223372036854775800})
 
@@ -153,7 +153,7 @@ func TestAuditRangeEnumerateNoWraparound(t *testing.T) {
 	assert.Equal(t, collectRange(r, 10), []int64{math.MaxInt64 - 2, math.MaxInt64 - 1})
 }
 
-func TestAuditRangeMapLimits(t *testing.T) {
+func TestRangeMapLimits(t *testing.T) {
 	identity := NewBuiltin("identity", func(ctx context.Context, args ...Object) (Object, error) {
 		return args[0], nil
 	})
@@ -171,7 +171,7 @@ func TestAuditRangeMapLimits(t *testing.T) {
 	assert.Equal(t, result.Inspect(), "[0, 1, 2]")
 }
 
-func TestAuditCollectLimits(t *testing.T) {
+func TestCollectLimits(t *testing.T) {
 	ctx := context.Background()
 	_, err := CollectValues(ctx, NewRange(0, 1<<60, 1))
 	assertValueError(t, err, "list too large")
@@ -194,7 +194,7 @@ func TestAuditCollectLimits(t *testing.T) {
 	assertValueError(t, CheckListLength(context.Background(), DefaultMaxListLength+1), "list too large")
 }
 
-func TestAuditRangeInterfaceLimit(t *testing.T) {
+func TestRangeInterfaceLimit(t *testing.T) {
 	assert.Nil(t, NewRange(0, 1<<60, 1).Interface())
 	assert.Equal(t, NewRange(0, 3, 1).Interface(), []int64{0, 1, 2})
 }
@@ -234,8 +234,8 @@ func TestExpandRanges(t *testing.T) {
 	assert.Equal(t, got.(*List).items[0].Inspect(), "[0, 1, 2]")
 }
 
-// H-21: Range.Enumerate stops promptly when the context is canceled.
-func TestAuditRangeEnumerateContext(t *testing.T) {
+// Range.Enumerate stops promptly when the context is canceled.
+func TestRangeEnumerateContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	count := 0
@@ -254,8 +254,8 @@ func TestAuditRangeEnumerateContext(t *testing.T) {
 	assert.Less(t, time.Since(start), 5*time.Second)
 }
 
-// M-14: sorting stops after an error or context cancellation.
-func TestAuditSortContext(t *testing.T) {
+// Sorting stops after an error or context cancellation.
+func TestSortContext(t *testing.T) {
 	items := make([]Object, 5000)
 	for i := range items {
 		items[i] = NewInt(int64(len(items) - i))

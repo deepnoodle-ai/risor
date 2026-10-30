@@ -11,9 +11,9 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// C-10: spreading a range into a list literal must enforce the list length limit
+// Spreading a range into a list literal must enforce the list length limit
 // instead of materializing an unbounded slice.
-func TestAuditSpreadRangeLimit(t *testing.T) {
+func TestSpreadRangeLimit(t *testing.T) {
 	_, err := run(context.Background(), `[...range(1 << 23)]`)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "list too large"))
@@ -24,7 +24,7 @@ func TestAuditSpreadRangeLimit(t *testing.T) {
 }
 
 // The limit error is catchable like any other value error.
-func TestAuditSpreadRangeLimitCatchable(t *testing.T) {
+func TestSpreadRangeLimitCatchable(t *testing.T) {
 	result, err := run(context.Background(), `
 	let r = "none"
 	try { [...range(1 << 23)] } catch e { r = e.kind() }
@@ -34,7 +34,7 @@ func TestAuditSpreadRangeLimitCatchable(t *testing.T) {
 	assert.Equal(t, result, object.NewString("value error"))
 }
 
-func TestAuditSpreadStillWorks(t *testing.T) {
+func TestSpreadStillWorks(t *testing.T) {
 	result, err := run(context.Background(), `
 	let base = [1]
 	let a = [...base, ...range(2, 4), ...{x: 1}]
@@ -45,7 +45,7 @@ func TestAuditSpreadStillWorks(t *testing.T) {
 }
 
 // Canceling the context stops a spread of a huge range promptly.
-func TestAuditSpreadRangeCanceled(t *testing.T) {
+func TestSpreadRangeCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := run(ctx, `[...range(1 << 22)]`)

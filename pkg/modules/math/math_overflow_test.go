@@ -10,8 +10,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// L-03: abs(MinInt64) is not representable and must not wrap to negative.
-func TestAuditAbsMinInt64(t *testing.T) {
+// Abs(MinInt64) is not representable and must not wrap to negative.
+func TestAbsMinInt64(t *testing.T) {
 	ctx := context.Background()
 	_, err := Abs(ctx, object.NewInt(math.MinInt64))
 	var ve *errors.ValueError
