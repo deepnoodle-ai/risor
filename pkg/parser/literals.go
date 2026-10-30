@@ -106,14 +106,24 @@ func (p *Parser) parseString() (ast.Node, bool) {
 		if !e.IsVariable() {
 			continue
 		}
-		tmplAst, err := Parse(p.ctx, e.Value(), &Config{Filename: p.l.Filename()})
+		// The nested parse gets only the depth budget that remains here
+		remaining := p.maxDepth - p.depth
+		if remaining < 1 {
+			p.setTokenError(strToken, "maximum nesting depth exceeded")
+			return nil, false
+		}
+		tmplAst, err := Parse(p.ctx, e.Value(), &Config{
+			Filename: p.l.Filename(),
+			MaxDepth: remaining,
+		})
 		if err != nil {
 			p.setTokenError(strToken, "in template interpolation: %s", err.Error())
 			return nil, false
 		}
 		statements := tmplAst.Stmts
 		if len(statements) == 0 {
-			exprs = append(exprs, nil)
+			p.setTokenError(strToken, "empty template interpolation")
+			return nil, false
 		} else if len(statements) > 1 {
 			p.setTokenError(strToken, "template contains more than one expression")
 			return nil, false
