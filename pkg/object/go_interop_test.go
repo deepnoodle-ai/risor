@@ -439,6 +439,43 @@ func TestGoInterop_EmbeddedSyncMethodsHidden(t *testing.T) {
 	}
 }
 
+type testOwnLock struct {
+	sync.Mutex
+	Calls int
+}
+
+// Lock shadows the promoted sync.Mutex.Lock
+func (o *testOwnLock) Lock() { o.Calls++ }
+
+// A type that embeds testOwnLock gets testOwnLock.Lock, which is shallower
+// than sync.Mutex.Lock
+type testEmbedsOwnLock struct {
+	testOwnLock
+}
+
+// A method the host type declares stays visible even when an embedded sync
+// type has a method of the same name. Only the promoted sync methods are
+// hidden.
+func TestGoInterop_DeclaredMethodShadowsSync(t *testing.T) {
+	own := &testOwnLock{}
+	outer := &testEmbedsOwnLock{}
+	for _, tc := range []struct {
+		value any
+		calls *int
+	}{{own, &own.Calls}, {outer, &outer.Calls}} {
+		s := NewGoStruct(reflect.ValueOf(tc.value), DefaultRegistry())
+		_, err := s.CallMethod(context.Background(), "Lock")
+		assert.Nil(t, err)
+		assert.Equal(t, *tc.calls, 1)
+		for _, name := range []string{"Unlock", "TryLock"} {
+			_, ok := s.GetAttr(name)
+			assert.False(t, ok, name)
+		}
+	}
+	assert.True(t, own.Mutex.TryLock())
+	assert.True(t, outer.Mutex.TryLock())
+}
+
 func TestGoInterop_SyncValuesNotConverted(t *testing.T) {
 	var locker sync.Locker = &sync.Mutex{}
 	for _, v := range []any{&sync.Mutex{}, &sync.WaitGroup{}, &atomic.Int64{}, locker} {
