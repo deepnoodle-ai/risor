@@ -176,3 +176,14 @@ func TestAuditTemplateInheritsDepthBudget(t *testing.T) {
 	_, err = parser.Parse(ctx, outer, &parser.Config{MaxDepth: 10})
 	assert.NotNil(t, err)
 }
+
+// A postfix ++ or -- wraps its operand, so it costs one level like an infix
+// operator does.
+func TestPostfixCountsTowardDepth(t *testing.T) {
+	ctx := context.Background()
+	_, err := parser.Parse(ctx, "x++", &parser.Config{MaxDepth: 2})
+	assert.Nil(t, err)
+	_, err = parser.Parse(ctx, "x++", &parser.Config{MaxDepth: 1})
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "maximum nesting depth exceeded")
+}

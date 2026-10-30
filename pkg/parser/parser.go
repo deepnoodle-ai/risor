@@ -486,6 +486,9 @@ func (p *Parser) parseNode(precedence int) ast.Node {
 	}
 	// Check for postfix operators (++ or --)
 	if p.peekTokenIs(token.PLUS_PLUS) || p.peekTokenIs(token.MINUS_MINUS) {
+		if !p.enterDepth() {
+			return nil
+		}
 		p.nextToken()
 		return p.parsePostfix(leftExp)
 	}
