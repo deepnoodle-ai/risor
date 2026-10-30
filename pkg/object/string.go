@@ -66,7 +66,7 @@ func init() {
 		})
 
 	stringMethods.Define("index").
-		Doc("Find first index of substring (-1 if not found)").
+		Doc("Find first rune index of substring (-1 if not found)").
 		Arg("substr").
 		Returns("int").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
@@ -82,7 +82,7 @@ func init() {
 		})
 
 	stringMethods.Define("last_index").
-		Doc("Find last index of substring (-1 if not found)").
+		Doc("Find last rune index of substring (-1 if not found)").
 		Arg("substr").
 		Returns("int").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
@@ -388,7 +388,21 @@ func (s *String) Index(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewInt(int64(strings.Index(s.value, substr))), nil
+	if utf8.ValidString(substr) {
+		return NewInt(s.runeIndex(strings.Index(s.value, substr))), nil
+	}
+	for from := 0; from <= len(s.value); {
+		off := strings.Index(s.value[from:], substr)
+		if off < 0 {
+			break
+		}
+		off += from
+		if s.isRuneBoundary(off) && s.isRuneBoundary(off+len(substr)) {
+			return NewInt(s.runeIndex(off)), nil
+		}
+		from = off + 1
+	}
+	return NewInt(-1), nil
 }
 
 func (s *String) LastIndex(obj Object) (Object, error) {
@@ -396,7 +410,55 @@ func (s *String) LastIndex(obj Object) (Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewInt(int64(strings.LastIndex(s.value, substr))), nil
+	if utf8.ValidString(substr) {
+		return NewInt(s.runeIndex(strings.LastIndex(s.value, substr))), nil
+	}
+	for end := len(s.value); end >= 0; {
+		off := strings.LastIndex(s.value[:end], substr)
+		if off < 0 {
+			break
+		}
+		if s.isRuneBoundary(off) && s.isRuneBoundary(off+len(substr)) {
+			return NewInt(s.runeIndex(off)), nil
+		}
+		end = off + len(substr) - 1
+	}
+	return NewInt(-1), nil
+}
+
+// runeIndex converts a byte offset into s to a rune index, the unit that
+// s[i], slicing, and len(s) use. A negative offset (not found) is returned
+// as -1. The offset must fall on a rune boundary. A match of a valid UTF-8
+// substring always does: a valid substring cannot start or end inside a
+// rune of s, because invalid bytes in s decode as one rune each.
+func (s *String) runeIndex(byteOffset int) int64 {
+	if byteOffset < 0 {
+		return -1
+	}
+	return int64(utf8.RuneCountInString(s.value[:byteOffset]))
+}
+
+// isRuneBoundary reports whether the byte offset i in s starts a rune (or
+// is len(s)), using the same decoding as a range loop: a valid sequence is
+// one rune, and each invalid byte is one rune. Index and LastIndex use it
+// for an invalid UTF-8 substring, which can match inside a rune of s. They
+// skip those matches, so s[i] accepts every result. The check looks back
+// at most utf8.UTFMax-1 bytes, so it allocates nothing.
+func (s *String) isRuneBoundary(i int) bool {
+	v := s.value
+	if i <= 0 || i >= len(v) || utf8.RuneStart(v[i]) {
+		return true
+	}
+	// v[i] is a continuation byte. It is inside a rune only when the
+	// nearest preceding non-continuation byte begins a valid sequence that
+	// extends past i. A non-continuation byte always starts a rune.
+	for j := i - 1; j >= 0 && j > i-utf8.UTFMax; j-- {
+		if utf8.RuneStart(v[j]) {
+			_, size := utf8.DecodeRuneInString(v[j:])
+			return j+size <= i
+		}
+	}
+	return true
 }
 
 func (s *String) ReplaceAll(ctx context.Context, old, new Object) (Object, error) {
@@ -469,11 +531,14 @@ func (s *String) Len() *Int {
 	return NewInt(int64(len([]rune(s.value))))
 }
 
+// Enumerate calls fn for each rune, with its rune index as the key.
 func (s *String) Enumerate(ctx context.Context, fn func(key, value Object) bool) {
-	for i, r := range s.value {
-		if !fn(NewInt(int64(i)), NewString(string(r))) {
+	i := int64(0)
+	for _, r := range s.value {
+		if !fn(NewInt(i), NewString(string(r))) {
 			return
 		}
+		i++
 	}
 }
 

@@ -376,6 +376,7 @@ Utility:
 "hello".has_prefix("he")             // true
 "hello".has_suffix("lo")             // true
 "hello".index("ll")                  // 2
+"héllo".last_index("l")              // 3 (rune index, like s[i])
 "hello".replace_all("l", "r")        // "herro"
 "a-b-c".join(["x", "y"])            // "x-y" (separator.join(list))
 "hello hello".count("hello")         // 2
@@ -535,10 +536,14 @@ items[-1]                     // 50 (negative indexing)
 items[1:3]                    // [20, 30]
 items[:2]                     // [10, 20]
 items[2:]                     // [30, 40, 50]
+items[5:]                     // [] (empty slices are allowed)
 
-let s = "hello"
-s[0]                          // "h"
-s[1:3]                        // "el"
+// Strings index by rune, not byte: s[i], slices, len(s),
+// index(), and last_index() all count runes
+let s = "héllo"
+s[1]                          // "é"
+s[1:3]                        // "él"
+len(s)                        // 5
 
 let m = {a: 1, b: 2}
 m["a"]                        // 1

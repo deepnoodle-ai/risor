@@ -1,8 +1,10 @@
 package object
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -81,6 +83,112 @@ func TestStringGetItem(t *testing.T) {
 			resultStr, ok := result.(*String)
 			assert.True(t, ok, msg)
 			assert.Equal(t, resultStr.Value(), tc.expected, msg)
+		}
+	}
+}
+
+func TestStringEnumerateRuneIndexes(t *testing.T) {
+	s := NewString("héllo")
+	var keys []int64
+	var values []string
+	s.Enumerate(context.Background(), func(key, value Object) bool {
+		keys = append(keys, key.(*Int).Value())
+		values = append(values, value.(*String).Value())
+		return true
+	})
+	assert.Equal(t, keys, []int64{0, 1, 2, 3, 4})
+	assert.Equal(t, values, []string{"h", "é", "l", "l", "o"})
+}
+
+func TestStringIndexInvalidUTF8MatchesReference(t *testing.T) {
+	// The reference maps each byte offset to the rune index that a range
+	// loop starts there, or -1 inside a rune. Index and LastIndex must give
+	// the first and last match whose both ends are rune starts.
+	reference := func(s, substr string) (int64, int64) {
+		starts := make([]int, len(s)+1)
+		for i := range starts {
+			starts[i] = -1
+		}
+		n := 0
+		for i := range s {
+			starts[i] = n
+			n++
+		}
+		starts[len(s)] = n
+		first, last := int64(-1), int64(-1)
+		for off := 0; off+len(substr) <= len(s); off++ {
+			if s[off:off+len(substr)] != substr || starts[off] < 0 || starts[off+len(substr)] < 0 {
+				continue
+			}
+			if first < 0 {
+				first = int64(starts[off])
+			}
+			last = int64(starts[off])
+		}
+		return first, last
+	}
+	// These bytes form valid 2-, 3- and 4-byte runes ("\xc3\xa9", "\xe2\x80\x80",
+	// "\xf0\x9f\x80\x80") and invalid sequences.
+	alphabet := []byte{'a', 0xc3, 0xa9, 0xe2, 0xf0, 0x9f, 0x80, 0xff}
+	var build func(prefix []byte, depth int, out *[]string)
+	build = func(prefix []byte, depth int, out *[]string) {
+		*out = append(*out, string(prefix))
+		if depth == 0 {
+			return
+		}
+		for _, b := range alphabet {
+			build(append(append([]byte{}, prefix...), b), depth-1, out)
+		}
+	}
+	var hay, needles []string
+	build(nil, 4, &hay)
+	build(nil, 2, &needles)
+	for _, h := range hay {
+		s := NewString(h)
+		for _, sub := range needles {
+			if utf8.ValidString(sub) {
+				continue
+			}
+			wantFirst, wantLast := reference(h, sub)
+			first, err := s.Index(NewString(sub))
+			assert.Nil(t, err)
+			assert.Equal(t, first, NewInt(wantFirst), "index %q in %q", sub, h)
+			last, err := s.LastIndex(NewString(sub))
+			assert.Nil(t, err)
+			assert.Equal(t, last, NewInt(wantLast), "last_index %q in %q", sub, h)
+		}
+	}
+}
+
+func TestStringIndexInvalidUTF8(t *testing.T) {
+	// "\xc3\xa9" is "é". An invalid UTF-8 substring can match inside it.
+	// Index and LastIndex skip those matches, so s[i] accepts each result.
+	tests := []struct {
+		s, substr   string
+		first, last int64
+	}{
+		{"\xc3\xa9", "\xa9", -1, -1},
+		{"\xc3\xa9", "\xc3", -1, -1},
+		{"\xc3\xa9\xa9", "\xa9", 1, 1},
+		{"\xa9\xc3\xa9\xa9", "\xa9", 0, 2},
+		{"a\xffb\xff", "\xff", 1, 3},
+		{"a\xffb", "\xffb", 1, 1},
+	}
+	for _, tc := range tests {
+		s := NewString(tc.s)
+		first, err := s.Index(NewString(tc.substr))
+		assert.Nil(t, err)
+		assert.Equal(t, first, NewInt(tc.first), "index %q in %q", tc.substr, tc.s)
+		last, err := s.LastIndex(NewString(tc.substr))
+		assert.Nil(t, err)
+		assert.Equal(t, last, NewInt(tc.last), "last_index %q in %q", tc.substr, tc.s)
+		for _, i := range []int64{tc.first, tc.last} {
+			if i < 0 {
+				continue
+			}
+			item, err := s.GetItem(NewInt(i))
+			assert.Nil(t, err)
+			assert.Equal(t, item.(*String).Value(), string([]rune(tc.substr)[0]))
 		}
 	}
 }

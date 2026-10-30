@@ -746,7 +746,7 @@ func ResolveIntSlice(slice Slice, size int64) (start int64, stop int64, err erro
 		err = fmt.Errorf("slice error: start index is greater than stop index")
 		return
 	}
-	if start > size-1 {
+	if start > size {
 		err = fmt.Errorf("slice error: start index is out of range")
 		return
 	}
