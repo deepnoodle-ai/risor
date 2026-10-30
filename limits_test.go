@@ -135,3 +135,42 @@ func TestWithLimitsRangeConversion(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, result.(int64) > 4194305)
 }
+
+func TestWithLimitsRangeToHostFunc(t *testing.T) {
+	ctx := context.Background()
+	limits := WithLimits(Limits{MaxListLength: 10})
+	envMap := Builtins()
+	envMap["count"] = func(v any) int {
+		items, _ := v.([]any)
+		return len(items)
+	}
+	envMap["countInts"] = func(v []int64) int { return len(v) }
+	envMap["countNested"] = func(v []any) int {
+		items, _ := v[0].([]any)
+		return len(items)
+	}
+	env := WithEnv(envMap)
+
+	// Ranges within the limit reach the host as their values
+	for src, want := range map[string]int64{
+		`count(range(3))`:         3,
+		`countInts(range(3))`:     3,
+		`countNested([range(3)])`: 3,
+	} {
+		result, err := Eval(ctx, src, env, limits)
+		assert.Nil(t, err, src)
+		assert.Equal(t, result, want, src)
+	}
+
+	// Ranges over the limit raise a value error instead of reaching the host
+	// as nil
+	for _, src := range []string{
+		`count(range(11))`,
+		`countInts(range(11))`,
+		`countNested([range(11)])`,
+	} {
+		_, err := Eval(ctx, src, env, limits)
+		assert.NotNil(t, err, src)
+		assert.True(t, strings.Contains(err.Error(), "range too large"), src)
+	}
+}
