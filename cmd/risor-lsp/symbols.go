@@ -23,6 +23,7 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 		return nil, nil
 	}
 
+	lines := newLineIndex(doc.item.Text)
 	var symbols []protocol.DocumentSymbol
 
 	for _, stmt := range doc.ast.Stmts {
@@ -30,32 +31,12 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 		case *ast.Var:
 			name := stmt.Name.Name
 			if name != "" {
-				pos := stmt.Pos()
-				endPos := stmt.End()
-
+				rng := lines.lspRange(stmt.Pos(), stmt.End())
 				symbols = append(symbols, protocol.DocumentSymbol{
-					Name: name,
-					Kind: 13, // Variable
-					Range: protocol.Range{
-						Start: protocol.Position{
-							Line:      uint32(pos.LineNumber() - 1),
-							Character: uint32(pos.ColumnNumber() - 1),
-						},
-						End: protocol.Position{
-							Line:      uint32(endPos.LineNumber() - 1),
-							Character: uint32(endPos.ColumnNumber() - 1),
-						},
-					},
-					SelectionRange: protocol.Range{
-						Start: protocol.Position{
-							Line:      uint32(pos.LineNumber() - 1),
-							Character: uint32(pos.ColumnNumber() - 1),
-						},
-						End: protocol.Position{
-							Line:      uint32(endPos.LineNumber() - 1),
-							Character: uint32(endPos.ColumnNumber() - 1),
-						},
-					},
+					Name:           name,
+					Kind:           13, // Variable
+					Range:          rng,
+					SelectionRange: rng,
 				})
 			}
 
@@ -65,32 +46,12 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 		case *ast.Assign:
 			name := assignName(stmt)
 			if name != "" {
-				pos := stmt.Pos()
-				endPos := stmt.End()
-
+				rng := lines.lspRange(stmt.Pos(), stmt.End())
 				symbols = append(symbols, protocol.DocumentSymbol{
-					Name: name,
-					Kind: 13, // Variable
-					Range: protocol.Range{
-						Start: protocol.Position{
-							Line:      uint32(pos.LineNumber() - 1),
-							Character: uint32(pos.ColumnNumber() - 1),
-						},
-						End: protocol.Position{
-							Line:      uint32(endPos.LineNumber() - 1),
-							Character: uint32(endPos.ColumnNumber() - 1),
-						},
-					},
-					SelectionRange: protocol.Range{
-						Start: protocol.Position{
-							Line:      uint32(pos.LineNumber() - 1),
-							Character: uint32(pos.ColumnNumber() - 1),
-						},
-						End: protocol.Position{
-							Line:      uint32(endPos.LineNumber() - 1),
-							Character: uint32(endPos.ColumnNumber() - 1),
-						},
-					},
+					Name:           name,
+					Kind:           13, // Variable
+					Range:          rng,
+					SelectionRange: rng,
 				})
 			}
 		}

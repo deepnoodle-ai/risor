@@ -22,9 +22,7 @@ func (s *Server) Hover(ctx context.Context, params *protocol.HoverParams) (*prot
 		return nil, nil
 	}
 
-	// Convert LSP position to 1-based line/column
-	line := int(params.Position.Line) + 1
-	column := int(params.Position.Character) + 1
+	line, column := newLineIndex(doc.item.Text).risorPosition(params.Position)
 
 	// Find the symbol at the cursor position
 	symbol := findSymbolAtPosition(doc.ast, line, column)
