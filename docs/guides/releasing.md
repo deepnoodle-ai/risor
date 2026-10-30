@@ -13,8 +13,12 @@
 
 Choose the next semantic version, then prepare a pull request that:
 
-- Moves the accumulated `CHANGELOG.md` entries from `Unreleased` into a dated
-  version section.
+- Writes the `CHANGELOG.md` entries for the release. Pull requests do not
+  edit the changelog, so build the entries from the PRs merged since the last
+  release: `gh pr list --state merged --search "merged:>=<last-release-date>"`.
+  Use each PR's title and its "Effect on scripts" and "Effect on Go code"
+  sections. Skip PRs that `Unreleased` already lists. Then move the entries
+  into a dated version section.
 - Updates `pkg/docs.Version` and any nested `go.mod` references to the new
   version.
 
