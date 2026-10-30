@@ -701,9 +701,15 @@ evalLoop:
 		case op.LoadGlobal:
 			vm.push(vm.activeCode.Globals[vm.fetch()])
 		case op.LoadFree:
-			idx := vm.fetch()
-			obj := vm.activeFrame.fn.FreeVar(int(idx)).Value()
-			vm.push(obj)
+			idx := int(vm.fetch())
+			fn := vm.activeFrame.fn
+			if fn == nil || idx >= fn.FreeVarCount() {
+				if herr := vm.tryHandleError(vm.evalError("no free variable at index %d", idx)); herr != nil {
+					return herr
+				}
+				continue
+			}
+			vm.push(fn.FreeVar(idx).Value())
 		case op.StoreFast:
 			idx := vm.fetch()
 			obj := vm.pop()
@@ -711,9 +717,16 @@ evalLoop:
 		case op.StoreGlobal:
 			vm.activeCode.Globals[vm.fetch()] = vm.pop()
 		case op.StoreFree:
-			idx := vm.fetch()
+			idx := int(vm.fetch())
 			obj := vm.pop()
-			vm.activeFrame.fn.FreeVar(int(idx)).Set(obj)
+			fn := vm.activeFrame.fn
+			if fn == nil || idx >= fn.FreeVarCount() {
+				if herr := vm.tryHandleError(vm.evalError("no free variable at index %d", idx)); herr != nil {
+					return herr
+				}
+				continue
+			}
+			fn.FreeVar(idx).Set(obj)
 		case op.StoreAttr:
 			idx := vm.fetch()
 			obj := vm.pop()
@@ -761,8 +774,13 @@ evalLoop:
 				}
 				continue
 			}
-			frame := &vm.frames[frameIndex]
-			locals := frame.CaptureLocals()
+			locals := vm.frames[frameIndex].CaptureLocals()
+			if int(symbolIndex) >= len(locals) {
+				if herr := vm.tryHandleError(vm.evalError("no local at index %d", symbolIndex)); herr != nil {
+					return herr
+				}
+				continue
+			}
 			vm.push(object.NewCell(&locals[symbolIndex]))
 		case op.LoadCell:
 			idx := int(vm.fetch())
