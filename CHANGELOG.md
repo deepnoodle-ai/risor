@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - Method calls accept spread arguments: `obj.method(...args)` and
   `obj?.method(...args)` (#489).
+- **`risor.WithLimits`** caps the size of the string, bytes, or list value one
+  operation can produce. Defaults: 64 MiB and 4,194,304 elements. Exceeding a
+  cap raises a catchable `value error` (#491).
 
 ### Changed
 
@@ -52,6 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   value, encoding it as JSON, or formatting it with `sprintf` returns a nesting
   error, as does any value nested more than 128 levels deep. `==` on a cyclic
   value returns `false` (#490).
+- `repeat`, `range`, `list(range(...))`, spread, `+`, `rand.bytes`, and similar
+  operations no longer crash the host with huge allocations. `range`,
+  `rand.int`, and `math.abs` no longer overflow int64 (#491).
 
 ## [2.2.0] - 2026-08-17
 
