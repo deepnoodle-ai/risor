@@ -172,6 +172,15 @@ type AttrResolver interface {
 
 type ResolveAttrFunc func(ctx context.Context, name string) (Object, error)
 
+// AttrSetter is an optional interface for objects that need the caller's
+// context to set an attribute. When an object implements it, the VM calls
+// SetAttrContext instead of SetAttr, so the attribute assignment can use the
+// limits from WithLimits or observe cancellation. SetAttr must still work
+// without a context and use the default limits.
+type AttrSetter interface {
+	SetAttrContext(ctx context.Context, name string, value Object) error
+}
+
 // Keys returns the keys of an object map as a sorted slice of strings.
 func Keys(m map[string]Object) []string {
 	var names []string

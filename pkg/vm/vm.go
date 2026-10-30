@@ -636,7 +636,13 @@ evalLoop:
 			obj := vm.pop()
 			value := vm.pop()
 			name := vm.activeCode.Names[idx]
-			if err := obj.SetAttr(name, value); err != nil {
+			var err error
+			if setter, ok := obj.(object.AttrSetter); ok {
+				err = setter.SetAttrContext(ctx, name, value)
+			} else {
+				err = obj.SetAttr(name, value)
+			}
+			if err != nil {
 				if herr := vm.tryHandleError(err); herr != nil {
 					return herr
 				}
