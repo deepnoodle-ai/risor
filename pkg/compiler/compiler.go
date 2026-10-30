@@ -2628,14 +2628,19 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 	// Record the end position
 	endPos := c.currentPosition()
 
-	// Patch the PushExcept instruction with actual offsets
-	catchOffset := uint16(catchStart - pushExceptPos)
-	finallyOffset := uint16(0)
+	// Patch the PushExcept instruction with actual offsets. The operands are
+	// uint16, so reject offsets that do not fit rather than let them wrap.
+	// Use >= because Placeholder (MaxUint16) is reserved for unpatched jumps.
+	catchDelta := catchStart - pushExceptPos
+	finallyDelta := 0
 	if finallyBlock != nil {
-		finallyOffset = uint16(finallyStart - pushExceptPos)
+		finallyDelta = finallyStart - pushExceptPos
 	}
-	c.changeOperand(pushExceptPos, catchOffset)
-	c.changeOperand(pushExceptPos+1, finallyOffset)
+	if catchDelta >= int(Placeholder) || finallyDelta >= int(Placeholder) {
+		return c.formatError("try block too large", node.Pos())
+	}
+	c.changeOperand(pushExceptPos, uint16(catchDelta))
+	c.changeOperand(pushExceptPos+1, uint16(finallyDelta))
 
 	// Patch jump after try:
 	// - If we have finally, jump to finally
