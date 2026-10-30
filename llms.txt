@@ -569,7 +569,6 @@ Additional interfaces:
 - `Enumerable` — Enumerate(ctx, callback) for iteration
 - `Callable` — Call(ctx, args...) for functions
 - `Comparable` — Compare(other) returning -1/0/1
-- `AttrSetter` — SetAttrContext(ctx, name, value); the VM prefers it over SetAttr
 
 Concrete types:
 

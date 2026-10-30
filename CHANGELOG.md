@@ -18,10 +18,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   The list cap also bounds the total elements of one conversion to Go, such as
   a script result, the arguments of a host function call, or `sprintf` and
   `encode` input, counting a shared list each time it appears (#496).
-- **`object.AttrSetter`** is an optional interface with
-  `SetAttrContext(ctx, name, value)`. The VM calls it instead of `SetAttr`
-  when an object implements it, so the attribute assignment gets the caller's
-  context (#497).
 
 ### Changed
 
@@ -76,7 +72,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   operations no longer crash the host with huge allocations. `range`,
   `rand.int`, and `math.abs` no longer overflow int64 (#491).
 - Setting a field of a Go struct from a script now converts the value with the
-  limits from `risor.WithLimits`, not the defaults (#497).
+  limits from `risor.WithLimits`, not the defaults. A host type that embeds or
+  wraps `*object.GoStruct` keeps its own `SetAttr` and the default limits (#497).
 
 ## [2.2.0] - 2026-08-17
 

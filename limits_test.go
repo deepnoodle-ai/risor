@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -325,4 +326,34 @@ func TestWithLimitsStructField(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
 	assert.Equal(t, len(box.Grid), 0)
+}
+
+// guardedBox embeds *object.GoStruct and overrides SetAttr to block a field.
+type guardedBox struct {
+	*object.GoStruct
+}
+
+func (g *guardedBox) SetAttr(name string, value object.Object) error {
+	if name == "Grid" {
+		return object.TypeErrorf("field %q is read-only", name)
+	}
+	return g.GoStruct.SetAttr(name, value)
+}
+
+func TestWithLimitsStructEmbedderKeepsSetAttr(t *testing.T) {
+	box := &limitsBox{}
+	guarded := &guardedBox{object.NewGoStruct(reflect.ValueOf(box), object.DefaultRegistry())}
+	env := WithEnv(map[string]any{"box": guarded})
+	limits := WithLimits(Limits{MaxListLength: 10})
+
+	// The host override runs and blocks the write
+	_, err := Eval(context.Background(), `box.Grid = [[1]]`, env, limits)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "read-only"), err.Error())
+	assert.Equal(t, len(box.Grid), 0)
+
+	// Other fields go through the override to GoStruct.SetAttr
+	_, err = Eval(context.Background(), `box.Items = [1, 2, 3]`, env, limits)
+	assert.Nil(t, err)
+	assert.Equal(t, len(box.Items), 3)
 }

@@ -333,7 +333,6 @@ func TestGoStruct_SetAttrContextLimits(t *testing.T) {
 	type box struct{ Items []int64 }
 	b := &box{}
 	gs := NewGoStruct(reflect.ValueOf(b), DefaultRegistry())
-	var setter AttrSetter = gs
 
 	items := make([]Object, 11)
 	for i := range items {
@@ -342,12 +341,12 @@ func TestGoStruct_SetAttrContextLimits(t *testing.T) {
 	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
 
 	// The limits in ctx apply
-	err := setter.SetAttrContext(ctx, "Items", NewList(items))
+	err := gs.SetAttrContext(ctx, "Items", NewList(items))
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "value too large to convert")
 	assert.Equal(t, len(b.Items), 0)
 
-	err = setter.SetAttrContext(ctx, "Items", NewList(items[:10]))
+	err = gs.SetAttrContext(ctx, "Items", NewList(items[:10]))
 	assert.Nil(t, err)
 	assert.Equal(t, len(b.Items), 10)
 
