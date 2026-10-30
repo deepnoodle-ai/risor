@@ -469,6 +469,8 @@ func unmarshalConstant(constant json.RawMessage) (any, error) {
 	switch def.Type {
 	case "nil":
 		return nil, nil
+	case "nil_default":
+		return bytecode.NilDefault{}, nil
 	case "bool":
 		var def boolConstantDef
 		if err := json.Unmarshal(constant, &def); err != nil {
@@ -537,6 +539,8 @@ func marshalConstant(c any) (json.RawMessage, error) {
 	switch c := c.(type) {
 	case nil:
 		return json.Marshal(constantDef{Type: "nil"})
+	case bytecode.NilDefault:
+		return json.Marshal(constantDef{Type: "nil_default"})
 	case bool:
 		return json.Marshal(boolConstantDef{Type: "bool", Value: c})
 	case int:

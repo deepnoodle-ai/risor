@@ -397,6 +397,8 @@ func marshalConstant(c any, codeIndexMap map[*Code]int) (json.RawMessage, error)
 	switch v := c.(type) {
 	case nil:
 		return json.Marshal(constantDef{Type: "nil"})
+	case NilDefault:
+		return json.Marshal(constantDef{Type: "nil_default"})
 	case bool:
 		return json.Marshal(boolConstantDef{Type: "bool", Value: v})
 	case int:
@@ -476,6 +478,8 @@ func unmarshalConstantImmutable(data json.RawMessage, codes []*Code) (any, error
 	switch def.Type {
 	case "nil":
 		return nil, nil
+	case "nil_default":
+		return NilDefault{}, nil
 	case "bool":
 		var d boolConstantDef
 		if err := json.Unmarshal(data, &d); err != nil {

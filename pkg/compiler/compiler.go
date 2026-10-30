@@ -1665,7 +1665,8 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 	}
 
 	// Build an array of default values for parameters, supporting only
-	// the basic types of int, string, bool, float, and nil.
+	// the basic types of int, string, bool, float, and nil. A nil entry means
+	// the parameter has no default, so a null default is NilDefault.
 	defaults := make([]any, len(params))
 	defaultsSet := map[int]bool{}
 	for name, expr := range node.Defaults {
@@ -1680,7 +1681,7 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		case *ast.Float:
 			value = expr.Value
 		case *ast.Nil:
-			value = nil
+			value = bytecode.NilDefault{}
 		default:
 			return c.formatError(fmt.Sprintf("unsupported default value type: %T", expr), expr.Pos())
 		}

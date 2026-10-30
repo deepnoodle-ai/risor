@@ -39,8 +39,8 @@ const maxParameters = 256
 //   - Constants have a type the VM supports, and each function constant
 //     has code that is a child of the block that holds the constant, at
 //     most 256 parameters, either no defaults or one per parameter, and
-//     only nil, bool, int, float, or string defaults. A block that is not a
-//     child would not survive [Marshal].
+//     only nil, NilDefault, bool, int, float, or string defaults. A block
+//     that is not a child would not survive [Marshal].
 //   - The local count of each block is no larger than the block needs: its
 //     highest local operand, or its function's parameters and rest
 //     parameter, plus one slot for a named function's own name. The root
@@ -342,7 +342,7 @@ func validateConstant(constant any) error {
 		}
 		for _, d := range c.defaults {
 			switch d.(type) {
-			case nil, bool, int, int64, float64, string:
+			case nil, NilDefault, bool, int, int64, float64, string:
 			default:
 				return fmt.Errorf("function %q has a default of unsupported type %T", c.name, d)
 			}
