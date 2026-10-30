@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
 	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -37,11 +36,7 @@ func TestTryBlockTooLarge(t *testing.T) {
 		t.Run(handlers, func(t *testing.T) {
 			parsed, err := parser.Parse(context.Background(), tryWithLargeBody(handlers), nil)
 			assert.Nil(t, err)
-			code, err := Compile(parsed, nil)
-			if err == nil {
-				// Without the size check, the wrapped offsets fail validation.
-				assert.Nil(t, bytecode.Validate(code))
-			}
+			_, err = Compile(parsed, nil)
 			assert.NotNil(t, err)
 			assert.Contains(t, err.Error(), "try block too large")
 		})
