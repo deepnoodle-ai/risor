@@ -71,6 +71,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `...Errorf` functions return the same text as before. If your code puts the
   kind in the wrapped error, as in `NewValueError(errors.New("value error:
   bad"))`, the kind now shows twice. Remove it from the wrapped error (#494).
+- Across `RunCode` calls on one VM, a global that a script changed keeps its
+  new value, unless the `RunCode` call gives that name again with
+  `WithGlobals`. A value given with `WithGlobals` always replaces the current
+  value, so per-run input is never stale, and a builtin that a script replaced
+  is restored when the host gives it again. Before, `RunCode` reset every
+  global ever given with `WithGlobals` to the last value given, and other globals
+  carried over only to the next run. The REPL now gives its environment only
+  on the first input, so a reassigned builtin such as `len` stays reassigned.
+- `WithMaxSteps` now limits each `Run`, `RunCode`, or `Call` separately.
+  Before, the step count was never reset, so later runs on a reused VM failed
+  early. A host that wants one total cap across many calls, such as a loop
+  that calls an untrusted callback, must count the calls itself or use a
+  context deadline.
+- `vm.Call`, or a script call, on a function from code that `RunCode`
+  replaced now returns the new `vm.ErrReplacedCode`, unless the new code lays
+  out its globals the same way (as in the REPL). Before, the function read the
+  slots of the new code at the same indexes and could return a wrong value
+  with no error (#502).
 
 ### Fixed
 
@@ -90,6 +108,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `index_rune()` still returns a byte index, the unit that bytes use. A
   string that is not one valid UTF-8 rune, such as `"\xff"`, now raises an
   error. Before, `"\xff"` searched for U+00FF.
+- A run on a VM no longer leaves behind a goroutine that waits for the context
+  to be canceled. Canceling the context of a finished run no longer halts a
+  later run on the same VM, which before could stop with no error and a wrong
+  result.
+- Building source locations for code no longer splits the whole source once
+  per instruction. `bytecode.Code.GetSourceLine` splits the source once. New
+  `bytecode.Code.Root` returns the root code.
 
 - `vm.Get`, `vm.GlobalNames`, `Code.GlobalNames`, the globals that `RunCode`
   carries over, and `object.NewModule` attribute lookup now use the root

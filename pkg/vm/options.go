@@ -18,7 +18,10 @@ func WithInstructionOffset(offset int) Option {
 	}
 }
 
-// WithGlobals provides global variables with the given names.
+// WithGlobals provides global variables with the given names. When passed to
+// RunCode, a value replaces the current value for that name, including a
+// value that a script changed. Globals that the call does not name keep the
+// values that earlier runs left in them.
 func WithGlobals(globals map[string]any) Option {
 	return func(vm *VirtualMachine) {
 		for name, value := range globals {
@@ -74,7 +77,8 @@ func WithLimits(limits object.Limits) Option {
 	}
 }
 
-// WithMaxSteps sets the maximum number of instructions the VM will execute.
+// WithMaxSteps sets the maximum number of instructions the VM will execute in
+// each run (each call to Run, RunCode, or Call).
 // If the limit is exceeded, the VM will return ErrStepLimitExceeded.
 // A value of 0 (default) means unlimited.
 //
