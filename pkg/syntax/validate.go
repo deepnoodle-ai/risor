@@ -89,6 +89,14 @@ func (v *SyntaxValidator) checkNode(node ast.Node) *ValidationError {
 				Position: node.Pos(),
 			}
 		}
+		// A rest parameter (...args) is spread syntax
+		if n.RestParam != nil && v.config.DisallowSpread {
+			return &ValidationError{
+				Message:  "spread syntax is not allowed",
+				Node:     n.RestParam,
+				Position: n.RestParam.Pos(),
+			}
+		}
 
 	case *ast.Call, *ast.ObjectCall:
 		if v.config.DisallowFuncCall {
@@ -139,6 +147,14 @@ func (v *SyntaxValidator) checkNode(node ast.Node) *ValidationError {
 		if v.config.DisallowPipe {
 			return &ValidationError{
 				Message:  "pipe expressions are not allowed",
+				Node:     node,
+				Position: node.Pos(),
+			}
+		}
+		// Each stage of a pipe calls a function: x |> f is f(x)
+		if v.config.DisallowFuncCall {
+			return &ValidationError{
+				Message:  "function calls are not allowed",
 				Node:     node,
 				Position: node.Pos(),
 			}
