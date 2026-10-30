@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
@@ -243,4 +244,54 @@ func TestRunError_AttributeErrorPointsAtAttributeName(t *testing.T) {
 			assert.Equal(t, loc.Column, tt.expectedColumn, tt.description+" (column)")
 		})
 	}
+}
+
+// A runtime error shows the script's own line, with the caret under the
+// failing token, also when the line is indented (#540).
+func TestRunError_ShowsOriginalSourceLine(t *testing.T) {
+	ctx := context.Background()
+	indent := strings.Repeat(" ", 40)
+	source := "let x = 42\n" + indent + "x.missing"
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+	code, err := compiler.Compile(ast, &compiler.Config{Source: source})
+	assert.Nil(t, err)
+
+	_, err = Run(ctx, code)
+	structuredErr, ok := err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+	assert.Equal(t, structuredErr.Location.Line, 2)
+	assert.Equal(t, structuredErr.Location.Column, 43)
+	assert.Equal(t, structuredErr.Location.Source, indent+"x.missing")
+	friendly := structuredErr.FriendlyErrorMessage()
+	assert.Contains(t, friendly, " | "+indent+"x.missing\n")
+	assert.Contains(t, friendly, " | "+indent+"  ^^^^^^^\n")
+
+	// The test helper passes the source too.
+	_, err = run(ctx, source)
+	structuredErr, ok = err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+	assert.Equal(t, structuredErr.Location.Source, indent+"x.missing")
+}
+
+// Without the source, a runtime error gives the line and column but no
+// source line or caret, in the main code and in functions.
+func TestRunError_WithoutSourceShowsNoSourceLine(t *testing.T) {
+	ctx := context.Background()
+	source := "function f() {\n    let v = 1\n    return v.missing\n}\nf()"
+	ast, err := parser.Parse(ctx, source, nil)
+	assert.Nil(t, err)
+	code, err := compiler.Compile(ast, nil)
+	assert.Nil(t, err)
+
+	_, err = Run(ctx, code)
+	structuredErr, ok := err.(*object.StructuredError)
+	assert.True(t, ok, "should be StructuredError")
+	assert.Equal(t, structuredErr.Location.Line, 3)
+	assert.Equal(t, structuredErr.Location.Column, 14)
+	assert.Equal(t, structuredErr.Location.Source, "")
+	for _, frame := range structuredErr.Stack {
+		assert.Equal(t, frame.Location.Source, "")
+	}
+	assert.NotContains(t, structuredErr.FriendlyErrorMessage(), " | ")
 }

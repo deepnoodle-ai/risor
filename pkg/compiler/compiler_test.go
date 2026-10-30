@@ -597,14 +597,14 @@ let z = x + y`
 	ast, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
 
+	c.SetSource(input)
 	code, err := c.CompileAST(ast)
 	assert.Nil(t, err)
 
 	// Test getting source lines (1-indexed)
-	// Note: The source is stored from the AST's String() representation
-	assert.Contains(t, code.GetSourceLine(1), "let x = 1")
-	assert.Contains(t, code.GetSourceLine(2), "let y = 2")
-	assert.Contains(t, code.GetSourceLine(3), "let z =")
+	assert.Equal(t, code.GetSourceLine(1), "let x = 1")
+	assert.Equal(t, code.GetSourceLine(2), "let y = 2")
+	assert.Equal(t, code.GetSourceLine(3), "let z = x + y")
 
 	// Out of bounds
 	assert.Equal(t, code.GetSourceLine(0), "")
@@ -721,6 +721,64 @@ func TestSetSource_ForREPL(t *testing.T) {
 	// Verify source is available
 	sourceLine := code.GetSourceLine(1)
 	assert.Contains(t, sourceLine, "let x = 42 + 10")
+}
+
+// In the REPL, recorded locations give lines of the main code's source,
+// which holds every input so far. Each points at its own input's text, also
+// in a function defined by an earlier input (#540).
+func TestSetSource_REPLLocationsPointAtTheirInput(t *testing.T) {
+	c, err := New(nil)
+	assert.Nil(t, err)
+	inputs := []string{"function f() {\n  return 1\n}", "    let y = f()"}
+	var code *Code
+	for _, input := range inputs {
+		program, err := parser.Parse(context.Background(), input, nil)
+		assert.Nil(t, err)
+		c.SetSource(input)
+		code, err = c.CompileAST(program)
+		assert.Nil(t, err)
+	}
+	last := code.LocationAt(code.LocationsCount() - 1)
+	assert.Equal(t, last.Line, 4)
+	assert.Equal(t, last.Source, "    let y = f()")
+	assert.Equal(t, code.GetSourceLine(last.Line), "    let y = f()")
+
+	child := code.children[0]
+	loc := child.LocationAt(0)
+	assert.Equal(t, loc.Line, 2)
+	assert.Equal(t, loc.Source, "  return 1")
+	assert.Equal(t, child.GetSourceLine(loc.Line), "  return 1")
+}
+
+// Without the source, no source text is stored, so errors and locations have
+// no source line. Function sources still come from the AST.
+func TestCompileWithoutSourceStoresNoSource(t *testing.T) {
+	input := "function f() {\n    return 1\n}\n        undefined_name"
+	program, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+
+	_, err = Compile(program, nil)
+	compileErr, ok := err.(*errors.CompileError)
+	assert.True(t, ok, "should be CompileError")
+	assert.Equal(t, compileErr.Line, 4)
+	assert.Equal(t, compileErr.Column, 9)
+	assert.Equal(t, compileErr.SourceLine, "")
+	assert.NotContains(t, compileErr.FriendlyErrorMessage(), " | ")
+
+	program, err = parser.Parse(context.Background(), "function f() {\n    return 1\n}", nil)
+	assert.Nil(t, err)
+	c, err := New(nil)
+	assert.Nil(t, err)
+	code, err := c.CompileAST(program)
+	assert.Nil(t, err)
+	assert.Equal(t, code.Source(), "")
+	child := code.children[0]
+	assert.Equal(t, child.Source(), "return 1")
+	for i := 0; i < child.LocationsCount(); i++ {
+		loc := child.LocationAt(i)
+		assert.Equal(t, loc.Source, "")
+		assert.Equal(t, child.GetSourceLine(loc.Line), "")
+	}
 }
 
 func TestLocationTracking_WithComments(t *testing.T) {

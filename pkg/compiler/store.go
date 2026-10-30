@@ -178,9 +178,9 @@ func codeFromState(state *state) (*Code, error) {
 	}
 	functionsByID := map[string]ownedFunction{}
 	codesByID := map[string]*Code{}
-	// lines maps each code to the lines of its line source. A child whose
-	// line source is the root source shares its parent's lines, so the root
-	// source is split once rather than once per code.
+	// lines maps each code to the lines of its line source. Every child's
+	// line source is the root source, so children share their parent's lines
+	// and the root source is split once rather than once per code.
 	lines := map[*Code][]string{}
 	for i, c := range state.Code {
 		if c == nil {
@@ -235,7 +235,7 @@ func codeFromState(state *state) (*Code, error) {
 		if parent != nil {
 			if parent.rootSource != nil {
 				rootSource = parent.rootSource
-			} else if parent.source != "" {
+			} else {
 				rootSource = &parent.source
 			}
 		}
@@ -266,11 +266,9 @@ func codeFromState(state *state) (*Code, error) {
 
 			exceptionHandlers: exceptionHandlersFromDefs(c.ExceptionHandlers),
 		}
-		// Like lineSource, use the root source when it is set, and otherwise
-		// the code's own source. A non-empty rootSource is the parent's
-		// rootSource or the parent's own source, as built above. Either way
-		// it is the parent's line source, so the parent's lines apply.
-		if rootSource != nil && *rootSource != "" {
+		// Like lineSource, a child uses the root code's source, which is
+		// also its parent's line source, so the parent's lines apply.
+		if parent != nil {
 			lines[code] = lines[parent]
 		} else {
 			lines[code] = strings.Split(code.source, "\n")

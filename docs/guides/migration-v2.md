@@ -499,6 +499,7 @@ parser.Parse(ctx, source, &parser.Config{
 compiler.Compile(ast, &compiler.Config{
     GlobalNames: []string{"x", "y"},
     Filename:    "script.risor",
+    Source:      source, // errors show the line they occur on
 })
 ```
 

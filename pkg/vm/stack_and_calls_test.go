@@ -198,7 +198,7 @@ func compileSource(t *testing.T, source string) *bytecode.Code {
 	t.Helper()
 	program, err := parser.Parse(context.Background(), source, nil)
 	assert.Nil(t, err)
-	bc, err := compiler.Compile(program, nil)
+	bc, err := compiler.Compile(program, &compiler.Config{Source: source})
 	assert.Nil(t, err)
 	return bc
 }

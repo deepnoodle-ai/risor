@@ -331,3 +331,28 @@ func TestReplVMFunctionWritesGlobalsAcrossInputs(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, int64(42))
 }
+
+// A runtime error shows the line of the input it occurs in, also in a
+// function defined by an earlier input (#540).
+func TestReplVMErrorShowsItsInputLine(t *testing.T) {
+	vm, err := newReplVM(risor.Builtins())
+	assert.Nil(t, err)
+	ctx := context.Background()
+
+	_, err = vm.Eval(ctx, "function f(v) {\n  return v.missing\n}")
+	assert.Nil(t, err)
+	_, err = vm.Eval(ctx, "let a = 1")
+	assert.Nil(t, err)
+
+	_, err = vm.Eval(ctx, "      a.foo()")
+	var se *object.StructuredError
+	assert.True(t, errors.As(err, &se))
+	assert.Equal(t, se.Location.Source, "      a.foo()")
+	assert.Equal(t, se.Location.Column, 9)
+	assert.Contains(t, se.FriendlyErrorMessage(), " |         ^^^\n")
+
+	_, err = vm.Eval(ctx, "f(1)")
+	assert.True(t, errors.As(err, &se))
+	assert.Equal(t, se.Location.Source, "  return v.missing")
+	assert.Equal(t, se.Stack[len(se.Stack)-1].Location.Source, "f(1)")
+}
