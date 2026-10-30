@@ -1,6 +1,7 @@
 package bytecode
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -385,4 +386,22 @@ func TestMarshalChildCodeKeepsRootGlobalNames(t *testing.T) {
 	restored, err := Unmarshal(data)
 	assert.Nil(t, err)
 	assert.Equal(t, restored.GlobalNameAt(0), "x")
+}
+
+func TestUnmarshalOldFormatIgnoresChildGlobalNames(t *testing.T) {
+	// Older versions wrote global names on every code, not only the root.
+	state := codeState{Codes: []*codeDef{
+		{ID: "root", GlobalCount: 1, GlobalNames: []string{"root_name"}, ChildIndices: []int{1}},
+		{ID: "child", GlobalCount: 1, GlobalNames: []string{"old_child_name"}},
+	}}
+	data, err := json.Marshal(state)
+	assert.Nil(t, err)
+
+	restored, err := Unmarshal(data)
+	assert.Nil(t, err)
+	child := restored.ChildAt(0)
+	assert.Equal(t, restored.GlobalNameAt(0), "root_name")
+	assert.Equal(t, child.GlobalNameAt(0), "root_name")
+	assert.Equal(t, child.GlobalNames(), []string{"root_name"})
+	assert.Nil(t, child.globalNames)
 }
