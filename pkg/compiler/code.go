@@ -336,18 +336,27 @@ func (c *Code) AddExceptionHandler(handler *ExceptionHandler) {
 // This recursively converts all child code blocks and Function constants.
 // The conversion is done bottom-up to ensure true immutability - children
 // are fully constructed before their parent.
+//
+// The result is a root bytecode.Code, even when c is a child (for example
+// from Flatten or Function.Code), so it always gets the global names.
 func (c *Code) ToBytecode() *bytecode.Code {
 	// Build a map from compiler.Code to bytecode.Code for function linking
 	codeMap := make(map[*Code]*bytecode.Code)
-	return c.toBytecodeWithMap(codeMap)
+	// Global names are a property of the root, which every code shares.
+	// Building them for each function would make compile time grow with the
+	// number of functions times the number of globals, so only the top-level
+	// target of the conversion gets them.
+	return c.toBytecodeWithMap(codeMap, c.GlobalNames())
 }
 
-func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Code {
+// toBytecodeWithMap converts c and its children. globalNames is set only for
+// the top-level target of the conversion and is nil for its children.
+func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code, globalNames []string) *bytecode.Code {
 	// Step 1: Recursively convert all children first (bottom-up construction)
 	// This ensures child bytecode.Code objects exist before we need them for constants
 	children := make([]*bytecode.Code, len(c.children))
 	for i, child := range c.children {
-		children[i] = child.toBytecodeWithMap(codeMap)
+		children[i] = child.toBytecodeWithMap(codeMap, nil)
 	}
 
 	// Step 2: Convert exception handlers
@@ -394,14 +403,6 @@ func (c *Code) toBytecodeWithMap(codeMap map[*Code]*bytecode.Code) *bytecode.Cod
 		} else {
 			constants[i] = constant
 		}
-	}
-
-	// Global names are a property of the root, which every code shares.
-	// Building them for each function would make compile time grow with the
-	// number of functions times the number of globals.
-	var globalNames []string
-	if c.parent == nil {
-		globalNames = c.GlobalNames()
 	}
 
 	// Step 5: Create the immutable bytecode.Code with all data

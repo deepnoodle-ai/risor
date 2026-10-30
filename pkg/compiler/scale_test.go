@@ -77,3 +77,33 @@ func BenchmarkCompileManyFunctions(b *testing.B) {
 		})
 	}
 }
+
+// TestToBytecodeOnChildSetsGlobalNames checks that converting a child code
+// gives the result the global names, because the result is a root bytecode.
+func TestToBytecodeOnChildSetsGlobalNames(t *testing.T) {
+	input := `let total = 0
+function add(a, b) { return a + b + total }
+add(1, 2)`
+
+	c, err := New(nil)
+	assert.Nil(t, err)
+	program, err := parser.Parse(context.Background(), input, nil)
+	assert.Nil(t, err)
+	code, err := c.CompileAST(program)
+	assert.Nil(t, err)
+
+	var child *Code
+	for _, fc := range code.Flatten() {
+		if !fc.IsRoot() {
+			child = fc
+			break
+		}
+	}
+	assert.NotNil(t, child)
+
+	bc := child.ToBytecode()
+	assert.True(t, bc.Root() == bc)
+	assert.Equal(t, bc.GlobalNames(), code.GlobalNames())
+	assert.Equal(t, bc.GlobalNameCount(), code.GlobalsCount())
+	assert.True(t, bc.GlobalNameCount() > 0)
+}
