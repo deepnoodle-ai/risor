@@ -66,7 +66,7 @@ update-deps:
 .PHONY: cover
 cover:
 	$(LIST_PKGS); \
-	go test -coverprofile cover.out $$pkgs
+	go test -coverprofile cover.out -covermode=atomic $$pkgs
 	go tool cover -html=cover.out
 
 .PHONY: format
