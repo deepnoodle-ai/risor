@@ -114,6 +114,10 @@ function gives a new value. For example, a func-typed field of a Go struct gives
 a new value on each read, so `h.Callback == h.Callback` is false. Read it once
 into a variable to compare it: `let cb = h.Callback; cb == cb` is true.
 
+Methods of a Go struct are the exception. Two reads of the same method on the
+same receiver are equal, so `h.Run == h.Run` is true. The same method on two
+different receivers is not equal.
+
 ## Comparison (Ordering)
 
 Comparison operators (`<`, `>`, `<=`, `>=`) require types to be comparable.
