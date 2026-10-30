@@ -202,9 +202,9 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 
 // toGoArg converts a script argument to the Go parameter type. For a
 // parameter that can hold a range's values (any, or a slice, array, map, or
-// pointer that may contain one), it first expands ranges with ExpandRanges, so the
-// list length limit in ctx applies. Range.Interface has no context and
-// returns nil for a range over the default limit.
+// pointer that may contain one), it first expands ranges with ExpandRanges,
+// so the list length limit in ctx applies. Range.Interface has no context
+// and returns nil for a range over the default limit.
 func (g *GoFunc) toGoArg(ctx context.Context, arg Object, target reflect.Type) (any, error) {
 	switch target.Kind() {
 	case reflect.Interface:
