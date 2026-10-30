@@ -842,12 +842,13 @@ func (c *Compiler) emitObjectDestructurePreamble(param *ast.ObjectDestructurePar
 			continue
 		}
 
-		// Find the variable (already inserted in symbol table during setup)
-		resolution, found := c.current.symbols.Resolve(varName)
-		if !found {
-			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
+		// Insert the variable only now, after its default was compiled, so a
+		// default cannot see this name or a later one (as with let).
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
 		}
-		c.emit(op.StoreFast, resolution.symbol.Index())
+		c.emit(op.StoreFast, sym.Index())
 	}
 
 	// Pop the remaining object from the stack
@@ -879,12 +880,13 @@ func (c *Compiler) emitArrayDestructurePreamble(param *ast.ArrayDestructureParam
 			c.emit(op.PopTop)
 			return nil
 		}
-		// Find the variable (already inserted in symbol table during setup)
-		resolution, found := c.current.symbols.Resolve(varName)
-		if !found {
-			return c.formatError(fmt.Sprintf("undefined variable %q in destructuring", varName), param.Pos())
+		// Insert the variable only now, after its default was compiled, so a
+		// default cannot see this name or a later one (as with let).
+		sym, err := c.current.symbols.InsertVariable(varName)
+		if err != nil {
+			return err
 		}
-		c.emit(op.StoreFast, resolution.symbol.Index())
+		c.emit(op.StoreFast, sym.Index())
 		return nil
 	})
 }
@@ -1660,19 +1662,10 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 		}
 	}
 
-	// Add all destructured variable names to the symbol table.
-	// These come last since the destructuring preamble will store extracted
-	// values into these local variables.
-	for _, di := range destructureParams {
-		for _, name := range di.param.ParamNames() {
-			if _, err := code.symbols.InsertVariable(name); err != nil {
-				return err
-			}
-		}
-	}
-
 	// Emit destructuring preamble for any destructured parameters
-	// This runs at the start of the function to extract values into local vars
+	// This runs at the start of the function to extract values into local vars.
+	// The preamble adds each destructured name to the symbol table after
+	// compiling its default, so the names come after the function's own name.
 	for _, di := range destructureParams {
 		if err := c.emitDestructurePreamble(di.param, di.index); err != nil {
 			return err

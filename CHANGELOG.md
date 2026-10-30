@@ -237,6 +237,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   earlier name, as in `let [x = 10, y = x + 1] = []`. This applies to `let`
   and to function parameters. Before, defaults ran right to left, and
   `let [x = 10, y = x + 1] = []` failed with `undefined variable "x"`.
+  In a function parameter, a default that names a later destructured name,
+  as in `function f([a = b, b = 1])`, is now a compile error (`undefined
+  variable "b"`), the same as in `let`, unless an outer `b` exists.
+- A named function with a destructured parameter, such as
+  `function f([n]) { ... f([n - 1]) ... }`, can call itself. Before, the call
+  failed with "object is not callable".
 - Compiling a function no longer modifies the caller's AST.
 
 ## [2.2.0] - 2026-08-17

@@ -115,3 +115,42 @@ func TestArrayDestructureDefaultOrder(t *testing.T) {
 	}
 	runTests(t, tests)
 }
+
+// A destructuring default that refers to a later name fails the same way in
+// let and in a function parameter: it is undefined, unless an outer variable
+// has that name, in which case both forms read the outer variable.
+func TestDestructureDefaultLaterName(t *testing.T) {
+	ctx := context.Background()
+	for _, src := range []string{
+		`let [a = b, b = 1] = []`,
+		`function f([a = b, b = 1]) { return [a, b] }; f([])`,
+		`let f = ([a = b, b = 1]) => [a, b]; f([])`,
+		`let {a = b, b = 1} = {}`,
+		`function f({a = b, b = 1}) { return [a, b] }; f({})`,
+		`function f([a = b], [b]) { return [a, b] }; f([], [1])`,
+	} {
+		t.Run(src, func(t *testing.T) {
+			_, err := run(ctx, src)
+			assert.NotNil(t, err)
+			assert.Contains(t, err.Error(), `undefined variable "b"`)
+		})
+	}
+	five, one := object.NewInt(5), object.NewInt(1)
+	runTests(t, []testCase{
+		{`let b = 5; let g = () => { let [a = b, b = 1] = []; return [a, b] }; g()`, object.NewList([]object.Object{five, one})},
+		{`let b = 5; function f([a = b, b = 1]) { return [a, b] }; f([])`, object.NewList([]object.Object{five, one})},
+		{`let b = 5; function f({a = b, b = 1}) { return [a, b] }; f({})`, object.NewList([]object.Object{five, one})},
+	})
+}
+
+// A named function with a destructured parameter can call itself.
+func TestDestructuredParamRecursion(t *testing.T) {
+	runTests(t, []testCase{
+		{`function f([n]) { if (n > 0) { return f([n - 1]) + 1 }
+		return 0 }
+		f([3])`, object.NewInt(3)},
+		{`function f({n}, ...rest) { if (n > 0) { return f({n: n - 1}) + 1 }
+		return 0 }
+		f({n: 2})`, object.NewInt(2)},
+	})
+}
