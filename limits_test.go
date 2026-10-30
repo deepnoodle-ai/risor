@@ -145,6 +145,10 @@ func TestWithLimitsRangeToHostFunc(t *testing.T) {
 		return len(items)
 	}
 	envMap["countInts"] = func(v []int64) int { return len(v) }
+	envMap["countPtr"] = func(v *any) int {
+		items, _ := (*v).([]any)
+		return len(items)
+	}
 	envMap["countNested"] = func(v []any) int {
 		items, _ := v[0].([]any)
 		return len(items)
@@ -156,6 +160,7 @@ func TestWithLimitsRangeToHostFunc(t *testing.T) {
 		`count(range(3))`:         3,
 		`countInts(range(3))`:     3,
 		`countNested([range(3)])`: 3,
+		`countPtr(range(3))`:      3,
 	} {
 		result, err := Eval(ctx, src, env, limits)
 		assert.Nil(t, err, src)
@@ -168,6 +173,7 @@ func TestWithLimitsRangeToHostFunc(t *testing.T) {
 		`count(range(11))`,
 		`countInts(range(11))`,
 		`countNested([range(11)])`,
+		`countPtr(range(11))`,
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.NotNil(t, err, src)
