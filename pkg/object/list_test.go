@@ -279,9 +279,10 @@ func TestListSetItem(t *testing.T) {
 	err = list.SetItem(NewString("test"), NewInt(1))
 	assert.NotNil(t, err)
 
-	// Out of range
+	// Out of range is a value error, like GetItem
 	err = list.SetItem(NewInt(10), NewInt(1))
 	assert.NotNil(t, err)
+	assert.Equal(t, err.kind(), "value error")
 }
 
 func TestListDelItem(t *testing.T) {
@@ -296,9 +297,10 @@ func TestListDelItem(t *testing.T) {
 	err = list.DelItem(NewString("test"))
 	assert.NotNil(t, err)
 
-	// Out of range
+	// Out of range is a value error, like GetItem
 	err = list.DelItem(NewInt(10))
 	assert.NotNil(t, err)
+	assert.Equal(t, err.kind(), "value error")
 }
 
 func TestListContains(t *testing.T) {
@@ -938,4 +940,15 @@ func TestListReduceBuiltinError(t *testing.T) {
 	_, err := list.Reduce(ctx, NewInt(0), alwaysError)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "reduce error")
+}
+
+func TestListSortStopsOnCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	list := NewList([]Object{NewInt(3), NewInt(1), NewInt(2)})
+	sortFn, ok := list.GetAttr("sort")
+	assert.True(t, ok)
+	_, err := sortFn.(Callable).Call(ctx)
+	assert.NotNil(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
 }
