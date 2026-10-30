@@ -149,8 +149,8 @@ func New(main *bytecode.Code, options ...Option) (*VirtualMachine, error) {
 }
 
 // NewEmpty creates a new Virtual Machine without initial main code.
-// Code can be provided later using RunCode, or functions can be called
-// directly using Call.
+// Code is provided later using RunCode. Call needs code loaded with RunCode
+// first, and returns an error until then.
 func NewEmpty() (*VirtualMachine, error) {
 	return createVM(nil)
 }
@@ -321,7 +321,7 @@ func (vm *VirtualMachine) TypeRegistry() *object.TypeRegistry {
 
 func (vm *VirtualMachine) Run(ctx context.Context) (err error) {
 	if vm.main == nil {
-		return fmt.Errorf("no main code available")
+		return fmt.Errorf("no main code available: Run requires code given to New, or use RunCode")
 	}
 	return vm.runCodeInternal(ctx, vm.main, false)
 }
@@ -1277,7 +1277,8 @@ func (vm *VirtualMachine) fetch() uint16 {
 // Call a function with the given arguments. If isolation between VMs is
 // important to you, do not provide a function that obtained from another VM,
 // since it could be a closure over variables there. If this VM is already
-// running, an error is returned.
+// running, an error is returned. Call needs main code, given to New or loaded
+// with RunCode, and returns an error if the VM has none.
 func (vm *VirtualMachine) Call(
 	ctx context.Context,
 	fn *object.Closure,
@@ -1295,7 +1296,7 @@ func (vm *VirtualMachine) Call(
 	// The main code owns the globals array that function code shares, so it
 	// must be loaded even if Run has not been called yet.
 	if vm.main == nil {
-		return nil, fmt.Errorf("no main code available")
+		return nil, fmt.Errorf("no main code available: Call requires code given to New, or loaded with RunCode")
 	}
 	vm.loadCode(vm.main)
 	// A previous run that was halted inside a try block may have left its

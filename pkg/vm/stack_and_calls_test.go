@@ -286,3 +286,44 @@ func TestCallBeforeRunSharesGlobalsWithRun(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, object.NewInt(2))
 }
+
+// A VM from NewEmpty has no main code, so Call must fail with an error that
+// tells the caller to load code first.
+func TestCallOnNewEmptyNeedsMainCode(t *testing.T) {
+	bc := compileSource(t, "function double(x) { return x * 2 }")
+	fn := findFunction(bc)
+	assert.NotNil(t, fn)
+
+	machine, err := NewEmpty()
+	assert.Nil(t, err)
+	result, err := machine.Call(context.Background(), object.NewClosure(fn),
+		[]object.Object{object.NewInt(2)})
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "Call requires code given to New, or loaded with RunCode")
+}
+
+// After RunCode loads main code on a NewEmpty VM, Call works and the function
+// sees the globals that the code assigned.
+func TestCallOnNewEmptyAfterRunCode(t *testing.T) {
+	ctx := context.Background()
+	bc := compileSource(t, "let g = 10\nfunction add(x) { return x + g }")
+
+	machine, err := NewEmpty()
+	assert.Nil(t, err)
+	assert.Nil(t, machine.RunCode(ctx, bc))
+	add, err := machine.Get("add")
+	assert.Nil(t, err)
+	result, err := machine.Call(ctx, add.(*object.Closure),
+		[]object.Object{object.NewInt(5)})
+	assert.Nil(t, err)
+	assert.Equal(t, result, object.NewInt(15))
+}
+
+// Run on a VM from NewEmpty must fail with an error that tells the caller
+// how to give it code.
+func TestRunOnNewEmptyNeedsMainCode(t *testing.T) {
+	machine, err := NewEmpty()
+	assert.Nil(t, err)
+	err = machine.Run(context.Background())
+	assert.ErrorContains(t, err, "Run requires code given to New, or use RunCode")
+}
