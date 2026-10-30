@@ -290,7 +290,7 @@ func (c *Compiler) collectFunctionDeclarations(node ast.Node) error {
 		}
 	case *ast.Func:
 		// Only collect named functions at the top level
-		if node.Name != nil && c.current.parent == nil {
+		if node.Name != nil && !IsBlankIdentifier(node.Name.Name) && c.current.parent == nil {
 			functionName := node.Name.Name
 			if _, found := c.current.symbols.Get(functionName); found {
 				return c.formatError(fmt.Sprintf("function %q redefined", functionName), node.Pos())
@@ -1566,8 +1566,10 @@ func (c *Compiler) compileFunc(node *ast.Func) error {
 
 	// The function has an optional name. If it is named, the name will be
 	// stored in the function's own symbol table to support recursive calls.
+	// The blank identifier binds nothing, so a function named "_" is
+	// anonymous.
 	var functionName string
-	if ident := node.Name; ident != nil {
+	if ident := node.Name; ident != nil && !IsBlankIdentifier(ident.Name) {
 		functionName = ident.Name
 	}
 
@@ -2544,8 +2546,10 @@ func (c *Compiler) compileTry(node *ast.Try) error {
 
 		// If there's a catch identifier, create a variable for it
 		// The error value will be on the stack when we enter the catch block
+		// The blank identifier binds nothing, so it discards the error the
+		// same way as a catch with no identifier.
 		catchIdent := node.CatchIdent
-		if catchIdent != nil {
+		if catchIdent != nil && !IsBlankIdentifier(catchIdent.Name) {
 			sym, err := code.symbols.InsertVariable(catchIdent.Name)
 			if err != nil {
 				code.symbols = code.symbols.parent
