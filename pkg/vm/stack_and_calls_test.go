@@ -327,3 +327,26 @@ func TestRunOnNewEmptyNeedsMainCode(t *testing.T) {
 	err = machine.Run(context.Background())
 	assert.ErrorContains(t, err, "Run requires code given to New, or use RunCode")
 }
+
+// The step limit applies even when deterministic context checks are off.
+func TestMaxStepsWithoutContextChecks(t *testing.T) {
+	ctx := context.Background()
+	vm, err := newVM(ctx, `let sum = 0; list(range(100)).each(x => { sum += x }); sum`)
+	assert.Nil(t, err)
+	vm.maxSteps = 50
+	vm.contextCheckInterval = 0
+	err = vm.Run(ctx)
+	assert.True(t, errors.Is(err, ErrStepLimitExceeded), "got %v", err)
+}
+
+// The value stack limit applies even when deterministic context checks are
+// off.
+func TestMaxValueStackDepthWithoutContextChecks(t *testing.T) {
+	ctx := context.Background()
+	vm, err := newVM(ctx, `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`)
+	assert.Nil(t, err)
+	vm.maxValueStackDepth = 5
+	vm.contextCheckInterval = 0
+	err = vm.Run(ctx)
+	assert.True(t, errors.Is(err, ErrStackOverflow), "got %v", err)
+}
