@@ -12,7 +12,7 @@ import (
 // either bytecode or an error, never a panic.
 func FuzzParseCompile(f *testing.F) {
 	seeds := []string{
-		// Audit repros (C-07, C-08)
+		// Misplaced spread and default values
 		"let o = { add: function(a, b) { return a + b } }\no.add(...[1, 2])",
 		"...x",
 		"let a = ...x",

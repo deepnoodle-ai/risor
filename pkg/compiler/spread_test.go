@@ -11,7 +11,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-func compileAuditSource(t *testing.T, input string) (*Code, error) {
+func parseAndCompile(t *testing.T, input string) (*Code, error) {
 	t.Helper()
 	prog, err := parser.Parse(context.Background(), input, nil)
 	assert.Nil(t, err)
@@ -37,7 +37,7 @@ func TestObjectCallSpread(t *testing.T) {
 	}
 	for _, input := range inputs {
 		t.Run(input, func(t *testing.T) {
-			code, err := compileAuditSource(t, input)
+			code, err := parseAndCompile(t, input)
 			assert.Nil(t, err)
 			assert.True(t, hasOpcode(code, op.CallSpread))
 		})
@@ -45,7 +45,7 @@ func TestObjectCallSpread(t *testing.T) {
 }
 
 func TestObjectCallSpreadInPipe(t *testing.T) {
-	_, err := compileAuditSource(t, "let o = {}; let x = 1; x |> o.add(...[1])")
+	_, err := parseAndCompile(t, "let o = {}; let x = 1; x |> o.add(...[1])")
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "spread arguments not supported in pipe expressions")
 }
