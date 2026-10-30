@@ -242,15 +242,13 @@ func (c *Compiler) CompileAST(node ast.Node) (*Code, error) {
 
 // collectFunctionDeclarations walks the AST and collects all function declarations,
 // adding them to the symbol table to allow forward references.
+//
+// Only the program's top-level statements are visited. Functions declared in
+// a block are scoped to that block (compileBlock opens a new block scope), so
+// hoisting them into the root scope would create a global that is never set.
 func (c *Compiler) collectFunctionDeclarations(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
-		for _, stmt := range node.Stmts {
-			if err := c.collectFunctionDeclarations(stmt); err != nil {
-				return err
-			}
-		}
-	case *ast.Block:
 		for _, stmt := range node.Stmts {
 			if err := c.collectFunctionDeclarations(stmt); err != nil {
 				return err

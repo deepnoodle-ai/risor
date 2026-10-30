@@ -124,6 +124,9 @@ func loadRootCode(bc *bytecode.Code, globals map[string]object.Object) *loadedCo
 		name := bc.GlobalNameAt(i)
 		if value, found := globals[name]; found {
 			c.Globals[i] = value
+		} else {
+			// Script-defined globals hold Nil until their first assignment
+			c.Globals[i] = object.Nil
 		}
 	}
 	return c
