@@ -764,6 +764,92 @@ func TestRecursiveWithDestructuredParams(t *testing.T) {
 	}
 }
 
+// A closure inside a named function captures a destructured parameter. The
+// self slot sits before the destructured locals, so the captured cell must
+// point at the parameter, not at the function itself.
+func TestClosureCapturesDestructuredParam(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   object.Object
+	}{
+		{
+			name: "object destructure, closure reads",
+			source: `
+			function f({a, b}) { let g = () => a * 10 + b; return g() }
+			f({a: 4, b: 2})`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "array destructure, closure reads",
+			source: `
+			function f([a, b]) { let g = () => a * 10 + b; return g() }
+			f([4, 2])`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "object destructure, closure writes",
+			source: `
+			function f({n}) { let inc = () => { n = n + 1 }; inc(); inc(); return n }
+			f({n: 40})`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "array destructure, closure writes",
+			source: `
+			function f([n, step]) { let inc = () => { n = n + step }; inc(); inc(); return n }
+			f([40, 1])`,
+			want: object.NewInt(42),
+		},
+		{
+			name: "object destructure, closure outlives call",
+			source: `
+			function counter({start}) { return () => { start++; return start } }
+			let c = counter({start: 10}); c(); c()`,
+			want: object.NewInt(12),
+		},
+		{
+			name: "object destructure, closure recurses through function",
+			source: `
+			function sum({n}) {
+				let rest = function() { if (n <= 0) { return 0 }; return sum({n: n - 1}) }
+				return n + rest()
+			}
+			sum({n: 4})`,
+			want: object.NewInt(10),
+		},
+		{
+			name: "array destructure, closure writes and function recurses",
+			source: `
+			function sum([n, acc]) {
+				let add = () => { acc = acc + n }
+				if (n <= 0) { return acc }
+				add()
+				return sum([n - 1, acc])
+			}
+			sum([4, 0])`,
+			want: object.NewInt(10),
+		},
+		{
+			name: "closure captures function name and destructured param",
+			source: `
+			function fact([n]) {
+				let step = function() { if (n <= 1) { return 1 }; return n * fact([n - 1]) }
+				return step()
+			}
+			fact([5])`,
+			want: object.NewInt(120),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := run(context.Background(), tt.source)
+			assert.Nil(t, err)
+			assert.Equal(t, result, tt.want)
+		})
+	}
+}
+
 func TestRecursiveExample1(t *testing.T) {
 	result, err := run(context.Background(), `
 	function twoexp(n) {
