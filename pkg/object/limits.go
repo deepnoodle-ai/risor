@@ -432,9 +432,10 @@ func listTooLargeError(maxLen int64) error {
 // convBudget bounds the total number of elements that one conversion of a
 // value to Go may produce. It counts every list item, map entry, iterator
 // item, and range element, including those of a container that is referenced
-// more than once. A conversion of a Go value to Risor uses the same budget,
-// counting every slice, array, and map element. Without a total bound, a small value that references one
-// large list many times converts to a huge Go value.
+// more than once. Without a total bound, a small value that references one
+// large list many times converts to a huge Go value. A conversion of a Go
+// value to Risor uses the same budget, counting every slice, array, and map
+// element.
 type convBudget struct {
 	ctx       context.Context
 	remaining int64

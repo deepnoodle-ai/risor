@@ -86,8 +86,9 @@ type Object interface {
 	Attrs() []AttrSpec
 
 	// GetAttr returns the attribute with the given name from this object.
-	// The VM calls it for a read such as obj.name, unless the object
-	// implements AttrReader.
+	// The VM calls it for a read such as obj.name, unless the object is a
+	// *GoStruct, which the VM reads with GetAttrContext, or implements
+	// AttrReader.
 	GetAttr(name string) (Object, bool)
 
 	// SetAttr sets the attribute with the given name on this object. The VM

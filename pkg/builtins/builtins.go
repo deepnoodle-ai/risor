@@ -369,8 +369,9 @@ func GetAttr(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if err != nil {
 		return nil, err
 	}
-	// Read the attribute as the VM does for obj.name, so that a Go struct
-	// field converts with the limits in ctx
+	// Pass ctx as the VM does for obj.name, so that a Go struct field
+	// converts with the limits in ctx. Unlike the VM, getattr does not call
+	// ResolveAttr on the value it finds.
 	var attr object.Object
 	var found bool
 	switch obj := args[0].(type) {
