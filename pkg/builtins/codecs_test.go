@@ -251,6 +251,11 @@ func TestDecodeChecksCustomCodecResult(t *testing.T) {
 		assert.NotNil(t, err, value.Inspect())
 	}
 
+	// With a large budget, a cyclic result fails on its depth
+	result = cyclic
+	_, err = Decode(context.Background(), object.NewString(""), name)
+	assert.ErrorIs(t, err, object.ErrNestingDepth)
+
 	for _, value := range []object.Object{
 		object.NewList(ints(3)),
 		object.NewList([]object.Object{object.NewList(ints(2))}),
@@ -261,6 +266,26 @@ func TestDecodeChecksCustomCodecResult(t *testing.T) {
 		assert.Nil(t, err, value.Inspect())
 		assert.Equal(t, decoded, value)
 	}
+}
+
+// A decode stops with ctx.Err() when ctx is canceled.
+func TestDecodeContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for codec, src := range map[string]string{
+		"json": "[" + strings.Repeat("0,", 2000) + "0]",
+		"csv":  strings.Repeat("a,b\n", 1000),
+	} {
+		_, err := Decode(ctx, object.NewString(src), object.NewString(codec))
+		assert.ErrorIs(t, err, context.Canceled, codec)
+	}
+}
+
+// Invalid CSV returns the error that csv.Reader returns.
+func TestDecodeCsvError(t *testing.T) {
+	_, err := Decode(context.Background(), object.NewString("a,b\nc"), object.NewString("csv"))
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "record on line 2: wrong number of fields")
 }
 
 // decode("json") returns the value, or the error, that decoding with
