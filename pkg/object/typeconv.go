@@ -224,9 +224,13 @@ type TypeRegistry struct {
 }
 
 // FromGo converts a Go value to a Risor Object. It returns ErrNestingDepth if
-// v is nested more deeply than MaxNestingDepth or contains a cycle.
+// v is nested more deeply than MaxNestingDepth or contains a cycle. It has no
+// context, so it does not limit the number of elements in the result. The VM
+// applies the limits set with risor.WithLimits when it converts a Go struct
+// field that a script reads or the result of a Go function that a script
+// calls.
 func (r *TypeRegistry) FromGo(v any) (Object, error) {
-	return r.fromGoPath(v, nil)
+	return r.fromGoPath(v, nil, nil)
 }
 
 // goRef identifies a Go slice, map, or pointer visited by FromGo, for cycle
@@ -253,8 +257,9 @@ func enterGo(path []goRef, ref goRef) ([]goRef, error) {
 	return append(path, ref), nil
 }
 
-// fromGoPath converts v, where path holds the Go values enclosing it.
-func (r *TypeRegistry) fromGoPath(v any, path []goRef) (Object, error) {
+// fromGoPath converts v, where path holds the Go values enclosing it and b is
+// the element budget of the conversion. A nil b does not limit the elements.
+func (r *TypeRegistry) fromGoPath(v any, path []goRef, b *convBudget) (Object, error) {
 	// A nil pointer is null, whatever its type. Check before the interface
 	// checks below: a typed nil Object must not reach the VM, and calling
 	// RisorValue or a registered converter on a nil receiver can panic.
@@ -284,7 +289,7 @@ func (r *TypeRegistry) fromGoPath(v any, path []goRef) (Object, error) {
 	}
 
 	// Handle by kind for common cases
-	return r.fromGoByKind(v, typ, path)
+	return r.fromGoByKind(v, typ, path, b)
 }
 
 // isNilValue reports whether v is nil or a nil pointer.
@@ -300,8 +305,9 @@ func isNilValue(v any) bool {
 // struct by value becomes a GoStruct that points at the field, so writes
 // through it change the enclosing struct, not a copy. A struct type with a
 // registered converter, such as time.Time, or one that implements
-// RisorValuer converts as FromGo does.
-func (r *TypeRegistry) fromGoField(field reflect.Value) (Object, error) {
+// RisorValuer converts as FromGo does. b is the element budget of the
+// conversion, as for fromGoPath.
+func (r *TypeRegistry) fromGoField(field reflect.Value, b *convBudget) (Object, error) {
 	if field.Kind() == reflect.Struct && field.CanAddr() {
 		if _, ok := r.fromGo[field.Type()]; !ok {
 			if _, ok := field.Interface().(RisorValuer); !ok {
@@ -309,10 +315,10 @@ func (r *TypeRegistry) fromGoField(field reflect.Value) (Object, error) {
 			}
 		}
 	}
-	return r.FromGo(field.Interface())
+	return r.fromGoPath(field.Interface(), nil, b)
 }
 
-func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type, path []goRef) (Object, error) {
+func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type, path []goRef, b *convBudget) (Object, error) {
 	rv := reflect.ValueOf(v)
 
 	if isSyncType(typ) {
@@ -331,11 +337,11 @@ func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type, path []goRef) (Obje
 	case reflect.String:
 		return NewString(rv.String()), nil
 	case reflect.Slice:
-		return r.fromGoSlice(rv, path)
+		return r.fromGoSlice(rv, path, b)
 	case reflect.Array:
-		return r.fromGoArray(rv, path)
+		return r.fromGoArray(rv, path, b)
 	case reflect.Map:
-		return r.fromGoMap(rv, path)
+		return r.fromGoMap(rv, path, b)
 	case reflect.Ptr:
 		if rv.IsNil() {
 			return Nil, nil
@@ -348,12 +354,12 @@ func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type, path []goRef) (Obje
 		if err != nil {
 			return nil, err
 		}
-		return r.fromGoPath(rv.Elem().Interface(), path)
+		return r.fromGoPath(rv.Elem().Interface(), path, b)
 	case reflect.Interface:
 		if rv.IsNil() {
 			return Nil, nil
 		}
-		return r.fromGoPath(rv.Elem().Interface(), path)
+		return r.fromGoPath(rv.Elem().Interface(), path, b)
 	case reflect.Func:
 		if rv.IsNil() {
 			return Nil, nil
@@ -369,7 +375,7 @@ func (r *TypeRegistry) fromGoByKind(v any, typ reflect.Type, path []goRef) (Obje
 	}
 }
 
-func (r *TypeRegistry) fromGoSlice(rv reflect.Value, path []goRef) (Object, error) {
+func (r *TypeRegistry) fromGoSlice(rv reflect.Value, path []goRef, b *convBudget) (Object, error) {
 	// Special case for []byte
 	if rv.Type().Elem().Kind() == reflect.Uint8 {
 		return NewBytes(rv.Bytes()), nil
@@ -380,9 +386,12 @@ func (r *TypeRegistry) fromGoSlice(rv reflect.Value, path []goRef) (Object, erro
 	if err != nil {
 		return nil, err
 	}
+	if err := b.take(uint64(count)); err != nil {
+		return nil, err
+	}
 	items := make([]Object, 0, count)
 	for i := 0; i < count; i++ {
-		item, err := r.fromGoPath(rv.Index(i).Interface(), path)
+		item, err := r.fromGoPath(rv.Index(i).Interface(), path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
@@ -394,15 +403,18 @@ func (r *TypeRegistry) fromGoSlice(rv reflect.Value, path []goRef) (Object, erro
 	return NewList(items), nil
 }
 
-func (r *TypeRegistry) fromGoArray(rv reflect.Value, path []goRef) (Object, error) {
+func (r *TypeRegistry) fromGoArray(rv reflect.Value, path []goRef, b *convBudget) (Object, error) {
 	count := rv.Len()
 	path, err := enterGo(path, goRef{typ: rv.Type()})
 	if err != nil {
 		return nil, err
 	}
+	if err := b.take(uint64(count)); err != nil {
+		return nil, err
+	}
 	items := make([]Object, 0, count)
 	for i := 0; i < count; i++ {
-		item, err := r.fromGoPath(rv.Index(i).Interface(), path)
+		item, err := r.fromGoPath(rv.Index(i).Interface(), path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}
@@ -414,7 +426,7 @@ func (r *TypeRegistry) fromGoArray(rv reflect.Value, path []goRef) (Object, erro
 	return NewList(items), nil
 }
 
-func (r *TypeRegistry) fromGoMap(rv reflect.Value, path []goRef) (Object, error) {
+func (r *TypeRegistry) fromGoMap(rv reflect.Value, path []goRef, b *convBudget) (Object, error) {
 	if rv.Type().Key().Kind() != reflect.String {
 		return nil, fmt.Errorf("unsupported map key type: %s (only string keys supported)", rv.Type().Key())
 	}
@@ -423,11 +435,14 @@ func (r *TypeRegistry) fromGoMap(rv reflect.Value, path []goRef) (Object, error)
 	if err != nil {
 		return nil, err
 	}
+	if err := b.take(uint64(rv.Len())); err != nil {
+		return nil, err
+	}
 	result := make(map[string]Object, rv.Len())
 	iter := rv.MapRange()
 	for iter.Next() {
 		key := iter.Key().String()
-		val, err := r.fromGoPath(iter.Value().Interface(), path)
+		val, err := r.fromGoPath(iter.Value().Interface(), path, b)
 		if errors.Is(err, ErrNestingDepth) {
 			return nil, err
 		}

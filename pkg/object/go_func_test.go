@@ -652,6 +652,50 @@ func TestGoFunc_ReturnMap(t *testing.T) {
 	assert.Equal(t, m.Size(), 2)
 }
 
+// Results convert with the limits in the call's ctx, counting every slice,
+// array, and map element of all results together.
+func TestGoFunc_ResultLimits(t *testing.T) {
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+	registry := DefaultRegistry()
+	call := func(fn any) (Object, error) {
+		return NewGoFunc(reflect.ValueOf(fn), "fn", registry).Call(ctx)
+	}
+
+	_, err := call(func() []int { return make([]int, 11) })
+	assertValueError(t, err, "value too large to convert (exceeds limit of 10 elements)")
+	_, err = call(func() [11]int { return [11]int{} })
+	assertValueError(t, err, "value too large to convert")
+	_, err = call(func() ([]int, error) { return make([]int, 11), nil })
+	assertValueError(t, err, "value too large to convert")
+
+	// 6 + 6 elements across two results
+	_, err = call(func() ([]int, []int) { return make([]int, 6), make([]int, 6) })
+	assertValueError(t, err, "value too large to convert")
+
+	// A map counts its entries and the lists in it
+	_, err = call(func() map[string][]int {
+		return map[string][]int{"a": make([]int, 4), "b": make([]int, 5)}
+	})
+	assertValueError(t, err, "value too large to convert")
+
+	// Results at the limit convert
+	result, err := call(func() ([]int, []int) { return make([]int, 5), make([]int, 5) })
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*List).Len().Value(), int64(2))
+	result, err = call(func() map[string][]int {
+		return map[string][]int{"a": make([]int, 4), "b": make([]int, 4)}
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, result.(*Map).Size(), 2)
+
+	// Without limits in ctx, the default limits apply
+	fn := NewGoFunc(reflect.ValueOf(func() []struct{} {
+		return make([]struct{}, DefaultMaxListLength+1)
+	}), "fn", registry)
+	_, err = fn.Call(context.Background())
+	assertValueError(t, err, "value too large to convert")
+}
+
 func TestGoFunc_ReturnNil(t *testing.T) {
 	fn := func() *int {
 		return nil
