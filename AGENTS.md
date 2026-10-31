@@ -151,8 +151,12 @@ adds more complexity than it is worth.
 - When someone reports a gap in the limits, add it to the list in
   [docs/guides/memory-limits.md](docs/guides/memory-limits.md) rather than
   adding code to limit it.
-- Fixing a real bug (wrong result, crash, panic) or an obvious inefficiency
-  that affects everyone is still in scope, even if it involves allocation.
+- An operation that allocates too much or runs too long, and that a limit does
+  not stop, is a gap to list, even when the growth is large. An example is
+  `sprintf` with a huge width.
+- Still in scope: a wrong result, a crash, a panic, or an inefficiency in
+  normal use that affects everyone, even if the fix involves allocation. An
+  example is string indexing that copied the whole string.
 - Untrusted scripts belong in a process the operating system can limit. See the
   guide.
 

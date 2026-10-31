@@ -97,9 +97,10 @@ the whole test suite.
 ## Context
 
 Issue #473 asks for a way to bound the memory an untrusted script can use
-inside the host process. Today Risor bounds three things: instructions
-(`WithMaxSteps`), wall-clock time (`WithTimeout`), and the size of the value
-one operation may produce (`WithLimits`, added in #491 and #568).
+inside the host process. Today Risor bounds four things: instructions
+(`WithMaxSteps`), wall-clock time (`WithTimeout`), value stack and call depth
+(`WithMaxStackDepth`), and the size of the value one operation may produce
+(`WithLimits`, added in #491 and #568).
 
 The per-operation caps fixed the case in the issue. The `+` chain that built a
 1 GB string now fails at the 64 MiB cap after 18 ms. They do not bound a whole
