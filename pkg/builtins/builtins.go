@@ -121,7 +121,7 @@ func String(ctx context.Context, args ...object.Object) (object.Object, error) {
 		}
 		var s string
 		switch v := arg.(type) {
-		case *object.List, *object.Map, *object.Cell:
+		case *object.List, *object.Map, *object.Cell, *object.Partial:
 			// Apply the byte limit in ctx, not the default of Inspect
 			s = object.InspectWithLimits(ctx, arg)
 		case fmt.Stringer:

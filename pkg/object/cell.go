@@ -38,15 +38,7 @@ func (c *Cell) inspect(path nestPath[Object]) string {
 	if c.value == nil {
 		return "cell()"
 	}
-	value := *c.value
-	if isNestedContainer(value) {
-		p, err := path.descend(c, value)
-		if err != nil {
-			return "cell(" + inspectPlaceholder(value) + ")"
-		}
-		path = p
-	}
-	return "cell(" + inspectNested(value, path) + ")"
+	return "cell(" + inspectChild(c, *c.value, &path) + ")"
 }
 
 func (c *Cell) String() string {

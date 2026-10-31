@@ -185,15 +185,7 @@ func (m *Map) inspect(path nestPath[Object]) string {
 	var out bytes.Buffer
 	pairs := make([]string, 0, len(m.items))
 	for _, k := range m.SortedKeys() {
-		v := m.items[k]
-		if isNestedContainer(v) {
-			var err error
-			if path, err = path.descend(m, v); err != nil {
-				pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectPlaceholder(v)))
-				continue
-			}
-		}
-		pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectNested(v, path)))
+		pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectChild(m, m.items[k], &path)))
 	}
 	out.WriteString("{")
 	out.WriteString(strings.Join(pairs, ", "))

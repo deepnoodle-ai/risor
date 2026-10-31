@@ -349,7 +349,7 @@ func newPrintBuiltin() *object.Builtin {
 		values := make([]any, len(args))
 		for i, arg := range args {
 			switch arg.(type) {
-			case *object.List, *object.Map, *object.Cell:
+			case *object.List, *object.Map, *object.Cell, *object.Partial:
 				// Apply the byte limit in ctx, not the default of Inspect
 				values[i] = object.InspectWithLimits(ctx, arg)
 			default:

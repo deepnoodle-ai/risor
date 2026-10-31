@@ -138,13 +138,15 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 		}
 		return total
 	case *Partial:
-		// Inspect prints the function and every argument of a partial
-		total := 1 + formatSize(obj.fn, path, limit-min(1, limit))
+		// Inspect prints the function and every argument of a partial. The
+		// partial goes on the path, so a partial that holds its own
+		// container is counted once.
+		total := 1 + nestedFormatSize(obj, obj.fn, &path, limit-min(1, limit))
 		if total > limit {
 			return total
 		}
 		for _, arg := range obj.args {
-			total += formatSize(arg, path, limit-min(total, limit))
+			total += nestedFormatSize(obj, arg, &path, limit-min(total, limit))
 			if total > limit {
 				return total
 			}
@@ -163,7 +165,7 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 }
 
 func nestedFormatSize(parent, item Object, path *nestPath[Object], limit uint64) uint64 {
-	if !isNestedContainer(item) {
+	if !isPrintedContainer(item) {
 		return formatSize(item, nil, limit)
 	}
 	p, err := path.descend(parent, item)

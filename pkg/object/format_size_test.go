@@ -87,8 +87,10 @@ func TestInspectSharedError(t *testing.T) {
 // partial whose function is another partial is counted through both.
 func TestInspectSharedPartial(t *testing.T) {
 	// Each level prints the one below it twice, as the function and as the
-	// argument, so the full text would repeat the innermost partial 2^40 times
-	p := NewPartial(NewInt(1), []Object{NewInt(2)})
+	// argument, so the full text would repeat the innermost partial 2^40
+	// times. Its 1 KiB strings make the walk stop after about 2^16 of them.
+	s := NewString(strings.Repeat("a", 1024))
+	p := NewPartial(s, []Object{s})
 	for range 40 {
 		p = NewPartial(p, []Object{p})
 	}
@@ -101,13 +103,56 @@ func TestInspectSharedPartial(t *testing.T) {
 	}
 	list := NewList([]Object{p})
 	assert.Equal(t, list.Inspect(), "[...]")
-	assert.Equal(t, InspectMessage(p), "[...]")
+	assert.Equal(t, p.Inspect(), "partial(...)")
+	assert.Equal(t, InspectMessage(p), "partial(...)")
 	assert.NotNil(t, CheckFormatSize(context.Background(), "string", p))
 
 	// A small partial counts its function and its argument
 	small := NewPartial(NewPartial(NewInt(1), []Object{NewInt(2)}), []Object{NewInt(3)})
 	assert.Equal(t, formatSize(small, nil, 100), uint64(5))
 	assert.Equal(t, NewList([]Object{small}).Inspect(), "[partial(partial(1, 2), 3)]")
+}
+
+// A partial goes on the path when it is printed or measured, so a cycle
+// through its arguments or its function prints as a placeholder (#583).
+func TestPartialCycle(t *testing.T) {
+	raised := WithLimits(context.Background(), Limits{MaxBytesSize: 2 * DefaultMaxBytesSize})
+
+	// A list that holds a partial whose argument is that list
+	argList := NewList(nil)
+	argPartial := NewPartial(NewInt(1), []Object{argList})
+	argList.Append(argPartial)
+
+	// A list that holds a partial whose function is that list
+	fnList := NewList(nil)
+	fnPartial := NewPartial(fnList, []Object{NewInt(2)})
+	fnList.Append(fnPartial)
+
+	// A map and a cell that hold a partial that holds them
+	m := NewMap(nil)
+	m.Set("a", NewPartial(NewInt(1), []Object{m}))
+	var value Object
+	cell := NewCell(&value)
+	value = NewPartial(cell, nil)
+
+	for _, tt := range []struct {
+		obj  Object
+		want string
+	}{
+		{argList, "[partial(1, [...])]"},
+		{argPartial, "partial(1, [partial(...)])"},
+		{fnList, "[partial([...], 2)]"},
+		{fnPartial, "partial([partial(...)], 2)"},
+		{m, `{"a": partial(1, {...})}`},
+		{cell, "cell(partial(cell(...), ))"},
+	} {
+		assert.True(t, formatSize(tt.obj, nil, inspectMaxSize) < 100, tt.want)
+		assert.Nil(t, CheckFormatSize(context.Background(), "string", tt.obj), tt.want)
+		assert.Equal(t, tt.obj.Inspect(), tt.want)
+		assert.Equal(t, InspectMessage(tt.obj), tt.want)
+		assert.Equal(t, InspectWithLimits(context.Background(), tt.obj), tt.want)
+		assert.Equal(t, InspectWithLimits(raised, tt.obj), tt.want)
+	}
 }
 
 // Inspect and String have no context, so they bound the text of a list, map,
