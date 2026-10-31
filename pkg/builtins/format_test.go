@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -102,6 +103,28 @@ func TestFormatCountExact(t *testing.T) {
 	}
 }
 
+// The quoted length is counted without building the quoted text, so it is
+// compared with strconv for every rune up to U+3400, a sample of higher
+// runes, and invalid bytes.
+func TestFormatCountQuoted(t *testing.T) {
+	var sb strings.Builder
+	for r := rune(0); r < 0x3400; r++ {
+		sb.WriteRune(r)
+	}
+	for r := rune(0x3400); r <= utf8.MaxRune; r += 997 {
+		sb.WriteRune(r)
+	}
+	sb.WriteString("\xff\xc0\xed\xa0\x80`")
+	str := sb.String()
+	for _, arg := range []any{str, []byte(str), "`no backquote`"} {
+		for _, format := range []string{"%q", "%+q", "%#q", "%#+q", "%#v", "%-8000q", "%.500q", "%x", "% #X", "%.7x"} {
+			want := len(fmt.Sprintf(format, arg))
+			got := formatCount(math.MaxInt64, false, format, []any{arg})
+			assert.Equal(t, got, uint64(want), "format %q with %T", format, arg)
+		}
+	}
+}
+
 // Malformed formats, argument indexes, and missing and extra arguments are
 // counted as fmt prints them.
 func TestFormatCountMalformed(t *testing.T) {
@@ -157,6 +180,14 @@ func (h hostFormatter) Format(f fmt.State, verb rune) {
 	fmt.Fprintf(f, "<%c %d %v %d>", verb, h.n, f.Flag('#'), wid)
 }
 
+type panicStringer struct{ p *int }
+
+func (s panicStringer) String() string { return strings.Repeat("s", *s.p) }
+
+type nilStringer struct{ s string }
+
+func (n *nilStringer) String() string { return n.s }
+
 type panicFormatter struct{}
 
 func (panicFormatter) Format(f fmt.State, verb rune) {
@@ -189,6 +220,9 @@ func TestFormatCountHostValues(t *testing.T) {
 		hostFormatter{n: 1},
 		[]any{hostFormatter{n: 2}},
 		panicFormatter{},
+		panicStringer{},
+		(*nilStringer)(nil),
+		&nilStringer{s: "a\x00b"},
 	}
 	for _, arg := range args {
 		for _, format := range []string{"%v", "%+v", "%#v", "%s", "%d", "%x", "%q", "%5v", "%-4.1v", "%T", "%p", "%*0"} {
@@ -244,6 +278,47 @@ func TestFormatWidthAmplification(t *testing.T) {
 			assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(4<<20))
 		})
 	}
+}
+
+// %x and %q of one large string, bytes value, or error message fail before
+// the hex or quoted text is built.
+func TestFormatLargeStringVerbs(t *testing.T) {
+	ctx := limitsCtx(1 << 16)
+	str := object.NewString(strings.Repeat("\x00", 1<<20))
+	bytes := object.NewBytes([]byte(str.Value()))
+	errValue := object.NewError(stderrors.New(str.Value()))
+	for _, format := range []string{"%x", "%X", "% #x", "%q", "%+q", "%#v"} {
+		for _, arg := range []object.Object{str, bytes, errValue} {
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			_, err := Sprintf(ctx, object.NewString(format), arg)
+			runtime.ReadMemStats(&after)
+			assertValueError(t, err, "sprintf result too large")
+			assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(4<<20), "format %q with %s", format, arg.Type())
+		}
+	}
+}
+
+// A precision that is not a minimum length does not count as one.
+func TestFormatPrecisionNotMinimum(t *testing.T) {
+	ctx := limitsCtx(100)
+	for format, want := range map[string]string{
+		"%.100000g": "1",
+		"%.100000v": "1",
+		"%.100000c": "A",
+		"%.100000q": "'A'",
+	} {
+		var arg object.Object = object.NewFloat(1)
+		if format == "%.100000c" || format == "%.100000q" {
+			arg = object.NewInt(65)
+		}
+		result, err := Sprintf(ctx, object.NewString(format), arg)
+		assert.Nil(t, err, format)
+		assert.Equal(t, result.(*object.String).Value(), want)
+	}
+	_, err := Sprintf(ctx, object.NewString("%#.100000g"), object.NewFloat(1))
+	assertValueError(t, err, "sprintf result too large")
 }
 
 // Every way a format can amplify its input is rejected before formatting.

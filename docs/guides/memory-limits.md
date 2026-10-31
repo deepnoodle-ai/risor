@@ -567,7 +567,9 @@ and `error()` count the size of the text before they build it, counting each
 reference again, and stop at `MaxBytesSize`. For `sprintf` and `error()`, the
 count is the length of the text that Go's `fmt` produces, including each
 width and precision in the format, which `fmt` applies to each element of a
-list or map. For the others, the count is the exact length of the text that
+list or map. That count calls the `String`, `Error`, and `Format` methods of
+host Go values, and `fmt` then calls them again, so these methods should have
+no side effects. For the others, the count is the exact length of the text that
 `Inspect` prints, for every type, including the source of a closure. That
 count walks the value, so it can take up to `MaxBytesSize` steps of Go code
 before the error. In Go code, `Inspect()` on a list, map, cell, or partial,

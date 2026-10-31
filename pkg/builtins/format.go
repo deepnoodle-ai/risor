@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
 )
@@ -24,9 +25,12 @@ import (
 // to every element of a list or map, and lists that repeat one large value
 // through shared references. The count covers all of them.
 //
-// It walks the format and the arguments the way fmt does. A leaf value that
-// has no fast path, such as a float or a value with a String method, is
-// counted by formatting that one value alone with the same directive. The
+// It walks the format and the arguments the way fmt does. Strings, and the
+// text that a String or Error method returns, are counted without building
+// any quoted or hex text. A leaf value with no such path, such as a float,
+// is counted by formatting that one value alone with the same directive.
+// The count calls the String, Error, GoString, and Format methods of host Go
+// values, and fmt then calls them again. The
 // count stops as soon as it passes the limit, and a width or numeric
 // precision larger than the rest of the limit stops it before the value is
 // formatted, so counting allocates at most about the limit plus the text of
@@ -388,22 +392,56 @@ func (c *formatCounter) methods(x any, verb rune) bool {
 		c.formatter(f, verb)
 		return true
 	}
-	handled := false
 	if c.s.sharpV {
-		_, handled = x.(fmt.GoStringer)
-	} else {
-		switch verb {
-		case 'v', 's', 'x', 'X', 'q':
-			switch x.(type) {
-			case error, fmt.Stringer:
-				handled = true
-			}
+		if g, ok := x.(fmt.GoStringer); ok {
+			c.methodText(x, verb, func() { c.fmtS(g.GoString()) })
+			return true
+		}
+		return false
+	}
+	switch verb {
+	case 'v', 's', 'x', 'X', 'q':
+		switch m := x.(type) {
+		case error:
+			c.methodText(x, verb, func() { c.fmtString(m.Error(), verb) })
+			return true
+		case fmt.Stringer:
+			c.methodText(x, verb, func() { c.fmtString(m.String(), verb) })
+			return true
 		}
 	}
-	if handled {
-		c.formatted(x, verb)
+	return false
+}
+
+// methodText runs count, which counts the text that a GoString, Error, or
+// String method of x returns. If the method panics, it counts the text that
+// fmt prints for the panic by formatting x alone.
+func (c *formatCounter) methodText(x any, verb rune, count func()) {
+	total := c.total
+	defer func() {
+		if r := recover(); r != nil {
+			c.total = total
+			c.formatted(x, verb)
+		}
+	}()
+	count()
+}
+
+// fmtString counts the text of fmt's fmtString for s and reports whether
+// verb is valid for a string. It counts quoted and hex text without building
+// it.
+func (c *formatCounter) fmtString(s string, verb rune) bool {
+	switch {
+	case verb == 's' || (verb == 'v' && !c.s.sharpV):
+		c.fmtS(s)
+	case verb == 'x' || verb == 'X':
+		c.hexSize(len(s))
+	case verb == 'q' || (verb == 'v' && c.s.sharpV):
+		c.fmtQ(s)
+	default:
+		return false
 	}
-	return handled
+	return true
 }
 
 // value counts the text of fmt's printValue.
@@ -587,25 +625,15 @@ func (c *formatCounter) separator() {
 
 // leaf counts a bool, number, or string that no method formats.
 func (c *formatCounter) leaf(v reflect.Value, verb rune) {
-	// The text of a leaf is never shorter than its width, and the text of a
-	// number is never shorter than its precision.
+	// The text of a leaf is never shorter than its width.
 	if c.s.widPresent && uint64(c.s.wid) > c.remaining() {
 		c.add(c.s.wid)
 		return
 	}
-	switch v.Kind() {
-	case reflect.Bool, reflect.String:
-	default:
-		if c.s.precPresent && uint64(c.s.prec) > c.remaining() {
-			c.add(c.s.prec)
-			return
-		}
-	}
 
 	switch v.Kind() {
 	case reflect.String:
-		if verb == 's' || (verb == 'v' && !c.s.sharpV) {
-			c.fmtS(v.String())
+		if c.fmtString(v.String(), verb) {
 			return
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -623,6 +651,12 @@ func (c *formatCounter) leaf(v reflect.Value, verb rune) {
 	}
 	if !validVerb(v.Kind(), verb) {
 		c.badVerbValue(verb, v)
+		return
+	}
+	// For these verbs, the text of a number is never shorter than its
+	// precision, so a larger precision is over the limit.
+	if c.s.precPresent && uint64(c.s.prec) > c.remaining() && precisionIsMinimum(v.Kind(), verb, c.s.sharp) {
+		c.add(c.s.prec)
 		return
 	}
 	x := c.leafValue(v)
@@ -655,6 +689,26 @@ func validVerb(kind reflect.Kind, verb rune) bool {
 		verbs = "vdboOxXcqU"
 	}
 	return strings.ContainsRune(verbs, verb)
+}
+
+// precisionIsMinimum reports whether fmt prints at least prec bytes for a
+// number of kind formatted with verb and a precision of prec. %g and %v drop
+// trailing zeros unless the # flag is set, and %c and %q ignore the
+// precision.
+func precisionIsMinimum(kind reflect.Kind, verb rune, sharp bool) bool {
+	switch kind {
+	case reflect.Bool, reflect.String:
+		return false
+	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		switch verb {
+		case 'e', 'E', 'f', 'F', 'x', 'X':
+			return true
+		case 'g', 'G', 'v':
+			return sharp
+		}
+		return false
+	}
+	return strings.ContainsRune("vdboOxXU", verb)
 }
 
 // plainVerb returns the verb that formats a bool, number, or string of kind
@@ -918,30 +972,98 @@ func (c *formatCounter) bytes(b []byte, verb rune, typeString string) {
 		}
 		c.add(n)
 	case 'x', 'X':
-		length := len(b)
-		if c.s.precPresent && c.s.prec < length {
-			length = c.s.prec
-		}
-		width := 2 * length
-		if width > 0 {
-			if c.s.space {
-				if c.s.sharp {
-					width *= 2
-				}
-				width += length - 1
-			} else if c.s.sharp {
-				width += 2
-			}
-		}
-		if c.s.widPresent && c.s.wid > width {
-			width = c.s.wid
-		}
-		c.add(width)
+		c.hexSize(len(b))
 	case 'q':
-		c.formatted(b, verb)
+		// fmt converts b to a string for %q. Counting reads b in place.
+		c.fmtQ(unsafe.String(unsafe.SliceData(b), len(b)))
 	default:
 		c.value(reflect.ValueOf(b), verb, 0)
 	}
+}
+
+// hexSize counts the text of fmt's fmtSbx for %x or %X of a string or byte
+// slice of length bytes.
+func (c *formatCounter) hexSize(length int) {
+	if c.s.precPresent && c.s.prec < length {
+		length = c.s.prec
+	}
+	width := 2 * length
+	if width > 0 {
+		if c.s.space {
+			if c.s.sharp {
+				width *= 2
+			}
+			width += length - 1
+		} else if c.s.sharp {
+			width += 2
+		}
+	}
+	if c.s.widPresent && c.s.wid > width {
+		width = c.s.wid
+	}
+	c.add(width)
+}
+
+// fmtQ counts the text of fmt's fmtQ: s truncated to the precision, quoted
+// as strconv.Quote does (or strconv.QuoteToASCII with the + flag, or in
+// backquotes with the # flag when possible), and padded to the width. It
+// counts the quoted text without building it.
+func (c *formatCounter) fmtQ(s string) {
+	if c.s.precPresent {
+		n := c.s.prec
+		for i := range s {
+			n--
+			if n < 0 {
+				s = s[:i]
+				break
+			}
+		}
+	}
+	var size, runes int
+	if c.s.sharp && strconv.CanBackquote(s) {
+		size, runes = len(s)+2, utf8.RuneCountInString(s)+2
+	} else {
+		size, runes = quotedSize(s, c.s.plus)
+	}
+	if c.s.widPresent && c.s.wid > runes {
+		size += c.s.wid - runes
+	}
+	c.add(size)
+}
+
+// quotedSize returns the length in bytes and in runes of strconv.Quote(s),
+// or of strconv.QuoteToASCII(s) when asciiOnly is true.
+func quotedSize(s string, asciiOnly bool) (size, runes int) {
+	size, runes = 2, 2
+	for i := 0; i < len(s); {
+		r, width := utf8.DecodeRuneInString(s[i:])
+		i += width
+		n := 0
+		switch {
+		case width == 1 && r == utf8.RuneError:
+			n = 4 // \xff
+		case r == '"' || r == '\\':
+			n = 2
+		case r < utf8.RuneSelf && strconv.IsPrint(r):
+			n = 1
+		case !asciiOnly && strconv.IsPrint(r):
+			// A printable rune is copied as it is: width bytes, one rune.
+			size += width
+			runes++
+			continue
+		case r == '\a' || r == '\b' || r == '\f' || r == '\n' || r == '\r' || r == '\t' || r == '\v':
+			n = 2
+		case r < ' ' || r == 0x7f:
+			n = 4 // \x00
+		case r < 0x10000:
+			n = 6 // \u00a0
+		default:
+			n = 10 // \U000e0001
+		}
+		size += n
+		runes += n
+	}
+	return size, runes
 }
 
 // pointer counts the text of fmt's fmtPointer. arg is the argument that fmt
