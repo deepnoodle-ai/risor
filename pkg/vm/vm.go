@@ -805,14 +805,14 @@ evalLoop:
 				}
 				continue
 			}
-			locals := vm.frames[frameIndex].CaptureLocals()
-			if int(symbolIndex) >= len(locals) {
+			cell, ok := vm.frames[frameIndex].CaptureLocal(symbolIndex)
+			if !ok {
 				if herr := vm.tryHandleError(vm.evalError("no local at index %d", symbolIndex)); herr != nil {
 					return herr
 				}
 				continue
 			}
-			vm.push(object.NewCell(&locals[symbolIndex]))
+			vm.push(cell)
 		case op.LoadCell:
 			idx := int(vm.fetch())
 			fn := vm.activeFrame.fn
@@ -1735,9 +1735,11 @@ func (vm *VirtualMachine) restoreFrame(fp, ip, sp int) *frame {
 	for i := vm.sp; i > sp; i-- {
 		vm.stack[i] = nil
 	}
-	// Frames above fp are no longer active. Drop their large locals so that
-	// only active frames, which the locals budget bounds, hold large slices.
+	// Frames above fp are no longer active. Move their captured variables out
+	// of their locals, and drop their large locals, so that only active
+	// frames, which the locals budget bounds, hold large slices.
 	for i := fp + 1; i <= vm.fp && i < len(vm.frames); i++ {
+		vm.frames[i].releaseCells()
 		vm.frames[i].releaseLocals()
 	}
 	vm.sp = sp
