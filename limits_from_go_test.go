@@ -52,6 +52,11 @@ func TestWithLimitsFromGo(t *testing.T) {
 		assert.True(t, strings.Contains(err.Error(), "value too large to convert"), src, err.Error())
 	}
 
+	// The case from #599: a callback reads the field on each step
+	_, err := run(`range(100).each(_ => box.Items); 1`, newReadBox(11))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "value too large to convert"), err.Error())
+
 	// The error is a catchable value error
 	result, err := run(`try { box.Items } catch e { e.kind() }`, newReadBox(11))
 	assert.Nil(t, err)
