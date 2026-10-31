@@ -269,6 +269,10 @@ func WithTimeout(d time.Duration) Option {
 // Zero or negative fields use the defaults: 64 MiB for strings and bytes,
 // and 4,194,304 list elements.
 //
+// The limits catch accidental blowups from single operations. They are not a
+// security boundary and do not bound a run's total memory. See
+// docs/guides/memory-limits.md for the known gaps.
+//
 // Example:
 //
 //	result, err := risor.Eval(ctx, source, risor.WithLimits(risor.Limits{

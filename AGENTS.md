@@ -137,6 +137,25 @@ risor.WithObserver(Observer)     // Set execution observer for profiling/debuggi
 risor.Builtins()                 // Returns standard library as map[string]any
 ```
 
+## Resource Limits
+
+`WithMaxSteps`, `WithTimeout`, `WithMaxStackDepth`, and `WithLimits` catch
+scripts that go wrong by accident. They are not a security boundary, and Risor
+does not try to make them one. Go has no allocator hook, so making the limits
+complete would mean finding and patching every allocation path by hand, which
+adds more complexity than it is worth.
+
+- Do not add new limit machinery: no new caps, budgets, size precomputation, or
+  reimplementations of standard library code (such as `fmt` or `encoding/json`)
+  to enforce limits.
+- When someone reports a gap in the limits, add it to the list in
+  [docs/guides/memory-limits.md](docs/guides/memory-limits.md) rather than
+  adding code to limit it.
+- Fixing a real bug (wrong result, crash, panic) or an obvious inefficiency
+  that affects everyone is still in scope, even if it involves allocation.
+- Untrusted scripts belong in a process the operating system can limit. See the
+  guide.
+
 ## Go Workspace
 
 This is a monorepo using Go workspaces (`go.work`).
