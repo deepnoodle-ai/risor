@@ -6,13 +6,13 @@ Risor bounds instruction count (`WithMaxSteps`), wall-clock time
 `WithMaxMemory`.
 
 `WithLimits` caps the operations that can turn a small input into a huge
-output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes, string
-templates, `sprintf`, `string()` of a list or map, and `encode`, and building
-lists with list literals, `list()`, `keys()`, spread, `+`, `extend`,
-`append`, `insert`, `range(...).map`, `split`, `fields`, the `regexp` find
-and split functions, `decode`, and `rand.bytes`. The defaults are 64 MiB for
-a string or bytes value and 4,194,304 list elements. Exceeding a cap raises a
-`value error`:
+output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes,
+`to_upper` and `to_lower` on strings, string templates, `sprintf`, `string()`
+of a list or map, and `encode`, and building lists with list literals,
+`list()`, `keys()`, spread, `+`, `extend`, `append`, `insert`,
+`range(...).map`, `split`, `fields`, the `regexp` find and split functions,
+`decode`, and `rand.bytes`. The defaults are 64 MiB for a string or bytes
+value and 4,194,304 list elements. Exceeding a cap raises a `value error`:
 
 ```go
 // fails with "list too large (exceeds limit of 4194304 elements)"
@@ -566,12 +566,14 @@ with `object.InspectWithLimits`, as the CLI does, so that `WithLimits`
 applies. `sorted` and `chunk` are not capped, so you should not put them over
 lists into the environment.
 
-**Methods that charge after the fact.** Only `repeat`, `string()`, string
-templates, and `encode` have their output size checked before the work
-happens. `decode` builds the whole value and then checks its lists, so its
-peak is a constant factor above its input, which `MaxBytesSize` already
-caps. Any method whose output size isn't a cheap function of its inputs
-allocates first and charges second. In practice its
+**Methods that charge after the fact.** Only `repeat`, `replace_all`, `join`,
+`+`, `to_upper`, `to_lower`, `string()`, and string templates have their
+output size checked before the work happens. `encode` checks the text size of
+its input first, but it checks its output only after encoding, and base64 or
+hex output is larger than that text. `decode` builds the whole value and then
+checks its lists, so its peak is a constant factor above its input, which
+`MaxBytesSize` already caps. Any method whose output size isn't a cheap
+function of its inputs allocates first and charges second. In practice its
 inputs are already inside the budget, so this costs you a constant factor
 rather than leaving an unbounded hole, but it does mean the peak is higher than
 the number you set.

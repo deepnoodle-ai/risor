@@ -314,6 +314,37 @@ func checkReplaceSize(l Limits, name string, inputLen, oldLen, newLen, n int) er
 	return checkBytesSize(l, name, uint64(inputLen)+uint64(n)*growth)
 }
 
+// maxCaseMapGrowth is the most that case mapping can multiply a string's
+// length by. An invalid UTF-8 byte maps to U+FFFD, which is 3 bytes. A valid
+// rune grows by at most half (2 bytes to 3), and ASCII stays ASCII.
+const maxCaseMapGrowth = 3
+
+// checkCaseMapSize returns an error if mapping each rune of s with mapping,
+// as strings.ToUpper and strings.ToLower do, would produce a string larger
+// than the byte limit. It counts the result's length without building it.
+func checkCaseMapSize(l Limits, name, s string, mapping func(rune) rune) error {
+	if uint64(len(s)) <= uint64(l.MaxBytesSize)/maxCaseMapGrowth {
+		return nil
+	}
+	return checkBytesSize(l, name, uint64(caseMapLen(s, mapping)))
+}
+
+// caseMapLen returns the length of the string that strings.Map(mapping, s)
+// returns, for a mapping that never drops runes. Like strings.Map, it reads
+// each invalid UTF-8 byte as U+FFFD, which is 3 bytes in the result.
+func caseMapLen(s string, mapping func(rune) rune) int {
+	// ASCII maps to ASCII, so an ASCII prefix keeps its length.
+	i := 0
+	for i < len(s) && s[i] < utf8.RuneSelf {
+		i++
+	}
+	n := i
+	for _, r := range s[i:] {
+		n += utf8.RuneLen(mapping(r))
+	}
+	return n
+}
+
 // checkConcatSize returns an error if concatenating a and b would produce a
 // string or bytes value larger than the byte limit, or a list longer than the
 // list length limit. Other operand types are not checked.
