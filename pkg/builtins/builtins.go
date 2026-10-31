@@ -375,8 +375,8 @@ func GetAttr(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if len(args) == 3 {
 		return args[2], nil
 	}
-	return nil, object.TypeErrorf("getattr() %s object has no attribute %q",
-		args[0].Type(), attrName)
+	return nil, object.TypeErrorf("getattr() %s object has no attribute %s",
+		args[0].Type(), object.QuoteMessage(attrName))
 }
 
 func Call(ctx context.Context, args ...object.Object) (object.Object, error) {
@@ -433,7 +433,7 @@ func Byte(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if i, err := strconv.ParseUint(strings.TrimPrefix(obj.Value(), "+"), 0, 8); err == nil {
 			return object.NewByte(byte(i)), nil
 		}
-		return nil, object.ValueErrorf("invalid literal for byte(): %q", obj.Value())
+		return nil, object.ValueErrorf("invalid literal for byte(): %s", object.QuoteMessage(obj.Value()))
 	default:
 		return nil, object.TypeErrorf("byte() unsupported argument (%s given)", args[0].Type())
 	}
@@ -484,7 +484,7 @@ func Int(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if i, err := strconv.ParseInt(obj.Value(), 0, 64); err == nil {
 			return object.NewInt(i), nil
 		}
-		return nil, object.ValueErrorf("invalid literal for int(): %q", obj.Value())
+		return nil, object.ValueErrorf("invalid literal for int(): %s", object.QuoteMessage(obj.Value()))
 	default:
 		return nil, object.TypeErrorf("int() unsupported argument (%s given)", args[0].Type())
 	}
@@ -508,7 +508,7 @@ func Float(ctx context.Context, args ...object.Object) (object.Object, error) {
 		if f, err := strconv.ParseFloat(obj.Value(), 64); err == nil {
 			return object.NewFloat(f), nil
 		}
-		return nil, object.ValueErrorf("invalid literal for float(): %q", obj.Value())
+		return nil, object.ValueErrorf("invalid literal for float(): %s", object.QuoteMessage(obj.Value()))
 	default:
 		return nil, object.TypeErrorf("float() unsupported argument (%s given)", args[0].Type())
 	}

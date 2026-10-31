@@ -2,6 +2,7 @@ package object
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
@@ -283,6 +284,12 @@ func TestMapGetItem(t *testing.T) {
 	// Missing key
 	_, err = m.GetItem(NewString("missing"))
 	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), `key error: "missing"`)
+
+	// A long missing key is quoted only in part (#595)
+	long := strings.Repeat("\x00", 1_000_000)
+	_, err = m.GetItem(NewString(long))
+	assert.Equal(t, err.Error(), "key error: "+QuoteMessage(long))
 
 	// Wrong key type
 	_, err = m.GetItem(NewInt(1))

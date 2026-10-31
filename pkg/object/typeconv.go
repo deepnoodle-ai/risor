@@ -716,7 +716,7 @@ func (r *TypeRegistry) toGoMap(obj Object, target reflect.Type, path nestPath[Ob
 			return nil, err
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert map value for key %q: %w", k, err)
+			return nil, fmt.Errorf("failed to convert map value for key %s: %w", QuoteMessage(k), err)
 		}
 		// A null value stores the zero value. It never deletes the key.
 		result.SetMapIndex(reflect.ValueOf(k).Convert(keyType), goValue)

@@ -3,7 +3,9 @@ package object
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -720,6 +722,25 @@ func TestTypeRegistryErrorCases(t *testing.T) {
 		m := NewMap(map[string]Object{"a": NewString("not an int")})
 		_, err := registry.ToGo(context.Background(), m, reflect.TypeOf(map[string]int{}))
 		assert.NotNil(t, err)
+	})
+
+	t.Run("ToGo map with wrong value type names the key", func(t *testing.T) {
+		m := NewMap(map[string]Object{"a": NewString("not an int")})
+		_, err := registry.ToGo(context.Background(), m, reflect.TypeOf(map[string]int{}))
+		assert.Contains(t, err.Error(), `failed to convert map value for key "a": `)
+	})
+
+	t.Run("ToGo map with wrong value type quotes a long key's prefix", func(t *testing.T) {
+		// Each level of nesting adds its key to the message, so whole keys
+		// would make the message grow with every level (#595)
+		key := strings.Repeat("\x00", 100_000)
+		inner := NewMap(map[string]Object{key: NewString("not an int")})
+		m := NewMap(map[string]Object{key: inner})
+		_, err := registry.ToGo(context.Background(), m, reflect.TypeOf(map[string]map[string]int{}))
+		assert.NotNil(t, err)
+		prefix := fmt.Sprintf("failed to convert map value for key %s: ", QuoteMessage(key))
+		assert.True(t, strings.HasPrefix(err.Error(), prefix+prefix), err.Error())
+		assert.Less(t, len(err.Error()), 1000)
 	})
 
 	t.Run("ToGo non-list to slice", func(t *testing.T) {
