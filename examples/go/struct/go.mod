@@ -1,6 +1,6 @@
 module github.com/deepnoodle-ai/risor/v2/examples/go/struct
 
-go 1.25.0
+go 1.26.0
 
 replace github.com/deepnoodle-ai/risor/v2 => ../../..
 
@@ -10,8 +10,8 @@ require (
 )
 
 require (
-	github.com/deepnoodle-ai/wonton v0.0.37 // indirect
+	github.com/deepnoodle-ai/wonton v0.12.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )

@@ -1,6 +1,6 @@
 module github.com/deepnoodle-ai/risor/v2/examples/go/tetra3d
 
-go 1.25.0
+go 1.26.0
 
 replace github.com/deepnoodle-ai/risor/v2 => ../../..
 
@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/deepnoodle-ai/wonton v0.0.37 // indirect
+	github.com/deepnoodle-ai/wonton v0.12.0 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20260811165420-c5a1b14deab0 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
@@ -21,5 +21,5 @@ require (
 	github.com/tanema/gween v0.0.0-20250522035225-e874ee3ae01a // indirect
 	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )
