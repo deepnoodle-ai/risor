@@ -533,8 +533,9 @@ func (d *jsonDecoder) string() (string, error) {
 	return s, nil
 }
 
-// number decodes the number literal at d.pos as a float, returning the
-// error json.Unmarshal returns for a number out of range.
+// number decodes the number literal at d.pos as a float. For a number out of
+// range, it returns the error json.Unmarshal returns, except that the error
+// names at most jsonNumberMessageSize bytes of the literal.
 func (d *jsonDecoder) number() (object.Object, error) {
 	start := d.pos
 	for d.pos < len(d.data) && isJSONNumberByte(d.data[d.pos]) {
@@ -543,6 +544,9 @@ func (d *jsonDecoder) number() (object.Object, error) {
 	literal := string(d.data[start:d.pos])
 	f, err := strconv.ParseFloat(literal, 64)
 	if err != nil {
+		if len(literal) > jsonNumberMessageSize {
+			literal = literal[:jsonNumberMessageSize] + "..."
+		}
 		return nil, &json.UnmarshalTypeError{
 			Value:  "number " + literal,
 			Type:   reflect.TypeFor[float64](),
@@ -551,6 +555,11 @@ func (d *jsonDecoder) number() (object.Object, error) {
 	}
 	return object.NewFloat(f), nil
 }
+
+// jsonNumberMessageSize is the number of bytes of a number literal that an
+// error message names, as object.QuoteMessage bounds an input in a message.
+// A number literal can be as long as the input.
+const jsonNumberMessageSize = 64
 
 func isJSONNumberByte(c byte) bool {
 	return (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E'

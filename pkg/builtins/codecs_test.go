@@ -195,6 +195,11 @@ func TestDecodeJSONErrors(t *testing.T) {
 		assert.NotNil(t, err, src)
 		assert.Equal(t, err.Error(), want, src)
 	}
+	// The error names only the first 64 bytes of a long number
+	long := "1" + strings.Repeat("0", 100_000)
+	_, err := Decode(ctx, object.NewString(long), object.NewString("json"))
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "json: cannot unmarshal number "+long[:64]+"... into Go value of type float64")
 }
 
 // JSON nested exactly MaxNestingDepth deep decodes.
@@ -296,7 +301,7 @@ func FuzzDecodeJSON(f *testing.F) {
 		`12345678901234567890`, `""`, `"a\"b\\c\/d\b\f\n\r\t"`, `"é😀"`,
 		`"\ud800"`, "\"\xff\"", `"é"`, `[]`, `{}`, ` [ 1 , [ ] , { } ] `,
 		`{"a": 1, "a": 2}`, `{"a": {"b": [null, true, "x"]}}`, `[1,`, `1 2`,
-		`{"a" 1}`, `[1e400, 2]`, `["x", 1e999]`,
+		`{"a" 1}`, `[1e400, 2]`, `["x", 1e999]`, "1" + strings.Repeat("0", 400),
 	} {
 		f.Add(seed)
 	}
@@ -309,9 +314,17 @@ func FuzzDecodeJSON(f *testing.F) {
 			assert.NotNil(t, err)
 			// A value that is both too deep and has a number out of range
 			// fails on whichever comes first.
-			if !errors.Is(err, object.ErrNestingDepth) {
-				assert.Equal(t, err.Error(), wantErr.Error())
+			if errors.Is(err, object.ErrNestingDepth) {
+				return
 			}
+			// The error names at most 64 bytes of a number literal
+			var gotType, wantType *json.UnmarshalTypeError
+			if errors.As(wantErr, &wantType) && len(wantType.Value) > len("number ")+64 {
+				assert.ErrorAs(t, err, &gotType)
+				assert.Equal(t, gotType.Value, wantType.Value[:len("number ")+64]+"...")
+				return
+			}
+			assert.Equal(t, err.Error(), wantErr.Error())
 			return
 		}
 		want, wantErr := object.DefaultRegistry().FromGo(v)
