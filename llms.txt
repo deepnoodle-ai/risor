@@ -2,7 +2,7 @@
 
 Risor is a fast, embedded scripting language for Go. Scripts compile to bytecode
 and run on a lightweight virtual machine. Use it to add user-facing scripting,
-rule evaluation, or expression engines to Go applications. Apache 2.0, Go 1.25+.
+rule evaluation, or expression engines to Go applications. Apache 2.0, Go 1.26+.
 
 Risor has a small, focused core: a JavaScript-like syntax with closures, iterators,
 pipe expressions, destructuring, and spread operators. The type system includes
