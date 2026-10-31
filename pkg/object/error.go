@@ -281,7 +281,7 @@ func QuoteMessage(s string) string {
 	// Back up to the start of the rune that the cut splits. If no rune
 	// starts in the last utf8.UTFMax-1 bytes, s is not valid UTF-8 there and
 	// %q escapes those bytes one at a time, so cut at the limit.
-	for i := n; i > n-utf8.UTFMax && i > 0; i-- {
+	for i := n; i > n-utf8.UTFMax; i-- {
 		if utf8.RuneStart(s[i]) {
 			n = i
 			break
@@ -289,6 +289,18 @@ func QuoteMessage(s string) string {
 	}
 	return strconv.Quote(s[:n]) + "..."
 }
+
+// boundedError replaces the message of err, which can quote a whole input,
+// with a message that quotes the input with QuoteMessage. It unwraps to err,
+// so errors.Is and errors.As still find err.
+type boundedError struct {
+	msg string
+	err error
+}
+
+func (e *boundedError) Error() string { return e.msg }
+
+func (e *boundedError) Unwrap() error { return e.err }
 
 func (e *Error) MarshalJSON() ([]byte, error) {
 	return nil, TypeErrorf("unable to marshal error")

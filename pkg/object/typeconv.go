@@ -432,7 +432,7 @@ func (r *TypeRegistry) fromGoMap(rv reflect.Value, path []goRef) (Object, error)
 			return nil, err
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert map value for key %q: %w", key, err)
+			return nil, fmt.Errorf("failed to convert map value for key %s: %w", QuoteMessage(key), err)
 		}
 		result[key] = val
 	}
@@ -979,7 +979,17 @@ func createDefaultRegistry() *TypeRegistry {
 				case *Time:
 					return v.value, nil
 				case *String:
-					return time.Parse(time.RFC3339, v.value)
+					t, err := time.Parse(time.RFC3339, v.value)
+					if err != nil && len(v.value) > quoteMessageMaxSize {
+						// A time.ParseError quotes the whole input, and
+						// can quote its tail again
+						return nil, &boundedError{
+							msg: fmt.Sprintf("parsing time %s as %q: invalid time",
+								QuoteMessage(v.value), time.RFC3339),
+							err: err,
+						}
+					}
+					return t, err
 				default:
 					return nil, newTypeErrorf("expected time, got %s", obj.Type())
 				}
@@ -1018,7 +1028,7 @@ func AsObjectsWithRegistry(m map[string]any, registry *TypeRegistry) (map[string
 	for k, v := range m {
 		obj, err := registry.FromGo(v)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert %q: %w", k, err)
+			return nil, fmt.Errorf("failed to convert %s: %w", QuoteMessage(k), err)
 		}
 		result[k] = obj
 	}

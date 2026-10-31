@@ -3,6 +3,7 @@ package object
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -780,7 +781,48 @@ func TestTypeRegistryTimeFromString(t *testing.T) {
 	t.Run("ToGo invalid time string", func(t *testing.T) {
 		_, err := registry.ToGo(context.Background(), NewString("not a time"), reflect.TypeOf(time.Time{}))
 		assert.NotNil(t, err)
+		// A short input keeps the message of time.Parse
+		_, parseErr := time.Parse(time.RFC3339, "not a time")
+		assert.Equal(t, err.Error(), parseErr.Error())
 	})
+
+	t.Run("ToGo long invalid time string quotes a prefix", func(t *testing.T) {
+		// time.ParseError quotes the whole input, and its tail again (#595)
+		long := strings.Repeat("\x00", 100_000)
+		_, err := registry.ToGo(context.Background(), NewString(long), reflect.TypeOf(time.Time{}))
+		assert.Equal(t, err.Error(), fmt.Sprintf("parsing time %s as %q: invalid time",
+			QuoteMessage(long), time.RFC3339))
+		var parseErr *time.ParseError
+		assert.True(t, errors.As(err, &parseErr))
+
+		// The same bound holds inside a map
+		m := NewMap(map[string]Object{"a": NewString(long)})
+		_, err = registry.ToGo(context.Background(), m, reflect.TypeOf(map[string]time.Time{}))
+		assert.NotNil(t, err)
+		assert.Less(t, len(err.Error()), 1000)
+	})
+}
+
+// A Go map key is quoted only in part in a conversion error (#595)
+func TestTypeRegistryFromGoLongKey(t *testing.T) {
+	registry := DefaultRegistry()
+	key := strings.Repeat("\x00", 100_000)
+
+	_, err := registry.FromGo(map[string]any{key: make(chan int)})
+	assert.NotNil(t, err)
+	prefix := fmt.Sprintf("failed to convert map value for key %s: ", QuoteMessage(key))
+	assert.True(t, strings.HasPrefix(err.Error(), prefix), err.Error())
+	assert.Less(t, len(err.Error()), 1000)
+
+	// Each level of nesting adds a bounded prefix
+	_, err = registry.FromGo(map[string]any{key: map[string]any{key: make(chan int)}})
+	assert.True(t, strings.HasPrefix(err.Error(), prefix+prefix), err.Error())
+	assert.Less(t, len(err.Error()), 1000)
+
+	_, err = AsObjectsWithRegistry(map[string]any{key: make(chan int)}, registry)
+	assert.True(t, strings.HasPrefix(err.Error(),
+		fmt.Sprintf("failed to convert %s: ", QuoteMessage(key))), err.Error())
+	assert.Less(t, len(err.Error()), 1000)
 }
 
 func TestTypeRegistryInterface(t *testing.T) {
