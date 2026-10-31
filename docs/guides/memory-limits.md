@@ -13,12 +13,16 @@ can limit.** See [Running untrusted scripts](#running-untrusted-scripts).
 | Option | Bounds | Error |
 | --- | --- | --- |
 | `WithMaxSteps(n)` | Instructions executed in one run | `ErrStepLimitExceeded` |
-| `WithTimeout(d)` | Wall-clock time of one run, checked between instructions | `context.DeadlineExceeded` |
+| `WithTimeout(d)` | Wall-clock time of the VM run, checked between instructions | `context.DeadlineExceeded` |
 | `WithMaxStackDepth(n)` | Value stack depth and call depth | `ErrStackOverflow` |
 | `WithLimits(Limits{...})` | Size of the value that one operation produces | `value error` |
 
 A script cannot catch the step limit, a stack overflow, or the timeout. It can
 catch a `value error` with `try`/`catch`.
+
+`WithTimeout` covers only the VM run. `risor.Eval` parses and compiles the
+source before the run starts, and converts the result to Go after it ends.
+Neither is covered.
 
 ### `WithLimits`
 
@@ -26,10 +30,10 @@ catch a `value error` with `try`/`catch`.
 output:
 
 - **On strings and bytes:** `repeat`, `replace_all`, `join`, `+`, `to_upper`,
-  `to_lower`, string templates, and `string()` of a list or map.
-- **On lists:** list literals, `list()`, `keys()`, spread, `+`, `extend`,
-  `append`, `insert`, `range(...).map`, `split`, `fields`, the `regexp` find and
-  split functions, and `rand.bytes`.
+  `to_lower`, string templates, `string()` of a list or map, and `encode`.
+- **On lists:** list literals, `list()`, spread, `+`, `extend`, `append`,
+  `insert`, `range(...).map`, `split`, `fields`, the `regexp` find and split
+  functions, and `rand.bytes`.
 
 The defaults are 64 MiB for a string or bytes value and 4,194,304 list
 elements. A zero or negative field uses the default.
@@ -85,9 +89,11 @@ found and limited by hand. The list is not complete.
 - **Operations that build first and check afterward.** `sprintf` formats its
   whole result and then checks its size. `error()` does not check the size of
   its message. `decode` builds the whole value, then checks only the length of
-  each list, so it does not cap map entries. `encode` checks the size of its
-  output after encoding. Each of these can allocate well past `MaxBytesSize`
-  before it fails, and a script can catch the failure and repeat it.
+  each list, so it does not cap map entries. Each of these can allocate well
+  past `MaxBytesSize` before it fails, and a script can catch the failure and
+  repeat it. `encode` checks the text size of its input before encoding, but
+  checks its output only after, so hex or base64 output can reach about twice
+  `MaxBytesSize` before it fails.
 - **Operations with no cap.** `sorted` and `chunk` have no size check.
 - **Values from the host.** Values passed to `WithEnv` are converted once, when
   the run starts, without limits. `TypeRegistry.FromGo` has no limits.
@@ -100,17 +106,29 @@ found and limited by hand. The list is not complete.
 
 ## Running untrusted scripts
 
-Use a boundary that the operating system enforces. In order of effort:
+Use a boundary that the operating system enforces, with both a memory limit
+and a deadline. A memory limit alone does not stop a script that is stuck in Go
+code, so something outside the script must also end it at a deadline. In order
+of effort:
 
-- **AWS Lambda**, or a similar per-invocation runtime. Each run gets a memory
-  ceiling, a timeout, and a fresh process. If you already run in a cloud, this
-  is usually the least work.
+- **AWS Lambda**, or a similar per-invocation runtime. Each invocation gets a
+  memory ceiling and a timeout. If you already run in a cloud, this is usually
+  the least work. Lambda can reuse an execution environment, and its process,
+  for later invocations. State that your host code keeps, such as globals or
+  caches, can then reach the next script. If scripts must not share state, run
+  each one in a new subprocess inside the function, or keep no state between
+  invocations.
 - **A container with a memory limit:** `--memory` on Docker, or
   `resources.limits.memory` on Kubernetes. The kernel kills the container, not
-  your host.
-- **A subprocess with an rlimit:** set `RLIMIT_AS` or `RLIMIT_DATA` in the
-  child before it runs the script, and pass data in and out as JSON. This works
-  on a single machine and keeps a failure to one child process.
+  your host. Have the process that starts the container stop it at a deadline.
+- **A subprocess with a memory limit,** started with `exec.CommandContext` so
+  that it is killed at a deadline. Pass data in and out as JSON. This works on
+  a single machine and keeps a failure to one child process. For the memory
+  limit, prefer a cgroup limit, such as `systemd-run --scope -p MemoryMax=...`,
+  which counts the memory the process uses. `RLIMIT_AS` and `RLIMIT_DATA` limit
+  address space instead. The Go runtime reserves address space when it starts,
+  so a low value can stop the child before the script runs. If you use an
+  rlimit, test the value with your real binary.
 
 All three fail safely: a script that goes too far ends its own process and
 nothing else. Set `WithMaxSteps`, `WithTimeout`, and tight `WithLimits` inside
@@ -122,8 +140,13 @@ You can also reduce what a script can reach:
 - **Start from an empty environment.** It is the default. `risor.Builtins()` is
   opt-in, so add only the functions your scripts need.
 - **Turn off syntax you don't need** with `WithSyntax`. Risor v2 has no loop
-  statements, so `DisallowFuncDef` removes callbacks and recursion, and with
-  them all iteration. A script then runs top to bottom once.
+  statements, so a script iterates only through callbacks and recursion.
+  `DisallowFuncDef` stops a script from defining functions, so it cannot
+  recurse or write its own callbacks. It can still call functions from the
+  environment and pass them as callbacks, as in `range(1000000).each(string)`.
+  To remove iteration, also keep callback-taking functions out of the
+  environment, or set `DisallowFuncCall`, which blocks every call, including
+  method calls.
 
 These reduce the risk. They do not remove the need for the boundary.
 
