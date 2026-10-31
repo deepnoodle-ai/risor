@@ -86,6 +86,8 @@ type Object interface {
 	Attrs() []AttrSpec
 
 	// GetAttr returns the attribute with the given name from this object.
+	// The VM calls it for a read such as obj.name, unless the object
+	// implements AttrReader.
 	GetAttr(name string) (Object, bool)
 
 	// SetAttr sets the attribute with the given name on this object. The VM
@@ -172,8 +174,44 @@ func CompareTypes(a, b Object) int {
 }
 
 // AttrResolver is an interface used to resolve dynamic attributes on an object.
+// The VM checks for it on the value that an attribute read returns, not on
+// the object read from: when obj.name returns a value that implements
+// AttrResolver, such as a DynamicAttr, the VM calls its ResolveAttr and uses
+// that result. To get the context when a script reads an attribute of the
+// object itself, implement AttrReader.
 type AttrResolver interface {
 	ResolveAttr(ctx context.Context, name string) (Object, error)
+}
+
+// AttrReader is an optional interface for an object that wants the VM's
+// context when a script reads one of its attributes, as in obj.name. The
+// context carries the limits set with risor.WithLimits, and is canceled when
+// the script is canceled.
+//
+// When an object implements AttrReader, the VM calls ReadAttr for an
+// attribute read and does not call GetAttr. So ReadAttr must enforce the same
+// rules as the type's GetAttr. For example, if GetAttr hides a field,
+// ReadAttr must hide it too. ReadAttr returns false and no error if the
+// object has no such attribute. An error, such as a value error from a
+// conversion over the limits, is raised in the script, also for an optional
+// read such as obj?.name.
+//
+// *GoStruct does not implement AttrReader, on purpose. A host type that
+// embeds *GoStruct gets the context only if it defines ReadAttr itself. An
+// embedder that defines only GetAttr keeps it: the VM calls that GetAttr,
+// which uses the default limits. To apply the limits, the embedder defines
+// ReadAttr and delegates to GoStruct.GetAttrContext:
+//
+//	func (b *Box) ReadAttr(ctx context.Context, name string) (object.Object, bool, error) {
+//		if name == "Secret" {
+//			return nil, false, nil
+//		}
+//		return b.GoStruct.GetAttrContext(ctx, name)
+//	}
+//
+// Code that calls GetAttr directly, outside the VM, does not call ReadAttr.
+type AttrReader interface {
+	ReadAttr(ctx context.Context, name string) (Object, bool, error)
 }
 
 // AttrAssigner is an optional interface for an object that wants the VM's

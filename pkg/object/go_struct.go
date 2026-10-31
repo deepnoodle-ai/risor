@@ -212,17 +212,46 @@ func (g *GoStruct) Attrs() []AttrSpec {
 	return specs
 }
 
+// GetAttr returns a field or method, converting a field with the default
+// limits. It returns false if the struct has no such field or method, or if
+// the field fails to convert. The VM calls GetAttrContext instead when the
+// object is a *GoStruct.
 func (g *GoStruct) GetAttr(name string) (Object, bool) {
+	obj, found, err := g.GetAttrContext(context.Background(), name)
+	if err != nil {
+		return nil, false
+	}
+	return obj, found
+}
+
+// GetAttrContext returns a field or method, converting a field with the
+// limits in ctx. It returns false and no error if the struct has no such
+// field or method. It returns an error if the field fails to convert, for
+// example because the field's value has more elements in total than the list
+// length limit in ctx, counting every slice, array, and map element. The
+// limit is checked before the elements are converted.
+//
+// Each call converts the field again: a slice or map field becomes a new list
+// or map, which does not share memory with the field. So a script that reads
+// a large field in a loop pays for a conversion on every read.
+//
+// The VM calls this method when the object's concrete type is exactly
+// *GoStruct. A type that embeds *GoStruct is a different type, so the VM does
+// not call this method for it. The VM calls the embedder's ReadAttr if the
+// embedder defines one (see AttrReader), and GetAttr if not. GetAttr uses the
+// default limits. An embedder's ReadAttr can delegate to this method to apply
+// the limits in ctx.
+func (g *GoStruct) GetAttrContext(ctx context.Context, name string) (Object, bool, error) {
 	meta := getStructMeta(g.structType)
 
 	// Check for field first
 	if idx, ok := meta.fields[name]; ok {
 		fieldVal := g.value.Elem().Field(idx)
-		obj, err := g.registry.fromGoField(fieldVal)
+		obj, err := g.registry.fromGoField(fieldVal, newConvBudget(ctx))
 		if err != nil {
-			return nil, false
+			return nil, false, fmt.Errorf("cannot read field %q: %w", name, err)
 		}
-		return obj, true
+		return obj, true, nil
 	}
 
 	// Check for method
@@ -231,10 +260,10 @@ func (g *GoStruct) GetAttr(name string) (Object, bool) {
 		methodName := fmt.Sprintf("%s.%s", g.structType.Name(), name)
 		fn := NewGoFunc(method, methodName, g.registry)
 		fn.recv, fn.method = g.value, idx
-		return fn, true
+		return fn, true, nil
 	}
 
-	return nil, false
+	return nil, false, nil
 }
 
 // SetAttr sets a field with the default limits. The VM calls SetAttrContext
@@ -295,9 +324,12 @@ func (g *GoStruct) StructType() reflect.Type {
 }
 
 // CallMethod calls a method on the struct by name with the given arguments.
-// This is a convenience method that combines GetAttr and Call.
+// This is a convenience method that combines GetAttrContext and Call.
 func (g *GoStruct) CallMethod(ctx context.Context, name string, args ...Object) (Object, error) {
-	attr, ok := g.GetAttr(name)
+	attr, ok, err := g.GetAttrContext(ctx, name)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, fmt.Errorf("go_struct %s has no method %q", g.structType.Name(), name)
 	}

@@ -145,7 +145,7 @@ func (g *GoFunc) Call(ctx context.Context, args ...Object) (result Object, err e
 		results = g.fn.Call(callArgs)
 	}
 
-	return g.processResults(results)
+	return g.processResults(ctx, results)
 }
 
 func (g *GoFunc) validateArgCount(numArgs int) error {
@@ -220,7 +220,10 @@ func (g *GoFunc) buildCallArgs(ctx context.Context, args []Object) ([]reflect.Va
 	return callArgs, nil
 }
 
-func (g *GoFunc) processResults(results []reflect.Value) (Object, error) {
+// processResults converts the function's results to Risor values with the
+// limits in ctx. All results share one element budget, as the arguments do in
+// buildCallArgs.
+func (g *GoFunc) processResults(ctx context.Context, results []reflect.Value) (Object, error) {
 	numOut := len(results)
 	if numOut == 0 {
 		return Nil, nil
@@ -243,15 +246,17 @@ func (g *GoFunc) processResults(results []reflect.Value) (Object, error) {
 		return Nil, nil
 	}
 
+	budget := newConvBudget(ctx)
+
 	// Single return value
 	if numOut == 1 {
-		return g.registry.FromGo(results[0].Interface())
+		return g.registry.fromGoPath(results[0].Interface(), nil, budget)
 	}
 
 	// Multiple return values -> List
 	items := make([]Object, numOut)
 	for i, rv := range results {
-		obj, err := g.registry.FromGo(rv.Interface())
+		obj, err := g.registry.fromGoPath(rv.Interface(), nil, budget)
 		if err != nil {
 			return nil, fmt.Errorf("%s: return value %d: %w", g.name, i+1, err)
 		}

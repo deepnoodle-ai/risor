@@ -679,7 +679,13 @@ evalLoop:
 		case op.LoadAttr:
 			obj := vm.pop()
 			name := vm.activeCode.Names[vm.fetch()]
-			value, found := obj.GetAttr(name)
+			value, found, err := getAttr(ctx, obj, name)
+			if err != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
+			}
 			if !found {
 				if herr := vm.tryHandleError(vm.typeError("attribute %q not found on %s object",
 					name, obj.Type())); herr != nil {
@@ -701,10 +707,18 @@ evalLoop:
 				vm.push(value)
 			}
 		case op.LoadAttrOrNil:
-			// Like LoadAttr but returns nil instead of error for missing attributes
+			// Like LoadAttr but returns nil instead of error for missing
+			// attributes. An attribute that exists but fails to read, such
+			// as a Go struct field over the conversion limits, is an error.
 			obj := vm.pop()
 			name := vm.activeCode.Names[vm.fetch()]
-			value, found := obj.GetAttr(name)
+			value, found, err := getAttr(ctx, obj, name)
+			if err != nil {
+				if herr := vm.tryHandleError(err); herr != nil {
+					return herr
+				}
+				continue
+			}
 			if !found {
 				vm.push(object.Nil)
 			} else {
@@ -1391,6 +1405,22 @@ evalLoop:
 		}
 	}
 	return nil
+}
+
+// getAttr reads the attribute name of obj for obj.name. *GoStruct gets the
+// ctx directly. Any other type gets it only if it implements AttrReader.
+// *GoStruct does not define ReadAttr, so a type that embeds it cannot get
+// ReadAttr by promotion, and a GetAttr override on that type still runs.
+func getAttr(ctx context.Context, obj object.Object, name string) (object.Object, bool, error) {
+	switch o := obj.(type) {
+	case *object.GoStruct:
+		return o.GetAttrContext(ctx, name)
+	case object.AttrReader:
+		return o.ReadAttr(ctx, name)
+	default:
+		value, found := obj.GetAttr(name)
+		return value, found, nil
+	}
 }
 
 // GetIP returns the current instruction pointer.

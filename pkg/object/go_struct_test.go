@@ -356,6 +356,83 @@ func TestGoStruct_SetAttrContextLimits(t *testing.T) {
 	assert.Equal(t, len(b.Items), 11)
 }
 
+func TestGoStruct_GetAttrContextLimits(t *testing.T) {
+	type box struct {
+		Items []int64
+		Grid  [][]int64
+		Index map[string]int64
+		Fixed [11]int64
+		Name  string
+	}
+	row := []int64{1, 2, 3, 4}
+	b := &box{
+		Items: make([]int64, 11),
+		// 2 rows and 8 items: 10 elements. The row is counted each time it
+		// is referenced.
+		Grid:  [][]int64{row, row},
+		Index: map[string]int64{"a": 1, "b": 2},
+		Name:  "box",
+	}
+	gs := NewGoStruct(reflect.ValueOf(b), DefaultRegistry())
+	ctx := WithLimits(context.Background(), Limits{MaxListLength: 10})
+
+	// A slice, array, or map over the limit fails before it is converted
+	for _, name := range []string{"Items", "Fixed"} {
+		_, found, err := gs.GetAttrContext(ctx, name)
+		assertValueError(t, err, "value too large to convert (exceeds limit of 10 elements)")
+		assert.ErrorContains(t, err, fmt.Sprintf("cannot read field %q", name))
+		assert.False(t, found)
+	}
+
+	// Values at the limit convert
+	obj, found, err := gs.GetAttrContext(ctx, "Grid")
+	assert.Nil(t, err)
+	assert.True(t, found)
+	assert.Equal(t, obj.(*List).Len().Value(), int64(2))
+
+	b.Grid = append(b.Grid, []int64{5})
+	_, _, err = gs.GetAttrContext(ctx, "Grid")
+	assertValueError(t, err, "value too large to convert")
+
+	tight := WithLimits(context.Background(), Limits{MaxListLength: 1})
+	_, _, err = gs.GetAttrContext(tight, "Index")
+	assertValueError(t, err, "value too large to convert")
+	obj, _, err = gs.GetAttrContext(ctx, "Index")
+	assert.Nil(t, err)
+	assert.Equal(t, obj.(*Map).Size(), 2)
+
+	// Scalars and methods are not counted
+	obj, found, err = gs.GetAttrContext(tight, "Name")
+	assert.Nil(t, err)
+	assert.True(t, found)
+	assert.Equal(t, obj, Object(NewString("box")))
+
+	// A missing attribute is not an error
+	obj, found, err = gs.GetAttrContext(ctx, "Missing")
+	assert.Nil(t, err)
+	assert.False(t, found)
+	assert.Nil(t, obj)
+
+	// GetAttr uses the default limits
+	obj, found = gs.GetAttr("Items")
+	assert.True(t, found)
+	assert.Equal(t, obj.(*List).Len().Value(), int64(11))
+}
+
+// GetAttr has no context, so it uses the default limits. A field over them
+// reads as missing, as a field that fails to convert always has.
+func TestGoStruct_GetAttrDefaultLimits(t *testing.T) {
+	// A slice of empty structs takes no memory, however long it is
+	type box struct{ Items []struct{} }
+	b := &box{Items: make([]struct{}, DefaultMaxListLength+1)}
+	gs := NewGoStruct(reflect.ValueOf(b), DefaultRegistry())
+
+	_, found := gs.GetAttr("Items")
+	assert.False(t, found)
+	_, _, err := gs.GetAttrContext(context.Background(), "Items")
+	assertValueError(t, err, "value too large to convert")
+}
+
 func TestGoStruct_SetAllFieldTypes(t *testing.T) {
 	registry := DefaultRegistry()
 

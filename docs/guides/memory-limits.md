@@ -45,6 +45,20 @@ The script result is converted after the script ends, so the script cannot
 catch that error. It comes back to the Go caller as a `*errors.StructuredError`
 of kind `value error`, with no source location.
 
+`MaxListLength` caps conversions of Go values to Risor in the same way: a
+field of a Go struct that a script reads, with `obj.field` or `getattr`, and
+the results of a Go function or method that a script calls. The count is the
+same, every slice, array, and map element, and it is checked before the
+elements are converted. All results of one call share the cap. The field case
+applies to a value whose type is exactly `*object.GoStruct`, and to a host
+type that implements `object.AttrReader`. A host type that embeds
+`*object.GoStruct` gets the limits only if it defines its own `ReadAttr`,
+which can delegate to `GoStruct.GetAttrContext`. Without `ReadAttr`, the VM
+calls its `GetAttr`, which uses the default limits. Each read converts the
+field again, so `range(100).each(_ => obj.items)` converts `items` 100 times.
+The values passed to `WithEnv` are converted once, when the script starts,
+without the limits, and `TypeRegistry.FromGo` has no limits.
+
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.
 
