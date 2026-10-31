@@ -255,6 +255,11 @@ func (s *String) Reversed() *String {
 	return NewString(string(runes))
 }
 
+// GetItem returns the rune at the given index as a string. The index counts
+// runes, and a negative index counts from the end. An invalid UTF-8 byte
+// counts as one rune and is returned as U+FFFD. The cost is proportional to
+// the runes before a non-negative index, or after a negative one, and not
+// to the length of the string.
 func (s *String) GetItem(key Object) (Object, *Error) {
 	indexObj, ok := key.(*Int)
 	if !ok {
@@ -270,6 +275,11 @@ func (s *String) GetItem(key Object) (Object, *Error) {
 	return nil, NewError(err)
 }
 
+// GetSlice returns the runes from start up to, but not including, stop. The
+// bounds count runes, and a negative bound counts from the end. Invalid
+// UTF-8 bytes count as one rune each and are returned as U+FFFD. A valid
+// UTF-8 result shares the bytes of s. Like GetItem, the cost depends on
+// where the bounds are, not on the length of the string.
 func (s *String) GetSlice(slice Slice) (Object, *Error) {
 	v := s.value
 	start, startOK := sliceBound(slice.Start)
