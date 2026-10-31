@@ -406,7 +406,7 @@ func (m *Map) GetItem(key Object) (Object, *Error) {
 	}
 	value, found := m.items[strObj.value]
 	if !found {
-		return nil, Errorf("key error: %q", strObj.Value())
+		return nil, Errorf("key error: %s", QuoteMessage(strObj.value))
 	}
 	return value, nil
 }

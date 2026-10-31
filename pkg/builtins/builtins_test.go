@@ -2,6 +2,8 @@ package builtins
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
@@ -741,6 +743,31 @@ func TestFloatErrors(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+// A string that does not parse is named in the message. A short one is
+// quoted in full; a long one only in part, because %q can print a byte as 4
+// characters (#595).
+func TestParseErrorMessages(t *testing.T) {
+	ctx := context.Background()
+	fns := []struct {
+		name string
+		fn   func(context.Context, ...object.Object) (object.Object, error)
+	}{
+		{"int", Int},
+		{"float", Float},
+		{"byte", Byte},
+	}
+	long := strings.Repeat("\x00", 1_000_000)
+	for _, tc := range fns {
+		_, err := tc.fn(ctx, object.NewString("invalid"))
+		assert.Equal(t, err.Error(),
+			fmt.Sprintf(`value error: invalid literal for %s(): "invalid"`, tc.name))
+
+		_, err = tc.fn(ctx, object.NewString(long))
+		assert.Equal(t, err.Error(),
+			fmt.Sprintf("value error: invalid literal for %s(): %s", tc.name, object.QuoteMessage(long)))
+	}
+}
+
 func TestGetAttr(t *testing.T) {
 	ctx := context.Background()
 
@@ -767,7 +794,13 @@ func TestGetAttrErrors(t *testing.T) {
 
 	// Missing attribute without default
 	_, err = GetAttr(ctx, object.NewInt(42), object.NewString("missing"))
-	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), `type error: getattr() int object has no attribute "missing"`)
+
+	// A long missing name is quoted only in part (#595)
+	long := strings.Repeat("\x00", 1_000_000)
+	_, err = GetAttr(ctx, object.NewInt(42), object.NewString(long))
+	assert.Equal(t, err.Error(),
+		"type error: getattr() int object has no attribute "+object.QuoteMessage(long))
 }
 
 func TestFilter(t *testing.T) {

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/op"
 )
@@ -257,6 +259,48 @@ func InspectMessage(obj Object) string {
 	}
 	return inspectNested(obj, nil)
 }
+
+// quoteMessageMaxSize is the number of bytes of a string that QuoteMessage
+// quotes. Errorf bounds an Object argument by errorfMaxTextSize, which is
+// large enough to print a whole value. A message that names an input, such
+// as a string that did not parse, needs only enough of it to identify it.
+const quoteMessageMaxSize = 64
+
+// QuoteMessage returns s quoted as %q quotes it, for an error message that
+// names an input value, such as a string that did not parse as an int. If s
+// is longer than quoteMessageMaxSize bytes, it quotes only a prefix of s and
+// appends "..." after the closing quote. The prefix ends on a UTF-8 boundary
+// when s is valid UTF-8 there. %q can print a byte as four characters, so
+// quoting the whole of a large input would make a message about four times
+// the size of the input.
+func QuoteMessage(s string) string {
+	if len(s) <= quoteMessageMaxSize {
+		return strconv.Quote(s)
+	}
+	n := quoteMessageMaxSize
+	// Back up to the start of the rune that the cut splits. If no rune
+	// starts in the last utf8.UTFMax-1 bytes, s is not valid UTF-8 there and
+	// %q escapes those bytes one at a time, so cut at the limit.
+	for i := n; i > n-utf8.UTFMax; i-- {
+		if utf8.RuneStart(s[i]) {
+			n = i
+			break
+		}
+	}
+	return strconv.Quote(s[:n]) + "..."
+}
+
+// boundedError replaces the message of err, which can quote a whole input,
+// with a message that quotes the input with QuoteMessage. It unwraps to err,
+// so errors.Is and errors.As still find err.
+type boundedError struct {
+	msg string
+	err error
+}
+
+func (e *boundedError) Error() string { return e.msg }
+
+func (e *boundedError) Unwrap() error { return e.err }
 
 func (e *Error) MarshalJSON() ([]byte, error) {
 	return nil, TypeErrorf("unable to marshal error")

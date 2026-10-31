@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -158,4 +159,44 @@ func TestErrorfSharedReferencesBounded(t *testing.T) {
 	small := NewList([]Object{NewInt(1)})
 	pair := NewList([]Object{small, small})
 	assert.Equal(t, Errorf("bad %v", pair).Error(), "bad [[1], [1]]")
+}
+
+// QuoteMessage quotes a short string as %q does, and only a prefix of a long
+// one, so a message that names a large input stays small (#595).
+func TestQuoteMessage(t *testing.T) {
+	assert.Equal(t, QuoteMessage(""), `""`)
+	assert.Equal(t, QuoteMessage("abc"), `"abc"`)
+	assert.Equal(t, QuoteMessage("a\x00\n"), fmt.Sprintf("%q", "a\x00\n"))
+
+	// At the bound the whole string is quoted
+	atBound := strings.Repeat("a", quoteMessageMaxSize)
+	assert.Equal(t, QuoteMessage(atBound), fmt.Sprintf("%q", atBound))
+
+	// Over the bound only the first quoteMessageMaxSize bytes are quoted
+	over := atBound + "b"
+	assert.Equal(t, QuoteMessage(over), fmt.Sprintf("%q...", atBound))
+
+	// %q prints a NUL byte as 4 characters, so quoting the whole input
+	// would make a message 4 times its size
+	nul := strings.Repeat("\x00", 1_000_000)
+	assert.Equal(t, QuoteMessage(nul),
+		fmt.Sprintf("%q...", strings.Repeat("\x00", quoteMessageMaxSize)))
+
+	// The cut never splits a rune: "é" is 2 bytes, so after a 1-byte "a"
+	// each one starts at an odd offset, and the cut backs up from byte 64
+	// to byte 63
+	accents := "a" + strings.Repeat("é", quoteMessageMaxSize)
+	assert.Equal(t, QuoteMessage(accents),
+		fmt.Sprintf("%q...", "a"+strings.Repeat("é", (quoteMessageMaxSize-1)/2)))
+
+	// A 4-byte rune that straddles the bound is left out whole
+	emoji := strings.Repeat("a", quoteMessageMaxSize-2) + "😀z"
+	assert.Equal(t, QuoteMessage(emoji),
+		fmt.Sprintf("%q...", strings.Repeat("a", quoteMessageMaxSize-2)))
+
+	// Invalid UTF-8 has no rune start to back up to, so the cut is at the
+	// bound and %q escapes each byte
+	invalid := strings.Repeat("\x80", quoteMessageMaxSize+10)
+	assert.Equal(t, QuoteMessage(invalid),
+		fmt.Sprintf("%q...", strings.Repeat("\x80", quoteMessageMaxSize)))
 }
