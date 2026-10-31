@@ -26,7 +26,10 @@ func TestWithLimitsBuildOperations(t *testing.T) {
 		`let l = [1, 2, 3]; l.insert(0, 4)`,
 		`decode("[1, 2, 3, 4]", "json")`,
 		`decode("{\"a\": [1, 2, 3, 4]}", "json")`,
+		`decode("{\"a\": [1, 2, 3]}", "json")`,
+		`decode("{\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4}", "json")`,
 		`decode("a\nb\nc\nd", "csv")`,
+		`decode("a,b,c", "csv")`,
 		`decode("a,b,c,d", "csv")`,
 	} {
 		_, err := Eval(ctx, src, env, limits)
@@ -58,7 +61,8 @@ func TestWithLimitsBuildOperations(t *testing.T) {
 		`let l = [1, 2]; l.append(3)`,
 		`let l = [1, 2]; l.insert(0, 3)`,
 		`decode("[1, 2, 3]", "json")`,
-		`len(decode("a,b,c", "csv")[0])`,
+		`decode("{\"a\": [1, 2]}", "json")`,
+		`len(decode("a,b", "csv")[0])`,
 	} {
 		_, err := Eval(ctx, src, env, limits)
 		assert.Nil(t, err, src)

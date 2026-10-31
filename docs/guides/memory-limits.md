@@ -59,6 +59,14 @@ field again, so `range(100).each(_ => obj.items)` converts `items` 100 times.
 The values passed to `WithEnv` are converted once, when the script starts,
 without the limits, and `TypeRegistry.FromGo` has no limits.
 
+`decode` counts its result the same way: one decoded value may hold at most
+`MaxListLength` elements in total, counting every list element and map entry
+at any depth. A CSV record costs one element plus one for each field. The
+`json` and `csv` codecs count as they build the value, so a decode over the
+cap stops when it reaches the cap. A codec you register with
+`builtins.RegisterCodec` has its result counted after it returns. Exceeding
+the cap raises a value error whose message contains "decoded value too large".
+
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.
 
@@ -584,10 +592,9 @@ lists into the environment.
 `+`, `to_upper`, `to_lower`, `string()`, and string templates have their
 output size checked before the work happens. `encode` checks the text size of
 its input first, but it checks its output only after encoding, and base64 or
-hex output is larger than that text. `decode` builds the whole value and then
-checks its lists, so its peak is a constant factor above its input, which
-`MaxBytesSize` already caps. Any method whose output size isn't a cheap
-function of its inputs allocates first and charges second. In practice its
+hex output is larger than that text. `decode` counts its elements as it builds
+them. Any method whose output size isn't a cheap function of its inputs
+allocates first and charges second. In practice its
 inputs are already inside the budget, so this costs you a constant factor
 rather than leaving an unbounded hole, but it does mean the peak is higher than
 the number you set.
