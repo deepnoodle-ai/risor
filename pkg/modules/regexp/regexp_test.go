@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
@@ -732,4 +733,16 @@ func TestModule(t *testing.T) {
 		_, ok := m.GetAttr(name)
 		assert.True(t, ok, "missing function: %s", name)
 	}
+}
+
+// The size count of a regexp is the length of its Inspect text, so a list
+// that repeats one long pattern is bounded (#583).
+func TestRegexpFormatSize(t *testing.T) {
+	r := NewRegexp(regexp.MustCompile(strings.Repeat("a", 1000) + `"\d`))
+	n := len(r.Inspect())
+	wrapped := object.NewList([]object.Object{r})
+	exact := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: int64(n + 2)})
+	assert.Nil(t, object.CheckFormatSize(exact, "x", wrapped))
+	short := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: int64(n + 1)})
+	assert.NotNil(t, object.CheckFormatSize(short, "x", wrapped))
 }

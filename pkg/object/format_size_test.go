@@ -12,7 +12,7 @@ import (
 
 func TestCheckFormatSize(t *testing.T) {
 	ctx := WithLimits(context.Background(), Limits{MaxBytesSize: 1024})
-	s := NewString(string(make([]byte, 600)))
+	s := NewString(strings.Repeat("a", 600))
 
 	// Shared references count each time they are referenced
 	assert.NotNil(t, CheckFormatSize(ctx, "string", NewList([]Object{s, s})))
@@ -45,26 +45,27 @@ func TestCheckFormatSize(t *testing.T) {
 	assert.Nil(t, CheckFormatSize(ctx, "string", NewCell(&value)))
 	assert.Nil(t, CheckFormatSize(ctx, "string", NewCell(nil)))
 
-	// A cell that holds itself counts once, directly or through a list
+	// A cell that holds itself counts its placeholder, directly or through a
+	// list: cell(cell(...)) and [cell([...])]
 	var self Object
 	selfCell := NewCell(&self)
 	self = selfCell
-	assert.Equal(t, formatSize(selfCell, nil, 1024), uint64(2))
+	assert.Equal(t, formatSize(selfCell, nil, 1024), uint64(15))
 	assert.Nil(t, CheckFormatSize(ctx, "string", selfCell))
 
 	var held Object
 	holder := NewList([]Object{NewCell(&held)})
 	held = holder
-	assert.Equal(t, formatSize(holder, nil, 1024), uint64(4))
+	assert.Equal(t, formatSize(holder, nil, 1024), uint64(13))
 	assert.Nil(t, CheckFormatSize(ctx, "string", holder))
 
 	// The walk stops even when the limit is used up
-	assert.Equal(t, formatSize(selfCell, nil, 0), uint64(2))
-	assert.Equal(t, formatSize(holder, nil, 0), uint64(4))
+	assert.Equal(t, formatSize(selfCell, nil, 0), uint64(15))
+	assert.Equal(t, formatSize(holder, nil, 0), uint64(13))
 
-	// An error counts its message, as Inspect prints it
+	// An error counts its message, as Inspect prints it: error("...")
 	e := NewError(errors.New(strings.Repeat("a", 600)))
-	assert.Equal(t, formatSize(e, nil, 1024), uint64(600))
+	assert.Equal(t, formatSize(e, nil, 1024), uint64(609))
 	assert.NotNil(t, CheckFormatSize(ctx, "string", NewList([]Object{e, e})))
 	assert.Nil(t, CheckFormatSize(ctx, "string", NewList([]Object{e})))
 }
@@ -109,7 +110,7 @@ func TestInspectSharedPartial(t *testing.T) {
 
 	// A small partial counts its function and its argument
 	small := NewPartial(NewPartial(NewInt(1), []Object{NewInt(2)}), []Object{NewInt(3)})
-	assert.Equal(t, formatSize(small, nil, 100), uint64(5))
+	assert.Equal(t, formatSize(small, nil, 100), uint64(len("partial(partial(1, 2), 3)")))
 	assert.Equal(t, NewList([]Object{small}).Inspect(), "[partial(partial(1, 2), 3)]")
 }
 
@@ -189,8 +190,9 @@ func TestInspectSharedReferencesBounded(t *testing.T) {
 }
 
 func TestInspectBound(t *testing.T) {
-	// A list counts 2 for its brackets, and a string counts its length
-	s := NewString(strings.Repeat("a", inspectMaxSize-2))
+	// A list counts 2 for its brackets, and a string counts its length and 2
+	// quotes
+	s := NewString(strings.Repeat("a", inspectMaxSize-4))
 	assert.Equal(t, formatSize(NewList([]Object{s}), nil, inspectMaxSize), uint64(inspectMaxSize))
 	assert.Equal(t, NewList([]Object{s, NewInt(1)}).Inspect(), "[...]")
 
@@ -249,8 +251,9 @@ func TestInspectMessage(t *testing.T) {
 	assert.Equal(t, InspectMessage(shared), "[...]")
 	assert.Equal(t, InspectMessage(NewMap(map[string]Object{"a": shared})), "{...}")
 
-	// A list counts 2 for its brackets, and a string counts its length
-	s := NewString(strings.Repeat("a", errorfMaxTextSize-2))
+	// A list counts 2 for its brackets, and a string counts its length and 2
+	// quotes
+	s := NewString(strings.Repeat("a", errorfMaxTextSize-4))
 	atBound := NewList([]Object{s})
 	assert.Equal(t, InspectMessage(atBound), atBound.Inspect())
 	assert.Equal(t, InspectMessage(NewList([]Object{s, NewInt(1)})), "[...]")

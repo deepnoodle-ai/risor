@@ -435,3 +435,14 @@ function test_gamma(t) {
 	assert.Equal(t, summary.TotalTests(), 2)
 	assert.Equal(t, summary.Passed, 2)
 }
+
+// The size count of a test context is the length of its Inspect text (#583).
+func TestTestContextFormatSize(t *stdt.T) {
+	tc := NewTestContext("a long test name "+string(make([]byte, 100)), "file.risor")
+	n := len(tc.Inspect())
+	wrapped := object.NewList([]object.Object{tc})
+	exact := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: int64(n + 2)})
+	assert.Nil(t, object.CheckFormatSize(exact, "x", wrapped))
+	short := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: int64(n + 1)})
+	assert.NotNil(t, object.CheckFormatSize(short, "x", wrapped))
+}

@@ -213,12 +213,11 @@ func (e *Error) RunOperation(opType op.BinaryOpType, right Object) (Object, erro
 }
 
 // errorfMaxTextSize bounds the text of each Object argument to Errorf. It is
-// compared with formatSize, which counts a lower bound of the size of the
-// text, as CheckFormatSize does: a string or bytes value counts its length,
-// and every other value, such as an int, float, or bool, counts one. So the
-// real text can be several times larger than this bound. It matches
-// DefaultMaxListLength, the element budget that bounded these arguments when
-// Errorf converted them with Interface.
+// compared with formatSize, which counts the length of the text that Inspect
+// prints, as CheckFormatSize does. Errorf prints a string without quotes, so
+// its text is never longer than the count. It matches DefaultMaxListLength,
+// the element budget that bounded these arguments when Errorf converted them
+// with Interface.
 const errorfMaxTextSize = DefaultMaxListLength
 
 // Errorf returns an Error with a message formatted as fmt.Errorf does. An

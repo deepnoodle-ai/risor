@@ -514,3 +514,23 @@ func TestSharedErrorBounded(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, result, int64(1<<20))
 }
+
+// A closure prints its whole source, so a list that repeats one closure is
+// counted by its source (#583).
+func TestSharedClosureBounded(t *testing.T) {
+	body := strings.Repeat("x = x + 1\n", 100) // about 1 KB of source
+	build := "let f = function() {\nlet x = 0\n" + body + "}\n" +
+		"let a = list(range(22)).reduce([f], (acc, i) => [acc, acc])\n"
+
+	// 2^22 copies of the source is over the 64 MiB limit
+	for _, expr := range []string{"string(a)", "`${a}`"} {
+		_, err := Eval(context.Background(), build+expr, WithEnv(Builtins()))
+		assert.NotNil(t, err, expr)
+		assert.True(t, strings.Contains(err.Error(), "too large"), err.Error())
+	}
+
+	result, err := Eval(context.Background(),
+		build+"try { throw a } catch e { e.message() }", WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, "[...]")
+}
