@@ -3,6 +3,8 @@ package object
 import (
 	"context"
 	"fmt"
+	"math"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -190,5 +192,186 @@ func TestStringIndexInvalidUTF8(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, item.(*String).Value(), string([]rune(tc.substr)[0]))
 		}
+	}
+}
+
+// runeGetItem and runeGetSlice are the original implementations of
+// String.GetItem and GetSlice, which convert the whole string to []rune.
+// The current implementations must give the same results and errors.
+func runeGetItem(s string, key Object) (string, string) {
+	indexObj, ok := key.(*Int)
+	if !ok {
+		return "", TypeErrorf("string index must be an int (got %s)", key.Type()).Message().value
+	}
+	runes := []rune(s)
+	index, err := ResolveIndex(indexObj.value, int64(len(runes)))
+	if err != nil {
+		return "", NewError(err).Message().value
+	}
+	return string(runes[index]), ""
+}
+
+func runeGetSlice(s string, slice Slice) (string, string) {
+	runes := []rune(s)
+	start, stop, err := ResolveIntSlice(slice, int64(len(runes)))
+	if err != nil {
+		return "", NewError(err).Message().value
+	}
+	return string(runes[start:stop]), ""
+}
+
+func stringResult(obj Object, err *Error) (string, string) {
+	if err != nil {
+		return "", err.Message().value
+	}
+	return obj.(*String).Value(), ""
+}
+
+// stringIndexSamples returns ASCII, multi-byte, and invalid UTF-8 strings.
+func stringIndexSamples() []string {
+	samples := []string{
+		"",
+		"a",
+		"hello",
+		"héllo",
+		"日本語テキスト",
+		"a😀b🎉c",
+		"\xff",
+		"a\xffb",
+		"\xc3",             // truncated 2-byte rune
+		"\xe2\x82",         // truncated 3-byte rune
+		"x\xf0\x9f\x80",    // truncated 4-byte rune
+		"\xed\xa0\x80z",    // UTF-16 surrogate, invalid in UTF-8
+		"\xc0\xafq",        // overlong encoding
+		"\xef\xbf\xbd\xff", // a real U+FFFD next to an invalid byte
+		"é\x80\x80日",
+	}
+	// Every string of up to 4 bytes from an alphabet that forms valid 2-, 3-,
+	// and 4-byte runes and invalid sequences.
+	alphabet := []byte{'a', 0xc3, 0xa9, 0xe2, 0xf0, 0x9f, 0x80, 0xff}
+	var build func(prefix []byte, depth int)
+	build = func(prefix []byte, depth int) {
+		samples = append(samples, string(prefix))
+		if depth == 0 {
+			return
+		}
+		for _, b := range alphabet {
+			build(append(append([]byte{}, prefix...), b), depth-1)
+		}
+	}
+	build(nil, 4)
+	return samples
+}
+
+// stringIndexes returns every index in range for s, a few out of range on
+// each side, and the extreme int64 values.
+func stringIndexes(s string) []int64 {
+	n := int64(utf8.RuneCountInString(s))
+	indexes := []int64{math.MinInt64, math.MinInt64 + 1, math.MaxInt64}
+	for i := -n - 2; i <= n+2; i++ {
+		indexes = append(indexes, i)
+	}
+	return indexes
+}
+
+func TestStringGetItemMatchesRunes(t *testing.T) {
+	for _, s := range stringIndexSamples() {
+		for _, i := range stringIndexes(s) {
+			want, wantErr := runeGetItem(s, NewInt(i))
+			got, gotErr := stringResult(NewString(s).GetItem(NewInt(i)))
+			assert.Equal(t, gotErr, wantErr, "%q[%d]", s, i)
+			assert.Equal(t, got, want, "%q[%d]", s, i)
+		}
+	}
+	want, wantErr := runeGetItem("abc", NewFloat(1))
+	got, gotErr := stringResult(NewString("abc").GetItem(NewFloat(1)))
+	assert.Equal(t, gotErr, wantErr)
+	assert.Equal(t, got, want)
+	assert.Equal(t, gotErr, "string index must be an int (got float)")
+}
+
+func TestStringGetSliceMatchesRunes(t *testing.T) {
+	for _, s := range stringIndexSamples() {
+		bounds := []Object{nil}
+		for _, i := range stringIndexes(s) {
+			bounds = append(bounds, NewInt(i))
+		}
+		for _, start := range bounds {
+			for _, stop := range bounds {
+				slice := Slice{Start: start, Stop: stop}
+				want, wantErr := runeGetSlice(s, slice)
+				got, gotErr := stringResult(NewString(s).GetSlice(slice))
+				assert.Equal(t, gotErr, wantErr, "%q[%v:%v]", s, start, stop)
+				assert.Equal(t, got, want, "%q[%v:%v]", s, start, stop)
+			}
+		}
+	}
+	for _, slice := range []Slice{
+		{Start: NewFloat(1)},
+		{Stop: NewString("x")},
+		{Start: NewFloat(1), Stop: NewInt(-1)},
+		{Start: NewInt(-1), Stop: NewFloat(1)},
+		{Start: NewInt(1), Stop: NewFloat(1)},
+	} {
+		want, wantErr := runeGetSlice("héllo", slice)
+		got, gotErr := stringResult(NewString("héllo").GetSlice(slice))
+		assert.NotEqual(t, wantErr, "")
+		assert.Equal(t, gotErr, wantErr)
+		assert.Equal(t, got, want)
+	}
+}
+
+func TestStringGetItemDoesNotCopyString(t *testing.T) {
+	// Indexing or slicing a large string allocates only the result, not a
+	// []rune copy of the whole string.
+	big := NewString(strings.Repeat("é", 100_000))
+	index := NewInt(5)
+	allocs := testing.AllocsPerRun(10, func() {
+		_, _ = big.GetItem(index)
+	})
+	assert.Equal(t, allocs, 1.0, "GetItem allocs")
+	slice := Slice{Start: NewInt(1), Stop: NewInt(3)}
+	allocs = testing.AllocsPerRun(10, func() {
+		_, _ = big.GetSlice(slice)
+	})
+	assert.Equal(t, allocs, 1.0, "GetSlice allocs")
+}
+
+func BenchmarkStringGetItem(b *testing.B) {
+	for _, bc := range []struct {
+		name string
+		s    string
+	}{
+		{"ascii_1MB", strings.Repeat("a", 1<<20)},
+		{"utf8_1MB", strings.Repeat("é", 1<<19)},
+	} {
+		s := NewString(bc.s)
+		n := int64(utf8.RuneCountInString(bc.s))
+		first, middle, last := NewInt(0), NewInt(n/2), NewInt(-1)
+		slice := Slice{Start: NewInt(10), Stop: NewInt(20)}
+		b.Run(bc.name+"/first", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = s.GetItem(first)
+			}
+		})
+		b.Run(bc.name+"/middle", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = s.GetItem(middle)
+			}
+		})
+		b.Run(bc.name+"/last", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = s.GetItem(last)
+			}
+		})
+		b.Run(bc.name+"/slice", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = s.GetSlice(slice)
+			}
+		})
 	}
 }
