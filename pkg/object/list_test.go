@@ -62,6 +62,67 @@ func TestListInsert(t *testing.T) {
 	assert.Equal(t, list.Value(), []Object{two, thr, two, one, two})
 }
 
+func TestListInsertPositions(t *testing.T) {
+	ints := func(vals ...int64) []Object {
+		items := make([]Object, len(vals))
+		for i, v := range vals {
+			items[i] = NewInt(v)
+		}
+		return items
+	}
+	tests := []struct {
+		name  string
+		start []Object
+		index int64
+		want  []Object
+	}{
+		{"front", ints(1, 2, 3), 0, ints(9, 1, 2, 3)},
+		{"middle", ints(1, 2, 3), 1, ints(1, 9, 2, 3)},
+		{"before last", ints(1, 2, 3), 2, ints(1, 2, 9, 3)},
+		{"end", ints(1, 2, 3), 3, ints(1, 2, 3, 9)},
+		{"past end", ints(1, 2, 3), 10, ints(1, 2, 3, 9)},
+		{"negative", ints(1, 2, 3), -1, ints(1, 2, 9, 3)},
+		{"negative to front", ints(1, 2, 3), -3, ints(9, 1, 2, 3)},
+		{"negative past front", ints(1, 2, 3), -10, ints(9, 1, 2, 3)},
+		{"empty at zero", nil, 0, ints(9)},
+		{"empty past end", nil, 5, ints(9)},
+		{"empty negative", nil, -1, ints(9)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			list := NewList(tt.start)
+			list.Insert(tt.index, NewInt(9))
+			assert.Equal(t, list.Value(), tt.want)
+		})
+	}
+}
+
+// Inserting at the front reuses spare capacity, as inserting elsewhere and
+// appending do, instead of copying the list into a new slice on every call.
+func TestListInsertFrontReusesCapacity(t *testing.T) {
+	list := NewList(make([]Object, 1000, 2000))
+	item := NewInt(1)
+	allocs := testing.AllocsPerRun(100, func() {
+		list.Insert(0, item)
+	})
+	assert.Equal(t, allocs, 0.0)
+	assert.Equal(t, len(list.Value()), 1101)
+	assert.Equal(t, list.Value()[0], Object(item))
+}
+
+// Building a list by inserting at the front allocates like append does:
+// amortized, not one new slice per insert.
+func BenchmarkListInsertFront(b *testing.B) {
+	item := NewInt(1)
+	b.ReportAllocs()
+	for b.Loop() {
+		list := NewList(nil)
+		for range 1000 {
+			list.Insert(0, item)
+		}
+	}
+}
+
 func TestListPop(t *testing.T) {
 	zero := NewString("0")
 	one := NewString("1")
