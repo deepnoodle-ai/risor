@@ -36,6 +36,9 @@ func Sprintf(ctx context.Context, args ...object.Object) (object.Object, error) 
 	if err != nil {
 		return nil, err
 	}
+	if err := checkFormatSize(ctx, "sprintf", false, fs, fmtArgs); err != nil {
+		return nil, err
+	}
 	result := fmt.Sprintf(fs, fmtArgs...)
 	if err := object.CheckBytesSize(ctx, "sprintf", len(result)); err != nil {
 		return nil, err
@@ -45,6 +48,7 @@ func Sprintf(ctx context.Context, args ...object.Object) (object.Object, error) 
 
 // Error creates an error value without throwing it. Use throw to raise the error.
 // Example: let err = error("file %s not found", filename)
+// Its message is formatted as sprintf formats, with the same size limit.
 func Error(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if len(args) < 1 || len(args) > 64 {
 		return nil, fmt.Errorf("error: expected 1-64 arguments, got %d", len(args))
@@ -57,7 +61,14 @@ func Error(ctx context.Context, args ...object.Object) (object.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	return object.NewError(fmt.Errorf(fs, fmtArgs...)), nil
+	if err := checkFormatSize(ctx, "error", true, fs, fmtArgs); err != nil {
+		return nil, err
+	}
+	result := fmt.Errorf(fs, fmtArgs...)
+	if err := object.CheckBytesSize(ctx, "error", len(result.Error())); err != nil {
+		return nil, err
+	}
+	return object.NewError(result), nil
 }
 
 // formatArgs converts args to Go values for use with fmt-style formatting.
