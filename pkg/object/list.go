@@ -370,7 +370,9 @@ func (ls *List) Index(obj Object) int64 {
 	return int64(-1)
 }
 
-// Insert adds an item at the specified position.
+// Insert adds an item at the specified position. It grows the list in place,
+// as Append does, and shifts the later items up by one. An index past the end
+// appends; a negative index counts from the end and is clamped to 0.
 func (ls *List) Insert(index int64, obj Object) {
 	// Negative index is relative to the end of the list
 	if index < 0 {
@@ -378,10 +380,6 @@ func (ls *List) Insert(index int64, obj Object) {
 		if index < 0 {
 			index = 0
 		}
-	}
-	if index == 0 {
-		ls.items = append([]Object{obj}, ls.items...)
-		return
 	}
 	if index >= int64(len(ls.items)) {
 		ls.items = append(ls.items, obj)
