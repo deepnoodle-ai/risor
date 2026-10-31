@@ -601,8 +601,7 @@ its input first, but it checks its output only after encoding, and base64 or
 hex output is larger than that text. `decode` with `json` decodes the whole
 input with `json.Unmarshal` before it counts the elements, so it charges after
 the fact, as described above. Any method whose output size isn't a cheap
-function of its inputs
-allocates first and charges second. In practice its
+function of its inputs allocates first and charges second. In practice its
 inputs are already inside the budget, so this costs you a constant factor
 rather than leaving an unbounded hole, but it does mean the peak is higher than
 the number you set.
