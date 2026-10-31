@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -259,22 +260,126 @@ func (s *String) GetItem(key Object) (Object, *Error) {
 	if !ok {
 		return nil, TypeErrorf("string index must be an int (got %s)", key.Type())
 	}
-	runes := []rune(s.value)
-	index, err := ResolveIndex(indexObj.value, int64(len(runes)))
-	if err != nil {
-		return nil, NewError(err)
+	v := s.value
+	if off, ok := runeOffset(v, indexObj.value); ok && off < len(v) {
+		return NewString(runeAt(v, off)), nil
 	}
-	return NewString(string(runes[index])), nil
+	// The index is out of range. ResolveIndex reports it with the same
+	// error as for a list.
+	_, err := ResolveIndex(indexObj.value, int64(utf8.RuneCountInString(v)))
+	return nil, NewError(err)
 }
 
 func (s *String) GetSlice(slice Slice) (Object, *Error) {
-	runes := []rune(s.value)
-	start, stop, err := ResolveIntSlice(slice, int64(len(runes)))
-	if err != nil {
-		return nil, NewError(err)
+	v := s.value
+	start, startOK := sliceBound(slice.Start)
+	stop, stopOK := sliceBound(slice.Stop)
+	if startOK && stopOK {
+		lo, ok := runeOffset(v, start)
+		hi := len(v)
+		if ok && slice.Stop != nil {
+			if start >= 0 && stop >= start {
+				hi, ok = skipRunes(v, lo, stop-start)
+			} else {
+				hi, ok = runeOffset(v, stop)
+			}
+		}
+		if ok && lo <= hi {
+			return NewString(validRunes(v[lo:hi])), nil
+		}
 	}
-	resultRunes := runes[start:stop]
-	return NewString(string(resultRunes)), nil
+	// A bound has the wrong type or is out of range, or start is after
+	// stop. ResolveIntSlice reports it with the same error as for a list.
+	_, _, err := ResolveIntSlice(slice, int64(utf8.RuneCountInString(v)))
+	return nil, NewError(err)
+}
+
+// sliceBound returns the value of a slice bound. A nil bound is 0 and ok;
+// a bound that is not an Int is not ok.
+func sliceBound(obj Object) (int64, bool) {
+	if obj == nil {
+		return 0, true
+	}
+	i, ok := obj.(*Int)
+	if !ok {
+		return 0, false
+	}
+	return i.value, true
+}
+
+// runeOffset returns the byte offset in v of rune index i, where a negative
+// i counts from the end. Offset len(v) is rune index len(runes). It reports
+// false if i is out of range. It scans from the start of v for i >= 0 and
+// from the end for i < 0, so it reads only the runes it skips.
+func runeOffset(v string, i int64) (int, bool) {
+	if i >= 0 {
+		return skipRunes(v, 0, i)
+	}
+	if i == math.MinInt64 {
+		return 0, false // -i overflows, and no string has that many runes
+	}
+	return skipRunesBack(v, len(v), -i)
+}
+
+// skipRunes returns the byte offset in v that is count runes after the byte
+// offset off, which must start a rune. It reports false if v ends first.
+// Runes are counted as a range loop counts them: a valid UTF-8 sequence is
+// one rune, and each invalid byte is one rune.
+func skipRunes(v string, off int, count int64) (int, bool) {
+	for ; count > 0; count-- {
+		if off >= len(v) {
+			return off, false
+		}
+		if v[off] < utf8.RuneSelf {
+			off++
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(v[off:])
+		off += size
+	}
+	return off, true
+}
+
+// skipRunesBack returns the byte offset in v that is count runes before the
+// byte offset end, which must start a rune or be len(v). It reports false
+// if v starts first. It finds the same runes as skipRunes: a valid sequence
+// that ends at end starts at the nearest preceding non-continuation byte,
+// and utf8.DecodeLastRuneInString returns size 1 for anything else, which
+// a forward scan also decodes as one invalid byte.
+func skipRunesBack(v string, end int, count int64) (int, bool) {
+	for ; count > 0; count-- {
+		if end <= 0 {
+			return end, false
+		}
+		if v[end-1] < utf8.RuneSelf {
+			end--
+			continue
+		}
+		_, size := utf8.DecodeLastRuneInString(v[:end])
+		end -= size
+	}
+	return end, true
+}
+
+// runeAt returns the rune that starts at byte offset off in v, as a string.
+func runeAt(v string, off int) string {
+	_, size := utf8.DecodeRuneInString(v[off:])
+	return validRunes(v[off : off+size])
+}
+
+// validRunes returns v with each invalid UTF-8 byte replaced by U+FFFD, the
+// same result as string([]rune(v)). When v is valid UTF-8, which is the
+// usual case, it returns v itself, sharing its bytes without a copy.
+func validRunes(v string) string {
+	if utf8.ValidString(v) {
+		return v
+	}
+	var b strings.Builder
+	b.Grow(len(v))
+	for _, r := range v {
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func (s *String) SetItem(key, value Object) *Error {
