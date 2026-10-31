@@ -285,7 +285,7 @@ func (s *String) GetSlice(slice Slice) (Object, *Error) {
 			}
 		}
 		if ok && lo <= hi {
-			return NewString(validRunes(v[lo:hi])), nil
+			return NewString(replaceInvalidBytes(v[lo:hi])), nil
 		}
 	}
 	// A bound has the wrong type or is out of range, or start is after
@@ -364,13 +364,14 @@ func skipRunesBack(v string, end int, count int64) (int, bool) {
 // runeAt returns the rune that starts at byte offset off in v, as a string.
 func runeAt(v string, off int) string {
 	_, size := utf8.DecodeRuneInString(v[off:])
-	return validRunes(v[off : off+size])
+	return replaceInvalidBytes(v[off : off+size])
 }
 
-// validRunes returns v with each invalid UTF-8 byte replaced by U+FFFD, the
-// same result as string([]rune(v)). When v is valid UTF-8, which is the
-// usual case, it returns v itself, sharing its bytes without a copy.
-func validRunes(v string) string {
+// replaceInvalidBytes returns v with each invalid UTF-8 byte replaced by
+// U+FFFD, the same result as string([]rune(v)). When v is valid UTF-8,
+// which is the usual case, it returns v itself, sharing its bytes without
+// a copy.
+func replaceInvalidBytes(v string) string {
 	if utf8.ValidString(v) {
 		return v
 	}
