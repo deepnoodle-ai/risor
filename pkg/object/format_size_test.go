@@ -83,6 +83,33 @@ func TestInspectSharedError(t *testing.T) {
 	assert.NotNil(t, CheckFormatSize(context.Background(), "string", shared))
 }
 
+// Inspect prints the function of a partial as well as its arguments, so a
+// partial whose function is another partial is counted through both.
+func TestInspectSharedPartial(t *testing.T) {
+	// Each level prints the one below it twice, as the function and as the
+	// argument, so the full text would repeat the innermost partial 2^40 times
+	p := NewPartial(NewInt(1), []Object{NewInt(2)})
+	for range 40 {
+		p = NewPartial(p, []Object{p})
+	}
+	// Check the count first, so a broken count fails here instead of
+	// building the full text below
+	counted := formatSize(p, nil, inspectMaxSize) > inspectMaxSize
+	assert.True(t, counted)
+	if !counted {
+		return
+	}
+	list := NewList([]Object{p})
+	assert.Equal(t, list.Inspect(), "[...]")
+	assert.Equal(t, InspectMessage(p), "[...]")
+	assert.NotNil(t, CheckFormatSize(context.Background(), "string", p))
+
+	// A small partial counts its function and its argument
+	small := NewPartial(NewPartial(NewInt(1), []Object{NewInt(2)}), []Object{NewInt(3)})
+	assert.Equal(t, formatSize(small, nil, 100), uint64(5))
+	assert.Equal(t, NewList([]Object{small}).Inspect(), "[partial(partial(1, 2), 3)]")
+}
+
 // Inspect and String have no context, so they bound the text of a list, map,
 // or cell with the default byte limit and print a placeholder past it (#583).
 func TestInspectSharedReferencesBounded(t *testing.T) {
