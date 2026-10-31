@@ -61,15 +61,17 @@ without the limits, and `TypeRegistry.FromGo` has no limits.
 
 `decode` counts its result the same way: one decoded value may hold at most
 `MaxListLength` elements in total, counting every list element and map entry
-at any depth. A CSV record costs one element plus one for each field. The
-`json` and `csv` codecs count as they build the value, so a decode over the
-cap stops when it reaches the cap. A codec you register with
-`builtins.RegisterCodec` has its result counted after it returns. Exceeding
-the cap raises a value error whose message contains "decoded value too large".
-A value nested more than 128 lists and maps deep (`object.MaxNestingDepth`)
-raises the value error `object.ErrNestingDepth`. Each decoded element takes
-more memory than the input bytes that produce it, so the peak of `decode` is
-a constant factor above its input, which `MaxBytesSize` already caps.
+at any depth. A CSV record costs one element plus one for each field.
+Exceeding the cap raises a value error whose message contains "decoded value
+too large". A value nested more than 128 lists and maps deep
+(`object.MaxNestingDepth`) raises the value error `object.ErrNestingDepth`.
+The `csv` codec counts each record before it builds it, so a decode over the
+cap stops at the cap. The `json` codec decodes with `json.Unmarshal`, which
+builds its Go value in full before the count. The count then runs before the
+Risor value is built, so a rejected decode never builds the Risor value. The
+peak memory of a JSON decode is a constant factor of the input size, which
+`MaxBytesSize` already caps. A codec you register with
+`builtins.RegisterCodec` has its result counted after it returns.
 
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.
@@ -596,8 +598,10 @@ lists into the environment.
 `+`, `to_upper`, `to_lower`, `string()`, and string templates have their
 output size checked before the work happens. `encode` checks the text size of
 its input first, but it checks its output only after encoding, and base64 or
-hex output is larger than that text. `decode` counts its elements as it builds
-them. Any method whose output size isn't a cheap function of its inputs
+hex output is larger than that text. `decode` with `json` decodes the whole
+input with `json.Unmarshal` before it counts the elements, so it charges after
+the fact, as described above. Any method whose output size isn't a cheap
+function of its inputs
 allocates first and charges second. In practice its
 inputs are already inside the budget, so this costs you a constant factor
 rather than leaving an unbounded hole, but it does mean the peak is higher than

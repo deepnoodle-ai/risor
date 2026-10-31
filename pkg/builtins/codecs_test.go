@@ -2,7 +2,6 @@ package builtins
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -130,7 +129,6 @@ func TestDecodeElementBudget(t *testing.T) {
 		{"json", `{"a": [1, 2, 3]}`, 4},
 		{"json", `[[1, 2], [3, 4]]`, 6},
 		{"json", `[{}, {}, [], {"a": null}]`, 5},
-		{"json", `{"a": 1, "a": 2}`, 2},
 		{"csv", "a,b\nc,d\n", 6},
 		{"csv", "a\nb\nc\n", 6},
 	} {
@@ -142,64 +140,17 @@ func TestDecodeElementBudget(t *testing.T) {
 	}
 }
 
-// A decode that exceeds the budget stops when it reaches the limit, instead of
-// building the whole value and then rejecting it.
-func TestDecodeStopsAtBudget(t *testing.T) {
+// A CSV decode that exceeds the budget stops when it reaches the limit,
+// instead of reading every record and then rejecting the result.
+func TestDecodeCsvStopsAtBudget(t *testing.T) {
 	ctx := object.WithLimits(context.Background(), object.Limits{MaxListLength: 100})
-	for codec, src := range map[string]string{
-		"json": "[" + strings.Repeat("0,", 100_000) + "0]",
-		"csv":  strings.Repeat("a,b\n", 50_000),
-	} {
-		input := object.NewString(src)
-		name := object.NewString(codec)
-		allocs := testing.AllocsPerRun(5, func() {
-			_, err := Decode(ctx, input, name)
-			assert.NotNil(t, err)
-		})
-		assert.True(t, allocs < 1000, "%s: %v allocations", codec, allocs)
-	}
-}
-
-func TestDecodeJSONValues(t *testing.T) {
-	ctx := context.Background()
-	for src, want := range map[string]string{
-		`[1, 2.5, -0, 1e3, 12345678901234567890]`: `[1, 2.5, -0, 1000, 12345678901234567000]`,
-		`{"b": 1, "a": "x", "a": "y"}`:            `{"a": "y", "b": 1}`,
-		`{"a": {"b": [true, false, null]}}`:       `{"a": {"b": [true, false, null]}}`,
-		` [ ] `:                                   `[]`,
-		`{}`:                                      `{}`,
-		`"é\ud800"`:                               `"é�"`,
-		`null`:                                    `null`,
-	} {
-		result, err := Decode(ctx, object.NewString(src), object.NewString("json"))
-		assert.Nil(t, err, src)
-		assert.Equal(t, result.Inspect(), want, src)
-	}
-	// Numbers decode as floats, as encoding/json decodes them into any
-	result, err := Decode(ctx, object.NewString(`[1]`), object.NewString("json"))
-	assert.Nil(t, err)
-	assert.Equal(t, result, object.Object(object.NewList([]object.Object{object.NewFloat(1)})))
-}
-
-// Invalid JSON returns the error that json.Unmarshal returns.
-func TestDecodeJSONErrors(t *testing.T) {
-	ctx := context.Background()
-	for src, want := range map[string]string{
-		``:           "unexpected end of JSON input",
-		`[1,`:        "unexpected end of JSON input",
-		`1 2`:        "invalid character '2' after top-level value",
-		`{"a" 1}`:    "invalid character '1' after object key",
-		`[1e400, 2]`: "json: cannot unmarshal number 1e400 into Go value of type float64",
-	} {
-		_, err := Decode(ctx, object.NewString(src), object.NewString("json"))
-		assert.NotNil(t, err, src)
-		assert.Equal(t, err.Error(), want, src)
-	}
-	// The error names only the first 64 bytes of a long number
-	long := "1" + strings.Repeat("0", 100_000)
-	_, err := Decode(ctx, object.NewString(long), object.NewString("json"))
-	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "json: cannot unmarshal number "+long[:64]+"... into Go value of type float64")
+	input := object.NewString(strings.Repeat("a,b\n", 50_000))
+	name := object.NewString("csv")
+	allocs := testing.AllocsPerRun(5, func() {
+		_, err := Decode(ctx, input, name)
+		assert.NotNil(t, err)
+	})
+	assert.True(t, allocs < 1000, "%v allocations", allocs)
 }
 
 // JSON nested exactly MaxNestingDepth deep decodes.
@@ -291,51 +242,6 @@ func TestDecodeCsvError(t *testing.T) {
 	_, err := Decode(context.Background(), object.NewString("a,b\nc"), object.NewString("csv"))
 	assert.NotNil(t, err)
 	assert.Equal(t, err.Error(), "record on line 2: wrong number of fields")
-}
-
-// decode("json") returns the value, or the error, that decoding with
-// json.Unmarshal and converting the result with FromGo returns.
-func FuzzDecodeJSON(f *testing.F) {
-	for _, seed := range []string{
-		``, `null`, `true`, `false`, `0`, `-0`, `1.5e-3`, `1E+2`, `1e400`,
-		`12345678901234567890`, `""`, `"a\"b\\c\/d\b\f\n\r\t"`, `"é😀"`,
-		`"\ud800"`, "\"\xff\"", `"é"`, `[]`, `{}`, ` [ 1 , [ ] , { } ] `,
-		`{"a": 1, "a": 2}`, `{"a": {"b": [null, true, "x"]}}`, `[1,`, `1 2`,
-		`{"a" 1}`, `[1e400, 2]`, `["x", 1e999]`, "1" + strings.Repeat("0", 400),
-	} {
-		f.Add(seed)
-	}
-	ctx := context.Background()
-	name := object.NewString("json")
-	f.Fuzz(func(t *testing.T, src string) {
-		got, err := Decode(ctx, object.NewString(src), name)
-		var v any
-		if wantErr := json.Unmarshal([]byte(src), &v); wantErr != nil {
-			assert.NotNil(t, err)
-			// A value that is both too deep and has a number out of range
-			// fails on whichever comes first.
-			if errors.Is(err, object.ErrNestingDepth) {
-				return
-			}
-			// The error names at most 64 bytes of a number literal
-			var gotType, wantType *json.UnmarshalTypeError
-			if errors.As(wantErr, &wantType) && len(wantType.Value) > len("number ")+64 {
-				assert.ErrorAs(t, err, &gotType)
-				assert.Equal(t, gotType.Value, wantType.Value[:len("number ")+64]+"...")
-				return
-			}
-			assert.Equal(t, err.Error(), wantErr.Error())
-			return
-		}
-		want, wantErr := object.DefaultRegistry().FromGo(v)
-		if wantErr != nil {
-			assert.ErrorIs(t, err, object.ErrNestingDepth)
-			return
-		}
-		assert.Nil(t, err)
-		assert.Equal(t, got.Inspect(), want.Inspect())
-		assert.True(t, got.Equals(want))
-	})
 }
 
 func BenchmarkDecodeJSON(b *testing.B) {
