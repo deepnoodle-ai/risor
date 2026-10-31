@@ -66,6 +66,10 @@ at any depth. A CSV record costs one element plus one for each field. The
 cap stops when it reaches the cap. A codec you register with
 `builtins.RegisterCodec` has its result counted after it returns. Exceeding
 the cap raises a value error whose message contains "decoded value too large".
+A value nested more than 128 lists and maps deep (`object.MaxNestingDepth`)
+raises the value error `object.ErrNestingDepth`. Each decoded element takes
+more memory than the input bytes that produce it, so the peak of `decode` is
+a constant factor above its input, which `MaxBytesSize` already caps.
 
 These caps apply to each operation, not to the script as a whole. A script that
 loops through callbacks can still make many values, each just under the cap.
