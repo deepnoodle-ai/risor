@@ -6,8 +6,9 @@ Risor bounds instruction count (`WithMaxSteps`), wall-clock time
 `WithMaxMemory`.
 
 `WithLimits` caps the operations that can turn a small input into a huge
-output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes, string
-templates, `sprintf`, `string()` of a list or map, and `encode`, and building
+output: `repeat`, `replace_all`, `join`, and `+` on strings and bytes,
+`to_upper` and `to_lower` on strings, string templates, `sprintf`, `string()`
+of a list or map, and `encode`, and building
 lists with list literals, `list()`, `keys()`, spread, `+`, `extend`,
 `append`, `insert`, `range(...).map`, `split`, `fields`, the `regexp` find
 and split functions, `decode`, and `rand.bytes`. The defaults are 64 MiB for

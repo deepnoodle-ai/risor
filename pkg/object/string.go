@@ -117,6 +117,9 @@ func init() {
 		Doc("Convert to lowercase").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			if err := checkCaseMapSize(GetLimits(ctx), "string.to_lower()", s.value, unicode.ToLower); err != nil {
+				return nil, err
+			}
 			return s.ToLower(), nil
 		})
 
@@ -124,6 +127,9 @@ func init() {
 		Doc("Convert to uppercase").
 		Returns("string").
 		Impl(func(s *String, ctx context.Context, args ...Object) (Object, error) {
+			if err := checkCaseMapSize(GetLimits(ctx), "string.to_upper()", s.value, unicode.ToUpper); err != nil {
+				return nil, err
+			}
 			return s.ToUpper(), nil
 		})
 
@@ -477,10 +483,14 @@ func (s *String) ReplaceAll(ctx context.Context, old, new Object) (Object, error
 	return NewString(strings.ReplaceAll(s.value, oldStr, newStr)), nil
 }
 
+// ToLower returns s in lowercase. It does not check the byte limit; the
+// result can be up to 3 times as long as s.
 func (s *String) ToLower() Object {
 	return NewString(strings.ToLower(s.value))
 }
 
+// ToUpper returns s in uppercase. It does not check the byte limit; the
+// result can be up to 3 times as long as s.
 func (s *String) ToUpper() Object {
 	return NewString(strings.ToUpper(s.value))
 }
