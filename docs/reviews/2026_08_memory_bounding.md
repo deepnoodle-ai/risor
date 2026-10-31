@@ -483,9 +483,15 @@ walk-and-measure approach practical. Neither is visible without going looking.
 (`WithEnv`, `WithSyntax`, `WithValidator`, `WithTransform`), but nothing told an embedder
 that `DisallowFuncDef` is what makes resource limits tractable in the first place. Most
 people who want what #473 asks for can have it today and don't know it. §3 of this
-document is now written up as
+document was written up as
 [`docs/guides/memory-limits.md`](../guides/memory-limits.md), with working code and an
 explicit list of what it doesn't cover.
+
+> **Update, 2026-10-31.** The guide no longer carries the §3 recipe. Risor
+> stopped adding in-process limit machinery, and the guide now lists the known
+> gaps and recommends an OS-enforced boundary for untrusted scripts. The
+> reasons are in
+> [`docs/design/2026_10_max_allocated_bytes.md`](../design/2026_10_max_allocated_bytes.md).
 
 ---
 
