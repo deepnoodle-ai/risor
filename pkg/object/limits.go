@@ -3,6 +3,9 @@ package object
 import (
 	"context"
 	"math"
+	"strconv"
+	"strings"
+	"unicode/utf8"
 )
 
 // Allocation limits guard the host process against scripts that request huge
@@ -86,8 +89,9 @@ func CheckBytesSize(ctx context.Context, name string, size int) error {
 // text is too large before that text exists. name describes the operation in
 // the error message.
 //
-// The count is a lower bound of the size of the text: a string or bytes
-// value counts its length, and every other value counts one byte. A
+// The count is the length of the text that Inspect prints for each value,
+// except that a string or an error passed directly counts the length of its
+// value or message, as string templates and print write those unquoted. A
 // container referenced more than once counts each time it is referenced, as
 // the text repeats it. The walk stops as soon as the count passes the limit,
 // so its cost is bounded by the limit too.
@@ -96,7 +100,14 @@ func CheckFormatSize(ctx context.Context, name string, objs ...Object) error {
 	limit := uint64(l.MaxBytesSize)
 	var total uint64
 	for _, obj := range objs {
-		total += formatSize(obj, nil, limit-min(total, limit))
+		switch obj := obj.(type) {
+		case *String:
+			total += uint64(len(obj.value))
+		case *Error:
+			total += uint64(len(obj.Message().Value()))
+		default:
+			total += formatSize(obj, nil, limit-min(total, limit))
+		}
 		if total > limit {
 			break
 		}
@@ -104,19 +115,45 @@ func CheckFormatSize(ctx context.Context, name string, objs ...Object) error {
 	return checkBytesSize(l, name, total)
 }
 
-// formatSize returns a lower bound of the size of the text of obj. It stops
-// counting once the count passes limit. path holds the containers being
-// walked, so a cycle or a value nested too deeply is counted once, as
-// Inspect prints it as a placeholder.
+// formatSize returns the length of the text that obj.Inspect prints, without
+// building that text for a list, map, cell, partial, string, bytes, or error.
+// It stops counting once the count passes limit, and then returns a count
+// over limit. path holds the containers being walked, so a cycle or a value
+// nested too deeply counts as the placeholder that Inspect prints for it.
+//
+// The count is never less than the length of the text, so a bound measured
+// with it bounds the text. Any type without a case here counts the length of
+// its Inspect text, so a new type cannot undercount. Such a type must print
+// no other objects, or print them through their bounded Inspect.
 func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
+	var buf [32]byte
 	switch obj := obj.(type) {
 	case *String:
-		return uint64(len(obj.value))
+		return quotedStringSize(obj.value)
 	case *Bytes:
-		return uint64(len(obj.value))
+		// bytes("...")
+		return 7 + quotedBytesSize(obj.value)
+	case *Error:
+		// error("...")
+		return 7 + quotedSize(obj.Message().Value())
+	case *Int:
+		return uint64(len(strconv.AppendInt(buf[:0], obj.value, 10)))
+	case *Float:
+		return uint64(len(strconv.AppendFloat(buf[:0], obj.value, 'f', -1, 64)))
+	case *Bool:
+		if obj.value {
+			return 4
+		}
+		return 5
+	case *NilType:
+		return 4
 	case *List:
+		// [a, b]
 		total := uint64(2)
-		for _, item := range obj.items {
+		for i, item := range obj.items {
+			if i > 0 {
+				total += 2
+			}
 			total += nestedFormatSize(obj, item, &path, limit-min(total, limit))
 			if total > limit {
 				return total
@@ -124,9 +161,15 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 		}
 		return total
 	case *Map:
+		// {"a": 1, "b": 2}
 		total := uint64(2)
+		i := 0
 		for key, value := range obj.items {
-			total += uint64(len(key))
+			if i > 0 {
+				total += 2
+			}
+			i++
+			total += quotedSize(key) + 2
 			total += nestedFormatSize(obj, value, &path, limit-min(total, limit))
 			if total > limit {
 				return total
@@ -134,37 +177,113 @@ func formatSize(obj Object, path nestPath[Object], limit uint64) uint64 {
 		}
 		return total
 	case *Partial:
-		// Inspect prints every argument of a partial
-		total := uint64(1)
-		for _, arg := range obj.args {
-			total += formatSize(arg, path, limit-min(total, limit))
+		// partial(fn, a, b). The partial goes on the path, so a partial that
+		// holds its own container counts that container as a placeholder.
+		total := uint64(11) + nestedFormatSize(obj, obj.fn, &path, limit-min(11, limit))
+		for i, arg := range obj.args {
 			if total > limit {
 				return total
 			}
+			if i > 0 {
+				total += 2
+			}
+			total += nestedFormatSize(obj, arg, &path, limit-min(total, limit))
 		}
 		return total
 	case *Cell:
-		// Inspect prints the value in the cell. The cell goes on the path,
-		// so a cell that holds itself, directly or through a container, is
-		// counted once.
+		// cell(value). The cell goes on the path, so a cell that holds
+		// itself, directly or through a container, counts as a placeholder.
 		if obj.value == nil {
-			return 1
+			return 6
 		}
-		return 1 + nestedFormatSize(obj, *obj.value, &path, limit-min(1, limit))
+		return 6 + nestedFormatSize(obj, *obj.value, &path, limit-min(6, limit))
 	}
-	return 1
+	return uint64(len(obj.Inspect()))
 }
 
 func nestedFormatSize(parent, item Object, path *nestPath[Object], limit uint64) uint64 {
-	if !isNestedContainer(item) {
+	if !isPrintedContainer(item) {
 		return formatSize(item, nil, limit)
 	}
 	p, err := path.descend(parent, item)
 	*path = p
 	if err != nil {
-		return 1
+		return uint64(len(inspectPlaceholder(item)))
 	}
 	return formatSize(item, p, limit)
+}
+
+// quotedStringSize returns the length of the text that String.Inspect prints
+// for s.
+func quotedStringSize(s string) uint64 {
+	n := len(s)
+	if n >= 2 && s[0] == '"' && s[n-1] == '"' && strings.Count(s, `"`) == 2 {
+		// '"..."'
+		return uint64(n) + 2
+	}
+	return quotedSize(s)
+}
+
+// quotedSize returns the length of strconv.Quote(s), the text that %q prints
+// for a string, without building it.
+func quotedSize(s string) uint64 {
+	total := uint64(2)
+	for i := 0; i < len(s); {
+		if c := s[i]; c < utf8.RuneSelf {
+			total += asciiQuotedSize(c)
+			i++
+			continue
+		}
+		r, width := utf8.DecodeRuneInString(s[i:])
+		total += runeQuotedSize(r, width)
+		i += width
+	}
+	return total
+}
+
+// quotedBytesSize returns the length of the text that %q prints for b.
+func quotedBytesSize(b []byte) uint64 {
+	total := uint64(2)
+	for i := 0; i < len(b); {
+		if c := b[i]; c < utf8.RuneSelf {
+			total += asciiQuotedSize(c)
+			i++
+			continue
+		}
+		r, width := utf8.DecodeRune(b[i:])
+		total += runeQuotedSize(r, width)
+		i += width
+	}
+	return total
+}
+
+// asciiQuotedSize returns the length of an ASCII byte quoted by
+// strconv.Quote.
+func asciiQuotedSize(c byte) uint64 {
+	switch {
+	case c == '"' || c == '\\':
+		return 2
+	case c >= ' ' && c != 0x7f:
+		return 1
+	case c == '\a' || c == '\b' || c == '\f' || c == '\n' || c == '\r' ||
+		c == '\t' || c == '\v':
+		return 2
+	}
+	return 4 // \x00
+}
+
+// runeQuotedSize returns the length of a non-ASCII rune of width bytes
+// quoted by strconv.Quote.
+func runeQuotedSize(r rune, width int) uint64 {
+	switch {
+	case r == utf8.RuneError && width == 1:
+		return 4 // \xff
+	case strconv.IsPrint(r):
+		return uint64(width)
+	case r < 0x10000:
+		return 6 // \u00a0
+	}
+	return 10 // \U000e0001
 }
 
 // checkRepeatSize returns an error if repeating a value of unit bytes count

@@ -109,6 +109,9 @@ func String(ctx context.Context, args ...object.Object) (object.Object, error) {
 		return object.NewString(string(rune(arg.Value()))), nil
 	case *object.Bytes:
 		return object.NewString(string(arg.Value())), nil
+	case *object.Error:
+		// The message already exists, so there is no size to check
+		return object.NewString(arg.String()), nil
 	default:
 		// Formatting a container can produce a string much larger than
 		// the container, such as a list that holds one string many times.
@@ -117,9 +120,13 @@ func String(ctx context.Context, args ...object.Object) (object.Object, error) {
 			return nil, err
 		}
 		var s string
-		if stringer, ok := arg.(fmt.Stringer); ok {
-			s = stringer.String()
-		} else {
+		switch v := arg.(type) {
+		case *object.List, *object.Map, *object.Cell, *object.Partial:
+			// Apply the byte limit in ctx, not the default of Inspect
+			s = object.InspectWithLimits(ctx, arg)
+		case fmt.Stringer:
+			s = v.String()
+		default:
 			s = arg.Inspect()
 		}
 		if _, ok := arg.(object.Container); ok {
@@ -148,7 +155,7 @@ func Assert(ctx context.Context, args ...object.Object) (object.Object, error) {
 			case *object.String:
 				return nil, fmt.Errorf("%s", arg.Value())
 			default:
-				return nil, fmt.Errorf("%s", args[1].Inspect())
+				return nil, fmt.Errorf("%s", object.InspectMessage(args[1]))
 			}
 		}
 		return nil, fmt.Errorf("assertion failed")

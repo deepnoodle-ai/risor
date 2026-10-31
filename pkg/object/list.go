@@ -187,23 +187,19 @@ func (ls *List) Value() []Object {
 
 // Inspect returns a string representation of the list. A nested container
 // that is already being printed (a cycle), or that is nested more deeply than
-// MaxNestingDepth, is shown as [...] or {...}.
+// MaxNestingDepth, is shown as [...] or {...}. A list whose text would be
+// too large is shown as [...]. The bound is DefaultMaxBytesSize, counted as
+// CheckFormatSize counts. Call InspectWithLimits to apply the byte limit in a
+// context.
 func (ls *List) Inspect() string {
-	return ls.inspect(nil)
+	return inspectBounded(ls)
 }
 
 func (ls *List) inspect(path nestPath[Object]) string {
 	var out bytes.Buffer
 	items := make([]string, 0, len(ls.items))
 	for _, e := range ls.items {
-		if isNestedContainer(e) {
-			var err error
-			if path, err = path.descend(ls, e); err != nil {
-				items = append(items, inspectPlaceholder(e))
-				continue
-			}
-		}
-		items = append(items, inspectNested(e, path))
+		items = append(items, inspectChild(ls, e, &path))
 	}
 	out.WriteString("[")
 	out.WriteString(strings.Join(items, ", "))

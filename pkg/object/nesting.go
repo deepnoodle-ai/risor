@@ -62,6 +62,18 @@ func isNestedContainer(obj Object) bool {
 	return false
 }
 
+// isPrintedContainer reports whether printing obj, or measuring the size of
+// its text, visits other objects. It is isNestedContainer plus a partial,
+// whose text holds its function and arguments. Only Inspect and formatSize
+// put a partial on the path; conversion and comparison do not visit its
+// contents.
+func isPrintedContainer(obj Object) bool {
+	if _, ok := obj.(*Partial); ok {
+		return true
+	}
+	return isNestedContainer(obj)
+}
+
 // ToInterface converts obj to a Go value, as Object.Interface does, but
 // returns an error instead of a nil result. It returns ErrNestingDepth when
 // obj is too deeply nested or contains a cycle. It returns a value error when
@@ -180,18 +192,75 @@ func inspectNested(obj Object, path nestPath[Object]) string {
 		return obj.inspect(path)
 	case *Cell:
 		return obj.inspect(path)
+	case *Partial:
+		return obj.inspect(path)
 	}
 	return obj.Inspect()
 }
 
+// inspectChild returns the text of child, an object held by parent, as parent
+// prints it. path holds the containers being printed, and inspectChild
+// updates it when it descends into child. A child that is already being
+// printed (a cycle), or that is nested more deeply than MaxNestingDepth,
+// prints as a placeholder.
+func inspectChild(parent, child Object, path *nestPath[Object]) string {
+	if !isPrintedContainer(child) {
+		return child.Inspect()
+	}
+	p, err := path.descend(parent, child)
+	*path = p
+	if err != nil {
+		return inspectPlaceholder(child)
+	}
+	return inspectNested(child, p)
+}
+
+// inspectMaxSize bounds the text that Inspect and String print for a list,
+// map, cell, or partial. They have no context, so they use the default byte limit,
+// compared with formatSize as CheckFormatSize compares it. So a value that
+// repeats shared references, whose text grows exponentially, prints as a
+// placeholder. InspectWithLimits uses the byte limit in a context instead.
+const inspectMaxSize = DefaultMaxBytesSize
+
+// InspectWithLimits returns the text that obj.Inspect returns, but bounds a
+// list, map, cell, or partial with the byte limit in ctx instead of the default byte
+// limit, so a limit raised with WithLimits applies. Past the limit, it prints
+// a placeholder, as Inspect does. To fail instead, call CheckFormatSize first,
+// as string(), string templates, and the CLI print do.
+func InspectWithLimits(ctx context.Context, obj Object) string {
+	switch obj.(type) {
+	case *List, *Map, *Cell, *Partial:
+		return inspectWithin(obj, uint64(GetLimits(ctx).MaxBytesSize))
+	}
+	return obj.Inspect()
+}
+
+// inspectBounded returns the text of obj, a list, map, cell, or partial, or a
+// placeholder if the counted size of its text exceeds inspectMaxSize.
+func inspectBounded(obj Object) string {
+	return inspectWithin(obj, inspectMaxSize)
+}
+
+// inspectWithin returns the text of obj, a list, map, cell, or partial, or a
+// placeholder if the counted size of its text exceeds limit.
+func inspectWithin(obj Object, limit uint64) string {
+	if formatSize(obj, nil, limit) > limit {
+		return inspectPlaceholder(obj)
+	}
+	return inspectNested(obj, nil)
+}
+
 // inspectPlaceholder is printed in place of a container that is already being
-// printed (a cycle) or that is nested more deeply than MaxNestingDepth.
+// printed (a cycle), that is nested more deeply than MaxNestingDepth, or whose
+// text is too large to print.
 func inspectPlaceholder(obj Object) string {
 	switch obj := obj.(type) {
 	case *Map:
 		return "{...}"
 	case *Cell:
 		return "cell(...)"
+	case *Partial:
+		return "partial(...)"
 	case *Iter:
 		// Inspecting an iterator does not visit its values, so it is safe
 		return obj.Inspect()

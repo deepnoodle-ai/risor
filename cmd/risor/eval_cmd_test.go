@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v2/pkg/object"
@@ -620,4 +622,69 @@ func TestNewPrintBuiltin_NoArgs(t *testing.T) {
 	_, _ = buf.ReadFrom(r)
 	// Should just be a newline
 	assert.Equal(t, buf.String(), "\n")
+}
+
+// print checks the size of the text against the limits in ctx before it
+// formats anything (#583).
+func TestNewPrintBuiltin_SizeLimit(t *testing.T) {
+	fn := newPrintBuiltin()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// The list holds one string twice, so its text exceeds the limit. Each
+	// argument is within the limit, but together they exceed it.
+	ctx := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: 1024})
+	s := object.NewString(strings.Repeat("a", 600))
+	_, errList := fn.Call(ctx, object.NewList([]object.Object{s, s}))
+	_, errArgs := fn.Call(ctx, object.NewList([]object.Object{s}), s)
+
+	// Within the limit, the list prints
+	_, errOK := fn.Call(ctx, object.NewList([]object.Object{object.NewInt(1)}))
+
+	w.Close()
+	os.Stdout = old
+
+	assert.NotNil(t, errList)
+	assert.True(t, contains(errList.Error(), "print result too large"), errList.Error())
+	assert.NotNil(t, errArgs)
+	assert.Nil(t, errOK)
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	assert.Equal(t, buf.String(), "[1]\n")
+}
+
+// print formats a list or cell with the byte limit in ctx, so a limit raised
+// above the default bound of Inspect applies (#583).
+func TestNewPrintBuiltin_RaisedLimit(t *testing.T) {
+	fn := newPrintBuiltin()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Read while print writes, since the text is larger than the pipe
+	done := make(chan int)
+	go func() {
+		n, _ := io.Copy(io.Discard, r)
+		done <- int(n)
+	}()
+
+	ctx := object.WithLimits(context.Background(), object.Limits{MaxBytesSize: 2 * object.DefaultMaxBytesSize})
+	s := object.NewString(strings.Repeat("a", object.DefaultMaxBytesSize))
+	list := object.NewList([]object.Object{s})
+	var value object.Object = list
+	_, errList := fn.Call(ctx, list)
+	_, errCell := fn.Call(ctx, object.NewCell(&value))
+
+	w.Close()
+	os.Stdout = old
+
+	assert.Nil(t, errList)
+	assert.Nil(t, errCell)
+	// The list adds 2 brackets, 2 quotes, and a newline to the string. The
+	// cell adds 6 more bytes for "cell(" and ")".
+	assert.Equal(t, <-done, 2*(object.DefaultMaxBytesSize+5)+6)
 }

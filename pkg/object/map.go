@@ -175,24 +175,17 @@ func (m *Map) Type() Type {
 
 // Inspect returns a string representation of the map. A nested container
 // that is already being printed (a cycle), or that is nested more deeply than
-// MaxNestingDepth, is shown as [...] or {...}.
+// MaxNestingDepth, is shown as [...] or {...}. A map whose text would be too
+// large is shown as {...}, with the same bound as List.Inspect.
 func (m *Map) Inspect() string {
-	return m.inspect(nil)
+	return inspectBounded(m)
 }
 
 func (m *Map) inspect(path nestPath[Object]) string {
 	var out bytes.Buffer
 	pairs := make([]string, 0, len(m.items))
 	for _, k := range m.SortedKeys() {
-		v := m.items[k]
-		if isNestedContainer(v) {
-			var err error
-			if path, err = path.descend(m, v); err != nil {
-				pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectPlaceholder(v)))
-				continue
-			}
-		}
-		pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectNested(v, path)))
+		pairs = append(pairs, fmt.Sprintf("%q: %s", k, inspectChild(m, m.items[k], &path)))
 	}
 	out.WriteString("{")
 	out.WriteString(strings.Join(pairs, ", "))

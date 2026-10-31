@@ -41,12 +41,22 @@ func (p *Partial) Type() Type {
 	return PARTIAL
 }
 
+// Inspect returns a string representation of the partial, its function, and
+// its arguments. A container that is already being printed (a cycle), or that
+// is nested more deeply than MaxNestingDepth, is shown as a placeholder. A
+// partial whose text would be too large is shown as partial(...), with the
+// same bound as List.Inspect.
 func (p *Partial) Inspect() string {
-	var args []string
+	return inspectBounded(p)
+}
+
+func (p *Partial) inspect(path nestPath[Object]) string {
+	fn := inspectChild(p, p.fn, &path)
+	args := make([]string, 0, len(p.args))
 	for _, arg := range p.args {
-		args = append(args, arg.Inspect())
+		args = append(args, inspectChild(p, arg, &path))
 	}
-	return fmt.Sprintf("partial(%s, %s)", p.fn.Inspect(), strings.Join(args, ", "))
+	return fmt.Sprintf("partial(%s, %s)", fn, strings.Join(args, ", "))
 }
 
 func (p *Partial) Interface() interface{} {

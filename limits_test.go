@@ -2,6 +2,7 @@ package risor
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -76,6 +77,25 @@ func TestWithLimitsRaised(t *testing.T) {
 	result, err := Eval(ctx, src, WithEnv(Builtins()), WithLimits(Limits{MaxBytesSize: 128 << 20}))
 	assert.Nil(t, err)
 	assert.Equal(t, result, int64(object.DefaultMaxBytesSize+1))
+}
+
+// string() and string templates format a list or map with the byte limit in
+// ctx, not the default bound of Inspect, so a raised limit applies (#583).
+func TestWithLimitsRaisedFormat(t *testing.T) {
+	ctx := context.Background()
+	raised := WithLimits(Limits{MaxBytesSize: 128 << 20})
+	// The text of a container that holds a 65 MiB string is over the default
+	// bound of Inspect, so before the fix each of these printed a placeholder
+	for expr, want := range map[string]int64{
+		"string([s])":    65<<20 + 4, // [""]
+		"`${[s]}`":       65<<20 + 4,
+		"string({a: s})": 65<<20 + 9, // {"a": ""}
+	} {
+		src := "let s = \"a\".repeat(65 << 20)\nlen(" + expr + ")"
+		result, err := Eval(ctx, src, WithEnv(Builtins()), raised)
+		assert.Nil(t, err, expr)
+		assert.Equal(t, result, want, expr)
+	}
 }
 
 func TestWithLimitsZeroFieldsUseDefaults(t *testing.T) {
@@ -449,4 +469,68 @@ func TestWithLimitsStructEmbedderAssignAttr(t *testing.T) {
 
 	// The VM called AssignAttr, not SetAttr
 	assert.Equal(t, assigner.setAttrCalls, 0)
+}
+
+// Throwing a value, or failing an assert with a message, that is not a string
+// prints the value into the error message. A value that repeats shared
+// references prints as a placeholder, as object.Errorf does (#583).
+func TestThrowAndAssertSharedReferencesBounded(t *testing.T) {
+	for _, levels := range []int{22, 40} {
+		build := fmt.Sprintf("let a = list(range(%d)).reduce([1], (acc, i) => [acc, acc])\n", levels)
+		for _, raise := range []string{`throw a`, `assert(false, a)`} {
+			src := build + "try { " + raise + " } catch e { e.message() }"
+			result, err := Eval(context.Background(), src, WithEnv(Builtins()))
+			assert.Nil(t, err)
+			assert.Equal(t, result, "[...]")
+		}
+	}
+
+	// A small value still prints in full
+	result, err := Eval(context.Background(),
+		`try { throw [1, {a: 2}] } catch e { e.message() }`, WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, `[1, {"a": 2}]`)
+}
+
+// An error prints its whole message, so a list that repeats one error is
+// counted by its messages (#583).
+func TestSharedErrorBounded(t *testing.T) {
+	build := "let e = error(\"a\".repeat(1 << 20))\n" +
+		"let a = list(range(10)).reduce([e], (acc, i) => [acc, acc])\n"
+
+	// 1024 copies of a 1 MiB message is over the 64 MiB limit
+	_, err := Eval(context.Background(), build+"string(a)", WithEnv(Builtins()))
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "string result too large"), err.Error())
+
+	result, err := Eval(context.Background(),
+		build+"try { throw a } catch e { e.message() }", WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, "[...]")
+
+	// string() of one error is its message, with no size check
+	result, err = Eval(context.Background(), build+"len(string(e))",
+		WithEnv(Builtins()), WithLimits(Limits{MaxBytesSize: 2 << 20}))
+	assert.Nil(t, err)
+	assert.Equal(t, result, int64(1<<20))
+}
+
+// A closure prints its whole source, so a list that repeats one closure is
+// counted by its source (#583).
+func TestSharedClosureBounded(t *testing.T) {
+	body := strings.Repeat("x = x + 1\n", 100) // about 1 KB of source
+	build := "let f = function() {\nlet x = 0\n" + body + "}\n" +
+		"let a = list(range(22)).reduce([f], (acc, i) => [acc, acc])\n"
+
+	// 2^22 copies of the source is over the 64 MiB limit
+	for _, expr := range []string{"string(a)", "`${a}`"} {
+		_, err := Eval(context.Background(), build+expr, WithEnv(Builtins()))
+		assert.NotNil(t, err, expr)
+		assert.True(t, strings.Contains(err.Error(), "too large"), err.Error())
+	}
+
+	result, err := Eval(context.Background(),
+		build+"try { throw a } catch e { e.message() }", WithEnv(Builtins()))
+	assert.Nil(t, err)
+	assert.Equal(t, result, "[...]")
 }
