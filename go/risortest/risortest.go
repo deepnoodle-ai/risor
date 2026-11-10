@@ -47,9 +47,11 @@ func Sources(read func(ref string) (string, risor.Origin, error)) Option {
 	return func(o *options) { o.read = read }
 }
 
-// Base names the base environment a file is read against by Load and
-// Parse: a stub with no type takes its signature from it, and vars may
-// supply its variables. Run sets it from its own argument.
+// Base gives the base environment to Load and Parse (F9 7.1, 7.2): the
+// rule of a stub with no type (03-host.md 3.10.10 item 11) is checked
+// against it at the load, and every case of the file runs in a child of
+// it. Without Base the base is the default environment. Run sets it from
+// its own argument.
 func Base(env *risor.Env) Option { return func(o *options) { o.base = env } }
 
 // Update turns update mode on or off, whatever RISOR_UPDATE says.
@@ -184,11 +186,12 @@ func (f *File) Cases() []*Case { return f.cases }
 // Name is the case's name.
 func (c *Case) Name() string { return c.c.Name }
 
-// Run runs the case in a child of base; a nil base is the default
-// environment.
-func (c *Case) Run(ctx context.Context, base *risor.Env) Verdict {
+// Run runs the case in a child of the base its file was loaded with: the
+// base of the option Base, or the default environment when none was given
+// (F9 7.1, 7.2).
+func (c *Case) Run(ctx context.Context) Verdict {
 	o := c.f.opts
-	rc := &runner.Ctx{Base: base, Vars: o.vars, Update: o.update && !c.f.lf.Program, Context: ctx}
+	rc := &runner.Ctx{Base: o.base, Vars: o.vars, Update: o.update && !c.f.lf.Program, Context: ctx}
 	r := runner.RunCaseWith(rc, c.c)
 	v := Verdict{Name: r.Case, Status: r.Status(), Fixture: r.Fixture, Message: r.Message, r: r}
 	switch {
@@ -206,8 +209,14 @@ func (c *Case) Run(ctx context.Context, base *risor.Env) Verdict {
 
 // Update gives the file's text with the expect of each updated verdict
 // written in, and every other byte kept. It gives nil when no verdict is
-// updated, or the file is a program case file, which is never written.
+// updated, or the file is a program case file, which is never written. It
+// also gives nil unless the verdicts are those of every case Cases gives:
+// the file is written once, when every selected case has run (F9 4.2 item
+// 4), so a run of only some of them leaves it as it was.
 func (f *File) Update(verdicts []Verdict) ([]byte, error) {
+	if !f.allRan(verdicts) {
+		return nil, nil
+	}
 	rs := make([]runner.Result, len(verdicts))
 	for i, v := range verdicts {
 		rs[i] = v.r
@@ -219,11 +228,31 @@ func (f *File) Update(verdicts []Verdict) ([]byte, error) {
 	return text, nil
 }
 
+// allRan reports whether the verdicts are one for each selected case, run.
+func (f *File) allRan(verdicts []Verdict) bool {
+	if len(verdicts) != len(f.cases) {
+		return false
+	}
+	ran := map[string]int{}
+	for _, v := range verdicts {
+		ran[v.Name]++
+	}
+	for _, c := range f.cases {
+		if ran[c.c.Name] == 0 {
+			return false
+		}
+		ran[c.c.Name]--
+	}
+	return true
+}
+
 // Run loads the case file at path and runs each case as a subtest named by
 // the case, in a child of base; a nil base is the default environment. A
 // skipped case skips its subtest; a case that fails or is invalid fails it
 // with the lines of its report. An invalid file fails t. With RISOR_UPDATE=1
-// (or the option Update), the file is written after the subtests end.
+// (or the option Update), the file is written after the subtests end, and
+// only when every case selected by the option Filter has run: when go test
+// -run runs only some of them, the file is left as it was (F9 4.2 item 4).
 func Run(t *testing.T, base *risor.Env, path string, opts ...Option) {
 	t.Helper()
 	f, err := Load(path, append(opts, Base(base))...)
@@ -233,7 +262,7 @@ func Run(t *testing.T, base *risor.Env, path string, opts ...Option) {
 	var verdicts []Verdict
 	for _, c := range f.Cases() {
 		t.Run(c.Name(), func(t *testing.T) {
-			v := c.Run(context.Background(), base)
+			v := c.Run(context.Background())
 			verdicts = append(verdicts, v)
 			switch v.Status {
 			case "skip":

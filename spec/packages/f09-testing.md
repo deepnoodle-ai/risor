@@ -498,7 +498,7 @@ func Load(path string, opts ...Option) (*File, error) // an error: invalid
 func Parse(text []byte, program bool, opts ...Option) (*File, error)
 func Base(env *risor.Env) Option // the base of the load and of every case
 func (f *File) Cases() []*Case
-func (c *Case) Run(ctx context.Context, base *risor.Env) Verdict
+func (c *Case) Run(ctx context.Context) Verdict // in the base of the load
 func (f *File) Update(verdicts []Verdict) ([]byte, error) // the new text
 func Vars(v risor.Vars) Option
 func Sources(read func(ref string) (string, risor.Origin, error)) Option
@@ -511,20 +511,19 @@ func Sources(read func(ref string) (string, risor.Origin, error)) Option
    with the lines of 6.1. An invalid file calls `t.Fatal` on the parent test.
 3. With `RISOR_UPDATE=1`, `Run` writes the file after its subtests end.
 4. A nil base is the default environment. `Run` loads the file with its base.
-   `Load` and `Parse` take it by `Base`; `Case.Run` given another base than the
-   load's returns an error verdict of the binding.
+   `Load` and `Parse` take it by `Base`. A case runs in the base of its load,
+   so `Case.Run` takes no base.
 
 ### 7.3 TypeScript (binding rules)
 
 ```ts
 // "risor/testing". It imports no test framework.
-export function defineCases(
-  test: TestFn, base: Env | undefined, file: CaseFile, options?: CaseOptions): void;
+export function defineCases(test: TestFn, file: CaseFile): void;
 export function loadCaseFile(path: string, options?: CaseOptions): CaseFile; // Node
 export function caseFile(data: unknown, options?: CaseOptions): CaseFile;
 export function caseFileText(text: string, program: boolean, options?: CaseOptions): CaseFile;
 export interface CaseFile { readonly cases: readonly Case[]; updatedText(): string | null }
-export interface Case { readonly name: string; run(base?: Env): Verdict }
+export interface Case { readonly name: string; run(): Verdict } // in the base of the load
 type TestFn = ((name: string, fn: () => void) => void) & {skip?: (name: string, fn: () => void) => void};
 ```
 
@@ -540,8 +539,8 @@ type TestFn = ((name: string, fn: () => void) => void) & {skip?: (name: string, 
    written. A file from `caseFile(data)` has no text: its `updatedText()` is
    always `null`.
 5. `CaseOptions.base` is the base of 7.1: the file is checked against it when it
-   is loaded, and its cases run in children of it. The `base` of `defineCases`
-   and of `Case.run`, when given, must be that base.
+   is loaded, and its cases run in children of it. A case runs in the base of
+   its load, so `defineCases` and `Case.run` take no base.
 
 ### 7.4 Rust (binding rules)
 
@@ -552,9 +551,9 @@ pub fn from_text(text: &str, program: bool, base: &Env) -> Result<CaseFile, Erro
 impl CaseFile {
     pub fn cases(&self) -> &[Case];
     pub fn filter(self, text: &str) -> CaseFile;
-    pub fn run(&self, base: &Env, vars: &dyn Vars) -> Report;
+    pub fn run(&self, vars: &dyn Vars) -> Report;
 }
-impl Case   { pub fn run(&self, base: &Env, vars: &dyn Vars) -> Verdict; }
+impl Case   { pub fn run(&self, vars: &dyn Vars) -> Verdict; }
 impl Report {
     pub fn verdicts(&self) -> &[Verdict];
     pub fn text(&self) -> String;           // the lines of 6.1
@@ -567,8 +566,8 @@ impl Report {
    `#[test]` for each file. The report names the cases.
 2. With `RISOR_UPDATE=1`, `run` of a file loaded by `load` writes it in place
    once its selected cases have run.
-3. `run` and `Case::run` take the base given to `load`; another base is the
-   binding's own error.
+3. A case runs in the base given to `load` or `from_text`, so `run` and
+   `Case::run` take no base.
 
 ## 8. The command `risor test`
 
