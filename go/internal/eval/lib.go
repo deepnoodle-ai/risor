@@ -24,6 +24,16 @@ type libCall struct {
 	args    []any
 	span    syntax.Span
 	measure int
+	// The trace of package F8 4 is read from the stack of calls when a run
+	// fails, so a run that does not fail builds none. depth0 is the depth
+	// when the call began: the entry's call of a lambda is in progress while
+	// the depth is past depth0 + measure. idx is the index the entry gave
+	// its last call of a lambda. A record with lam is a call by name of a
+	// const-bound lambda, named name.
+	depth0 int
+	idx    int
+	lam    bool
+	name   string
 }
 
 type libFunc func(r *run, c *libCall) any
@@ -37,7 +47,9 @@ func Key(e *library.Entry) string {
 }
 
 // Implemented reports whether the evaluator has an entry.
-func Implemented(e *library.Entry) bool { return implemented[Key(e)] != nil }
+func Implemented(e *library.Entry) bool {
+	return implemented[Key(e)] != nil || groupImplemented[e.Name] != nil
+}
 
 // Keys of the registry, for the test that it matches library.json.
 func RegistryKeys() []string {
@@ -260,11 +272,12 @@ type paramInfo struct {
 	test  bool
 	kinds [value.OpaqueKind + 1]bool
 	whole bool
+	lits  []string // a literal set (F7 6.2)
 }
 
 var infos = func() map[*library.Entry]*entryInfo {
 	m := map[*library.Entry]*entryInfo{}
-	for _, e := range library.Entries {
+	for _, e := range library.AllEntries {
 		m[e] = newInfo(e)
 	}
 	return m
@@ -279,9 +292,13 @@ func infoOf(e *library.Entry) *entryInfo {
 }
 
 func newInfo(e *library.Entry) *entryInfo {
-	in := &entryInfo{impl: implemented[Key(e)], minmax: !e.IsMethod() && (e.Name == "min" || e.Name == "max")}
+	impl := implemented[Key(e)]
+	if impl == nil {
+		impl = groupImplemented[e.Name]
+	}
+	in := &entryInfo{impl: impl, minmax: !e.IsMethod() && (e.Name == "min" || e.Name == "max")}
 	for _, p := range e.Params {
-		pi := paramInfo{test: p.Callback < 0 && !p.Any, whole: p.Whole}
+		pi := paramInfo{test: p.Callback < 0 && !p.Any, whole: p.Whole, lits: p.Lits}
 		for k, ok := range p.Kinds {
 			if ok && int(k) < len(pi.kinds) {
 				pi.kinds[k] = true
@@ -325,6 +342,12 @@ func (r *run) testArgs(c *libCall) {
 			continue
 		}
 		k := value.KindOf(v)
+		if p.lits != nil { // F7 6.2: a string of the set, else wrong-kind order
+			if s, ok := v.(string); !ok || !containsStr(p.lits, s) {
+				r.raise(fail("wrong-kind", "order", c.span, messages.Word("name", c.e.Name), messages.Val("found", v)))
+			}
+			continue
+		}
 		if !p.kinds[k] {
 			r.raise(fail("wrong-kind", "argument", c.span, messages.Word("name", c.e.Name), messages.Val("kind", v)))
 		}
@@ -368,6 +391,7 @@ func (r *run) elemFail(tested int, f *failure) {
 // The index i is made a value only when the lambda has a parameter for it.
 func (r *run) callback(c *libCall, lam *lambdaCode, e any, i int) any {
 	r.step(2)
+	c.idx = i
 	r.enterCall(c.measure)
 	if lam.nparams > 0 {
 		lam.bind(r, 0, e, true)
@@ -386,6 +410,7 @@ func (r *run) callback(c *libCall, lam *lambdaCode, e any, i int) any {
 // callback2 is callback with two values before the index, for reduce.
 func (r *run) callback2(c *libCall, lam *lambdaCode, a, e any, i int) any {
 	r.step(2)
+	c.idx = i
 	r.enterCall(c.measure)
 	if lam.nparams > 0 {
 		lam.bind(r, 0, a, true)
@@ -1309,4 +1334,13 @@ func fixed(x float64, d int) string {
 		out = "-" + out
 	}
 	return out
+}
+
+func containsStr(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

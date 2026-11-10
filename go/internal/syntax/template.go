@@ -89,7 +89,7 @@ func ParseTemplate(f *File) (*HostTemplate, *Error) {
 			l := &lexer{src: src, pos: pos + 3}
 			closeAt, delim, err := l.part(pos)
 			if err != nil {
-				return nil, err
+				return nil, targetLexical(err, src)
 			}
 			end := closeAt + 1
 			if delim {
@@ -106,7 +106,7 @@ func ParseTemplate(f *File) (*HostTemplate, *Error) {
 	}
 	flush(len(src))
 	for _, pt := range parts {
-		e, err := parsePart(pt)
+		e, err := parsePart(pt, src)
 		if err != nil {
 			return nil, err
 		}
@@ -196,15 +196,15 @@ func (l *lexer) part(dollar int) (closeAt int, delim bool, err *Error) {
 
 // parsePart parses a part's tokens as one Expr, with one level open for the
 // ${{ (F2 2.2 items 8, 9 and 11).
-func parsePart(pt part) (e Node, err *Error) {
-	p := &parser{toks: pt.toks, tok: pt.toks[0]}
+func parsePart(pt part, src []rune) (e Node, err *Error) {
+	p := &parser{toks: pt.toks, tok: pt.toks[0], src: src}
 	defer func() {
 		if r := recover(); r != nil {
 			b, ok := r.(bailout)
 			if !ok {
 				panic(r)
 			}
-			e, err = nil, b.err
+			e, err = nil, p.target(b.err)
 		}
 	}()
 	p.reach()

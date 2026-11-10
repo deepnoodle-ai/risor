@@ -165,6 +165,8 @@ type failure struct {
 	hasData  bool
 	host     bool // number-range from a host number: class environment
 	cause    error
+	path     []any // the path of not-conforming (F4 5.1)
+	hasPath  bool
 }
 
 func (f *failure) message() string {
@@ -230,7 +232,7 @@ type run struct {
 	// keep them; lcs is a stack of library calls. Both are reused between
 	// runs and restored by a try.
 	args  []any
-	lcs   []libCall
+	lcs   []*libCall
 	lcTop int
 	fe    fenv
 }
@@ -454,9 +456,36 @@ func (f *failure) diagnostic(file *syntax.File) diag.Diagnostic {
 	if f.code == "failed" {
 		d.Data, d.HasData = f.data, true
 	}
+	if f.hasPath {
+		d.Path = f.path
+	}
 	return d
 }
 
 func internalError(x any) *failure {
 	return &failure{code: "internal-error", msg: fmt.Sprintf("the run stopped on a fault inside the implementation: %v", x)}
+}
+
+// trace reads the calls in progress from the stack of calls, from the
+// outermost in (package F8 4.1). A try that caught a failure has already
+// cut the stack and the depth back. A library call is in progress when its
+// call of a lambda is: when the depth inside it, at the next call or at the
+// failure, is past its depth at its start and the measure of its lambda's
+// call (02-evaluation.md 8.4). Neither is changed by a failure.
+func (r *run) trace(file *syntax.File) []diag.TraceEntry {
+	out := []diag.TraceEntry{}
+	fs := r.lcs[:r.lcTop]
+	for k, c := range fs {
+		inner := r.depth
+		if k+1 < len(fs) {
+			inner = fs[k+1].depth0
+		}
+		switch {
+		case c.lam:
+			out = append(out, diag.TraceEntry{Span: file.Span(c.span.Start, c.span.End), Name: c.name, Index: -1})
+		case inner >= c.depth0+c.measure:
+			out = append(out, diag.TraceEntry{Span: file.Span(c.span.Start, c.span.End), Name: c.e.Name, Index: c.idx})
+		}
+	}
+	return out
 }

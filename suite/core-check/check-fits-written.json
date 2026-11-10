@@ -18,7 +18,7 @@
   {"name": "an unlisted key: the key", "source": "{a: 1, b: 2}", "returns": "{a: int}", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 8, 1, 9]}]}},
   {"name": "an entry against the rest", "source": "{a: 1, b: \"x\"}", "returns": "map<int>", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 11, 1, 14]}]}},
   {"name": "a map with a spread that fits", "source": "{a: 1, ...ra}", "returns": "{a: int}", "expect": {"type": "{a: int}", "sites": []}},
-  {"name": "a map with a spread: the whole map", "source": "{b: 1, ...ra}", "returns": "{a: int}", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 14]}]}},
+  {"name": "a map with a spread: an unlisted written key", "source": "{b: 1, ...ra}", "returns": "{a: int}", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 2, 1, 3]}]}},
   {"name": "a map with a computed key: the whole map", "source": "{[s]: \"x\"}", "returns": "map<int>", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 11]}]}},
   {"name": "a Cond: the branch", "source": "c ? 1 : \"a\"", "returns": "int", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 9, 1, 12]}]}},
   {"name": "an if chain: each branch", "source": "if (c) { \"a\" } else if (n > 0) { 1 } else { \"b\" }", "returns": "int", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 10, 1, 13]}, {"code": "result-mismatch", "span": [1, 45, 1, 48]}]}},

@@ -1,0 +1,20 @@
+{
+ "cases": [
+  {"name": "a removed string method on a string receiver is no-method", "source": "s.repeat(2)", "removed": ["string.repeat"], "env": "{s: string}", "expect": {"phase": "check", "diagnostics": [{"code": "no-method", "span": [1, 3, 1, 9]}]}},
+  {"name": "a removed list method on a list receiver is no-method", "source": "xs.map(x => x)", "removed": ["list.map"], "env": "{xs: int[]}", "expect": {"phase": "check", "diagnostics": [{"code": "no-method", "span": [1, 4, 1, 7]}]}},
+  {"name": "a removed map method on a map receiver is no-method", "source": "m.keys()", "removed": ["map.keys"], "env": "{m: map<int>}", "expect": {"phase": "check", "diagnostics": [{"code": "no-method", "span": [1, 3, 1, 7]}]}},
+  {"name": "a removed map method on a record receiver is no-method", "source": "r.keys()", "removed": ["map.keys"], "env": "{r: {a: int}}", "expect": {"phase": "check", "diagnostics": [{"code": "no-method", "span": [1, 3, 1, 7]}]}},
+  {"name": "a removed method after a chain step", "source": "s.trim().repeat(2)", "removed": ["string.repeat"], "env": "{s: string}", "expect": {"phase": "check", "diagnostics": [{"code": "no-method", "span": [1, 10, 1, 16]}]}},
+  {"name": "a removed method after ?.", "source": "s?.repeat(2)", "removed": ["string.repeat"], "env": "{s: string | null}", "expect": {"phase": "check", "diagnostics": [{"code": "no-method", "span": [1, 4, 1, 10]}]}},
+  {"name": "a removed function is undefined-function under the checker too", "source": "len(s)", "removed": ["len"], "env": "{s: string}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 4]}]}},
+  {"name": "removing list.slice: string slice still checks", "source": "s.slice(1)", "removed": ["list.slice"], "env": "{s: string}", "expect": {"type": "string", "sites": []}},
+  {"name": "removing string.slice: list slice still checks", "source": "xs.slice(1)", "removed": ["string.slice"], "env": "{xs: int[]}", "expect": {"type": "int[]", "sites": []}},
+  {"name": "removing string.slice: slice on a string is no-method", "source": "s.slice(1)", "removed": ["string.slice"], "env": "{s: string}", "expect": {"phase": "check", "diagnostics": [{"code": "no-method", "span": [1, 3, 1, 8]}]}},
+  {"name": "removing the function min: the list method min still checks", "source": "xs.min()", "removed": ["min"], "env": "{xs: int[]}", "expect": {"type": "int | null", "sites": []}},
+  {"name": "removing list.min: the function min still checks", "source": "min(a, 1)", "removed": ["list.min"], "env": "{a: int}", "expect": {"type": "int", "sites": []}},
+  {"name": "a neighbour of a removed method keeps its type and sites", "source": "s.padStart(4)", "removed": ["string.repeat"], "env": "{s: string}", "expect": {"type": "string", "sites": []}},
+  {"name": "a neighbour marked ! keeps its value site", "source": "s.replaceAll(\"a\", \"b\")", "removed": ["string.repeat"], "env": "{s: string}", "expect": {"type": "string", "sites": [{"class": "value", "span": [1, 1, 1, 23]}]}},
+  {"name": "on an any receiver, repeat records a value site when it is present", "source": "n.repeat(2)", "env": "{n: any}", "expect": {"type": "any", "sites": [{"class": "dynamic", "span": [1, 1, 1, 2]}, {"class": "value", "span": [1, 1, 1, 12]}]}},
+  {"name": "on an any receiver, a removed repeat records no value site", "source": "n.repeat(2)", "removed": ["string.repeat"], "env": "{n: any}", "expect": {"type": "any", "sites": [{"class": "dynamic", "span": [1, 1, 1, 2]}]}}
+ ]
+}

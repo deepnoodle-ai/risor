@@ -61,6 +61,9 @@ func Map(root any, o Options) (t *types.Type, err error) {
 	m.inprog[""] = true
 	r := m.schema(root, true)
 	t = types.Close(r.t)
+	if types.Size(t) > types.MaxSize {
+		m.fail("the type is larger than %d", types.MaxSize)
+	}
 	if types.Depth(t) > MaxDepth {
 		m.fail("the type is deeper than %d", MaxDepth)
 	}
@@ -91,6 +94,12 @@ func (m *mapper) schema(s any, root bool) result {
 	}
 	if res.depth > MaxDepth {
 		m.fail("the schema is deeper than %d", MaxDepth)
+	}
+	// 05-types.md 20.7, ruling CG4: a type over the size limit is bad-type.
+	// Each part is tested as it is mapped, so no operation on it (Pick,
+	// Meet, Join, Close) works on a type past the limit.
+	if types.Size(res.t) > types.MaxSize {
+		m.fail("the type is larger than %d", types.MaxSize)
 	}
 	return res
 }
@@ -131,13 +140,7 @@ func (m *mapper) object(s map[string]any, root bool) result {
 	}
 	for _, k := range []string{"anyOf", "oneOf"} {
 		if v, ok := s[k]; ok {
-			bs := m.branches(k, v, add)
-			m.tagTest(bs)
-			t := types.Never
-			for _, b := range bs {
-				t = types.Join(t, b)
-			}
-			parts = append(parts, t)
+			parts = append(parts, branchesJoin(m.branches(k, v, add)))
 		}
 	}
 	t := types.Any
@@ -162,41 +165,23 @@ func (m *mapper) branches(k string, v any, add func(result) *types.Type) []*type
 	return out
 }
 
-// tagTest refuses branches whose records would form a tagged union, until
-// F5 (3.9).
-func (m *mapper) tagTest(bs []*types.Type) {
+// branchesJoin is the part of an anyOf or oneOf (F5 8.1): when the records
+// of the branches form a tagged union, a type whose map alternative is that
+// union and whose other alternatives are the Join of the branches' others;
+// otherwise the Join of the branches.
+func branchesJoin(bs []*types.Type) *types.Type {
 	var recs []*types.Record
+	others := make([]*types.Type, 0, len(bs))
 	for _, b := range bs {
-		if r := b.Record(); r != nil {
-			recs = append(recs, r)
+		recs = append(recs, types.Variants(b)...)
+		others = append(others, types.WithoutMap(b))
+	}
+	if len(recs) >= 2 {
+		if u, ok := types.FormUnion(recs); ok {
+			return types.WithMap(types.JoinAll(others), u)
 		}
 	}
-	if len(recs) < 2 {
-		return
-	}
-	for _, f := range recs[0].Fields {
-		seen := map[string]bool{}
-		tag := true
-		for _, r := range recs {
-			g, ok := r.Field(f.Key)
-			if !ok || g.Optional || g.Type.Kinds() != 1 || g.Type.Lits() == nil {
-				tag = false
-				break
-			}
-			for _, l := range g.Type.Lits() {
-				if seen[l] {
-					tag = false
-				}
-				seen[l] = true
-			}
-			if !tag {
-				break
-			}
-		}
-		if tag {
-			m.fail("the branches have the tag %q: a tagged union needs package F5", f.Key)
-		}
-	}
+	return types.JoinAll(bs)
 }
 
 var typeNames = map[string]bool{"null": true, "boolean": true, "integer": true, "number": true,
@@ -280,11 +265,11 @@ func Literal(v any) *types.Type {
 	case string:
 		return types.Lit(x)
 	case []any:
-		e := types.Never
-		for _, el := range x {
-			e = types.Join(e, Literal(el))
+		es := make([]*types.Type, len(x))
+		for i, el := range x {
+			es[i] = Literal(el)
 		}
-		return types.List(e)
+		return types.List(types.JoinAll(es))
 	case map[string]any:
 		fs := make([]types.Field, 0, len(x))
 		for k, el := range x {
@@ -313,13 +298,13 @@ func (m *mapper) kindPart(s map[string]any, add func(result) *types.Type) *types
 		values, hasValues = arr, true
 	}
 	if hasValues {
-		t := types.Never
+		var ts []*types.Type
 		for _, v := range values {
 			if allows(names, v) {
-				t = types.Join(t, Literal(v))
+				ts = append(ts, Literal(v))
 			}
 		}
-		return t
+		return types.JoinAll(ts)
 	}
 	t := types.Never
 	for _, n := range names {
@@ -346,6 +331,7 @@ func (m *mapper) kindPart(s map[string]any, add func(result) *types.Type) *types
 // items is the element type of an array (3.5).
 func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Type {
 	e := types.Never
+	var es []*types.Type // the items of a list, joined once (ruling CG10)
 	schemaList := func(k string, v any) {
 		arr, ok := v.([]any)
 		if !ok {
@@ -355,7 +341,7 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 			if !isSchema(x) {
 				m.fail("an element of %s is not a schema", k)
 			}
-			e = types.Join(e, add(m.schema(x, false)))
+			es = append(es, add(m.schema(x, false)))
 		}
 	}
 	if v, ok := s["prefixItems"]; ok {
@@ -381,7 +367,7 @@ func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Ty
 			e = types.Join(e, types.Any)
 		}
 	}
-	return e
+	return types.Join(e, types.JoinAll(es))
 }
 
 // record is the record of an object (3.8, 4).
@@ -443,11 +429,17 @@ func (m *mapper) record(s map[string]any, add func(result) *types.Type) *types.R
 				if po, ok := ps.(map[string]any); ok {
 					def, hasDef = po["default"]
 				}
+				// F1 4.4: the fill is kept apart from the base until the
+				// meets are done.
+				var fill *types.Type
 				switch {
 				case m.o.DefaultsApplied && hasDef:
-					f.Optional, f.Type = false, types.Join(t, Literal(def))
+					fill = Literal(def)
 				case m.o.AbsentIsNull:
-					f.Optional, f.Type = false, types.Join(t, types.Null)
+					fill = types.Null
+				}
+				if fill != nil {
+					f = types.Field{Key: k, Type: types.Join(t, fill), Base: t, Fill: fill}
 				}
 			}
 			fields = append(fields, f)
@@ -622,19 +614,27 @@ func pick(ts []*types.Type) *types.Type {
 	if len(left) == 0 {
 		return types.Any
 	}
-	allRec := true
+	// Step 2 (F5 8.3): every type left is one map alternative, a record or a
+	// union: their meet, folded from the left. A meet that fails sends the
+	// whole list to step 3.
+	allMap := true
 	for _, t := range left {
 		if t.Kinds() != 1 || t.Record() == nil {
-			allRec = false
+			allMap = false
 			break
 		}
 	}
-	if allRec {
+	if allMap {
 		acc := left[0]
+		ok := true
 		for _, t := range left[1:] {
-			acc = types.RecType(meet(acc.Record(), t.Record()))
+			if acc, ok = meetT(acc, t); !ok {
+				break
+			}
 		}
-		return acc
+		if ok {
+			return acc
+		}
 	}
 	for i, t := range left {
 		ok := true
@@ -654,6 +654,31 @@ func pick(ts []*types.Type) *types.Type {
 	return left[0]
 }
 
+// meetT meets two map alternatives (F5 8.3): two records by Meet; a record
+// and a union by the meets with each variant, in the order the parts stand,
+// when they form a tagged union; two unions fail.
+func meetT(a, b *types.Type) (*types.Type, bool) {
+	ua, ub := a.Union(), b.Union()
+	switch {
+	case ua == nil && ub == nil:
+		return types.RecType(meet(a.Record(), b.Record())), true
+	case ua != nil && ub != nil:
+		return nil, false
+	}
+	var vs []*types.Record
+	if ua != nil {
+		for _, v := range ua.Variants {
+			vs = append(vs, meet(v, b.Record()))
+		}
+	} else {
+		for _, v := range ub.Variants {
+			vs = append(vs, meet(a.Record(), v))
+		}
+	}
+	u, ok := types.FormUnion(vs)
+	return u, ok
+}
+
 // meet is Meet of 3.6 item 3.
 func meet(a, b *types.Record) *types.Record {
 	keys := map[string]bool{}
@@ -669,13 +694,29 @@ func meet(a, b *types.Record) *types.Record {
 		fb, inB := b.Field(k)
 		ta, tb := a.Rest, b.Rest
 		if inA {
-			ta = fa.Type
+			ta = fa.BaseOf()
 		}
 		if inB {
-			tb = fb.Type
+			tb = fb.BaseOf()
 		}
-		req := (inA && !fa.Optional) || (inB && !fb.Optional)
-		fields = append(fields, types.Field{Key: k, Type: pick([]*types.Type{ta, tb}), Optional: !req})
+		// F1 3.6 item 3: the base by Pick, the fill by Join.
+		base := pick([]*types.Type{ta, tb})
+		var fill *types.Type
+		if (inA && fa.Fill != nil) || (inB && fb.Fill != nil) {
+			fill = types.Never
+			if inA && fa.Fill != nil {
+				fill = types.Join(fill, fa.Fill)
+			}
+			if inB && fb.Fill != nil {
+				fill = types.Join(fill, fb.Fill)
+			}
+		}
+		req := (inA && !fa.Optional) || (inB && !fb.Optional) || fill != nil
+		f := types.Field{Key: k, Type: base, Optional: !req}
+		if fill != nil {
+			f = types.Field{Key: k, Type: types.Join(base, fill), Base: base, Fill: fill}
+		}
+		fields = append(fields, f)
 	}
 	r := types.Rec(fields, pick([]*types.Type{a.Rest, b.Rest})).Record()
 	r.Closable = a.Closable && b.Closable

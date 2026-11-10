@@ -106,7 +106,7 @@
   {"name": "through its form: {a: ni} against {a: int}", "source": "f({a: ni})", "functions": {"f": "(x: {a: int}) => int"}, "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 7, 1, 9]}]}},
   {"name": "through its form: {a: 1, ...ra} against {a: int}", "source": "f({a: 1, ...ra})", "functions": {"f": "(x: {a: int}) => int"}, "expect": {"type": "int", "sites": []}},
   {"name": "through its form: {a: \"x\", ...ra} against {a: int}", "source": "f({a: \"x\", ...ra})", "functions": {"f": "(x: {a: int}) => int"}, "expect": {"type": "int", "sites": []}},
-  {"name": "through its form: {b: 1, ...ra} against {a: int}", "source": "f({b: 1, ...ra})", "functions": {"f": "(x: {a: int}) => int"}, "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 3, 1, 16]}]}},
+  {"name": "through its form: {b: 1, ...ra} against {a: int}", "source": "f({b: 1, ...ra})", "functions": {"f": "(x: {a: int}) => int"}, "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 4, 1, 5]}]}},
   {"name": "through its form: c ? 1 : \"a\" against int", "source": "f(c ? 1 : \"a\")", "functions": {"f": "(x: int) => int"}, "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 11, 1, 14]}]}},
   {"name": "through its form: c ? 1 : started against int", "source": "f(c ? 1 : started)", "functions": {"f": "(x: int) => int"}, "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 11, 1, 18]}]}},
   {"name": "through its form: c ? ni : 1 against int", "source": "f(c ? ni : 1)", "functions": {"f": "(x: int) => int"}, "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 7, 1, 9]}]}},

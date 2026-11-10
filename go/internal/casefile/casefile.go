@@ -29,13 +29,22 @@ type Case struct {
 	// File is the path the case gave, or empty.
 	File string
 
-	Version      string // empty when absent
-	Env          *string
-	Opaque       []string
-	Methods      map[string]*Stub
-	Functions    map[string]*Stub
-	Reject       []string
-	HasReject    bool
+	Version   string // empty when absent
+	Env       *string
+	Opaque    []string
+	Methods   map[string]*Stub
+	Functions map[string]*Stub
+	Reject    []string
+	HasReject bool
+	// Removed lists the removed library entries (ruling CD4).
+	Removed []string
+	// Groups are the opt-in groups the case turns on (package F6 11.1).
+	Groups []string
+	// Types are the named types of package F4 9.1, in order. Nil when
+	// absent.
+	Types []*NamedType
+	// Conform is the type and value of a conform case (F4 9.2), or nil.
+	Conform      *Conform
 	Returns      *string
 	Vars         map[string]any // nil when absent
 	Limits       *Limits
@@ -50,8 +59,46 @@ type Case struct {
 	// Template is "string" or "value" when the text is a template (F2 4.1),
 	// else empty.
 	Template string
-	Expect   *Expect
+	// Render is the field render of a render case (package F8 7.4), or
+	// nil.
+	Render *Render
+	Expect *Expect
 }
+
+// NamedType is one entry of the field types (F4 9.1).
+type NamedType struct {
+	Name    string
+	Type    *string // type text, or nil for a schema
+	Schema  any
+	Options []string
+}
+
+// Conform is the field conform of a conform case (F4 9.2).
+type Conform struct {
+	Type  string
+	Value any
+	// Max is the maximum of ConformAll (package F8 7.5), or nil.
+	Max *int64
+}
+
+// ConformResult is the expect of a conform case (F4 9.2).
+type ConformResult struct {
+	Conforms bool
+	Path     []any
+	HasPath  bool
+	Message  *string
+	Steps    *int64
+	// Failures is the expected list of ConformAll (F8 7.5). Nil when
+	// absent.
+	Failures []Failure
+}
+
+var (
+	namedTypeFields     = set("name", "type", "schema", "options")
+	conformFields       = set("type", "value", "max")
+	conformCaseFields   = set("name", "version", "opaque", "types", "conform", "skip", "expect")
+	conformResultFields = set("conforms", "path", "message", "steps", "failures")
+)
 
 // SchemaVar is one value of the field schemas (F1 7.1).
 type SchemaVar struct {
@@ -98,9 +145,17 @@ type Expect struct {
 	HasDescription bool
 	// Analysis is the expected analysis report (F2 4.2): only the fields it
 	// has are compared. Nil when absent.
-	Analysis  map[string]any
+	Analysis map[string]any
+	// Conform is a conform result (F4 9.2), or nil.
+	Conform *ConformResult
+	// JSON is the expected JSON text of the value (F6 11.2), or nil.
+	JSON      *string
 	Steps     *int64
 	Allocated *int64
+	// Rendered is the expected renderings of a failure (F8 7.3), or nil.
+	Rendered *Renderings
+	// Render is the expect of a render case (F8 7.4), or nil.
+	Render *Renderings
 }
 
 // IsFailure reports whether the expect is a failure.
@@ -122,6 +177,8 @@ type ExpDiag struct {
 	Message *string
 	Data    any
 	HasData bool
+	// Trace is the expected trace (F8 7.2). Nil when absent.
+	Trace []diag.TraceEntry
 }
 
 // InvalidError is the reason a file is invalid. Every case of the file then
@@ -196,11 +253,10 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check",
-		"schemas", "template")
-	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis")
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render")
+	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json")
 	// F2 4.2, 4.3.
 	analysisFields = set("names", "refs", "calls", "literal", "segments")
 	analysisBanned = []string{"env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version"}
@@ -209,15 +265,17 @@ var (
 	// F1 7.1 and 7.2.
 	schemaVarFields   = set("schema", "options")
 	descriptionFields = set("version", "variables", "functions", "opaque", "removed", "reject", "limits")
-	failureFields     = set("phase", "diagnostics", "steps", "allocated")
-	diagFields        = set("code", "class", "span", "path", "message", "data")
-	stubFields        = set("type", "calls")
-	rowFields         = set("args", "result", "error", "charge", "allocate")
-	limitFields       = set("steps", "allocation", "depth")
-	siteFields        = set("class", "span")
-	phases            = set("declare", "parse", "check", "run")
-	siteClasses       = set("dynamic", "index", "divide", "value", "host")
-	diagClasses       = set("constant-condition", "dynamic", "index", "divide", "value", "host",
+	// descriptionAllowed adds the key types of package F4 8.
+	descriptionAllowed = set("version", "variables", "functions", "opaque", "removed", "reject", "limits", "types", "groups")
+	failureFields      = set("phase", "diagnostics", "steps", "allocated", "rendered")
+	diagFields         = set("code", "class", "span", "path", "message", "data", "trace")
+	stubFields         = set("type", "calls")
+	rowFields          = set("args", "result", "error", "charge", "allocate")
+	limitFields        = set("steps", "allocation", "depth")
+	siteFields         = set("class", "span")
+	phases             = set("declare", "parse", "check", "run")
+	siteClasses        = set("dynamic", "index", "divide", "value", "host")
+	diagClasses        = set("constant-condition", "dynamic", "index", "divide", "value", "host",
 		"environment", "range", "limit")
 
 	versionRe = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
@@ -324,9 +382,12 @@ func (v *validator) file(raw any) (*File, error) {
 		}
 		_, hasSource := m["source"]
 		_, hasFile := m["file"]
-		if hasSource || hasFile {
+		_, hasConform := m["conform"]
+		_, hasRender := m["render"]
+		if hasSource || hasFile || hasConform || hasRender { // F4 9.2 item 1, F8 7.4 item 1
 			delete(merged, "source")
 			delete(merged, "file")
+			delete(merged, "conform")
 		}
 		for k, val := range m {
 			merged[k] = val
@@ -381,7 +442,7 @@ func (v *validator) fields(m map[string]any, where string) error {
 			}
 		}
 	}
-	for _, k := range []string{"opaque", "reject"} {
+	for _, k := range []string{"opaque", "reject", "removed"} {
 		if x, ok := m[k]; ok {
 			if _, ok := stringList(x); !ok {
 				return v.invalid("%s: %s is not a list of strings", where, k)
@@ -431,6 +492,39 @@ func (v *validator) fields(m map[string]any, where string) error {
 			if !ok || n < 0 || (k == "depth" && (n < 1 || n > 1000)) {
 				return v.invalid("%s: limits.%s is out of range", where, k)
 			}
+		}
+	}
+	if x, ok := m["types"]; ok {
+		if err := v.namedTypes(x, where); err != nil {
+			return err
+		}
+	}
+	if x, ok := m["groups"]; ok { // F6 11.1 item 4
+		list, ok := stringList(x)
+		if !ok {
+			return v.invalid("%s: groups is not a list of strings", where)
+		}
+		seen := map[string]bool{}
+		for _, g := range list {
+			if seen[g] {
+				return v.invalid("%s: groups names %q twice", where, g)
+			}
+			seen[g] = true
+		}
+	}
+	if x, ok := m["conform"]; ok {
+		cm, ok := x.(map[string]any)
+		if !ok {
+			return v.invalid("%s: conform is not an object", where)
+		}
+		if err := v.checkFields(cm, conformFields, where+": conform"); err != nil {
+			return err
+		}
+		if _, ok := cm["type"].(string); !ok {
+			return v.invalid("%s: conform has no type text", where)
+		}
+		if _, ok := cm["value"]; !ok {
+			return v.invalid("%s: conform has no value", where)
 		}
 	}
 	if x, ok := m["template"]; ok {
@@ -548,6 +642,19 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	c := &Case{Name: m["name"].(string)}
 	src, hasSource := m["source"]
 	file, hasFile := m["file"]
+	if _, ok := m["render"]; ok {
+		_, hasConform := m["conform"]
+		if hasSource || hasFile || hasConform {
+			return nil, v.invalid("%s must have exactly one of source, file, conform and render", where)
+		}
+		return v.buildRender(c, m, where)
+	}
+	if cf, ok := m["conform"]; ok {
+		if hasSource || hasFile {
+			return nil, v.invalid("%s must have exactly one of source, file and conform", where)
+		}
+		return v.buildConform(c, m, cf.(map[string]any), where)
+	}
 	if hasSource == hasFile {
 		return nil, v.invalid("%s must have exactly one of source and file", where)
 	}
@@ -573,6 +680,9 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	if x, ok := m["reject"]; ok {
 		c.Reject, _ = stringList(x)
 		c.HasReject = true
+	}
+	if x, ok := m["removed"]; ok {
+		c.Removed, _ = stringList(x)
 	}
 	if x, ok := m["methods"]; ok {
 		c.Methods = map[string]*Stub{}
@@ -618,6 +728,15 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	}
 	if s := optString(m, "template"); s != nil {
 		c.Template = *s
+	}
+	if x, ok := m["groups"]; ok {
+		c.Groups, _ = stringList(x)
+		if c.Groups == nil {
+			c.Groups = []string{}
+		}
+	}
+	if x, ok := m["types"]; ok {
+		c.Types = buildNamedTypes(x)
 	}
 	if x, ok := m["schemas"]; ok {
 		c.Schemas = map[string]*SchemaVar{}
@@ -684,7 +803,7 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 		}
 		if e.Phase == "check" {
 			for _, d := range e.Diagnostics {
-				if !StaticCodes[d.Code] {
+				if !StaticCodes[d.Code] && !ExtraStatic[d.Code] {
 					return nil, v.invalid("%s: a case with \"check\": false expects static codes only, not %s", where, d.Code)
 				}
 			}
@@ -844,6 +963,29 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 			}
 			e.Diagnostics = append(e.Diagnostics, ed)
 		}
+		for _, d := range e.Diagnostics {
+			if d.Trace != nil && p != "run" { // F8 7.6 item 2
+				return nil, v.invalid("%s: trace in a diagnostic of phase %s", where, p)
+			}
+			if d.Message != nil && p == "declare" { // F8 7.6 item 1
+				return nil, v.invalid("%s: message in a diagnostic of phase declare", where)
+			}
+		}
+		if x, ok := m["rendered"]; ok { // F8 7.3
+			rs, err := v.renderings(x, where+": rendered")
+			if err != nil {
+				return nil, err
+			}
+			if p == "declare" {
+				return nil, v.invalid("%s: rendered in a failure of phase declare", where)
+			}
+			for _, d := range e.Diagnostics {
+				if p == "run" && diag.LimitCodes[d.Code] {
+					return nil, v.invalid("%s: rendered in a failure of a limit code", where)
+				}
+			}
+			e.Rendered = rs
+		}
 		if p != "run" {
 			if _, ok := m["steps"]; ok {
 				return nil, v.invalid("%s: steps with a phase that is not run", where)
@@ -895,7 +1037,7 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 			if !ok {
 				return nil, v.invalid("%s: description is not an object", where)
 			}
-			if err := v.checkFields(d, descriptionFields, where+": description"); err != nil {
+			if err := v.checkFields(d, descriptionAllowed, where+": description"); err != nil {
 				return nil, err
 			}
 			for k := range descriptionFields {
@@ -914,6 +1056,16 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 				return nil, err
 			}
 			e.Analysis = am
+		}
+		if x, ok := m["json"]; ok {
+			s, ok := x.(string)
+			if !ok {
+				return nil, v.invalid("%s: json is not a string", where)
+			}
+			e.JSON = &s
+		}
+		if _, ok := m["conforms"]; ok {
+			return nil, v.invalid("%s: a conform result in a case without conform", where)
 		}
 		if x, ok := m["truthy"]; ok {
 			b, ok := x.(bool)
@@ -1001,10 +1153,25 @@ func (v *validator) diagnostic(x any, where string) (*ExpDiag, error) {
 	if x, ok := m["data"]; ok {
 		d.Data, d.HasData = x, true
 	}
+	if x, ok := m["trace"]; ok {
+		tr, err := v.trace(x, where)
+		if err != nil {
+			return nil, err
+		}
+		d.Trace = tr
+	}
 	return d, nil
 }
 
 // StaticCodes are the eleven codes of the static rules (05-types.md 22.1).
+// ExtraStatic holds the codes that are static in the directory being run
+// besides the eleven of Core: in suite/conversion, untagged-union and
+// check-limit (package F4 6.1 item 4).
+var ExtraStatic = map[string]bool{}
+
+// ConversionStatic are the codes F4 6.1 item 4 adds in suite/conversion.
+var ConversionStatic = map[string]bool{"untagged-union": true, "check-limit": true}
+
 var StaticCodes = map[string]bool{
 	"undefined-name": true, "undefined-function": true, "not-a-value": true,
 	"call-of-parameter": true, "lambda-to-lambda": true, "duplicate-name": true,
@@ -1053,8 +1220,7 @@ func (v *validator) analysis(x any, where string) (map[string]any, error) {
 	}
 	if _, has := m["refs"]; has && !objects("refs", refFields, func(o map[string]any) bool {
 		_, n := o["name"].(string)
-		_, p := stringList(o["path"])
-		return n && p && isSpan(o["span"])
+		return n && pathSteps(o["path"]) && isSpan(o["span"])
 	}) {
 		return bad("refs")
 	}
@@ -1104,4 +1270,171 @@ func (v *validator) analysis(x any, where string) (map[string]any, error) {
 		}
 	}
 	return m, nil
+}
+
+// namedTypes validates the field types (F4 9.1).
+func (v *validator) namedTypes(x any, where string) error {
+	arr, ok := x.([]any)
+	if !ok {
+		return v.invalid("%s: types is not an array", where)
+	}
+	for i, e := range arr {
+		w := fmt.Sprintf("%s: types[%d]", where, i)
+		o, ok := e.(map[string]any)
+		if !ok {
+			return v.invalid("%s is not an object", w)
+		}
+		if err := v.checkFields(o, namedTypeFields, w); err != nil {
+			return err
+		}
+		if _, ok := o["name"].(string); !ok {
+			return v.invalid("%s has no name", w)
+		}
+		t, hasType := o["type"]
+		_, hasSchema := o["schema"]
+		if hasType == hasSchema {
+			return v.invalid("%s has both type and schema, or neither", w)
+		}
+		if hasType {
+			if _, ok := t.(string); !ok {
+				return v.invalid("%s: type is not a string", w)
+			}
+			if _, ok := o["options"]; ok {
+				return v.invalid("%s: options beside type", w)
+			}
+		}
+		if opts, ok := o["options"]; ok {
+			list, ok := stringList(opts)
+			if !ok {
+				return v.invalid("%s: options is not a list of strings", w)
+			}
+			seen := map[string]bool{}
+			for _, op := range list {
+				if !schemaOptions[op] || seen[op] {
+					return v.invalid("%s: options has %q, not a name or named twice", w, op)
+				}
+				seen[op] = true
+			}
+		}
+	}
+	return nil
+}
+
+func buildNamedTypes(x any) []*NamedType {
+	var out []*NamedType
+	for _, e := range x.([]any) {
+		o := e.(map[string]any)
+		nt := &NamedType{Name: o["name"].(string)}
+		if t, ok := o["type"].(string); ok {
+			nt.Type = &t
+		} else {
+			nt.Schema = o["schema"]
+			if opts, ok := o["options"]; ok {
+				nt.Options, _ = stringList(opts)
+			}
+		}
+		out = append(out, nt)
+	}
+	if out == nil {
+		out = []*NamedType{}
+	}
+	return out
+}
+
+// buildConform builds a conform case (F4 9.2).
+func (v *validator) buildConform(c *Case, m, cf map[string]any, where string) (*Case, error) {
+	if err := v.checkFields(m, conformCaseFields, where); err != nil {
+		return nil, err
+	}
+	if s := optString(m, "version"); s != nil {
+		c.Version = *s
+	}
+	c.Skip = optString(m, "skip")
+	if x, ok := m["opaque"]; ok {
+		c.Opaque, _ = stringList(x)
+	}
+	if x, ok := m["types"]; ok {
+		c.Types = buildNamedTypes(x)
+	}
+	val, err := v.opaque(cf["value"], c.Opaque, where)
+	if err != nil {
+		return nil, err
+	}
+	c.Conform = &Conform{Type: cf["type"].(string), Value: val}
+	if c.Conform.Max, err = v.conformMax(cf, where+": conform"); err != nil {
+		return nil, err
+	}
+	em, ok := m["expect"].(map[string]any)
+	if !ok {
+		return nil, v.invalid("%s: expect is not an object", where)
+	}
+	if _, ok := em["phase"]; ok {
+		e, err := v.expect(em, where)
+		if err != nil {
+			return nil, err
+		}
+		if e.Phase != "declare" {
+			return nil, v.invalid("%s: a conform case expects a conform result or a declare failure", where)
+		}
+		c.Expect = e
+		return c, nil
+	}
+	if err := v.checkFields(em, conformResultFields, where+": expect"); err != nil {
+		return nil, err
+	}
+	b, ok := em["conforms"].(bool)
+	if !ok {
+		return nil, v.invalid("%s: a conform result needs conforms", where)
+	}
+	r := &ConformResult{Conforms: b}
+	if x, ok := em["path"]; ok {
+		a, ok := x.([]any)
+		if !ok || b {
+			return nil, v.invalid("%s: path is not a list, or stands beside conforms true", where)
+		}
+		r.Path, r.HasPath = a, true
+	}
+	if x, ok := em["message"]; ok {
+		s, ok := x.(string)
+		if !ok || b {
+			return nil, v.invalid("%s: message is not a string, or stands beside conforms true", where)
+		}
+		r.Message = &s
+	}
+	if x, ok := em["steps"]; ok {
+		if r.Steps, err = v.count(x, where, "steps"); err != nil {
+			return nil, err
+		}
+	}
+	if x, ok := em["failures"]; ok {
+		if c.Conform.Max == nil {
+			return nil, v.invalid("%s: failures in a case whose conform has no max", where)
+		}
+		if r.Failures, err = v.failures(x, where+": expect"); err != nil {
+			return nil, err
+		}
+	}
+	c.Expect = &Expect{Conform: r}
+	return c, nil
+}
+
+// pathSteps reports whether x is a path of an analysis: a list of keys and
+// stars, a star written {"star": true} (F7 9.3).
+func pathSteps(x any) bool {
+	arr, ok := x.([]any)
+	if !ok {
+		return false
+	}
+	for _, s := range arr {
+		switch s := s.(type) {
+		case string:
+		case map[string]any:
+			if b, ok := s["star"].(bool); !ok || !b || len(s) != 1 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }

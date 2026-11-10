@@ -63,6 +63,22 @@ type Diagnostic struct {
 	// HasData reports whether Data is present. A failed run with no second
 	// argument has HasData true and Data holding the null value.
 	HasData bool
+	// Trace is, for a run diagnostic, the calls in progress when the run
+	// failed, from the outermost in (package F8 4). It may be empty. Nil
+	// for every other phase.
+	Trace []TraceEntry
+}
+
+// TraceEntry is one call in progress of a trace (package F8 4.2).
+type TraceEntry struct {
+	// Span is the span of the call.
+	Span Span
+	// Name is the name of the const-bound lambda, or of the library entry
+	// as written.
+	Name string
+	// Index is the index of the element a library entry gave its call of
+	// the lambda, from 0, or -1 for a const-bound lambda (null in JSON).
+	Index int
 }
 
 // String formats the diagnostic for people.

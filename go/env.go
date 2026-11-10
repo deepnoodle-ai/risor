@@ -147,10 +147,19 @@ func (l Limits) apply(e *Env) {
 	}
 }
 
-// Without removes library functions from the environment.
+// Without removes library entries from the environment (03-host.md 3.3.1,
+// rulings CD1 to CD3): a function by its name, as len, and a method by its
+// receiver's kind word, a dot and its name, as string.repeat, list.map or
+// map.keys. A name that names no entry is the declare error bad-name.
+// Removing an entry twice is no error, and a child cannot bring back what
+// its parent removed.
 func Without(names ...string) Decl {
 	return declFunc(func(e *Env) {
 		for _, n := range names {
+			if !library.IsEntryName(n) {
+				e.errf(diag.CodeBadName, fmt.Sprintf("%q names no library entry", n))
+				continue
+			}
 			e.removed[n] = true
 		}
 	})
@@ -196,10 +205,14 @@ type Env struct {
 	vars       map[string]*varDecl
 	funcs      map[string]*funcDecl
 	opaque     map[string]*opaqueDecl
-	removed    map[string]bool
-	reject     []string
-	limits     eval.Limits
-	envTypes   // the declarations as types, for the checker (check.go)
+	// named holds the named types (package F4 3), in the order declared.
+	named []*namedDecl
+	// groups holds the opt-in groups that are on (package F6 2.1).
+	groups   map[string]bool
+	removed  map[string]bool
+	reject   []string
+	limits   eval.Limits
+	envTypes // the declarations as types, for the checker (check.go)
 
 	// while building
 	own  map[string]bool
@@ -228,6 +241,13 @@ func (e *Env) With(decls ...Decl) (*Env, error) {
 	for k, v := range e.funcs {
 		c.funcs[k] = v
 	}
+	c.named = append([]*namedDecl(nil), e.named...)
+	for g := range e.groups {
+		if c.groups == nil {
+			c.groups = map[string]bool{}
+		}
+		c.groups[g] = true
+	}
 	for k, v := range e.opaque {
 		c.opaque[k] = v
 	}
@@ -245,7 +265,9 @@ func (e *Env) build(decls []Decl) (*Env, error) {
 	if e.version != "3.0" {
 		e.errf(diag.CodeUnsupportedVersion, fmt.Sprintf("version %q is not offered", e.version))
 	}
+	e.replaceInherited()
 	e.checkClashes()
+	e.namedEnv()
 	e.typeEnv()
 	e.own = nil
 	if len(e.errs) > 0 {
@@ -254,6 +276,28 @@ func (e *Env) build(decls []Decl) (*Env, error) {
 		return nil, &Error{Diagnostics: errs}
 	}
 	return e, nil
+}
+
+// replaceInherited applies 03-host.md 3.3.2 item 1 (rulings CH2, CH3): a
+// declaration of this environment replaces an inherited declaration of the
+// same name in the same space of names. A variable and a function replace
+// each other; an opaque type, whose name is in the other space (3.3.4 item
+// 1), replaces only an opaque type, which a later declaration of it does
+// already. The clash rules then see the whole environment as it stands.
+func (e *Env) replaceInherited() {
+	for key := range e.own {
+		kind, n, _ := strings.Cut(key, ":")
+		switch kind {
+		case "v":
+			if !e.own["f:"+n] {
+				delete(e.funcs, n)
+			}
+		case "f":
+			if !e.own["v:"+n] {
+				delete(e.vars, n)
+			}
+		}
+	}
 }
 
 func (e *Env) errf(code, msg string) {
@@ -459,6 +503,14 @@ func (e *Env) checkClashes() {
 			e.errf(diag.CodeNameClash, fmt.Sprintf("%s is a function and a namespace", n))
 		}
 	}
+	for g := range e.groups { // F6 2.2
+		if _, ok := e.vars[g]; ok {
+			e.errf(diag.CodeNameClash, fmt.Sprintf("variable %s has the name of a group that is on", g))
+		}
+		if f, ok := e.funcs[g]; ok && f.ns == "" {
+			e.errf(diag.CodeNameClash, fmt.Sprintf("function %s has the name of a group that is on", g))
+		}
+	}
 	for ns := range namespaces {
 		if _, ok := e.vars[ns]; ok {
 			e.errf(diag.CodeNameClash, fmt.Sprintf("variable %s has the name of a namespace", ns))
@@ -472,8 +524,8 @@ func (e *Env) checkClashes() {
 // function with no implementation fails it with no-implementation.
 func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
 	names := &static.Names{Vars: map[string]int{}, Funcs: map[string]*static.Func{},
-		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}}
-	cfg := &eval.Config{Names: names, Methods: map[string]map[string]*eval.Method{}, Limits: e.limits}
+		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}, Types: e.scope()}
+	cfg := &eval.Config{Names: names, Methods: map[string]map[string]*eval.Method{}, Limits: e.limits, Removed: e.removed}
 	varNames := make([]string, 0, len(e.vars))
 	for n := range e.vars {
 		varNames = append(varNames, n)
@@ -518,6 +570,7 @@ func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
 			names.Library[n] = en
 		}
 	}
+	e.groupNames(names)
 	if len(missing) > 0 {
 		return nil, &Error{Diagnostics: missing}
 	}
@@ -529,7 +582,7 @@ func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
 	if err != nil {
 		return nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
 	}
-	return &Program{p: p, x: x, dynamic: dynamicSpans(x, cr)}, nil
+	return &Program{p: p, x: x, dynamic: dynamicSpans(x, cr), host: hostSpans(x, cr), val: valueSpans(x, cr)}, nil
 }
 
 // Program is a compiled program. It does not change, and several goroutines
@@ -539,6 +592,10 @@ type Program struct {
 	x *Expr
 	// dynamic is set for a checked program: the spans at a dynamic site.
 	dynamic map[[4]int]bool
+	// host is set for a checked program: the calls with a host site.
+	host map[[4]int]bool
+	// val is set for a checked program: the nodes with a value site.
+	val map[[4]int]bool
 }
 
 // Run runs the program with the values of its variables. vars may be nil
@@ -557,7 +614,7 @@ func (p *Program) Measure(ctx context.Context, vars Vars) (any, Usage, error) {
 	v, u, d := p.p.Run(ctx, vars)
 	if d != nil {
 		if p.dynamic != nil {
-			checkedClass(d, p.dynamic)
+			checkedClass(d, p.dynamic, p.host, p.val)
 		}
 		return nil, u, &Error{Diagnostics: []Diagnostic{*d}}
 	}

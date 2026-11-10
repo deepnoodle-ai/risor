@@ -259,3 +259,35 @@ func BenchmarkHost(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkProjection compares xs[*].f with xs.map(x => x.f) on a list of
+// 1,000 records (package F7 3.8).
+func BenchmarkProjection(b *testing.B) {
+	xs := make([]any, 1000)
+	for i := range xs {
+		xs[i] = map[string]any{"f": float64(i), "g": "x"}
+	}
+	env, err := risor.NewEnv(risor.Declare("{xs: {f: float, g: string}[]}"), risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit})
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, c := range []struct{ name, src string }{
+		{"star", "xs[*].f"},
+		{"map", "xs.map(x => x.f)"},
+	} {
+		x, _ := risor.Parse(c.src)
+		p, err := env.Compile(x)
+		if err != nil {
+			b.Fatal(err)
+		}
+		vars := risor.Map{"xs": xs}
+		b.Run(c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := p.Run(context.Background(), vars); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

@@ -28,5 +28,17 @@ func TestBuild(t *testing.T) {
 	assert.Equal(t, Build("no-match", "", Val("found", long)), `the match has no arm for "`+strings.Repeat("a", 60)+`...`)
 	assert.True(t, Caught("divide-by-zero"))
 	assert.False(t, Caught("steps-exceeded"))
-	assert.Equal(t, len(Codes()), 19)
+	// 19 run codes, and with package F8 the 58 parse and 29 check codes.
+	assert.Equal(t, len(Codes()), 106)
+}
+
+// The generated copy of the F7 file must be the file of the suite.
+func TestQueriesTableIsCurrent(t *testing.T) {
+	data, err := os.ReadFile("../../../suite/messages-queries.json")
+	if err != nil {
+		t.Skip("suite/messages-queries.json is not there")
+	}
+	if string(data) != sourceQueriesJSON {
+		t.Fatal("queries_gen.go is stale: run GOWORK=off go generate ./... in go/")
+	}
 }

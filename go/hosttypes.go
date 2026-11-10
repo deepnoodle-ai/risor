@@ -165,10 +165,13 @@ func TypeOf[T any]() (Type, error) {
 }
 
 func typeOfReflect(rt reflect.Type) (Type, error) {
-	d := &deriver{inprog: map[reflect.Type]bool{}}
+	d := &deriver{inprog: map[reflect.Type]bool{}, done: map[reflect.Type]*types.Type{}}
 	t, err := d.derive(rt)
 	if err == nil && types.Depth(t) > types.MaxDepth {
 		err = errors.New("the type is deeper than 64")
+	}
+	if err == nil && types.Size(t) > types.MaxSize {
+		err = fmt.Errorf("the type is larger than %d", types.MaxSize)
 	}
 	if err != nil {
 		return Type{}, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
@@ -184,6 +187,9 @@ var (
 
 type deriver struct {
 	inprog map[reflect.Type]bool
+	// done shares the type of a Go type met twice, so a type that uses one
+	// struct in many places is built once (05-types.md 20.7).
+	done map[reflect.Type]*types.Type
 }
 
 func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
@@ -254,12 +260,22 @@ func (d *deriver) nested(rt reflect.Type) (*types.Type, error) {
 	if d.inprog[rt] {
 		return nil, fmt.Errorf("%v contains itself", rt)
 	}
+	if t, ok := d.done[rt]; ok {
+		return t, nil
+	}
 	switch rt.Kind() {
 	case reflect.Struct, reflect.Slice, reflect.Array, reflect.Map, reflect.Pointer:
 		d.inprog[rt] = true
 		defer delete(d.inprog, rt)
 	}
-	return d.derive(rt)
+	t, err := d.derive(rt)
+	if err == nil && types.Size(t) > types.MaxSize {
+		err = fmt.Errorf("the type is larger than %d", types.MaxSize)
+	}
+	if err == nil {
+		d.done[rt] = t
+	}
+	return t, err
 }
 
 // Describe gives the description of the environment (F1 5.3): a JSON
@@ -328,6 +344,12 @@ func (e *Env) Describe() ([]byte, error) {
 		return fmt.Sprint(n)
 	}
 	top := []string{"functions", "limits", "opaque", "reject", "removed", "variables", "version"}
+	if len(e.namedTypes) > 0 { // F4 8: only when a named type exists
+		top = []string{"functions", "limits", "opaque", "reject", "removed", "types", "variables", "version"}
+	}
+	if len(e.groups) > 0 { // F6 2.7: only when a group is on
+		top = append([]string{"functions", "groups"}, top[1:]...)
+	}
 	obj(top, func(k string) {
 		switch k {
 		case "functions":
@@ -349,6 +371,14 @@ func (e *Env) Describe() ([]byte, error) {
 			arr(removed)
 		case "variables":
 			obj(sorted(varNames), func(n string) { w(value.QuoteJSON(e.varTypes[n].String())) })
+		case "groups":
+			arr(e.groupList())
+		case "types":
+			tn := map[string]bool{}
+			for n := range e.namedTypes {
+				tn[n] = true
+			}
+			obj(sorted(tn), func(n string) { w(value.QuoteJSON(e.namedTypes[n].String())) })
 		case "version":
 			w(value.QuoteJSON(e.version))
 		}
@@ -409,7 +439,9 @@ func Description(data []byte) (Decl, error) {
 	}
 	d, ok := raw.(map[string]any)
 	keys := []string{"version", "variables", "functions", "opaque", "removed", "reject", "limits"}
-	if !ok || len(d) != len(keys) {
+	_, hasTypes := d["types"]
+	_, hasGroups := d["groups"]
+	if !ok || len(d) != len(keys)+boolInt(hasTypes)+boolInt(hasGroups) {
 		return nil, errors.New("risor: a description is an object with exactly the keys of F1 5.3")
 	}
 	bad := func(k string) (Decl, error) {
@@ -539,6 +571,22 @@ func Description(data []byte) (Decl, error) {
 		}
 	}
 	decls = append(decls, lim)
+	if hasGroups { // F6 2.7 item 2
+		gl, ok := strList(d["groups"])
+		if !ok {
+			return bad("groups")
+		}
+		decls = append(decls, Groups(gl...))
+	}
+	if hasTypes { // F4 8 item 3: each by type text; no text names another
+		tm, ok := strMap("types", d["types"])
+		if !ok {
+			return bad("types")
+		}
+		for _, n := range sortedStrKeys(tm) {
+			decls = append(decls, NamedType(n, tm[n]))
+		}
+	}
 	return declFunc(func(e *Env) {
 		for _, d := range decls {
 			d.apply(e)
@@ -562,4 +610,11 @@ func sortedAnyKeys(m map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

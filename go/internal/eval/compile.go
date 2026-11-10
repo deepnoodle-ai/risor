@@ -31,6 +31,9 @@ type Config struct {
 	// Methods maps an opaque type name to its methods by name.
 	Methods map[string]map[string]*Method
 	Limits  Limits
+	// Removed is the set of removed library entries (03-host.md 3.3.1): a
+	// removed method is absent from the run, as a name no entry has.
+	Removed map[string]bool
 }
 
 // Program is a compiled program. It does not change, and several runs may
@@ -115,9 +118,14 @@ func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, 
 	}
 	v, f := r.protectAll(p.root)
 	usage = Usage{Steps: r.steps, Alloc: r.units}
+	var trace []diag.TraceEntry
+	if f != nil {
+		trace = r.trace(p.file)
+	}
 	p.putRun(r)
 	if f != nil {
 		dd := f.diagnostic(p.file)
+		dd.Trace = trace
 		return nil, usage, &dd
 	}
 	return v, usage, nil
@@ -156,7 +164,9 @@ func (p *Program) putRun(r *run) {
 	clear(r.varSeen)
 	clear(r.args[:cap(r.args)])
 	r.args = r.args[:0]
-	clear(r.lcs)
+	for _, c := range r.lcs {
+		*c = libCall{}
+	}
 	r.lcTop = 0
 	r.strs = nil
 	r.steps, r.units, r.depth, r.walk = 0, 0, 0, 0
@@ -429,7 +439,7 @@ func (c *compiler) expr(n syntax.Node) code {
 		return c.binary(n)
 	case *syntax.Cond:
 		return c.cond(n)
-	case *syntax.Member, *syntax.Index, *syntax.MethodCall, *syntax.OptChain:
+	case *syntax.Member, *syntax.Index, *syntax.MethodCall, *syntax.OptChain, *syntax.Each:
 		if mc, ok := n.(*syntax.MethodCall); ok && c.res.NSCalls[mc] {
 			return c.call(mc, mc.Args)
 		}
@@ -440,6 +450,8 @@ func (c *compiler) expr(n syntax.Node) code {
 		return c.match(n)
 	case *syntax.Try:
 		return c.try(n)
+	case *syntax.As:
+		return c.as(n)
 	}
 	panic(fmt.Sprintf("cannot compile %T", n))
 }
@@ -593,9 +605,15 @@ func (c *compiler) try(n *syntax.Try) code {
 				sz := value.Size(msg)
 				steps, units = 1+sz, 1+sz
 			}
+			if f.hasPath {
+				units += 1 + int64(len(f.path)) // F4 5.5
+			}
 			r.step(steps)
 			r.unit(9 + units)
 			ev := map[string]any{"code": f.code, "message": msg, "path": nil, "data": nil}
+			if f.hasPath {
+				ev["path"] = append([]any{}, f.path...)
+			}
 			if f.code == "failed" {
 				ev["data"] = f.data
 			}

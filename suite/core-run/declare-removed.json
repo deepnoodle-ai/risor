@@ -1,0 +1,32 @@
+{
+ "removed": ["len"],
+ "cases": [
+  {"name": "a removed function called is undefined-function", "source": "len(\"ab\")", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 4]}]}},
+  {"name": "a removed function read without a call is an unbound name", "source": "len", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 4]}]}},
+  {"name": "the header removes len, and a case may replace the list with none", "source": "len(\"ab\")", "removed": [], "expect": {"value": 2}},
+  {"name": "the other functions still work and cost what they did", "source": "abs(x)", "env": "{x: int}", "vars": {"x": -2}, "expect": {"value": 2, "steps": 1, "allocated": 0}},
+  {"name": "a host function may take the name of a removed function", "source": "len(\"ab\")", "functions": {"len": {"type": "(s: string) => int", "calls": [{"result": 7}]}}, "expect": {"value": 7, "steps": 1, "allocated": 0}},
+  {"name": "without the removal the same host function is a name-clash", "source": "1", "removed": [], "functions": {"len": "(s: string) => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "name-clash"}]}},
+  {"name": "removing the function min keeps the list method min", "source": "xs.min()", "removed": ["min"], "env": "{xs: int[]}", "vars": {"xs": [3, 1, 2]}, "expect": {"value": 1}},
+  {"name": "removing the function min makes min(1, 2) undefined", "source": "min(1, 2)", "removed": ["min"], "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 4]}]}},
+  {"name": "removing the list method min keeps the function min", "source": "min(3, 1)", "removed": ["list.min"], "expect": {"value": 1}},
+  {"name": "a removed string method, in a program compiled without a check", "source": "\"ab\".repeat(2)", "removed": ["string.repeat"], "check": false, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 15], "class": "dynamic", "message": "a value of kind string has no method repeat"}], "steps": 0, "allocated": 0}},
+  {"name": "a removed string method on an any receiver", "source": "s.repeat(2)", "removed": ["string.repeat"], "env": "{s: any}", "vars": {"s": "ab"}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 12], "class": "dynamic", "message": "a value of kind string has no method repeat"}], "steps": 0, "allocated": 0}},
+  {"name": "a removed list method on an any receiver", "source": "xs.map(x => x)", "removed": ["list.map"], "env": "{xs: any}", "vars": {"xs": [1]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 15], "class": "dynamic", "message": "a value of kind list has no method map"}], "steps": 0, "allocated": 0}},
+  {"name": "a removed map method on an any receiver", "source": "m.keys()", "removed": ["map.keys"], "env": "{m: any}", "vars": {"m": {"a": 1}}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 9], "class": "dynamic", "message": "a value of kind map has no method keys"}], "steps": 0, "allocated": 0}},
+  {"name": "removing list.slice keeps string.slice", "source": "s.slice(1)", "removed": ["list.slice"], "env": "{s: any}", "vars": {"s": "abc"}, "expect": {"value": "bc"}},
+  {"name": "removing list.slice: slice on a list fails as a missing method", "source": "s.slice(1)", "removed": ["list.slice"], "env": "{s: any}", "vars": {"s": [1, 2]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 11], "class": "dynamic", "message": "a value of kind list has no method slice"}], "steps": 0, "allocated": 0}},
+  {"name": "the failure of a removed method is caught as a wrong-kind", "source": "try { s.repeat(2) } catch (err) { err.code }", "removed": ["string.repeat"], "env": "{s: any}", "vars": {"s": "ab"}, "expect": {"value": "wrong-kind", "steps": 2, "allocated": 10}},
+  {"name": "the message of a removed method, read in a handler", "source": "try { s.repeat(2) } catch (err) { err.message }", "removed": ["string.repeat"], "env": "{s: any}", "vars": {"s": "ab"}, "expect": {"value": "a value of kind string has no method repeat", "steps": 2, "allocated": 10}},
+  {"name": "the arguments of a removed method are not evaluated", "source": "s.repeat(fail(\"no\"))", "removed": ["string.repeat"], "env": "{s: any}", "vars": {"s": "ab"}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 21], "class": "dynamic", "message": "a value of kind string has no method repeat"}], "steps": 0, "allocated": 0}},
+  {"name": "a string method that was not removed still works and costs what it did", "source": "s.padStart(4, \"-\")", "removed": ["string.repeat"], "env": "{s: string}", "vars": {"s": "ab"}, "expect": {"value": "--ab", "steps": 1, "allocated": 1}},
+  {"name": "every kind word in one list", "source": "1", "removed": ["string.trim", "list.first", "map.values", "len"], "expect": {"value": 1}},
+  {"name": "removing one entry twice is no error", "source": "abs(-1)", "removed": ["len", "len"], "expect": {"value": 1}},
+  {"name": "a name that is no entry is bad-name", "source": "1", "removed": ["lenn"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a method named without its kind is bad-name", "source": "1", "removed": ["repeat"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a method of another kind is bad-name", "source": "1", "removed": ["string.map"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a word that is not a kind word is bad-name", "source": "1", "removed": ["number.abs"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a kind word alone is bad-name", "source": "1", "removed": ["list"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a function written with a kind is bad-name", "source": "1", "removed": ["list.len"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}}
+ ]
+}

@@ -7,7 +7,9 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/check"
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/v3/internal/library"
+	"github.com/deepnoodle-ai/risor/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/v3/internal/static"
+	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
 	"github.com/deepnoodle-ai/risor/v3/internal/types"
 	"github.com/deepnoodle-ai/risor/v3/internal/typetext"
 )
@@ -62,6 +64,7 @@ func (e *Env) typeEnv() {
 		opaque[n] = true
 	}
 	e.opaqueSet = opaque
+	sc := e.scope()
 	e.varTypes = map[string]*types.Type{}
 	names := make([]string, 0, len(e.vars))
 	for n := range e.vars {
@@ -77,7 +80,7 @@ func (e *Env) typeEnv() {
 			e.varTypes[n] = t
 			continue
 		}
-		t, err := types.FromText(e.vars[n].typ, opaque, false)
+		t, err := types.FromTextIn(e.vars[n].typ, sc, false)
 		if err != nil {
 			e.errf(diag.CodeBadType, fmt.Sprintf("variable %s: %v", n, err))
 			continue
@@ -91,7 +94,7 @@ func (e *Env) typeEnv() {
 	}
 	sort.Strings(fnames)
 	for _, n := range fnames {
-		s, err := types.FromSig(nil, e.funcs[n].sig, opaque)
+		s, err := types.FromSigIn(nil, e.funcs[n].sig, sc)
 		if err != nil {
 			e.errf(diag.CodeBadSignature, fmt.Sprintf("function %s: %v", n, err))
 			continue
@@ -102,7 +105,7 @@ func (e *Env) typeEnv() {
 	for tn, o := range e.opaque {
 		ms := map[string]*types.Sig{}
 		for m, f := range o.methods {
-			s, err := types.FromSig(&typetext.Alt{Prim: &typetext.Prim{Kind: typetext.PrimName, Text: tn}}, f.sig, opaque)
+			s, err := types.FromSigIn(&typetext.Alt{Prim: &typetext.Prim{Kind: typetext.PrimName, Text: tn}}, f.sig, sc)
 			if err != nil {
 				e.errf(diag.CodeBadSignature, fmt.Sprintf("method %s.%s: %v", tn, m, err))
 				continue
@@ -129,7 +132,7 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 			tt, err := typetext.ParseType(o.text)
 			var t *types.Type
 			if err == nil {
-				t, err = types.FromText(tt, e.opaqueSet, false)
+				t, err = types.FromTextIn(tt, e.scope(), false)
 			}
 			if err != nil {
 				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
@@ -142,7 +145,7 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 }
 
 func (e *Env) checkEnv(names *static.Names, varNames []string) *check.Env {
-	ce := &check.Env{Hosts: e.hostSigs, Methods: e.methodSigs, Reject: map[string]bool{}}
+	ce := &check.Env{Hosts: e.hostSigs, Methods: e.methodSigs, Reject: map[string]bool{}, Removed: e.removed}
 	for _, n := range varNames {
 		ce.VarTypes = append(ce.VarTypes, e.varTypes[n])
 	}
@@ -166,18 +169,21 @@ func (e *Env) analyze(x *Expr, names *static.Names, varNames []string, opts []Ch
 	}
 	res := static.Check(x.tree, names)
 	var ds []Diagnostic
-	add := func(code string, s, end int, class string) {
+	// The message is built only when the check fails (package F8 3.5).
+	add := func(code string, s, end int, class, tmpl string, ps []messages.Param) {
 		sp := x.file.Span(s, end)
-		ds = append(ds, Diagnostic{Phase: PhaseCheck, Code: code, Span: &sp, Class: class, Message: code})
+		ps = append(ps, messages.Word("text", syntax.Visible(x.file.Text(s, end))))
+		ds = append(ds, Diagnostic{Phase: PhaseCheck, Code: code, Span: &sp, Class: class,
+			Message: messages.Build(code, tmpl, ps...)})
 	}
 	for _, d := range res.Diags {
-		add(d.Code, d.Span.Start, d.Span.End, "")
+		add(d.Code, d.Span.Start, d.Span.End, "", d.Tmpl, d.Params)
 	}
 	var cr *check.Result
 	if checked {
 		cr = check.Check(x.tree, res, e.checkEnv(names, varNames), exp)
 		for _, d := range cr.Diags {
-			add(d.Code, d.Span.Start, d.Span.End, d.Class)
+			add(d.Code, d.Span.Start, d.Span.End, d.Class, d.Tmpl, d.Params)
 		}
 	}
 	if len(ds) > 0 {
@@ -252,10 +258,39 @@ func dynamicSpans(x *Expr, cr *check.Result) map[[4]int]bool {
 	return out
 }
 
+// hostSpans turns the check's host-site spans into source spans.
+func hostSpans(x *Expr, cr *check.Result) map[[4]int]bool {
+	if cr == nil {
+		return nil
+	}
+	out := map[[4]int]bool{}
+	for sp := range cr.Host {
+		out[x.file.Span(sp.Start, sp.End).Array()] = true
+	}
+	return out
+}
+
+// valueSpans turns the check's value-site spans into source spans.
+func valueSpans(x *Expr, cr *check.Result) map[[4]int]bool {
+	if cr == nil {
+		return nil
+	}
+	out := map[[4]int]bool{}
+	for sp := range cr.Value {
+		out[x.file.Span(sp.Start, sp.End).Array()] = true
+	}
+	return out
+}
+
 // checkedClass sets the class of a run failure in a checked program, by
 // the checked column of 03-host.md 3.7.6.
-func checkedClass(d *Diagnostic, dynamic map[[4]int]bool) {
+func checkedClass(d *Diagnostic, dynamic, host, val map[[4]int]bool) {
 	switch d.Code {
+	case "function-error":
+		// The mark ! is a promise (ruling CE2).
+		if d.Span == nil || !host[d.Span.Array()] {
+			d.Class = "environment"
+		}
 	case "null-operand", "wrong-kind", "missing-field":
 		if d.Span != nil && dynamic[d.Span.Array()] {
 			d.Class = "dynamic"
@@ -265,13 +300,19 @@ func checkedClass(d *Diagnostic, dynamic map[[4]int]bool) {
 	case "no-match":
 		d.Class = "environment"
 	case "not-conforming":
-		d.Class = "environment"
+		// F4 6.6: value at a value site, environment elsewhere.
+		if d.Span != nil && val[d.Span.Array()] {
+			d.Class = "value"
+		} else {
+			d.Class = "environment"
+		}
 	}
 }
 
 // envTypes are an environment's declarations as types.
 type envTypes struct {
 	opaqueSet  map[string]bool
+	namedTypes map[string]*types.Type // the resolved named types (F4 3)
 	varTypes   map[string]*types.Type
 	hostSigs   map[string]*types.Sig
 	methodSigs map[string]map[string]*types.Sig
@@ -281,7 +322,7 @@ type envTypes struct {
 // Compile builds them.
 func (e *Env) staticNames() (*static.Names, []string) {
 	names := &static.Names{Vars: map[string]int{}, Funcs: map[string]*static.Func{},
-		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}}
+		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}, Types: e.scope()}
 	varNames := make([]string, 0, len(e.vars))
 	for n := range e.vars {
 		varNames = append(varNames, n)
@@ -307,5 +348,6 @@ func (e *Env) staticNames() (*static.Names, []string) {
 			names.Library[n] = en
 		}
 	}
+	e.groupNames(names)
 	return names, varNames
 }

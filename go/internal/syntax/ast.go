@@ -36,12 +36,16 @@ const (
 	KindMapPat     NodeKind = 28
 	KindListPat    NodeKind = 29
 	KindBad        NodeKind = 30
+	// KindAs is node 31 of package F4: x as T, x is T.
+	KindAs NodeKind = 31
+	// KindEach is node 32 of package F7: a projection.
+	KindEach NodeKind = 32
 )
 
 var nodeNames = [...]string{"", "Program", "Const", "Block", "Ident", "Number", "String",
 	"Template", "Bool", "Null", "List", "Map", "Entry", "Spread", "Unary", "Binary",
 	"Cond", "Member", "Index", "Call", "MethodCall", "OptChain", "Lambda", "Param",
-	"Match", "Arm", "Try", "NamePat", "MapPat", "ListPat", "Bad"}
+	"Match", "Arm", "Try", "NamePat", "MapPat", "ListPat", "Bad", "As", "Each"}
 
 // String returns the node's name, such as "Binary".
 func (k NodeKind) String() string {
@@ -434,6 +438,81 @@ func (*MapPat) Kind() NodeKind { return KindMapPat }
 
 // Kind returns KindListPat.
 func (*ListPat) Kind() NodeKind { return KindListPat }
+
+// As is "x as T" or "x is T" (package F4 2.7). Type is the program type;
+// it is not a node and nothing in it is evaluated.
+type As struct {
+	base
+	Form string // "as" or "is"
+	X    Node
+	Type *PType
+}
+
+// Each is a projection of package F7 (f07-queries.md 2.3): xs[*].f. X is
+// the chain before the first star, nil for a later star. Reads are the
+// steps of its level: Member and Index nodes with no X, and a later star as
+// the last. StarSpan is the step span of its own star.
+type Each struct {
+	base
+	X        Node
+	Reads    []Node
+	Optional bool
+	StarSpan Span
+}
+
+// Kind returns KindEach.
+func (*Each) Kind() NodeKind { return KindEach }
+
+// Kind returns KindAs.
+func (*As) Kind() NodeKind { return KindAs }
+
+// PType is a program type (F4 2.1): alternatives joined by "|".
+type PType struct {
+	Span Span
+	Alts []*PAlt
+}
+
+// PAlt is one alternative: a primary and its count of [] suffixes.
+type PAlt struct {
+	Span  Span
+	Prim  *PPrim
+	Lists int
+}
+
+// PPrimKind is the form of a PPrim.
+type PPrimKind uint8
+
+// The forms of a PPrim.
+const (
+	PWord   PPrimKind = iota // null, bool, int, float, string, any, never
+	PString                  // a literal set of one string
+	PMap                     // map<T>
+	PRecord                  // {f: T, ...}
+	PName                    // a type name
+	PParen                   // (T)
+)
+
+// PPrim is a primary of a program type.
+type PPrim struct {
+	Span Span
+	Kind PPrimKind
+	// Text is the word, the string's value or the name.
+	Text string
+	// Elem is the type of map<T> or (T).
+	Elem *PType
+	// Fields, HasRest and Rest are a record's.
+	Fields  []*PField
+	HasRest bool
+	Rest    *PType // nil for "..." alone
+}
+
+// PField is one field of a PRecord.
+type PField struct {
+	Key      string
+	KeySpan  Span
+	Optional bool
+	Type     *PType
+}
 
 // Kind returns KindBad.
 func (*Bad) Kind() NodeKind { return KindBad }

@@ -17,7 +17,25 @@ func (e *TextError) Error() string { return e.Msg }
 
 type conv struct {
 	opaque    map[string]bool
+	named     map[string]*Type
 	allowVars bool
+}
+
+// Scope is what type text may name: the opaque types and the named types of
+// an environment (package F4 3.3).
+type Scope struct {
+	Opaque map[string]bool
+	Named  map[string]*Type
+}
+
+func (c *conv) check(t *Type) *Type {
+	if Depth(t) > MaxDepth {
+		c.fail("the type is deeper than %d", MaxDepth)
+	}
+	if Size(t) > MaxSize {
+		c.fail("the type is larger than %d (05-types.md 20.7)", MaxSize)
+	}
+	return t
 }
 
 func (c *conv) fail(format string, args ...any) {
@@ -37,29 +55,40 @@ func catch(err *error) {
 // FromText converts a parsed Type. opaque holds the declared opaque type
 // names. Type variables are allowed only with allowVars.
 func FromText(t *typetext.Type, opaque map[string]bool, allowVars bool) (out *Type, err error) {
+	return FromTextIn(t, &Scope{Opaque: opaque}, allowVars)
+}
+
+// FromTextIn converts a parsed Type in a scope: a Name is an opaque type or
+// a named type (F4 3.5).
+func FromTextIn(t *typetext.Type, sc *Scope, allowVars bool) (out *Type, err error) {
 	defer catch(&err)
-	c := &conv{opaque: opaque, allowVars: allowVars}
-	out = c.typ(t)
-	if Depth(out) > MaxDepth {
-		c.fail("the type is deeper than %d", MaxDepth)
-	}
+	c := &conv{opaque: sc.Opaque, named: sc.Named, allowVars: allowVars}
+	out = c.check(c.typ(t))
 	return out, nil
 }
 
 func (c *conv) typ(t *typetext.Type) *Type {
-	r := Never
-	recs := 0
+	// F5 3.1: the records of a Type, a union contributing its variants; two
+	// or more must form a tagged union.
+	xs := make([]*Type, 0, len(t.Alts))
+	var recs []*Record
 	for _, a := range t.Alts {
 		x := c.alt(a)
 		if x.rec != nil {
-			recs++
-			if recs > 1 {
-				c.fail("two records in one type")
-			}
+			recs = append(recs, variants(x)...)
+			x = WithoutMap(x)
 		}
-		r = Join(r, x)
+		xs = append(xs, x)
 	}
-	return r
+	out := JoinAll(xs)
+	if len(recs) > 0 {
+		m, ok := FormUnion(recs)
+		if !ok {
+			c.fail("two or more records that form no tagged union in one type")
+		}
+		out = WithMap(out, m)
+	}
+	return out
 }
 
 func (c *conv) alt(a *typetext.Alt) *Type {
@@ -95,8 +124,11 @@ func (c *conv) prim(p *typetext.Prim) *Type {
 	case typetext.PrimParen:
 		return c.typ(p.Elem)
 	case typetext.PrimName:
+		if t, ok := c.named[p.Text]; ok {
+			return t
+		}
 		if !c.opaque[p.Text] {
-			c.fail("%s is not a declared opaque type", p.Text)
+			c.fail("%s is not a declared opaque type or named type", p.Text)
 		}
 		return Opaque(p.Text)
 	case typetext.PrimVar:
@@ -186,18 +218,20 @@ func (s *Sig) ParamAt(i int) *Param {
 
 // FromSig converts a parsed signature, with an optional receiver.
 func FromSig(recv *typetext.Alt, s *typetext.Sig, opaque map[string]bool) (out *Sig, err error) {
+	return FromSigIn(recv, s, &Scope{Opaque: opaque})
+}
+
+// FromSigIn converts a parsed signature in a scope. The receiver may name an
+// opaque type only (F4 3.3).
+func FromSigIn(recv *typetext.Alt, s *typetext.Sig, sc *Scope) (out *Sig, err error) {
 	defer catch(&err)
-	c := &conv{opaque: opaque, allowVars: true}
+	c := &conv{opaque: sc.Opaque, named: sc.Named, allowVars: true}
 	out = &Sig{Result: c.typ(s.Result), Fails: s.Fails, Bounds: map[string]string{}}
-	check := func(t *Type) *Type {
-		if Depth(t) > MaxDepth {
-			c.fail("the type is deeper than %d", MaxDepth)
-		}
-		return t
-	}
+	check := c.check
 	check(out.Result)
 	if recv != nil {
-		out.Recv = check(c.alt(recv))
+		rc := &conv{opaque: sc.Opaque, allowVars: true}
+		out.Recv = check(rc.alt(recv))
 	}
 	for _, b := range s.Bounds {
 		out.Bounds[b.Var] = b.Bound

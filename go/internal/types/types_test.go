@@ -192,3 +192,40 @@ func parse0(t *testing.T, s string) *Sig {
 	assert.NoError(t, err)
 	return sig
 }
+
+func TestSize(t *testing.T) {
+	assert.Equal(t, Size(Never), 1)
+	assert.Equal(t, Size(Any), 1)
+	assert.Equal(t, Size(Lit("a", "b", "c")), 3)
+	assert.Equal(t, Size(Join(Join(Int, Null), Lit("a", "b"))), 4)
+	assert.Equal(t, Size(List(Int)), 2)
+	// A rest of never counts 0; a rest of any counts 1.
+	assert.Equal(t, Size(Rec([]Field{{Key: "a", Type: Int}}, nil)), 2)
+	assert.Equal(t, Size(Rec([]Field{{Key: "a", Type: Int}}, Any)), 3)
+	// The doubling chain: s(k) = 2^(k+2) - 1, kept with sharing and
+	// saturated above the limit, in constant work per type.
+	a := Rec([]Field{{Key: "l", Type: Int}, {Key: "r", Type: Int}}, nil)
+	for k := 1; k <= 40; k++ {
+		a = Rec([]Field{{Key: "l", Type: a}, {Key: "r", Type: a}}, nil)
+		want := 1<<(k+2) - 1
+		if want > MaxSize {
+			want = MaxSize + 1
+		}
+		assert.Equal(t, Size(a), want)
+	}
+	// Join of a type with itself shares it.
+	assert.True(t, Join(a, a) == a)
+}
+
+func TestJoinAll(t *testing.T) {
+	ts := []*Type{Lit("b"), Int, Lit("a", "c"), Null, List(Int), List(Float)}
+	assert.Equal(t, JoinAll(ts).String(), `int | "a" | "b" | "c" | float[] | null`)
+	acc := Never
+	for _, x := range ts {
+		acc = Join(acc, x)
+	}
+	assert.Equal(t, JoinAll(ts).String(), acc.String())
+	assert.Equal(t, JoinAll([]*Type{Lit("a"), String}).String(), "string")
+	assert.Equal(t, JoinAll([]*Type{Int, Any}).String(), "any")
+	assert.Equal(t, JoinAll(nil).String(), "never")
+}

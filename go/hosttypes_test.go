@@ -265,7 +265,7 @@ func TestDescriptionRoundTrip(t *testing.T) {
 		risor.OpaqueType{Name: "Point"},
 		risor.Function{Name: "rate", Type: "(code: string, n?: int) => float !", Impl: native},
 		risor.Function{Name: "big", Type: "(a: T, b: T|null) => T where T: ordered", Impl: native},
-		risor.Without("upper", "abs"),
+		risor.Without("string.toUpperCase", "abs"),
 		risor.RejectClasses("value", "dynamic"),
 		risor.Limits{Steps: risor.NoLimit, Alloc: risor.ZeroLimit, Depth: 50},
 	)
@@ -274,7 +274,7 @@ func TestDescriptionRoundTrip(t *testing.T) {
 	assert.Equal(t, d1, `{"functions":{"big":"(a: T, b: T | null) => T where T: ordered","rate":"(code: string, n?: int) => float !"},`+
 		`"limits":{"allocation":0,"depth":50,"steps":null},`+
 		`"opaque":{"Point":{},"Time":{"add":"(d: Time, ...more: int[]) => Time !","format":"(layout: string) => string"}},`+
-		`"reject":["dynamic","value"],"removed":["abs","upper"],`+
+		`"reject":["dynamic","value"],"removed":["abs","string.toUpperCase"],`+
 		`"variables":{"m":"map<float>","order":"{\"a-b\"?: int, id: int, note?: string, ...}","t":"Time | null"},"version":"3.0"}`)
 
 	decl, err := risor.Description([]byte(d1))
@@ -291,7 +291,7 @@ func TestDescriptionRoundTrip(t *testing.T) {
 		"rate(\"x\")",
 		"big(1, 2)",
 		"t?.format(\"y\")",
-		"upper(\"a\")",
+		"\"a\".toUpperCase()",
 		"order.missing",
 		"[1, 2][order.id]",
 	} {

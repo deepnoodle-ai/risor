@@ -31,6 +31,48 @@ func init() {
 	for _, e := range entries {
 		catalog[e.Code] = e
 	}
+	// Package F8's two files have an entry for each parse and check code,
+	// none of which messages.json has (f08-errors.md 3.1).
+	for _, src := range []string{sourceParseJSON, sourceCheckJSON} {
+		var es []*Entry
+		if err := json.Unmarshal([]byte(src), &es); err != nil {
+			panic("messages: a catalog file does not parse: " + err.Error())
+		}
+		for _, e := range es {
+			if _, ok := catalog[e.Code]; ok {
+				panic("messages: " + e.Code + " has an entry in two files")
+			}
+			catalog[e.Code] = e
+		}
+	}
+	// Package F7's catalog file adds templates to entries of Core's
+	// (f07-queries.md 11): the same code, params of the same kinds, new
+	// template names.
+	var more []*Entry
+	if err := json.Unmarshal([]byte(sourceQueriesJSON), &more); err != nil {
+		panic("messages: the queries catalog does not parse: " + err.Error())
+	}
+	for _, m := range more {
+		e, ok := catalog[m.Code]
+		if !ok {
+			panic("messages: " + m.Code + " is not a code of the catalog")
+		}
+		for k, v := range m.Params {
+			if old, ok := e.Params[k]; ok && old != v {
+				panic("messages: " + m.Code + ": the param " + k + " changes its kind")
+			}
+			if e.Params == nil {
+				e.Params = map[string]string{}
+			}
+			e.Params[k] = v
+		}
+		for k, v := range m.Templates {
+			if _, ok := e.Templates[k]; ok {
+				panic("messages: " + m.Code + ": the template " + k + " is already there")
+			}
+			e.Templates[k] = v
+		}
+	}
 }
 
 // Lookup returns the catalog entry of a code.

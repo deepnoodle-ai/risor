@@ -88,11 +88,11 @@ func (r *run) popArgs(base int) { r.args = r.args[:base] }
 // it back. A try that catches a failure restores the stack's top.
 func (r *run) pushCall() *libCall {
 	if r.lcTop == len(r.lcs) {
-		r.lcs = append(r.lcs, libCall{})
-		// The append may have moved the stack; the calls in progress keep
-		// pointers into the old array, which stays valid.
+		// Each record is allocated once and kept, so the calls in progress
+		// and the trace read the same record.
+		r.lcs = append(r.lcs, new(libCall))
 	}
-	c := &r.lcs[r.lcTop]
+	c := r.lcs[r.lcTop]
 	r.lcTop++
 	return c
 }
@@ -107,6 +107,7 @@ const (
 	stepMember stepKind = iota
 	stepIndex
 	stepMethod
+	stepEach // a projection of package F7
 )
 
 type stepCode struct {
@@ -121,6 +122,8 @@ type stepCode struct {
 	// plans holds the library method for a string, a list and a map
 	// receiver, found when the chain is compiled.
 	plans [3]methodPlan
+	// each is the projection of a stepEach.
+	each *eachCode
 }
 
 // methodPlan is a library method selected for one receiver kind, with the
@@ -138,7 +141,7 @@ func (c *compiler) plan(s *stepCode) {
 	for _, k := range []value.Kind{value.String, value.List, value.Map} {
 		p := &s.plans[planIndex(k)]
 		e, ok := library.Method(k, s.name)
-		if !ok {
+		if !ok || c.cfg.Removed[library.KindWord(k)+"."+s.name] {
 			continue
 		}
 		p.e, p.info = e, infoOf(e)
@@ -193,15 +196,26 @@ func (c *compiler) chain(n syntax.Node) code {
 	if oc, ok := n.(*syntax.OptChain); ok {
 		n = oc.X
 	}
+	if m, ok := n.(*syntax.Member); ok {
+		if v, ok := c.res.Consts[m]; ok { // F6 5.3: 0 steps, 0 units
+			return func(*run) any { return v }
+		}
+	}
 	var nodes []syntax.Node
 	x := n
 loop:
 	for {
 		switch t := x.(type) {
 		case *syntax.Member:
+			if _, ok := c.res.Consts[t]; ok {
+				break loop
+			}
 			nodes = append(nodes, t)
 			x = t.X
 		case *syntax.Index:
+			nodes = append(nodes, t)
+			x = t.X
+		case *syntax.Each:
 			nodes = append(nodes, t)
 			x = t.X
 		case *syntax.MethodCall:
@@ -223,6 +237,8 @@ loop:
 				size: value.Size(t.Name), span: t.Span()})
 		case *syntax.Index:
 			steps = append(steps, &stepCode{kind: stepIndex, optional: t.Optional, idx: c.expr(t.Index), span: t.Span()})
+		case *syntax.Each:
+			steps = append(steps, &stepCode{kind: stepEach, optional: t.Optional, each: c.eachCode(t), span: t.StarSpan})
 		case *syntax.MethodCall:
 			sc := &stepCode{kind: stepMethod, optional: t.Optional, name: t.Name,
 				args: c.args(t.Args), span: t.Span(), measure: c.measure(t)}
@@ -278,6 +294,8 @@ loop:
 				v = r.member(s, v)
 			case stepIndex:
 				v = r.index(s, v)
+			case stepEach:
+				v = r.project(s.each, v)
 			default:
 				v = r.method(s, v)
 			}
@@ -419,7 +437,7 @@ func (r *run) method(s *stepCode, v any) any {
 	}
 	args, base := r.pushArgs(s.args)
 	lc := r.pushCall()
-	*lc = libCall{e: p.e, info: p.info, recv: v, args: args, span: s.span, measure: s.measure}
+	*lc = libCall{e: p.e, info: p.info, recv: v, args: args, span: s.span, measure: s.measure, depth0: r.depth}
 	r.testArgs(lc)
 	r.step(1)
 	res := r.runEntry(lc)
@@ -460,12 +478,20 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 	case static.Lambda:
 		lam := c.lambdas[callee.Lambda]
 		m := c.measure(n)
+		name := ""
+		if cn, ok := n.(*syntax.Call); ok {
+			name = cn.Name
+		}
 		return func(r *run) any {
 			vals, base := r.pushArgs(args)
 			r.step(1)
+			// The call is in progress from its depth test (F8 4.1 item 2).
+			lc := r.pushCall()
+			lc.lam, lc.name, lc.span, lc.depth0 = true, name, sp, r.depth
 			r.enterCall(m)
 			v := lam.invoke(r, vals)
 			r.depth -= m
+			r.lcTop--
 			r.popArgs(base)
 			return v
 		}
@@ -488,7 +514,7 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 		return func(r *run) any {
 			vals, base := r.pushArgs(args)
 			lc := r.pushCall()
-			*lc = libCall{e: e, info: info, args: vals, span: sp, measure: m}
+			*lc = libCall{e: e, info: info, args: vals, span: sp, measure: m, depth0: r.depth}
 			r.testArgs(lc)
 			r.step(1)
 			v := r.runEntry(lc)

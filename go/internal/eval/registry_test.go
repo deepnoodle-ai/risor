@@ -30,7 +30,7 @@ func TestRegistryMatchesTable(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(got)
 	assert.Equal(t, got, want)
-	assert.Equal(t, len(got), 53)
+	assert.Equal(t, len(got), 59) // 53 of Core and 6 of F7
 }
 
 func TestStableSort(t *testing.T) {

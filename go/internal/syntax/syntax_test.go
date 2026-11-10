@@ -25,6 +25,9 @@ func failure(src string) (string, [4]int) {
 	if err == nil {
 		return "", [4]int{}
 	}
+	if c := err.core; c != nil { // the Core diagnostic, before F8's mapping
+		return c.code, f.Span(c.start, c.end).Array()
+	}
 	return err.Code, f.Span(err.Start, err.End).Array()
 }
 
@@ -84,7 +87,6 @@ func TestSection15Examples(t *testing.T) {
 		{`try(1, 2)`, "unexpected-token", [4]int{1, 1, 1, 4}},
 		{`const match = 1; match`, "reserved-word", [4]int{1, 7, 1, 12}},
 		{`a ?? b > c`, "unexpected-token", [4]int{1, 8, 1, 9}},
-		{`x as int`, "unexpected-token", [4]int{1, 3, 1, 5}},
 		{`R"a"`, "unexpected-token", [4]int{1, 1, 1, 2}}, // with F3, r"a" is a raw string
 		{`"a\q"`, "bad-escape", [4]int{1, 3, 1, 5}},
 		{strings.Repeat("(", 101) + "1" + strings.Repeat(")", 101), "nesting-exceeded", [4]int{1, 101, 1, 102}},
@@ -146,17 +148,28 @@ func TestFollowOnText(t *testing.T) {
 		{"String.raw`x`", "unexpected-token", [4]int{1, 8, 1, 11}},
 		{`r "abc"`, "unexpected-token", [4]int{1, 1, 1, 2}},
 		{`[R 'abc']`, "unexpected-token", [4]int{1, 2, 1, 3}},
-		{`x as T`, "unexpected-token", [4]int{1, 3, 1, 5}},
-		{`x is T`, "unexpected-token", [4]int{1, 3, 1, 5}},
+		{`x as T`, "bad-type-text", [4]int{1, 6, 1, 7}}, // F4 2.6: one upper-case letter
+		{`x is T`, "bad-type-text", [4]int{1, 6, 1, 7}},
 		{`x as const`, "unexpected-token", [4]int{1, 3, 1, 5}},
 		{`x is not T`, "unexpected-token", [4]int{1, 3, 1, 5}},
-		{`a + b as T`, "unexpected-token", [4]int{1, 7, 1, 9}},
+		{`a + b as T`, "bad-type-text", [4]int{1, 10, 1, 11}},
+		{`x as int + 1`, "unexpected-token", [4]int{1, 10, 1, 11}}, // F4 2.4
+		{`x as T[0]`, "bad-type-text", [4]int{1, 6, 1, 7}},
+		{`x as Ab[0]`, "unexpected-token", [4]int{1, 8, 1, 9}},
+		{`x as {a: int, a: int}`, "bad-type-text", [4]int{1, 15, 1, 16}},
+		{"x as `t`", "bad-type-text", [4]int{1, 6, 1, 9}},
+		{"x as `t${1}u`", "bad-type-text", [4]int{1, 6, 1, 14}},
+		{`x is map<int>=> 1`, "bad-type-text", [4]int{1, 13, 1, 15}},
+		{`a ?? b as int`, "unexpected-token", [4]int{1, 8, 1, 10}},
+		{`x as int ?? 1`, "unexpected-token", [4]int{1, 10, 1, 12}},
 		{`!x as T`, "unexpected-token", [4]int{1, 1, 1, 2}},
 		{`!x is T`, "unexpected-token", [4]int{1, 1, 1, 2}},
 		{`a == !x is T`, "unexpected-token", [4]int{1, 6, 1, 7}},
-		{`(!x) is T`, "unexpected-token", [4]int{1, 6, 1, 8}},
-		{`xs[*]`, "unexpected-token", [4]int{1, 4, 1, 5}},
-		{`xs?.[*]`, "unexpected-token", [4]int{1, 6, 1, 7}},
+		{`(!x) is T`, "bad-type-text", [4]int{1, 9, 1, 10}},
+		{`xs[*1]`, "unexpected-token", [4]int{1, 5, 1, 6}}, // F7 2.2
+		{`xs[*`, "unexpected-token", [4]int{1, 5, 1, 5}},
+		{`[*]`, "unexpected-token", [4]int{1, 2, 1, 3}},
+		{`xs?. [*]`, "unexpected-token", [4]int{1, 6, 1, 7}},
 		{`match { 1 => 2 }`, "unexpected-token", [4]int{1, 7, 1, 8}},
 		{`a === b`, "unexpected-token", [4]int{1, 3, 1, 6}},
 		{`a !== b`, "unexpected-token", [4]int{1, 3, 1, 6}},

@@ -870,6 +870,9 @@ type renderer struct {
 	strings.Builder
 	r    *run
 	span syntax.Span
+	// opaque is the template of wrong-kind for an opaque value: text, or
+	// json for json.stringify (package F6 6.1).
+	opaque string
 }
 
 // top renders a value as a template part or the argument of string.
@@ -939,6 +942,10 @@ func (b *renderer) json(v any) {
 		b.WriteByte('}')
 		r.walk--
 	default:
-		b.r.raise(fail("wrong-kind", "text", b.span))
+		t := b.opaque
+		if t == "" {
+			t = "text"
+		}
+		b.r.raise(fail("wrong-kind", t, b.span))
 	}
 }

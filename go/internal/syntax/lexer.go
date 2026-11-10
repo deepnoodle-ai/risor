@@ -14,6 +14,19 @@ type Error struct {
 	Start   int
 	End     int
 	Message string
+	core    *core
+
+	// Template names the catalog template of the message (package F8 3.4);
+	// empty for the code's only template or before the mapping. Key and Op
+	// are parameters some templates take.
+	Template string
+	Key, Op  string
+	// Rule is the rule of Core that gave a parser's diagnostic, for the
+	// mapping of F8 2; at, ctx and q are the parser's state then.
+	Rule string
+	at   int
+	ctx  []frame
+	q    int
 }
 
 // Error returns the code and the message.
@@ -22,7 +35,7 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 // Diagnostic turns the error into a diagnostic of phase parse.
 func (e *Error) Diagnostic(f *File) diag.Diagnostic {
 	sp := f.Span(e.Start, e.End)
-	return diag.Diagnostic{Phase: diag.PhaseParse, Code: e.Code, Span: &sp, Message: e.Message}
+	return diag.Diagnostic{Phase: diag.PhaseParse, Code: e.Code, Span: &sp, Message: buildMessage(e, f.src)}
 }
 
 const maxWhole = 9007199254740991 // 2^53 - 1

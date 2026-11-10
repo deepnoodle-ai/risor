@@ -86,6 +86,12 @@ func RunFile(path string) []Result {
 		}
 		return out
 	}
+	// 03-host.md 3.11 item 7 (ruling BA11): a file of a package directory
+	// whose name ends -check.json is run checked only, as core-check is.
+	if CheckOnlyFile(path) && !CheckedOnly {
+		CheckedOnly = true
+		defer func() { CheckedOnly = false }()
+	}
 	out := make([]Result, 0, len(f.Cases))
 	for _, c := range f.Cases {
 		r := RunCase(c)
@@ -95,8 +101,49 @@ func RunFile(path string) []Result {
 	return out
 }
 
+// CheckOnlyFile reports whether a case file is run checked only by its
+// name (03-host.md 3.11 item 7).
+func CheckOnlyFile(path string) bool { return strings.HasSuffix(filepath.Base(path), "-check.json") }
+
 // Files returns the case files a path names: the path itself if it is a
 // file, else every .json file under the directory, in order.
+// Offered is the one list of the follow-on packages this implementation
+// offers (03-host.md 3.11 item 2: F3, F1, F2, F4, F5, F6, F7, ... in that
+// order, each with all before it).
+var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true}
+
+// Skipped returns whether a case file is one a runner of this
+// implementation does not run: its name begins until-fNN- and package NN is
+// offered (03-host.md 3.11 item 4, ruling BA8).
+func Skipped(path string) bool {
+	base := filepath.Base(path)
+	if !strings.HasPrefix(base, "until-f") {
+		return false
+	}
+	rest := base[len("until-f"):]
+	i := strings.IndexByte(rest, '-')
+	if i <= 0 {
+		return false
+	}
+	return Offered["F"+strings.TrimLeft(rest[:i], "0")]
+}
+
+// SkippedFiles lists the until- files of a directory that Files leaves
+// out.
+func SkippedFiles(path string) []string {
+	var out []string
+	_ = filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".json") && Skipped(p) {
+			out = append(out, p)
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out
+}
+
+// Files returns the case files of a path, less the until- files of the
+// packages this implementation offers.
 func Files(path string) ([]string, error) {
 	st, err := os.Stat(path)
 	if err != nil {
@@ -110,7 +157,7 @@ func Files(path string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && strings.HasSuffix(p, ".json") {
+		if !d.IsDir() && strings.HasSuffix(p, ".json") && !Skipped(p) {
 			out = append(out, p)
 		}
 		return nil
@@ -148,7 +195,7 @@ var staticCodes = casefile.StaticCodes
 // checkedClass are the codes whose class differs between a checked and an
 // unchecked program (03-host.md 3.7.6).
 var checkedClass = map[string]bool{"null-operand": true, "wrong-kind": true,
-	"missing-field": true, "no-match": true, "not-conforming": true}
+	"missing-field": true, "no-match": true, "not-conforming": true, "function-error": true}
 
 // stubState records whether a call of a stub matched no row (3.10.4).
 type stubState struct {
@@ -219,6 +266,20 @@ func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
 	for _, o := range c.Opaque {
 		decls = append(decls, risor.OpaqueType{Name: o})
 	}
+	if c.Groups != nil { // F6 11.1
+		decls = append(decls, risor.Groups(c.Groups...))
+	}
+	for _, nt := range c.Types { // F4 9.1, in order
+		if nt.Type != nil {
+			decls = append(decls, risor.NamedType(nt.Name, *nt.Type))
+			continue
+		}
+		opts := make([]risor.SchemaOption, len(nt.Options))
+		for i, o := range nt.Options {
+			opts[i] = risor.SchemaOption(o)
+		}
+		decls = append(decls, risor.NamedTypeSchema(nt.Name, nt.Schema, opts...))
+	}
 	names := make([]string, 0, len(c.Methods))
 	for k := range c.Methods {
 		names = append(names, k)
@@ -240,6 +301,9 @@ func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
 	}
 	if c.HasReject {
 		decls = append(decls, risor.RejectClasses(c.Reject...))
+	}
+	if len(c.Removed) > 0 {
+		decls = append(decls, risor.Without(c.Removed...))
 	}
 	if c.Limits != nil {
 		l := risor.Limits{}
@@ -265,7 +329,18 @@ func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
 			return nil, &risor.Error{Diagnostics: []risor.Diagnostic{{Phase: diag.PhaseDeclare, Code: diag.CodeBadType, Message: err.Error()}}}
 		}
 	}
-	return base.With(decls...)
+	env, err := base.With(decls...)
+	if err != nil {
+		return nil, err
+	}
+	// The expected result is resolved at declare, in every run: records that
+	// form no union there are bad-type (F5 3.2 item 2).
+	if c.Returns != nil && *c.Returns != "condition" {
+		if _, err := env.ParseType(*c.Returns); err != nil {
+			return nil, err
+		}
+	}
+	return env, nil
 }
 
 // zeroLimit stands for a limit of 0, since a zero field of risor.Limits
@@ -310,6 +385,12 @@ func runCase(c *casefile.Case) Result {
 	if c.Expect.Analysis != nil {
 		return runAnalysis(c)
 	}
+	if c.Conform != nil {
+		return runConform(c)
+	}
+	if c.Render != nil { // F8 7.8 item 3
+		return runRender(c)
+	}
 	// Ruling AP1: a case with "check": false is compiled with the static
 	// rules alone, and its class is compared for every code.
 	if c.Check != nil && !*c.Check {
@@ -323,12 +404,12 @@ func runCase(c *casefile.Case) Result {
 	// The case is also run with the static rules alone (3.10.8 item 5),
 	// unless it needs the checker.
 	e := c.Expect
-	if e.Type != nil || e.HasSites {
+	if e.Type != nil || e.HasSites || c.Schemas != nil || e.HasDescription { // F5 11.2 item 2
 		return r
 	}
 	if e.Phase == "check" {
 		for _, d := range e.Diagnostics {
-			if !staticCodes[d.Code] {
+			if !staticCodes[d.Code] && !casefile.ExtraStatic[d.Code] {
 				return r
 			}
 		}
@@ -381,7 +462,7 @@ func runMode(c *casefile.Case, checked, allClasses bool) Result {
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), nil, st)
 	}
-	needRun := c.Vars != nil || e.HasValue || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
+	needRun := c.Vars != nil || e.HasValue || e.JSON != nil || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
 	if !needRun {
 		return compareResult(c, env, cr, nil, false, nil, st)
 	}
@@ -453,6 +534,15 @@ func compareResult(c *casefile.Case, env *risor.Env, cr *risor.CheckResult, v an
 	if e.HasValue && !value.Equal(v, e.Value) {
 		diffs = append(diffs, Diff{"value", fmtValue(e.Value), fmtValue(v)})
 	}
+	if e.JSON != nil { // F6 11.2: after value
+		got, err := risor.JSONText(v)
+		if err != nil {
+			got = "a failure: " + err.Error()
+		}
+		if got != *e.JSON {
+			diffs = append(diffs, Diff{"json", *e.JSON, got})
+		}
+	}
 	if e.Truthy != nil && *e.Truthy != value.Truthy(v) {
 		diffs = append(diffs, Diff{"truthy", fmt.Sprint(*e.Truthy), fmt.Sprint(value.Truthy(v))})
 	}
@@ -481,6 +571,7 @@ func compareFailure(c *casefile.Case, err *risor.Error, u *risor.Usage, st *stub
 	if d := compareDiagnostics(e, err.Diagnostics, st.checked); d != nil {
 		diffs = append(diffs, *d)
 	}
+	diffs = append(diffs, renderedDiffs(c, err)...)
 	if u != nil && ph == "run" && !diag.LimitCodes[err.Diagnostics[0].Code] {
 		if d := countDiff("steps", e.Steps, u.Steps); d != nil {
 			diffs = append(diffs, *d)
@@ -502,11 +593,14 @@ func formatDiags(ds []risor.Diagnostic) string {
 		if d.Span != nil {
 			parts[i] += " " + d.Span.String()
 		}
-		if d.Phase == diag.PhaseRun || d.Phase == diag.PhaseDeclare {
+		if d.Message != "" {
 			parts[i] += fmt.Sprintf(" %q", d.Message)
 		}
 		if d.HasData {
 			parts[i] += " data " + fmtValue(d.Data)
+		}
+		if d.Phase == diag.PhaseRun && len(d.Trace) > 0 {
+			parts[i] += " " + formatTrace(d.Trace)
 		}
 	}
 	return "[" + strings.Join(parts, "; ") + "]"
@@ -527,6 +621,9 @@ func formatExp(ds []*casefile.ExpDiag) string {
 		}
 		if d.HasData {
 			parts[i] += " data " + fmtValue(d.Data)
+		}
+		if len(d.Trace) > 0 {
+			parts[i] += " " + formatTrace(d.Trace)
 		}
 	}
 	return "[" + strings.Join(parts, "; ") + "]"
@@ -561,6 +658,9 @@ func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic, checked bool) boo
 		}
 	}
 	if want.HasData && (!got.HasData || !value.Equal(want.Data, got.Data)) {
+		return false
+	}
+	if want.Trace != nil && !diag.LimitCodes[got.Code] && !traceMatches(want.Trace, got.Trace) { // F8 7.2
 		return false
 	}
 	return true
@@ -748,6 +848,10 @@ func AnalysisJSON(a *risor.Analysis) string {
 			if j > 0 {
 				b.WriteByte(',')
 			}
+			if st.Star { // F7 9.3
+				b.WriteString(`{"star":true}`)
+				continue
+			}
 			b.WriteString(value.QuoteJSON(st.Key))
 		}
 		b.WriteString(`],"span":`)
@@ -807,4 +911,136 @@ func AnalysisJSON(a *risor.Analysis) string {
 	}
 	b.WriteByte('}')
 	return b.String()
+}
+
+// conformOutcome is what the three ways of F4 9.3 give for a conform case.
+type conformOutcome struct {
+	declare  *risor.Error
+	conforms bool
+	path     []any
+	message  string
+	steps    int64
+	agree    bool
+	why      string             // the first disagreement
+	all      []risor.Diagnostic // ConformAll's list, with max (F8 7.5)
+}
+
+// doConform runs a conform case by F4 9.3: declare, resolve, the function,
+// and the runs of v as T and v is T with the static rules alone.
+func doConform(c *casefile.Case) conformOutcome {
+	var o conformOutcome
+	env, err := buildEnv(c, &stubState{})
+	if err != nil {
+		o.declare = err.(*risor.Error)
+		return o
+	}
+	t, err := env.ParseType(c.Conform.Type)
+	if err != nil {
+		o.declare = err.(*risor.Error)
+		return o
+	}
+	ferr := risor.Conform(c.Conform.Value, t)
+	if c.Conform.Max != nil {
+		o.all = risor.ConformAll(c.Conform.Value, t, int(*c.Conform.Max))
+	}
+	o.conforms = ferr == nil
+	if ferr != nil {
+		d := ferr.(*risor.Error).Diagnostics[0]
+		o.path, o.message = d.Path, d.Message
+	}
+	o.agree = true
+	disagree := func(why string) {
+		if o.agree {
+			o.agree, o.why = false, why
+		}
+	}
+	child, err := env.With(risor.Var("v", "any"))
+	if err != nil {
+		disagree("the child environment: " + err.Error())
+		return o
+	}
+	run := func(src string) (any, risor.Usage, error) {
+		x, err := risor.Parse(src)
+		if err != nil {
+			return nil, risor.Usage{}, err
+		}
+		p, err := child.Compile(x, risor.NoCheck)
+		if err != nil {
+			return nil, risor.Usage{}, err
+		}
+		return p.Measure(context.Background(), risor.Map{"v": c.Conform.Value})
+	}
+	av, au, aerr := run("v as " + c.Conform.Type)
+	o.steps = au.Steps
+	if aerr != nil {
+		e, ok := aerr.(*risor.Error)
+		if !ok || e.Diagnostics[0].Code != "not-conforming" {
+			disagree("v as T: " + aerr.Error())
+		} else {
+			d := e.Diagnostics[0]
+			if o.conforms {
+				disagree("v as T fails where the function passes")
+			} else if !value.Equal(d.Path, o.path) || d.Message != o.message {
+				disagree("v as T: path or message differs from the function")
+			}
+		}
+	} else if !o.conforms {
+		disagree("v as T passes where the function fails")
+	} else if !value.Equal(av, c.Conform.Value) {
+		disagree("v as T gives another value")
+	}
+	iv, iu, ierr := run("v is " + c.Conform.Type)
+	switch {
+	case ierr != nil:
+		disagree("v is T: " + ierr.Error())
+	case iv != o.conforms:
+		disagree("v is T gives " + fmt.Sprint(iv))
+	case iu.Steps != au.Steps:
+		disagree(fmt.Sprintf("v is T charges %d steps, v as T %d", iu.Steps, au.Steps))
+	}
+	return o
+}
+
+// runConform runs and compares a conform case (F4 9.2, 9.3).
+func runConform(c *casefile.Case) Result {
+	o := doConform(c)
+	e := c.Expect
+	if o.declare != nil {
+		return compareFailure(c, o.declare, nil, &stubState{})
+	}
+	if e.IsFailure() {
+		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", "a failure of phase " + e.Phase, "a conform result"}}}
+	}
+	r := e.Conform
+	var diffs []Diff
+	if !o.agree {
+		diffs = append(diffs, Diff{"conforms", "the three ways agree", o.why})
+	}
+	if r.Conforms != o.conforms {
+		diffs = append(diffs, Diff{"conforms", fmt.Sprint(r.Conforms), fmt.Sprint(o.conforms)})
+	}
+	if r.HasPath && !value.Equal(r.Path, o.path) {
+		diffs = append(diffs, Diff{"path", fmtValue(r.Path), fmtValue(o.path)})
+	}
+	if r.Message != nil && *r.Message != o.message {
+		diffs = append(diffs, Diff{"message", *r.Message, o.message})
+	}
+	var list *Diff
+	if c.Conform.Max != nil { // F8 7.5
+		var agree *Diff
+		agree, list = conformAllDiffs(c, o, o.all)
+		if agree != nil {
+			diffs = append([]Diff{*agree}, diffs...)
+		}
+	}
+	if d := countDiff("steps", r.Steps, o.steps); d != nil {
+		diffs = append(diffs, *d)
+	}
+	if list != nil {
+		diffs = append(diffs, *list)
+	}
+	if len(diffs) > 0 {
+		return Result{Verdict: Fail, Diffs: diffs}
+	}
+	return Result{Verdict: Pass}
 }

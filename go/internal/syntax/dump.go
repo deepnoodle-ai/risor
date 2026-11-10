@@ -222,6 +222,10 @@ func dump(b *strings.Builder, n Node) {
 			w("..." + n.Rest.Name)
 		}
 		w("]")
+	case *As:
+		w("(" + n.Form + " ")
+		dump(b, n.X)
+		w(" " + n.Type.String() + ")")
 	case *Bad:
 		w("(bad)")
 	default:

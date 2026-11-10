@@ -1,0 +1,254 @@
+{
+ "cases": [
+  {
+   "name": "CF2: a template with an unclosed bracket in its interpolation, as a parameter",
+   "source": "const f=(`${[}`)=>",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template as a parameter of a lambda argument",
+   "source": "[1].map((`a`) => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template whose interpolation holds a ) : the interpolation is not reached",
+   "source": "[1].map((`${)}`) => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template as the second parameter",
+   "source": "const f = (a, `x`) => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       15,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a number as a parameter",
+   "source": "const f = (1) => 1; f(1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a string as a parameter",
+   "source": "const f = (\"a\") => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a call as a parameter: the name is a pattern, the ( is not",
+   "source": "const f = (g(x)) => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block as a parameter: phase and code only, its span is package F3's",
+   "source": "const f = (\"\"\"\n  a\n  \"\"\") => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a raw string as a parameter: phase and code only, its span is package F3's",
+   "source": "const f = (r\"a\") => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a nested parenthesis: the outer ( begins the list, the inner ( is not a pattern",
+   "source": "const f = ((a)) => a; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an error inside a default: the default is read as an expression",
+   "source": "[1].map((a = 1 +) => a)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       17,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template in a default is read as an expression",
+   "source": "[1, 2].map((a = `${1}`) => a)",
+   "expect": {
+    "value": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "name": "(a, b) with no => is a parenthesized expression and fails at the comma",
+   "source": "[1].map((a, b))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unmatched ( does not begin a lambda, and fails at the comma",
+   "source": "[1].map((a, b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lexical error after a bad parameter list comes first",
+   "source": "const f = (`x`) => 1; @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       23,
+       1,
+       24
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

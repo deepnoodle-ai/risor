@@ -15,15 +15,26 @@ func (c *checker) chain(n syntax.Node, fs facts) *types.Type {
 	if oc, ok := n.(*syntax.OptChain); ok {
 		n = oc.X
 	}
+	if m, ok := n.(*syntax.Member); ok {
+		if _, ok := c.res.Consts[m]; ok { // F6 10 item 2
+			return types.Float
+		}
+	}
 	var nodes []syntax.Node
 	x := n
 loop:
 	for {
 		switch t := x.(type) {
 		case *syntax.Member:
+			if _, ok := c.res.Consts[t]; ok {
+				break loop
+			}
 			nodes = append(nodes, t)
 			x = t.X
 		case *syntax.Index:
+			nodes = append(nodes, t)
+			x = t.X
+		case *syntax.Each:
 			nodes = append(nodes, t)
 			x = t.X
 		case *syntax.MethodCall:
@@ -56,17 +67,22 @@ loop:
 			optional = s.Optional
 		case *syntax.MethodCall:
 			optional = s.Optional
+		case *syntax.Each:
+			optional = s.Optional
+			if optional && cur.IsAny() { // F7 5.1: body?.[*] is any[] | null
+				skipped = true
+			}
 		}
 		if cur.HasNull() && !cur.IsAny() {
 			if optional {
 				skipped = true
 			} else {
-				c.diag("maybe-null", rs)
+				c.m("", ty("type", cur)).diag("maybe-null", rs)
 			}
 			cur = types.Nonnull(cur)
 		}
 		if !cur.IsAny() && !cur.IsNever() && cur.Kinds() != 1 {
-			c.diag("kind", rs)
+			c.m("receiver", ty("type", cur)).diag("kind", rs)
 			cur = types.Never
 		}
 		switch s := s.(type) {
@@ -75,6 +91,9 @@ loop:
 				p.keys = append(p.keys, s.Name)
 			}
 			cur = c.readKey(cur, s.Name, s.NameSpan, rs, optional, isPath && fs.covers(p))
+			if isPath {
+				cur = fs.apply(cur, p)
+			}
 		case *syntax.Index:
 			idx := c.synth(s.Index, fs)
 			if str, ok := s.Index.(*syntax.String); ok && cur.Record() != nil {
@@ -82,6 +101,7 @@ loop:
 					p.keys = append(p.keys, str.Value)
 				}
 				cur = c.readKey(cur, str.Value, s.Index.Span(), rs, optional, isPath && fs.covers(p))
+				cur = fs.apply(cur, p)
 			} else {
 				isPath = false
 				cur = c.index(s, cur, idx, rs, optional)
@@ -89,6 +109,9 @@ loop:
 		case *syntax.MethodCall:
 			isPath = false
 			cur = c.method(s, recv, cur, rs, fs)
+		case *syntax.Each:
+			isPath = false
+			cur = c.project(s, cur, rs, fs)
 		}
 		c.ty[s] = cur
 		recv = s
@@ -116,7 +139,7 @@ func (c *checker) readKey(cur *types.Type, key string, keySpan, recvSpan syntax.
 		}
 		return t
 	}
-	c.diag("kind", recvSpan)
+	c.m("field-read", ty("type", cur)).diag("kind", recvSpan)
 	return types.Never
 }
 
@@ -126,6 +149,10 @@ func (c *checker) index(s *syntax.Index, cur, idx *types.Type, recvSpan syntax.S
 	switch {
 	case cur.IsAny():
 		if c.dyn(recvSpan) {
+			return types.Never // rejected: the receiver is never, no index site
+		}
+		// CB1: a plain index on an any receiver may fail as index-range.
+		if !optional && c.site("index", s.Span()) {
 			return types.Never
 		}
 		return types.Any
@@ -133,7 +160,7 @@ func (c *checker) index(s *syntax.Index, cur, idx *types.Type, recvSpan syntax.S
 		return types.Never
 	case cur.Record() != nil:
 		idx = c.nullable(isp, idx)
-		if !c.mustFit(isp, idx, types.String, "kind") {
+		if !c.mustFitM(isp, idx, types.String, "kind", "key", "") {
 			return types.Never // one mistake, one diagnostic (ruling AO11)
 		}
 		r := cur.Record()
@@ -149,12 +176,12 @@ func (c *checker) index(s *syntax.Index, cur, idx *types.Type, recvSpan syntax.S
 				return types.Never
 			}
 		} else {
-			c.diag("maybe-absent", isp)
+			c.m("index", ty("type", cur)).diag("maybe-absent", isp)
 		}
 		return v
 	case cur.Elem() != nil || cur.HasString():
 		idx = c.nullable(isp, idx)
-		c.mustFit(isp, idx, types.Int, "kind")
+		c.mustFitM(isp, idx, types.Int, "kind", "index", "")
 		t := types.String
 		if cur.Elem() != nil {
 			t = cur.Elem()
@@ -165,7 +192,7 @@ func (c *checker) index(s *syntax.Index, cur, idx *types.Type, recvSpan syntax.S
 		c.site("index", s.Span())
 		return t
 	}
-	c.diag("kind", recvSpan)
+	c.m("index-read", ty("type", cur)).diag("kind", recvSpan)
 	return types.Never
 }
 
@@ -200,15 +227,39 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 		rejected := c.dyn(recvSpan)
 		for _, a := range m.Args {
 			if l, named := c.lambdaArg(a); l != nil {
-				if !named {
-					for _, p := range l.Params {
-						c.bindParam(p, types.Any, true, fs)
+				// CF1: a const-bound lambda named here is a use: every
+				// parameter any, sites kept, its body checked in the scope
+				// and under the facts where it was written (13.9).
+				if named {
+					base, ok := c.use(a, l)
+					if !ok {
+						continue
 					}
-					c.synth(l.Body, fs)
+					info := c.lambdas[l]
+					c.withLambda(l, info, base, func() {
+						for _, p := range l.Params {
+							c.bindParam(p, types.Any, true, info.facts)
+						}
+						c.synth(l.Body, info.facts)
+					})
+					continue
 				}
+				for _, p := range l.Params {
+					c.bindParam(p, types.Any, true, fs)
+				}
+				c.synth(l.Body, fs)
 				continue
 			}
 			c.synth(a, fs)
+		}
+		// CB2: the call may fail by a library method or an opaque method of
+		// that name marked !.
+		sp := m.Span()
+		if c.libFails(m.Name) && c.named(m).site("value", sp) {
+			rejected = true
+		}
+		if c.hostFails(m.Name) && c.named(m).site("host", sp) {
+			rejected = true
 		}
 		if rejected {
 			return types.Never
@@ -222,11 +273,11 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 	var entry *library.Entry
 	switch {
 	case recv.HasString():
-		entry, _ = library.Method(value.String, m.Name)
+		entry = c.libMethod(value.String, m.Name)
 	case recv.Elem() != nil:
-		entry, _ = library.Method(value.List, m.Name)
+		entry = c.libMethod(value.List, m.Name)
 	case recv.Record() != nil:
-		entry, _ = library.Method(value.Map, m.Name)
+		entry = c.libMethod(value.Map, m.Name)
 	case len(recv.OpaqueNames()) == 1:
 		sig = c.env.Methods[recv.OpaqueNames()[0]][m.Name]
 	}
@@ -234,7 +285,7 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 		sig = LibSig(entry)
 	}
 	if sig == nil {
-		c.diag("no-method", m.NameSpan)
+		c.m("", ty("type", recv), word("name", m.Name)).diag("no-method", m.NameSpan)
 		c.synthPlain(m.Args, fs)
 		return types.Never
 	}
@@ -268,7 +319,7 @@ func (c *checker) use(at syntax.Node, l *syntax.Lambda) (int, bool) {
 	info := c.lambdas[l]
 	base := c.expanded(at) + 1
 	if c.uses > MaxUses || info == nil || base+info.maxRel > MaxNesting {
-		c.diag("check-limit", at.Span())
+		c.m(useTmpl(c.uses), word("name", c.callName(at))).diag("check-limit", at.Span())
 		return 0, false
 	}
 	return base, true
@@ -369,7 +420,7 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 	sp := n.Span()
 	if len(args) < sig.Min() || (sig.Max() >= 0 && len(args) > sig.Max()) {
 		if isMethod {
-			c.diag("arity", sp)
+			c.m(static.ArityTemplate(sig.Min(), sig.Max()), word("name", c.callName(n)), num("count", len(args)), num("required", sig.Min()), num("most", sig.Max())).diag("arity", sp)
 		}
 		c.synthPlain(args, fs)
 		return types.Never
@@ -391,7 +442,7 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 		if l, named := c.lambdaArg(a); l != nil {
 			if p.Fn == nil {
 				if isMethod {
-					c.diag("not-a-value", a.Span())
+					c.m("argument", word("name", c.callName(n)), word("param", p.Name)).diag("not-a-value", a.Span())
 				}
 				continue
 			}
@@ -400,7 +451,7 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 		}
 		t := c.synth(a, fs)
 		if p.Fn != nil {
-			c.diag("arg-mismatch", a.Span())
+			c.m("function", word("param", p.Name), word("name", c.callName(n))).diag("arg-mismatch", a.Span())
 			continue
 		}
 		if entry != nil {
@@ -418,11 +469,29 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 		bind(p.Type, t, sol)
 		plains = append(plains, plainArg{a, t, p.Type})
 	}
+	// 20.7: each solution is tested when it is made; over the limit, the
+	// call is not checked further.
+	solOver := func() bool {
+		for _, t := range sol {
+			if over(t) {
+				c.m(limitTmpl(t)).diag("check-limit", sp)
+				return true
+			}
+		}
+		return false
+	}
+	if solOver() {
+		return types.Never
+	}
 	var narrowed *types.Type
 	for _, la := range lams {
+		c.curCall = n
 		n := c.checkLambda(la.node, la.lam, la.named, la.fn, sol, fs, isMethod, entry != nil && entry.Narrows != "")
 		if n != nil {
 			narrowed = n
+		}
+		if solOver() {
+			return types.Never
 		}
 	}
 	vars := make([]string, 0, len(sig.Bounds))
@@ -441,7 +510,7 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 			ok, used = types.Fits(s, types.String)
 		}
 		if !ok {
-			c.diag("arg-mismatch", sp)
+			c.m(boundTmpl(sig.Bounds[v]), word("name", c.callName(n)), ty("found", s)).diag("arg-mismatch", sp)
 		} else if used {
 			c.dyn(sp)
 		}
@@ -462,9 +531,9 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 	}
 	if sig.Fails {
 		if entry != nil {
-			c.site("value", sp)
+			c.named(n).site("value", sp)
 		} else {
-			c.site("host", sp)
+			c.named(n).site("host", sp)
 		}
 	}
 	return c.depthLimit(n, res)
@@ -474,9 +543,10 @@ func (c *checker) callSig(n syntax.Node, sig *types.Sig, entry *library.Entry, r
 // narrows, it returns the narrowed element type of 13.8, or nil.
 func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *types.Fn, sol map[string]*types.Type,
 	fs facts, isMethod, narrows bool) *types.Type {
+	name := c.curCall
 	if len(l.Params) > len(fn.Params) {
 		if isMethod {
-			c.diag("arity", at.Span())
+			c.m("parameters", word("name", c.callName(name)), num("most", len(fn.Params))).diag("arity", at.Span())
 		}
 		return nil
 	}
@@ -486,7 +556,7 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 		types.VarsIn(q, vs)
 		for v := range vs {
 			if _, ok := sol[v]; !ok && i < len(l.Params) {
-				c.diag("cannot-infer", at.Span())
+				c.m("", word("name", c.callName(name))).diag("cannot-infer", at.Span())
 				return nil
 			}
 		}
@@ -519,6 +589,7 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 					if tf.covers(path{root: slot}) {
 						t = types.Nonnull(t)
 					}
+					t = tf.apply(t, path{root: slot}) // F4 6.5
 					narrowed = t
 				}
 			}
@@ -557,14 +628,14 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 					qs[i] = types.Subst(q, sol)
 				}
 				b = check()
-				c.mustFit(l.Body.Span(), b, types.Subst(r, sol), "arg-mismatch")
+				c.mustFitM(l.Body.Span(), b, types.Subst(r, sol), "arg-mismatch", "body", c.callName(name))
 				return narrowed
 			}
 		}
 	}
 	bind(r, b, sol)
 	// The body is always fitted (ruling AO1).
-	c.mustFit(l.Body.Span(), b, types.Subst(r, sol), "arg-mismatch")
+	c.mustFitM(l.Body.Span(), b, types.Subst(r, sol), "arg-mismatch", "body", c.callName(name))
 	return narrowed
 }
 
@@ -585,16 +656,26 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 		}
 		return
 	}
-	fail := func(sp syntax.Span, at *types.Type, w *types.Type) {
+	// fail reports at sp: the value of type at does not fit w; with at
+	// nil, required field key has no entry; with w never, the record
+	// expected does not allow key.
+	fail := func(sp syntax.Span, at *types.Type, w *types.Type, expected *types.Type, key string) {
+		code, tmpl := "arg-mismatch", "argument"
 		if k == formResult {
-			c.diag("result-mismatch", sp)
+			code, tmpl = "result-mismatch", "result"
+		} else if at != nil && at.HasNull() && fits(types.Nonnull(at), w) {
+			c.m("", ty("type", at)).diag("maybe-null", sp)
 			return
 		}
-		if at != nil && at.HasNull() && fits(types.Nonnull(at), w) {
-			c.diag("maybe-null", sp)
-			return
+		switch {
+		case at == nil:
+			c.m("missing", keyP(key))
+		case key != "":
+			c.m("extra", ty("expected", expected), keyP(key))
+		default:
+			c.m(tmpl, ty("expected", w), ty("found", at))
 		}
-		c.diag("arg-mismatch", sp)
+		c.diag(code, sp)
 	}
 	tyOf := func(n syntax.Node) *types.Type {
 		if t, ok := c.ty[n]; ok {
@@ -609,7 +690,7 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 				if s, ok := it.(*syntax.Spread); ok {
 					st := tyOf(s)
 					if ok, used := types.Fits(st, types.List(el)); !ok {
-						fail(s.Value.Span(), st, types.List(el))
+						fail(s.Value.Span(), st, types.List(el), nil, "")
 					} else if used {
 						c.dyn(s.Value.Span())
 					}
@@ -620,26 +701,15 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 			return
 		}
 	case *syntax.Map:
-		if r := want.Record(); r != nil && plainMap(e) {
-			given := map[string]bool{}
-			for _, en := range e.Entries {
-				en := en.(*syntax.Entry)
-				given[en.Key] = true
-				if f, ok := r.Field(en.Key); ok {
-					c.fitForm(en.Value, tyOf(en.Value), f.Type, k)
-				} else if r.Rest.IsNever() {
-					fail(en.KeySpan, tyOf(en.Value), types.Never)
-				} else {
-					c.fitForm(en.Value, tyOf(en.Value), r.Rest, k)
-				}
+		if noComputed(e) {
+			if u := want.Union(); u != nil {
+				c.fitMapUnion(e, c.givers(e), u, k, fail)
+				return
 			}
-			for _, f := range r.Fields {
-				if !f.Optional && !given[f.Key] {
-					fail(e.Span(), nil, want)
-					break
-				}
+			if r := want.Record(); r != nil {
+				c.fitMapRecord(e, c.givers(e), r, want, k, fail)
+				return
 			}
-			return
 		}
 	case *syntax.Cond:
 		for {
@@ -660,15 +730,146 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 		c.fitForm(e.Result, tyOf(e.Result), want, k)
 		return
 	}
-	fail(e.Span(), t, want)
+	fail(e.Span(), t, want, nil, "")
 }
 
-func plainMap(m *syntax.Map) bool {
-	for _, en := range m.Entries {
-		e, ok := en.(*syntax.Entry)
-		if !ok || e.KeyForm == syntax.KeyComputed {
-			return false
+// libMethod is the library method of a kind by name, unless the environment
+// removed it (03-host.md 3.3.1, ruling CD2).
+func (c *checker) libMethod(k value.Kind, name string) *library.Entry {
+	e, ok := library.Method(k, name)
+	if !ok || c.env.Removed[library.KindWord(k)+"."+name] {
+		return nil
+	}
+	return e
+}
+
+// libFails reports whether some library method of that name, for any
+// receiver kind and not removed, is marked ! (13.3, rulings CB2, CD5).
+func (c *checker) libFails(name string) bool {
+	for _, k := range library.MethodKinds(name) {
+		if e := c.libMethod(k, name); e != nil && LibSig(e).Fails {
+			return true
 		}
 	}
-	return true
+	return false
+}
+
+// hostFails reports whether a method of that name of a declared opaque type
+// is marked ! (13.3, ruling CB2).
+func (c *checker) hostFails(name string) bool {
+	for _, ms := range c.env.Methods {
+		if s := ms[name]; s != nil && s.Fails {
+			return true
+		}
+	}
+	return false
+}
+
+// project checks a projection (f07-queries.md 5.1, 5.2). cur is the type of
+// the first star's receiver after steps 2 to 4 of 9.1, and rs its span.
+func (c *checker) project(e *syntax.Each, cur *types.Type, rs syntax.Span, fs facts) *types.Type {
+	failed, skippedElem := false, false
+	// star gives the element type of a star's receiver.
+	star := func(cur *types.Type, rs syntax.Span) *types.Type {
+		switch {
+		case cur.IsAny():
+			if c.dyn(rs) {
+				failed = true
+				return types.Never
+			}
+			return types.Any
+		case cur.IsNever():
+			return types.Never
+		case cur.Kinds() == 1 && cur.Elem() != nil:
+			return cur.Elem()
+		}
+		c.m("star", ty("type", cur)).diag("kind", rs)
+		failed = true
+		return types.Never
+	}
+	never := cur.IsNever()
+	el := star(cur, rs)
+	lv := e
+	for {
+		recvSpan := lv.StarSpan
+		var next *syntax.Each
+		for _, rd := range lv.Reads {
+			if nx, ok := rd.(*syntax.Each); ok {
+				next = nx
+				break
+			}
+			if never || failed {
+				if ix, ok := rd.(*syntax.Index); ok {
+					c.synth(ix.Index, fs)
+				}
+				continue
+			}
+			optional := false
+			switch rd := rd.(type) {
+			case *syntax.Member:
+				optional = rd.Optional
+			case *syntax.Index:
+				optional = rd.Optional
+			}
+			if el.HasNull() && !el.IsAny() {
+				if optional {
+					skippedElem = true
+				} else {
+					c.m("", ty("type", el)).diag("maybe-null", recvSpan)
+				}
+				el = types.Nonnull(el)
+			}
+			if !el.IsAny() && !el.IsNever() && el.Kinds() != 1 {
+				c.m("receiver", ty("type", el)).diag("kind", recvSpan)
+				failed = true
+				continue
+			}
+			before := el
+			switch rd := rd.(type) {
+			case *syntax.Member:
+				el = c.readKey(el, rd.Name, rd.NameSpan, recvSpan, optional, false)
+			case *syntax.Index:
+				idx := c.synth(rd.Index, fs)
+				if str, ok := rd.Index.(*syntax.String); ok && el.Record() != nil {
+					el = c.readKey(el, str.Value, rd.Index.Span(), recvSpan, optional, false)
+				} else {
+					el = c.index(rd, el, idx, recvSpan, optional)
+				}
+			}
+			if el.IsNever() && !before.IsNever() {
+				failed = true
+			}
+			c.ty[rd] = el
+			recvSpan = rd.Span()
+		}
+		if next == nil {
+			break
+		}
+		if !never && !failed {
+			if el.HasNull() && !el.IsAny() {
+				if next.Optional {
+					skippedElem = true
+				} else {
+					c.m("", ty("type", el)).diag("maybe-null", recvSpan)
+				}
+				el = types.Nonnull(el)
+			} else if next.Optional && el.IsAny() {
+				skippedElem = true
+			}
+			if !el.IsAny() && !el.IsNever() && el.Kinds() != 1 {
+				c.m("receiver", ty("type", el)).diag("kind", recvSpan)
+				failed = true
+			} else {
+				el = star(el, recvSpan)
+			}
+		}
+		lv = next
+	}
+	if never || failed {
+		return types.Never
+	}
+	if skippedElem {
+		el = types.WithNull(el)
+	}
+	return types.List(el)
 }

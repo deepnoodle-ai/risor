@@ -136,3 +136,58 @@ func TestLiteralNumbers(t *testing.T) {
 	assert.Equal(t, Literal(1e20).String(), "float")
 	assert.Equal(t, Literal(1.5).String(), "float")
 }
+
+func TestSizeLimit(t *testing.T) {
+	// Each definition is a record of two references to the next: a type of
+	// size 2^32 held with sharing is bad-type, found at once.
+	var defs []string
+	for i := 0; i < 30; i++ {
+		defs = append(defs, fmt.Sprintf(`"d%d": {"type": "object", "properties": {"l": {"$ref": "#/$defs/d%d"}, "r": {"$ref": "#/$defs/d%d"}}, "required": ["l", "r"]}`, i, i+1, i+1))
+	}
+	defs = append(defs, `"d30": {"type": "integer"}`)
+	text := `{"$ref": "#/$defs/d0", "$defs": {` + strings.Join(defs, ",") + `}}`
+	start := time.Now()
+	_, err := mapJSON(t, text, Options{Closed: true})
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "larger"))
+	assert.True(t, time.Since(start) < time.Second)
+	// From d17, thirteen levels of closed records over int: size 2^14 - 1,
+	// within the limit.
+	text = `{"$ref": "#/$defs/d17", "$defs": {` + strings.Join(defs, ",") + `}}`
+	ty, err := mapJSON(t, text, Options{Closed: true})
+	assert.Nil(t, err)
+	assert.Equal(t, types.Size(ty), 1<<14-1)
+}
+
+// TestEnumIsNLogN compares two sizes of enum (ruling CG10): four times the
+// strings must cost far less than sixteen times the time, which a quadratic
+// Join of literal sets would.
+func TestEnumIsNLogN(t *testing.T) {
+	timeOf := func(n int) time.Duration {
+		vals := make([]any, n)
+		for i := range vals {
+			vals[i] = fmt.Sprintf("v%07d", n-i)
+		}
+		schema := map[string]any{"enum": vals}
+		best := time.Duration(1 << 62)
+		for k := 0; k < 3; k++ {
+			start := time.Now()
+			_, _ = Map(schema, Options{})
+			if d := time.Since(start); d < best {
+				best = d
+			}
+		}
+		return best
+	}
+	small, large := timeOf(25_000), timeOf(100_000)
+	if large > 9*small {
+		t.Fatalf("an enum of 100,000 strings took %v, of 25,000 %v: not n log n", large, small)
+	}
+	// Over the size limit, the answer is bad-type.
+	vals := make([]any, types.MaxSize+1)
+	for i := range vals {
+		vals[i] = fmt.Sprint(i)
+	}
+	_, err := Map(map[string]any{"enum": vals}, Options{})
+	assert.NotNil(t, err)
+}

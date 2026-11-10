@@ -398,7 +398,7 @@
       "extra": "the type does not allow key {key}"
     },
     "when": {
-      "wrong": "The value at the path is not of a kind the type allows there. expected is the type at the path, as written in the program or the environment; found is the value at the path",
+      "wrong": "The value at the path is not of a kind the type allows there, or is a number that is not whole where the type is int, or a string that is not in the literal set, or a host number that cannot enter the language. expected is the type tested at the path: the whole set of alternatives, printed by structure as 05-types.md 3.9 prints a type, with every named type replaced; found is the value at the path, or the word number for a host number that cannot enter the language",
       "missing": "A required field of a record is absent. key is that field's key, the last step of the path",
       "extra": "A record with no rest has a key it does not list. key is that key, the last step of the path"
     }

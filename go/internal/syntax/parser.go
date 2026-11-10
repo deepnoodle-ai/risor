@@ -14,16 +14,16 @@ const MaxLevels = 100
 func Parse(f *File) (prog *Program, err *Error) {
 	toks, lerr := Lex(f)
 	if lerr != nil {
-		return nil, lerr
+		return nil, targetLexical(lerr, f.src)
 	}
-	p := &parser{toks: toks, tok: toks[0]}
+	p := &parser{toks: toks, tok: toks[0], src: f.src}
 	defer func() {
 		if r := recover(); r != nil {
 			b, ok := r.(bailout)
 			if !ok {
 				panic(r)
 			}
-			prog, err = nil, b.err
+			prog, err = nil, p.target(b.err)
 		}
 	}()
 	p.reach()
@@ -40,6 +40,69 @@ type parser struct {
 	tok     Token
 	prevEnd int
 	level   int
+
+	// What package F8's mapping of a diagnostic reads (f08-errors.md 2.1
+	// item 5): the source, the rule a raise names, the frames of the
+	// productions open, and marks on tokens. They cost nothing until a
+	// diagnostic is made, but for the marks, which are set on the way.
+	src     []rune
+	lastCtx []frame // the frames of the diagnostic being mapped
+	rule    string
+	tmpl    string // the template a raise names
+	key     string // the key a raise names
+	op      string // the as or is of F4 2.5
+	q       int    // the ? of a conditional whose : is missing, plus one
+	ctx     []frame
+	marks   map[int]uint8
+}
+
+// frame is a production open at the failing token, for the mapping.
+type frame struct {
+	kind  uint8
+	open  int  // the index of its opening token
+	sep   bool // a map: a :, , or ... met at its level
+	entry int  // a map: the index of the first token of the entry being read
+}
+
+const (
+	fMap       uint8 = iota + 1 // a map literal
+	fMapPat                     // a map pattern
+	fPattern                    // any pattern
+	fMatchCase                  // the start of a match case
+)
+
+// Marks on tokens.
+const (
+	mOperandWord uint8 = 1 << iota // a word read as a Name where a Primary stands
+	mPatEnd                        // the last token of the pattern of a Const or a parameter
+	mTypeEnd                       // the last token of a program type
+	mBranchEnd                     // the last token of an if or a try
+	mLambdaArrow                   // the => of a lambda
+	mSwitchCall                    // the ) of a Call named switch
+)
+
+func (p *parser) mark1(i int, m uint8) {
+	if p.marks == nil {
+		p.marks = map[int]uint8{}
+	}
+	p.marks[i] |= m
+}
+
+func (p *parser) marked(i int, m uint8) bool { return p.marks[i]&m != 0 }
+
+func (p *parser) push(f frame) { p.ctx = append(p.ctx, f) }
+func (p *parser) pop()         { p.ctx = p.ctx[:len(p.ctx)-1] }
+
+// raise reports the current token as unexpected-token by a rule of Core.
+func (p *parser) raise(rule string) {
+	p.rule = rule
+	p.unexpected()
+}
+
+// raiseAt reports a token as unexpected-token by a rule of Core.
+func (p *parser) raiseAt(t Token, rule string) {
+	p.rule = rule
+	p.unexpectedAt(t)
 }
 
 type bailout struct{ err *Error }
@@ -77,7 +140,9 @@ func (p *parser) peek(k int) Token {
 }
 
 func (p *parser) fail(code string, start, end int, msg string) {
-	panic(bailout{&Error{Code: code, Start: start, End: end, Message: msg}})
+	e := &Error{Code: code, Start: start, End: end, Message: msg, Rule: p.rule, at: p.i, Op: p.op, q: p.q, Template: p.tmpl, Key: p.key}
+	e.ctx = append([]frame(nil), p.ctx...)
+	panic(bailout{e})
 }
 
 // unexpected reports the current token as unexpected-token.
@@ -93,6 +158,7 @@ func (p *parser) unexpected() {
 		prev := p.toks[p.i-1]
 		if prev.Kind == Word && (prev.Text == "r" || prev.Text == "R") && prev.End < t.Start {
 			s, e = prev.Start, prev.End
+			p.rule = "14.3-r"
 		}
 	}
 	p.fail(diag.CodeUnexpectedToken, s, e, "unexpected "+t.describe())
@@ -103,6 +169,9 @@ func (p *parser) unexpectedAt(t Token) {
 }
 
 func (p *parser) reservedWord(t Token) {
+	if p.rule == "" {
+		p.rule = "14.2.1"
+	}
 	p.fail(diag.CodeReservedWord, t.Start, t.End, "`"+t.Text+"` is a reserved word")
 }
 
@@ -168,6 +237,10 @@ func (p *parser) constLine() *Const {
 	m := p.mark()
 	p.next() // const
 	pat := p.pattern()
+	p.mark1(p.i-1, mPatEnd)
+	if p.tok.Kind == Colon {
+		p.raise("E9")
+	}
 	p.expect(Assign)
 	np, ok := pat.(*NamePat)
 	val := p.argOrExpr(ok && !np.Discard)
@@ -237,6 +310,10 @@ func (p *parser) lambda(allow bool) *Lambda {
 			for {
 				pm := p.mark()
 				pat := p.pattern()
+				p.mark1(p.i-1, mPatEnd)
+				if p.tok.Kind == Colon {
+					p.raise("E9")
+				}
 				var def Node
 				if p.tok.Kind == Assign {
 					p.next()
@@ -259,15 +336,18 @@ func (p *parser) lambda(allow bool) *Lambda {
 	if p.tok.Kind != Arrow {
 		p.unexpected()
 	}
-	if !allow {
-		p.unexpectedAt(p.tok)
+	if !allow { // 3.4 rule 9
+		p.raiseAt(p.tok, "3.4.9")
 	}
+	p.mark1(p.i, mLambdaArrow)
 	p.next()
 	body := p.expr()
 	return &Lambda{base: p.base(m), Params: params, Body: body}
 }
 
 func (p *parser) pattern() Pattern {
+	p.push(frame{kind: fPattern})
+	defer p.pop()
 	t := p.tok
 	switch t.Kind {
 	case Word:
@@ -299,8 +379,11 @@ func (p *parser) mapPat() *MapPat {
 	m := p.mark()
 	p.open(LBrace)
 	mp := &MapPat{}
+	p.push(frame{kind: fMapPat, open: p.i - 1})
+	defer p.pop()
 	if p.tok.Kind != RBrace {
 		for {
+			p.ctx[len(p.ctx)-1].entry = p.i
 			if p.tok.Kind == Ellipsis {
 				p.next()
 				d := p.level
@@ -426,6 +509,10 @@ func (p *parser) expr() Node {
 		p.next()
 		p.enter(q.Start, q.End)
 		then := p.expr()
+		if p.tok.Kind != Colon {
+			p.q = q.Start + 1
+			p.raise("cond")
+		}
 		p.expect(Colon)
 		p.exit()
 		pending = append(pending, pend{m, b, then})
@@ -455,22 +542,35 @@ func (p *parser) ifExpr() Node {
 	for {
 		m := p.mark()
 		p.next() // if
+		if p.tok.Kind != LParen {
+			p.raise("E4")
+		}
 		p.open(LParen)
 		test := p.expr()
+		if p.tok.Kind == Comma {
+			p.raise("E5")
+		}
 		p.expect(RParen)
 		p.exit()
+		if p.tok.Kind != LBrace {
+			p.raise("E4")
+		}
 		then := p.branch()
 		brs = append(brs, br{m, test, then})
-		if !p.tok.isWord("else") {
-			p.unexpected()
+		if !p.tok.isWord("else") { // 3.4 rule 11
+			p.raise("3.4.11")
 		}
 		p.next()
 		if p.tok.isWord("if") {
 			continue
 		}
+		if p.tok.Kind != LBrace {
+			p.raise("E4")
+		}
 		final = p.branch()
 		break
 	}
+	p.mark1(p.i-1, mBranchEnd)
 	for i := len(brs) - 1; i >= 0; i-- {
 		b := brs[i]
 		final = &Cond{base: p.base(b.m), Form: "if", Test: b.test, Then: b.then, Else: final}
@@ -488,8 +588,10 @@ func (p *parser) branch() Node {
 	p.next()
 	p.enter(lb.Start, lb.End)
 	switch p.tok.Kind {
-	case RBrace, Ellipsis: // 3.4 rules 8 and 7
-		p.unexpectedAt(lb)
+	case RBrace: // 3.4 rule 8
+		p.raiseAt(lb, "3.4.8")
+	case Ellipsis: // 3.4 rule 7
+		p.raiseAt(lb, "3.4.7")
 	}
 	var consts []*Const
 	for p.tok.isWord("const") {
@@ -497,7 +599,7 @@ func (p *parser) branch() Node {
 	}
 	e := p.expr()
 	if p.tok.Kind == Colon || p.tok.Kind == Comma { // 3.4 rule 7
-		p.unexpectedAt(lb)
+		p.raiseAt(lb, "3.4.7")
 	}
 	p.expect(RBrace)
 	p.exit()
@@ -512,23 +614,39 @@ func (p *parser) tryExpr() Node {
 	tt := p.tok
 	p.next()
 	if p.tok.Kind == LParen { // 3.4 rule 10
-		p.unexpectedAt(tt)
+		p.raiseAt(tt, "3.4.10")
+	}
+	if p.tok.Kind != LBrace {
+		p.raise("E6")
 	}
 	body := p.branch()
-	if !p.tok.isWord("catch") {
-		p.unexpected()
+	if !p.tok.isWord("catch") { // 3.4 rule 12
+		p.raise("3.4.12-catch")
 	}
 	p.next()
 	t := &Try{Body: body}
+	if p.tok.Kind != LParen && p.tok.Kind != LBrace {
+		p.raise("3.4.12-form")
+	}
 	if p.tok.Kind == LParen {
 		p.open(LParen)
+		if nt := p.tok; nt.Kind != Word || (!IsName(nt.Text) && !reserved[nt.Text]) {
+			p.raise("3.4.12-name")
+		}
 		nt := p.requireName()
 		t.Name, t.NameSpan = nt.Text, Span{nt.Start, nt.End}
+		if p.tok.Kind != RParen {
+			p.raise("3.4.12-name")
+		}
 		p.expect(RParen)
 		p.exit()
+		if p.tok.Kind != LBrace {
+			p.raise("3.4.12-form")
+		}
 	}
 	t.Handler = p.branch()
 	t.base = p.base(m)
+	p.mark1(p.i-1, mBranchEnd)
 	return t
 }
 
@@ -546,9 +664,15 @@ func (p *parser) binary() Node {
 			p.exit()
 			left = &Binary{base: p.base(m), Op: "??", OpPos: Span{op.Start, op.End}, X: left, Y: right}
 		}
+		if op, prec, _, _, _ := p.binop(); (op != "" && prec <= 6) || p.tok.isWord("as") || p.tok.isWord("is") {
+			p.raise("3.4.3") // 3.4 rule 3
+		}
 		return left
 	}
 	left, _ = p.climbFrom(m, left, bang, 3)
+	if p.tok.Kind == Coalesce {
+		p.raise("3.4.3")
+	}
 	return left
 }
 
@@ -594,14 +718,32 @@ func (p *parser) binop() (op string, prec, start, end, n int) {
 // left is a "!" expression written without parentheses.
 func (p *parser) climbFrom(m mark, left Node, bang *Token, min int) (Node, *Token) {
 	for {
-		if p.tok.isWord("as") || p.tok.isWord("is") { // 14.3: follow-on, at the level of Rel
+		if p.tok.isWord("as") || p.tok.isWord("is") { // F4 2.1: at the level of Rel
 			if min > 6 {
 				return left, bang
 			}
-			if bang != nil {
+			kw := p.tok
+			if bang != nil { // F4 2.5
+				p.rule, p.op = "F4.2.5", kw.Text
 				p.unexpectedAt(*bang)
 			}
-			p.unexpected()
+			if nt := p.peek(1); kw.Text == "as" && nt.isWord("const") {
+				p.raise("E1") // F4 2.6 item 2
+			} else if kw.Text == "is" && nt.isWord("not") {
+				p.raise("E2")
+			}
+			p.next()
+			p.enter(kw.Start, kw.End)
+			t := p.ptype()
+			p.exit()
+			p.mark1(p.i-1, mTypeEnd)
+			left = &As{base: p.base(m), Form: kw.Text, X: left, Type: t}
+			bang = nil
+			// Only a Rel operator or a looser one may follow a type (2.4).
+			if _, prec, _, _, _ := p.binop(); prec > 6 {
+				p.unexpected()
+			}
+			continue
 		}
 		op, prec, s, e, n := p.binop()
 		if op == "" || prec < min {
@@ -612,7 +754,7 @@ func (p *parser) climbFrom(m mark, left Node, bang *Token, min int) (Node, *Toke
 			p.unexpected()
 		}
 		if (op == "in" || op == "not-in") && bang != nil { // 3.4 rule 2
-			p.unexpectedAt(*bang)
+			p.raiseAt(*bang, "3.4.2")
 		}
 		for k := 0; k < n; k++ {
 			p.next()
@@ -657,7 +799,7 @@ func (p *parser) power(prefix *Token) Node {
 		return x
 	}
 	if prefix != nil { // 3.4 rule 1
-		p.unexpectedAt(*prefix)
+		p.raiseAt(*prefix, "3.4.1")
 	}
 	op := p.tok
 	p.next()
@@ -672,11 +814,83 @@ func (p *parser) chain() Node {
 	m := p.mark()
 	x := p.primary()
 	optional := false
+	// A projection being read (F7 2.3): its outer Each, the Each of the
+	// level being read, and the levels its stars opened.
+	var outer, cur *Each
+	var eaches []*Each
+	stars := 0
+	endProjection := func() {
+		if outer == nil {
+			return
+		}
+		for _, e := range eaches {
+			e.span = Span{m.start, p.prevEnd}
+		}
+		p.level -= stars
+		x, outer, cur, eaches, stars = outer, nil, nil, nil, 0
+	}
 	for {
+		// A star: [ or ?.[ whose next token is * (F7 2.1).
+		if (p.tok.Kind == LBrack || p.tok.Kind == OptLBrack) && p.peek(1).Kind == Star {
+			opt := p.tok.Kind == OptLBrack
+			lb := p.tok
+			p.next()
+			p.enter(lb.Start, lb.End)
+			stars++
+			p.next() // *
+			if p.tok.Kind != RBrack {
+				p.unexpected()
+			}
+			p.next()
+			e := &Each{base: base{depth: m.depth}, Optional: opt, StarSpan: Span{m.start, p.prevEnd}}
+			if outer == nil {
+				e.X = x
+				outer = e
+				optional = optional || opt
+			} else {
+				cur.Reads = append(cur.Reads, e)
+			}
+			cur = e
+			eaches = append(eaches, e)
+			continue
+		}
+		if outer != nil {
+			switch p.tok.Kind {
+			case Dot, OptDot:
+				if p.peek(1).Kind == Word && p.peek(2).Kind != LParen {
+					opt := p.tok.Kind == OptDot
+					p.next()
+					name := p.tok
+					p.next()
+					cur.Reads = append(cur.Reads, &Member{base: p.base(m), Name: name.Text, NameSpan: Span{name.Start, name.End}, Optional: opt})
+					continue
+				}
+				endProjection() // a method call ends the projection
+			case LBrack, OptLBrack:
+				opt := p.tok.Kind == OptLBrack
+				lb := p.tok
+				p.next()
+				p.enter(lb.Start, lb.End)
+				p.indexStart()
+				idx := p.expr()
+				if p.tok.Kind == Colon {
+					p.raise("E8")
+				}
+				p.expect(RBrack)
+				p.exit()
+				cur.Reads = append(cur.Reads, &Index{base: p.base(m), Index: idx, Optional: opt})
+				continue
+			default:
+				endProjection()
+			}
+		}
 		switch p.tok.Kind {
 		case Dot, OptDot:
 			opt := p.tok.Kind == OptDot
 			p.next()
+			if p.tok.Kind == Star {
+				p.raise("E11")
+			}
 			if p.tok.Kind != Word {
 				p.unexpected()
 			}
@@ -694,7 +908,11 @@ func (p *parser) chain() Node {
 			lb := p.tok
 			p.next()
 			p.enter(lb.Start, lb.End)
+			p.indexStart()
 			idx := p.expr()
+			if p.tok.Kind == Colon {
+				p.raise("E8")
+			}
 			p.expect(RBrack)
 			p.exit()
 			x = &Index{base: p.base(m), X: x, Index: idx, Optional: opt}
@@ -744,6 +962,9 @@ func (p *parser) primary() Node {
 	case LParen:
 		p.open(LParen)
 		e := p.expr()
+		if _, isName := e.(*Ident); isName && p.tok.Kind == Colon && p.toks[p.i-2].Kind == LParen {
+			p.raise("E9")
+		}
 		p.expect(RParen)
 		p.exit()
 		return e
@@ -765,9 +986,14 @@ func (p *parser) primary() Node {
 		case "match":
 			return p.match()
 		case "if", "try": // 3.4 rule 5
-			p.unexpected()
+			p.raise("3.4.5")
 		}
 		if reserved[t.Text] {
+			if p.peek(1).Kind == Arrow {
+				p.rule = "14.2.1" // a parameter
+			} else {
+				p.rule = "14.2.2"
+			}
 			p.reservedWord(t)
 		}
 		if t.Text == "_" {
@@ -776,10 +1002,15 @@ func (p *parser) primary() Node {
 		p.next()
 		if p.tok.Kind == LParen {
 			args := p.args()
+			if t.Text == "switch" {
+				p.mark1(p.i-1, mSwitchCall)
+			}
 			return &Call{base: p.base(m), Name: t.Text, NameSpan: Span{t.Start, t.End}, Args: args}
 		}
+		p.mark1(p.i-1, mOperandWord)
 		return &Ident{base: p.base(m), Name: t.Text}
 	}
+	p.rule = "operand"
 	p.unexpected()
 	return nil
 }
@@ -857,21 +1088,30 @@ func (p *parser) mapLit() Node {
 	m := p.mark()
 	p.open(LBrace)
 	var entries []Node
+	p.push(frame{kind: fMap, open: p.i - 1})
+	defer p.pop()
+	fr := func() *frame { return &p.ctx[len(p.ctx)-1] }
 	if p.tok.Kind != RBrace {
 		for {
 			em := p.mark()
 			t := p.tok
+			fr().entry = p.i
 			switch {
 			case t.Kind == Ellipsis:
+				fr().sep = true
 				p.next()
 				v := p.expr()
 				entries = append(entries, &Spread{base: p.base(em), Value: v})
 			case t.Kind == Word && p.peek(1).Kind == Colon: // 3.2 rule 7
 				p.next()
 				p.next()
+				fr().sep = true
 				v := p.expr()
 				entries = append(entries, &Entry{base: p.base(em), KeyForm: KeyWord, Key: t.Text, KeySpan: Span{t.Start, t.End}, Value: v})
 			case t.Kind == Word:
+				if reserved[t.Text] {
+					p.rule = "shorthand"
+				}
 				nt := p.requireName()
 				b := p.base(em)
 				entries = append(entries, &Entry{base: b, KeyForm: KeyWord, Key: nt.Text, KeySpan: b.span,
@@ -879,6 +1119,7 @@ func (p *parser) mapLit() Node {
 			case t.Kind == TokString && t.Form != '`' && !t.Block:
 				p.next()
 				p.expect(Colon)
+				fr().sep = true
 				v := p.expr()
 				entries = append(entries, &Entry{base: p.base(em), KeyForm: KeyString, Key: t.Str, KeySpan: Span{t.Start, t.End}, Value: v})
 			case t.Kind == LBrack:
@@ -887,12 +1128,15 @@ func (p *parser) mapLit() Node {
 				p.expect(RBrack)
 				p.exit()
 				p.expect(Colon)
+				fr().sep = true
 				v := p.expr()
 				entries = append(entries, &Entry{base: p.base(em), KeyForm: KeyComputed, KeyExpr: k, Value: v})
 			default:
+				p.rule = "operand"
 				p.unexpected()
 			}
 			if p.tok.Kind == Comma {
+				fr().sep = true
 				p.next()
 				if p.tok.Kind == RBrace {
 					break
@@ -913,7 +1157,7 @@ func (p *parser) match() Node {
 	p.next()
 	p.enter(mt.Start, mt.End)
 	if p.tok.Kind == LBrace || p.tok.isWord("if") || p.tok.isWord("try") { // 3.4 rule 6
-		p.unexpected()
+		p.raise("3.4.6")
 	}
 	subject := p.expr()
 	p.exit()
@@ -926,8 +1170,14 @@ func (p *parser) match() Node {
 			arm.Default = true
 			p.next()
 		} else {
-			for {
+			for first := true; ; first = false {
+				if first {
+					p.push(frame{kind: fMatchCase, open: p.i})
+				}
 				arm.Literals = append(arm.Literals, p.literal())
+				if first {
+					p.pop()
+				}
 				if p.tok.Kind == Pipe {
 					p.next()
 					continue
@@ -982,8 +1232,22 @@ func (p *parser) literal() Node {
 		p.next()
 		return &Null{base: p.base(m)}
 	case t.Kind == Word && reserved[t.Text]:
+		p.rule = "14.2.2"
 		p.reservedWord(t)
 	}
 	p.unexpected()
 	return nil
+}
+
+// indexStart makes the tests of the start of an index step (F8 2.7 E11,
+// E12): a ] or a ? directly after its [.
+func (p *parser) indexStart() {
+	switch p.tok.Kind {
+	case Colon:
+		p.raise("E8")
+	case RBrack:
+		p.raise("E11")
+	case Question:
+		p.raise("E12")
+	}
 }

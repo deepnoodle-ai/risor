@@ -1,0 +1,176 @@
+package risor_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+
+	risor "github.com/deepnoodle-ai/risor/v3"
+	"github.com/deepnoodle-ai/wonton/assert"
+)
+
+// Package F8: the trace, the renderings, ConformAll and the messages of the
+// check phase, through the binding.
+
+// failure compiles and runs src and returns the failure's diagnostics.
+func failure(t *testing.T, env *risor.Env, src string, vars risor.Map) []risor.Diagnostic {
+	t.Helper()
+	x, err := risor.Parse(src)
+	if err == nil {
+		var p *risor.Program
+		if p, err = env.Compile(x, risor.NoCheck); err == nil {
+			_, err = p.Run(context.Background(), vars)
+		}
+	}
+	var e *risor.Error
+	assert.True(t, errors.As(err, &e), "expected a failure of %q", src)
+	return e.Diagnostics
+}
+
+const orders = "const total = o => o.lines.map(l => l.qty * l.price).sum();\norders.map(o => total(o))"
+
+func ordersData() risor.Map {
+	line := func(p float64) map[string]any { return map[string]any{"qty": 10.0, "price": p} }
+	o := func(ls ...map[string]any) map[string]any {
+		xs := make([]any, len(ls))
+		for i, l := range ls {
+			xs[i] = l
+		}
+		return map[string]any{"lines": xs}
+	}
+	return risor.Map{"orders": []any{o(line(1)), o(line(2)), o(line(1), line(1.7e308))}}
+}
+
+func TestTraceExample(t *testing.T) {
+	env, err := risor.NewEnv(risor.Var("orders", "{lines: {qty: float, price: float}[]}[]"))
+	assert.NoError(t, err)
+	ds := failure(t, env, orders, ordersData())
+	assert.Equal(t, len(ds), 1)
+	d := ds[0]
+	assert.Equal(t, d.Code, "number-range")
+	assert.Equal(t, sp(*d.Span), "1:37-1:52")
+	var got []string
+	for _, e := range d.Trace {
+		got = append(got, e.Name+" "+sp(e.Span)+" "+idx(e.Index))
+	}
+	assert.Equal(t, got, []string{"map 2:1-2:26 2", "total 2:17-2:25 -1", "map 1:20-1:53 1"})
+	want := "error[number-range] 1:37-1:52: the result of * is out of range\n" +
+		"    const total = o => o.lines.map(l => l.qty * l.price).sum();\n" +
+		"                                        ^^^^^^^^^^^^^^^\n" +
+		"  in map, element 1, at 1:20-1:53\n" +
+		"  in total, at 2:17-2:25\n" +
+		"  in map, element 2, at 2:1-2:26\n"
+	assert.Equal(t, risor.RenderDetail(ds, orders), want)
+	assert.Equal(t, risor.RenderLine(ds), "error[number-range] 1:37-1:52: the result of * is out of range\n")
+	assert.True(t, strings.HasSuffix(risor.RenderJSON(ds), `"trace":[{"index":2,"name":"map","span":[2,1,2,26]},`+
+		`{"index":null,"name":"total","span":[2,17,2,25]},{"index":1,"name":"map","span":[1,20,1,53]}]}`+"\n"))
+}
+
+func sp(s risor.Span) string {
+	a := s.Array()
+	return fmt.Sprintf("%d:%d-%d:%d", a[0], a[1], a[2], a[3])
+}
+
+func idx(n int) string {
+	if n < 0 {
+		return "-1"
+	}
+	return string(rune('0' + n))
+}
+
+func TestTraceRows(t *testing.T) {
+	env, _ := risor.NewEnv()
+	for _, c := range []struct{ src, trace string }{
+		{"const f = x => 1 / x; f(0)", "f 1:23-1:27 -1"},
+		{"[1, 0].map(x => 1 / x)", "map 1:1-1:23 1"},
+		{"const f = x => 1 / x; f(f(0))", "f 1:25-1:29 -1"},
+		{"[[1], 2].flatMap(x => x)", ""},
+		{"try { [0].map(x => 1 / x) } catch { [1, 0].map(x => 1 / x) }", "map 1:37-1:59 1"},
+	} {
+		ds := failure(t, env, c.src, nil)
+		var got []string
+		for _, e := range ds[0].Trace {
+			got = append(got, e.Name+" "+sp(e.Span)+" "+idx(e.Index))
+		}
+		assert.Equal(t, strings.Join(got, ", "), c.trace, c.src)
+		assert.True(t, ds[0].Trace != nil, "a run diagnostic has a trace, maybe empty")
+	}
+	// A run that does not fail, then one that fails: the stack of calls is
+	// reused, and the second trace holds only its own calls.
+	x, _ := risor.Parse("const f = x => 1 / x; [1, 2].map(y => f(y - n))")
+	env2, _ := risor.NewEnv(risor.Var("n", "int"))
+	p, err := env2.Compile(x)
+	assert.NoError(t, err)
+	_, err = p.Run(context.Background(), risor.Map{"n": 0.0})
+	assert.NoError(t, err)
+	_, err = p.Run(context.Background(), risor.Map{"n": 2.0})
+	var e *risor.Error
+	assert.True(t, errors.As(err, &e))
+	assert.Equal(t, len(e.Diagnostics[0].Trace), 2)
+	assert.Equal(t, e.Diagnostics[0].Trace[0].Index, 1)
+}
+
+func TestConformAll(t *testing.T) {
+	env, _ := risor.NewEnv()
+	typ, err := env.ParseType("{id: string, lines: {qty: int, sku: string}[]}")
+	assert.NoError(t, err)
+	v := map[string]any{"id": 7.0, "lines": []any{
+		map[string]any{"sku": "x", "qty": 1.0}, map[string]any{"sku": "y", "qty": "2"}}, "note": 1.0}
+	ds := risor.ConformAll(v, typ, 3)
+	assert.Equal(t, len(ds), 3)
+	assert.Equal(t, ds[0].Path, []any{"id"})
+	assert.Equal(t, ds[1].Path, []any{"lines", 1.0, "qty"})
+	assert.Equal(t, ds[2].Message, `the type does not allow key "note"`)
+	assert.Equal(t, len(risor.ConformAll(v, typ, 0)), 1) // a maximum less than 1 is 1
+	first := conformErr(t, v, typ)
+	assert.Equal(t, first.Path, ds[0].Path)
+	assert.Equal(t, first.Message, ds[0].Message)
+	assert.Equal(t, len(risor.ConformAll(map[string]any{"id": "a", "lines": []any{}}, typ, 5)), 0)
+	assert.Equal(t, risor.RenderLine(ds[1:2]), "error[not-conforming]: expected int, found \"2\" at .lines[1].qty\n")
+}
+
+func TestRenderData(t *testing.T) {
+	d := risor.Diagnostic{Phase: risor.PhaseRun, Code: "failed", Message: "m", HasData: true}
+	js := func(data any) string {
+		d.Data = data
+		s := risor.RenderJSON([]risor.Diagnostic{d})
+		i := strings.Index(s, `"data":`)
+		j := strings.Index(s, `,"message"`)
+		return s[i+7 : j]
+	}
+	assert.Equal(t, js(map[string]any{"b": []any{1.0, "x"}, "a": nil}), `{"a":null,"b":[1,"x"]}`)
+	// Deeper than 200, or more than 10,000 code points: null.
+	var deep any = 1.0
+	for i := 0; i < 201; i++ {
+		deep = []any{deep}
+	}
+	assert.Equal(t, js(deep), "null")
+	assert.Equal(t, js(strings.Repeat("é", 9999)), "null")
+	assert.Equal(t, js(strings.Repeat("é", 9998)), `"`+strings.Repeat("é", 9998)+`"`)
+	// A list shared many times is bounded by the count, not walked whole.
+	shared := make([]any, 1000)
+	for i := range shared {
+		shared[i] = 1.0
+	}
+	big := make([]any, 1000)
+	for i := range big {
+		big[i] = shared
+	}
+	assert.Equal(t, js(big), "null")
+}
+
+func TestCheckMessages(t *testing.T) {
+	env, _ := risor.NewEnv(risor.Var("o", "{id: string, qty: int}"), risor.Var("n", "int | null"))
+	x, _ := risor.Parse("o.nmae + (n + 1)")
+	_, err := env.Compile(x)
+	var e *risor.Error
+	assert.True(t, errors.As(err, &e))
+	var msgs []string
+	for _, d := range e.Diagnostics {
+		msgs = append(msgs, d.Message)
+	}
+	assert.Equal(t, msgs, []string{`{id: string, qty: int} has no field "nmae"`, "n may be null; its type is int | null"})
+	assert.Equal(t, risor.RenderLine(e.Diagnostics[:1]), "error[no-field] 1:3-1:7: {id: string, qty: int} has no field \"nmae\"\n")
+}

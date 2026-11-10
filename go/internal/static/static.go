@@ -3,7 +3,10 @@
 package static
 
 import (
+	"github.com/deepnoodle-ai/risor/v3/internal/messages"
+	"github.com/deepnoodle-ai/risor/v3/internal/types"
 	"sort"
+	"strconv"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
@@ -33,6 +36,12 @@ type Names struct {
 	Funcs      map[string]*Func // by full name
 	Namespaces map[string]bool
 	Library    map[string]*library.Entry // library functions the environment has
+	// Types is what a program type may name: the opaque types and the
+	// named types (package F4 6.1).
+	Types *types.Scope
+	// Constants are the constants of the groups that are on, by full name
+	// (package F6 2.4).
+	Constants map[string]float64
 }
 
 // BindKind is the kind of a binding.
@@ -77,6 +86,10 @@ type Callee struct {
 type Diag struct {
 	Code string
 	Span syntax.Span
+	// Tmpl and Params are the message's template and parameters (package
+	// F8 3.5). The text of the span is added where the message is built.
+	Tmpl   string
+	Params []messages.Param
 }
 
 // Result is what the rules found.
@@ -89,6 +102,12 @@ type Result struct {
 	// that binds a name to its slot.
 	Slots  map[any]int
 	NSlots int
+	// AsTypes holds the resolved type of each As node whose program type
+	// has no diagnostic (package F4 3.5, 6.1).
+	AsTypes map[*syntax.As]*types.Type
+	// Consts holds each Member that reads a constant of a group, with its
+	// value (F6 2.4 item 2).
+	Consts map[*syntax.Member]float64
 }
 
 type scope struct {
@@ -108,16 +127,17 @@ func (s *scope) lookup(n string) *Binding {
 type walker struct {
 	names *Names
 	res   *Result
-	seen  map[Diag]bool
+	seen  map[diagKey]bool
 }
 
 // Check applies the static rules to a program and resolves its names.
 func Check(prog *syntax.Program, names *Names) *Result {
-	w := &walker{names: names, seen: map[Diag]bool{}, res: &Result{
+	w := &walker{names: names, seen: map[diagKey]bool{}, res: &Result{
 		Idents:  map[*syntax.Ident]*Binding{},
 		Calls:   map[syntax.Node]*Callee{},
 		NSCalls: map[*syntax.MethodCall]bool{},
 		Slots:   map[any]int{},
+		AsTypes: map[*syntax.As]*types.Type{},
 	}}
 	outer := &scope{names: map[string]*Binding{}}
 	for n, i := range names.Vars {
@@ -141,13 +161,23 @@ func Check(prog *syntax.Program, names *Names) *Result {
 	return w.res
 }
 
-func (w *walker) diag(code string, sp syntax.Span) {
-	d := Diag{code, sp}
-	if !w.seen[d] {
-		w.seen[d] = true
-		w.res.Diags = append(w.res.Diags, d)
+type diagKey struct {
+	code string
+	sp   syntax.Span
+}
+
+func (w *walker) diag(code string, sp syntax.Span) { w.diagm(code, sp, "") }
+
+// diagm records a diagnostic with its message's template and parameters.
+func (w *walker) diagm(code string, sp syntax.Span, tmpl string, ps ...messages.Param) {
+	k := diagKey{code, sp}
+	if !w.seen[k] {
+		w.seen[k] = true
+		w.res.Diags = append(w.res.Diags, Diag{Code: code, Span: sp, Tmpl: tmpl, Params: ps})
 	}
 }
+
+func nameP(n string) messages.Param { return messages.Word("name", n) }
 
 // bind binds a name in scope s (22.7). It returns the slot, or -1.
 func (w *walker) bind(name string, sp syntax.Span, s *scope, kind BindKind, lam *syntax.Lambda) int {
@@ -155,11 +185,11 @@ func (w *walker) bind(name string, sp syntax.Span, s *scope, kind BindKind, lam 
 		return -1
 	}
 	if w.names.Namespaces[name] {
-		w.diag("shadows-namespace", sp)
+		w.diagm("shadows-namespace", sp, "", nameP(name))
 		return -1
 	}
 	if _, ok := s.names[name]; ok {
-		w.diag("duplicate-name", sp)
+		w.diagm("duplicate-name", sp, "", nameP(name))
 	}
 	b := &Binding{Kind: kind, Name: name, Lambda: lam, Slot: -1}
 	if kind == Value {
@@ -280,22 +310,24 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 	case ns != "":
 		if f, ok := w.names.Funcs[ns+"."+name]; ok {
 			callee = &Callee{Kind: Host, Host: f}
+		} else if e, ok := w.names.Library[ns+"."+name]; ok { // F6 2.5
+			callee = &Callee{Kind: Lib, Lib: e}
 		} else {
-			w.diag("undefined-function", nameSpan)
+			w.diagm("undefined-function", nameSpan, "", messages.Word("name", ns+"."+name))
 		}
 	default:
 		if b := s.lookup(name); b != nil {
 			if b.Kind == ConstLambda {
 				callee = &Callee{Kind: Lambda, Lambda: b.Lambda}
 			} else {
-				w.diag("call-of-parameter", nameSpan)
+				w.diagm("call-of-parameter", nameSpan, "", messages.Word("name", name))
 			}
 		} else if f, ok := w.names.Funcs[name]; ok {
 			callee = &Callee{Kind: Host, Host: f}
 		} else if e, ok := w.names.Library[name]; ok {
 			callee = &Callee{Kind: Lib, Lib: e}
 		} else {
-			w.diag("undefined-function", nameSpan)
+			w.diagm("undefined-function", nameSpan, "", messages.Word("name", name))
 		}
 	}
 	w.res.Calls[n] = callee
@@ -309,8 +341,14 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 		case Lib:
 			min, max = callee.Lib.MinArgs(), callee.Lib.MaxArgs()
 		}
+		full := name
+		if ns != "" {
+			full = ns + "." + name
+		}
 		if len(args) < min || (max >= 0 && len(args) > max) {
-			w.diag("arity", n.Span())
+			w.diagm("arity", n.Span(), ArityTemplate(min, max), messages.Word("name", full),
+				messages.Word("count", strconv.Itoa(len(args))), messages.Word("required", strconv.Itoa(min)),
+				messages.Word("most", strconv.Itoa(max)))
 		} else {
 			for i, a := range args {
 				ok, nparams := w.isLambdaArg(a, s)
@@ -319,16 +357,22 @@ func (w *walker) call(n syntax.Node, ns, name string, nameSpan syntax.Span, args
 				}
 				switch callee.Kind {
 				case Lambda:
-					w.diag("lambda-to-lambda", a.Span())
+					w.diagm("lambda-to-lambda", a.Span(), "", messages.Word("name", full))
 				case Host:
 					// A host signature has no Fn parameter (bad-signature).
-					w.diag("not-a-value", a.Span())
+					w.diagm("not-a-value", a.Span(), "argument", messages.Word("name", full),
+						messages.Word("param", hostParam(callee.Host, i)))
 				case Lib:
 					p := callee.Lib.ParamAt(i)
 					if p == nil || p.Callback < 0 {
-						w.diag("not-a-value", a.Span())
+						pn := ""
+						if p != nil {
+							pn = p.Name
+						}
+						w.diagm("not-a-value", a.Span(), "argument", messages.Word("name", full), messages.Word("param", pn))
 					} else if nparams > p.Callback {
-						w.diag("arity", a.Span())
+						w.diagm("arity", a.Span(), "parameters", messages.Word("name", full),
+							messages.Word("most", strconv.Itoa(p.Callback)))
 					}
 				}
 			}
@@ -345,15 +389,15 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		switch {
 		case b != nil && b.Kind == ConstLambda:
 			w.res.Idents[n] = b
-			w.diag("not-a-value", n.Span())
+			w.diagm("not-a-value", n.Span(), "lambda", nameP(n.Name))
 		case b != nil:
 			w.res.Idents[n] = b
 		case w.names.Namespaces[n.Name]:
-			w.diag("not-a-value", n.Span())
+			w.diagm("not-a-value", n.Span(), "namespace", nameP(n.Name))
 		case w.isFunction(n.Name):
-			w.diag("not-a-value", n.Span())
+			w.diagm("not-a-value", n.Span(), "function", nameP(n.Name))
 		default:
-			w.diag("undefined-name", n.Span())
+			w.diagm("undefined-name", n.Span(), "name", nameP(n.Name))
 		}
 	case *syntax.Call:
 		w.call(n, "", n.Name, n.NameSpan, n.Args, s)
@@ -366,6 +410,9 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 		w.chainBase(n.X, s)
 		w.args(n.Args, s)
 	case *syntax.Member:
+		if w.constant(n) {
+			return
+		}
 		w.chainBase(n.X, s)
 	case *syntax.Index:
 		w.chainBase(n.X, s)
@@ -385,6 +432,26 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 				return
 			}
 			n = next
+		}
+	case *syntax.As:
+		w.expr(n.X, s)
+		sc := w.names.Types
+		if sc == nil {
+			sc = &types.Scope{}
+		}
+		t, ds := types.FromPType(n.Type, sc)
+		for _, d := range ds {
+			switch d.Code {
+			case "undefined-name":
+				w.diagm(d.Code, d.Span, "type", nameP(d.Name))
+			case "check-limit":
+				w.diagm(d.Code, d.Span, d.Tmpl)
+			default:
+				w.diag(d.Code, d.Span)
+			}
+		}
+		if t != nil {
+			w.res.AsTypes[n] = t
 		}
 	case *syntax.Try:
 		w.branch(n.Body, s)
@@ -414,7 +481,7 @@ func (w *walker) expr(n syntax.Node, s *scope) {
 					w.expr(e.KeyExpr, s)
 				} else {
 					if keys[e.Key] {
-						w.diag("duplicate-key", e.KeySpan)
+						w.diagm("duplicate-key", e.KeySpan, "", messages.Val("key", e.Key))
 					}
 					keys[e.Key] = true
 				}
@@ -480,6 +547,9 @@ func (w *walker) chainBase(x syntax.Node, s *scope) {
 	for {
 		switch n := x.(type) {
 		case *syntax.Member:
+			if w.constant(n) {
+				break
+			}
 			steps = append(steps, n)
 			x = n.X
 			continue
@@ -506,6 +576,27 @@ func (w *walker) chainBase(x syntax.Node, s *scope) {
 			w.args(n.Args, s)
 		}
 	}
+}
+
+// constant resolves a Member that reads a constant of a group that is on
+// (F6 2.4 item 2): a plain "." on an Ident that names the group.
+func (w *walker) constant(n *syntax.Member) bool {
+	if n.Optional || len(w.names.Constants) == 0 {
+		return false
+	}
+	id, ok := n.X.(*syntax.Ident)
+	if !ok || !w.names.Namespaces[id.Name] {
+		return false
+	}
+	v, ok := w.names.Constants[id.Name+"."+n.Name]
+	if !ok {
+		return false
+	}
+	if w.res.Consts == nil {
+		w.res.Consts = map[*syntax.Member]float64{}
+	}
+	w.res.Consts[n] = v
+	return true
 }
 
 func (w *walker) isFunction(name string) bool {
@@ -545,4 +636,27 @@ func KindOfLiteral(n syntax.Node) value.Kind {
 		return value.Bool
 	}
 	return value.Null
+}
+
+// ArityTemplate chooses the template of arity by the counts (F8 3.5).
+func ArityTemplate(min, max int) string {
+	switch {
+	case max < 0:
+		return "at-least"
+	case max == min:
+		return "exact"
+	}
+	return "range"
+}
+
+// hostParam is the name of a host function's parameter at argument i.
+func hostParam(f *Func, i int) string {
+	ps := f.Sig.Params
+	if i < len(ps) {
+		return ps[i].Name
+	}
+	if n := len(ps); n > 0 && ps[n-1].Rest {
+		return ps[n-1].Name
+	}
+	return ""
 }

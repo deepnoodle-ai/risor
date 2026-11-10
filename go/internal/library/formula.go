@@ -195,7 +195,7 @@ func (p *fparser) factor() fnode {
 			panic(err)
 		}
 		return fnum(n)
-	case len(t) == 1 && strings.Contains("nkvpgL", t):
+	case len(t) == 1 && strings.Contains("nkvpgLcu", t): // c and u: package F6 3.4
 		return fsym(t[0])
 	case t == "sz" || t == "w" || t == "len" || t == "walk":
 		p.expect("(")

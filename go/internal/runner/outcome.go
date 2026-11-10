@@ -19,18 +19,34 @@ import (
 func Outcome(c *casefile.Case) string {
 	// F2 4.8: the report is the last field, for every case whose text
 	// parses. An analysis case has name, phase and analysis.
-	x, perr := parseCase(c)
+	var x *risor.Expr
+	var perr error
+	if c.Conform == nil {
+		x, perr = parseCase(c)
+	}
 	if c.Expect != nil && c.Expect.Analysis != nil {
 		var b strings.Builder
 		b.WriteString(`{"name":` + value.QuoteJSON(c.Name))
 		if perr != nil {
 			d := perr.(*risor.Error).Diagnostics[0]
 			a := d.Span.Array()
-			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":[%d,%d,%d,%d]}]}`, value.QuoteJSON(d.Code), a[0], a[1], a[2], a[3])
+			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":[%d,%d,%d,%d],"message":%s}]}`, value.QuoteJSON(d.Code), a[0], a[1], a[2], a[3], value.QuoteJSON(d.Message))
 			return b.String()
 		}
 		b.WriteString(`,"phase":null,"analysis":` + AnalysisJSON(x.Analyze()) + "}")
 		return b.String()
+	}
+	if c.Conform != nil {
+		return conformLine(c)
+	}
+	if c.Render != nil { // F8 8: name, then the three forms
+		r := c.Render
+		detail := risor.RenderDetail(r.Diagnostics)
+		if r.Source != nil {
+			detail = risor.RenderDetail(r.Diagnostics, *r.Source)
+		}
+		return `{"name":` + value.QuoteJSON(c.Name) + `,"line":` + value.QuoteJSON(risor.RenderLine(r.Diagnostics)) +
+			`,"detail":` + value.QuoteJSON(detail) + `,"json":` + value.QuoteJSON(risor.RenderJSON(r.Diagnostics)) + "}"
 	}
 	line := outcome(c)
 	if perr == nil {
@@ -78,6 +94,24 @@ func outcome(c *casefile.Case) string {
 					b.WriteString("null")
 				}
 				b.WriteString(`,"message":` + value.QuoteJSON(d.Message))
+				if !diag.LimitCodes[d.Code] { // F8 8
+					b.WriteString(`,"trace":[`)
+					for j, t := range d.Trace {
+						if j > 0 {
+							b.WriteByte(',')
+						}
+						a := t.Span.Array()
+						fmt.Fprintf(&b, `{"span":[%d,%d,%d,%d],"name":%s,"index":`, a[0], a[1], a[2], a[3], value.QuoteJSON(t.Name))
+						if t.Index < 0 {
+							b.WriteString("null}")
+						} else {
+							fmt.Fprintf(&b, "%d}", t.Index)
+						}
+					}
+					b.WriteByte(']')
+				}
+			} else if ph == "parse" || ph == "check" { // F8 8
+				b.WriteString(`,"message":` + value.QuoteJSON(d.Message))
 			}
 			b.WriteByte('}')
 		}
@@ -93,7 +127,7 @@ func outcome(c *casefile.Case) string {
 	if err != nil {
 		return fail(err, nil)
 	}
-	if c.Schemas != nil {
+	if c.Schemas != nil || c.Types != nil {
 		// F1 7.4: after name, before type.
 		if d, err := env.Describe(); err == nil {
 			b.WriteString(`,"description":`)
@@ -174,4 +208,45 @@ func writeJSON(b *strings.Builder, v any) {
 	default:
 		b.WriteString(value.Debug(v))
 	}
+}
+
+// conformLine is the outcome line of a conform case (F4 9.5).
+func conformLine(c *casefile.Case) string {
+	var b strings.Builder
+	b.WriteString(`{"name":` + value.QuoteJSON(c.Name))
+	o := doConform(c)
+	if o.declare != nil {
+		ds := append([]risor.Diagnostic(nil), o.declare.Diagnostics...)
+		sort.Slice(ds, func(i, j int) bool { return ds[i].Code < ds[j].Code })
+		b.WriteString(`,"phase":"declare","diagnostics":[`)
+		for i, d := range ds {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(`{"code":` + value.QuoteJSON(d.Code) + `}`)
+		}
+		b.WriteString("]}")
+		return b.String()
+	}
+	fmt.Fprintf(&b, `,"phase":null,"conforms":%t`, o.conforms)
+	if !o.conforms {
+		b.WriteString(`,"path":`)
+		writeJSON(&b, o.path)
+		b.WriteString(`,"message":` + value.QuoteJSON(o.message))
+	}
+	fmt.Fprintf(&b, `,"steps":%d,"agree":%t`, o.steps, o.agree)
+	if c.Conform.Max != nil { // F8 8
+		b.WriteString(`,"failures":[`)
+		for i, f := range o.all {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(`{"path":`)
+			writeJSON(&b, f.Path)
+			b.WriteString(`,"message":` + value.QuoteJSON(f.Message) + `}`)
+		}
+		b.WriteByte(']')
+	}
+	b.WriteByte('}')
+	return b.String()
 }

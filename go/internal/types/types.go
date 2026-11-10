@@ -9,6 +9,7 @@ package types
 import (
 	"sort"
 	"strings"
+	"sync/atomic"
 )
 
 // Number alternatives.
@@ -35,9 +36,21 @@ type Type struct {
 	str     uint8
 	lits    []string // sorted and unique, when str is strLits
 	list    *Type    // the element type, or nil
-	rec     *Record  // or nil
-	opaque  []string // sorted and unique
-	vars    []string // type variables of a signature, sorted
+	rec     *Record  // or nil; flat(U) when uni is set
+	// uni is a tagged union of package F5 (f05-unions.md 2.2), the map
+	// alternative, with rec its flat record. Nil for a record alone.
+	uni *Union
+	// tested marks a type that a test of a field narrowed (F5 5.2 item 3).
+	tested bool
+	opaque []string // sorted and unique
+	vars   []string // type variables of a signature, sorted
+
+	// size and depth cache Size and Depth (0: not yet known; depth is
+	// stored plus one). A type is immutable once built, so each is
+	// computed once, from the cached values of its parts. They are read
+	// and written atomically: a type of an environment is shared by
+	// compiles that run at once.
+	size, depth int32
 }
 
 // Field is one field of a record.
@@ -45,6 +58,19 @@ type Field struct {
 	Key      string
 	Type     *Type
 	Optional bool
+	// Base and Fill are kept while a schema is mapped (package F1 4.4): a
+	// field that absent-is-null or defaults-applied fills has its type before
+	// the fill and the fill apart, and Type is their Join. Fill is nil for a
+	// field with no fill.
+	Base, Fill *Type
+}
+
+// BaseOf is a field's base: its type when it has no fill.
+func (f Field) BaseOf() *Type {
+	if f.Fill != nil {
+		return f.Base
+	}
+	return f.Type
 }
 
 // Record is a record type (2.2). Rest is never for an exact record.
@@ -107,7 +133,11 @@ func uniq(s []string) []string {
 	return out
 }
 
-func (t *Type) clone() *Type { c := *t; return &c }
+func (t *Type) clone() *Type {
+	c := &Type{any: t.any, null: t.null, boolean: t.boolean, num: t.num, str: t.str, lits: t.lits,
+		list: t.list, rec: t.rec, uni: t.uni, opaque: t.opaque, vars: t.vars, tested: t.tested}
+	return c
+}
 
 // IsAny reports whether t is any.
 func (t *Type) IsAny() bool { return t.any }
@@ -196,16 +226,89 @@ func WithNull(t *Type) *Type {
 	return c
 }
 
+// unionStrings merges two sorted sets of strings, in time linear in both.
 func unionStrings(a, b []string) []string {
-	out := append(append([]string(nil), a...), b...)
-	sort.Strings(out)
-	return uniq(out)
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	out := make([]string, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		switch {
+		case a[i] < b[j]:
+			out = append(out, a[i])
+			i++
+		case a[i] > b[j]:
+			out = append(out, b[j])
+			j++
+		default:
+			out = append(out, a[i])
+			i, j = i+1, j+1
+		}
+	}
+	out = append(out, a[i:]...)
+	return append(out, b[j:]...)
+}
+
+// JoinAll is the Join of several types (4.1), in time n log n in their
+// number and the strings of their literal sets (ruling CG10): the literal
+// sets are gathered and sorted once, and the rest is joined as a balanced
+// tree, so no set is copied once for each type joined.
+func JoinAll(ts []*Type) *Type {
+	var lits []string
+	all := false
+	rest := make([]*Type, 0, len(ts))
+	for _, t := range ts {
+		if t.any {
+			return Any
+		}
+		switch t.str {
+		case strAll:
+			all = true
+		case strLits:
+			lits = append(lits, t.lits...)
+		}
+		if t.str != strNone {
+			c := t.clone()
+			c.str, c.lits = strNone, nil
+			if c.IsNever() {
+				continue
+			}
+			t = c
+		}
+		rest = append(rest, t)
+	}
+	r := joinTree(rest)
+	switch {
+	case all:
+		r = Join(r, String)
+	case len(lits) > 0:
+		r = Join(r, Lit(lits...))
+	}
+	return r
+}
+
+func joinTree(ts []*Type) *Type {
+	switch len(ts) {
+	case 0:
+		return Never
+	case 1:
+		return ts[0]
+	}
+	m := len(ts) / 2
+	return Join(joinTree(ts[:m]), joinTree(ts[m:]))
 }
 
 // Join is the type of a value of type a or b (4.1).
 func Join(a, b *Type) *Type {
 	if a.any || b.any {
 		return Any
+	}
+	if a == b {
+		return a
 	}
 	if a.IsNever() {
 		return b
@@ -235,11 +338,17 @@ func Join(a, b *Type) *Type {
 	}
 	switch {
 	case a.rec != nil && b.rec != nil:
-		r.rec = joinRec(a.rec, b.rec)
+		// F5 4.1: a union survives only beside the same union; otherwise the
+		// Join of the flats. A Join never makes a union.
+		if a.uni != nil && b.uni != nil && sameUnion(a.uni, b.uni) {
+			r.rec, r.uni = a.rec, a.uni
+		} else {
+			r.rec = joinRec(a.rec, b.rec)
+		}
 	case a.rec != nil:
-		r.rec = a.rec
+		r.rec, r.uni = a.rec, a.uni
 	default:
-		r.rec = b.rec
+		r.rec, r.uni = b.rec, b.uni
 	}
 	r.opaque = unionStrings(a.opaque, b.opaque)
 	r.vars = unionStrings(a.vars, b.vars)
@@ -264,29 +373,54 @@ func (r *Record) field(k string) (Field, bool) {
 func (r *Record) Field(k string) (Field, bool) { return r.field(k) }
 
 func joinRec(a, b *Record) *Record {
+	// A fill is kept apart through a Join (F1 4.4 item 3): a key in both has
+	// the Join of the bases and of the fills; a key in one only has its base
+	// joined with the other's rest, and keeps its fill. A field with a fill
+	// is required.
+	field := func(k string, base, fill *Type, optional bool) Field {
+		if fill == nil {
+			return Field{Key: k, Type: base, Optional: optional}
+		}
+		return Field{Key: k, Type: Join(base, fill), Base: base, Fill: fill}
+	}
 	var fs []Field
 	for _, f := range a.Fields {
 		if g, ok := b.field(f.Key); ok {
-			fs = append(fs, Field{f.Key, Join(f.Type, g.Type), f.Optional || g.Optional})
+			var fill *Type
+			if f.Fill != nil || g.Fill != nil {
+				fill = Join(orNever(f.Fill), orNever(g.Fill))
+			}
+			fs = append(fs, field(f.Key, Join(f.BaseOf(), g.BaseOf()), fill, f.Optional || g.Optional))
 		} else {
-			t := f.Type
+			t := f.BaseOf()
 			if !b.Rest.IsNever() {
 				t = Join(t, b.Rest)
 			}
-			fs = append(fs, Field{f.Key, t, true})
+			fs = append(fs, field(f.Key, t, f.Fill, true))
 		}
 	}
 	for _, g := range b.Fields {
 		if _, ok := a.field(g.Key); !ok {
-			t := g.Type
+			t := g.BaseOf()
 			if !a.Rest.IsNever() {
 				t = Join(t, a.Rest)
 			}
-			fs = append(fs, Field{g.Key, t, true})
+			fs = append(fs, field(g.Key, t, g.Fill, true))
 		}
 	}
 	sort.Slice(fs, func(i, j int) bool { return fs[i].Key < fs[j].Key })
-	return &Record{Fields: fs, Rest: Join(a.Rest, b.Rest), Closable: a.Closable && b.Closable}
+	// F1 3.6 item 8: closable when one is closable and the other is closable
+	// or exact.
+	exact := func(r *Record) bool { return r.Rest.IsNever() && !r.Closable }
+	cl := (a.Closable && (b.Closable || exact(b))) || (b.Closable && exact(a))
+	return &Record{Fields: fs, Rest: Join(a.Rest, b.Rest), Closable: cl}
+}
+
+func orNever(t *Type) *Type {
+	if t == nil {
+		return Never
+	}
+	return t
 }
 
 // Fits is the assignability relation (4.2). It also reports whether the
@@ -348,8 +482,37 @@ func (f *fitter) fits(s, t *Type) bool {
 			return false
 		}
 	}
-	if s.rec != nil && (t.rec == nil || !f.fitsRec(s.rec, t.rec)) {
+	if s.rec != nil && (t.rec == nil || !f.fitsMap(s, t)) {
 		return false
+	}
+	return true
+}
+
+// fitsMap is the map row of 4.2 with F5 4.2: each variant of S fits some
+// variant of T; the fit uses any when some variant of S fits none without
+// using any.
+func (f *fitter) fitsMap(s, t *Type) bool {
+	if s.uni == nil && t.uni == nil {
+		return f.fitsRec(s.rec, t.rec)
+	}
+	for _, sv := range variants(s) {
+		found, clean := false, false
+		for _, tv := range variants(t) {
+			sub := &fitter{}
+			if sub.fitsRec(sv, tv) {
+				found = true
+				if !sub.used {
+					clean = true
+					break
+				}
+			}
+		}
+		if !found {
+			return false
+		}
+		if !clean {
+			f.used = true
+		}
 	}
 	return true
 }
@@ -383,7 +546,7 @@ func Merge(r *Record, m *Type) *Record {
 	if m.any {
 		fs := make([]Field, len(r.Fields))
 		for i, f := range r.Fields {
-			fs[i] = Field{f.Key, Any, f.Optional}
+			fs[i] = Field{Key: f.Key, Type: Any, Optional: f.Optional}
 		}
 		return &Record{Fields: fs, Rest: Any}
 	}
@@ -391,7 +554,7 @@ func Merge(r *Record, m *Type) *Record {
 	var fs []Field
 	for _, mf := range mr.Fields {
 		if !mf.Optional {
-			fs = append(fs, Field{mf.Key, mf.Type, false})
+			fs = append(fs, Field{Key: mf.Key, Type: mf.Type, Optional: false})
 			continue
 		}
 		rt := r.Rest
@@ -399,7 +562,7 @@ func Merge(r *Record, m *Type) *Record {
 		if rf, ok := r.field(mf.Key); ok {
 			rt, req = rf.Type, !rf.Optional
 		}
-		fs = append(fs, Field{mf.Key, Join(mf.Type, rt), !req})
+		fs = append(fs, Field{Key: mf.Key, Type: Join(mf.Type, rt), Optional: !req})
 	}
 	for _, rf := range r.Fields {
 		if _, ok := mr.field(rf.Key); ok {
@@ -408,7 +571,7 @@ func Merge(r *Record, m *Type) *Record {
 		if mr.Rest.IsNever() {
 			fs = append(fs, rf)
 		} else {
-			fs = append(fs, Field{rf.Key, Join(rf.Type, mr.Rest), rf.Optional})
+			fs = append(fs, Field{Key: rf.Key, Type: Join(rf.Type, mr.Rest), Optional: rf.Optional})
 		}
 	}
 	sort.Slice(fs, func(i, j int) bool { return fs[i].Key < fs[j].Key })
@@ -426,7 +589,7 @@ func SetField(r *Record, k string, t *Type) *Record {
 			fs = append(fs, f)
 		}
 	}
-	fs = append(fs, Field{k, t, false})
+	fs = append(fs, Field{Key: k, Type: t})
 	sort.Slice(fs, func(i, j int) bool { return fs[i].Key < fs[j].Key })
 	return &Record{Fields: fs, Rest: r.Rest}
 }
@@ -466,7 +629,7 @@ func Truthy(t *Type) *Type {
 		r.list = t.list
 	}
 	if t.rec != nil && !(len(t.rec.Fields) == 0 && t.rec.Rest.IsNever()) {
-		r.rec = t.rec
+		r.rec, r.uni = t.rec, t.uni
 	}
 	return r
 }
@@ -581,27 +744,85 @@ func Finite(t *Type) bool {
 
 // Depth is the depth of a type (2.5). A type shared at many places, as a
 // schema's $ref gives, is measured once.
-func Depth(t *Type) int { return depth(t, map[*Type]int{}) }
-
-func depth(t *Type, memo map[*Type]int) int {
+func Depth(t *Type) int {
 	if t.any || (t.list == nil && t.rec == nil) {
 		return 0
 	}
-	if d, ok := memo[t]; ok {
-		return d
+	if d := atomic.LoadInt32(&t.depth); d > 0 {
+		return int(d - 1)
 	}
 	d := -1
 	if t.list != nil {
-		d = max(d, depth(t.list, memo))
+		d = max(d, Depth(t.list))
 	}
 	if t.rec != nil {
 		for _, f := range t.rec.Fields {
-			d = max(d, depth(f.Type, memo))
+			d = max(d, Depth(f.Type))
 		}
-		d = max(d, depth(t.rec.Rest, memo))
+		d = max(d, Depth(t.rec.Rest))
 	}
-	memo[t] = d + 1
+	atomic.StoreInt32(&t.depth, int32(d+2))
 	return d + 1
+}
+
+// MaxSize is the limit on the size of a type (05-types.md 20.7, ruling
+// CG2). The specification fixes it.
+const MaxSize = 100000
+
+// Size is the size of a type written out with no sharing (20.7), saturated
+// at MaxSize + 1. It is computed once per type from the sizes of its parts,
+// so it never expands the type.
+func Size(t *Type) int {
+	if s := atomic.LoadInt32(&t.size); s > 0 {
+		return int(s)
+	}
+	n := 0
+	add := func(k int) {
+		n += k
+		if n > MaxSize {
+			n = MaxSize + 1
+		}
+	}
+	if t.any {
+		n = 1
+	} else {
+		if t.null {
+			add(1)
+		}
+		if t.boolean {
+			add(1)
+		}
+		if t.num != numNone {
+			add(1)
+		}
+		switch t.str {
+		case strAll:
+			add(1)
+		case strLits:
+			add(len(t.lits))
+		}
+		if t.list != nil {
+			add(1 + Size(t.list))
+		}
+		if t.rec != nil {
+			// F5 2.6: a union is the sum of its variants; flat is not counted.
+			for _, r := range variants(t) {
+				add(1)
+				for _, f := range r.Fields {
+					add(Size(f.Type))
+				}
+				if !r.Rest.IsNever() {
+					add(Size(r.Rest))
+				}
+			}
+		}
+		add(len(t.opaque) + len(t.vars))
+		if n == 0 {
+			n = 1 // never
+		}
+	}
+	atomic.StoreInt32(&t.size, int32(n))
+	return n
 }
 
 // Equal reports whether two types are the same type.
@@ -615,8 +836,11 @@ func Equal(a, b *Type) bool {
 	if (a.list == nil) != (b.list == nil) || (a.list != nil && !Equal(a.list, b.list)) {
 		return false
 	}
-	if (a.rec == nil) != (b.rec == nil) {
+	if (a.rec == nil) != (b.rec == nil) || (a.uni == nil) != (b.uni == nil) {
 		return false
+	}
+	if a.uni != nil {
+		return sameUnion(a.uni, b.uni)
 	}
 	if a.rec != nil {
 		if len(a.rec.Fields) != len(b.rec.Fields) || !Equal(a.rec.Rest, b.rec.Rest) {
@@ -661,7 +885,7 @@ func Subst(t *Type, sol map[string]*Type) *Type {
 	if c.rec != nil {
 		fs := make([]Field, len(c.rec.Fields))
 		for i, f := range c.rec.Fields {
-			fs[i] = Field{f.Key, Subst(f.Type, sol), f.Optional}
+			fs[i] = Field{Key: f.Key, Type: Subst(f.Type, sol), Optional: f.Optional}
 		}
 		c.rec = &Record{Fields: fs, Rest: Subst(c.rec.Rest, sol)}
 	}
@@ -743,7 +967,12 @@ func (t *Type) String() string {
 		}
 		parts = append(parts, e+"[]")
 	}
-	if t.rec != nil {
+	switch {
+	case t.uni != nil: // F5 2.4: the variants, by the least string of each tag set
+		for _, v := range t.uni.Variants {
+			parts = append(parts, v.String())
+		}
+	case t.rec != nil:
 		parts = append(parts, t.rec.String())
 	}
 	parts = append(parts, t.opaque...)
@@ -890,16 +1119,27 @@ func closeT(t *Type, memo map[*Type]*Type) *Type {
 	if c.list != nil {
 		c.list = closeT(c.list, memo)
 	}
-	if c.rec != nil {
-		fs := make([]Field, len(c.rec.Fields))
-		for i, f := range c.rec.Fields {
+	closeRec := func(r *Record) *Record {
+		fs := make([]Field, len(r.Fields))
+		for i, f := range r.Fields {
 			fs[i] = Field{Key: f.Key, Type: closeT(f.Type, memo), Optional: f.Optional}
 		}
-		rest := closeT(c.rec.Rest, memo)
-		if c.rec.Closable {
+		rest := closeT(r.Rest, memo)
+		if r.Closable {
 			rest = Never
 		}
-		c.rec = &Record{Fields: fs, Rest: rest}
+		return &Record{Fields: fs, Rest: rest}
+	}
+	switch {
+	case c.uni != nil: // F5 8.2: Close closes each variant
+		vs := make([]*Record, len(c.uni.Variants))
+		for i, v := range c.uni.Variants {
+			vs[i] = closeRec(v)
+		}
+		u := MapOfVariants(vs)
+		c.rec, c.uni = u.rec, u.uni
+	case c.rec != nil:
+		c.rec = closeRec(c.rec)
 	}
 	memo[t] = c
 	return c

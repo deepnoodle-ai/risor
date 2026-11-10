@@ -171,7 +171,7 @@ func (x *Expr) Analyze() *Analysis {
 	for i, r := range a.Refs {
 		path := make([]Step, len(r.Path))
 		for j, k := range r.Path {
-			path[j] = Step{Key: k}
+			path[j] = Step{Key: k.Key, Star: k.Star}
 		}
 		out.Refs[i] = Ref{Name: r.Name, Path: path, Span: sp(r.Span)}
 	}

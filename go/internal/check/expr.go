@@ -52,7 +52,7 @@ func (c *checker) synth0(n syntax.Node, fs facts) *types.Type {
 			c.constLine(k, fs)
 		}
 		return c.synth(n.Result, fs)
-	case *syntax.Member, *syntax.Index, *syntax.MethodCall, *syntax.OptChain:
+	case *syntax.Member, *syntax.Index, *syntax.MethodCall, *syntax.OptChain, *syntax.Each:
 		if mc, ok := n.(*syntax.MethodCall); ok && c.res.NSCalls[mc] {
 			return c.call(mc, mc.Args, fs)
 		}
@@ -63,6 +63,8 @@ func (c *checker) synth0(n syntax.Node, fs facts) *types.Type {
 		return c.match(n, fs)
 	case *syntax.Try:
 		return c.try(n, fs)
+	case *syntax.As:
+		return c.as(n, fs)
 	}
 	return types.Never
 }
@@ -126,8 +128,43 @@ func (c *checker) factsOf(n syntax.Node) (t, f facts) {
 		case "||":
 			td, fd := c.factsOf(n.X)
 			te, fe := c.factsOf(n.Y)
-			return intersect(td, te), union(fd, fe)
+			return orFacts(td, te), union(fd, fe)
+		case "in", "not-in":
+			// F5 5.2: q in [L1, ..., Ln] gives the facts of q == L1 || ...
+			l, ok := n.Y.(*syntax.List)
+			if !ok || len(l.Items) == 0 {
+				return nil, nil
+			}
+			var ss []string
+			for _, it := range l.Items {
+				s, ok := it.(*syntax.String)
+				if !ok {
+					return nil, nil
+				}
+				ss = append(ss, s.Value)
+			}
+			t, f = c.fieldFacts(n.X, ss)
+			if n.Op == "not-in" {
+				return f, t
+			}
+			return t, f
 		case "==", "!=":
+			if s, ok := n.Y.(*syntax.String); ok {
+				if t, f, ok := c.fieldFactsOk(n.X, []string{s.Value}); ok {
+					if n.Op == "!=" {
+						return f, t
+					}
+					return t, f
+				}
+			}
+			if s, ok := n.X.(*syntax.String); ok {
+				if t, f, ok := c.fieldFactsOk(n.Y, []string{s.Value}); ok {
+					if n.Op == "!=" {
+						return f, t
+					}
+					return t, f
+				}
+			}
 			var other syntax.Node
 			if _, ok := n.X.(*syntax.Null); ok {
 				other = n.Y
@@ -142,13 +179,32 @@ func (c *checker) factsOf(n syntax.Node) (t, f facts) {
 				return nil, nil
 			}
 			if n.Op == "!=" {
-				return facts{p}, nil
+				return facts{nn(p)}, nil
 			}
-			return nil, facts{p}
+			return nil, facts{nn(p)}
 		}
+	case *syntax.As:
+		// F4 6.4: the facts of p is T.
+		t := c.res.AsTypes[n]
+		if n.Form != "is" || t == nil {
+			return nil, nil
+		}
+		p, ok := c.pathOf(n.X)
+		if !ok {
+			return nil, nil
+		}
+		tf := facts{{p: p, kind: factConforms, t: t}}
+		ff := facts{{p: p, kind: factNotConforms, t: t}}
+		if !t.HasNull() && !t.IsAny() {
+			tf = append(tf, nn(p))
+		}
+		if t.HasNull() {
+			ff = append(ff, nn(p))
+		}
+		return tf, ff
 	}
 	if p, ok := c.pathOf(n); ok {
-		return facts{p}, nil
+		return facts{nn(p)}, nil
 	}
 	return nil, nil
 }
@@ -170,22 +226,40 @@ func (c *checker) ident(n *syntax.Ident, fs facts) *types.Type {
 	default:
 		return types.Never
 	}
-	if p, ok := c.pathOf(n); ok && fs.covers(p) {
-		t = types.Nonnull(t)
+	if len(fs) > 0 {
+		if p, ok := c.pathOf(n); ok {
+			if fs.covers(p) {
+				t = types.Nonnull(t)
+			}
+			t = fs.apply(t, p)
+		}
 	}
 	return t
 }
 
+// depthLimit tests a type that becomes the type of node n against the
+// depth limit and the size limit (20.7, ruling CG3): over either, it is
+// check-limit on n and the node has type never. Both tests are constant
+// work: the depth and the size are kept with the type.
 func (c *checker) depthLimit(n syntax.Node, t *types.Type) *types.Type {
-	if types.Depth(t) > types.MaxDepth {
-		c.diag("check-limit", n.Span())
+	return c.limitAt(n.Span(), t)
+}
+
+func (c *checker) limitAt(sp syntax.Span, t *types.Type) *types.Type {
+	if types.Size(t) > types.MaxSize || types.Depth(t) > types.MaxDepth {
+		c.m(limitTmpl(t)).diag("check-limit", sp)
 		return types.Never
 	}
 	return t
 }
 
+// over reports whether a type is past the size limit. A Join that would
+// go on from such a type stops, and the test of its node reports it.
+func over(t *types.Type) bool { return types.Size(t) > types.MaxSize }
+
 func (c *checker) list(n *syntax.List, fs facts) *types.Type {
-	elem := types.Never
+	// The item types are joined once, at the end (ruling CG10).
+	var elems []*types.Type
 	for _, it := range n.Items {
 		if s, ok := it.(*syntax.Spread); ok {
 			t := c.synth(s.Value, fs)
@@ -195,19 +269,19 @@ func (c *checker) list(n *syntax.List, fs facts) *types.Type {
 			switch {
 			case t.IsAny():
 				if !c.dyn(sp) {
-					elem = types.Join(elem, types.Any)
+					elems = append(elems, types.Any)
 				}
 			case t.IsNever():
 			case t.Kinds() == 1 && t.Elem() != nil:
-				elem = types.Join(elem, t.Elem())
+				elems = append(elems, t.Elem())
 			default:
-				c.diag("kind", sp)
+				c.m("spread-list", ty("type", t)).diag("kind", sp)
 			}
 			continue
 		}
-		elem = types.Join(elem, c.synth(it, fs))
+		elems = append(elems, c.synth(it, fs))
 	}
-	return c.depthLimit(n, types.List(elem))
+	return c.depthLimit(n, types.List(types.JoinAll(elems)))
 }
 
 func (c *checker) mapLit(n *syntax.Map, fs facts) *types.Type {
@@ -219,7 +293,7 @@ func (c *checker) mapLit(n *syntax.Map, fs facts) *types.Type {
 				kt := c.synth(e.KeyExpr, fs)
 				ksp := e.KeyExpr.Span()
 				kt = c.nullable(ksp, kt)
-				c.mustFit(ksp, kt, types.String, "kind")
+				c.mustFitM(ksp, kt, types.String, "kind", "key", "")
 				v := c.synth(e.Value, fs)
 				c.ty[e] = v
 				rec = types.Merge(rec, types.MapOf(v))
@@ -242,7 +316,7 @@ func (c *checker) mapLit(n *syntax.Map, fs facts) *types.Type {
 			case t.Kinds() == 1 && t.Record() != nil:
 				rec = types.Merge(rec, t)
 			default:
-				c.diag("kind", sp)
+				c.m("spread-map", ty("type", t)).diag("kind", sp)
 			}
 		}
 	}
@@ -264,7 +338,7 @@ func (c *checker) unary(n *syntax.Unary, fs facts) *types.Type {
 		return types.Any
 	}
 	if ok, _ := types.Fits(t, types.Float); !ok {
-		c.diag("kind", sp)
+		c.m("operand", word("op", n.Op), ty("type", t)).diag("kind", sp)
 		return types.Never
 	}
 	return t
@@ -307,19 +381,19 @@ func (c *checker) binop(n *syntax.Binary, a *types.Type, fs facts) *types.Type {
 		c.tested(n.X, a)
 		tf, _ := c.factsOf(n.X)
 		b := c.synth(n.Y, fs.with(tf))
-		return types.Join(types.Falsy(a), b)
+		return c.depthLimit(n, types.Join(types.Falsy(a), b))
 	case "||":
 		c.tested(n.X, a)
 		_, ff := c.factsOf(n.X)
 		b := c.synth(n.Y, fs.with(ff))
-		return types.Join(types.Truthy(a), b)
+		return c.depthLimit(n, types.Join(types.Truthy(a), b))
 	case "??":
 		b := c.synth(n.Y, fs)
-		return types.Join(types.Nonnull(a), b)
+		return c.depthLimit(n, types.Join(types.Nonnull(a), b))
 	case "==", "!=":
 		b := c.synth(n.Y, fs)
 		if neverEqual(a, b) {
-			c.diag("never-equal", n.Span())
+			c.m("equality", ty("left", a), ty("right", b)).diag("never-equal", n.Span())
 		}
 		return types.Bool
 	case "in", "not-in":
@@ -346,33 +420,33 @@ func (c *checker) binop(n *syntax.Binary, a *types.Type, fs facts) *types.Type {
 		fa, sa := fits(a, types.Float), fits(a, types.String)
 		fb, sb := fits(b, types.Float), fits(b, types.String)
 		if !a.IsAny() && !fa && !sa {
-			c.diag("kind", xs)
+			c.m("operand", word("op", n.Op), ty("type", a)).diag("kind", xs)
 			bad = true
 		}
 		if !b.IsAny() && !fb && !sb {
-			c.diag("kind", ys)
+			c.m("operand", word("op", n.Op), ty("type", b)).diag("kind", ys)
 			bad = true
 		}
 		if !bad && !anyOp && ((fa && !sa && sb && !fb) || (sa && !fa && fb && !sb)) {
-			c.diag("kind", n.Span())
+			c.m("operands", word("op", n.Op), ty("left", a), ty("right", b)).diag("kind", n.Span())
 			bad = true
 		}
 	case "**":
 		if !a.IsAny() && !fits(a, types.Float) {
-			c.diag("kind", xs)
+			c.m("operand", word("op", n.Op), ty("type", a)).diag("kind", xs)
 			bad = true
 		}
 		if !b.IsAny() && !fits(b, types.Int) {
-			c.diag("kind", ys)
+			c.m("exponent", ty("type", b)).diag("kind", ys)
 			bad = true
 		}
 	default: // - * / %
 		if !a.IsAny() && !fits(a, types.Float) {
-			c.diag("kind", xs)
+			c.m("operand", word("op", n.Op), ty("type", a)).diag("kind", xs)
 			bad = true
 		}
 		if !b.IsAny() && !fits(b, types.Float) {
-			c.diag("kind", ys)
+			c.m("operand", word("op", n.Op), ty("type", b)).diag("kind", ys)
 			bad = true
 		}
 	}
@@ -438,34 +512,55 @@ func (c *checker) in(n *syntax.Binary, a, b *types.Type) *types.Type {
 	case b.Kinds() == 1 && b.Elem() != nil:
 		e := b.Elem()
 		if neverEqual(a, e) {
-			c.diag("never-equal", n.Span())
+			c.m("in", ty("left", a), ty("right", b)).diag("never-equal", n.Span())
 		}
 	case b.Kinds() == 1 && (b.HasString() || b.Record() != nil):
 		a = c.nullable(xs, a)
-		c.mustFit(xs, a, types.String, "kind")
+		c.mustFitM(xs, a, types.String, "kind", "in-left", opWord(n.Op))
 	default:
-		c.diag("kind", ys)
+		c.m("in-right", word("op", opWord(n.Op)), ty("type", b)).diag("kind", ys)
 	}
 	return types.Bool
 }
 
 // cond checks ?: and an if chain (11.1), the else chain by a loop.
 func (c *checker) cond(n *syntax.Cond, fs facts) *types.Type {
-	t := types.Never
+	// An else-if chain is checked by a loop. Each Cond's type is the Join
+	// of the branches from it on, tested from the innermost out (20.7).
+	var chain []*syntax.Cond
+	var thens []*types.Type
 	acc := fs
+	var last *types.Type
 	for {
 		tt := c.synth(n.Test, acc)
 		c.tested(n.Test, tt)
 		tf, ff := c.factsOf(n.Test)
-		t = types.Join(t, c.synth(n.Then, acc.with(tf)))
+		chain = append(chain, n)
+		thens = append(thens, c.synth(n.Then, acc.with(tf)))
 		acc = acc.with(ff)
 		next, ok := n.Else.(*syntax.Cond)
 		if !ok {
-			t = types.Join(t, c.synth(n.Else, acc))
+			last = c.synth(n.Else, acc)
 			break
 		}
-		c.ty[n] = t
 		n = next
+	}
+	// When the Join of every branch is within the limits, so is the Join
+	// of the branches from any Cond on: one Join serves the chain (ruling
+	// CG10).
+	all := types.JoinAll(append(thens, last))
+	if types.Size(all) <= types.MaxSize && types.Depth(all) <= types.MaxDepth {
+		for _, cn := range chain {
+			c.ty[cn] = all
+		}
+		return all
+	}
+	t := last
+	for i := len(chain) - 1; i >= 0; i-- {
+		// Both parts were tested where they became types, so this Join
+		// works on types within the limit.
+		t = c.depthLimit(chain[i], types.Join(thens[i], t))
+		c.ty[chain[i]] = t
 	}
 	return t
 }
@@ -491,11 +586,15 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 	p, isPath := c.pathOf(n.Subject)
 	covered := map[string]bool{}
 	hasDefault := false
-	t := types.Never
+	var arms []*types.Type // joined once (ruling CG10)
 	af := fs
 	var seen []syntax.Node
+	// F5 5.3: a match on a field of a union narrows by each arm's strings.
+	fp, fkey, mi, fok := c.fieldTest(n.Subject)
 	for _, a := range n.Arms {
 		listsNull := false
+		var strs []string
+		allStrings := !a.Default && len(a.Literals) > 0
 		for _, l := range a.Literals {
 			dup := false
 			for _, prev := range seen {
@@ -512,9 +611,15 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 			if dup {
 				continue
 			}
+			if _, isStr := l.(*syntax.String); !isStr {
+				allStrings = false
+			}
 			if !isNull && neverEqual(litType(l), s) {
-				c.diag("never-equal", l.Span())
+				c.m("match", ty("type", s)).diag("never-equal", l.Span())
 				continue
+			}
+			if str, isStr := l.(*syntax.String); isStr {
+				strs = append(strs, str.Value)
 			}
 			switch l := l.(type) {
 			case *syntax.Null:
@@ -532,15 +637,27 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 		if a.Default {
 			hasDefault = true
 		}
-		t = types.Join(t, c.synth(a.Result, af))
+		armFs := af
+		if fok && allStrings && len(strs) > 0 {
+			if h := types.Hit(mi, fkey, strs); !h.IsNever() {
+				armFs = af.with(facts{{p: fp, kind: factConforms, t: h, field: true}, nn(fp)})
+			}
+		}
+		arms = append(arms, c.synth(a.Result, armFs))
+		if fok && len(strs) > 0 {
+			if at := types.All(mi, fkey, strs); !at.IsNever() {
+				af = af.with(facts{{p: fp, kind: factNotConforms, t: at, field: true}})
+				mi = types.MarkTested(types.WithoutType(mi, at))
+			}
+		}
 		if listsNull && isPath {
-			af = af.with(facts{p})
+			af = af.with(facts{nn(p)})
 		}
 	}
 	if !hasDefault && !exhaustive(s, covered) {
-		c.diag("non-exhaustive", n.Span())
+		c.m("", ty("type", s)).diag("non-exhaustive", n.Span())
 	}
-	return t
+	return c.depthLimit(n, types.JoinAll(arms))
 }
 
 func exhaustive(s *types.Type, covered map[string]bool) bool {
@@ -588,7 +705,7 @@ func (c *checker) try(n *syntax.Try, fs facts) *types.Type {
 		c.setSlot(n, errorType)
 	}
 	h := c.synth(n.Handler, fs)
-	return types.Join(b, h)
+	return c.depthLimit(n, types.Join(b, h))
 }
 
 // constLine checks a const line (12.1).
@@ -656,7 +773,7 @@ func (c *checker) bindParam(p *syntax.Param, a *types.Type, given bool, fs facts
 	if p.Default != nil {
 		d := c.synth(p.Default, fs)
 		if given {
-			t = types.Join(types.Nonnull(a), d)
+			t = c.limitAt(p.Pattern.Span(), types.Join(types.Nonnull(a), d))
 		} else {
 			t = d
 		}
@@ -674,7 +791,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 		if optional {
 			return types.WithNull(f.Type)
 		}
-		c.diag("maybe-absent", keySpan)
+		c.m("field", ty("type", types.RecType(r)), keyP(key)).diag("maybe-absent", keySpan)
 		return f.Type
 	}
 	if present && !r.Rest.IsNever() {
@@ -690,7 +807,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 		}
 		return types.Any
 	case r.Rest.IsNever():
-		c.diag("no-field", keySpan)
+		c.m("", ty("type", types.RecType(r)), keyP(key)).diag("no-field", keySpan)
 		return types.Never
 	}
 	if present {
@@ -699,7 +816,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 	if optional {
 		return types.WithNull(r.Rest)
 	}
-	c.diag("maybe-absent", keySpan)
+	c.m("field", ty("type", types.RecType(r)), keyP(key)).diag("maybe-absent", keySpan)
 	return r.Rest
 }
 
@@ -741,7 +858,7 @@ func (c *checker) mapPat(p *syntax.MapPat, v *types.Type, bound syntax.Span, fs 
 		all(types.Never)
 		return
 	case v.Kinds() != 1 || v.Record() == nil:
-		c.diag("kind", bound)
+		c.m("pattern-map", ty("type", v)).diag("kind", bound)
 		all(types.Never)
 		return
 	}
@@ -755,7 +872,7 @@ func (c *checker) mapPat(p *syntax.MapPat, v *types.Type, bound syntax.Span, fs 
 		if f.Default != nil {
 			rt := c.readField(r, f.Key, f.KeySpan, f.KeySpan, true, false)
 			d := c.synth(f.Default, fs)
-			t = types.Join(types.Nonnull(rt), d)
+			t = c.limitAt(bound, types.Join(types.Nonnull(rt), d))
 		} else {
 			t = c.readField(r, f.Key, f.KeySpan, f.KeySpan, false, false)
 		}
@@ -798,7 +915,7 @@ func (c *checker) listPat(p *syntax.ListPat, v *types.Type, bound syntax.Span, f
 		all(types.Never)
 		return
 	case v.Kinds() != 1 || v.Elem() == nil:
-		c.diag("kind", bound)
+		c.m("pattern-list", ty("type", v)).diag("kind", bound)
 		all(types.Never)
 		return
 	}
@@ -806,7 +923,7 @@ func (c *checker) listPat(p *syntax.ListPat, v *types.Type, bound syntax.Span, f
 	for _, e := range p.Elems {
 		if e.Default != nil {
 			d := c.synth(e.Default, fs)
-			c.setSlot(e.Name, types.Join(types.Nonnull(elem), d))
+			c.setSlot(e.Name, c.limitAt(bound, types.Join(types.Nonnull(elem), d)))
 			continue
 		}
 		c.site("index", e.Name.Span())
@@ -826,8 +943,102 @@ func neverEqual(a, b *types.Type) bool {
 func (c *checker) rendered(n syntax.Node, t *types.Type) {
 	switch {
 	case types.HasOpaque(t):
-		c.diag("kind", n.Span())
+		c.m("rendered", ty("type", t)).diag("kind", n.Span())
 	case types.HasAny(t):
 		c.dyn(n.Span())
 	}
+}
+
+// as checks x as T and x is T (package F4 6.3).
+func (c *checker) as(n *syntax.As, fs facts) *types.Type {
+	s := c.synth(n.X, fs)
+	t := c.res.AsTypes[n]
+	is := n.Form == "is"
+	result := t
+	if is {
+		result = types.Bool
+	}
+	if t == nil { // a diagnostic of 6.1
+		if is {
+			return types.Bool
+		}
+		return types.Never
+	}
+	constant := func(code string) {
+		if c.env.Reject["constant-condition"] {
+			c.diags = append(c.diags, Diag{Code: code, Span: n.Span(), Class: "constant-condition", Tmpl: "test", Params: params(ty("type", s))})
+		}
+	}
+	switch {
+	case s.IsNever():
+	case types.SurelyFits(s, t):
+		if is {
+			constant("always-truthy")
+		}
+	case types.Disjoint(s, t):
+		if is {
+			constant("always-falsy")
+		} else {
+			c.m("", ty("found", s), ty("expected", t)).diag("never-conforms", n.Span())
+		}
+	default:
+		if !is && c.site("value", n.Span()) {
+			return types.Never
+		}
+	}
+	return result
+}
+
+// fieldTest finds the parts of a test of a field (F5 5.2 item 1, item 3):
+// p, the path q is without its last step; f, the key that step names; and
+// the type of p where the test stands, when it is a union or a record that a
+// test of a field narrowed.
+func (c *checker) fieldTest(q syntax.Node) (p path, f string, m *types.Type, ok bool) {
+	if oc, isOC := q.(*syntax.OptChain); isOC {
+		q = oc.X
+	}
+	var x syntax.Node
+	switch t := q.(type) {
+	case *syntax.Member:
+		f, x = t.Name, t.X
+	case *syntax.Index:
+		s, isS := t.Index.(*syntax.String)
+		if !isS {
+			return p, "", nil, false
+		}
+		f, x = s.Value, t.X
+	default:
+		return p, "", nil, false
+	}
+	p, ok = c.pathOf(x)
+	if !ok {
+		return p, "", nil, false
+	}
+	m = c.ty[x]
+	if m == nil || m.Record() == nil || (m.Union() == nil && !m.Tested()) {
+		return p, "", nil, false
+	}
+	return p, f, m, true
+}
+
+// fieldFactsOk gives the facts of q == L for each string of ss, combined by
+// ||: {p: H} and {p} when it held, {p: not A} for each string when it failed
+// (F5 5.2).
+func (c *checker) fieldFactsOk(q syntax.Node, ss []string) (t, f facts, ok bool) {
+	p, key, m, ok := c.fieldTest(q)
+	if !ok {
+		return nil, nil, false
+	}
+	if h := types.Hit(m, key, ss); !h.IsNever() { // item 6: no fact with no variant
+		t = facts{{p: p, kind: factConforms, t: h, field: true}, nn(p)}
+	}
+	if a := types.All(m, key, ss); !a.IsNever() {
+		f = facts{{p: p, kind: factNotConforms, t: a, field: true}}
+	}
+	return t, f, true
+}
+
+func (c *checker) fieldFacts(q syntax.Node, ss []string) (t, f facts) {
+	t, f, _ = c.fieldFactsOk(q, ss)
+	return t, f
 }

@@ -1,0 +1,2 @@
+# Test binaries that "go test -c" writes.
+*.test

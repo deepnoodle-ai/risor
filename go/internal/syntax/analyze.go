@@ -8,10 +8,17 @@ import (
 // (spec/packages/f02-templates-analysis.md): the free names a program reads,
 // their static paths, and its calls, found from the tree alone.
 
+// PathStep is one step of a static path: a key, or the star of a
+// projection (F7 9.1).
+type PathStep struct {
+	Key  string
+	Star bool
+}
+
 // Ref is one read of a free name (F2 3.5), with its span as offsets.
 type Ref struct {
 	Name string
-	Path []string
+	Path []PathStep
 	Span Span
 }
 
@@ -173,14 +180,14 @@ func (a *analyzer) visit(n Node, lambda bool) {
 		a.seq(append(ts, visit(n.Handler, lambda), task{kind: tRestore, mark: m}))
 	case *Ident:
 		if a.free(n.Name) {
-			a.out.Refs = append(a.out.Refs, Ref{Name: n.Name, Path: []string{}, Span: n.Span()})
+			a.out.Refs = append(a.out.Refs, Ref{Name: n.Name, Path: []PathStep{}, Span: n.Span()})
 		}
 	case *Call:
 		if a.free(n.Name) {
 			a.out.Calls = append(a.out.Calls, CallSite{Name: n.Name, Span: n.Span(), Args: n.Args, Lambda: lambda})
 		}
 		a.nodes(n.Args, lambda)
-	case *Member, *Index, *MethodCall, *OptChain:
+	case *Member, *Index, *MethodCall, *OptChain, *Each:
 		a.chain(n, lambda)
 	default:
 		a.nodes(Children(n), lambda)
@@ -219,6 +226,10 @@ loop:
 		case *OptChain:
 			spine = append(spine, c)
 			cur = c.X
+		case *Each:
+			spine = append(spine, c)
+			a.eachSides(c, lambda)
+			cur = c.X
 		default:
 			break loop
 		}
@@ -231,7 +242,7 @@ loop:
 	if !a.free(id.Name) {
 		return
 	}
-	ref := Ref{Name: id.Name, Path: []string{}, Span: id.Span()}
+	ref := Ref{Name: id.Name, Path: []PathStep{}, Span: id.Span()}
 	inner := Node(id)
 	for i := len(spine) - 1; i >= 0; i-- {
 		s := spine[i]
@@ -240,15 +251,19 @@ loop:
 			break
 		}
 		if m, ok := s.(*Member); ok {
-			ref.Path = append(ref.Path, m.Name)
+			ref.Path = append(ref.Path, PathStep{Key: m.Name})
 			ref.Span.End = m.NameSpan.End
 		} else if x, ok := s.(*Index); ok {
 			str, ok := x.Index.(*String)
 			if !ok {
 				break
 			}
-			ref.Path = append(ref.Path, str.Value)
+			ref.Path = append(ref.Path, PathStep{Key: str.Value})
 			ref.Span.End = x.Span().End
+		} else if e, ok := s.(*Each); ok {
+			if !eachPath(e, &ref) {
+				break
+			}
 		} else if _, ok := s.(*MethodCall); ok {
 			break
 		}
@@ -310,4 +325,48 @@ func literal(n Node) (any, bool) {
 		return out, true
 	}
 	return nil, false
+}
+
+// eachSides visits the index expressions of a projection's reads, at every
+// level.
+func (a *analyzer) eachSides(e *Each, lambda bool) {
+	for _, rd := range e.Reads {
+		switch rd := rd.(type) {
+		case *Index:
+			a.push(visit(rd.Index, lambda))
+		case *Each:
+			a.eachSides(rd, lambda)
+		}
+	}
+}
+
+// eachPath extends a path through a projection (F7 9.1): a star is a step
+// and the path goes on through the reads after it. It reports whether the
+// path reached the end of the projection.
+func eachPath(e *Each, ref *Ref) bool {
+	for {
+		ref.Path = append(ref.Path, PathStep{Star: true})
+		ref.Span.End = e.StarSpan.End
+		var next *Each
+		for _, rd := range e.Reads {
+			switch rd := rd.(type) {
+			case *Member:
+				ref.Path = append(ref.Path, PathStep{Key: rd.Name})
+				ref.Span.End = rd.NameSpan.End
+			case *Index:
+				str, ok := rd.Index.(*String)
+				if !ok {
+					return false
+				}
+				ref.Path = append(ref.Path, PathStep{Key: str.Value})
+				ref.Span.End = rd.Span().End
+			case *Each:
+				next = rd
+			}
+		}
+		if next == nil {
+			return true
+		}
+		e = next
+	}
 }
