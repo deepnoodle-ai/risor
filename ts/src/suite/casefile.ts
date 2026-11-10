@@ -29,6 +29,21 @@ export interface ExpectDiagnostic {
   path?: (string | number)[];
   message?: string;
   data?: { value: Json };
+  /** Package F8: the trace of a run failure (f08 7.2). */
+  trace?: TraceEntry[];
+}
+
+export interface TraceEntry {
+  span: LineSpan;
+  name: string;
+  index: number | null;
+}
+
+/** Package F8: the three renderings (f08 7.3, 7.4). */
+export interface Renderings {
+  line?: string;
+  detail?: string;
+  json?: string;
 }
 
 export type Expect =
@@ -54,13 +69,18 @@ export type Expect =
       path?: (string | number)[];
       message?: string;
       steps?: number;
+      /** Package F8: the failures of ConformAll (f08 7.5). */
+      failures?: { path: (string | number)[]; message?: string }[];
     }
+  | ({ kind: "render" } & Renderings)
   | {
       kind: "failure";
       phase: "declare" | "parse" | "check" | "run";
       diagnostics: ExpectDiagnostic[];
       steps?: number;
       allocated?: number;
+      /** Package F8 (f08 7.3). */
+      rendered?: Renderings;
     };
 
 export interface Case {
@@ -82,8 +102,10 @@ export interface Case {
   groups?: string[];
   /** Package F4: named types, in order (f04 9.1). */
   types?: ({ name: string; type: string } | { name: string; schema: Json; options?: string[] })[];
-  /** Package F4: a case of the second kind (f04 9.2). */
-  conform?: { type: string; value: Json };
+  /** Package F4: a case of the second kind (f04 9.2); `max` of package F8 (f08 7.5). */
+  conform?: { type: string; value: Json; max?: number };
+  /** Package F8: a case of the third kind (f08 7.4). */
+  render?: { diagnostics: JsonObject[]; source?: string };
   /** 03 3.10.3: false compiles the case with the static rules alone. */
   check?: boolean;
   /** Package F2: the text is a template, in this mode (f02 4.1). */
@@ -113,7 +135,7 @@ const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-
 /** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
 const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
-const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
+const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render"]);
 
 /** Read and validate a case file on disk. */
 export interface ReadOptions {
@@ -257,7 +279,8 @@ function checkShared(o: JsonObject, where: string): void {
   }
   if ("conform" in o) {
     const cf = o.conform;
-    if (!isObject(cf) || Object.keys(cf).length !== 2 || typeof cf.type !== "string" || !("value" in cf)) fail(`${where}: conform is not an object of type and value`);
+    if (!isObject(cf) || typeof cf.type !== "string" || !("value" in cf) || !Object.keys(cf).every((k) => k === "type" || k === "value" || k === "max")) fail(`${where}: conform is not an object of type and value`);
+    if ("max" in cf && !isInt(cf.max, 1)) fail(`${where}: conform.max is not a whole number of 1 or more`);
   }
   if ("removed" in o && !(Array.isArray(o.removed) && o.removed.every((x) => typeof x === "string"))) fail(`${where}: removed is not a list of strings`);
   if ("template" in o && o.template !== "string" && o.template !== "value") fail(`${where}: template is not "string" or "value"`);
@@ -328,7 +351,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   // The header rule (3.10.2): a field of the case replaces the header's.
   const merged: JsonObject = Object.create(null);
   for (const [k, v] of Object.entries(header)) if (k !== "cases") merged[k] = v;
-  if ("source" in raw || "file" in raw || "conform" in raw) {
+  if ("source" in raw || "file" in raw || "conform" in raw || "render" in raw) {
     delete merged.source;
     delete merged.file;
     delete merged.conform;
@@ -338,9 +361,16 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   const hasSource = "source" in merged;
   const hasFile = "file" in merged;
   const hasConform = "conform" in merged;
-  if (Number(hasSource) + Number(hasFile) + Number(hasConform) !== 1) fail(`${where} needs exactly one of source, file and conform`);
+  const hasRender = "render" in merged;
+  if (Number(hasSource) + Number(hasFile) + Number(hasConform) + Number(hasRender) !== 1) fail(`${where} needs exactly one of source, file, conform and render`);
   let source = "";
-  if (hasConform) {
+  if (hasRender) {
+    // f08 7.4.
+    for (const k of Object.keys(merged)) {
+      if (!["name", "opaque", "render", "skip", "expect"].includes(k)) fail(`${where}: a render case has the field ${k}`);
+    }
+    checkRender(merged.render, (merged.opaque as string[] | undefined) ?? [], where);
+  } else if (hasConform) {
     // f04 9.2 item 2: the fields a conform case may have.
     for (const k of Object.keys(merged)) {
       if (!["name", "version", "opaque", "types", "conform", "skip", "expect"].includes(k)) fail(`${where}: a conform case has the field ${k}`);
@@ -355,7 +385,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     source = merged.source as string;
   }
 
-  const c: Case = { name, source, expect: "expect" in raw ? buildExpect(raw.expect, where) : { kind: "result" } };
+  const c: Case = { name, source, expect: "expect" in raw ? buildExpect(raw.expect, where, hasRender) : { kind: "result" } };
   if ("version" in merged) c.version = merged.version as string;
   if ("env" in merged) c.env = merged.env as string;
   if ("opaque" in merged) c.opaque = merged.opaque as string[];
@@ -386,7 +416,11 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("template" in merged) c.template = merged.template as "string" | "value";
   if ("types" in merged) c.types = merged.types as Case["types"];
   if ("groups" in merged) c.groups = merged.groups as string[];
-  if (hasConform) c.conform = merged.conform as { type: string; value: Json };
+  if (hasConform) c.conform = merged.conform as { type: string; value: Json; max?: number };
+  if (hasRender) c.render = merged.render as { diagnostics: JsonObject[]; source?: string };
+  if (c.expect.kind === "render" && !hasRender) fail(`${where}: a render result in a case without render`);
+  if (hasRender && "expect" in raw && c.expect.kind !== "render") fail(`${where}: a render case expects no renderings`);
+  if (c.expect.kind === "conform" && c.expect.failures !== undefined && c.conform?.max === undefined) fail(`${where}: failures without max`);
   // f04 9.2 item 5: a conform result only in a conform case; a conform case expects one or a declare failure.
   if (c.expect.kind === "conform" && !hasConform) fail(`${where}: a conform result in a case without conform`);
   if (hasConform && "expect" in raw && c.expect.kind !== "conform" && !(c.expect.kind === "failure" && c.expect.phase === "declare")) {
@@ -522,6 +556,55 @@ function checkAnalysis(v: Json, where: string): void {
   }
 }
 
+/** A trace of f08 7.2. */
+function traceOf(v: Json, where: string): TraceEntry[] {
+  if (!Array.isArray(v)) fail(`${where}: trace is not a list`);
+  return v.map((e) => {
+    if (!isObject(e) || Object.keys(e).length !== 3 || typeof e.name !== "string" || !(e.index === null || isInt(e.index, 0))) fail(`${where}: a trace entry is not of its form`);
+    return { span: checkSpan(e.span, where), name: e.name, index: e.index as number | null };
+  });
+}
+
+/** An object of renderings (f08 7.3). */
+function renderings(v: Json, where: string): Renderings {
+  if (!isObject(v) || Object.keys(v).length === 0) fail(`${where}: rendered is not an object of renderings`);
+  const out: Renderings = {};
+  for (const [k, x] of Object.entries(v)) {
+    if ((k !== "line" && k !== "detail" && k !== "json") || typeof x !== "string") fail(`${where}: rendered has the field ${k}`);
+    out[k] = x;
+  }
+  return out;
+}
+
+/** The field `render` (f08 7.4). */
+function checkRender(v: Json, opaque: string[], where: string): void {
+  if (!isObject(v) || !Object.keys(v).every((k) => k === "diagnostics" || k === "source")) fail(`${where}: render is not of its form`);
+  if ("source" in v && typeof v.source !== "string") fail(`${where}: render.source is not a string`);
+  const ds = v.diagnostics;
+  if (!Array.isArray(ds) || ds.length === 0) fail(`${where}: render.diagnostics is not a non-empty list`);
+  const lines = typeof v.source === "string" ? v.source.replace(/^\uFEFF/, "").split("\n") : null;
+  for (const d of ds) {
+    if (!isObject(d) || typeof d.phase !== "string" || typeof d.code !== "string" || typeof d.message !== "string") fail(`${where}: a rendered diagnostic`);
+    for (const k of Object.keys(d)) if (!["phase", "code", "message", "class", "span", "path", "data", "trace"].includes(k)) fail(`${where}: a rendered diagnostic has the field ${k}`);
+    if ("span" in d) {
+      const sp = checkSpan(d.span, where);
+      // f08 7.4 item 3: a span inside the source text.
+      const ok = (l: number, c: number) => lines !== null && l <= lines.length && c <= [...lines[l - 1]].length + 1;
+      if (lines !== null && (!ok(sp[0], sp[1]) || !ok(sp[2], sp[3]))) fail(`${where}: a span outside the source text`);
+    }
+    if ("data" in d) {
+      if (d.code !== "failed") fail(`${where}: data on a code other than failed`);
+      checkOpaque(d.data, new Set(opaque), where);
+    }
+    if ("path" in d && d.code !== "not-conforming") fail(`${where}: path on a code other than not-conforming`);
+    if ("class" in d && typeof d.class !== "string") fail(`${where}: class is not a string`);
+    if ("trace" in d) {
+      if (d.phase !== "run") fail(`${where}: trace on a phase other than run`);
+      traceOf(d.trace, where);
+    }
+  }
+}
+
 function checkSpan(v: Json, where: string): LineSpan {
   if (!Array.isArray(v) || v.length !== 4 || !v.every((x) => isInt(x, 1))) fail(`${where}: a span is not four whole numbers of 1 or more`);
   return v as LineSpan;
@@ -530,11 +613,11 @@ function checkSpan(v: Json, where: string): LineSpan {
 const DIAG_CLASSES = new Set(["constant-condition", "dynamic", "index", "divide", "value", "host", "environment", "range", "limit"]);
 const SITE_CLASSES = new Set(["dynamic", "index", "divide", "value", "host"]);
 
-function buildExpect(v: Json, where: string): Expect {
+function buildExpect(v: Json, where: string, render = false): Expect {
   if (!isObject(v)) fail(`${where}: expect is not an object`);
   if ("phase" in v) {
     for (const k of Object.keys(v)) {
-      if (!["phase", "diagnostics", "steps", "allocated"].includes(k)) {
+      if (!["phase", "diagnostics", "steps", "allocated", "rendered"].includes(k)) {
         fail(`${where}: expect is a failure and has the field ${k}`);
       }
     }
@@ -552,15 +635,26 @@ function buildExpect(v: Json, where: string): Expect {
         out[k] = v[k] as number;
       }
     }
+    if ("rendered" in v) {
+      // f08 7.3, 7.6 item 3.
+      if (phase === "declare") fail(`${where}: rendered in a declare failure`);
+      if (diagnostics.some((d) => LIMIT_CODES.has(d.code))) fail(`${where}: rendered of a limit failure`);
+      out.rendered = renderings(v.rendered, where);
+    }
+    for (const d of diagnostics) {
+      if (d.trace !== undefined && phase !== "run") fail(`${where}: trace in a diagnostic of phase ${phase}`);
+      if (d.message !== undefined && phase === "declare") fail(`${where}: message in a declare diagnostic`);
+    }
     // 03 3.10.10: a case that expects a limit code states no counts.
     if ((out.steps !== undefined || out.allocated !== undefined) && diagnostics.some((d) => LIMIT_CODES.has(d.code))) {
       fail(`${where}: a case that expects a limit code states steps or allocated`);
     }
     return out;
   }
+  if (render) return { kind: "render", ...renderings(v, where) };
   if ("conforms" in v) {
     // f04 9.2: a conform result.
-    for (const k of Object.keys(v)) if (!["conforms", "path", "message", "steps"].includes(k)) fail(`${where}: a conform result has the field ${k}`);
+    for (const k of Object.keys(v)) if (!["conforms", "path", "message", "steps", "failures"].includes(k)) fail(`${where}: a conform result has the field ${k}`);
     if (typeof v.conforms !== "boolean") fail(`${where}: conforms is not a boolean`);
     const out: Expect = { kind: "conform", conforms: v.conforms };
     if ("path" in v) {
@@ -575,6 +669,16 @@ function buildExpect(v: Json, where: string): Expect {
     if ("steps" in v) {
       if (!isInt(v.steps, 0)) fail(`${where}: steps is not a whole number of 0 or more`);
       out.steps = v.steps as number;
+    }
+    if ("failures" in v) {
+      // f08 7.5.
+      const fs = v.failures;
+      if (!Array.isArray(fs)) fail(`${where}: failures is not a list`);
+      out.failures = fs.map((x) => {
+        if (!isObject(x) || !Array.isArray(x.path) || !Object.keys(x).every((k) => k === "path" || k === "message")) fail(`${where}: a failure is not of its form`);
+        if ("message" in x && typeof x.message !== "string") fail(`${where}: a failure's message`);
+        return { path: x.path as (string | number)[], ...(typeof x.message === "string" ? { message: x.message } : {}) };
+      });
     }
     return out;
   }
@@ -652,6 +756,9 @@ function buildDiag(v: Json, where: string): ExpectDiagnostic {
         break;
       case "data":
         d.data = { value: val };
+        break;
+      case "trace":
+        d.trace = traceOf(val, where);
         break;
       default:
         fail(`${where}: a diagnostic has the field ${k}`);

@@ -4,6 +4,7 @@
 //   suite/library-groups.json -> src/generated/library-groups.ts (package F6: the groups' records)
 //   suite/library-queries.json -> src/generated/library-queries.ts (package F7: its records)
 //   suite/messages-queries.json joins the catalog of messages.ts (package F7, f07 11)
+//   suite/messages-parse.json and messages-check.json join it too (package F8, f08 3.1)
 // Run with `npm run generate`. A test fails when the generated files are stale.
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -19,6 +20,13 @@ export function generated(): Record<string, string> {
   const catalog = messages.map((e) => ({
     code: e.code, phase: e.phase, caught: e.caught ?? null, params: { ...(e.params as object) } as Record<string, string>, templates: { ...(e.templates as object) } as Record<string, string>,
   }));
+  // f08 3.1 items 6 to 9: the parse and check entries are entries of their own codes.
+  for (const f of ["messages-parse.json", "messages-check.json"]) {
+    for (const e of JSON.parse(readFileSync(join(suite, f), "utf8")) as Record<string, unknown>[]) {
+      if (catalog.some((x) => x.code === e.code)) throw new Error(`${f}: the code ${String(e.code)} has an entry already`);
+      catalog.push({ code: e.code, phase: e.phase, caught: null, params: { ...(e.params as object) } as Record<string, string>, templates: { ...(e.templates as object) } as Record<string, string> });
+    }
+  }
   // f07 11 item 2: a package's catalog file adds templates and params to Core's entries.
   const more = JSON.parse(readFileSync(join(suite, "messages-queries.json"), "utf8")) as Record<string, unknown>[];
   for (const e of more) {

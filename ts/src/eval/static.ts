@@ -11,7 +11,8 @@ import type { TypeNames } from "../types/resolve.ts";
 import type { Type } from "../types/type.ts";
 import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
-import type { Span } from "../syntax/source.ts";
+import type { Source, Span } from "../syntax/source.ts";
+import { catalogMessage } from "./failure.ts";
 
 /** The counts of a signature (05 22.3). `fns[i]` is the parameter count of an `Fn` parameter i, or null. */
 export interface Counts {
@@ -20,6 +21,8 @@ export interface Counts {
   fns: (number | null)[];
   /** Whether the last parameter is a rest parameter. */
   rest: boolean;
+  /** The parameters' names, for a message (f08 3.5). */
+  names?: string[];
 }
 
 export function fnAt(c: Counts, i: number): number | null {
@@ -66,6 +69,8 @@ export interface Resolution {
   catchSlots: Map<A.Try, number>;
   /** Each const-bound lambda, by id. */
   lambdas: A.Lambda[];
+  /** The name each const-bound lambda is bound to, by id (f08 4.2). */
+  lambdaNames?: Map<number, string>;
   /** Each Ident that names a const-bound lambda as an argument (a use, 05 13.9). */
   lambdaArgs: Set<A.Ident>;
   /** Package F4: each `As` node's resolved type; null after a diagnostic of f04 6.1. */
@@ -96,8 +101,8 @@ export interface StaticResult {
   resolution: Resolution;
 }
 
-export function staticRules(program: A.Program, env: StaticEnv): StaticResult {
-  const w = new Walker(env);
+export function staticRules(program: A.Program, env: StaticEnv, source?: Source): StaticResult {
+  const w = new Walker(env, source);
   w.program(program);
   // 05 22.10: a set, ordered by start, end, then code.
   const seen = new Set<string>();
@@ -118,15 +123,21 @@ class Walker {
   private readonly scopes: Map<string, Binding>[] = [];
   private readonly env: StaticEnv;
 
-  constructor(env: StaticEnv) {
+  private readonly source: Source | undefined;
+
+  constructor(env: StaticEnv, source?: Source) {
     this.env = env;
+    this.source = source;
     const outer = new Map<string, Binding>();
     for (const v of env.variables) outer.set(v, { k: "var", name: v });
     this.scopes.push(outer);
   }
 
-  private diag(code: string, span: Span): void {
-    this.diags.push({ phase: "check", code, span: { start: span.start, end: span.end }, message: messageFor(code) });
+  /** A diagnostic with its message from the catalog (f08 3.5); `text` is the source text at the span. */
+  private diag(code: string, span: Span, template = "default", params: Record<string, unknown> = {}): void {
+    const ps = { ...params };
+    if (ps.text === true) ps.text = this.source === undefined ? "" : this.source.slice(span.start, span.end);
+    this.diags.push({ phase: "check", code, span: { start: span.start, end: span.end }, message: catalogMessage(code, template, ps) });
   }
 
   private lookup(name: string): Binding | undefined {
@@ -149,11 +160,11 @@ class Walker {
   private bind(name: string | null, span: Span, b?: Binding): number | null {
     if (name === null || name === "_") return null;
     if (this.env.namespaces.has(name)) {
-      this.diag("shadows-namespace", span);
+      this.diag("shadows-namespace", span, "default", { name });
       return null;
     }
     const scope = this.scopes[this.scopes.length - 1];
-    if (scope.has(name)) this.diag("duplicate-name", span);
+    if (scope.has(name)) this.diag("duplicate-name", span, "default", { name });
     if (b === undefined) {
       const slot = this.res.slotCount++;
       scope.set(name, { k: "value", slot });
@@ -176,6 +187,7 @@ class Walker {
       const id = this.res.lambdas.length;
       this.res.lambdas.push(c.value);
       const p = c.pattern as A.NamePat;
+      (this.res.lambdaNames ??= new Map()).set(id, p.name ?? "");
       this.bind(p.name, p.span, { k: "lambda", id, counts: lambdaCounts(c.value) });
       this.res.slots.set(p, -1 - id);
       return;
@@ -246,13 +258,13 @@ class Walker {
       else {
         this.res.refs.set(id, { k: "lambda", id: b.id });
         if (asLambdaArg) this.res.lambdaArgs.add(id);
-        else this.diag("not-a-value", id.span);
+        else this.diag("not-a-value", id.span, "lambda", { name: id.name });
       }
       return;
     }
-    if (this.env.namespaces.has(id.name)) this.diag("not-a-value", id.span);
-    else if (this.env.hostFunctions.has(id.name) || this.env.library.has(id.name)) this.diag("not-a-value", id.span);
-    else this.diag("undefined-name", id.span);
+    if (this.env.namespaces.has(id.name)) this.diag("not-a-value", id.span, "namespace", { name: id.name });
+    else if (this.env.hostFunctions.has(id.name) || this.env.library.has(id.name)) this.diag("not-a-value", id.span, "function", { name: id.name });
+    else this.diag("undefined-name", id.span, "name", { name: id.name });
   }
 
   private isLambdaArg(a: A.Arg): boolean {
@@ -291,7 +303,7 @@ class Walker {
         // f06 2.5 item 1: an entry of a group that is on.
         target = { k: "library", name: full };
         counts = l;
-      } else this.diag("undefined-function", nameSpan);
+      } else this.diag("undefined-function", nameSpan, "default", { name: full });
     } else {
       const b = this.lookup(name);
       if (b !== undefined && b.k === "lambda") {
@@ -299,7 +311,7 @@ class Walker {
         counts = b.counts;
         isLambda = true;
       } else if (b !== undefined) {
-        this.diag("call-of-parameter", nameSpan);
+        this.diag("call-of-parameter", nameSpan, "default", { name });
       } else if (this.env.hostFunctions.has(name)) {
         target = { k: "host", name };
         counts = this.env.hostFunctions.get(name)!;
@@ -307,23 +319,26 @@ class Walker {
         target = { k: "library", name };
         counts = this.env.library.get(name)!;
       } else {
-        this.diag("undefined-function", nameSpan);
+        this.diag("undefined-function", nameSpan, "default", { name });
       }
     }
     this.res.targets.set(node, target);
     if (counts !== null) {
+      const callName = namespace === null ? name : `${namespace}.${name}`;
       if (args.length < counts.min || args.length > counts.max) {
-        this.diag("arity", node.span);
+        const c = counts;
+        this.diag("arity", node.span, c.rest ? "at-least" : c.min === c.max ? "exact" : "range", { name: callName, count: args.length, required: c.min, most: c.max });
       } else {
         args.forEach((a, i) => {
           if (!this.isLambdaArg(a)) return;
           if (isLambda) {
-            this.diag("lambda-to-lambda", a.span);
+            this.diag("lambda-to-lambda", a.span, "default", { name: callName });
             return;
           }
           const fn = fnAt(counts!, i);
-          if (fn === null) this.diag("not-a-value", a.span);
-          else if (this.argParams(a) > fn) this.diag("arity", a.span);
+          const names = counts!.names ?? [];
+          if (fn === null) this.diag("not-a-value", a.span, "argument", { name: callName, param: names[Math.min(i, names.length - 1)] ?? "" });
+          else if (this.argParams(a) > fn) this.diag("arity", a.span, "parameters", { name: callName, most: fn });
         });
       }
     }
@@ -434,7 +449,7 @@ class Walker {
     if (r.ok) this.res.asTypes.set(e, r.type);
     else {
       this.res.asTypes.set(e, null);
-      for (const d of r.diagnostics) this.diag(d.code, d.span);
+      for (const d of r.diagnostics) this.diag(d.code, d.span, d.template, d.params);
     }
   }
 
@@ -498,7 +513,7 @@ class Walker {
       if (en.key.kind === "expr") this.expr(en.key.expr);
       else {
         const k = en.key.kind === "word" ? en.key.text : en.key.value;
-        if (keys.has(k)) this.diag("duplicate-key", en.key.span);
+        if (keys.has(k)) this.diag("duplicate-key", en.key.span, "default", { key: k });
         keys.add(k);
       }
       if (en.shorthand) this.ident(en.value as A.Ident, false);
@@ -513,7 +528,7 @@ class Walker {
     for (const arm of m.arms) {
       if (defaultSeen) this.diag("unreachable-arm", arm.span);
       for (const l of arm.literals) {
-        if (lits.some((p) => litEqual(p, l))) this.diag("duplicate-case", l.span);
+        if (lits.some((p) => litEqual(p, l))) this.diag("duplicate-case", l.span, "default", { text: true });
         lits.push(l);
       }
       if (arm.isDefault) defaultSeen = true;
@@ -534,21 +549,3 @@ function litEqual(a: A.Literal, b: A.Literal): boolean {
   }
 }
 
-function messageFor(code: string): string {
-  switch (code) {
-    case "undefined-name": return "this name is not bound or declared";
-    case "undefined-function": return "no function of this name";
-    case "not-a-value": return "a function is not a value";
-    case "call-of-parameter": return "only a function can be called";
-    case "lambda-to-lambda": return "a lambda cannot be passed to a lambda";
-    case "duplicate-name": return "this name is already bound here";
-    case "shadows-namespace": return "a binding cannot have the name of a namespace";
-    case "duplicate-key": return "this key is written twice";
-    case "arity": return "wrong count of arguments or parameters";
-    case "duplicate-case": return "this literal is listed twice";
-    case "unreachable-arm": return "no arm can follow _";
-    case "untagged-union": return "two records in one type need a tag";
-    case "check-limit": return "the type is too deep or too large";
-  }
-  return code;
-}

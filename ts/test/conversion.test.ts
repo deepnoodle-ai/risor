@@ -27,7 +27,7 @@ describe("the conformance function (f04 7)", () => {
   test("null when the value conforms; the diagnostic, with no span, when not", () => {
     assert.equal(env.conform({ id: "a", lines: [] }, "Order"), null);
     const d = env.conform({ id: "a", lines: [{ sku: "x", qty: 1 }, { sku: "y", qty: "2" }] }, "Order");
-    assert.deepEqual(d, { phase: "run", code: "not-conforming", class: "value", path: ["lines", 1, "qty"], message: 'expected int, found "2"' });
+    assert.deepEqual(d, { phase: "run", code: "not-conforming", class: "value", path: ["lines", 1, "qty"], message: 'expected int, found "2"', trace: [] });
   });
 
   test("host maps, bigints and numbers that cannot enter", () => {
@@ -87,5 +87,22 @@ describe("the description (f04 8)", () => {
 
   test("no key types when there is no named type", () => {
     assert.equal("types" in createEnv({}).describe(), false);
+  });
+});
+
+describe("ConformAll (f08 6)", () => {
+  const env = createEnv({});
+  const t = "{id: string, lines: {qty: int, sku: string}[]}";
+  const v = { id: 7, lines: [{ sku: "x", qty: 1 }, { sku: "y", qty: "2" }], note: 1 };
+  test("every failure up to the maximum, the first as the conformance function gives it", () => {
+    const all = env.conformAll(v, t, 3);
+    assert.deepEqual(all.map((d) => [d.path, d.message]), [
+      [["id"], "expected string, found 7"],
+      [["lines", 1, "qty"], 'expected int, found "2"'],
+      [["note"], 'the type does not allow key "note"'],
+    ]);
+    assert.equal(env.conformAll(v, t, 2).length, 2);
+    assert.equal(env.conformAll(v, t, 0).length, 1);
+    assert.deepEqual(all[0].path, env.conform(v, t)?.path);
   });
 });

@@ -7,6 +7,7 @@
 // 100,000 deep must reach the parser's nesting limit, not the host's stack.
 
 import { ParseError } from "./diagnostic.ts";
+import { END, parseMessage } from "./messages.ts";
 import type { Source, Span } from "./source.ts";
 import { fromCodePoints } from "./source.ts";
 import { PUNCT, REJECTED_PUNCT, isReserved } from "./token.ts";
@@ -92,8 +93,26 @@ class Lexer {
     return i < this.cps.length ? this.cps[i] : -1;
   }
 
-  private fail(code: string, start: number, end: number, message: string): never {
-    throw new ParseError(code, { start, end }, message);
+  /** A lexical diagnostic, with its message from the catalog (f08 3.4); `token` is the text of the span. */
+  private fail(code: string, start: number, end: number, template = "default", params: Record<string, unknown> = {}): never {
+    const ps = { token: start === end && start >= this.cps.length ? END : fromCodePoints(this.cps, start, end), ...params };
+    throw new ParseError(code, { start, end }, parseMessage(code, template, ps));
+  }
+
+  /**
+   * `unexpected-character` at a code point, with the rows of f08 2.3: a `#`
+   * before a quote or after the word `r`, a `#`, a `$` before a quote or a
+   * backtick, a `$` not before `{`, and `&`.
+   */
+  private badCharacter(start: number, c: number): never {
+    const next = this.at(start + 1);
+    const prevWordR = start >= 1 && this.cps[start - 1] === 0x72 && !(start >= 2 && isWordPart(this.cps[start - 2]));
+    if (c === 0x23 && (next === DQ || next === SQ || prevWordR)) this.fail("string-prefix", start, start + 1, "guard");
+    if (c === 0x23) this.fail("hash-comment", start, start + 1);
+    if (c === 0x24 && (next === DQ || next === SQ || next === BT)) this.fail("string-prefix", start, start + 1, "prefix");
+    if (c === 0x24 && next !== 0x7b) this.fail("context-symbol", start, start + 1);
+    if (c === 0x26) this.fail("bitwise-operator", start, start + 1, "and");
+    this.fail("unexpected-character", start, start + 1, "default", { char: c });
   }
 
   runPart(start: number, dollar: number): Token[] {
@@ -164,10 +183,10 @@ class Lexer {
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const f = this.stack[i];
       if (f.t === "tmpl" || f.t === "block") {
-        this.fail("unterminated-string", f.token.start, this.cps.length, "the literal has no closing delimiter");
+        this.fail("unterminated-string", f.token.start, this.cps.length, f.t === "tmpl" ? "template" : "text-block");
       }
     }
-    if (this.partDollar >= 0) this.fail("unterminated-string", this.partDollar, this.cps.length, "the template part has no closing }}");
+    if (this.partDollar >= 0) this.fail("unterminated-string", this.partDollar, this.cps.length, "part");
     throw new Error("unreachable");
   }
 
@@ -204,7 +223,7 @@ class Lexer {
         this.pos += 2;
         for (;;) {
           if (this.pos >= cps.length) {
-            this.fail("unterminated-comment", start, start + 2, "the comment has no closing */");
+            this.fail("unterminated-comment", start, start + 2);
           }
           if (cps[this.pos] === 0x2a && this.at(this.pos + 1) === 0x2f) {
             this.pos += 2;
@@ -251,7 +270,7 @@ class Lexer {
         return this.tok(REJECTED_PUNCT.has(p) ? "reject" : "punct", start, this.pos, p);
       }
     }
-    this.fail("unexpected-character", start, start + 1, `unexpected character ${describeCp(c)}`);
+    this.badCharacter(start, c);
   }
 
   private matches(at: number, p: string): boolean {
@@ -272,10 +291,10 @@ class Lexer {
     if (text === "r" && (q === DQ || (q === SQ && !(this.at(i + 1) === SQ && this.at(i + 2) === SQ)))) {
       let j = i + 1;
       for (;;) {
-        if (j >= cps.length) this.fail("unterminated-string", start, cps.length, "the raw string has no closing quote");
+        if (j >= cps.length) this.fail("unterminated-string", start, cps.length, "string");
         const d = cps[j];
         if (d === q) break;
-        if (d === LF || d === CR) this.fail("unterminated-string", start, j, "the raw string has no closing quote on its line");
+        if (d === LF || d === CR) this.fail("unterminated-string", start, j, "string");
         j++;
       }
       this.pos = j + 1;
@@ -303,6 +322,7 @@ class Lexer {
       this.pos = end;
       const t = this.tok("reject", start, end, "a prefixed literal");
       t.report = { start, end: i };
+      t.prefix = { word: text, quote: String.fromCodePoint(q), triple: q === SQ && this.at(i + 1) === SQ && this.at(i + 2) === SQ };
       return t;
     }
     this.pos = i;
@@ -338,8 +358,9 @@ class Lexer {
     this.pos = i;
     const text = fromCodePoints(cps, start, i);
     const value = numberValue(text);
-    if (value === "bad") this.fail("bad-number", start, i, `${text} is not a number literal`);
-    if (value === "range") this.fail("literal-range", start, i, `${text} is out of range`);
+    if (value === "bad") this.fail("bad-number", start, i);
+    // f08 3.4: `whole` for a number with no fraction and no exponent, or a hex number.
+    if (value === "range") this.fail("literal-range", start, i, hex || !/[.eE]/.test(text) ? "whole" : "finite");
     const t = this.tok("number", start, i, text);
     t.num = value;
     return t;
@@ -354,7 +375,7 @@ class Lexer {
     let i = start + 1;
     for (;;) {
       if (i >= cps.length) {
-        this.fail("unterminated-string", start, cps.length, "the string has no closing quote");
+        this.fail("unterminated-string", start, cps.length, "string");
       }
       const c = cps[i];
       if (c === quote) {
@@ -362,13 +383,13 @@ class Lexer {
         break;
       }
       if (c === LF || c === CR) {
-        this.fail("unterminated-string", start, i, "the string has no closing quote on its line");
+        this.fail("unterminated-string", start, i, "string");
       }
       if (c === BS) {
         const n = this.at(i + 1);
-        if (n < 0) this.fail("unterminated-string", start, cps.length, "the string has no closing quote");
+        if (n < 0) this.fail("unterminated-string", start, cps.length, "string");
         if (n === LF || n === CR) {
-          this.fail("unterminated-string", start, i + 1, "the string has no closing quote on its line");
+          this.fail("unterminated-string", start, i + 1, "string");
         }
         i = this.escape(i, false, out);
         continue;
@@ -403,7 +424,7 @@ class Lexer {
       return i + 2;
     }
     if (n !== 0x75) {
-      this.fail("bad-escape", i, i + 2, `\\${describeCp(n)} is not an escape`);
+      this.fail("bad-escape", i, i + 2, "unknown");
     }
     // \u
     if (this.at(i + 2) === LBRACE) {
@@ -414,12 +435,12 @@ class Lexer {
         j++;
       }
       const digits = j - (i + 3);
-      if (digits === 0) this.fail("bad-escape", i, i + 3, "\\u{ needs one to six hex digits");
+      if (digits === 0) this.fail("bad-escape", i, i + 3, "unicode");
       if (digits > 6 || this.at(j) !== RBRACE) {
-        this.fail("bad-escape", i, j, "\\u{ needs one to six hex digits and a }");
+        this.fail("bad-escape", i, j, "unicode");
       }
       if (v > 0x10ffff || (v >= 0xd800 && v <= 0xdfff)) {
-        this.fail("bad-escape", i, j + 1, "the escape does not name a code point");
+        this.fail("bad-escape", i, j + 1, "range");
       }
       out.push(v);
       return j + 1;
@@ -428,15 +449,15 @@ class Lexer {
     if (v === null) {
       let j = i + 2;
       while (j < i + 6 && j < cps.length && isHex(cps[j])) j++;
-      this.fail("bad-escape", i, j, "\\u needs four hex digits or {");
+      this.fail("bad-escape", i, j, "unicode");
     }
     if (v >= 0xdc00 && v <= 0xdfff) {
-      this.fail("bad-escape", i, i + 6, "a low surrogate escape does not complete a pair");
+      this.fail("bad-escape", i, i + 6, "surrogate");
     }
     if (v >= 0xd800 && v <= 0xdbff) {
       const w = this.at(i + 6) === BS && this.at(i + 7) === 0x75 ? this.hex4(i + 6) : null;
       if (w === null || w < 0xdc00 || w > 0xdfff) {
-        this.fail("bad-escape", i, i + 6, "a high surrogate escape needs a low surrogate escape after it");
+        this.fail("bad-escape", i, i + 6, "surrogate");
       }
       out.push(((v - 0xd800) << 10) + (w - 0xdc00) + 0x10000);
       return i + 12;
@@ -484,7 +505,7 @@ class Lexer {
       into.push(t);
       return;
     }
-    if (i >= cps.length) this.fail("unterminated-string", start, cps.length, "the text block has no closing delimiter");
+    if (i >= cps.length) this.fail("unterminated-string", start, cps.length, "text-block");
     i += cps[i] === CR && this.at(i + 1) === LF ? 2 : 1;
     this.pos = i;
     const token = this.tok("template", start, start, form);
@@ -499,7 +520,7 @@ class Lexer {
     let i = this.pos;
     for (;;) {
       if (i >= cps.length) {
-        this.fail("unterminated-string", f.token.start, cps.length, "the text block has no closing delimiter");
+        this.fail("unterminated-string", f.token.start, cps.length, "text-block");
       }
       const c = cps[i];
       if (c === DQ && this.at(i + 1) === DQ && this.at(i + 2) === DQ) {
@@ -509,8 +530,8 @@ class Lexer {
       }
       if (!f.raw && c === BS) {
         const n = this.at(i + 1);
-        if (n === LF || n === CR) this.fail("line-continuation", i, i + 1, "a backslash before a line end is not allowed in a text block");
-        if (n < 0) this.fail("unterminated-string", f.token.start, cps.length, "the text block has no closing delimiter");
+        if (n === LF || n === CR) this.fail("line-continuation", i, i + 1);
+        if (n < 0) this.fail("unterminated-string", f.token.start, cps.length, "text-block");
         const out: number[] = [];
         const j = this.escape(i, true, out);
         f.cur.push({ k: "e", cps: out, off: i });
@@ -558,7 +579,9 @@ class Lexer {
         if (x.k !== "c" || x.cp !== indent[j]) {
           if (t.blockError === undefined) {
             const off = x.k === "i" ? x.part.open.start : x.off;
-            t.blockError = { code: "text-block-indent", start: off, end: off + 1 };
+            // f08 3.4: a tab where the indentation has a space, a space where it has a tab, or anything else.
+            const template = x.k === "c" && x.cp === TAB && indent[j] === SPACE ? "tab" : x.k === "c" && x.cp === SPACE && indent[j] === TAB ? "space" : "default";
+            t.blockError = { code: "text-block-indent", start: off, end: off + 1, template };
           }
           return;
         }
@@ -588,7 +611,7 @@ class Lexer {
     let i = this.pos;
     for (;;) {
       if (i >= cps.length) {
-        this.fail("unterminated-string", f.token.start, cps.length, "the template has no closing `");
+        this.fail("unterminated-string", f.token.start, cps.length, "template");
       }
       const c = cps[i];
       if (c === BT) {
@@ -615,9 +638,9 @@ class Lexer {
       if (c === BS) {
         const n = this.at(i + 1);
         if (n === LF || n === CR) {
-          this.fail("line-continuation", i, i + 1, "a \\ before a line end is not allowed in a template");
+          this.fail("line-continuation", i, i + 1);
         }
-        if (n < 0) this.fail("unterminated-string", f.token.start, cps.length, "the template has no closing `");
+        if (n < 0) this.fail("unterminated-string", f.token.start, cps.length, "template");
         i = this.escape(i, true, f.text);
         continue;
       }

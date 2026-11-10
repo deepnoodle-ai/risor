@@ -23,7 +23,9 @@ import { parseTemplateText, templateProgram } from "../syntax/template.ts";
 import { parse } from "../syntax/parser.ts";
 import type { Classifier } from "../value/value.ts";
 import { CONVERSION_STATIC, loadCaseFile, validateCaseFile } from "./casefile.ts";
-import type { Case, CaseFile, ExpectDiagnostic, Stub } from "./casefile.ts";
+import type { Case, CaseFile, ExpectDiagnostic, Renderings, Stub } from "./casefile.ts";
+import { renderDetail, renderJSON, renderLine } from "../host/render.ts";
+import type { RenderDiagnostic } from "../host/render.ts";
 import { JsonError, isObject, readJson } from "./json.ts";
 import type { Json, JsonObject } from "./json.ts";
 
@@ -140,6 +142,8 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
   if (ex.kind === "result" && ex.analysis !== undefined) return analysisCase(c, v);
   // f04 9.3: a conform case.
   if (c.conform !== undefined) return conformCase(c, v);
+  // f08 7.4: a render case.
+  if (c.render !== undefined) return renderCase(c, v);
   const checker = opts.checker !== false;
   const staticCodes = opts.staticCodes ?? STATIC_CODES;
   if (!checker) {
@@ -246,6 +250,34 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
   );
 }
 
+function compareRenderings(want: Renderings, ds: RenderDiagnostic[], source: string | null, prefix?: string): Difference[] {
+  const out: Difference[] = [];
+  const name = (k: string) => (prefix === undefined ? k : `${prefix}.${k}`);
+  if (want.line !== undefined && renderLine(ds) !== want.line) out.push({ field: name("line"), expected: want.line, found: renderLine(ds) });
+  if (want.detail !== undefined && renderDetail(ds, source) !== want.detail) out.push({ field: name("detail"), expected: want.detail, found: renderDetail(ds, source) });
+  if (want.json !== undefined && renderJSON(ds, CLASSIFIER) !== want.json) out.push({ field: name("json"), expected: want.json, found: renderJSON(ds, CLASSIFIER) });
+  return out;
+}
+
+/** The diagnostics of a render case, as given (f08 7.4). */
+export function renderCaseDiagnostics(c: Case): RenderDiagnostic[] {
+  return c.render!.diagnostics.map((d) => {
+    const r: RenderDiagnostic = { phase: d.phase as string, code: d.code as string, message: d.message as string };
+    if (typeof d.class === "string") r.class = d.class;
+    if (Array.isArray(d.span)) r.span = d.span as [number, number, number, number];
+    if (Array.isArray(d.path)) r.path = d.path as (string | number)[];
+    if ("data" in d) r.data = hostValue(d.data);
+    if (Array.isArray(d.trace)) r.trace = d.trace as unknown as RenderDiagnostic["trace"];
+    return r;
+  });
+}
+
+function renderCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
+  const ex = c.expect as Renderings;
+  const d = compareRenderings(ex, renderCaseDiagnostics(c), c.render!.source ?? null);
+  return d.length === 0 ? v("pass") : v("fail", { differences: d });
+}
+
 /** The three answers of a conform case (f04 9.3), or its declare failure. */
 export type ConformRun =
   | { ok: false; diagnostics: Diagnostic[] }
@@ -255,6 +287,8 @@ export type ConformRun =
       asRun: { ok: true; value: unknown; steps: number } | { ok: false; diagnostic: Diagnostic; steps: number };
       isRun: { ok: true; value: unknown; steps: number } | { ok: false; diagnostic: Diagnostic; steps: number };
       value: unknown;
+      /** ConformAll's list, when the case has `max` (f08 7.5). */
+      all: Diagnostic[] | null;
     };
 
 export function runConform(c: Case): ConformRun {
@@ -275,7 +309,8 @@ export function runConform(c: Case): ConformRun {
       const o = p.execute({ v: value });
       return o.ok ? { ok: true as const, value: o.value, steps: o.usage.steps } : { ok: false as const, diagnostic: o.diagnostic, steps: o.usage.steps };
     };
-    return { ok: true, fn, asRun: runOf("as"), isRun: runOf("is"), value };
+    const all = cf.max === undefined ? null : env.conformAll(value, cf.type, cf.max);
+    return { ok: true, fn, asRun: runOf("as"), isRun: runOf("is"), value, all };
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
     return { ok: false, diagnostics: [...x.diagnostics] };
@@ -307,8 +342,19 @@ function conformCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>
   if (ex.message !== undefined) {
     if (r.fn?.message !== ex.message || asDiag?.message !== ex.message) d.push({ field: "message", expected: ex.message, found: { function: r.fn?.message, as: asDiag?.message } });
   }
+  if (r.all !== null) {
+    // f08 7.5 item 2: empty exactly when it conforms; the first entry is the function's.
+    const first = r.all[0];
+    const agrees = (r.all.length === 0) === fnOk && (fnOk || (JSON.stringify(first.path) === JSON.stringify(r.fn!.path) && first.message === r.fn!.message));
+    if (!agrees && !d.some((x) => x.field === "conforms")) d.push({ field: "conforms", expected: ex.conforms, found: { conformAll: r.all.map((x) => ({ path: x.path, message: x.message })) } });
+  }
   if (ex.steps !== undefined && (r.asRun.steps !== ex.steps || r.isRun.steps !== ex.steps)) {
     d.push({ field: "steps", expected: ex.steps, found: { as: r.asRun.steps, is: r.isRun.steps } });
+  }
+  if (ex.failures !== undefined && r.all !== null) {
+    const all = r.all;
+    const same = all.length === ex.failures.length && ex.failures.every((f, i) => JSON.stringify(f.path) === JSON.stringify(all[i].path) && (f.message === undefined || f.message === all[i].message));
+    if (!same) d.push({ field: "failures", expected: ex.failures, found: all.map((x) => ({ path: x.path, message: x.message })) });
   }
   return d.length === 0 ? v("pass") : v("fail", { differences: d });
 }
@@ -396,6 +442,7 @@ function compare(c: Case, o: Outcome): Difference[] {
     return d;
   }
   if (ex.kind === "conform") return [{ field: "outcome", expected: "a conform result", found: "a case with a program" }];
+  if (ex.kind === "render") return [{ field: "outcome", expected: "renderings", found: "a case with a program" }];
   if (o.kind !== "failure" || o.phase !== ex.phase) {
     return [{ field: "outcome", expected: `failure of phase ${ex.phase}`, found: o.kind === "result" ? "a result" : describeFailure(o) }];
   }
@@ -409,6 +456,11 @@ function compare(c: Case, o: Outcome): Difference[] {
     ok = ex.diagnostics.length === found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   }
   const d: Difference[] = ok ? [] : [{ field: "diagnostics", expected: ex.diagnostics, found }];
+  if (ex.rendered !== undefined) {
+    // f08 7.3: parse renders its first diagnostic; check the whole list; run its one.
+    const list = ex.phase === "parse" ? o.diagnostics.slice(0, 1) : o.diagnostics;
+    d.push(...compareRenderings(ex.rendered, list.map((x) => renderable(x, o.source)), renderSource(o), "rendered"));
+  }
   if (ex.phase === "run" && !found.some((f) => LIMIT_CODES.has(f.code))) {
     if (ex.steps !== undefined && o.usage?.steps !== ex.steps) d.push({ field: "steps", expected: ex.steps, found: o.usage?.steps });
     if (ex.allocated !== undefined && o.usage?.allocated !== ex.allocated) d.push({ field: "allocated", expected: ex.allocated, found: o.usage?.allocated });
@@ -453,6 +505,7 @@ let CURRENT_ENV: Env | null = null;
 const CHECK_DEPENDENT: ReadonlySet<string> = new Set(["null-operand", "wrong-kind", "missing-field", "no-match", "not-conforming", "function-error"]);
 
 interface FoundDiag {
+  trace?: { span: [number, number, number, number]; name: string; index: number | null }[];
   class?: string;
   data?: unknown;
   rawData?: unknown;
@@ -471,7 +524,24 @@ function foundDiag(d: Diagnostic, source?: Source): FoundDiag {
     f.data = show(d.data);
     f.rawData = d.data;
   }
+  if (d.trace !== undefined && source !== undefined) f.trace = d.trace.map((t) => ({ span: source.lineSpan(t.span), name: t.name, index: t.index }));
   return f;
+}
+
+/** A diagnostic as the renderings read it (f08 5). */
+function renderable(d: Diagnostic, source?: Source): RenderDiagnostic {
+  const r: RenderDiagnostic = { phase: d.phase, code: d.code, message: d.message };
+  if (d.class !== undefined) r.class = d.class;
+  if (d.span !== undefined && source !== undefined) r.span = source.lineSpan(d.span);
+  if (d.path !== undefined) r.path = d.path;
+  if (d.code === "failed") r.data = d.data;
+  if (d.phase === "run") r.trace = (d.trace ?? []).map((t) => ({ span: source!.lineSpan(t.span), name: t.name, index: t.index }));
+  return r;
+}
+
+/** The text a case's diagnostics are rendered with: the source, or the template text (f08 7.3 item 3). */
+function renderSource(o: Outcome): string | null {
+  return o.kind === "failure" && o.source !== undefined ? o.source.slice(0, o.source.length) : null;
 }
 
 function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
@@ -485,6 +555,15 @@ function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
   }
   if (e.message !== undefined && e.message !== f.message) return false;
   if (e.data !== undefined && !plainEqual(f.rawData, hostValue(e.data.value), CLASSIFIER)) return false;
+  // f08 7.2: the trace, entry by entry; not for a limit code.
+  if (e.trace !== undefined && !LIMIT_CODES.has(e.code)) {
+    const t = f.trace ?? [];
+    if (t.length !== e.trace.length) return false;
+    for (let i = 0; i < t.length; i++) {
+      const x = e.trace[i];
+      if (x.name !== t[i].name || x.index !== t[i].index || x.span.some((n, j) => n !== t[i].span[j])) return false;
+    }
+  }
   if (e.path !== undefined) {
     if (f.path === undefined || f.path.length !== e.path.length || e.path.some((s, i) => s !== f.path![i])) return false;
   }
@@ -526,6 +605,8 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     throw e;
   }
   if (Array.isArray(json) && json.length > 0 && json.every((r) => isObject(r) && !("expect" in r)) && json.some((r) => isObject(r) && "cases" in r)) {
+    // f08 7.8 item 2: every case of messages-check.json is run once, checked.
+    if (basename(path) === "messages-check.json") opts = { ...opts, checkOnly: true };
     const out: Verdict[] = [];
     for (const r of json as { [k: string]: Json }[]) {
       if (!("cases" in r)) continue;
@@ -555,8 +636,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F7. */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7]);
+/** The packages this implementation offers: F1 to F8. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

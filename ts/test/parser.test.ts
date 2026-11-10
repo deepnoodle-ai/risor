@@ -9,15 +9,15 @@ const result = (src: string) => ok(src).result;
 describe("01 section 15: every example", () => {
   // Examples whose outcome is a parse diagnostic.
   test("parse failures", () => {
-    err("-2 ** 2", "unexpected-token", [1, 1, 1, 2]); // 8
+    err("-2 ** 2", "needs-parentheses", [1, 1, 1, 2]); // 8
     err("9007199254740992", "literal-range", [1, 1, 1, 17]); // 9
     err("010", "bad-number", [1, 1, 1, 4]); // 10
-    err("if (true) { 1 }", "unexpected-token", [1, 16, 1, 16]); // 37
-    err("if (true) { a: 1 } else { 2 }", "unexpected-token", [1, 11, 1, 12]); // 38
-    err("try 1 catch { 2 }", "unexpected-token", [1, 5, 1, 6]); // 48
-    err("try(1, 2)", "unexpected-token", [1, 1, 1, 4]); // 49
+    err("if (true) { 1 }", "missing-else", [1, 16, 1, 16]); // 37
+    err("if (true) { a: 1 } else { 2 }", "branch-like-map", [1, 11, 1, 12]); // 38
+    err("try 1 catch { 2 }", "try-form", [1, 5, 1, 6]); // 48
+    err("try(1, 2)", "try-call", [1, 1, 1, 4]); // 49
     err("const match = 1; match", "reserved-word", [1, 7, 1, 12]); // 50
-    err("a ?? b > c", "unexpected-token", [1, 8, 1, 9]); // 52
+    err("a ?? b > c", "needs-parentheses", [1, 8, 1, 9]); // 52
   });
   // Every other example parses.
   const parses = [
@@ -60,7 +60,7 @@ describe("01 section 15: every example", () => {
 
 describe("01 14.2: each parse code of Core", () => {
   test("unexpected-token", () => err("1 2", "unexpected-token", [1, 3, 1, 4]));
-  test("unexpected-character", () => err("a # b", "unexpected-character", [1, 3, 1, 4]));
+  test("unexpected-character", () => err("a # b", "hash-comment", [1, 3, 1, 4]));
   test("unterminated-string", () => {
     err('"abc', "unterminated-string", [1, 1, 1, 5]);
     err("`abc", "unterminated-string", [1, 1, 1, 5]);
@@ -80,11 +80,11 @@ describe("01 14.2: each parse code of Core", () => {
     err("const match = 1;", "reserved-word", [1, 7, 1, 12]);
     err("is => 1", "reserved-word", [1, 1, 1, 3]);
     err("f(is => 1)", "reserved-word", [1, 3, 1, 5]);
-    err("let x = 1;", "reserved-word", [1, 1, 1, 4]);
-    err("return x", "reserved-word", [1, 1, 1, 7]);
-    err("nil", "reserved-word", [1, 1, 1, 4]);
-    err("[for (x of xs) x]", "reserved-word", [1, 2, 1, 5]);
-    err("{for}", "reserved-word", [1, 2, 1, 5]);
+    err("let x = 1;", "let-binding", [1, 1, 1, 4]);
+    err("return x", "return-statement", [1, 1, 1, 7]);
+    err("nil", "nil-literal", [1, 1, 1, 4]);
+    err("[for (x of xs) x]", "loop-statement", [1, 2, 1, 5]);
+    err("{for}", "loop-statement", [1, 2, 1, 5]);
     err("1 + else", "reserved-word", [1, 5, 1, 9]);
   });
   test("reserved-word where a Name is needed", () => {
@@ -110,34 +110,34 @@ describe("01 14.2: each parse code of Core", () => {
 describe("01 14.3: every row", () => {
   test("a text block", () => {
     err('"""a"""', "text-block-open", [1, 1, 1, 4]);
-    err("'''a'''", "unexpected-token", [1, 1, 1, 4]);
+    err("'''a'''", "text-block-quote", [1, 1, 1, 4]);
   });
   test("the prefixed literal", () => {
     ok('r"a"'); // a raw string, with package F3
     ok("r'a'");
-    err('f"x"', "unexpected-token", [1, 1, 1, 2]);
-    err('R"x"', "unexpected-token", [1, 1, 1, 2]);
-    err("r`x`", "unexpected-token", [1, 1, 1, 2]);
-    err("String.raw`x`", "unexpected-token", [1, 8, 1, 11]);
+    err('f"x"', "string-prefix", [1, 1, 1, 2]);
+    err('R"x"', "string-prefix", [1, 1, 1, 2]);
+    err("r`x`", "tagged-template", [1, 1, 1, 2]);
+    err("String.raw`x`", "tagged-template", [1, 8, 1, 11]);
   });
   test("r or R, white space, then a quote", () => {
-    err('r "x"', "unexpected-token", [1, 1, 1, 2]);
-    err("R 'x'", "unexpected-token", [1, 1, 1, 2]);
-    err('f(r /* c */ "x")', "unexpected-token", [1, 3, 1, 4]);
+    err('r "x"', "string-prefix", [1, 1, 1, 2]);
+    err("R 'x'", "string-prefix", [1, 1, 1, 2]);
+    err('f(r /* c */ "x")', "string-prefix", [1, 3, 1, 4]);
     err('q "x"', "unexpected-token", [1, 3, 1, 6]);
   });
   test("as and is (package F4, f04 2.4, 2.6)", () => {
     err("x as T", "bad-type-text", [1, 6, 1, 7]);
     err("x is T", "bad-type-text", [1, 6, 1, 7]);
-    err("x as const", "unexpected-token", [1, 3, 1, 5]);
-    err("x is not T", "unexpected-token", [1, 3, 1, 5]);
+    err("x as const", "as-const", [1, 3, 1, 5]);
+    err("x is not T", "negated-is", [1, 3, 1, 5]);
     err("a + b as T", "bad-type-text", [1, 10, 1, 11]);
-    err("x as int + 1", "unexpected-token", [1, 10, 1, 11]);
+    err("x as int + 1", "needs-parentheses", [1, 10, 1, 11]);
   });
   test("!x as T", () => {
-    err("!x as T", "unexpected-token", [1, 1, 1, 2]);
-    err("!x is T", "unexpected-token", [1, 1, 1, 2]);
-    err("a == !x is T", "unexpected-token", [1, 6, 1, 7]);
+    err("!x as T", "needs-parentheses", [1, 1, 1, 2]);
+    err("!x is T", "needs-parentheses", [1, 1, 1, 2]);
+    err("a == !x is T", "needs-parentheses", [1, 6, 1, 7]);
     err("(!x) is T", "bad-type-text", [1, 9, 1, 10]);
   });
   test("a projection (package F7, f07 2.2)", () => {
@@ -146,80 +146,80 @@ describe("01 14.3: every row", () => {
     err("xs[*1]", "unexpected-token", [1, 5, 1, 6]);
     err("[*]", "unexpected-token", [1, 2, 1, 3]);
   });
-  test("match with no subject", () => err("match { 1 => 2 }", "unexpected-token", [1, 7, 1, 8]));
+  test("match with no subject", () => err("match { 1 => 2 }", "needs-parentheses", [1, 7, 1, 8]));
   test("=== and !==", () => {
-    err("a === b", "unexpected-token", [1, 3, 1, 6]);
-    err("a !== b", "unexpected-token", [1, 3, 1, 6]);
+    err("a === b", "strict-equality", [1, 3, 1, 6]);
+    err("a !== b", "strict-equality", [1, 3, 1, 6]);
   });
-  test("x = 1", () => err("x = 1", "unexpected-token", [1, 3, 1, 4]));
+  test("x = 1", () => err("x = 1", "assignment", [1, 3, 1, 4]));
   test("x += 1, x ++ and the rest of the last row of 2.3", () => {
-    err("x += 1", "unexpected-token", [1, 3, 1, 5]);
-    err("x ++", "unexpected-token", [1, 3, 1, 5]);
-    err("x++", "unexpected-token", [1, 2, 1, 4]);
-    err("x ??= 1", "unexpected-token", [1, 3, 1, 6]);
+    err("x += 1", "assignment", [1, 3, 1, 5]);
+    err("x ++", "assignment", [1, 3, 1, 5]);
+    err("x++", "assignment", [1, 2, 1, 4]);
+    err("x ??= 1", "assignment", [1, 3, 1, 6]);
   });
-  test("x |> f", () => err("x |> f", "unexpected-token", [1, 3, 1, 5]));
+  test("x |> f", () => err("x |> f", "pipe-operator", [1, 3, 1, 5]));
   test("& $ # @", () => {
-    err("a & b", "unexpected-character", [1, 3, 1, 4]);
-    err("$", "unexpected-character", [1, 1, 1, 2]);
-    err("$.a", "unexpected-character", [1, 1, 1, 2]);
-    err('$"..."', "unexpected-character", [1, 1, 1, 2]);
-    err("# comment", "unexpected-character", [1, 1, 1, 2]);
+    err("a & b", "bitwise-operator", [1, 3, 1, 4]);
+    err("$", "context-symbol", [1, 1, 1, 2]);
+    err("$.a", "context-symbol", [1, 1, 1, 2]);
+    err('$"..."', "string-prefix", [1, 1, 1, 2]);
+    err("# comment", "hash-comment", [1, 1, 1, 2]);
     err("@", "unexpected-character", [1, 1, 1, 2]);
   });
-  test("a | b outside a match arm", () => err("a | b", "unexpected-token", [1, 3, 1, 4]));
+  test("a | b outside a match arm", () => err("a | b", "bitwise-operator", [1, 3, 1, 4]));
   test("if with no else", () => {
-    err("if (c) { a }", "unexpected-token", [1, 13, 1, 13]);
-    err("if (c) { a } + 1", "unexpected-token", [1, 14, 1, 15]);
+    err("if (c) { a }", "missing-else", [1, 13, 1, 13]);
+    err("if (c) { a } + 1", "missing-else", [1, 14, 1, 15]);
   });
   test("a branch written like a map; an empty branch", () => {
-    err("if (c) { a: 1 } else { 2 }", "unexpected-token", [1, 8, 1, 9]);
-    err("if (c) { a, b } else { 2 }", "unexpected-token", [1, 8, 1, 9]);
-    err("if (c) { ...a } else { 2 }", "unexpected-token", [1, 8, 1, 9]);
-    err('if (c) { "a": 1 } else { 2 }', "unexpected-token", [1, 8, 1, 9]);
-    err("if (c) { 1 } else { a: 1 }", "unexpected-token", [1, 19, 1, 20]);
-    err("if (c) {} else { 2 }", "unexpected-token", [1, 8, 1, 9]);
-    err("try {} catch { 2 }", "unexpected-token", [1, 5, 1, 6]);
-    err("try { 1 } catch { a, b }", "unexpected-token", [1, 17, 1, 18]);
+    err("if (c) { a: 1 } else { 2 }", "branch-like-map", [1, 8, 1, 9]);
+    err("if (c) { a, b } else { 2 }", "branch-like-map", [1, 8, 1, 9]);
+    err("if (c) { ...a } else { 2 }", "branch-like-map", [1, 8, 1, 9]);
+    err('if (c) { "a": 1 } else { 2 }', "branch-like-map", [1, 8, 1, 9]);
+    err("if (c) { 1 } else { a: 1 }", "branch-like-map", [1, 19, 1, 20]);
+    err("if (c) {} else { 2 }", "empty-branch", [1, 8, 1, 9]);
+    err("try {} catch { 2 }", "empty-branch", [1, 5, 1, 6]);
+    err("try { 1 } catch { a, b }", "branch-like-map", [1, 17, 1, 18]);
   });
   test("an if or a try followed by an operator, ., [, ?. or ?.[", () => {
-    err("if (c) { 1 } else { 2 } + 3", "unexpected-token", [1, 25, 1, 26]);
-    err("if (c) { 1 } else { 2 }.x", "unexpected-token", [1, 24, 1, 25]);
-    err("if (c) { 1 } else { 2 }[0]", "unexpected-token", [1, 24, 1, 25]);
-    err("if (c) { 1 } else { 2 }?.x", "unexpected-token", [1, 24, 1, 26]);
-    err("if (c) { 1 } else { 2 }?.[0]", "unexpected-token", [1, 24, 1, 27]);
-    err("if (c) { 1 } else { 2 } ? 1 : 2", "unexpected-token", [1, 25, 1, 26]);
-    err("try { 1 } catch { 2 } ?? 3", "unexpected-token", [1, 23, 1, 25]);
+    err("if (c) { 1 } else { 2 } + 3", "needs-parentheses", [1, 25, 1, 26]);
+    err("if (c) { 1 } else { 2 }.x", "needs-parentheses", [1, 24, 1, 25]);
+    err("if (c) { 1 } else { 2 }[0]", "needs-parentheses", [1, 24, 1, 25]);
+    err("if (c) { 1 } else { 2 }?.x", "needs-parentheses", [1, 24, 1, 26]);
+    err("if (c) { 1 } else { 2 }?.[0]", "needs-parentheses", [1, 24, 1, 27]);
+    err("if (c) { 1 } else { 2 } ? 1 : 2", "needs-parentheses", [1, 25, 1, 26]);
+    err("try { 1 } catch { 2 } ?? 3", "needs-parentheses", [1, 23, 1, 25]);
   });
   test("an if or a try where an operand is needed", () => {
-    err("1 + if (c) { 1 } else { 2 }", "unexpected-token", [1, 5, 1, 7]);
-    err("-try { 1 } catch { 2 }", "unexpected-token", [1, 2, 1, 5]);
+    err("1 + if (c) { 1 } else { 2 }", "needs-parentheses", [1, 5, 1, 7]);
+    err("-try { 1 } catch { 2 }", "needs-parentheses", [1, 2, 1, 5]);
   });
-  test("try(e, d)", () => err("try(e, d)", "unexpected-token", [1, 1, 1, 4]));
+  test("try(e, d)", () => err("try(e, d)", "try-call", [1, 1, 1, 4]));
   test("try with no catch", () => {
-    err("try { e }", "unexpected-token", [1, 10, 1, 10]);
-    err("try { e } 1", "unexpected-token", [1, 11, 1, 12]);
+    err("try { e }", "missing-catch", [1, 10, 1, 10]);
+    err("try { e } 1", "missing-catch", [1, 11, 1, 12]);
   });
   test("rules 3, 2, 1 and 6 of 3.4", () => {
-    err("a ?? b > c", "unexpected-token", [1, 8, 1, 9]);
-    err("a ?? b || c", "unexpected-token", [1, 8, 1, 10]);
-    err("a > b ?? c", "unexpected-token", [1, 7, 1, 9]);
-    err("a || b ?? c", "unexpected-token", [1, 8, 1, 10]);
-    err("a ?? b == c", "unexpected-token", [1, 8, 1, 10]);
-    err("a ?? b in c", "unexpected-token", [1, 8, 1, 10]);
-    err("!a in b", "unexpected-token", [1, 1, 1, 2]);
-    err("!a not in b", "unexpected-token", [1, 1, 1, 2]);
-    err("-2 ** 2", "unexpected-token", [1, 1, 1, 2]);
-    err("!a ** b", "unexpected-token", [1, 1, 1, 2]);
-    err("2 ** -2 ** 2", "unexpected-token", [1, 6, 1, 7]);
+    err("a ?? b > c", "needs-parentheses", [1, 8, 1, 9]);
+    err("a ?? b || c", "needs-parentheses", [1, 8, 1, 10]);
+    err("a > b ?? c", "needs-parentheses", [1, 7, 1, 9]);
+    err("a || b ?? c", "needs-parentheses", [1, 8, 1, 10]);
+    err("a ?? b == c", "needs-parentheses", [1, 8, 1, 10]);
+    err("a ?? b in c", "needs-parentheses", [1, 8, 1, 10]);
+    err("!a in b", "needs-parentheses", [1, 1, 1, 2]);
+    err("!a not in b", "needs-parentheses", [1, 1, 1, 2]);
+    err("-2 ** 2", "needs-parentheses", [1, 1, 1, 2]);
+    err("!a ** b", "needs-parentheses", [1, 1, 1, 2]);
+    err("2 ** -2 ** 2", "needs-parentheses", [1, 6, 1, 7]);
     // 01 3.4 rule 1: the first prefix operator in the text; `not in` whole.
-    err("- -2 ** 2", "unexpected-token", [1, 1, 1, 2]);
-    err("-!a ** 2", "unexpected-token", [1, 1, 1, 2]);
-    err("!!a in b", "unexpected-token", [1, 1, 1, 2]);
-    err("a ?? b not in c", "unexpected-token", [1, 8, 1, 14]);
-    err("match {a: 1} { _ => 1 }", "unexpected-token", [1, 7, 1, 8]);
-    err("match if (c) { 1 } else { 2 } { _ => 1 }", "unexpected-token", [1, 7, 1, 9]);
-    err("match try { 1 } catch { 2 } { _ => 1 }", "unexpected-token", [1, 7, 1, 10]);
+    err("- -2 ** 2", "needs-parentheses", [1, 1, 1, 2]);
+    err("-!a ** 2", "needs-parentheses", [1, 1, 1, 2]);
+    err("!!a in b", "needs-parentheses", [1, 1, 1, 2]);
+    err("a ?? b not in c", "needs-parentheses", [1, 8, 1, 14]);
+    err("match {a: 1} { _ => 1 }", "needs-parentheses", [1, 7, 1, 8]);
+    err("match if (c) { 1 } else { 2 } { _ => 1 }", "needs-parentheses", [1, 7, 1, 9]);
+    err("match try { 1 } catch { 2 } { _ => 1 }", "needs-parentheses", [1, 7, 1, 10]);
   });
   test("the valid forms beside rules 1 to 3", () => {
     ok("(-2) ** 2");
@@ -235,58 +235,64 @@ describe("01 14.3: every row", () => {
     ok("match ({a: 1}) { _ => 1 }");
   });
   test("const {a} = x => x;", () => {
-    err("const {a} = x => x; 1", "unexpected-token", [1, 15, 1, 17]);
-    err("const _ = x => x; 1", "unexpected-token", [1, 13, 1, 15]);
-    err("const [a] = (x) => x; 1", "unexpected-token", [1, 17, 1, 19]);
+    err("const {a} = x => x; 1", "lambda-in-pattern", [1, 15, 1, 17]);
+    err("const _ = x => x; 1", "lambda-in-pattern", [1, 13, 1, 15]);
+    err("const [a] = (x) => x; 1", "lambda-in-pattern", [1, 17, 1, 19]);
   });
   test("let, var, nil, ... at a place where a value may start", () => {
-    for (const w of ["let", "var", "nil", "for", "while", "do", "break", "continue", "return", "function", "throw", "finally", "import"]) {
-      err(`${w}`, "reserved-word", [1, 1, 1, 1 + w.length]);
-      err(`f(1, ${w})`, "reserved-word", [1, 6, 1, 6 + w.length]);
-      err(`match x { ${w} => 1 }`, "reserved-word", [1, 11, 1, 11 + w.length]);
+    // f08 2.4 B1 to B8.
+    const codes: Record<string, string> = {
+      let: "let-binding", var: "let-binding", nil: "nil-literal", for: "loop-statement", while: "loop-statement", do: "loop-statement",
+      break: "loop-statement", continue: "loop-statement", return: "return-statement", function: "function-declaration",
+      throw: "throw-statement", finally: "finally-clause", import: "import-statement",
+    };
+    for (const w of Object.keys(codes)) {
+      err(`${w}`, codes[w], [1, 1, 1, 1 + w.length]);
+      err(`f(1, ${w})`, codes[w], [1, 6, 1, 6 + w.length]);
+      err(`match x { ${w} => 1 }`, codes[w], [1, 11, 1, 11 + w.length]);
     }
   });
   test("finally after the handler of a try", () => {
-    err("try { 1 } catch { 2 } finally { 3 }", "unexpected-token", [1, 23, 1, 30]);
+    err("try { 1 } catch { 2 } finally { 3 }", "finally-clause", [1, 23, 1, 30]);
   });
   test("x[a:b]; (x: int) => x; const n: int = 1;", () => {
-    err("x[a:b]", "unexpected-token", [1, 4, 1, 5]);
-    err("(x: int) => x", "unexpected-token", [1, 3, 1, 4]);
-    err("f((x: int) => x)", "unexpected-token", [1, 5, 1, 6]);
-    err("const n: int = 1; n", "unexpected-token", [1, 8, 1, 9]);
+    err("x[a:b]", "slice-syntax", [1, 4, 1, 5]);
+    err("(x: int) => x", "type-annotation", [1, 3, 1, 4]);
+    err("f((x: int) => x)", "type-annotation", [1, 5, 1, 6]);
+    err("const n: int = 1; n", "type-annotation", [1, 8, 1, 9]);
   });
   test("xs.*.f; xs[?c]; xs[].f", () => {
-    err("xs.*.f", "unexpected-token", [1, 4, 1, 5]);
-    err("xs[?c]", "unexpected-token", [1, 4, 1, 5]);
-    err("xs[].f", "unexpected-token", [1, 4, 1, 5]);
+    err("xs.*.f", "star-form", [1, 4, 1, 5]);
+    err("xs[?c]", "filter-step", [1, 4, 1, 5]);
+    err("xs[].f", "star-form", [1, 4, 1, 5]);
   });
   test("<T>x, <<EOF", () => {
-    err("<T>x", "unexpected-token", [1, 1, 1, 2]);
-    err("<<EOF", "unexpected-token", [1, 1, 1, 2]);
+    err("<T>x", "angle-cast", [1, 1, 1, 2]);
+    err("<<EOF", "heredoc", [1, 1, 1, 2]);
   });
   test("a line end in a one-line string", () => err('"ab\nc"', "unterminated-string", [1, 1, 1, 4]));
   test("a \\ before a line end in a template", () => err("`ab\\\nc`", "line-continuation", [1, 4, 1, 5]));
-  test("every other text that a later package covers", () => {
-    err("if c { a } else { b }", "unexpected-token", [1, 4, 1, 5]);
-    err("if (c) a else b", "unexpected-token", [1, 8, 1, 9]);
-    err("if(c, a, b)", "unexpected-token", [1, 5, 1, 6]);
-    err("try e catch d", "unexpected-token", [1, 5, 1, 6]);
-    err("try { 1 } catch (e: T) { 2 }", "unexpected-token", [1, 19, 1, 20]);
-    err("try { 1 } catch ({message}) { 2 }", "unexpected-token", [1, 18, 1, 19]);
-    err("try { 1 } catch (_) { 2 }", "unexpected-token", [1, 18, 1, 19]);
-    err("try { 1 } catch () { 2 }", "unexpected-token", [1, 18, 1, 19]);
-    err("switch (x) { }", "unexpected-token", [1, 12, 1, 13]);
-    err("typeof x", "unexpected-token", [1, 8, 1, 9]);
-    err("x instanceof T", "unexpected-token", [1, 3, 1, 13]);
-    err("x satisfies T", "unexpected-token", [1, 3, 1, 12]);
-    err("interface Foo { }", "unexpected-token", [1, 11, 1, 14]);
-    err("enum Color { }", "unexpected-token", [1, 6, 1, 11]);
-    err("type Name = T", "unexpected-token", [1, 6, 1, 10]);
-    err("export const x = 1; x", "unexpected-token", [1, 8, 1, 13]);
+  test("every other text that package F8 targets (f08 2)", () => {
+    err("if c { a } else { b }", "if-form", [1, 4, 1, 5]);
+    err("if (c) a else b", "if-form", [1, 8, 1, 9]);
+    err("if(c, a, b)", "if-form", [1, 5, 1, 6]);
+    err("try e catch d", "try-form", [1, 5, 1, 6]);
+    err("try { 1 } catch (e: T) { 2 }", "catch-name", [1, 19, 1, 20]);
+    err("try { 1 } catch ({message}) { 2 }", "catch-name", [1, 18, 1, 19]);
+    err("try { 1 } catch (_) { 2 }", "catch-name", [1, 18, 1, 19]);
+    err("try { 1 } catch () { 2 }", "catch-name", [1, 18, 1, 19]);
+    err("switch (x) { }", "switch-statement", [1, 1, 1, 7]);
+    err("typeof x", "typeof-operator", [1, 1, 1, 7]);
+    err("x instanceof T", "instanceof-operator", [1, 3, 1, 13]);
+    err("x satisfies T", "satisfies-operator", [1, 3, 1, 12]);
+    err("interface Foo { }", "type-declaration", [1, 1, 1, 10]);
+    err("enum Color { }", "type-declaration", [1, 1, 1, 5]);
+    err("type Name = T", "type-declaration", [1, 1, 1, 5]);
+    err("export const x = 1; x", "export-statement", [1, 1, 1, 7]);
     err("x => { x + 1 }", "unexpected-token", [1, 3, 1, 5]);
-    err("f(x => { x + 1 })", "unexpected-token", [1, 12, 1, 13]);
-    err("a?[i]", "unexpected-token", [1, 6, 1, 6]);
-    err("{max-retries: 3}", "unexpected-token", [1, 5, 1, 6]);
+    err("f(x => { x + 1 })", "block-without-const", [1, 8, 1, 9]);
+    err("a?[i]", "optional-index", [1, 2, 1, 3]);
+    err("{max-retries: 3}", "unquoted-key", [1, 2, 1, 13]);
   });
 });
 

@@ -12,16 +12,16 @@ export interface TypeNames {
   named: ReadonlyMap<string, Type>;
 }
 
-export type Resolved = { ok: true; type: Type } | { ok: false; diagnostics: { code: string; span: Span }[] };
+export type Resolved = { ok: true; type: Type } | { ok: false; diagnostics: { code: string; span: Span; template: string; params: Record<string, unknown> }[] };
 
 /** Resolve a program type; the diagnostics of f04 6.1, in source order. */
 export function resolveProgramType(node: TypeNode, typeSpan: Span, spans: ReadonlyMap<TypeNode, Span>, names: TypeNames): Resolved {
   // 1. Names.
-  const undef: { code: string; span: Span }[] = [];
+  const undef: { code: string; span: Span; template: string; params: Record<string, unknown> }[] = [];
   const visitNames = (n: TypeNode): void => {
     switch (n.t) {
       case "name":
-        if (!names.opaque.has(n.name) && !names.named.has(n.name)) undef.push({ code: "undefined-name", span: spans.get(n)! });
+        if (!names.opaque.has(n.name) && !names.named.has(n.name)) undef.push({ code: "undefined-name", span: spans.get(n)!, template: "type", params: { name: n.name } });
         return;
       case "list": return visitNames(n.elem);
       case "map": return visitNames(n.rest);
@@ -38,7 +38,7 @@ export function resolveProgramType(node: TypeNode, typeSpan: Span, spans: Readon
   if (undef.length > 0) return { ok: false, diagnostics: undef };
   // 2. Records (f05 3.2): each Type from the innermost out; one that holds an error is not tested again.
   const ctx = { opaque: names.opaque, named: names.named };
-  const unions: { code: string; span: Span }[] = [];
+  const unions: { code: string; span: Span; template: string; params: Record<string, unknown> }[] = [];
   const visit = (n: TypeNode): boolean => {
     switch (n.t) {
       case "list": return visit(n.elem);
@@ -58,7 +58,7 @@ export function resolveProgramType(node: TypeNode, typeSpan: Span, spans: Readon
           return isAny(x) ? [] : variantsOf(x);
         });
         if (recs.length >= 2 && findTag(recs) === null) {
-          unions.push({ code: "untagged-union", span: spans.get(n)! });
+          unions.push({ code: "untagged-union", span: spans.get(n)!, template: "default", params: {} });
           return false;
         }
         return true;
@@ -70,6 +70,7 @@ export function resolveProgramType(node: TypeNode, typeSpan: Span, spans: Readon
   if (unions.length > 0) return { ok: false, diagnostics: unions };
   // 3. Depth and size: one check-limit for both (3.5 steps 5 and 6).
   const t = fromNode(node, ctx);
-  if (depth(t, 70) > 64 || typeSize(t) > SIZE_LIMIT) return { ok: false, diagnostics: [{ code: "check-limit", span: typeSpan }] };
+  if (depth(t, 70) > 64) return { ok: false, diagnostics: [{ code: "check-limit", span: typeSpan, template: "depth", params: {} }] };
+  if (typeSize(t) > SIZE_LIMIT) return { ok: false, diagnostics: [{ code: "check-limit", span: typeSpan, template: "size", params: {} }] };
   return { ok: true, type: t };
 }

@@ -7,6 +7,9 @@
 // steps, an `else` chain, `const` lines) are checked by loops (20.6).
 
 import type * as A from "../syntax/ast.ts";
+import type { Source } from "../syntax/source.ts";
+import { catalogMessage } from "../eval/failure.ts";
+import { compareText } from "../value/value.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Span } from "../syntax/source.ts";
 import type { Resolution } from "../eval/static.ts";
@@ -103,6 +106,22 @@ interface DiagRec {
   code: string;
   span: Span;
   class?: string;
+  /** The template of the message and its parameters (f08 3.5). */
+  template?: string;
+  params?: Record<string, unknown>;
+}
+
+/** A parameter of kind `text`: the source text at a span (f08 3.2). */
+export class TextAt {
+  readonly span: Span;
+  constructor(span: Span) {
+    this.span = span;
+  }
+}
+
+/** The canonical text of an operator (03 3.8.3). */
+function opText(op: string): string {
+  return op === "not-in" ? "not in" : op;
 }
 
 interface SiteRec {
@@ -116,7 +135,7 @@ interface Mark {
   s: number;
 }
 
-export function check(program: A.Program, res: Resolution, env: CheckEnv, expected: Expected, staticDiags: Diagnostic[]): CheckResult {
+export function check(program: A.Program, res: Resolution, env: CheckEnv, expected: Expected, staticDiags: Diagnostic[], source?: Source): CheckResult {
   const c = new Checker(res, env);
   const t = c.program(program, expected);
   const diags: Diagnostic[] = [...staticDiags];
@@ -125,7 +144,7 @@ export function check(program: A.Program, res: Resolution, env: CheckEnv, expect
     const k = `${d.code}:${d.span.start}:${d.span.end}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    const out: Diagnostic = { phase: "check", code: d.code, span: d.span, message: messageFor(d.code) };
+    const out: Diagnostic = { phase: "check", code: d.code, span: d.span, message: checkMessage(d, source) };
     if (d.class !== undefined) out.class = d.class;
     diags.push(out);
   }
@@ -199,21 +218,44 @@ class Checker {
 
   // ---- diagnostics and sites -----------------------------------------------
 
-  private diag(code: string, span: Span, cls?: string): void {
+  private diag(code: string, span: Span, cls?: string, template?: string, params?: Record<string, unknown>): void {
     const d: DiagRec = { code, span: sp(span) };
     if (cls !== undefined) d.class = cls;
+    if (template !== undefined) d.template = template;
+    if (params !== undefined) d.params = params;
     this.diags.push(d);
   }
+
+  /** A diagnostic of no class, with its template (f08 3.5). */
+  private say(code: string, span: Span, template: string, params: Record<string, unknown> = {}): void {
+    this.diag(code, span, undefined, template, params);
+  }
+
+  /** `maybe-null` at a span, with the type there (f08 3.5 item 3). */
+  private maybeNull(span: Span, t: Type): void {
+    this.say("maybe-null", span, "default", { text: new TextAt(span), type: printType(t) });
+  }
+
+  /** `kind`, by its template (f08 3.5 item 4). */
+  private kind(span: Span, template: string, params: Record<string, unknown> = {}): void {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(params)) out[k] = isTypeLike(v) ? printType(v as Type) : v;
+    this.say("kind", span, template, out);
+  }
+
+  /** The name a `value` or `host` site's `may-fail` names; null for the site of an `as` (f08 3.5 item 7). */
+  private siteName: string | null = null;
 
   /** Record a site. For a rejected `dynamic` site, returns true: the node takes the type never (17). */
   private site(cls: string, span: Span, ...owners: Span[]): boolean {
     if (this.drop > 0) return false;
     if (this.env.reject.has(cls)) {
       if (cls === "dynamic") {
-        this.diag("unchecked", span, "dynamic");
+        this.diag("unchecked", span, "dynamic", "default", { text: new TextAt(span) });
         return true;
       }
-      this.diag("may-fail", span, cls);
+      const template = cls === "value" ? (this.siteName === null ? "test" : "value") : cls;
+      this.diag("may-fail", span, cls, template, { name: this.siteName ?? "" });
       return false;
     }
     this.sites.push({ class: cls, span: sp(span), owners: owners.map(sp) });
@@ -233,8 +275,9 @@ class Checker {
   private tested(t: Type, span: Span): void {
     if (!this.env.reject.has("constant-condition")) return;
     if (isAny(t) || isNever(t)) return;
-    if (isNever(falsyPart(t))) this.diag("always-truthy", span, "constant-condition");
-    else if (isNever(truthyPart(t))) this.diag("always-falsy", span, "constant-condition");
+    const params = { text: new TextAt(span), type: printType(t) };
+    if (isNever(falsyPart(t))) this.diag("always-truthy", span, "constant-condition", "default", params);
+    else if (isNever(truthyPart(t))) this.diag("always-falsy", span, "constant-condition", "default", params);
   }
 
   // ---- paths and facts (10.3 to 10.5) ---------------------------------------
@@ -444,15 +487,18 @@ class Checker {
     if (t === undefined || t === null) return isForm ? BOOL : NEVER;
     if (isNever(s)) return isForm ? BOOL : t;
     if (surelyFits(s, t)) {
-      if (isForm && this.env.reject.has("constant-condition")) this.diag("always-truthy", e.span, "constant-condition");
+      if (isForm && this.env.reject.has("constant-condition")) this.diag("always-truthy", e.span, "constant-condition", "test", { text: new TextAt(e.span), type: printType(s) });
       return isForm ? BOOL : t;
     }
     if (disjoint(s, t)) {
-      if (!isForm) this.diag("never-conforms", e.span);
-      else if (this.env.reject.has("constant-condition")) this.diag("always-falsy", e.span, "constant-condition");
+      if (!isForm) this.say("never-conforms", e.span, "default", { found: printType(s), expected: printType(t) });
+      else if (this.env.reject.has("constant-condition")) this.diag("always-falsy", e.span, "constant-condition", "test", { text: new TextAt(e.span), type: printType(s) });
       return isForm ? BOOL : t;
     }
-    if (!isForm) this.site("value", e.span);
+    if (!isForm) {
+      this.siteName = null;
+      this.site("value", e.span);
+    }
     return isForm ? BOOL : t;
   }
 
@@ -520,7 +566,7 @@ class Checker {
       return;
     }
     if (hasNull(v)) {
-      this.diag("maybe-null", valueSpan);
+      this.maybeNull(valueSpan, v);
       v = nonnull(v);
     }
     const owners = [p.span, ...(p.kind === "MapPat" ? p.fields.map((x) => x.span) : p.elems.map((x) => x.span))];
@@ -554,7 +600,7 @@ class Checker {
     }
     if (p.kind === "MapPat") {
       if (kindCount(v) !== 1 || !v.map) {
-        this.diag("kind", valueSpan);
+        this.kind(valueSpan, "pattern-map", { type: v });
         this.failedPattern(p, f);
         return;
       }
@@ -579,7 +625,7 @@ class Checker {
       return;
     }
     if (kindCount(v) !== 1 || !v.list) {
-      this.diag("kind", valueSpan);
+      this.kind(valueSpan, "pattern-list", { type: v });
       this.failedPattern(p, f);
       return;
     }
@@ -667,7 +713,7 @@ class Checker {
 
   /** A rendered expression (05 7.3): opaque is `kind`, any is a `dynamic` site. */
   private rendered(e: A.Expr, t: Type, owners: Span[]): void {
-    if (hasOpaque(t)) this.diag("kind", e.span);
+    if (hasOpaque(t)) this.kind(e.span, "rendered", { type: t });
     else if (hasAny(t)) this.site("dynamic", e.span, ...owners);
   }
 
@@ -677,13 +723,13 @@ class Checker {
   }
 
   private sizeFail(span: Span): Type {
-    this.diag("check-limit", span);
+    this.say("check-limit", span, "size");
     return NEVER;
   }
 
   private depthLimit(t: Type, span: Span): Type {
     if (depth(t, 70) > 64) {
-      this.diag("check-limit", span);
+      this.say("check-limit", span, "depth");
       return NEVER;
     }
     return t;
@@ -700,7 +746,7 @@ class Checker {
       }
       let t = this.synth(it.value, f);
       if (hasNull(t)) {
-        this.diag("maybe-null", it.value.span);
+        this.maybeNull(it.value.span, t);
         t = nonnull(t);
       }
       if (isAny(t)) {
@@ -708,7 +754,7 @@ class Checker {
       } else if (isNever(t)) {
         // nothing
       } else if (kindCount(t) === 1 && t.list) add(t.list);
-      else this.diag("kind", it.value.span);
+      else this.kind(it.value.span, "spread-list", { type: t });
     }
     if (acc.size() + 1 > SIZE_LIMIT) return this.sizeFail(e.span);
     return this.depthLimit(listOf(acc.type()), e.span);
@@ -720,7 +766,7 @@ class Checker {
       if (en.kind === "Spread") {
         let t = this.synth(en.value, f);
         if (hasNull(t)) {
-          this.diag("maybe-null", en.value.span);
+          this.maybeNull(en.value.span, t);
           t = nonnull(t);
         }
         if (isAny(t)) {
@@ -728,18 +774,18 @@ class Checker {
         } else if (isNever(t)) {
           // nothing
         } else if (kindCount(t) === 1 && t.map) r = merge(r, t.map);
-        else this.diag("kind", en.value.span);
+        else this.kind(en.value.span, "spread-map", { type: t });
         continue;
       }
       if (en.key.kind === "expr") {
         let k = this.synth(en.key.expr, f);
         const v = this.synth(en.value, f);
         if (hasNull(k)) {
-          this.diag("maybe-null", en.key.expr.span);
+          this.maybeNull(en.key.expr.span, k);
           k = nonnull(k);
         }
         const fit = fits(k, STRING);
-        if (fit === 0) this.diag("kind", en.key.expr.span);
+        if (fit === 0) this.kind(en.key.expr.span, "key", { type: k });
         else if (fit === 2) this.site("dynamic", en.key.expr.span, en.span);
         r = merge(r, { fields: new Map(), rest: v });
         continue;
@@ -760,12 +806,12 @@ class Checker {
       return BOOL;
     }
     if (hasNull(t)) {
-      this.diag("maybe-null", e.x.span);
+      this.maybeNull(e.x.span, t);
       t = nonnull(t);
     }
     if (isAny(t)) return this.site("dynamic", e.x.span, e.span) ? NEVER : ANY;
     if (fits(t, FLOAT) === 0) {
-      this.diag("kind", e.x.span);
+      this.kind(e.x.span, "operand", { op: "-", type: t });
       return NEVER;
     }
     return t;
@@ -808,7 +854,7 @@ class Checker {
       case "==":
       case "!=": {
         const b = this.synth(n.y, f);
-        if (!overlap(a, b) && !isNever(a) && !isNever(b) && !isExactlyNull(a) && !isExactlyNull(b)) this.diag("never-equal", n.span);
+        if (!overlap(a, b) && !isNever(a) && !isNever(b) && !isExactlyNull(a) && !isExactlyNull(b)) this.say("never-equal", n.span, "equality", { left: printType(a), right: printType(b) });
         return BOOL;
       }
       case "in":
@@ -822,7 +868,7 @@ class Checker {
   /** The null and `any` rules of 8.3 for one operand. Returns its type, and whether it was `any`. */
   private operand(t: Type, x: A.Expr, n: A.Binary): { t: Type; any: boolean; never: boolean } {
     if (hasNull(t)) {
-      this.diag("maybe-null", x.span);
+      this.maybeNull(x.span, t);
       t = nonnull(t);
     }
     if (isAny(t)) {
@@ -845,15 +891,15 @@ class Checker {
       const sb = fits(b.t, STRING) !== 0;
       let bad = false;
       if (!fa && !sa) {
-        this.diag("kind", n.x.span);
+        this.kind(n.x.span, "operand", { op, type: a.t });
         bad = true;
       }
       if (!fb && !sb) {
-        this.diag("kind", n.y.span);
+        this.kind(n.y.span, "operand", { op, type: b.t });
         bad = true;
       }
       if (!bad && ((fa && !sa && sb && !fb) || (sa && !fa && fb && !sb))) {
-        this.diag("kind", n.span);
+        this.kind(n.span, "operands", { op, left: a.t, right: b.t });
         bad = true;
       }
       if (order) return BOOL;
@@ -866,11 +912,11 @@ class Checker {
     if (op === "**") {
       let bad = false;
       if (fits(a.t, FLOAT) === 0) {
-        this.diag("kind", n.x.span);
+        this.kind(n.x.span, "operand", { op, type: a.t });
         bad = true;
       }
       if (fits(b.t, INT) === 0) {
-        this.diag("kind", n.y.span);
+        this.kind(n.y.span, "exponent", { type: b.t });
         bad = true;
       }
       if (!(n.y.kind === "Number" || isNum(n.x, 0))) this.site("divide", n.span);
@@ -881,15 +927,15 @@ class Checker {
     // -, *, /, %
     let bad = false;
     if (fits(a.t, FLOAT) === 0) {
-      this.diag("kind", n.x.span);
+      this.kind(n.x.span, "operand", { op, type: a.t });
       bad = true;
     }
     if (fits(b.t, FLOAT) === 0) {
-      this.diag("kind", n.y.span);
+      this.kind(n.y.span, "operand", { op, type: b.t });
       bad = true;
     }
     if (op === "/") {
-      if (n.y.kind === "Number" && n.y.value === 0) this.diag("zero-divisor", n.y.span);
+      if (n.y.kind === "Number" && n.y.value === 0) this.say("zero-divisor", n.y.span, "default");
       if (!isNum(n.y, 0)) this.site("divide", n.span);
     }
     if (op === "%" && !isNum(n.y, 0)) this.site("divide", n.span);
@@ -903,7 +949,7 @@ class Checker {
     let a = at;
     let b = bt;
     if (hasNull(b)) {
-      this.diag("maybe-null", n.y.span);
+      this.maybeNull(n.y.span, b);
       b = nonnull(b);
     }
     if (isAny(b)) {
@@ -912,22 +958,22 @@ class Checker {
     }
     if (isNever(b)) return BOOL;
     if (kindCount(b) === 1 && b.list) {
-      if (!overlap(a, b.list) && !isNever(a) && !isNever(b.list) && !isExactlyNull(a) && !isExactlyNull(b.list)) this.diag("never-equal", n.span);
+      if (!overlap(a, b.list) && !isNever(a) && !isNever(b.list) && !isExactlyNull(a) && !isExactlyNull(b.list)) this.say("never-equal", n.span, "in", { left: printType(a), right: printType(b) });
       return BOOL;
     }
     if (kindCount(b) === 1 && (b.str || b.map)) {
       // The left side "must fit string; null is maybe-null" (8.4): with a list
       // on the right, a null left operand is allowed (questions file, ts S4).
       if (hasNull(a)) {
-        this.diag("maybe-null", n.x.span);
+        this.maybeNull(n.x.span, a);
         a = nonnull(a);
       }
       const fit = fits(a, STRING);
-      if (fit === 0) this.diag("kind", n.x.span);
+      if (fit === 0) this.kind(n.x.span, "in-left", { op: opText(n.op), type: a });
       else if (fit === 2) this.site("dynamic", n.x.span, n.span);
       return BOOL;
     }
-    this.diag("kind", n.y.span);
+    this.kind(n.y.span, "in-right", { op: opText(n.op), type: b });
     return BOOL;
   }
 
@@ -954,7 +1000,7 @@ class Checker {
     for (let k = conds.length - 1; k >= 0; k--) {
       acc.add(thens[k]);
       if (acc.size() > SIZE_LIMIT) {
-        this.diag("check-limit", conds[k].span);
+        this.say("check-limit", conds[k].span, "size");
         acc = new TypeAcc();
       }
     }
@@ -996,7 +1042,7 @@ class Checker {
         covered.add(v);
         if (l.kind === "String") strs.add(l.value);
         // 11.2, never-equal: the conditions of `==` (8.2).
-        if (l.kind !== "Null" && !isNever(s) && !isExactlyNull(s) && !overlap(this.litType(l), s)) this.diag("never-equal", l.span);
+        if (l.kind !== "Null" && !isNever(s) && !isExactlyNull(s) && !overlap(this.litType(l), s)) this.say("never-equal", l.span, "match", { type: printType(s), text: new TextAt(l.span) });
       }
       if (arm.isDefault) hasDefault = true;
       let armFacts = facts;
@@ -1017,7 +1063,7 @@ class Checker {
     }
     if (!hasDefault && !isNever(s)) {
       const values = finiteValues(s);
-      if (values === null || values.some((v) => !covered.has(v))) this.diag("non-exhaustive", e.span);
+      if (values === null || values.some((v) => !covered.has(v))) this.say("non-exhaustive", e.span, "default", { type: printType(s) });
     }
     if (acc.size() > SIZE_LIMIT) return this.sizeFail(e.span);
     return acc.type();
@@ -1073,11 +1119,11 @@ class Checker {
       const optional = (s as A.Member | A.Index | A.MethodCall).optional;
       if (hasNull(cur)) {
         if (optional) skipped = true;
-        else this.diag("maybe-null", recvSpan);
+        else this.maybeNull(recvSpan, cur);
         cur = nonnull(cur);
       }
       if (!isAny(cur) && !isNever(cur) && kindCount(cur) !== 1) {
-        this.diag("kind", recvSpan);
+        this.kind(recvSpan, "receiver", { type: cur });
         cur = NEVER;
       }
       // The field this step reads, when the step is a field read.
@@ -1115,7 +1161,7 @@ class Checker {
         if (p.optional) {
           if (first) skipped = true;
           else skippedElement = true;
-        } else this.diag("maybe-null", p.recvSpan);
+        } else this.maybeNull(p.recvSpan, cur);
         cur = nonnull(cur);
       }
       if (isAny(cur)) {
@@ -1134,7 +1180,7 @@ class Checker {
         return NEVER;
       }
       if (kindCount(cur) === 1 && cur.list) return cur.list;
-      this.diag("kind", p.recvSpan);
+      this.kind(p.recvSpan, "star", { type: cur });
       failed = true;
       return null;
     };
@@ -1159,11 +1205,11 @@ class Checker {
         }
         if (hasNull(cur)) {
           if (s.optional) skippedElement = true;
-          else this.diag("maybe-null", recvSpan);
+          else this.maybeNull(recvSpan, cur);
           cur = nonnull(cur);
         }
         if (!isAny(cur) && !isNever(cur) && kindCount(cur) !== 1) {
-          this.diag("kind", recvSpan);
+          this.kind(recvSpan, "receiver", { type: cur });
           cur = NEVER;
           failed = true;
         }
@@ -1205,17 +1251,17 @@ class Checker {
       }
       if (s.index.kind === "String" && cur.map) {
         this.synth(s.index, f);
-        return this.readKey(cur.map, s.index.value, optional, s.index.span, recvSpan, present, [s.span]);
+        return this.readKey(cur.map, s.index.value, optional, s.index.span, recvSpan, present, [s.span], cur);
       }
       let k = this.synth(s.index, f);
       const need = cur.map ? STRING : INT;
       if (cur.map || cur.list || cur.str) {
         if (hasNull(k)) {
-          this.diag("maybe-null", s.index.span);
+          this.maybeNull(s.index.span, k);
           k = nonnull(k);
         }
         const fit = fits(k, need);
-        if (fit === 0) this.diag("kind", s.index.span);
+        if (fit === 0) this.kind(s.index.span, cur.map ? "key" : "index", { type: k });
         else if (fit === 2) this.site("dynamic", s.index.span, s.span);
       }
       if (cur.map) {
@@ -1225,7 +1271,7 @@ class Checker {
         const v = recordValues(r);
         if (optional) return withNull(v);
         if (isAny(r.rest)) this.site("dynamic", recvSpan, s.span);
-        else this.diag("maybe-absent", s.index.span);
+        else this.say("maybe-absent", s.index.span, "index", { type: printType(cur) });
         return v;
       }
       if (cur.list) {
@@ -1238,7 +1284,7 @@ class Checker {
         this.site("index", s.span);
         return STRING;
       }
-      this.diag("kind", recvSpan);
+      this.kind(recvSpan, "index-read", { type: cur });
       return NEVER;
     }
     // Member
@@ -1251,27 +1297,27 @@ class Checker {
       return this.site("dynamic", recvSpan, s.span) ? NEVER : ANY;
     }
     if (isNever(cur)) return NEVER;
-    if (cur.map) return this.readKey(cur.map, m.name, optional, m.nameSpan, recvSpan, present, [s.span]);
-    this.diag("kind", recvSpan);
+    if (cur.map) return this.readKey(cur.map, m.name, optional, m.nameSpan, recvSpan, present, [s.span], cur);
+    this.kind(recvSpan, "field-read", { type: cur });
     return NEVER;
   }
 
   /** Read a field of a record (9.2), plain or as by `?.`. */
-  private readKey(r: Rec, key: string, optional: boolean, keySpan: Span, recvSpan: Span, present: boolean, owners: Span[]): Type {
+  private readKey(r: Rec, key: string, optional: boolean, keySpan: Span, recvSpan: Span, present: boolean, owners: Span[], whole: Type = { map: r }): Type {
     const fl = r.fields.get(key);
     if (fl !== undefined && (!fl.optional || present)) return fl.type;
     if (fl !== undefined || (!isNever(r.rest) && !isAny(r.rest))) {
       const t = fl !== undefined ? fl.type : r.rest;
       if (present) return t;
       if (optional) return withNull(t);
-      this.diag("maybe-absent", keySpan);
+      this.say("maybe-absent", keySpan, "field", { key, type: printType(whole) });
       return t;
     }
     if (isAny(r.rest)) {
       if (optional || present) return ANY;
       return this.site("dynamic", recvSpan, ...owners) ? NEVER : ANY;
     }
-    this.diag("no-field", keySpan);
+    this.say("no-field", keySpan, "default", { key, type: printType(whole) });
     return NEVER;
   }
 
@@ -1319,6 +1365,7 @@ class Checker {
         else this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level);
       }
       // A method of that name marked `!` somewhere: a `value` or `host` site on the call (13.3).
+      this.siteName = s.name;
       if ([...this.env.libraryMethods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("value", s.span);
       if ([...this.env.methods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("host", s.span);
       return ANY;
@@ -1333,7 +1380,7 @@ class Checker {
     else if (cur.map) sig = this.env.libraryMethods.get("map")?.get(s.name);
     else if (cur.opaque) sig = this.env.methods.get([...cur.opaque][0])?.get(s.name);
     if (sig === undefined) {
-      this.diag("no-method", s.nameSpan);
+      this.say("no-method", s.nameSpan, "default", { type: printType(cur), name: s.name });
       this.plainArgs(s.args, f);
       return NEVER;
     }
@@ -1355,8 +1402,9 @@ class Checker {
         if (!p.optional) min++;
       }
     }
+    const callName = isMethod ? (node as A.MethodCall).name : sig.name;
     if (args.length < min || (!rest && args.length > max)) {
-      if (isMethod) this.diag("arity", span);
+      if (isMethod) this.say("arity", span, rest ? "at-least" : min === max ? "exact" : "range", { name: callName, count: args.length, required: min, most: max });
       this.plainArgs(args, f);
       return NEVER;
     }
@@ -1385,13 +1433,13 @@ class Checker {
       if (la !== null) {
         argTypes.push(null);
         if (p.type.t === "fn") lambdas.push({ i, la });
-        else if (isMethod) this.diag("not-a-value", la.span);
+        else if (isMethod) this.say("not-a-value", la.span, "argument", { param: p.name, name: callName });
         return;
       }
       const t = this.synth(a as A.Expr, f);
       argTypes.push(t);
       if (p.type.t === "fn") {
-        this.diag("arg-mismatch", a.span);
+        this.say("arg-mismatch", a.span, "function", { param: p.name, name: callName });
         return;
       }
       this.bind(paramType(i)!, t, gain);
@@ -1404,12 +1452,12 @@ class Checker {
       if (this.drop === 0) this.callbacks.push({ body: sp(la.lambda.body.span), call: sp(span) });
       const fn = paramAt(i).type as Extract<SigNode["params"][number]["type"], { t: "fn" }>;
       if (la.lambda.params.length > fn.params.length) {
-        if (isMethod) this.diag("arity", la.span);
+        if (isMethod) this.say("arity", la.span, "parameters", { name: callName, most: fn.params.length });
         continue;
       }
       const qs = fn.params.map((q) => q.type);
       if (qs.slice(0, la.lambda.params.length).some((q) => varsOf(q).some((v) => !sol.has(v)))) {
-        this.diag("cannot-infer", la.span);
+        this.say("cannot-infer", la.span, "default", { name: callName });
         continue;
       }
       const inst = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, named: this.env.named, variable: (v) => sol.get(v) ?? NEVER });
@@ -1440,13 +1488,15 @@ class Checker {
         if (over) return this.sizeFail(span);
       }
       // The body always fits R, every Var by its solution (13.5).
-      this.fitSimple(b.type, inst(r), la.lambda.body.span, "arg-mismatch");
+      const want = inst(r);
+      if (fits(b.type, want) === 0) this.say("arg-mismatch", la.lambda.body.span, "body", { name: callName, found: printType(b.type), expected: printType(want) });
+      else this.fitSimple(b.type, want, la.lambda.body.span, "arg-mismatch");
     }
     // 4. Bounds.
     for (const bd of sig.sig.bounds) {
       const t = sol.get(bd.name) ?? NEVER;
       const fit: Fit = bd.bound === "number" ? fits(t, FLOAT) : maxFit(fits(t, FLOAT), fits(t, STRING));
-      if (fit === 0) this.diag("arg-mismatch", span);
+      if (fit === 0) this.say("arg-mismatch", span, bd.bound === "number" ? "number" : "ordered", { name: callName, found: printType(t) });
       else if (fit === 2) this.site("dynamic", span, span);
     }
     // 5. Fit, through the form.
@@ -1464,7 +1514,10 @@ class Checker {
     });
     // 6. Result.
     let result = inst(sig.sig.result);
-    if (sig.sig.canFail) this.site(sig.kind === "library" ? "value" : "host", span);
+    if (sig.sig.canFail) {
+      this.siteName = callName;
+      this.site(sig.kind === "library" ? "value" : "host", span);
+    }
     // 13.8: filter and find narrow.
     const nw = this.narrowed;
     this.narrowed = null;
@@ -1525,10 +1578,16 @@ class Checker {
     }
   }
 
+  /** A place of failure (f08 3.5 item 1): `maybe-null`, or the mismatch with the type there and the type expected. */
+  private fitFail(code: string, span: Span, place: Type, want: Type): void {
+    if (code === "maybe-null") this.maybeNull(span, place);
+    else this.say(code, span, code === "result-mismatch" ? "result" : "argument", { expected: printType(want), found: printType(place) });
+  }
+
   /** e must fit T, not through its form: code at e. */
   private fitSimple(t: Type, want: Type, span: Span, code: string): void {
     const fit = fits(t, want);
-    if (fit === 0) this.diag(code, span);
+    if (fit === 0) this.fitFail(code, span, t, want);
     else if (fit === 2) this.site("dynamic", span, span);
   }
 
@@ -1549,7 +1608,7 @@ class Checker {
         if (it.kind === "Spread") {
           const st = this.types.get(it.value) ?? NEVER;
           const sf = fits(st, listOf(elem));
-          if (sf === 0) this.diag(code(st, listOf(elem)), it.value.span);
+          if (sf === 0) this.fitFail(code(st, listOf(elem)), it.value.span, st, listOf(elem));
           else if (sf === 2) this.site("dynamic", it.value.span, ...owners);
         } else this.fitForm(it, elem, code, undefined, owners);
       }
@@ -1577,7 +1636,7 @@ class Checker {
       this.fitForm(e.result, want, code, undefined, owners);
       return;
     }
-    this.diag(code(t, want), place);
+    this.fitFail(code(t, want), place, t, want);
   }
 
   /** A map literal with no computed key against a tagged union (f05 6): the tag's contributors choose the variant. */
@@ -1608,7 +1667,7 @@ class Checker {
       }
     }
     if (first < 0) {
-      this.diag(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place);
+      this.say(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place, "missing", { key: tag });
       return;
     }
     const contributors = cs.slice(first);
@@ -1618,7 +1677,7 @@ class Checker {
       : undefined;
     if (v === undefined) {
       const tagType: Alts = { str: new Set(u.variants.flatMap((x) => [...tagSetOf(x, tag)])) };
-      for (const c of contributors) this.diag(code(c.type, tagType), c.span);
+      for (const c of contributors) this.fitFail(code(c.type, tagType), c.span, c.type, tagType);
       return;
     }
     this.fitMap(e, t, want, v, code, place, owners);
@@ -1649,9 +1708,9 @@ class Checker {
       else if (it.m !== null && it.m !== "any") for (const k of it.m.fields.keys()) keys.add(k);
     }
     // Each required field of R is surely given by some entry: else the whole of e, once.
-    let missing = false;
-    for (const [k, fl] of r.fields) if (!fl.optional && !items.some((it) => gives(it, k)?.sure === true)) missing = true;
-    if (missing) this.diag(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place);
+    // f08 3.5 item 2: the least key by code point of the required fields with no entry.
+    const missing = [...r.fields].filter(([k, fl]) => !fl.optional && !items.some((it) => gives(it, k)?.sure === true)).map(([k]) => k).sort(compareText);
+    if (missing.length > 0) this.say(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place, "missing", { key: missing[0] });
     const reported = new Set<A.Spread>();
     for (const k of [...keys, null]) {
       const gs = items.map((it) => gives(it, k));
@@ -1671,7 +1730,7 @@ class Checker {
         if ("written" in it) {
           const en = it.written;
           if (fl === undefined && isNever(r.rest)) {
-            this.diag(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span);
+            this.say(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span, "extra", { expected: printType({ map: r }), key: it.key });
             continue;
           }
           this.fitForm(en.value, rt, code, en.shorthand ? (en.key as { span: Span }).span : undefined, owners);
@@ -1681,7 +1740,7 @@ class Checker {
         const fit = fits(g.type, rt);
         if (fit === 0) {
           reported.add(it.spread);
-          this.diag(code(g.type, rt), it.spread.value.span);
+          this.fitFail(code(g.type, rt), it.spread.value.span, g.type, rt);
         } else if (fit === 2 && it.m !== "any") this.site("dynamic", it.spread.value.span, ...owners);
       }
     }
@@ -1716,7 +1775,8 @@ class Checker {
     this.uses++;
     const expanded = useLevel + this.offset;
     if (this.uses > 1000 || l.maxLevel - l.level + expanded + 1 > 100) {
-      this.diag("check-limit", span);
+      if (this.uses > 1000) this.say("check-limit", span, "bodies");
+      else this.say("check-limit", span, "nesting", { name: this.res.lambdaNames?.get(this.res.lambdas.indexOf(l)) ?? "" });
       return false;
     }
     return true;
@@ -1793,9 +1853,18 @@ export function varsOf(n: TypeNode): string[] {
   }
 }
 
-function messageFor(code: string): string {
-  return code.replace(/-/g, " ");
+/** The message of a check diagnostic, from its template (f08 3.5). */
+function checkMessage(d: DiagRec, source: Source | undefined): string {
+  if (d.template === undefined) return d.code.replace(/-/g, " ");
+  const params: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(d.params ?? {})) params[k] = v instanceof TextAt ? (source === undefined ? "" : source.slice(v.span.start, v.span.end)) : v;
+  return catalogMessage(d.code, d.template, params);
 }
 
 export { mapOf, opaque, alternatives, joinAll };
 export type { Alts };
+
+/** Whether a parameter value is a type, to be printed (f08 3.2 item 2). */
+function isTypeLike(v: unknown): boolean {
+  return typeof v === "object" && v !== null && !(v instanceof TextAt) && !Array.isArray(v);
+}

@@ -1,6 +1,7 @@
 // 02 8.4, 01 13.2: the stack this binding needs. The deepest programs within the
-// limits run in a child process whose V8 stack is 500 KB, about half of
-// Node's default (984 KB). Measured: 400 KB suffices at depth limit 1,000.
+// limits run in a child process whose V8 stack is 700 KB, below Node's
+// default (984 KB). Measured: 600 KB suffices at depth limit 1,000, with the
+// trace of package F8 kept as a failure unwinds.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,8 +11,8 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-test("the deepest programs run with a 500 KB stack", () => {
-  const out = execFileSync(process.execPath, ["--stack-size=500", join(here, "fixtures", "deepest.ts")], { encoding: "utf8" });
+test("the deepest programs run with a 700 KB stack", () => {
+  const out = execFileSync(process.execPath, ["--stack-size=700", join(here, "fixtures", "deepest.ts")], { encoding: "utf8" });
   assert.equal(out.trim(), "calls 200 ok calls 1000 ok walk 1000 ok nesting 100 ok");
 });
 

@@ -33,7 +33,9 @@ export interface Token {
   /** The form of a literal of package F3: r", r', a text block or a raw text block (f03 5.2). */
   form?: string;
   /** A code of a text block that the parser reports when it reaches the token (f03 6.2). */
-  blockError?: { code: string; start: number; end: number };
+  blockError?: { code: string; start: number; end: number; template?: string };
+  /** A prefixed literal: its word, and the quote or backtick after it (01 2.3 rule 9, f08 2.5). */
+  prefix?: { word: string; quote: string; triple: boolean };
 }
 
 export type TemplatePart =

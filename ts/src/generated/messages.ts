@@ -271,5 +271,983 @@ export const CATALOG: CatalogEntry[] = [
     "templates": {
       "default": "the match has no arm for {found}"
     }
+  },
+  {
+    "code": "unexpected-token",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "unexpected {token}"
+    }
+  },
+  {
+    "code": "unexpected-character",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "char": "char"
+    },
+    "templates": {
+      "default": "unexpected character {char}"
+    }
+  },
+  {
+    "code": "unterminated-string",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "string": "the string is not closed on its line",
+      "template": "the template has no closing backtick",
+      "text-block": "the text block has no closing delimiter",
+      "part": "the part has no closing delimiter"
+    }
+  },
+  {
+    "code": "unterminated-comment",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "the block comment has no closing */"
+    }
+  },
+  {
+    "code": "bad-escape",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "unknown": "{token} is not an escape",
+      "unicode": "{token} is not a complete Unicode escape",
+      "range": "{token} names no code point",
+      "surrogate": "{token} is half of a surrogate pair"
+    }
+  },
+  {
+    "code": "line-continuation",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a \\ before a line end does not join lines; write \\\\ for a backslash"
+    }
+  },
+  {
+    "code": "bad-number",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "{token} is not a number"
+    }
+  },
+  {
+    "code": "literal-range",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "whole": "{token} is larger than the largest whole number, 9007199254740991",
+      "finite": "{token} is too large to be a finite number"
+    }
+  },
+  {
+    "code": "text-block-open",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "only spaces and tabs may follow the opening delimiter of a text block on its line"
+    }
+  },
+  {
+    "code": "text-block-close",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "only the indentation may stand before the closing delimiter of a text block on its line"
+    }
+  },
+  {
+    "code": "text-block-indent",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "tab": "the line has a tab where the indentation has a space",
+      "space": "the line has a space where the indentation has a tab",
+      "default": "the line does not start with the indentation of the closing delimiter"
+    }
+  },
+  {
+    "code": "nesting-exceeded",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "{token} opens a level past the limit of 100 levels of nesting"
+    }
+  },
+  {
+    "code": "bad-type-text",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token",
+      "key": "string"
+    },
+    "templates": {
+      "value": "{token} is a value, not a type; compare with == to test a value",
+      "number-word": "number is not a type; write int or float",
+      "boolean-word": "boolean is not a type; write bool",
+      "null-word": "{token} is not a type; write null",
+      "object-word": "object is not a type; write a record type or map<T>",
+      "letter": "a type name has two characters or more, and {token} has one",
+      "lower": "{token} is not a type; a type name starts with an upper-case letter",
+      "literal": "a template or a text block cannot stand in a type",
+      "expected": "a type is expected, found {token}",
+      "split": "write a space between the > that closes map< and the = after it",
+      "map-open": "map is followed by <, found {token}",
+      "map-close": "map< is closed by >, found {token}",
+      "paren": "a ( in a type is closed by ), found {token}",
+      "record": "{token} cannot stand here in a record type",
+      "duplicate": "key {key} is written twice in the record type"
+    }
+  },
+  {
+    "code": "reserved-word",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "name": "{token} is a reserved word and cannot be a name",
+      "operand": "{token} is a reserved word and cannot stand here"
+    }
+  },
+  {
+    "code": "strict-equality",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "equal": "=== is not an operator; write ==, which converts nothing",
+      "not-equal": "!== is not an operator; write !=, which converts nothing"
+    }
+  },
+  {
+    "code": "missing-else",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "an if needs an else branch, found {token}"
+    }
+  },
+  {
+    "code": "if-form",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "form": "the test of an if is written in parentheses and each branch in braces, found {token}",
+      "call": "if is not a function; write c ? a : b"
+    }
+  },
+  {
+    "code": "branch-like-map",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+  },
+  {
+    "code": "empty-branch",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+  },
+  {
+    "code": "needs-parentheses",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token",
+      "op": "word"
+    },
+    "templates": {
+      "power": "a prefix {token} cannot apply directly to a power; put the operand or the power in parentheses",
+      "in": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses",
+      "coalesce": "put one side of {token} in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them",
+      "after-branch": "an if or a try is a whole expression; put it in parentheses before {token}",
+      "operand": "put the {token} in parentheses: it cannot stand as an operand",
+      "match-subject": "a match needs a subject, and a subject that starts with {token} is written in parentheses",
+      "not-test": "a prefix ! cannot stand before {op}; write !(x {op} T), or put the ! and its operand in parentheses",
+      "after-type": "put the as or is test in parentheses before {token}"
+    }
+  },
+  {
+    "code": "try-call",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "try is not a function; write try and catch, each followed by a branch in braces"
+    }
+  },
+  {
+    "code": "missing-catch",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "a try needs a catch, found {token}"
+    }
+  },
+  {
+    "code": "try-form",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "the body of a try and its handler are written in braces, found {token}"
+    }
+  },
+  {
+    "code": "catch-name",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "the parentheses after catch hold one name, found {token}; leave them out when the error is not used"
+    }
+  },
+  {
+    "code": "finally-clause",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there is no finally: nothing in a program has an effect to undo"
+    }
+  },
+  {
+    "code": "throw-statement",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there is no throw; write fail(message)"
+    }
+  },
+  {
+    "code": "switch-statement",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there is no switch or case; write a match"
+    }
+  },
+  {
+    "code": "function-declaration",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there is no function declaration; bind a lambda with const"
+    }
+  },
+  {
+    "code": "return-statement",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there is no return: the value of a block is its last expression"
+    }
+  },
+  {
+    "code": "let-binding",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "there is no {token}; write const, since a binding never changes"
+    }
+  },
+  {
+    "code": "loop-statement",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+  },
+  {
+    "code": "assignment",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "assign": "a binding cannot be reassigned; bind a new name with const, or compare with ==",
+      "compound": "{token} does not exist: a binding cannot be changed; bind a new name with const",
+      "increment": "++ does not exist: a binding cannot be changed; write x + 1"
+    }
+  },
+  {
+    "code": "import-statement",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there are no imports in 3.0; a host passes shared data as a variable"
+    }
+  },
+  {
+    "code": "export-statement",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a program exports no name; its value is its last expression"
+    }
+  },
+  {
+    "code": "block-without-const",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+  },
+  {
+    "code": "lambda-in-pattern",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a lambda is bound to a name, not to a pattern"
+    }
+  },
+  {
+    "code": "slice-syntax",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there is no slice syntax; write x.slice(a, b)"
+    }
+  },
+  {
+    "code": "optional-index",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "an optional index is written ?.[ with a dot"
+    }
+  },
+  {
+    "code": "star-form",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a projection is written xs[*].f"
+    }
+  },
+  {
+    "code": "filter-step",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there is no filter step; write xs.filter(x => test)"
+    }
+  },
+  {
+    "code": "context-symbol",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "$ names nothing; write the name of the variable"
+    }
+  },
+  {
+    "code": "bitwise-operator",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "and": "& is not an operator; write && for a logical and",
+      "or": "| is not an operator here; write || for a logical or"
+    }
+  },
+  {
+    "code": "pipe-operator",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "|> is not an operator; write f(x), or call a method"
+    }
+  },
+  {
+    "code": "nil-literal",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "nil is not a value; write null"
+    }
+  },
+  {
+    "code": "type-annotation",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "types are inferred; remove the annotation"
+    }
+  },
+  {
+    "code": "satisfies-operator",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "satisfies is not an operator; x as T tests a value when the program runs"
+    }
+  },
+  {
+    "code": "instanceof-operator",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "instanceof is not an operator; write x is T"
+    }
+  },
+  {
+    "code": "typeof-operator",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "typeof is not an operator; write type(x) for the kind, or x is T for a test"
+    }
+  },
+  {
+    "code": "angle-cast",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "<T>x is not a cast; write x as T"
+    }
+  },
+  {
+    "code": "type-declaration",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "a program cannot declare a type with {token}; write the type in place, or use a name the host declared"
+    }
+  },
+  {
+    "code": "as-const",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "as const is not needed, because no value can change; remove it"
+    }
+  },
+  {
+    "code": "negated-is",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "is has no negated form; write !(x is T)"
+    }
+  },
+  {
+    "code": "text-block-quote",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a text block is written with three double quotes, not '''"
+    }
+  },
+  {
+    "code": "string-prefix",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "prefix": "{token} is not a string prefix; only a lower-case r directly before the quote makes a raw string",
+      "space": "the prefix r stands directly before the quote, with nothing between",
+      "guard": "a raw string has no # guards; write the text in another form, or interpolate what a raw string cannot hold"
+    }
+  },
+  {
+    "code": "tagged-template",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+  },
+  {
+    "code": "heredoc",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "there are no heredocs; write a text block"
+    }
+  },
+  {
+    "code": "hash-comment",
+    "phase": "parse",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "a comment is written // to the end of the line, or /* */"
+    }
+  },
+  {
+    "code": "unquoted-key",
+    "phase": "parse",
+    "caught": null,
+    "params": {
+      "key": "string"
+    },
+    "templates": {
+      "default": "a key that is not a word is quoted: write {key}"
+    }
+  },
+  {
+    "code": "undefined-name",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "name": "{name} is not defined",
+      "type": "no type is named {name}"
+    }
+  },
+  {
+    "code": "undefined-function",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "no function is named {name}"
+    }
+  },
+  {
+    "code": "not-a-value",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word",
+      "param": "word"
+    },
+    "templates": {
+      "namespace": "{name} is a namespace, not a value",
+      "function": "{name} is a function, not a value; call it",
+      "lambda": "{name} is a const-bound lambda, not a value; call it, or pass it to a library entry that takes a function",
+      "argument": "a function cannot stand at parameter {param} of {name}, which takes a value"
+    }
+  },
+  {
+    "code": "call-of-parameter",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is a value, not a function, and cannot be called"
+    }
+  },
+  {
+    "code": "lambda-to-lambda",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "a function cannot be passed to {name}, which is a const-bound lambda; pass the data instead"
+    }
+  },
+  {
+    "code": "duplicate-name",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is already bound here"
+    }
+  },
+  {
+    "code": "shadows-namespace",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is a namespace and cannot be bound"
+    }
+  },
+  {
+    "code": "duplicate-key",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "key": "string"
+    },
+    "templates": {
+      "default": "key {key} is written twice in this map"
+    }
+  },
+  {
+    "code": "no-field",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "type": "type",
+      "key": "string"
+    },
+    "templates": {
+      "default": "{type} has no field {key}"
+    }
+  },
+  {
+    "code": "no-method",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "type": "type",
+      "name": "word"
+    },
+    "templates": {
+      "default": "a value of type {type} has no method {name}"
+    }
+  },
+  {
+    "code": "maybe-absent",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "type": "type",
+      "key": "string"
+    },
+    "templates": {
+      "field": "field {key} may be absent from {type}",
+      "index": "the key may be absent from {type}"
+    }
+  },
+  {
+    "code": "maybe-null",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "text": "text",
+      "type": "type"
+    },
+    "templates": {
+      "default": "{text} may be null; its type is {type}"
+    }
+  },
+  {
+    "code": "kind",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "op": "word",
+      "type": "type",
+      "left": "type",
+      "right": "type"
+    },
+    "templates": {
+      "operand": "{op} cannot take a value of type {type}",
+      "exponent": "the exponent of ** must be of type int, found {type}",
+      "operands": "{op} cannot take values of types {left} and {right}",
+      "in-left": "the left operand of {op} must be a string here, found {type}",
+      "in-right": "the right operand of {op} must be a list, a string or a map, found {type}",
+      "receiver": "a read or a method call needs one kind, and {type} has more than one",
+      "field-read": "a value of type {type} has no fields to read",
+      "index-read": "a value of type {type} cannot be indexed",
+      "index": "a list or string index must be of type int, found {type}",
+      "key": "a map key must be of type string, found {type}",
+      "spread-list": "only a list can be spread into a list, found {type}",
+      "spread-map": "only a map can be spread into a map, found {type}",
+      "pattern-list": "a list pattern needs a list, found {type}",
+      "pattern-map": "a map pattern needs a map, found {type}",
+      "rendered": "a value of type {type} cannot be rendered as text, because it holds an opaque type",
+      "star": "a projection needs a list, found {type}"
+    }
+  },
+  {
+    "code": "never-equal",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "left": "type",
+      "right": "type",
+      "type": "type",
+      "text": "text"
+    },
+    "templates": {
+      "equality": "a value of type {left} is never equal to a value of type {right}",
+      "in": "a value of type {left} is never an element of a list of type {right}",
+      "match": "the subject, of type {type}, is never equal to {text}"
+    }
+  },
+  {
+    "code": "always-truthy",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "text": "text",
+      "type": "type"
+    },
+    "templates": {
+      "default": "{text} is always truthy: its type is {type}",
+      "test": "{text} is always true for a value of type {type}"
+    }
+  },
+  {
+    "code": "always-falsy",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "text": "text",
+      "type": "type"
+    },
+    "templates": {
+      "default": "{text} is always falsy: its type is {type}",
+      "test": "{text} is always false for a value of type {type}"
+    }
+  },
+  {
+    "code": "zero-divisor",
+    "phase": "check",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "the divisor is the number 0"
+    }
+  },
+  {
+    "code": "arity",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word",
+      "count": "number",
+      "required": "number",
+      "most": "number"
+    },
+    "templates": {
+      "exact": "the argument count of {name} must be {required}, found {count}",
+      "range": "the argument count of {name} must be from {required} to {most}, found {count}",
+      "at-least": "the argument count of {name} must be at least {required}, found {count}",
+      "parameters": "the function given to {name} declares more than {most} parameters"
+    }
+  },
+  {
+    "code": "arg-mismatch",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "expected": "type",
+      "found": "type",
+      "key": "string",
+      "name": "word",
+      "param": "word"
+    },
+    "templates": {
+      "argument": "expected {expected}, found {found}",
+      "missing": "required field {key} has no entry",
+      "extra": "{expected} does not allow key {key}",
+      "function": "parameter {param} of {name} takes a function",
+      "body": "the function given to {name} gives {found}, which does not fit {expected}",
+      "ordered": "{name} needs all numbers or all strings, found {found}",
+      "number": "{name} needs numbers, found {found}"
+    }
+  },
+  {
+    "code": "cannot-infer",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "the types of the parameters of this function cannot be inferred from the call of {name}"
+    }
+  },
+  {
+    "code": "check-limit",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "nesting": "checking this use of {name} passes 100 levels of expanded nesting",
+      "bodies": "the program checks more than 1000 lambda bodies",
+      "depth": "the type here is more than 64 levels deep",
+      "size": "the type here has more than 100000 parts"
+    }
+  },
+  {
+    "code": "duplicate-case",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "text": "text"
+    },
+    "templates": {
+      "default": "{text} is listed twice in this match"
+    }
+  },
+  {
+    "code": "unreachable-arm",
+    "phase": "check",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "this arm comes after _ and is never chosen"
+    }
+  },
+  {
+    "code": "non-exhaustive",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "type": "type"
+    },
+    "templates": {
+      "default": "the match has no _ arm and does not cover every value of type {type}"
+    }
+  },
+  {
+    "code": "result-mismatch",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "expected": "type",
+      "found": "type",
+      "key": "string"
+    },
+    "templates": {
+      "result": "expected {expected}, found {found}",
+      "missing": "required field {key} has no entry",
+      "extra": "{expected} does not allow key {key}"
+    }
+  },
+  {
+    "code": "unchecked",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "text": "text"
+    },
+    "templates": {
+      "default": "the check cannot show the kind of {text}, and this environment rejects dynamic sites"
+    }
+  },
+  {
+    "code": "may-fail",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "index": "this index may be outside its list or string, and this environment rejects index sites",
+      "divide": "this divisor may be zero, and this environment rejects divide sites",
+      "value": "this call of {name} may fail on a value, and this environment rejects value sites",
+      "test": "this test may fail on a value, and this environment rejects value sites",
+      "host": "{name} may return an error, and this environment rejects host sites"
+    }
+  },
+  {
+    "code": "never-conforms",
+    "phase": "check",
+    "caught": null,
+    "params": {
+      "expected": "type",
+      "found": "type"
+    },
+    "templates": {
+      "default": "no value of type {found} conforms to {expected}"
+    }
+  },
+  {
+    "code": "untagged-union",
+    "phase": "check",
+    "caught": null,
+    "params": {},
+    "templates": {
+      "default": "two record types in one union need a field that tells them apart"
+    }
   }
 ];

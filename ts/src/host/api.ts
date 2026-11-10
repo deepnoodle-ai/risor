@@ -28,7 +28,7 @@ import { declare, DEFAULT_LIMITS } from "./env.ts";
 import { check, spanKey } from "../types/check.ts";
 import type { CheckEnv, CheckSig, Expected, Site } from "../types/check.ts";
 import { depth, fromNode, printType, opaque as opaqueType, SIZE_LIMIT, typeSize } from "../types/type.ts";
-import { conformWalk, freeCtx } from "../eval/conform.ts";
+import { conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { compareText } from "../value/value.ts";
@@ -169,7 +169,7 @@ function countsOf(type: string): Counts {
   const s = parseSignature(type);
   if (!s.ok) return { min: 0, max: Infinity, fns: [], rest: true };
   const a = arity(s.node);
-  return { min: a.min, max: a.max, fns: s.node.params.map(() => null), rest: a.max === Infinity };
+  return { min: a.min, max: a.max, fns: s.node.params.map(() => null), rest: a.max === Infinity, names: s.node.params.map((p) => p.name) };
 }
 
 function hostImpl(f: HostFunction): HostImpl {
@@ -473,7 +473,19 @@ export class Env {
     const f = conformWalk(value, t, freeCtx(this.classifier));
     if (f === null) return null;
     const failure = new RunFailure("not-conforming", undefined, f.template, f.params);
-    return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(failure, this.classifier) };
+    return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(failure, this.classifier), trace: [] };
+  }
+
+  /**
+   * The conformance function that reports every failure, up to `max` (package
+   * F8, f08 6.1). A maximum below 1 is read as 1. Nothing is charged.
+   */
+  conformAll(value: unknown, typeText: string, max: number): Diagnostic[] {
+    const t = this.declaredType(typeText);
+    return conformAllWalk(value, t, this.classifier, Math.max(1, Math.floor(max))).map((f) => {
+      const failure = new RunFailure("not-conforming", undefined, f.template, f.params);
+      return { phase: "run" as const, code: "not-conforming", class: "value", path: f.path, message: messageOf(failure, this.classifier), trace: [] };
+    });
   }
 
   /** Type text resolved as declared type text (05 19.5, f04 7.1 item 4). Throws RisorError `bad-type`. */
@@ -499,8 +511,8 @@ export class Env {
     const exp = this.expected(expected);
     const p = parseInput(text);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
-    const s = staticRules(p.program, this.staticEnv);
-    const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics);
+    const s = staticRules(p.program, this.staticEnv, p.source);
+    const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics, p.source);
     if (c.diagnostics.length > 0) return { ok: false, diagnostics: c.diagnostics, source: p.source };
     return { ok: true, type: printType(c.type), sites: c.sites, source: p.source };
   }
@@ -573,14 +585,14 @@ export class Env {
     const exp = checked ? this.expected(options.expected) : { kind: "none" as const };
     const p = parseInput(text);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
-    const s = staticRules(p.program, this.staticEnv);
+    const s = staticRules(p.program, this.staticEnv, p.source);
     let dynamicSpans: Set<string> | null = null;
     let hostSpans: Set<string> | null = null;
     let valueSpans: Set<string> | null = null;
     let type: string | null = null;
     let sites: Site[] = [];
     if (checked) {
-      const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics);
+      const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics, p.source);
       if (c.diagnostics.length > 0) return { ok: false, diagnostics: c.diagnostics, source: p.source };
       dynamicSpans = c.dynamicSpans;
       hostSpans = c.hostSpans;
@@ -705,6 +717,7 @@ export class Program {
     if (cls !== undefined) d.class = cls;
     if (f.code === "failed") d.data = f.data;
     if (f.path !== undefined) d.path = [...f.path];
+    d.trace = [...f.trace];
     if (f.cause !== undefined) (d as Diagnostic & { cause?: unknown }).cause = f.cause;
     return d;
   }

@@ -198,3 +198,88 @@ export function conformWalk(v: unknown, t: Type, ctx: WalkCtx): ConformFailure |
 export function freeCtx(cls: Classifier): WalkCtx {
   return { cls, charge() {}, enter() {}, leave() {} };
 }
+
+/** The walk of every failure (package F8, f08 6.2): failures in order, up to `max`. Charges nothing. */
+export function conformAllWalk(v: unknown, t: Type, cls: Classifier, max: number): ConformFailure[] {
+  const out: ConformFailure[] = [];
+  const path: PathStep[] = [];
+  const full = () => out.length >= max;
+  const add = (template: ConformFailure["template"], params: Record<string, unknown>) => {
+    out.push({ path: [...path], template, params });
+  };
+  const wrong = (ty: Type, found: unknown) => add("wrong", { expected: printed(ty), found });
+  const at = (step: PathStep, f: () => void) => {
+    path.push(step);
+    f();
+    path.pop();
+  };
+  const all = (raw: unknown, ty: Type): void => {
+    if (full() || isAny(ty)) return;
+    const x = readHost(raw);
+    if (x === BAD_NUMBER) return wrong(ty, CANNOT_ENTER);
+    const k = cls.kind(x);
+    switch (k) {
+      case "null":
+        if (!ty.null) wrong(ty, x);
+        return;
+      case "bool":
+        if (!ty.bool) wrong(ty, x);
+        return;
+      case "number":
+        if (!(ty.num === "float" || (ty.num === "int" && whole(x as number)))) wrong(ty, x);
+        return;
+      case "string":
+        if (ty.str === undefined || (ty.str !== "string" && !ty.str.has(x as string))) wrong(ty, x);
+        return;
+      case "list": {
+        if (ty.list === undefined) return wrong(ty, x);
+        const xs = x as unknown[];
+        for (let i = 0; i < xs.length && !full(); i++) at(i, () => all(xs[i], ty.list!));
+        return;
+      }
+      case "map": {
+        if (ty.map === undefined) return wrong(ty, x);
+        if (ty.union !== undefined) {
+          // f08 6.2 step 7: the tag first; a missing or unknown tag stops this value.
+          const u = ty.union;
+          const tag = u.tag;
+          const tv = mapGet(x as object, tag);
+          if (tv === ABSENT) return at(tag, () => add("missing", { key: tag }));
+          const tagType: Alts = { str: new Set(u.variants.flatMap((r) => [...tagSetOf(r, tag)])) };
+          const s = readHost(tv);
+          const variant = typeof s === "string" ? u.variants.find((r) => tagSetOf(r, tag).has(s)) : undefined;
+          if (variant === undefined) return at(tag, () => wrong(tagType, s === BAD_NUMBER ? CANNOT_ENTER : s));
+          return record(x as object, variant, tag);
+        }
+        return record(x as object, ty.map, null);
+      }
+      default: {
+        const name = cls.opaqueName(x);
+        if (!(name !== null && ty.opaque?.has(name) === true)) wrong(ty, x);
+      }
+    }
+  };
+  const record = (m: object, r: Rec, skip: string | null): void => {
+    for (const key of declaredKeys(r)) {
+      if (full()) return;
+      if (key === skip) continue;
+      const fl = r.fields.get(key)!;
+      const val = mapGet(m, key);
+      if (val === ABSENT) {
+        if (!fl.optional) at(key, () => add("missing", { key }));
+        continue;
+      }
+      at(key, () => all(val, fl.type));
+    }
+    if (isAny(r.rest)) return;
+    const others = mapKeys(m).filter((x) => !r.fields.has(x)).sort(compareText);
+    const exact = !r.rest.null && !r.rest.bool && !r.rest.num && !r.rest.str && !r.rest.list && !r.rest.map && !(r.rest.opaque && r.rest.opaque.size > 0);
+    for (const key of others) {
+      if (full()) return;
+      if (exact) at(key, () => add("extra", { key }));
+      else at(key, () => all(mapGet(m, key), r.rest));
+    }
+  };
+  all(v, t);
+  return out;
+}

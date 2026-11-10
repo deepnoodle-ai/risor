@@ -14,6 +14,14 @@ export interface Diagnostic {
   path?: (string | number)[];
   /** For `failed`: the second argument of `fail`. Held as a language value. */
   data?: unknown;
+  /** Package F8: the calls in progress when a run failed, from the outermost in (f08 4). */
+  trace?: TraceEntry[];
+}
+
+export interface TraceEntry {
+  span: Span;
+  name: string;
+  index: number | null;
 }
 
 /** Thrown by the lexer and the parser at the first `parse` diagnostic. */

@@ -23,7 +23,7 @@
 // nesting level, through calls in progress, and in walks; long flat forms run
 // in loops. The deepest programs within the limits (depth limit 1,000 reached
 // by calls at nesting 0 plus a walk; 100 levels of source nesting) run with a
-// V8 stack of 400 KB; test/deep.test.ts runs them with 500 KB. Node's default
+// V8 stack of 600 KB; test/deep.test.ts runs them with 700 KB. Node's default
 // is 984 KB, so no option is needed. A stack overflow, should a host run with
 // less, is reported as `internal-error`, never thrown to the host.
 

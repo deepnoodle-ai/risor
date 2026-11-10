@@ -84,7 +84,7 @@ function scan(source: Source): ParsedTemplateData {
   const segments: Segment[] = raws.map((r) =>
     r.kind === "text"
       ? { kind: "text", value: fromCodePoints(r.cps), span: { start: r.start, end: r.end } }
-      : { kind: "part", expr: parsePartTokens(r.tokens), span: { start: r.start, end: r.end } },
+      : { kind: "part", expr: parsePartTokens(r.tokens, source), span: { start: r.start, end: r.end } },
   );
   return { source, segments, single: segments.length === 1 && segments[0].kind === "part" };
 }

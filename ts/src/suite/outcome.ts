@@ -4,7 +4,8 @@
 import { numberToText } from "../value/number.ts";
 import { jsonString, mapGet, mapKeys, plainEqual, readHost, sortKeys, BAD_NUMBER } from "../value/value.ts";
 import type { Case } from "./casefile.ts";
-import { CLASSIFIER, OpaqueRef, analysisOf, executeCase, runConform } from "./runner.ts";
+import { CLASSIFIER, OpaqueRef, analysisOf, executeCase, renderCaseDiagnostics, runConform } from "./runner.ts";
+import { renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import { descriptionText, reportJSON } from "../host/api.ts";
 
 /** A result as JSON (03 3.2.4), an opaque value as a case file writes it. */
@@ -44,6 +45,12 @@ export function outcomeLine(c: Case): string {
   }
   // f04 9.5: a conform case.
   if (c.conform !== undefined) return conformLine(c);
+  // f08 8: a render case gives the three forms.
+  if (c.render !== undefined) {
+    const ds = renderCaseDiagnostics(c);
+    const src = c.render.source ?? null;
+    return `{"name":${jsonString(c.name)},"line":${jsonString(renderLine(ds))},"detail":${jsonString(renderDetail(ds, src))},"json":${jsonString(renderJSON(ds, CLASSIFIER))}}`;
+  }
   const e = executeCase(c, true, c.check !== false);
   const o = e.outcome;
   const parts: string[] = [`"name":${jsonString(c.name)}`];
@@ -64,18 +71,21 @@ export function outcomeLine(c: Case): string {
     let diags: string[];
     switch (o.phase) {
       case "parse":
-        diags = [o.diagnostics[0]].map((d) => `{"code":${jsonString(d.code)},"span":${span(d)}}`);
+        // f08 8: the first diagnostic with its message.
+        diags = [o.diagnostics[0]].map((d) => `{"code":${jsonString(d.code)},"span":${span(d)},"message":${jsonString(d.message)}}`);
         break;
       case "declare":
         diags = o.diagnostics.map((d) => d.code).sort().map((code) => `{"code":${jsonString(code)}}`);
         break;
       case "check":
-        diags = o.diagnostics.map((d) => `{"code":${jsonString(d.code)},"span":${span(d)}}`);
+        diags = o.diagnostics.map((d) => `{"code":${jsonString(d.code)},"span":${span(d)},"message":${jsonString(d.message)}}`);
         break;
       default:
-        diags = o.diagnostics.map(
-          (d) => `{"code":${jsonString(d.code)},"span":${span(d)},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}}`,
-        );
+        // f08 8: a run diagnostic has its trace, but for class limit.
+        diags = o.diagnostics.map((d) => {
+          const trace = d.class === "limit" ? "" : `,"trace":[${(d.trace ?? []).map((t) => `{"span":${span(t)},"name":${jsonString(t.name)},"index":${t.index === null ? "null" : t.index}}`).join(",")}]`;
+          return `{"code":${jsonString(d.code)},"span":${span(d)},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${trace}}`;
+        });
     }
     parts.push(`"diagnostics":[${diags.join(",")}]`);
   }
@@ -112,5 +122,7 @@ function conformLine(c: Case): string {
     fnOk === asOk && asOk === isOk && r.isRun.ok && r.asRun.steps === r.isRun.steps &&
     (fnOk || (asDiag !== null && asDiag.code === "not-conforming" && JSON.stringify(asDiag.path) === JSON.stringify(r.fn!.path) && asDiag.message === r.fn!.message));
   parts.push(`"agree":${agree}`);
+  // f08 8: the failures of ConformAll, with `max`.
+  if (r.all !== null) parts.push(`"failures":[${r.all.map((x) => `{"path":${valueJSON(x.path ?? [])},"message":${jsonString(x.message)}}`).join(",")}]`);
   return `{${parts.join(",")}}`;
 }

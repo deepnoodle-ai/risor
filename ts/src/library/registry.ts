@@ -25,6 +25,8 @@ export interface Param {
 export interface Callback {
   params: number;
   call(args: unknown[]): unknown;
+  /** Package F8: the library call that calls it, for the trace, and its calls so far (f08 4.2). */
+  trace?: { span: Span; name: string; count: number };
 }
 
 export interface CallContext {
@@ -80,7 +82,7 @@ function build(rec: LibraryRecord): Entry {
     kind: rec.receiver ? receiverKind(rec.receiver) : null,
     record: rec,
     params,
-    counts: { min, max: rest ? Infinity : params.length, fns: params.map((p) => p.fn), rest },
+    counts: { min, max: rest ? Infinity : params.length, fns: params.map((p) => p.fn), rest, names: params.map((p) => p.name) },
     impl: null,
   };
 }

@@ -16,6 +16,7 @@ import type { Span } from "./source.ts";
 import { isReserved } from "./token.ts";
 import type { Token } from "./token.ts";
 import type { TypeNode } from "../types/typetext.ts";
+import { END, parseMessage } from "./messages.ts";
 
 /** The source nesting limit (01 13.2). Fixed by the specification. */
 export const MAX_LEVELS = 100;
@@ -40,17 +41,20 @@ export function parse(text: string | Source): ParseResult {
  * Parse the tokens of a template part, which end with an `interpEnd` token at
  * the closing brace or delimiter (f02 2.2). Throws ParseError.
  */
-export function parsePartTokens(tokens: Token[]): A.Expr {
-  return new Parser(tokens, 1).part();
+export function parsePartTokens(tokens: Token[], source?: Source): A.Expr {
+  return new Parser(tokens, 1, source).part();
 }
 
 export function parseProgram(source: Source): A.Program {
   const tokens = lex(source);
-  return new Parser(tokens).program();
+  return new Parser(tokens, 0, source).program();
 }
 
 const OPENERS = new Set(["(", "[", "?.[", "{"]);
 const CLOSERS = new Set([")", "]", "}"]);
+
+/** Tokens that could continue an operand: a binary operator, `?` or a step (01 3.4 rule 4). */
+const CONTINUES = new Set(["+", "-", "*", "/", "%", "**", "==", "!=", "<", "<=", ">", ">=", "&&", "||", "??", "?", ".", "?.", "[", "?.[", "("]);
 
 const PREC_OR = 3;
 const PREC_REL = 6;
@@ -65,11 +69,32 @@ class Parser {
   private prevEnd = 0;
   /** The outer span of an expression written in parentheses. */
   private readonly parens = new WeakMap<object, Span>();
+  /** The source text, for the `token` of a message (f08 3.2). */
+  private readonly src: Source | undefined;
+  /**
+   * What each open level is, innermost last: the production the parser reads
+   * there, for the rows of f08 2.6 and 2.7.
+   */
+  private readonly labels: { kind: string; at: Token; arrow?: boolean; sep?: boolean }[] = [];
+  /** The token after the last complete chain: a complete operand has been read (f08 2.2). */
+  private afterOperand: Token | null = null;
+  /** The token of the last operand word (f08 1.1), and the token after it. */
+  private operandWord: Token | null = null;
+  private afterOperandWord: Token | null = null;
+  /** The token after the last program type (f08 2.7 E24). */
+  private afterType: Token | null = null;
+  /** The token after the last `if` or `try` expression (f08 2.6 D4). */
+  private afterBranch: Token | null = null;
+  /** The last call by name, with the token after its `)` (f08 2.7 E15). */
+  private lastCall: { name: string; word: Token; after: Token } | null = null;
+  /** Set while the parser needs the start of an operand (f08 2.2). */
+  private operandStart = false;
 
-  constructor(tokens: Token[], level = 0) {
+  constructor(tokens: Token[], level = 0, source?: Source) {
     this.toks = tokens;
     this.level = level;
     this.maxLevel = level;
+    this.src = source;
   }
 
   /** The expression of a template part (f02 2.2 items 8, 9, 11): one Expr, at level 1. */
@@ -113,53 +138,191 @@ class Parser {
 
   // ---- diagnostics --------------------------------------------------------
 
-  private fail(code: string, span: Span, message: string): never {
-    throw new ParseError(code, { start: span.start, end: span.end }, message);
+  /** A parse diagnostic, with its message from the catalog (f08 3.4). */
+  private fail(code: string, span: Span, template = "default", params: Record<string, unknown> = {}): never {
+    const ps = { token: this.tokenText(span), ...params };
+    throw new ParseError(code, { start: span.start, end: span.end }, parseMessage(code, template, ps));
   }
 
-  /** `unexpected-token` at a token that does not fit (01 3.5). */
+  /** The `token` of a message: the text at a span, or the end of input (f08 3.2). */
+  private tokenText(span: Span): string | typeof END {
+    if (span.end <= span.start) return END;
+    const text = this.src === undefined ? "" : this.src.slice(span.start, span.end);
+    // A span from `not` to the end of `in` is the text `not in` (f08 3.2).
+    return /^not(\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*\n)+in$/.test(text) ? "not in" : text;
+  }
+
+  /** The token before the current one, in the token list being read. */
+  private prevTok(): Token | undefined {
+    return this.i > 0 ? this.toks[this.i - 1] : undefined;
+  }
+
+  private top(): { kind: string; at: Token; arrow?: boolean; sep?: boolean } | undefined {
+    return this.labels[this.labels.length - 1];
+  }
+
+  /** `unexpected-token` at a token that does not fit (01 3.5), with the rows of f08 2.5 to 2.7. */
   private unexpected(t: Token): never {
     // A text block's code is reported when the parser reaches it, before the fit test (f03 6.2).
     if (t.blockError !== undefined) this.blockFail(t);
-    if (t.kind === "reject") {
-      this.fail("unexpected-token", t.report ?? t, `${t.text} is not allowed here`);
-    }
+    const operandStart = this.operandStart;
+    this.operandStart = false;
+    if (t.kind === "reject") this.rejected(t, operandStart);
     if (t.kind === "string") {
-      // 01 14.3: the word `r` or `R`, white space, then a quote.
-      const prev = this.i > 0 ? this.toks[this.i - 1] : undefined;
+      // 01 14.3: the word `r` or `R`, white space, then a quote (f08 2.5 C10).
+      const prev = this.prevTok();
       if (prev !== undefined && prev.kind === "word" && (prev.text === "r" || prev.text === "R") && t.gap && this.toks[this.i] === t) {
-        this.fail("unexpected-token", prev, "a prefix before a string literal is not allowed");
+        this.fail("string-prefix", prev, "space");
       }
     }
-    if (t.kind === "eof") this.fail("unexpected-token", t, "unexpected end of input");
     if (t.kind === "word" && t.text === "not" && this.toks[this.i] === t && this.isW(this.peek(1), "in")) {
       // 01 3.5: an operator `not in` that cannot follow spans both words.
-      this.fail("unexpected-token", { start: t.start, end: this.peek(1).end }, "unexpected `not in`");
+      if (t === this.afterBranch) this.fail("needs-parentheses", { start: t.start, end: this.peek(1).end }, "after-branch", { token: "not in" });
+      this.fail("unexpected-token", { start: t.start, end: this.peek(1).end }, "default", { token: "not in" });
     }
-    const what = t.kind === "word" || t.kind === "punct" ? `\`${t.text}\`` : t.kind === "interpEnd" ? "`}`" : `a ${t.kind}`;
-    this.fail("unexpected-token", t, `unexpected ${what}`);
+    // f08 2.6 D4: an operator, a `?` or a step after the last branch of an if or the handler of a try.
+    if (t === this.afterBranch && (CONTINUES.has(t.text) && t.kind === "punct" || this.isW(t, "in") || this.isW(t, "as") || this.isW(t, "is"))) this.fail("needs-parentheses", t, "after-branch");
+    this.otherRows(t, operandStart);
+    this.fail("unexpected-token", t);
+  }
+
+  /** f08 2.5: tokens that no rule accepts, C1 to C9. */
+  private rejected(t: Token, operandStart: boolean): never {
+    const span = t.report ?? t;
+    switch (t.text) {
+      case "===":
+        this.fail("strict-equality", span, "equal");
+      case "!==":
+        this.fail("strict-equality", span, "not-equal");
+      case "+=": case "-=": case "*=": case "/=": case "%=": case "**=": case "??=": case "||=": case "&&=":
+        this.fail("assignment", span, "compound");
+      case "++":
+        this.fail("assignment", span, "increment");
+      case "|>":
+        this.fail("pipe-operator", span);
+      case "a text block":
+        this.fail("text-block-quote", span);
+    }
+    const pre = t.prefix;
+    if (pre !== undefined) {
+      if (pre.word === "r" && pre.triple) this.fail("text-block-quote", span);
+      const prev = this.prevTok();
+      const place = operandStart || (prev !== undefined && (this.isP(prev, ".") || this.isP(prev, "?.")));
+      if (place) {
+        if (pre.quote === "`") this.fail("tagged-template", span);
+        this.fail("string-prefix", span, "prefix");
+      }
+    }
+    this.fail("unexpected-token", span);
+  }
+
+  /** f08 2.7: the rows E3 to E25 that need only the failing token and the parser's state. */
+  private otherRows(t: Token, operandStart: boolean): void {
+    const prev = this.prevTok();
+    const top = this.top();
+    const next = this.peek(1);
+    const isWord = (x: Token | undefined, ...ws: string[]) => x !== undefined && x.kind === "word" && ws.includes(x.text);
+    // E3
+    if (isWord(t, "finally")) this.fail("finally-clause", t);
+    // E7: `=` after a complete operand.
+    if (this.isP(t, "=") && t === this.afterOperand) this.fail("assignment", t, "assign");
+    // E8: `:` in the expression of an index step.
+    if (this.isP(t, ":") && top?.kind === "index") this.fail("slice-syntax", t);
+    // E9: `:` after a name in parentheses.
+    if (this.isP(t, ":") && top?.kind === "paren" && prev !== undefined && prev.kind === "word" && this.i >= 2 && this.toks[this.i - 2] === top.at) this.fail("type-annotation", t);
+    // E10
+    if (this.isP(t, "|")) this.fail("bitwise-operator", t, "or");
+    // E11
+    if (this.isP(t, "*") && prev !== undefined && (this.isP(prev, ".") || this.isP(prev, "?."))) this.fail("star-form", t);
+    if (this.isP(t, "]") && top?.kind === "index" && prev === top.at) this.fail("star-form", t);
+    // E12
+    if (this.isP(t, "?") && top?.kind === "index" && prev === top.at) this.fail("filter-step", t);
+    // E13, E14
+    if (isWord(t, "satisfies")) this.fail("satisfies-operator", t);
+    if (isWord(t, "instanceof")) this.fail("instanceof-operator", t);
+    // E15 to E18: the token after an operand word.
+    const word = this.operandWord;
+    if (word !== null && t === this.afterOperandWord) {
+      if (isWord(word, "switch", "case")) this.fail("switch-statement", word);
+      if (isWord(word, "typeof")) this.fail("typeof-operator", word);
+      if (isWord(word, "interface", "enum", "type")) this.fail("type-declaration", word, "default", { token: word.text });
+      if (isWord(word, "export")) this.fail("export-statement", word);
+    }
+    if (this.isP(t, "{") && this.lastCall !== null && this.lastCall.name === "switch" && t === this.lastCall.after) this.fail("switch-statement", this.lastCall.word);
+    // E19, E20: `<` where an operand must begin.
+    if (this.isP(t, "<") && operandStart) {
+      if (this.isP(next, "<") && !next.gap) this.fail("heredoc", t);
+      this.fail("angle-cast", t);
+    }
+    // E22: a hyphenated key in a map literal or a map pattern.
+    if (this.isP(t, "-") && (top?.kind === "map" || top?.kind === "mappat") && prev !== undefined && prev.kind === "word") {
+      const before = this.i >= 2 ? this.toks[this.i - 2] : undefined;
+      if (before !== undefined && (before === top.at || this.isP(before, ","))) {
+        let j = this.i;
+        let end = prev.end;
+        let last = prev;
+        while (this.isP(this.toks[j], "-") && !this.toks[j].gap && this.toks[j].start === last.end) {
+          const w = this.toks[j + 1];
+          if (w === undefined || (w.kind !== "word" && w.kind !== "number") || w.gap) break;
+          end = w.end;
+          last = w;
+          j += 2;
+        }
+        if (last !== prev && this.isP(this.toks[j], ":")) {
+          const key = this.src === undefined ? "" : this.src.slice(prev.start, end);
+          this.fail("unquoted-key", { start: prev.start, end }, "default", { key });
+        }
+      }
+    }
+    // E23: a lambda body in braces read as a map.
+    if (top?.kind === "map" && top.arrow === true && top.sep !== true) this.fail("block-without-const", top.at);
+    // E24: after a program type.
+    if (t === this.afterType && (this.isP(t, "+") || this.isP(t, "-") || this.isP(t, "*") || this.isP(t, "/") || this.isP(t, "%") || this.isP(t, "**") || this.isP(t, ".") || this.isP(t, "?.") || this.isP(t, "?.[") || this.isP(t, "[") || this.isP(t, "(") || this.isP(t, "{"))) {
+      this.fail("needs-parentheses", t, "after-type");
+    }
+    // E25
+    if (this.isP(t, "!") && t === this.afterOperand && isWord(next, "is")) this.fail("negated-is", t);
   }
 
   private blockFail(t: Token): never {
     const e = t.blockError!;
-    this.fail(e.code, e, `${e.code.replace(/-/g, " ")}`);
+    this.fail(e.code, e, e.template ?? "default");
   }
 
-  private reservedWord(t: Token): never {
-    this.fail("reserved-word", t, `\`${t.text}\` is a reserved word`);
+  /**
+   * `reserved-word` (01 14.2), with the rows of f08 2.4. `place`: `name` where
+   * the grammar needs a Name, `operand` where an operand must begin, and
+   * `shorthand` for a shorthand entry of a map literal.
+   */
+  private reservedWord(t: Token, place: "name" | "operand" | "shorthand" = "name"): never {
+    if (place !== "name") {
+      const codes: Record<string, string> = {
+        let: "let-binding", var: "let-binding", for: "loop-statement", while: "loop-statement", do: "loop-statement",
+        break: "loop-statement", continue: "loop-statement", return: "return-statement", function: "function-declaration",
+        throw: "throw-statement", finally: "finally-clause", import: "import-statement", nil: "nil-literal",
+      };
+      const code = codes[t.text];
+      if (code !== undefined) this.fail(code, t);
+    }
+    // B9: the first entry of a map literal that is a lambda body.
+    const top = this.top();
+    if (place === "shorthand" && top?.kind === "map" && top.arrow === true && top.sep !== true) this.fail("block-without-const", top.at);
+    this.fail("reserved-word", t, place === "operand" ? "operand" : "name");
   }
 
-  /** Open a nesting level at a token (01 13.1). */
-  private open(span: Span): void {
+  /** Open a nesting level at a token (01 13.1), and say what the parser reads there. */
+  private open(span: Span, kind = "other"): void {
     if (this.level >= MAX_LEVELS) {
-      this.fail("nesting-exceeded", span, `more than ${MAX_LEVELS} levels of nesting`);
+      this.fail("nesting-exceeded", span);
     }
     this.level++;
     if (this.level > this.maxLevel) this.maxLevel = this.level;
+    this.labels.push({ kind, at: span as Token });
   }
 
   private close(): void {
     this.level--;
+    this.labels.pop();
   }
 
   private outer(e: A.Expr | A.Lambda | A.Pattern): Span {
@@ -190,13 +353,15 @@ class Parser {
   private constLine(): A.Const {
     const start = this.advance().start; // const
     const pattern = this.pattern();
+    // f08 2.7 E9: `:` after the pattern of a const.
+    if (this.isP(this.cur, ":")) this.fail("type-annotation", this.cur);
     this.expect("=");
     let value: A.Expr | A.Lambda;
     if (this.lambdaStartsHere()) {
       value = this.lambda((arrow) => {
         // 01 3.4 rule 9: only a Name may bind a lambda.
         if (!(pattern.kind === "NamePat" && pattern.name !== null)) {
-          this.fail("unexpected-token", arrow, "a lambda may be bound only to a name");
+          this.fail("lambda-in-pattern", arrow);
         }
       });
     } else {
@@ -213,15 +378,15 @@ class Parser {
     this.advance();
     this.open(lb);
     if (this.isP(this.cur, "...")) {
-      this.fail("unexpected-token", lb, "a branch is written like a map");
+      this.fail("branch-like-map", lb);
     }
     if (this.isP(this.cur, "}")) {
-      this.fail("unexpected-token", lb, "a branch may not be empty");
+      this.fail("empty-branch", lb);
     }
     const consts = this.consts();
     const result = this.expr();
     if (this.isP(this.cur, ":") || this.isP(this.cur, ",")) {
-      this.fail("unexpected-token", lb, "a branch is written like a map");
+      this.fail("branch-like-map", lb);
     }
     this.expect("}");
     this.close();
@@ -249,10 +414,12 @@ class Parser {
       const t = this.cur;
       if (this.isW(t, "if")) {
         e = this.ifExpr();
+        this.afterBranch = this.cur;
         break;
       }
       if (this.isW(t, "try")) {
         e = this.tryExpr();
+        this.afterBranch = this.cur;
         break;
       }
       const b = this.binary();
@@ -260,6 +427,9 @@ class Parser {
         const q = this.advance();
         this.open(q);
         const then = this.expr();
+        // f08 2.7 E21: a `?` directly followed by `[` is an optional index written without the dot.
+        const afterQ = this.toks[this.toks.indexOf(q) + 1];
+        if (!this.isP(this.cur, ":") && afterQ !== undefined && this.isP(afterQ, "[") && !afterQ.gap && afterQ.start === q.end) this.fail("optional-index", q);
         this.expect(":");
         this.close();
         pending.push({ test: b, then });
@@ -282,20 +452,30 @@ class Parser {
     const parts: { start: number; test: A.Expr; then: A.Expr }[] = [];
     let ifTok = this.advance();
     let elseBranch: A.Expr;
+    // f08 2.7 E4: the form of an if.
+    const form = () => {
+      if (this.cur.blockError === undefined && this.cur.kind !== "reject") this.fail("if-form", this.cur, "form");
+    };
     for (;;) {
+      if (!this.isP(this.cur, "(")) form();
       const lp = this.expect("(");
-      this.open(lp);
+      this.open(lp, "if-test");
       const test = this.expr();
+      // f08 2.7 E5: a `,` after the test.
+      if (this.isP(this.cur, ",")) this.fail("if-form", this.cur, "call");
       this.expect(")");
       this.close();
+      if (!this.isP(this.cur, "{")) form();
       const then = this.branch();
       parts.push({ start: ifTok.start, test, then });
-      if (!this.isW(this.cur, "else")) this.unexpected(this.cur); // 01 3.4 rule 11
+      // 01 3.4 rule 11 (f08 2.6 D11).
+      if (!this.isW(this.cur, "else")) this.fail("missing-else", this.cur);
       this.advance();
       if (this.isW(this.cur, "if")) {
         ifTok = this.advance();
         continue;
       }
+      if (!this.isP(this.cur, "{")) form();
       elseBranch = this.branch();
       break;
     }
@@ -311,22 +491,37 @@ class Parser {
   private tryExpr(): A.Try {
     const tryTok = this.advance();
     if (this.isP(this.cur, "(")) {
-      this.fail("unexpected-token", tryTok, "`try` takes a branch, not arguments"); // 01 3.4 rule 10
+      this.fail("try-call", tryTok); // 01 3.4 rule 10
     }
+    // f08 2.7 E6, 2.6 D14: the body and the handler are written in braces.
+    const braces = () => {
+      if (!this.isP(this.cur, "{") && this.cur.blockError === undefined && this.cur.kind !== "reject") this.fail("try-form", this.cur);
+    };
+    braces();
     const body = this.branch();
-    if (!this.isW(this.cur, "catch")) this.unexpected(this.cur); // rule 12
+    // 01 3.4 rule 12 (f08 2.6 D12, D13).
+    if (!this.isW(this.cur, "catch")) {
+      if (this.isW(this.cur, "finally")) this.fail("finally-clause", this.cur);
+      this.fail("missing-catch", this.cur);
+    }
     this.advance();
     let name: string | null = null;
     let nameSpan: Span | null = null;
     if (this.isP(this.cur, "(")) {
       const lp = this.advance();
       this.open(lp);
-      const t = this.nameToken();
+      // f08 2.6 D15: a token where the name should stand, or after it.
+      const n = this.cur;
+      if (n.kind === "word" && isReserved(n.text)) this.reservedWord(n);
+      if (n.kind !== "word" || n.text === "_") this.fail("catch-name", n);
+      const t = this.advance();
       name = t.text;
       nameSpan = { start: t.start, end: t.end };
-      this.expect(")");
+      if (!this.isP(this.cur, ")")) this.fail("catch-name", this.cur);
+      this.advance();
       this.close();
     }
+    braces();
     const handler = this.branch();
     return { kind: "Try", body, name, nameSpan, handler, span: this.span(tryTok.start) };
   }
@@ -343,9 +538,18 @@ class Parser {
         this.close();
         x = this.binaryNode("??", x, y);
       }
+      // 01 3.4 rule 3 (f08 2.6 D3): `??` does not mix with the operators of levels 3 to 6.
+      const p = this.prec();
+      if (p >= PREC_OR && p <= PREC_REL) {
+        const t = this.cur;
+        if (this.isW(t, "not") && this.isW(this.peek(1), "in")) this.fail("needs-parentheses", { start: t.start, end: this.peek(1).end }, "coalesce", { token: "not in" });
+        if (!this.isW(t, "not")) this.fail("needs-parentheses", t, "coalesce");
+      }
       return x;
     }
-    return this.climb(left, PREC_OR);
+    const out = this.climb(left, PREC_OR);
+    if (out !== left && this.isP(this.cur, "??")) this.fail("needs-parentheses", this.cur, "coalesce");
+    return out;
   }
 
   private binaryNode(op: A.BinaryOp, x: A.Expr, y: A.Expr): A.Binary {
@@ -407,7 +611,7 @@ class Parser {
       }
       if ((op === "in" || op === "not-in") && this.isBareNot(left)) {
         // 01 3.4 rule 2.
-        this.fail("unexpected-token", { start: left.span.start, end: left.span.start + 1 }, "write the `!` expression in parentheses, or use `not in`");
+        this.fail("needs-parentheses", { start: left.span.start, end: left.span.start + 1 }, "in");
       }
       this.advance();
       if (op === "not-in") this.advance();
@@ -423,11 +627,11 @@ class Parser {
   /** `x as T`, `x is T`, at the word `as` or `is` (f04 2.1 to 2.8). */
   private test(left: A.Expr, t: Token): A.As {
     // f04 2.5: `!x as T` at the `!`.
-    if (this.isBareNot(left)) this.fail("unexpected-token", { start: left.span.start, end: left.span.start + 1 }, "write the `!` expression in parentheses");
+    if (this.isBareNot(left)) this.fail("needs-parentheses", { start: left.span.start, end: left.span.start + 1 }, "not-test", { op: t.text });
     // f04 2.6 item 2: `x as const` and `x is not T` keep Core's span.
     const nx = this.peek(1);
     if ((t.text === "as" && this.isW(nx, "const")) || (t.text === "is" && this.isW(nx, "not"))) {
-      this.fail("unexpected-token", t, `\`${t.text} ${nx.text}\` is not a form of the language`);
+      this.fail(t.text === "as" ? "as-const" : "negated-is", t);
     }
     this.advance();
     this.open(t);
@@ -436,13 +640,33 @@ class Parser {
     const type = this.ptype(spans);
     const typeSpan = { start, end: this.prevEnd };
     this.close();
+    this.afterType = this.cur;
     return { kind: "As", form: t.text as "as" | "is", x: left, type, typeSpan, typeSpans: spans, span: { start: this.outer(left).start, end: this.prevEnd } };
   }
 
-  private badType(t: Token): never {
+  /**
+   * `bad-type-text` (f04 2.6), with its template by f08 3.4: `where` is what
+   * the parser expected, a type (`type`), the `<` or `>` of `map<`, the `)` of
+   * a parenthesized type, or a part of a record type.
+   */
+  private badType(t: Token, where: "type" | "map-open" | "map-close" | "paren" | "record" = "type"): never {
     if (t.blockError !== undefined) this.blockFail(t);
     if (t.kind === "reject") this.unexpected(t);
-    this.fail("bad-type-text", t, t.kind === "eof" ? "a type is expected" : `${t.kind === "word" || t.kind === "punct" ? `\`${t.text}\`` : "this"} is not a type`);
+    if (t.kind === "template") this.fail("bad-type-text", t, "literal");
+    if (where === "map-close" && this.isP(t, ">=")) this.fail("bad-type-text", t, "split");
+    if (where !== "type") this.fail("bad-type-text", t, where);
+    if (t.kind === "number" || this.isW(t, "true") || this.isW(t, "false") || this.isP(t, "-")) this.fail("bad-type-text", t, "value");
+    if (t.kind === "word") {
+      switch (t.text) {
+        case "number": this.fail("bad-type-text", t, "number-word");
+        case "boolean": this.fail("bad-type-text", t, "boolean-word");
+        case "undefined": case "void": case "nil": this.fail("bad-type-text", t, "null-word");
+        case "object": this.fail("bad-type-text", t, "object-word");
+      }
+      if (/^[A-Z]$/.test(t.text)) this.fail("bad-type-text", t, "letter");
+      if (/^[a-z_]/.test(t.text)) this.fail("bad-type-text", t, "lower");
+    }
+    this.fail("bad-type-text", t, "expected");
   }
 
   /** PType = PAlt { "|" PAlt }. */
@@ -484,11 +708,11 @@ class Parser {
         case "map": {
           this.advance();
           const lt = this.cur;
-          if (!this.isP(lt, "<")) this.badType(lt);
+          if (!this.isP(lt, "<")) this.badType(lt, "map-open");
           this.advance();
           this.open(lt);
           const rest = this.ptype(spans);
-          if (!this.isP(this.cur, ">")) this.badType(this.cur);
+          if (!this.isP(this.cur, ">")) this.badType(this.cur, "map-close");
           this.advance();
           this.close();
           return { t: "map", rest };
@@ -510,7 +734,7 @@ class Parser {
       this.advance();
       this.open(t);
       const inner = this.ptype(spans);
-      if (!this.isP(this.cur, ")")) this.badType(this.cur);
+      if (!this.isP(this.cur, ")")) this.badType(this.cur, "paren");
       this.advance();
       this.close();
       return inner;
@@ -534,15 +758,15 @@ class Parser {
         rest = this.isP(this.cur, ",") || this.isP(this.cur, "}") ? "any" : this.ptype(spans);
         if (this.isP(this.cur, ",")) {
           this.advance();
-          if (!this.isP(this.cur, "}")) this.badType(this.cur);
-        } else if (!this.isP(this.cur, "}")) this.badType(this.cur);
+          if (!this.isP(this.cur, "}")) this.badType(this.cur, "record");
+        } else if (!this.isP(this.cur, "}")) this.badType(this.cur, "record");
         break;
       }
       let key: string;
       if (t.kind === "word") key = t.text;
       else if (t.kind === "string") key = t.str!;
-      else this.badType(t);
-      if (seen.has(key)) this.fail("bad-type-text", t, `the key ${key} is written twice`);
+      else this.badType(t, "record");
+      if (seen.has(key)) this.fail("bad-type-text", t, "duplicate", { key });
       seen.add(key);
       this.advance();
       let optional = false;
@@ -550,14 +774,14 @@ class Parser {
         this.advance();
         optional = true;
       }
-      if (!this.isP(this.cur, ":")) this.badType(this.cur);
+      if (!this.isP(this.cur, ":")) this.badType(this.cur, "record");
       this.advance();
       fields.push({ key, optional, type: this.ptype(spans) });
       if (this.isP(this.cur, ",")) {
         this.advance();
         continue;
       }
-      if (!this.isP(this.cur, "}")) this.badType(this.cur);
+      if (!this.isP(this.cur, "}")) this.badType(this.cur, "record");
       break;
     }
     this.advance();
@@ -585,7 +809,7 @@ class Parser {
     if (this.isP(this.cur, "**")) {
       if (prefix !== null) {
         // 01 3.4 rule 1, found at the `**`.
-        this.fail("unexpected-token", prefix, `write \`${prefix.text}\` and \`**\` with parentheses`);
+        this.fail("needs-parentheses", prefix, "power");
       }
       const op = this.advance();
       this.open(op);
@@ -629,7 +853,7 @@ class Parser {
       if (this.isP(t, "[") || this.isP(t, "?.[")) {
         const opt = t.text === "?.[";
         this.advance();
-        this.open(t);
+        this.open(t, "index");
         const index = this.expr();
         this.expect("]");
         this.close();
@@ -640,6 +864,7 @@ class Parser {
       break;
     }
     if (optional) x = { kind: "OptChain", x, span: { start, end: x.span.end } };
+    this.afterOperand = this.cur;
     return x;
   }
 
@@ -692,7 +917,7 @@ class Parser {
           continue;
         }
         this.advance();
-        this.open(t);
+        this.open(t, "index");
         const index = this.expr();
         this.expect("]");
         this.close();
@@ -725,7 +950,7 @@ class Parser {
         switch (t.text) {
           case "(": {
             this.advance();
-            this.open(t);
+            this.open(t, "paren");
             const e = this.expr();
             this.expect(")");
             this.close();
@@ -743,6 +968,7 @@ class Parser {
           }
         }
     }
+    this.operandStart = true;
     this.unexpected(t);
   }
 
@@ -759,17 +985,21 @@ class Parser {
         return this.matchExpr();
       case "if":
       case "try":
-        // 01 3.4 rule 5: an if or a try is not an operand.
-        this.fail("unexpected-token", t, `write the \`${t.text}\` in parentheses`);
+        // 01 3.4 rule 5: an if or a try is not an operand (f08 2.6 D5).
+        this.fail("needs-parentheses", t, "operand");
     }
-    if (isReserved(t.text)) this.reservedWord(t);
+    // f08 2.4 item 1: a word before `=>` is a parameter, a Name.
+    if (isReserved(t.text)) this.reservedWord(t, this.isP(this.peek(1), "=>") ? "name" : "operand");
     if (t.text === "_") this.unexpected(t);
     const level = this.level;
     this.advance();
     if (this.isP(this.cur, "(")) {
       const args = this.args();
+      this.lastCall = { name: t.text, word: t, after: this.cur };
       return { kind: "Call", namespace: null, name: t.text, nameSpan: { start: t.start, end: t.end }, args, level, span: this.span(t.start) };
     }
+    this.operandWord = t;
+    this.afterOperandWord = this.cur;
     return { kind: "Ident", name: t.text, span: { start: t.start, end: t.end } };
   }
 
@@ -848,17 +1078,23 @@ class Parser {
   }
 
   private map(): A.MapLit {
+    const prev = this.prevTok();
     const lb = this.advance();
-    this.open(lb);
+    this.open(lb, "map");
+    // f08 2.4 B9, 2.7 E23: a map literal that is a lambda body.
+    const label = this.top()!;
+    label.arrow = prev !== undefined && this.isP(prev, "=>");
     const entries: (A.Entry | A.Spread)[] = [];
     for (;;) {
       const t = this.cur;
       if (this.isP(t, "}")) break;
       if (this.isP(t, "...")) {
+        label.sep = true;
         this.advance();
         const value = this.expr();
         entries.push({ kind: "Spread", value, span: { start: t.start, end: this.outer(value).end } });
       } else if (t.kind === "word" && this.isP(this.peek(1), ":")) {
+        label.sep = true;
         this.advance();
         this.advance();
         const value = this.expr();
@@ -869,6 +1105,7 @@ class Parser {
       } else if (t.kind === "string") {
         this.advance();
         this.expect(":");
+        label.sep = true;
         const value = this.expr();
         entries.push({
           kind: "Entry", key: { kind: "string", value: t.str!, span: { start: t.start, end: t.end } },
@@ -881,13 +1118,15 @@ class Parser {
         this.expect("]");
         this.close();
         this.expect(":");
+        label.sep = true;
         const value = this.expr();
         entries.push({
           kind: "Entry", key: { kind: "expr", expr: k }, value, shorthand: false,
           span: { start: t.start, end: this.outer(value).end },
         });
       } else if (t.kind === "word") {
-        const n = this.nameToken();
+        // A shorthand entry reads a value (f08 2.4 item 2).
+        const n = this.nameToken("shorthand");
         const span = { start: n.start, end: n.end };
         entries.push({
           kind: "Entry", key: { kind: "word", text: n.text, span }, value: { kind: "Ident", name: n.text, span },
@@ -897,6 +1136,7 @@ class Parser {
         this.unexpected(t);
       }
       if (this.isP(this.cur, ",")) {
+        label.sep = true;
         this.advance();
         continue;
       }
@@ -914,7 +1154,7 @@ class Parser {
     const s = this.cur;
     if (this.isP(s, "{") || this.isW(s, "if") || this.isW(s, "try")) {
       // 01 3.4 rule 6.
-      this.fail("unexpected-token", s, "a `match` needs a subject; write it in parentheses");
+      this.fail("needs-parentheses", s, "match-subject");
     }
     const subject = this.expr();
     this.close();
@@ -968,7 +1208,9 @@ class Parser {
     if (t.kind === "number" || t.kind === "string") return this.primary() as A.Literal;
     if (t.kind === "word") {
       if (t.text === "true" || t.text === "false" || t.text === "null") return this.primary() as A.Literal;
-      if (isReserved(t.text)) this.reservedWord(t);
+      if (isReserved(t.text)) this.reservedWord(t, "operand");
+      // f08 2.7 E15: the word `case` at the start of a match case.
+      if (t.text === "case") this.fail("switch-statement", t);
     }
     this.unexpected(t);
   }
@@ -1011,10 +1253,12 @@ class Parser {
       params.push({ kind: "Param", pattern, default: null, span });
     } else {
       const lp = this.advance();
-      this.open(lp);
+      this.open(lp, "params");
       for (;;) {
         if (this.isP(this.cur, ")")) break;
         params.push(this.param());
+        // f08 2.7 E9: `:` after the pattern of a parameter.
+        if (this.isP(this.cur, ":")) this.fail("type-annotation", this.cur);
         if (this.isP(this.cur, ",")) {
           this.advance();
           continue;
@@ -1045,10 +1289,10 @@ class Parser {
   }
 
   /** A token where the grammar needs a Name (01 14.2). */
-  private nameToken(): Token {
+  private nameToken(place: "name" | "shorthand" = "name"): Token {
     const t = this.cur;
     if (t.kind === "word") {
-      if (isReserved(t.text)) this.reservedWord(t);
+      if (isReserved(t.text)) this.reservedWord(t, place);
       if (t.text === "_") this.unexpected(t);
       return this.advance();
     }
@@ -1078,7 +1322,7 @@ class Parser {
 
   private mapPattern(): A.MapPat {
     const lb = this.advance();
-    this.open(lb);
+    this.open(lb, "mappat");
     const fields: A.MapPatField[] = [];
     let rest: { name: string; span: Span } | null = null;
     for (;;) {

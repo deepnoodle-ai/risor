@@ -31,20 +31,20 @@ function lexErr(src: string, code: string, span: LS): void {
 describe("2.1 source text and positions", () => {
   test("a U+FEFF at the start is ignored", () => {
     ok("\uFEFF1 + 2");
-    err("\uFEFF$", "unexpected-character", [1, 1, 1, 2]);
+    err("\uFEFF@", "unexpected-character", [1, 1, 1, 2]);
   });
   test("a U+FEFF elsewhere is an unexpected character", () => {
     err("1 +\uFEFF2", "unexpected-character", [1, 4, 1, 5]);
   });
   test("lines count at U+000A only; U+000D is a column", () => {
-    err("1\r\n2 $", "unexpected-character", [2, 3, 2, 4]);
-    err("1\r2 $", "unexpected-character", [1, 5, 1, 6]);
+    err("1\r\n2 @", "unexpected-character", [2, 3, 2, 4]);
+    err("1\r2 @", "unexpected-character", [1, 5, 1, 6]);
   });
   test("a code point above U+FFFF is one column", () => {
-    err('"😀" $', "unexpected-character", [1, 5, 1, 6]);
+    err('"😀" @', "unexpected-character", [1, 5, 1, 6]);
   });
   test("a tab is one column", () => {
-    err("\t$", "unexpected-character", [1, 2, 1, 3]);
+    err("\t@", "unexpected-character", [1, 2, 1, 3]);
   });
 });
 
@@ -77,14 +77,15 @@ describe("2.3 tokens", () => {
   test("?. [ with white space is ?. then [", () => {
     assert.deepEqual(texts("?. ["), ["punct:?.", "punct:["]);
   });
-  test("each token that no rule accepts is one token and unexpected-token", () => {
+  test("each token that no rule accepts is one token, with its targeted code (f08 2.5)", () => {
+    const codes: Record<string, string> = { "===": "strict-equality", "!==": "strict-equality", "++": "assignment", "|>": "pipe-operator" };
     for (const t of ["===", "!==", "+=", "-=", "*=", "/=", "%=", "**=", "??=", "||=", "&&=", "++", "|>"]) {
-      err(`a ${t} b`, "unexpected-token", [1, 3, 1, 3 + t.length]);
+      err(`a ${t} b`, codes[t] ?? "assignment", [1, 3, 1, 3 + t.length]);
     }
   });
   test("the block token, and package F3's text block (f03 2, 4.1)", () => {
     err('"""abc"""', "text-block-open", [1, 1, 1, 4]);
-    err("'''abc'''", "unexpected-token", [1, 1, 1, 4]);
+    err("'''abc'''", "text-block-quote", [1, 1, 1, 4]);
     err('x + """\nabc', "unterminated-string", [1, 5, 2, 4]);
     // After text-block-open nothing in the literal is read.
     err('"""\\q\n"""', "text-block-open", [1, 1, 1, 4]);
@@ -94,9 +95,9 @@ describe("2.3 tokens", () => {
   test("the prefixed literal", () => {
     // With package F3, r"a\" is a raw string, and b" a prefixed literal.
     err('r"a\\"b"', "unexpected-token", [1, 6, 1, 7]);
-    err("f'x'", "unexpected-token", [1, 1, 1, 2]);
-    err("raw`a\nb`", "unexpected-token", [1, 1, 1, 4]);
-    err('_"x"', "unexpected-token", [1, 1, 1, 2]);
+    err("f'x'", "string-prefix", [1, 1, 1, 2]);
+    err("raw`a\nb`", "tagged-template", [1, 1, 1, 4]);
+    err('_"x"', "string-prefix", [1, 1, 1, 2]);
   });
   test("the end of input is an empty span", () => {
     err("1 +", "unexpected-token", [1, 4, 1, 4]);
@@ -231,23 +232,25 @@ describe("2.8 templates", () => {
 
 describe("2.9 and 2.10 characters", () => {
   test("each character that begins no token", () => {
+    const codes: Record<string, string> = { "#": "hash-comment", $: "context-symbol", "&": "bitwise-operator" };
     for (const c of ["#", "$", "@", "\\", "^", "~", "&", "\u00a0", "\u0001", "\u007f"]) {
-      err(`a ${c} b`, "unexpected-character", [1, 3, 1, 4]);
+      err(`a ${c} b`, codes[c] ?? "unexpected-character", [1, 3, 1, 4]);
     }
   });
   test("$ is a token only inside a template", () => {
     ok("`$a $ {`");
-    err("$.a", "unexpected-character", [1, 1, 1, 2]);
+    err("$.a", "context-symbol", [1, 1, 1, 2]);
+    err("${a}", "unexpected-character", [1, 1, 1, 2]);
   });
 });
 
 describe("2.11 order of lexical diagnostics", () => {
   test("a lexical diagnostic comes before a parse diagnostic", () => {
-    err("1 2 $", "unexpected-character", [1, 5, 1, 6]);
-    err('"""x""" $', "unexpected-character", [1, 9, 1, 10]);
+    err("1 2 @", "unexpected-character", [1, 5, 1, 6]);
+    err('"""x""" @', "unexpected-character", [1, 9, 1, 10]);
   });
   test("the first lexical diagnostic in reading order", () => {
-    lexErr("$ 010", "unexpected-character", [1, 1, 1, 2]);
-    lexErr("010 $", "bad-number", [1, 1, 1, 4]);
+    lexErr("@ 010", "unexpected-character", [1, 1, 1, 2]);
+    lexErr("010 @", "bad-number", [1, 1, 1, 4]);
   });
 });

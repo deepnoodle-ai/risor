@@ -737,7 +737,11 @@ class Compiler {
         const lc = c.lc ?? codesOf.get(named[c.id!])!;
         const cb: Callback = {
           params: c.params,
-          call: (args) => invoke(r, lc, args, measure),
+          call: (args) => {
+            // f08 4.1: the library call is in progress while this call is; its index is the call's position.
+            const tr = cb.trace;
+            return tr === undefined ? invoke(r, lc, args, measure) : invoke(r, lc, args, measure, tr.span, tr.name, tr.count++);
+          },
         };
         out.push(cb);
       }
@@ -809,10 +813,12 @@ class Compiler {
       case "lambda": {
         const node = this.res.lambdas[target.id];
         const codesOf = this.codes;
+        const name = this.res.lambdaNames?.get(target.id) ?? "";
         return (r) => {
           const vals = args(r);
           r.charge(1);
-          return invoke(r, codesOf.get(node)!, vals, measure);
+          // f08 4.1: a call by name is in progress from its depth test to its end.
+          return invoke(r, codesOf.get(node)!, vals, measure, span, name, null);
         };
       }
       case "library": {
@@ -834,18 +840,24 @@ class Compiler {
 }
 
 /** Call a const-bound lambda (02 11.2) or a lambda passed to the library (5.6). */
-function invoke(r: Run, lc: LambdaCode, args: unknown[], measure: number): unknown {
+function invoke(r: Run, lc: LambdaCode, args: unknown[], measure: number, span?: Span, name?: string, index?: number | null): unknown {
   r.depth += measure;
-  r.testDepth(r.depth);
-  for (let i = 0; i < lc.params.length; i++) {
-    const p = lc.params[i];
-    let v = i < args.length ? args[i] : null;
-    if (v === null && p.dflt !== null) v = p.dflt(r);
-    p.bind(r, v);
+  try {
+    r.testDepth(r.depth);
+    for (let i = 0; i < lc.params.length; i++) {
+      const p = lc.params[i];
+      let v = i < args.length ? args[i] : null;
+      if (v === null && p.dflt !== null) v = p.dflt(r);
+      p.bind(r, v);
+    }
+    const out = lc.body(r);
+    r.depth -= measure;
+    return out;
+  } catch (x) {
+    // f08 4.1: the trace is built as the failure unwinds, from the outermost in.
+    if (span !== undefined && x instanceof RunFailure) x.trace.unshift({ span, name: name!, index: index ?? null });
+    throw x;
   }
-  const out = lc.body(r);
-  r.depth -= measure;
-  return out;
 }
 
 /** A call of a library entry, after its receiver and arguments (04 2.2, 2.6, 4.4). */
@@ -853,6 +865,10 @@ function callEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], spa
   testArgs(r, entry, args, span, name);
   r.charge(1);
   if (entry.impl === null) throw new RunFailure("internal-error", span, "default");
+  // f08 4.1, 4.2: the entry is in progress while a call of its lambda is; the index is the element's position, in visit order.
+  for (const a of args) {
+    if (a !== null && typeof a === "object" && typeof (a as Callback).call === "function" && "params" in a) (a as Callback).trace = { span, name, count: 0 };
+  }
   return entry.impl({ run: r, span, name, receiver, args });
 }
 

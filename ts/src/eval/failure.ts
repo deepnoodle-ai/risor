@@ -38,6 +38,8 @@ export class RunFailure extends Error {
   override readonly cause?: unknown;
   /** For `not-conforming` (package F4, f04 5.1): the path of the failure. */
   path?: (string | number)[];
+  /** Package F8: the calls in progress, from the outermost in, added as the failure unwinds (f08 4). */
+  readonly trace: { span: Span; name: string; index: number | null }[] = [];
 
   constructor(code: string, span: Span | undefined, template: string | null, params: Record<string, unknown> = {}, extra: { data?: unknown; text?: string; cause?: unknown } = {}) {
     super(code);
@@ -57,8 +59,33 @@ function cut(s: string): string {
   return cps.slice(0, 61).join("") + "...";
 }
 
+/** Visible text (f08 1.1): each control character of C0 and C1 written as an escape. */
+export function visible(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    const c = ch.codePointAt(0)!;
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) {
+      out += c === 0x09 ? "\\t" : c === 0x0a ? "\\n" : c === 0x0d ? "\\r" : "\\u00" + c.toString(16).padStart(2, "0");
+    } else out += ch;
+  }
+  return out;
+}
+
+/** The value of a `token` parameter for the empty span at the end of input (f08 3.2). */
+export const END_OF_INPUT: unique symbol = Symbol("end of input");
+
 function renderParam(kind: string, v: unknown, cls: Classifier): string {
   switch (kind) {
+    case "token":
+      return v === END_OF_INPUT ? "end of input" : visible(String(v));
+    case "text":
+      return visible(String(v));
+    case "char": {
+      // f08 3.2: U+ and at least four upper-case hex digits; a printable ASCII code point after it.
+      const c = v as number;
+      const hex = "U+" + c.toString(16).toUpperCase().padStart(4, "0");
+      return c >= 0x21 && c <= 0x7e ? `${hex} (${String.fromCodePoint(c)})` : hex;
+    }
     case "word":
     case "kind":
     case "type":
@@ -83,6 +110,15 @@ function renderParam(kind: string, v: unknown, cls: Classifier): string {
       }
   }
   return String(v);
+}
+
+/** A message from the catalog: a code's template with its parameters, each rendered by its kind and cut (03 3.8.3, f08 3.3). */
+export function catalogMessage(code: string, template: string, params: Record<string, unknown>, cls: Classifier = new Classifier()): string {
+  const entry = BY_CODE.get(code);
+  if (entry === undefined) return code;
+  const text = entry.templates[template];
+  if (text === undefined) throw new Error(`no template ${template} for ${code}`);
+  return text.replace(/\{([a-z]+)\}/g, (_, name: string) => cut(renderParam(entry.params[name], params[name], cls)));
 }
 
 /** The message of a failure, built from the catalog (03 3.8). */
