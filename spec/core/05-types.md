@@ -1291,7 +1291,9 @@ limits and its rejected classes. This section says how its type text is read.
 
 A variable has a name and a type, written as a `Type` (3.1). A case file's `env`
 field is one record type whose fields are the variables: `{order: {total:
-float}, tier: "gold" | "basic"}`.
+float}, tier: "gold" | "basic"}`. That text must be a `Record` by the grammar of
+3.1. Text that the grammar accepts as a `Type` but that is not a `Record`, such
+as `"int"`, is `bad-type` in every implementation (19.5).
 
 ### 19.2 Host functions
 
@@ -1333,6 +1335,7 @@ implementation reports them:
 | Error | Code |
 | --- | --- |
 | A variable's type, or the expected result's type, that the grammar of 3.1 and the token rules of 3.2 do not accept as a `Type`. This covers the words of 3.8. | `bad-type` |
+| An environment's text (19.1) that the grammar accepts as a `Type` but that is not a `Record`, such as `int` | `bad-type` |
 | A host function's signature or a method's text that the grammar of 3.1 and the token rules of 3.2 do not accept as a `Sig` or a `Method`, wherever in it the error lies | `bad-signature` |
 | A `Sig` with an optional parameter before a required one, or with a rest parameter that is not the last (3.6) | `bad-signature` |
 | A host signature with an `Fn` parameter (19.2) | `bad-signature` |

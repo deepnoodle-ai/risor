@@ -208,7 +208,7 @@ Which of these an implementation with no type checker reports is 3.3.1, item
 | --- | --- | --- |
 | null | Its own value for nothing | A field that is absent is not null. Each binding says which host values count as absent |
 | bool | Its boolean | None |
-| number | Any of its number types | A whole number outside ±(2^53 − 1), a NaN and an infinity cannot enter (3.4.4) |
+| number | Any of its number types | A value of a host integer type whose magnitude is over 2^53 − 1, a NaN and an infinity cannot enter. A finite value of a host floating type always enters (3.4.4) |
 | string | Its text | Length and positions are in code points. Text that is not valid enters as 3.4.5 says |
 | list | An ordered sequence | Read through, not copied |
 | map | A mapping with string keys, or an object with named fields | Keys are visited in code point order (`01-language.md`). The binding must be able to report, for the value, its kind, its size, a field by name, and its keys |
@@ -222,13 +222,16 @@ Which of these an implementation with no type checker reports is 3.3.1, item
 
 ### 3.4.4 Numbers that cannot enter
 
-1. A host number that is a whole number outside ±(2^53 − 1), a NaN or an
-   infinity cannot enter the language.
-2. A run fails where it reads such a number, with the code `number-range` and
-   the class `environment`. A value is read lazily, so a number that is only
-   passed through is still read, and still fails.
-3. `catch` catches this failure.
-4. A host passes an identifier that does not fit as a string.
+1. Three kinds of host number cannot enter the language: a value of a host
+   integer type whose magnitude is over 2^53 − 1, a NaN, and an infinity.
+2. A value of a host floating type enters whenever it is finite, whatever its
+   size. So `1e20` given as a floating value enters, and is a number that is
+   not whole (`01-language.md`).
+3. A run fails where it reads a number that cannot enter, with the code
+   `number-range` and the class `environment`. A value is read lazily, so a
+   number that is only passed through is still read, and still fails.
+4. `catch` catches this failure.
+5. A host passes an identifier that does not fit as a string.
 
 ### 3.4.5 Text that is not valid
 
@@ -648,7 +651,7 @@ the one contract for all runners.
 | `source` | The program text | Exactly one of `source` and `file` is present after the header rule |
 | `file` | A path to a file that holds the program text, relative to the directory of the case file, with `/` between its parts. Spans are positions in that text | |
 | `version` | The specification version, as `"3.0"` | The base environment's |
-| `env` | One record type in type text. Each field is a declared variable, with its type | No variable is declared |
+| `env` | One record type in type text. Each field is a declared variable, with its type. Text that is a type but not a record by the grammar of `05-types.md`, such as `"int"`, is `bad-type`, in every implementation | No variable is declared |
 | `opaque` | A list of opaque type names | No opaque type is declared |
 | `methods` | An object that maps `Type.method` to a method signature in type text | No method is declared |
 | `functions` | Host functions, as stubs (3.10.4) | No function is declared |
@@ -670,8 +673,11 @@ the one contract for all runners.
    as the language value of that kind. A key of `vars` whose value is `null`
    supplies null. A field of `env` that `vars` does not name is not supplied.
 5. Every JSON number in a case file is read by the rule of text to number in
-   `01-language.md`. A number that reads as an infinity makes the file invalid.
-   So a case cannot hold a host number that cannot enter the language.
+   `01-language.md`, so it is a floating value. A runner must not read it into
+   a 64-bit integer type first. So `1e20` in `vars` enters as a number that is
+   not whole, and `9007199254740993` enters as `9007199254740992`. A number
+   that reads as an infinity makes the file invalid. So a case cannot hold a
+   host number that cannot enter the language.
 6. A Core runner accepts `precondition` and does nothing with it. It does not
    test the values of `vars`, or the results of stubs, against their declared
    types. A later package adds that test, which `"precondition": false` turns

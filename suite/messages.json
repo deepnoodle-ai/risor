@@ -343,7 +343,7 @@
     "when": {
       "operator": "An operator gives a result out of range or not finite. op is the operator as written",
       "entry": "A library entry gives a result out of range or not finite. Its fails line in library.json names this template. name is the entry's name as written in the program",
-      "host": "The run reads a host number that cannot enter the language: a whole number outside the range, a NaN or an infinity"
+      "host": "The run reads a host number that cannot enter the language: a value of a host integer type whose magnitude is over 2^53 − 1, a NaN or an infinity"
     },
     "cases": [
       {
