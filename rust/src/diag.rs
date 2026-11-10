@@ -41,6 +41,9 @@ pub mod code {
     pub const LITERAL_RANGE: &str = "literal-range";
     pub const NESTING_EXCEEDED: &str = "nesting-exceeded";
     pub const RESERVED_WORD: &str = "reserved-word";
+    pub const TEXT_BLOCK_OPEN: &str = "text-block-open";
+    pub const TEXT_BLOCK_CLOSE: &str = "text-block-close";
+    pub const TEXT_BLOCK_INDENT: &str = "text-block-indent";
 
     // `declare` codes (`03-host.md` 3.3.4).
     pub const NAME_CLASH: &str = "name-clash";

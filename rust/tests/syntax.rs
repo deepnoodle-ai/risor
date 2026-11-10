@@ -105,7 +105,8 @@ fn examples_of_section_15_that_do_not_parse() {
     check("const match = 1; match", RW, l1(7, 12));
     check("a ?? b > c", UT, l1(8, 9));
     check("x as int", UT, l1(3, 5));
-    check("r\"a\"", UT, l1(1, 2));
+    // Core's example 54; package F3 reads it as a raw string (F3 10).
+    ok("r\"a\"");
     check("\"a\\q\"", "bad-escape", l1(3, 5));
     let deep = format!("{}1{}", "(".repeat(101), ")".repeat(101));
     check(&deep, "nesting-exceeded", l1(101, 102));
@@ -251,11 +252,13 @@ fn table_14_2_reserved_word() {
 
 #[test]
 fn table_14_3_text_blocks_and_prefixed_literals() {
-    check("\"\"\"abc\"\"\"", UT, l1(1, 4));
+    // Package F3 gives meaning to `"""` and to `r` before a quote (F3 10).
+    check("\"\"\"abc\"\"\"", "text-block-open", l1(1, 4));
     check("'''abc", UT, l1(1, 4));
-    check("1 + \"\"\"\n x \n\"\"\"", UT, l1(5, 8));
-    check("r\"a\\q\"", UT, l1(1, 2));
-    check("r'a'", UT, l1(1, 2));
+    ok("1 + \"\"\"\n x \n\"\"\"");
+    assert_eq!(str_value("r\"a\\q\""), "a\\q");
+    assert_eq!(str_value("r'a'"), "a");
+    check("r'''a'''", UT, l1(1, 2));
     check("f\"x\"", UT, l1(1, 2));
     check("R\"x\"", UT, l1(1, 2));
     check("r`x`", UT, l1(1, 2));
@@ -489,7 +492,8 @@ fn rulings_of_rounds_4_and_5() {
     check("[x => x]", UT, l1(4, 6));
     check("x.0", "bad-number", l1(2, 4));
     // T2: before a text block, the text block's row.
-    check("r \"\"\"a\"\"\"", UT, l1(3, 6));
+    // With F3, the text block's row: `text-block-open` at the same span.
+    check("r \"\"\"a\"\"\"", "text-block-open", l1(3, 6));
     check("x.r \"a\"", UT, l1(3, 4));
     // T3: a reserved word where a case needs a literal.
     check("match x { nil => 1 }", RW, l1(11, 14));
@@ -699,4 +703,66 @@ fn deep_text_ends_at_the_limit() {
         t.push_str("}`");
     }
     check(&t, "nesting-exceeded", l1(302, 304));
+}
+
+// ---- package F3: what the suite cannot reach ------------------------------
+
+fn str_value(src: &str) -> String {
+    let p = ok(src);
+    let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
+        panic!()
+    };
+    match p.ast.kind(*result) {
+        NodeKind::String { value, .. } => value.clone(),
+        k => panic!("{src:?}: {}", k.name()),
+    }
+}
+
+/// F3 7.3: a block is read in time linear in its length.
+#[test]
+fn a_long_text_block_reads_in_linear_time() {
+    let n = 200_000;
+    let mut src = String::from("\"\"\"\n");
+    for _ in 0..n {
+        src.push_str("    line of text\n");
+    }
+    src.push_str("    \"\"\"");
+    let start = std::time::Instant::now();
+    let v = str_value(&src);
+    assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(v.len(), n * 13 - 1);
+}
+
+/// F3 7.2: only `${` opens a level; blocks nest through interpolations by
+/// the lexer's own stack.
+#[test]
+fn blocks_nest_without_recursion() {
+    let depth = 200_000;
+    let mut src = String::new();
+    for _ in 0..depth {
+        src.push_str("\"\"\"\n${");
+    }
+    src.push('1');
+    for _ in 0..depth {
+        src.push_str("}\n\"\"\"");
+    }
+    // The 101st `${` is on line 102: each block's `${` follows its line end.
+    check(&src, "nesting-exceeded", [102, 1, 102, 3]);
+    let ok_depth = format!("{}1{}", "\"\"\"\n${".repeat(100), "}\n\"\"\"".repeat(100));
+    ok(&ok_depth);
+}
+
+/// F3 4.6 and 5.3: lines ended by U+000D alone end block lines, but every
+/// position stays on one line.
+#[test]
+fn carriage_returns_end_block_lines_but_not_positions() {
+    assert_eq!(str_value("\"\"\"\r  a\r    b\r  \"\"\""), "a\n  b");
+    check("\"\"\"\r  a\r b\r  \"\"\"", "text-block-indent", l1(10, 11));
+    // Only U+0020 and U+0009 are white space for indentation.
+    check(
+        "\"\"\"\n\u{a0}a\n  \"\"\"",
+        "text-block-indent",
+        [2, 1, 2, 2],
+    );
+    assert_eq!(str_value("\"\"\"\n\u{3000}a\n\"\"\""), "\u{3000}a");
 }

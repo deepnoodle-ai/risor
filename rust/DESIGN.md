@@ -230,3 +230,23 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
 - Stack: the checker's recursion follows the source nesting and the nested
   uses of lambdas, both bounded at 100. Measured at the worst: 256 KiB
   optimized, 768 KiB unoptimized, within the figures for running above.
+
+## Package F3, string forms
+
+- The lexer reads raw strings in its word rule and text blocks at `"""`. A
+  block's content is held as positioned pieces (code points, escapes, line
+  ends, interpolations) until its closing delimiter, where the indentation is
+  known; then its value is built and the text parts are written into the
+  tokens already emitted. Positions are never computed from the split lines.
+- `text-block-open`, `text-block-close` and `text-block-indent` travel on the
+  literal's token, and the parser reports one where it reaches the token
+  (F3 6.2). They are not lexical.
+- A raw string or a block with no interpolation is a `String` node: its value
+  is fixed at parse time and costs nothing at run time.
+
+## Call handles (ruling AR1)
+
+A call handle is valid only until its host function returns, and holds by
+construction here: `Call` borrows the run's meter mutably for the duration of
+one call, and a host implementation is a `'static` closure that receives
+`&mut Call<'_>`, so it cannot keep the handle past its return.

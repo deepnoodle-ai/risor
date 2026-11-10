@@ -88,6 +88,14 @@ pub enum StrForm {
     Double,
     Single,
     Backtick,
+    /// `"""`, a text block (package F3)
+    TripleDouble,
+    /// `r"`, a raw string (F3)
+    RawDouble,
+    /// `r'`, a raw string (F3)
+    RawSingle,
+    /// `r"""`, a raw text block (F3)
+    RawTriple,
 }
 
 impl StrForm {
@@ -96,7 +104,21 @@ impl StrForm {
             StrForm::Double => "\"",
             StrForm::Single => "'",
             StrForm::Backtick => "`",
+            StrForm::TripleDouble => "\"\"\"",
+            StrForm::RawDouble => "r\"",
+            StrForm::RawSingle => "r'",
+            StrForm::RawTriple => "r\"\"\"",
         }
+    }
+
+    /// A `String` token of the grammar (`01-language.md` 3.1; F3 5.1): a
+    /// one-line string or a raw string, which may stand as a key and a
+    /// literal.
+    pub fn is_line(self) -> bool {
+        matches!(
+            self,
+            StrForm::Double | StrForm::Single | StrForm::RawDouble | StrForm::RawSingle
+        )
     }
 }
 
@@ -129,6 +151,9 @@ pub struct Token {
     /// block token (its first three code points) and the prefixed literal (the
     /// word).
     pub diag: Span,
+    /// A code the parser reports when it reaches this token, with its span:
+    /// `text-block-open`, `text-block-close` or `text-block-indent` (F3 6).
+    pub code: Option<(&'static str, Span)>,
 }
 
 impl Token {

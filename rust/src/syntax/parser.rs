@@ -124,7 +124,10 @@ impl<'a> Parser<'a> {
         if matches!(tok.word(), Some("r" | "R"))
             && matches!(
                 self.peek_n(1).tok,
-                Tok::Str(_, StrForm::Double | StrForm::Single)
+                Tok::Str(
+                    _,
+                    StrForm::Double | StrForm::Single | StrForm::RawDouble | StrForm::RawSingle
+                )
             )
         {
             return Err(self.unexpected_at(tok.span));
@@ -150,6 +153,11 @@ impl<'a> Parser<'a> {
 
     #[cold]
     fn unexpected(&self, tok: &Token) -> Box<Diagnostic> {
+        // F3 6.2: a text block's code is reported where the parser reaches
+        // its token, before any test of whether it fits.
+        if let Some((c, span)) = tok.code {
+            return self.diag(c, span, c.to_string());
+        }
         let mut span = tok.diag;
         // Ruling P7: where the token that cannot follow is the operator
         // `not in`, the span runs from `not` to the end of `in`.
@@ -656,6 +664,9 @@ impl<'a> Parser<'a> {
 
     fn primary(&mut self) -> R<NodeId> {
         let t = self.peek();
+        if t.code.is_some() {
+            return Err(self.unexpected(t));
+        }
         match &t.tok {
             Tok::Number(v) => {
                 self.bump();
@@ -859,7 +870,7 @@ impl<'a> Parser<'a> {
                     t.span,
                 ))
             }
-            Tok::Str(s, StrForm::Double | StrForm::Single) => {
+            Tok::Str(s, f) if f.is_line() => {
                 self.bump();
                 self.expect(P::Colon)?;
                 let value = self.expr()?;
@@ -967,7 +978,7 @@ impl<'a> Parser<'a> {
                 };
             }
             Tok::Number(v) => Lit::Number(*v),
-            Tok::Str(s, StrForm::Double | StrForm::Single) => Lit::Str(s.clone()),
+            Tok::Str(s, f) if f.is_line() => Lit::Str(s.clone()),
             Tok::Word(w) if w == "true" => Lit::Bool(true),
             Tok::Word(w) if w == "false" => Lit::Bool(false),
             Tok::Word(w) if w == "null" => Lit::Null,
@@ -1143,7 +1154,7 @@ impl<'a> Parser<'a> {
                 let n = self.name()?;
                 (n.name.clone(), n)
             }
-            Tok::Str(s, StrForm::Double | StrForm::Single) => {
+            Tok::Str(s, f) if f.is_line() => {
                 self.bump();
                 self.expect(P::Colon)?;
                 (s.clone(), self.name()?)

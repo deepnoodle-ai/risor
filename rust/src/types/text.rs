@@ -9,7 +9,7 @@
 
 use crate::source::Source;
 use crate::syntax::lexer::lex;
-use crate::syntax::token::{StrForm, Tok, Token, P};
+use crate::syntax::token::{Tok, Token, P};
 use std::fmt;
 
 /// Type text may nest brackets of any kind at most this deep (20.5).
@@ -366,7 +366,7 @@ impl TypeParser {
                 self.d = 0;
                 Ok(t)
             }
-            Tok::Str(s, StrForm::Double | StrForm::Single) => {
+            Tok::Str(s, f) if f.is_line() => {
                 self.bump();
                 self.d = 0;
                 Ok(Type::Lit(s))
@@ -408,7 +408,7 @@ impl TypeParser {
             }
             let key = match self.peek().clone() {
                 Tok::Word(w) => w,
-                Tok::Str(s, StrForm::Double | StrForm::Single) => s,
+                Tok::Str(s, f) if f.is_line() => s,
                 _ => return fail("expected a field"),
             };
             self.bump();

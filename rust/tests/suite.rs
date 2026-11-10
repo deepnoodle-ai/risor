@@ -179,3 +179,11 @@ fn library_cases() {
     let total = run_lists("suite/library.json", lists);
     assert_eq!(total.invalid, 0, "lists were invalid");
 }
+
+/// Package F3, string forms: `suite/strings/`, run as `core-run` is.
+#[test]
+fn strings_package() {
+    let total = run(&suite_dir().join("strings"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}

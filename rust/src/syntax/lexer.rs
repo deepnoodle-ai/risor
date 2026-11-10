@@ -16,6 +16,31 @@ use crate::source::{Source, Span};
 struct Interp {
     depth: u32,
     tmpl_start: usize,
+    /// The interpolation is of a text block (F3), whose state is the top of
+    /// `blocks`.
+    block: bool,
+}
+
+/// A piece of a text block's content, with its offset (F3 4).
+enum Seg {
+    /// A code point; `true` when an escape gave it.
+    Ch(char, usize, bool),
+    /// A line end in text.
+    End,
+    /// An interpolation, at its `$`.
+    Interp(usize),
+}
+
+/// A text block being read. Its lines are held until the closing delimiter,
+/// where the indentation is known (F3 7.3).
+struct Block {
+    start: usize,
+    raw: bool,
+    segs: Vec<Seg>,
+    /// Where the next text token starts: the block's start, then each `}`.
+    tok_start: usize,
+    /// The tokens of its text parts so far: the head, then each middle.
+    toks: Vec<usize>,
 }
 
 struct Lexer<'a> {
@@ -26,6 +51,7 @@ struct Lexer<'a> {
     stack: Vec<Interp>,
     /// The index in `out` of the head of each open template.
     heads: Vec<usize>,
+    blocks: Vec<Block>,
 }
 
 /// Divide a text into tokens. The last token is `Tok::Eof`.
@@ -37,6 +63,7 @@ pub fn lex(src: &Source) -> Result<Vec<Token>, Diagnostic> {
         out: Vec::new(),
         stack: Vec::new(),
         heads: Vec::new(),
+        blocks: Vec::new(),
     };
     lx.run()?;
     Ok(lx.out)
@@ -71,6 +98,7 @@ impl<'a> Lexer<'a> {
             tok,
             span,
             diag: span,
+            code: None,
         });
     }
 
@@ -153,6 +181,7 @@ impl<'a> Lexer<'a> {
             c if is_word_start(c) => self.word(),
             c if c.is_ascii_digit() => self.number(),
             '.' if next.is_some_and(|d| d.is_ascii_digit()) => self.number(),
+            '"' if next == Some('"') && next2 == Some('"') => self.text_block(i, false),
             '"' | '\'' => {
                 if next == Some(c) && next2 == Some(c) {
                     self.block_token(c);
@@ -272,6 +301,19 @@ impl<'a> Lexer<'a> {
             j += 1;
         }
         let text: String = self.s[start..j].iter().collect();
+        // F3 2: the word `r` directly before a quote begins a raw string or a
+        // raw text block, but `r` and three single quotes stay the prefixed
+        // literal.
+        if text == "r" {
+            let (q1, q2, q3) = (self.at(j), self.at(j + 1), self.at(j + 2));
+            if q1 == Some('"') && q2 == Some('"') && q3 == Some('"') {
+                return self.text_block(start, true);
+            }
+            let triple_single = q1 == Some('\'') && q2 == Some('\'') && q3 == Some('\'');
+            if q1 == Some('"') || (q1 == Some('\'') && !triple_single) {
+                return self.raw_string(start, q1.unwrap_or('"'));
+            }
+        }
         // 2.3 rule 9: the prefixed literal.
         if let Some(q @ ('"' | '\'' | '`')) = self.at(j) {
             if !is_reserved(&text) {
@@ -289,6 +331,7 @@ impl<'a> Lexer<'a> {
                     tok: Tok::Refused,
                     span: Span::new(start, end),
                     diag: Span::new(start, j),
+                    code: None,
                 });
                 return Ok(());
             }
@@ -317,6 +360,7 @@ impl<'a> Lexer<'a> {
             tok: Tok::Refused,
             span: Span::new(start, end),
             diag: Span::new(start, start + 3),
+            code: None,
         });
     }
 
@@ -508,6 +552,7 @@ impl<'a> Lexer<'a> {
             self.stack.push(Interp {
                 depth: 0,
                 tmpl_start: start,
+                block: false,
             });
         } else {
             self.push(Tok::Str(text, StrForm::Backtick), start, end);
@@ -518,6 +563,13 @@ impl<'a> Lexer<'a> {
     /// At the `}` that closes an interpolation.
     fn template_continue(&mut self) -> Result<(), Diagnostic> {
         let start = self.i;
+        if self.stack.last().is_some_and(|t| t.block) {
+            self.stack.pop();
+            if let Some(b) = self.blocks.last_mut() {
+                b.tok_start = start;
+            }
+            return self.block_text(start + 1);
+        }
         let ts = self.stack.pop().map(|t| t.tmpl_start).unwrap_or(start);
         let (text, end, interp) = self.template_text(start + 1, ts)?;
         self.i = end;
@@ -529,6 +581,7 @@ impl<'a> Lexer<'a> {
             self.stack.push(Interp {
                 depth: 0,
                 tmpl_start: ts,
+                block: false,
             });
         } else {
             self.push(Tok::TmplTail(text), start, end);
@@ -540,6 +593,272 @@ impl<'a> Lexer<'a> {
             t.diag = Span::new(start, start + 1);
         }
         Ok(())
+    }
+
+    /// A raw string (F3 3), from the `r` at `start`.
+    fn raw_string(&mut self, start: usize, q: char) -> Result<(), Diagnostic> {
+        let n = self.s.len();
+        let mut k = start + 2;
+        let mut value = String::new();
+        loop {
+            match self.at(k) {
+                None => return Err(self.unterminated(start, n)),
+                Some(c) if c == q => break,
+                Some('\n' | '\r') => return Err(self.unterminated(start, k)),
+                Some(c) => {
+                    value.push(c);
+                    k += 1;
+                }
+            }
+        }
+        self.i = k + 1;
+        let form = if q == '"' {
+            StrForm::RawDouble
+        } else {
+            StrForm::RawSingle
+        };
+        self.push(Tok::Str(value, form), start, k + 1);
+        Ok(())
+    }
+
+    /// The offset after the next `"""` from `j`, or the end of input.
+    fn next_triple(&self, mut j: usize) -> usize {
+        let n = self.s.len();
+        while j + 3 <= n {
+            if self.s[j] == '"' && self.s[j + 1] == '"' && self.s[j + 2] == '"' {
+                return j + 3;
+            }
+            j += 1;
+        }
+        n
+    }
+
+    /// A text block (F3 4), or a raw one, from its first code point.
+    fn text_block(&mut self, start: usize, raw: bool) -> Result<(), Diagnostic> {
+        let n = self.s.len();
+        let delim = if raw { 4 } else { 3 };
+        let mut j = start + delim;
+        // 4.1: the opening line.
+        loop {
+            match self.at(j) {
+                Some(' ' | '\t') => j += 1,
+                Some('\n') => {
+                    j += 1;
+                    break;
+                }
+                Some('\r') => {
+                    j += if self.at(j + 1) == Some('\n') { 2 } else { 1 };
+                    break;
+                }
+                None => return Err(self.unterminated(start, n)),
+                Some(_) => {
+                    // `text-block-open`: the literal runs raw to the next
+                    // `"""`, and nothing in it is read.
+                    let end = self.next_triple(start + delim);
+                    let open = Span::new(start, start + delim);
+                    self.i = end;
+                    self.out.push(Token {
+                        tok: Tok::Refused,
+                        span: Span::new(start, end),
+                        diag: open,
+                        code: Some((code::TEXT_BLOCK_OPEN, open)),
+                    });
+                    return Ok(());
+                }
+            }
+        }
+        self.blocks.push(Block {
+            start,
+            raw,
+            segs: Vec::new(),
+            tok_start: start,
+            toks: Vec::new(),
+        });
+        self.block_text(j)
+    }
+
+    /// Read a text block's content from `j`: to its closing delimiter, which
+    /// ends the block, or to a `${`, where the interpolation's tokens follow.
+    fn block_text(&mut self, mut j: usize) -> Result<(), Diagnostic> {
+        let n = self.s.len();
+        let Some(b) = self.blocks.last() else {
+            return Ok(());
+        };
+        let (start, raw) = (b.start, b.raw);
+        let mut segs = Vec::new();
+        let result = loop {
+            if j >= n {
+                break Err(self.unterminated(start, n));
+            }
+            let c = self.s[j];
+            if c == '"' && self.at(j + 1) == Some('"') && self.at(j + 2) == Some('"') {
+                break Ok(Some(j));
+            }
+            match c {
+                '\\' if !raw => match self.at(j + 1) {
+                    None => break Err(self.unterminated(start, n)),
+                    Some('\n' | '\r') => {
+                        break Err(self.err(
+                            code::LINE_CONTINUATION,
+                            j,
+                            j + 1,
+                            "a backslash cannot stand before a line end in a text block",
+                        ))
+                    }
+                    Some(_) => match self.escape(j, true) {
+                        Ok((ch, k)) => {
+                            segs.push(Seg::Ch(ch, j, true));
+                            j = k;
+                        }
+                        Err(e) => break Err(e),
+                    },
+                },
+                '$' if !raw && self.at(j + 1) == Some('{') => {
+                    segs.push(Seg::Interp(j));
+                    break Ok(None);
+                }
+                '\n' => {
+                    segs.push(Seg::End);
+                    j += 1;
+                }
+                '\r' => {
+                    segs.push(Seg::End);
+                    j += if self.at(j + 1) == Some('\n') { 2 } else { 1 };
+                }
+                _ => {
+                    segs.push(Seg::Ch(c, j, false));
+                    j += 1;
+                }
+            }
+        };
+        let b = self.blocks.last_mut().expect("a block is open");
+        b.segs.append(&mut segs);
+        match result? {
+            None => {
+                // An interpolation: a head or middle token ends at `${`.
+                let ts = b.tok_start;
+                let first = b.toks.is_empty();
+                b.toks.push(self.out.len());
+                let tok = if first {
+                    Tok::TmplHead(String::new())
+                } else {
+                    Tok::TmplMiddle(String::new())
+                };
+                self.push(tok, ts, j + 2);
+                if !first {
+                    let last = self.out.len() - 1;
+                    self.out[last].diag = Span::new(ts, ts + 1);
+                }
+                self.stack.push(Interp {
+                    depth: 0,
+                    tmpl_start: start,
+                    block: true,
+                });
+                self.i = j + 2;
+                Ok(())
+            }
+            Some(close) => {
+                self.finish_block(close);
+                Ok(())
+            }
+        }
+    }
+
+    /// At a block's closing delimiter: the closing line, the indentation, the
+    /// value and its parts (F3 4.4 to 4.6).
+    fn finish_block(&mut self, close: usize) {
+        let b = self.blocks.pop().expect("a block is open");
+        let end = close + 3;
+        let is_space = |c: char| c == ' ' || c == '\t';
+        let mut lines: Vec<&[Seg]> = b.segs.split(|s| matches!(s, Seg::End)).collect();
+        let closing = lines.pop().unwrap_or_default();
+        let mut code_at: Option<(&'static str, Span)> = None;
+        let closing_blank = closing
+            .iter()
+            .all(|s| matches!(s, Seg::Ch(c, _, false) if is_space(*c)));
+        let indent: Vec<char> = if closing_blank {
+            closing
+                .iter()
+                .filter_map(|s| match s {
+                    Seg::Ch(c, _, _) => Some(*c),
+                    _ => None,
+                })
+                .collect()
+        } else {
+            code_at = Some((code::TEXT_BLOCK_CLOSE, Span::new(close, end)));
+            Vec::new()
+        };
+        // The parts of the value: text, split at each interpolation.
+        let mut parts: Vec<String> = vec![String::new()];
+        for (li, line) in lines.iter().enumerate() {
+            if li > 0 {
+                parts.last_mut().expect("a part").push('\n');
+            }
+            let blank = line
+                .iter()
+                .all(|s| matches!(s, Seg::Ch(c, _, false) if is_space(*c)));
+            if blank {
+                continue;
+            }
+            let mut skip = 0;
+            if closing_blank {
+                for (k, want) in indent.iter().enumerate() {
+                    match line.get(k) {
+                        Some(Seg::Ch(c, _, false)) if c == want => {}
+                        Some(Seg::Ch(_, p, _)) | Some(Seg::Interp(p)) => {
+                            if code_at.is_none() {
+                                code_at = Some((code::TEXT_BLOCK_INDENT, Span::new(*p, p + 1)));
+                            }
+                            break;
+                        }
+                        _ => break,
+                    }
+                }
+                skip = indent.len();
+            }
+            for s in line.iter().skip(skip) {
+                match s {
+                    Seg::Ch(c, _, _) => parts.last_mut().expect("a part").push(*c),
+                    Seg::Interp(_) => parts.push(String::new()),
+                    Seg::End => {}
+                }
+            }
+        }
+        // An interpolation on the closing line gives a part too.
+        for s in closing {
+            if let Seg::Interp(_) = s {
+                parts.push(String::new());
+            }
+        }
+        self.i = end;
+        let whole = Span::new(b.start, end);
+        if b.toks.is_empty() {
+            let form = if b.raw {
+                StrForm::RawTriple
+            } else {
+                StrForm::TripleDouble
+            };
+            let value = parts.into_iter().next().unwrap_or_default();
+            self.push(Tok::Str(value, form), b.start, end);
+            if let Some(t) = self.out.last_mut() {
+                t.code = code_at;
+            }
+            return;
+        }
+        let mut texts = parts.into_iter();
+        for &k in &b.toks {
+            let t = texts.next().unwrap_or_default();
+            if let Tok::TmplHead(s) | Tok::TmplMiddle(s) = &mut self.out[k].tok {
+                *s = t;
+            }
+        }
+        let tail = texts.next().unwrap_or_default();
+        self.push(Tok::TmplTail(tail), b.tok_start, end);
+        let last = self.out.len() - 1;
+        self.out[last].diag = Span::new(b.tok_start, b.tok_start + 1);
+        let head = b.toks[0];
+        self.out[head].diag = whole;
+        self.out[head].code = code_at;
     }
 
     /// Read a text part from `j` to a closing backtick or a `${`. Returns its
