@@ -1400,6 +1400,22 @@ node in the third column (4.3). The `path` of each is null.
 5. The message of each code is built from `messages.json` (`03-host.md`). The
    class of each is in `03-host.md`.
 
+## 14A. What packages add
+
+A package of the specification gives a meaning to text that is an error in
+Core, and changes nothing else. Its chapter is the home of its rules.
+
+| Package | Adds | Chapter |
+| --- | --- | --- |
+| F3, string forms | The raw string `r"..."` and `r'...'`, the text block `"""`, the raw text block `r"""`. It reports the codes `text-block-open`, `text-block-close` and `text-block-indent` (14.2). It replaces rows 7 and 9 of 2.3 for these forms | `spec/packages/f03-strings.md` |
+
+1. Where this chapter calls such a text an error, it speaks of Core alone:
+   the rows of 2.3, 14.2 and 14.3 for these forms, and the examples that use
+   them.
+2. For a text that is an error with and without a package, the package may
+   change the code and the span. The rule of 14.3, that a later targeted code
+   keeps the Core span, binds the texts that Core's cases state.
+
 ## 15. Examples
 
 The variables in these examples are values the host supplied. `u` is `{name: "",

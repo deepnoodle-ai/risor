@@ -1,0 +1,531 @@
+{
+ "cases": [
+  {
+   "name": "core text: a text block",
+   "source": "\"\"\"abc\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text: a text block after an operator",
+   "source": "1 + \"\"\"a\nb\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text: nothing in a text block is an escape",
+   "source": "\"\"\"\\q\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text: a text block with no close runs to the end of input",
+   "source": "\"\"\"abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text: four double quotes",
+   "source": "\"\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text: a text block after an empty string",
+   "source": "\"\" + \"\"\"x\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text: r, a space, then a text block",
+   "source": "r \"\"\"a\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text: a raw string r\"...\"",
+   "source": "r\"a\"",
+   "expect": {
+    "value": "a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "core text: a raw string r'...'",
+   "source": "r'a'",
+   "expect": {
+    "value": "a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "core text: a prefixed string after an operator",
+   "source": "1 + r\"a\"",
+   "check": false,
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "class": "dynamic"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "core text: nothing in a prefixed string is an escape",
+   "source": "r\"a\\q\"",
+   "expect": {
+    "value": "a\\q",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "core text: a prefixed string runs to the end of its line",
+   "source": "r\"abc\n1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: a lexical error after a text block",
+   "source": "\"\"\"x\"\"\" @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: a lexical error after a prefixed literal",
+   "source": "r`a` @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: a single-quoted text block",
+   "source": "'''abc'''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: a text block of nothing in single quotes",
+   "source": "''''''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: a prefixed string R\"...\"",
+   "source": "R\"x\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: a tagged template r`...`",
+   "source": "r`x`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: a prefixed template may cross lines",
+   "source": "r`a\nb`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: nothing in a prefixed template is an interpolation",
+   "source": "r`${@}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: the word r, a space, then a double quote",
+   "source": "r \"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: the word R, a space, then a single quote",
+   "source": "R 'a'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: the word r, a tab, then a double quote",
+   "source": "r\t\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: R, a line end, then a single-quoted string",
+   "source": "1 + R\n'a'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "core text kept: r after a dot, a space, then a string",
+   "source": "x.r \"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unchanged: the empty string before a comma",
+   "source": "len([\"\", \"\"])",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "unchanged: the empty string then +",
+   "source": "\"\" + \"a\"",
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "unchanged: three quotes in a single-quoted string",
+   "source": "'\"\"\"'",
+   "expect": {
+    "value": "\"\"\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unchanged: three quotes in a template",
+   "source": "`a\"\"\"b`",
+   "expect": {
+    "value": "a\"\"\"b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unchanged: r and a quote in a template",
+   "source": "`r\"a\"`",
+   "expect": {
+    "value": "r\"a\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unchanged: three quotes in a comment",
+   "source": "// \"\"\"\n1",
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unchanged: r and a quote in a comment",
+   "source": "/* r\"a */ 2",
+   "expect": {
+    "value": 2,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unchanged: escaped quotes in a string",
+   "source": "\"\\\"\\\"\\\"\"",
+   "expect": {
+    "value": "\"\"\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unchanged: a string that ends in two quotes",
+   "source": "'a\"\"'",
+   "expect": {
+    "value": "a\"\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unchanged: the name r before an operator",
+   "source": "const r = 1; r+r",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "unchanged: a word ending in r before a parenthesis",
+   "source": "const fr = x => x; fr(\"a\")",
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "unchanged: the reserved word in directly before a string",
+   "source": "\"a\" in\"abc\"",
+   "expect": {
+    "value": true
+   }
+  }
+ ]
+}

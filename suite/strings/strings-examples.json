@@ -1,0 +1,213 @@
+{
+ "cases": [
+  {
+   "name": "example 1: a Windows path",
+   "source": "r\"C:\\builds\\new\"",
+   "expect": {
+    "value": "C:\\builds\\new",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "example 2: a raw \\n has length 2",
+   "source": "len(r\"\\n\")",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "example 3: a raw string of one backslash, then +",
+   "source": "r\"\\\" + \"x\"",
+   "expect": {
+    "value": "\\x",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "example 4: a raw map key",
+   "source": "{r\"a-b\": 1}",
+   "expect": {
+    "value": {
+     "a-b": 1
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "example 5: r is a name",
+   "source": "const r = 2; r",
+   "expect": {
+    "value": 2,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "example 6: R is not a prefix",
+   "source": "R\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "example 7: r then three single quotes",
+   "source": "r'''a'''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "example 8: a prompt",
+   "source": "\"\"\"\n    You are ${role}.\n\n      - Be brief.\n    \"\"\"",
+   "env": "{role: string}",
+   "vars": {
+    "role": "terse"
+   },
+   "expect": {
+    "value": "You are terse.\n\n  - Be brief.",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "example 9: a list rendered in a text block",
+   "source": "\"\"\"\n  ${xs}\n  \"\"\"",
+   "env": "{xs: int[]}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": "[1,2]",
+    "steps": 3,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "example 10: a text block with no interpolation",
+   "source": "\"\"\"\n  abc\n  \"\"\"",
+   "expect": {
+    "value": "abc",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "example 11: a text block as an operand",
+   "source": "\"\"\"\n  a\n  \"\"\" + \"b\"",
+   "expect": {
+    "value": "ab",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "example 12: a text block in a text block",
+   "source": "\"\"\"\n  ${\"\"\"\n    a\n    \"\"\"}\n  \"\"\"",
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "example 13: text on the opening line",
+   "source": "\"\"\"a\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "example 14: a lexical error after a bad text block",
+   "source": "\"\"\"x\"\"\" @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "example 15: text before the closing delimiter",
+   "source": "\"\"\"\n  a\n b\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       3,
+       3,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "example 16: the opening delimiter alone",
+   "source": "\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

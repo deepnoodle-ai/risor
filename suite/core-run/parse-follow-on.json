@@ -1,98 +1,8 @@
 {
  "cases": [
   {
-   "name": "a text block",
-   "source": "\"\"\"abc\"\"\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       4
-      ]
-     }
-    ]
-   }
-  },
-  {
    "name": "a single-quoted text block",
    "source": "'''abc'''",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       4
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a text block after an operator",
-   "source": "1 + \"\"\"a\nb\"\"\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       5,
-       1,
-       8
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "nothing in a text block is an escape",
-   "source": "\"\"\"\\q\"\"\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       4
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a text block with no close runs to the end of input",
-   "source": "\"\"\"abc",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       4
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "four double quotes",
-   "source": "\"\"\"\"",
    "expect": {
     "phase": "parse",
     "diagnostics": [
@@ -121,60 +31,6 @@
        1,
        1,
        4
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a text block after an empty string",
-   "source": "\"\" + \"\"\"x\"\"\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       6,
-       1,
-       9
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a raw string r\"...\"",
-   "source": "r\"a\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       2
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a raw string r'...'",
-   "source": "r'a'",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       2
       ]
      }
     ]
@@ -265,60 +121,6 @@
        1,
        1,
        4
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a prefixed string after an operator",
-   "source": "1 + r\"a\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       5,
-       1,
-       6
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "nothing in a prefixed string is an escape",
-   "source": "r\"a\\q\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       2
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a prefixed string runs to the end of its line",
-   "source": "r\"abc\n1",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       1,
-       1,
-       2
       ]
      }
     ]
@@ -643,24 +445,6 @@
        3,
        1,
        4
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "T2: r, a space, then a text block: the text block row",
-   "source": "r \"\"\"a\"\"\"",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       3,
-       1,
-       6
       ]
      }
     ]

@@ -1,0 +1,417 @@
+{
+ "cases": [
+  {
+   "name": "cost: a raw string costs nothing",
+   "source": "r\"abc\\def\"",
+   "expect": {
+    "value": "abc\\def",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "cost: a text block with no interpolation costs nothing",
+   "source": "\"\"\"\n  abc\n  \"\"\"",
+   "expect": {
+    "value": "abc",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "cost: a raw text block costs nothing",
+   "source": "r\"\"\"\n  ${abc}\n  \"\"\"",
+   "expect": {
+    "value": "${abc}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "cost: a long text block with no interpolation costs nothing",
+   "source": "\"\"\"\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n    \"\"\"",
+   "expect": {
+    "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "cost: a text block with an interpolation is a template",
+   "source": "\"\"\"\n  a${x}b\n  \"\"\"",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "a1b",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: the backtick template with the same parts",
+   "source": "`a${x}b`",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "a1b",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: an interpolation of a literal still makes a template",
+   "source": "\"\"\"\n  ${\"a\"}\n  \"\"\"",
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: a result of weight 63 has size 0",
+   "source": "\"\"\"\n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${x}\n  \"\"\"",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: a result of weight 64 has size 1",
+   "source": "\"\"\"\n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${x}\n  \"\"\"",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "cost: removed indentation is not counted",
+   "source": "\"\"\"\n        ab\n        ab\n        ab\n        ab\n        ab\n        ab\n        ab\n        ab\n        ab\n        ab${x}\n        \"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "ab\nab\nab\nab\nab\nab\nab\nab\nab\nab",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: a CRLF line end counts as one line feed (weight 63)",
+   "source": "\"\"\"\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na${x}\r\n\"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "a\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: a CRLF line end counts as one line feed (weight 65)",
+   "source": "\"\"\"\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na\r\na${x}\r\n\"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "a\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na\na",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "cost: the line end before the closing line is not counted (weight 63)",
+   "source": "\"\"\"\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${x}\n\"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: a blank line before the closing line adds a line feed (weight 64)",
+   "source": "\"\"\"\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${x}\n\n\"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "cost: code points above U+FFFF weigh 2",
+   "source": "\"\"\"\n  😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀${x}\n  \"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "cost: escapes are counted as the code points they give (weight 63)",
+   "source": "\"\"\"\n  \\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041${x}\n  \"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: escapes are counted as the code points they give (weight 64)",
+   "source": "\"\"\"\n  \\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041\\u0041${x}\n  \"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "cost: the rendering walk of a list in a text block",
+   "source": "\"\"\"\n  ${xs}\n  \"\"\"",
+   "env": "{xs: int[]}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": "[1,2]",
+    "steps": 3,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "cost: a text block template in a lambda body",
+   "source": "[1, 2].map(n => \"\"\"\n  ${n}\n  \"\"\")",
+   "expect": {
+    "value": [
+     "1",
+     "2"
+    ],
+    "steps": 8,
+    "allocated": 8
+   }
+  },
+  {
+   "name": "cost: a failure in an interpolation of a text block",
+   "source": "\"\"\"\n  ${1 / x}\n  \"\"\"",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       2,
+       5,
+       2,
+       10
+      ],
+      "class": "divide",
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "cost: an opaque value rendered in a text block fails at the template",
+   "source": "\"\"\"\n  at ${x}\n  \"\"\"",
+   "env": "{x: any}",
+   "opaque": [
+    "Time"
+   ],
+   "vars": {
+    "x": {
+     "$opaque": {
+      "type": "Time",
+      "id": 1
+     }
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       3,
+       6
+      ],
+      "class": "dynamic",
+      "message": "an opaque value cannot be rendered as text"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "cost: a text block template under a step limit",
+   "source": "\"\"\"\n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${x}\n  \"\"\"",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "limits": {
+    "steps": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "cost: a text block template under an allocation limit",
+   "source": "\"\"\"\n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${x}\n  \"\"\"",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "limits": {
+    "allocation": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "allocation-exceeded"
+     }
+    ]
+   }
+  },
+  {
+   "name": "nesting: 100 nested text blocks",
+   "source": "\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${1}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"",
+   "expect": {
+    "value": "1",
+    "steps": 100,
+    "allocated": 100
+   }
+  },
+  {
+   "name": "nesting: 101 nested text blocks: the 101st ${ is reported",
+   "source": "\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${\"\"\"\n${1}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"}\n\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       102,
+       1,
+       102,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nesting: the ${ of a text block at level 100",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((\"\"\"\n  ${1}\n  \"\"\")))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "nesting: the ${ of a text block at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((\"\"\"\n  ${1}\n  \"\"\"))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       2,
+       3,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nesting: brackets in the text of a text block open no level",
+   "source": "\"\"\"\n  ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((${1}[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\n  \"\"\"",
+   "expect": {
+    "value": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[["
+   }
+  },
+  {
+   "name": "nesting: ${ in a raw text block opens no level",
+   "source": "r\"\"\"\n  ${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${\n  \"\"\"",
+   "expect": {
+    "value": "${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${${",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "nesting: ${ in a raw string opens no level",
+   "source": "r\"${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(\"",
+   "expect": {
+    "value": "${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(${(",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "nesting: a raw string at level 100",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((r\"((((((((((((((((((((((((((((((((((((((((((((((((((\"))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": "((((((((((((((((((((((((((((((((((((((((((((((((((",
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

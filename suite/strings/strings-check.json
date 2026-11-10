@@ -1,0 +1,280 @@
+{
+ "cases": [
+  {
+   "name": "type: a text block with no interpolation has the literal set of its value",
+   "source": "\"\"\"\n  a\n    b\n  \"\"\"",
+   "expect": {
+    "type": "\"a\\n  b\"",
+    "value": "a\n  b"
+   }
+  },
+  {
+   "name": "type: a raw string has the literal set of its value",
+   "source": "r\"a\\b\"",
+   "expect": {
+    "type": "\"a\\\\b\"",
+    "value": "a\\b"
+   }
+  },
+  {
+   "name": "type: a raw text block has the literal set of its value",
+   "source": "r\"\"\"\n  ${x}\n  \"\"\"",
+   "expect": {
+    "type": "\"${x}\"",
+    "value": "${x}"
+   }
+  },
+  {
+   "name": "type: a text block with an interpolation is a string",
+   "source": "\"\"\"\n  ${x}\n  \"\"\"",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "type": "string",
+    "value": "1"
+   }
+  },
+  {
+   "name": "type: a raw string with ${ reads no name",
+   "source": "r\"${x}\"",
+   "expect": {
+    "type": "\"${x}\""
+   }
+  },
+  {
+   "name": "type: a raw string in type text",
+   "source": "k",
+   "env": "{k: r\"a\\b\"}",
+   "vars": {
+    "k": "a\\b"
+   },
+   "expect": {
+    "type": "\"a\\\\b\"",
+    "value": "a\\b"
+   }
+  },
+  {
+   "name": "type: raw strings in alternatives of type text",
+   "source": "k",
+   "env": "{k: \"a\" | r'b\\'}",
+   "expect": {
+    "type": "\"a\" | \"b\\\\\""
+   }
+  },
+  {
+   "name": "type: a raw string as a field key in type text",
+   "source": "k.a",
+   "env": "{k: {r\"a\": int}}",
+   "expect": {
+    "type": "int"
+   }
+  },
+  {
+   "name": "type: a text block with no interpolation reads a field of a record",
+   "source": "m[\"\"\"\n  a\n  \"\"\"]",
+   "env": "{m: {a: int}}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "type": "int",
+    "value": 1
+   }
+  },
+  {
+   "name": "declare: a text block is not a String in type text",
+   "source": "1",
+   "env": "{a: \"\"\"\n  x\n  \"\"\"}",
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: a raw text block is not a String in type text",
+   "source": "1",
+   "env": "{a: r\"\"\"\n  x\n  \"\"\"}",
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: R is not a raw prefix in type text",
+   "source": "1",
+   "env": "{a: R\"x\"}",
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: an unterminated raw string in type text",
+   "source": "1",
+   "env": "{a: r\"x}",
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "position: a check error in an interpolation on the third line",
+   "source": "\"\"\"\n  a\n  ${nope}\n  \"\"\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       3,
+       5,
+       3,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "position: a check error in a block with carriage returns alone",
+   "source": "\"\"\"\r  a\r  ${nope}\r  \"\"\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       13,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "position: a check error in a block with CRLF line ends",
+   "source": "\"\"\"\r\n  a\r\n  ${nope}\r\n  \"\"\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       3,
+       5,
+       3,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "position: a check error on a line that begins inside an interpolation",
+   "source": "\"\"\"\n  a ${\n1 +\n      nope\n} b\n  \"\"\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       4,
+       7,
+       4,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "static: a raw key equal to an earlier plain key is a duplicate",
+   "source": "{\"a\\\\b\": 1, r\"a\\b\": 2}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "duplicate-key",
+      "span": [
+       1,
+       13,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "static: a raw key equal to an earlier word key is a duplicate",
+   "source": "{a: 1, r'a': 2}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "duplicate-key",
+      "span": [
+       1,
+       8,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "static: a raw match literal equal to an earlier one is a duplicate",
+   "source": "match s { \"a\\\\b\" => 1, r\"a\\b\" => 2, _ => 3 }",
+   "env": "{s: string}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "duplicate-case",
+      "span": [
+       1,
+       24,
+       1,
+       30
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "static: two different raw keys",
+   "source": "{r\"a\": 1, r\"b\": 2}",
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": 2
+    },
+    "steps": 0,
+    "allocated": 5
+   }
+  }
+ ]
+}

@@ -1,0 +1,745 @@
+{
+ "cases": [
+  {
+   "name": "a raw string in double quotes",
+   "source": "r\"abc\"",
+   "expect": {
+    "value": "abc",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string in single quotes",
+   "source": "r'abc'",
+   "expect": {
+    "value": "abc",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a backslash in a raw string is a backslash",
+   "source": "r\"a\\b\"",
+   "expect": {
+    "value": "a\\b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw \\n is two code points",
+   "source": "len(r\"\\n\")",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a raw \\n is a backslash and n",
+   "source": "r\"\\n\" == \"\\\\n\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string of one backslash, double quotes",
+   "source": "r\"\\\"",
+   "expect": {
+    "value": "\\",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string of one backslash, single quotes",
+   "source": "r'\\'",
+   "expect": {
+    "value": "\\",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string ends at the next quote, whatever stands before it",
+   "source": "r\"\\\" + \"x\"",
+   "expect": {
+    "value": "\\x",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "${ in a raw string is two characters, and x is not read",
+   "source": "r\"${x}\"",
+   "expect": {
+    "value": "${x}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "${ in a single-quoted raw string",
+   "source": "r'${1 + 2}'",
+   "expect": {
+    "value": "${1 + 2}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a double-quoted raw string holds a single quote",
+   "source": "r\"it's\"",
+   "expect": {
+    "value": "it's",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a single-quoted raw string holds a double quote",
+   "source": "r'say \"hi\"'",
+   "expect": {
+    "value": "say \"hi\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty raw string, double quotes",
+   "source": "r\"\"",
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty raw string, single quotes",
+   "source": "r''",
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty raw string, then +",
+   "source": "r\"\" + \"a\"",
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the empty raw string as an argument",
+   "source": "len(r\"\")",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "escape text in a raw string: \\u",
+   "source": "r\"\\u0041\"",
+   "expect": {
+    "value": "\\u0041",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "escape text in a raw string: \\t and \\q",
+   "source": "r\"\\t\\q\"",
+   "expect": {
+    "value": "\\t\\q",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string equals the plain string with escapes",
+   "source": "r\"C:\\new\\x\" == \"C:\\\\new\\\\x\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "comment marks in a raw string are text",
+   "source": "r\"/* // */\"",
+   "expect": {
+    "value": "/* // */",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "characters that begin no token are text in a raw string",
+   "source": "r\"@ # $ ~ ^\"",
+   "expect": {
+    "value": "@ # $ ~ ^",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string holds code points above U+007F",
+   "source": "r\"é😀\\\"",
+   "expect": {
+    "value": "é😀\\",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string holds a tab",
+   "source": "r\"a\tb\"",
+   "expect": {
+    "value": "a\tb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string holds U+2028 and U+0085",
+   "source": "r\"a bc\"",
+   "expect": {
+    "value": "a bc",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string holds a backtick",
+   "source": "r\"`a`\"",
+   "expect": {
+    "value": "`a`",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string as a map key",
+   "source": "{r\"a\\b\": 1}",
+   "expect": {
+    "value": {
+     "a\\b": 1
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a single-quoted raw string as a map key",
+   "source": "{r'x': 1}.x",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a raw string as the key of a map pattern",
+   "source": "const {r\"a-b\": x} = {\"a-b\": 5}; x",
+   "expect": {
+    "value": 5
+   }
+  },
+  {
+   "name": "a raw string as a match literal",
+   "source": "match \"a\\\\b\" { r\"a\\b\" => 1, _ => 2 }",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a raw string in an interpolation",
+   "source": "`${r\"\\d+\"} matched ${2} times`",
+   "expect": {
+    "value": "\\d+ matched 2 times"
+   }
+  },
+  {
+   "name": "a raw string as the receiver of a method",
+   "source": "r\"a\\b\".toUpperCase()",
+   "expect": {
+    "value": "A\\B"
+   }
+  },
+  {
+   "name": "a raw string after the reserved word in",
+   "source": "\"b\" in r\"a\\b\"",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "a raw string directly after the reserved word in",
+   "source": "\"b\" in\"abc\" && \"\\\\\" in r\"a\\b\"",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "a raw string in a list",
+   "source": "[r\"\\\", r'\\']",
+   "expect": {
+    "value": [
+     "\\",
+     "\\"
+    ]
+   }
+  },
+  {
+   "name": "a raw string and a plain string side by side in a call",
+   "source": "len(r\"\\n\") + len(\"\\n\")",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "r alone is a name",
+   "source": "const r = 2; r",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "r as a map key and a field",
+   "source": "{r: 1}.r",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "r as a lambda parameter",
+   "source": "[1, 2].map(r => r * 2)",
+   "expect": {
+    "value": [
+     2,
+     4
+    ]
+   }
+  },
+  {
+   "name": "r then + then a string",
+   "source": "const r = \"q\"; r+\"a\"",
+   "expect": {
+    "value": "qa"
+   }
+  },
+  {
+   "name": "r then ( is a call of r",
+   "source": "const r = x => x; r(\"a\")",
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "r as a shorthand entry",
+   "source": "const r = 1; {r}",
+   "expect": {
+    "value": {
+     "r": 1
+    }
+   }
+  },
+  {
+   "name": "a word that ends in r before a quote is not a raw prefix",
+   "source": "xr\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rr before a quote is not a raw prefix",
+   "source": "rr\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "R before a quote is not a raw prefix",
+   "source": "R\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "R before a single quote is not a raw prefix",
+   "source": "R'a'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "r before a backtick is not a raw prefix",
+   "source": "r`a`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "r before a backtick, after an operator",
+   "source": "\"a\" + r`b`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "r then three single quotes is not a raw literal",
+   "source": "r'''a'''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "r, a space, then a string",
+   "source": "r \"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "r, a space, then a raw string: the row of r and white space",
+   "source": "r r\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a raw string after a dot does not fit: the span is the whole token",
+   "source": "{r: 1}.r\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a raw string where no token may stand: the span is the whole token",
+   "source": "1 r\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two raw strings side by side",
+   "source": "r\"a\" r\"b\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a raw string with no closing quote at the end of input",
+   "source": "r\"abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a single-quoted raw string with no closing quote",
+   "source": "r'abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a line feed in a raw string",
+   "source": "r\"a\nb\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a carriage return in a raw string",
+   "source": "r'a\rb'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a carriage return and line feed in a raw string",
+   "source": "r\"a\r\nb\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a backslash before a line end in a raw string is text, and the string is unterminated",
+   "source": "r\"a\\\n\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a backslash before the end of input in a raw string",
+   "source": "r\"a\\",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a raw string cannot hold its own quote",
+   "source": "r\"a\"b\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nothing in a raw string is lexed, and a lexical error after it is reported",
+   "source": "r\"@\" @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated raw string after an operator",
+   "source": "1 + r\"ab",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

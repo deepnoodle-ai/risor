@@ -1,0 +1,1475 @@
+{
+ "cases": [
+  {
+   "name": "open: text on the opening line",
+   "source": "\"\"\"abc\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: text on the opening line, and a valid closing line",
+   "source": "\"\"\"a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: a comment on the opening line",
+   "source": "\"\"\" // note\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: a fourth double quote",
+   "source": "\"\"\"\"\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: six double quotes",
+   "source": "\"\"\"\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: no closing delimiter after a bad opening line is not reported",
+   "source": "\"\"\"abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: nothing after a bad opening line is read as an escape",
+   "source": "\"\"\"a\n  \\q\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: a backslash before the line end of the opening line",
+   "source": "\"\"\"\\\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: a raw text block, the span holds the prefix",
+   "source": "r\"\"\"abc\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: after an operator",
+   "source": "x == \"\"\"a\"\"\"",
+   "env": "{x: string}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: where no token may stand, the code is still text-block-open",
+   "source": "1 \"\"\"a\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: a lexical error after the literal comes first",
+   "source": "\"\"\"x\"\"\" @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: an earlier syntax error comes first",
+   "source": ") \"\"\"x\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "open: the literal ends at the next three quotes",
+   "source": "\"\"\"a\"\"\" + 1 )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: the opening delimiter then the end of input",
+   "source": "\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: spaces after the opening delimiter, then the end of input",
+   "source": "\"\"\"  ",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: a content line then the end of input",
+   "source": "\"\"\"\n  a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       2,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: two quotes are not a closing delimiter",
+   "source": "\"\"\"\n  a\n  \"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       3,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: an escaped quote does not close",
+   "source": "\"\"\"\n  a\n  \\\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       3,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: inside an interpolation",
+   "source": "\"\"\"\n  ${1 + ",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       2,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: a backslash before the end of input",
+   "source": "\"\"\"\n  a\\",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: a raw text block, from the prefix",
+   "source": "r\"\"\"\n  a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       2,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: the innermost text block is named",
+   "source": "\"\"\"\n  ${\"\"\"\n    a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       2,
+       5,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: a template open in a text block's interpolation",
+   "source": "\"\"\"\n  ${`a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       2,
+       5,
+       2,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: the outer block after a closed inner one",
+   "source": "\"\"\"\n  ${\"\"\"\n    a\n    \"\"\"}\n",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       5,
+       1
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: three quotes in a one-line string in an interpolation do not close",
+   "source": "\"\"\"\n  ${'\"\"\"\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       2,
+       5,
+       2,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: text before the closing delimiter",
+   "source": "\"\"\"\n  a\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       2,
+       4,
+       2,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: text before the closing delimiter on a later line",
+   "source": "\"\"\"\n  a\n  b \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       3,
+       5,
+       3,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: an interpolation before the closing delimiter",
+   "source": "\"\"\"\n  ${1}\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       2,
+       7,
+       2,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: an interpolation that spans lines before the closing delimiter",
+   "source": "\"\"\"\n  a${\n  1}\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       3,
+       5,
+       3,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: a raw text block",
+   "source": "r\"\"\"\n  a\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       2,
+       4,
+       2,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: a raw text block cannot hold three quotes",
+   "source": "r\"\"\"\n  a\"\"\"b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       2,
+       4,
+       2,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: an escape before the closing delimiter",
+   "source": "\"\"\"\n  \\t\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       2,
+       5,
+       2,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: no indentation error is reported once the close is bad",
+   "source": "\"\"\"\n a\n  b\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       3,
+       4,
+       3,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: a lexical error after the literal comes first",
+   "source": "\"\"\"\n  a\"\"\"\n@",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       3,
+       1,
+       3,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: a lexical error in the content comes first",
+   "source": "\"\"\"\n  \\q\n  a\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       2,
+       3,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a quote after the closing delimiter begins a one-line string",
+   "source": "\"\"\"\n  a\n  \"\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       3,
+       6,
+       3,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a line with less indentation",
+   "source": "\"\"\"\n  a\n b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       2,
+       3,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a tab where the indentation has a space",
+   "source": "\"\"\"\n\ta\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a tab at the second position",
+   "source": "\"\"\"\n \ta\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       2,
+       2,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a space where the indentation has a tab",
+   "source": "\"\"\"\n  a\n\t\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a mix in another order",
+   "source": "\"\"\"\n\t a\n \t\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: the closing delimiter indented more than the content",
+   "source": "\"\"\"\n  a\n    \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       3,
+       2,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: the first of two bad lines is reported",
+   "source": "\"\"\"\n a\n b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       2,
+       2,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a bad line after good ones",
+   "source": "\"\"\"\n    a\n    b\n   c\n    \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       4,
+       4,
+       4,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: an escape is never indentation",
+   "source": "\"\"\"\n\\u0020 a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a no-break space is not indentation",
+   "source": "\"\"\"\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a line of only a no-break space is not blank",
+   "source": "\"\"\"\n  a\n \n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       1,
+       3,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a line of only a form feed is not blank",
+   "source": "\"\"\"\n\f\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: an interpolation before the indentation ends",
+   "source": "\"\"\"\n    a\n  ${1}\n    \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       3,
+       3,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a raw text block",
+   "source": "r\"\"\"\n  a\n b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       2,
+       3,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: carriage returns alone end lines, and positions stay on line 1",
+   "source": "\"\"\"\r  a\r b\r  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: CRLF line ends",
+   "source": "\"\"\"\r\n  a\r\n b\r\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       2,
+       3,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: reported before an error in an interpolation of the same block",
+   "source": "\"\"\"\n  ${)}\n a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       2,
+       3,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a lexical error in the block comes first",
+   "source": "\"\"\"\n a\n  \\q\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       3,
+       3,
+       3,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: a nested block is judged by its own closing delimiter",
+   "source": "\"\"\"\n  ${\"\"\"\n  a\n    \"\"\"}\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       3,
+       3,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: an outer line after a nested block",
+   "source": "\"\"\"\n  ${\"\"\"\n    a\n    \"\"\"}\n b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       5,
+       2,
+       5,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "indent: the outer literal is reported before an inner one",
+   "source": "\"\"\"\n  ${\"\"\"\n  a\n    \"\"\"}\n b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       5,
+       2,
+       5,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape in a text block",
+   "source": "\"\"\"\n  \\q\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       2,
+       3,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape \\x in a text block",
+   "source": "\"\"\"\n  \\x41\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       2,
+       3,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lone surrogate escape in a text block",
+   "source": "\"\"\"\n  \\ud800\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       2,
+       3,
+       2,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "line continuation in a text block",
+   "source": "\"\"\"\n  a\\\n  b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       2,
+       4,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "line continuation before CRLF in a text block",
+   "source": "\"\"\"\r\n  a\\\r\n  b\r\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       2,
+       4,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "line continuation before a carriage return alone in a text block",
+   "source": "\"\"\"\n  a\\\r  b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       2,
+       4,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "line continuation on a line of the indentation and a backslash",
+   "source": "\"\"\"\n  a\n  \\\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       3,
+       3,
+       3,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block is not a map key: the span is the whole literal",
+   "source": "{\"\"\"\n  a\n  \"\"\": 1}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block is not a key of a map pattern",
+   "source": "const {\"\"\"\n  a\n  \"\"\": x} = {a: 1}; x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block is not a match literal",
+   "source": "match \"a\" { \"\"\"\n  a\n  \"\"\" => 1, _ => 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a raw text block is not a map key",
+   "source": "{r\"\"\"\n  a\n  \"\"\": 1}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block where no token may stand",
+   "source": "1 \"\"\"\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "r, a space, then a valid text block",
+   "source": "r \"\"\"\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "positions after a text block",
+   "source": "\"\"\"\n  a\n  \"\"\" )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       3,
+       7,
+       3,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "positions after a raw text block",
+   "source": "r\"\"\"\n  a\n  \"\"\" )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       3,
+       7,
+       3,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "positions after a text block with carriage returns alone",
+   "source": "\"\"\"\r  a\r  \"\"\" )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       15,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty interpolation in a text block",
+   "source": "\"\"\"\n  ${}\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       5,
+       2,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two expressions in an interpolation of a text block",
+   "source": "\"\"\"\n  ${1 2}\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       7,
+       2,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "still an error: three single quotes",
+   "source": "'''abc'''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "still an error: three single quotes as a block",
+   "source": "'''\n  a\n  '''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "still an error: a prefix f",
+   "source": "f\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "still an error: String.raw",
+   "source": "String.raw`x`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "still an error: a line end in a one-line string",
+   "source": "\"a\nb\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "still an error: a backslash before a line end in a template",
+   "source": "`a\\\nb`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

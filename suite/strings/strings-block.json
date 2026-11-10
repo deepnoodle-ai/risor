@@ -1,0 +1,746 @@
+{
+ "cases": [
+  {
+   "name": "the indentation of the closing delimiter is removed",
+   "source": "\"\"\"\n  a\n    b\n  \"\"\"",
+   "expect": {
+    "value": "a\n  b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a blank line before the closing delimiter gives a final line feed",
+   "source": "\"\"\"\n  a\n\n  \"\"\"",
+   "expect": {
+    "value": "a\n",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "no content line gives the empty string",
+   "source": "\"\"\"\n\"\"\"",
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "one empty line gives the empty string",
+   "source": "\"\"\"\n\n\"\"\"",
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two empty lines give one line feed",
+   "source": "\"\"\"\n\n\n\"\"\"",
+   "expect": {
+    "value": "\n",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "tabs, a space after the opening delimiter, and CRLF line ends",
+   "source": "\"\"\" \r\n\ta\r\n\t\"\"\"",
+   "expect": {
+    "value": "a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "white space after the text of a line stays; a line of only spaces is empty",
+   "source": "\"\"\"\n  a \n      \n  \"\"\"",
+   "expect": {
+    "value": "a \n",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an escaped quote holds three quotes",
+   "source": "\"\"\"\n  say \\\"\"\"hi\\\"\"\"\n  \"\"\"",
+   "expect": {
+    "value": "say \"\"\"hi\"\"\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the closing delimiter at column 1 keeps all indentation",
+   "source": "\"\"\"\n  a\n    b\n\"\"\"",
+   "expect": {
+    "value": "  a\n    b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the first line may be indented more than the rest",
+   "source": "\"\"\"\n    a\n  b\n  \"\"\"",
+   "expect": {
+    "value": "  a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "only the closing line, indented",
+   "source": "\"\"\"\n    \"\"\"",
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "tab indentation",
+   "source": "\"\"\"\n\t\ta\n\t\t\tb\n\t\t\"\"\"",
+   "expect": {
+    "value": "a\n\tb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a mix of a tab and spaces is accepted when every line has it",
+   "source": "\"\"\"\n\t  a\n\t  b\n\t  \"\"\"",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a blank line with fewer spaces than the indentation is empty",
+   "source": "\"\"\"\n    a\n  \n    b\n    \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a blank line with more spaces than the indentation is empty",
+   "source": "\"\"\"\n  a\n        \n  b\n  \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a blank line of a tab, with indentation of spaces, is empty",
+   "source": "\"\"\"\n  a\n\t\n  b\n  \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an empty line needs no indentation",
+   "source": "\"\"\"\n  a\n\n  b\n  \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a tab after the indentation is content",
+   "source": "\"\"\"\n  \ta\n  \"\"\"",
+   "expect": {
+    "value": "\ta",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a tab and a space at the end of a line are content",
+   "source": "\"\"\"\n  a\t \n  \"\"\"",
+   "expect": {
+    "value": "a\t ",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two blank lines before the closing delimiter",
+   "source": "\"\"\"\n  a\n\n\n  \"\"\"",
+   "expect": {
+    "value": "a\n\n",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "spaces and a tab after the opening delimiter are ignored",
+   "source": "\"\"\"  \t\n  a\n  \"\"\"",
+   "expect": {
+    "value": "a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "line ends: line feeds",
+   "source": "\"\"\"\n  a\n  b\n  \"\"\"",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "line ends: carriage return and line feed",
+   "source": "\"\"\"\r\n  a\r\n  b\r\n  \"\"\"",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "line ends: carriage return alone",
+   "source": "\"\"\"\r  a\r  b\r  \"\"\"",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "line ends: all three in one block",
+   "source": "\"\"\"\n  a\r\n  b\r  c\n  \"\"\"",
+   "expect": {
+    "value": "a\nb\nc",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a blank line ended by CRLF is empty",
+   "source": "\"\"\"\r\n  a\r\n   \r\n  b\r\n  \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two carriage returns are two line ends",
+   "source": "\"\"\"\r  a\r\r  b\r  \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a carriage return and line feed is one line end, not two",
+   "source": "\"\"\"\r\n  a\r\n\r\n  b\r\n  \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "escape \\n is not a line end for the indentation rule",
+   "source": "\"\"\"\n  a\\n b\n  \"\"\"",
+   "expect": {
+    "value": "a\n b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "escape \\u0020 at the start of a line is a space of content",
+   "source": "\"\"\"\n  \\u0020a\n  \"\"\"",
+   "expect": {
+    "value": " a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a line holding the escape \\t is not blank",
+   "source": "\"\"\"\n  a\n  \\t\n  \"\"\"",
+   "expect": {
+    "value": "a\n\t",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "escape \\r gives a carriage return",
+   "source": "\"\"\"\n  a\\rb\n  \"\"\"",
+   "expect": {
+    "value": "a\rb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the template escapes for a backtick and a dollar",
+   "source": "\"\"\"\n  \\`\\$\n  \"\"\"",
+   "expect": {
+    "value": "`$",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "backslash dollar stops an interpolation",
+   "source": "\"\"\"\n  \\${x}\n  \"\"\"",
+   "expect": {
+    "value": "${x}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "escapes \\u{...} and a surrogate pair",
+   "source": "\"\"\"\n  \\u{1F600}\\ud83d\\ude00\n  \"\"\"",
+   "expect": {
+    "value": "😀😀",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "quotes in a block: one and two double quotes",
+   "source": "\"\"\"\n  \"a\" \"\"\n  \"\"\"",
+   "expect": {
+    "value": "\"a\" \"\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a double quote at the end of a line",
+   "source": "\"\"\"\n  a\"\n  \"\"\"",
+   "expect": {
+    "value": "a\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two double quotes at the end of a line",
+   "source": "\"\"\"\n  a\"\"\n  \"\"\"",
+   "expect": {
+    "value": "a\"\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "three single quotes are content",
+   "source": "\"\"\"\n  '''\n  \"\"\"",
+   "expect": {
+    "value": "'''",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a backtick is content",
+   "source": "\"\"\"\n  `a`\n  \"\"\"",
+   "expect": {
+    "value": "`a`",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a dollar sign not before a brace is content",
+   "source": "\"\"\"\n  $5 and $\n  \"\"\"",
+   "expect": {
+    "value": "$5 and $",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "comment marks are content",
+   "source": "\"\"\"\n  // a /* b */\n  \"\"\"",
+   "expect": {
+    "value": "// a /* b */",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an interpolation",
+   "source": "\"\"\"\n  a${1 + 2}b\n  \"\"\"",
+   "expect": {
+    "value": "a3b"
+   }
+  },
+  {
+   "name": "an interpolation at the start of a line",
+   "source": "\"\"\"\n  ${\"x\"}\n  \"\"\"",
+   "expect": {
+    "value": "x"
+   }
+  },
+  {
+   "name": "an interpolated value with line feeds is inserted as it is",
+   "source": "\"\"\"\n    a\n    ${x}\n    \"\"\"",
+   "env": "{x: string}",
+   "vars": {
+    "x": "1\n2"
+   },
+   "expect": {
+    "value": "a\n1\n2",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "lines that begin inside an interpolation are program text",
+   "source": "\"\"\"\n  a ${\n1 +\n      2\n} b\n  \"\"\"",
+   "expect": {
+    "value": "a 3 b"
+   }
+  },
+  {
+   "name": "a line comment inside an interpolation",
+   "source": "\"\"\"\n  ${1 // }\n  }\n  \"\"\"",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "a block comment holding three quotes inside an interpolation",
+   "source": "\"\"\"\n  ${1 /* \"\"\" */}\n  \"\"\"",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "a string holding three quotes inside an interpolation",
+   "source": "\"\"\"\n  ${'\"\"\"'}\n  \"\"\"",
+   "expect": {
+    "value": "\"\"\""
+   }
+  },
+  {
+   "name": "a text block inside an interpolation has its own indentation",
+   "source": "const t = \"\"\"\n    outer\n      ${\"\"\"\n        inner\n        \"\"\"}\n    \"\"\";\nt",
+   "expect": {
+    "value": "outer\n  inner"
+   }
+  },
+  {
+   "name": "a text block inside a template",
+   "source": "`<${\"\"\"\n  a\n  \"\"\"}>`",
+   "expect": {
+    "value": "<a>"
+   }
+  },
+  {
+   "name": "a raw string inside an interpolation of a block",
+   "source": "\"\"\"\n  ${r\"\\d\"}\n  \"\"\"",
+   "expect": {
+    "value": "\\d"
+   }
+  },
+  {
+   "name": "a text block as an operand",
+   "source": "\"\"\"\n  a\n  \"\"\" + \"b\"",
+   "expect": {
+    "value": "ab",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a text block as the receiver of a method",
+   "source": "\"\"\"\n  ab\n  \"\"\".toUpperCase()",
+   "expect": {
+    "value": "AB"
+   }
+  },
+  {
+   "name": "a text block as an argument",
+   "source": "len(\"\"\"\n  abc\n  \"\"\")",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a text block as the value of a const line",
+   "source": "const t = \"\"\"\n    x\n    \"\"\";\nt",
+   "expect": {
+    "value": "x",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a text block as an index",
+   "source": "{a: 1}[\"\"\"\n  a\n  \"\"\"]",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a text block as the subject of a match",
+   "source": "match \"\"\"\n  a\n  \"\"\" { \"a\" => 1, _ => 2 }",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a text block equals the one-line string of its value",
+   "source": "\"\"\"\n  a\n    b\n  \"\"\" == \"a\\n  b\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a text block in a list",
+   "source": "[\"\"\"\n  a\n  \"\"\", \"b\"]",
+   "expect": {
+    "value": [
+     "a",
+     "b"
+    ]
+   }
+  },
+  {
+   "name": "two text blocks in one expression",
+   "source": "\"\"\"\n  a\n  \"\"\" + \"\"\"\n  b\n  \"\"\"",
+   "expect": {
+    "value": "ab",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a no-break space is content, not indentation",
+   "source": "\"\"\"\n a\n\"\"\"",
+   "expect": {
+    "value": " a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an ideographic space is content",
+   "source": "\"\"\"\n  　a\n  \"\"\"",
+   "expect": {
+    "value": "　a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "U+2028 and U+0085 are content, not line ends",
+   "source": "\"\"\"\n  a bc\n  \"\"\"",
+   "expect": {
+    "value": "a bc",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a form feed is content",
+   "source": "\"\"\"\n\fa\n\"\"\"",
+   "expect": {
+    "value": "\fa",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "code points above U+FFFF are content",
+   "source": "\"\"\"\n  😀a\n  \"\"\"",
+   "expect": {
+    "value": "😀a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a line of only the indentation is empty",
+   "source": "\"\"\"\n  a\n  \n  b\n  \"\"\"",
+   "expect": {
+    "value": "a\n\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty string before a non-quote stays the empty string",
+   "source": "[\"\", \"\" + \"a\", r\"\"]",
+   "expect": {
+    "value": [
+     "",
+     "a",
+     ""
+    ]
+   }
+  },
+  {
+   "name": "the design's prompt example",
+   "source": "const pr = {number: 7}; const verdicts = [\"ok\", \"no\"];\nconst prompt = \"\"\"\n    You are reviewing pull request #${pr.number}.\n    Reply with one of: ${verdicts.join(\", \")}.\n\n      - Quote the line you object to.\n    \"\"\";\nprompt",
+   "expect": {
+    "value": "You are reviewing pull request #7.\nReply with one of: ok, no.\n\n  - Quote the line you object to."
+   }
+  },
+  {
+   "name": "a raw text block: a backslash is a backslash",
+   "source": "r\"\"\"\n  a\\\\b\n  \"\"\"",
+   "expect": {
+    "value": "a\\\\b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: \\n and ${x} are text",
+   "source": "r\"\"\"\n  \\n${x}\n  \"\"\"",
+   "expect": {
+    "value": "\\n${x}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: a backslash before a line end is text",
+   "source": "r\"\"\"\n  a \\\n  b\n  \"\"\"",
+   "expect": {
+    "value": "a \\\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: ${{ }} is text",
+   "source": "r\"\"\"\n  ${{ secrets.TOKEN }}\n  \"\"\"",
+   "expect": {
+    "value": "${{ secrets.TOKEN }}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block holds one and two double quotes",
+   "source": "r\"\"\"\n  say \"hi\" and \"\"\n  \"\"\"",
+   "expect": {
+    "value": "say \"hi\" and \"\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block removes indentation by the same rule",
+   "source": "r\"\"\"\n    a\n      b\n    \"\"\"",
+   "expect": {
+    "value": "a\n  b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: a blank line before the closing delimiter",
+   "source": "r\"\"\"\n  a\n\n  \"\"\"",
+   "expect": {
+    "value": "a\n",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: CRLF line ends read as line feeds",
+   "source": "r\"\"\"\r\n  a\r\n  b\r\n  \"\"\"",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: a carriage return alone reads as a line feed",
+   "source": "r\"\"\"\r  a\r  \"\"\"",
+   "expect": {
+    "value": "a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: \\r is two code points",
+   "source": "r\"\"\"\n  \\r\n  \"\"\"",
+   "expect": {
+    "value": "\\r",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block of nothing",
+   "source": "r\"\"\"\n\"\"\"",
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block holds a backtick and a single quote",
+   "source": "r\"\"\"\n  `it's`\n  \"\"\"",
+   "expect": {
+    "value": "`it's`",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block: the design's shell example",
+   "source": "r\"\"\"\n    run: echo \"${{ secrets.TOKEN }}\" \\\n      | tr -d '\\n'\n    \"\"\"",
+   "expect": {
+    "value": "run: echo \"${{ secrets.TOKEN }}\" \\\n  | tr -d '\\n'",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block inside an interpolation of a text block",
+   "source": "\"\"\"\n  [${r\"\"\"\n    a\\b\n    \"\"\"}]\n  \"\"\"",
+   "expect": {
+    "value": "[a\\b]"
+   }
+  },
+  {
+   "name": "a raw text block equals a text block of the same value",
+   "source": "r\"\"\"\n  a\n  \"\"\" == \"\"\"\n  a\n  \"\"\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block is never a template",
+   "source": "r\"\"\"\n  ${1/0}\n  \"\"\"",
+   "expect": {
+    "value": "${1/0}",
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

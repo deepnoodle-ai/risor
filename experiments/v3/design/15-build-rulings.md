@@ -215,3 +215,34 @@ The TypeScript and Rust checkers were then written apart, each from the
 chapter and the cases alone. Both pass the same 1,441 cases, and the whole run
 suite checked and unchecked. Between them they raised R93 and R94 and no
 other question that changed a rule.
+
+## 12. Round 12: the first follow-on packages
+
+Core passed in three implementations, each with the checker. The first
+packages of `14` section 5 were then written on paper: a chapter in
+`spec/packages/` and cases in a suite directory of their own.
+
+### 12.1 Rules for every package
+
+| # | Ruling |
+| --- | --- |
+| R96 | **A package's chapter is the home of its rules:** its cost rows, case fields and overrides of Core rows. A Core chapter gains only a pointer, a table "What packages add". |
+| R97 | **A runner runs only the directories of the packages its implementation offers.** For it a field of a package it lacks is an unknown field, and the file is invalid as before. No runner needs to know a package it does not have. |
+| R98 | **Core cases did pin follow-on text as errors,** against `14` 2.2. A package lists each such case and writes a case with the same text and its own outcome; the listed cases are removed when the package is accepted. A removal needs such a replacement. This replaces "a package edits no case" with "a package changes no outcome but those of the texts it gives meaning to". |
+| R99 | A case that pins an error which a named later package turns into a result stands in a file `until-fNN-` and what it holds. The later package removes that file. |
+| R100 | For a text that is an error before and after a package, the package may change the code and span where no earlier case states them. |
+| R101 | An implementation offers F3 before F2, and a package only with the packages it depends on, so a package's cases may use those forms. |
+
+### 12.2 F3, string forms
+
+The chapter is `spec/packages/f03-strings.md`, with 335 cases in
+`suite/strings/`. Plan `08` is its source. Twelve cases were removed from
+`suite/core-run/parse-follow-on.json` under R98.
+
+| # | Ruling |
+| --- | --- |
+| R102 | `text-block-close` is reported at the closing delimiter and `text-block-indent` at the first code point that differs, as `08` 2.7 says: a diagnostic points at the fault. `text-block-open` keeps the opening delimiter, which Core's cases stated. |
+| R103 | The three text-block codes are kept with the token and reported when the parser reaches it, before the tokens of its interpolations. So a lexical error anywhere is still reported first, and an outer block's code is reported before an inner block's. |
+| R104 | A text block whose opening line holds text runs to the next `"""` or the end of input, and nothing in it is read. A blank opening line followed by the end of input is `unterminated-string`. |
+| R105 | Only U+0020 and U+0009 are white space for the opening line, a blank line and the indentation. Indentation is compared code point for code point. |
+| R106 | `r'''`, `'''`, `R"` and a prefixed template stay the errors Core gives them. |
