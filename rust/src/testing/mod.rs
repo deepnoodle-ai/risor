@@ -4,6 +4,7 @@ pub mod case;
 pub mod helper;
 pub mod program;
 pub mod run;
+pub mod tools;
 pub mod update;
 
 pub use case::{

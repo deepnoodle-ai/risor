@@ -20,6 +20,8 @@
 //! | [`config`] | F10: the load of a config file |
 //! | [`decode`] | F10: the decode of a result into a host type |
 //! | [`math`] | F13: the math functions, correctly rounded |
+//! | [`format`] | F12: the formatter of programs and templates |
+//! | [`assist`] | F12: completion and hover |
 //! | [`render`] | F8: diagnostics as one line, detail and JSON |
 //! | [`testing`] | The case-file runner |
 
@@ -28,9 +30,10 @@
 /// The packages of the specification this build offers (`03-host.md` 3.11),
 /// in the order they are offered. This is the one list: the runner reads it
 /// to choose the `until-fNN-` files it does not run.
-pub const PACKAGES: [u32; 12] = [3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 13];
+pub const PACKAGES: [u32; 14] = [3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 12];
 
 pub mod analysis;
+pub mod assist;
 pub mod casemap;
 pub mod check;
 pub mod compile;
@@ -41,6 +44,7 @@ pub mod describe;
 pub mod diag;
 pub mod env;
 pub mod eval;
+pub mod format;
 pub mod host;
 pub mod hosttype;
 pub mod json;

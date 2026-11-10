@@ -117,6 +117,38 @@ pub fn check(env: &Env, parsed: &Parsed, expected: &Expected) -> CheckResult {
     }
 }
 
+/// F12 3.3 item 4: what assist reads from a check. Its diagnostics are not
+/// kept.
+pub struct Probe {
+    /// The type of each node.
+    pub types: Vec<Ty>,
+    /// The type of each slot at the end of the check.
+    pub slots: Vec<Ty>,
+    /// The type of each slot where the check last reached the probe node.
+    pub at: Option<Vec<Ty>>,
+    pub res: Vec<Res>,
+}
+
+/// Check a program for assist, recording the types of the slots where the
+/// node `probe` is checked.
+pub fn check_probe(
+    env: &Env,
+    parsed: &Parsed,
+    expected: &Expected,
+    probe: Option<NodeId>,
+) -> Probe {
+    let r = resolve(env, parsed);
+    let mut c = Checker::new(env, parsed, &r.res);
+    c.probe = probe;
+    c.program(expected);
+    Probe {
+        types: std::mem::take(&mut c.types),
+        slots: std::mem::take(&mut c.slots),
+        at: c.probe_slots.take(),
+        res: r.res.clone(),
+    }
+}
+
 /// Compile with a check: the program fails to compile exactly when the
 /// check reports a diagnostic (`03-host.md` 3.2.1 item 3).
 pub fn compile_checked(
@@ -155,6 +187,8 @@ struct Path {
 #[derive(Clone, Debug, PartialEq)]
 enum FactKind {
     NonNull,
+    /// F14 4.1: null(p), about a member path only.
+    Null,
     /// {p: T}. `true` when a test of a field gave it (F5 5.2, 5.3).
     Is(Ty, bool),
     /// {p: not T}
@@ -194,6 +228,9 @@ struct Checker<'a> {
     /// an unused lambda) the walk is inside. There a site is no finding, so
     /// a rejected class does not make its node `never`.
     dropping: u32,
+    /// F12: the node whose slots assist reads, and the slots there.
+    probe: Option<NodeId>,
+    probe_slots: Option<Vec<Ty>>,
 }
 
 fn whole(v: f64) -> bool {
@@ -277,6 +314,8 @@ impl<'a> Checker<'a> {
                 fills: Default::default(),
             }),
             dropping: 0,
+            probe: None,
+            probe_slots: None,
         }
     }
 
@@ -447,6 +486,67 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// F14 4.1: a path with no step whose root is a variable that is a
+    /// member of some host fact.
+    fn member_path(&self, p: &Path) -> bool {
+        match p.root {
+            Root::Var(v) => p.keys.is_empty() && self.env.is_member(v),
+            Root::Slot(_) => false,
+        }
+    }
+
+    /// The member path an expression is, if it is one.
+    fn member_of(&self, id: NodeId) -> Option<Path> {
+        if !matches!(self.kind(id), NodeKind::Ident { .. }) {
+            return None;
+        }
+        self.path_of(id).filter(|p| self.member_path(p))
+    }
+
+    /// F14 4.4: N(e), the null facts where the left operand e of `??` gave
+    /// null. By a work list over nested `??`.
+    fn null_facts(&self, e: NodeId) -> Vec<Path> {
+        let mut out: Vec<Path> = Vec::new();
+        let mut work = vec![e];
+        while let Some(n) = work.pop() {
+            match self.kind(n) {
+                NodeKind::Binary {
+                    op: BinaryOp::Coalesce,
+                    x,
+                    y,
+                } => {
+                    work.push(*y);
+                    work.push(*x);
+                }
+                _ => {
+                    if let Some(p) = self.member_of(n) {
+                        let f = Path {
+                            kind: FactKind::Null,
+                            ..p
+                        };
+                        if !out.contains(&f) {
+                            out.push(f);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// F14 5.1: whether some host fact with the variable `v` has every other
+    /// member under a null fact in force.
+    fn effect(&self, v: u32) -> bool {
+        let is_null = |q: u32| {
+            self.facts
+                .iter()
+                .any(|f| f.kind == FactKind::Null && f.root == Root::Var(q) && f.keys.is_empty())
+        };
+        self.env
+            .facts_of_var(v)
+            .any(|f| f.iter().all(|&q| q == v || is_null(q)))
+    }
+
     fn covered(&self, p: &Path) -> bool {
         self.facts
             .iter()
@@ -461,7 +561,7 @@ impl<'a> Checker<'a> {
                 continue;
             }
             t = match &f.kind {
-                FactKind::NonNull => t,
+                FactKind::NonNull | FactKind::Null => t,
                 FactKind::Is(c, _) => {
                     if fits(&t, c) == Some(false) {
                         t
@@ -511,6 +611,10 @@ impl<'a> Checker<'a> {
                 if t.null {
                     ff.push(fact(FactKind::NonNull));
                 }
+                // F14 4.2: `p is null` gives null(p) beside them.
+                if t.is_exactly_null() && self.member_path(&p) {
+                    tf.push(fact(FactKind::Null));
+                }
                 (tf, ff)
             }
             // F5 5.2: a test of a field, `q == L` or `q in [L1, ...]`.
@@ -542,9 +646,20 @@ impl<'a> Checker<'a> {
                     (NodeKind::Null, _) => self.path_of(*y),
                     _ => None,
                 };
+                // F14 4.2: null(p) on the other side, for a member path.
+                let null = |p: &Path| -> Vec<Path> {
+                    if self.member_path(p) {
+                        vec![Path {
+                            kind: FactKind::Null,
+                            ..p.clone()
+                        }]
+                    } else {
+                        vec![]
+                    }
+                };
                 match (p, op) {
-                    (Some(p), BinaryOp::Ne) => (vec![p], vec![]),
-                    (Some(p), _) => (vec![], vec![p]),
+                    (Some(p), BinaryOp::Ne) => (vec![p.clone()], null(&p)),
+                    (Some(p), _) => (null(&p), vec![p]),
                     _ => (vec![], vec![]),
                 }
             }
@@ -796,6 +911,9 @@ impl<'a> Checker<'a> {
     }
 
     fn synth(&mut self, id: NodeId) -> Ty {
+        if self.probe == Some(id) {
+            self.probe_slots = Some(self.slots.clone());
+        }
         let t = self.synth_inner(id);
         self.types[id.index()] = t.clone();
         t
@@ -1030,7 +1148,12 @@ impl<'a> Checker<'a> {
         if self.has_field_fact(&p) {
             self.field_narrowed.insert(id.0);
         }
-        self.type_facts(&p, t)
+        let t = self.type_facts(&p, t);
+        // F14 5.1: the effect, after the facts of Core, F4 and F5.
+        match p.root {
+            Root::Var(v) if self.effect(v) => t.nonnull(),
+            _ => t,
+        }
     }
 
     /// Whether a fact of a test of a field about exactly this path is in
@@ -1192,6 +1315,8 @@ impl<'a> Checker<'a> {
             n = *x;
         }
         let mut cur = self.synth(n);
+        // F14 4.4: N of the left operand, carried along a chain of `??`.
+        let mut nleft: Vec<Path> = self.null_facts(n);
         // The facts of the left operand, carried along a chain of `&&` and
         // `||` so that a long chain costs no more than its length (20.6).
         let mut carried: Option<(Vec<Path>, Vec<Path>)> = None;
@@ -1226,7 +1351,17 @@ impl<'a> Checker<'a> {
                     }
                 }
                 BinaryOp::Coalesce => {
+                    let k = self.facts.len();
+                    let n = std::mem::take(&mut nleft);
+                    self.facts.extend(n.iter().cloned());
                     let bt = self.synth(y);
+                    self.facts.truncate(k);
+                    nleft = n;
+                    for f in self.null_facts(y) {
+                        if !nleft.contains(&f) {
+                            nleft.push(f);
+                        }
+                    }
                     join(&cur.nonnull(), &bt)
                 }
                 BinaryOp::Eq | BinaryOp::Ne => {
@@ -1253,6 +1388,9 @@ impl<'a> Checker<'a> {
                     self.arith(*op, b, x, cur, y, bt)
                 }
             };
+            if *op != BinaryOp::Coalesce {
+                nleft.clear();
+            }
             // 20.7: `??`, `&&` and `||` join their operands.
             if matches!(op, BinaryOp::And | BinaryOp::Or | BinaryOp::Coalesce) {
                 let bs = self.span(b);
@@ -1518,6 +1656,8 @@ impl<'a> Checker<'a> {
                 continue;
             };
             let mut has_null = false;
+            // F14 4.3: the literals of this arm that 11.2 does not ignore.
+            let mut kept: Vec<&Lit> = Vec::new();
             // F5 5.3: the strings of this arm, and whether every literal of
             // it is a string.
             let mut strs: BTreeSet<String> = BTreeSet::new();
@@ -1539,6 +1679,7 @@ impl<'a> Checker<'a> {
                         if !lits.insert(crate::compile::lit_key(&l.lit)) {
                             continue;
                         }
+                        kept.push(&l.lit);
                         // 11.2: the conditions of `==` (8.2).
                         if !matches!(l.lit, Lit::Null)
                             && !s.is_never()
@@ -1560,6 +1701,15 @@ impl<'a> Checker<'a> {
             };
             if all_strings {
                 self.facts.extend(held);
+            }
+            // F14 4.3: the arm of `null` alone, on a member path.
+            if matches!(kept.as_slice(), [Lit::Null]) {
+                if let Some(m) = self.member_of(subject) {
+                    self.facts.push(Path {
+                        kind: FactKind::Null,
+                        ..m
+                    });
+                }
             }
             let rt = self.synth(*result);
             self.facts.truncate(arm_start);
@@ -2592,7 +2742,7 @@ impl<'a> Checker<'a> {
                 continue;
             }
             elem = match &f.kind {
-                FactKind::NonNull => elem,
+                FactKind::NonNull | FactKind::Null => elem,
                 FactKind::Is(c, _) => {
                     if fits(&elem, c) == Some(false) {
                         elem

@@ -30,10 +30,16 @@ pub struct Constant {
     pub group: String,
     pub value: f64,
     pub cases: Option<Json>,
+    /// F12: the record's type text and `doc`.
+    pub ty: String,
+    pub doc: Option<String>,
 }
 
 pub struct Record {
     pub name: String,
+    /// F12: the `signature` text of the record, verbatim, and its `doc`.
+    pub signature: String,
+    pub doc: Option<String>,
     /// The kind of the receiver of a method; `None` for a function.
     pub receiver: Option<Kind>,
     pub sig: Sig,
@@ -132,6 +138,8 @@ fn record(e: &Json) -> Record {
     });
     Record {
         name: s("name").to_string(),
+        signature: s("signature").to_string(),
+        doc: e.get("doc").and_then(|d| d.as_str()).map(String::from),
         receiver,
         sig: parse_sig(s("signature")).expect("library signatures parse"),
         recv: e
@@ -195,6 +203,12 @@ pub fn constants() -> &'static [Constant] {
                     .to_string(),
                 value: e.get("value").and_then(|v| v.as_f64()).unwrap_or_default(),
                 cases: e.get("cases").cloned(),
+                ty: e
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                doc: e.get("doc").and_then(|d| d.as_str()).map(String::from),
             })
             .collect()
     })

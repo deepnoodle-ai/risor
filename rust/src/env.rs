@@ -76,6 +76,10 @@ pub struct EnvData {
     pub removed: Vec<usize>,
     /// F6: the opt-in groups that are on, in code point order.
     pub groups: Vec<String>,
+    /// F14: the host facts `someNotNull`, each a set of variables by index
+    /// into `vars`, its members in code point order of their names; each
+    /// distinct set once, in the order of `f14-host-facts.md` 9.1.
+    pub facts: Vec<Vec<u32>>,
 }
 
 /// A built environment. It does not change, and is cheap to clone and safe
@@ -195,6 +199,34 @@ impl Env {
             ..EnvBuilder::default()
         }
     }
+
+    /// The same as `child` (`f14-host-facts.md` 3.3).
+    pub fn with(&self) -> EnvBuilder {
+        self.child()
+    }
+
+    /// F14: the host facts that have the variable `v` as a member.
+    pub fn facts_of_var(&self, v: u32) -> impl Iterator<Item = &[u32]> {
+        self.data
+            .facts
+            .iter()
+            .filter(move |f| f.contains(&v))
+            .map(|f| f.as_slice())
+    }
+
+    /// F14 4.1: whether the variable `v` is a member of some host fact.
+    pub fn is_member(&self, v: u32) -> bool {
+        self.data.facts.iter().any(|f| f.contains(&v))
+    }
+
+    /// F14 9.1: the host facts by the names of their members.
+    pub fn fact_names(&self) -> Vec<Vec<String>> {
+        let d = &self.data;
+        d.facts
+            .iter()
+            .map(|f| f.iter().map(|&v| d.vars[v as usize].clone()).collect())
+            .collect()
+    }
 }
 
 /// The six check classes (`05-types.md` 17).
@@ -249,10 +281,21 @@ pub struct EnvBuilder {
     limits: Option<Limits>,
     removed: Vec<String>,
     groups: Vec<String>,
+    /// F14: the host facts `someNotNull` declared, as written.
+    facts: Vec<Vec<String>>,
     parent: Option<Env>,
 }
 
 impl EnvBuilder {
+    /// A host fact `someNotNull` (`f14-host-facts.md` 2.2): in every run, at
+    /// least one of these variables is not null. It does not fail here: the
+    /// names are tested by `build`, when every variable is known (3.3).
+    pub fn some_not_null(mut self, names: &[&str]) -> Self {
+        self.facts
+            .push(names.iter().map(|n| n.to_string()).collect());
+        self
+    }
+
     /// Turn an opt-in group on: `json`, `time`, `math` or `base64`
     /// (`f06-groups.md` 2.1). Another name is the `declare` error `bad-name`.
     pub fn group(mut self, name: &str) -> Self {
@@ -597,6 +640,14 @@ impl EnvBuilder {
                 Err(e) => bad(code::BAD_SIGNATURE, format!("the method {key}: {e}")),
             }
         }
+        // F14 2.6: the names the child declares, which replace a parent's.
+        let child_names: Vec<String> = self
+            .one_vars
+            .iter()
+            .map(|(v, _)| v.clone())
+            .chain(self.functions.iter().map(|(f, _, _)| f.clone()))
+            .chain(declared_in(self.vars.as_deref()))
+            .collect();
         let mut functions: Vec<HostFn> = Vec::new();
         for (name, text, imp) in self.functions {
             let parts: Vec<&str> = name.split('.').collect();
@@ -770,12 +821,71 @@ impl EnvBuilder {
                 }
             }
         }
+        // F14 2.5, 2.6: the host facts, a parent's less those that name a
+        // variable the child replaces, then the child's own.
+        let mut sets: Vec<Vec<String>> = Vec::new();
+        if let Some(p) = &parent {
+            let replaced = |n: &str| child_names.iter().any(|c| c == n);
+            for f in &p.facts {
+                let names: Vec<String> = f.iter().map(|&v| p.vars[v as usize].clone()).collect();
+                if names.iter().all(|n| !replaced(n) && vars.contains(n)) {
+                    sets.push(names);
+                }
+            }
+        }
+        for f in &self.facts {
+            if f.is_empty() {
+                bad(code::BAD_NAME, "a host fact names no variable".into());
+                continue;
+            }
+            let mut ok = true;
+            let mut seen: Vec<&String> = Vec::new();
+            for n in f {
+                if !vars.contains(n) {
+                    bad(
+                        code::BAD_NAME,
+                        format!("the host fact names {n:?}, which is no variable"),
+                    );
+                    ok = false;
+                } else if seen.contains(&n) {
+                    bad(
+                        code::BAD_NAME,
+                        format!("the host fact names the variable {n} twice"),
+                    );
+                    ok = false;
+                } else {
+                    seen.push(n);
+                }
+            }
+            if ok {
+                sets.push(f.clone());
+            }
+        }
         if !errs.is_empty() {
             return Err(Error {
                 phase: Phase::Declare,
                 diagnostics: errs,
             });
         }
+        // 9.1: members in code point order, each set once, ordered by their
+        // lists of members.
+        let mut facts: Vec<Vec<String>> = sets
+            .into_iter()
+            .map(|mut f| {
+                f.sort();
+                f
+            })
+            .collect();
+        facts.sort();
+        facts.dedup();
+        let facts: Vec<Vec<u32>> = facts
+            .iter()
+            .map(|f| {
+                f.iter()
+                    .filter_map(|n| vars.iter().position(|v| v == n).map(|i| i as u32))
+                    .collect()
+            })
+            .collect();
         Ok(Env {
             data: Arc::new(EnvData {
                 vars,
@@ -788,8 +898,17 @@ impl EnvBuilder {
                 reject,
                 removed,
                 groups,
+                facts,
             }),
         })
+    }
+}
+
+/// The fields that the record type text of `vars` declares.
+fn declared_in(record: Option<&str>) -> Vec<String> {
+    match record.map(parse_type) {
+        Some(Ok(Type::Record(r))) => r.fields.into_iter().map(|f| f.key).collect(),
+        _ => Vec::new(),
     }
 }
 

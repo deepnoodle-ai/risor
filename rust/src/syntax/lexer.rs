@@ -54,7 +54,18 @@ struct Lexer<'a> {
     blocks: Vec<Block>,
     /// Package F2: the part of a template being read, if any.
     part: Option<PartState>,
+    /// F12: the spans of the comments met, in order.
+    comments: Vec<Span>,
+    /// F12 3.2: the text ends at a cut. At its end, the open interpolations
+    /// are recorded, innermost last (`true` for a text block's), and the
+    /// lexer stops with `CUT_OPEN`.
+    cut: bool,
+    open_at_end: Vec<bool>,
 }
+
+/// The code of the error `lex_cut` gives where the text ends inside an
+/// interpolation: no diagnostic of the language.
+pub const CUT_OPEN: &str = "cut-open";
 
 /// A part of a template (F2 2.2): the offset of the `$` of its `${{`, the
 /// `{` tokens open in it, and its closing brace once met.
@@ -87,6 +98,9 @@ pub fn lex_part(
             depth: 0,
             end: None,
         }),
+        comments: Vec::new(),
+        cut: false,
+        open_at_end: Vec::new(),
     };
     lx.run()?;
     let end = lx.part.and_then(|p| p.end).unwrap_or(src.len());
@@ -95,7 +109,11 @@ pub fn lex_part(
 
 /// Divide a text into tokens. The last token is `Tok::Eof`.
 pub fn lex(src: &Source) -> Result<Vec<Token>, Diagnostic> {
-    let mut lx = Lexer {
+    lex_comments(src).map(|(t, _)| t)
+}
+
+fn lexer(src: &Source) -> Lexer<'_> {
+    Lexer {
         src,
         s: src.chars(),
         i: 0,
@@ -104,9 +122,59 @@ pub fn lex(src: &Source) -> Result<Vec<Token>, Diagnostic> {
         heads: Vec::new(),
         blocks: Vec::new(),
         part: None,
-    };
+        comments: Vec::new(),
+        cut: false,
+        open_at_end: Vec::new(),
+    }
+}
+
+/// As `lex`, with the spans of the comments, those inside interpolations
+/// among them (F12 2.12).
+pub fn lex_comments(src: &Source) -> Result<(Vec<Token>, Vec<Span>), Diagnostic> {
+    let mut lx = lexer(src);
     lx.run()?;
-    Ok(lx.out)
+    Ok((lx.out, lx.comments))
+}
+
+/// As `lex_part`, with the spans of the part's comments.
+pub fn lex_part_comments(
+    src: &Source,
+    from: usize,
+    dollar: usize,
+) -> Result<(Vec<Token>, Vec<Span>), Diagnostic> {
+    let mut lx = lexer(src);
+    lx.i = from;
+    lx.part = Some(PartState {
+        dollar,
+        depth: 0,
+        end: None,
+    });
+    lx.run()?;
+    Ok((lx.out, lx.comments))
+}
+
+/// What `lex_cut` gives: the tokens read, with no `Eof` when it failed; the
+/// comments; the error, if any; and, for the error `CUT_OPEN`, which
+/// interpolations are open, outermost first (`true` for a text block's).
+pub struct CutLex {
+    pub tokens: Vec<Token>,
+    pub comments: Vec<Span>,
+    pub error: Option<Diagnostic>,
+    pub open: Vec<bool>,
+}
+
+/// The text before a cut (F12 3.2 item 4). Where it ends inside one or
+/// more interpolations, the error has the code `CUT_OPEN`.
+pub fn lex_cut(src: &Source) -> CutLex {
+    let mut lx = lexer(src);
+    lx.cut = true;
+    let error = lx.run().err();
+    CutLex {
+        tokens: lx.out,
+        comments: lx.comments,
+        error,
+        open: lx.open_at_end,
+    }
 }
 
 const MAX_WHOLE: u128 = (1u128 << 53) - 1;
@@ -166,6 +234,17 @@ impl<'a> Lexer<'a> {
         loop {
             self.skip_space()?;
             if self.i >= n {
+                if self.cut && !self.stack.is_empty() {
+                    self.open_at_end = self.stack.iter().map(|t| t.block).collect();
+                    let span = Span::new(n, n);
+                    return Err(Diagnostic::at(
+                        Phase::Parse,
+                        CUT_OPEN,
+                        self.src,
+                        span,
+                        String::new(),
+                    ));
+                }
                 if let Some(top) = self.stack.last() {
                     return Err(self.err(
                         code::UNTERMINATED_STRING,
@@ -198,10 +277,12 @@ impl<'a> Lexer<'a> {
             match self.s[self.i] {
                 ' ' | '\t' | '\n' | '\r' => self.i += 1,
                 '/' if self.at(self.i + 1) == Some('/') => {
+                    let start = self.i;
                     self.i += 2;
                     while self.i < n && self.s[self.i] != '\n' && self.s[self.i] != '\r' {
                         self.i += 1;
                     }
+                    self.comments.push(Span::new(start, self.i));
                 }
                 '/' if self.at(self.i + 1) == Some('*') => {
                     let start = self.i;
@@ -221,6 +302,7 @@ impl<'a> Lexer<'a> {
                         j += 1;
                     }
                     self.i = j + 2;
+                    self.comments.push(Span::new(start, self.i));
                 }
                 _ => break,
             }

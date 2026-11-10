@@ -449,3 +449,43 @@ one call, and a host implementation is a `'static` closure that receives
   and midpoint results of `pow` are found first, by exact arithmetic on the
   odd part of the base. No platform function decides a result; one is used
   only to estimate a range with a wide margin.
+
+## Package F14, host facts
+
+- **Declaration** (`env.rs`): `EnvBuilder::some_not_null` keeps the names;
+  `build` tests them against every variable of the environment, a parent's
+  among them, and keeps each distinct set once, its members in code point
+  order, as variable indices. A child drops a parent's host fact that names
+  a variable or function the child declares, whole. `Env::with` is
+  `Env::child`.
+- **The checker** (`check/mod.rs`): `FactKind::Null` is null(p), given only
+  for a member path (an `Ident` that resolves to a member variable). `??`
+  carries N of its left operand along a chain, as `&&` and `||` carry their
+  facts. The effect is applied in `ident`, after the facts of Core, F4 and
+  F5: some host fact of the variable has every other member under a null
+  fact in force.
+
+## Package F12, tools
+
+- **Formatter** (`src/format.rs`): documents live in an arena (`Docs`), with
+  the forced-break flag of each part computed when it is made. A document
+  may be shared: the arguments of a call with a hugged last argument are
+  built once and used by all three alternatives, so nesting costs no more.
+  The layout and the test of fits use explicit stacks. Which tokens are kept
+  is known only after the document is built, so the builder runs twice;
+  comments are attached between the runs. Tokens are found from the spans of
+  the nodes around them; a template with its interpolations is one token.
+- **Assist** (`src/assist.rs`): the lexer has a cut mode that stops where the
+  text ends inside an interpolation and reports which are open; the repair
+  appends a closing tail for each after the inserted tokens. The hole is the
+  word `parser::HOLE` (U+10FFFF), which the parser reads as a name, a word or
+  a type name; it resolves to nothing, so the checker gives it `never`. The
+  repair inserts one token, re-parses, and keeps it when the parser stands
+  past it; `parse_repair` matches no bracket among the inserted tokens.
+  `check::check_probe` gives the types of the nodes and of the slots where
+  the check last reached the hole.
+- **Records** (`library.rs`): a record keeps its `signature` text and `doc`
+  verbatim, which completion and hover show.
+- **Cases** (`testing/tools.rs`): a format, completion or hover case is read
+  as a program case whose source is its text, so its environment is built by
+  the same code.

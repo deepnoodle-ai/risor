@@ -263,7 +263,8 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f08-parse-errors.json", true),
         ("until-f09-x.json", true),
         ("until-f10-x.json", true),
-        ("until-f12-x.json", false),
+        ("until-f12-x.json", true),
+        ("until-f14-x.json", true),
         ("until-f13-math.json", true),
         ("until-fx-a.json", false),
         ("until-f02.json", false),
@@ -271,7 +272,7 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(risor::PACKAGES.len(), 12);
+    assert_eq!(risor::PACKAGES.len(), 14);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
@@ -467,6 +468,22 @@ fn library_math_cases() {
 #[test]
 fn math_package() {
     let total = run(&suite_dir().join("math"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F14: `suite/facts/` (`f14-host-facts.md` 10.3).
+#[test]
+fn facts_package() {
+    let total = run(&suite_dir().join("facts"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F12: `suite/tools/` (`f12-tools.md` 7.6).
+#[test]
+fn tools_package() {
+    let total = run(&suite_dir().join("tools"), true);
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
 }

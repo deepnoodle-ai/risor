@@ -114,6 +114,23 @@ impl Env {
         reject.sort();
         reject.dedup();
         let mut entries = Vec::new();
+        // F14 9.1: the host facts, present only when there is one.
+        if !d.facts.is_empty() {
+            entries.push((
+                "facts".to_string(),
+                Json::Arr(
+                    self.fact_names()
+                        .into_iter()
+                        .map(|f| {
+                            obj(vec![(
+                                "someNotNull".to_string(),
+                                Json::Arr(f.into_iter().map(Json::Str).collect()),
+                            )])
+                        })
+                        .collect(),
+                ),
+            ));
+        }
         // F6 2.7: the groups on, present only when there is one.
         if !d.groups.is_empty() {
             entries.push((
@@ -173,7 +190,8 @@ impl Env {
         let o = d
             .as_obj()
             .ok_or_else(|| form("a description is a JSON object"))?;
-        const KEYS: [&str; 9] = [
+        const KEYS: [&str; 10] = [
+            "facts",
             "groups",
             "types",
             "version",
@@ -236,6 +254,23 @@ impl Env {
         }
         for (name, text) in strings_of(get("variables")?, "variables")? {
             b = b.var(&name, &text);
+        }
+        // F14 9.2: each entry of `facts` is a host fact.
+        if let Some(f) = d.get("facts") {
+            let a = f.as_arr().ok_or_else(|| form("facts is not an array"))?;
+            for e in a {
+                let m = e
+                    .as_obj()
+                    .filter(|m| m.len() == 1)
+                    .ok_or_else(|| form("an entry of facts is not {\"someNotNull\": [names]}"))?;
+                let names = m
+                    .iter()
+                    .find(|(k, _)| k == "someNotNull")
+                    .ok_or_else(|| form("an entry of facts has a key other than someNotNull"))?;
+                let names = list_of(&names.1, "facts.someNotNull")?;
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                b = b.some_not_null(&names);
+            }
         }
         for (name, text) in strings_of(get("functions")?, "functions")? {
             b = b.declare_function(&name, &text);

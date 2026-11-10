@@ -209,6 +209,8 @@ pub struct Case {
     pub render: Option<RenderCase>,
     /// F9: a runner case (`f09-testing.md` 3).
     pub runner: Option<RunnerCase>,
+    /// F12: a format, completion or hover case (`f12-tools.md` 7).
+    pub tool: Option<super::tools::ToolCase>,
     /// The `expect` as written, or `None` when the case has none (update
     /// mode, `f09-testing.md` 4.2).
     pub expect_raw: Option<Json>,
@@ -223,6 +225,9 @@ pub struct Case {
     pub reject: Option<Vec<String>>,
     /// The removed library entries (`03-host.md` 3.10.3).
     pub removed: Vec<String>,
+    /// F14: the host facts `someNotNull`, each as written (`f14-host-facts.md`
+    /// 10.1). `None` when the case gives no `facts`.
+    pub facts: Option<Vec<Vec<String>>>,
     pub returns: Option<String>,
     /// F10: the expected result by schema, with its options (`f10-config.md`
     /// 10.1).
@@ -282,7 +287,8 @@ impl std::fmt::Display for FileError {
 
 impl std::error::Error for FileError {}
 
-const HEADER_FIELDS: [&str; 22] = [
+const HEADER_FIELDS: [&str; 23] = [
+    "facts",
     "returnsSchema",
     "load",
     "groups",
@@ -307,7 +313,12 @@ const HEADER_FIELDS: [&str; 22] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 28] = [
+const CASE_FIELDS: [&str; 33] = [
+    "format",
+    "formatTemplate",
+    "complete",
+    "hover",
+    "facts",
     "returnsSchema",
     "load",
     "runner",
@@ -512,6 +523,17 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         .as_str()
         .unwrap_or_default()
         .to_string();
+    // F12 7: a format, completion or hover case.
+    for kind in [
+        super::tools::ToolKind::Format,
+        super::tools::ToolKind::FormatTemplate,
+        super::tools::ToolKind::Complete,
+        super::tools::ToolKind::Hover,
+    ] {
+        if own(kind.field()).is_some() {
+            return super::tools::read(kind, header, case, |obj| merge(header, obj, dir, lax));
+        }
+    }
     // F8 7.4: a case of the third kind.
     if let Some(r) = own("render") {
         return render_case(name, r, header, case);
@@ -824,6 +846,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         conform_max,
         render: None,
         runner: None,
+        tool: None,
         expect_raw: own("expect").cloned(),
         conversion: false,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
@@ -834,6 +857,9 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         functions,
         reject: get("reject").map(|v| strings(Some(v))),
         removed: strings(get("removed")),
+        facts: get("facts")
+            .and_then(|v| v.as_arr())
+            .map(|a| a.iter().map(|f| strings(f.get("someNotNull"))).collect()),
         returns: returns.and_then(|v| v.as_str()).map(String::from),
         returns_schema,
         load,
@@ -1257,8 +1283,8 @@ fn check_description(x: &Json) -> V<()> {
     ];
     let m = x.as_obj().ok_or("expect.description is not an object")?;
     for (k, _) in m {
-        // F4 8: `types`; F6 2.7: `groups`.
-        if k == "types" || k == "groups" {
+        // F4 8: `types`; F6 2.7: `groups`; F14 9.1: `facts`.
+        if k == "types" || k == "groups" || k == "facts" {
             continue;
         }
         if !KEYS.contains(&k.as_str()) {
@@ -1577,6 +1603,7 @@ fn render_case(
         conform: None,
         conform_max: None,
         runner: None,
+        tool: None,
         expect_raw: own("expect").cloned(),
         render: Some(RenderCase {
             diagnostics: ds.to_vec(),
@@ -1589,6 +1616,7 @@ fn render_case(
         functions: Vec::new(),
         reject: None,
         removed: Vec::new(),
+        facts: None,
         returns: None,
         returns_schema: None,
         load: false,
@@ -1686,6 +1714,7 @@ fn check_field(k: &str, v: &Json) -> V<()> {
     };
     match k {
         "name" | "source" | "env" | "returns" | "skip" => string(k),
+        "format" | "formatTemplate" | "complete" | "hover" => string(k),
         "file" => match v.as_str() {
             Some(s) if !s.is_empty() => Ok(()),
             _ => Err("file is not a non-empty string".into()),
@@ -1695,6 +1724,21 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             _ => Err("version is not major.minor".into()),
         },
         "opaque" | "reject" | "removed" => strings(k),
+        // F14 10.1.
+        "facts" => {
+            let a = v.as_arr().ok_or("facts is not an array")?;
+            for f in a {
+                let m = f.as_obj().ok_or("an entry of facts is not an object")?;
+                if m.len() != 1 || m[0].0 != "someNotNull" {
+                    return Err("an entry of facts is not {\"someNotNull\": [names]}".into());
+                }
+                let names = m[0].1.as_arr().ok_or("someNotNull is not an array")?;
+                if names.iter().any(|n| n.as_str().is_none()) {
+                    return Err("someNotNull holds a value that is not a string".into());
+                }
+            }
+            Ok(())
+        }
         "methods" => {
             let m = v.as_obj().ok_or("methods is not an object")?;
             for (mk, mv) in m {
@@ -1993,6 +2037,7 @@ fn runner_case(
         conform_max: None,
         render: None,
         runner: Some(rc),
+        tool: None,
         expect_raw: Some(e.clone()),
         conversion: false,
         opaque: Vec::new(),
@@ -2000,6 +2045,7 @@ fn runner_case(
         functions: Vec::new(),
         reject: None,
         removed: Vec::new(),
+        facts: None,
         returns: None,
         returns_schema: None,
         load: false,

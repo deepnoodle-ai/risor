@@ -120,12 +120,40 @@ pub(crate) fn parse_parts(
 /// A type name (F4 2.1 item 2): an upper-case letter, then one or more of
 /// `[A-Za-z0-9_]`.
 pub fn is_type_name(w: &str) -> bool {
+    if w == HOLE {
+        return true;
+    }
     let b = w.as_bytes();
     b.len() >= 2
         && b[0].is_ascii_uppercase()
         && b[1..]
             .iter()
             .all(|c| c.is_ascii_alphanumeric() || *c == b'_')
+}
+
+/// F12 3.4: the text of the hole, a word no source text can spell. The
+/// parser reads it as a `Name`, a `Word` or a type name.
+pub const HOLE: &str = "\u{10FFFF}";
+
+/// F12 3.3: parse tokens that end with `Eof`, where the tokens from index
+/// `limit` on were inserted by the repair, or close an interpolation the cut
+/// left open. A bracket among them matches no opener (3.3 item 7). A failure
+/// gives the index of the token where the parser stood.
+pub(crate) fn parse_repair(src: &Source, toks: &[Token], limit: usize) -> Result<Ast, usize> {
+    let mut p = Parser::new(src, toks);
+    p.core = true;
+    for (i, q) in p.partner.iter_mut().enumerate() {
+        if i >= limit || q.is_some_and(|c| c as usize >= limit) {
+            *q = None;
+        }
+    }
+    match p.program() {
+        Ok(root) => {
+            p.ast.root = root;
+            Ok(p.ast)
+        }
+        Err(_) => Err(p.err_pos.get()),
+    }
 }
 
 /// The error is boxed: a large `Err` makes every `?` cost stack in a build
@@ -244,6 +272,8 @@ struct Parser<'a> {
     arm_start: usize,
     /// Give the Core diagnostic, unmapped.
     core: bool,
+    /// Where the parser stood at its last error (F12 3.3).
+    err_pos: std::cell::Cell<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -302,6 +332,7 @@ impl<'a> Parser<'a> {
             param_end: usize::MAX,
             arm_start: usize::MAX,
             core: false,
+            err_pos: std::cell::Cell::new(0),
         }
     }
 
@@ -363,6 +394,7 @@ impl<'a> Parser<'a> {
     #[cold]
     #[inline(never)]
     fn perr(&self, code: &'static str, span: Span, rule: Rule) -> Box<PErr> {
+        self.err_pos.set(self.pos);
         Box::new(PErr { code, span, rule })
     }
 

@@ -146,6 +146,23 @@ fn fixture_test(case: &Case, env: &Env) -> Option<(Vec<Json>, String)> {
             return Some(with_path(place, &d));
         }
     }
+    // F14 10.2: the host facts of `facts`, in order. One is tested only when
+    // `vars` supplies every member, and fails when every member is null.
+    for (i, f) in case.facts.iter().flatten().enumerate() {
+        let value = |n: &String| {
+            case.vars
+                .iter()
+                .flatten()
+                .find(|(k, _)| k == n)
+                .map(|(_, v)| v)
+        };
+        let all_null = f.iter().all(|n| matches!(value(n), Some(Json::Null)));
+        if all_null {
+            let place = vec![Json::Str("facts".into()), Json::Num(i as f64)];
+            let msg = format!("at least one of {} must not be null", f.join(", "));
+            return Some((place, msg));
+        }
+    }
     let any: crate::check::ty::Solutions = ('A'..='Z')
         .map(|c| (c, crate::check::ty::Ty::any()))
         .collect();
@@ -690,6 +707,10 @@ fn build_env_in(
     for g in &case.groups {
         b = b.group(g);
     }
+    for f in case.facts.iter().flatten() {
+        let names: Vec<&str> = f.iter().map(String::as_str).collect();
+        b = b.some_not_null(&names);
+    }
     for (key, stub) in &case.methods {
         let imp = stub_impl(key, stub, interner, unmatched.clone());
         b = b.method_impl(key, stub.ty.as_deref().unwrap_or_default(), Some(imp));
@@ -862,6 +883,9 @@ fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
     if let Some(r) = &case.runner {
         return run_runner_case(r);
     }
+    if let Some(t) = &case.tool {
+        return super::tools::run(case, t);
+    }
     if case.conform.is_some() {
         return run_conform_case(case);
     }
@@ -929,6 +953,12 @@ pub fn run_case_unchecked(case: &Case) -> Verdict {
     // F9 9.3 item 2: a runner case is run once, and has no second pass.
     if let Some(r) = &case.runner {
         return run_runner_case(r);
+    }
+    if let Some(t) = &case.tool {
+        if let Some(why) = &case.skip {
+            return Verdict::Skip(why.clone());
+        }
+        return super::tools::run(case, t);
     }
     if let Some(r) = &case.render {
         return run_render_case(r);
@@ -1498,6 +1528,16 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
     }
 }
 
+/// `compare_failure` of a checked run, for the cases of F12.
+pub(super) fn compare_failure_pub(
+    case: &Case,
+    f: &ExpectFailure,
+    phase: Phase,
+    diags: &[Diagnostic],
+) -> Vec<Difference> {
+    compare_failure(case, f, phase, diags, true)
+}
+
 fn compare_failure(
     case: &Case,
     f: &ExpectFailure,
@@ -1861,6 +1901,9 @@ fn run_analysis_case(case: &Case, want: &Json) -> Verdict {
 /// One line of the outcome command, with F2's `analysis` last for every case
 /// whose text parses (4.8).
 pub fn outcome_line(case: &Case) -> String {
+    if let Some(t) = &case.tool {
+        return super::tools::outcome(case, t);
+    }
     if let Expect::Result(ExpectResult {
         analysis: Some(_), ..
     }) = &case.expect
@@ -2106,8 +2149,9 @@ fn outcome_core(case: &Case) -> String {
             return out;
         }
     };
-    // F1 7.4: the description, when the case has `schemas`.
-    if !case.schemas.is_empty() {
+    // F1 7.4: the description, when the case has `schemas`; F14 10.4: or
+    // `facts`.
+    if !case.schemas.is_empty() || case.facts.is_some() {
         out.push_str(",\"description\":");
         out.push_str(&env.description_text());
     }
