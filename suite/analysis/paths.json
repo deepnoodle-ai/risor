@@ -1,0 +1,557 @@
+{
+ "cases": [
+  {
+   "name": "a string index is a key",
+   "source": "input.event[\"id\"]",
+   "expect": {
+    "analysis": {
+     "names": [
+      "input"
+     ],
+     "refs": [
+      {
+       "name": "input",
+       "path": [
+        "event",
+        "id"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        18
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a computed index stops the path",
+   "source": "a[i].b",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "i"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      },
+      {
+       "name": "i",
+       "path": [],
+       "span": [
+        1,
+        3,
+        1,
+        4
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a number index stops the path",
+   "source": "m[0].x",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "m",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "an optional step gives the same key",
+   "source": "a?.b?.[\"c\"].d",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "a",
+       "path": [
+        "b",
+        "c",
+        "d"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        14
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a key that is not a word",
+   "source": "m[\"a-b\"].c",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "m",
+       "path": [
+        "a-b",
+        "c"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        11
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a key is the string's value after escapes",
+   "source": "m[\"a\\\"b\"]",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "m",
+       "path": [
+        "a\"b"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        10
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a template literal with no interpolation is a key",
+   "source": "m[`k`].z",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "m",
+       "path": [
+        "k",
+        "z"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a template literal with an interpolation stops the path",
+   "source": "m[`k${i}`].z",
+   "expect": {
+    "analysis": {
+     "names": [
+      "i",
+      "m"
+     ],
+     "refs": [
+      {
+       "name": "m",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      },
+      {
+       "name": "i",
+       "path": [],
+       "span": [
+        1,
+        7,
+        1,
+        8
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a string in parentheses is a key",
+   "source": "m[(\"k\")].z",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "m",
+       "path": [
+        "k",
+        "z"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        11
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a computed string stops the path",
+   "source": "m[\"a\" + \"b\"].z",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "m",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a method call stops the path",
+   "source": "input.items.map(t => t.id)",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "input",
+       "path": [
+        "items"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        12
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a method call at the end stops the path",
+   "source": "user.name.trim()",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "user",
+       "path": [
+        "name"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        10
+       ]
+      }
+     ],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "the path does not follow a const binding",
+   "source": "const e = input.event; e.id",
+   "expect": {
+    "analysis": {
+     "names": [
+      "input"
+     ],
+     "refs": [
+      {
+       "name": "input",
+       "path": [
+        "event"
+       ],
+       "span": [
+        1,
+        11,
+        1,
+        22
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a pattern is not a step",
+   "source": "const {event} = input; event.id",
+   "expect": {
+    "analysis": {
+     "names": [
+      "input"
+     ],
+     "refs": [
+      {
+       "name": "input",
+       "path": [],
+       "span": [
+        1,
+        17,
+        1,
+        22
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the path stops at a parenthesis",
+   "source": "(input.a).b",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "input",
+       "path": [
+        "a"
+       ],
+       "span": [
+        1,
+        2,
+        1,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "two reads of one path are two references",
+   "source": "a.b + a.b",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [
+        "b"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "name": "a",
+       "path": [
+        "b"
+       ],
+       "span": [
+        1,
+        7,
+        1,
+        10
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a path across lines",
+   "source": "a\n  .b\n  .c",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "a",
+       "path": [
+        "b",
+        "c"
+       ],
+       "span": [
+        1,
+        1,
+        3,
+        5
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "references in arguments",
+   "source": "f(a.b, c[\"d\"])",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "c"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [
+        "b"
+       ],
+       "span": [
+        1,
+        3,
+        1,
+        6
+       ]
+      },
+      {
+       "name": "c",
+       "path": [
+        "d"
+       ],
+       "span": [
+        1,
+        8,
+        1,
+        14
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call in an index stops the path",
+   "source": "orders[pick(n)].x",
+   "expect": {
+    "analysis": {
+     "names": [
+      "n",
+      "orders"
+     ],
+     "refs": [
+      {
+       "name": "orders",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        7
+       ]
+      },
+      {
+       "name": "n",
+       "path": [],
+       "span": [
+        1,
+        13,
+        1,
+        14
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a path through a parameter is not a reference",
+   "source": "xs.map(x => x.a.b)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a namespace-like receiver has an empty path",
+   "source": "geo.distance(a)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "geo"
+     ],
+     "refs": [
+      {
+       "name": "geo",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        14,
+        1,
+        15
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

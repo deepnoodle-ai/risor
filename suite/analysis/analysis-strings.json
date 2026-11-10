@@ -1,0 +1,446 @@
+{
+ "cases": [
+  {
+   "name": "a raw string is a key of a path",
+   "source": "m[r\"a\\b\"].c",
+   "expect": {
+    "analysis": {
+     "names": [
+      "m"
+     ],
+     "refs": [
+      {
+       "name": "m",
+       "path": [
+        "a\\b",
+        "c"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        12
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a text block is a key of a path",
+   "source": "m[\"\"\"\n  k\n  \"\"\"].z",
+   "expect": {
+    "analysis": {
+     "names": [
+      "m"
+     ],
+     "refs": [
+      {
+       "name": "m",
+       "path": [
+        "k",
+        "z"
+       ],
+       "span": [
+        1,
+        1,
+        3,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a raw text block is a key of a path and reads no name",
+   "source": "m[r\"\"\"\n  ${k}\n  \"\"\"]",
+   "expect": {
+    "analysis": {
+     "names": [
+      "m"
+     ],
+     "refs": [
+      {
+       "name": "m",
+       "path": [
+        "${k}"
+       ],
+       "span": [
+        1,
+        1,
+        3,
+        7
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a text block with an interpolation stops the path",
+   "source": "m[\"\"\"\n  k${i}\n  \"\"\"].z",
+   "expect": {
+    "analysis": {
+     "names": [
+      "i",
+      "m"
+     ],
+     "refs": [
+      {
+       "name": "m",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      },
+      {
+       "name": "i",
+       "path": [],
+       "span": [
+        2,
+        6,
+        2,
+        7
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "literal: a raw string",
+   "source": "r\"C:\\new\"",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": "C:\\new"
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a raw string in single quotes",
+   "source": "r'say \"hi\"'",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": "say \"hi\""
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a text block",
+   "source": "\"\"\"\n  a\n    b\n  \"\"\"",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": "a\n  b"
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a raw text block",
+   "source": "r\"\"\"\n  ${x}\\n\n  \"\"\"",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": "${x}\\n"
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: raw strings as a key and a value",
+   "source": "{r\"k\": r\"\\\"}",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": {
+       "k": "\\"
+      }
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a list holding a text block",
+   "source": "[\"\"\"\n  a\n  \"\"\", 1]",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": [
+       "a",
+       1
+      ]
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a text block with an interpolation is not a literal",
+   "source": "\"\"\"\n  a ${b}\n  \"\"\"",
+   "expect": {
+    "analysis": {
+     "names": [
+      "b"
+     ],
+     "refs": [
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        2,
+        7,
+        2,
+        8
+       ]
+      }
+     ],
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "a call in a text block",
+   "source": "\"\"\"\n  ${f(a)}\n  \"\"\"",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "calls": [
+      {
+       "name": "f",
+       "namespace": null,
+       "span": [
+        2,
+        5,
+        2,
+        9
+       ],
+       "args": [
+        [
+         2,
+         7,
+         2,
+         8
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mode value: a raw string part is a literal",
+   "source": "${{ r\"}}\" }}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "literal": {
+      "value": "}}"
+     },
+     "segments": [
+      {
+       "part": [
+        1,
+        5,
+        1,
+        10
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        13
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mode value: a text block part holding }}",
+   "source": "${{ \"\"\"\n  }}\n  \"\"\" }}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "literal": {
+      "value": "}}"
+     },
+     "segments": [
+      {
+       "part": [
+        1,
+        5,
+        3,
+        6
+       ],
+       "span": [
+        1,
+        1,
+        3,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mode value: a text block with an escaped triple quote",
+   "source": "${{ \"\"\"\n  a\\\"\"\"b }}\n  \"\"\" }}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "literal": {
+      "value": "a\"\"\"b }}"
+     },
+     "segments": [
+      {
+       "part": [
+        1,
+        5,
+        3,
+        6
+       ],
+       "span": [
+        1,
+        1,
+        3,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a raw text block in a part reads no name",
+   "source": "${{ r\"\"\"\n  ${x}\n  \"\"\" }}",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "reads and calls in a text block in a part",
+   "source": "Hi ${{ \"\"\"\n  ${f(a.b)}\n  \"\"\" }}!",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [
+        "b"
+       ],
+       "span": [
+        2,
+        7,
+        2,
+        10
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "f",
+       "namespace": null,
+       "span": [
+        2,
+        5,
+        2,
+        11
+       ],
+       "args": [
+        [
+         2,
+         7,
+         2,
+         10
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "segments": [
+      {
+       "text": "Hi ",
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "part": [
+        1,
+        8,
+        3,
+        6
+       ],
+       "span": [
+        1,
+        4,
+        3,
+        9
+       ]
+      },
+      {
+       "text": "!",
+       "span": [
+        3,
+        9,
+        3,
+        10
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

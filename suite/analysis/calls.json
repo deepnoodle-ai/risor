@@ -1,0 +1,860 @@
+{
+ "cases": [
+  {
+   "name": "library functions are calls",
+   "source": "len(xs) > 0 ? xs[0] : fail(\"empty\")",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs"
+     ],
+     "calls": [
+      {
+       "name": "len",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        8
+       ],
+       "args": [
+        [
+         1,
+         5,
+         1,
+         7
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "fail",
+       "namespace": null,
+       "span": [
+        1,
+        23,
+        1,
+        36
+       ],
+       "args": [
+        [
+         1,
+         28,
+         1,
+         35
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call in a namespace has the form of a method call",
+   "source": "geo.distance(a, b) > limit",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b",
+      "geo",
+      "limit"
+     ],
+     "refs": [
+      {
+       "name": "geo",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        14,
+        1,
+        15
+       ]
+      },
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        1,
+        17,
+        1,
+        18
+       ]
+      },
+      {
+       "name": "limit",
+       "path": [],
+       "span": [
+        1,
+        22,
+        1,
+        27
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "geo.distance",
+       "namespace": "geo",
+       "span": [
+        1,
+        1,
+        1,
+        19
+       ],
+       "args": [
+        [
+         1,
+         14,
+         1,
+         15
+        ],
+        [
+         1,
+         17,
+         1,
+         18
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "an optional step is not a call of a namespace",
+   "source": "geo?.distance(a)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "geo"
+     ],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "a step after the call",
+   "source": "geo.distance(a).km",
+   "expect": {
+    "analysis": {
+     "calls": [
+      {
+       "name": "geo.distance",
+       "namespace": "geo",
+       "span": [
+        1,
+        1,
+        1,
+        16
+       ],
+       "args": [
+        [
+         1,
+         14,
+         1,
+         15
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "only the first method call of a free name",
+   "source": "x.m(a)?.n(b)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b",
+      "x"
+     ],
+     "calls": [
+      {
+       "name": "x.m",
+       "namespace": "x",
+       "span": [
+        1,
+        1,
+        1,
+        7
+       ],
+       "args": [
+        [
+         1,
+         5,
+         1,
+         6
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a field read is not a call",
+   "source": "n.m",
+   "expect": {
+    "analysis": {
+     "refs": [
+      {
+       "name": "n",
+       "path": [
+        "m"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      }
+     ],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "a bound receiver is not a call",
+   "source": "const geo = 1; geo.distance(a)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "a call inside a lambda",
+   "source": "xs.map(x => lookup(x.id))",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs"
+     ],
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        1,
+        1,
+        26
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         25
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "lookup",
+       "namespace": null,
+       "span": [
+        1,
+        13,
+        1,
+        25
+       ],
+       "args": [
+        [
+         1,
+         20,
+         1,
+         24
+        ]
+       ],
+       "lambda": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call of a const-bound lambda is not reported",
+   "source": "const double = x => x * 2; double(n) + rate(n)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "n"
+     ],
+     "calls": [
+      {
+       "name": "rate",
+       "namespace": null,
+       "span": [
+        1,
+        40,
+        1,
+        47
+       ],
+       "args": [
+        [
+         1,
+         45,
+         1,
+         46
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "calls in a const-bound lambda's body",
+   "source": "const f = x => g(x) + k; f(1)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "k"
+     ],
+     "calls": [
+      {
+       "name": "g",
+       "namespace": null,
+       "span": [
+        1,
+        16,
+        1,
+        20
+       ],
+       "args": [
+        [
+         1,
+         18,
+         1,
+         19
+        ]
+       ],
+       "lambda": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "an unused helper's body is still read",
+   "source": "const helper = x => send(x); 1",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "calls": [
+      {
+       "name": "send",
+       "namespace": null,
+       "span": [
+        1,
+        21,
+        1,
+        28
+       ],
+       "args": [
+        [
+         1,
+         26,
+         1,
+         27
+        ]
+       ],
+       "lambda": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a lambda's own name is free in its body",
+   "source": "const f = x => f(x); f(1)",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "calls": [
+      {
+       "name": "f",
+       "namespace": null,
+       "span": [
+        1,
+        16,
+        1,
+        20
+       ],
+       "args": [
+        [
+         1,
+         18,
+         1,
+         19
+        ]
+       ],
+       "lambda": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call in a parameter default is inside the lambda",
+   "source": "xs.map((x, i = pick()) => x)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs"
+     ],
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        1,
+        1,
+        29
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         28
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "pick",
+       "namespace": null,
+       "span": [
+        1,
+        16,
+        1,
+        22
+       ],
+       "args": [],
+       "lambda": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call of a parameter is not a call of a free name",
+   "source": "xs.map(f => f(1))",
+   "expect": {
+    "analysis": {
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        1,
+        1,
+        18
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         17
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "every argument has its span",
+   "source": "items.reduce((a, t) => a + t.n, 0)",
+   "expect": {
+    "analysis": {
+     "calls": [
+      {
+       "name": "items.reduce",
+       "namespace": "items",
+       "span": [
+        1,
+        1,
+        1,
+        35
+       ],
+       "args": [
+        [
+         1,
+         14,
+         1,
+         31
+        ],
+        [
+         1,
+         33,
+         1,
+         34
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "calls are in order of their start",
+   "source": "f(g(a), h())",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "calls": [
+      {
+       "name": "f",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        13
+       ],
+       "args": [
+        [
+         1,
+         3,
+         1,
+         7
+        ],
+        [
+         1,
+         9,
+         1,
+         12
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "g",
+       "namespace": null,
+       "span": [
+        1,
+        3,
+        1,
+        7
+       ],
+       "args": [
+        [
+         1,
+         5,
+         1,
+         6
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "h",
+       "namespace": null,
+       "span": [
+        1,
+        9,
+        1,
+        12
+       ],
+       "args": [],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "each call site is one call",
+   "source": "send(a) + send(a)",
+   "expect": {
+    "analysis": {
+     "calls": [
+      {
+       "name": "send",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        8
+       ],
+       "args": [
+        [
+         1,
+         6,
+         1,
+         7
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "send",
+       "namespace": null,
+       "span": [
+        1,
+        11,
+        1,
+        18
+       ],
+       "args": [
+        [
+         1,
+         16,
+         1,
+         17
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a chain of method calls has one call of a free name",
+   "source": "items.filter(t => t.ok).map(t => t.name).sort()",
+   "expect": {
+    "analysis": {
+     "names": [
+      "items"
+     ],
+     "calls": [
+      {
+       "name": "items.filter",
+       "namespace": "items",
+       "span": [
+        1,
+        1,
+        1,
+        24
+       ],
+       "args": [
+        [
+         1,
+         14,
+         1,
+         23
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call in a namespace inside a lambda",
+   "source": "xs.map(x => geo.near(x))",
+   "expect": {
+    "analysis": {
+     "names": [
+      "geo",
+      "xs"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      },
+      {
+       "name": "geo",
+       "path": [],
+       "span": [
+        1,
+        13,
+        1,
+        16
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        1,
+        1,
+        25
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         24
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "geo.near",
+       "namespace": "geo",
+       "span": [
+        1,
+        13,
+        1,
+        24
+       ],
+       "args": [
+        [
+         1,
+         22,
+         1,
+         23
+        ]
+       ],
+       "lambda": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a name only called is not in names",
+   "source": "f(x)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        3,
+        1,
+        4
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "f",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        5
+       ],
+       "args": [
+        [
+         1,
+         3,
+         1,
+         4
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call in a template literal",
+   "source": "`n=${count(xs)}`",
+   "expect": {
+    "analysis": {
+     "calls": [
+      {
+       "name": "count",
+       "namespace": null,
+       "span": [
+        1,
+        6,
+        1,
+        15
+       ],
+       "args": [
+        [
+         1,
+         12,
+         1,
+         14
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "string is a library function and a call",
+   "source": "string(x)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "calls": [
+      {
+       "name": "string",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        10
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         9
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

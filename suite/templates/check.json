@@ -1,0 +1,287 @@
+{
+ "cases": [
+  {
+   "name": "mode string: the type is string",
+   "template": "string",
+   "source": "n=${{ n }}",
+   "env": "{n: int}",
+   "returns": "string",
+   "expect": {
+    "type": "string"
+   }
+  },
+  {
+   "name": "an expected int does not fit a template",
+   "template": "string",
+   "source": "n=${{ n }}",
+   "env": "{n: int}",
+   "returns": "int",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "mode value: an expected string does not fit an int part",
+   "template": "value",
+   "source": "${{ n }}",
+   "env": "{n: int}",
+   "returns": "string",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "mode value: an expected int fits",
+   "template": "value",
+   "source": "${{ n }}",
+   "env": "{n: int}",
+   "returns": "int",
+   "expect": {
+    "type": "int"
+   }
+  },
+  {
+   "name": "an any part is a dynamic site",
+   "template": "string",
+   "source": "a ${{ blob }}",
+   "env": "{blob: any}",
+   "expect": {
+    "type": "string",
+    "sites": [
+     {
+      "class": "dynamic",
+      "span": [
+       1,
+       7,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "mode value: an any part is no site",
+   "template": "value",
+   "source": "${{ blob }}",
+   "env": "{blob: any}",
+   "expect": {
+    "type": "any",
+    "sites": []
+   }
+  },
+  {
+   "name": "an opaque value inside a map part is kind on the part",
+   "template": "string",
+   "source": "x ${{ {t: started} }}",
+   "env": "{started: Time}",
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "kind",
+      "span": [
+       1,
+       7,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a check error on the second line",
+   "template": "string",
+   "source": "Total:\n${{ order.totl }}",
+   "env": "{order: {total: int}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-field",
+      "span": [
+       2,
+       11,
+       2,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a nullable part is accepted",
+   "template": "string",
+   "source": "${{ u.nick }}",
+   "env": "{u: {nick: string | null}}",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "mode value: condition sees the part",
+   "template": "value",
+   "source": "${{ null }}",
+   "returns": "condition",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-falsy",
+      "span": [
+       1,
+       5,
+       1,
+       9
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   }
+  },
+  {
+   "name": "mode string: a template with a part is a string under condition",
+   "template": "string",
+   "source": "${{ null }}",
+   "returns": "condition",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "condition on a template with no part",
+   "template": "string",
+   "source": "plain",
+   "returns": "condition",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an undefined name in the second part",
+   "template": "string",
+   "source": "${{ a }} and ${{ b }}",
+   "env": "{a: int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       18,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "no name is bound across parts",
+   "template": "string",
+   "source": "${{ { const a = 1; a } }} ${{ a }}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       31,
+       1,
+       32
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a static rule in a part",
+   "template": "string",
+   "source": "${{ {a: 1, a: 2} }}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "duplicate-key",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two undefined names in two parts, in order",
+   "template": "string",
+   "source": "${{ x }}\n${{ y }}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     },
+     {
+      "code": "undefined-name",
+      "span": [
+       2,
+       5,
+       2,
+       6
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

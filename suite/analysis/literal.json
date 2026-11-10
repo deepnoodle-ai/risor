@@ -1,0 +1,372 @@
+{
+ "cases": [
+  {
+   "name": "literal: null",
+   "source": "null",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": null
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: true",
+   "source": "true",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": true
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a number",
+   "source": "1.5",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": 1.5
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a double-quoted string",
+   "source": "\"a\\nb\"",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": "a\nb"
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a single-quoted string",
+   "source": "'x'",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": "x"
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a template literal with no interpolation",
+   "source": "`plain`",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": "plain"
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a negative number",
+   "source": "-5",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": -5
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a negative number in parentheses",
+   "source": "-(5)",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": -5
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a parenthesized number",
+   "source": "(5)",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": 5
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: minus zero is zero",
+   "source": "-0",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": 0
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a list of literals",
+   "source": "[1, \"a\", null, [true]]",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": [
+       1,
+       "a",
+       null,
+       [
+        true
+       ]
+      ]
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a map of literals",
+   "source": "{a: 1, \"b-c\": [true, null], d: {e: -2.5}}",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": {
+       "a": 1,
+       "b-c": [
+        true,
+        null
+       ],
+       "d": {
+        "e": -2.5
+       }
+      }
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a reserved word as a key",
+   "source": "{if: 1}",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": {
+       "if": 1
+      }
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: a key written twice takes its later value",
+   "source": "{a: 1, a: 2}",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": {
+       "a": 2
+      }
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: the empty list",
+   "source": "[]",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": []
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "literal: the empty map",
+   "source": "{}",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": {}
+     },
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "not a literal: two minus signs",
+   "source": "--5",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: an operator",
+   "source": "\"a\" + \"b\"",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a template literal with an interpolation",
+   "source": "`a${1}`",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a shorthand entry",
+   "source": "{a}",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a computed key",
+   "source": "{[\"k\"]: 1}",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a spread in a list",
+   "source": "[...[1]]",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a spread in a map",
+   "source": "{...{a: 1}}",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a const line",
+   "source": "const a = 1; 2",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a block",
+   "source": "{ const a = 1; 2 }",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: not",
+   "source": "!true",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a conditional",
+   "source": "true ? 1 : 2",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "not a literal: a list with a name",
+   "source": "[1, x]",
+   "expect": {
+    "analysis": {
+     "literal": false
+    }
+   }
+  }
+ ]
+}

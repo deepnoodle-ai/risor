@@ -1,0 +1,356 @@
+{
+ "cases": [
+  {
+   "name": "a raw string in a part may hold }}",
+   "template": "string",
+   "source": "x ${{ r\"}}\" }}",
+   "expect": {
+    "value": "x }}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a raw string in single quotes may hold }}",
+   "template": "string",
+   "source": "${{ r'}}' }}",
+   "expect": {
+    "value": "}}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a raw string ends at its second quote",
+   "template": "value",
+   "source": "${{ r\"\\\" }}",
+   "expect": {
+    "type": "\"\\\\\"",
+    "value": "\\",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string ending in a backslash, mode string",
+   "template": "string",
+   "source": "${{ r\"\\\" }}",
+   "expect": {
+    "value": "\\",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a raw string may hold ${{",
+   "template": "value",
+   "source": "${{ r\"${{\" }}",
+   "expect": {
+    "value": "${{",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a text block in a part may hold }}",
+   "template": "string",
+   "source": "${{ \"\"\"\n  }}\n  \"\"\" }}",
+   "expect": {
+    "value": "}}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a text block in a single part, mode value",
+   "template": "value",
+   "source": "${{ \"\"\"\n  }}\n  \"\"\" }}",
+   "expect": {
+    "type": "\"}}\"",
+    "value": "}}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an escaped triple quote does not end a text block in a part",
+   "template": "value",
+   "source": "${{ \"\"\"\n  a\\\"\"\"b }}\n  \"\"\" }}",
+   "expect": {
+    "value": "a\"\"\"b }}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw text block in a part reads no name",
+   "template": "value",
+   "source": "${{ r\"\"\"\n  ${x} }}\n  \"\"\" }}",
+   "expect": {
+    "value": "${x} }}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a text block with an interpolation in a part",
+   "template": "string",
+   "source": "${{ \"\"\"\n  n=${n}\n  \"\"\" }}",
+   "env": "{n: int}",
+   "vars": {
+    "n": 5
+   },
+   "expect": {
+    "type": "string",
+    "value": "n=5",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a text block with an interpolation, mode value",
+   "template": "value",
+   "source": "${{ \"\"\"\n  n=${n}\n  \"\"\" }}",
+   "env": "{n: int}",
+   "vars": {
+    "n": 5
+   },
+   "expect": {
+    "type": "string",
+    "value": "n=5",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a text block in an interpolation of a text block in a part",
+   "template": "value",
+   "source": "${{ \"\"\"\n  a ${\"\"\"\n    b }}\n    \"\"\"} c\n  \"\"\" }}",
+   "expect": {
+    "value": "a b }} c",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the same nested blocks, mode string",
+   "template": "string",
+   "source": "${{ \"\"\"\n  a ${\"\"\"\n    b }}\n    \"\"\"} c\n  \"\"\" }}",
+   "expect": {
+    "value": "a b }} c",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a run failure after a text block has a span across lines",
+   "template": "string",
+   "source": "${{ \"\"\"\n  a\n  \"\"\" + 1 }}",
+   "check": false,
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "class": "dynamic",
+      "span": [
+       1,
+       5,
+       3,
+       10
+      ],
+      "message": "cannot apply + to string and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an interpolation of a text block in a part is rendered",
+   "template": "value",
+   "source": "${{ \"\"\"\n  ${blob}\n  \"\"\" }}",
+   "env": "{blob: any}",
+   "expect": {
+    "type": "string",
+    "sites": [
+     {
+      "class": "dynamic",
+      "span": [
+       2,
+       5,
+       2,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated raw string in a part is met first",
+   "template": "string",
+   "source": "a ${{ r\"abc }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       7,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a line end in a raw string in a part",
+   "template": "string",
+   "source": "${{ r\"a\n\" }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated text block in a part",
+   "template": "string",
+   "source": "${{ \"\"\"\n  a }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       2,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text-block-open in a part",
+   "template": "string",
+   "source": "${{ \"\"\"abc\"\"\" }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an earlier parse error comes before text-block-open",
+   "template": "string",
+   "source": "${{ x + }} ${{ \"\"\"abc\"\"\" }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lexical diagnostic comes before text-block-open",
+   "template": "string",
+   "source": "${{ \"\"\"abc\"\"\" }} ${{ $ }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       22,
+       1,
+       23
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text-block-indent in a part",
+   "template": "string",
+   "source": "${{ \"\"\"\n  a\n b\n  \"\"\" }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-indent",
+      "span": [
+       3,
+       2,
+       3,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text-block-close in a part",
+   "template": "string",
+   "source": "${{ \"\"\"\n  a\n  b\"\"\" }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-close",
+      "span": [
+       3,
+       4,
+       3,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text block quotes in a text run are characters",
+   "template": "string",
+   "source": "say \"\"\"${{ x }}\"\"\" r\"${{ x }}\"",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "say \"\"\"1\"\"\" r\"1\"",
+    "steps": 1,
+    "allocated": 1
+   }
+  }
+ ]
+}

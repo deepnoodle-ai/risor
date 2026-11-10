@@ -1,0 +1,484 @@
+{
+ "cases": [
+  {
+   "name": "three parts and the template share one step count",
+   "template": "string",
+   "source": "${{ a + 1 }} ${{ a + 2 }} ${{ a + 3 }}",
+   "env": "{a: int}",
+   "vars": {
+    "a": 1
+   },
+   "expect": {
+    "value": "2 3 4",
+    "steps": 4,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the step limit covers every part: 4 is enough",
+   "template": "string",
+   "source": "${{ a + 1 }} ${{ a + 2 }} ${{ a + 3 }}",
+   "env": "{a: int}",
+   "vars": {
+    "a": 1
+   },
+   "limits": {
+    "steps": 4
+   },
+   "expect": {
+    "value": "2 3 4"
+   }
+  },
+  {
+   "name": "the step limit covers every part: 3 is not",
+   "template": "string",
+   "source": "${{ a + 1 }} ${{ a + 2 }} ${{ a + 3 }}",
+   "env": "{a: int}",
+   "vars": {
+    "a": 1
+   },
+   "limits": {
+    "steps": 3
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "steps-exceeded",
+      "class": "limit"
+     }
+    ]
+   }
+  },
+  {
+   "name": "two parts and the template share one unit count",
+   "template": "string",
+   "source": "${{ [1] }}${{ [2] }}",
+   "expect": {
+    "value": "[1][2]",
+    "steps": 3,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "the allocation limit covers every part: 5 is enough",
+   "template": "string",
+   "source": "${{ [1] }}${{ [2] }}",
+   "limits": {
+    "allocation": 5
+   },
+   "expect": {
+    "value": "[1][2]"
+   }
+  },
+  {
+   "name": "the allocation limit covers every part: 4 is not",
+   "template": "string",
+   "source": "${{ [1] }}${{ [2] }}",
+   "limits": {
+    "allocation": 4
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "allocation-exceeded",
+      "class": "limit"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a failure ends the run before the next part",
+   "template": "string",
+   "source": "${{ 1 / d }}${{ x }}",
+   "env": "{d: int, x: int}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "class": "divide",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a missing variable in the second part",
+   "template": "string",
+   "source": "${{ d }}${{ x }}",
+   "env": "{d: int, x: int}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-variable",
+      "class": "environment",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ],
+      "message": "the host did not supply variable x"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "try in a part",
+   "template": "string",
+   "source": "a ${{ try { 1 / d } catch (e) { e.code } }}",
+   "env": "{d: int}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "value": "a divide-by-zero",
+    "steps": 4,
+    "allocated": 11
+   }
+  },
+  {
+   "name": "try in a single part, mode value",
+   "template": "value",
+   "source": "${{ try { 1 / d } catch (e) { e.code } }}",
+   "env": "{d: int}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "value": "divide-by-zero",
+    "steps": 3,
+    "allocated": 10
+   }
+  },
+  {
+   "name": "rendering an opaque value fails at the whole template",
+   "template": "string",
+   "source": "v=${{ x }}",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "class": "dynamic",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "message": "an opaque value cannot be rendered as text"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   },
+   "env": "{x: any}",
+   "opaque": [
+    "Tok"
+   ],
+   "vars": {
+    "x": {
+     "$opaque": {
+      "type": "Tok",
+      "id": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "mode value: an opaque value is given back",
+   "template": "value",
+   "source": "${{ x }}",
+   "expect": {
+    "value": {
+     "$opaque": {
+      "type": "Tok",
+      "id": 1
+     }
+    },
+    "steps": 0,
+    "allocated": 0
+   },
+   "env": "{x: any}",
+   "opaque": [
+    "Tok"
+   ],
+   "vars": {
+    "x": {
+     "$opaque": {
+      "type": "Tok",
+      "id": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "a run failure on the third line",
+   "template": "string",
+   "source": "a\nb\n${{ m.k }}",
+   "env": "{m: any}",
+   "vars": {
+    "m": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "class": "dynamic",
+      "span": [
+       3,
+       5,
+       3,
+       8
+      ],
+      "message": "the map has no field k"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a result of weight 71 has size 1",
+   "template": "string",
+   "source": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ 1 }}",
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "32 code points above U+FFFF weigh 64",
+   "template": "string",
+   "source": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀${{ 1 }}",
+   "expect": {
+    "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀1",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "31 code points above U+FFFF and one more weigh 63",
+   "template": "string",
+   "source": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀${{ 1 }}",
+   "expect": {
+    "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an escaped delimiter counts three code points in the result",
+   "template": "string",
+   "source": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$${{${{ 1 }}",
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the rendering walk of a map",
+   "template": "string",
+   "source": "${{ m }}",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "b": 1,
+     "a": 2
+    }
+   },
+   "expect": {
+    "value": "{\"a\":2,\"b\":1}",
+    "steps": 5,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the level of ${{ counts toward the depth limit",
+   "template": "string",
+   "source": "${{ [1].map(x => [x] == [x]) }}",
+   "limits": {
+    "depth": 2
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "depth-exceeded",
+      "class": "limit",
+      "message": "calls and nested values went deeper than the depth limit of 2"
+     }
+    ]
+   }
+  },
+  {
+   "name": "the level of ${{ counts in mode value too",
+   "template": "value",
+   "source": "${{ [1].map(x => [x] == [x]) }}",
+   "limits": {
+    "depth": 2
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "depth-exceeded",
+      "class": "limit",
+      "message": "calls and nested values went deeper than the depth limit of 2"
+     }
+    ]
+   }
+  },
+  {
+   "name": "with depth 3 the same part runs",
+   "template": "value",
+   "source": "${{ [1].map(x => [x] == [x]) }}",
+   "limits": {
+    "depth": 3
+   },
+   "expect": {
+    "value": [
+     true
+    ],
+    "steps": 6,
+    "allocated": 8
+   }
+  },
+  {
+   "name": "a rendering walk is not deepened by the level of ${{",
+   "template": "string",
+   "source": "${{ v }}",
+   "env": "{v: any}",
+   "vars": {
+    "v": [
+     [
+      1
+     ]
+    ]
+   },
+   "limits": {
+    "depth": 2
+   },
+   "expect": {
+    "value": "[[1]]",
+    "steps": 3,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a rendering walk past the depth limit",
+   "template": "string",
+   "source": "${{ v }}",
+   "env": "{v: any}",
+   "vars": {
+    "v": [
+     [
+      1
+     ]
+    ]
+   },
+   "limits": {
+    "depth": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "depth-exceeded",
+      "class": "limit",
+      "message": "calls and nested values went deeper than the depth limit of 1"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a host function in a part charges the one budget",
+   "template": "string",
+   "source": "d=${{ geo.dist(a) }}",
+   "env": "{a: int}",
+   "vars": {
+    "a": 1
+   },
+   "functions": {
+    "geo.dist": {
+     "type": "(n: int) => int !",
+     "calls": [
+      {
+       "args": [
+        1
+       ],
+       "result": 5,
+       "charge": 3,
+       "allocate": 2
+      }
+     ]
+    }
+   },
+   "expect": {
+    "value": "d=5",
+    "steps": 5,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a host function error in a part",
+   "template": "string",
+   "source": "d=${{ geo.dist(a) }}",
+   "env": "{a: int}",
+   "vars": {
+    "a": 2
+   },
+   "functions": {
+    "geo.dist": {
+     "type": "(n: int) => int !",
+     "calls": [
+      {
+       "error": "no route"
+      }
+     ]
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "function-error",
+      "class": "host",
+      "span": [
+       1,
+       7,
+       1,
+       18
+      ],
+      "message": "no route"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  }
+ ]
+}

@@ -1,0 +1,309 @@
+{
+ "cases": [
+  {
+   "name": "mode value: a single part gives its value",
+   "template": "value",
+   "source": "${{ pr.number }}",
+   "env": "{pr: {number: int}}",
+   "vars": {
+    "pr": {
+     "number": 42
+    }
+   },
+   "expect": {
+    "type": "int",
+    "value": 42,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode string: a single part is rendered",
+   "template": "string",
+   "source": "${{ pr.number }}",
+   "env": "{pr: {number: int}}",
+   "vars": {
+    "pr": {
+     "number": 42
+    }
+   },
+   "expect": {
+    "type": "string",
+    "value": "42",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "mode value: text before the part makes a string",
+   "template": "value",
+   "source": " ${{ pr.number }}",
+   "env": "{pr: {number: int}}",
+   "vars": {
+    "pr": {
+     "number": 42
+    }
+   },
+   "expect": {
+    "type": "string",
+    "value": " 42",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "mode value: a line end after the part makes a string",
+   "template": "value",
+   "source": "${{ pr.number }}\n",
+   "env": "{pr: {number: int}}",
+   "vars": {
+    "pr": {
+     "number": 42
+    }
+   },
+   "expect": {
+    "type": "string",
+    "value": "42\n",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "mode value: two parts make a string",
+   "template": "value",
+   "source": "${{ 1 }}${{ 2 }}",
+   "expect": {
+    "type": "string",
+    "value": "12",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "mode value: a list is not rendered",
+   "template": "value",
+   "source": "${{ tags }}",
+   "env": "{tags: string[]}",
+   "vars": {
+    "tags": [
+     "a",
+     "b"
+    ]
+   },
+   "expect": {
+    "type": "string[]",
+    "value": [
+     "a",
+     "b"
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode string: a list is rendered",
+   "template": "string",
+   "source": "${{ tags }}",
+   "env": "{tags: string[]}",
+   "vars": {
+    "tags": [
+     "a",
+     "b"
+    ]
+   },
+   "expect": {
+    "type": "string",
+    "value": "[\"a\",\"b\"]",
+    "steps": 3,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "mode value: null",
+   "template": "value",
+   "source": "${{ null }}",
+   "expect": {
+    "type": "null",
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode string: null renders as empty",
+   "template": "string",
+   "source": "${{ null }}",
+   "expect": {
+    "type": "string",
+    "value": "",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "mode value: a map literal",
+   "template": "value",
+   "source": "${{ {a: 1} }}",
+   "expect": {
+    "type": "{a: int}",
+    "value": {
+     "a": 1
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "mode value: a block",
+   "template": "value",
+   "source": "${{ { const a = 1; [a] } }}",
+   "expect": {
+    "type": "int[]",
+    "value": [
+     1
+    ],
+    "steps": 0,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "mode value: a host map is given back as it is",
+   "template": "value",
+   "source": "${{ m }}",
+   "env": "{m: {b: int, a: int}}",
+   "vars": {
+    "m": {
+     "b": 1,
+     "a": 2
+    }
+   },
+   "expect": {
+    "type": "{a: int, b: int}",
+    "value": {
+     "a": 2,
+     "b": 1
+    },
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode value: no part gives the text",
+   "template": "value",
+   "source": "plain",
+   "expect": {
+    "type": "\"plain\"",
+    "value": "plain",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode string: no part gives a literal type",
+   "template": "string",
+   "source": "plain",
+   "expect": {
+    "type": "\"plain\"",
+    "value": "plain",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode value: an escaped delimiter is text",
+   "template": "value",
+   "source": "$${{ x }}",
+   "expect": {
+    "type": "\"${{ x }}\"",
+    "value": "${{ x }}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode value: the empty text",
+   "template": "value",
+   "source": "",
+   "expect": {
+    "type": "\"\"",
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "mode value: an opaque value is not rendered",
+   "template": "value",
+   "source": "${{ t }}",
+   "expect": {
+    "type": "Tok",
+    "value": {
+     "$opaque": {
+      "type": "Tok",
+      "id": 1
+     }
+    },
+    "steps": 0,
+    "allocated": 0
+   },
+   "env": "{t: Tok}",
+   "opaque": [
+    "Tok"
+   ],
+   "vars": {
+    "t": {
+     "$opaque": {
+      "type": "Tok",
+      "id": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "mode string: an opaque part is kind",
+   "template": "string",
+   "source": "${{ t }}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "kind",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   },
+   "env": "{t: Tok}",
+   "opaque": [
+    "Tok"
+   ],
+   "vars": {
+    "t": {
+     "$opaque": {
+      "type": "Tok",
+      "id": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "mode value: a bool",
+   "template": "value",
+   "source": "${{ ok }}",
+   "env": "{ok: bool}",
+   "vars": {
+    "ok": true
+   },
+   "returns": "bool",
+   "expect": {
+    "type": "bool",
+    "value": true,
+    "truthy": true
+   }
+  }
+ ]
+}

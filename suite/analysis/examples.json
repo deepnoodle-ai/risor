@@ -1,0 +1,399 @@
+{
+ "cases": [
+  {
+   "name": "A1",
+   "source": "input.event[\"id\"]",
+   "expect": {
+    "analysis": {
+     "names": [
+      "input"
+     ],
+     "refs": [
+      {
+       "name": "input",
+       "path": [
+        "event",
+        "id"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        18
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A2",
+   "source": "a[i].b",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "i"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      },
+      {
+       "name": "i",
+       "path": [],
+       "span": [
+        1,
+        3,
+        1,
+        4
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A3",
+   "source": "a?.b?.[\"c\"]",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [
+        "b",
+        "c"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        12
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A4",
+   "source": "const e = input.event; e.id",
+   "expect": {
+    "analysis": {
+     "names": [
+      "input"
+     ],
+     "refs": [
+      {
+       "name": "input",
+       "path": [
+        "event"
+       ],
+       "span": [
+        1,
+        11,
+        1,
+        22
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A5",
+   "source": "xs.map(x => lookup(x.id) + y)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs",
+      "y"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      },
+      {
+       "name": "y",
+       "path": [],
+       "span": [
+        1,
+        28,
+        1,
+        29
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        1,
+        1,
+        30
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         29
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "lookup",
+       "namespace": null,
+       "span": [
+        1,
+        13,
+        1,
+        25
+       ],
+       "args": [
+        [
+         1,
+         20,
+         1,
+         24
+        ]
+       ],
+       "lambda": true
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A6",
+   "source": "geo.distance(a, b) > limit",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b",
+      "geo",
+      "limit"
+     ],
+     "refs": [
+      {
+       "name": "geo",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        14,
+        1,
+        15
+       ]
+      },
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        1,
+        17,
+        1,
+        18
+       ]
+      },
+      {
+       "name": "limit",
+       "path": [],
+       "span": [
+        1,
+        22,
+        1,
+        27
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "geo.distance",
+       "namespace": "geo",
+       "span": [
+        1,
+        1,
+        1,
+        19
+       ],
+       "args": [
+        [
+         1,
+         14,
+         1,
+         15
+        ],
+        [
+         1,
+         17,
+         1,
+         18
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A7",
+   "source": "const double = x => x * 2; double(n) + rate(n)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "n"
+     ],
+     "refs": [
+      {
+       "name": "n",
+       "path": [],
+       "span": [
+        1,
+        35,
+        1,
+        36
+       ]
+      },
+      {
+       "name": "n",
+       "path": [],
+       "span": [
+        1,
+        45,
+        1,
+        46
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "rate",
+       "namespace": null,
+       "span": [
+        1,
+        40,
+        1,
+        47
+       ],
+       "args": [
+        [
+         1,
+         45,
+         1,
+         46
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A8",
+   "source": "const f = x => f(x); f(1)",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [
+      {
+       "name": "f",
+       "namespace": null,
+       "span": [
+        1,
+        16,
+        1,
+        20
+       ],
+       "args": [
+        [
+         1,
+         18,
+         1,
+         19
+        ]
+       ],
+       "lambda": true
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "A9",
+   "source": "{a: 1, b: [true, null], c: -2.5}",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": {
+       "a": 1,
+       "b": [
+        true,
+        null
+       ],
+       "c": -2.5
+      }
+     },
+     "segments": null
+    }
+   }
+  }
+ ]
+}

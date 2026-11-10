@@ -1943,3 +1943,14 @@ where the row says otherwise.
 | S26 | `gate.items.map()` | None. The full checker reports `arity` 1:1-1:17, a type diagnostic (22.1), so the guarantee does not apply. |
 | S27 | `gate.items.map(t => t.nmae)` | None. The full checker reports `no-field` 1:23-1:27, a type diagnostic. |
 | S28 | `const inc = n => n + 1; [1, 2].map(inc)` | None: a lambda argument of a `MethodCall` is not tested by the static rules. |
+
+## 23. What packages add
+
+A package of the specification adds rules to this chapter's and changes none.
+Its chapter is the home of its rules.
+
+| Package | Adds | Chapter |
+| --- | --- | --- |
+| F1, host types | The type a JSON Schema gives, with its options. The printing of a signature. The description of an environment | `spec/packages/f01-host-types.md` |
+| F2, templates and analysis | How a host template is checked, and its type in each mode | `spec/packages/f02-templates-analysis.md` 2 |
+| F3, string forms | The types of the new string nodes, and raw strings in type text | `spec/packages/f03-strings.md` 8 |

@@ -1,0 +1,414 @@
+{
+ "cases": [
+  {
+   "name": "plain text is a string",
+   "template": "string",
+   "source": "hello",
+   "expect": {
+    "value": "hello",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty text is the empty string",
+   "template": "string",
+   "source": "",
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a part between two text runs",
+   "template": "string",
+   "source": "a${{ x }}b",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "a1b",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "no white space is needed in a part",
+   "template": "string",
+   "source": "${{x}}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "$${{ writes ${{ and opens no part",
+   "template": "string",
+   "source": "$${{ x }}",
+   "expect": {
+    "value": "${{ x }}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an escaped delimiter beside a real part",
+   "template": "string",
+   "source": "$${{ x }} = ${{ x }}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 2
+   },
+   "expect": {
+    "value": "${{ x }} = 2",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "three dollars: a dollar, then the escape",
+   "template": "string",
+   "source": "$$${{ x }}",
+   "expect": {
+    "value": "$${{ x }}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two dollars not followed by {{ stay two",
+   "template": "string",
+   "source": "$$x $$",
+   "expect": {
+    "value": "$$x $$",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an escape needs no closing delimiter",
+   "template": "string",
+   "source": "$${{ a",
+   "expect": {
+    "value": "${{ a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "${ and {{ alone are text",
+   "template": "string",
+   "source": "${x} ${ {x} } {{ x }}",
+   "expect": {
+    "value": "${x} ${ {x} } {{ x }}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a backslash does not escape a part",
+   "template": "string",
+   "source": "\\${{ x }}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "\\1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "string forms are characters in a text run",
+   "template": "string",
+   "source": "say \"hi\" `now` r\"x\" \"\"\" '' ${{ x }}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "say \"hi\" `now` r\"x\" \"\"\" '' 1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "}} in a text run is text",
+   "template": "string",
+   "source": "a }} b ${{ x }} }}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "a }} b 1 }}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a third brace after the delimiter is text",
+   "template": "string",
+   "source": "${{ x }}}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "1}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a dollar at the end is text",
+   "template": "string",
+   "source": "cost: ${{ x }}$",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "cost: 1$",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a dollar before a part is written inside it",
+   "template": "string",
+   "source": "${{ \"$\" + x }}",
+   "env": "{x: string}",
+   "vars": {
+    "x": "5"
+   },
+   "expect": {
+    "value": "$5",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "}} in a double-quoted string does not close the part",
+   "template": "string",
+   "source": "${{ \"}}\" }}",
+   "expect": {
+    "value": "}}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "}} in a single-quoted string does not close the part",
+   "template": "string",
+   "source": "${{ 'a}}b' }}",
+   "expect": {
+    "value": "a}}b",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an escaped quote does not end the string",
+   "template": "string",
+   "source": "${{ \"\\\"}}\" }}",
+   "expect": {
+    "value": "\"}}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map literal may end in }}",
+   "template": "string",
+   "source": "${{ {a: 1}}}",
+   "expect": {
+    "value": "{\"a\":1}",
+    "steps": 2,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "a map right after the opening delimiter",
+   "template": "string",
+   "source": "${{{a: 1}}}",
+   "expect": {
+    "value": "{\"a\":1}",
+    "steps": 2,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "nested maps end in }} inside the part",
+   "template": "string",
+   "source": "${{ {a: {b: 1}} }}",
+   "expect": {
+    "value": "{\"a\":{\"b\":1}}",
+    "steps": 3,
+    "allocated": 7
+   }
+  },
+  {
+   "name": "a block with const lines in a part",
+   "template": "string",
+   "source": "${{ { const a = 2; a * 3 } }}",
+   "expect": {
+    "value": "6",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a block comment hides }}",
+   "template": "string",
+   "source": "${{ x /* }} */ }}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a line comment ends at the line end",
+   "template": "string",
+   "source": "${{ x // }}\n}}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a template literal in a part may hold }}",
+   "template": "string",
+   "source": "${{ `}}` }}",
+   "expect": {
+    "value": "}}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "in a template literal ${{ is ${ and a map",
+   "template": "string",
+   "source": "${{ `${{a: 1}}` }}",
+   "expect": {
+    "value": "{\"a\":1}",
+    "steps": 3,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "braces of an interpolation in a part are not counted",
+   "template": "string",
+   "source": "${{ `a${ {b: 1}.b }c` }}",
+   "expect": {
+    "value": "a1c",
+    "steps": 3,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "two parts with no text between",
+   "template": "string",
+   "source": "${{ 1 }}${{ 2 }}",
+   "expect": {
+    "value": "12",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "line ends in a text run are kept as written",
+   "template": "string",
+   "source": "a\r\n${{ x }}\rb",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "a\r\n1\rb",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a byte order mark at the start is text",
+   "template": "string",
+   "source": "﻿${{ x }}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "﻿1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a part may span lines",
+   "template": "string",
+   "source": "${{\n  x\n}}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "text that is not ASCII",
+   "template": "string",
+   "source": "😀 ${{ x }} é",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "😀 1 é",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "99 parentheses in a part are allowed",
+   "template": "string",
+   "source": "${{(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))}}",
+   "expect": {
+    "value": "1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "99 parentheses in a single part, mode value",
+   "template": "value",
+   "source": "${{(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))}}",
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

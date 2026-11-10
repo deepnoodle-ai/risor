@@ -1,0 +1,586 @@
+{
+ "cases": [
+  {
+   "name": "a template with two parts",
+   "source": "Hi ${{ user.name }}, you have ${{ len(items) }} items",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "names": [
+      "items",
+      "user"
+     ],
+     "refs": [
+      {
+       "name": "user",
+       "path": [
+        "name"
+       ],
+       "span": [
+        1,
+        8,
+        1,
+        17
+       ]
+      },
+      {
+       "name": "items",
+       "path": [],
+       "span": [
+        1,
+        39,
+        1,
+        44
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "len",
+       "namespace": null,
+       "span": [
+        1,
+        35,
+        1,
+        45
+       ],
+       "args": [
+        [
+         1,
+         39,
+         1,
+         44
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "literal": false,
+     "segments": [
+      {
+       "text": "Hi ",
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "part": [
+        1,
+        8,
+        1,
+        17
+       ],
+       "span": [
+        1,
+        4,
+        1,
+        20
+       ]
+      },
+      {
+       "text": ", you have ",
+       "span": [
+        1,
+        20,
+        1,
+        31
+       ]
+      },
+      {
+       "part": [
+        1,
+        35,
+        1,
+        45
+       ],
+       "span": [
+        1,
+        31,
+        1,
+        48
+       ]
+      },
+      {
+       "text": " items",
+       "span": [
+        1,
+        48,
+        1,
+        54
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mode string: a single part is not a literal",
+   "source": "${{ 5 }}",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "literal": false,
+     "segments": [
+      {
+       "part": [
+        1,
+        5,
+        1,
+        6
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mode value: a single literal part is a literal",
+   "source": "${{ 5 }}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "literal": {
+      "value": 5
+     },
+     "segments": [
+      {
+       "part": [
+        1,
+        5,
+        1,
+        6
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a template with no part is a literal",
+   "source": "plain text",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "literal": {
+      "value": "plain text"
+     },
+     "segments": [
+      {
+       "text": "plain text",
+       "span": [
+        1,
+        1,
+        1,
+        11
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the empty template",
+   "source": "",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": {
+      "value": ""
+     },
+     "segments": []
+    }
+   }
+  },
+  {
+   "name": "an escaped delimiter is text in a segment",
+   "source": "$${{ x }} and ${{ y }}",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "names": [
+      "y"
+     ],
+     "segments": [
+      {
+       "text": "${{ x }} and ",
+       "span": [
+        1,
+        1,
+        1,
+        15
+       ]
+      },
+      {
+       "part": [
+        1,
+        19,
+        1,
+        20
+       ],
+       "span": [
+        1,
+        15,
+        1,
+        23
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mode value: an escaped delimiter alone is a literal",
+   "source": "$${{ x }}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "literal": {
+      "value": "${{ x }}"
+     },
+     "segments": [
+      {
+       "text": "${{ x }}",
+       "span": [
+        1,
+        1,
+        1,
+        10
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "two parts with no text between",
+   "source": "${{ a }}${{ b }}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b"
+     ],
+     "literal": false,
+     "segments": [
+      {
+       "part": [
+        1,
+        5,
+        1,
+        6
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        9
+       ]
+      },
+      {
+       "part": [
+        1,
+        13,
+        1,
+        14
+       ],
+       "span": [
+        1,
+        9,
+        1,
+        17
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "spans of a template across lines",
+   "source": "line 1\n${{ order.total }}\n${{ fmt(order.id) }}",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "names": [
+      "order"
+     ],
+     "refs": [
+      {
+       "name": "order",
+       "path": [
+        "total"
+       ],
+       "span": [
+        2,
+        5,
+        2,
+        16
+       ]
+      },
+      {
+       "name": "order",
+       "path": [
+        "id"
+       ],
+       "span": [
+        3,
+        9,
+        3,
+        17
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "fmt",
+       "namespace": null,
+       "span": [
+        3,
+        5,
+        3,
+        18
+       ],
+       "args": [
+        [
+         3,
+         9,
+         3,
+         17
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "segments": [
+      {
+       "text": "line 1\n",
+       "span": [
+        1,
+        1,
+        2,
+        1
+       ]
+      },
+      {
+       "part": [
+        2,
+        5,
+        2,
+        16
+       ],
+       "span": [
+        2,
+        1,
+        2,
+        19
+       ]
+      },
+      {
+       "text": "\n",
+       "span": [
+        2,
+        19,
+        3,
+        1
+       ]
+      },
+      {
+       "part": [
+        3,
+        5,
+        3,
+        18
+       ],
+       "span": [
+        3,
+        1,
+        3,
+        21
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "mode value: a map literal part ending in }}",
+   "source": "${{ {a: 1}}}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "literal": {
+      "value": {
+       "a": 1
+      }
+     },
+     "segments": [
+      {
+       "part": [
+        1,
+        5,
+        1,
+        11
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        13
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a name bound in one part is free in another",
+   "source": "${{ { const a = x; a } }} ${{ a }}",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "x"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        17,
+        1,
+        18
+       ]
+      },
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        31,
+        1,
+        32
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a call inside a lambda in a part",
+   "source": "${{ xs.map(x => notify(x)) }}",
+   "template": "value",
+   "expect": {
+    "analysis": {
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        5,
+        1,
+        27
+       ],
+       "args": [
+        [
+         1,
+         12,
+         1,
+         26
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "notify",
+       "namespace": null,
+       "span": [
+        1,
+        17,
+        1,
+        26
+       ],
+       "args": [
+        [
+         1,
+         24,
+         1,
+         25
+        ]
+       ],
+       "lambda": true
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a carriage return in a text run",
+   "source": "a\r\n${{ b }}",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "segments": [
+      {
+       "text": "a\r\n",
+       "span": [
+        1,
+        1,
+        2,
+        1
+       ]
+      },
+      {
+       "part": [
+        2,
+        5,
+        2,
+        6
+       ],
+       "span": [
+        2,
+        1,
+        2,
+        9
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a program has no segments",
+   "source": "x",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "segments": null
+    }
+   }
+  }
+ ]
+}

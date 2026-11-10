@@ -1,0 +1,612 @@
+{
+ "cases": [
+  {
+   "name": "an empty part is an error at the closing delimiter",
+   "template": "string",
+   "source": "${{ }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty part with no space",
+   "template": "string",
+   "source": "${{}}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty part, mode value",
+   "template": "value",
+   "source": "${{ }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an incomplete expression ends at the closing delimiter",
+   "template": "string",
+   "source": "${{ a + }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an open parenthesis does not hide the delimiter",
+   "template": "string",
+   "source": "${{ (x }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unclosed part runs from ${{ to the end",
+   "template": "string",
+   "source": "a ${{ b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       3,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the opening delimiter alone",
+   "template": "string",
+   "source": "${{",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a closed map does not close the part",
+   "template": "string",
+   "source": "x ${{ {a: 1}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       3,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a line comment hides the delimiter on its line",
+   "template": "string",
+   "source": "${{ x // }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated string in a part is met first",
+   "template": "string",
+   "source": "${{ \"abc }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated template literal in a part",
+   "template": "string",
+   "source": "${{ `abc }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated comment in a part",
+   "template": "string",
+   "source": "${{ x /* }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-comment",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the second part is unclosed",
+   "template": "string",
+   "source": "${{ x }} ${{",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       10,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lone closing brace is an error at that brace",
+   "template": "string",
+   "source": "${{ a } b }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lone closing brace at the end",
+   "template": "string",
+   "source": "${{ a }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a part holds no const line",
+   "template": "string",
+   "source": "${{ const a = 1; a }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a part holds no semicolon",
+   "template": "string",
+   "source": "${{ a; }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a part holds one expression",
+   "template": "string",
+   "source": "${{ a b }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word in a part",
+   "template": "string",
+   "source": "${{ nil }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "parts do not nest",
+   "template": "string",
+   "source": "${{ a ${{ b }} }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dollar in a part is an unexpected character",
+   "template": "string",
+   "source": "${{ $x }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a byte order mark in a part is an unexpected character",
+   "template": "string",
+   "source": "${{ ﻿x }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lexical diagnostic in a later part comes first",
+   "template": "string",
+   "source": "${{ 1 + }} ${{ \"a\\q\" }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       18,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unclosed later part comes before a parse error",
+   "template": "string",
+   "source": "${{ a + }} ${{ b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       12,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lexical diagnostic after a lone brace comes first",
+   "template": "string",
+   "source": "${{ a } ${{ \"x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       13,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a parse error in the second part",
+   "template": "string",
+   "source": "ok ${{ x }} then ${{ y + }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       26,
+       1,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "spans count lines of the whole text",
+   "template": "string",
+   "source": "line one\n${{ a + }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       9,
+       2,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a carriage return is not a line end",
+   "template": "string",
+   "source": "a\r${{ a + }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a code point above U+FFFF is one column",
+   "template": "string",
+   "source": "😀${{ a + }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a part starts with one level open",
+   "template": "string",
+   "source": "${{((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))}}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       103,
+       1,
+       104
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a single part, mode value, starts with one level open",
+   "template": "value",
+   "source": "${{((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))}}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       103,
+       1,
+       104
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a line end in a string in a part",
+   "template": "string",
+   "source": "${{ \"a\nb\" }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,135 @@
+{
+ "cases": [
+  {
+   "name": "a name bound twice",
+   "source": "const a = 1; const a = 2; a",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "a call of a const that is not a lambda is not a free call",
+   "source": "const f = 1; f(2)",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "names no environment declares",
+   "source": "undefinedFn(a) + b",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b"
+     ],
+     "calls": [
+      {
+       "name": "undefinedFn",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        15
+       ],
+       "args": [
+        [
+         1,
+         13,
+         1,
+         14
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a duplicate case",
+   "source": "match x { 1 => \"a\", 1 => \"b\" }",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        7,
+        1,
+        8
+       ]
+      }
+     ],
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "a call of a parameter inside a lambda",
+   "source": "const twice = (f, x) => f(f(x)); twice(1, 2)",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "a wrong count of arguments",
+   "source": "len(1, 2, 3)",
+   "expect": {
+    "analysis": {
+     "calls": [
+      {
+       "name": "len",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        13
+       ],
+       "args": [
+        [
+         1,
+         5,
+         1,
+         6
+        ],
+        [
+         1,
+         8,
+         1,
+         9
+        ],
+        [
+         1,
+         11,
+         1,
+         12
+        ]
+       ],
+       "lambda": false
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

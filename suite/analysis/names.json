@@ -1,0 +1,606 @@
+{
+ "cases": [
+  {
+   "name": "two free names",
+   "source": "a + b",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      },
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        1,
+        5,
+        1,
+        6
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "names are sorted and each is once",
+   "source": "zeta + alpha + zeta",
+   "expect": {
+    "analysis": {
+     "names": [
+      "alpha",
+      "zeta"
+     ],
+     "refs": [
+      {
+       "name": "zeta",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        5
+       ]
+      },
+      {
+       "name": "alpha",
+       "path": [],
+       "span": [
+        1,
+        8,
+        1,
+        13
+       ]
+      },
+      {
+       "name": "zeta",
+       "path": [],
+       "span": [
+        1,
+        16,
+        1,
+        20
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a const name is not free",
+   "source": "const input = 1; input + other",
+   "expect": {
+    "analysis": {
+     "names": [
+      "other"
+     ],
+     "refs": [
+      {
+       "name": "other",
+       "path": [],
+       "span": [
+        1,
+        26,
+        1,
+        31
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a name is not in scope in its own value",
+   "source": "const x = x + 1; x",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        11,
+        1,
+        12
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a block's name ends with the block",
+   "source": "{ const a = 1; a } + a",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        22,
+        1,
+        23
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a name of the body is free in the handler",
+   "source": "try { const a = 1; a } catch { a }",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        32,
+        1,
+        33
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the catch name is bound in the handler",
+   "source": "try { a } catch (err) { err.code + b }",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        7,
+        1,
+        8
+       ]
+      },
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        1,
+        36,
+        1,
+        37
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a lambda parameter is not free",
+   "source": "xs.map(x => x.id + y)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs",
+      "y"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      },
+      {
+       "name": "y",
+       "path": [],
+       "span": [
+        1,
+        20,
+        1,
+        21
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a parameter is bound only in its lambda",
+   "source": "xs.map(x => x) + x",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x",
+      "xs"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      },
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        18,
+        1,
+        19
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a pattern default does not see names to its right",
+   "source": "const {b = a, a} = m; b",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "m"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        12,
+        1,
+        13
+       ]
+      },
+      {
+       "name": "m",
+       "path": [],
+       "span": [
+        1,
+        20,
+        1,
+        21
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a pattern default sees names to its left",
+   "source": "const {a, b = a} = m; b",
+   "expect": {
+    "analysis": {
+     "names": [
+      "m"
+     ],
+     "refs": [
+      {
+       "name": "m",
+       "path": [],
+       "span": [
+        1,
+        20,
+        1,
+        21
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a parameter default does not see later parameters",
+   "source": "const f = (b = a, a = 1) => b; f()",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        16,
+        1,
+        17
+       ]
+      }
+     ],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "a parameter default sees earlier parameters",
+   "source": "const f = (a, b = a) => b; f(1)",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": []
+    }
+   }
+  },
+  {
+   "name": "list pattern and rest names are bound",
+   "source": "const [x, ...rest] = xs; rest",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        22,
+        1,
+        24
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a shorthand entry is a read; a key is not",
+   "source": "{a, b: c}",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "c"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        2,
+        1,
+        3
+       ]
+      },
+      {
+       "name": "c",
+       "path": [],
+       "span": [
+        1,
+        8,
+        1,
+        9
+       ]
+      }
+     ],
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "a match subject and results",
+   "source": "match kind { \"a\" => x, _ => y }",
+   "expect": {
+    "analysis": {
+     "names": [
+      "kind",
+      "x",
+      "y"
+     ],
+     "refs": [
+      {
+       "name": "kind",
+       "path": [],
+       "span": [
+        1,
+        7,
+        1,
+        11
+       ]
+      },
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        21,
+        1,
+        22
+       ]
+      },
+      {
+       "name": "y",
+       "path": [],
+       "span": [
+        1,
+        29,
+        1,
+        30
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a free name passed as an argument is a read",
+   "source": "xs.map(len)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "len",
+      "xs"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      },
+      {
+       "name": "len",
+       "path": [],
+       "span": [
+        1,
+        8,
+        1,
+        11
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a const-bound lambda passed by name is not a read",
+   "source": "const double = x => x * 2; xs.map(double)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        28,
+        1,
+        30
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a read in a template literal",
+   "source": "`a ${b} c`",
+   "expect": {
+    "analysis": {
+     "names": [
+      "b"
+     ],
+     "refs": [
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        1,
+        6,
+        1,
+        7
+       ]
+      }
+     ],
+     "literal": false
+    }
+   }
+  },
+  {
+   "name": "a word after a dot is a key",
+   "source": "a.if + b.const",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b"
+     ],
+     "refs": [
+      {
+       "name": "a",
+       "path": [
+        "if"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        5
+       ]
+      },
+      {
+       "name": "b",
+       "path": [
+        "const"
+       ],
+       "span": [
+        1,
+        8,
+        1,
+        15
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "no name at all",
+   "source": "1 + 2",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  }
+ ]
+}

@@ -1292,21 +1292,35 @@ The **static codes** are the codes of the static rules of `01-language.md`:
 so a case that expects `arity` on a method call belongs in
 `suite/core-check/`.
 
-## 3.11 What later packages add
+## 3.11 What packages add
 
 These parts of the host contract and of the case format are not in Core. Each
-comes with a later package of the specification, and adds without changing
-anything above.
+comes with a package of the specification, and adds without changing anything
+above. A package's chapter is the home of its rules: this table only points.
 
-| Part | Adds |
-| --- | --- |
-| Types from JSON Schema and from host types | Declarations of a variable's type in JSON Schema, and the environment's description |
-| Named types | The declaration of a named type, and the case field `types` |
-| Templates and analysis | The stages of template parsing and analysis, the case field `template`, and the result field `names` |
-| Checked conversion | The conformance function, and the case of the second kind, with the field `conform` |
-| Opt-in library groups | The declaration that enables a group, and the case field `groups`. The runner's comparison of a result's JSON text (3.2.4) with what `json.stringify` gives |
-| Errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings. The `parse` and `check` templates of the catalog |
-| Testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Update mode. Case files written as programs. Kinds of case that test the runner |
-| Tools | The assist stage: completion and hover |
+| Package | Adds | Chapter |
+| --- | --- | --- |
+| F1, host types | The declaration of a variable's type by JSON Schema (a row of 3.3.1), the environment's description, the contract for a type taken from a host type. The case field `schemas`, the result field `description` | `spec/packages/f01-host-types.md` |
+| F2, templates and analysis | The stages of template parsing and of analysis. The case field `template`, the result field `analysis` | `spec/packages/f02-templates-analysis.md` |
+| F3, string forms | Nothing in the host contract. Its cases use Core's format | `spec/packages/f03-strings.md` |
+| Named types | The declaration of a named type, and the case field `types` | Not written yet |
+| Checked conversion | The conformance function, and the case of the second kind, with the field `conform` | Not written yet |
+| Opt-in library groups | The declaration that enables a group, and the case field `groups`. The runner's comparison of a result's JSON text (3.2.4) with what `json.stringify` gives | Not written yet |
+| Errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings. The `parse` and `check` templates of the catalog | Not written yet |
+| Testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Update mode. Case files written as programs. Kinds of case that test the runner | Not written yet |
+| Tools | The assist stage: completion and hover | Not written yet |
 
-A case file that uses a field of this table is invalid for a Core runner.
+1. The cases of a package are in a directory of their own: `suite/host-types/`,
+   `suite/templates/` and `suite/analysis/`, `suite/strings/`. A runner
+   reports each directory by itself (3.10.8).
+2. A runner runs only the directories of the packages its implementation
+   offers. An implementation offers a package only when it offers every
+   package that one depends on.
+3. For a runner, a field of a package it does not offer is a field 3.10.3
+   does not list, so a file that uses it is invalid (3.10.10).
+4. A case that pins an error which a named later package turns into a result
+   stands in a file named `until-fNN-` and what it holds, in the directory
+   of the package that owns the rule. That file is removed when the later
+   package's cases are added. No other case is removed or changed by a
+   package, except a case whose text the package gives a new outcome, which
+   is replaced by a case of the package with the same text.

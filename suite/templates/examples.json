@@ -1,0 +1,420 @@
+{
+ "cases": [
+  {
+   "name": "T1: Review of #${{ pr.number }}",
+   "template": "string",
+   "source": "Review of #${{ pr.number }}",
+   "expect": {
+    "value": "Review of #42",
+    "steps": 2,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T2: ${{ pr.number }}",
+   "template": "value",
+   "source": "${{ pr.number }}",
+   "expect": {
+    "value": 42,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T3: ${{ pr.number }}",
+   "template": "string",
+   "source": "${{ pr.number }}",
+   "expect": {
+    "value": "42",
+    "steps": 2,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T4:  ${{ pr.number }}",
+   "template": "value",
+   "source": " ${{ pr.number }}",
+   "expect": {
+    "value": " 42",
+    "steps": 2,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T5: ${{ xs }} items",
+   "template": "string",
+   "source": "${{ xs }} items",
+   "expect": {
+    "value": "[1,2,3] items",
+    "steps": 4,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T6: ${{ {a: 1}}}",
+   "template": "string",
+   "source": "${{ {a: 1}}}",
+   "expect": {
+    "value": "{\"a\":1}",
+    "steps": 2,
+    "allocated": 4
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T7: ${{ \"}}\" }}",
+   "template": "string",
+   "source": "${{ \"}}\" }}",
+   "expect": {
+    "value": "}}",
+    "steps": 1,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T8: $${{ name }}",
+   "template": "value",
+   "source": "$${{ name }}",
+   "expect": {
+    "value": "${{ name }}",
+    "steps": 0,
+    "allocated": 0
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T9: Hello ${{ name }}!",
+   "template": "string",
+   "source": "Hello ${{ name }}!",
+   "expect": {
+    "value": "Hello Ann!",
+    "steps": 1,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T10: ${{ null }}",
+   "template": "string",
+   "source": "${{ null }}",
+   "expect": {
+    "value": "",
+    "steps": 1,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T11: ${{ null }}",
+   "template": "value",
+   "source": "${{ null }}",
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T16: \\${{ 1 }}",
+   "template": "string",
+   "source": "\\${{ 1 }}",
+   "expect": {
+    "value": "\\1",
+    "steps": 1,
+    "allocated": 1
+   },
+   "env": "{pr: {number: int}, xs: int[], name: string}",
+   "vars": {
+    "pr": {
+     "number": 42
+    },
+    "xs": [
+     1,
+     2,
+     3
+    ],
+    "name": "Ann"
+   }
+  },
+  {
+   "name": "T12: ${{ }}, mode string",
+   "template": "string",
+   "source": "${{ }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T12: ${{ }}, mode value",
+   "template": "value",
+   "source": "${{ }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T13: a ${{ b, mode string",
+   "template": "string",
+   "source": "a ${{ b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       3,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T13: a ${{ b, mode value",
+   "template": "value",
+   "source": "a ${{ b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       3,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T14: ${{ a } b }}, mode string",
+   "template": "string",
+   "source": "${{ a } b }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T14: ${{ a } b }}, mode value",
+   "template": "value",
+   "source": "${{ a } b }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T15: ${{ const a = 1; a }}, mode string",
+   "template": "string",
+   "source": "${{ const a = 1; a }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T15: ${{ const a = 1; a }}, mode value",
+   "template": "value",
+   "source": "${{ const a = 1; a }}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

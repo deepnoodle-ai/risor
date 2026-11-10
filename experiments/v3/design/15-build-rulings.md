@@ -235,7 +235,7 @@ packages of `14` section 5 were then written on paper: a chapter in
 
 ### 12.2 F3, string forms
 
-The chapter is `spec/packages/f03-strings.md`, with 335 cases in
+The chapter is `spec/packages/f03-strings.md`, with 336 cases in
 `suite/strings/`. Plan `08` is its source. Twelve cases were removed from
 `suite/core-run/parse-follow-on.json` under R98.
 
@@ -246,3 +246,44 @@ The chapter is `spec/packages/f03-strings.md`, with 335 cases in
 | R104 | A text block whose opening line holds text runs to the next `"""` or the end of input, and nothing in it is read. A blank opening line followed by the end of input is `unterminated-string`. |
 | R105 | Only U+0020 and U+0009 are white space for the opening line, a blank line and the indentation. Indentation is compared code point for code point. |
 | R106 | `r'''`, `'''`, `R"` and a prefixed template stay the errors Core gives them. |
+
+Go and TypeScript implemented F3 apart and each found the same two wrong
+cases, both in what follows a literal that is already in error. The cases
+were corrected and the chapter now states the rule (its 6.2 item 5).
+
+### 12.3 F1, host types
+
+The chapter is `spec/packages/f01-host-types.md`, with 382 cases in
+`suite/host-types/`. Its sources are `03` 2.15 and `05`.
+
+| # | Ruling |
+| --- | --- |
+| R107 | **`allOf` meets records.** The design gave `allOf` no rule. Parts and branches are combined by Pick: `any` is dropped; records meet field by field, a field required when either requires it; otherwise the part that fits the others. The meet is sound and keeps every branch's fields, which is how schemas are composed in practice. |
+| R108 | Branches of `anyOf` or `oneOf` that would form a tagged union are `bad-type` until F5, as two records in type text are in Core. Their cases stand in an `until-f05-` file (R99). |
+| R109 | `integer` gives `int`, with one stated exception to soundness: a whole number past 2^53 − 1. |
+| R110 | `defaults-applied` gives Join(T, the default's literal type), not `nonnull(T)` as `03` 2.15 has it: a property's schema may allow null, and a default need not be valid by its schema. |
+| R111 | **The option `closed` closes once, deeply, at the root, after every meet and Join.** Closing each branch or property first is unsound; the lane's fuzzer showed it against a host that strips keys by the mapped record. The option's statement is that stripping, exactly. |
+| R112 | A `$ref` cycle is `bad-type`. `any` at the point of recursion could not be sharpened later without changing a result; an option that loads recursive schemas would only add. |
+| R113 | Keywords the design did not list are given sound readings: `patternProperties`, `prefixItems`, `items` as an array, `nullable`, a `required` name with no property, siblings of `$ref` (ignored). References outside the document, `$id` below the root, `$dynamicRef` and `$recursiveRef` are `bad-type`. |
+| R114 | An environment is described as a JSON object of seven keys, with every type and signature as printed text; an environment built from a description checks every program as the original does. There is no JSON Schema output. Printing a signature is defined. |
+| R115 | Presenting a host record (a Go struct) as a map is a binding rule of F1. The Rust rules are provisional until its derive is built, and name no other crate. TypeScript derives no type. |
+
+### 12.4 F2, templates and analysis
+
+The chapter is `spec/packages/f02-templates-analysis.md`, with 171 cases in
+`suite/templates/` and 138 in `suite/analysis/`. Its source is `05` A.7 and
+A.8.
+
+| # | Ruling |
+| --- | --- |
+| R116 | A host template has two modes. In `string` it is always a string. In `value`, a template that is exactly one part gives that part's value. It is evaluated as Core's template node: one run, one budget, no new cost row, no new code. |
+| R117 | `$${{` is the only escape in a template's text. A part ends where Core's rule for an interpolation says, with `}}` as one delimiter. An unclosed part is `unterminated-string`. |
+| R118 | **Analysis reports `n.m(...)` with a free `n` as a call named `n.m`,** since without an environment a namespaced host function looks like a method call. Each call carries `namespace`, the receiver's name or null, so a host keeps the calls of the namespaces it declares. |
+| R119 | A path follows the chain only: not a `const` binding, a pattern or a parenthesis. A shorter path claims more of the value, so it is always sound. The design's `Partial` flag is left out. |
+| R120 | The report has five fields: `names`, `refs`, `calls`, `literal`, `segments`. One result field `analysis` states it in a case, and such a case is analysis only. |
+
+### 12.5 The comparison command
+
+Each implementation has an `outcome` command that the fuzzers and the package
+lanes use to compare the three. `suite/README.md` is the home of its line
+format.

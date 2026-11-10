@@ -1,0 +1,12 @@
+[
+  {"name": "a schema variable beside env variables", "source": "a + b", "env": "{a: int}", "schemas": {"b": {"schema": {"type": "integer"}}}, "expect": {"type": "int", "sites": []}},
+  {"name": "two schema variables", "source": "[a, b]", "schemas": {"a": {"schema": {"type": "integer"}}, "b": {"schema": {"type": "string"}}}, "expect": {"type": "(int | string)[]", "sites": []}},
+  {"name": "a schema variable and an env variable of one name", "source": "1", "env": "{a: int}", "schemas": {"a": {"schema": {"type": "integer"}}}, "expect": {"phase": "declare", "diagnostics": [{"code": "name-clash"}]}},
+  {"name": "a schema variable and a host function of one name", "source": "1", "functions": {"a": "() => int"}, "schemas": {"a": {"schema": {"type": "integer"}}}, "expect": {"phase": "declare", "diagnostics": [{"code": "name-clash"}]}},
+  {"name": "a schema variable named like a namespace", "source": "1", "functions": {"geo.distance": "(a: float) => float"}, "schemas": {"geo": {"schema": {"type": "integer"}}}, "expect": {"phase": "declare", "diagnostics": [{"code": "name-clash"}]}},
+  {"name": "a schema variable named with a reserved word", "source": "1", "schemas": {"if": {"schema": {"type": "integer"}}}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a schema variable whose name is not a Name", "source": "1", "schemas": {"a-b": {"schema": {"type": "integer"}}}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "a schema variable named like a library function", "source": "len", "schemas": {"len": {"schema": {"type": "integer"}}}, "expect": {"type": "int", "sites": []}},
+  {"name": "a bad schema beside good ones", "source": "1", "schemas": {"a": {"schema": {"type": "integer"}}, "b": {"schema": {"type": "int"}}}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-type"}]}},
+  {"name": "a schema variable that is not supplied", "source": "v", "schemas": {"v": {"schema": {"type": "integer"}}}, "vars": {}, "expect": {"phase": "run", "diagnostics": [{"code": "missing-variable", "class": "environment", "span": [1, 1, 1, 2]}]}}
+]
