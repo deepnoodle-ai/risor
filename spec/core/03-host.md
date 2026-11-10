@@ -1340,6 +1340,7 @@ above. A package's chapter is the home of its rules: this table only points.
 | F2, templates and analysis | The stages of template parsing and of analysis. The case field `template`, the result field `analysis` | `spec/packages/f02-templates-analysis.md` |
 | F3, string forms | Nothing in the host contract. Its cases use Core's format | `spec/packages/f03-strings.md` |
 | F4, checked conversion | The declaration of a named type, and the case field `types`. The conformance function, and the case of the second kind, with the field `conform` | `spec/packages/f04-conversion.md` |
+| F5, tagged unions | Nothing in the case format. A union in declared type text, from the branches of a schema, and in a description | `spec/packages/f05-unions.md` |
 | F6, opt-in groups | The declaration that turns a group on: `json`, `time`, `math`, `base64`. The case field `groups`, and the result field `json`, which compares the binding's JSON text of a result (3.2.4) | `spec/packages/f06-groups.md` |
 | F7, queries | Three run-phase templates, in a catalog file of their own, `suite/messages-queries.json`. A package's templates never enter `suite/messages.json` | `spec/packages/f07-queries.md` 11 |
 | F13, math functions | Nothing in the host contract: eleven entries of the group `math` | `spec/packages/f13-math.md` |

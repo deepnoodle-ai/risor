@@ -385,3 +385,15 @@ cases were removed under R98: three in `parse-follow-on.json`, seven in
 | # | Ruling |
 | --- | --- |
 | R150 | **An earlier case whose outcome a package changes is moved, not removed,** into a file named `until-fNN-` in its own directory. A runner whose implementation offers package `NN` does not run that file; every other runner does. The package holds a case with the same text. The file is deleted when all three implementations offer the package. The errors package, F8, changes the code of 317 earlier parse cases; removing them when it was accepted on paper would have left every implementation without them until it reached the eighth package. The cases removed for F4 and F7 were restored as such files. |
+
+### 14.6 F5, tagged unions
+
+The chapter is `spec/packages/f05-unions.md`, with 423 cases in
+`suite/unions/`. Plan `09` is its source.
+
+| # | Ruling |
+| --- | --- |
+| R151 | A test of a field gives facts when the type at the path is a union, or a record while a fact about that path from a tag test is in force. Read literally, plan `09` stopped narrowing once one variant was left, which broke `else if` chains and the second arm of a `match`. |
+| R152 | **`kind in ["a", "b"]` narrows,** as `kind == "a" \|\| kind == "b"` does, when the right side is a list of string literals. Plan `09` 2.5 said `in` gives no fact, and D47 took that plan as written; this one line of it is changed, because an author expects the two forms to mean the same. |
+| R153 | With F5, two `is` tests of one path under `\|\|` combine to a union when their types have a tag. |
+| R154 | **`allOf` of a base record and a `oneOf` of variants keeps the union:** the base is met with each variant. This is how a schema shares fields among variants. The lane's fuzzer found no value that breaks it. |

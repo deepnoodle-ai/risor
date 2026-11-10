@@ -1,0 +1,20 @@
+{
+  "env": "{s: Shape, shapes: Shape[], ps: Shape | null, blob: any}",
+  "types": [{"name": "Shape", "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}"}],
+  "cases": [
+    {"name": "13.1 the union", "source": "s", "expect": {"type": "{kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float}", "sites": []}},
+    {"name": "13.2 the tag", "source": "s.kind", "expect": {"type": "\"circle\" | \"rect\"", "sites": []}},
+    {"name": "13.3 a field of one variant", "source": "s.r", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-absent", "span": [1, 3, 1, 4]}]}},
+    {"name": "13.4 ?. and ??", "source": "s?.r ?? 0", "expect": {"type": "float", "sites": []}},
+    {"name": "13.5 a test of the tag", "source": "s.kind == \"circle\" ? s.r : s.w * s.h", "vars": {"s": {"kind": "rect", "w": 2, "h": 3}}, "expect": {"type": "float", "sites": [], "value": 6, "steps": 5, "allocated": 0}},
+    {"name": "13.6 match on the tag", "source": "match s.kind { \"circle\" => s.r, \"rect\" => s.w }", "expect": {"type": "float", "sites": []}},
+    {"name": "13.7 a string in no tag set", "source": "s.kind == \"tri\"", "expect": {"phase": "check", "diagnostics": [{"code": "never-equal", "span": [1, 1, 1, 16]}]}},
+    {"name": "13.8 filter by the tag", "source": "shapes.filter(x => x.kind == \"circle\")", "expect": {"type": "{kind: \"circle\", r: float}[]", "sites": []}},
+    {"name": "13.9 ?. beside null", "source": "ps?.kind == \"rect\" ? ps.w : 0", "expect": {"type": "float", "sites": []}},
+    {"name": "13.10 as: the tag, then the variant", "source": "blob as Shape", "vars": {"blob": {"kind": "rect", "w": 2}}, "expect": {"phase": "run", "diagnostics": [{"code": "not-conforming", "span": [1, 1, 1, 14], "path": ["h"], "message": "required field \"h\" is missing", "class": "value"}], "steps": 3, "allocated": 0}},
+    {"name": "13.11 is: a tag in no tag set", "source": "blob is Shape", "vars": {"blob": {"kind": "oval"}}, "expect": {"value": false, "steps": 2, "allocated": 0}},
+    {"name": "13.12 a list literal against Shape[]", "source": "[{kind: \"circle\", r: 1}, {kind: \"rect\", w: 2}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 26, 1, 46]}]}},
+    {"name": "13.13 records with no tag", "source": "blob as {a: int} | {b: string}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 31]}]}},
+    {"name": "13.14 a spread of a union", "source": "{...s, id: 1}", "expect": {"type": "{h?: float, id: int, kind: \"circle\" | \"rect\", r?: float, w?: float}", "sites": []}}
+  ]
+}

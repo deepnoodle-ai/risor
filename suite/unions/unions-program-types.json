@@ -1,0 +1,29 @@
+{
+  "env": "{blob: any}",
+  "types": [{"name": "Shape", "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}"}, {"name": "Circle", "type": "{kind: \"circle\", r: float}"}, {"name": "Rect", "type": "{kind: \"rect\", h: float, w: float}"}],
+  "cases": [
+    {"name": "as: a union", "source": "blob as {kind: \"a\", x: int} | {kind: \"b\"}", "expect": {"type": "{kind: \"a\", x: int} | {kind: \"b\"}", "sites": [{"class": "value", "span": [1, 1, 1, 42]}]}},
+    {"name": "as: a union and null", "source": "blob as {kind: \"a\"} | {kind: \"b\"} | null", "expect": {"type": "{kind: \"a\"} | {kind: \"b\"} | null", "sites": [{"class": "value", "span": [1, 1, 1, 41]}]}},
+    {"name": "as: three records, two in parentheses", "source": "blob as ({kind: \"a\"} | {kind: \"b\"}) | {kind: \"c\"}", "expect": {"type": "{kind: \"a\"} | {kind: \"b\"} | {kind: \"c\"}", "sites": [{"class": "value", "span": [1, 1, 1, 50]}]}},
+    {"name": "as: a named union", "source": "blob as Shape", "expect": {"type": "{kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float}", "sites": [{"class": "value", "span": [1, 1, 1, 14]}]}},
+    {"name": "as: a named union and a record", "source": "blob as Shape | {kind: \"tri\", a: float}", "expect": {"type": "{kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float} | {a: float, kind: \"tri\"}", "sites": [{"class": "value", "span": [1, 1, 1, 40]}]}},
+    {"name": "as: two named records", "source": "blob as Circle | Rect", "expect": {"type": "{kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float}", "sites": [{"class": "value", "span": [1, 1, 1, 22]}]}},
+    {"name": "as: a list of a union", "source": "blob as Shape[]", "expect": {"type": "({kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float})[]", "sites": [{"class": "value", "span": [1, 1, 1, 16]}]}},
+    {"name": "as: a union in a field", "source": "blob as {s: Shape, ...}", "expect": {"type": "{s: {kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float}, ...}", "sites": [{"class": "value", "span": [1, 1, 1, 24]}]}},
+    {"name": "is: a union", "source": "blob is {kind: \"a\"} | {kind: \"b\"}", "expect": {"type": "bool", "sites": []}},
+    {"name": "as: two equal records", "source": "blob as {kind: \"a\"} | {kind: \"a\"}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 34]}]}},
+    {"name": "as: a common key typed string", "source": "blob as {kind: string} | {kind: \"a\"}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 37]}]}},
+    {"name": "as: a record and map<T>", "source": "blob as {kind: \"a\"} | map<int>", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 31]}]}},
+    {"name": "as: a named union twice", "source": "blob as Shape | Shape", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 22]}]}},
+    {"name": "as: a named union and a record that shares a string", "source": "blob as Shape | {kind: \"circle\", d: float}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 43]}]}},
+    {"name": "as: a union in parentheses and a record that breaks it", "source": "blob as ({kind: \"a\"} | {kind: \"b\"}) | {kind: \"a\"}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 50]}]}},
+    {"name": "as: records in parentheses that form none: the inner type only", "source": "blob as ({kind: \"a\"} | {kind: \"a\"}) | {kind: \"b\"}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 10, 1, 35]}]}},
+    {"name": "as: a union in one field, none in the other", "source": "blob as {x: {kind: \"a\"} | {kind: \"b\"}, y: {k: \"c\"} | {k: \"c\"}}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 43, 1, 62]}]}},
+    {"name": "as: each type whose records form none", "source": "blob as {x: {kind: \"a\"} | {kind: \"a\"}, y: {k: \"c\"} | {k: string}}", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 13, 1, 38]}, {"code": "untagged-union", "span": [1, 43, 1, 65]}]}},
+    {"name": "is: records that form none", "source": "blob is {a: int} | {b: int} | null", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 9, 1, 35]}]}},
+    {"name": "as: an undeclared name comes first", "source": "blob as Missing | {kind: \"a\"} | {kind: \"b\"}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 9, 1, 16]}]}},
+    {"name": "as: records that form none are not tested for depth", "source": "blob as ({kind: \"a\"} | {kind: \"a\"})[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]", "expect": {"phase": "check", "diagnostics": [{"code": "untagged-union", "span": [1, 10, 1, 35]}]}},
+    {"name": "as: a union of depth 64 in a program type", "source": "blob as {kind: \"a\", v: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]} | {kind: \"b\"}", "expect": {"type": "{kind: \"a\", v: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]} | {kind: \"b\"}", "sites": [{"class": "value", "span": [1, 1, 1, 168]}]}},
+    {"name": "as: a union of depth 65 in a program type", "source": "blob as {kind: \"a\", v: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]} | {kind: \"b\"}", "expect": {"phase": "check", "diagnostics": [{"code": "check-limit", "span": [1, 9, 1, 170]}]}}
+  ]
+}

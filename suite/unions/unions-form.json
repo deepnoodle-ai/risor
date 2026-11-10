@@ -1,0 +1,31 @@
+{
+  "env": "{c: bool, k: string, blob: any, s: Shape}",
+  "types": [{"name": "Shape", "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}"}],
+  "functions": {"area": "(s: Shape) => float"},
+  "cases": [
+    {"name": "a list literal: the element with a missing field", "source": "[{kind: \"circle\", r: 1}, {kind: \"rect\", w: 2}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 26, 1, 46]}]}},
+    {"name": "a list literal: a tag in no tag set", "source": "[{kind: \"oval\", r: 1}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 9, 1, 15]}]}},
+    {"name": "a list literal: an element with no tag", "source": "[{r: 1}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 2, 1, 8]}]}},
+    {"name": "a list literal: a wrong field inside the variant", "source": "[{kind: \"rect\", w: 2, h: \"3\"}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 26, 1, 29]}]}},
+    {"name": "a list literal: two wrong elements", "source": "[{kind: \"oval\"}, {kind: \"rect\", w: 1}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 9, 1, 15]}, {"code": "result-mismatch", "span": [1, 18, 1, 38]}]}},
+    {"name": "a conditional element: each branch fits its variant", "source": "[c ? {kind: \"circle\", r: 1} : {kind: \"rect\", w: 1, h: 1}]", "returns": "Shape[]", "expect": {"type": "{h?: int, kind: \"circle\" | \"rect\", r?: int, w?: int}[]", "sites": []}},
+    {"name": "a key the variant does not list", "source": "{kind: \"circle\", r: 1, note: 2}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 24, 1, 28]}]}},
+    {"name": "a tag entry of two strings", "source": "{kind: c ? \"circle\" : \"rect\", r: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 8, 1, 29]}]}},
+    {"name": "a tag entry typed string", "source": "{kind: k, r: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 8, 1, 9]}]}},
+    {"name": "a shorthand tag entry, then a wrong field", "source": "const kind = \"circle\"; {kind, r: \"x\"}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 34, 1, 37]}]}},
+    {"name": "a shorthand tag entry in no tag set", "source": "const kind = \"oval\"; {kind, r: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 23, 1, 27]}]}},
+    {"name": "a map literal that fits its variant", "source": "{kind: \"rect\", w: 1, h: 2}", "returns": "Shape", "expect": {"type": "{h: int, kind: \"rect\", w: int}", "sites": []}},
+    {"name": "a conditional: the branch that is wrong", "source": "c ? {kind: \"circle\", r: 1} : {kind: \"rect\", w: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 30, 1, 50]}]}},
+    {"name": "a match: the arm that is wrong", "source": "match k { \"a\" => {kind: \"circle\", r: 1}, _ => {kind: \"oval\"} }", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 54, 1, 60]}]}},
+    {"name": "a union beside null", "source": "c ? null : {kind: \"rect\", w: 1}", "returns": "Shape | null", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 12, 1, 32]}]}},
+    {"name": "a union in a field", "source": "{shapes: [{kind: \"circle\", r: \"x\"}]}", "returns": "{shapes: Shape[]}", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 31, 1, 34]}]}},
+    {"name": "a union in a variant's field", "source": "{kind: \"box\", item: {kind: \"oval\"}}", "returns": "{item: Shape, kind: \"box\"} | {kind: \"none\"}", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 28, 1, 34]}]}},
+    {"name": "fields of a variant and no tag", "source": "{w: 1, h: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 13]}]}},
+    {"name": "a tag entry of type any, and a wrong field", "source": "{kind: blob, r: \"x\"}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 8, 1, 12]}]}},
+    {"name": "a tag entry of type any: the fit uses any", "source": "{kind: blob, r: 1}", "returns": "Shape", "expect": {"type": "{kind: any, r: int}", "sites": [{"class": "dynamic", "span": [1, 1, 1, 19]}]}},
+    {"name": "a spread is not followed", "source": "{...s, r: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 13]}]}},
+    {"name": "an argument: a missing field", "source": "area({kind: \"rect\", w: 2})", "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 6, 1, 26]}]}},
+    {"name": "an argument: a tag in no tag set", "source": "area({kind: \"oval\"})", "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 13, 1, 19]}]}},
+    {"name": "an argument that fits its variant", "source": "area({kind: \"circle\", r: 1})", "expect": {"type": "float", "sites": []}}
+  ]
+}

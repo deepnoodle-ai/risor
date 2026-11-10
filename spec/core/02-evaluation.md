@@ -831,3 +831,4 @@ own forms and changes no row above. Its chapter is the home of those rows.
 | F13, math functions | Each entry: 0 steps and 0 units beyond the call | `spec/packages/f13-math.md` |
 | F4, checked conversion | The conformance walk of `as` and `is`: its steps for each value visited and each key, its place in the depth count, the units of an error value's path | `spec/packages/f04-conversion.md` 4 and 5 |
 | F7, queries | The cost of a projection: a step for each element visited, and the units of its list. The cost of its seven entries | `spec/packages/f07-queries.md` 3 and 6 |
+| F5, tagged unions | The conformance walk against a union: the tag is read first, and a conforming value costs what its variant costs alone | `spec/packages/f05-unions.md` 7 |
