@@ -188,10 +188,10 @@ update writes.
    `update`, `program`, `skip` and `expect`.
 2. `runner`, `update` and `program` may not stand in a header.
 3. `update: true` and `program: true` each need `runner` to be a string.
-4. `source`, `file`, `conform`, `render` and `runner` count as one field for
-   the header rule (`03-host.md` 3.10.2 item 4). `template` is not among them:
-   it is the mode of a text that stands in `source` or `file`, and a header may
-   give it for every case.
+4. `source`, `file`, `conform`, `render` and `runner` count as one field for the
+   header rule (`03-host.md` 3.10.2 item 4). `template` is not among them: it is
+   the mode of a text that stands in `source` or `file`, and a header may give
+   it for every case.
 
 ### 3.2 How a runner case is run
 
@@ -265,8 +265,8 @@ Update mode is never on by default, and never implied by a missing `expect`.
 2. An invalid file is reported as in an ordinary run, and is not written.
 3. Each case is run as in an ordinary run, except as 4.4 says, and gets an
    update status (4.3).
-4. The file is written once, after all its cases have run, and only when at
-   least one case is `updated`. Otherwise it is left as it was.
+4. The file is written once, after all its selected cases have run (8.1, 7.1),
+   and only when at least one case is `updated`. Otherwise it is left as it was.
 
 ### 4.3 The update status of a case
 
@@ -477,12 +477,13 @@ own test framework. It is the runner the implementation runs the suite with.
 | Matter | Rule |
 | --- | --- |
 | A file | Loaded from a path: a program case file when the name ends in `.test.risor`, else JSON. Or from text, with a flag for a program. A binding may also take parsed data |
-| An invalid file | Loading gives an error that holds the runner's reason. No case is run |
-| The base | The host's environment, or the default environment when none is given. The base is never changed: each case runs in a child (`03-host.md` 3.10.9) |
+| An invalid file | Loading gives an error that holds the runner's reason. No case is run. A file is reported invalid once, when it is loaded, before any case runs |
+| The base | The host's environment, or the default environment when none is given. **It is given to every call that loads a file.** The rules of `03-host.md` 3.10.10 that read the base (item 11: a stub with no `type`) are applied against it at the load, and every case of the file runs in a child of it. The base is never changed (`03-host.md` 3.10.9). A binding that also takes a base when a case is run accepts only the base the file was loaded with, and gives its own error for another |
 | Variables | The host may give variables for the names a case does not supply (`03-host.md` 3.10.9 item 3). They are not fixtures (2.1 item 4) |
 | Sources | The host may give a reader for `file`, which returns a text and an origin (`03-host.md` 3.7). Spans are positions in the text it returns |
 | A filter | A text: only the cases whose names contain it, code point for code point, are run (8.1) |
-| Update | An option, or `RISOR_UPDATE=1` (4.1). A file loaded from a path is written in place. A file loaded from text gives its new text to the host |
+| Update | An option, or `RISOR_UPDATE=1` (4.1). A file loaded from a path is written in place. A file loaded from text gives its new text to the host. A file built from parsed data has no text: update mode gives the update statuses (4.3) and the new `expect` of each case, and no new text; the binding writes nothing and does not make a text from the data |
+| When it is written | Once, when every case the helper selects has run in that update (4.2 item 4). The selected cases are those its filter keeps, all of them when it has none. When the host's framework runs only some of them, by a filter of its own, the file is left as it was |
 | A verdict | For each case: its status, its differences (each a name, E and F of 6.2), its fixture and message (2.4), its skip reason, and the `expect` that update mode would write |
 | The framework | One test for each case, named by the case's name. `pass`: the test passes. `skip`: the test is skipped, with the reason. `fail` and `invalid`: the test fails, and its message is the lines of 6.1 for that case. An invalid file: one test that fails with the reason |
 | Agreement | With the default environment as the base, and no variables or reader of its own, a helper gives every case the verdict `risor test` gives it, in every implementation |
@@ -495,6 +496,7 @@ package risortest // github.com/deepnoodle-ai/risor/v3/risortest
 func Run(t *testing.T, base *risor.Env, path string, opts ...Option)
 func Load(path string, opts ...Option) (*File, error) // an error: invalid
 func Parse(text []byte, program bool, opts ...Option) (*File, error)
+func Base(env *risor.Env) Option // the base of the load and of every case
 func (f *File) Cases() []*Case
 func (c *Case) Run(ctx context.Context, base *risor.Env) Verdict
 func (f *File) Update(verdicts []Verdict) ([]byte, error) // the new text
@@ -508,7 +510,9 @@ func Sources(read func(ref string) (string, risor.Origin, error)) Option
 2. `skip` calls `t.Skip` with the reason. `fail` and `invalid` call `t.Error`
    with the lines of 6.1. An invalid file calls `t.Fatal` on the parent test.
 3. With `RISOR_UPDATE=1`, `Run` writes the file after its subtests end.
-4. A nil base is the default environment.
+4. A nil base is the default environment. `Run` loads the file with its base.
+   `Load` and `Parse` take it by `Base`; `Case.Run` given another base than the
+   load's returns an error verdict of the binding.
 
 ### 7.3 TypeScript (binding rules)
 
@@ -531,15 +535,20 @@ type TestFn = ((name: string, fn: () => void) => void) & {skip?: (name: string, 
    have `test.skip` (from memory).
 3. An invalid file throws from `loadCaseFile`, `caseFile` or `caseFileText`.
 4. Update: `options.update`, or `process.env.RISOR_UPDATE === "1"` where
-   `process` exists. `loadCaseFile` writes the file in place; `updatedText()`
-   gives the new text, or `null` when nothing is written.
+   `process` exists. `loadCaseFile` writes the file in place once every selected
+   case has run; `updatedText()` gives the new text, or `null` when nothing is
+   written. A file from `caseFile(data)` has no text: its `updatedText()` is
+   always `null`.
+5. `CaseOptions.base` is the base of 7.1: the file is checked against it when it
+   is loaded, and its cases run in children of it. The `base` of `defineCases`
+   and of `Case.run`, when given, must be that base.
 
 ### 7.4 Rust (binding rules)
 
 ```rust
 // risor::testing
-pub fn load(path: impl AsRef<Path>) -> Result<CaseFile, Error>;
-pub fn from_text(text: &str, program: bool) -> Result<CaseFile, Error>;
+pub fn load(path: impl AsRef<Path>, base: &Env) -> Result<CaseFile, Error>;
+pub fn from_text(text: &str, program: bool, base: &Env) -> Result<CaseFile, Error>;
 impl CaseFile {
     pub fn cases(&self) -> &[Case];
     pub fn filter(self, text: &str) -> CaseFile;
@@ -556,7 +565,10 @@ impl Report {
 
 1. The standard harness cannot add a test at run time, so a host writes one
    `#[test]` for each file. The report names the cases.
-2. With `RISOR_UPDATE=1`, `run` of a file loaded by `load` writes it in place.
+2. With `RISOR_UPDATE=1`, `run` of a file loaded by `load` writes it in place
+   once its selected cases have run.
+3. `run` and `Case::run` take the base given to `load`; another base is the
+   binding's own error.
 
 ## 8. The command `risor test`
 
@@ -695,11 +707,17 @@ rules: an inner file that is invalid is the verdict the case expects.
 ### 9.3 The runner
 
 1. A runner of an implementation that offers F9 runs `suite/testing/`. Each case
-   there is run as `03-host.md` 3.10.8 item 5 says; a runner case once.
-2. A runner of an implementation that does not offer F9 does not run
+   there is run as `03-host.md` 3.10.8 item 5 says, but a runner case.
+2. **A runner case is run once.** It has no program, so it has no checked run
+   and no run with the static rules alone. A runner that makes a second pass
+   with the static rules alone does not run it there and takes the verdict of
+   its one run; it is never `skip` for want of that pass. Each case of its inner
+   file is run as item 1 says, checked and with the static rules alone where
+   `03-host.md` 3.10.8 item 5 runs it both ways.
+3. A runner of an implementation that does not offer F9 does not run
    `suite/testing/`. For it the fields of 9.1 are unknown fields (`03-host.md`
    3.11 item 3).
-3. `suite/testing/programs/` holds program texts that cases read with `file`. It
+4. `suite/testing/programs/` holds program texts that cases read with `file`. It
    holds no case file.
 
 ### 9.4 The `outcome` command
