@@ -213,8 +213,9 @@ that S has.
    | Part | Rule |
    | --- | --- |
    | Keys | Every key that A or B lists |
-   | A key k | Let a be A's field type for k if A lists k, else A's rest; b the same for B. The field's type is Pick(a, b), so records under a shared key meet |
-   | Its mark | Required when A or B lists k as required, else optional |
+   | A key k: its base | Let a be A's base for k (4.4) if A lists k, else A's rest; b the same for B. The base is Pick(a, b), so records under a shared key meet |
+   | Its fill | The Join of the fills that A and B carry for k (4.4), if either carries one |
+   | Its mark | Required when A or B lists k as required, or when it carries a fill; else optional |
    | The rest | Pick(the rest of A, the rest of B) |
 
 4. **Soundness.** A valid value is valid by each part and by each branch of
@@ -234,9 +235,9 @@ that S has.
 7. The difference between `anyOf` and `oneOf` is dropped. `discriminator` is
    ignored.
 8. **Marks** (4.1). A record may carry the mark *closable*. A Meet is
-   closable when every record met is closable. Step 3 passes the type it
-   picks through with its marks. A Join of two records is closable when both
-   are.
+   closable when every record met is closable. A Join of two records is
+   closable when one is closable and the other is closable or exact. Step 3
+   passes the type it picks through with its marks and its fills.
 
 | Schema | Type | Why |
 | --- | --- | --- |
@@ -456,8 +457,8 @@ the mapping meets in that schema: nested, in `items`, in a branch, and through
 | Option | The host has | Effect on the record of 3.8 |
 | --- | --- | --- |
 | `closed` | removed, from every object whose mapped record the option made exact, each key that record does not list | By 4.1: the record is closable, and Close makes its rest `never` |
-| `absent-is-null` | put null under every key of `properties` that `required` does not name and the value lacks | Such a field is required, of type Join(T, `null`) |
-| `defaults-applied` | put the `default` under every key of `properties` that has one, that `required` does not name and the value lacks | Such a field is required, of type Join(T, the literal type of the `default`) |
+| `absent-is-null` | put null under each key that the mapped record marks as filled with null (4.4) and the value lacked, in every object of the value | Such a field is required, with base T and fill `null` (4.4) |
+| `defaults-applied` | put the `default` under each key that the mapped record marks as filled with a default (4.4) and the value lacked, in every object of the value, an object it put there as a default included | Such a field is required, with base T and fill the literal type of the `default` (4.4) |
 
 ### 4.1 `closed`
 
@@ -471,7 +472,8 @@ the mapping meets in that schema: nested, in `items`, in a branch, and through
    `additionalProperties`, gives a record that is not closable.
 3. **Close**(T) makes the rest of each closable record of T `never` and drops
    its mark, at every depth: in T's record alternative, in its field types and
-   rest, and in element types.
+   rest, and in element types. A field is closed as its type, Join(base, fill)
+   (4.4), not as its base and its fill apart.
 4. Close is applied once, to the type of the root, after the whole mapping.
    It is not applied to a property, an element, a branch or the target of a
    `$ref` on its own: those are closed when the root's type is.
@@ -503,20 +505,53 @@ the mapping meets in that schema: nested, in `items`, in a branch, and through
 
 ### 4.2 `absent-is-null`
 
-1. It changes only a key of `properties` outside `required`. A field already
-   nullable stays as it is. A property whose schema is `false` gives `{a:
-   null, ...}`.
+1. It changes only a key of `properties` outside `required`: the field is
+   required, with fill `null` (4.4). A field already nullable has the type it
+   had. A property whose schema is `false` gives `{a: null, ...}`.
 
 ### 4.3 `defaults-applied`
 
 1. The `default` is read from the property's own schema object, also when
    that object has a `$ref`.
-2. The literal type of the `default` is joined because a default need not be
-   valid by its schema. A `default` of null gives `a: T | null`.
+2. The fill is the literal type of the `default` (4.4), joined into the
+   field's type because a default need not be valid by its schema. A
+   `default` of null gives `a: T | null`.
 3. With both `absent-is-null` and `defaults-applied`, a property with a
    `default` takes the row of `defaults-applied`, and the others the row of
    `absent-is-null`.
 4. A property in `required` is not changed by either option.
+
+### 4.4 Fills
+
+1. A field that `absent-is-null` or `defaults-applied` makes required carries
+   a **fill**: `null` under `absent-is-null`, the literal type of the
+   `default` under `defaults-applied`. Its type before the fill is its
+   **base**. A field with no fill has its type as its base.
+2. **The type of a field**, wherever a type is read (printing, Fits, Join,
+   Close, the size test, a read in a program), is Join(base, fill).
+3. Fills are kept apart through every Meet (3.6 item 3), every Join and step
+   3 of Pick, so that a Meet takes the base from the parts and the fill from
+   every part that fills the key. In a Join, a key in both records has the
+   Join of the bases and of the fills; a key in one only has its base joined
+   with the other record's rest, and keeps its fill. A field that carries a
+   fill is required.
+4. **The marked keys.** The mapped record marks a key as filled when its
+   field carries a fill. The host fills those keys, and only those, as the
+   table of 4 states; it fills an object it put in place as a default as
+   well, by the record at that place.
+5. **Soundness.** Take a value valid by S and fill it as 4 says. A key the
+   value had conforms to the base by 3.6 item 4. A key the host filled holds
+   a value of the fill. Either way it conforms to Join(base, fill). A Meet
+   that took the field's type from a part that does not fill the key (an
+   `additionalProperties` of `string` beside a property filled with null)
+   would refuse the filled value; the fill kept apart prevents that.
+
+| Schema | Options | Type |
+| --- | --- | --- |
+| `allOf` of `properties` `a` (string) and of `additionalProperties` (string) | `absent-is-null` | `{a: string \| null, ...string}` |
+| The same with `"default": 5` on `a` | `defaults-applied` | `{a: int \| string, ...string}` |
+| `allOf` of `properties` `a` and an object with `additionalProperties: false` | `absent-is-null` | `{a: null}` |
+| `anyOf` of two exact records, one with `a` and one with `b` | `absent-is-null` | `{a: string \| null, b: int \| null}`: each key is filled when its branch is not taken |
 
 ## 5. Describing types and environments
 
