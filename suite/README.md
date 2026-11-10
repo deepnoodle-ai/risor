@@ -28,10 +28,12 @@ implementation offers, and reports each by itself (`03-host.md` 3.11).
 
 1. A case you believe is wrong is a question, not a case to skip or edit.
 2. A package adds files. It changes the outcome of no earlier case, except
-   for a text it gives a meaning to: that case is removed, and a case of the
-   package holds the same text.
-3. A file named `until-fNN-...` pins an error that package `NN` turns into a
-   result. That package removes the file.
+   for a text it gives a new outcome to: that case moves to a file named
+   `until-fNN-...` in its own directory, and the package holds a case with
+   the same text.
+3. A runner whose implementation offers package `NN` does not run a file
+   named `until-fNN-...`. Every other runner does. Such a file is deleted
+   when every implementation offers the package.
 
 ## The `outcome` command
 

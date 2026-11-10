@@ -1356,9 +1356,14 @@ above. A package's chapter is the home of its rules: this table only points.
    package's cases may use what an earlier package adds.
 3. For a runner, a field of a package it does not offer is a field 3.10.3
    does not list, so a file that uses it is invalid (3.10.10).
-4. A case that pins an error which a named later package turns into a result
-   stands in a file named `until-fNN-` and what it holds, in the directory
-   of the package that owns the rule. That file is removed when the later
-   package's cases are added. No other case is removed or changed by a
-   package, except a case whose text the package gives a new outcome, which
-   is replaced by a case of the package with the same text.
+4. **Files named `until-fNN-`.** A case whose outcome package `NN` changes
+   stands in a file whose name begins `until-fNN-`, in the directory where the
+   case belongs. A runner whose implementation offers package `NN` does not
+   run that file. Every other runner runs it as any file of its directory.
+   So a case holds for exactly the implementations it is true of, and an
+   implementation that has not reached a package keeps the cases that pin
+   what it does.
+5. Package `NN` holds a case with the same text for each case of an
+   `until-fNN-` file, with the package's outcome. An `until-fNN-` file is
+   deleted when every implementation offers package `NN`.
+6. No other case is removed or changed by a package.

@@ -1,0 +1,141 @@
+{
+ "env": "{input: {role: \"admin\" | \"member\" | \"owner\", note?: string, tags: string[], priority: int | null, options: {retries?: int, backoff?: string} | null}, gate: {failed: int, score: float, items: {name: string, status: \"fail\" | \"pass\", owner: string | null, ms: float}[]}, report: {verdict: \"APPROVE\" | \"REJECT\", body: string} | null, scores: map<float>, event: {action: string, pull_request?: {number: int, head: {sha: string}}, ...}, blob: any, started: Time, ids: (int | null)[], c: bool, s: string, n: int, fl: float, ns: string | null, ni: int | null, xs: int[], xn: int[] | null, m: map<int>, r: {a: int, b?: string}, ra: {a: int}, rab: {a: int, b: int}, rao: {a?: int}, e0: {}, rn: {a: int} | null, op: {a: int, ...}, rs: ({a: int | null} | null)[], a2: {b?: {c: int}}, lit: \"x\" | \"y\", ln: \"x\" | \"y\" | null, ss: string[]}",
+ "opaque": [
+  "Time"
+ ],
+ "methods": {
+  "Time.format": "(layout: string) => string"
+ },
+ "functions": {
+  "rate": "(code: string) => float !",
+  "geo.distance": "(a: string, b: string) => float"
+ },
+ "cases": [
+  {
+   "name": "xs.sortBy(x => x, \"desc\")",
+   "source": "xs.sortBy(x => x, \"desc\")",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "arity",
+      "span": [
+       1,
+       1,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "xs.minBy(x => x)",
+   "source": "xs.minBy(x => x)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-method",
+      "span": [
+       1,
+       4,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "xs.maxBy(x => x)",
+   "source": "xs.maxBy(x => x)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-method",
+      "span": [
+       1,
+       4,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "xs.uniqueBy(x => x)",
+   "source": "xs.uniqueBy(x => x)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-method",
+      "span": [
+       1,
+       4,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "xs.indexBy(x => x)",
+   "source": "xs.indexBy(x => x)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-method",
+      "span": [
+       1,
+       4,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "xs.countBy(x => x)",
+   "source": "xs.countBy(x => x)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-method",
+      "span": [
+       1,
+       4,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "scores.mapValues(x => x)",
+   "source": "scores.mapValues(x => x)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-method",
+      "span": [
+       1,
+       8,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

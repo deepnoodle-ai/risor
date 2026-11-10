@@ -379,3 +379,9 @@ cases were removed under R98: three in `parse-follow-on.json`, seven in
 | R147 | A record may extend a Core entry (`extends`): `sortBy` gains a direction, and every Core case of it keeps its outcome and its counts. A bad direction is `wrong-kind`, tested before the call's step, so that no `!` is added to `sortBy` and no Core site changes. |
 | R148 | A star's level lasts to the end of its projection. A step inside a projection spans from the chain's first token. A map, a string and a number fail under `[*]`, also under `?.[*]`. |
 | R149 | The five entries that build or probe a map by key charge the size of the keys, by Core's key rule; plan `13` charged it for three of them. `mapValues` charges for ordering its keys before its first call. |
+
+### 14.5 What happens to an earlier case (replaces R98 and R99)
+
+| # | Ruling |
+| --- | --- |
+| R150 | **An earlier case whose outcome a package changes is moved, not removed,** into a file named `until-fNN-` in its own directory. A runner whose implementation offers package `NN` does not run that file; every other runner does. The package holds a case with the same text. The file is deleted when all three implementations offer the package. The errors package, F8, changes the code of 317 earlier parse cases; removing them when it was accepted on paper would have left every implementation without them until it reached the eighth package. The cases removed for F4 and F7 were restored as such files. |
