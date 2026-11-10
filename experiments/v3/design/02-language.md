@@ -187,7 +187,7 @@ Primary = Number | String | Template | "true" | "false" | "null"
 
 Args    = "(" [ Arg { "," Arg } [ "," ] ] ")" .
 Arg     = Lambda | Expr .
-Lambda  = ( Name | "(" [ Param { "," Param } [ "," ] ] ")" ) "=>" Expr .
+Lambda  = ( Name | "_" | "(" [ Param { "," Param } [ "," ] ] ")" ) "=>" Expr .
 Param   = Pattern [ "=" Expr ] .
 
 Pattern = Name | "_" | MapPat | ListPat .

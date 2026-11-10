@@ -1,0 +1,1464 @@
+[
+  {
+    "code": "steps-exceeded",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {
+      "limit": "number"
+    },
+    "templates": {
+      "default": "the run needed more than its limit of {limit} steps"
+    },
+    "cases": [
+      {
+        "name": "steps-exceeded: a map over ten elements under a limit of 5",
+        "source": "xs.map(x => x * 2)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ]
+        },
+        "limits": {
+          "steps": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "steps-exceeded",
+              "message": "the run needed more than its limit of 5 steps"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "allocation-exceeded",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {
+      "limit": "number"
+    },
+    "templates": {
+      "default": "the run needed more than its limit of {limit} allocation units"
+    },
+    "cases": [
+      {
+        "name": "allocation-exceeded: a list of ten under a limit of 3",
+        "source": "xs.map(x => x * 2)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ]
+        },
+        "limits": {
+          "allocation": 3
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "allocation-exceeded",
+              "message": "the run needed more than its limit of 3 allocation units"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "depth-exceeded",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {
+      "limit": "number"
+    },
+    "templates": {
+      "default": "calls and nested values went deeper than the depth limit of {limit}"
+    },
+    "cases": [
+      {
+        "name": "depth-exceeded: == walks host lists nested past the limit",
+        "source": "a == b",
+        "env": "{a: any, b: any}",
+        "vars": {
+          "a": [
+            [
+              [
+                [
+                  [
+                    1
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "b": [
+            [
+              [
+                [
+                  [
+                    1
+                  ]
+                ]
+              ]
+            ]
+          ]
+        },
+        "limits": {
+          "depth": 2
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "depth-exceeded",
+              "message": "calls and nested values went deeper than the depth limit of 2"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "deadline-exceeded",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {},
+    "templates": {
+      "default": "the run passed its time limit"
+    }
+  },
+  {
+    "code": "cancelled",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {},
+    "templates": {
+      "default": "the host cancelled the run"
+    }
+  },
+  {
+    "code": "missing-variable",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "the host did not supply variable {name}"
+    },
+    "cases": [
+      {
+        "name": "missing-variable: a declared variable with no value",
+        "source": "a + 1",
+        "env": "{a: int}",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-variable",
+              "message": "the host did not supply variable a"
+            }
+          ]
+        }
+      },
+      {
+        "name": "missing-variable: catch does not catch it",
+        "source": "try { a + 1 } catch { 0 }",
+        "env": "{a: int}",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-variable",
+              "message": "the host did not supply variable a"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "function-panic",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "host function {name} crashed"
+    }
+  },
+  {
+    "code": "internal-error",
+    "phase": "run",
+    "since": "3.0",
+    "caught": false,
+    "params": {},
+    "templates": {
+      "default": "the run stopped on a fault inside the implementation"
+    }
+  },
+  {
+    "code": "function-error",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {},
+    "templates": {},
+    "cases": [
+      {
+        "name": "function-error: the message is the host's text",
+        "source": "rate(code)",
+        "env": "{code: string}",
+        "functions": {
+          "rate": {
+            "type": "(code: string) => float !",
+            "calls": [
+              {
+                "error": "unknown coupon"
+              }
+            ]
+          }
+        },
+        "vars": {
+          "code": "NOPE"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "function-error",
+              "message": "unknown coupon"
+            }
+          ]
+        }
+      },
+      {
+        "name": "function-error: catch catches it, and err.message is the host's text",
+        "source": "try { rate(code) } catch (err) { err.message }",
+        "env": "{code: string}",
+        "functions": {
+          "rate": {
+            "type": "(code: string) => float !",
+            "calls": [
+              {
+                "error": "unknown coupon"
+              }
+            ]
+          }
+        },
+        "vars": {
+          "code": "NOPE"
+        },
+        "expect": {
+          "value": "unknown coupon"
+        }
+      }
+    ]
+  },
+  {
+    "code": "failed",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {},
+    "templates": {},
+    "cases": [
+      {
+        "name": "failed: the message is the first argument, and data the second",
+        "source": "fail(\"over budget\", {limit: 3})",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "failed",
+              "message": "over budget",
+              "data": {
+                "limit": 3
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "failed: with no second argument, data is null",
+        "source": "fail(\"stop\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "failed",
+              "message": "stop",
+              "data": null
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "number-range",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "op": "word",
+      "name": "word"
+    },
+    "templates": {
+      "operator": "the result of {op} is out of range",
+      "entry": "the result of {name} is out of range",
+      "host": "a number from the host is out of range"
+    },
+    "when": {
+      "operator": "An operator gives a result out of range or not finite. op is the operator as written",
+      "entry": "A library entry gives a result out of range or not finite. Its fails line in library.json names this template. name is the entry's name as written in the program",
+      "host": "The run reads a host number that cannot enter the language: a whole number outside the range, a NaN or an infinity"
+    },
+    "cases": [
+      {
+        "name": "number-range: whole arithmetic past the range",
+        "source": "a * a",
+        "env": "{a: int}",
+        "vars": {
+          "a": 9007199254740991
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range",
+              "message": "the result of * is out of range"
+            }
+          ]
+        }
+      },
+      {
+        "name": "number-range: a library result that is not a whole number",
+        "source": "int(x)",
+        "env": "{x: float}",
+        "vars": {
+          "x": 1e+300
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range",
+              "message": "the result of int is out of range"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "not-conforming",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "expected": "type",
+      "found": "value",
+      "key": "string"
+    },
+    "templates": {
+      "wrong": "expected {expected}, found {found}",
+      "missing": "required field {key} is missing",
+      "extra": "the type does not allow key {key}"
+    },
+    "when": {
+      "wrong": "The value at the path is not of a kind the type allows there. expected is the type at the path, as written in the program or the environment; found is the value at the path",
+      "missing": "A required field of a record is absent. key is that field's key, the last step of the path",
+      "extra": "A record with no rest has a key it does not list. key is that key, the last step of the path"
+    }
+  },
+  {
+    "code": "invalid-argument",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "text": "string",
+      "digits": "number",
+      "x": "number",
+      "count": "number",
+      "name": "word",
+      "t": "number"
+    },
+    "templates": {
+      "not-a-number": "{text} is not a number",
+      "not-finite": "{text} reads as a number that is not finite",
+      "bad-digits": "the number of digits must be a whole number from 0 to 20, found {digits}",
+      "too-large": "{x} is too large for fixed notation, whose limit is below 1e21",
+      "empty-search": "the text to replace must not be empty",
+      "negative-count": "the count must not be negative, found {count}",
+      "not-real": "the result of {name} is not a real number",
+      "not-a-time": "{text} is not a time in the accepted form",
+      "year-range": "the year of time {t} is outside 0000 to 9999",
+      "not-a-duration": "{text} is not a duration",
+      "not-json": "the text is not valid JSON",
+      "integer-range": "the JSON text has a number with no fraction that is not a whole number",
+      "not-base64": "the text is not valid base64",
+      "not-utf8": "the decoded bytes are not valid UTF-8"
+    },
+    "when": {
+      "not-a-number": "int or float is given text that is not a number by the rule of text to number. text is the argument",
+      "not-finite": "int or float is given text that the grammar of text to number accepts and that reads as an infinity. text is the argument",
+      "bad-digits": "fixed is given digits that is not a whole number from 0 to 20. digits is that argument",
+      "too-large": "fixed is given x whose magnitude is 1e21 or more. x is that argument",
+      "empty-search": "replaceAll is given an empty old",
+      "negative-count": "repeat is given a negative count. count is that argument",
+      "not-real": "An entry of math marked ! has a mathematical result that is not a real number. name is the entry's name as written in the program",
+      "not-a-time": "time.parse is given text not in the accepted form, or with a field out of range. text is the argument",
+      "year-range": "time.format is given a time whose year is outside 0000 to 9999. t is that argument",
+      "not-a-duration": "time.duration is given text that is not a duration text. text is the argument",
+      "not-json": "json.parse is given text that is not in the grammar of RFC 8259",
+      "integer-range": "json.parse is given text in the grammar of RFC 8259 that holds a number with no fraction and no exponent that is not a whole number",
+      "not-base64": "base64.decode is given text with a character outside both alphabets, or with wrong padding",
+      "not-utf8": "base64.decode is given base64 text whose decoded bytes are not UTF-8"
+    },
+    "cases": [
+      {
+        "name": "invalid-argument: not-a-number",
+        "source": "int(s)",
+        "env": "{s: string}",
+        "vars": {
+          "s": "abc"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "\"abc\" is not a number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "invalid-argument: not-finite",
+        "source": "float(s)",
+        "env": "{s: string}",
+        "vars": {
+          "s": "1e400"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "\"1e400\" reads as a number that is not finite"
+            }
+          ]
+        }
+      },
+      {
+        "name": "invalid-argument: bad-digits",
+        "source": "fixed(x, d)",
+        "env": "{x: float, d: int}",
+        "vars": {
+          "x": 1.5,
+          "d": 21
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "the number of digits must be a whole number from 0 to 20, found 21"
+            }
+          ]
+        }
+      },
+      {
+        "name": "invalid-argument: too-large",
+        "source": "fixed(x, 2)",
+        "env": "{x: float}",
+        "vars": {
+          "x": 1e+21
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "1e+21 is too large for fixed notation, whose limit is below 1e21"
+            }
+          ]
+        }
+      },
+      {
+        "name": "invalid-argument: empty-search",
+        "source": "s.replaceAll(old, \"x\")",
+        "env": "{s: string, old: string}",
+        "vars": {
+          "s": "abc",
+          "old": ""
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "the text to replace must not be empty"
+            }
+          ]
+        }
+      },
+      {
+        "name": "invalid-argument: negative-count",
+        "source": "s.repeat(n)",
+        "env": "{s: string, n: int}",
+        "vars": {
+          "s": "ab",
+          "n": -1
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "the count must not be negative, found -1"
+            }
+          ]
+        }
+      },
+      {
+        "name": "invalid-argument: a long text is cut at 64 code points",
+        "source": "int(s)",
+        "env": "{s: string}",
+        "vars": {
+          "s": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmn"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "\"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh... is not a number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "invalid-argument: not-finite, from int",
+        "source": "int(s)",
+        "env": "{s: string}",
+        "vars": {
+          "s": "1e400"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument",
+              "message": "\"1e400\" reads as a number that is not finite"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "null-operand",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "name": "word",
+      "op": "word"
+    },
+    "templates": {
+      "field": "cannot read field {name} of null",
+      "index": "cannot index null",
+      "method": "cannot call method {name} on null",
+      "operand": "an operand of {op} is null",
+      "spread": "cannot spread null",
+      "key": "a key or an index is null",
+      "pattern": "cannot destructure null"
+    },
+    "when": {
+      "field": "The receiver of a plain .name is null. name is the field word",
+      "index": "The receiver of a plain [e] is null",
+      "method": "The receiver of a plain method call is null. name is the method's name",
+      "operand": "An operand of +, -, *, /, %, ** or prefix -, an operand of <, <=, > or >=, or the right operand of in or not in, is null; or the right operand of in or not in is a string or a map and the left operand is null. op is the operator as written",
+      "spread": "The value of a spread is null",
+      "key": "A computed key of a map literal is null, or the index or key of [e] or ?.[e] is null",
+      "pattern": "The value that a list pattern or a map pattern is matched against is null"
+    },
+    "cases": [
+      {
+        "name": "null-operand: field",
+        "source": "x.a",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "cannot read field a of null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "null-operand: index",
+        "source": "x[0]",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "cannot index null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "null-operand: method",
+        "source": "x.trim()",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "cannot call method trim on null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "null-operand: operand",
+        "source": "x + 1",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "an operand of + is null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "null-operand: spread",
+        "source": "[...x]",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "cannot spread null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "null-operand: key",
+        "source": "const m = {[x]: 1}; m",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "a key or an index is null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "null-operand: pattern",
+        "source": "const [a] = x; a",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "cannot destructure null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "null-operand: key, an index that is null",
+        "source": "xs[i]",
+        "env": "{xs: int[], i: any}",
+        "vars": {
+          "xs": [
+            1,
+            2
+          ],
+          "i": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand",
+              "message": "a key or an index is null"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "wrong-kind",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "name": "word",
+      "op": "word",
+      "kind": "kind",
+      "left": "kind",
+      "right": "kind",
+      "found": "value",
+      "count": "number"
+    },
+    "templates": {
+      "field": "cannot read field {name} of a value of kind {kind}",
+      "index": "cannot index a value of kind {kind}",
+      "method": "a value of kind {kind} has no method {name}",
+      "operands": "cannot apply {op} to {left} and {right}",
+      "operand": "cannot apply {op} to {kind}",
+      "whole": "expected a whole number, found {found}",
+      "key": "a map key must be a string, found {found}",
+      "spread-list": "only a list can be spread into a list, found {kind}",
+      "spread-map": "only a map can be spread into a map, found {kind}",
+      "pattern-list": "a list pattern needs a list, found {kind}",
+      "pattern-map": "a map pattern needs a map, found {kind}",
+      "text": "an opaque value cannot be rendered as text",
+      "json": "an opaque value cannot be written as JSON",
+      "argument": "{name} cannot take a value of kind {kind}",
+      "count": "{count} is not a count of arguments that method {name} takes",
+      "unordered": "{name} needs all numbers or all strings, found {kind}",
+      "element": "{name} cannot take an element of kind {kind}",
+      "result": "the callback of {name} gave a value of kind {kind}, which it cannot take",
+      "callback": "argument {count} of method {name} must be a function",
+      "not-callback": "argument {count} of method {name} cannot be a function",
+      "parameters": "the function given to method {name} has more than {count} parameters"
+    },
+    "when": {
+      "field": "The receiver of a plain .name is not null and not a map. name is the field word; kind is the receiver's kind",
+      "index": "The receiver of a plain [ ] is not null, and not a list, a string or a map. kind is the receiver's kind",
+      "method": "In the shape test of a method call whose method is found at run time, first: the receiver is not null and its kind has no method of that name. Raised before the arguments are evaluated. kind is the receiver's kind; name is the method's name",
+      "operands": "A binary operator is given two operands whose kinds do not go together. op is the operator as written; left and right are the kinds of the two operands",
+      "operand": "A unary operator is given an operand of a kind it does not take. op is the operator as written; kind is the operand's kind",
+      "whole": "A list or string index, an exponent, or an argument for a library parameter of type int, is a number that is not a whole number, or an index on a list or string is not a number. found is that value",
+      "key": "A computed key, the key in [k] on a map, or the key field of an element of toMap, is not a string. found is that value",
+      "spread-list": "A spread in a list literal is given a value that is not null and not a list. kind is its kind",
+      "spread-map": "A spread in a map literal is given a value that is not null and not a map. kind is its kind",
+      "pattern-list": "A list pattern is matched against a value that is not null and not a list. kind is its kind",
+      "pattern-map": "A map pattern is matched against a value that is not null and not a map. kind is its kind",
+      "text": "An opaque value is rendered as text, at any depth: in a template, or by string",
+      "json": "An opaque value is written as JSON",
+      "argument": "An argument of a library function is of a kind its parameter does not accept, null included. name is the function's name as written in the program; kind is the argument's kind",
+      "count": "In the shape test of a method call whose method is found at run time, after method: the method does not accept that count of arguments. name is the method's name; count is the count of arguments written",
+      "unordered": "A library entry needs an ordered set (the arguments of min and max, the elements of min, max, sort and unique, the keys sortBy's callback gave), and the set is not all numbers or all strings. name is the entry's name; kind is the kind of the first value, in order, that is neither a number nor a string, or else the kind of the first value whose kind differs from the first value's",
+      "element": "A library entry tests the elements of its receiver and one is of a kind it does not take, null included: sum, flat, join, and an element of toMap that is not a map. name is the entry's name; kind is the kind of the first such element",
+      "result": "A library entry tests each result of its callback and one is of a kind it does not take, null included: flatMap and groupBy. name is the entry's name; kind is that result's kind",
+      "callback": "In the shape test of a method call whose method is found at run time, an argument at a callback parameter is not a lambda written in place or the name of a const-bound lambda. Tested with not-callback in one pass, left to right, after method and count. count is the argument's position, from 1, not counting the receiver; name is the method's name",
+      "not-callback": "In the same pass as callback, an argument at a parameter that is not a callback is a lambda. For an opaque receiver every lambda argument fails this test. count is the argument's position, from 1, not counting the receiver; name is the method's name",
+      "parameters": "In a second pass, left to right, after callback and not-callback, a lambda argument declares more parameters than the entry calls it with. name is the method's name; count is the number of arguments the entry calls the lambda with"
+    },
+    "cases": [
+      {
+        "name": "wrong-kind: field",
+        "source": "x.a",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "cannot read field a of a value of kind number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: index",
+        "source": "x[0]",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "cannot index a value of kind number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: method",
+        "source": "x.trim()",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "a value of kind number has no method trim"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: operands",
+        "source": "x + 5",
+        "env": "{x: any}",
+        "vars": {
+          "x": "n="
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "cannot apply + to string and number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: operand",
+        "source": "-x",
+        "env": "{x: any}",
+        "vars": {
+          "x": "a"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "cannot apply - to string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: whole",
+        "source": "xs[i]",
+        "env": "{xs: int[], i: any}",
+        "vars": {
+          "xs": [
+            1,
+            2
+          ],
+          "i": 1.5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "expected a whole number, found 1.5"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: key",
+        "source": "const m = {[x]: 1}; m",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "a map key must be a string, found 5"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: spread-list",
+        "source": "[...x]",
+        "env": "{x: any}",
+        "vars": {
+          "x": {}
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "only a list can be spread into a list, found map"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: spread-map",
+        "source": "const m = {...x}; m",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "only a map can be spread into a map, found list"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: pattern-list",
+        "source": "const [a] = x; a",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "a list pattern needs a list, found number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: pattern-map",
+        "source": "const {a} = x; a",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "a map pattern needs a map, found number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: argument",
+        "source": "len(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "len cannot take a value of kind number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: argument, null",
+        "source": "len(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "len cannot take a value of kind null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: count, on any data",
+        "source": "x.trim(1)",
+        "env": "{x: any}",
+        "vars": {
+          "x": "a"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "1 is not a count of arguments that method trim takes"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: unordered",
+        "source": "x.sort()",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1,
+            "a",
+            2
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "sort needs all numbers or all strings, found string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: unordered, a null",
+        "source": "x.sort()",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            "b",
+            null
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "sort needs all numbers or all strings, found null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: element",
+        "source": "x.sum()",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1,
+            "2"
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "sum cannot take an element of kind string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: result",
+        "source": "xs.groupBy(x => x)",
+        "env": "{xs: any[]}",
+        "vars": {
+          "xs": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "the callback of groupBy gave a value of kind number, which it cannot take"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: callback, a value where a function is taken",
+        "source": "x.map(1)",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1,
+            2
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "argument 1 of method map must be a function"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: not-callback, a function where a value is taken",
+        "source": "x.slice(0, i => i)",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1,
+            2
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "argument 2 of method slice cannot be a function"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: parameters, a function with too many parameters",
+        "source": "x.map((a, b, c) => a)",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1,
+            2
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "the function given to method map has more than 2 parameters"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "missing-field",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "name": "word",
+      "key": "string"
+    },
+    "templates": {
+      "field": "the map has no field {name}",
+      "key": "the map has no key {key}",
+      "pattern": "field {name} of the pattern is missing and has no default"
+    },
+    "when": {
+      "field": "A plain .name reads a key the map does not have, or an element of toMap has no key key or value. name is the field word, or key or value",
+      "key": "A plain [k] reads a string key the map does not have. key is that key",
+      "pattern": "A field of a map pattern is absent from the map and has no default. name is the field's name in the pattern"
+    },
+    "cases": [
+      {
+        "name": "missing-field: field",
+        "source": "x.a",
+        "env": "{x: any}",
+        "vars": {
+          "x": {}
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-field",
+              "message": "the map has no field a"
+            }
+          ]
+        }
+      },
+      {
+        "name": "missing-field: key",
+        "source": "x[\"a\"]",
+        "env": "{x: any}",
+        "vars": {
+          "x": {}
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-field",
+              "message": "the map has no key \"a\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "missing-field: pattern",
+        "source": "const {a} = x; a",
+        "env": "{x: any}",
+        "vars": {
+          "x": {}
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-field",
+              "message": "field a of the pattern is missing and has no default"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "index-range",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "index": "number",
+      "length": "number",
+      "kind": "kind"
+    },
+    "templates": {
+      "index": "index {index} is outside the {kind} of length {length}",
+      "pattern": "the list has length {length}, and the pattern needs index {index}"
+    },
+    "when": {
+      "index": "A plain [i] on a list or a string has a whole number i below 0 or not below the length. index is i; kind is the receiver's kind; length is its length",
+      "pattern": "An element of a list pattern has no default and the list is too short. index is the first such element's index, from 0; length is the list's length"
+    },
+    "cases": [
+      {
+        "name": "index-range: list",
+        "source": "xs[5]",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "index-range",
+              "message": "index 5 is outside the list of length 3"
+            }
+          ]
+        }
+      },
+      {
+        "name": "index-range: string, below zero",
+        "source": "s[i]",
+        "env": "{s: string, i: int}",
+        "vars": {
+          "s": "ab",
+          "i": -1
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "index-range",
+              "message": "index -1 is outside the string of length 2"
+            }
+          ]
+        }
+      },
+      {
+        "name": "index-range: pattern",
+        "source": "const [a, b] = xs; b",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "index-range",
+              "message": "the list has length 1, and the pattern needs index 1"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "divide-by-zero",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "op": "word"
+    },
+    "templates": {
+      "divisor": "the divisor of {op} is zero",
+      "power": "zero cannot be raised to a negative power"
+    },
+    "when": {
+      "divisor": "The divisor of / or % is zero. op is the operator",
+      "power": "The base of ** is zero and the exponent is below zero"
+    },
+    "cases": [
+      {
+        "name": "divide-by-zero: /",
+        "source": "1 / d",
+        "env": "{d: int}",
+        "vars": {
+          "d": 0
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "divide-by-zero",
+              "message": "the divisor of / is zero"
+            }
+          ]
+        }
+      },
+      {
+        "name": "divide-by-zero: %",
+        "source": "7 % d",
+        "env": "{d: int}",
+        "vars": {
+          "d": 0
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "divide-by-zero",
+              "message": "the divisor of % is zero"
+            }
+          ]
+        }
+      },
+      {
+        "name": "divide-by-zero: power",
+        "source": "d ** -1",
+        "env": "{d: int}",
+        "vars": {
+          "d": 0
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "divide-by-zero",
+              "message": "zero cannot be raised to a negative power"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "no-match",
+    "phase": "run",
+    "since": "3.0",
+    "caught": true,
+    "params": {
+      "found": "value"
+    },
+    "templates": {
+      "default": "the match has no arm for {found}"
+    },
+    "cases": [
+      {
+        "name": "no-match: a value outside its declared literal set",
+        "source": "match x { \"a\" => 1, \"b\" => 2 }",
+        "env": "{x: \"a\" | \"b\"}",
+        "vars": {
+          "x": "c"
+        },
+        "precondition": false,
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "no-match",
+              "message": "the match has no arm for \"c\""
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

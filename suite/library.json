@@ -1,0 +1,4708 @@
+[
+  {
+    "name": "len",
+    "signature": "(x: string | any[] | map<any>) => int",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The number of code points of a string, elements of a list or entries of a map.",
+    "calls": [],
+    "steps": "sz(x)",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "length",
+      "size"
+    ],
+    "cases": [
+      {
+        "name": "len counts code points",
+        "source": "len(\"héllo\")",
+        "expect": {
+          "value": 5
+        }
+      },
+      {
+        "name": "len of a code point above U+FFFF is 1",
+        "source": "len(\"a😀\")",
+        "expect": {
+          "value": 2
+        }
+      },
+      {
+        "name": "len of an empty list",
+        "source": "len([])",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "len of a map counts entries, a null value included",
+        "source": "len({a: 1, b: null})",
+        "expect": {
+          "value": 2
+        }
+      },
+      {
+        "name": "len charges the size of the string",
+        "source": "len(s)",
+        "env": "{s: string}",
+        "vars": {
+          "s": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+        },
+        "expect": {
+          "value": 32,
+          "steps": 2,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "len of a number on any data",
+        "source": "len(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": 5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "len of null on any data",
+        "source": "len(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "string",
+    "signature": "(x: any) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The text of a value: a string unchanged, anything else in the rendering of 01-language.md.",
+    "calls": [],
+    "steps": "x is string ? 0 : walk(x) + sz(result)",
+    "units": "x is string ? 0 : 1 + sz(result)",
+    "null": null,
+    "fails": [
+      {
+        "when": "x is an opaque value or holds one at any depth",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "text"
+      },
+      {
+        "when": "the walk passes the depth limit",
+        "kind": "limit",
+        "code": "depth-exceeded"
+      }
+    ],
+    "wrong": [
+      "String",
+      "toString",
+      "str"
+    ],
+    "cases": [
+      {
+        "name": "string of null is empty",
+        "source": "string(null)",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "string of a fraction",
+        "source": "string(1.5)",
+        "expect": {
+          "value": "1.5"
+        }
+      },
+      {
+        "name": "string of a large number uses an exponent",
+        "source": "string(1e21)",
+        "expect": {
+          "value": "1e+21"
+        }
+      },
+      {
+        "name": "string of a sum shows every digit",
+        "source": "string(0.1 + 0.2)",
+        "expect": {
+          "value": "0.30000000000000004"
+        }
+      },
+      {
+        "name": "string of negative zero is 0",
+        "source": "string(-0.0)",
+        "expect": {
+          "value": "0"
+        }
+      },
+      {
+        "name": "string of a list is compact JSON",
+        "source": "string([1, \"a\", null, true])",
+        "expect": {
+          "value": "[1,\"a\",null,true]"
+        }
+      },
+      {
+        "name": "string of a map is in key order",
+        "source": "string({b: 1, a: [true]})",
+        "expect": {
+          "value": "{\"a\":[true],\"b\":1}"
+        }
+      },
+      {
+        "name": "string escapes a quote inside a list",
+        "source": "string([\"a\\\"b\"])",
+        "expect": {
+          "value": "[\"a\\\"b\"]"
+        }
+      },
+      {
+        "name": "string of a string is the string",
+        "source": "string(\"x\")",
+        "expect": {
+          "value": "x"
+        }
+      },
+      {
+        "name": "string of a string charges nothing of its own",
+        "source": "string(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": "abc"
+        },
+        "expect": {
+          "value": "abc",
+          "steps": 1,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "string of a number costs one unit",
+        "source": "string(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": 42
+        },
+        "expect": {
+          "value": "42",
+          "steps": 1,
+          "allocated": 1
+        }
+      },
+      {
+        "name": "string of an empty list",
+        "source": "string(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": []
+        },
+        "expect": {
+          "value": "[]",
+          "steps": 1,
+          "allocated": 1
+        }
+      },
+      {
+        "name": "string walks a map and its lists",
+        "source": "string(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": {
+            "b": [
+              1,
+              2
+            ],
+            "a": "x"
+          }
+        },
+        "expect": {
+          "value": "{\"a\":\"x\",\"b\":[1,2]}",
+          "steps": 7,
+          "allocated": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "int",
+    "signature": "(x: float | string) => int !",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "A number truncated toward zero, or the whole number a string reads as.",
+    "calls": [],
+    "steps": "sz(x)",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "x is a string that, with white space removed from both ends, is not accepted by the grammar of text to number",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "not-a-number"
+      },
+      {
+        "when": "x is a string that reads as an infinity",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "not-finite"
+      },
+      {
+        "when": "the truncated value is not a whole number",
+        "kind": "range",
+        "code": "number-range",
+        "template": "entry"
+      }
+    ],
+    "wrong": [
+      "parseInt",
+      "Number",
+      "toInt"
+    ],
+    "cases": [
+      {
+        "name": "int truncates toward zero",
+        "source": "int(3.99)",
+        "expect": {
+          "value": 3
+        }
+      },
+      {
+        "name": "int truncates a negative toward zero",
+        "source": "int(-3.99)",
+        "expect": {
+          "value": -3
+        }
+      },
+      {
+        "name": "int trims white space",
+        "source": "int(\" 42\\n\")",
+        "expect": {
+          "value": 42
+        }
+      },
+      {
+        "name": "int trims a no-break space",
+        "source": "int(\"\\u{a0}7\")",
+        "expect": {
+          "value": 7
+        }
+      },
+      {
+        "name": "int of a fraction in text",
+        "source": "int(\"1.5\")",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "int of an exponent in text",
+        "source": "int(\"1e3\")",
+        "expect": {
+          "value": 1000
+        }
+      },
+      {
+        "name": "int of a small negative is zero",
+        "source": "int(\"-0.5\")",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "int charges the size of the text",
+        "source": "int(s)",
+        "env": "{s: string}",
+        "vars": {
+          "s": " 42 "
+        },
+        "expect": {
+          "value": 42,
+          "steps": 1,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "int of hex text",
+        "source": "int(\"0x10\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "int of empty text",
+        "source": "int(\"\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "int of text with a plus sign",
+        "source": "int(\"+1\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "int of text beyond the whole range",
+        "source": "int(\"1e20\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range"
+            }
+          ]
+        }
+      },
+      {
+        "name": "int of text that reads as an infinity",
+        "source": "int(\"1e400\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "int of a number beyond the whole range",
+        "source": "int(1e16)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "float",
+    "signature": "(x: float | string) => float !",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "A number unchanged, or the number a string reads as.",
+    "calls": [],
+    "steps": "sz(x)",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "x is a string that, with white space removed from both ends, is not accepted by the grammar of text to number",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "not-a-number"
+      },
+      {
+        "when": "x is a string that reads as an infinity",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "not-finite"
+      }
+    ],
+    "wrong": [
+      "parseFloat",
+      "Number",
+      "toFloat"
+    ],
+    "cases": [
+      {
+        "name": "float trims and reads",
+        "source": "float(\" 2.50 \")",
+        "expect": {
+          "value": 2.5
+        }
+      },
+      {
+        "name": "float of minus zero is zero",
+        "source": "float(\"-0\")",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "float of a number is the number",
+        "source": "float(7)",
+        "expect": {
+          "value": 7
+        }
+      },
+      {
+        "name": "float of a value too small is zero",
+        "source": "float(\"1e-400\")",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "float of text that reads as an infinity",
+        "source": "float(\"1e400\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "float of NaN text",
+        "source": "float(\"NaN\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "float of a leading point",
+        "source": "float(\".5\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "float of white space only",
+        "source": "float(\"   \")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "bool",
+    "signature": "(x: any) => bool",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Whether x is truthy.",
+    "calls": [],
+    "tested": [
+      0
+    ],
+    "steps": "0",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "Boolean",
+      "truthy"
+    ],
+    "cases": [
+      {
+        "name": "bool of an empty list",
+        "source": "bool(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": []
+        },
+        "expect": {
+          "value": false
+        }
+      },
+      {
+        "name": "bool of a list holding an empty list",
+        "source": "bool(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            []
+          ]
+        },
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "bool of the text 0",
+        "source": "bool(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": "0"
+        },
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "bool of zero written with a fraction",
+        "source": "bool(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": 0.0
+        },
+        "expect": {
+          "value": false
+        }
+      },
+      {
+        "name": "bool of a map with a null value",
+        "source": "bool(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": {
+            "a": null
+          }
+        },
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "bool of null",
+        "source": "bool(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "value": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "type",
+    "signature": "(x: any) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The kind of x as a string.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "typeof",
+      "kind"
+    ],
+    "cases": [
+      {
+        "name": "type of null",
+        "source": "type(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "value": "null"
+        }
+      },
+      {
+        "name": "type of a bool",
+        "source": "type(true)",
+        "expect": {
+          "value": "bool"
+        }
+      },
+      {
+        "name": "type of a fraction",
+        "source": "type(1.5)",
+        "expect": {
+          "value": "number"
+        }
+      },
+      {
+        "name": "type of the empty string",
+        "source": "type(\"\")",
+        "expect": {
+          "value": "string"
+        }
+      },
+      {
+        "name": "type of an empty list",
+        "source": "type([])",
+        "expect": {
+          "value": "list"
+        }
+      },
+      {
+        "name": "type of an empty map",
+        "source": "type({})",
+        "expect": {
+          "value": "map"
+        }
+      },
+      {
+        "name": "type of a caught error",
+        "source": "try { fail(\"x\") } catch (err) { type(err) }",
+        "expect": {
+          "value": "map"
+        }
+      }
+    ]
+  },
+  {
+    "name": "fail",
+    "signature": "(message: string, data?: any) => never !",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Fails with the code failed, the given message and the given data.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "always",
+        "kind": "value",
+        "code": "failed"
+      }
+    ],
+    "wrong": [
+      "error",
+      "raise",
+      "panic",
+      "throw"
+    ],
+    "cases": [
+      {
+        "name": "fail gives its message to catch",
+        "source": "try { fail(\"no stock\") } catch (err) { err.message }",
+        "expect": {
+          "value": "no stock"
+        }
+      },
+      {
+        "name": "fail gives its data to catch",
+        "source": "try { fail(\"over\", {limit: 3}) } catch (err) { err.data }",
+        "expect": {
+          "value": {
+            "limit": 3
+          }
+        }
+      },
+      {
+        "name": "fail with no data gives null data",
+        "source": "try { fail(\"x\") } catch (err) { [err.code, err.data] }",
+        "expect": {
+          "value": [
+            "failed",
+            null
+          ]
+        }
+      },
+      {
+        "name": "fail in a branch not taken is not evaluated",
+        "source": "ok ? 1 : fail(\"never\")",
+        "env": "{ok: bool}",
+        "vars": {
+          "ok": true
+        },
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "fail with an empty message",
+        "source": "fail(\"\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "failed",
+              "message": ""
+            }
+          ]
+        }
+      },
+      {
+        "name": "fail reports its message and data",
+        "source": "fail(\"stop\", [1])",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "failed",
+              "message": "stop",
+              "data": [
+                1
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "abs",
+    "signature": "(x: T) => T where T: number",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The magnitude of x.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "Math.abs"
+    ],
+    "cases": [
+      {
+        "name": "abs of a negative whole number",
+        "source": "abs(-3)",
+        "expect": {
+          "value": 3
+        }
+      },
+      {
+        "name": "abs of a positive fraction",
+        "source": "abs(2.5)",
+        "expect": {
+          "value": 2.5
+        }
+      },
+      {
+        "name": "abs of zero",
+        "source": "abs(0)",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "abs at the end of the whole range",
+        "source": "abs(-9007199254740991)",
+        "expect": {
+          "value": 9007199254740991
+        }
+      },
+      {
+        "name": "abs of text on any data",
+        "source": "abs(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": "3"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "floor",
+    "signature": "(x: float) => int",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The largest whole number not above x.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "the result is not a whole number",
+        "kind": "range",
+        "code": "number-range",
+        "template": "entry"
+      }
+    ],
+    "wrong": [
+      "Math.floor"
+    ],
+    "cases": [
+      {
+        "name": "floor of a positive fraction",
+        "source": "floor(2.7)",
+        "expect": {
+          "value": 2
+        }
+      },
+      {
+        "name": "floor of a small negative",
+        "source": "floor(-0.5)",
+        "expect": {
+          "value": -1
+        }
+      },
+      {
+        "name": "floor of a whole number",
+        "source": "floor(-2)",
+        "expect": {
+          "value": -2
+        }
+      },
+      {
+        "name": "floor charges nothing of its own",
+        "source": "floor(x)",
+        "env": "{x: float}",
+        "vars": {
+          "x": 2.5
+        },
+        "expect": {
+          "value": 2,
+          "steps": 1,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "floor beyond the whole range",
+        "source": "floor(1e300)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "ceil",
+    "signature": "(x: float) => int",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The smallest whole number not below x.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "the result is not a whole number",
+        "kind": "range",
+        "code": "number-range",
+        "template": "entry"
+      }
+    ],
+    "wrong": [
+      "Math.ceil",
+      "ceiling"
+    ],
+    "cases": [
+      {
+        "name": "ceil of a positive fraction",
+        "source": "ceil(2.1)",
+        "expect": {
+          "value": 3
+        }
+      },
+      {
+        "name": "ceil of a small negative is zero",
+        "source": "ceil(-0.5)",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "ceil of a whole number",
+        "source": "ceil(5)",
+        "expect": {
+          "value": 5
+        }
+      },
+      {
+        "name": "ceil beyond the whole range",
+        "source": "ceil(-1e300)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "round",
+    "signature": "(x: float) => int",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The whole number nearest to x, halves away from zero.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "the result is not a whole number",
+        "kind": "range",
+        "code": "number-range",
+        "template": "entry"
+      }
+    ],
+    "wrong": [
+      "Math.round"
+    ],
+    "cases": [
+      {
+        "name": "round of a half goes up in magnitude",
+        "source": "round(2.5)",
+        "expect": {
+          "value": 3
+        }
+      },
+      {
+        "name": "round of a negative half goes down",
+        "source": "round(-2.5)",
+        "expect": {
+          "value": -3
+        }
+      },
+      {
+        "name": "round below a half",
+        "source": "round(1.4999)",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "round of the double just below a half",
+        "source": "round(0.49999999999999994)",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "round of a small negative is zero",
+        "source": "round(-0.4)",
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "round beyond the whole range",
+        "source": "round(1e16)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "min",
+    "signature": "(a: T, b: T, ...rest: T[]) => T where T: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The smallest of two or more arguments.",
+    "calls": [],
+    "steps": "len(arguments) - 1 + sz(arguments)",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "the arguments are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "Math.min",
+      "least"
+    ],
+    "cases": [
+      {
+        "name": "min of three numbers",
+        "source": "min(3, 1, 2)",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "min of strings, a prefix first",
+        "source": "min(\"b\", \"a\", \"ab\")",
+        "expect": {
+          "value": "a"
+        }
+      },
+      {
+        "name": "min orders strings by code point",
+        "source": "min(\"é\", \"z\")",
+        "expect": {
+          "value": "z"
+        }
+      },
+      {
+        "name": "min of negatives",
+        "source": "min(-1, -1.5)",
+        "expect": {
+          "value": -1.5
+        }
+      },
+      {
+        "name": "min charges one step per argument after the first",
+        "source": "min(a, b, c)",
+        "env": "{a: int, b: int, c: int}",
+        "vars": {
+          "a": 3,
+          "b": 1,
+          "c": 2
+        },
+        "expect": {
+          "value": 1,
+          "steps": 3,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "min of a number and a string on any data",
+        "source": "min(a, b)",
+        "env": "{a: any, b: any}",
+        "vars": {
+          "a": 1,
+          "b": "1"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "max",
+    "signature": "(a: T, b: T, ...rest: T[]) => T where T: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The largest of two or more arguments.",
+    "calls": [],
+    "steps": "len(arguments) - 1 + sz(arguments)",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "the arguments are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "Math.max",
+      "greatest"
+    ],
+    "cases": [
+      {
+        "name": "max of three numbers",
+        "source": "max(1, 5, 3)",
+        "expect": {
+          "value": 5
+        }
+      },
+      {
+        "name": "max of strings by code point",
+        "source": "max(\"a\", \"a😀\", \"b\")",
+        "expect": {
+          "value": "b"
+        }
+      },
+      {
+        "name": "max of the empty string and a space",
+        "source": "max(\"\", \" \")",
+        "expect": {
+          "value": " "
+        }
+      },
+      {
+        "name": "max of two fractions",
+        "source": "max(0.1, 0.2)",
+        "expect": {
+          "value": 0.2
+        }
+      },
+      {
+        "name": "max with a null on any data",
+        "source": "max(a, b)",
+        "env": "{a: any, b: any}",
+        "vars": {
+          "a": 1,
+          "b": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "range",
+    "signature": "(a: int, b?: int) => int[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The whole numbers from 0, or from a, up to but not including the end.",
+    "calls": [],
+    "steps": "k",
+    "units": "1 + k",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "seq",
+      "upto"
+    ],
+    "cases": [
+      {
+        "name": "range from zero",
+        "source": "range(3)",
+        "expect": {
+          "value": [
+            0,
+            1,
+            2
+          ]
+        }
+      },
+      {
+        "name": "range of zero is empty",
+        "source": "range(0)",
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "range of a negative is empty",
+        "source": "range(-2)",
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "range between two numbers",
+        "source": "range(2, 5)",
+        "expect": {
+          "value": [
+            2,
+            3,
+            4
+          ]
+        }
+      },
+      {
+        "name": "range with the end before the start is empty",
+        "source": "range(5, 2)",
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "range across zero",
+        "source": "range(-2, 1)",
+        "expect": {
+          "value": [
+            -2,
+            -1,
+            0
+          ]
+        }
+      },
+      {
+        "name": "range charges k steps and 1 + k units",
+        "source": "range(n)",
+        "env": "{n: int}",
+        "vars": {
+          "n": 3
+        },
+        "expect": {
+          "value": [
+            0,
+            1,
+            2
+          ],
+          "steps": 4,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "range charges before it builds",
+        "source": "range(100)",
+        "limits": {
+          "steps": 50
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "steps-exceeded"
+            }
+          ]
+        }
+      },
+      {
+        "name": "range of a fraction on any data",
+        "source": "range(x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": 2.5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "fixed",
+    "signature": "(x: float, digits: int) => string !",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "x in decimal with exactly digits digits after the point.",
+    "calls": [],
+    "steps": "0",
+    "units": "1",
+    "null": null,
+    "fails": [
+      {
+        "when": "digits is not in 0 to 20",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "bad-digits"
+      },
+      {
+        "when": "the magnitude of x is 1e21 or more",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "too-large"
+      }
+    ],
+    "wrong": [
+      "toFixed",
+      "sprintf",
+      "format"
+    ],
+    "cases": [
+      {
+        "name": "fixed rounds a half up in magnitude",
+        "source": "fixed(2.5, 0)",
+        "expect": {
+          "value": "3"
+        }
+      },
+      {
+        "name": "fixed rounds a negative half down",
+        "source": "fixed(-2.5, 0)",
+        "expect": {
+          "value": "-3"
+        }
+      },
+      {
+        "name": "fixed rounds the exact value",
+        "source": "fixed(1.005, 2)",
+        "expect": {
+          "value": "1.00"
+        }
+      },
+      {
+        "name": "fixed drops the sign of a zero result",
+        "source": "fixed(-0.001, 2)",
+        "expect": {
+          "value": "0.00"
+        }
+      },
+      {
+        "name": "fixed writes no exponent",
+        "source": "fixed(1e20, 2)",
+        "expect": {
+          "value": "100000000000000000000.00"
+        }
+      },
+      {
+        "name": "fixed shows the exact digits",
+        "source": "fixed(0.1, 20)",
+        "expect": {
+          "value": "0.10000000000000000555"
+        }
+      },
+      {
+        "name": "fixed with no digits has no point",
+        "source": "fixed(7, 0)",
+        "expect": {
+          "value": "7"
+        }
+      },
+      {
+        "name": "fixed costs one unit",
+        "source": "fixed(x, 2)",
+        "env": "{x: float}",
+        "vars": {
+          "x": 3.14159
+        },
+        "expect": {
+          "value": "3.14",
+          "steps": 1,
+          "allocated": 1
+        }
+      },
+      {
+        "name": "fixed at 1e21",
+        "source": "fixed(1e21, 0)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "fixed with too many digits",
+        "source": "fixed(1, 21)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      },
+      {
+        "name": "fixed tests digits before the magnitude",
+        "source": "fixed(1e21, 21)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "toUpperCase",
+    "receiver": "string",
+    "signature": "() => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Each code point replaced by its upper-case mapping in the case table.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "1 + sz(s)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "upper",
+      "to_upper",
+      "toUpper"
+    ],
+    "cases": [
+      {
+        "name": "toUpperCase maps a letter with an accent",
+        "source": "\"café\".toUpperCase()",
+        "expect": {
+          "value": "CAFÉ"
+        }
+      },
+      {
+        "name": "toUpperCase keeps sharp s",
+        "source": "\"ß\".toUpperCase()",
+        "expect": {
+          "value": "ß"
+        }
+      },
+      {
+        "name": "toUpperCase of the empty string",
+        "source": "\"\".toUpperCase()",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "toUpperCase maps final sigma",
+        "source": "\"\\u{3c2}\".toUpperCase()",
+        "expect": {
+          "value": "Σ"
+        }
+      },
+      {
+        "name": "toUpperCase uses the upper-case mapping, not title case",
+        "source": "\"\\u{1c6}\".toUpperCase()",
+        "expect": {
+          "value": "Ǆ"
+        }
+      },
+      {
+        "name": "toUpperCase keeps a ligature that has no simple mapping",
+        "source": "\"\\u{fb01}\".toUpperCase()",
+        "expect": {
+          "value": "ﬁ"
+        }
+      },
+      {
+        "name": "toUpperCase charges the size",
+        "source": "s.toUpperCase()",
+        "env": "{s: string}",
+        "vars": {
+          "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "expect": {
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "steps": 3,
+          "allocated": 3
+        }
+      }
+    ]
+  },
+  {
+    "name": "toLowerCase",
+    "receiver": "string",
+    "signature": "() => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Each code point replaced by its lower-case mapping in the case table.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "1 + sz(s)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "lower",
+      "to_lower",
+      "toLower"
+    ],
+    "cases": [
+      {
+        "name": "toLowerCase of letters with an accent",
+        "source": "\"ÀB\".toLowerCase()",
+        "expect": {
+          "value": "àb"
+        }
+      },
+      {
+        "name": "toLowerCase of capital I with a dot",
+        "source": "\"\\u{130}\".toLowerCase()",
+        "expect": {
+          "value": "i"
+        }
+      },
+      {
+        "name": "toLowerCase of a final capital sigma",
+        "source": "\"\\u{391}\\u{3a3}\".toLowerCase()",
+        "expect": {
+          "value": "ασ"
+        }
+      },
+      {
+        "name": "toLowerCase of a title-case digraph",
+        "source": "\"\\u{1c5}\".toLowerCase()",
+        "expect": {
+          "value": "ǆ"
+        }
+      },
+      {
+        "name": "toLowerCase keeps a code point above U+FFFF that has no mapping",
+        "source": "\"😀A\".toLowerCase()",
+        "expect": {
+          "value": "😀a"
+        }
+      }
+    ]
+  },
+  {
+    "name": "trim",
+    "receiver": "string",
+    "signature": "() => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "s without the white space at both ends.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "trim_space",
+      "strip",
+      "trimSpace"
+    ],
+    "cases": [
+      {
+        "name": "trim removes spaces at both ends",
+        "source": "\"  a b  \".trim()",
+        "expect": {
+          "value": "a b"
+        }
+      },
+      {
+        "name": "trim removes no-break space, BOM and ideographic space",
+        "source": "\"\\u{a0}\\u{feff}x\\u{3000}\".trim()",
+        "expect": {
+          "value": "x"
+        }
+      },
+      {
+        "name": "trim keeps NEL, which is not white space",
+        "source": "\"\\u{85}x\".trim()",
+        "expect": {
+          "value": "\u0085x"
+        }
+      },
+      {
+        "name": "trim keeps a zero-width space",
+        "source": "\"\\u{200b}x\".trim()",
+        "expect": {
+          "value": "\u200bx"
+        }
+      },
+      {
+        "name": "trim of white space only",
+        "source": "\"\\t\\n \\r\".trim()",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "trim charges the size of the receiver",
+        "source": "s.trim()",
+        "env": "{s: string}",
+        "vars": {
+          "s": "  x  "
+        },
+        "expect": {
+          "value": "x",
+          "steps": 1,
+          "allocated": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "removePrefix",
+    "receiver": "string",
+    "signature": "(prefix: string) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "s without prefix if s starts with it, else s.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "trimPrefix",
+      "trim_prefix",
+      "removeprefix",
+      "stripPrefix"
+    ],
+    "cases": [
+      {
+        "name": "removePrefix removes a prefix",
+        "source": "\"refs/heads/main\".removePrefix(\"refs/heads/\")",
+        "expect": {
+          "value": "main"
+        }
+      },
+      {
+        "name": "removePrefix removes it once",
+        "source": "\"aaa\".removePrefix(\"a\")",
+        "expect": {
+          "value": "aa"
+        }
+      },
+      {
+        "name": "removePrefix of the empty prefix",
+        "source": "\"abc\".removePrefix(\"\")",
+        "expect": {
+          "value": "abc"
+        }
+      },
+      {
+        "name": "removePrefix of a prefix longer than the string",
+        "source": "\"ab\".removePrefix(\"abc\")",
+        "expect": {
+          "value": "ab"
+        }
+      },
+      {
+        "name": "removePrefix charges the size of the receiver",
+        "source": "s.removePrefix(\"refs/heads/\")",
+        "env": "{s: string}",
+        "vars": {
+          "s": "refs/heads/main"
+        },
+        "expect": {
+          "value": "main",
+          "steps": 1,
+          "allocated": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "removeSuffix",
+    "receiver": "string",
+    "signature": "(suffix: string) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "s without suffix if s ends with it, else s.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "trimSuffix",
+      "trim_suffix",
+      "removesuffix",
+      "stripSuffix"
+    ],
+    "cases": [
+      {
+        "name": "removeSuffix removes a suffix",
+        "source": "\"file.tar.gz\".removeSuffix(\".gz\")",
+        "expect": {
+          "value": "file.tar"
+        }
+      },
+      {
+        "name": "removeSuffix of the whole string",
+        "source": "\"x\".removeSuffix(\"x\")",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "removeSuffix of the empty suffix",
+        "source": "\"abc\".removeSuffix(\"\")",
+        "expect": {
+          "value": "abc"
+        }
+      },
+      {
+        "name": "removeSuffix of a suffix longer than the string",
+        "source": "\"ab\".removeSuffix(\"xab\")",
+        "expect": {
+          "value": "ab"
+        }
+      }
+    ]
+  },
+  {
+    "name": "startsWith",
+    "receiver": "string",
+    "signature": "(prefix: string) => bool",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Whether the first code points of s are those of prefix.",
+    "calls": [],
+    "steps": "sz(prefix)",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "has_prefix",
+      "starts_with",
+      "hasPrefix"
+    ],
+    "cases": [
+      {
+        "name": "startsWith of a prefix",
+        "source": "\"abc\".startsWith(\"ab\")",
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "startsWith of the empty prefix",
+        "source": "\"abc\".startsWith(\"\")",
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "startsWith of a prefix longer than the string",
+        "source": "\"ab\".startsWith(\"abc\")",
+        "expect": {
+          "value": false
+        }
+      },
+      {
+        "name": "startsWith of a code point above U+FFFF",
+        "source": "\"😀a\".startsWith(\"😀\")",
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "startsWith is case sensitive",
+        "source": "\"Abc\".startsWith(\"a\")",
+        "expect": {
+          "value": false
+        }
+      },
+      {
+        "name": "startsWith charges the size of the prefix",
+        "source": "s.startsWith(\"ab\")",
+        "env": "{s: string}",
+        "vars": {
+          "s": "abc"
+        },
+        "expect": {
+          "value": true,
+          "steps": 1,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "endsWith",
+    "receiver": "string",
+    "signature": "(suffix: string) => bool",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Whether the last code points of s are those of suffix.",
+    "calls": [],
+    "steps": "sz(suffix)",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "has_suffix",
+      "ends_with",
+      "hasSuffix"
+    ],
+    "cases": [
+      {
+        "name": "endsWith of a suffix",
+        "source": "\"abc\".endsWith(\"bc\")",
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "endsWith of the empty string on the empty string",
+        "source": "\"\".endsWith(\"\")",
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "endsWith of a suffix longer than the string",
+        "source": "\"c\".endsWith(\"abc\")",
+        "expect": {
+          "value": false
+        }
+      },
+      {
+        "name": "endsWith of a code point above U+FFFF",
+        "source": "\"a😀\".endsWith(\"😀\")",
+        "expect": {
+          "value": true
+        }
+      }
+    ]
+  },
+  {
+    "name": "split",
+    "receiver": "string",
+    "signature": "(sep: string) => string[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The parts of s between occurrences of sep.",
+    "calls": [],
+    "steps": "sz(s) + p",
+    "units": "1 + 2*p + sz(s)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "explode",
+      "splitN"
+    ],
+    "cases": [
+      {
+        "name": "split keeps empty parts",
+        "source": "\"a,b,,c\".split(\",\")",
+        "expect": {
+          "value": [
+            "a",
+            "b",
+            "",
+            "c"
+          ]
+        }
+      },
+      {
+        "name": "split of the separator alone",
+        "source": "\",\".split(\",\")",
+        "expect": {
+          "value": [
+            "",
+            ""
+          ]
+        }
+      },
+      {
+        "name": "split finds occurrences without overlap",
+        "source": "\"aaa\".split(\"aa\")",
+        "expect": {
+          "value": [
+            "",
+            "a"
+          ]
+        }
+      },
+      {
+        "name": "split of the empty string",
+        "source": "\"\".split(\",\")",
+        "expect": {
+          "value": [
+            ""
+          ]
+        }
+      },
+      {
+        "name": "split by the empty string gives code points",
+        "source": "\"a😀b\".split(\"\")",
+        "expect": {
+          "value": [
+            "a",
+            "😀",
+            "b"
+          ]
+        }
+      },
+      {
+        "name": "split of the empty string by the empty string",
+        "source": "\"\".split(\"\")",
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "split with no occurrence",
+        "source": "\"abc\".split(\"x\")",
+        "expect": {
+          "value": [
+            "abc"
+          ]
+        }
+      },
+      {
+        "name": "split charges the parts",
+        "source": "s.split(\",\")",
+        "env": "{s: string}",
+        "vars": {
+          "s": "a,b,,c"
+        },
+        "expect": {
+          "value": [
+            "a",
+            "b",
+            "",
+            "c"
+          ],
+          "steps": 5,
+          "allocated": 9
+        }
+      }
+    ]
+  },
+  {
+    "name": "replaceAll",
+    "receiver": "string",
+    "signature": "(old: string, new: string) => string !",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "s with each occurrence of old replaced by new, as literal text.",
+    "calls": [],
+    "steps": "sz(s) + sz(result)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [
+      {
+        "when": "old is the empty string",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "empty-search"
+      }
+    ],
+    "wrong": [
+      "replace",
+      "replace_all",
+      "gsub"
+    ],
+    "cases": [
+      {
+        "name": "replaceAll replaces every occurrence",
+        "source": "\"a-b-c\".replaceAll(\"-\", \"+\")",
+        "expect": {
+          "value": "a+b+c"
+        }
+      },
+      {
+        "name": "replaceAll finds occurrences without overlap",
+        "source": "\"aaa\".replaceAll(\"aa\", \"b\")",
+        "expect": {
+          "value": "ba"
+        }
+      },
+      {
+        "name": "replaceAll with no occurrence",
+        "source": "\"x\".replaceAll(\"y\", \"z\")",
+        "expect": {
+          "value": "x"
+        }
+      },
+      {
+        "name": "replaceAll treats the replacement as literal text",
+        "source": "\"a.b\".replaceAll(\".\", \"$&\")",
+        "expect": {
+          "value": "a$&b"
+        }
+      },
+      {
+        "name": "replaceAll by the empty string removes",
+        "source": "\"😀x😀\".replaceAll(\"😀\", \"\")",
+        "expect": {
+          "value": "x"
+        }
+      },
+      {
+        "name": "replaceAll charges the sizes",
+        "source": "s.replaceAll(\"-\", \"+\")",
+        "env": "{s: string}",
+        "vars": {
+          "s": "a-b-c"
+        },
+        "expect": {
+          "value": "a+b+c",
+          "steps": 1,
+          "allocated": 1
+        }
+      },
+      {
+        "name": "replaceAll of the empty string",
+        "source": "\"abc\".replaceAll(\"\", \"-\")",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "slice",
+    "receiver": "string",
+    "signature": "(start: int, end?: int) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The code points of s from start up to but not including end.",
+    "calls": [],
+    "steps": "sz(s)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "substring",
+      "substr",
+      "slice_"
+    ],
+    "cases": [
+      {
+        "name": "slice between two positions",
+        "source": "\"hello\".slice(1, 3)",
+        "expect": {
+          "value": "el"
+        }
+      },
+      {
+        "name": "slice from a negative position",
+        "source": "\"hello\".slice(-3)",
+        "expect": {
+          "value": "llo"
+        }
+      },
+      {
+        "name": "slice to a negative position",
+        "source": "\"hello\".slice(2, -1)",
+        "expect": {
+          "value": "ll"
+        }
+      },
+      {
+        "name": "slice from past the end",
+        "source": "\"hello\".slice(10)",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "slice from before the start is clamped",
+        "source": "\"hello\".slice(-10, 2)",
+        "expect": {
+          "value": "he"
+        }
+      },
+      {
+        "name": "slice with the end before the start",
+        "source": "\"hello\".slice(3, 1)",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "slice counts code points",
+        "source": "\"a😀b\".slice(1, 2)",
+        "expect": {
+          "value": "😀"
+        }
+      },
+      {
+        "name": "slice with a fractional position on any data",
+        "source": "s.slice(x)",
+        "env": "{s: string, x: any}",
+        "vars": {
+          "s": "abc",
+          "x": 1.5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ]
+        }
+      },
+      {
+        "name": "slice of a lambda where a position is expected on any data",
+        "source": "x.slice(y => y)",
+        "env": "{x: any}",
+        "vars": {
+          "x": "abc"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "repeat",
+    "receiver": "string",
+    "signature": "(count: int) => string !",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "s repeated count times.",
+    "calls": [],
+    "steps": "sz(result)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [
+      {
+        "when": "count is below zero",
+        "kind": "value",
+        "code": "invalid-argument",
+        "template": "negative-count"
+      }
+    ],
+    "wrong": [
+      "times",
+      "replicate"
+    ],
+    "cases": [
+      {
+        "name": "repeat three times",
+        "source": "\"ab\".repeat(3)",
+        "expect": {
+          "value": "ababab"
+        }
+      },
+      {
+        "name": "repeat zero times",
+        "source": "\"x\".repeat(0)",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "repeat of the empty string",
+        "source": "\"\".repeat(5)",
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "repeat charges the size of the result",
+        "source": "s.repeat(40)",
+        "env": "{s: string}",
+        "vars": {
+          "s": "ab"
+        },
+        "expect": {
+          "value": "abababababababababababababababababababababababababababababababababababababababab",
+          "steps": 2,
+          "allocated": 2
+        }
+      },
+      {
+        "name": "repeat a negative count",
+        "source": "\"a\".repeat(-1)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "invalid-argument"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "padStart",
+    "receiver": "string",
+    "signature": "(length: int, fill?: string) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "s with fill repeated before it up to length code points.",
+    "calls": [],
+    "steps": "sz(result)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "lpad",
+      "padLeft",
+      "rjust"
+    ],
+    "cases": [
+      {
+        "name": "padStart with zeros",
+        "source": "\"5\".padStart(3, \"0\")",
+        "expect": {
+          "value": "005"
+        }
+      },
+      {
+        "name": "padStart cuts the fill",
+        "source": "\"abc\".padStart(6, \"12\")",
+        "expect": {
+          "value": "121abc"
+        }
+      },
+      {
+        "name": "padStart of a string already long enough",
+        "source": "\"abc\".padStart(2)",
+        "expect": {
+          "value": "abc"
+        }
+      },
+      {
+        "name": "padStart with the default fill",
+        "source": "\"a\".padStart(3)",
+        "expect": {
+          "value": "  a"
+        }
+      },
+      {
+        "name": "padStart with an empty fill",
+        "source": "\"a\".padStart(3, \"\")",
+        "expect": {
+          "value": "a"
+        }
+      },
+      {
+        "name": "padStart counts code points",
+        "source": "\"x\".padStart(3, \"😀\")",
+        "expect": {
+          "value": "😀😀x"
+        }
+      },
+      {
+        "name": "padStart charges the result",
+        "source": "s.padStart(3, \"0\")",
+        "env": "{s: string}",
+        "vars": {
+          "s": "5"
+        },
+        "expect": {
+          "value": "005",
+          "steps": 1,
+          "allocated": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "padEnd",
+    "receiver": "string",
+    "signature": "(length: int, fill?: string) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "s with fill repeated after it up to length code points.",
+    "calls": [],
+    "steps": "sz(result)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "rpad",
+      "padRight",
+      "ljust"
+    ],
+    "cases": [
+      {
+        "name": "padEnd with zeros",
+        "source": "\"5\".padEnd(3, \"0\")",
+        "expect": {
+          "value": "500"
+        }
+      },
+      {
+        "name": "padEnd cuts the fill",
+        "source": "\"abc\".padEnd(6, \"12\")",
+        "expect": {
+          "value": "abc121"
+        }
+      },
+      {
+        "name": "padEnd with a negative length",
+        "source": "\"abc\".padEnd(-1)",
+        "expect": {
+          "value": "abc"
+        }
+      },
+      {
+        "name": "padEnd with the default fill",
+        "source": "\"a\".padEnd(3)",
+        "expect": {
+          "value": "a  "
+        }
+      },
+      {
+        "name": "padEnd after a code point above U+FFFF",
+        "source": "\"😀\".padEnd(2, \"ab\")",
+        "expect": {
+          "value": "😀a"
+        }
+      }
+    ]
+  },
+  {
+    "name": "filter",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => unknown) => T[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements for which f is true, in order.",
+    "calls": [
+      "f"
+    ],
+    "narrows": "f",
+    "steps": "2*n",
+    "units": "1 + k",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "select",
+      "where"
+    ],
+    "cases": [
+      {
+        "name": "filter keeps order",
+        "source": "xs.filter(x => x > 1)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            3,
+            1,
+            2
+          ]
+        },
+        "expect": {
+          "value": [
+            3,
+            2
+          ],
+          "steps": 11,
+          "allocated": 3
+        }
+      },
+      {
+        "name": "filter tests by truthiness",
+        "source": "[[], [1], [], [2, 3]].filter(x => x)",
+        "expect": {
+          "value": [
+            [
+              1
+            ],
+            [
+              2,
+              3
+            ]
+          ]
+        }
+      },
+      {
+        "name": "filter of an empty list",
+        "source": "xs.filter(x => x > 1)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "filter narrows away null",
+        "source": "xs.filter(x => x != null).sum()",
+        "env": "{xs: (int | null)[]}",
+        "vars": {
+          "xs": [
+            1,
+            null,
+            3
+          ]
+        },
+        "expect": {
+          "type": "int",
+          "value": 4
+        }
+      },
+      {
+        "name": "filter gives the index",
+        "source": "[\"a\", \"b\", \"c\"].filter((x, i) => i != 1)",
+        "expect": {
+          "value": [
+            "a",
+            "c"
+          ]
+        }
+      },
+      {
+        "name": "filter on a null receiver",
+        "source": "xs.filter(x => x)",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "null-operand"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "map",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => U) => U[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "f of each element, in order.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n",
+    "units": "1 + n",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "collect",
+      "select",
+      "forEach"
+    ],
+    "cases": [
+      {
+        "name": "map gives the index",
+        "source": "xs.map((x, i) => x * i)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3
+          ]
+        },
+        "expect": {
+          "value": [
+            0,
+            2,
+            6
+          ],
+          "steps": 11,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "map of an empty list",
+        "source": "xs.map(x => x * 2)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "map to a new kind",
+        "source": "[[1, 2], []].map(x => len(x))",
+        "expect": {
+          "value": [
+            2,
+            0
+          ]
+        }
+      },
+      {
+        "name": "map stops at a callback that fails",
+        "source": "[1, 0].map(x => 10 / x)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "divide-by-zero"
+            }
+          ]
+        }
+      },
+      {
+        "name": "map of a value where a function is expected on any data",
+        "source": "x.map(1)",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "map of a lambda with too many parameters on any data",
+        "source": "x.map((a, b, c) => a)",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "map with two arguments fails the count test first on any data",
+        "source": "x.map(1, (a, b, c) => a)",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "flatMap",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => U[]) => U[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements of f of each element, in order.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + k",
+    "units": "1 + k",
+    "null": null,
+    "fails": [
+      {
+        "when": "a result of f is not a list",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "result"
+      }
+    ],
+    "wrong": [
+      "concatMap",
+      "flat_map",
+      "selectMany"
+    ],
+    "cases": [
+      {
+        "name": "flatMap joins the result lists",
+        "source": "xs.flatMap(x => x)",
+        "env": "{xs: int[][]}",
+        "vars": {
+          "xs": [
+            [
+              1
+            ],
+            [
+              2,
+              3
+            ]
+          ]
+        },
+        "expect": {
+          "value": [
+            1,
+            2,
+            3
+          ],
+          "steps": 9,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "flatMap with range",
+        "source": "[1, 2, 3].flatMap(x => range(x))",
+        "expect": {
+          "value": [
+            0,
+            0,
+            1,
+            0,
+            1,
+            2
+          ]
+        }
+      },
+      {
+        "name": "flatMap with empty results",
+        "source": "[1, 2].flatMap(x => [])",
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "flatMap of a result that is not a list",
+        "source": "xs.flatMap(x => x)",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            2
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 4,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "some",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => unknown) => bool",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Whether f is true for some element; stops at the first.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*v",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "any",
+      "anyMatch",
+      "exists"
+    ],
+    "cases": [
+      {
+        "name": "some counts the elements visited",
+        "source": "xs.some(x => x > 1)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            5,
+            0
+          ]
+        },
+        "expect": {
+          "value": true,
+          "steps": 8,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "some of an empty list",
+        "source": "xs.some(x => x > 1)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": false
+        }
+      },
+      {
+        "name": "some stops at the first match",
+        "source": "[1, 0].some(x => 10 / x > 0)",
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "some tests by truthiness",
+        "source": "[\"\", 0].some(x => x)",
+        "expect": {
+          "value": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "every",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => unknown) => bool",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Whether f is true for every element; stops at the first that is not.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*v",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "all",
+      "allMatch",
+      "forall"
+    ],
+    "cases": [
+      {
+        "name": "every stops at the first falsy result",
+        "source": "xs.every(x => x)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            0,
+            2
+          ]
+        },
+        "expect": {
+          "value": false,
+          "steps": 6,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "every of an empty list",
+        "source": "xs.every(x => x > 1)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "every of all even numbers",
+        "source": "[2, 4].every(x => x % 2 == 0)",
+        "expect": {
+          "value": true
+        }
+      },
+      {
+        "name": "every does not visit after a falsy result",
+        "source": "[5, 0].every(x => 10 / x > 5)",
+        "expect": {
+          "value": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "find",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => unknown) => T | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The first element for which f is true, or null.",
+    "calls": [
+      "f"
+    ],
+    "narrows": "f",
+    "steps": "2*v",
+    "units": "0",
+    "null": "no element makes f true, which includes an empty list",
+    "fails": [],
+    "wrong": [
+      "first",
+      "detect",
+      "findFirst"
+    ],
+    "cases": [
+      {
+        "name": "find the first match",
+        "source": "xs.find(x => x % 2 == 0)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            4,
+            6
+          ]
+        },
+        "expect": {
+          "value": 4,
+          "steps": 10,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "find with no match",
+        "source": "[1, 3].find(x => x > 5)",
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "find tests by truthiness",
+        "source": "[0, 5, 7].find(x => x)",
+        "expect": {
+          "value": 5
+        }
+      },
+      {
+        "name": "find of a null element",
+        "source": "[null, 1].find(x => x == null)",
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "find narrows away null",
+        "source": "xs.find(x => x != null)",
+        "env": "{xs: (int | null)[]}",
+        "vars": {
+          "xs": [
+            null,
+            2
+          ]
+        },
+        "expect": {
+          "type": "int | null",
+          "value": 2
+        }
+      }
+    ]
+  },
+  {
+    "name": "count",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => unknown) => int",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "How many elements f is true for.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "countIf",
+      "count_if"
+    ],
+    "cases": [
+      {
+        "name": "count tests by truthiness",
+        "source": "xs.count(s => s)",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": [
+            "a",
+            "",
+            "b"
+          ]
+        },
+        "expect": {
+          "value": 2,
+          "steps": 8,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "count of an empty list",
+        "source": "xs.count(x => x > 1)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "count with no match",
+        "source": "[1, 2, 3].count(x => x > 5)",
+        "expect": {
+          "value": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "reduce",
+    "receiver": "T[]",
+    "signature": "(f: (acc: A, item: T, index: int) => A, init: A) => A",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The fold of the elements from left to right, starting from init.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n",
+    "units": "0",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "fold",
+      "foldl",
+      "inject",
+      "aggregate"
+    ],
+    "cases": [
+      {
+        "name": "reduce sums",
+        "source": "xs.reduce((acc, x) => acc + x, 0)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3
+          ]
+        },
+        "expect": {
+          "value": 6,
+          "steps": 11,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "reduce of an empty list is init",
+        "source": "xs.reduce((acc, x) => acc + x, 10)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": 10
+        }
+      },
+      {
+        "name": "reduce gives the index",
+        "source": "[\"a\", \"b\"].reduce((acc, x, i) => acc + x + string(i), \"\")",
+        "expect": {
+          "value": "a0b1"
+        }
+      }
+    ]
+  },
+  {
+    "name": "sum",
+    "receiver": "T[]",
+    "signature": "() => T | int where T: number",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements added from left to right, from 0.",
+    "calls": [],
+    "steps": "n",
+    "units": "0",
+    "null": null,
+    "fails": [
+      {
+        "when": "an addition gives a result out of range or not finite",
+        "kind": "range",
+        "code": "number-range",
+        "template": "entry"
+      },
+      {
+        "when": "an element is not a number",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "element"
+      }
+    ],
+    "wrong": [
+      "sumBy",
+      "sumOf",
+      "total"
+    ],
+    "cases": [
+      {
+        "name": "sum of whole numbers",
+        "source": "xs.sum()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3
+          ]
+        },
+        "expect": {
+          "value": 6,
+          "steps": 4,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "sum of an empty list",
+        "source": "xs.sum()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": 0
+        }
+      },
+      {
+        "name": "sum of fractions rounds at each addition",
+        "source": "[0.1, 0.2].sum()",
+        "expect": {
+          "value": 0.30000000000000004
+        }
+      },
+      {
+        "name": "sum of a whole number and a fraction",
+        "source": "[1, 2.5].sum()",
+        "expect": {
+          "value": 3.5
+        }
+      },
+      {
+        "name": "sum that leaves the whole range",
+        "source": "[9007199254740991, 1, -1].sum()",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range"
+            }
+          ]
+        }
+      },
+      {
+        "name": "sum that is not finite",
+        "source": "[1e308, 1e308].sum()",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "number-range"
+            }
+          ]
+        }
+      },
+      {
+        "name": "sum of a string element on any data",
+        "source": "xs.sum()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            "2"
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 3,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "min",
+    "receiver": "T[]",
+    "signature": "() => T | null where T: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The smallest element, or null for an empty list.",
+    "calls": [],
+    "steps": "n + sz(elements)",
+    "units": "0",
+    "null": "the list is empty",
+    "fails": [
+      {
+        "when": "the elements are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "minimum"
+    ],
+    "cases": [
+      {
+        "name": "min of strings",
+        "source": "xs.min()",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": [
+            "b",
+            "a",
+            "c"
+          ]
+        },
+        "expect": {
+          "value": "a",
+          "steps": 4,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "min of numbers",
+        "source": "[3, 1, 2].min()",
+        "expect": {
+          "value": 1
+        }
+      },
+      {
+        "name": "min of an empty list",
+        "source": "xs.min()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "min of one element",
+        "source": "[5].min()",
+        "expect": {
+          "value": 5
+        }
+      },
+      {
+        "name": "min of a list of one null on any data",
+        "source": "xs.min()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            null
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 2,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "max",
+    "receiver": "T[]",
+    "signature": "() => T | null where T: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The largest element, or null for an empty list.",
+    "calls": [],
+    "steps": "n + sz(elements)",
+    "units": "0",
+    "null": "the list is empty",
+    "fails": [
+      {
+        "when": "the elements are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "maximum"
+    ],
+    "cases": [
+      {
+        "name": "max of strings",
+        "source": "[\"b\", \"a\"].max()",
+        "expect": {
+          "value": "b"
+        }
+      },
+      {
+        "name": "max of numbers",
+        "source": "[3, 1, 2].max()",
+        "expect": {
+          "value": 3
+        }
+      },
+      {
+        "name": "max of an empty list",
+        "source": "xs.max()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "max orders by code point, not by UTF-16 unit",
+        "source": "[\"\\u{ffff}\", \"😀\"].max()",
+        "expect": {
+          "value": "😀"
+        }
+      },
+      {
+        "name": "max of numbers and strings on any data",
+        "source": "xs.max()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            "a"
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 3,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "sort",
+    "receiver": "T[]",
+    "signature": "() => T[] where T: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements in ascending order, by a stable sort.",
+    "calls": [],
+    "steps": "n + L*(n + sz(elements))",
+    "units": "1 + n",
+    "null": null,
+    "fails": [
+      {
+        "when": "the elements are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "sorted",
+      "toSorted",
+      "order"
+    ],
+    "cases": [
+      {
+        "name": "sort charges the sort formula",
+        "source": "xs.sort()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            3,
+            1,
+            2
+          ]
+        },
+        "expect": {
+          "value": [
+            1,
+            2,
+            3
+          ],
+          "steps": 10,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "sort numbers by value",
+        "source": "[10, 9, 1].sort()",
+        "expect": {
+          "value": [
+            1,
+            9,
+            10
+          ]
+        }
+      },
+      {
+        "name": "sort strings by code point",
+        "source": "[\"b\", \"a\", \"B\"].sort()",
+        "expect": {
+          "value": [
+            "B",
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "name": "sort puts an accented letter after z",
+        "source": "[\"é\", \"z\", \"e\"].sort()",
+        "expect": {
+          "value": [
+            "e",
+            "z",
+            "é"
+          ]
+        }
+      },
+      {
+        "name": "sort by code point, not by UTF-16 unit",
+        "source": "[\"😀\", \"\\u{ffff}\"].sort()",
+        "expect": {
+          "value": [
+            "\uffff",
+            "😀"
+          ]
+        }
+      },
+      {
+        "name": "sort of an empty list",
+        "source": "xs.sort()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "sort of numbers and strings on any data",
+        "source": "xs.sort()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            "a",
+            2
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 3,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "sortBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => K) => T[] where K: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements in ascending order of their keys, by a stable sort.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + L*(n + sz(keys))",
+    "units": "1 + n",
+    "null": null,
+    "fails": [
+      {
+        "when": "the keys are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "sort_by",
+      "orderBy",
+      "toSorted",
+      "sortOn"
+    ],
+    "cases": [
+      {
+        "name": "sortBy keeps the order of equal keys",
+        "source": "xs.sortBy(s => len(s))",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": [
+            "bb",
+            "a",
+            "cc",
+            "d"
+          ]
+        },
+        "expect": {
+          "value": [
+            "a",
+            "d",
+            "bb",
+            "cc"
+          ],
+          "steps": 22,
+          "allocated": 5
+        }
+      },
+      {
+        "name": "sortBy a field",
+        "source": "[{n: \"b\", a: 2}, {n: \"a\", a: 1}, {n: \"c\", a: 2}].sortBy(p => p.a).map(p => p.n)",
+        "expect": {
+          "value": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      },
+      {
+        "name": "sortBy of an empty list",
+        "source": "xs.sortBy(x => x)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "sortBy string keys by code point",
+        "source": "[\"😀\", \"\\u{ffff}\"].sortBy(s => s)",
+        "expect": {
+          "value": [
+            "\uffff",
+            "😀"
+          ]
+        }
+      },
+      {
+        "name": "sortBy with a null key on any data",
+        "source": "xs.sortBy(x => x)",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            null
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 6,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "sortBy with mixed keys on any data",
+        "source": "xs.sortBy(x => x)",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            "a",
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ]
+        }
+      },
+      {
+        "name": "sortBy stops at a callback that fails",
+        "source": "[1, 0].sortBy(x => 10 / x)",
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "divide-by-zero"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "groupBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => string) => map<T[]>",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "For each distinct key, the elements with that key, in order.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + sz(keys)",
+    "units": "1 + 3*g + n",
+    "null": null,
+    "fails": [
+      {
+        "when": "a result of f is not a string",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "result"
+      }
+    ],
+    "wrong": [
+      "group_by",
+      "Object.groupBy",
+      "partition"
+    ],
+    "cases": [
+      {
+        "name": "groupBy charges the groups",
+        "source": "xs.groupBy(x => x)",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": [
+            "b",
+            "a",
+            "b"
+          ]
+        },
+        "expect": {
+          "value": {
+            "a": [
+              "a"
+            ],
+            "b": [
+              "b",
+              "b"
+            ]
+          },
+          "steps": 8,
+          "allocated": 10
+        }
+      },
+      {
+        "name": "groupBy charges the size of its keys",
+        "source": "xs.groupBy(x => x)",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": [
+            "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+          ]
+        },
+        "expect": {
+          "value": {
+            "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": [
+              "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+            ]
+          },
+          "steps": 8,
+          "allocated": 6
+        }
+      },
+      {
+        "name": "groupBy keeps the order within a group",
+        "source": "[\"apple\", \"avocado\", \"banana\"].groupBy(s => s.slice(0, 1))",
+        "expect": {
+          "value": {
+            "a": [
+              "apple",
+              "avocado"
+            ],
+            "b": [
+              "banana"
+            ]
+          }
+        }
+      },
+      {
+        "name": "groupBy keys are in key order",
+        "source": "[\"b\", \"a\"].groupBy(x => x).keys()",
+        "expect": {
+          "value": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "name": "groupBy of an empty list",
+        "source": "xs.groupBy(x => x)",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": {}
+        }
+      },
+      {
+        "name": "groupBy with a number key on any data",
+        "source": "xs.groupBy(x => x)",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 4,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "toMap",
+    "receiver": "{key: string, value: T}[]",
+    "signature": "() => map<T>",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The map with each record's value under its key; a later record wins.",
+    "calls": [],
+    "steps": "n + sz(keys)",
+    "units": "1 + 2*n",
+    "null": null,
+    "fails": [
+      {
+        "when": "an element is not a map",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "element"
+      },
+      {
+        "when": "the key field of an element is not a string",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "key"
+      },
+      {
+        "when": "an element has no key named key or value",
+        "kind": "field",
+        "code": "missing-field",
+        "template": "field"
+      }
+    ],
+    "wrong": [
+      "fromEntries",
+      "Object.fromEntries",
+      "toDict",
+      "associate"
+    ],
+    "cases": [
+      {
+        "name": "toMap keeps the later of equal keys",
+        "source": "es.toMap()",
+        "env": "{es: {key: string, value: int}[]}",
+        "vars": {
+          "es": [
+            {
+              "key": "a",
+              "value": 1
+            },
+            {
+              "key": "a",
+              "value": 2
+            }
+          ]
+        },
+        "expect": {
+          "value": {
+            "a": 2
+          },
+          "steps": 3,
+          "allocated": 5
+        }
+      },
+      {
+        "name": "toMap charges the size of its keys",
+        "source": "es.toMap()",
+        "env": "{es: {key: string, value: int}[]}",
+        "vars": {
+          "es": [
+            {
+              "key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "value": 1
+            }
+          ]
+        },
+        "expect": {
+          "value": {
+            "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+          },
+          "steps": 3,
+          "allocated": 3
+        }
+      },
+      {
+        "name": "toMap of records",
+        "source": "[{key: \"a\", value: 1}, {key: \"b\", value: 2}].toMap()",
+        "expect": {
+          "value": {
+            "a": 1,
+            "b": 2
+          }
+        }
+      },
+      {
+        "name": "toMap inverts entries",
+        "source": "{b: 1, a: 2}.entries().toMap()",
+        "expect": {
+          "value": {
+            "a": 2,
+            "b": 1
+          }
+        }
+      },
+      {
+        "name": "toMap of an empty list",
+        "source": "es.toMap()",
+        "env": "{es: {key: string, value: int}[]}",
+        "vars": {
+          "es": []
+        },
+        "expect": {
+          "value": {}
+        }
+      },
+      {
+        "name": "toMap of a record with no value on any data",
+        "source": "es.toMap()",
+        "env": "{es: any}",
+        "vars": {
+          "es": [
+            {
+              "key": "a"
+            }
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-field"
+            }
+          ],
+          "steps": 2,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "toMap of a number key on any data",
+        "source": "es.toMap()",
+        "env": "{es: any}",
+        "vars": {
+          "es": [
+            {
+              "key": "a",
+              "value": 1
+            },
+            {
+              "key": 1,
+              "value": 2
+            }
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 3,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "unique",
+    "receiver": "T[]",
+    "signature": "() => T[] where T: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The first occurrence of each value, in order.",
+    "calls": [],
+    "steps": "n + sz(elements)",
+    "units": "1 + k",
+    "null": null,
+    "fails": [
+      {
+        "when": "the elements are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "distinct",
+      "uniq",
+      "dedupe"
+    ],
+    "cases": [
+      {
+        "name": "unique keeps first occurrences",
+        "source": "xs.unique()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            3,
+            1,
+            3,
+            2,
+            1
+          ]
+        },
+        "expect": {
+          "value": [
+            3,
+            1,
+            2
+          ],
+          "steps": 6,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "unique is case sensitive",
+        "source": "[\"a\", \"A\", \"a\"].unique()",
+        "expect": {
+          "value": [
+            "a",
+            "A"
+          ]
+        }
+      },
+      {
+        "name": "unique of equal numbers written two ways",
+        "source": "[1, 1.0].unique()",
+        "expect": {
+          "value": [
+            1
+          ]
+        }
+      },
+      {
+        "name": "unique of an empty list",
+        "source": "xs.unique()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "unique of lists on any data",
+        "source": "xs.unique()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            [
+              1
+            ]
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 2,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "flat",
+    "receiver": "U[][]",
+    "signature": "() => U[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements of the inner lists, one level, in order.",
+    "calls": [],
+    "steps": "n + k",
+    "units": "1 + k",
+    "null": null,
+    "fails": [
+      {
+        "when": "an element is not a list",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "element"
+      }
+    ],
+    "wrong": [
+      "flatten",
+      "concat",
+      "join"
+    ],
+    "cases": [
+      {
+        "name": "flat joins one level",
+        "source": "xs.flat()",
+        "env": "{xs: int[][]}",
+        "vars": {
+          "xs": [
+            [
+              1,
+              2
+            ],
+            [],
+            [
+              3
+            ]
+          ]
+        },
+        "expect": {
+          "value": [
+            1,
+            2,
+            3
+          ],
+          "steps": 7,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "flat removes only one level",
+        "source": "[[[1]], [2]].flat()",
+        "expect": {
+          "value": [
+            [
+              1
+            ],
+            2
+          ]
+        }
+      },
+      {
+        "name": "flat of an empty list",
+        "source": "xs.flat()",
+        "env": "{xs: int[][]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "flat of an element that is not a list on any data",
+        "source": "xs.flat()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            [
+              1
+            ],
+            2
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 3,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "reverse",
+    "receiver": "T[]",
+    "signature": "() => T[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements in reverse order.",
+    "calls": [],
+    "steps": "n",
+    "units": "1 + n",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "reversed",
+      "toReversed"
+    ],
+    "cases": [
+      {
+        "name": "reverse three elements",
+        "source": "xs.reverse()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3
+          ]
+        },
+        "expect": {
+          "value": [
+            3,
+            2,
+            1
+          ],
+          "steps": 4,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "reverse of an empty list",
+        "source": "xs.reverse()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "reverse of one element",
+        "source": "[\"a\"].reverse()",
+        "expect": {
+          "value": [
+            "a"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "first",
+    "receiver": "T[]",
+    "signature": "() => T | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The first element, or null for an empty list.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": "the list is empty",
+    "fails": [],
+    "wrong": [
+      "at",
+      "head"
+    ],
+    "cases": [
+      {
+        "name": "first of a list",
+        "source": "xs.first()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            7,
+            8
+          ]
+        },
+        "expect": {
+          "value": 7,
+          "steps": 1,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "first of an empty list",
+        "source": "xs.first()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "first that is null",
+        "source": "[null, 1].first()",
+        "expect": {
+          "value": null
+        }
+      }
+    ]
+  },
+  {
+    "name": "last",
+    "receiver": "T[]",
+    "signature": "() => T | null",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The last element, or null for an empty list.",
+    "calls": [],
+    "steps": "0",
+    "units": "0",
+    "null": "the list is empty",
+    "fails": [],
+    "wrong": [
+      "at",
+      "tail"
+    ],
+    "cases": [
+      {
+        "name": "last of a list",
+        "source": "[7, 8].last()",
+        "expect": {
+          "value": 8
+        }
+      },
+      {
+        "name": "last of an empty list",
+        "source": "xs.last()",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": null
+        }
+      },
+      {
+        "name": "last of one element",
+        "source": "[\"a\"].last()",
+        "expect": {
+          "value": "a"
+        }
+      }
+    ]
+  },
+  {
+    "name": "slice",
+    "receiver": "T[]",
+    "signature": "(start: int, end?: int) => T[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements from start up to but not including end.",
+    "calls": [],
+    "steps": "k",
+    "units": "1 + k",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "take",
+      "drop",
+      "subList"
+    ],
+    "cases": [
+      {
+        "name": "list slice charges the result",
+        "source": "xs.slice(1, 4)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "expect": {
+          "value": [
+            2,
+            3,
+            4
+          ],
+          "steps": 4,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "list slice to a negative position",
+        "source": "[1, 2, 3, 4, 5].slice(1, -1)",
+        "expect": {
+          "value": [
+            2,
+            3,
+            4
+          ]
+        }
+      },
+      {
+        "name": "list slice from a negative position",
+        "source": "[1, 2, 3, 4, 5].slice(-2)",
+        "expect": {
+          "value": [
+            4,
+            5
+          ]
+        }
+      },
+      {
+        "name": "list slice with the end before the start",
+        "source": "[1, 2, 3].slice(2, 1)",
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "list slice past the end is clamped",
+        "source": "[1, 2, 3].slice(0, 100)",
+        "expect": {
+          "value": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      {
+        "name": "list slice of an empty list",
+        "source": "xs.slice(0)",
+        "env": "{xs: int[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": []
+        }
+      }
+    ]
+  },
+  {
+    "name": "join",
+    "receiver": "string[]",
+    "signature": "(sep: string) => string",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements with sep between them.",
+    "calls": [],
+    "steps": "n + sz(result)",
+    "units": "1 + sz(result)",
+    "null": null,
+    "fails": [
+      {
+        "when": "an element is not a string",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "element"
+      }
+    ],
+    "wrong": [
+      "implode",
+      "mkString"
+    ],
+    "cases": [
+      {
+        "name": "join with a separator",
+        "source": "xs.join(\", \")",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": [
+            "a",
+            "b",
+            "c"
+          ]
+        },
+        "expect": {
+          "value": "a, b, c",
+          "steps": 4,
+          "allocated": 1
+        }
+      },
+      {
+        "name": "join of an empty list",
+        "source": "xs.join(\",\")",
+        "env": "{xs: string[]}",
+        "vars": {
+          "xs": []
+        },
+        "expect": {
+          "value": ""
+        }
+      },
+      {
+        "name": "join of one element",
+        "source": "[\"x\"].join(\"-\")",
+        "expect": {
+          "value": "x"
+        }
+      },
+      {
+        "name": "join keeps empty elements",
+        "source": "[\"a\", \"\", \"b\"].join(\"-\")",
+        "expect": {
+          "value": "a--b"
+        }
+      },
+      {
+        "name": "join of a number element on any data",
+        "source": "xs.join(\",\")",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            "a",
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 3,
+          "allocated": 0
+        }
+      }
+    ]
+  },
+  {
+    "name": "keys",
+    "receiver": "map<T>",
+    "signature": "() => string[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The keys of the map, in key order.",
+    "calls": [],
+    "steps": "n + L*(n + sz(keys))",
+    "units": "1 + n",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "Object.keys",
+      "keySet"
+    ],
+    "cases": [
+      {
+        "name": "keys in key order",
+        "source": "m.keys()",
+        "env": "{m: map<int>}",
+        "vars": {
+          "m": {
+            "b": 1,
+            "a": 2,
+            "c": 3
+          }
+        },
+        "expect": {
+          "value": [
+            "a",
+            "b",
+            "c"
+          ],
+          "steps": 10,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "keys of an empty map",
+        "source": "m.keys()",
+        "env": "{m: map<int>}",
+        "vars": {
+          "m": {}
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "keys by code point",
+        "source": "{\"é\": 1, z: 2}.keys()",
+        "expect": {
+          "value": [
+            "z",
+            "é"
+          ]
+        }
+      },
+      {
+        "name": "keys is the method even when keys is a key",
+        "source": "{keys: 5}.keys()",
+        "expect": {
+          "value": [
+            "keys"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "values",
+    "receiver": "map<T>",
+    "signature": "() => T[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The values of the map, in the order of their keys.",
+    "calls": [],
+    "steps": "n + L*(n + sz(keys))",
+    "units": "1 + n",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "Object.values"
+    ],
+    "cases": [
+      {
+        "name": "values in the order of their keys",
+        "source": "m.values()",
+        "env": "{m: map<int>}",
+        "vars": {
+          "m": {
+            "b": 1,
+            "a": 2,
+            "c": 3
+          }
+        },
+        "expect": {
+          "value": [
+            2,
+            1,
+            3
+          ],
+          "steps": 10,
+          "allocated": 4
+        }
+      },
+      {
+        "name": "values of an empty map",
+        "source": "m.values()",
+        "env": "{m: map<int>}",
+        "vars": {
+          "m": {}
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "values keeps a null value",
+        "source": "{b: null, a: 1}.values()",
+        "expect": {
+          "value": [
+            1,
+            null
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "entries",
+    "receiver": "map<T>",
+    "signature": "() => {key: string, value: T}[]",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "One record {key, value} per entry, in key order.",
+    "calls": [],
+    "steps": "n + L*(n + sz(keys))",
+    "units": "1 + 6*n",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "Object.entries",
+      "items",
+      "pairs"
+    ],
+    "cases": [
+      {
+        "name": "entries charges the records",
+        "source": "m.entries()",
+        "env": "{m: map<int>}",
+        "vars": {
+          "m": {
+            "b": 1,
+            "a": 2,
+            "c": 3
+          }
+        },
+        "expect": {
+          "value": [
+            {
+              "key": "a",
+              "value": 2
+            },
+            {
+              "key": "b",
+              "value": 1
+            },
+            {
+              "key": "c",
+              "value": 3
+            }
+          ],
+          "steps": 10,
+          "allocated": 19
+        }
+      },
+      {
+        "name": "entries of an empty map",
+        "source": "m.entries()",
+        "env": "{m: map<int>}",
+        "vars": {
+          "m": {}
+        },
+        "expect": {
+          "value": []
+        }
+      },
+      {
+        "name": "entries with destructuring",
+        "source": "{b: 1, a: 2}.entries().map(({key, value}) => key + string(value))",
+        "expect": {
+          "value": [
+            "a2",
+            "b1"
+          ]
+        }
+      },
+      {
+        "name": "entries on a list on any data",
+        "source": "x.entries()",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "entries with an argument on any data",
+        "source": "x.entries(1 / 0)",
+        "env": "{x: any}",
+        "vars": {
+          "x": {
+            "a": 1
+          }
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      }
+    ]
+  }
+]

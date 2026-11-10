@@ -10,9 +10,12 @@ which is released and is maintained there.
 
 v3 is a new language and a new code base. It is not a revision of v2.
 
-**Status: design.** The design is written and most of it is accepted. No
-specification and no implementation exists yet. The Go code on this branch is
-still v2's, plus the experiments under `experiments/v3/`.
+**Status: building Core.** The design is written. The Core specification is
+in `spec/core/`, the conformance suite is in `suite/`, and the three
+implementations are being built in `go/`, `ts/` and `rust/`.
+`experiments/v3/design/14-implementation-plan.md` is the plan: what Core is,
+what follows it, and the order. The Go code outside `go/` and `experiments/v3/`
+is still v2's.
 
 ## What v3 is
 
@@ -90,9 +93,31 @@ The design is in `experiments/v3/design/`. Read `00-overview.md` first.
 | `05-host-api.md` | The API a host uses, in each of the three languages; error codes; the CLI |
 | `06-stdlib.md` | The library of functions and methods |
 | `07` to `13` | One feature each: checked conversion (`as`, `is`), strings, tagged unions, errors, testing, config files, queries |
+| `14-implementation-plan.md` | Core and the follow-on packages, the milestones, the rules of the work |
+| `15-build-rulings.md` | Every ruling made while building: decisions taken, design rules changed, new rules |
 
 A plan (`07` to `13`) is the authority for its feature. `02` to `06` carry its
 rules and cite it.
+
+## The specification, the suite and the implementations
+
+| Path | Holds |
+| --- | --- |
+| `spec/core/` | The Core specification, five chapters: language, evaluation, host, library, types. Normative text only. |
+| `suite/` | Data every implementation shares: `library.json`, `messages.json`, `casemap.json`, and case files in `suite/core-run/` and `suite/core-check/`. `spec/core/03-host.md` 3.10 defines the case format. |
+| `go/` | The Go implementation. Its own module, not in `go.work`: run Go there with `GOWORK=off`. |
+| `ts/` | The TypeScript implementation. No run-time dependencies. |
+| `rust/` | The Rust implementation. No library dependencies. |
+
+- **The specification wins.** Where `spec/` and a design document `00` to `13`
+  disagree, the specification is right and `15` records why.
+- **An implementer of one language does not read another implementation's
+  source.** The specification and the suite are the contract. This is how the
+  project tests that the language is not tied to one platform (C1).
+- **Behaviour that matters gets a suite case,** not only a unit test.
+- **A case you believe is wrong is a question, not a case to skip or edit.**
+- **Lexers and parsers are written by hand,** as Pratt parsers. No parser
+  generator and no parsing library.
 
 `experiments/v3/lab/` holds the small Go measurements that the documents cite.
 `experiments/v3/spike/` and `bench/` are the first experiment: an evaluator
@@ -170,8 +195,6 @@ CI runs for a branch only if `.github/workflows/ci.yml` names it, and it does
 not name `v3` yet. Until it does, run `make test` and `make format` yourself
 before you open a pull request.
 
-The layout of the repository for a specification, a conformance suite and
-three implementations is not decided.
 
 ## Rules that differ between v2 and v3
 

@@ -777,7 +777,7 @@ chain. With `b?: {c: int}` and `a` never null, `a?.b.c` is `maybe-null` on
 `.c`. The fix is `a?.b?.c`, which is `int | null`.
 
 Step 4 is where a union from `&&` or `||` shows. `(gate.failed || "none")` is
-`int | string`, and a read or method call on it is `kind`: the author must say
+`int | "none"`, and a read or method call on it is `kind`: the author must say
 which was meant (2.14).
 
 **Projections** (D51; `13:5.2`, with 13-2 as recommended). A **projection** is a
