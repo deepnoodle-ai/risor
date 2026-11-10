@@ -105,3 +105,13 @@ differ. Each is now fixed by a rule and a case.
 | R37 | In `!!a in b` and `- -2 ** 2`, the span is the first prefix operator in the text. For `a ?? b not in c` it is both words, `not in`. |
 | R38 | `\$` and `` \` `` are escapes of a template only. In a one-line string each is `bad-escape`. |
 | R39 | The control characters are U+0000 to U+001F and U+007F to U+009F. |
+
+## 6. Round 5: questions from the first front end
+
+| # | Ruling |
+| --- | --- |
+| R40 | Until F4 gives them a meaning, `as` and `is` are read at the level of a comparison, so the error for `!x as T` is at the `!` and for `a + !x as T` at the `as`. |
+| R41 | A reserved word where a `match` case needs a literal is `reserved-word`: `match x { nil => 1 }`. |
+| R42 | Environment text that is a type but not a record (`"int"`) is `bad-type` in every implementation. |
+| R43 | Text to number is correctly rounded for any count of digits. An implementation whose platform does not promise that does it itself. |
+| R44 | What cannot enter the language is a value of a host **integer** type over 2^53 − 1 in magnitude, a NaN and an infinity. A finite host float always enters: `1e20` is a number that is not whole. |

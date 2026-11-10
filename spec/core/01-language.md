@@ -39,8 +39,10 @@ A word that starts with an upper-case letter is a production or a lexical class.
 
 1. The source text is a sequence of code points. How a host passes it is in
    `03-host.md`.
-2. A U+FEFF at the start of the text is ignored. A U+FEFF anywhere else is an
-   unexpected character (2.10).
+2. A U+FEFF at the start of the text is removed before the text is divided into
+   tokens, and it is not counted in positions: the code point after it is line
+   1, column 1. In U+FEFF followed by `)`, the `)` is at column 1. A U+FEFF
+   anywhere else is an unexpected character (2.10).
 3. A **line end** is U+000A, U+000D followed by U+000A, or U+000D alone. Line
    ends matter in four places: they end a line comment (2.2), they end a
    one-line string with an error (2.6), a `\` before one is an error in a
@@ -185,8 +187,9 @@ Hex      = "0x" HexDigit { [ "_" ] HexDigit } .
 3. A line end, or the end of input, before the closing quote is
    `unterminated-string`. Its span runs from the opening quote to the place
    where the literal stops: the start of the line end, or the end of input. A
-   `\` directly before that line end is part of the literal, and the code is
-   still `unterminated-string`.
+   `\` directly before that line end, or directly before the end of input, is
+   part of the literal, and the code is still `unterminated-string`, not
+   `bad-escape`.
 4. The value is the content, with each escape replaced by the code point it
    names.
 
@@ -217,9 +220,9 @@ Hex      = "0x" HexDigit { [ "_" ] HexDigit } .
 
 | Text | Span |
 | --- | --- |
-| `\` followed by a code point that no row of 1 or 2 begins with: `\x41`, `\0`, `\v`, `` \` `` in a one-line string | The `\` and that code point |
+| `\` followed by a code point that begins no escape of the kind of literal it stands in. An escape is accepted only in a literal whose table lists it, so `\$` and `` \` `` are errors in a one-line string. Also `\x41`, `\0`, `\v` | The `\` and that code point |
 | `\u` not followed by four `HexDigit`s or by `{` | The `\u` and the `HexDigit`s that follow it |
-| `\u{` with no `HexDigit`, more than six, or no `}` directly after them | From the `\` to the last `HexDigit` read, or to the `{` if there is none |
+| `\u{` with no `HexDigit`, more than six, or no `}` directly after them. Every `HexDigit` that follows `\u{` is read, however many | From the `\` to the last `HexDigit` read, or to the `{` if there is none. In `"\u{1234567}"` it is `\u{1234567` |
 | `\u{X...}` whose number is above U+10FFFF or in U+D800 to U+DFFF | The whole escape |
 | A `\uXXXX` in U+D800 to U+DBFF not followed directly by a `\uXXXX` in U+DC00 to U+DFFF | The first `\uXXXX` |
 | A `\uXXXX` in U+DC00 to U+DFFF that does not complete a pair | That `\uXXXX` |
@@ -233,7 +236,8 @@ Hex      = "0x" HexDigit { [ "_" ] HexDigit } .
 3. In the value of a text part, a raw U+000D followed by U+000A, and a raw
    U+000D alone, each read as one U+000A. An escape `\r` still gives U+000D.
 4. A `\` directly before a line end is `line-continuation`, with the span of the
-   `\`.
+   `\`. A `\` directly before the end of input is part of the literal: the code
+   is `unterminated-string` (rule 7), not `bad-escape`.
 5. An **interpolation** is `${`, then tokens, white space and comments, then the
    `}` that matches the `${`. The tokens must form one `Expr` (3.1). The
    matching `}` is found by counting the `{` and `}` tokens between: the
@@ -263,9 +267,9 @@ Hex      = "0x" HexDigit { [ "_" ] HexDigit } .
    that code point.
 2. These begin no token: every code point that is not ASCII (a non-breaking
    space and a letter with an accent among them); a U+FEFF that is not at the
-   start of the text; every control character other than the four of white
-   space; and `#`, `$`, `@`, `\`, `^`, `~`, and a `&` that is not followed by
-   `&`.
+   start of the text; every control character, U+0000 to U+001F and U+007F to
+   U+009F, other than the four of white space; and `#`, `$`, `@`, `\`, `^`, `~`,
+   and a `&` that is not followed by `&`.
 
 ### 2.11 Order of lexical diagnostics
 
@@ -273,7 +277,10 @@ Hex      = "0x" HexDigit { [ "_" ] HexDigit } .
 2. If that finds a lexical diagnostic, the first diagnostic of the parse is the
    first lexical diagnostic the lexer meets, reading from the start. An
    unterminated literal or comment is met where it stops. So in `"a\q` and then
-   a line end, `bad-escape` is met before `unterminated-string`.
+   a line end, `bad-escape` is met before `unterminated-string`. When two
+   literals stop at the same place, the innermost is the one met: in `` `${"abc
+   `` the diagnostic is `unterminated-string` for the one-line string, from its
+   `"` to the end of input.
 3. Lexical diagnostics are `unexpected-character`, `unterminated-string`,
    `unterminated-comment`, `bad-escape`, `line-continuation`, `bad-number` and
    `literal-range`.
@@ -386,9 +393,9 @@ Core, at the span in the third column.
 
 | # | Rule | Span of the error |
 | --- | --- | --- |
-| 1 | `-` or `!` may not apply directly to a `Power` that has `**`. `-2 ** 2` and `!a ** b` are errors. `(-2) ** 2` and `-(2 ** 2)` are valid | The `-` or the `!` |
-| 2 | The left operand of `in` or `not in` may not be a `!` expression written without parentheses. `!a in b` is an error. `a not in b` and `(!a) in b` are valid | The `!` |
-| 3 | `??` does not mix with `\|\|`, `&&`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` or `not in` without parentheses: `a ?? b > c`, `a > b ?? c`, `a ?? b \|\| c` are errors. The productions give this | The operator token that cannot follow |
+| 1 | `-` or `!` may not apply directly to a `Power` that has `**`. `-2 ** 2` and `!a ** b` are errors. `(-2) ** 2` and `-(2 ** 2)` are valid | The outermost prefix operator, the first in the text: in `- -2 ** 2` and `!-2 ** 2`, the first `-` or the `!` |
+| 2 | The left operand of `in` or `not in` may not be a `!` expression written without parentheses. `!a in b` is an error. `a not in b` and `(!a) in b` are valid | The first prefix operator of the left operand, the outermost: in `!!a in b`, the first `!` |
+| 3 | `??` does not mix with `\|\|`, `&&`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` or `not in` without parentheses: `a ?? b > c`, `a > b ?? c`, `a ?? b \|\| c` are errors. The productions give this | The operator token that cannot follow. For `not in`, from `not` to the end of `in`, as in `a ?? b not in c` |
 | 4 | An `if` or a `try` is a whole expression, not an operand. After its last branch or its handler, only a token that may follow an `Expr` may stand. `if (c) { 1 } else { 2 } + 3` is an error, and so is a `.`, `[`, `?`, `?.` or `?.[` there. Write `(if (c) { 1 } else { 2 }) + 3`. The productions give this | The token that cannot follow |
 | 5 | An `if` or a `try` may not stand where an operand is needed: `1 + if (c) { 1 } else { 2 }` | The `if` or the `try` |
 | 6 | A `match` subject may not start with `{`, `if` or `try`. Write it in parentheses. `match {` with no subject is this error | That first token of the subject |
@@ -642,8 +649,11 @@ There are seven kinds of value.
    then `0` or a digit run with no leading zero, then optionally `.` and one or
    more digits, then optionally `e` or `E`, an optional `+` or `-`, and one or
    more digits. No `+` at the start, no hex, no `_`, no white space. The value
-   is the nearest binary64 value, ties to even. Text whose value is not finite
-   is not accepted. `-0` reads as zero.
+   is the nearest binary64 value, ties to even. The rounding is exact for any
+   count of digits, as for a number literal (2.5). An implementation may not
+   rely on a platform function that does not promise this; where none does, it
+   rounds by its own code. Text whose value is not finite is not accepted. `-0`
+   reads as zero.
 3. Reading back the text of any number gives that number.
 4. The library functions that convert text to a number are built on rule 2 and
    say what they add (`04-library.md`).
@@ -1139,7 +1149,7 @@ one level.
 | A prefix operator: `!` or `-` | to the end of its operand |
 | A binary operator: `\|\|`, `&&`, `??`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not in`, `+`, `-`, `*`, `/`, `%` or `**` | to the end of its right operand |
 | The `?` of a conditional | to its `:` |
-| The word `match` | to the `{` after its subject |
+| The word `match` | to the end of its subject. It has closed when the `{` of the arms opens its own level |
 
 Nothing else opens a level. In particular these do not:
 
@@ -1183,6 +1193,7 @@ Nothing else opens a level. In particular these do not:
 | `` `${[x]}` `` | 2: the `${` and the `[` |
 | `if (a) { 1 } else if (b) { 2 } else { x }` | 1: the braces of the last branch |
 | `match x { 1 => 2 }` | 1: the word `match` |
+| `match y { _ => x }` | 1: the `{` of the arms. The level of `match` has closed. So after 99 `(`, the subject `y` is inside level 100, and the `{` opens level 100 |
 
 ## 14. Diagnostics of the language
 
@@ -1230,7 +1241,10 @@ Core has 14 `parse` codes: the 13 general codes and `reserved-word`.
    cannot begin one there. `true`, `false`, `null` and `match` begin an operand.
    `if` and `try` begin an `Expr` but not an operand: where an operand is needed
    they are `unexpected-token` (3.4 rule 5). `const` begins a `Const` only at
-   the start of a program, block or branch, or after a `Const`.
+   the start of a program, block or branch, or after a `Const`. The start of a
+   `match` case, where a literal or `_` is needed, is such a place: `match x {
+   nil => 1 }` is `reserved-word` at `nil`. A name that is not reserved there is
+   `unexpected-token`: `match x { a => 1 }`.
 
 So `const match = 1;`, `is => 1`, `let x = 1;`, `return x`, `nil`, `[for (x of
 xs) x]`, `{for}` and `1 + else` are each `reserved-word` at the word. After `.`
@@ -1248,9 +1262,9 @@ diagnostic. A lexical diagnostic comes first (2.11).
 | --- | --- | --- |
 | A text block, `"""`; `'''` | `unexpected-token` | The first three code points of the block token (2.3 rule 7) |
 | A raw string, `r"..."` or `r'...'`; a prefixed string, `f"..."` or `R"..."`; a tagged template, `` r`...` `` or `` String.raw`...` ``: the prefixed literal (2.3 rule 9) | `unexpected-token` | The word |
-| The word `r` or `R` followed by white space and then `"` or `'` | `unexpected-token` | The word |
+| A one-line string token that does not fit, when the token before it is the word `r` or `R` with white space or a comment between: `r "a"`, and after a `.` too, `x.r "a"`. Before a text block, `r """a"""`, the text block's row applies | `unexpected-token` | The word |
 | `x as T`, `x is T`, `x as const`, `x is not T` | `unexpected-token` | The `as` or the `is` |
-| `!x as T`, `!x is T`: `as` or `is` whose left operand is a `!` expression written without parentheses | `unexpected-token` | The `!` |
+| `!x as T`, `!x is T`, `a == !x is T`: `as` or `is` whose left operand is a `!` expression written without parentheses. `as` and `is` stand at the level of a comparison operator, and their left operand is what a comparison's would be. So in `a + !x as T` the left operand is `a + !x`, and the error is the row above, at the `as` | `unexpected-token` | The `!` |
 | A projection, `xs[*]` or `xs?.[*]` | `unexpected-token` | The `*` |
 | `match {`, with no subject | `unexpected-token` | The `{` |
 | `===`, `!==` | `unexpected-token` | The token |
@@ -1279,8 +1293,9 @@ diagnostic. A lexical diagnostic comes first (2.11).
 span to the suite. For those rows the Core suite states the phase and no span,
 and follow-on F8 adds the cases that pin it. They are the last row of the table;
 `x as const` and `x is not T`; `xs.*.f` and `xs[].f`; `const {a} = x => x;`; and
-a `match` subject that starts with `{`, `if` or `try`. The Core suite pins the
-span of every other row.
+a `match` subject that starts with `{`, `if` or `try`, but for `match {`, whose
+span, the `{`, the Core suite pins. The Core suite pins the span of every other
+row.
 
 ### 14.4 Static rules
 

@@ -1,0 +1,206 @@
+// The environment (03 3.3) and its declaration errors (03 3.3.4, 05 19.5).
+//
+// An implementation with no type checker parses every type text by the
+// grammar (ruling A2) and applies the rules of names. The rules beyond the
+// grammar (two records, an undeclared type name, depth, a key written twice)
+// need the type checker and are not applied here.
+
+import type { Diagnostic } from "../syntax/diagnostic.ts";
+import { isName, isReserved } from "../syntax/token.ts";
+import { parseSignature, parseType } from "../types/typetext.ts";
+import type { SigNode, TypeNode } from "../types/typetext.ts";
+
+/** The newest version of the specification this implementation offers. */
+export const VERSION = "3.0";
+export const SUPPORTED_VERSIONS: ReadonlySet<string> = new Set(["3.0"]);
+
+/** The six check classes (05 17). */
+export const CHECK_CLASSES: ReadonlySet<string> = new Set(["constant-condition", "dynamic", "index", "divide", "value", "host"]);
+
+/** Namespaces reserved for the library (03 3.3.3 item 3). */
+export const RESERVED_NAMESPACES: ReadonlySet<string> = new Set(["json", "time", "math", "base64"]);
+
+export interface Limits {
+  steps: number | null; // null: off
+  allocation: number | null;
+  depth: number;
+}
+
+export const DEFAULT_LIMITS: Limits = { steps: 1_000_000, allocation: 1_000_000, depth: 200 };
+
+export interface FunctionDecl {
+  name: string; // with its namespace, as `geo.distance`
+  namespace: string | null;
+  sig: SigNode;
+  signature: string;
+}
+
+export interface MethodDecl {
+  type: string;
+  name: string;
+  sig: SigNode;
+  signature: string;
+}
+
+/** What a case or a host declares (03 3.3.1), in its portable form. */
+export interface Declarations {
+  version?: string;
+  env?: string; // one record type: the variables
+  opaque?: string[];
+  methods?: Record<string, string>;
+  functions?: Record<string, string>; // name -> signature
+  reject?: string[];
+  returns?: string;
+  limits?: Partial<Limits>;
+}
+
+export interface Environment {
+  version: string;
+  variables: Map<string, TypeNode>;
+  functions: Map<string, FunctionDecl>;
+  namespaces: Set<string>;
+  opaque: Set<string>;
+  methods: Map<string, MethodDecl>; // key "Type.method"
+  reject: Set<string>;
+  limits: Limits;
+  /** The expected result: a type, the word condition, or nothing. */
+  returns: TypeNode | "condition" | null;
+  /** The library functions the environment has. */
+  library: ReadonlySet<string>;
+}
+
+export type DeclareResult = { ok: true; env: Environment } | { ok: false; diagnostics: Diagnostic[] };
+
+function diag(code: string, message: string): Diagnostic {
+  return { phase: "declare", code, message };
+}
+
+function hasFn(t: SigNode): boolean {
+  return t.params.some((p) => p.type.t === "fn");
+}
+
+/**
+ * Build a child of the base environment from declarations. `library` is the
+ * set of library function names the environment has.
+ */
+export function declare(d: Declarations, library: ReadonlySet<string>): DeclareResult {
+  const errs: Diagnostic[] = [];
+  const env: Environment = {
+    version: VERSION,
+    variables: new Map(),
+    functions: new Map(),
+    namespaces: new Set(),
+    opaque: new Set(),
+    methods: new Map(),
+    reject: new Set(["constant-condition"]),
+    limits: { ...DEFAULT_LIMITS, ...(d.limits ?? {}) },
+    returns: null,
+    library,
+  };
+
+  if (d.version !== undefined) {
+    if (!SUPPORTED_VERSIONS.has(d.version)) errs.push(diag("unsupported-version", `version ${d.version} is not offered`));
+    else env.version = d.version;
+  }
+
+  for (const name of d.opaque ?? []) {
+    if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) errs.push(diag("bad-name", `${name} is not an opaque type name`));
+    else if (env.opaque.has(name)) errs.push(diag("name-clash", `the opaque type ${name} is declared twice`));
+    else env.opaque.add(name);
+  }
+
+  if (d.env !== undefined) {
+    const t = parseType(d.env);
+    if (!t.ok) errs.push(diag("bad-type", `the variables' type: ${t.message}`));
+    else if (t.node.t !== "record") errs.push(diag("bad-type", "the variables are not declared as one record type"));
+    else {
+      for (const f of t.node.fields) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(f.key) || !isName(f.key)) {
+          errs.push(diag("bad-name", `${JSON.stringify(f.key)} is not a name`));
+        } else if (env.variables.has(f.key)) {
+          errs.push(diag("name-clash", `the variable ${f.key} is declared twice`));
+        } else {
+          env.variables.set(f.key, f.type);
+        }
+      }
+    }
+  }
+
+  for (const [full, signature] of Object.entries(d.functions ?? {})) {
+    const parts = full.split(".");
+    if (parts.length > 2 || !parts.every((p) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(p) && p !== "_")) {
+      errs.push(diag("bad-name", `${full} is not a function name`));
+      continue;
+    }
+    if (parts.some((p) => isReserved(p))) {
+      errs.push(diag("bad-name", `${full} uses a reserved word`));
+      continue;
+    }
+    const namespace = parts.length === 2 ? parts[0] : null;
+    if (namespace !== null && RESERVED_NAMESPACES.has(namespace)) {
+      errs.push(diag("reserved-namespace", `the namespace ${namespace} is reserved for the library`));
+      continue;
+    }
+    const s = parseSignature(signature);
+    if (!s.ok) {
+      errs.push(diag("bad-signature", `the signature of ${full}: ${s.message}`));
+      continue;
+    }
+    if (hasFn(s.node)) {
+      errs.push(diag("bad-signature", `${full} has a parameter of a function type`));
+      continue;
+    }
+    if (namespace === null && library.has(full)) {
+      errs.push(diag("name-clash", `${full} is a library function`));
+      continue;
+    }
+    if (env.variables.has(full) && namespace === null) {
+      errs.push(diag("name-clash", `${full} is declared as a variable and a function`));
+      continue;
+    }
+    env.functions.set(full, { name: full, namespace, sig: s.node, signature });
+    if (namespace !== null) env.namespaces.add(namespace);
+  }
+  for (const ns of env.namespaces) {
+    if (env.variables.has(ns)) errs.push(diag("name-clash", `the variable ${ns} has the name of a namespace`));
+  }
+
+  for (const [key, signature] of Object.entries(d.methods ?? {})) {
+    const dot = key.indexOf(".");
+    const type = key.slice(0, dot);
+    const name = key.slice(dot + 1);
+    const s = parseSignature(signature);
+    if (!s.ok) {
+      errs.push(diag("bad-signature", `the method ${key}: ${s.message}`));
+      continue;
+    }
+    if (hasFn(s.node)) {
+      errs.push(diag("bad-signature", `the method ${key} has a parameter of a function type`));
+      continue;
+    }
+    if (!env.opaque.has(type)) {
+      errs.push(diag("bad-signature", `the receiver of ${key} is not a declared opaque type`));
+      continue;
+    }
+    env.methods.set(key, { type, name, sig: s.node, signature });
+  }
+
+  if (d.reject !== undefined) {
+    env.reject = new Set();
+    for (const c of d.reject) {
+      if (!CHECK_CLASSES.has(c)) errs.push(diag("bad-class", `${c} is not a check class`));
+      else env.reject.add(c);
+    }
+  }
+
+  if (d.returns !== undefined) {
+    if (d.returns === "condition") env.returns = "condition";
+    else {
+      const t = parseType(d.returns);
+      if (!t.ok) errs.push(diag("bad-type", `the expected result: ${t.message}`));
+      else env.returns = t.node;
+    }
+  }
+
+  return errs.length > 0 ? { ok: false, diagnostics: errs } : { ok: true, env };
+}
