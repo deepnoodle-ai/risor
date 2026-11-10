@@ -171,8 +171,10 @@ specified and which no case compares.
 2. `r?.name(…)` on a null `r` gives null, and the rest of its chain is not
    evaluated or charged (`02-evaluation.md`).
 3. The checker reports a receiver that may be null (`05-types.md`).
-4. No parameter accepts null unless its type is `any`. The parameters of type
-   `any` are those of `string`, `bool` and `type`, and the `data` of `fail`.
+4. A parameter accepts null only when its type is `any` or a type variable with
+   no bound (2.6). The parameters of type `any` are those of `string`, `bool`
+   and `type`, and the `data` of `fail`. The one parameter outside a callback
+   whose type is a type variable with no bound is the `init` of `reduce`.
 
 ### 2.5 Names that are also map keys
 
@@ -212,14 +214,17 @@ specified and which no case compares.
    number that is not whole at an `int` parameter; and `unordered` for any
    failure at a parameter bound `ordered` (the arguments of the functions `min`
    and `max`), null and lists included. So `fixed("a", 2.5)` fails with
-   `argument`, and `max(1, null)` with `unordered`.
+   `argument`, and `max(1, null)` with `unordered`. A parameter whose type is
+   `any`, or a type variable with no bound (`A`, `T`, `U`), accepts every value,
+   null included, and is not tested. So `[].reduce((acc, x) => 0, null)` gives
+   null: the `init` of `reduce` has the type `A`.
 
 | Found | Code |
 | --- | --- |
 | A null receiver | `null-operand` |
 | A method call that fails a shape test (2.2) | `wrong-kind` |
 | An argument of a kind its parameter does not allow | `wrong-kind` |
-| A null argument, for a parameter whose type is not `any` | `wrong-kind` |
+| A null argument, for a parameter whose type names a kind (`int`, `float`, `string`, a list, a map) | `wrong-kind` |
 | A number that is not a whole number (3.10), for a parameter of type `int` | `wrong-kind` |
 | Arguments of `min` or `max`, the functions, that are not ordered (3.6) | `wrong-kind` |
 
@@ -1692,7 +1697,8 @@ them.
    `init`, the first element and 0. Each later call is given the result of the
    call before it, the element and its index. The result is the result of the
    last call.
-2. `init` for an empty list. `init` is required.
+2. `init` for an empty list. `init` is required. Its type is the type variable
+   `A`, which has no bound, so it accepts every value, null included (2.6).
 3. The entry creates nothing. What `f` creates, `f` charges.
 
 | Program | Data | Result |
@@ -1700,6 +1706,8 @@ them.
 | `xs.reduce((acc, x) => acc + x, 0)` | `{xs: int[]}`, xs = `[1, 2, 3]` | `6`; 11 steps, 0 units |
 | `xs.reduce((acc, x) => acc + x, 10)` | `{xs: int[]}`, xs = `[]` | `10` |
 | `["a", "b"].reduce((acc, x, i) => acc + x + string(i), "")` |  | `"a0b1"` |
+| `[].reduce((acc, x) => 0, null)` |  | `null`; 2 steps, 1 unit |
+| `[1, 2].reduce((acc, x) => (acc ?? 0) + x, null)` |  | `3`; 8 steps, 3 units |
 
 #### 5.4.9 `sum`
 

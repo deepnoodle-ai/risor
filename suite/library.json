@@ -3191,6 +3191,24 @@
         "expect": {
           "value": "a0b1"
         }
+      },
+      {
+        "name": "reduce of an empty list with a null init",
+        "source": "[].reduce((acc, x) => 0, null)",
+        "expect": {
+          "value": null,
+          "steps": 2,
+          "allocated": 1
+        }
+      },
+      {
+        "name": "reduce with a null init",
+        "source": "[1, 2].reduce((acc, x) => (acc ?? 0) + x, null)",
+        "expect": {
+          "value": 3,
+          "steps": 8,
+          "allocated": 3
+        }
       }
     ]
   },
