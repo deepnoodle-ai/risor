@@ -276,13 +276,45 @@ func (c *compiler) as(n *syntax.As) code {
 
 // JSONText is the JSON text of 03-host.md 3.2.4: the JSON form of a value a
 // run returned, keys in code point order. It fails with wrong-kind on an
-// opaque value and with depth-exceeded past the default depth limit; code
-// and message are returned, and ok is false.
+// opaque value, number-range on a host number that cannot enter the language,
+// and depth-exceeded past the default depth limit; code and message are
+// returned, and ok is false.
 func JSONText(v any) (text, code, msg string, ok bool) {
+	return jsonText(v, DefaultLimits.Depth, "json")
+}
+
+// RenderText is the rendering of a value (01-language.md 12) under maxDepth:
+// empty for null, the string itself for a string, and the JSON form for
+// booleans, numbers, lists and maps. It fails with wrong-kind on an opaque
+// value, number-range on a host number that cannot enter the language, and
+// depth-exceeded past maxDepth.
+func RenderText(v any, maxDepth int) (text, code, msg string, ok bool) {
+	if maxDepth <= 0 {
+		maxDepth = DefaultLimits.Depth
+	}
+	r, rerr := value.Read(v)
+	if rerr == value.ReadRange {
+		return "", "number-range", messages.Build("number-range", "host"), false
+	}
+	switch value.KindOf(r) {
+	case value.Null:
+		return "", "", "", true
+	case value.String:
+		return r.(string), "", "", true
+	}
+	return jsonText(v, maxDepth, "text")
+}
+
+func jsonText(v any, maxDepth int, opaqueTemplate string) (text, code, msg string, ok bool) {
 	var b strings.Builder
 	var walk func(v any, depth int) bool
 	walk = func(v any, depth int) bool {
-		v, _ = value.Read(v)
+		var rerr value.ReadError
+		v, rerr = value.Read(v)
+		if rerr == value.ReadRange {
+			code, msg = "number-range", messages.Build("number-range", "host")
+			return false
+		}
 		switch value.KindOf(v) {
 		case value.Null:
 			b.WriteString("null")
@@ -299,8 +331,8 @@ func JSONText(v any) (text, code, msg string, ok bool) {
 			value.WriteEscaped(&b, v.(string))
 			b.WriteByte('"')
 		case value.List, value.Map:
-			if depth+1 > DefaultLimits.Depth {
-				code, msg = "depth-exceeded", messages.Build("depth-exceeded", "", messages.Word("limit", strconv.Itoa(DefaultLimits.Depth)))
+			if depth+1 > maxDepth {
+				code, msg = "depth-exceeded", messages.Build("depth-exceeded", "", messages.Word("limit", strconv.Itoa(maxDepth)))
 				return false
 			}
 			if value.KindOf(v) == value.List {
@@ -331,7 +363,7 @@ func JSONText(v any) (text, code, msg string, ok bool) {
 			}
 			b.WriteByte('}')
 		default:
-			code, msg = "wrong-kind", messages.Build("wrong-kind", "json")
+			code, msg = "wrong-kind", messages.Build("wrong-kind", opaqueTemplate)
 			return false
 		}
 		return true

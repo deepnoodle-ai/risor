@@ -10,6 +10,7 @@ import (
 
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
+	"github.com/deepnoodle-ai/risor/v3/internal/eval"
 	"github.com/deepnoodle-ai/wonton/cli"
 )
 
@@ -171,7 +172,7 @@ func configCommand(ctx *cli.Context, eval bool) int {
 	case f.format == "json":
 		text, err = risor.JSONText(v)
 	default:
-		text, err = rendering(v)
+		text, err = rendering(env, v)
 	}
 	if err != nil {
 		return fail(err)
@@ -208,24 +209,30 @@ func checkSteps(env *risor.Env, f *configFlags, schema any, source string) (stri
 	return cr.Type, nil
 }
 
-// rendering is the rendering of a value (01-language.md 12), as string(v)
-// gives it.
-func rendering(v any) (string, error) {
-	env, err := risor.NewEnv(risor.Var("v", "any"))
-	if err != nil {
-		return "", err
+// rendering is the rendering of a value (01-language.md 12) under the
+// environment's depth limit.
+func rendering(env *risor.Env, v any) (string, error) {
+	depth := eval.DefaultLimits.Depth
+	if desc, err := env.Describe(); err == nil {
+		var d struct {
+			Limits struct {
+				Depth int `json:"depth"`
+			} `json:"limits"`
+		}
+		if json.Unmarshal(desc, &d) == nil && d.Limits.Depth > 0 {
+			depth = d.Limits.Depth
+		}
 	}
-	x, err := risor.Parse("string(v)")
-	if err != nil {
-		return "", err
+	text, code, msg, ok := eval.RenderText(v, depth)
+	if ok {
+		return text, nil
 	}
-	p, err := env.Compile(x, risor.NoCheck)
-	if err != nil {
-		return "", err
+	class := "dynamic"
+	switch code {
+	case "depth-exceeded":
+		class = "limit"
+	case "number-range":
+		class = "environment"
 	}
-	s, err := p.Run(context.Background(), risor.Map{"v": v})
-	if err != nil {
-		return "", err
-	}
-	return s.(string), nil
+	return "", &risor.Error{Diagnostics: []risor.Diagnostic{{Phase: risor.PhaseRun, Code: code, Class: class, Message: msg}}}
 }
