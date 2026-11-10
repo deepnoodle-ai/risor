@@ -414,7 +414,8 @@ func (r *run) readMore(v any, sp syntax.Span) any {
 			return value.Num(float64(x))
 		}
 	case int:
-		if x <= value.MaxWhole && x >= -value.MaxWhole {
+		// int64 first: where an int has 32 bits, MaxWhole does not fit one.
+		if int64(x) <= value.MaxWhole && int64(x) >= -value.MaxWhole {
 			return value.Num(float64(x))
 		}
 	}
