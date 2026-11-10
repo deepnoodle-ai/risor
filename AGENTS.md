@@ -3,53 +3,204 @@
 This file provides guidance to coding agents when working with code in this
 repository.
 
-## Project Overview
+## This branch is Risor v3
 
-Risor is a fast, embedded scripting language for Go. Scripts compile to bytecode
-and run on a lightweight virtual machine.
+You are on `v3`, the integration branch for Risor v3. `main` holds Risor v2,
+which is released and is maintained there.
 
-We are making major modifications for a new `v2` version of the library.
+v3 is a new language and a new code base. It is not a revision of v2.
 
-Our priorities when designing and building `v2`:
+**Status: design.** The design is written and most of it is accepted. No
+specification and no implementation exists yet. The Go code on this branch is
+still v2's, plus the experiments under `experiments/v3/`.
 
-- **Correctness** — Well-defined behavior
-- **Clarity** — One way to do things, explicit over implicit, documented contracts
-- **Foundation** — Small core that is easily built upon
-- **Focused** — Solve embedding use cases well, defer features that add complexity without clear value
-- **Elegant** — Intuitive scripting syntax that feels natural and expressive
+## What v3 is
 
-## Risor Syntax Examples
+Risor v3 is a small expression language that a host program embeds. A host
+gives it data and gets a value back. Typical uses are a condition in a workflow
+step, a template, a query over JSON, and a config file.
 
-```ts
-// Functions and closures
-function makeCounter() {
-    let count = 0
-    return function() {
-        count++
-        return count
-    }
+- **A specification, not one implementation.** The language is defined by a
+  specification and a conformance suite of data files. There are three
+  independent implementations: Go, Rust and TypeScript.
+- **A program is `const` bindings followed by one expression.** There are no
+  statements, no loops and no reassignment. `if`, `match` and `try` are
+  expressions.
+- **Values cannot be changed.** They are null, bool, number, string, list, map
+  and opaque host values. Host data is read in place.
+- **Checked before it runs.** A static checker is part of the language. A
+  checked program cannot fail with an unknown name, a missing field, a null or
+  a wrong kind.
+- **Bounded.** Steps, allocation units, a deadline and a depth limit are part
+  of the language. The counts are exact, so a program reaches a limit at the
+  same point in every implementation.
+- **No bytecode and no virtual machine.** The Go implementation compiles the
+  AST to closures. `experiments/v3/README.md` has the measurement behind this.
+
+```js
+// Summarize a test run. `fetch` is data from the host.
+const failed = fetch.tests.filter(t => t.status == "fail");
+const rate = len(failed) / len(fetch.tests);
+const verdict = if (!failed) { "pass" }
+  else if (rate < 0.1) { "flaky" }
+  else { "fail" };
+{
+  verdict,
+  summary: `${len(failed)} of ${len(fetch.tests)} failed`,
+  names: failed[*].name,
+  slowest: failed.sortBy(t => t.ms, "desc").slice(0, 3)
+    .map(({name, ms}) => `${name} ${ms}ms`),
+  owner: try { fetch.owner as string } catch { "unknown" },
 }
-let counter = makeCounter()
-counter() // 1
-counter() // 2
-
-// Arrow functions with list operations
-let numbers = [1, 2, 3, 4, 5]
-numbers.filter(x => x > 2).map(x => x * 2) // [6, 8, 10]
-
-// Destructuring and spread
-let { name, age } = {name: "Alice", age: 30}
-let merged = {...{a: 1}, ...{b: 2}} // {a: 1, b: 2}
-
-// Map methods (Python-style, methods shadow keys)
-let config = {host: "localhost", port: 8080}
-config.keys()                      // iter("host", "port")
-config.get("timeout", 30)          // 30 (default value)
-config.each((k, v) => print(k, v)) // iterate key-value pairs
-list(config.entries())             // [["host", "localhost"], ["port", 8080]]
 ```
 
-## Build Commands
+This is not v2 syntax. v2 has `let`, `function`, statements and loops. The
+files under `docs/` describe v2.
+
+## Goals
+
+The project owner set these constraints. Every design choice is judged against
+them.
+
+| # | Constraint |
+| --- | --- |
+| C1 | The language is not tied to Go. There are three implementations: Go, Rust and TypeScript. |
+| C2 | Least surprise, all else equal. |
+| C3 | A preference for expressions over many statements. |
+| C4 | Expressiveness and the author's experience must be high. A design that is safe but austere misses the goal. |
+| C5 | Memory allocation and run duration can be controlled and limited. |
+| C6 | Lean toward TypeScript's syntax, all else equal, without JavaScript's historical baggage. |
+| C7 | Compatibility with expr and with Risor v1 and v2 carries little weight. A more robust v3 is worth a break. |
+
+C1 has a consequence for all work: a rule that only Go can implement cheaply is
+a defect in the design. Do not define behavior by what a Go standard library
+function does.
+
+## Where the design is
+
+The design is in `experiments/v3/design/`. Read `00-overview.md` first.
+
+| File | Subject |
+| --- | --- |
+| `00-overview.md` | Constraints, every decision (`D1` and up), the roadmap. **It is the authority: where another file disagrees, this file wins.** |
+| `01-prior-art.md` | Other embedded languages and what to take from them |
+| `02-language.md` | Grammar, node kinds, values, semantics, parse errors |
+| `03-types.md` | Types, the checker, check errors |
+| `04-runtime.md` | Evaluation, step and allocation costs, limits |
+| `05-host-api.md` | The API a host uses, in each of the three languages; error codes; the CLI |
+| `06-stdlib.md` | The library of functions and methods |
+| `07` to `13` | One feature each: checked conversion (`as`, `is`), strings, tagged unions, errors, testing, config files, queries |
+
+A plan (`07` to `13`) is the authority for its feature. `02` to `06` carry its
+rules and cite it.
+
+`experiments/v3/lab/` holds the small Go measurements that the documents cite.
+`experiments/v3/spike/` and `bench/` are the first experiment: an evaluator
+with no VM, measured against v2 and expr.
+
+## Decisions
+
+The project owner decides. Section 4 of the overview lists each decision and
+its state: settled by the owner, or a recommendation that the owner has not
+yet confirmed.
+
+- Do not settle an open decision as a side effect of other work. Write to the
+  recommendation, say that it is open, and put the question to the owner.
+- Do not reverse a settled decision. If you find a reason to, state the reason
+  and ask.
+- When two documents disagree, do not pick one silently. Find which document
+  owns the rule, fix the other, and report it.
+- A new decision gets the next `D` number and a row in the overview.
+
+## Editing the design documents
+
+- **Keep the counts in step.** The documents state the number of node kinds,
+  error codes, library entries and reserved words in several places. A change
+  to one of them is a change to every file that states it. Search for the old
+  number before you finish.
+- **Say how you know.** The documents mark a claim as measured, as run
+  (`ran`, with the tool and version), as inference, or as "from memory". Keep
+  that practice. Do not state an untested claim about TypeScript, Rust or
+  another language as fact.
+- **Cite exactly.** A rule is cited by document and section (`02` 2.8), a
+  decision by its number (`D47`, or `09-4` inside a plan).
+- **Style.** Plain, exact English. Short sentences. Tables for rules. Prose
+  wrapped at 80 columns.
+- **This repository is public.** Cite only public repositories.
+
+## Order of work
+
+Section 5.2 of the overview has the full list. In short:
+
+1. The owner settles the decisions that are still open.
+2. The conformance format and first cases; a Go lexer, parser and AST.
+3. A Go reference evaluator with all limits and a core subset of the library.
+4. A TypeScript lexer, parser and evaluator, written from the specification
+   and the suite only.
+5. A Rust lexer, parser and evaluator, the same way.
+6. The checker in Go.
+7. The full host binding and library in Go.
+8. Acceptance: a real host ported to v3.
+9. The checker and library in TypeScript and Rust; tools.
+
+Steps 4 and 5 are early on purpose. They test C1 before the checker and the
+library are built on rules that might not hold in three languages.
+
+## Branches
+
+| Branch | Holds |
+| --- | --- |
+| `main` | Risor v2. Releases are cut from it. |
+| `v3` | Risor v3 in development. This branch. |
+| `v1` | Risor v1, kept for reference. |
+
+- **v3 work lands on `v3`.** Branch from `v3` and open the pull request
+  against `v3`, not `main`. With `gh`, pass `--base v3`.
+- **A fix for v2 goes to `main`,** on a branch from `main`.
+- **Pull requests are squash-merged.** The title becomes the commit message.
+- **Do not rebase or force-push `v3`.** Other branches are based on it.
+- **`main` is merged into `v3`** with a merge commit, from time to time, while
+  v2's code is still on this branch. When v3 has removed that code, the merges
+  stop.
+- **At release,** a `v2` branch is cut from `main` for maintenance and `v3` is
+  merged into `main`. The Go module path becomes
+  `github.com/deepnoodle-ai/risor/v3`.
+
+CI runs for a branch only if `.github/workflows/ci.yml` names it, and it does
+not name `v3` yet. Until it does, run `make test` and `make format` yourself
+before you open a pull request.
+
+The layout of the repository for a specification, a conformance suite and
+three implementations is not decided.
+
+## Rules that differ between v2 and v3
+
+| Subject | v2 code | v3 code and design |
+| --- | --- | --- |
+| Resource limits | Not a security boundary. Do not add limit machinery. See "Resource limits in v2" below. | Limits are part of the language (C5). Every operation has a specified cost. Adding a cost rule is normal work. |
+| Compatibility | Do not break v2 users. | A break with v2 and expr is acceptable (C7). |
+| Behavior | What the Go implementation does. | What the specification says. Three implementations must agree. |
+
+## Go code on this branch
+
+The Go code outside `experiments/v3/` is Risor v2. Its pipeline is:
+
+```
+Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (execution)
+```
+
+- `internal/lexer/` - Tokenization
+- `pkg/parser/` - AST construction (a Pratt parser)
+- `pkg/compiler/` - Bytecode generation
+- `pkg/vm/` - Virtual machine
+- `pkg/object/` - v2's value types
+- `pkg/builtins/`, `pkg/modules/` - v2's library
+- `cmd/risor/` - The CLI and REPL
+- `cmd/risor-lsp/` - The language server
+
+Section 5.3 of the overview says which of these v3 keeps and which it removes.
+
+### Build commands
 
 ```bash
 # Run tests (uses gotestsum)
@@ -63,115 +214,24 @@ make format
 
 # Tidy all module dependencies
 make tidy
-
-# Update all dependencies
-make update-deps
-
-# Generate coverage report
-make cover
-
-# Build and install CLI from source
-cd cmd/risor && go install .
-
-# Install VSCode extension locally
-make extension-install
 ```
 
-## Architecture
-
-### Execution Pipeline
-
-```
-Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (execution)
-```
-
-### Core Components
-
-- `internal/lexer/` - Tokenization
-- `parser/` - AST construction (recursive descent parser)
-- `compiler/` - Bytecode generation with symbol table for scope tracking
-- `vm/` - Virtual machine execution
-- `object/` - Type system (~47 files) - all Risor values implement `Object` interface
-- `builtins/` - Built-in functions (type conversions, container ops, encode/decode)
-- `modules/` - 3 modules: math, rand, regexp
-
-### Entry Points
-
-- **CLI**: `cmd/risor/` - Uses Cobra framework, includes REPL
-- **Language Server**: `cmd/risor-lsp/` - LSP implementation for IDE support
-- **Library API**: `risor.Eval(ctx, source, options...)` in `risor.go`
-
-### Configuration Options
-
-By default, the Risor environment is empty (secure by default). Use `Builtins()`
-for the standard library:
-
-```go
-// Empty environment (default)
-risor.Eval(ctx, "1 + 2")
-
-// With standard library
-risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
-
-// Custom environment
-risor.Eval(ctx, source, risor.WithEnv(map[string]any{"x": 42}))
-
-// Customized standard library
-env := risor.Builtins()
-delete(env, "math")         // remove module
-env["custom"] = myModule    // add custom module
-risor.Eval(ctx, source, risor.WithEnv(env))
-```
-
-**Options:**
-
-```go
-risor.WithEnv(map[string]any)    // Provide environment variables
-risor.WithFilename(string)       // Set filename for error messages
-risor.WithObserver(Observer)     // Set execution observer for profiling/debugging
-```
-
-**Helpers:**
-
-```go
-risor.Builtins()                 // Returns standard library as map[string]any
-```
-
-## Resource Limits
-
-`WithMaxSteps`, `WithTimeout`, `WithMaxStackDepth`, and `WithLimits` catch
-scripts that go wrong by accident. They are not a security boundary, and Risor
-does not try to make them one. Go has no allocator hook, so making the limits
-complete would mean finding and patching every allocation path by hand, which
-adds more complexity than it is worth.
-
-- Do not add new limit machinery: no new caps, budgets, size precomputation, or
-  reimplementations of standard library code (such as `fmt` or `encoding/json`)
-  to enforce limits.
-- When someone reports a gap in the limits, add it to the list in
-  [docs/guides/memory-limits.md](docs/guides/memory-limits.md) rather than
-  adding code to limit it.
-- An operation that allocates too much or runs too long, and that a limit does
-  not stop, is a gap to list, even when the growth is large. An example is
-  `sprintf` with a huge width.
-- Still in scope: a wrong result, a crash, a panic, or an inefficiency in
-  normal use that affects everyone, even if the fix involves allocation. An
-  example is string indexing that copied the whole string.
-- Untrusted scripts belong in a process the operating system can limit. See the
-  guide.
-
-## Go Workspace
+### Go workspace
 
 This is a monorepo using Go workspaces (`go.work`).
 
-## Dependencies
+`experiments/v3/` is its own module and is not in the workspace. Run Go there
+with the workspace off:
 
-This project uses the [Wonton](https://github.com/deepnoodle-ai/wonton) library for:
+```bash
+cd experiments/v3
+GOWORK=off go test ./...
+```
 
-- `cli` - CLI framework and utilities
-- `assert` - Test assertions
+### Tests
 
-All tests must use Wonton's `assert` package for assertions:
+All Go tests use the `assert` package of
+[Wonton](https://github.com/deepnoodle-ai/wonton):
 
 ```go
 import "github.com/deepnoodle-ai/wonton/assert"
@@ -183,25 +243,33 @@ func TestExample(t *testing.T) {
 }
 ```
 
+Decision D23 in the overview proposes that the v3 core module have no
+dependencies, which would end this rule for that module. It is not settled.
+Until it is, use `assert`.
+
+### Resource limits in v2
+
+This rule governs v2's code only.
+
+`WithMaxSteps`, `WithTimeout`, `WithMaxStackDepth`, and `WithLimits` catch
+scripts that go wrong by accident. They are not a security boundary, and v2
+does not try to make them one.
+
+- Do not add new limit machinery to v2: no new caps, budgets, size
+  precomputation, or reimplementations of standard library code.
+- When someone reports a gap in v2's limits, add it to the list in
+  [docs/guides/memory-limits.md](docs/guides/memory-limits.md).
+- Still in scope for v2: a wrong result, a crash, a panic, or an inefficiency
+  in normal use that affects everyone.
+
 ## Changelog
 
 Pull requests do not edit `CHANGELOG.md`. Every PR edits the same `Unreleased`
 section, so each merge makes the other open PRs conflict.
 
-Instead, describe the user-visible change in the PR title and description. PRs
-are squash-merged, so the PR title becomes the commit message on `main`. At
-release time, the `Unreleased` section is written from the PRs merged since the
-last release. See [docs/guides/releasing.md](docs/guides/releasing.md).
+Instead, describe the user-visible change in the PR title and description.
 
 ## Releasing
 
-See [docs/guides/releasing.md](docs/guides/releasing.md) for the full release
-process (GoReleaser, Homebrew tap, Docker images, versioned formulas).
-
-## CI/CD
-
-GitHub Actions runs three jobs:
-
-- `test` (with codecov)
-- `generate` (verify code generation)
-- `format` (check gofumpt)
+Nothing is released from `v3`. Releases of v2 are cut from `main`. See
+[docs/guides/releasing.md](docs/guides/releasing.md).

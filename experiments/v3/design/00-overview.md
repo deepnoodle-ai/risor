@@ -497,7 +497,7 @@ fixing in v2 whatever happens to v3:
 | Risk | Why it matters | What reduces it |
 | --- | --- | --- |
 | The three implementations drift | The prior art says this is the normal state of second and third implementations, that the lag sits in the checker and the library, and that the bindings diverge more than the evaluators. One Go port of a Rust policy language had a decoder that turned a deny into an allow (`01` 3.1) | Step and unit counts asserted in suite cases; a public conformance report per implementation; steps 4 and 5 early; D27 |
-| Three of everything is too much work | A checker and a 72-entry library, three times, for a project with few maintainers | The language is small by ruling; the suite and the library table are shared data; R9 as a fallback |
+| Three of everything is too much work | A checker and a 78-entry library, three times, for a project with few maintainers | The language is small by ruling; the suite and the library table are shared data; R9 as a fallback |
 | A deep program crashes a Rust host | A stack overflow cannot be caught there | R5, R6 and D31: every recursion has a specified bound, and release is not recursive |
 | The whole-number range hurts Go hosts | 64-bit ids and nanosecond times are common in Go data | The error is loud and at the read; the binding can present a field as a string. D3 should be confirmed knowing this |
 | The cost table is wrong and frozen | A released rate cannot change within a specification version | Calibrate the rates on the real evaluator before 3.0; the accounting test bounds real time and memory per unit |
