@@ -10,12 +10,15 @@ which is released and is maintained there.
 
 v3 is a new language and a new code base. It is not a revision of v2.
 
-**Status: building Core.** The design is written. The Core specification is
-in `spec/core/`, the conformance suite is in `suite/`, and the three
-implementations are being built in `go/`, `ts/` and `rust/`.
+**Status: Core is built; the follow-on packages are being built.** The design
+is written. The specification is in `spec/`: Core in `spec/core/`, and one
+chapter for each follow-on package in `spec/packages/`. The conformance suite
+is in `suite/`. All three implementations, in `go/`, `ts/` and `rust/`, pass
+Core with the type checker. Each then builds the packages in a fixed order
+(`spec/core/03-host.md` 3.11); the Go implementation is the furthest along.
 `experiments/v3/design/14-implementation-plan.md` is the plan: what Core is,
-what follows it, and the order. The Go code outside `go/` and `experiments/v3/`
-is still v2's.
+what follows it, and the order. The Go code outside `go/`, `fuzz/` and
+`experiments/v3/` is still v2's.
 
 ## What v3 is
 
@@ -104,10 +107,12 @@ rules and cite it.
 | Path | Holds |
 | --- | --- |
 | `spec/core/` | The Core specification, five chapters: language, evaluation, host, library, types. Normative text only. |
-| `suite/` | Data every implementation shares: `library.json`, `messages.json`, `casemap.json`, and case files in `suite/core-run/` and `suite/core-check/`. `spec/core/03-host.md` 3.10 defines the case format. |
+| `spec/packages/` | One chapter for each follow-on package. A package only adds: its chapter is the home of its rules, and the Core chapters point to it. |
+| `suite/` | Data every implementation shares: the library's records, the message templates, the case mapping, and case files in `suite/core-run/`, `suite/core-check/` and one directory for each package. `suite/README.md` lists them. `spec/core/03-host.md` 3.10 defines the case format. |
 | `go/` | The Go implementation. Its own module, not in `go.work`: run Go there with `GOWORK=off`. |
 | `ts/` | The TypeScript implementation. No run-time dependencies. |
 | `rust/` | The Rust implementation. No library dependencies. |
+| `fuzz/` | The fuzzers that compare the three implementations with one another and test the checker's promise. Its own Go module. |
 
 - **The specification wins.** Where `spec/` and a design document `00` to `13`
   disagree, the specification is right and `15` records why.
