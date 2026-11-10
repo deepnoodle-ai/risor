@@ -350,7 +350,7 @@ describe("pre-allocation unit charging before building containers and strings (0
       groups: ["json"],
       limits: { steps: null, allocation: null },
     });
-    const sample = 'x"\\\t\x01é😀'.repeat(300);
+    const sample = 'x"\\\t\x01é😀'.repeat(6000);
     assert.equal(okEnv.compile("`<${s}>`", { check: false }).run({ s: sample }), `<${sample}>`);
     assert.equal(okEnv.compile("json.stringify(s)", { check: false }).run({ s: sample }), toJSON(sample));
     assert.equal(okEnv.compile("string([s])", { check: false }).run({ s: sample }), `[${toJSON(sample)}]`);

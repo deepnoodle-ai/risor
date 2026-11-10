@@ -443,18 +443,22 @@ func TestPreAllocationChargingBeforeGrowth(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runErr(t, bothEnv, "`${s}`", vars).Code, "steps-exceeded")
 
-	// Large strings past the counting threshold still render identically when within budget.
+	// Text past the length the walk keeps (64 KiB) is rendered a second
+	// time, after the charges, to the same string.
 	okEnv, err := risor.NewEnv(
 		risor.Declare("{s: string}"),
 		risor.Groups("json"),
 		risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit},
 	)
 	assert.NoError(t, err)
-	short := strings.Repeat("x\"\\\t\x01é😀", 300)
+	short := strings.Repeat("x\"\\\t\x01é😀", 6000)
 	v := risor.Map{"s": short}
 	assert.Equal(t, run(t, okEnv, "`<${s}>`", v), any("<"+short+">"))
 	wantJSON, err := risor.JSONText(short)
 	assert.NoError(t, err)
 	assert.Equal(t, run(t, okEnv, "json.stringify(s)", v), any(wantJSON))
 	assert.Equal(t, run(t, okEnv, "string([s])", v), any("["+wantJSON+"]"))
+	assert.Equal(t, run(t, okEnv, "string([s, 1.5, true, null, {a: s}])", v),
+		any("["+wantJSON+",1.5,true,null,{\"a\":"+wantJSON+"}]"))
+	assert.Equal(t, run(t, okEnv, "`<${s}${1}${[s]}>`", v), any("<"+short+"1["+wantJSON+"]>"))
 }

@@ -19,20 +19,16 @@ impl<'h> Run<'h> {
     pub(super) fn group_entry(&mut self, name: &str, x: Value<'h>, span: Span) -> R<'h, Value<'h>> {
         match name {
             "json.stringify" => {
-                let mut rbuf = super::RenderBuf::new(String::new());
+                let mut out = super::Rendering::new(String::new());
                 self.json_mode = true;
-                let r = self.render_walk(&x, &mut rbuf, false, span);
+                let r = self.render(&x, &mut out, false, span);
                 self.json_mode = false;
                 r?;
-                let sz = rbuf.weight() / 64;
+                let sz = out.weight() / 64;
                 self.charge(sz)?;
                 self.alloc(1 + sz)?;
-                if !rbuf.counting {
-                    return Ok(Value::str(rbuf.buf));
-                }
-                let mut out = String::with_capacity(rbuf.bytes);
-                self.write_rendered(&x, &mut out, false, span)?;
-                Ok(Value::str(out))
+                let s = self.rendered(out, |r, o| r.render(&x, o, false, span))?;
+                Ok(Value::str(s))
             }
             "json.parse" => {
                 let s = x.as_str().unwrap_or_default().to_string();

@@ -7,7 +7,7 @@
 // read and written here by the chapter's rules.
 
 import { RunFailure } from "../eval/failure.ts";
-import { jsonTextCharged } from "../eval/ops.ts";
+import { Rendering, jsonText, renderedText } from "../eval/ops.ts";
 import { decimalToDouble, norm, numberToText, parseDecimal } from "../value/number.ts";
 import { RMap, size, div64 } from "../value/value.ts";
 import { implement } from "./registry.ts";
@@ -16,7 +16,9 @@ import type { CallContext } from "./registry.ts";
 // ---- json (f06 6) ---------------------------------------------------------------
 
 implement(null, "json.stringify", (c) => {
-  return jsonTextCharged(c.run, c.args[0], c.span);
+  const out = new Rendering();
+  jsonText(c.run, c.args[0], c.span, out);
+  return renderedText(c.run, out);
 });
 
 implement(null, "json.parse", (c) => {
