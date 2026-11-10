@@ -71,6 +71,10 @@ export interface Declarations {
   reject?: string[];
   returns?: string;
   limits?: Partial<Limits>;
+  /** Package F14: host facts of the kind someNotNull, each the list of its members (f14 2). */
+  facts?: string[][];
+  /** Host facts a child environment keeps from its parent (f14 2.6). */
+  inheritedFacts?: string[][];
 }
 
 /** A named type by type text, or by JSON Schema with F1's options (f04 3.1, 9.1). */
@@ -97,6 +101,8 @@ export interface Environment {
   returns: TypeNode | "condition" | null;
   /** The library functions the environment has. */
   library: ReadonlySet<string>;
+  /** Package F14: the host facts someNotNull, each the list of its members as declared (f14 2). */
+  facts: string[][];
 }
 
 export type DeclareResult = { ok: true; env: Environment } | { ok: false; diagnostics: Diagnostic[] };
@@ -130,6 +136,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     limits: { ...DEFAULT_LIMITS, ...(d.limits ?? {}) },
     returns: null,
     library,
+    facts: [],
   };
 
   // 03 3.3.4: `bad-limit`.
@@ -389,6 +396,28 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
       if (!(e instanceof TypeRuleError)) throw e;
       errs.push(diag("bad-type", `the expected result: ${e.message}`));
     }
+  }
+
+  // f14 2.5: a host fact names one or more variables of the environment, each once.
+  env.facts.push(...(d.inheritedFacts ?? []));
+  for (const members of d.facts ?? []) {
+    let ok = true;
+    if (members.length === 0) {
+      errs.push(diag("bad-name", "a host fact names no variable"));
+      ok = false;
+    }
+    const seen = new Set<string>();
+    for (const m of members) {
+      if (!env.variables.has(m)) {
+        errs.push(diag("bad-name", `the host fact names ${JSON.stringify(m)}, which is no variable of the environment`));
+        ok = false;
+      } else if (seen.has(m)) {
+        errs.push(diag("bad-name", `the host fact names the variable ${m} twice`));
+        ok = false;
+      }
+      seen.add(m);
+    }
+    if (ok) env.facts.push([...members]);
   }
 
   return errs.length > 0 ? { ok: false, diagnostics: errs } : { ok: true, env };

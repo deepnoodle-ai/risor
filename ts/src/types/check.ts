@@ -52,6 +52,8 @@ export interface CheckEnv {
   methods: ReadonlyMap<string, ReadonlyMap<string, CheckSig>>;
   /** The rejected check classes (17). */
   reject: ReadonlySet<string>;
+  /** Package F14: the host facts someNotNull, each the list of its members (f14 2). */
+  facts?: readonly (readonly string[])[];
 }
 
 export interface Site {
@@ -82,6 +84,8 @@ const SEP = "\u0000";
  */
 const TYPE_FACT = "\u0001";
 const TYPE_SEP = "\u0002";
+/** Package F14: the fact null(p) about a member path p is NULL_FACT and p's key (f14 4.1). */
+const NULL_FACT = "\u0003";
 type Facts = ReadonlySet<string>;
 const NO_FACTS: Facts = new Set();
 
@@ -208,9 +212,16 @@ class Checker {
   /** expanded nesting of a node = node.level + offset (20.2). */
   private offset = 0;
 
+  /** Package F14: for each member, the host facts it is a member of (f14 1.1). */
+  private readonly memberFacts = new Map<string, (readonly string[])[]>();
+
   constructor(res: Resolution, env: CheckEnv) {
     this.res = res;
     this.env = env;
+    for (const f of env.facts ?? []) for (const m of new Set(f)) {
+      if (!this.memberFacts.has(m)) this.memberFacts.set(m, []);
+      this.memberFacts.get(m)!.push(f);
+    }
     // A read of the name as a value is not a use (13.9).
     for (const [id, r] of res.refs) if (r.k === "lambda" && res.lambdaArgs.has(id)) this.used.add(r.id);
     for (const t of res.targets.values()) if (t.k === "lambda") this.used.add(t.id);
@@ -307,7 +318,7 @@ class Checker {
     if (keys.length === 0) return f;
     const out = new Set(f);
     for (const k of keys) {
-      if (k.startsWith(TYPE_FACT)) {
+      if (k.startsWith(TYPE_FACT) || k.startsWith(NULL_FACT)) {
         out.add(k);
         continue;
       }
@@ -335,6 +346,9 @@ class Checker {
           t: [this.typeFact("=", q, t), ...(!nullable && !isAny(t) ? [q] : [])],
           f: [this.typeFact("!", q, t), ...(nullable ? [q] : [])],
         };
+        // f14 4.2: `p is T`, T exactly null, gives null(p) beside them.
+        const n = this.nullFact(e.x);
+        if (n !== null && isExactlyNull(t)) out.t.push(n);
       }
     } else if (e.kind === "Unary" && e.op === "!") {
       const d = this.facts(e.x);
@@ -342,7 +356,12 @@ class Checker {
     } else if (e.kind === "Binary") {
       if (e.op === "==" || e.op === "!=") {
         const q = e.y.kind === "Null" ? this.pathOf(e.x) : e.x.kind === "Null" ? this.pathOf(e.y) : null;
-        if (q !== null) out = e.op === "!=" ? { t: [q], f: [] } : { t: [], f: [q] };
+        if (q !== null) {
+          // f14 4.2: a member path also gives null(p) on the other side.
+          const n = this.nullFact(e.y.kind === "Null" ? e.x : e.y);
+          const nul = n === null ? [] : [n];
+          out = e.op === "!=" ? { t: [q], f: nul } : { t: nul, f: [q] };
+        }
         // f05 5.2: a test of a field against a string literal.
         else if (e.y.kind === "String") out = this.fieldTest(e.x, new Set([e.y.value]), e.op === "!=");
         else if (e.x.kind === "String") out = this.fieldTest(e.y, new Set([e.x.value]), e.op === "!=");
@@ -708,8 +727,44 @@ class Checker {
     let t = r.k === "slot" ? (this.slotTypes[r.slot] ?? NEVER) : (this.env.variables.get(r.name) ?? NEVER);
     const key = r.k === "slot" ? `s${r.slot}` : `v${r.name}`;
     if (f.has(key)) t = nonnull(t);
-    return this.applyTypeFacts(t, key, f);
+    t = this.applyTypeFacts(t, key, f);
+    // f14 5.1: a member whose host fact has every other member null is not null.
+    if (r.k !== "slot") {
+      const hfs = this.memberFacts.get(r.name);
+      if (hfs !== undefined && hfs.some((hf) => hf.every((m) => m === r.name || f.has(NULL_FACT + "v" + m)))) t = nonnull(t);
+    }
+    return t;
   }
+
+  /** null(p) for an expression that is a member path p, or null (f14 4.1 item 1). */
+  private nullFact(e: A.Expr): string | null {
+    if (e.kind !== "Ident" || this.memberFacts.size === 0) return null;
+    const r = this.res.refs.get(e);
+    if (r === undefined || r.k === "slot" || r.k === "lambda" || !this.memberFacts.has(r.name)) return null;
+    return NULL_FACT + "v" + r.name;
+  }
+
+  /** N(a): the null facts where the left operand a of `??` gave null (f14 4.4). */
+  private nullFacts(a: A.Expr): string[] {
+    const memo = this.nMemo.get(a);
+    if (memo !== undefined) return memo;
+    // The left spine of `??`, walked by a loop.
+    const spine: A.Binary[] = [];
+    let x: A.Expr = a;
+    while (x.kind === "Binary" && x.op === "??" && !this.nMemo.has(x)) {
+      spine.push(x);
+      x = x.x;
+    }
+    let acc: string[] = this.nMemo.get(x) ?? (x.kind === "Binary" && x.op === "??" ? [] : this.nullFact(x) === null ? [] : [this.nullFact(x)!]);
+    for (let i = spine.length - 1; i >= 0; i--) {
+      acc = union(acc, this.nullFacts(spine[i].y));
+      this.nMemo.set(spine[i], acc);
+    }
+    if (spine.length === 0) this.nMemo.set(a, acc);
+    return acc;
+  }
+
+  private readonly nMemo = new Map<A.Expr, string[]>();
 
   /** A rendered expression (05 7.3): opaque is `kind`, any is a `dynamic` site. */
   private rendered(e: A.Expr, t: Type, owners: Span[]): void {
@@ -850,7 +905,8 @@ class Checker {
         return this.sizeLimit(join(truthyPart(a), b), n.span);
       }
       case "??":
-        return this.sizeLimit(join(nonnull(a), this.synth(n.y, f)), n.span);
+        // f14 4.4: b is checked under N(a).
+        return this.sizeLimit(join(nonnull(a), this.synth(n.y, this.memberFacts.size === 0 ? f : this.withFacts(f, this.nullFacts(n.x)))), n.span);
       case "==":
       case "!=": {
         const b = this.synth(n.y, f);
@@ -1034,12 +1090,16 @@ class Checker {
     for (const arm of e.arms) {
       let listsNull = false;
       const strs = new Set<string>();
+      let fresh = 0;
+      let freshNull = false;
       for (const l of arm.literals) {
         const v = l.kind === "Null" ? null : l.value;
         if (l.kind === "Null") listsNull = true;
         // 11.2: a literal equal to an earlier one is duplicate-case only.
         if (covered.has(v)) continue;
         covered.add(v);
+        fresh++;
+        if (l.kind === "Null") freshNull = true;
         if (l.kind === "String") strs.add(l.value);
         // 11.2, never-equal: the conditions of `==` (8.2).
         if (l.kind !== "Null" && !isNever(s) && !isExactlyNull(s) && !overlap(this.litType(l), s)) this.say("never-equal", l.span, "match", { type: printType(s), text: new TextAt(l.span) });
@@ -1058,6 +1118,9 @@ class Checker {
           }
         }
       }
+      // f14 4.3: the arm of null alone, on a member path, gives null(p) to its result.
+      const nf = this.nullFact(e.subject);
+      if (nf !== null && !arm.isDefault && fresh === 1 && freshNull) armFacts = this.withFacts(armFacts, [nf]);
       acc.add(this.synth(arm.result, armFacts));
       if (listsNull && path !== null) facts = this.withFacts(facts, [path]);
     }

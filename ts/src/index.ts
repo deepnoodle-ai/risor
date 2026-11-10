@@ -42,6 +42,8 @@ export { createEnv, Env, Program, RisorError, HostError, truthy, toJSON } from "
 // Package F10: the load and the decode (f10 5, 6.6).
 export { decode, LoadError } from "./host/api.ts";
 export type { Expectation, LoadOptions, LoadOutcome } from "./host/api.ts";
+// Package F14: a host fact (f14 3.2).
+export type { HostFact } from "./host/api.ts";
 export { typeFromSchema, envFromDescription, descriptionText, printSignature } from "./host/api.ts";
 export type { Description } from "./host/api.ts";
 export { parseProgramText, parseTemplate, ParsedProgram, Template, reportJSON } from "./host/api.ts";

@@ -98,6 +98,15 @@ export interface EnvOptions {
   types?: NamedTypeDecl[];
   /** Internal: the named types a child keeps from its parent (f04 3.4). */
   inheritedTypes?: Declarations["inheritedTypes"];
+  /** Package F14: host facts (f14 2, 3.2). */
+  facts?: HostFact[];
+  /** Internal: the host facts a child keeps from its parent (f14 2.6). */
+  inheritedFacts?: string[][];
+}
+
+/** A host fact (package F14, f14 2.2): in every run, at least one of these variables is not null. */
+export interface HostFact {
+  someNotNull: string[];
 }
 
 /** An opaque type in a child environment: with no `test`, it adds methods to an inherited type (03 3.3.2). */
@@ -177,6 +186,13 @@ function hostImpl(f: HostFunction): HostImpl {
   return { counts: countsOf(f.type), call: (handle, args) => f.call(handle, ...args) };
 }
 
+/** The members of a host fact, or a declare error for a value that is not one. */
+function hostFactMembers(f: HostFact): string[] {
+  const ok = typeof f === "object" && f !== null && Object.keys(f).length === 1 && Array.isArray(f.someNotNull) && f.someNotNull.every((x) => typeof x === "string");
+  if (!ok) throw new RisorError([{ phase: "declare", code: "bad-name", message: "a host fact is an object with one key, someNotNull, a list of variable names" }]);
+  return f.someNotNull;
+}
+
 /** Build an environment. Throws RisorError of phase `declare`. */
 export function createEnv(options: EnvOptions = {}): Env {
   const methods: Record<string, string> = {};
@@ -204,6 +220,8 @@ export function createEnv(options: EnvOptions = {}): Env {
     inherited: options.inherited,
     types: options.types,
     inheritedTypes: options.inheritedTypes,
+    facts: options.facts?.map(hostFactMembers),
+    inheritedFacts: options.inheritedFacts,
     limits: {
       ...(limits.steps !== undefined ? { steps: limits.steps } : {}),
       ...(limits.allocation !== undefined ? { allocation: limits.allocation } : {}),
@@ -239,6 +257,25 @@ export interface Description {
   types?: Record<string, string>;
   /** Package F6 (f06 2.7): the groups that are on, in code point order; only when one is. */
   groups?: string[];
+  /** Package F14 (f14 9.1): each distinct host fact, its members in code point order; only when there is one. */
+  facts?: HostFact[];
+}
+
+/** The host facts of a description (f14 9.1): distinct, members sorted, lists in order name by name. */
+function describedFacts(facts: string[][]): HostFact[] {
+  const lists = new Map<string, string[]>();
+  for (const f of facts) {
+    const sorted = [...new Set(f)].sort(compareText);
+    lists.set(sorted.join("\u0000"), sorted);
+  }
+  const cmp = (a: string[], b: string[]) => {
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      const c = compareText(a[i], b[i]);
+      if (c !== 0) return c;
+    }
+    return a.length - b.length;
+  };
+  return [...lists.values()].sort(cmp).map((someNotNull) => ({ someNotNull }));
 }
 
 /** The JSON text of a description (f01 5.3 item 5): keys in code point order, no white space. */
@@ -264,7 +301,14 @@ export function envFromDescription(description: unknown): Env {
   };
   if (!isObj(d)) bad("not an object");
   const keys = ["version", "variables", "functions", "opaque", "removed", "reject", "limits"];
-  for (const k of Object.keys(d)) if (!keys.includes(k) && k !== "types" && k !== "groups") bad(`the key ${k}`);
+  for (const k of Object.keys(d)) if (!keys.includes(k) && k !== "types" && k !== "groups" && k !== "facts") bad(`the key ${k}`);
+  // f14 9.2: each entry of `facts` is an object {someNotNull: [names]}.
+  let facts: HostFact[] | undefined;
+  if ("facts" in d) {
+    const fs = d.facts;
+    if (!Array.isArray(fs) || !fs.every((x) => isObj(x) && Object.keys(x).length === 1 && Array.isArray(x.someNotNull) && (x.someNotNull as unknown[]).every((n) => typeof n === "string"))) bad("facts");
+    facts = (fs as HostFact[]).map((x) => ({ someNotNull: [...x.someNotNull] }));
+  }
   for (const k of keys) if (!(k in d)) bad(`no key ${k}`);
   // f04 8 item 3: each entry of `types` is a named type by type text.
   const groups = "groups" in d ? (Array.isArray(d.groups) && d.groups.every((x) => typeof x === "string") ? (d.groups as string[]) : bad("groups")) : undefined;
@@ -304,6 +348,7 @@ export function envFromDescription(description: unknown): Env {
     reject,
     types,
     groups,
+    facts,
     limits: {
       steps: num(lim.steps, true, "steps"),
       allocation: num(lim.allocation, true, "allocation"),
@@ -484,6 +529,7 @@ export class Env {
           : new Map([...LIBRARY_METHODS].map(([kind, m]) => [kind, new Map([...m].filter(([k]) => !environment.removed.has(`${kind}.${k}`)))])),
       methods: methodSigs,
       reject: environment.reject,
+      facts: environment.facts,
     };
   }
 
@@ -555,6 +601,7 @@ export class Env {
       limits: { steps: e.limits.steps, allocation: e.limits.allocation, depth: e.limits.depth },
       ...(e.named.size > 0 ? { types: sorted([...e.named].map(([k, t]) => [k, printType(t)])) } : {}),
       ...(e.groups.size > 0 ? { groups: [...e.groups].sort(compareText) } : {}),
+      ...(e.facts.length > 0 ? { facts: describedFacts(e.facts) } : {}),
     };
   }
 
@@ -672,6 +719,11 @@ export class Env {
    * parent's unless given; removed entries add up. Throws RisorError of phase
    * `declare`.
    */
+  /** A child environment (f14 3.2 names it `with`): the same as `child`. */
+  with(options: ChildOptions = {}): Env {
+    return this.child(options);
+  }
+
   child(options: ChildOptions = {}): Env {
     const p = this.options;
     const pe = this.environment;
@@ -700,7 +752,11 @@ export class Env {
     // f04 3.4: the parent's named types, less those the child declares.
     const childNamed = new Set((options.types ?? []).map((t) => t.name));
     const inheritedTypes = new Map([...pe.named].filter(([k]) => !childNamed.has(k)));
+    // f14 2.6: the parent's host facts, less those that name a variable the child replaces.
+    const inheritedFacts = pe.facts.filter((m) => !m.some((n) => valueNames.has(n)));
     const env = createEnv({
+      facts: options.facts,
+      inheritedFacts,
       version: options.version ?? p.version,
       vars: options.vars,
       variables: options.variables,

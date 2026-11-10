@@ -310,6 +310,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
       types: c.types as NamedTypeDecl[] | undefined,
       groups: c.groups,
       schemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
+      facts: c.facts?.map((someNotNull) => ({ someNotNull })),
     };
     // 03 3.10.9: every case runs in a child of the base environment; each limit given replaces the base's.
     env = base === undefined ? createEnv(options) : base.child({ ...options, opaqueNames: c.opaque ?? [], limits: c.limits === undefined ? undefined : { ...be!.limits, ...c.limits } });
@@ -378,6 +379,13 @@ function fixtureTest(c: Case, env: Env): { path: (string | number)[]; message: s
     if (t === undefined) continue;
     const r = test(c.vars![k], t, ["vars", k]);
     if (r !== null) return r;
+  }
+  // f14 10.2: each host fact whose members vars all supplies, in order: one of them is not null.
+  const vars = c.vars ?? {};
+  for (let i = 0; i < (c.facts ?? []).length; i++) {
+    const ms = c.facts![i];
+    if (!ms.every((m) => Object.prototype.hasOwnProperty.call(vars, m))) continue;
+    if (ms.every((m) => vars[m] === null)) return { path: ["facts", i], message: `at least one of ${ms.join(", ")} must not be null` };
   }
   const stubs = (kind: "functions" | "methods", table: Record<string, Stub> | undefined, sigOf: (k: string) => SigNode | undefined) => {
     for (const k of Object.keys(table ?? {}).sort(compareText)) {
@@ -947,7 +955,7 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
   const dir = basename(dirname(path));
   const packageDir = basename(dirname(dirname(path))) === "suite" && dir !== "core-run" && dir !== "core-check";
   const checkOnly = opts.checkOnly ?? (["core-check", "host-types"].includes(dir) || (packageDir && basename(path).endsWith("-check.json")));
-  const staticCodes = dir === "conversion" || dir === "unions" ? CONVERSION_STATIC : dir === "config" ? CONFIG_STATIC : undefined;
+  const staticCodes = dir === "conversion" || dir === "unions" || dir === "facts" ? CONVERSION_STATIC : dir === "config" ? CONFIG_STATIC : undefined;
   // f02 4.7: suite/templates/ runs as suite/core-run/ does; an analysis case runs once.
   return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly, staticCodes });
 }
@@ -960,8 +968,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F11, and F13. */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13]);
+/** The packages this implementation offers: F1 to F11, F13 and F14. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

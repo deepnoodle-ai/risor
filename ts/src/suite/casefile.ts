@@ -115,6 +115,8 @@ export interface Case {
   returnsSchema?: { schema: Json; options?: string[] };
   /** Package F10: the case is run as a load, steps 0 to 4 (f10 10.2). */
   load?: boolean;
+  /** Package F14: host facts someNotNull, each the list of its members (f14 10.1). */
+  facts?: string[][];
   vars?: JsonObject;
   limits?: { steps?: number; allocation?: number; depth?: number };
   precondition?: boolean;
@@ -166,7 +168,7 @@ export const CONFIG_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "facts", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render", "runner", "update", "program"]);
 
@@ -268,6 +270,15 @@ function checkShared(o: JsonObject, where: string): void {
     }
   }
   if ("load" in o && typeof o.load !== "boolean") fail(`${where}: load is not true or false`);
+  if ("facts" in o) {
+    // f14 10.1: a list of objects with exactly the key someNotNull, a list of strings.
+    const fs = o.facts;
+    if (!Array.isArray(fs)) fail(`${where}: facts is not an array`);
+    for (const x of fs) {
+      if (!isObject(x) || Object.keys(x).length !== 1 || !("someNotNull" in x)) fail(`${where}: a host fact is not an object with the one key someNotNull`);
+      stringArray(x.someNotNull, `${where}: someNotNull`);
+    }
+  }
   if ("file" in o && (typeof o.file !== "string" || o.file.length === 0)) fail(`${where}: file is not a non-empty string`);
   if ("version" in o && (typeof o.version !== "string" || !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(o.version))) {
     fail(`${where}: version is not of the form major.minor`);
@@ -483,6 +494,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   }
   if ("reject" in merged) c.reject = merged.reject as string[];
   if ("returns" in merged) c.returns = merged.returns as string;
+  if ("facts" in merged) c.facts = (merged.facts as JsonObject[]).map((x) => [...(x.someNotNull as string[])]);
   if ("returnsSchema" in merged) c.returnsSchema = merged.returnsSchema as Case["returnsSchema"];
   if (c.returns !== undefined && c.returnsSchema !== undefined) fail(`${where}: both returns and returnsSchema`);
   if (merged.load === true) {
@@ -513,7 +525,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   }
   // f02 4.2 item 3, 4.5 item 3: an analysis case has none of these fields.
   if (c.expect.kind === "result" && c.expect.analysis !== undefined) {
-    for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "vars", "limits", "check", "precondition", "version"]) {
+    for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "facts", "vars", "limits", "check", "precondition", "version"]) {
       if (k in merged) fail(`${where}: an analysis case has the field ${k}`);
     }
   }
@@ -523,7 +535,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
-      const staticCodes = basename(dir) === "conversion" || basename(dir) === "unions" ? CONVERSION_STATIC : basename(dir) === "config" ? CONFIG_STATIC : STATIC_CODE_SET;
+      const staticCodes = basename(dir) === "conversion" || basename(dir) === "unions" || basename(dir) === "facts" ? CONVERSION_STATIC : basename(dir) === "config" ? CONFIG_STATIC : STATIC_CODE_SET;
       if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
       }
