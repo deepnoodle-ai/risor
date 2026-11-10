@@ -35,6 +35,8 @@ export type Expect =
   | {
       kind: "result";
       type?: string;
+      /** Package F1: the description of the case's environment (f01 7.2). */
+      description?: { value: Json };
       sites?: { class: string; span: LineSpan }[];
       value?: { value: Json };
       truthy?: boolean;
@@ -64,6 +66,8 @@ export interface Case {
   precondition?: boolean;
   /** Ruling AP1: false compiles the case with the static rules alone. */
   check?: boolean;
+  /** Package F1: variables declared by JSON Schema (f01 7.1). */
+  schemas?: Record<string, { schema: Json; options?: string[] }>;
   skip?: string;
   expect: Expect;
 }
@@ -82,7 +86,7 @@ const STATIC_CODE_SET = new Set([
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is ruling A4. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
@@ -202,6 +206,22 @@ function checkShared(o: JsonObject, where: string): void {
   }
   if ("precondition" in o && typeof o.precondition !== "boolean") fail(`${where}: precondition is not a boolean`);
   if ("check" in o && typeof o.check !== "boolean") fail(`${where}: check is not a boolean`);
+  if ("schemas" in o) {
+    // f01 7.1: the invalid-file rules of `schemas`.
+    const sc = o.schemas;
+    if (!isObject(sc)) fail(`${where}: schemas is not an object`);
+    for (const [k, v] of Object.entries(sc)) {
+      if (!isObject(v) || !("schema" in v)) fail(`${where}: schemas.${k} is not an object with schema`);
+      for (const f of Object.keys(v)) if (f !== "schema" && f !== "options") fail(`${where}: schemas.${k} has the field ${f}`);
+      if ("options" in v) {
+        const op = v.options;
+        const names = ["closed", "absent-is-null", "defaults-applied"];
+        if (!Array.isArray(op) || !op.every((x) => typeof x === "string" && names.includes(x)) || new Set(op).size !== op.length) {
+          fail(`${where}: schemas.${k}.options is not a list of the three option names, each once`);
+        }
+      }
+    }
+  }
 }
 
 function checkStub(v: Json, where: string): void {
@@ -299,6 +319,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("vars" in merged) c.vars = merged.vars as JsonObject;
   if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("precondition" in merged) c.precondition = merged.precondition as boolean;
+  if ("schemas" in merged) c.schemas = merged.schemas as Record<string, { schema: Json; options?: string[] }>;
   if ("check" in merged) {
     c.check = merged.check as boolean;
     // Ruling AP1: a case compiled without a check states no type or sites, and expects static check codes only.
@@ -328,12 +349,13 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if (c.vars !== undefined) {
     const keys = Object.keys(c.vars);
     if (keys.length > 0) {
-      if (c.env === undefined) fail(`${where}: vars gives ${keys[0]}, and env declares no variable`);
-      const t = parseType(c.env);
+      const schemaVars = new Set(Object.keys(c.schemas ?? {}));
+      const t = c.env === undefined ? null : parseType(c.env);
       // A malformed env is the declare error bad-type, not an invalid file.
-      if (t.ok && t.node.t === "record") {
-        const fields = new Set(t.node.fields.map((f) => f.key));
-        for (const k of keys) if (!fields.has(k)) fail(`${where}: vars gives ${k}, which is not a field of env`);
+      if (t === null || (t.ok && t.node.t === "record")) {
+        const fields = new Set(t === null ? [] : (t as { node: { fields: { key: string }[] } }).node.fields.map((f) => f.key));
+        // f01 7.1 item 5: a key of vars may name a variable of schemas.
+        for (const k of keys) if (!fields.has(k) && !schemaVars.has(k)) fail(`${where}: vars gives ${k}, which is not a field of env or a key of schemas`);
       }
     }
   }
@@ -414,6 +436,9 @@ function buildExpect(v: Json, where: string): Expect {
         break;
       case "value":
         out.value = { value: val };
+        break;
+      case "description":
+        out.description = { value: val };
         break;
       case "truthy":
         if (typeof val !== "boolean") fail(`${where}: truthy is not a boolean`);

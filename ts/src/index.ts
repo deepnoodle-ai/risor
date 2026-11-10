@@ -39,4 +39,7 @@ export type { TypeNode, SigNode, MethodNode, FnNode } from "./types/typetext.ts"
 export { declare, DEFAULT_LIMITS, VERSION } from "./host/env.ts";
 export type { Declarations, Environment, Limits } from "./host/env.ts";
 export { createEnv, Env, Program, RisorError, HostError, truthy, toJSON } from "./host/api.ts";
+export { typeFromSchema, envFromDescription, descriptionText, printSignature } from "./host/api.ts";
+export type { Description } from "./host/api.ts";
+export type { SchemaOption } from "./types/schema.ts";
 export type { EnvOptions, HostFunction, OpaqueType, Limits as RunLimits, Usage, Vars, Outcome, CallHandle } from "./host/api.ts";

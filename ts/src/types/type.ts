@@ -14,6 +14,8 @@ export interface Field {
 export interface Rec {
   fields: ReadonlyMap<string, Field>;
   rest: Type;
+  /** The mark of package F1's option `closed` (f01 4.1): the rest becomes never at Close. */
+  closable?: true;
 }
 
 export interface Alts {
@@ -115,7 +117,10 @@ function joinRec(a: Rec, b: Rec): Rec {
     if (a.fields.has(k)) continue;
     fields.set(k, { type: isNever(a.rest) ? fb.type : join(fb.type, a.rest), optional: true });
   }
-  return { fields, rest: join(a.rest, b.rest) };
+  const out: Rec = { fields, rest: join(a.rest, b.rest) };
+  // f01 3.6 item 8: a Join of two records is closable when both are.
+  if (a.closable && b.closable) out.closable = true;
+  return out;
 }
 
 export function join(a: Type, b: Type): Type {
@@ -396,7 +401,9 @@ function altTexts(t: Alts): string[] {
     out.push((topLevelUnion(t.list) ? `(${e})` : e) + "[]");
   }
   if (t.map) out.push(printRecord(t.map));
-  if (t.opaque) out.push(...[...t.opaque].sort(compareText));
+  // An opaque name; a type variable of a printed signature is held as a name
+  // that starts with U+FFFF, so it sorts after every opaque name (f01 5.2).
+  if (t.opaque) out.push(...[...t.opaque].sort(compareText).map((n) => (n.charCodeAt(0) === 0xffff ? n.slice(1) : n)));
   if (t.null) out.push("null");
   return out;
 }

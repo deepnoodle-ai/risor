@@ -11,6 +11,8 @@ import { parseEnvRecord, parseSignature, parseType } from "../types/typetext.ts"
 import type { SigNode, TypeNode } from "../types/typetext.ts";
 import { ANY, depth, fromNode, TypeError as TypeRuleError } from "../types/type.ts";
 import type { Type } from "../types/type.ts";
+import { SchemaError, typeOfSchema } from "../types/schema.ts";
+import type { SchemaOption } from "../types/schema.ts";
 
 /** The newest version of the specification this implementation offers. */
 export const VERSION = "3.0";
@@ -48,6 +50,12 @@ export interface MethodDecl {
 export interface Declarations {
   version?: string;
   env?: string; // one record type: the variables
+  /** Variables each declared by its own type text, as a description gives them (f01 5.4). */
+  variableTexts?: Record<string, string>;
+  /** Variables declared by JSON Schema (f01 2). */
+  schemas?: Record<string, { schema: unknown; options?: SchemaOption[] }>;
+  /** Library entries the environment does not have (03 3.3.1). */
+  removed?: string[];
   opaque?: string[];
   methods?: Record<string, string>;
   functions?: Record<string, string>; // name -> signature
@@ -61,6 +69,8 @@ export interface Environment {
   variables: Map<string, TypeNode>;
   /** The variables' types, by the checker's rules (05 19.5). */
   variableTypes: Map<string, Type>;
+  /** The library entries removed (03 3.3.1). */
+  removed: Set<string>;
   functions: Map<string, FunctionDecl>;
   namespaces: Set<string>;
   opaque: Set<string>;
@@ -93,6 +103,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     version: VERSION,
     variables: new Map(),
     variableTypes: new Map(),
+    removed: new Set(d.removed ?? []),
     functions: new Map(),
     namespaces: new Set(),
     opaque: new Set(),
@@ -139,6 +150,39 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
           env.variables.set(f.key, f.type);
         }
       }
+    }
+  }
+
+  const variableName = (name: string): boolean => {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || !isName(name)) {
+      errs.push(diag("bad-name", `${JSON.stringify(name)} is not a name`));
+      return false;
+    }
+    if (env.variables.has(name)) {
+      errs.push(diag("name-clash", `the variable ${name} is declared twice`));
+      return false;
+    }
+    return true;
+  };
+  for (const [name, text] of Object.entries(d.variableTexts ?? {})) {
+    const t = parseType(text);
+    if (!t.ok) {
+      errs.push(diag("bad-type", `the type of ${name}: ${t.message}`));
+      continue;
+    }
+    if (variableName(name)) env.variables.set(name, t.node);
+  }
+  // f01 2: a variable declared by schema; its type is mapped now, the schema not kept.
+  const schemaVars = new Set<string>();
+  for (const [name, decl] of Object.entries(d.schemas ?? {})) {
+    if (!variableName(name)) continue;
+    env.variables.set(name, { t: "word", word: "any" });
+    schemaVars.add(name);
+    try {
+      env.variableTypes.set(name, typeOfSchema(decl.schema, decl.options ?? []));
+    } catch (e) {
+      if (!(e instanceof SchemaError)) throw e;
+      errs.push(diag("bad-type", `the schema of ${name}: ${e.message}`));
     }
   }
 
@@ -230,6 +274,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     sig.result,
   ];
   for (const [name, node] of env.variables) {
+    if (schemaVars.has(name)) continue;
     try {
       env.variableTypes.set(name, typeOf(node, false));
     } catch (e) {

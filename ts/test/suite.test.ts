@@ -14,7 +14,7 @@ const targets = process.env.RISOR_CASES ? process.env.RISOR_CASES.split(delimite
 
 for (const checker of [true, false]) {
   const which = checker ? "checked" : "static rules alone";
-  for (const [target, verdicts] of runTargets(checker ? targets : targets.filter((t) => !t.endsWith("core-check")), checker)) {
+  for (const [target, verdicts] of runTargets(checker ? targets : targets.filter((t) => !t.endsWith("core-check") && !t.endsWith("host-types")), checker)) {
     test(`suite (${which}): ${target}`, (t) => {
       const n = countVerdicts(verdicts);
       t.diagnostic(`pass ${n.pass}, fail ${n.fail}, skip ${n.skip}, invalid ${n.invalid}`);

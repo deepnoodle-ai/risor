@@ -15,6 +15,7 @@ import type { Source } from "../syntax/source.ts";
 import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
 import { typeEqual } from "../types/type.ts";
+import type { SchemaOption } from "../types/schema.ts";
 import type { Classifier } from "../value/value.ts";
 import { loadCaseFile, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Stub } from "./casefile.ts";
@@ -194,7 +195,10 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
   const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null, env: env ?? null });
   let compiled: ReturnType<Env["tryCompile"]>;
   try {
-    env = createEnv({ version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [] });
+    env = createEnv({
+      version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [],
+      schemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
+    });
     if (!checker && c.returns !== undefined && c.returns !== "condition" && !parseType(c.returns).ok) {
       throw new RisorError([{ phase: "declare", code: "bad-type", message: "the expected result is not a type" }]);
     }
@@ -234,6 +238,13 @@ function compare(c: Case, o: Outcome): Difference[] {
       return [{ field: "outcome", expected: "a result", found: describeFailure(o) }];
     }
     const d: Difference[] = [];
+    if (ex.description !== undefined) {
+      // f01 7.2: compared as JSON data.
+      const found = CURRENT_ENV?.describe();
+      if (found === undefined || !plainEqual(found, hostValue(ex.description.value), CLASSIFIER)) {
+        d.push({ field: "description", expected: ex.description.value, found });
+      }
+    }
     if (ex.type !== undefined) {
       let same = false;
       try {
@@ -394,7 +405,8 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     }
     return out;
   }
-  const checkOnly = opts.checkOnly ?? basename(dirname(path)) === "core-check";
+  // f01 7.3 item 1: every case of suite/host-types/ is run checked, once.
+  const checkOnly = opts.checkOnly ?? ["core-check", "host-types"].includes(basename(dirname(path)));
   return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly });
 }
 

@@ -26,7 +26,11 @@ import { numberToText } from "../value/number.ts";
 import { declare, DEFAULT_LIMITS } from "./env.ts";
 import { check, spanKey } from "../types/check.ts";
 import type { CheckEnv, CheckSig, Expected, Site } from "../types/check.ts";
-import { fromNode, printType } from "../types/type.ts";
+import { fromNode, printType, opaque as opaqueType } from "../types/type.ts";
+import { SchemaError, typeOfSchema } from "../types/schema.ts";
+import type { SchemaOption } from "../types/schema.ts";
+import { compareText } from "../value/value.ts";
+import type { SigNode, TypeNode } from "../types/typetext.ts";
 import type { Type } from "../types/type.ts";
 import { parseType as parseTypeText, parseReceiver } from "../types/typetext.ts";
 import { METHODS } from "../library/registry.ts";
@@ -72,6 +76,12 @@ export interface EnvOptions {
   limits?: Limits;
   /** The opaque type names as a list, when it is given apart from `opaque` (a case file's `opaque`). */
   opaqueNames?: string[];
+  /** Variables declared by JSON Schema, each with its options (package F1, f01 2). */
+  schemas?: Record<string, { schema: unknown; options?: SchemaOption[] }>;
+  /** Variables each declared by its own type text, as a description gives them (f01 5.4). */
+  variables?: Record<string, string>;
+  /** Library entries the environment does not have (03 3.3.1). */
+  removed?: string[];
 }
 
 export interface Usage {
@@ -160,15 +170,112 @@ export function createEnv(options: EnvOptions = {}): Env {
     methods,
     functions,
     reject: options.reject,
+    schemas: options.schemas,
+    variableTexts: options.variables,
+    removed: options.removed,
     limits: {
       ...(limits.steps !== undefined ? { steps: limits.steps } : {}),
       ...(limits.allocation !== undefined ? { allocation: limits.allocation } : {}),
       ...(limits.depth !== undefined ? { depth: limits.depth } : {}),
     },
   };
-  const d = declare(decls, new Set(FUNCTIONS.keys()));
+  const removed = new Set(options.removed ?? []);
+  const d = declare(decls, new Set([...FUNCTIONS.keys()].filter((k) => !removed.has(k))));
   if (!d.ok) throw new RisorError(d.diagnostics);
   return new Env(d.env, options, limits.timeoutMs ?? null);
+}
+
+/** The type of a JSON Schema with options, printed (package F1, f01 3, 4). Throws RisorError `bad-type`. */
+export function typeFromSchema(schema: unknown, options: SchemaOption[] = []): string {
+  try {
+    return printType(typeOfSchema(schema, options));
+  } catch (e) {
+    if (e instanceof SchemaError) throw new RisorError([{ phase: "declare", code: "bad-type", message: e.message }]);
+    throw e;
+  }
+}
+
+/** The description of an environment (f01 5.3). */
+export interface Description {
+  version: string;
+  variables: Record<string, string>;
+  functions: Record<string, string>;
+  opaque: Record<string, Record<string, string>>;
+  removed: string[];
+  reject: string[];
+  limits: { steps: number | null; allocation: number | null; depth: number };
+}
+
+/** The JSON text of a description (f01 5.3 item 5): keys in code point order, no white space. */
+export function descriptionText(d: Description): string {
+  return toJSON(d);
+}
+
+/**
+ * An environment from a description (f01 5.4). It has no implementation of
+ * any function or method: compiling against it fails with `no-implementation`
+ * while it declares one. Throws RisorError (`declare`) for an error of 03
+ * 3.3.4, and a plain Error for a value that is not a description.
+ */
+export function envFromDescription(description: unknown): Env {
+  const d = description as Record<string, unknown>;
+  const bad = (what: string): never => {
+    throw new Error(`not a description: ${what}`);
+  };
+  const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+  const strings = (v: unknown, what: string): Record<string, string> => {
+    if (!isObj(v) || !Object.values(v).every((x) => typeof x === "string")) bad(what);
+    return v as Record<string, string>;
+  };
+  if (!isObj(d)) bad("not an object");
+  const keys = ["version", "variables", "functions", "opaque", "removed", "reject", "limits"];
+  for (const k of Object.keys(d)) if (!keys.includes(k)) bad(`the key ${k}`);
+  for (const k of keys) if (!(k in d)) bad(`no key ${k}`);
+  if (typeof d.version !== "string") bad("version");
+  const variables = strings(d.variables, "variables");
+  const functions = strings(d.functions, "functions");
+  if (!isObj(d.opaque)) bad("opaque");
+  const opaque: Record<string, OpaqueType> = {};
+  for (const [t, ms] of Object.entries(d.opaque as Record<string, unknown>)) {
+    const methods: Record<string, HostFunction> = {};
+    for (const [m, sig] of Object.entries(strings(ms, `the methods of ${t}`))) methods[m] = { type: sig, call: noImplementation };
+    opaque[t] = { test: () => false, methods };
+  }
+  const list = (v: unknown, what: string): string[] => {
+    if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) bad(what);
+    return v as string[];
+  };
+  const removed = list(d.removed, "removed");
+  const reject = list(d.reject, "reject");
+  if (!isObj(d.limits)) bad("limits");
+  const lim = d.limits as Record<string, unknown>;
+  const lk = ["steps", "allocation", "depth"];
+  for (const k of Object.keys(lim)) if (!lk.includes(k)) bad(`the limit ${k}`);
+  for (const k of lk) if (!(k in lim)) bad(`no limit ${k}`);
+  const num = (v: unknown, nullable: boolean, what: string) => {
+    if (v === null && nullable) return null;
+    if (typeof v !== "number") bad(what);
+    return v as number;
+  };
+  const env = createEnv({
+    version: d.version as string,
+    variables,
+    opaque,
+    functions: Object.fromEntries(Object.entries(functions).map(([k, sig]) => [k, { type: sig, call: noImplementation }])),
+    removed,
+    reject,
+    limits: {
+      steps: num(lim.steps, true, "steps"),
+      allocation: num(lim.allocation, true, "allocation"),
+      depth: num(lim.depth, false, "depth") as number,
+    },
+  });
+  env.noImplementation = true;
+  return env;
+}
+
+function noImplementation(): never {
+  throw new Error("no implementation");
 }
 
 export type CompileResult = { ok: true; program: Program } | { ok: false; diagnostics: Diagnostic[]; source: Source };
@@ -231,7 +338,7 @@ export class Env {
       variables: new Set(environment.variables.keys()),
       hostFunctions: hostCounts,
       namespaces: environment.namespaces,
-      library: functionCounts(),
+      library: new Map([...functionCounts()].filter(([k]) => !environment.removed.has(k))),
     };
     const hostSig = (name: string, sig: import("../types/typetext.ts").SigNode, recv: import("../types/typetext.ts").TypeNode | null): CheckSig => ({
       name, kind: "host", recv, sig, narrows: false, tested: [], renders: [],
@@ -245,8 +352,11 @@ export class Env {
       opaque: environment.opaque,
       variables: environment.variableTypes,
       functions: new Map([...environment.functions].map(([k, fn]) => [k, hostSig(k, fn.sig, null)])),
-      library: LIBRARY_FUNCTIONS,
-      libraryMethods: LIBRARY_METHODS,
+      library: environment.removed.size === 0 ? LIBRARY_FUNCTIONS : new Map([...LIBRARY_FUNCTIONS].filter(([k]) => !environment.removed.has(k))),
+      libraryMethods:
+        environment.removed.size === 0
+          ? LIBRARY_METHODS
+          : new Map([...LIBRARY_METHODS].map(([kind, m]) => [kind, new Map([...m].filter(([k]) => !environment.removed.has(k)))])),
       methods: methodSigs,
       reject: environment.reject,
     };
@@ -277,6 +387,28 @@ export class Env {
     return fromNode(t.node, { opaque: this.environment.opaque });
   }
 
+  /** Set on an environment built from a description: it has no implementation (f01 5.4 item 4). */
+  noImplementation = false;
+
+  /** The description of this environment (f01 5.3). */
+  describe(): Description {
+    const e = this.environment;
+    const sorted = <T>(m: Iterable<[string, T]>) => Object.fromEntries([...m].sort((a, b) => compareText(a[0], b[0])));
+    const opaque: Record<string, Record<string, string>> = {};
+    for (const t of [...e.opaque].sort(compareText)) opaque[t] = {};
+    for (const m of e.methods.values()) opaque[m.type][m.name] = printSignature(m.sig, e.opaque);
+    for (const t of Object.keys(opaque)) opaque[t] = sorted(Object.entries(opaque[t]));
+    return {
+      version: e.version,
+      variables: sorted([...e.variableTypes].map(([k, t]) => [k, printType(t)])),
+      functions: sorted([...e.functions].map(([k, f]) => [k, printSignature(f.sig, e.opaque)])),
+      opaque,
+      removed: [...e.removed].sort(compareText),
+      reject: [...e.reject].sort(compareText),
+      limits: { steps: e.limits.steps, allocation: e.limits.allocation, depth: e.limits.depth },
+    };
+  }
+
   /** Check a program (03 3.2.1): parse, the static rules, the type rules. */
   check(text: string, expected?: string): CheckOutcome {
     const exp = this.expected(expected);
@@ -290,6 +422,9 @@ export class Env {
 
   /** Parse, apply the static rules and compile. Problems are data. */
   tryCompile(text: string, options: CompileOptions = {}): CompileResult {
+    if (this.noImplementation && (this.environment.functions.size > 0 || this.environment.methods.size > 0)) {
+      throw new RisorError([{ phase: "declare", code: "no-implementation", message: "the environment declares a function with no implementation" }]);
+    }
     const checked = options.check !== false;
     const exp = checked ? this.expected(options.expected) : { kind: "none" as const };
     const p = parse(text);
@@ -419,3 +554,20 @@ export class Program {
 }
 
 export { ABSENT_VAR };
+
+/** Print a signature (f01 5.2). A type variable sorts after the opaque names. */
+export function printSignature(sig: SigNode, opaqueNames: ReadonlySet<string>): string {
+  const ty = (n: TypeNode) => printType(fromNode(n, { opaque: opaqueNames, variable: (v) => opaqueType("\uFFFF" + v) }));
+  const params = sig.params.map((p) => {
+    const t = p.type.t === "fn"
+      ? `(${p.type.params.map((q) => `${q.name}: ${ty(q.type)}`).join(", ")}) => ${p.type.result === "unknown" ? "unknown" : ty(p.type.result)}`
+      : ty(p.type);
+    return `${p.rest ? "..." : ""}${p.name}${p.optional ? "?" : ""}: ${t}`;
+  });
+  let out = `(${params.join(", ")}) => ${ty(sig.result)}`;
+  if (sig.canFail) out += " !";
+  if (sig.bounds.length > 0) {
+    out += " where " + [...sig.bounds].sort((a, b) => compareText(a.name, b.name)).map((b) => `${b.name}: ${b.bound}`).join(", ");
+  }
+  return out;
+}
