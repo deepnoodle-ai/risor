@@ -584,8 +584,11 @@ func (r *scanReader) readLine(string) (string, error) {
 }
 
 // promptReader reads lines from the terminal with the line editor of
-// wonton/tui: cursor movement, word and line deletion, and history.
+// wonton/tui: cursor movement, word and line deletion, and history. A
+// reader that is not a terminal gives the editor the keys a terminal in
+// raw mode sends, which is how the tests drive it.
 type promptReader struct {
+	in      io.Reader
 	out     io.Writer
 	history []string
 	style   tui.Style
@@ -594,8 +597,10 @@ type promptReader struct {
 func (r *promptReader) readLine(prompt string) (string, error) {
 	line, err := tui.Prompt(prompt,
 		tui.WithHistory(&r.history),
+		tui.WithPromptInput(r.in),
 		tui.WithPromptOutput(r.out),
 		tui.WithPromptStyle(r.style),
+		tui.WithPromptFrame(false), // a plain REPL prompt
 	)
 	switch {
 	case errors.Is(err, tui.ErrEOF):
@@ -624,20 +629,25 @@ func replCommand(ctx *cli.Context) int {
 		return commandLineError(stderr, err)
 	}
 	s := &session{env: env, vars: vars, color: color.on(stdout, stdout)}
-	// The line editor reads the process's own standard input, so it is
-	// used only when that is the stream given and it is a terminal.
+	// The line editor is used when standard input and output are
+	// terminals; otherwise lines are read plainly, with no prompt.
 	var in lineReader
-	if f, ok := stdin.(*os.File); ok && f == os.Stdin && isTerminal(f) && isTerminal(stdout) {
+	if f, ok := stdin.(*os.File); ok && isTerminal(f) && isTerminal(stdout) {
 		style := tui.NewStyle()
 		if s.color {
 			style = style.WithForeground(tui.ColorCyan)
 		}
-		in = &promptReader{out: stdout, style: style}
+		in = &promptReader{in: f, out: stdout, style: style}
 	} else {
 		sc := bufio.NewScanner(stdin)
 		sc.Buffer(make([]byte, 64*1024), 16<<20)
 		in = &scanReader{sc}
 	}
+	return repl(s, in, stdout, stderr)
+}
+
+// repl reads and evaluates entries until the input ends or :quit.
+func repl(s *session, in lineReader, stdout, stderr io.Writer) int {
 	var pending []string
 	for {
 		prompt := "> "

@@ -185,15 +185,25 @@ func newEnvFlags() *envFlags { return &envFlags{strVars: map[string]string{}} }
 // share. Each command is given its own copies.
 func envFlagDefs() []cli.Flag {
 	return []cli.Flag{
-		cli.Strings("var").Help("Declare a string variable NAME holding TEXT (NAME=TEXT); repeatable"),
-		cli.Strings("vars").Help("Declare one variable for each key of a JSON object in FILE.json"),
-		cli.Strings("env").Help("Add the process variable NAME as a key of the variable env; repeatable"),
-		cli.Strings("description").Help("Use the environment the description in FILE gives"),
-		cli.Strings("group").Help("Turn on the library group NAME; repeatable"),
-		cli.String("steps").Help("Limit the steps of a run to N").ValidateWith(wholeNumberOf("--steps", 0)),
-		cli.String("allocation").Help("Limit the allocation of a run to N units").ValidateWith(wholeNumberOf("--allocation", 0)),
-		cli.String("depth").Help("Limit the depth of a run to N").ValidateWith(wholeNumberOf("--depth", 0)),
+		cli.Strings("var").Placeholder("NAME=TEXT").Help("Declare a string variable NAME holding TEXT; repeatable"),
+		cli.String("vars").Placeholder("FILE.json").Once().ValidateWith(nonEmpty).
+			Help("Declare one variable for each key of a JSON object in FILE.json"),
+		cli.Strings("env").Placeholder("NAME").Help("Add the process variable NAME as a key of the variable env; repeatable"),
+		cli.String("description").Placeholder("FILE").Once().ValidateWith(nonEmpty).
+			Help("Use the environment the description in FILE gives"),
+		cli.Strings("group").Placeholder("NAME").Help("Turn on the library group NAME; repeatable"),
+		cli.String("steps").Placeholder("N").Help("Limit the steps of a run to N").ValidateWith(wholeNumberOf("--steps", 0)),
+		cli.String("allocation").Placeholder("N").Help("Limit the allocation of a run to N units").ValidateWith(wholeNumberOf("--allocation", 0)),
+		cli.String("depth").Placeholder("N").Help("Limit the depth of a run to N").ValidateWith(wholeNumberOf("--depth", 0)),
 	}
+}
+
+// nonEmpty validates the value of a flag that names a file.
+func nonEmpty(v string) error {
+	if v == "" {
+		return errors.New("a value is needed")
+	}
+	return nil
 }
 
 // wholeNumberOf validates the value of a flag that takes a whole number of
@@ -220,28 +230,9 @@ func envFlagsOf(ctx *cli.Context) (*envFlags, error) {
 		}
 		f.strVars[name] = text
 	}
-	// wonton/cli keeps the last value of a flag given twice; --vars and
-	// --description are slice flags so that a second one is an error.
-	one := func(name string) (string, error) {
-		vs := ctx.Strings(name)
-		if len(vs) > 1 {
-			return "", cmdErrorf("--%s is given twice", name)
-		}
-		if len(vs) == 1 {
-			if vs[0] == "" {
-				return "", cmdErrorf("--%s needs a value", name)
-			}
-			return vs[0], nil
-		}
-		return "", nil
-	}
-	var err error
-	if f.varFile, err = one("vars"); err != nil {
-		return nil, err
-	}
-	if f.description, err = one("description"); err != nil {
-		return nil, err
-	}
+	// --vars and --description are given at most once (Once).
+	f.varFile = ctx.String("vars")
+	f.description = ctx.String("description")
 	f.envKeys = ctx.Strings("env")
 	f.groups = ctx.Strings("group")
 	for _, l := range []struct {

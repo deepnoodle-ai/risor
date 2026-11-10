@@ -33,14 +33,14 @@ type configFlags struct {
 // configFlagDefs are the flags of eval (eval true) or check.
 func configFlagDefs(eval bool) []cli.Flag {
 	fs := []cli.Flag{
-		cli.String("type").Help("Check the result against the type TEXT"),
-		cli.String("schema").Help("Check the result against the JSON Schema in FILE, closed"),
+		cli.String("type").Placeholder("TEXT").Help("Check the result against the type TEXT"),
+		cli.String("schema").Placeholder("FILE").Help("Check the result against the JSON Schema in FILE, closed"),
 		formatFlag(),
 	}
 	if eval {
 		fs = append(fs,
 			cli.Bool("pretty").Help("Write the value as indented JSON"),
-			cli.String("max-failures").Default("10").Help("Report at most N failures of the result's conformance").
+			cli.String("max-failures").Placeholder("N").Default("10").Help("Report at most N failures of the result's conformance").
 				ValidateWith(wholeNumberOf("--max-failures", 1)),
 		)
 	} else {

@@ -29,10 +29,10 @@ type testFlags struct {
 // testFlagDefs are the flags of test.
 func testFlagDefs() []cli.Flag {
 	return []cli.Flag{
-		cli.Strings("run").Help("Run only the cases whose names contain TEXT; repeatable"),
+		cli.Strings("run").Placeholder("TEXT").Help("Run only the cases whose names contain TEXT; repeatable"),
 		cli.Bool("update").Help("Update mode: write each case's actual result as its expect"),
 		formatFlag(),
-		cli.String("suite").Help("Run the conformance suite at DIR"),
+		cli.String("suite").Placeholder("DIR").ValidateWith(nonEmpty).Help("Run the conformance suite at DIR"),
 		colorFlagDef(),
 	}
 }
@@ -46,9 +46,6 @@ func testFlagsOf(ctx *cli.Context) (*testFlags, error) {
 		format: ctx.String("format"),
 		suite:  ctx.String("suite"),
 		color:  colorOf(ctx),
-	}
-	if ctx.IsSet("suite") && f.suite == "" {
-		return nil, cmdErrorf("--suite needs a value")
 	}
 	if f.suite != "" && (len(f.paths) > 0 || len(f.runs) > 0 || f.update) {
 		return nil, cmdErrorf("--suite takes no PATH, --run or --update")

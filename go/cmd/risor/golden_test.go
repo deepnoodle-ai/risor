@@ -22,18 +22,7 @@ import (
 // After the run, the files named want.files/NAME hold what the run left in
 // NAME. Run with -update to write the want files.
 
-var update = updateFlag()
-
-// updateFlag is -update. wonton/termtest, which the program imports through
-// wonton/cli and wonton/tui, defines a flag of that name itself; then that
-// one is read.
-func updateFlag() func() bool {
-	if f := flag.Lookup("update"); f != nil {
-		return func() bool { return f.Value.String() == "true" }
-	}
-	b := flag.Bool("update", false, "write the golden files of testdata/cli")
-	return func() bool { return *b }
-}
+var update = flag.Bool("update", false, "write the golden files of testdata/cli")
 
 func TestGolden(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
@@ -105,7 +94,11 @@ func golden(t *testing.T, dir string) {
 	}
 	for k, v := range got {
 		p := filepath.Join(dir, k)
-		if update() {
+		if *update {
+			// A missing want file stands for empty output: none is made.
+			if _, err := os.Stat(p); v == "" && os.IsNotExist(err) {
+				continue
+			}
 			assert.NoError(t, os.WriteFile(p, []byte(v), 0o644))
 			continue
 		}

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 func runCLI(args ...string) (int, string, string) {
@@ -122,4 +124,32 @@ func TestUsage(t *testing.T) {
 	assert.Equal(t, code, 2)
 	code, _, _ = runCLI("eval")
 	assert.Equal(t, code, 2)
+}
+
+// The line editor of the REPL, driven by the keys a terminal in raw mode
+// sends: Enter is \r, Backspace \x7f, Left \x1b[D, Up \x1b[A, Ctrl+C \x03.
+func TestReplLineEditor(t *testing.T) {
+	s := &session{}
+	var err error
+	s.env, s.vars, err = newEnvFlags().environment()
+	assert.NoError(t, err)
+	keys := "const a = 4;\r" + // held
+		"a +\r" + // needs more
+		"1\r" + // the entry is "a +\n1"
+		"[a,\r\x03" + // abandoned
+		"a * 3x\x7f\r" + // Backspace
+		"\x1b[A\x1b[D1\r" + // Up recalls "a * 3"; Left, then "a * 13"
+		":quit\r"
+	var screen bytes.Buffer
+	r := &promptReader{in: strings.NewReader(keys), out: &screen, style: tui.NewStyle()}
+	var out, errb bytes.Buffer
+	code := repl(s, r, &out, &errb)
+	assert.Equal(t, code, 0)
+	assert.Equal(t, errb.String(), "")
+	assert.Equal(t, out.String(), "5\n12\n52\n")
+	// The input ends: io.EOF, and the REPL ends with status 0.
+	r = &promptReader{in: strings.NewReader("1\r"), out: &screen}
+	out.Reset()
+	assert.Equal(t, repl(s, r, &out, &errb), 0)
+	assert.Equal(t, out.String(), "1\n")
 }

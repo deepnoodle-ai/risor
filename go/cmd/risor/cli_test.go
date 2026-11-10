@@ -127,9 +127,8 @@ func TestReplShowsAuthoredNames(t *testing.T) {
 	assert.False(t, strings.Contains(r.diags, "__"), r.diags)
 }
 
-// The rules of the command line that wonton/cli does not keep by itself
-// (prepareArgs): each is an error of the command line, status 2 (F12 4.9),
-// or a value taken as written.
+// The rules of the command line (F12 4.9): each is an error of the command
+// line, status 2, or a value taken as written.
 func TestCommandLineRules(t *testing.T) {
 	dir := t.TempDir()
 	app := put(t, dir, "app.risor", "{w: who}\n")
@@ -140,6 +139,12 @@ func TestCommandLineRules(t *testing.T) {
 		code, out, errOut := runCLI("eval", app, "--var", "who="+v, "--format", "json")
 		assert.Equal(t, code, 0, v, errOut)
 		assert.Equal(t, out, `{"w":`+q(v)+"}\n", v)
+	}
+	// At the top level too: the REPL starts, and reads no entry.
+	for _, args := range [][]string{{"--env", "test"}, {"--env", "fmt"}, {"--var", "a=-1", "--env", "version"}} {
+		code, out, errOut := runCLI(args...)
+		assert.Equal(t, code, 0, args, errOut)
+		assert.Equal(t, out, "", args)
 	}
 	code, out, _ := runCLI("eval", app, "--var", "who", "--format=json")
 	assert.Equal(t, code, 2, out) // --var takes NAME=TEXT
@@ -152,6 +157,11 @@ func TestCommandLineRules(t *testing.T) {
 		{"eval", app, "--vars", vars, "--vars", vars},
 		{"eval", app, "--description", desc, "--description", desc},
 		{"eval", app, "--steps", "-1"},
+		{"--steps", "-1"},
+		{"--no-color"},
+		{"--vars", vars, "--vars", vars},
+		{"eval", app, "--vars="},
+		{"test", "--suite="},
 		{"eval", app, "--steps", "x"},
 		{"eval", app, "--max-failures", "0"},
 		{"eval", app, "--format"},

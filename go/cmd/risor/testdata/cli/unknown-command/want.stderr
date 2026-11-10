@@ -1,3 +1,3 @@
-risor: unknown command "nope"
+risor: unknown command: nope
 
-Run 'risor help' for usage.
+Run 'risor --help' to see available commands.
