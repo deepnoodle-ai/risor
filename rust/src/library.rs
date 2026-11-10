@@ -15,6 +15,9 @@ pub const SOURCE: &str = include_str!("../../suite/library.json");
 /// Package F6: the records of the opt-in groups (`f06-groups.md` 3).
 pub const GROUPS_SOURCE: &str = include_str!("../../suite/library-groups.json");
 
+/// Package F13: the records of the math functions (`f13-math.md` 5).
+pub const MATH_SOURCE: &str = include_str!("../../suite/library-math.json");
+
 /// Package F7: the records of the queries (`f07-queries.md` 6.1).
 pub const QUERIES_SOURCE: &str = include_str!("../../suite/library-queries.json");
 
@@ -76,6 +79,7 @@ pub fn records() -> &'static [Record] {
         let groups = json::parse(GROUPS_SOURCE).expect("suite/library-groups.json is valid JSON");
         let queries =
             json::parse(QUERIES_SOURCE).expect("suite/library-queries.json is valid JSON");
+        let math = json::parse(MATH_SOURCE).expect("suite/library-math.json is valid JSON");
         let mut out: Vec<Record> = doc
             .as_arr()
             .unwrap_or_default()
@@ -87,6 +91,7 @@ pub fn records() -> &'static [Record] {
                     .iter()
                     .filter(|e| e.get("signature").is_some()),
             )
+            .chain(math.as_arr().unwrap_or_default().iter())
             .map(record)
             .collect();
         // F7 6.1: a record that `extends` a Core entry takes its place; the

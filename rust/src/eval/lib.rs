@@ -40,7 +40,18 @@ fn literal_set(t: &Type) -> Option<Vec<&str>> {
 
 /// The formulas each entry implements: name, receiver, steps, units. A unit
 /// test holds them equal to `suite/library.json`.
-pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 67] = [
+pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 78] = [
+    ("math.pow", None, "200", "0"),
+    ("math.exp", None, "200", "0"),
+    ("math.log", None, "200", "0"),
+    ("math.log10", None, "200", "0"),
+    ("math.sin", None, "200", "0"),
+    ("math.cos", None, "200", "0"),
+    ("math.tan", None, "200", "0"),
+    ("math.asin", None, "200", "0"),
+    ("math.acos", None, "200", "0"),
+    ("math.atan", None, "200", "0"),
+    ("math.atan2", None, "200", "0"),
     ("minBy", Some(Kind::List), "2*n + sz(keys)", "0"),
     ("maxBy", Some(Kind::List), "2*n + sz(keys)", "0"),
     ("uniqueBy", Some(Kind::List), "2*n + sz(keys)", "1 + k"),
@@ -557,6 +568,26 @@ impl<'h> Run<'h> {
                 }
                 self.alloc(1)?;
                 Ok(Value::str(fixed_text(xv, d as u32)))
+            }
+            // F13 3: the value test, the 200 steps, then the result.
+            n if n.starts_with("math.") && n != "math.sqrt" => {
+                let a: Vec<f64> = (0..args.len())
+                    .map(|i| self.val(&args, i).map_or(0.0, |v| num(&v)))
+                    .collect();
+                if crate::math::not_real(n, &a) {
+                    return Err(fail(
+                        "invalid-argument",
+                        "not-real",
+                        span,
+                        vec![("name", n.to_string())],
+                    ));
+                }
+                self.charge(200)?;
+                let r = crate::math::eval(n, &a);
+                if !r.is_finite() {
+                    return Err(self.entry_range(n, span));
+                }
+                Ok(Value::Num(r))
             }
             // F6: an entry of an opt-in group.
             n if n.contains('.') => self.group_entry(n, x, span),
@@ -1295,7 +1326,8 @@ mod tests {
     #[test]
     fn the_formulas_are_the_records() {
         let recs = records();
-        assert_eq!(recs.len(), 67);
+        // 53 of Core, 8 of F6, 6 of F7 and 11 of F13 (`f13-math.md` 1.1).
+        assert_eq!(recs.len(), 78);
         for r in recs {
             let f = FORMULAS
                 .iter()

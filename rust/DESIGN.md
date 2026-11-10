@@ -440,3 +440,12 @@ one call, and a host implementation is a `'static` closure that receives
   type derived from the host type, then copies; it fails beyond that only
   where the host type is narrower. The derive implements `Decode` for a
   struct that borrows nothing, with the mark `#[risor(default)]`.
+
+## Package F13, math functions
+
+- `math.rs` has its own big integers and computes each function in fixed
+  point with an explicit error bound. The method of Ziv doubles the
+  precision until both ends of the interval round to one double. The exact
+  and midpoint results of `pow` are found first, by exact arithmetic on the
+  odd part of the base. No platform function decides a result; one is used
+  only to estimate a range with a wide margin.

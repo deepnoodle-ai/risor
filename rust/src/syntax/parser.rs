@@ -2072,6 +2072,10 @@ impl<'a> Parser<'a> {
                     };
                 }
             }
+            // Where the `:` after a key is needed, the template `key`.
+            if e.rule == Rule::Key {
+                return at(e.code, "key");
+            }
             return at(e.code, "default");
         }
 

@@ -1650,6 +1650,8 @@ impl<'a> Checker<'a> {
                     return;
                 }
                 let rec = v.map.as_ref().unwrap().as_ref().clone();
+                // The record read: flat(U) for a union (F5 2.3).
+                let flat_v = Ty::rec(rec.clone());
                 let slots = match &self.res[pat.index()] {
                     Res::PatSlots { fields, rest } => (fields.clone(), *rest),
                     _ => (Vec::new(), None),
@@ -1662,7 +1664,7 @@ impl<'a> Checker<'a> {
                                 Some(fl) => fl.ty.clone().with_null(),
                                 None if rec.rest.any => Ty::any(),
                                 None if rec.rest.is_never() => {
-                                    self.field_diag("no-field", f.key_span, &f.key, &v);
+                                    self.field_diag("no-field", f.key_span, &f.key, &flat_v);
                                     Ty::never()
                                 }
                                 None => rec.rest.clone().with_null(),
@@ -1675,7 +1677,7 @@ impl<'a> Checker<'a> {
                         None => match rec.fields.get(&f.key) {
                             Some(fl) if !fl.optional => fl.ty.clone(),
                             Some(fl) => {
-                                self.field_diag("maybe-absent", f.key_span, &f.key, &v);
+                                self.field_diag("maybe-absent", f.key_span, &f.key, &flat_v);
                                 fl.ty.clone()
                             }
                             None if rec.rest.any => {
@@ -1687,11 +1689,11 @@ impl<'a> Checker<'a> {
                                 }
                             }
                             None if rec.rest.is_never() => {
-                                self.field_diag("no-field", f.key_span, &f.key, &v);
+                                self.field_diag("no-field", f.key_span, &f.key, &flat_v);
                                 Ty::never()
                             }
                             None => {
-                                self.field_diag("maybe-absent", f.key_span, &f.key, &v);
+                                self.field_diag("maybe-absent", f.key_span, &f.key, &flat_v);
                                 rec.rest.clone()
                             }
                         },
@@ -1984,7 +1986,9 @@ impl<'a> Checker<'a> {
         } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
             e.as_ref().clone()
         } else {
-            self.kind_at(rs, "star", &cur);
+            // A receiver of two kinds or more takes the rule of 9.1 step 4.
+            let t = if cur.kinds() > 1 { "receiver" } else { "star" };
+            self.kind_at(rs, t, &cur);
             self.synth_indexes(reads);
             return (Ty::never(), false);
         };
@@ -2049,7 +2053,8 @@ impl<'a> Checker<'a> {
                 } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
                     e.as_ref().clone()
                 } else {
-                    self.kind_at(rs, "star", &cur);
+                    let t = if cur.kinds() > 1 { "receiver" } else { "star" };
+                    self.kind_at(rs, t, &cur);
                     *failed = true;
                     self.synth_indexes(inner);
                     return Ty::never();
@@ -2148,6 +2153,9 @@ impl<'a> Checker<'a> {
             self.kind_at(rs, "field-read", cur);
             return Ty::never();
         };
+        // The record read: flat(U) for a union (F5 2.3).
+        let flat = Ty::rec(rec.clone());
+        let cur = &flat;
         match rec.fields.get(key) {
             Some(f) if !f.optional || present => f.ty.clone(),
             Some(f) => {
