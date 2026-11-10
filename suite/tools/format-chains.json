@@ -1,0 +1,100 @@
+[
+ {
+  "name": "a chain that fits stays",
+  "format": "xs.filter(x => x > 0).map(x => x * 2)",
+  "expect": {
+   "formatted": "xs.filter(x => x > 0).map(x => x * 2)\n"
+  }
+ },
+ {
+  "name": "a chain of two calls that does not fit",
+  "format": "const names = fetch.tests.filter(t => t.status == \"fail\").map(t => t.name + \" \" + t.ms);\nnames",
+  "expect": {
+   "formatted": "const names = fetch.tests\n  .filter(t => t.status == \"fail\")\n  .map(t => t.name + \" \" + t.ms);\nnames\n"
+  }
+ },
+ {
+  "name": "the receiver part keeps its field steps",
+  "format": "input.event.pull_request.labels.filter(l => l.name != \"skip\").map(l => l.name).join(\", \")",
+  "expect": {
+   "formatted": "input.event.pull_request.labels\n  .filter(l => l.name != \"skip\")\n  .map(l => l.name)\n  .join(\", \")\n"
+  }
+ },
+ {
+  "name": "a chain of one call does not break at its dot",
+  "format": "input.event.pull_request.labels.filter(label => label.name != \"skip\" && label.color != \"red\")",
+  "expect": {
+   "formatted": "input.event.pull_request.labels.filter(\n  label => label.name != \"skip\" && label.color != \"red\",\n)\n"
+  }
+ },
+ {
+  "name": "a chain with index steps in its links",
+  "format": "items.sortBy(i => i.created, \"desc\").slice(0, 10)[0].tags.map(t => t.name).first()",
+  "expect": {
+   "formatted": "items\n  .sortBy(i => i.created, \"desc\")\n  .slice(0, 10)[0].tags\n  .map(t => t.name)\n  .first()\n"
+  }
+ },
+ {
+  "name": "an optional chain that does not fit",
+  "format": "input?.event?.pull_request?.labels?.filter(l => l.name != \"skip\")?.map(l => l.name + \"!\")",
+  "expect": {
+   "formatted": "input?.event?.pull_request?.labels\n  ?.filter(l => l.name != \"skip\")\n  ?.map(l => l.name + \"!\")\n"
+  }
+ },
+ {
+  "name": "a chain whose last link holds a block is not broken",
+  "format": "xs.filter(x => x).map(x => { const y = x; y })",
+  "expect": {
+   "formatted": "xs.filter(x => x).map(x => {\n  const y = x;\n  y\n})\n"
+  }
+ },
+ {
+  "name": "a chain whose earlier link holds a block is broken",
+  "format": "xs.map(x => { const y = x; y }).filter(x => x)",
+  "expect": {
+   "formatted": "xs\n  .map(x => {\n    const y = x;\n    y\n  })\n  .filter(x => x)\n"
+  }
+ },
+ {
+  "name": "a method call on a namespace counts as a link",
+  "format": "json.parse(text).items.map(i => i.id).filter(id => id != \"\")",
+  "expect": {
+   "formatted": "json.parse(text).items.map(i => i.id).filter(id => id != \"\")\n"
+  }
+ },
+ {
+  "name": "a chain after the equals sign",
+  "format": "const report = order.lines.map(l => l.qty * l.price).filter(t => t > 100).sum();\nreport",
+  "expect": {
+   "formatted": "const report = order.lines.map(l => l.qty * l.price).filter(t => t > 100).sum();\nreport\n"
+  }
+ },
+ {
+  "name": "a chain in parentheses joins the outer chain",
+  "format": "(xs.filter(f)).map(g)",
+  "expect": {
+   "formatted": "xs.filter(f).map(g)\n"
+  }
+ },
+ {
+  "name": "a star step",
+  "format": "orders [ * ] . lines [ * ] . sku",
+  "expect": {
+   "formatted": "orders[*].lines[*].sku\n"
+  }
+ },
+ {
+  "name": "an optional star step",
+  "format": "orders ?.[ * ] . id",
+  "expect": {
+   "formatted": "orders?.[*].id\n"
+  }
+ },
+ {
+  "name": "a chain with stars that does not fit",
+  "format": "orders[*].lines.filter(l => l.qty > 0 && l.price > 0).map(l => l.sku + \":\" + l.qty).first()",
+  "expect": {
+   "formatted": "orders[*].lines\n  .filter(l => l.qty > 0 && l.price > 0)\n  .map(l => l.sku + \":\" + l.qty)\n  .first()\n"
+  }
+ }
+]

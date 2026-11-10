@@ -1,0 +1,184 @@
+[
+ {
+  "name": "a string in single quotes stays",
+  "format": "'it' + \"'s\" == 'say \"hi\"'",
+  "expect": {
+   "formatted": "'it' + \"'s\" == 'say \"hi\"'\n"
+  }
+ },
+ {
+  "name": "escapes stay as written",
+  "format": "\"\\u{41}\\t\\\"q\\\"\" + \"\\u0041\"",
+  "expect": {
+   "formatted": "\"\\u{41}\\t\\\"q\\\"\" + \"\\u0041\"\n"
+  }
+ },
+ {
+  "name": "a raw string stays",
+  "format": "r\"C:\\new\" + r'say \"hi\"'",
+  "expect": {
+   "formatted": "r\"C:\\new\" + r'say \"hi\"'\n"
+  }
+ },
+ {
+  "name": "a template stays as written",
+  "format": "`a ${ x+1 } b`",
+  "expect": {
+   "formatted": "`a ${ x+1 } b`\n"
+  }
+ },
+ {
+  "name": "a template with no interpolation stays",
+  "format": "`plain`",
+  "expect": {
+   "formatted": "`plain`\n"
+  }
+ },
+ {
+  "name": "a template over two lines stays",
+  "format": "const s = `first\nsecond ${ n }`;\ns",
+  "expect": {
+   "formatted": "const s = `first\nsecond ${ n }`;\ns\n"
+  }
+ },
+ {
+  "name": "a template with carriage returns is written with line feeds",
+  "format": "const s = `a\r\nb`;\ns",
+  "expect": {
+   "formatted": "const s = `a\nb`;\ns\n"
+  }
+ },
+ {
+  "name": "a comment inside an interpolation stays in place",
+  "format": "`${ x /* inner */ }`",
+  "expect": {
+   "formatted": "`${ x /* inner */ }`\n"
+  }
+ },
+ {
+  "name": "a text block is indented two more than its line",
+  "format": "const s = \"\"\"\n    hello\n      world\n    \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  hello\n    world\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a text block whose closing line is at column 1",
+  "format": "const s = \"\"\"\nhello\n  world\n\"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  hello\n    world\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a text block with tab indentation",
+  "format": "const s = \"\"\"\n\thello\n\t\tworld\n\t\"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  hello\n  \tworld\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "blank lines of a text block are written empty",
+  "format": "const s = \"\"\"\n  a\n      \n  b\n  \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  a\n\n  b\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a trailing space of a content line stays",
+  "format": "const s = \"\"\"\n  a \n  \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  a \n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "the opening line spaces of a text block are dropped",
+  "format": "const s = \"\"\"   \n  a\n  \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  a\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a text block as the program result",
+  "format": "\"\"\"\n  a\n  \"\"\"",
+  "expect": {
+   "formatted": "\"\"\"\n  a\n  \"\"\"\n"
+  }
+ },
+ {
+  "name": "a text block inside a block",
+  "format": "{ const s = \"\"\"\n  a\n  \"\"\"; s }",
+  "expect": {
+   "formatted": "{\n  const s = \"\"\"\n    a\n    \"\"\";\n  s\n}\n"
+  }
+ },
+ {
+  "name": "a text block as an argument",
+  "format": "f(\"\"\"\n  a\n  \"\"\", 1)",
+  "expect": {
+   "formatted": "f(\"\"\"\n  a\n  \"\"\", 1)\n"
+  }
+ },
+ {
+  "name": "a list holding a text block is measured to its first line end",
+  "format": "[firstElementOfTheList, secondElementOfTheList, \"\"\"\n  text\n  \"\"\", thirdElement]",
+  "expect": {
+   "formatted": "[firstElementOfTheList, secondElementOfTheList, \"\"\"\n  text\n  \"\"\", thirdElement]\n"
+  }
+ },
+ {
+  "name": "a text block with an interpolation",
+  "format": "const s = \"\"\"\n  n = ${n + 1}\n  \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  n = ${n + 1}\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "lines inside an interpolation stay",
+  "format": "const t = \"\"\"\n  a ${1 +\n2} b\n  c\n  \"\"\";\nt",
+  "expect": {
+   "formatted": "const t = \"\"\"\n  a ${1 +\n2} b\n  c\n  \"\"\";\nt\n"
+  }
+ },
+ {
+  "name": "a raw text block",
+  "format": "const s = r\"\"\"\n    \\n${x}\n    \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = r\"\"\"\n  \\n${x}\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a text block with escaped quotes",
+  "format": "const s = \"\"\"\n  say \\\"\"\"hi\\\"\"\"\n  \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  say \\\"\"\"hi\\\"\"\"\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a text block nested in an interpolation stays inside",
+  "format": "const s = \"\"\"\n  a ${\"\"\"\n      b\n      \"\"\"} c\n  \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  a ${\"\"\"\n      b\n      \"\"\"} c\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "an empty text block",
+  "format": "const s = \"\"\"\n\"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a text block whose line ends are carriage returns",
+  "format": "const s = \"\"\"\r\n  a\r\n  \"\"\";\ns",
+  "expect": {
+   "formatted": "const s = \"\"\"\n  a\n  \"\"\";\ns\n"
+  }
+ },
+ {
+  "name": "a text block after a long line breaks nothing",
+  "format": "const message = someFunctionWithALongName(firstArgument, secondArgument) + \"\"\"\n  tail\n  \"\"\";\nmessage",
+  "expect": {
+   "formatted": "const message = someFunctionWithALongName(firstArgument, secondArgument) + \"\"\"\n  tail\n  \"\"\";\nmessage\n"
+  }
+ }
+]

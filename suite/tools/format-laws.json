@@ -1,0 +1,234 @@
+[
+ {
+  "name": "a config with a total",
+  "format": "const sub=order.lines.map(l=>l.qty*l.price).sum();const ship=if(sub>100){0}else{order.shipping};{subtotal:sub,shipping:ship,total:sub+ship,coupon:order.coupon??\"none\"}",
+  "env": "{order: {lines: {sku: string, qty: int, price: float}[], shipping: float, coupon: string | null}, n: int}",
+  "vars": {
+   "order": {
+    "lines": [
+     {
+      "sku": "a",
+      "qty": 2,
+      "price": 1.5
+     },
+     {
+      "sku": "b",
+      "qty": 1,
+      "price": 10
+     }
+    ],
+    "shipping": 4,
+    "coupon": null
+   },
+   "n": 3
+  },
+  "expect": {
+   "formatted": "const sub = order.lines.map(l => l.qty * l.price).sum();\nconst ship = if (sub > 100) { 0 } else { order.shipping };\n{\n  subtotal: sub,\n  shipping: ship,\n  total: sub + ship,\n  coupon: order.coupon ?? \"none\",\n}\n"
+  }
+ },
+ {
+  "name": "a long query",
+  "format": "order.lines.filter(l => l.qty > 0 && l.price > 0).map(l => {sku: l.sku, cost: l.qty * l.price, label: `${l.sku} x ${l.qty}`}).sortBy(l => l.cost)",
+  "env": "{order: {lines: {sku: string, qty: int, price: float}[], shipping: float, coupon: string | null}, n: int}",
+  "vars": {
+   "order": {
+    "lines": [
+     {
+      "sku": "a",
+      "qty": 2,
+      "price": 1.5
+     },
+     {
+      "sku": "b",
+      "qty": 1,
+      "price": 10
+     }
+    ],
+    "shipping": 4,
+    "coupon": null
+   },
+   "n": 3
+  },
+  "expect": {
+   "formatted": "order.lines\n  .filter(l => l.qty > 0 && l.price > 0)\n  .map(l => {sku: l.sku, cost: l.qty * l.price, label: `${l.sku} x ${l.qty}`})\n  .sortBy(l => l.cost)\n"
+  }
+ },
+ {
+  "name": "a match and a try",
+  "format": "const k = match n { 1 | 2 => \"few\", 3 => \"three\", _ => \"many\" }; try { [k, order.lines[n].sku] } catch (e) { [k, e.code] }",
+  "env": "{order: {lines: {sku: string, qty: int, price: float}[], shipping: float, coupon: string | null}, n: int}",
+  "vars": {
+   "order": {
+    "lines": [
+     {
+      "sku": "a",
+      "qty": 2,
+      "price": 1.5
+     },
+     {
+      "sku": "b",
+      "qty": 1,
+      "price": 10
+     }
+    ],
+    "shipping": 4,
+    "coupon": null
+   },
+   "n": 3
+  },
+  "expect": {
+   "formatted": "const k = match n { 1 | 2 => \"few\", 3 => \"three\", _ => \"many\" };\ntry { [k, order.lines[n].sku] } catch (e) { [k, e.code] }\n"
+  }
+ },
+ {
+  "name": "a failing program fails the same way",
+  "format": "(order.lines.map(l => l.qty).sum() + n) / (n - 3)",
+  "env": "{order: {lines: {sku: string, qty: int, price: float}[], shipping: float, coupon: string | null}, n: int}",
+  "vars": {
+   "order": {
+    "lines": [
+     {
+      "sku": "a",
+      "qty": 2,
+      "price": 1.5
+     },
+     {
+      "sku": "b",
+      "qty": 1,
+      "price": 10
+     }
+    ],
+    "shipping": 4,
+    "coupon": null
+   },
+   "n": 3
+  },
+  "expect": {
+   "formatted": "(order.lines.map(l => l.qty).sum() + n) / (n - 3)\n"
+  }
+ },
+ {
+  "name": "a text block value",
+  "format": "const s = \"\"\"\n      line ${n}\n        more\n      \"\"\";\ns.split(\"\\n\")",
+  "env": "{order: {lines: {sku: string, qty: int, price: float}[], shipping: float, coupon: string | null}, n: int}",
+  "vars": {
+   "order": {
+    "lines": [
+     {
+      "sku": "a",
+      "qty": 2,
+      "price": 1.5
+     },
+     {
+      "sku": "b",
+      "qty": 1,
+      "price": 10
+     }
+    ],
+    "shipping": 4,
+    "coupon": null
+   },
+   "n": 3
+  },
+  "expect": {
+   "formatted": "const s = \"\"\"\n  line ${n}\n    more\n  \"\"\";\ns.split(\"\\n\")\n"
+  }
+ },
+ {
+  "name": "parentheses dropped and added",
+  "format": "((n + 1)) * 2 + -(-n) - (n % 2 * 3) + (n ?? 0)",
+  "env": "{order: {lines: {sku: string, qty: int, price: float}[], shipping: float, coupon: string | null}, n: int}",
+  "vars": {
+   "order": {
+    "lines": [
+     {
+      "sku": "a",
+      "qty": 2,
+      "price": 1.5
+     },
+     {
+      "sku": "b",
+      "qty": 1,
+      "price": 10
+     }
+    ],
+    "shipping": 4,
+    "coupon": null
+   },
+   "n": 3
+  },
+  "expect": {
+   "formatted": "(n + 1) * 2 + - -n - (n % 2) * 3 + (n ?? 0)\n"
+  }
+ },
+ {
+  "name": "the first example: spaces",
+  "format": "const x=1;x+2;",
+  "expect": {
+   "formatted": "const x = 1;\nx + 2\n"
+  }
+ },
+ {
+  "name": "the second example: parentheses",
+  "format": "((a + b)) * c",
+  "expect": {
+   "formatted": "(a + b) * c\n"
+  }
+ },
+ {
+  "name": "the third example: and inside or",
+  "format": "a && b || c",
+  "expect": {
+   "formatted": "(a && b) || c\n"
+  }
+ },
+ {
+  "name": "the fourth example: arguments",
+  "format": "f( a , b , )",
+  "expect": {
+   "formatted": "f(a, b)\n"
+  }
+ },
+ {
+  "name": "the sixth example: a map entry written long",
+  "format": "{a: a}",
+  "expect": {
+   "formatted": "{a: a}\n"
+  }
+ },
+ {
+  "name": "the seventh example: a pattern field written long",
+  "format": "const {a: a} = m; a",
+  "expect": {
+   "formatted": "const {a} = m;\na\n"
+  }
+ },
+ {
+  "name": "the eighth example: else with an if",
+  "format": "if (c) { 1 } else { if (d) { 2 } else { 3 } }",
+  "expect": {
+   "formatted": "if (c) { 1 } else if (d) { 2 } else { 3 }\n"
+  }
+ },
+ {
+  "name": "the ninth example: minus minus",
+  "format": "-(-x)",
+  "expect": {
+   "formatted": "- -x\n"
+  }
+ },
+ {
+  "name": "the tenth example: a match subject",
+  "format": "match (({a: 1}).a) { _ => 0 }",
+  "expect": {
+   "formatted": "match ({a: 1}.a) { _ => 0 }\n"
+  }
+ },
+ {
+  "name": "the eleventh example: numbers",
+  "format": "0x1F + 1_000 + 1E3",
+  "expect": {
+   "formatted": "0x1F + 1_000 + 1E3\n"
+  }
+ }
+]

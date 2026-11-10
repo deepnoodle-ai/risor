@@ -1,0 +1,637 @@
+{
+ "env": "{user: {name: string, age: int, tags: string[]}, items: {id: string, qty: int}[]}",
+ "cases": [
+  {
+   "name": "a variable by its prefix",
+   "complete": "use‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "items": [
+      {
+       "label": "user",
+       "kind": "variable",
+       "detail": "{age: int, name: string, tags: string[]}"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "every name at the start of an empty text",
+   "complete": "‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "items": [
+      {
+       "label": "items",
+       "kind": "variable",
+       "detail": "{id: string, qty: int}[]"
+      },
+      {
+       "label": "user",
+       "kind": "variable",
+       "detail": "{age: int, name: string, tags: string[]}"
+      },
+      {
+       "label": "abs",
+       "kind": "function"
+      },
+      {
+       "label": "bool",
+       "kind": "function"
+      },
+      {
+       "label": "ceil",
+       "kind": "function"
+      },
+      {
+       "label": "fail",
+       "kind": "function"
+      },
+      {
+       "label": "fixed",
+       "kind": "function"
+      },
+      {
+       "label": "float",
+       "kind": "function"
+      },
+      {
+       "label": "floor",
+       "kind": "function"
+      },
+      {
+       "label": "int",
+       "kind": "function"
+      },
+      {
+       "label": "len",
+       "kind": "function"
+      },
+      {
+       "label": "max",
+       "kind": "function"
+      },
+      {
+       "label": "min",
+       "kind": "function"
+      },
+      {
+       "label": "range",
+       "kind": "function"
+      },
+      {
+       "label": "round",
+       "kind": "function"
+      },
+      {
+       "label": "string",
+       "kind": "function"
+      },
+      {
+       "label": "type",
+       "kind": "function"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "fields then methods of a record",
+   "complete": "user.‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      6,
+      1,
+      6
+     ],
+     "items": [
+      {
+       "label": "age",
+       "kind": "field",
+       "detail": "int"
+      },
+      {
+       "label": "name",
+       "kind": "field",
+       "detail": "string"
+      },
+      {
+       "label": "tags",
+       "kind": "field",
+       "detail": "string[]"
+      },
+      {
+       "label": "entries",
+       "kind": "method",
+       "detail": "() => {key: string, value: T}[]"
+      },
+      {
+       "label": "keys",
+       "kind": "method",
+       "detail": "() => string[]"
+      },
+      {
+       "label": "mapValues",
+       "kind": "method"
+      },
+      {
+       "label": "values",
+       "kind": "method",
+       "detail": "() => T[]"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a field by its prefix",
+   "complete": "user.na‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      6,
+      1,
+      8
+     ],
+     "items": [
+      {
+       "label": "name",
+       "kind": "field",
+       "detail": "string"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the text after the position is not read",
+   "complete": "user.na‸me.toUpperCase()",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      6,
+      1,
+      8
+     ],
+     "items": [
+      {
+       "label": "name",
+       "kind": "field",
+       "detail": "string"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "methods of a string by their prefix",
+   "complete": "user.name.to‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      11,
+      1,
+      13
+     ],
+     "items": [
+      {
+       "label": "toLowerCase",
+       "kind": "method",
+       "detail": "() => string"
+      },
+      {
+       "label": "toUpperCase",
+       "kind": "method",
+       "detail": "() => string"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the parameter of an open lambda has the element type",
+   "complete": "items.map(i => i.‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      18,
+      1,
+      18
+     ],
+     "items": [
+      {
+       "label": "id",
+       "kind": "field",
+       "detail": "string"
+      },
+      {
+       "label": "qty",
+       "kind": "field",
+       "detail": "int"
+      },
+      {
+       "label": "entries",
+       "kind": "method",
+       "detail": "() => {key: string, value: T}[]"
+      },
+      {
+       "label": "keys",
+       "kind": "method",
+       "detail": "() => string[]"
+      },
+      {
+       "label": "mapValues",
+       "kind": "method"
+      },
+      {
+       "label": "values",
+       "kind": "method",
+       "detail": "() => T[]"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a const name, with the type of its value",
+   "complete": "const total = 1;\ntot‸",
+   "expect": {
+    "completion": {
+     "span": [
+      2,
+      1,
+      2,
+      4
+     ],
+     "items": [
+      {
+       "label": "total",
+       "kind": "name",
+       "detail": "int"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a const-bound lambda, then functions",
+   "complete": "const f = x => x;\nf‸",
+   "expect": {
+    "completion": {
+     "span": [
+      2,
+      1,
+      2,
+      2
+     ],
+     "items": [
+      {
+       "label": "f",
+       "kind": "lambda",
+       "detail": null
+      },
+      {
+       "label": "fail",
+       "kind": "function",
+       "detail": "(message: string, data?: any) => never !"
+      },
+      {
+       "label": "fixed",
+       "kind": "function",
+       "detail": "(x: float, digits: int) => string !"
+      },
+      {
+       "label": "float",
+       "kind": "function",
+       "detail": "(x: float | string) => float !"
+      },
+      {
+       "label": "floor",
+       "kind": "function",
+       "detail": "(x: float) => int"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a binding hides a variable of its name",
+   "complete": "const user = 1;\nus‸",
+   "expect": {
+    "completion": {
+     "span": [
+      2,
+      1,
+      2,
+      3
+     ],
+     "items": [
+      {
+       "label": "user",
+       "kind": "name",
+       "detail": "int"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a parameter comes before a variable",
+   "complete": "items.map(item => it‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      19,
+      1,
+      21
+     ],
+     "items": [
+      {
+       "label": "item",
+       "kind": "name",
+       "detail": "{id: string, qty: int}"
+      },
+      {
+       "label": "items",
+       "kind": "variable",
+       "detail": "{id: string, qty: int}[]"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the name of catch in its handler",
+   "complete": "try { 1 } catch (err) { er‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      25,
+      1,
+      27
+     ],
+     "items": [
+      {
+       "label": "err",
+       "kind": "name"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a const name is not in scope in its own value",
+   "complete": "const total = tot‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      15,
+      1,
+      18
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "a name being bound has no candidates",
+   "complete": "const us‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "a string with no expected type has no candidates",
+   "complete": "\"us‸\"",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      2,
+      1,
+      4
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "the innermost scope first, then in the order bound",
+   "complete": "const x1 = 1;\nconst x2 = 2;\n[1].map(x3 => x‸",
+   "expect": {
+    "completion": {
+     "span": [
+      3,
+      15,
+      3,
+      16
+     ],
+     "items": [
+      {
+       "label": "x3",
+       "kind": "name"
+      },
+      {
+       "label": "x1",
+       "kind": "name",
+       "detail": "int"
+      },
+      {
+       "label": "x2",
+       "kind": "name",
+       "detail": "int"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a default sees the parameters to its left",
+   "complete": "const f = (a, b = a‸) => b;\nf(1)",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      19,
+      1,
+      20
+     ],
+     "items": [
+      {
+       "label": "a",
+       "kind": "name"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the fallback lists the environment when the repair fails",
+   "complete": "user u‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "items": [
+      {
+       "label": "user",
+       "kind": "variable",
+       "detail": "{age: int, name: string, tags: string[]}"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the fallback after a dot is empty",
+   "complete": ") user.‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      8,
+      1,
+      8
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "a lexical error before the position gives nothing",
+   "complete": "\"a\\q\" + us‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      9,
+      1,
+      11
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "a position in a comment gives nothing",
+   "complete": "// us‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      6,
+      1,
+      6
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "a position in a number gives nothing",
+   "complete": "1‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      2,
+      1,
+      2
+     ],
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "a position in an open interpolation",
+   "complete": "`hi ${us‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "items": [
+      {
+       "label": "user",
+       "kind": "variable",
+       "detail": "{age: int, name: string, tags: string[]}"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a position in a closed interpolation",
+   "complete": "`hi ${us‸}`",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "items": [
+      {
+       "label": "user",
+       "kind": "variable",
+       "detail": "{age: int, name: string, tags: string[]}"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "the prefix is case sensitive",
+   "complete": "USE‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "items": []
+    }
+   }
+  }
+ ]
+}

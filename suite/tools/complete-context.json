@@ -1,0 +1,938 @@
+[
+ {
+  "name": "keys of the expected result not yet written",
+  "complete": "{name: \"x\", ‸",
+  "returns": "{name: string, port: int, debug?: bool}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     13,
+     1,
+     13
+    ],
+    "items": [
+     {
+      "label": "debug",
+      "kind": "key",
+      "detail": "bool",
+      "insert": "debug"
+     },
+     {
+      "label": "port",
+      "kind": "key",
+      "detail": "int",
+      "insert": "port"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a key by its prefix",
+  "complete": "{p‸",
+  "returns": "{name: string, port: int, debug?: bool}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     2,
+     1,
+     3
+    ],
+    "items": [
+     {
+      "label": "port",
+      "kind": "key",
+      "detail": "int",
+      "insert": "port"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "keys of a nested record",
+  "complete": "{server: {h‸",
+  "returns": "{server: {host: string, port: int}}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     11,
+     1,
+     12
+    ],
+    "items": [
+     {
+      "label": "host",
+      "kind": "key",
+      "detail": "string",
+      "insert": "host"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "keys of a record in an expected list",
+  "complete": "[{‸",
+  "returns": "{id: int}[]",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     3,
+     1,
+     3
+    ],
+    "items": [
+     {
+      "label": "id",
+      "kind": "key",
+      "detail": "int",
+      "insert": "id"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a key that is not a word is inserted quoted",
+  "complete": "{‸",
+  "returns": "{\"max-retries\": int, name: string}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     2,
+     1,
+     2
+    ],
+    "items": [
+     {
+      "label": "max-retries",
+      "kind": "key",
+      "detail": "int",
+      "insert": "\"max-retries\""
+     },
+     {
+      "label": "name",
+      "kind": "key",
+      "detail": "string",
+      "insert": "name"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "with no expected record a shorthand entry lists names",
+  "complete": "{us‸",
+  "env": "{user: {name: string, age: int, tags: string[]}, items: {id: string, qty: int}[]}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     2,
+     1,
+     4
+    ],
+    "items": [
+     {
+      "label": "user",
+      "kind": "variable",
+      "detail": "{age: int, name: string, tags: string[]}"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "strings of an expected literal set",
+  "complete": "{level: \"‸",
+  "returns": "{level: \"debug\" | \"info\" | \"warn\"}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     10,
+     1,
+     10
+    ],
+    "items": [
+     {
+      "label": "debug",
+      "kind": "literal",
+      "detail": null,
+      "insert": "debug"
+     },
+     {
+      "label": "info",
+      "kind": "literal",
+      "detail": null,
+      "insert": "info"
+     },
+     {
+      "label": "warn",
+      "kind": "literal",
+      "detail": null,
+      "insert": "warn"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a string by its prefix",
+  "complete": "{level: \"i‸",
+  "returns": "{level: \"debug\" | \"info\" | \"warn\"}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     10,
+     1,
+     11
+    ],
+    "items": [
+     {
+      "label": "info",
+      "kind": "literal",
+      "detail": null,
+      "insert": "info"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a string in single quotes escapes its quote",
+  "complete": "{say: '‸",
+  "returns": "{say: \"it's\"}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     8,
+     1,
+     8
+    ],
+    "items": [
+     {
+      "label": "it's",
+      "kind": "literal",
+      "detail": null,
+      "insert": "it\\'s"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "the tags of a tagged union",
+  "complete": "{kind: \"‸",
+  "returns": "{kind: \"a\", x: int} | {kind: \"b\", y: string}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     9,
+     1,
+     9
+    ],
+    "items": [
+     {
+      "label": "a",
+      "kind": "literal",
+      "detail": null,
+      "insert": "a"
+     },
+     {
+      "label": "b",
+      "kind": "literal",
+      "detail": null,
+      "insert": "b"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "the keys of every variant",
+  "complete": "{‸",
+  "returns": "{kind: \"a\", x: int} | {kind: \"b\", y: string}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     2,
+     1,
+     2
+    ],
+    "items": [
+     {
+      "label": "kind",
+      "kind": "key",
+      "detail": "\"a\" | \"b\"",
+      "insert": "kind"
+     },
+     {
+      "label": "x",
+      "kind": "key",
+      "detail": "int",
+      "insert": "x"
+     },
+     {
+      "label": "y",
+      "kind": "key",
+      "detail": "string",
+      "insert": "y"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a match lists the strings no arm has",
+  "complete": "match s { \"a\" => 1, \"‸",
+  "env": "{s: \"a\" | \"b\" | \"c\"}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     22,
+     1,
+     22
+    ],
+    "items": [
+     {
+      "label": "b",
+      "kind": "literal",
+      "detail": null,
+      "insert": "b"
+     },
+     {
+      "label": "c",
+      "kind": "literal",
+      "detail": null,
+      "insert": "c"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "an operand of equality",
+  "complete": "s == \"‸",
+  "env": "{s: \"a\" | \"b\" | \"c\"}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     7,
+     1,
+     7
+    ],
+    "items": [
+     {
+      "label": "a",
+      "kind": "literal",
+      "detail": null,
+      "insert": "a"
+     },
+     {
+      "label": "b",
+      "kind": "literal",
+      "detail": null,
+      "insert": "b"
+     },
+     {
+      "label": "c",
+      "kind": "literal",
+      "detail": null,
+      "insert": "c"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "the entries of a group",
+  "complete": "json.‸",
+  "groups": [
+   "json"
+  ],
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     6,
+     1,
+     6
+    ],
+    "items": [
+     {
+      "label": "parse",
+      "kind": "function",
+      "detail": "(s: string) => any !"
+     },
+     {
+      "label": "stringify",
+      "kind": "function",
+      "detail": "(x: any) => string"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "every function and constant of math",
+  "complete": "math.‸",
+  "groups": [
+   "math"
+  ],
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     6,
+     1,
+     6
+    ],
+    "items": [
+     {
+      "label": "acos",
+      "kind": "function",
+      "detail": "(x: float) => float !"
+     },
+     {
+      "label": "asin",
+      "kind": "function",
+      "detail": "(x: float) => float !"
+     },
+     {
+      "label": "atan",
+      "kind": "function",
+      "detail": "(x: float) => float"
+     },
+     {
+      "label": "atan2",
+      "kind": "function",
+      "detail": "(y: float, x: float) => float"
+     },
+     {
+      "label": "cos",
+      "kind": "function",
+      "detail": "(x: float) => float"
+     },
+     {
+      "label": "e",
+      "kind": "constant",
+      "detail": "float"
+     },
+     {
+      "label": "exp",
+      "kind": "function",
+      "detail": "(x: float) => float"
+     },
+     {
+      "label": "log",
+      "kind": "function",
+      "detail": "(x: float) => float !"
+     },
+     {
+      "label": "log10",
+      "kind": "function",
+      "detail": "(x: float) => float !"
+     },
+     {
+      "label": "pi",
+      "kind": "constant",
+      "detail": "float"
+     },
+     {
+      "label": "pow",
+      "kind": "function",
+      "detail": "(x: float, y: float) => float !"
+     },
+     {
+      "label": "sin",
+      "kind": "function",
+      "detail": "(x: float) => float"
+     },
+     {
+      "label": "sqrt",
+      "kind": "function",
+      "detail": "(x: float) => float !"
+     },
+     {
+      "label": "tan",
+      "kind": "function",
+      "detail": "(x: float) => float"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a group is a namespace among the names",
+  "complete": "js‸",
+  "groups": [
+   "json"
+  ],
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     1,
+     1,
+     3
+    ],
+    "items": [
+     {
+      "label": "json",
+      "kind": "namespace",
+      "detail": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a group that is off is not listed",
+  "complete": "js‸",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     1,
+     1,
+     3
+    ],
+    "items": []
+   }
+  }
+ },
+ {
+  "name": "the functions of a host namespace",
+  "complete": "geo.‸",
+  "functions": {
+   "geo.distance": "(a: string, b: string) => float"
+  },
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     5,
+     1,
+     5
+    ],
+    "items": [
+     {
+      "label": "distance",
+      "kind": "function",
+      "detail": "(a: string, b: string) => float"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a host namespace among the names",
+  "complete": "ge‸",
+  "functions": {
+   "geo.distance": "(a: string, b: string) => float"
+  },
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     1,
+     1,
+     3
+    ],
+    "items": [
+     {
+      "label": "geo",
+      "kind": "namespace",
+      "detail": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a host function among the functions",
+  "complete": "ra‸",
+  "functions": {
+   "rate": "(code: string) => float !"
+  },
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     1,
+     1,
+     3
+    ],
+    "items": [
+     {
+      "label": "range",
+      "kind": "function",
+      "detail": "(a: int, b?: int) => int[]"
+     },
+     {
+      "label": "rate",
+      "kind": "function",
+      "detail": "(code: string) => float !"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "the methods of an opaque type",
+  "complete": "tok.‸",
+  "env": "{tok: Token}",
+  "opaque": [
+   "Token"
+  ],
+  "methods": {
+   "Token.owner": "() => string",
+   "Token.renew": "(days: int) => Token !"
+  },
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     5,
+     1,
+     5
+    ],
+    "items": [
+     {
+      "label": "owner",
+      "kind": "method",
+      "detail": "() => string"
+     },
+     {
+      "label": "renew",
+      "kind": "method",
+      "detail": "(days: int) => Token !"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a removed method is not listed",
+  "complete": "user.name.tr‸",
+  "env": "{user: {name: string, age: int, tags: string[]}, items: {id: string, qty: int}[]}",
+  "removed": [
+   "string.trim"
+  ],
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     11,
+     1,
+     13
+    ],
+    "items": []
+   }
+  }
+ },
+ {
+  "name": "a removed function is not listed",
+  "complete": "le‸",
+  "removed": [
+   "len"
+  ],
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     1,
+     1,
+     3
+    ],
+    "items": []
+   }
+  }
+ },
+ {
+  "name": "a variable hides a library function of its name",
+  "complete": "ty‸",
+  "env": "{type: string}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     1,
+     1,
+     3
+    ],
+    "items": [
+     {
+      "label": "type",
+      "kind": "variable",
+      "detail": "string"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a method two kinds have is listed once, with the first kind",
+  "complete": "v.sl‸",
+  "env": "{v: string | string[]}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     3,
+     1,
+     5
+    ],
+    "items": [
+     {
+      "label": "slice",
+      "kind": "method",
+      "detail": "(start: int, end?: int) => string"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a method of the list kind of a union",
+  "complete": "v.jo‸",
+  "env": "{v: string | string[]}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     3,
+     1,
+     5
+    ],
+    "items": [
+     {
+      "label": "join",
+      "kind": "method",
+      "detail": "(sep: string) => string"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "null is taken out of the receiver",
+  "complete": "u?.‸",
+  "env": "{u: {a: int} | null}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     4,
+     1,
+     4
+    ],
+    "items": [
+     {
+      "label": "a",
+      "kind": "field",
+      "detail": "int"
+     },
+     {
+      "label": "entries",
+      "kind": "method",
+      "detail": "() => {key: string, value: T}[]"
+     },
+     {
+      "label": "keys",
+      "kind": "method",
+      "detail": "() => string[]"
+     },
+     {
+      "label": "mapValues",
+      "kind": "method"
+     },
+     {
+      "label": "values",
+      "kind": "method",
+      "detail": "() => T[]"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a receiver of type any has no candidates",
+  "complete": "x.‸",
+  "env": "{x: any}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     3,
+     1,
+     3
+    ],
+    "items": []
+   }
+  }
+ },
+ {
+  "name": "a key that is not a word is not a field",
+  "complete": "m.‸",
+  "env": "{m: {\"a-b\": int, ok: int}}",
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     3,
+     1,
+     3
+    ],
+    "items": [
+     {
+      "label": "ok",
+      "kind": "field",
+      "detail": "int"
+     },
+     {
+      "label": "entries",
+      "kind": "method",
+      "detail": "() => {key: string, value: T}[]"
+     },
+     {
+      "label": "keys",
+      "kind": "method",
+      "detail": "() => string[]"
+     },
+     {
+      "label": "mapValues",
+      "kind": "method"
+     },
+     {
+      "label": "values",
+      "kind": "method",
+      "detail": "() => T[]"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "type names after as",
+  "complete": "x as ‸",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "type": "{id: string}"
+   }
+  ],
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     6,
+     1,
+     6
+    ],
+    "items": [
+     {
+      "label": "Order",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "any",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "bool",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "float",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "int",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "map",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "never",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "null",
+      "kind": "type",
+      "detail": null
+     },
+     {
+      "label": "string",
+      "kind": "type",
+      "detail": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a type name by its prefix",
+  "complete": "x as O‸",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "type": "{id: string}"
+   }
+  ],
+  "expect": {
+   "completion": {
+    "span": [
+     1,
+     6,
+     1,
+     7
+    ],
+    "items": [
+     {
+      "label": "Order",
+      "kind": "type",
+      "detail": null
+     }
+    ]
+   }
+  }
+ },
+ {
+  "name": "a declaration error is the outcome",
+  "complete": "x‸",
+  "env": "{x: nope}",
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ }
+]

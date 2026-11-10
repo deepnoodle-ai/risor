@@ -1,0 +1,352 @@
+[
+ {
+  "name": "spaces around operators and after commas",
+  "format": "const x=1+2*3;[x,x]",
+  "expect": {
+   "formatted": "const x = 1 + 2 * 3;\n[x, x]\n"
+  }
+ },
+ {
+  "name": "the final semicolon of a program is dropped",
+  "format": "1 + 2;",
+  "expect": {
+   "formatted": "1 + 2\n"
+  }
+ },
+ {
+  "name": "one line feed at the end",
+  "format": "1\n\n\n",
+  "expect": {
+   "formatted": "1\n"
+  }
+ },
+ {
+  "name": "no line feed in the source",
+  "format": "x",
+  "expect": {
+   "formatted": "x\n"
+  }
+ },
+ {
+  "name": "leading white space is dropped",
+  "format": "\n\n   \t x",
+  "expect": {
+   "formatted": "x\n"
+  }
+ },
+ {
+  "name": "a byte order mark is dropped",
+  "format": "﻿a + b",
+  "expect": {
+   "formatted": "a + b\n"
+  }
+ },
+ {
+  "name": "carriage return line ends become line feeds",
+  "format": "const a = 1;\r\nconst b = 2;\ra + b",
+  "expect": {
+   "formatted": "const a = 1;\nconst b = 2;\na + b\n"
+  }
+ },
+ {
+  "name": "tabs of indentation are not written",
+  "format": "const a = 1;\n\t\ta",
+  "expect": {
+   "formatted": "const a = 1;\na\n"
+  }
+ },
+ {
+  "name": "trailing spaces are removed",
+  "format": "const a = 1;   \na   ",
+  "expect": {
+   "formatted": "const a = 1;\na\n"
+  }
+ },
+ {
+  "name": "each const line on its own line",
+  "format": "const a = 1; const b = 2; const c = 3; a + b + c",
+  "expect": {
+   "formatted": "const a = 1;\nconst b = 2;\nconst c = 3;\na + b + c\n"
+  }
+ },
+ {
+  "name": "a const line and its result keep their order",
+  "format": "const z = 1;\nconst a = 2;\n[z, a]",
+  "expect": {
+   "formatted": "const z = 1;\nconst a = 2;\n[z, a]\n"
+  }
+ },
+ {
+  "name": "no space inside brackets",
+  "format": "[ 1 , 2 ]",
+  "expect": {
+   "formatted": "[1, 2]\n"
+  }
+ },
+ {
+  "name": "no space inside braces of a map",
+  "format": "{ a : 1 , b : 2 }",
+  "expect": {
+   "formatted": "{a: 1, b: 2}\n"
+  }
+ },
+ {
+  "name": "no space inside parentheses of a call",
+  "format": "f( a , b )",
+  "expect": {
+   "formatted": "f(a, b)\n"
+  }
+ },
+ {
+  "name": "a final comma of a flat list is dropped",
+  "format": "[1, 2, 3,]",
+  "expect": {
+   "formatted": "[1, 2, 3]\n"
+  }
+ },
+ {
+  "name": "a final comma of flat arguments is dropped",
+  "format": "f(a, b,)",
+  "expect": {
+   "formatted": "f(a, b)\n"
+  }
+ },
+ {
+  "name": "a final comma of a flat map is dropped",
+  "format": "{a: 1,}",
+  "expect": {
+   "formatted": "{a: 1}\n"
+  }
+ },
+ {
+  "name": "an empty list, map and call",
+  "format": "[ ] == [] && { } == {} && f( ) == 0",
+  "expect": {
+   "formatted": "[] == [] && {} == {} && f() == 0\n"
+  }
+ },
+ {
+  "name": "a spread item",
+  "format": "[ ... xs , ...ys ]",
+  "expect": {
+   "formatted": "[...xs, ...ys]\n"
+  }
+ },
+ {
+  "name": "a spread entry",
+  "format": "{ ... base , a : 1 }",
+  "expect": {
+   "formatted": "{...base, a: 1}\n"
+  }
+ },
+ {
+  "name": "a computed key",
+  "format": "{ [ k ] : v }",
+  "expect": {
+   "formatted": "{[k]: v}\n"
+  }
+ },
+ {
+  "name": "a string key keeps its quotes",
+  "format": "{'a-b': 1, \"c\": 2}",
+  "expect": {
+   "formatted": "{'a-b': 1, \"c\": 2}\n"
+  }
+ },
+ {
+  "name": "a shorthand entry stays shorthand",
+  "format": "{a, b: b}",
+  "expect": {
+   "formatted": "{a, b: b}\n"
+  }
+ },
+ {
+  "name": "a reserved word as a key",
+  "format": "{if: 1, const: 2}.if",
+  "expect": {
+   "formatted": "{if: 1, const: 2}.if\n"
+  }
+ },
+ {
+  "name": "numbers are written as they stand",
+  "format": "0x1F + 1_000 + 1E3 + 1.50 + 0.5e-3",
+  "expect": {
+   "formatted": "0x1F + 1_000 + 1E3 + 1.50 + 0.5e-3\n"
+  }
+ },
+ {
+  "name": "not in is two words with one space",
+  "format": "a not   in b",
+  "expect": {
+   "formatted": "a not in b\n"
+  }
+ },
+ {
+  "name": "optional steps",
+  "format": "a ?. b ?.[ 0 ] ?. c ( )",
+  "expect": {
+   "formatted": "a?.b?.[0]?.c()\n"
+  }
+ },
+ {
+  "name": "a lambda with one plain parameter has no parentheses",
+  "format": "xs.map((x) => x * 2)",
+  "expect": {
+   "formatted": "xs.map(x => x * 2)\n"
+  }
+ },
+ {
+  "name": "a lambda with no parameter",
+  "format": "xs.map(() => 1)",
+  "expect": {
+   "formatted": "xs.map(() => 1)\n"
+  }
+ },
+ {
+  "name": "a lambda with two parameters",
+  "format": "xs.map((x,i)=>x+i)",
+  "expect": {
+   "formatted": "xs.map((x, i) => x + i)\n"
+  }
+ },
+ {
+  "name": "a lambda with a default keeps its parentheses",
+  "format": "xs.map((x = 0) => x)",
+  "expect": {
+   "formatted": "xs.map((x = 0) => x)\n"
+  }
+ },
+ {
+  "name": "a lambda with a pattern keeps its parentheses",
+  "format": "xs.map(({a}) => a)",
+  "expect": {
+   "formatted": "xs.map(({a}) => a)\n"
+  }
+ },
+ {
+  "name": "the discard parameter",
+  "format": "xs.map((_) => 0)",
+  "expect": {
+   "formatted": "xs.map(_ => 0)\n"
+  }
+ },
+ {
+  "name": "a const-bound lambda",
+  "format": "const double=(x)=>x*2;double(4)",
+  "expect": {
+   "formatted": "const double = x => x * 2;\ndouble(4)\n"
+  }
+ },
+ {
+  "name": "a map pattern field written short",
+  "format": "const {a: a, b: c} = m;\n[a, c]",
+  "expect": {
+   "formatted": "const {a, b: c} = m;\n[a, c]\n"
+  }
+ },
+ {
+  "name": "a string key in a pattern stays",
+  "format": "const {\"a\": a} = m;\na",
+  "expect": {
+   "formatted": "const {\"a\": a} = m;\na\n"
+  }
+ },
+ {
+  "name": "a list pattern with defaults and a rest",
+  "format": "const [a,_,c=0,...r]=xs;[a,c,r]",
+  "expect": {
+   "formatted": "const [a, _, c = 0, ...r] = xs;\n[a, c, r]\n"
+  }
+ },
+ {
+  "name": "a parameter default",
+  "format": "const f = (a, b=2) => a + b;\nf(1)",
+  "expect": {
+   "formatted": "const f = (a, b = 2) => a + b;\nf(1)\n"
+  }
+ },
+ {
+  "name": "match arms on one line",
+  "format": "match x{1|2=>\"low\",_=>\"high\"}",
+  "expect": {
+   "formatted": "match x { 1 | 2 => \"low\", _ => \"high\" }\n"
+  }
+ },
+ {
+  "name": "a negative literal in a match arm",
+  "format": "match n { -1 => \"minus\", 0 => \"zero\", _ => \"plus\" }",
+  "expect": {
+   "formatted": "match n { -1 => \"minus\", 0 => \"zero\", _ => \"plus\" }\n"
+  }
+ },
+ {
+  "name": "an if on one line",
+  "format": "if(a){1}else{2}",
+  "expect": {
+   "formatted": "if (a) { 1 } else { 2 }\n"
+  }
+ },
+ {
+  "name": "else if",
+  "format": "if (a) {1} else if (b) {2} else {3}",
+  "expect": {
+   "formatted": "if (a) { 1 } else if (b) { 2 } else { 3 }\n"
+  }
+ },
+ {
+  "name": "an else branch that holds only an if is written else if",
+  "format": "if (a) { 1 } else { if (b) { 2 } else { 3 } }",
+  "expect": {
+   "formatted": "if (a) { 1 } else if (b) { 2 } else { 3 }\n"
+  }
+ },
+ {
+  "name": "try on one line",
+  "format": "try{fail(\"x\")}catch(e){e.code}",
+  "expect": {
+   "formatted": "try { fail(\"x\") } catch (e) { e.code }\n"
+  }
+ },
+ {
+  "name": "catch with no name",
+  "format": "try { a } catch { 0 }",
+  "expect": {
+   "formatted": "try { a } catch { 0 }\n"
+  }
+ },
+ {
+  "name": "a block always breaks",
+  "format": "{ const a = 1; a }",
+  "expect": {
+   "formatted": "{\n  const a = 1;\n  a\n}\n"
+  }
+ },
+ {
+  "name": "a branch holding only a block is written as a branch with const lines",
+  "format": "if (c) { { const a = 1; a } } else { 0 }",
+  "expect": {
+   "formatted": "if (c) {\n  const a = 1;\n  a\n} else {\n  0\n}\n"
+  }
+ },
+ {
+  "name": "a map as the value of a branch",
+  "format": "if (c) { {id: 1} } else { {id: 2} }",
+  "expect": {
+   "formatted": "if (c) { {id: 1} } else { {id: 2} }\n"
+  }
+ },
+ {
+  "name": "conditional",
+  "format": "a?b:c",
+  "expect": {
+   "formatted": "a ? b : c\n"
+  }
+ },
+ {
+  "name": "a conditional in the else branch",
+  "format": "a ? b : c ? d : e",
+  "expect": {
+   "formatted": "a ? b : c ? d : e\n"
+  }
+ }
+]

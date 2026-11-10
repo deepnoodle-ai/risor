@@ -1,0 +1,266 @@
+{
+ "env": "{user: {name: string, age: int, tags: string[]}, items: {id: string, qty: int}[]}",
+ "cases": [
+  {
+   "name": "a variable",
+   "hover": "us‸er.name",
+   "expect": {
+    "hover": {
+     "kind": "variable",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ],
+     "type": "{age: int, name: string, tags: string[]}",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "a field",
+   "hover": "user.‸name",
+   "expect": {
+    "hover": {
+     "kind": "field",
+     "span": [
+      1,
+      6,
+      1,
+      10
+     ],
+     "type": "string",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "a library function",
+   "hover": "‸len(user.tags)",
+   "expect": {
+    "hover": {
+     "kind": "function",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "type": "int",
+     "signature": "(x: string | any[] | map<any>) => int",
+     "doc": "The number of code points of a string, elements of a list or entries of a map.",
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "a library method",
+   "hover": "user.name.‸toUpperCase()",
+   "expect": {
+    "hover": {
+     "kind": "method",
+     "span": [
+      1,
+      11,
+      1,
+      22
+     ],
+     "type": "string",
+     "signature": "() => string",
+     "doc": "Each code point replaced by its upper-case mapping in the case table.",
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "a method whose call is not closed",
+   "hover": "user.tags.‸first(",
+   "expect": {
+    "hover": {
+     "kind": "method",
+     "span": [
+      1,
+      11,
+      1,
+      16
+     ],
+     "type": "string | null",
+     "signature": "() => T | null",
+     "doc": "The first element, or null for an empty list.",
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "a const name and its declaration",
+   "hover": "const n = 1;\n‸n + 1",
+   "expect": {
+    "hover": {
+     "kind": "name",
+     "span": [
+      2,
+      1,
+      2,
+      2
+     ],
+     "type": "int",
+     "signature": null,
+     "doc": null,
+     "declaration": [
+      1,
+      7,
+      1,
+      8
+     ]
+    }
+   }
+  },
+  {
+   "name": "the place a name is bound",
+   "hover": "const ‸total = 1;\ntotal",
+   "expect": {
+    "hover": {
+     "kind": "name",
+     "span": [
+      1,
+      7,
+      1,
+      12
+     ],
+     "type": "int",
+     "signature": null,
+     "doc": null,
+     "declaration": [
+      1,
+      7,
+      1,
+      12
+     ]
+    }
+   }
+  },
+  {
+   "name": "a parameter",
+   "hover": "items.map(i => ‸i.qty)",
+   "expect": {
+    "hover": {
+     "kind": "name",
+     "span": [
+      1,
+      16,
+      1,
+      17
+     ],
+     "type": "{id: string, qty: int}",
+     "signature": null,
+     "doc": null,
+     "declaration": [
+      1,
+      11,
+      1,
+      12
+     ]
+    }
+   }
+  },
+  {
+   "name": "a name of a pattern of a parameter",
+   "hover": "items.map(({qty}) => ‸qty)",
+   "expect": {
+    "hover": {
+     "kind": "name",
+     "span": [
+      1,
+      22,
+      1,
+      25
+     ],
+     "type": "int",
+     "signature": null,
+     "doc": null,
+     "declaration": [
+      1,
+      13,
+      1,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "name": "a const-bound lambda",
+   "hover": "const double = x => x * 2;\n‸double(2)",
+   "expect": {
+    "hover": {
+     "kind": "lambda",
+     "span": [
+      2,
+      1,
+      2,
+      7
+     ],
+     "signature": null,
+     "doc": null,
+     "declaration": [
+      1,
+      7,
+      1,
+      13
+     ]
+    }
+   }
+  },
+  {
+   "name": "a text that does not parse is cut after the word",
+   "hover": "user.‸name +",
+   "expect": {
+    "hover": {
+     "kind": "field",
+     "span": [
+      1,
+      6,
+      1,
+      10
+     ],
+     "type": "string",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "a keyword has no hover",
+   "hover": "‸if (true) { 1 } else { 2 }",
+   "expect": {
+    "hover": null
+   }
+  },
+  {
+   "name": "a literal has no hover",
+   "hover": "‸1 + 2",
+   "expect": {
+    "hover": null
+   }
+  },
+  {
+   "name": "white space has no hover",
+   "hover": "user ‸ == null",
+   "expect": {
+    "hover": null
+   }
+  },
+  {
+   "name": "a comment has no hover",
+   "hover": "user // ‸note",
+   "expect": {
+    "hover": null
+   }
+  }
+ ]
+}

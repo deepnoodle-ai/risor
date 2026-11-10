@@ -25,6 +25,7 @@ does it. A case file is JSON, in the format of `spec/core/03-host.md` 3.10.
 | `testing/` | Package F9: fixtures tested against their types, cases that test a runner, update mode, case files written as programs | `spec/packages/f09-testing.md` |
 | `config/` | Package F10: a program as a config file: the expected result by schema, the load, the decode, layering by spread | `spec/packages/f10-config.md` |
 | `library-math.json`, `math/` | Package F13: the correctly rounded functions of `math` | `spec/packages/f13-math.md` |
+| `tools/` | Package F12: the formatter's output, completion and hover | `spec/packages/f12-tools.md` |
 
 A runner runs the Core paths and the directories of the packages its
 implementation offers, and reports each by itself (`03-host.md` 3.11).

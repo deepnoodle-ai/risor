@@ -1,0 +1,205 @@
+[
+ {
+  "name": "a line of exactly 80 code points stays",
+  "format": "const total = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;\ntotal",
+  "expect": {
+   "formatted": "const total = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;\ntotal\n"
+  }
+ },
+ {
+  "name": "a line of 81 code points breaks",
+  "format": "const total = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;\ntotal",
+  "expect": {
+   "formatted": "const total =\n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;\ntotal\n"
+  }
+ },
+ {
+  "name": "a list that does not fit breaks one element a line",
+  "format": "[\"element number 0\", \"element number 1\", \"element number 2\", \"element number 3\", \"element number 4\", \"element number 5\"]",
+  "expect": {
+   "formatted": "[\n  \"element number 0\",\n  \"element number 1\",\n  \"element number 2\",\n  \"element number 3\",\n  \"element number 4\",\n  \"element number 5\",\n]\n"
+  }
+ },
+ {
+  "name": "a list that fits stays on one line",
+  "format": "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]",
+  "expect": {
+   "formatted": "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n"
+  }
+ },
+ {
+  "name": "a map that does not fit",
+  "format": "{name: \"a long enough name\", version: \"1.2.3\", description: \"something much longer\"}",
+  "expect": {
+   "formatted": "{\n  name: \"a long enough name\",\n  version: \"1.2.3\",\n  description: \"something much longer\",\n}\n"
+  }
+ },
+ {
+  "name": "nested maps break from the outside",
+  "format": "{server: {host: \"localhost\", port: 8080}, client: {retries: 3, timeout: 30, verbose: true}}",
+  "expect": {
+   "formatted": "{\n  server: {host: \"localhost\", port: 8080},\n  client: {retries: 3, timeout: 30, verbose: true},\n}\n"
+  }
+ },
+ {
+  "name": "arguments that do not fit",
+  "format": "someFunction(firstArgument, secondArgument, thirdArgument, fourthArgument, fifth)",
+  "expect": {
+   "formatted": "someFunction(\n  firstArgument,\n  secondArgument,\n  thirdArgument,\n  fourthArgument,\n  fifth,\n)\n"
+  }
+ },
+ {
+  "name": "a binary run breaks after each operator",
+  "format": "const ok = input.event != null && input.event.pull_request != null && input.event.pull_request.head.sha != \"\";\nok",
+  "expect": {
+   "formatted": "const ok =\n  input.event != null &&\n  input.event.pull_request != null &&\n  input.event.pull_request.head.sha != \"\";\nok\n"
+  }
+ },
+ {
+  "name": "a run that fits after the equals sign",
+  "format": "const result = firstValueInTheSum + secondValueInTheSum + thirdValueInTheSum;\nresult",
+  "expect": {
+   "formatted": "const result = firstValueInTheSum + secondValueInTheSum + thirdValueInTheSum;\nresult\n"
+  }
+ },
+ {
+  "name": "a run as an argument is indented",
+  "format": "f(firstValueInTheSum + secondValueInTheSum + thirdValueInTheSum + fourthValueInTheSum)",
+  "expect": {
+   "formatted": "f(\n  firstValueInTheSum +\n    secondValueInTheSum +\n    thirdValueInTheSum +\n    fourthValueInTheSum,\n)\n"
+  }
+ },
+ {
+  "name": "a run of mixed levels",
+  "format": "const v = alphaBravoCharlie * deltaEchoFoxtrot + golfHotelIndia * julietKiloLima - mike;\nv",
+  "expect": {
+   "formatted": "const v =\n  alphaBravoCharlie * deltaEchoFoxtrot + golfHotelIndia * julietKiloLima - mike;\nv\n"
+  }
+ },
+ {
+  "name": "an and inside an or breaks at the or",
+  "format": "const ok = (alphaBravoCharlie && deltaEchoFoxtrot) || (golfHotelIndia && julietKilo);\nok",
+  "expect": {
+   "formatted": "const ok =\n  (alphaBravoCharlie && deltaEchoFoxtrot) || (golfHotelIndia && julietKilo);\nok\n"
+  }
+ },
+ {
+  "name": "a conditional that does not fit",
+  "format": "const label = count > 1000000 ? \"more than a million items\" : \"fewer than a million items\";\nlabel",
+  "expect": {
+   "formatted": "const label =\n  count > 1000000 ? \"more than a million items\" : \"fewer than a million items\";\nlabel\n"
+  }
+ },
+ {
+  "name": "a nested conditional that does not fit",
+  "format": "const size = n > 1000 ? \"a large number of things\" : n > 100 ? \"a medium number\" : \"a small number\";\nsize",
+  "expect": {
+   "formatted": "const size =\n  n > 1000\n    ? \"a large number of things\"\n    : n > 100 ? \"a medium number\" : \"a small number\";\nsize\n"
+  }
+ },
+ {
+  "name": "an if that does not fit",
+  "format": "const verdict = if (!failed) { \"pass\" } else if (rate < 0.1) { \"flaky\" } else { \"fail\" };\nverdict",
+  "expect": {
+   "formatted": "const verdict = if (!failed) {\n  \"pass\"\n} else if (rate < 0.1) {\n  \"flaky\"\n} else {\n  \"fail\"\n};\nverdict\n"
+  }
+ },
+ {
+  "name": "an if test that does not fit",
+  "format": "if (input.event.pull_request.head.sha != \"\" && input.event.pull_request.number > 0) { 1 } else { 2 }",
+  "expect": {
+   "formatted": "if (\n  input.event.pull_request.head.sha != \"\" && input.event.pull_request.number > 0\n) {\n  1\n} else {\n  2\n}\n"
+  }
+ },
+ {
+  "name": "an if with a block branch breaks",
+  "format": "if (c) { const a = 1; a } else { 0 }",
+  "expect": {
+   "formatted": "if (c) {\n  const a = 1;\n  a\n} else {\n  0\n}\n"
+  }
+ },
+ {
+  "name": "a match that does not fit",
+  "format": "match kind { \"alpha\" | \"beta\" => \"first group\", \"gamma\" => \"second group\", _ => \"the rest\" }",
+  "expect": {
+   "formatted": "match kind {\n  \"alpha\" | \"beta\" => \"first group\",\n  \"gamma\" => \"second group\",\n  _ => \"the rest\",\n}\n"
+  }
+ },
+ {
+  "name": "a match arm with a long result",
+  "format": "match kind { \"a\" => firstValueInTheSum + secondValueInTheSum + thirdValueInTheSum + fourthValue, _ => 0 }",
+  "expect": {
+   "formatted": "match kind {\n  \"a\" =>\n    firstValueInTheSum + secondValueInTheSum + thirdValueInTheSum + fourthValue,\n  _ => 0,\n}\n"
+  }
+ },
+ {
+  "name": "a try that does not fit",
+  "format": "const v = try { someFunction(firstArgument, second) } catch (err) { err.message };\nv",
+  "expect": {
+   "formatted": "const v = try {\n  someFunction(firstArgument, second)\n} catch (err) {\n  err.message\n};\nv\n"
+  }
+ },
+ {
+  "name": "a lambda body breaks after the arrow",
+  "format": "const f = (first, second) => first.someLongMethodName(second) + second.otherLongName(first);\nf(1, 2)",
+  "expect": {
+   "formatted": "const f = (first, second) =>\n  first.someLongMethodName(second) + second.otherLongName(first);\nf(1, 2)\n"
+  }
+ },
+ {
+  "name": "a map entry breaks after its colon",
+  "format": "{veryLongKeyNumberOne: someFunctionCall(argumentOne) + anotherFunctionCall(argumentTwo), b: 1}",
+  "expect": {
+   "formatted": "{\n  veryLongKeyNumberOne:\n    someFunctionCall(argumentOne) + anotherFunctionCall(argumentTwo),\n  b: 1,\n}\n"
+  }
+ },
+ {
+  "name": "a pattern that does not fit",
+  "format": "const {alphaBetaGamma, deltaEpsilonZeta, etaThetaIota, kappaLambdaMu, nuXiOmicron} = input;\nalphaBetaGamma",
+  "expect": {
+   "formatted": "const {\n  alphaBetaGamma,\n  deltaEpsilonZeta,\n  etaThetaIota,\n  kappaLambdaMu,\n  nuXiOmicron,\n} = input;\nalphaBetaGamma\n"
+  }
+ },
+ {
+  "name": "parameters that do not fit",
+  "format": "const f = (alphaBetaGamma, deltaEpsilonZeta, etaThetaIota, kappaLambdaMu, nu) => 1;\nf(1, 2, 3, 4, 5)",
+  "expect": {
+   "formatted": "const f = (\n  alphaBetaGamma,\n  deltaEpsilonZeta,\n  etaThetaIota,\n  kappaLambdaMu,\n  nu,\n) => 1;\nf(1, 2, 3, 4, 5)\n"
+  }
+ },
+ {
+  "name": "a long string does not break",
+  "format": "const s = \"word word word word word word word word word word word word word word word word word word \";\ns",
+  "expect": {
+   "formatted": "const s = \"word word word word word word word word word word word word word word word word word word \";\ns\n"
+  }
+ },
+ {
+  "name": "an as test after the equals sign",
+  "format": "const order = input.someVeryLongFieldName.anotherLongFieldName as {id: string, qty: int};\norder",
+  "expect": {
+   "formatted": "const order =\n  input.someVeryLongFieldName.anotherLongFieldName as {id: string, qty: int};\norder\n"
+  }
+ },
+ {
+  "name": "a deep block keeps two spaces a level",
+  "format": "{ const a = { const b = { const c = 1; c }; b }; a }",
+  "expect": {
+   "formatted": "{\n  const a = {\n    const b = {\n      const c = 1;\n      c\n    };\n    b\n  };\n  a\n}\n"
+  }
+ },
+ {
+  "name": "the program result breaks with an indent",
+  "format": "firstValueInTheSum + secondValueInTheSum + thirdValueInTheSum + fourthValueInTheSum",
+  "expect": {
+   "formatted": "firstValueInTheSum +\n  secondValueInTheSum +\n  thirdValueInTheSum +\n  fourthValueInTheSum\n"
+  }
+ },
+ {
+  "name": "a code point outside ASCII counts one",
+  "format": "const s = \"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\";\ns",
+  "expect": {
+   "formatted": "const s = \"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\";\ns\n"
+  }
+ }
+]

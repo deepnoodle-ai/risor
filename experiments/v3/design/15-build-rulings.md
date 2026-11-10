@@ -451,3 +451,28 @@ The chapter is `spec/packages/f10-config.md`, with 166 cases in
 | R172 | **Each call of an F13 entry charges 200 steps.** The chapter gave 0. The first implementation is correctly rounded on 100,000 random arguments for each function, against an independent reference at 320 bits, and takes 3 to 12 microseconds a call; an ordinary step takes about 50 nanoseconds. With a cost of 0 the step limit would not bound the time of a run. The charge is made after the argument tests and before the computation. |
 | R173 | F13 is offered before F12 in the order of packages: it depends only on F6, and the tools package may then assume the whole library. This changes the order of R133. |
 | R174 | The typed layer of Go (F11) changes no result, and the Go type a host gets back is a result: a host that receives struct values keeps receiving them, never pointers into its own slice. An element that a callback only reads fields of is not made a value at all. |
+
+### 14.11 F12, tools
+
+The chapter is `spec/packages/f12-tools.md`, with 386 cases in `suite/tools/`.
+
+| # | Ruling |
+| --- | --- |
+| R175 | **The formatter's output and the results of completion and hover are data:** specified exactly, a call in every binding, tested by the suite. **The command line program is a contract,** byte for byte, built from those calls and from the renderings and report text of F8, F9 and F10; one implementation ships it in 3.0, in Go. The REPL and the editor grammar are products with their own tests. |
+| R176 | The formatter lays a program out by an algorithm, at width 80 and indent 2, with no options, and does not keep the author's line breaks: it is the way to one output in three implementations. Parentheses follow from the tree. A string literal is copied as written. A comment never crosses a token. |
+| R177 | For completion and hover the text is cut at the position and closed by a fixed rule, so a text that does not parse still gives a result. |
+
+## 15. Round 14: the first host
+
+The workflow engine was ported from expr to Risor v3 on a local branch (plan
+`14`, M6). Its own tests pass: 479, with 3 skipped. Its soundness fuzz test
+passes at full size: no definition that loads fails with an expression
+error. Nothing in Risor gave a wrong result or crashed. Running a workflow
+costs the same as with expr; loading one took 1.9 times as long.
+
+| # | Ruling |
+| --- | --- |
+| R178 | **A new package, F14, host facts.** Where alternative steps converge the engine knows that at least one of them ran, and nothing a host could declare said so: `report ?? approve` stayed nullable. An environment may now declare a group of variables of which at least one is not null in every run. It is part of the precondition, and it only adds. |
+| R179 | **The Go binding exports a structural type API.** `Type` was opaque and a check result's type was text, so the engine rebuilt the type model to build and join types. Constructors, accessors, Join, Fits, parse and print are exported, and a check result gives a `Type`. |
+| R180 | A child environment in Go shares its parent's tables, a variable declared from a `Type` costs no parse, and a checked program compiles without a second check. The target is the engine's load within 1.2 times of expr's. |
+| R181 | No literal types for numbers: a `match` on a numeric enum is not checked for coverage in 3.0. No fourth schema option for a default that replaces an explicit null: that is the engine's own rule. |

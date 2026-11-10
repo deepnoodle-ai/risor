@@ -1,0 +1,100 @@
+[
+ {
+  "name": "a lambda with a map body is hugged",
+  "format": "items.map(item => {id: item.id, name: item.name, total: item.count * item.price, tags: item.tags})",
+  "expect": {
+   "formatted": "items.map(item => {\n  id: item.id,\n  name: item.name,\n  total: item.count * item.price,\n  tags: item.tags,\n})\n"
+  }
+ },
+ {
+  "name": "a hugged lambda that fits stays on one line",
+  "format": "items.map(item => {id: item.id})",
+  "expect": {
+   "formatted": "items.map(item => {id: item.id})\n"
+  }
+ },
+ {
+  "name": "a map as the last argument is hugged",
+  "format": "configure(\"service\", {name: \"api\", replicas: 3, image: \"registry/api:1.2.3\", port: 8080})",
+  "expect": {
+   "formatted": "configure(\"service\", {\n  name: \"api\",\n  replicas: 3,\n  image: \"registry/api:1.2.3\",\n  port: 8080,\n})\n"
+  }
+ },
+ {
+  "name": "a list as the last argument is hugged",
+  "format": "choose(selection, [\"alpha\", \"bravo\", \"charlie\", \"delta\", \"echo\", \"foxtrot\", \"golf\"])",
+  "expect": {
+   "formatted": "choose(selection, [\n  \"alpha\",\n  \"bravo\",\n  \"charlie\",\n  \"delta\",\n  \"echo\",\n  \"foxtrot\",\n  \"golf\",\n])\n"
+  }
+ },
+ {
+  "name": "a block as the last argument is hugged",
+  "format": "f({ const a = 1; a })",
+  "expect": {
+   "formatted": "f({\n  const a = 1;\n  a\n})\n"
+  }
+ },
+ {
+  "name": "a lambda with a block body is hugged",
+  "format": "xs.map(x => { const y = x * 2; y + 1 })",
+  "expect": {
+   "formatted": "xs.map(x => {\n  const y = x * 2;\n  y + 1\n})\n"
+  }
+ },
+ {
+  "name": "a lambda with a match body is hugged",
+  "format": "xs.map(x => match x.kind { \"alpha\" => 1, \"bravo\" => 2, \"charlie\" => 3, \"delta\" => 4, _ => 0 })",
+  "expect": {
+   "formatted": "xs.map(x => match x.kind {\n  \"alpha\" => 1,\n  \"bravo\" => 2,\n  \"charlie\" => 3,\n  \"delta\" => 4,\n  _ => 0,\n})\n"
+  }
+ },
+ {
+  "name": "a lambda with an if body is hugged",
+  "format": "xs.map(x => if (x.count > 10) { \"many things here\" } else { \"only a few things\" })",
+  "expect": {
+   "formatted": "xs.map(x => if (x.count > 10) {\n  \"many things here\"\n} else {\n  \"only a few things\"\n})\n"
+  }
+ },
+ {
+  "name": "a lambda with a binary body is not hugged",
+  "format": "xs.map(x => x.firstValueInTheSum + x.secondValueInTheSum + x.thirdValueInTheSum + 1)",
+  "expect": {
+   "formatted": "xs.map(\n  x => x.firstValueInTheSum + x.secondValueInTheSum + x.thirdValueInTheSum + 1,\n)\n"
+  }
+ },
+ {
+  "name": "arguments before the hugged one stay on its line",
+  "format": "xs.reduce((acc, x) => {total: acc.total + x.qty, count: acc.count + 1, last: x.id}, {total: 0, count: 0, last: null})",
+  "expect": {
+   "formatted": "xs.reduce(\n  (acc, x) => {total: acc.total + x.qty, count: acc.count + 1, last: x.id},\n  {total: 0, count: 0, last: null},\n)\n"
+  }
+ },
+ {
+  "name": "when the first line of the hug does not fit, all arguments break",
+  "format": "someFunctionWithALongName(firstArgumentWithALongName, secondArgumentWithALongName, {a: 1})",
+  "expect": {
+   "formatted": "someFunctionWithALongName(\n  firstArgumentWithALongName,\n  secondArgumentWithALongName,\n  {a: 1},\n)\n"
+  }
+ },
+ {
+  "name": "a forced break in an earlier argument breaks all",
+  "format": "f({ const a = 1; a }, {b: 2})",
+  "expect": {
+   "formatted": "f(\n  {\n    const a = 1;\n    a\n  },\n  {b: 2},\n)\n"
+  }
+ },
+ {
+  "name": "a map that is not last is not hugged",
+  "format": "f({name: \"api\", replicas: 3, image: \"registry/api:1.2.3\", port: 8080}, otherArgument)",
+  "expect": {
+   "formatted": "f(\n  {name: \"api\", replicas: 3, image: \"registry/api:1.2.3\", port: 8080},\n  otherArgument,\n)\n"
+  }
+ },
+ {
+  "name": "a hugged map inside a hugged lambda",
+  "format": "items.map(item => {id: item.id, meta: {created: item.created, updated: item.updated, owner: item.owner}})",
+  "expect": {
+   "formatted": "items.map(item => {\n  id: item.id,\n  meta: {created: item.created, updated: item.updated, owner: item.owner},\n})\n"
+  }
+ }
+]

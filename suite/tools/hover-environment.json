@@ -1,0 +1,160 @@
+[
+ {
+  "name": "a narrowed variable",
+  "hover": "x != null ? ‸x : \"\"",
+  "env": "{x: string | null}",
+  "expect": {
+   "hover": {
+    "kind": "variable",
+    "span": [
+     1,
+     13,
+     1,
+     14
+    ],
+    "type": "string",
+    "signature": null,
+    "doc": null,
+    "declaration": null
+   }
+  }
+ },
+ {
+  "name": "a namespace",
+  "hover": "‸json.parse(s)",
+  "env": "{s: string}",
+  "groups": [
+   "json"
+  ],
+  "expect": {
+   "hover": {
+    "kind": "namespace",
+    "span": [
+     1,
+     1,
+     1,
+     5
+    ],
+    "type": null,
+    "signature": null,
+    "doc": null,
+    "declaration": null
+   }
+  }
+ },
+ {
+  "name": "a function of a group",
+  "hover": "json.‸parse(s)",
+  "env": "{s: string}",
+  "groups": [
+   "json"
+  ],
+  "expect": {
+   "hover": {
+    "kind": "function",
+    "span": [
+     1,
+     6,
+     1,
+     11
+    ],
+    "type": "any",
+    "signature": "(s: string) => any !",
+    "doc": "The value that a JSON text describes.",
+    "declaration": null
+   }
+  }
+ },
+ {
+  "name": "a constant of a group",
+  "hover": "math.‸pi * 2",
+  "groups": [
+   "math"
+  ],
+  "expect": {
+   "hover": {
+    "kind": "constant",
+    "span": [
+     1,
+     6,
+     1,
+     8
+    ],
+    "type": "float",
+    "signature": null,
+    "doc": "The double nearest to pi.",
+    "declaration": null
+   }
+  }
+ },
+ {
+  "name": "a function of math",
+  "hover": "math.‸sin(1)",
+  "groups": [
+   "math"
+  ],
+  "expect": {
+   "hover": {
+    "kind": "function",
+    "span": [
+     1,
+     6,
+     1,
+     9
+    ],
+    "type": "float",
+    "signature": "(x: float) => float",
+    "doc": "The sine of x radians, correctly rounded.",
+    "declaration": null
+   }
+  }
+ },
+ {
+  "name": "a host function",
+  "hover": "‸rate(\"x\")",
+  "functions": {
+   "rate": "(code: string) => float !"
+  },
+  "expect": {
+   "hover": {
+    "kind": "function",
+    "span": [
+     1,
+     1,
+     1,
+     5
+    ],
+    "type": "float",
+    "signature": "(code: string) => float !",
+    "doc": null,
+    "declaration": null
+   }
+  }
+ },
+ {
+  "name": "a method of an opaque type",
+  "hover": "tok.‸owner()",
+  "env": "{tok: Token}",
+  "opaque": [
+   "Token"
+  ],
+  "methods": {
+   "Token.owner": "() => string"
+  },
+  "expect": {
+   "hover": {
+    "kind": "method",
+    "span": [
+     1,
+     5,
+     1,
+     10
+    ],
+    "type": "string",
+    "signature": "() => string",
+    "doc": null,
+    "declaration": null
+   }
+  }
+ }
+]

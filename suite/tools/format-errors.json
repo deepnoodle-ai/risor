@@ -1,0 +1,146 @@
+[
+ {
+  "name": "a text that ends too soon gives no text",
+  "format": "1 +",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      4,
+      1,
+      4
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "an unterminated comment",
+  "format": "x /* open",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unterminated-comment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "an unterminated string",
+  "format": "const s = \"abc",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unterminated-string",
+     "span": [
+      1,
+      11,
+      1,
+      15
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a bad escape",
+  "format": "\"a\\q\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-escape",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "two operands side by side",
+  "format": "f(a b)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a bad number",
+  "format": "010 + 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-number",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "an unexpected character",
+  "format": "a @ b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-character",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a text block with bad indentation",
+  "format": "const s = \"\"\"\n  a\n b\n  \"\"\";\ns",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-indent",
+     "span": [
+      3,
+      2,
+      3,
+      3
+     ]
+    }
+   ]
+  }
+ }
+]

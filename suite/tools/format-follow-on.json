@@ -1,0 +1,149 @@
+[
+ {
+  "name": "as with spaces",
+  "format": "x  as   int",
+  "expect": {
+   "formatted": "x as int\n"
+  }
+ },
+ {
+  "name": "is with a record type",
+  "format": "x is { a : int , b ? : string , }",
+  "expect": {
+   "formatted": "x is {a: int, b?: string}\n"
+  }
+ },
+ {
+  "name": "a type with alternatives",
+  "format": "x as int|string|null",
+  "expect": {
+   "formatted": "x as int | string | null\n"
+  }
+ },
+ {
+  "name": "a list type and a map type",
+  "format": "x as map < int [ ] > [ ]",
+  "expect": {
+   "formatted": "x as map<int[]>[]\n"
+  }
+ },
+ {
+  "name": "a type in parentheses",
+  "format": "x as ( int | string ) [ ]",
+  "expect": {
+   "formatted": "x as (int | string)[]\n"
+  }
+ },
+ {
+  "name": "an open record type",
+  "format": "x is {a: int, ... }",
+  "expect": {
+   "formatted": "x is {a: int, ...}\n"
+  }
+ },
+ {
+  "name": "a typed rest",
+  "format": "x is {a: int, ...string}",
+  "expect": {
+   "formatted": "x is {a: int, ...string}\n"
+  }
+ },
+ {
+  "name": "a string literal type",
+  "format": "x is 'a' | r\"b\"",
+  "expect": {
+   "formatted": "x is 'a' | r\"b\"\n"
+  }
+ },
+ {
+  "name": "a named type",
+  "format": "input as Config",
+  "expect": {
+   "formatted": "input as Config\n"
+  }
+ },
+ {
+  "name": "as binds tighter than equality",
+  "format": "y == (x as int)",
+  "expect": {
+   "formatted": "y == x as int\n"
+  }
+ },
+ {
+  "name": "a sum as the subject of as",
+  "format": "(a + b) as int",
+  "expect": {
+   "formatted": "a + b as int\n"
+  }
+ },
+ {
+  "name": "as as an operand of plus",
+  "format": "(x as int) + 1",
+  "expect": {
+   "formatted": "(x as int) + 1\n"
+  }
+ },
+ {
+  "name": "not as the subject of is",
+  "format": "(!x) is bool",
+  "expect": {
+   "formatted": "(!x) is bool\n"
+  }
+ },
+ {
+  "name": "not of is",
+  "format": "!(x is bool)",
+  "expect": {
+   "formatted": "!(x is bool)\n"
+  }
+ },
+ {
+  "name": "is under and",
+  "format": "x is int && y is string",
+  "expect": {
+   "formatted": "x is int && y is string\n"
+  }
+ },
+ {
+  "name": "?? as the subject of as",
+  "format": "(a ?? b) as int",
+  "expect": {
+   "formatted": "(a ?? b) as int\n"
+  }
+ },
+ {
+  "name": "as as the receiver of a step",
+  "format": "(x as {a: int}).a",
+  "expect": {
+   "formatted": "(x as {a: int}).a\n"
+  }
+ },
+ {
+  "name": "as in a match subject",
+  "format": "match x as \"a\" | \"b\" { \"a\" => 1, \"b\" => 2 }",
+  "expect": {
+   "formatted": "match x as \"a\" | \"b\" { \"a\" => 1, \"b\" => 2 }\n"
+  }
+ },
+ {
+  "name": "a star with spaces",
+  "format": "xs [ * ] . a",
+  "expect": {
+   "formatted": "xs[*].a\n"
+  }
+ },
+ {
+  "name": "a star after a call",
+  "format": "xs.values()[*].id",
+  "expect": {
+   "formatted": "xs.values()[*].id\n"
+  }
+ },
+ {
+  "name": "a group call",
+  "format": "json . parse ( s )",
+  "expect": {
+   "formatted": "json.parse(s)\n"
+  }
+ }
+]

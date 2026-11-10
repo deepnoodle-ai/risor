@@ -1,0 +1,150 @@
+[
+ {
+  "name": "the parts get one space inside their delimiters",
+  "formatTemplate": "Hi ${{user.name}}, you have ${{   len(items)  }} items",
+  "expect": {
+   "formatted": "Hi ${{ user.name }}, you have ${{ len(items) }} items"
+  }
+ },
+ {
+  "name": "an expression of a part is formatted",
+  "formatTemplate": "${{a+b}}",
+  "expect": {
+   "formatted": "${{ a + b }}"
+  }
+ },
+ {
+  "name": "a part has no width limit",
+  "formatTemplate": "total: ${{ firstValueInTheSum+secondValueInTheSum+thirdValueInTheSum+fourthValueInTheSum }}",
+  "expect": {
+   "formatted": "total: ${{ firstValueInTheSum + secondValueInTheSum + thirdValueInTheSum + fourthValueInTheSum }}"
+  }
+ },
+ {
+  "name": "a hugged argument in a part stays on one line",
+  "formatTemplate": "${{ items.map(i=>{id:i.id,name:i.name,total:i.count*i.price,tags:i.tags,owner:i.owner}) }}",
+  "expect": {
+   "formatted": "${{ items.map(i => {id: i.id, name: i.name, total: i.count * i.price, tags: i.tags, owner: i.owner}) }}"
+  }
+ },
+ {
+  "name": "a text run is written as it stands",
+  "formatTemplate": "key:   value\n  - item ${{x}}\ttab",
+  "expect": {
+   "formatted": "key:   value\n  - item ${{ x }}\ttab"
+  }
+ },
+ {
+  "name": "a carriage return in a text run stays",
+  "formatTemplate": "a\r\n${{b}}",
+  "expect": {
+   "formatted": "a\r\n${{ b }}"
+  }
+ },
+ {
+  "name": "an escaped delimiter stays",
+  "formatTemplate": "$${{ x }} and ${{y}}",
+  "expect": {
+   "formatted": "$${{ x }} and ${{ y }}"
+  }
+ },
+ {
+  "name": "a template with no part stays",
+  "formatTemplate": "plain text  \n",
+  "expect": {
+   "formatted": "plain text  \n"
+  }
+ },
+ {
+  "name": "the empty template",
+  "formatTemplate": "",
+  "expect": {
+   "formatted": ""
+  }
+ },
+ {
+  "name": "a block comment in a part",
+  "formatTemplate": "${{ a  /* c */ }}",
+  "expect": {
+   "formatted": "${{ a /* c */ }}"
+  }
+ },
+ {
+  "name": "a part with a line comment stays as written",
+  "formatTemplate": "${{ a // c\n}}",
+  "expect": {
+   "formatted": "${{ a // c\n}}"
+  }
+ },
+ {
+  "name": "a part whose layout has a line end stays as written",
+  "formatTemplate": "${{ { const a = 2; a * 3 } }}",
+  "expect": {
+   "formatted": "${{ { const a = 2; a * 3 } }}"
+  }
+ },
+ {
+  "name": "a part with a text block stays as written",
+  "formatTemplate": "${{ \"\"\"\n  x\n  \"\"\" }}",
+  "expect": {
+   "formatted": "${{ \"\"\"\n  x\n  \"\"\" }}"
+  }
+ },
+ {
+  "name": "a raw string in a part",
+  "formatTemplate": "${{r\"}}\"}}",
+  "expect": {
+   "formatted": "${{ r\"}}\" }}"
+  }
+ },
+ {
+  "name": "two parts with nothing between",
+  "formatTemplate": "${{a}}${{b}}",
+  "expect": {
+   "formatted": "${{ a }}${{ b }}"
+  }
+ },
+ {
+  "name": "parentheses in a part follow the rules of programs",
+  "formatTemplate": "${{ ((a)) && b || c }}",
+  "expect": {
+   "formatted": "${{ (a && b) || c }}"
+  }
+ },
+ {
+  "name": "a template that does not parse gives no text",
+  "formatTemplate": "${{ a + }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      9,
+      1,
+      11
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "an unterminated part gives no text",
+  "formatTemplate": "x ${{ a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unterminated-string",
+     "span": [
+      1,
+      3,
+      1,
+      8
+     ]
+    }
+   ]
+  }
+ }
+]

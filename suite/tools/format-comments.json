@@ -1,0 +1,289 @@
+[
+ {
+  "name": "a line comment after a const line",
+  "format": "const a = 1; // one\na",
+  "expect": {
+   "formatted": "const a = 1; // one\na\n"
+  }
+ },
+ {
+  "name": "a comment on its own line before a const line",
+  "format": "// header\nconst a = 1;\na",
+  "expect": {
+   "formatted": "// header\nconst a = 1;\na\n"
+  }
+ },
+ {
+  "name": "a header comment and an empty line",
+  "format": "// header\n\nconst a = 1;\na",
+  "expect": {
+   "formatted": "// header\n\nconst a = 1;\na\n"
+  }
+ },
+ {
+  "name": "a block comment before a token on its line",
+  "format": "/* lead */ x",
+  "expect": {
+   "formatted": "/* lead */ x\n"
+  }
+ },
+ {
+  "name": "a block comment trailing a token",
+  "format": "a /* why */ + b",
+  "expect": {
+   "formatted": "a /* why */ + b\n"
+  }
+ },
+ {
+  "name": "a line comment forces its group to break",
+  "format": "f(a, // first\n  b)",
+  "expect": {
+   "formatted": "f(\n  a, // first\n  b,\n)\n"
+  }
+ },
+ {
+  "name": "a trailing comment moves after the comma",
+  "format": "f(a // first\n  , b)",
+  "expect": {
+   "formatted": "f(\n  a, // first\n  b,\n)\n"
+  }
+ },
+ {
+  "name": "a block comment before a comma moves after it",
+  "format": "f(a /* x */, b)",
+  "expect": {
+   "formatted": "f(a, /* x */ b)\n"
+  }
+ },
+ {
+  "name": "a line comment inside a list",
+  "format": "[\n  1,\n  // the second\n  2,\n  3,\n]",
+  "expect": {
+   "formatted": "[\n  1,\n  // the second\n  2,\n  3,\n]\n"
+  }
+ },
+ {
+  "name": "a comment before the closing bracket",
+  "format": "[\n  1,\n  // the end\n]",
+  "expect": {
+   "formatted": "[\n  1,\n  // the end\n]\n"
+  }
+ },
+ {
+  "name": "a comment in an empty list",
+  "format": "[ // nothing yet\n]",
+  "expect": {
+   "formatted": "[ // nothing yet\n]\n"
+  }
+ },
+ {
+  "name": "a block comment in empty parentheses",
+  "format": "f(/* none */)",
+  "expect": {
+   "formatted": "f(/* none */)\n"
+  }
+ },
+ {
+  "name": "a block comment after an opening bracket",
+  "format": "[ /* first */ 1, 2]",
+  "expect": {
+   "formatted": "[/* first */ 1, 2]\n"
+  }
+ },
+ {
+  "name": "a line comment after an opening bracket",
+  "format": "[ // open\n  1]",
+  "expect": {
+   "formatted": "[ // open\n  1,\n]\n"
+  }
+ },
+ {
+  "name": "a comment after an operator",
+  "format": "a && // why\n  b",
+  "expect": {
+   "formatted": "a && // why\n  b\n"
+  }
+ },
+ {
+  "name": "a comment before an operator",
+  "format": "a // why\n  && b",
+  "expect": {
+   "formatted": "a // why\n&&\n  b\n"
+  }
+ },
+ {
+  "name": "a comment before a link of a chain",
+  "format": "xs\n  // keep these\n  .filter(x => x > 0)",
+  "expect": {
+   "formatted": "xs\n  // keep these\n  .filter(x => x > 0)\n"
+  }
+ },
+ {
+  "name": "a comment between links of a chain",
+  "format": "xs.filter(x => x > 0)\n  // then\n  .map(x => x * 2)",
+  "expect": {
+   "formatted": "xs\n  .filter(x => x > 0)\n  // then\n  .map(x => x * 2)\n"
+  }
+ },
+ {
+  "name": "a comment at the end of the text",
+  "format": "x\n// end",
+  "expect": {
+   "formatted": "x\n// end\n"
+  }
+ },
+ {
+  "name": "a comment at the end after an empty line",
+  "format": "x\n\n// end",
+  "expect": {
+   "formatted": "x\n\n// end\n"
+  }
+ },
+ {
+  "name": "a trailing comment at the end of the text",
+  "format": "x // end",
+  "expect": {
+   "formatted": "x // end\n"
+  }
+ },
+ {
+  "name": "two trailing comments",
+  "format": "x /* a */ /* b */",
+  "expect": {
+   "formatted": "x /* a */ /* b */\n"
+  }
+ },
+ {
+  "name": "a comment in a parenthesis that is dropped",
+  "format": "(a // inside\n) + b",
+  "expect": {
+   "formatted": "a // inside\n+\n  b\n"
+  }
+ },
+ {
+  "name": "a comment after an opening parenthesis that is dropped",
+  "format": "const a = ( // why\n  1 + 2);\na",
+  "expect": {
+   "formatted": "const a = // why\n  1 + 2;\na\n"
+  }
+ },
+ {
+  "name": "a comment in a match",
+  "format": "match x {\n  // the first\n  1 => \"a\",\n  _ => \"b\", // the rest\n}",
+  "expect": {
+   "formatted": "match x {\n  // the first\n  1 => \"a\",\n  _ => \"b\", // the rest\n}\n"
+  }
+ },
+ {
+  "name": "a comment in an if branch",
+  "format": "if (c) {\n  // yes\n  1\n} else {\n  2 // no\n}",
+  "expect": {
+   "formatted": "if (c) {\n  // yes\n  1\n} else {\n  2 // no\n}\n"
+  }
+ },
+ {
+  "name": "a comment before the closing brace of a block",
+  "format": "{\n  const a = 1;\n  a\n  // done\n}",
+  "expect": {
+   "formatted": "{\n  const a = 1;\n  a\n  // done\n}\n"
+  }
+ },
+ {
+  "name": "a comment in a map",
+  "format": "{\n  a: 1, // the a\n  // the b\n  b: 2,\n}",
+  "expect": {
+   "formatted": "{\n  a: 1, // the a\n  // the b\n  b: 2,\n}\n"
+  }
+ },
+ {
+  "name": "a comment in a pattern",
+  "format": "const {a, // first\n  b} = m;\n[a, b]",
+  "expect": {
+   "formatted": "const {\n  a, // first\n  b,\n} = m;\n[a, b]\n"
+  }
+ },
+ {
+  "name": "a comment on the key of a short field moves",
+  "format": "const {a: /* k */ a} = m;\na",
+  "expect": {
+   "formatted": "const {/* k */ a} = m;\na\n"
+  }
+ },
+ {
+  "name": "a comment in a program type",
+  "format": "x is {a: int, // the a\n b: string}",
+  "expect": {
+   "formatted": "x is {a: int, // the a\nb: string}\n"
+  }
+ },
+ {
+  "name": "a multi-line block comment stays as written",
+  "format": "/* one\n   two */\nx",
+  "expect": {
+   "formatted": "/* one\n   two */\nx\n"
+  }
+ },
+ {
+  "name": "trailing spaces of a line comment are removed",
+  "format": "x // end   ",
+  "expect": {
+   "formatted": "x // end\n"
+  }
+ },
+ {
+  "name": "a comment in the parameters of a lambda",
+  "format": "xs.map(( // why\n  x) => x)",
+  "expect": {
+   "formatted": "xs.map( // why\n  x => x,\n)\n"
+  }
+ },
+ {
+  "name": "a comment between else and its branch",
+  "format": "if (c) { 1 } else /* other */ { 2 }",
+  "expect": {
+   "formatted": "if (c) { 1 } else /* other */ { 2 }\n"
+  }
+ },
+ {
+  "name": "a comment inside dropped else braces",
+  "format": "if (a) { 1 } else { // other\n  if (b) { 2 } else { 3 } }",
+  "expect": {
+   "formatted": "if (a) {\n  1\n} else // other\nif (b) {\n  2\n} else {\n  3\n}\n"
+  }
+ },
+ {
+  "name": "a comment before a const line in a block",
+  "format": "{\n  const a = 1;\n  // b next\n  const b = 2;\n  a + b\n}",
+  "expect": {
+   "formatted": "{\n  const a = 1;\n  // b next\n  const b = 2;\n  a + b\n}\n"
+  }
+ },
+ {
+  "name": "a comment after the final semicolon",
+  "format": "1 + 2; // done",
+  "expect": {
+   "formatted": "1 + 2 // done\n"
+  }
+ },
+ {
+  "name": "a trailing comment of a result is outside its groups",
+  "format": "firstValueInTheSum + second // done",
+  "expect": {
+   "formatted": "firstValueInTheSum + second // done\n"
+  }
+ },
+ {
+  "name": "a trailing comment of a branch result",
+  "format": "if (c) { a + b // yes\n} else { 0 }",
+  "expect": {
+   "formatted": "if (c) {\n  a + b // yes\n} else {\n  0\n}\n"
+  }
+ },
+ {
+  "name": "comments only before the result",
+  "format": "// one\n// two\nx",
+  "expect": {
+   "formatted": "// one\n// two\nx\n"
+  }
+ }
+]

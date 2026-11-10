@@ -1,0 +1,100 @@
+[
+ {
+  "name": "one empty line between const lines is kept",
+  "format": "const a = 1;\n\nconst b = 2;\na + b",
+  "expect": {
+   "formatted": "const a = 1;\n\nconst b = 2;\na + b\n"
+  }
+ },
+ {
+  "name": "several empty lines become one",
+  "format": "const a = 1;\n\n\n\nconst b = 2;\na + b",
+  "expect": {
+   "formatted": "const a = 1;\n\nconst b = 2;\na + b\n"
+  }
+ },
+ {
+  "name": "an empty line before the result",
+  "format": "const a = 1;\n\na",
+  "expect": {
+   "formatted": "const a = 1;\n\na\n"
+  }
+ },
+ {
+  "name": "a line of spaces counts as empty",
+  "format": "const a = 1;\n   \t\nconst b = 2;\na + b",
+  "expect": {
+   "formatted": "const a = 1;\n\nconst b = 2;\na + b\n"
+  }
+ },
+ {
+  "name": "empty lines in a broken list are kept",
+  "format": "[\n  \"the first element of the list\",\n\n  \"the second element of the list\",\n  \"the third element\",\n]",
+  "expect": {
+   "formatted": "[\n  \"the first element of the list\",\n\n  \"the second element of the list\",\n  \"the third element\",\n]\n"
+  }
+ },
+ {
+  "name": "empty lines in a flat list are dropped",
+  "format": "[\n  1,\n\n  2,\n]",
+  "expect": {
+   "formatted": "[1, 2]\n"
+  }
+ },
+ {
+  "name": "no empty line after an opening bracket",
+  "format": "[\n\n  \"the first element of the list\", \"the second element of the list\", \"the third one\"]",
+  "expect": {
+   "formatted": "[\n  \"the first element of the list\",\n  \"the second element of the list\",\n  \"the third one\",\n]\n"
+  }
+ },
+ {
+  "name": "no empty line before a closing bracket",
+  "format": "[\"the first element of the list\", \"the second element of the list\", \"the third one\"\n\n]",
+  "expect": {
+   "formatted": "[\n  \"the first element of the list\",\n  \"the second element of the list\",\n  \"the third one\",\n]\n"
+  }
+ },
+ {
+  "name": "empty lines between map entries",
+  "format": "{\n  name: \"a long enough name for the line\",\n\n  version: \"1.2.3\",\n  // the port\n\n  port: 8080,\n}",
+  "expect": {
+   "formatted": "{\n  name: \"a long enough name for the line\",\n\n  version: \"1.2.3\",\n  // the port\n\n  port: 8080,\n}\n"
+  }
+ },
+ {
+  "name": "empty lines in a block",
+  "format": "{\n  const a = 1;\n\n  a\n}",
+  "expect": {
+   "formatted": "{\n  const a = 1;\n\n  a\n}\n"
+  }
+ },
+ {
+  "name": "empty lines between match arms",
+  "format": "match kind {\n  \"alpha\" => \"the first group of things\",\n\n  _ => \"the rest of the things\",\n}",
+  "expect": {
+   "formatted": "match kind {\n  \"alpha\" => \"the first group of things\",\n\n  _ => \"the rest of the things\",\n}\n"
+  }
+ },
+ {
+  "name": "an empty line before a comment",
+  "format": "const a = 1;\n\n// b\nconst b = 2;\na + b",
+  "expect": {
+   "formatted": "const a = 1;\n\n// b\nconst b = 2;\na + b\n"
+  }
+ },
+ {
+  "name": "an empty line after a comment",
+  "format": "const a = 1;\n// about b\n\nconst b = 2;\na + b",
+  "expect": {
+   "formatted": "const a = 1;\n// about b\n\nconst b = 2;\na + b\n"
+  }
+ },
+ {
+  "name": "empty lines in arguments",
+  "format": "f(\n  firstArgumentWithALongName,\n\n  secondArgumentWithALongName,\n  thirdArgumentWithALongName,\n)",
+  "expect": {
+   "formatted": "f(\n  firstArgumentWithALongName,\n\n  secondArgumentWithALongName,\n  thirdArgumentWithALongName,\n)\n"
+  }
+ }
+]

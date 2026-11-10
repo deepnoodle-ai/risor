@@ -1,0 +1,394 @@
+[
+ {
+  "name": "redundant parentheses are dropped",
+  "format": "((a)) + (b)",
+  "expect": {
+   "formatted": "a + b\n"
+  }
+ },
+ {
+  "name": "parentheses that change the tree are kept",
+  "format": "(a + b) * c",
+  "expect": {
+   "formatted": "(a + b) * c\n"
+  }
+ },
+ {
+  "name": "a right operand of the same level",
+  "format": "a - (b - c)",
+  "expect": {
+   "formatted": "a - (b - c)\n"
+  }
+ },
+ {
+  "name": "a left operand of the same level needs none",
+  "format": "(a - b) - c",
+  "expect": {
+   "formatted": "a - b - c\n"
+  }
+ },
+ {
+  "name": "a lower level on the left",
+  "format": "(a || b) && c",
+  "expect": {
+   "formatted": "(a || b) && c\n"
+  }
+ },
+ {
+  "name": "and inside or is written in parentheses",
+  "format": "a && b || c && d",
+  "expect": {
+   "formatted": "(a && b) || (c && d)\n"
+  }
+ },
+ {
+  "name": "or inside and keeps its parentheses",
+  "format": "(a || b) && (c || d)",
+  "expect": {
+   "formatted": "(a || b) && (c || d)\n"
+  }
+ },
+ {
+  "name": "modulo then times",
+  "format": "a % b * c",
+  "expect": {
+   "formatted": "(a % b) * c\n"
+  }
+ },
+ {
+  "name": "times then divide",
+  "format": "a * b / c",
+  "expect": {
+   "formatted": "(a * b) / c\n"
+  }
+ },
+ {
+  "name": "divide then times",
+  "format": "a / b * c",
+  "expect": {
+   "formatted": "(a / b) * c\n"
+  }
+ },
+ {
+  "name": "modulo twice",
+  "format": "a % b % c",
+  "expect": {
+   "formatted": "(a % b) % c\n"
+  }
+ },
+ {
+  "name": "times twice needs none",
+  "format": "a * b * c",
+  "expect": {
+   "formatted": "a * b * c\n"
+  }
+ },
+ {
+  "name": "plus and minus need none",
+  "format": "a + b - c + d",
+  "expect": {
+   "formatted": "a + b - c + d\n"
+  }
+ },
+ {
+  "name": "equality inside equality",
+  "format": "a == b != c",
+  "expect": {
+   "formatted": "(a == b) != c\n"
+  }
+ },
+ {
+  "name": "a comparison inside equality needs none",
+  "format": "a < b == c > d",
+  "expect": {
+   "formatted": "a < b == c > d\n"
+  }
+ },
+ {
+  "name": "?? with ?? on the left needs none",
+  "format": "(a ?? b) ?? c",
+  "expect": {
+   "formatted": "a ?? b ?? c\n"
+  }
+ },
+ {
+  "name": "?? with ?? on the right",
+  "format": "a ?? (b ?? c)",
+  "expect": {
+   "formatted": "a ?? (b ?? c)\n"
+  }
+ },
+ {
+  "name": "?? inside or",
+  "format": "(a ?? b) || c",
+  "expect": {
+   "formatted": "(a ?? b) || c\n"
+  }
+ },
+ {
+  "name": "or inside ??",
+  "format": "(a || b) ?? c",
+  "expect": {
+   "formatted": "(a || b) ?? c\n"
+  }
+ },
+ {
+  "name": "plus inside ?? needs none",
+  "format": "(a + b) ?? c",
+  "expect": {
+   "formatted": "a + b ?? c\n"
+  }
+ },
+ {
+  "name": "power is right associative",
+  "format": "a ** (b ** c)",
+  "expect": {
+   "formatted": "a ** b ** c\n"
+  }
+ },
+ {
+  "name": "power with a left power",
+  "format": "(a ** b) ** c",
+  "expect": {
+   "formatted": "(a ** b) ** c\n"
+  }
+ },
+ {
+  "name": "a prefix minus under power",
+  "format": "(-a) ** 2",
+  "expect": {
+   "formatted": "(-a) ** 2\n"
+  }
+ },
+ {
+  "name": "a power under a prefix minus",
+  "format": "-(a ** 2)",
+  "expect": {
+   "formatted": "-(a ** 2)\n"
+  }
+ },
+ {
+  "name": "a prefix minus as the exponent needs none",
+  "format": "2 ** (-1)",
+  "expect": {
+   "formatted": "2 ** -1\n"
+  }
+ },
+ {
+  "name": "two prefix minus signs",
+  "format": "-(-x)",
+  "expect": {
+   "formatted": "- -x\n"
+  }
+ },
+ {
+  "name": "two prefix minus signs written together",
+  "format": "--x",
+  "expect": {
+   "formatted": "- -x\n"
+  }
+ },
+ {
+  "name": "not of not",
+  "format": "!(!x)",
+  "expect": {
+   "formatted": "!!x\n"
+  }
+ },
+ {
+  "name": "a prefix operator over a sum",
+  "format": "-(a + b)",
+  "expect": {
+   "formatted": "-(a + b)\n"
+  }
+ },
+ {
+  "name": "not as the left operand of in",
+  "format": "(!a) in b",
+  "expect": {
+   "formatted": "(!a) in b\n"
+  }
+ },
+ {
+  "name": "not of in",
+  "format": "!(a in b)",
+  "expect": {
+   "formatted": "!(a in b)\n"
+  }
+ },
+ {
+  "name": "a minus as the left operand of in needs none",
+  "format": "(-a) in b",
+  "expect": {
+   "formatted": "-a in b\n"
+  }
+ },
+ {
+  "name": "a sum as the left operand of in needs none",
+  "format": "(a + b) in c",
+  "expect": {
+   "formatted": "a + b in c\n"
+  }
+ },
+ {
+  "name": "a sum as the receiver of a step",
+  "format": "(a + b).c",
+  "expect": {
+   "formatted": "(a + b).c\n"
+  }
+ },
+ {
+  "name": "a call as the receiver needs none",
+  "format": "(f(x)).y",
+  "expect": {
+   "formatted": "f(x).y\n"
+  }
+ },
+ {
+  "name": "a chain in parentheses as the receiver is the same chain",
+  "format": "(xs.map(f)).sum()",
+  "expect": {
+   "formatted": "xs.map(f).sum()\n"
+  }
+ },
+ {
+  "name": "an optional chain in parentheses as the receiver",
+  "format": "(a?.b).c",
+  "expect": {
+   "formatted": "(a?.b).c\n"
+  }
+ },
+ {
+  "name": "an optional chain in parentheses before an optional step",
+  "format": "(a?.b)?.c",
+  "expect": {
+   "formatted": "(a?.b)?.c\n"
+  }
+ },
+ {
+  "name": "a conditional as an operand",
+  "format": "(a ? b : c) + 1",
+  "expect": {
+   "formatted": "(a ? b : c) + 1\n"
+  }
+ },
+ {
+  "name": "a conditional as a test",
+  "format": "(a ? b : c) ? d : e",
+  "expect": {
+   "formatted": "(a ? b : c) ? d : e\n"
+  }
+ },
+ {
+  "name": "a conditional as a branch needs none",
+  "format": "a ? (b ? c : d) : e",
+  "expect": {
+   "formatted": "a ? b ? c : d : e\n"
+  }
+ },
+ {
+  "name": "an if as an operand",
+  "format": "(if (c) { 1 } else { 2 }) + 3",
+  "expect": {
+   "formatted": "(if (c) { 1 } else { 2 }) + 3\n"
+  }
+ },
+ {
+  "name": "an if as a receiver",
+  "format": "(if (c) { [1] } else { [2] }).first()",
+  "expect": {
+   "formatted": "(if (c) { [1] } else { [2] }).first()\n"
+  }
+ },
+ {
+  "name": "an if as a branch of a conditional",
+  "format": "a ? (if (c) { 1 } else { 2 }) : 3",
+  "expect": {
+   "formatted": "a ? if (c) { 1 } else { 2 } : 3\n"
+  }
+ },
+ {
+  "name": "a try as an operand",
+  "format": "(try { a } catch { 0 }) * 2",
+  "expect": {
+   "formatted": "(try { a } catch { 0 }) * 2\n"
+  }
+ },
+ {
+  "name": "an if as an argument needs none",
+  "format": "f((if (c) { 1 } else { 2 }))",
+  "expect": {
+   "formatted": "f(if (c) { 1 } else { 2 })\n"
+  }
+ },
+ {
+  "name": "the parentheses of a match subject that starts with a map are kept",
+  "format": "match ({a: 1}.a) { 1 => \"one\", _ => \"other\" }",
+  "expect": {
+   "formatted": "match ({a: 1}.a) { 1 => \"one\", _ => \"other\" }\n"
+  }
+ },
+ {
+  "name": "a match subject in parentheses that need none",
+  "format": "match (x.kind) { \"a\" => 1, _ => 0 }",
+  "expect": {
+   "formatted": "match x.kind { \"a\" => 1, _ => 0 }\n"
+  }
+ },
+ {
+  "name": "the parentheses of a match subject that is a block are kept",
+  "format": "match ({ const a = 1; a }) { 1 => 2, _ => 3 }",
+  "expect": {
+   "formatted": "match ({\n  const a = 1;\n  a\n}) {\n  1 => 2,\n  _ => 3,\n}\n"
+  }
+ },
+ {
+  "name": "parentheses go around the whole subject",
+  "format": "match (({a: 1}) == m) { true => 1, _ => 0 }",
+  "expect": {
+   "formatted": "match ({a: 1} == m) { true => 1, _ => 0 }\n"
+  }
+ },
+ {
+  "name": "a match as an operand needs none",
+  "format": "(match x { _ => 1 }) + 1",
+  "expect": {
+   "formatted": "match x { _ => 1 } + 1\n"
+  }
+ },
+ {
+  "name": "a lambda body in parentheses",
+  "format": "xs.map(x => (x + 1))",
+  "expect": {
+   "formatted": "xs.map(x => x + 1)\n"
+  }
+ },
+ {
+  "name": "an argument in parentheses",
+  "format": "f((a + b), (c))",
+  "expect": {
+   "formatted": "f(a + b, c)\n"
+  }
+ },
+ {
+  "name": "a const value in parentheses",
+  "format": "const a = (1 + 2);\na",
+  "expect": {
+   "formatted": "const a = 1 + 2;\na\n"
+  }
+ },
+ {
+  "name": "an index in parentheses",
+  "format": "xs[(i + 1)]",
+  "expect": {
+   "formatted": "xs[i + 1]\n"
+  }
+ },
+ {
+  "name": "a spread operand in parentheses",
+  "format": "[...(xs)]",
+  "expect": {
+   "formatted": "[...xs]\n"
+  }
+ }
+]
