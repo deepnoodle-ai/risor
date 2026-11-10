@@ -1,2 +1,0 @@
-// Empty destructuring patterns are not allowed
-let {} = obj

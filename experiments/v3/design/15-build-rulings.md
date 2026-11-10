@@ -515,3 +515,15 @@ them, in `suite/errors/fuzz-round-7.json` and `fuzz-round-7-check.json`.
 | R196 | **Errors on a union read the joined record.** A field read, or a field of a map pattern, on a tagged union reads flat(U), so `no-field` and `maybe-absent` print that one record and never the union (`f08-errors.md` 3.5). A star on a receiver of two kinds reports `kind` with the `receiver` template; `star` is for one kind that is not a list. |
 | R197 | **Where a targeted parse code applies.** The start of a map entry is not a place where an operand must begin, so a prefixed string, `<` or a tagged template there is `unexpected-token`. A `match` literal is not an operand for `assignment`; a pattern default is. `block-without-const` follows a lambda's `=>` only, and not inside an open computed key. An unclosed interpolation names the innermost literal still open (`f08-errors.md` 2.2, 2.7, 3.4). |
 | R198 | **Facts apply only to paths.** An index read on a value that is not a path took facts about the first `const`, and so lost its type in a branch; it found no unsound result, but it hid an `arity` error. A fact applies to a path (`05-types.md` 10.4), and to nothing else. |
+
+## 18. The alpha on `main`
+
+The owner chose to publish v3 as an alpha and request for comment on `main`.
+v2 moved to the `v2` branch, cut from `main` before the switch. The Go module
+path `github.com/deepnoodle-ai/risor/v3` resolves only from a `go.mod` at the
+repository root or in a `v3/` directory, so the Go implementation moved out
+of `go/`.
+
+| # | Ruling |
+| --- | --- |
+| R199 | **The repository layout.** The Go implementation is the module at the repository root, path `github.com/deepnoodle-ai/risor/v3`, tagged `v3.x.y`. `ts/`, `rust/`, `fuzz/`, `spec/` and `suite/` stay where they are. v2's code is removed from this line; it lives on the `v2` branch. This replaces the layout row of section 1. |
