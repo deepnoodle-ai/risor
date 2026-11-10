@@ -179,9 +179,9 @@ func (c *checker) factsOf(n syntax.Node) (t, f facts) {
 				return nil, nil
 			}
 			if n.Op == "!=" {
-				return facts{nn(p)}, nil
+				return facts{nn(p)}, c.nullFacts(p) // F14 4.2
 			}
-			return nil, facts{nn(p)}
+			return c.nullFacts(p), facts{nn(p)}
 		}
 	case *syntax.As:
 		// F4 6.4: the facts of p is T.
@@ -197,6 +197,9 @@ func (c *checker) factsOf(n syntax.Node) (t, f facts) {
 		ff := facts{{p: p, kind: factNotConforms, t: t}}
 		if !t.HasNull() && !t.IsAny() {
 			tf = append(tf, nn(p))
+		}
+		if t.IsExactlyNull() {
+			tf = append(tf, c.nullFacts(p)...) // F14 4.2
 		}
 		if t.HasNull() {
 			ff = append(ff, nn(p))
@@ -233,6 +236,10 @@ func (c *checker) ident(n *syntax.Ident, fs facts) *types.Type {
 			}
 			t = fs.apply(t, p)
 		}
+	}
+	// F14 5.1: the effect, applied last.
+	if b.Kind == static.EnvVar && len(c.env.Facts) > 0 && c.someNotNull(b.Var, fs) {
+		t = types.Nonnull(t)
 	}
 	return t
 }
@@ -388,7 +395,7 @@ func (c *checker) binop(n *syntax.Binary, a *types.Type, fs facts) *types.Type {
 		b := c.synth(n.Y, fs.with(ff))
 		return c.depthLimit(n, types.Join(types.Truthy(a), b))
 	case "??":
-		b := c.synth(n.Y, fs)
+		b := c.synth(n.Y, fs.with(c.nullOf(n.X))) // F14 4.4: b under N(a)
 		return c.depthLimit(n, types.Join(types.Nonnull(a), b))
 	case "==", "!=":
 		b := c.synth(n.Y, fs)
@@ -593,6 +600,7 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 	fp, fkey, mi, fok := c.fieldTest(n.Subject)
 	for _, a := range n.Arms {
 		listsNull := false
+		kept, keptNull := 0, false // the literals 11.2 does not ignore
 		var strs []string
 		allStrings := !a.Default && len(a.Literals) > 0
 		for _, l := range a.Literals {
@@ -611,6 +619,8 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 			if dup {
 				continue
 			}
+			kept++
+			keptNull = keptNull || isNull
 			if _, isStr := l.(*syntax.String); !isStr {
 				allStrings = false
 			}
@@ -638,6 +648,9 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 			hasDefault = true
 		}
 		armFs := af
+		if isPath && kept == 1 && keptNull && !a.Default {
+			armFs = armFs.with(c.nullFacts(p)) // F14 4.3: the arm of null alone
+		}
 		if fok && allStrings && len(strs) > 0 {
 			if h := types.Hit(mi, fkey, strs); !h.IsNever() {
 				armFs = af.with(facts{{p: fp, kind: factConforms, t: h, field: true}, nn(fp)})

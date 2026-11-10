@@ -30,10 +30,15 @@ type Type struct {
 	// rt is the Go type a type from TypeOf was derived from, for the
 	// typed layer (package F11); nil for every other type.
 	rt reflect.Type
+	// err is set for an invalid type (Err).
+	err error
 }
 
 // String prints the type.
 func (t Type) String() string {
+	if t.err != nil {
+		return invalidTypeText
+	}
 	if t.t == nil {
 		return "never"
 	}
@@ -190,8 +195,8 @@ func VarSchema(name string, schema any, opts ...SchemaOption) Decl {
 // ParseType. Nothing is parsed: the type is the checker's own.
 func VarType(name string, t Type) Decl {
 	return declFunc(func(e *Env) {
-		if t.t == nil {
-			e.errf(diag.CodeBadType, fmt.Sprintf("variable %s: no type", name))
+		if p := t.problem(); p != "" {
+			e.errf(diag.CodeBadType, fmt.Sprintf("variable %s: %s", name, p))
 			return
 		}
 		e.putVarType(name, t.t)
@@ -434,8 +439,23 @@ func (e *Env) Describe() ([]byte, error) {
 	if len(e.groups) > 0 { // F6 2.7: only when a group is on
 		top = append([]string{"functions", "groups"}, top[1:]...)
 	}
+	facts := e.describedFacts()
+	if len(facts) > 0 { // F14 9.1: only when a host fact exists
+		top = append([]string{"facts"}, top...)
+	}
 	obj(top, func(k string) {
 		switch k {
+		case "facts":
+			w("[")
+			for i, f := range facts {
+				if i > 0 {
+					w(",")
+				}
+				w(`{"someNotNull":`)
+				arr(f)
+				w("}")
+			}
+			w("]")
 		case "functions":
 			obj(sorted(funcNames), func(n string) { w(value.QuoteJSON(sigText(e.hostSigs[n]))) })
 		case "limits":
@@ -525,7 +545,8 @@ func Description(data []byte) (Decl, error) {
 	keys := []string{"version", "variables", "functions", "opaque", "removed", "reject", "limits"}
 	_, hasTypes := d["types"]
 	_, hasGroups := d["groups"]
-	if !ok || len(d) != len(keys)+boolInt(hasTypes)+boolInt(hasGroups) {
+	_, hasFacts := d["facts"]
+	if !ok || len(d) != len(keys)+boolInt(hasTypes)+boolInt(hasGroups)+boolInt(hasFacts) {
 		return nil, errors.New("risor: a description is an object with exactly the keys of F1 5.3")
 	}
 	bad := func(k string) (Decl, error) {
@@ -585,6 +606,29 @@ func Description(data []byte) (Decl, error) {
 			o.Methods[m] = Function{Type: sig}
 		}
 		decls = append(decls, o)
+	}
+	if hasFacts { // F14 9.2
+		fs, ok := d["facts"].([]any)
+		if !ok {
+			return bad("facts")
+		}
+		for _, f := range fs {
+			o, ok := f.(map[string]any)
+			if !ok || len(o) != 1 {
+				return bad("facts")
+			}
+			arr, ok := o["someNotNull"].([]any)
+			if !ok {
+				return bad("facts")
+			}
+			names := make([]string, len(arr))
+			for i, x := range arr {
+				if names[i], ok = x.(string); !ok {
+					return bad("facts")
+				}
+			}
+			decls = append(decls, SomeNotNull(names...))
+		}
 	}
 	strList := func(v any) ([]string, bool) {
 		arr, ok := v.([]any)

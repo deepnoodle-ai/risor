@@ -314,6 +314,23 @@ func fixtures(env *risor.Env, c *casefile.Case) ([]any, string, bool) {
 			return append([]any{"vars", k}, p...), msg, true
 		}
 	}
+	// F14 10.2: each host fact whose members vars all supplies.
+	for i, f := range c.Facts {
+		all, nulls := true, 0
+		for _, m := range f {
+			v, ok := c.Vars[m]
+			if !ok {
+				all = false
+				break
+			}
+			if v == nil {
+				nulls++
+			}
+		}
+		if all && len(f) > 0 && nulls == len(f) {
+			return []any{"facts", float64(i)}, "at least one of " + strings.Join(f, ", ") + " must not be null", true
+		}
+	}
 	rows := func(kind string, names []string, stubs map[string]*casefile.Stub, sig func(string) *types.Sig) ([]any, string, bool) {
 		sort.Strings(names)
 		for _, n := range names {

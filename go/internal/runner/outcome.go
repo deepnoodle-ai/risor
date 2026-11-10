@@ -133,7 +133,7 @@ func outcome(c *casefile.Case) string {
 	if err != nil {
 		return fail(err, nil)
 	}
-	if c.Schemas != nil || c.Types != nil {
+	if c.Schemas != nil || c.Types != nil || c.Facts != nil { // F14 10.4
 		// F1 7.4: after name, before type.
 		if d, err := env.Describe(); err == nil {
 			b.WriteString(`,"description":`)

@@ -40,6 +40,9 @@ type Case struct {
 	Removed []string
 	// Groups are the opt-in groups the case turns on (package F6 11.1).
 	Groups []string
+	// Facts are the host facts someNotNull of the case, each its members
+	// (package F14 10.1). Nil when absent; empty for "facts": [].
+	Facts [][]string
 	// Types are the named types of package F4 9.1, in order. Nil when
 	// absent.
 	Types []*NamedType
@@ -274,9 +277,9 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load", "facts")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load")
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load", "facts")
 	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json")
 	// F2 4.2, 4.3.
 	analysisFields = set("names", "refs", "calls", "literal", "segments")
@@ -287,7 +290,7 @@ var (
 	schemaVarFields   = set("schema", "options")
 	descriptionFields = set("version", "variables", "functions", "opaque", "removed", "reject", "limits")
 	// descriptionAllowed adds the key types of package F4 8.
-	descriptionAllowed = set("version", "variables", "functions", "opaque", "removed", "reject", "limits", "types", "groups")
+	descriptionAllowed = set("version", "variables", "functions", "opaque", "removed", "reject", "limits", "types", "groups", "facts")
 	failureFields      = set("phase", "diagnostics", "steps", "allocated", "rendered")
 	diagFields         = set("code", "class", "span", "path", "message", "data", "trace")
 	stubFields         = set("type", "calls")
@@ -538,6 +541,11 @@ func (v *validator) fields(m map[string]any, where string) error {
 			return err
 		}
 	}
+	if x, ok := m["facts"]; ok { // F14 10.1
+		if _, err := factsOf(x); err != nil {
+			return v.invalid("%s: %v", where, err)
+		}
+	}
 	if x, ok := m["groups"]; ok { // F6 11.1 item 4
 		list, ok := stringList(x)
 		if !ok {
@@ -774,6 +782,9 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	}
 	if s := optString(m, "template"); s != nil {
 		c.Template = *s
+	}
+	if x, ok := m["facts"]; ok {
+		c.Facts, _ = factsOf(x)
 	}
 	if x, ok := m["groups"]; ok {
 		c.Groups, _ = stringList(x)

@@ -46,6 +46,9 @@ type Env struct {
 	// Removed is the set of removed library entries, by the names of
 	// 03-host.md 3.3.1 (len, string.repeat).
 	Removed map[string]bool
+	// Facts are the host facts someNotNull of package F14, each the
+	// indexes of its members in VarTypes.
+	Facts [][]int
 }
 
 // Diag is one diagnostic of the type rules.
@@ -224,6 +227,8 @@ const (
 	factNonnull factKind = iota
 	factConforms
 	factNotConforms
+	// factNull is null(p) of package F14 4.1, about a member path.
+	factNull
 )
 
 // fact is one fact about a path.
@@ -238,7 +243,7 @@ type fact struct {
 func nn(p path) fact { return fact{p: p} }
 
 func (a fact) same(b fact) bool {
-	return a.kind == b.kind && a.p.equal(b.p) && (a.kind == factNonnull || types.Equal(a.t, b.t))
+	return a.kind == b.kind && a.p.equal(b.p) && (a.kind == factNonnull || a.kind == factNull || types.Equal(a.t, b.t))
 }
 
 // facts are the facts in force (10.4), in the order of their tests.
@@ -267,7 +272,7 @@ func (f facts) covers(p path) bool {
 // facts of F4 6.4, in the order of their tests.
 func (f facts) apply(t *types.Type, p path) *types.Type {
 	for _, q := range f {
-		if q.kind == factNonnull || !q.p.equal(p) {
+		if q.kind == factNonnull || q.kind == factNull || !q.p.equal(p) {
 			continue
 		}
 		if q.kind == factConforms {

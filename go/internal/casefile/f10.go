@@ -1,5 +1,7 @@
 package casefile
 
+import "fmt"
+
 // The additions of package F10 10 to the case format: returnsSchema and
 // load.
 
@@ -69,4 +71,29 @@ func (v *validator) buildF10(c *Case, m map[string]any, where string) error {
 		}
 	}
 	return nil
+}
+
+// factsOf reads the field facts of package F14 10.1: a list of objects,
+// each with exactly the key someNotNull, a list of strings.
+func factsOf(x any) ([][]string, error) {
+	arr, ok := x.([]any)
+	if !ok {
+		return nil, fmt.Errorf("facts is not an array")
+	}
+	out := [][]string{}
+	for _, e := range arr {
+		o, ok := e.(map[string]any)
+		if !ok || len(o) != 1 {
+			return nil, fmt.Errorf("a host fact is not an object with the one key someNotNull")
+		}
+		names, ok := stringList(o["someNotNull"])
+		if !ok {
+			return nil, fmt.Errorf("someNotNull is not an array of strings")
+		}
+		if names == nil {
+			names = []string{}
+		}
+		out = append(out, names)
+	}
+	return out, nil
 }

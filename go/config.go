@@ -153,9 +153,9 @@ func load(ctx context.Context, env *Env, source string, vars Vars, t *Type, opts
 			return nil, Usage{}, &LoadError{Step: StepDeclare, Diagnostics: err.(*Error).Diagnostics}
 		}
 	}
-	if t != nil && t.t == nil {
+	if t != nil && t.problem() != "" {
 		return nil, Usage{}, &LoadError{Step: StepDeclare, Diagnostics: []Diagnostic{{Phase: PhaseDeclare,
-			Code: diag.CodeBadType, Message: "the expected result: no type"}}}
+			Code: diag.CodeBadType, Message: "the expected result: " + t.problem()}}}
 	}
 	x, err := Parse(source)
 	if err != nil {

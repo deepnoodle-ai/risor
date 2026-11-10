@@ -130,7 +130,7 @@ func CheckOnlyFile(path string) bool { return strings.HasSuffix(filepath.Base(pa
 // Offered is the one list of the follow-on packages this implementation
 // offers (03-host.md 3.11 item 2: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10,
 // F11, F13, F12, in that order, each with all before it). F12 is not built.
-var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true, "F10": true, "F11": true, "F13": true}
+var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true, "F10": true, "F11": true, "F13": true, "F14": true}
 
 // Skipped returns whether a case file is one a runner of this
 // implementation does not run: its name begins until-fNN- and package NN is
@@ -285,6 +285,9 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 	}
 	if c.Env != nil {
 		decls = append(decls, risor.Declare(*c.Env))
+	}
+	for _, f := range c.Facts { // F14 10.1
+		decls = append(decls, risor.SomeNotNull(f...))
 	}
 	schemaNames := make([]string, 0, len(c.Schemas))
 	for k := range c.Schemas {

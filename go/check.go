@@ -210,9 +210,9 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 			}
 			exp = check.Expect{Kind: check.ExpectType, Type: t}
 		case expectTypeOption:
-			if o.t.t == nil {
+			if p := o.t.problem(); p != "" {
 				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
-					Message: "the expected result: no type"}}}
+					Message: "the expected result: " + p}}}
 			}
 			exp = check.Expect{Kind: check.ExpectType, Type: o.t.t}
 		}
@@ -221,7 +221,8 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 }
 
 func (e *Env) checkEnv(names *static.Names, varNames []string) *check.Env {
-	ce := &check.Env{Hosts: e.hostSigs, Methods: e.methodSigs, Reject: map[string]bool{}, Removed: e.removed}
+	ce := &check.Env{Hosts: e.hostSigs, Methods: e.methodSigs, Reject: map[string]bool{}, Removed: e.removed,
+		Facts: e.factIndexes(varNames)}
 	for _, n := range varNames {
 		ce.VarTypes = append(ce.VarTypes, e.varTypes[n])
 	}

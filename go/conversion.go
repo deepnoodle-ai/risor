@@ -57,8 +57,8 @@ func NamedTypeSchema(name string, schema any, opts ...SchemaOption) Decl {
 func NamedTypeOf(name string, t Type) Decl {
 	return declFunc(func(e *Env) {
 		d := &namedDecl{name: name, ty: t.t}
-		if t.t == nil {
-			d.err = "no type"
+		if p := t.problem(); p != "" {
+			d.err = p
 		}
 		e.putNamed(d)
 	})
@@ -175,8 +175,8 @@ func (e *Env) ParseType(text string) (Type, error) {
 // run: it charges nothing and has no limits, and its work is bounded by the
 // value and the type. It changes nothing.
 func Conform(v any, t Type) error {
-	if t.t == nil {
-		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: "no type"}}}
+	if p := t.problem(); p != "" {
+		return &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: p}}}
 	}
 	path, msg, ok := eval.Conform(v, t.t)
 	if ok {
@@ -192,8 +192,8 @@ func Conform(v any, t Type) error {
 // list is empty exactly when v conforms, and its first diagnostic is the
 // one Conform gives. It charges nothing and changes nothing.
 func ConformAll(v any, t Type, max int) []Diagnostic {
-	if t.t == nil {
-		return []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: "no type"}}
+	if p := t.problem(); p != "" {
+		return []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: p}}
 	}
 	fs := eval.ConformAll(v, t.t, max)
 	out := make([]Diagnostic, len(fs))

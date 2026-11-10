@@ -221,8 +221,11 @@ type Env struct {
 	// whether the child declared an opaque type or a named type.
 	parent *Env
 	// cache holds what every compile of this environment reads, made once.
-	cache    *envCache
-	envTypes // the declarations as types, for the checker (check.go)
+	cache *envCache
+	// facts are the host facts (package F14); ownFacts those declared while
+	// the environment is built.
+	facts, ownFacts []hostFact
+	envTypes        // the declarations as types, for the checker (check.go)
 
 	// while building
 	own  map[string]bool
@@ -246,7 +249,8 @@ func NewEnv(decls ...Decl) (*Env, error) {
 // parent does not change.
 func (e *Env) With(decls ...Decl) (*Env, error) {
 	c := &Env{version: e.version, versionSet: e.versionSet, reject: e.reject, limits: e.limits, untyped: e.untyped, parent: e,
-		vars: map[string]*varDecl{}, funcs: map[string]*funcDecl{}, opaque: map[string]*opaqueDecl{},
+		facts: e.facts,
+		vars:  map[string]*varDecl{}, funcs: map[string]*funcDecl{}, opaque: map[string]*opaqueDecl{},
 		removed: map[string]bool{}}
 	for k, v := range e.vars {
 		c.vars[k] = v
@@ -279,6 +283,7 @@ func (e *Env) build(decls []Decl) (*Env, error) {
 		e.errf(diag.CodeUnsupportedVersion, fmt.Sprintf("version %q is not offered", e.version))
 	}
 	e.replaceInherited()
+	e.buildFacts()
 	e.checkClashes()
 	e.namedEnv()
 	e.typeEnv()
@@ -554,7 +559,10 @@ func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
 // CheckCompile checks a program and compiles it, in one pass of the static
 // and the type rules: it gives the program and the check's result, as
 // Check and Compile give them. The result is nil when the options compile
-// without the check (NoCheck).
+// without the check (NoCheck). A program compiled in a child environment
+// keeps nothing of the child but what it read: it runs against any
+// variables (Vars) that hold the values it reads, so a host may compile
+// many programs in short-lived children and run them later.
 func (e *Env) CheckCompile(x *Expr, opts ...CheckOption) (*Program, *CheckResult, error) {
 	return e.compile(x, opts, true)
 }
@@ -599,7 +607,9 @@ type Program struct {
 }
 
 // Run runs the program with the values of its variables. vars may be nil
-// when the program reads none.
+// when the program reads none. The variables need only hold the names the
+// program reads, whatever environment, parent or child, it was compiled
+// in; a value must have the type its declaration gave (03-host.md 3.4.1).
 func (p *Program) Run(ctx context.Context, vars Vars) (any, error) {
 	v, _, err := p.Measure(ctx, vars)
 	return v, err
