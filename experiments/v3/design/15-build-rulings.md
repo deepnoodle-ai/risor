@@ -443,3 +443,11 @@ The chapter is `spec/packages/f10-config.md`, with 166 cases in
 
 | R170 | A key that a host fills, with null or with a default, is no tag: a value that lacks it gives the host no way to choose the variant. Found by the F5 lane's fuzzer under the option `defaults-applied`. |
 | R171 | On its failing side `in` also removes a variant whose tag set lies within the list, so there it says more than the chain of `==` (R152). The fit of a map literal against a union follows spreads, the variant chosen from the entries that give the tag. |
+
+### 14.10 F13, math functions, as built
+
+| # | Ruling |
+| --- | --- |
+| R172 | **Each call of an F13 entry charges 200 steps.** The chapter gave 0. The first implementation is correctly rounded on 100,000 random arguments for each function, against an independent reference at 320 bits, and takes 3 to 12 microseconds a call; an ordinary step takes about 50 nanoseconds. With a cost of 0 the step limit would not bound the time of a run. The charge is made after the argument tests and before the computation. |
+| R173 | F13 is offered before F12 in the order of packages: it depends only on F6, and the tools package may then assume the whole library. This changes the order of R133. |
+| R174 | The typed layer of Go (F11) changes no result, and the Go type a host gets back is a result: a host that receives struct values keeps receiving them, never pointers into its own slice. An element that a callback only reads fields of is not made a value at all. |

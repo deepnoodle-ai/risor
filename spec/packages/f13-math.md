@@ -100,21 +100,48 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Program | Data | Result |
 | --- | --- | --- |
 | `math.sin(math.pi)` |  | `1.2246467991473532e-16` |
-| `math.pi == math.acos(x)` | `{x: float}`, x = `-1` | `true`; 2 steps |
-| `math.e == math.exp(1)` |  | `true`; 2 steps |
+| `math.pi == math.acos(x)` | `{x: float}`, x = `-1` | `true`; 202 steps |
+| `math.e == math.exp(1)` |  | `true`; 202 steps |
 
 ## 3. Cost
 
 | Entry | Steps | Units |
 | --- | --- | --- |
-| Each of the 11 | `0` | `0` |
+| Each of the 11 | `200` | `0` |
 
-1. Each entry tests its arguments, charges the call's 1 step, and gives its
-   result or its failure. It charges nothing more, and a failure keeps the
-   call's step.
-2. The work of an entry is bounded by a constant that does not depend on its
-   arguments (`02-evaluation.md` 8.5).
-3. This package adds no row to the tables of `02-evaluation.md`.
+1. Each call of an entry charges 200 steps beyond the call's own step. The
+   formula of each record is `200`.
+2. **The order.** The arguments are evaluated and tested by `04-library.md`
+   2.6; the call's 1 step is charged; the entry's **value test** is made, which
+   reads only the arguments and finds `not-real` (2.1 item 4); then the 200
+   steps are charged; then the result is computed. So:
+   - a call that fails the tests of 2.6 charges nothing;
+   - a call that fails `not-real` charges the call's step only, 1 step;
+   - a call whose result is computed charges 201 steps, whether it gives a
+     value or fails with `number-range`. A result too large for a number is
+     found by computing it, so it comes after the 200 steps;
+   - a run whose step limit the 200 steps pass fails with `steps-exceeded` at
+     that charge, before the result is computed. Its usage is not fixed, as for
+     every limit failure (`03-host.md` 3.6.3).
+3. Every exact value counts as computed: `math.pow(5, 0)` charges 201 steps.
+4. The work of a call is bounded by a constant that does not depend on its
+   arguments (`02-evaluation.md` 8.5). An implementation's typical time for a
+   call is within that of 200 ordinary steps; a rare argument that needs more
+   precision may take longer.
+5. `math.sqrt` and the constants of F6 keep their cost: 0 steps beyond the
+   call, and 0 for a read of a constant.
+6. This package adds no row to the tables of `02-evaluation.md`: the charge is
+   each record's `steps` formula (`04-library.md` 4.1).
+
+| Program | Data | Result |
+| --- | --- | --- |
+| `math.sin(x)` | `{x: float}`, x = `1` | `0.8414709848078965`; 201 steps, 0 units |
+| `math.sin(x)` | the same, step limit 200 | Fails: `steps-exceeded` |
+| `math.log(x)` | `{x: float}`, x = `0` | Fails: `invalid-argument`, form `not-real`; 1 step, 0 units |
+| `math.exp(x)` | `{x: float}`, x = `710` | Fails: `number-range`; 201 steps, 0 units |
+| `math.sin(x) + math.cos(x)` | `{x: float}`, x = `1` | `1.3817732906760363`; 403 steps: 201, 201 and the `+` 1 |
+| `math.sin(x) + math.cos(x)` | the same, step limit 401 | Fails: `steps-exceeded`, at the 200 steps of `math.cos` |
+| `[1, 2].map(n => math.atan(n))` | | 408 steps: the lambda 1, the call 1, `2n` 4, and 201 in each body. 6 units |
 
 ## 4. The entries
 
@@ -123,9 +150,9 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Field | Value |
 | --- | --- |
 | Signature | `math.pow: (x: float, y: float) => float !` |
-| Steps, units | `0`, `0` |
+| Steps, units | `200`, `0` |
 | Fails | `invalid-argument`, form `not-real`: x is zero and y below zero, or x is below zero and y is not an integer; `number-range`, template `entry`: the result is too large for a number |
-| Order | Tests; result, or the failure. |
+| Order | Tests; `not-real` tested; steps; result, or `number-range`. |
 
 1. If y is zero, the result is 1, whatever x is, zero included.
 2. Otherwise, if x is zero: 0 when y is above zero; `not-real` when y is below
@@ -154,9 +181,9 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Field | Value |
 | --- | --- |
 | Signature | `math.exp: (x: float) => float` |
-| Steps, units | `0`, `0` |
+| Steps, units | `200`, `0` |
 | Fails | `number-range`, template `entry`: the result is too large for a number |
-| Order | Tests; result, or the failure. |
+| Order | Tests; steps; result, or `number-range`. |
 
 | Program | Data | Result |
 | --- | --- | --- |
@@ -169,9 +196,9 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Field | Value |
 | --- | --- |
 | Signature | `math.log: (x: float) => float !` |
-| Steps, units | `0`, `0` |
+| Steps, units | `200`, `0` |
 | Fails | `invalid-argument`, form `not-real`: x is zero or below |
-| Order | Tests; result, or the failure. |
+| Order | Tests; `not-real` tested; steps; result. |
 
 | Program | Data | Result |
 | --- | --- | --- |
@@ -183,9 +210,9 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Field | Value |
 | --- | --- |
 | Signature | `math.log10: (x: float) => float !` |
-| Steps, units | `0`, `0` |
+| Steps, units | `200`, `0` |
 | Fails | `invalid-argument`, form `not-real`: x is zero or below |
-| Order | Tests; result, or the failure. |
+| Order | Tests; `not-real` tested; steps; result. |
 
 1. A power of ten that is a double gives its exponent exactly:
    `math.log10(1000)` is `3`.
@@ -200,9 +227,9 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Field | `math.sin` | `math.cos` | `math.tan` |
 | --- | --- | --- | --- |
 | Signature | `(x: float) => float` | `(x: float) => float` | `(x: float) => float` |
-| Steps, units | `0`, `0` | `0`, `0` | `0`, `0` |
+| Steps, units | `200`, `0` | `200`, `0` | `200`, `0` |
 | Fails | Only as 2.2 item 3 says | Only as 2.2 item 3 says | Only as 2.2 item 3 says |
-| Order | Tests; result. | Tests; result. | Tests; result. |
+| Order | Tests; steps; result. | Tests; steps; result. | Tests; steps; result. |
 
 1. Every finite x is accepted, however large. The argument is reduced exactly:
    `math.sin(1e22)` is the sine of the exact value of the double `1e22`.
@@ -222,9 +249,9 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Field | `math.asin` | `math.acos` |
 | --- | --- | --- |
 | Signature | `(x: float) => float !` | `(x: float) => float !` |
-| Steps, units | `0`, `0` | `0`, `0` |
+| Steps, units | `200`, `0` | `200`, `0` |
 | Fails | `invalid-argument`, form `not-real`: x is below −1 or above 1 | The same |
-| Order | Tests; result, or the failure. | The same |
+| Order | Tests; `not-real` tested; steps; result. | The same |
 
 | Program | Data | Result |
 | --- | --- | --- |
@@ -237,9 +264,9 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 | Field | `math.atan` | `math.atan2` |
 | --- | --- | --- |
 | Signature | `(x: float) => float` | `(y: float, x: float) => float` |
-| Steps, units | `0`, `0` | `0`, `0` |
+| Steps, units | `200`, `0` | `200`, `0` |
 | Fails | Only as 2.2 item 3 says | Only as 2.2 item 3 says |
-| Order | Tests; result. | Tests; result. |
+| Order | Tests; steps; result. | Tests; steps; result. |
 
 1. `math.atan2(y, x)` is the angle θ in (−π, π] with `cos θ = x / r` and `sin θ
    = y / r`, where `r` is √(x² + y²), correctly rounded. The language has one
@@ -272,5 +299,5 @@ and `math.atan2(0, -1)`, and `math.e` is `math.exp(1)`.
 
 | Program | Data | Result |
 | --- | --- | --- |
-| `fixed(math.log10(x), 3)` | `{x: float}`, x = `2` | `"0.301"`; 2 steps, 1 unit |
-| `[math.pow(1.1, 10), 1.1 ** 10]` |  | `[2.5937424601000023, 2.593742460100002]`; 2 steps, 3 units |
+| `fixed(math.log10(x), 3)` | `{x: float}`, x = `2` | `"0.301"`; 202 steps, 1 unit |
+| `[math.pow(1.1, 10), 1.1 ** 10]` |  | `[2.5937424601000023, 2.593742460100002]`; 202 steps, 3 units |

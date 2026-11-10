@@ -1,3 +1,3 @@
 [
-  {"name": "example: three digits of a logarithm", "source": "fixed(math.log10(x), 3)", "groups": ["json", "time", "math", "base64"], "env": "{x: float}", "vars": {"x": 2}, "expect": {"value": "0.301", "steps": 2, "allocated": 1}}
+  {"name": "example: three digits of a logarithm", "source": "fixed(math.log10(x), 3)", "groups": ["json", "time", "math", "base64"], "env": "{x: float}", "vars": {"x": 2}, "expect": {"value": "0.301", "steps": 202, "allocated": 1}}
 ]

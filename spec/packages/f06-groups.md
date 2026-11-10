@@ -80,8 +80,8 @@ environment).
 ### 1.5 Packages this one requires
 
 Packages are offered in a fixed order, each only with every package before it:
-F3, F1, F2, F4, F5, F6, and then F7 to F13. So an implementation that offers F6
-offers F1, and the cases of this package may use the forms and the case fields
+F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F12. So an implementation
+that offers F6 offers F1, and the cases of this package may use the forms and the case fields
 of F1 to F5. The file `suite/groups/with-f01-description.json` uses F1's
 result field `description` (2.7).
 

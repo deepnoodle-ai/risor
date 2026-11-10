@@ -1,4 +1,4 @@
 [
-  {"name": "math.pow is correctly rounded and ** is not", "source": "[math.pow(1.1, 10), 1.1 ** 10]", "groups": ["json", "time", "math", "base64"], "expect": {"value": [2.5937424601000023, 2.593742460100002], "steps": 2, "allocated": 3}},
-  {"name": "catch a failure of a group: math.exp", "source": "try { math.exp(y) } catch (err) { [err.code, err.message] }", "groups": ["json", "time", "math", "base64"], "env": "{x: float, s: string, t: float, b: string, y: float}", "vars": {"x": -1, "s": "9007199254740993", "t": 253402300800, "b": "/w==", "y": 1000}, "expect": {"value": ["number-range", "the result of math.exp is out of range"], "steps": 4, "allocated": 13}}
+  {"name": "math.pow is correctly rounded and ** is not", "source": "[math.pow(1.1, 10), 1.1 ** 10]", "groups": ["json", "time", "math", "base64"], "expect": {"value": [2.5937424601000023, 2.593742460100002], "steps": 202, "allocated": 3}},
+  {"name": "catch a failure of a group: math.exp", "source": "try { math.exp(y) } catch (err) { [err.code, err.message] }", "groups": ["json", "time", "math", "base64"], "env": "{x: float, s: string, t: float, b: string, y: float}", "vars": {"x": -1, "s": "9007199254740993", "t": 253402300800, "b": "/w==", "y": 1000}, "expect": {"value": ["number-range", "the result of math.exp is out of range"], "steps": 204, "allocated": 13}}
 ]
