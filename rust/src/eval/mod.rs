@@ -60,7 +60,9 @@ pub struct Meter {
 impl Meter {
     #[inline]
     fn charge(&mut self, n: u64) -> Result<(), &'static str> {
-        let steps = self.steps + n;
+        // Saturating: a host's charge near u64::MAX cannot wrap the count
+        // past the limit; with no limit, the count stops at u64::MAX.
+        let steps = self.steps.saturating_add(n);
         if let Some(l) = self.limits.steps {
             if steps > l {
                 return Err(STEPS_EXCEEDED);
@@ -77,7 +79,7 @@ impl Meter {
     #[cold]
     #[inline(never)]
     fn check(&mut self) -> Result<(), &'static str> {
-        self.next_check = self.steps + 1024;
+        self.next_check = self.steps.saturating_add(1024);
         if self
             .cancel
             .as_ref()
@@ -93,12 +95,13 @@ impl Meter {
 
     #[inline]
     fn alloc(&mut self, n: u64) -> Result<(), &'static str> {
+        let units = self.units.saturating_add(n);
         if let Some(l) = self.limits.allocation {
-            if self.units + n > l {
+            if units > l {
                 return Err(ALLOCATION_EXCEEDED);
             }
         }
-        self.units += n;
+        self.units = units;
         Ok(())
     }
 }

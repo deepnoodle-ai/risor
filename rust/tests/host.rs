@@ -121,6 +121,54 @@ fn a_host_function_charges_through_its_handle() {
     assert_eq!(outcome(&p, &BTreeMap::new()), Err("steps-exceeded".into()));
 }
 
+#[test]
+fn a_large_host_charge_does_not_wrap() {
+    let env = Env::builder()
+        .function("alloc", "() => int", |call, _| {
+            assert!(call.allocate(1).is_ok());
+            assert!(call.allocate(u64::MAX).is_err());
+            Ok(Data::Float(0.0))
+        })
+        .function("charge", "() => int", |call, _| {
+            assert!(call.charge(1).is_ok());
+            assert!(call.charge(u64::MAX).is_err());
+            Ok(Data::Float(0.0))
+        })
+        .build()
+        .unwrap();
+    let p = program(&env, "alloc()");
+    let out = p.run(&NoVars);
+    assert_eq!(
+        out.result.err().map(|f| f.code),
+        Some("allocation-exceeded")
+    );
+    assert_eq!(out.usage.allocated, 1);
+    let p = program(&env, "charge()");
+    let out = p.run(&NoVars);
+    assert_eq!(out.result.err().map(|f| f.code), Some("steps-exceeded"));
+    assert_eq!(out.usage.steps, 2);
+    // With no limit, the count stops at u64::MAX.
+    let env = Env::builder()
+        .function("big", "() => int", |call, _| {
+            for _ in 0..3 {
+                assert!(call.charge(u64::MAX).is_ok());
+                assert!(call.allocate(u64::MAX).is_ok());
+            }
+            Ok(Data::Float(0.0))
+        })
+        .limits(Limits {
+            steps: None,
+            allocation: None,
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    let p = program(&env, "big()");
+    let out = p.run(&NoVars);
+    assert!(out.result.is_ok());
+    assert_eq!((out.usage.steps, out.usage.allocated), (u64::MAX, u64::MAX));
+}
+
 fn opaque_env() -> Env {
     Env::builder()
         .vars("{t: Token, u: Token}")

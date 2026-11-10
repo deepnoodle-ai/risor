@@ -1461,19 +1461,36 @@ function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: S
   // The handle is valid until the function returns (03 3.5.2 item 6).
   // After that, charge and allocate throw a host-side Error and charge
   // nothing, and the signal reads as cancelled.
+  // A charge the budget cannot cover ends the run (03 3.5.2 item 3), even
+  // when the function catches the failure and goes on: `stop` holds it, a
+  // later charge throws it again and charges nothing, and it is raised when
+  // the function returns or throws.
   let open = true;
+  let stop: RunFailure | null = null;
   const late = () => new Error("the call handle was used after its host function returned");
+  const metered = (f: () => void) => {
+    if (!open) throw late();
+    if (stop !== null) throw stop;
+    try {
+      f();
+    } catch (x) {
+      if (x instanceof RunFailure) stop = x;
+      throw x;
+    }
+  };
   const handle: CallHandle = {
     get signal() {
       return open ? r.signal : AbortSignal.abort();
     },
     charge: (n) => {
-      if (!open) throw late();
-      r.charge(n);
+      metered(() => {
+        if (n > 0) r.charge(n);
+      });
     },
     allocate: (n) => {
-      if (!open) throw late();
-      r.alloc(n);
+      metered(() => {
+        if (n > 0) r.alloc(n);
+      });
     },
   };
   let out: unknown;
@@ -1481,11 +1498,13 @@ function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: S
     out = host.call(handle, args);
   } catch (x) {
     open = false;
+    if (stop !== null) throw stop;
     if (x instanceof RunFailure) throw x;
     if (x instanceof Error) throw new RunFailure("function-error", span, null, {}, { text: x.message, cause: x });
     throw new RunFailure("function-panic", span, "default", { name });
   }
   open = false;
+  if (stop !== null) throw stop;
   r.checkTime();
   if (out instanceof Promise) throw new RunFailure("function-error", span, null, {}, { text: "a host function returned a Promise" });
   return r.read(out, span);

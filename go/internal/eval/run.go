@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"runtime"
 	"strconv"
 	"sync/atomic"
@@ -126,6 +127,11 @@ func (c *Call) Charge(steps int64) error {
 		return ErrCallEnded
 	}
 	defer c.leave()
+	// After a charge that failed, the run is over: nothing more is charged,
+	// and the first failure stays the one the run ends with.
+	if p := c.r.pending; p != nil {
+		return &LimitError{Code: p.code}
+	}
 	if steps <= 0 {
 		return nil
 	}
@@ -142,6 +148,11 @@ func (c *Call) Allocate(units int64) error {
 		return ErrCallEnded
 	}
 	defer c.leave()
+	// After a charge that failed, the run is over: nothing more is charged,
+	// and the first failure stays the one the run ends with.
+	if p := c.r.pending; p != nil {
+		return &LimitError{Code: p.code}
+	}
 	if units <= 0 {
 		return nil
 	}
@@ -251,14 +262,16 @@ func (r *run) limitFailure(code string, limit int64) *failure {
 	return f
 }
 
+// tryStep and tryUnit compare n with the room left, so a large n cannot wrap
+// the sum past the limit. With no limit, the count stops at math.MaxInt64.
 func (r *run) tryStep(n int64) *failure {
-	if r.maxSteps >= 0 && r.steps+n > r.maxSteps {
+	if r.maxSteps >= 0 && n > r.maxSteps-r.steps {
 		return r.limitFailure("steps-exceeded", r.maxSteps)
 	}
 	old := r.steps
-	r.steps += n
+	r.steps = satAdd(r.steps, n)
 	r.setStepEdge()
-	if old>>10 != r.steps>>10 {
+	if old>>10 != r.steps>>10 || r.steps == math.MaxInt64 {
 		if f := r.checkDeadline(); f != nil {
 			return f
 		}
@@ -276,11 +289,19 @@ func (r *run) setStepEdge() {
 }
 
 func (r *run) tryUnit(n int64) *failure {
-	if r.maxUnits >= 0 && r.units+n > r.maxUnits {
+	if r.maxUnits >= 0 && n > r.maxUnits-r.units {
 		return r.limitFailure("allocation-exceeded", r.maxUnits)
 	}
-	r.units += n
+	r.units = satAdd(r.units, n)
 	return nil
+}
+
+// satAdd is a + b for a count of 0 or more, held at math.MaxInt64.
+func satAdd(a, b int64) int64 {
+	if b > 0 && a > math.MaxInt64-b {
+		return math.MaxInt64
+	}
+	return a + b
 }
 
 // step charges n steps (02-evaluation.md 8.2). A charge that meets neither
