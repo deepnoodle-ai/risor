@@ -138,7 +138,7 @@ impl Host for Data {
 /// is a `HashMap`.)
 impl Vars for BTreeMap<String, Data> {
     fn get(&self, name: &str) -> Option<View<'_>> {
-        BTreeMap::get(self, name).map(Host::view)
+        crate::hosttype::btree_get(self, name).map(Host::view)
     }
 }
 

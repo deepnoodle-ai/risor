@@ -29,8 +29,32 @@ fn exact(r: i64) -> R {
     }
 }
 
+// `+`, `-` and `*` test whether both operands are whole only when the
+// result leaves ±(2^53 − 1). Inside that range the double result is the
+// exact result for whole operands: rounding is monotonic, so an exact
+// result past 2^53 − 1 never rounds back into the range, and one inside it
+// is representable. So the fast branch gives what the whole-number rule
+// gives.
+
+#[inline]
+fn small(x: f64) -> Option<f64> {
+    if x.abs() <= MAX_WHOLE {
+        Some(if x == 0.0 { 0.0 } else { x })
+    } else {
+        None
+    }
+}
+
 #[inline]
 pub fn add(a: f64, b: f64) -> R {
+    match small(a + b) {
+        Some(x) => Ok(x),
+        None => add_whole(a, b),
+    }
+}
+
+#[cold]
+fn add_whole(a: f64, b: f64) -> R {
     if is_whole(a) && is_whole(b) {
         exact(a as i64 + b as i64)
     } else {
@@ -40,6 +64,14 @@ pub fn add(a: f64, b: f64) -> R {
 
 #[inline]
 pub fn sub(a: f64, b: f64) -> R {
+    match small(a - b) {
+        Some(x) => Ok(x),
+        None => sub_whole(a, b),
+    }
+}
+
+#[cold]
+fn sub_whole(a: f64, b: f64) -> R {
     if is_whole(a) && is_whole(b) {
         exact(a as i64 - b as i64)
     } else {
@@ -49,6 +81,14 @@ pub fn sub(a: f64, b: f64) -> R {
 
 #[inline]
 pub fn mul(a: f64, b: f64) -> R {
+    match small(a * b) {
+        Some(x) => Ok(x),
+        None => mul_whole(a, b),
+    }
+}
+
+#[cold]
+fn mul_whole(a: f64, b: f64) -> R {
     if is_whole(a) && is_whole(b) {
         // A product that overflows i64 is far past 2^53 − 1.
         match (a as i64).checked_mul(b as i64) {
@@ -312,6 +352,79 @@ pub fn from_text(t: &str) -> Option<Result<f64, ()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `+`, `-`, `*` by the rule as written: exact integer arithmetic when
+    /// both operands are whole, else the double result.
+    fn by_rule(op: char, a: f64, b: f64) -> R {
+        if is_whole(a) && is_whole(b) {
+            let (x, y) = (a as i64, b as i64);
+            return match op {
+                '+' => exact(x + y),
+                '-' => exact(x - y),
+                _ => x.checked_mul(y).map_or(Err(NumErr::Range), exact),
+            };
+        }
+        norm(match op {
+            '+' => a + b,
+            '-' => a - b,
+            _ => a * b,
+        })
+    }
+
+    #[test]
+    fn fast_arithmetic_is_the_rule() {
+        let mut xs = vec![
+            0.0,
+            -0.0,
+            1.0,
+            -1.0,
+            0.5,
+            -2.5,
+            3.0,
+            MAX_WHOLE,
+            -MAX_WHOLE,
+            MAX_WHOLE - 1.0,
+            9007199254740992.0,
+            -9007199254740992.0,
+            9007199254740994.0,
+            4503599627370496.5,
+            94906265.0,
+            94906266.0,
+            1e300,
+            -1e300,
+            f64::MAX,
+            5e-324,
+            0.1,
+            0.2,
+        ];
+        let mut seed = 0x9E3779B97F4A7C15u64;
+        for _ in 0..2000 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let f = match seed % 4 {
+                0 => (seed >> 11) as f64,
+                1 => ((seed >> 30) as f64) * if seed & 1 == 1 { -1.0 } else { 1.0 },
+                2 => f64::from_bits(seed >> 2),
+                _ => (seed >> 40) as f64 / 7.0,
+            };
+            if f.is_finite() {
+                xs.push(f);
+            }
+        }
+        for &a in &xs {
+            for &b in xs.iter().take(60) {
+                for (op, got) in [('+', add(a, b)), ('-', sub(a, b)), ('*', mul(a, b))] {
+                    let want = by_rule(op, a, b);
+                    assert_eq!(
+                        got.map(f64::to_bits),
+                        want.map(f64::to_bits),
+                        "{a} {op} {b}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn text() {

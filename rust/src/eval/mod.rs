@@ -58,30 +58,40 @@ pub struct Meter {
 }
 
 impl Meter {
+    #[inline]
     fn charge(&mut self, n: u64) -> Result<(), &'static str> {
+        let steps = self.steps + n;
         if let Some(l) = self.limits.steps {
-            if self.steps + n > l {
+            if steps > l {
                 return Err(STEPS_EXCEEDED);
             }
         }
-        self.steps += n;
-        if self.steps >= self.next_check {
-            // 8.3: at least once in every 1,024 steps.
-            self.next_check = self.steps + 1024;
-            if self
-                .cancel
-                .as_ref()
-                .is_some_and(|c| c.load(Ordering::Relaxed))
-            {
-                return Err(CANCELLED);
-            }
-            if self.deadline.is_some_and(|d| Instant::now() >= d) {
-                return Err(DEADLINE_EXCEEDED);
-            }
+        self.steps = steps;
+        if steps >= self.next_check {
+            return self.check();
         }
         Ok(())
     }
 
+    /// The tests of 8.3, at least once in every 1,024 steps.
+    #[cold]
+    #[inline(never)]
+    fn check(&mut self) -> Result<(), &'static str> {
+        self.next_check = self.steps + 1024;
+        if self
+            .cancel
+            .as_ref()
+            .is_some_and(|c| c.load(Ordering::Relaxed))
+        {
+            return Err(CANCELLED);
+        }
+        if self.deadline.is_some_and(|d| Instant::now() >= d) {
+            return Err(DEADLINE_EXCEEDED);
+        }
+        Ok(())
+    }
+
+    #[inline]
     fn alloc(&mut self, n: u64) -> Result<(), &'static str> {
         if let Some(l) = self.limits.allocation {
             if self.units + n > l {
@@ -226,14 +236,20 @@ impl Program {
 
     pub fn run_with<'h>(&'h self, vars: &'h dyn Vars, opts: RunOptions) -> Outcome<'h> {
         let limits = self.env.data().limits;
-        let nvars = self.env.data().vars.len();
-        let bufs = BUFS.with(|c| c.take());
+        let nvars = self.vars_read;
+        let n = self.slots + nvars;
+        // A program with no slots and no variables takes no buffers.
+        let slots = if n > 0 {
+            SLOTS.with(|c| c.take())
+        } else {
+            Vec::new()
+        };
         let mut run = Run {
             p: self,
             ast: &self.parsed.ast,
             vars,
             // The slots, then the variables as they are read.
-            slots: bufs.slots,
+            slots,
             var_base: self.slots,
             vars_read: Bits::new(nvars),
             vars_missing: Bits::new(nvars),
@@ -248,23 +264,24 @@ impl Program {
                 stop: None,
             },
             json_mode: false,
-            scratch: bufs.scratch,
+            scratch: String::new(),
             in_buf: Vec::new(),
         };
-        run.slots.resize_with(self.slots + nvars, || Value::Null);
+        if n > 0 {
+            run.slots.resize_with(n, || Value::Null);
+        }
         // `02-evaluation.md` 8.4: handing the result over is not a read, so the run
         // makes no walk of it.
         let result = run.eval(self.parsed.ast.root);
-        let mut scratch = std::mem::take(&mut run.scratch);
-        scratch.clear();
-        if scratch.capacity() > 65536 {
-            scratch = String::new();
+        if n > 0 {
+            let slots = recast(std::mem::take(&mut run.slots));
+            SLOTS.with(|c| c.set(slots));
         }
-        let bufs = Bufs {
-            slots: recast(std::mem::take(&mut run.slots)),
-            scratch,
-        };
-        BUFS.with(|c| c.set(bufs));
+        let mut scratch = std::mem::take(&mut run.scratch);
+        if scratch.capacity() > 0 && scratch.capacity() <= 65536 {
+            scratch.clear();
+            SCRATCH.with(|c| c.set(scratch));
+        }
         Outcome {
             usage: Usage {
                 steps: run.m.steps,
@@ -273,6 +290,15 @@ impl Program {
             result,
         }
     }
+}
+
+/// A lambda passed to a library entry (`Run::callback`): when its
+/// parameters are all plain names, their slots, its body and the body's
+/// closure.
+pub(crate) struct Callback<'h> {
+    l: NodeId,
+    #[allow(clippy::type_complexity)]
+    fast: Option<(&'h [Option<u32>], NodeId, Option<&'h code::Code>)>,
 }
 
 /// An argument of a library call: a value, or a lambda.
@@ -396,10 +422,12 @@ impl<'h> Run<'h> {
         })
     }
 
+    #[inline]
     fn charge(&mut self, n: u64) -> R<'h, ()> {
         self.m.charge(n).map_err(|c| self.limit(c, None))
     }
 
+    #[inline]
     fn alloc(&mut self, n: u64) -> R<'h, ()> {
         self.m.alloc(n).map_err(|c| self.limit(c, None))
     }
@@ -562,7 +590,8 @@ impl<'h> Run<'h> {
         self.bind_pattern(*pattern, v)
     }
 
-    /// The read of variable `v`, written at `id`. The host is asked for it
+    /// The read of the variable at place `v` among those the program reads
+    /// (`Program::var_index`), written at `id`. The host is asked for it
     /// at its first read only.
     #[inline]
     fn var(&mut self, v: usize, id: NodeId) -> R<'h, Value<'h>> {
@@ -572,7 +601,7 @@ impl<'h> Run<'h> {
         match &self.slots[self.var_base + v] {
             _ if self.vars_missing.test(v) => Err(self.missing_var(id)),
             Value::BadNum => Err(self.host_number(Some(self.ast.span(id)))),
-            x => Ok(x.clone()),
+            x => Ok(x.dup()),
         }
     }
 
@@ -583,7 +612,7 @@ impl<'h> Run<'h> {
             return;
         };
         match self.vars.get(name) {
-            Some(got) => self.slots[self.var_base + v] = from_view(got),
+            Some(got) => value::put(&mut self.slots[self.var_base + v], from_view(got)),
             None => self.vars_missing.set(v),
         }
     }
@@ -606,8 +635,8 @@ impl<'h> Run<'h> {
     fn ident(&mut self, id: NodeId) -> R<'h, Value<'h>> {
         let span = self.ast.span(id);
         match self.res(id) {
-            Res::Slot(s) => Ok(self.slots[*s as usize].clone()),
-            Res::Var(v) => self.var(*v as usize, id),
+            Res::Slot(s) => Ok(self.slots[*s as usize].dup()),
+            Res::Var(v) => self.var(self.p.var_index[*v as usize] as usize, id),
             _ => Err(self.internal(span)),
         }
     }
@@ -617,8 +646,7 @@ impl<'h> Run<'h> {
     fn template(&mut self, span: Span, parts: &'h [TemplatePart]) -> R<'h, Value<'h>> {
         // The text is built in the run's scratch buffer, then copied once
         // into the string.
-        let mut out = std::mem::take(&mut self.scratch);
-        out.clear();
+        let mut out = self.take_scratch();
         for p in parts {
             match p {
                 TemplatePart::Text(t) => out.push_str(t),
@@ -629,6 +657,17 @@ impl<'h> Run<'h> {
             }
         }
         self.template_done(out)
+    }
+
+    /// The run's buffer for building text, empty: the thread's at its first
+    /// use in a run.
+    fn take_scratch(&mut self) -> String {
+        let mut out = std::mem::take(&mut self.scratch);
+        if out.capacity() == 0 {
+            out = SCRATCH.with(|c| c.take());
+        }
+        out.clear();
+        out
     }
 
     /// The end of a template: the charge, then the string; the buffer goes
@@ -989,10 +1028,21 @@ impl<'h> Run<'h> {
                     self.arith(op, number::add(*x, *y), span)
                 }
                 (Value::Str(x), Value::Str(y)) => {
-                    let sz = (weight(x.as_str()) + weight(y.as_str())) / 64;
+                    let (x, y) = (x.as_str(), y.as_str());
+                    let sz = if x.len() + y.len() < 64 {
+                        0
+                    } else {
+                        (weight(x) + weight(y)) / 64
+                    };
                     self.charge(1 + sz)?;
                     self.alloc(1 + sz)?;
-                    Ok(Value::Str(Str::Rc(concat(x.as_str(), y.as_str()))))
+                    // Joined in the run's text buffer, then copied once.
+                    let mut out = self.take_scratch();
+                    out.push_str(x);
+                    out.push_str(y);
+                    let v = Value::Str(Str::Rc(Rc::from(out.as_str())));
+                    self.scratch = out;
+                    Ok(v)
                 }
                 _ => Err(self.operands(op, &a, &b, span)),
             },
@@ -1136,6 +1186,30 @@ impl<'h> Run<'h> {
         self.alloc(1 + vals.len() as u64)?;
         for e in vals.iter() {
             if self.in_elem(x, e, span)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// `x in [a, b, ...]` where every item is a scalar written in place:
+    /// the list's units, then each item as `in_elem` tests it.
+    fn in_scalars(&mut self, x: &Value<'h>, items: &[code::Scalar], units: u64) -> R<'h, bool> {
+        self.alloc(units)?;
+        for e in items {
+            self.charge(1)?;
+            let equal = match (x, e) {
+                (Value::Str(a), code::Scalar::Str(b)) => {
+                    let a = a.as_str();
+                    self.charge(lcp_size(a, b))?;
+                    value::str_eq(a, b)
+                }
+                (Value::Num(a), code::Scalar::Num(b)) => a == b,
+                (Value::Bool(a), code::Scalar::Bool(b)) => a == b,
+                (Value::Null, code::Scalar::Null) => true,
+                _ => false,
+            };
+            if equal {
                 return Ok(true);
             }
         }
@@ -1325,10 +1399,14 @@ impl<'h> Run<'h> {
         }
         self.charge(1 + size(name))?;
         let found = match &v {
-            Value::Map(m) => m.get(name).cloned(),
-            Value::HMap(m) => m.get(name).map(from_view),
+            Value::Map(m) => m.get(name).map(Value::dup),
+            Value::HMap(m) => {
+                let m: &'h dyn crate::host::HostMap = *m;
+                m.get(name).map(from_view)
+            }
             _ => None,
         };
+        value::release(v);
         match found {
             Some(Value::BadNum) => Err(self.host_number(Some(span))),
             Some(x) => Ok(Some(x)),
@@ -1766,6 +1844,139 @@ impl<'h> Run<'h> {
         })
     }
 
+    /// A lambda passed to a library entry, resolved once for all the calls
+    /// the entry makes of it.
+    pub(crate) fn callback(&self, l: NodeId) -> Callback<'h> {
+        let p = self.p;
+        let fast = match (p.params.get(l.index()), self.ast.kind(l)) {
+            (Some(Some(slots)), NodeKind::Lambda { body, .. }) => Some((
+                &slots[..],
+                *body,
+                p.code.get(body.index()).and_then(|c| c.as_ref()),
+            )),
+            _ => None,
+        };
+        Callback { l, fast }
+    }
+
+    /// A library entry's call of a callback with two arguments, as
+    /// `invoke_for` makes it.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn call2(
+        &mut self,
+        cb: &Callback<'h>,
+        entry: &str,
+        index: usize,
+        a: Value<'h>,
+        b: Value<'h>,
+        measure: u32,
+        span: Span,
+    ) -> R<'h, Value<'h>> {
+        let Some((slots, body, code)) = cb.fast else {
+            let mut args = [a, b];
+            let r = self.invoke_for(entry, index, cb.l, &mut args, measure, span);
+            let [a, b] = args;
+            value::release(a);
+            value::release(b);
+            return r;
+        };
+        let r = match self.enter(measure, span) {
+            Ok(()) => {
+                self.bind(slots, 0, a);
+                self.bind(slots, 1, b);
+                self.body(body, code, measure)
+            }
+            Err(f) => {
+                value::release(a);
+                value::release(b);
+                Err(f)
+            }
+        };
+        r.map_err(|mut f| {
+            f.trace.push((span, entry.to_string(), Some(index)));
+            f
+        })
+    }
+
+    /// A library entry's call of a callback with three arguments.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn call3(
+        &mut self,
+        cb: &Callback<'h>,
+        entry: &str,
+        index: usize,
+        args: [Value<'h>; 3],
+        measure: u32,
+        span: Span,
+    ) -> R<'h, Value<'h>> {
+        let Some((slots, body, code)) = cb.fast else {
+            let mut args = args;
+            let r = self.invoke_for(entry, index, cb.l, &mut args, measure, span);
+            let [a, b, c] = args;
+            value::release(a);
+            value::release(b);
+            value::release(c);
+            return r;
+        };
+        let [a, b, c] = args;
+        let r = match self.enter(measure, span) {
+            Ok(()) => {
+                self.bind(slots, 0, a);
+                self.bind(slots, 1, b);
+                self.bind(slots, 2, c);
+                self.body(body, code, measure)
+            }
+            Err(f) => {
+                value::release(a);
+                value::release(b);
+                value::release(c);
+                Err(f)
+            }
+        };
+        r.map_err(|mut f| {
+            f.trace.push((span, entry.to_string(), Some(index)));
+            f
+        })
+    }
+
+    /// The depth test of a call, and the depth it adds (`invoke`).
+    #[inline]
+    fn enter(&mut self, measure: u32, span: Span) -> R<'h, ()> {
+        self.depth_test(measure, span)?;
+        self.m.depth += measure;
+        Ok(())
+    }
+
+    /// Argument `i` into its parameter's slot, for a lambda whose parameters
+    /// are all plain names. A lambda declares at most as many parameters as
+    /// the entry passes; an argument past them is released.
+    #[inline(always)]
+    fn bind(&mut self, slots: &[Option<u32>], i: usize, v: Value<'h>) {
+        match slots.get(i) {
+            Some(Some(s)) => value::put(&mut self.slots[*s as usize], v),
+            _ => value::release(v),
+        }
+    }
+
+    /// The body of a lambda whose parameters are bound, and the end of its
+    /// call.
+    #[inline]
+    fn body(
+        &mut self,
+        body: NodeId,
+        code: Option<&'h code::Code>,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
+        let v = match code {
+            Some(c) => c(self)?,
+            None => self.eval(body)?,
+        };
+        self.m.depth -= measure;
+        Ok(v)
+    }
+
     /// Call a lambda: by name after its step, or by the library after the two
     /// steps of the element. The depth test, the parameters, the body.
     fn invoke(
@@ -1789,8 +2000,9 @@ impl<'h> Run<'h> {
                     Some(a) => std::mem::replace(a, Value::Null),
                     None => Value::Null,
                 };
-                if let Some(s) = s {
-                    self.slots[*s as usize] = v;
+                match s {
+                    Some(s) => value::put(&mut self.slots[*s as usize], v),
+                    None => value::release(v),
                 }
             }
         } else {
@@ -1822,8 +2034,9 @@ impl<'h> Run<'h> {
         let span = ast.span(pat);
         match &ast.nodes[pat.index()].kind {
             NodeKind::NamePat { .. } => {
-                if let Res::Bind(s) = self.res(pat) {
-                    self.slots[*s as usize] = v;
+                match self.res(pat) {
+                    Res::Bind(s) => value::put(&mut self.slots[*s as usize], v),
+                    _ => value::release(v),
                 }
                 Ok(())
             }
@@ -1862,8 +2075,9 @@ impl<'h> Run<'h> {
                             }
                         },
                     };
-                    if let Some(Some(s)) = slots.get(i) {
-                        self.slots[*s as usize] = val;
+                    match slots.get(i) {
+                        Some(Some(s)) => value::put(&mut self.slots[*s as usize], val),
+                        _ => value::release(val),
                     }
                 }
                 if let Some(r) = rest {
@@ -2021,22 +2235,15 @@ impl<'h> Run<'h> {
     }
 }
 
-/// The buffers of a run, kept by the thread from one run to the next, empty,
-/// so that a run allocates none of them again. A buffer of `'static` values
-/// serves a run of any lifetime.
-#[derive(Default)]
-struct Bufs {
-    slots: Vec<Value<'static>>,
-    scratch: String,
-}
-
+// The buffers of a run, kept by the thread from one run to the next, empty,
+// so that a run allocates none of them again: the slots, taken by a run that
+// has any, and the text buffer of templates, taken at a template's first
+// use. A buffer of `'static` values serves a run of any lifetime.
 thread_local! {
-    static BUFS: std::cell::Cell<Bufs> = const {
-        std::cell::Cell::new(Bufs {
-            slots: Vec::new(),
-            scratch: String::new(),
-        })
+    static SLOTS: std::cell::Cell<Vec<Value<'static>>> = const {
+        std::cell::Cell::new(Vec::new())
     };
+    static SCRATCH: std::cell::Cell<String> = const { std::cell::Cell::new(String::new()) };
 }
 
 /// An empty vector of another element type, with the same allocation: a
@@ -2048,24 +2255,6 @@ fn recast<A, B>(mut v: Vec<A>) -> Vec<B> {
         return Vec::new();
     }
     v.into_iter().filter_map(|_| None).collect()
-}
-
-/// The text of `a` then `b`, in one allocation when it is short.
-fn concat(a: &str, b: &str) -> Rc<str> {
-    let n = a.len() + b.len();
-    if n <= 256 {
-        let mut buf = [0u8; 256];
-        buf[..a.len()].copy_from_slice(a.as_bytes());
-        buf[a.len()..n].copy_from_slice(b.as_bytes());
-        // Two texts joined are text.
-        if let Ok(t) = std::str::from_utf8(&buf[..n]) {
-            return Rc::from(t);
-        }
-    }
-    let mut s = String::with_capacity(n);
-    s.push_str(a);
-    s.push_str(b);
-    Rc::from(s)
 }
 
 /// A set of small numbers: in place up to 64, else allocated.

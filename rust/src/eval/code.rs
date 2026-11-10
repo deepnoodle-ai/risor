@@ -13,11 +13,11 @@
 //! of its subtree is at most [`MAX_DEPTH`]; above it, the walk runs the node
 //! as before, and the closures it reaches below are bounded by that depth.
 
-use super::{Run, R};
+use super::{Arg, Run, R};
 use crate::compile::Res;
 use crate::source::Span;
 use crate::syntax::ast::{Ast, BinaryOp, NodeId, NodeKind, TemplatePart};
-use crate::value::{Str, Value};
+use crate::value::{release, Str, Value};
 use std::sync::Arc;
 
 /// The closure of a node.
@@ -132,7 +132,7 @@ enum Step {
 }
 
 /// The closures of a program's nodes, indexed by node.
-pub(crate) fn build(ast: &Ast, res: &[Res]) -> Vec<Option<Code>> {
+pub(crate) fn build(ast: &Ast, res: &[Res], var_index: &[u32]) -> Vec<Option<Code>> {
     let n = ast.nodes.len();
     // The depth of each node's subtree; `u32::MAX` while unknown, so that a
     // child built after its parent counts as too deep.
@@ -172,7 +172,7 @@ pub(crate) fn build(ast: &Ast, res: &[Res]) -> Vec<Option<Code>> {
     for i in 0..n {
         let id = NodeId(i as u32);
         let c = if depth[i] <= MAX_DEPTH && !inner[i] {
-            node(ast, res, id, &code)
+            node(ast, res, var_index, id, &code)
         } else {
             None
         };
@@ -189,7 +189,13 @@ fn child(code: &[Option<Code>], c: NodeId) -> Code {
     }
 }
 
-fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Code> {
+fn node(
+    ast: &Ast,
+    res: &[Res],
+    var_index: &[u32],
+    id: NodeId,
+    code: &[Option<Code>],
+) -> Option<Code> {
     let span = ast.span(id);
     Some(match ast.kind(id) {
         NodeKind::Number { value } => {
@@ -208,10 +214,10 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
         NodeKind::Ident { .. } => match res[id.index()] {
             Res::Slot(s) => {
                 let s = s as usize;
-                mk(move |r| Ok(r.slots[s].clone()))
+                mk(move |r| Ok(r.slots[s].dup()))
             }
             Res::Var(v) => {
-                let v = v as usize;
+                let v = var_index[v as usize] as usize;
                 mk(move |r| r.var(v, id))
             }
             _ => return None,
@@ -224,12 +230,13 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
             })
         }
         NodeKind::Binary { op, x, y } => {
-            let y_id = *y;
+            let (x_id, y_id) = (*x, *y);
             let (x, y) = (child(code, *x), child(code, *y));
             match *op {
                 BinaryOp::And => mk(move |r| {
                     let v = x(r)?;
                     if v.truthy() {
+                        release(v);
                         y(r)
                     } else {
                         Ok(v)
@@ -240,12 +247,14 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
                     if v.truthy() {
                         Ok(v)
                     } else {
+                        release(v);
                         y(r)
                     }
                 }),
                 BinaryOp::Coalesce => mk(move |r| {
                     let v = x(r)?;
                     if v.is_null() {
+                        std::mem::forget(v);
                         y(r)
                     } else {
                         Ok(v)
@@ -254,6 +263,26 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
                 // `x in [a, b, ...]`: the list's elements are tested where
                 // they are, and the list itself is never built. Its charge
                 // stands where the literal makes it.
+                // Every item a scalar written in place: evaluating them
+                // charges nothing and cannot fail, so each is tested where it
+                // is written.
+                op @ (BinaryOp::In | BinaryOp::NotIn)
+                    if literal_list(ast, y_id)
+                        .is_some_and(|items| items.iter().all(|i| scalar(ast, *i).is_some())) =>
+                {
+                    let items: Box<[Scalar]> = literal_list(ast, y_id)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|&i| scalar(ast, i))
+                        .collect();
+                    let units = 1 + items.len() as u64;
+                    mk(move |r| {
+                        let v = x(r)?;
+                        let found = r.in_scalars(&v, &items, units);
+                        release(v);
+                        Ok(Value::Bool(found? == (op == BinaryOp::In)))
+                    })
+                }
                 op @ (BinaryOp::In | BinaryOp::NotIn) if literal_list(ast, y_id).is_some() => {
                     let items: Box<[Code]> = literal_list(ast, y_id)
                         .unwrap_or_default()
@@ -262,22 +291,29 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
                         .collect();
                     mk(move |r| {
                         let v = x(r)?;
-                        let found = r.in_literal(&v, &items, span)?;
+                        let found = r.in_literal(&v, &items, span);
+                        release(v);
+                        let found = found?;
                         Ok(Value::Bool(found == (op == BinaryOp::In)))
                     })
                 }
-                op => mk(move |r| {
-                    let v = x(r)?;
-                    let w = y(r)?;
-                    r.operate(op, v, w, span)
-                }),
+                op => operator(ast, res, code, op, x_id, y_id, span),
             }
         }
         NodeKind::Cond {
             test, then, else_, ..
         } => {
             let (t, a, b) = (child(code, *test), child(code, *then), child(code, *else_));
-            mk(move |r| if t(r)?.truthy() { a(r) } else { b(r) })
+            mk(move |r| {
+                let v = t(r)?;
+                let truthy = v.truthy();
+                release(v);
+                if truthy {
+                    a(r)
+                } else {
+                    b(r)
+                }
+            })
         }
         NodeKind::Member { .. } if matches!(res[id.index()], Res::Constant(_)) => {
             let Res::Constant(v) = res[id.index()] else {
@@ -369,8 +405,9 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
                         Line::Lambda => r.charge(1)?,
                         Line::Name { value, slot } => {
                             let v = value(r)?;
-                            if let Some(s) = slot {
-                                r.slots[*s] = v;
+                            match slot {
+                                Some(s) => crate::value::put(&mut r.slots[*s], v),
+                                None => crate::value::release(v),
                             }
                         }
                         Line::Node(c) => r.const_line(*c)?,
@@ -388,8 +425,7 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
                 })
                 .collect();
             mk(move |r| {
-                let mut out = std::mem::take(&mut r.scratch);
-                out.clear();
+                let mut out = r.take_scratch();
                 for p in parts.iter() {
                     match p {
                         Part::Text(t) => out.push_str(t),
@@ -401,6 +437,46 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
                 }
                 r.template_done(out)
             })
+        }
+        // A call of a library function whose arguments are all values.
+        NodeKind::Call { args, .. } if matches!(res[id.index()], Res::CallLib(_)) => {
+            let Res::CallLib(i) = res[id.index()] else {
+                return None;
+            };
+            let i = i as usize;
+            if args.iter().any(|a| {
+                matches!(ast.kind(*a), NodeKind::Lambda { .. })
+                    || matches!(res[a.index()], Res::LambdaRef(_))
+            }) {
+                return None;
+            }
+            match **args {
+                [a] => {
+                    let a = child(code, a);
+                    mk(move |r| {
+                        let v = [Arg::Val(a(r)?)];
+                        let out = r.lib_function(i, &v, span);
+                        let [Arg::Val(x)] = v else { return out };
+                        release(x);
+                        out
+                    })
+                }
+                [a, b] => {
+                    let (a, b) = (child(code, a), child(code, b));
+                    mk(move |r| {
+                        let x = a(r)?;
+                        let v = [Arg::Val(x), Arg::Val(b(r)?)];
+                        let out = r.lib_function(i, &v, span);
+                        let [Arg::Val(x), Arg::Val(y)] = v else {
+                            return out;
+                        };
+                        release(x);
+                        release(y);
+                        out
+                    })
+                }
+                _ => return None,
+            }
         }
         NodeKind::List { items } => {
             if items
@@ -419,6 +495,158 @@ fn node(ast: &Ast, res: &[Res], id: NodeId, code: &[Option<Code>]) -> Option<Cod
                 Ok(Value::list(out))
             })
         }
+        _ => return None,
+    })
+}
+
+/// An operand of an operator, as its closure reaches it: a number written
+/// in place, a slot, or another closure.
+enum Operand {
+    Num(f64),
+    Slot(usize),
+    Code(Code),
+}
+
+fn operand(ast: &Ast, res: &[Res], code: &[Option<Code>], n: NodeId) -> Operand {
+    match (ast.kind(n), &res[n.index()]) {
+        (NodeKind::Number { value }, _) => Operand::Num(*value),
+        (NodeKind::Ident { .. }, Res::Slot(s)) => Operand::Slot(*s as usize),
+        _ => Operand::Code(child(code, n)),
+    }
+}
+
+/// An operator that is not `&&`, `||` or `??`: a closure for each operator
+/// and each form of its operands, with the case of two numbers in place.
+/// Every other case goes to `Run::operate`, as before.
+fn operator(
+    ast: &Ast,
+    res: &[Res],
+    code: &[Option<Code>],
+    op: BinaryOp,
+    x: NodeId,
+    y: NodeId,
+    span: Span,
+) -> Code {
+    use crate::number;
+    let (a, b) = (operand(ast, res, code, x), operand(ast, res, code, y));
+    // `==` and `!=` against a string written in place.
+    if let (BinaryOp::Eq | BinaryOp::Ne, NodeKind::String { value, .. }) = (op, ast.kind(y)) {
+        let lit: Box<str> = value.as_str().into();
+        let x = child(code, x);
+        let eq = op == BinaryOp::Eq;
+        // A common prefix of fewer than 64 code points has size 0.
+        let short = lit.len() < 64;
+        return mk(move |r| {
+            let v = x(r)?;
+            if let Value::Str(s) = &v {
+                let s = s.as_str();
+                let sz = if short {
+                    0
+                } else {
+                    crate::value::lcp_size(s, &lit)
+                };
+                let charged = r.charge(1 + sz);
+                let equal = crate::value::str_eq(s, &lit);
+                release(v);
+                charged?;
+                return Ok(Value::Bool(equal == eq));
+            }
+            let NodeKind::String { value, .. } = r.ast.kind(y) else {
+                return Err(r.internal(span));
+            };
+            r.operate(op, v, Value::Str(Str::Lent(value)), span)
+        });
+    }
+    macro_rules! num {
+        ($f:expr) => {
+            numeric(op, a, b, span, $f)
+        };
+    }
+    match op {
+        BinaryOp::Add => num!(|p, q| number::add(p, q).ok().map(Value::Num)),
+        BinaryOp::Sub => num!(|p, q| number::sub(p, q).ok().map(Value::Num)),
+        BinaryOp::Mul => num!(|p, q| number::mul(p, q).ok().map(Value::Num)),
+        BinaryOp::Div => num!(|p, q| number::div(p, q).ok().map(Value::Num)),
+        BinaryOp::Rem => num!(|p, q| number::rem(p, q).ok().map(Value::Num)),
+        BinaryOp::Lt => num!(|p, q| Some(Value::Bool(p < q))),
+        BinaryOp::Le => num!(|p, q| Some(Value::Bool(p <= q))),
+        BinaryOp::Gt => num!(|p, q| Some(Value::Bool(p > q))),
+        BinaryOp::Ge => num!(|p, q| Some(Value::Bool(p >= q))),
+        BinaryOp::Eq => num!(|p, q| Some(Value::Bool(p == q))),
+        BinaryOp::Ne => num!(|p, q| Some(Value::Bool(p != q))),
+        _ => {
+            let (x, y) = (child(code, x), child(code, y));
+            mk(move |r| {
+                let v = x(r)?;
+                let w = y(r)?;
+                r.operate(op, v, w, span)
+            })
+        }
+    }
+}
+
+/// The closure of a numeric operator: when both operands are numbers and
+/// `f` gives a result, 1 step and the result, as `Run::operate` does it;
+/// else `Run::operate`.
+fn numeric<F>(op: BinaryOp, a: Operand, b: Operand, span: Span, f: F) -> Code
+where
+    F: Fn(f64, f64) -> Option<Value<'static>> + Copy + Send + Sync + 'static,
+{
+    macro_rules! body {
+        ($r:ident, $v:expr, $w:expr) => {
+            mk(move |$r| {
+                let v = $v;
+                let w = $w;
+                if let (Value::Num(p), Value::Num(q)) = (&v, &w) {
+                    if let Some(z) = f(*p, *q) {
+                        std::mem::forget(v);
+                        std::mem::forget(w);
+                        $r.charge(1)?;
+                        return Ok(z);
+                    }
+                }
+                $r.operate(op, v, w, span)
+            })
+        };
+    }
+    match (a, b) {
+        (Operand::Slot(s), Operand::Num(c)) => body!(r, r.slots[s].dup(), Value::Num(c)),
+        (Operand::Slot(s), Operand::Slot(t)) => body!(r, r.slots[s].dup(), r.slots[t].dup()),
+        (Operand::Slot(s), Operand::Code(y)) => body!(r, r.slots[s].dup(), y(r)?),
+        (Operand::Code(x), Operand::Num(c)) => body!(r, x(r)?, Value::Num(c)),
+        (Operand::Code(x), Operand::Slot(t)) => body!(r, x(r)?, r.slots[t].dup()),
+        (Operand::Num(c), Operand::Slot(t)) => body!(r, Value::Num(c), r.slots[t].dup()),
+        (Operand::Num(c), Operand::Code(y)) => body!(r, Value::Num(c), y(r)?),
+        (a, b) => {
+            let x = into_code(a);
+            let y = into_code(b);
+            body!(r, x(r)?, y(r)?)
+        }
+    }
+}
+
+fn into_code(a: Operand) -> Code {
+    match a {
+        Operand::Num(c) => mk(move |_| Ok(Value::Num(c))),
+        Operand::Slot(s) => mk(move |r| Ok(r.slots[s].dup())),
+        Operand::Code(c) => c,
+    }
+}
+
+/// A scalar written in place: an item of a list literal that `in` tests.
+pub(crate) enum Scalar {
+    Null,
+    Bool(bool),
+    Num(f64),
+    Str(Box<str>),
+}
+
+fn scalar(ast: &Ast, n: NodeId) -> Option<Scalar> {
+    Some(match ast.kind(n) {
+        NodeKind::Null => Scalar::Null,
+        NodeKind::Bool { value } => Scalar::Bool(*value),
+        NodeKind::Number { value } => Scalar::Num(*value),
+        NodeKind::String { value, .. } => Scalar::Str(value.as_str().into()),
         _ => return None,
     })
 }

@@ -12,6 +12,17 @@ pub const SOURCE: &str = include_str!("../../suite/casemap.json");
 pub struct CaseMap {
     pub upper: HashMap<char, char>,
     pub lower: HashMap<char, char>,
+    /// The same tables for the ASCII code points, by index.
+    ascii_upper: [char; 128],
+    ascii_lower: [char; 128],
+}
+
+/// The table for the ASCII code points, by index.
+fn ascii(t: &HashMap<char, char>) -> [char; 128] {
+    std::array::from_fn(|i| {
+        let c = char::from(i as u8);
+        *t.get(&c).unwrap_or(&c)
+    })
 }
 
 fn read(doc: &Json, field: &str) -> HashMap<char, char> {
@@ -28,21 +39,35 @@ pub fn table() -> &'static CaseMap {
     static T: OnceLock<CaseMap> = OnceLock::new();
     T.get_or_init(|| {
         let doc = json::parse(SOURCE).expect("suite/casemap.json is valid JSON");
+        let (upper, lower) = (read(&doc, "upper"), read(&doc, "lower"));
         CaseMap {
-            upper: read(&doc, "upper"),
-            lower: read(&doc, "lower"),
+            ascii_upper: ascii(&upper),
+            ascii_lower: ascii(&lower),
+            upper,
+            lower,
         }
     })
 }
 
+fn map(s: &str, t: &HashMap<char, char>, ascii: &[char; 128]) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        out.push(match ascii.get(c as usize) {
+            Some(m) => *m,
+            None => *t.get(&c).unwrap_or(&c),
+        });
+    }
+    out
+}
+
 pub fn upper(s: &str) -> String {
-    let t = &table().upper;
-    s.chars().map(|c| *t.get(&c).unwrap_or(&c)).collect()
+    let t = table();
+    map(s, &t.upper, &t.ascii_upper)
 }
 
 pub fn lower(s: &str) -> String {
-    let t = &table().lower;
-    s.chars().map(|c| *t.get(&c).unwrap_or(&c)).collect()
+    let t = table();
+    map(s, &t.lower, &t.ascii_lower)
 }
 
 #[cfg(test)]

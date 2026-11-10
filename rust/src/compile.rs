@@ -70,6 +70,11 @@ pub struct Program {
     pub(crate) code: Vec<Option<crate::eval::code::Code>>,
     /// The slots of each lambda's parameters, when all are plain names.
     pub(crate) params: Vec<Option<Box<[Option<u32>]>>>,
+    /// For each variable of the environment, its place among the variables
+    /// the program reads (`u32::MAX` for one it never reads); and their
+    /// count.
+    pub(crate) var_index: Vec<u32>,
+    pub(crate) vars_read: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -124,12 +129,28 @@ pub fn compile_unchecked(env: &Env, parsed: Parsed) -> Result<Program, Error> {
             diagnostics: r.diags,
         });
     }
-    let code = crate::eval::code::build(&parsed.ast, &r.res);
+    // The variables the program reads, numbered densely in the order they
+    // are first written, so that a run holds a place only for those.
+    let mut var_index = vec![u32::MAX; env.data().vars.len()];
+    let mut vars_read = 0u32;
+    for x in &r.res {
+        if let Res::Var(v) = x {
+            if let Some(d) = var_index.get_mut(*v as usize) {
+                if *d == u32::MAX {
+                    *d = vars_read;
+                    vars_read += 1;
+                }
+            }
+        }
+    }
+    let code = crate::eval::code::build(&parsed.ast, &r.res, &var_index);
     let params = crate::eval::code::params(&parsed.ast, &r.res);
     Ok(Program {
         env: env.clone(),
         code,
         params,
+        var_index,
+        vars_read: vars_read as usize,
         parsed,
         res: r.res,
         measure: r.measure,

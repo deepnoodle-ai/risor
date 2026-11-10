@@ -526,11 +526,22 @@ macro_rules! small_get {
 /// bytes of each key it passes. (Measured: about 8% off a filter over
 /// 10,000 host maps of 4 keys.)
 #[inline]
-fn btree_get<'a, T>(m: &'a BTreeMap<String, T>, key: &str) -> Option<&'a T> {
-    if m.len() <= 8 {
-        m.iter().find(|(k, _)| k.as_str() == key).map(|(_, v)| v)
-    } else {
-        m.get(key)
+pub(crate) fn btree_get<'a, T>(m: &'a BTreeMap<String, T>, key: &str) -> Option<&'a T> {
+    match m.len() {
+        // The first and the last entry are reached without a walk, whose
+        // setup costs about as much as two comparisons.
+        1 | 2 => {
+            let found =
+                |e: Option<(&'a String, &'a T)>| e.filter(|(k, _)| crate::value::str_eq(k, key));
+            found(m.first_key_value())
+                .or_else(|| found(m.last_key_value()))
+                .map(|(_, v)| v)
+        }
+        3..=11 => m
+            .iter()
+            .find(|(k, _)| crate::value::str_eq(k, key))
+            .map(|(_, v)| v),
+        _ => m.get(key),
     }
 }
 

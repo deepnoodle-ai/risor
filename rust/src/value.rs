@@ -73,6 +73,21 @@ pub fn lcp_size(a: &str, b: &str) -> u64 {
     w / 64
 }
 
+/// Equality of two strings, compared in place when they are short: most
+/// differ in length, and a short one is cheaper to compare than to call the
+/// platform's `memcmp` for.
+#[inline(always)]
+pub fn str_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    if a.len() > 16 {
+        return a == b;
+    }
+    a.iter().zip(b).all(|(x, y)| x == y)
+}
+
 /// The number of code points.
 pub fn cp_len(s: &str) -> usize {
     s.chars().count()
@@ -112,7 +127,7 @@ fn drop_all(mut stack: Vec<Value<'_>>) {
                     stack.extend(std::mem::take(&mut inner.0).into_iter().map(|(_, v)| v));
                 }
             }
-            _ => {}
+            v => release(v),
         }
     }
 }
@@ -127,7 +142,12 @@ impl Drop for ListVal<'_> {
 
 impl Drop for MapVal<'_> {
     fn drop(&mut self) {
-        if !self.0.is_empty() {
+        // Only a list or a map inside can nest; other entries drop here.
+        if self
+            .0
+            .iter()
+            .any(|(_, v)| matches!(v, Value::List(_) | Value::Map(_)))
+        {
             drop_all(
                 std::mem::take(&mut self.0)
                     .into_iter()
@@ -207,7 +227,48 @@ impl Kind {
     }
 }
 
+/// Drop a value, with the test for one that owns nothing inline: the drop
+/// glue of `Value` is a call, and most values a run drops (numbers, host
+/// data, lent strings) need none.
+#[inline(always)]
+pub fn release(v: Value<'_>) {
+    if v.owns() {
+        drop(v)
+    } else {
+        std::mem::forget(v)
+    }
+}
+
+/// Store a value into a slot, releasing the one it replaces.
+#[inline(always)]
+pub fn put<'h>(slot: &mut Value<'h>, v: Value<'h>) {
+    release(std::mem::replace(slot, v))
+}
+
 impl<'h> Value<'h> {
+    /// Whether dropping the value does any work.
+    #[inline(always)]
+    pub fn owns(&self) -> bool {
+        matches!(
+            self,
+            Value::Str(Str::Rc(_)) | Value::List(_) | Value::Map(_) | Value::Opaque(_)
+        )
+    }
+
+    /// A copy: inline for a value that owns nothing, else `clone`.
+    #[inline(always)]
+    pub fn dup(&self) -> Value<'h> {
+        match self {
+            Value::Null => Value::Null,
+            Value::Bool(b) => Value::Bool(*b),
+            Value::Num(n) => Value::Num(*n),
+            Value::Str(Str::Lent(s)) => Value::Str(Str::Lent(s)),
+            Value::HList(l) => Value::HList(*l),
+            Value::HMap(m) => Value::HMap(*m),
+            _ => self.clone(),
+        }
+    }
+
     pub fn str(s: String) -> Value<'h> {
         Value::Str(Str::new(s))
     }
@@ -275,8 +336,11 @@ impl<'h> Value<'h> {
     /// `BadNum`; the reader tests it.
     pub fn elem(&self, i: usize) -> Value<'h> {
         match self {
-            Value::List(l) => l.0[i].clone(),
-            Value::HList(l) => l.get(i).map(from_view).unwrap_or(Value::Null),
+            Value::List(l) => l.0[i].dup(),
+            Value::HList(l) => match l.get(i) {
+                Some(x) => from_view(x),
+                None => Value::Null,
+            },
             _ => Value::Null,
         }
     }
@@ -284,7 +348,7 @@ impl<'h> Value<'h> {
     /// The value under a key of a map.
     pub fn field(&self, key: &str) -> Option<Value<'h>> {
         match self {
-            Value::Map(m) => m.get(key).cloned(),
+            Value::Map(m) => m.get(key).map(Value::dup),
             Value::HMap(m) => m.get(key).map(from_view),
             _ => None,
         }
@@ -385,6 +449,7 @@ fn float_value(f: f64) -> Value<'static> {
 }
 
 /// A host view as a value. Nothing is copied.
+#[inline]
 pub fn from_view<'h>(v: View<'h>) -> Value<'h> {
     match v {
         View::Null => Value::Null,
