@@ -1,7 +1,7 @@
 //! The environment (`03-host.md` 3.3): declarations, and the errors of
 //! phase `declare`.
 
-use crate::check::ty::{from_text, Ty};
+use crate::check::ty::{from_text, Names, Ty};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::eval::Call;
 use crate::host::{Data, HostError};
@@ -65,6 +65,8 @@ pub struct EnvData {
     pub var_types: Vec<crate::check::ty::Ty>,
     pub functions: Vec<HostFn>,
     pub opaque: Vec<String>,
+    /// The opaque types and the named types (F4 3), which type text names.
+    pub names: Names,
     pub methods: Vec<HostMethod>,
     pub limits: Limits,
     pub reject: Vec<String>,
@@ -117,6 +119,16 @@ impl Env {
 
     pub fn var(&self, name: &str) -> Option<usize> {
         self.data.vars.iter().position(|v| v == name)
+    }
+
+    /// A type text resolved by the environment, as declared type text (F4
+    /// 7.1 item 4): its names are the opaque and named types. An error is
+    /// the `declare` error `bad-type`.
+    pub fn ty(&self, text: &str) -> Result<crate::conform::ProgramType, Error> {
+        let bad = |m: String| Error::one(Diagnostic::bare(Phase::Declare, code::BAD_TYPE, m));
+        let t = parse_type(text).map_err(|e| bad(e.to_string()))?;
+        let ty = from_text(&t, &self.data.names, None).map_err(bad)?;
+        Ok(crate::conform::ProgramType { ty })
     }
 
     /// The library function of a name that the environment has: not
@@ -177,6 +189,13 @@ pub fn is_name(s: &str) -> bool {
 
 const RESERVED_NAMESPACES: [&str; 4] = ["json", "time", "math", "base64"];
 
+/// A named type's declaration (F4 3.1).
+#[derive(Clone)]
+enum NamedDecl {
+    Text(String),
+    Schema(Json, SchemaOptions),
+}
+
 /// A variable declared alone: in type text, or by a JSON Schema (F1).
 #[derive(Clone)]
 enum VarDecl {
@@ -193,6 +212,8 @@ pub struct EnvBuilder {
     one_vars: Vec<(String, VarDecl)>,
     functions: Vec<(String, String, Option<HostImpl>)>,
     opaque: Vec<String>,
+    /// F4: named types, in the order declared.
+    named: Vec<(String, NamedDecl)>,
     methods: Vec<(String, String, Option<HostImpl>)>,
     reject: Option<Vec<String>>,
     limits: Option<Limits>,
@@ -270,6 +291,21 @@ impl EnvBuilder {
     pub fn function_impl(mut self, name: &str, sig: &str, imp: HostImpl) -> Self {
         self.functions
             .push((name.to_string(), sig.to_string(), Some(imp)));
+        self
+    }
+
+    /// A named type by type text (F4 3.1). It may name the opaque types and
+    /// the named types declared before it.
+    pub fn named_type(mut self, name: &str, ty: &str) -> Self {
+        self.named
+            .push((name.to_string(), NamedDecl::Text(ty.to_string())));
+        self
+    }
+
+    /// A named type by JSON Schema, with the options of F1 4 (F4 3.1 item 4).
+    pub fn named_type_schema(mut self, name: &str, schema: &Json, opts: SchemaOptions) -> Self {
+        self.named
+            .push((name.to_string(), NamedDecl::Schema(schema.clone(), opts)));
         self
     }
 
@@ -351,6 +387,59 @@ impl EnvBuilder {
                 opaque.push(name.clone());
             }
         }
+        // F4 3.1, 3.2: named types, each resolved in its turn against the
+        // opaque types and the named types before it.
+        let mut names = Names {
+            opaque: opaque.clone(),
+            named: parent
+                .as_ref()
+                .map(|p| p.names.named.clone())
+                .unwrap_or_default(),
+        };
+        let inherited_named = names.named.len();
+        for (name, decl) in &self.named {
+            if !crate::syntax::parser::is_type_name(name) {
+                bad(code::BAD_NAME, format!("{name:?} cannot name a type"));
+                continue;
+            }
+            if opaque.contains(name)
+                || names.named[inherited_named..]
+                    .iter()
+                    .any(|(n, _)| n == name)
+            {
+                bad(
+                    code::NAME_CLASH,
+                    format!("the type name {name} is declared twice"),
+                );
+                continue;
+            }
+            let ty = match decl {
+                NamedDecl::Text(text) => match parse_type(text) {
+                    Ok(t) => from_text(&t, &names, None),
+                    Err(e) => Err(e.to_string()),
+                },
+                NamedDecl::Schema(schema, opts) => ty_schema(schema, *opts),
+            };
+            match ty {
+                Ok(t) => {
+                    // A child's named type replaces its parent's (3.4).
+                    names.named.retain(|(n, _)| n != name);
+                    names.named.push((name.clone(), t));
+                }
+                Err(e) => bad(code::BAD_TYPE, format!("the named type {name}: {e}")),
+            }
+        }
+        // 3.4 item 2: a child's opaque type of a parent's named type's name.
+        if let Some(p) = &parent {
+            for o in &self.opaque {
+                if p.names.named.iter().any(|(n, _)| n == o) {
+                    bad(
+                        code::NAME_CLASH,
+                        format!("{o} is a named type of the parent"),
+                    );
+                }
+            }
+        }
         let mut vars: Vec<String> = Vec::new();
         let mut var_types = Vec::new();
         if let Some(text) = &self.vars {
@@ -376,7 +465,7 @@ impl EnvBuilder {
                             );
                         }
                         // 19.5, the rules beyond the grammar.
-                        match from_text(&f.ty, &opaque, None) {
+                        match from_text(&f.ty, &names, None) {
                             Ok(t) => var_types.push(t),
                             Err(e) => {
                                 bad(code::BAD_TYPE, format!("the variable {}: {e}", f.key));
@@ -401,8 +490,9 @@ impl EnvBuilder {
             }
             let ty = match decl {
                 VarDecl::Text(text) => match parse_type(text) {
-                    Ok(t) => from_text(&t, &opaque, None)
-                        .map_err(|e| format!("the variable {name}: {e}")),
+                    Ok(t) => {
+                        from_text(&t, &names, None).map_err(|e| format!("the variable {name}: {e}"))
+                    }
                     Err(e) => Err(format!("the variable {name}: {e}")),
                 },
                 VarDecl::Schema(schema, opts) => {
@@ -445,7 +535,7 @@ impl EnvBuilder {
                     code::BAD_SIGNATURE,
                     format!("the method {key} takes a function"),
                 ),
-                Ok(sig) if !sig_types(&sig, &opaque, &mut bad) => {}
+                Ok(sig) if !sig_types(&sig, &names, &mut bad) => {}
                 Ok(sig) => methods.push(HostMethod {
                     type_name: t.to_string(),
                     name: m.to_string(),
@@ -502,7 +592,7 @@ impl EnvBuilder {
                     );
                     None
                 }
-                Ok(s) if sig_types(&s, &opaque, &mut bad) => Some(s),
+                Ok(s) if sig_types(&s, &names, &mut bad) => Some(s),
                 Ok(_) => None,
                 Err(e) => {
                     bad(code::BAD_SIGNATURE, format!("the function {name}: {e}"));
@@ -621,6 +711,7 @@ impl EnvBuilder {
                 var_types,
                 functions,
                 opaque,
+                names,
                 methods,
                 limits,
                 reject,
@@ -633,7 +724,7 @@ impl EnvBuilder {
 /// The rules of 19.5 beyond the grammar, for a signature: every type names
 /// declared opaque types only and is at most 64 deep (`bad-type`), and a rest
 /// parameter is a list (`bad-signature`). Returns whether it holds.
-fn sig_types(sig: &Sig, opaque: &[String], bad: &mut impl FnMut(&'static str, String)) -> bool {
+fn sig_types(sig: &Sig, opaque: &Names, bad: &mut impl FnMut(&'static str, String)) -> bool {
     use crate::types::text::ParamType;
     let none = crate::check::ty::Solutions::new();
     let mut ok = true;

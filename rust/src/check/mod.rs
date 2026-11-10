@@ -53,7 +53,7 @@ pub fn expected(env: &Env, text: Option<&str>) -> Result<Expected, Diagnostic> {
         Some("condition") => Ok(Expected::Condition),
         Some(t) => {
             let parsed = text::parse_type(t).map_err(|e| bad(e.message))?;
-            let ty = from_text(&parsed, &env.data().opaque, None).map_err(bad)?;
+            let ty = from_text(&parsed, &env.data().names, None).map_err(bad)?;
             Ok(Expected::Type(ty))
         }
     }
@@ -130,11 +130,23 @@ enum Root {
     Var(u32),
 }
 
-/// A path (10.3): a binding and field keys.
+/// A path (10.3): a binding and field keys. As a fact (10.4) it says the
+/// value at the path is not null and present, or, with F4 (6.4), that it
+/// conforms or does not conform to a type.
 #[derive(Clone, Debug, PartialEq)]
 struct Path {
     root: Root,
     keys: Vec<String>,
+    kind: FactKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum FactKind {
+    NonNull,
+    /// {p: T}
+    Is(Ty),
+    /// {p: not T}
+    IsNot(Ty),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -288,8 +300,8 @@ impl<'a> Checker<'a> {
         self.dropping == 0 && self.rejects("dynamic")
     }
 
-    fn opaque(&self) -> &'a [String] {
-        &self.env.data().opaque
+    fn opaque(&self) -> &'a Names {
+        &self.env.data().names
     }
 
     // ---- facts --------------------------------------------------------------
@@ -307,7 +319,11 @@ impl<'a> Checker<'a> {
                         _ => return None,
                     };
                     keys.reverse();
-                    return Some(Path { root, keys });
+                    return Some(Path {
+                        root,
+                        keys,
+                        kind: FactKind::NonNull,
+                    });
                 }
                 NodeKind::Member { x, name, .. } => {
                     keys.push(name.clone());
@@ -329,7 +345,29 @@ impl<'a> Checker<'a> {
     fn covered(&self, p: &Path) -> bool {
         self.facts
             .iter()
-            .any(|f| f.root == p.root && f.keys.starts_with(&p.keys))
+            .any(|f| f.kind == FactKind::NonNull && f.root == p.root && f.keys.starts_with(&p.keys))
+    }
+
+    /// F4 6.4: the facts of `is` about exactly this path, in the order of
+    /// their tests.
+    fn type_facts(&self, p: &Path, mut t: Ty) -> Ty {
+        for f in &self.facts {
+            if f.root != p.root || f.keys != p.keys {
+                continue;
+            }
+            t = match &f.kind {
+                FactKind::NonNull => t,
+                FactKind::Is(c) => {
+                    if fits(&t, c) == Some(false) {
+                        t
+                    } else {
+                        c.clone()
+                    }
+                }
+                FactKind::IsNot(c) => without(&t, c),
+            };
+        }
+        t
     }
 
     /// The true and false facts of a tested expression (10.5).
@@ -344,6 +382,31 @@ impl<'a> Checker<'a> {
             } => {
                 let (t, f) = self.facts_of(*x);
                 (f, t)
+            }
+            // F4 6.4: the facts of `p is T`.
+            NodeKind::As {
+                form: crate::syntax::ast::AsForm::Is,
+                x,
+                ..
+            } => {
+                let (Some(p), Res::As(Some(t))) = (self.path_of(*x), &self.res[id.index()]) else {
+                    return (vec![], vec![]);
+                };
+                let t = t.as_ref().clone();
+                let fact = |k: FactKind| Path {
+                    root: p.root.clone(),
+                    keys: p.keys.clone(),
+                    kind: k,
+                };
+                let mut tf = vec![fact(FactKind::Is(t.clone()))];
+                let mut ff = vec![fact(FactKind::IsNot(t.clone()))];
+                if !t.null && !t.any {
+                    tf.push(fact(FactKind::NonNull));
+                }
+                if t.null {
+                    ff.push(fact(FactKind::NonNull));
+                }
+                (tf, ff)
             }
             NodeKind::Binary {
                 op: op @ (BinaryOp::Eq | BinaryOp::Ne),
@@ -401,7 +464,50 @@ impl<'a> Checker<'a> {
                 if op == BinaryOp::And {
                     (union(ts), inter(fs))
                 } else {
-                    (inter(ts), union(fs))
+                    // F4 6.4 item 4: one conforms fact about a path on each
+                    // side gives one, of the Join of their types.
+                    let mut joined: Vec<Path> = Vec::new();
+                    if let Some(first) = ts.first() {
+                        for f in first {
+                            let FactKind::Is(_) = f.kind else { continue };
+                            let mut acc: Option<Ty> = Some(Ty::never());
+                            for side in &ts {
+                                let mine: Vec<&Path> = side
+                                    .iter()
+                                    .filter(|g| {
+                                        matches!(g.kind, FactKind::Is(_))
+                                            && g.root == f.root
+                                            && g.keys == f.keys
+                                    })
+                                    .collect();
+                                match (mine.as_slice(), acc.as_mut()) {
+                                    ([g], Some(a)) => {
+                                        if let FactKind::Is(t) = &g.kind {
+                                            join_into(a, t);
+                                        }
+                                    }
+                                    _ => acc = None,
+                                }
+                            }
+                            if let Some(t) = acc {
+                                joined.push(Path {
+                                    root: f.root.clone(),
+                                    keys: f.keys.clone(),
+                                    kind: FactKind::Is(t),
+                                });
+                            }
+                        }
+                    }
+                    let mut t: Vec<Path> = inter(ts)
+                        .into_iter()
+                        .filter(|p| !matches!(p.kind, FactKind::Is(_)))
+                        .collect();
+                    for j in joined {
+                        if !t.contains(&j) {
+                            t.insert(0, j);
+                        }
+                    }
+                    (t, union(fs))
                 }
             }
             _ => (vec![], vec![]),
@@ -554,10 +660,51 @@ impl<'a> Checker<'a> {
                 self.size_check(span, t)
             }
             NodeKind::Spread { value } => self.synth(*value),
+            NodeKind::As { form, x, .. } => self.as_node(id, *form, *x),
             _ => {
                 let _ = span;
                 Ty::never()
             }
+        }
+    }
+
+    /// F4 6.3: the node `As`.
+    fn as_node(&mut self, id: NodeId, form: crate::syntax::ast::AsForm, x: NodeId) -> Ty {
+        use crate::syntax::ast::AsForm;
+        let s = self.synth(x);
+        let span = self.span(id);
+        let Res::As(Some(t)) = &self.res[id.index()] else {
+            return if form == AsForm::As {
+                Ty::never()
+            } else {
+                Ty::boolean()
+            };
+        };
+        let t = t.as_ref().clone();
+        if s.is_never() {
+            return if form == AsForm::As { t } else { Ty::boolean() };
+        }
+        if fits(&s, &t) == Some(false) {
+            if form == AsForm::Is && self.rejects("constant-condition") {
+                self.diag_class("always-truthy", span, "constant-condition");
+            }
+            return if form == AsForm::As { t } else { Ty::boolean() };
+        }
+        if disjoint(&s, &t) {
+            if form == AsForm::As {
+                self.diag("never-conforms", span);
+                return t;
+            }
+            if self.rejects("constant-condition") {
+                self.diag_class("always-falsy", span, "constant-condition");
+            }
+            return Ty::boolean();
+        }
+        if form == AsForm::As {
+            self.site("value", span);
+            t
+        } else {
+            Ty::boolean()
         }
     }
 
@@ -607,11 +754,13 @@ impl<'a> Checker<'a> {
             ),
             _ => return Ty::never(),
         };
-        if self.covered(&Path { root, keys: vec![] }) {
-            t.nonnull()
-        } else {
-            t
-        }
+        let p = Path {
+            root,
+            keys: vec![],
+            kind: FactKind::NonNull,
+        };
+        let t = if self.covered(&p) { t.nonnull() } else { t };
+        self.type_facts(&p, t)
     }
 
     /// A rendered expression (ruling AO2): has-opaque is `kind`, has-any a
@@ -1465,6 +1614,9 @@ impl<'a> Checker<'a> {
             if path.as_ref().is_some_and(|p| self.covered(p)) {
                 cur = cur.nonnull();
             }
+            if let Some(p) = &path {
+                cur = self.type_facts(p, cur);
+            }
             self.types[s.index()] = cur.clone();
             recv = s;
         }
@@ -1872,11 +2024,32 @@ impl<'a> Checker<'a> {
             return elem;
         };
         let (t, _) = self.facts_of(*body);
-        if t.iter().any(|f| f.root == Root::Slot(slot)) {
+        let mut elem = if t
+            .iter()
+            .any(|f| f.kind == FactKind::NonNull && f.root == Root::Slot(slot))
+        {
             elem.nonnull()
         } else {
             elem
+        };
+        // F4 6.5: the facts of `is` about the parameter.
+        for f in &t {
+            if f.root != Root::Slot(slot) || !f.keys.is_empty() {
+                continue;
+            }
+            elem = match &f.kind {
+                FactKind::NonNull => elem,
+                FactKind::Is(c) => {
+                    if fits(&elem, c) == Some(false) {
+                        elem
+                    } else {
+                        c.clone()
+                    }
+                }
+                FactKind::IsNot(c) => without(&elem, c),
+            };
         }
+        elem
     }
 
     /// The expanded nesting of a node (20.2).

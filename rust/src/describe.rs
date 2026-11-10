@@ -15,7 +15,7 @@ pub fn describe_type(t: &Ty) -> String {
 }
 
 /// A signature printed (5.2). `opaque` is the environment's opaque types.
-pub fn print_sig(sig: &Sig, opaque: &[String]) -> String {
+pub fn print_sig<N: crate::check::ty::TypeNames + ?Sized>(sig: &Sig, opaque: &N) -> String {
     let ty = |t| print(&sig_type(t, opaque));
     let params: Vec<String> = sig
         .params
@@ -95,7 +95,7 @@ impl Env {
         let functions = d
             .functions
             .iter()
-            .map(|f| (f.name.clone(), Json::Str(print_sig(&f.sig, &d.opaque))))
+            .map(|f| (f.name.clone(), Json::Str(print_sig(&f.sig, &d.names))))
             .collect();
         let opaque = d
             .opaque
@@ -105,7 +105,7 @@ impl Env {
                     .methods
                     .iter()
                     .filter(|m| m.type_name == *o)
-                    .map(|m| (m.name.clone(), Json::Str(print_sig(&m.sig, &d.opaque))))
+                    .map(|m| (m.name.clone(), Json::Str(print_sig(&m.sig, &d.names))))
                     .collect();
                 (o.clone(), obj(methods))
             })
@@ -113,7 +113,20 @@ impl Env {
         let mut reject = d.reject.clone();
         reject.sort();
         reject.dedup();
-        obj(vec![
+        let mut entries = Vec::new();
+        // F4 8: the named types, present only when there is one.
+        if !d.names.named.is_empty() {
+            entries.push((
+                "types".to_string(),
+                obj(d
+                    .names
+                    .named
+                    .iter()
+                    .map(|(n, t)| (n.clone(), Json::Str(print(t))))
+                    .collect()),
+            ));
+        }
+        entries.extend(vec![
             ("version".into(), Json::Str("3.0".into())),
             ("variables".into(), obj(variables)),
             ("functions".into(), obj(functions)),
@@ -134,7 +147,8 @@ impl Env {
                     ("depth".into(), Json::Num(d.limits.depth as f64)),
                 ]),
             ),
-        ])
+        ]);
+        obj(entries)
     }
 
     /// The text of the description (5.3 item 5): its JSON form, which two
@@ -152,7 +166,8 @@ impl Env {
         let o = d
             .as_obj()
             .ok_or_else(|| form("a description is a JSON object"))?;
-        const KEYS: [&str; 7] = [
+        const KEYS: [&str; 8] = [
+            "types",
             "version",
             "variables",
             "functions",
@@ -200,6 +215,12 @@ impl Env {
             .as_str()
             .ok_or_else(|| form("version is not a string"))?;
         b = b.version(version);
+        // F4 8 item 3: each entry of `types` is a named type by type text.
+        if let Some(t) = d.get("types") {
+            for (name, text) in strings_of(t, "types")? {
+                b = b.named_type(&name, &text);
+            }
+        }
         for (name, text) in strings_of(get("variables")?, "variables")? {
             b = b.var(&name, &text);
         }

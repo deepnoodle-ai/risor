@@ -9,11 +9,12 @@
 //! What opens no level is walked by a loop, so the walk's recursion is
 //! bounded by the source nesting.
 
+use crate::check::ty::{join_into, Ty, TypeNames};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library;
 use crate::source::Span;
-use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind};
+use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
 use crate::syntax::Parsed;
 use std::collections::{HashMap, HashSet};
 
@@ -45,6 +46,9 @@ pub enum Res {
     },
     /// The slot of a `catch (name)`.
     Catch(Option<u32>),
+    /// F4: an `As` node's program type, resolved (3.5); `None` when a static
+    /// rule of 6.1 refused it.
+    As(Option<Box<Ty>>),
 }
 
 /// A compiled program. It does not change, and is safe to share between
@@ -227,6 +231,98 @@ impl Resolver<'_> {
             .push(Diagnostic::at(Phase::Check, c, &self.p.source, span, msg));
     }
 
+    /// F4 3.5 and 6.1: resolve a program type. Names first; then two records
+    /// in one `PType`; then depth and size, one `check-limit` for both.
+    fn program_type(&mut self, pt: &PType) -> Option<Ty> {
+        let mut undefined = Vec::new();
+        names_of(pt, &mut |n, span| {
+            if self.env.data().names.lookup(n).is_none() {
+                undefined.push(span);
+            }
+        });
+        if !undefined.is_empty() {
+            for s in undefined {
+                self.diag("undefined-name", s);
+            }
+            return None;
+        }
+        let mut bad = false;
+        let t = self.resolve_ptype(pt, &mut bad);
+        if bad {
+            return None;
+        }
+        if t.too_big() || t.depth() > 64 {
+            self.diag("check-limit", pt.span);
+            return None;
+        }
+        Some(t)
+    }
+
+    /// One `PType`: the Join of its alternatives, with parentheses removed.
+    /// Two or more of them that are records is `untagged-union` here, and
+    /// the `PType` then counts as `never` for the one around it.
+    fn resolve_ptype(&mut self, pt: &PType, bad: &mut bool) -> Ty {
+        let mut alts: Vec<Ty> = Vec::new();
+        for a in &pt.alts {
+            let mut t = self.resolve_pprim(&a.prim, bad);
+            for _ in 0..a.suffixes {
+                t = Ty::list(t);
+            }
+            alts.push(t);
+        }
+        if alts.iter().filter(|t| t.map.is_some()).count() >= 2 {
+            self.diag("untagged-union", pt.span);
+            *bad = true;
+            return Ty::never();
+        }
+        let mut acc = Ty::never();
+        for t in &alts {
+            join_into(&mut acc, t);
+        }
+        acc
+    }
+
+    fn resolve_pprim(&mut self, p: &PPrim, bad: &mut bool) -> Ty {
+        match p {
+            PPrim::Null => Ty::null(),
+            PPrim::Bool => Ty::boolean(),
+            PPrim::Int => Ty::int(),
+            PPrim::Float => Ty::float(),
+            PPrim::String => Ty::string(),
+            PPrim::Any => Ty::any(),
+            PPrim::Never => Ty::never(),
+            PPrim::Lit(s) => Ty::lit(s),
+            PPrim::Map(inner) => Ty::map_of(self.resolve_ptype(inner, bad)),
+            PPrim::Record { fields, rest } => {
+                let mut fs = std::collections::BTreeMap::new();
+                for f in fields {
+                    let ty = self.resolve_ptype(&f.ty, bad);
+                    fs.insert(
+                        f.key.clone(),
+                        crate::check::ty::Field {
+                            ty,
+                            optional: f.optional,
+                        },
+                    );
+                }
+                let rest = match rest {
+                    None => Ty::never(),
+                    Some(None) => Ty::any(),
+                    Some(Some(t)) => self.resolve_ptype(t, bad),
+                };
+                Ty::rec(crate::check::ty::Rec::new(fs, rest))
+            }
+            PPrim::Name(n, _) => self.env.data().names.lookup(n).unwrap_or_default(),
+            PPrim::Paren(inner) => self.resolve_paren(inner, bad),
+        }
+    }
+
+    /// A parenthesized `PType` alternative: its own alternatives count for
+    /// the records of the `PType` around it only through its Join.
+    fn resolve_paren(&mut self, inner: &PType, bad: &mut bool) -> Ty {
+        self.resolve_ptype(inner, bad)
+    }
+
     fn lookup(&self, name: &str) -> Option<Bind> {
         self.scopes.iter().rev().find_map(|s| s.get(name).copied())
     }
@@ -397,6 +493,11 @@ impl Resolver<'_> {
                 NodeKind::Member { .. } | NodeKind::Index { .. } | NodeKind::MethodCall { .. } => {
                     self.chain(id);
                     return;
+                }
+                NodeKind::As { x, ty, .. } => {
+                    let r = self.program_type(&ty);
+                    self.res[id.index()] = Res::As(r.map(Box::new));
+                    id = x;
                 }
                 NodeKind::Call { name, args, .. } => {
                     let span = self.span(id);
@@ -715,6 +816,25 @@ pub(crate) fn lit_key(l: &Lit) -> LitKey {
         Lit::Str(s) => LitKey::Str(s.clone()),
         Lit::Bool(b) => LitKey::Bool(*b),
         Lit::Null => LitKey::Null,
+    }
+}
+
+/// Every type name of a program type, with its span, in order.
+fn names_of(pt: &PType, f: &mut dyn FnMut(&str, Span)) {
+    for a in &pt.alts {
+        match &a.prim {
+            PPrim::Name(n, s) => f(n, *s),
+            PPrim::Map(inner) | PPrim::Paren(inner) => names_of(inner, f),
+            PPrim::Record { fields, rest } => {
+                for fl in fields {
+                    names_of(&fl.ty, f);
+                }
+                if let Some(Some(r)) = rest {
+                    names_of(r, f);
+                }
+            }
+            _ => {}
+        }
     }
 }
 

@@ -65,6 +65,17 @@ pub(crate) fn parse_parts(
     Ok((p.ast, ids))
 }
 
+/// A type name (F4 2.1 item 2): an upper-case letter, then one or more of
+/// `[A-Za-z0-9_]`.
+pub fn is_type_name(w: &str) -> bool {
+    let b = w.as_bytes();
+    b.len() >= 2
+        && b[0].is_ascii_uppercase()
+        && b[1..]
+            .iter()
+            .all(|c| c.is_ascii_alphanumeric() || *c == b'_')
+}
+
 /// The error is boxed: a large `Err` makes every `?` cost stack in a build
 /// with no optimization, and the parser recurses once for each level.
 type R<T> = Result<T, Box<Diagnostic>>;
@@ -525,7 +536,15 @@ impl<'a> Parser<'a> {
     }
 
     fn bin_rest(&mut self, mut lhs: NodeId, min: u8) -> R<NodeId> {
-        while let Some((op, prec)) = self.binop() {
+        loop {
+            // F4 2.4: `as` and `is` stand at level 6, left-associative.
+            if min <= PREC_REL && (self.at_word("as") || self.at_word("is")) {
+                lhs = self.as_test(lhs)?;
+                continue;
+            }
+            let Some((op, prec)) = self.binop() else {
+                break;
+            };
             if prec < min {
                 break;
             }
@@ -550,14 +569,229 @@ impl<'a> Parser<'a> {
             self.close();
             lhs = self.binary_node(op, lhs, rhs);
         }
-        // 14.3: `as` and `is` stand where a relational operator may.
-        if min <= PREC_REL && (self.at_word("as") || self.at_word("is")) {
-            if let Some(bang) = self.bare_not(lhs) {
-                return Err(self.unexpected_at(bang));
+        Ok(lhs)
+    }
+
+    // ---- F4: `x as T`, `x is T` and program types ------------------------
+
+    /// `x as T` or `x is T`, at the `as` or `is` (F4 2).
+    fn as_test(&mut self, lhs: NodeId) -> R<NodeId> {
+        // 2.5: found at the `as` or `is`, before the type is read.
+        if let Some(bang) = self.bare_not(lhs) {
+            return Err(self.unexpected_at(bang));
+        }
+        let kw = self.bump();
+        let form = if kw.is_word("as") {
+            AsForm::As
+        } else {
+            AsForm::Is
+        };
+        // 2.6 item 2: Core's errors at the `as` or the `is`.
+        if (form == AsForm::As && self.at_word("const"))
+            || (form == AsForm::Is && self.at_word("not"))
+        {
+            return Err(self.unexpected_at(kw.span));
+        }
+        self.open(kw.span)?;
+        let ty = self.ptype()?;
+        self.close();
+        // 2.4: an operator of levels 7 to 10 cannot follow a type.
+        if let Some((_, prec)) = self.binop() {
+            if prec > PREC_REL {
+                return Err(self.unexpected(self.peek()));
             }
+        }
+        if self.at_punct(P::StarStar) {
             return Err(self.unexpected(self.peek()));
         }
-        Ok(lhs)
+        let span = self.outer(lhs).to(ty.span);
+        Ok(self.node(
+            NodeKind::As {
+                form,
+                x: lhs,
+                ty: Box::new(ty),
+            },
+            span,
+        ))
+    }
+
+    /// `bad-type-text` at a token (2.6): its code first, a refused token as
+    /// `unexpected-token`, a template or text block over its whole span.
+    fn bad_type_text(&self, tok: &Token) -> Box<Diagnostic> {
+        if let Some((c, span)) = tok.code {
+            return self.diag(c, span, c.to_string());
+        }
+        if matches!(tok.tok, Tok::Refused) {
+            return self.unexpected(tok);
+        }
+        let span = tok.diag;
+        self.diag(
+            code::BAD_TYPE_TEXT,
+            span,
+            format!("{} cannot stand in a type", self.src.slice(span)),
+        )
+    }
+
+    /// `PType = PAlt { "|" PAlt }`.
+    fn ptype(&mut self) -> R<PType> {
+        let first = self.palt()?;
+        let mut span = first.span;
+        let mut alts = vec![first];
+        while self.at_punct(P::Pipe) {
+            self.bump();
+            let a = self.palt()?;
+            span = span.to(a.span);
+            alts.push(a);
+        }
+        Ok(PType { alts, span })
+    }
+
+    /// `PAlt = PPrim { "[" "]" }`. The levels of the suffixes add up and
+    /// last to the end of the alternative (2.8).
+    fn palt(&mut self) -> R<PAlt> {
+        let (prim, mut span) = self.pprim()?;
+        let mut suffixes = 0;
+        while self.at_punct(P::LBracket) && self.peek_n(1).is_punct(P::RBracket) {
+            let lb = self.bump();
+            if let Err(e) = self.open(lb.span) {
+                for _ in 0..suffixes {
+                    self.close();
+                }
+                return Err(e);
+            }
+            let rb = self.bump();
+            span = span.to(rb.span);
+            suffixes += 1;
+        }
+        for _ in 0..suffixes {
+            self.close();
+        }
+        Ok(PAlt {
+            prim,
+            suffixes,
+            span,
+        })
+    }
+
+    fn pprim(&mut self) -> R<(PPrim, Span)> {
+        let t = self.peek();
+        let simple = |p: PPrim| Ok((p, t.span));
+        match &t.tok {
+            Tok::Word(w) => {
+                let p = match w.as_str() {
+                    "null" => PPrim::Null,
+                    "bool" => PPrim::Bool,
+                    "int" => PPrim::Int,
+                    "float" => PPrim::Float,
+                    "string" => PPrim::String,
+                    "any" => PPrim::Any,
+                    "never" => PPrim::Never,
+                    "map" => {
+                        self.bump();
+                        let lt = self.peek();
+                        if !lt.is_punct(P::Lt) {
+                            return Err(self.bad_type_text(lt));
+                        }
+                        self.bump();
+                        self.open(lt.span)?;
+                        let inner = self.ptype()?;
+                        let gt = self.peek();
+                        if !gt.is_punct(P::Gt) {
+                            return Err(self.bad_type_text(gt));
+                        }
+                        self.bump();
+                        self.close();
+                        return Ok((PPrim::Map(Box::new(inner)), t.span.to(gt.span)));
+                    }
+                    w if is_type_name(w) => {
+                        self.bump();
+                        return Ok((PPrim::Name(w.to_string(), t.span), t.span));
+                    }
+                    _ => return Err(self.bad_type_text(t)),
+                };
+                self.bump();
+                simple(p)
+            }
+            Tok::Str(s, f) if f.is_line() && t.code.is_none() => {
+                self.bump();
+                simple(PPrim::Lit(s.clone()))
+            }
+            Tok::Punct(P::LParen) => {
+                self.bump();
+                self.open(t.span)?;
+                let inner = self.ptype()?;
+                let rp = self.peek();
+                if !rp.is_punct(P::RParen) {
+                    return Err(self.bad_type_text(rp));
+                }
+                self.bump();
+                self.close();
+                Ok((PPrim::Paren(Box::new(inner)), t.span.to(rp.span)))
+            }
+            Tok::Punct(P::LBrace) => self.precord(),
+            _ => Err(self.bad_type_text(t)),
+        }
+    }
+
+    /// `PRecord` (2.1, 2.6).
+    fn precord(&mut self) -> R<(PPrim, Span)> {
+        let lb = self.bump();
+        self.open(lb.span)?;
+        let mut fields: Vec<PField> = Vec::new();
+        let mut rest: Option<Option<Box<PType>>> = None;
+        loop {
+            let t = self.peek();
+            if t.is_punct(P::RBrace) {
+                break;
+            }
+            if t.is_punct(P::Ellipsis) {
+                self.bump();
+                let n = self.peek();
+                rest = Some(if n.is_punct(P::Comma) || n.is_punct(P::RBrace) {
+                    None
+                } else {
+                    Some(Box::new(self.ptype()?))
+                });
+                if self.at_punct(P::Comma) {
+                    self.bump();
+                }
+                let n = self.peek();
+                if !n.is_punct(P::RBrace) {
+                    return Err(self.bad_type_text(n));
+                }
+                break;
+            }
+            let key = match &t.tok {
+                Tok::Word(w) => w.clone(),
+                Tok::Str(s, f) if f.is_line() && t.code.is_none() => s.clone(),
+                _ => return Err(self.bad_type_text(t)),
+            };
+            if fields.iter().any(|f| f.key == key) {
+                return Err(self.bad_type_text(t));
+            }
+            self.bump();
+            let mut optional = false;
+            if self.at_punct(P::Question) {
+                self.bump();
+                optional = true;
+            }
+            let c = self.peek();
+            if !c.is_punct(P::Colon) {
+                return Err(self.bad_type_text(c));
+            }
+            self.bump();
+            let ty = self.ptype()?;
+            fields.push(PField { key, optional, ty });
+            let n = self.peek();
+            if n.is_punct(P::Comma) {
+                self.bump();
+            } else if !n.is_punct(P::RBrace) {
+                return Err(self.bad_type_text(n));
+            }
+        }
+        let rb = self.bump();
+        self.close();
+        Ok((PPrim::Record { fields, rest }, lb.span.to(rb.span)))
     }
 
     /// The span of the `!` when `id` is a `!` expression written without

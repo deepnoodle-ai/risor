@@ -323,3 +323,22 @@ one call, and a host implementation is a `'static` closure that receives
   `testing::skipped_by_package` leaves out the `until-fNN-` files of those
   packages (ruling BA8).
 
+## Package F4, checked conversion
+
+- **Parsing** (`src/syntax/parser.rs`): `as` and `is` stand in the loop of
+  level 6; a program type is its own small tree (`PType`, `PAlt`, `PPrim` in
+  `ast.rs`), kept with its spans for the static rules. `bad-type-text` is
+  the parser's own helper.
+- **Names** (`check::ty::Names`, `TypeNames`): type text is resolved
+  against an environment's opaque types and named types; a named type's
+  type is held once and shared, and the size limit is tested on it.
+- **Static rules** (`compile.rs`): each `As` node's program type is
+  resolved when names are, in every compile, into `Res::As`; names, then
+  two records in one `PType`, then depth and size.
+- **The walk** (`src/conform.rs`) is one function over a `WalkMeter`: the run
+  charges steps and counts depth through it, and the conformance function
+  (`Env::ty(text)?.conform(&data)`) uses one that counts nothing.
+- **Facts of `is`** (`check/mod.rs`): a fact is a path with a kind,
+  `NonNull`, `Is(T)` or `IsNot(T)`; `||` joins one `Is` fact per side about
+  one path into one.
+

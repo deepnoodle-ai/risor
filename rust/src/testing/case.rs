@@ -56,6 +56,30 @@ pub struct ExpectResult {
     /// F2: the expected analysis (`f02-templates-analysis.md` 4.2). A case
     /// that states it states nothing else.
     pub analysis: Option<Json>,
+    /// F4: a conform result (`f04-conversion.md` 9.2).
+    pub conform: Option<ConformExpect>,
+}
+
+/// A conform result (F4 9.2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConformExpect {
+    pub conforms: bool,
+    pub path: Option<Vec<Json>>,
+    pub message: Option<String>,
+    pub steps: Option<u64>,
+}
+
+/// A named type of the case field `types` (F4 9.1).
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeDecl {
+    Text(String, String),
+    Schema(String, Json, SchemaOptions),
+}
+
+/// The static codes of a case (`05-types.md` 22.1): in `suite/conversion/`
+/// also `untagged-union` and `check-limit` (F4 6.1 item 4).
+pub fn is_static(code: &str, conversion: bool) -> bool {
+    code::STATIC.contains(&code) || (conversion && matches!(code, "untagged-union" | "check-limit"))
 }
 
 impl ExpectResult {
@@ -104,6 +128,12 @@ pub struct Case {
     pub env: Option<String>,
     /// F1: variables declared by schema, with their options (7.1).
     pub schemas: Vec<(String, Json, SchemaOptions)>,
+    /// F4: named types, in order (9.1).
+    pub types: Vec<TypeDecl>,
+    /// F4: a case of the second kind: a type text and a host value (9.2).
+    pub conform: Option<(String, Json)>,
+    /// The case is of `suite/conversion/`, where two more codes are static.
+    pub conversion: bool,
     pub opaque: Vec<String>,
     /// `Type.method` and its stub (3.10.4 item 2).
     pub methods: Vec<(String, Stub)>,
@@ -130,7 +160,9 @@ pub struct CaseFile {
     pub cases: Vec<Case>,
 }
 
-const HEADER_FIELDS: [&str; 17] = [
+const HEADER_FIELDS: [&str; 19] = [
+    "types",
+    "conform",
     "template",
     "removed",
     "schemas",
@@ -150,7 +182,9 @@ const HEADER_FIELDS: [&str; 17] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 19] = [
+const CASE_FIELDS: [&str; 21] = [
+    "types",
+    "conform",
     "template",
     "removed",
     "schemas",
@@ -214,6 +248,7 @@ pub fn load_doc_lax(doc: &Json, dir: &Path) -> V<Vec<Case>> {
 }
 
 fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
+    let conversion = dir.file_name().is_some_and(|d| d == "conversion");
     let (header, cases): (&[(String, Json)], &[Json]) = match doc {
         Json::Arr(a) => (&[], a),
         Json::Obj(m) => {
@@ -249,7 +284,8 @@ fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
             }
             check_field(k, v).map_err(|e| format!("case {i}: {e}"))?;
         }
-        let case = merge(header, obj, dir, lax).map_err(|e| format!("case {i}: {e}"))?;
+        let mut case = merge(header, obj, dir, lax).map_err(|e| format!("case {i}: {e}"))?;
+        case.conversion = conversion;
         if out.iter().any(|o: &Case| o.name == case.name) {
             return Err(format!("the name {:?} is used twice", case.name));
         }
@@ -275,13 +311,26 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         None => return Err("the case has no expect".into()),
     };
 
-    // `source` and `file` count as one field.
-    let (source, file) = if own("source").is_some() || own("file").is_some() {
-        (own("source"), own("file"))
-    } else {
-        (hdr("source"), hdr("file"))
+    // `source`, `file` and, with F4, `conform` count as one field.
+    let (source, file, conform) =
+        if own("source").is_some() || own("file").is_some() || own("conform").is_some() {
+            (own("source"), own("file"), own("conform"))
+        } else {
+            (hdr("source"), hdr("file"), hdr("conform"))
+        };
+    let conform = match (conform, source, file) {
+        (Some(c), None, None) => Some((
+            c.get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            c.get("value").cloned().unwrap_or(Json::Null),
+        )),
+        (Some(_), _, _) => return Err("the case has conform beside source or file".into()),
+        _ => None,
     };
     let source = match (source, file) {
+        _ if conform.is_some() => String::new(),
         (Some(s), None) => s.as_str().unwrap_or_default().to_string(),
         (None, Some(f)) => {
             let rel = f.as_str().unwrap_or_default();
@@ -397,13 +446,60 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             Expect::Result(r) => r.ty.is_some() || r.sites.is_some(),
             Expect::Failure(f) => {
                 f.phase == Phase::Check
-                    && f.diagnostics
-                        .iter()
-                        .any(|d| !code::STATIC.contains(&d.code.as_str()))
+                    && f.diagnostics.iter().any(|d| {
+                        !is_static(&d.code, dir.file_name().is_some_and(|n| n == "conversion"))
+                    })
             }
         };
         if bad {
             return Err("a case with \"check\": false states what needs the type checker".into());
+        }
+    }
+    // F4 9.2: a conform case has few fields, and expects a conform result
+    // or a `declare` failure; a conform result needs a conform case.
+    let conform_result = matches!(&expect, Expect::Result(r) if r.conform.is_some());
+    if conform.is_some() {
+        for (k, _) in header.iter().chain(case.iter()) {
+            if ![
+                "name", "version", "opaque", "types", "conform", "skip", "expect", "cases",
+            ]
+            .contains(&k.as_str())
+            {
+                return Err(format!("a conform case has the field {k:?}"));
+            }
+        }
+        let ok =
+            conform_result || matches!(&expect, Expect::Failure(f) if f.phase == Phase::Declare);
+        if !ok {
+            return Err(
+                "a conform case expects neither a conform result nor a declare failure".into(),
+            );
+        }
+    } else if conform_result {
+        return Err("a conform result in a case without conform".into());
+    }
+    let mut types = Vec::new();
+    if let Some(a) = get("types").and_then(|v| v.as_arr()) {
+        for t in a {
+            let name = t
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or_default()
+                .to_string();
+            if let Some(text) = t.get("type").and_then(|x| x.as_str()) {
+                types.push(TypeDecl::Text(name, text.to_string()));
+            } else {
+                let names: Vec<&str> = t
+                    .get("options")
+                    .and_then(|o| o.as_arr())
+                    .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                    .unwrap_or_default();
+                types.push(TypeDecl::Schema(
+                    name,
+                    t.get("schema").cloned().unwrap_or(Json::Null),
+                    SchemaOptions::from_names(&names)?,
+                ));
+            }
         }
     }
     // F2 4.2 item 3: an analysis case declares no environment.
@@ -432,6 +528,9 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             .and_then(|v| v.as_str())
             .and_then(crate::template::Mode::from_name),
         source,
+        types,
+        conform,
+        conversion: false,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
         env,
         schemas,
@@ -569,6 +668,52 @@ fn read_expect(v: &Json) -> V<Expect> {
             allocated: count("allocated"),
         }));
     }
+    if has("conforms") {
+        let mut c = ConformExpect {
+            conforms: false,
+            path: None,
+            message: None,
+            steps: None,
+        };
+        for (k, x) in obj {
+            match k.as_str() {
+                "conforms" => match x {
+                    Json::Bool(b) => c.conforms = *b,
+                    _ => return Err("expect.conforms is not a boolean".into()),
+                },
+                "path" => {
+                    let a = x.as_arr().ok_or("expect.path is not an array")?;
+                    for s in a {
+                        let ok =
+                            matches!(s, Json::Str(_)) || s.as_integer().is_some_and(|n| n >= 0.0);
+                        if !ok {
+                            return Err("a step of a path is neither a string nor an index".into());
+                        }
+                    }
+                    c.path = Some(a.to_vec());
+                }
+                "message" => {
+                    c.message = Some(
+                        x.as_str()
+                            .ok_or("expect.message is not a string")?
+                            .to_string(),
+                    );
+                }
+                "steps" => {
+                    check_count(x).map_err(|e| format!("expect.steps: {e}"))?;
+                    c.steps = x.as_integer().map(|n| n as u64);
+                }
+                _ => return Err(format!("a conform result has the field {k:?}")),
+            }
+        }
+        if c.conforms && (c.path.is_some() || c.message.is_some()) {
+            return Err("a conform result with conforms true has a path or a message".into());
+        }
+        return Ok(Expect::Result(ExpectResult {
+            conform: Some(c),
+            ..ExpectResult::default()
+        }));
+    }
     for (k, x) in obj {
         match k.as_str() {
             "type" => {
@@ -636,6 +781,7 @@ fn read_expect(v: &Json) -> V<Expect> {
         allocated: count("allocated"),
         description: v.get("description").cloned(),
         analysis: v.get("analysis").cloned(),
+        conform: None,
     }))
 }
 
@@ -745,6 +891,10 @@ fn check_description(x: &Json) -> V<()> {
     ];
     let m = x.as_obj().ok_or("expect.description is not an object")?;
     for (k, _) in m {
+        // F4 8: `types`, an object of strings.
+        if k == "types" {
+            continue;
+        }
         if !KEYS.contains(&k.as_str()) {
             return Err(format!("expect.description has the field {k:?}"));
         }
@@ -752,6 +902,42 @@ fn check_description(x: &Json) -> V<()> {
     for k in KEYS {
         if x.get(k).is_none() {
             return Err(format!("expect.description has no field {k:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// F4 9.1: the form of `types`.
+fn check_types(v: &Json) -> V<()> {
+    let a = v.as_arr().ok_or("types is not an array")?;
+    for t in a {
+        let m = t.as_obj().ok_or("an entry of types is not an object")?;
+        for (k, _) in m {
+            if !["name", "type", "schema", "options"].contains(&k.as_str()) {
+                return Err(format!("an entry of types has the field {k:?}"));
+            }
+        }
+        if !t.get("name").is_some_and(|n| n.as_str().is_some()) {
+            return Err("an entry of types has no name that is a string".into());
+        }
+        match (t.get("type"), t.get("schema")) {
+            (Some(x), None) => {
+                x.as_str().ok_or("an entry's type is not a string")?;
+                if t.get("options").is_some() {
+                    return Err("an entry of types has options beside type".into());
+                }
+            }
+            (None, Some(_)) => {
+                if let Some(o) = t.get("options") {
+                    let a = o.as_arr().ok_or("options is not an array")?;
+                    let names: Vec<&str> = a.iter().filter_map(|x| x.as_str()).collect();
+                    if names.len() != a.len() {
+                        return Err("options holds a value that is not a string".into());
+                    }
+                    SchemaOptions::from_names(&names)?;
+                }
+            }
+            _ => return Err("an entry of types has both type and schema, or neither".into()),
         }
     }
     Ok(())
@@ -977,6 +1163,17 @@ fn check_field(k: &str, v: &Json) -> V<()> {
         },
         "expect" => Ok(()),
         "schemas" => check_schemas(v),
+        "types" => check_types(v),
+        "conform" => {
+            let m = v.as_obj().ok_or("conform is not an object")?;
+            if m.len() != 2
+                || v.get("value").is_none()
+                || !v.get("type").is_some_and(|t| t.as_str().is_some())
+            {
+                return Err("conform is not {\"type\": text, \"value\": v}".into());
+            }
+            Ok(())
+        }
         "template" => match v.as_str() {
             Some("string" | "value") => Ok(()),
             _ => Err("template is neither \"string\" nor \"value\"".into()),

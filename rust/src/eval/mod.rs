@@ -17,7 +17,7 @@ use crate::messages::{self, json_string, push_json_char};
 use crate::number::{self, NumErr};
 use crate::source::{Source, Span};
 use crate::syntax::ast::{
-    Ast, BinaryOp, EntryKey, Lit, NodeId, NodeKind, SpannedName, TemplatePart, UnaryOp,
+    AsForm, Ast, BinaryOp, EntryKey, Lit, NodeId, NodeKind, SpannedName, TemplatePart, UnaryOp,
 };
 use crate::value::{
     self, from_view, is_whole, lcp_size, log2_ceil, size, weight, Kind, MapVal, Str, Value,
@@ -143,6 +143,8 @@ pub struct Fail<'h> {
     pub data: Option<Value<'h>>,
     /// A `number-range` from a host number: class `environment`.
     pub host_number: bool,
+    /// The path of a `not-conforming` failure (F4 5.1).
+    pub path: Option<Vec<crate::diag::PathStep>>,
 }
 
 impl Fail<'_> {
@@ -177,6 +179,7 @@ impl Fail<'_> {
         };
         d.class = self.class();
         d.data = self.data.as_ref().map(|v| Box::new(v.to_data()));
+        d.path = self.path.clone().map(Box::new);
         d
     }
 }
@@ -250,6 +253,28 @@ struct Run<'h> {
     m: Meter,
 }
 
+/// The walk's meter in a run: the run's steps and depth count (F4 5.3,
+/// 5.4).
+struct RunMeter<'a> {
+    m: &'a mut Meter,
+}
+
+impl crate::conform::WalkMeter for RunMeter<'_> {
+    fn charge(&mut self, n: u64) -> Result<(), &'static str> {
+        self.m.charge(n)
+    }
+    fn enter(&mut self) -> Result<(), &'static str> {
+        if self.m.depth + 1 > self.m.limits.depth {
+            return Err(DEPTH_EXCEEDED);
+        }
+        self.m.depth += 1;
+        Ok(())
+    }
+    fn leave(&mut self) {
+        self.m.depth -= 1;
+    }
+}
+
 fn kind_p<'h>(v: &Value<'h>) -> String {
     v.kind().name().to_string()
 }
@@ -286,6 +311,7 @@ fn fail<'h>(
         text: None,
         data: None,
         host_number: false,
+        path: None,
     })
 }
 
@@ -310,6 +336,7 @@ impl<'h> Run<'h> {
             text: None,
             data: None,
             host_number: false,
+            path: None,
         })
     }
 
@@ -338,6 +365,7 @@ impl<'h> Run<'h> {
             text: None,
             data: None,
             host_number: true,
+            path: None,
         })
     }
 
@@ -401,7 +429,34 @@ impl<'h> Run<'h> {
                     id = self.match_arm(node.span, *subject, arms)?;
                 }
                 NodeKind::Try { body, handler, .. } => return self.try_(id, *body, *handler),
+                NodeKind::As { form, x, .. } => return self.as_test(id, *form, *x, node.span),
                 _ => return Err(self.internal(node.span)),
+            }
+        }
+    }
+
+    /// F4 5.1 and 5.2: `x as T` and `x is T`, by the walk of 4.
+    fn as_test(&mut self, id: NodeId, form: AsForm, x: NodeId, span: Span) -> R<'h, Value<'h>> {
+        let v = self.eval(x)?;
+        let Res::As(Some(t)) = self.res(id) else {
+            return Err(self.internal(span));
+        };
+        let r = {
+            let mut m = RunMeter { m: &mut self.m };
+            crate::conform::test(&v, t, &mut m)
+        };
+        match r {
+            Err(code) => Err(self.limit(code, Some(span))),
+            Ok(None) => Ok(if form == AsForm::As {
+                v
+            } else {
+                Value::Bool(true)
+            }),
+            Ok(Some(_)) if form == AsForm::Is => Ok(Value::Bool(false)),
+            Ok(Some(f)) => {
+                let mut fl = fail("not-conforming", f.template, span, f.params);
+                fl.path = Some(f.path);
+                Err(fl)
             }
         }
     }
@@ -1540,11 +1595,27 @@ impl<'h> Run<'h> {
                         self.charge(1 + sz)?;
                         self.alloc(9 + 1 + sz)?;
                     }
+                    // F4 5.5: the path of a `not-conforming` failure, 1 + n
+                    // units.
+                    let path = match &f.path {
+                        Some(p) => {
+                            self.alloc(1 + p.len() as u64)?;
+                            Value::list(
+                                p.iter()
+                                    .map(|s| match s {
+                                        crate::diag::PathStep::Key(k) => Value::str(k.clone()),
+                                        crate::diag::PathStep::Index(i) => Value::Num(*i as f64),
+                                    })
+                                    .collect(),
+                            )
+                        }
+                        None => Value::Null,
+                    };
                     let entries = vec![
                         (Str::Lent("code"), Value::Str(Str::Lent(f.code))),
                         (Str::Lent("data"), f.data.clone().unwrap_or(Value::Null)),
                         (Str::Lent("message"), Value::str(msg)),
-                        (Str::Lent("path"), Value::Null),
+                        (Str::Lent("path"), path),
                     ];
                     self.slots[slot] = Value::Map(Rc::new(MapVal(entries)));
                 }

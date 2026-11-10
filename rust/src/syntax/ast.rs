@@ -259,6 +259,64 @@ pub enum NodeKind {
     /// Kind 30. The parser stops at its first diagnostic and never builds a tree
     /// that holds `Bad`; the kind exists so that the numbering is whole.
     Bad,
+    /// Kind 31, package F4: `x as T` and `x is T`. `ty` is the program type,
+    /// as written; the compile resolves it.
+    As {
+        form: AsForm,
+        x: NodeId,
+        ty: Box<PType>,
+    },
+}
+
+/// The form of an `As` node (F4 2.7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AsForm {
+    As,
+    Is,
+}
+
+/// A program type (F4 2.1): `PType = PAlt { "|" PAlt }`, with its span from
+/// its first token to its last.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PType {
+    pub alts: Vec<PAlt>,
+    pub span: Span,
+}
+
+/// `PAlt = PPrim { "[" "]" }`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PAlt {
+    pub prim: PPrim,
+    pub suffixes: u32,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PPrim {
+    Null,
+    Bool,
+    Int,
+    Float,
+    String,
+    Any,
+    Never,
+    Lit(String),
+    Map(Box<PType>),
+    Record {
+        fields: Vec<PField>,
+        /// `None`: exact. `Some(None)`: `...`. `Some(Some(T))`: `...T`.
+        rest: Option<Option<Box<PType>>>,
+    },
+    /// A type name, with its span.
+    Name(String, Span),
+    Paren(Box<PType>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PField {
+    pub key: String,
+    pub optional: bool,
+    pub ty: PType,
 }
 
 impl NodeKind {
@@ -295,6 +353,7 @@ impl NodeKind {
             NodeKind::MapPat { .. } => 28,
             NodeKind::ListPat { .. } => 29,
             NodeKind::Bad => 30,
+            NodeKind::As { .. } => 31,
         }
     }
 
@@ -304,7 +363,7 @@ impl NodeKind {
     }
 }
 
-pub const KIND_NAMES: [&str; 30] = [
+pub const KIND_NAMES: [&str; 31] = [
     "Program",
     "Const",
     "Block",
@@ -335,6 +394,7 @@ pub const KIND_NAMES: [&str; 30] = [
     "MapPat",
     "ListPat",
     "Bad",
+    "As",
 ];
 
 #[derive(Clone, Debug, PartialEq)]

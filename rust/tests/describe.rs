@@ -41,7 +41,13 @@ fn check_text(env: &Env, source: &str, returns: Option<&str>) -> String {
 #[test]
 fn round_trip_over_the_suite() {
     let mut envs = 0;
-    for dir in ["core-run", "core-check", "host-types", "strings"] {
+    for dir in [
+        "core-run",
+        "core-check",
+        "host-types",
+        "strings",
+        "conversion",
+    ] {
         for path in case_files(&suite_dir().join(dir)) {
             let Ok(file) = load(&path) else { continue };
             for case in &file.cases {

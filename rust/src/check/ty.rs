@@ -688,6 +688,106 @@ pub fn has_any(t: &Ty) -> bool {
             .is_some_and(|r| r.fields.values().any(|f| has_any(&f.ty)) || has_any(&r.rest))
 }
 
+/// disjoint(A, B) (F4 6.2): true when no value conforms to both. Sound and
+/// not complete.
+pub fn disjoint(a: &Ty, b: &Ty) -> bool {
+    if a.is_never() || b.is_never() {
+        return true;
+    }
+    if a.any || b.any {
+        return false;
+    }
+    if (a.null && b.null) || (a.boolean && b.boolean) || (a.num.is_some() && b.num.is_some()) {
+        return false;
+    }
+    if !a.opaque.is_disjoint(&b.opaque) {
+        return false;
+    }
+    match (&a.str, &b.str) {
+        (Some(Strs::Lits(x)), Some(Strs::Lits(y))) if x.is_disjoint(y) => {}
+        (Some(_), Some(_)) => return false,
+        _ => {}
+    }
+    if a.list.is_some() && b.list.is_some() {
+        return false;
+    }
+    if let (Some(x), Some(y)) = (&a.map, &b.map) {
+        let field = |r: &Rec, k: &str| r.fields.get(k).map_or(r.rest.clone(), |f| f.ty.clone());
+        let required = x
+            .fields
+            .iter()
+            .chain(y.fields.iter())
+            .filter(|(_, f)| !f.optional)
+            .map(|(k, _)| k);
+        for k in required {
+            if disjoint(&field(x, k), &field(y, k)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    true
+}
+
+/// without(X, T) (F4 6.2): what is left of X when a value of type X is
+/// known not to conform to T.
+pub fn without(x: &Ty, t: &Ty) -> Ty {
+    if x.any {
+        return Ty::any();
+    }
+    let sure = |a: Ty| fits(&a, t) == Some(false);
+    let mut out = x.clone();
+    if out.null && sure(Ty::null()) {
+        out.null = false;
+    }
+    if out.boolean && sure(Ty::boolean()) {
+        out.boolean = false;
+    }
+    if let Some(n) = out.num {
+        let one = Ty {
+            num: Some(n),
+            ..Ty::default()
+        };
+        if sure(one) {
+            out.num = None;
+        }
+    }
+    if let Some(st) = out.str.clone() {
+        let one = Ty {
+            str: Some(st.clone()),
+            ..Ty::default()
+        };
+        if sure(one) {
+            out.str = None;
+        } else if let (Strs::Lits(l), Some(Strs::Lits(tl))) = (&st, &t.str) {
+            let left: BTreeSet<String> = l.difference(tl).cloned().collect();
+            out.str = if left.is_empty() {
+                None
+            } else {
+                Some(Strs::Lits(left))
+            };
+        }
+    }
+    if let Some(e) = &out.list {
+        if sure(Ty::list(e.as_ref().clone())) {
+            out.list = None;
+        }
+    }
+    if let Some(r) = &out.map {
+        if sure(Ty::rec(r.as_ref().clone())) {
+            out.map = None;
+        }
+    }
+    let opaque: BTreeSet<String> = out
+        .opaque
+        .iter()
+        .filter(|o| !sure(Ty::opaque(o)))
+        .cloned()
+        .collect();
+    out.opaque = opaque;
+    out
+}
+
 /// The values of a finite type (4.5), or `None` when it is not finite.
 pub fn finite_values(t: &Ty) -> Option<Vec<FiniteValue>> {
     if t.any || t.num.is_some() || t.list.is_some() || t.map.is_some() || !t.opaque.is_empty() {
@@ -827,11 +927,55 @@ pub const VAR_MARK: char = '\u{10FFFF}';
 
 /// The type of a signature's type text, for printing: each type variable
 /// stands as itself, after the opaque names and before `null`.
-pub fn sig_type(t: &text::Type, opaque: &[String]) -> Ty {
+pub fn sig_type<N: TypeNames + ?Sized>(t: &text::Type, opaque: &N) -> Ty {
     let sol: Solutions = ('A'..='Z')
         .map(|c| (c, Ty::opaque(&format!("{VAR_MARK}{c}"))))
         .collect();
     substitute(t, opaque, &sol)
+}
+
+/// The type names an environment gives (`03-host.md` 3.3.1; F4 3): its
+/// opaque types and, with F4, its named types.
+pub trait TypeNames {
+    fn lookup(&self, name: &str) -> Option<Ty>;
+}
+
+impl TypeNames for [String] {
+    fn lookup(&self, name: &str) -> Option<Ty> {
+        self.iter().any(|o| o == name).then(|| Ty::opaque(name))
+    }
+}
+
+impl<const N: usize> TypeNames for [String; N] {
+    fn lookup(&self, name: &str) -> Option<Ty> {
+        self.as_slice().lookup(name)
+    }
+}
+
+impl TypeNames for Vec<String> {
+    fn lookup(&self, name: &str) -> Option<Ty> {
+        self.as_slice().lookup(name)
+    }
+}
+
+/// The opaque types and the named types of an environment (F4 3.1). A named
+/// type's type is held once and shared.
+#[derive(Clone, Debug, Default)]
+pub struct Names {
+    pub opaque: Vec<String>,
+    pub named: Vec<(String, Ty)>,
+}
+
+impl TypeNames for Names {
+    fn lookup(&self, name: &str) -> Option<Ty> {
+        if self.opaque.iter().any(|o| o == name) {
+            return Some(Ty::opaque(name));
+        }
+        self.named
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, t)| t.clone())
+    }
 }
 
 /// The solutions of a signature's type variables, while a call is solved.
@@ -843,7 +987,7 @@ pub type Solutions = HashMap<char, Ty>;
 /// the message of `bad-type`.
 pub fn from_text(
     t: &text::Type,
-    opaque: &[String],
+    opaque: &(impl TypeNames + ?Sized),
     vars: Option<&Solutions>,
 ) -> Result<Ty, String> {
     let ty = convert(t, opaque, vars)?;
@@ -858,11 +1002,15 @@ pub fn from_text(
 
 /// A signature's type with its type variables replaced by their solutions
 /// (13.5). No depth limit: the checker tests the depth where 20.4 says.
-pub fn substitute(t: &text::Type, opaque: &[String], sol: &Solutions) -> Ty {
+pub fn substitute<N: TypeNames + ?Sized>(t: &text::Type, opaque: &N, sol: &Solutions) -> Ty {
     convert(t, opaque, Some(sol)).unwrap_or_default()
 }
 
-fn convert(t: &text::Type, opaque: &[String], vars: Option<&Solutions>) -> Result<Ty, String> {
+fn convert<N: TypeNames + ?Sized>(
+    t: &text::Type,
+    opaque: &N,
+    vars: Option<&Solutions>,
+) -> Result<Ty, String> {
     Ok(match t {
         text::Type::Null => Ty::null(),
         text::Type::Bool => Ty::boolean(),
@@ -897,12 +1045,10 @@ fn convert(t: &text::Type, opaque: &[String], vars: Option<&Solutions>) -> Resul
             };
             Ty::rec(Rec::new(fields, rest))
         }
-        text::Type::Name(n) => {
-            if !opaque.iter().any(|o| o == n) {
-                return Err(format!("{n} is not a declared opaque type"));
-            }
-            Ty::opaque(n)
-        }
+        text::Type::Name(n) => match opaque.lookup(n) {
+            Some(t) => t,
+            None => return Err(format!("{n} is not a declared opaque type or named type")),
+        },
         text::Type::Var(c) => match vars {
             Some(v) => v.get(c).cloned().unwrap_or_default(),
             None => return Err(format!("the type variable {c} stands outside a signature")),

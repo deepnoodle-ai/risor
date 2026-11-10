@@ -104,7 +104,8 @@ fn examples_of_section_15_that_do_not_parse() {
     check("try(1, 2)", UT, l1(1, 4));
     check("const match = 1; match", RW, l1(7, 12));
     check("a ?? b > c", UT, l1(8, 9));
-    check("x as int", UT, l1(3, 5));
+    // Core's `x as int` is an error; package F4 parses it (F4 10).
+    ok("x as int");
     // Core's example 54; package F3 reads it as a raw string (F3 10).
     ok("r\"a\"");
     check("\"a\\q\"", "bad-escape", l1(3, 5));
@@ -273,15 +274,19 @@ fn table_14_3_text_blocks_and_prefixed_literals() {
 
 #[test]
 fn table_14_3_as_and_is() {
-    check("x as T", UT, l1(3, 5));
-    check("x is T", UT, l1(3, 5));
+    // With package F4 (its chapter 10): a one-letter `T` is `bad-type-text`;
+    // the rows it keeps stay Core's.
+    check("x as T", "bad-type-text", l1(6, 7));
+    check("x is T", "bad-type-text", l1(6, 7));
     check("x as const", UT, l1(3, 5));
     check("x is not T", UT, l1(3, 5));
     check("!x as T", UT, l1(1, 2));
     check("!x is T", UT, l1(1, 2));
     check("a == !x is T", UT, l1(6, 7));
-    check("a + !x as T", UT, l1(8, 10));
-    check("(!x) as T", UT, l1(6, 8));
+    check("a + !x as T", "bad-type-text", l1(11, 12));
+    check("(!x) as T", "bad-type-text", l1(9, 10));
+    ok("(!x) as bool");
+    ok("x as int[] | null");
 }
 
 #[test]

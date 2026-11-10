@@ -41,6 +41,8 @@ pub mod code {
     pub const LITERAL_RANGE: &str = "literal-range";
     pub const NESTING_EXCEEDED: &str = "nesting-exceeded";
     pub const RESERVED_WORD: &str = "reserved-word";
+    /// Text where a program type is read that F4 2.1 to 2.3 do not accept.
+    pub const BAD_TYPE_TEXT: &str = "bad-type-text";
     pub const TEXT_BLOCK_OPEN: &str = "text-block-open";
     pub const TEXT_BLOCK_CLOSE: &str = "text-block-close";
     pub const TEXT_BLOCK_INDENT: &str = "text-block-indent";
@@ -97,6 +99,16 @@ pub struct Diagnostic {
     pub message: String,
     /// For `failed`: the second argument of `fail`, or null.
     pub data: Option<Box<crate::host::Data>>,
+    /// For `not-conforming` (F4 5.1): the path from the tested value to the
+    /// place of the failure (`03-host.md` 3.7.8).
+    pub path: Option<Box<Vec<PathStep>>>,
+}
+
+/// A step of a path (`03-host.md` 3.7.8): a key or an index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PathStep {
+    Key(String),
+    Index(usize),
 }
 
 impl Diagnostic {
@@ -116,6 +128,7 @@ impl Diagnostic {
             span: Some(src.line_span(range)),
             message: message.into(),
             data: None,
+            path: None,
         }
     }
 
@@ -129,6 +142,7 @@ impl Diagnostic {
             span: None,
             message: message.into(),
             data: None,
+            path: None,
         }
     }
 }

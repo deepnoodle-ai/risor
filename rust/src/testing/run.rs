@@ -333,6 +333,12 @@ fn build_env(
     for (name, schema, opts) in &case.schemas {
         b = b.var_schema(name, schema, *opts);
     }
+    for t in &case.types {
+        b = match t {
+            super::case::TypeDecl::Text(n, text) => b.named_type(n, text),
+            super::case::TypeDecl::Schema(n, schema, opts) => b.named_type_schema(n, schema, *opts),
+        };
+    }
     for o in &case.opaque {
         b = b.opaque(o);
     }
@@ -439,6 +445,9 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
     {
         return run_analysis_case(case, want);
     }
+    if case.conform.is_some() {
+        return run_conform_case(case);
+    }
     if !case.check {
         return run_case_with(case, false, true);
     }
@@ -448,7 +457,7 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
             f.phase == Phase::Check
                 && f.diagnostics
                     .iter()
-                    .any(|d| !code::STATIC.contains(&d.code.as_str()))
+                    .any(|d| !super::case::is_static(&d.code, case.conversion))
         }
     };
     let checked = run_case_with(case, true, true);
@@ -519,7 +528,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
             if f.phase == Phase::Check
                 && f.diagnostics
                     .iter()
-                    .any(|d| !code::STATIC.contains(&d.code.as_str())) =>
+                    .any(|d| !super::case::is_static(&d.code, case.conversion)) =>
         {
             return Verdict::Skip(
                 "expects a check code outside the static rules: needs the type checker".into(),
@@ -587,7 +596,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
             if let Some(t) = &want.ty {
                 let wt = crate::types::text::parse_type(t)
                     .ok()
-                    .and_then(|x| crate::check::ty::from_text(&x, &env.data().opaque, None).ok());
+                    .and_then(|x| crate::check::ty::from_text(&x, &env.data().names, None).ok());
                 if wt.as_ref() != Some(&got) {
                     diffs.push(Difference {
                         name: "type",
@@ -854,8 +863,14 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
             None => return false,
         }
     }
-    // Core raises no `not-conforming`, so no diagnostic has a path.
-    e.path.is_none()
+    // F4: the path of a `not-conforming` failure, step by step.
+    match &e.path {
+        None => true,
+        Some(want) => a
+            .path
+            .as_deref()
+            .is_some_and(|p| crate::json::same_data(&Json::Arr(want.clone()), &path_json(p))),
+    }
 }
 
 fn compare_failure(
@@ -946,6 +961,172 @@ fn analysis_text(case: &Case) -> Option<String> {
     }
 }
 
+/// What a conform case found (F4 9.3): `Err` is the `declare` failure.
+struct Conformed {
+    /// The conformance function's diagnostic, or none.
+    function: Option<Diagnostic>,
+    /// The run of `v as T`: pass with the value equal to the one supplied,
+    /// or its failure; and its steps.
+    as_run: Result<bool, Diagnostic>,
+    as_steps: u64,
+    /// The run of `v is T`, and its steps.
+    is_run: Result<bool, Diagnostic>,
+    is_steps: u64,
+}
+
+fn conform_case(case: &Case) -> Result<Conformed, Error> {
+    let (text, value) = case.conform.as_ref().expect("a conform case");
+    let mut interner = Interner::default();
+    let unmatched = Arc::new(AtomicBool::new(false));
+    let env = build_env(case, &mut interner, &unmatched)?;
+    let pt = env.ty(text)?;
+    let data = interner.data(value);
+    let function = pt.conform(&data).err();
+    let child = env.child().var("v", "any").build()?;
+    let mut vars = BTreeMap::new();
+    vars.insert("v".to_string(), data.clone());
+    let one = |form: &str| -> (Result<bool, Diagnostic>, u64) {
+        let p = match parse(&format!("v {form} {text}")).and_then(|p| compile(&child, p)) {
+            Ok(p) => p,
+            Err(e) => return (Err(e.diagnostics[0].clone()), 0),
+        };
+        let out = p.run(&vars);
+        let steps = out.usage.steps;
+        let r = match out.result {
+            Ok(Value::Bool(b)) if form == "is" => Ok(b),
+            Ok(v) if form == "as" => Ok(eq_data(&v, &data)),
+            Ok(_) => Ok(false),
+            Err(f) => Err(p.diagnostic(&f)),
+        };
+        (r, steps)
+    };
+    let (as_run, as_steps) = one("as");
+    let (is_run, is_steps) = one("is");
+    Ok(Conformed {
+        function,
+        as_run,
+        as_steps,
+        is_run,
+        is_steps,
+    })
+}
+
+fn path_json(p: &[crate::diag::PathStep]) -> Json {
+    Json::Arr(
+        p.iter()
+            .map(|s| match s {
+                crate::diag::PathStep::Key(k) => Json::Str(k.clone()),
+                crate::diag::PathStep::Index(i) => Json::Num(*i as f64),
+            })
+            .collect(),
+    )
+}
+
+impl Conformed {
+    /// The answer of each of the three ways, and whether they agree in
+    /// answer, path, message and steps.
+    fn agree(&self) -> bool {
+        let f = self.function.is_none();
+        let a = matches!(self.as_run, Ok(true));
+        let i = matches!(self.is_run, Ok(true));
+        let same_fail = match (&self.function, &self.as_run) {
+            (None, Ok(true)) => true,
+            (Some(d), Err(e)) => {
+                e.code == "not-conforming" && d.path == e.path && d.message == e.message
+            }
+            _ => false,
+        };
+        f == a && a == i && same_fail && self.is_run.is_ok() && self.as_steps == self.is_steps
+    }
+}
+
+/// A conform case (F4 9.3).
+fn run_conform_case(case: &Case) -> Verdict {
+    let c = match conform_case(case) {
+        Ok(c) => c,
+        Err(e) => {
+            let unmatched = AtomicBool::new(false);
+            return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, true);
+        }
+    };
+    let Expect::Result(ExpectResult {
+        conform: Some(want),
+        ..
+    }) = &case.expect
+    else {
+        return Verdict::Fail(vec![Difference {
+            name: "outcome",
+            expected: "a failure of phase declare".into(),
+            found: "a conform result".into(),
+        }]);
+    };
+    let mut diffs = Vec::new();
+    let answers = [
+        c.function.is_none(),
+        matches!(c.as_run, Ok(true)),
+        matches!(c.is_run, Ok(true)),
+    ];
+    let as_ok = match &c.as_run {
+        Ok(_) => true,
+        Err(d) => d.code == "not-conforming",
+    };
+    if answers.iter().any(|a| *a != want.conforms) || !as_ok || c.is_run.is_err() {
+        diffs.push(Difference {
+            name: "conforms",
+            expected: want.conforms.to_string(),
+            found: format!(
+                "function {}, as {:?}, is {:?}",
+                answers[0],
+                c.as_run.as_ref().map_err(show_diag),
+                c.is_run.as_ref().map_err(show_diag)
+            ),
+        });
+    }
+    if let Some(p) = &want.path {
+        let want = Json::Arr(p.clone());
+        let got_f = c
+            .function
+            .as_ref()
+            .and_then(|d| d.path.as_deref())
+            .map(|p| path_json(p));
+        let got_a = c
+            .as_run
+            .as_ref()
+            .err()
+            .and_then(|d| d.path.as_deref())
+            .map(|p| path_json(p));
+        let ok = |g: &Option<Json>| g.as_ref().is_some_and(|g| crate::json::same_data(&want, g));
+        if !ok(&got_f) || !ok(&got_a) {
+            diffs.push(Difference {
+                name: "path",
+                expected: crate::json::to_text(&want),
+                found: format!("{got_f:?} / {got_a:?}"),
+            });
+        }
+    }
+    if let Some(m) = &want.message {
+        let got_f = c.function.as_ref().map(|d| d.message.clone());
+        let got_a = c.as_run.as_ref().err().map(|d| d.message.clone());
+        if got_f.as_deref() != Some(m.as_str()) || got_a.as_deref() != Some(m.as_str()) {
+            diffs.push(Difference {
+                name: "message",
+                expected: m.clone(),
+                found: format!("{got_f:?} / {got_a:?}"),
+            });
+        }
+    }
+    if let Some(st) = want.steps {
+        if c.as_steps != st || c.is_steps != st {
+            diffs.push(Difference {
+                name: "steps",
+                expected: st.to_string(),
+                found: format!("as {}, is {}", c.as_steps, c.is_steps),
+            });
+        }
+    }
+    verdict(diffs)
+}
+
 /// An analysis case (F2 4.2): Read, Parse, Analyze, once.
 fn run_analysis_case(case: &Case, want: &Json) -> Verdict {
     let Some(text) = analysis_text(case) else {
@@ -1005,6 +1186,44 @@ pub fn outcome_line(case: &Case) -> String {
         if let Some(a) = analysis_text(case) {
             out.push_str(",\"analysis\":");
             out.push_str(&a);
+        }
+        out.push('}');
+        return out;
+    }
+    if case.conform.is_some() {
+        let mut out = String::from("{\"name\":");
+        out.push_str(&json_text(&case.name));
+        match conform_case(case) {
+            Err(e) => {
+                out.push_str(",\"phase\":\"declare\",\"diagnostics\":[");
+                let mut codes: Vec<&str> = e.diagnostics.iter().map(|d| d.code).collect();
+                codes.sort();
+                out.push_str(
+                    &codes
+                        .iter()
+                        .map(|c| format!("{{\"code\":\"{c}\"}}"))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                );
+                out.push(']');
+            }
+            Ok(c) => {
+                out.push_str(",\"phase\":null");
+                out.push_str(&format!(",\"conforms\":{}", c.function.is_none()));
+                if let Some(d) = &c.function {
+                    out.push_str(",\"path\":");
+                    out.push_str(&crate::json::to_text(&path_json(
+                        d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
+                    )));
+                    out.push_str(",\"message\":");
+                    out.push_str(&json_text(&d.message));
+                }
+                out.push_str(&format!(
+                    ",\"steps\":{},\"agree\":{}",
+                    c.as_steps,
+                    c.agree()
+                ));
+            }
         }
         out.push('}');
         return out;

@@ -230,7 +230,7 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f01-x.json", true),
         ("until-f02-errors.json", true),
         ("until-f03-strings.json", true),
-        ("until-f04-as-is.json", false),
+        ("until-f04-as-is.json", true),
         ("until-f08-parse-errors.json", false),
         ("until-f13-math.json", false),
         ("until-fx-a.json", false),
@@ -239,7 +239,7 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(risor::PACKAGES.len(), 3);
+    assert_eq!(risor::PACKAGES.len(), 4);
 }
 
 /// Ruling BA11: a package directory's `-check.json` file runs checked only.
@@ -257,4 +257,12 @@ fn check_files_of_package_directories() {
     assert!(!check_only_file(Path::new(
         "suite/strings/strings-raw.json"
     )));
+}
+
+/// Package F4: checked conversion (`f04-conversion.md` 9.4).
+#[test]
+fn conversion_package() {
+    let total = run(&suite_dir().join("conversion"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
 }

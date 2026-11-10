@@ -24,12 +24,13 @@
 /// The packages of the specification this build offers (`03-host.md` 3.11),
 /// in the order they are offered. This is the one list: the runner reads it
 /// to choose the `until-fNN-` files it does not run.
-pub const PACKAGES: [u32; 3] = [3, 1, 2];
+pub const PACKAGES: [u32; 4] = [3, 1, 2, 4];
 
 pub mod analysis;
 pub mod casemap;
 pub mod check;
 pub mod compile;
+pub mod conform;
 pub mod describe;
 pub mod diag;
 pub mod env;
