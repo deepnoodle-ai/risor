@@ -38,17 +38,13 @@ type Config struct {
 	// GoTypes are the Go types behind the variables declared from Go
 	// types, by name, for the typed layer (package F11). Nil turns it off.
 	GoTypes map[string]reflect.Type
-	// HeldConsts is the number of leading top-level const lines already
-	// evaluated in an earlier REPL entry (package F12 5 item 6); their
-	// slot values are supplied via HeldSlots and are not re-evaluated or
-	// re-charged.
-	HeldConsts int
-	// HeldSlots maps top-level const index (for indices < HeldConsts) to
-	// the values bound by that const line's pattern slots, in slot order.
-	HeldSlots [][]any
-	// CaptureConsts asks Run to return the bound slot values of each
-	// top-level const line, in order, for caching in a REPL session.
-	CaptureConsts bool
+	// Entry compiles the program as an entry of a REPL session (package F12
+	// 5 item 6). Its first len(Held) top-level const lines are the lines
+	// the session holds: they bind the values Held gives, by the slots of
+	// their patterns, and are not run, so they charge nothing. RunEntry
+	// then gives the values of every top-level const line.
+	Entry bool
+	Held  [][]any
 }
 
 // Program is a compiled program. It does not change, and several runs may
@@ -59,7 +55,7 @@ type Program struct {
 	root       code
 	nslots     int
 	nvars      int     // the variables the program reads, numbered densely
-	constSlots [][]int // for CaptureConsts: slot indices per top-level const
+	constSlots [][]int // for Entry: the slots of each top-level const line
 	pool       sync.Pool
 	// TypedPlans counts the reads the typed layer planned (package F11).
 	TypedPlans int
@@ -132,8 +128,8 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 	}()
 	var root code
 	var constSlots [][]int
-	if cfg.HeldConsts > 0 || cfg.CaptureConsts {
-		root, constSlots = c.rootBlock(prog.Consts, prog.Result)
+	if cfg.Entry {
+		root, constSlots = c.entry(prog.Consts, prog.Result)
 	} else {
 		root = c.block(prog.Consts, prog.Result)
 	}
@@ -143,14 +139,14 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 // Run runs the program. It returns the value or one run diagnostic, and the
 // usage in both cases.
 func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, d *diag.Diagnostic) {
-	result, usage, _, d = p.RunCaptured(ctx, vars)
+	result, usage, _, d = p.RunEntry(ctx, vars)
 	return result, usage, d
 }
 
-// RunCaptured runs the program like Run and, when Config.CaptureConsts is
-// true and the run succeeds, also returns the slot values of each top-level
-// const line in order.
-func (p *Program) RunCaptured(ctx context.Context, vars Vars) (result any, usage Usage, constVals [][]any, d *diag.Diagnostic) {
+// RunEntry runs the program as Run does. For a program compiled as an
+// entry (Config.Entry) that succeeds, it also gives the values of each
+// top-level const line, by the slots of its pattern.
+func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Usage, held [][]any, d *diag.Diagnostic) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -164,19 +160,13 @@ func (p *Program) RunCaptured(ctx context.Context, vars Vars) (result any, usage
 	var trace []diag.TraceEntry
 	if f != nil {
 		trace = r.trace(p.file)
-	} else if p.constSlots != nil {
-		constVals = make([][]any, len(p.constSlots))
+	} else if p.cfg.Entry {
+		held = make([][]any, len(p.constSlots))
 		for i, slots := range p.constSlots {
-			if len(slots) == 0 {
-				continue
-			}
-			row := make([]any, len(slots))
+			held[i] = make([]any, len(slots))
 			for j, s := range slots {
-				if s >= 0 {
-					row[j] = r.slots[s]
-				}
+				held[i][j] = r.slots[s]
 			}
-			constVals[i] = row
 		}
 	}
 	p.putRun(r)
@@ -185,7 +175,7 @@ func (p *Program) RunCaptured(ctx context.Context, vars Vars) (result any, usage
 		dd.Trace = trace
 		return nil, usage, nil, &dd
 	}
-	return v, usage, constVals, nil
+	return v, usage, held, nil
 }
 
 // getRun gives a run state from the program's pool, or a new one. A run
@@ -268,76 +258,61 @@ func (c *compiler) block(consts []*syntax.Const, result syntax.Node) code {
 	}
 }
 
-func (c *compiler) rootBlock(consts []*syntax.Const, result syntax.Node) (code, [][]int) {
-	cs := make([]code, 0, len(consts))
-	var constSlots [][]int
-	if c.cfg.CaptureConsts {
-		constSlots = make([][]int, len(consts))
+// entry compiles the top level of a REPL entry (Config.Entry). A held
+// lambda line is compiled, since calls name it, but not run.
+func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]int) {
+	held := c.cfg.Held
+	if len(held) > len(consts) {
+		panic("more held values than const lines")
 	}
+	slots := make([][]int, len(consts))
 	for i, k := range consts {
-		slots := c.patternSlots(k.Pattern)
-		if constSlots != nil {
-			constSlots[i] = slots
-		}
-		if i < c.cfg.HeldConsts {
+		slots[i] = c.patternSlots(k.Pattern)
+		if i < len(held) {
 			if lam, ok := k.Value.(*syntax.Lambda); ok {
 				c.lambdas[lam] = c.lambda(lam)
-				continue
 			}
-			var vals []any
-			if i < len(c.cfg.HeldSlots) {
-				vals = c.cfg.HeldSlots[i]
-			}
-			if len(slots) > 0 && len(vals) > 0 {
-				sCopy := slots
-				vCopy := vals
-				cs = append(cs, func(r *run) any {
-					for j, s := range sCopy {
-						if s >= 0 && j < len(vCopy) {
-							r.slots[s] = vCopy[j]
-						}
-					}
-					return nil
-				})
-			}
-			continue
 		}
-		cs = append(cs, c.constLine(k))
 	}
-	res := c.expr(result)
-	if len(cs) == 0 {
-		return res, constSlots
-	}
+	body := c.block(consts[len(held):], result)
 	return func(r *run) any {
-		for _, k := range cs {
-			k(r)
+		for i, vals := range held {
+			for j, s := range slots[i] {
+				r.slots[s] = vals[j]
+			}
 		}
-		return res(r)
-	}, constSlots
+		return body(r)
+	}, slots
 }
 
+// patternSlots are the slots a const pattern binds, in the order of the
+// pattern. A slot depends on the pattern alone, so a held line's slots
+// line up in every entry. _ has no slot and is left out.
 func (c *compiler) patternSlots(p syntax.Pattern) []int {
 	var out []int
+	add := func(key any) {
+		if s := c.slot(key); s >= 0 {
+			out = append(out, s)
+		}
+	}
 	switch p := p.(type) {
 	case *syntax.NamePat:
-		if !p.Discard {
-			out = append(out, c.slot(p))
-		}
+		add(p)
 	case *syntax.MapPat:
 		for _, f := range p.Fields {
-			out = append(out, c.slot(f))
+			add(f)
 		}
 		if p.Rest != nil {
-			out = append(out, c.slot(p.Rest))
+			add(p.Rest)
 		}
 	case *syntax.ListPat:
 		for _, e := range p.Elems {
-			if e.Name != nil && !e.Name.Discard {
-				out = append(out, c.slot(e.Name))
+			if e.Name != nil {
+				add(e.Name)
 			}
 		}
 		if p.Rest != nil {
-			out = append(out, c.slot(p.Rest))
+			add(p.Rest)
 		}
 	}
 	return out

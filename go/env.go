@@ -551,7 +551,7 @@ func (e *Env) checkClashes() {
 // implementation is no-implementation). The returned program may be run by
 // many goroutines at once. CheckCompile also gives the check's result.
 func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
-	p, _, err := e.compile(x, opts, false)
+	p, _, err := e.compile(x, opts, false, nil)
 	return p, err
 }
 
@@ -563,10 +563,12 @@ func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
 // variables (Vars) that hold the values it reads, so a host may compile
 // many programs in short-lived children and run them later.
 func (e *Env) CheckCompile(x *Expr, opts ...CheckOption) (*Program, *CheckResult, error) {
-	return e.compile(x, opts, true)
+	return e.compile(x, opts, true, nil)
 }
 
-func (e *Env) compile(x *Expr, opts []CheckOption, result bool) (*Program, *CheckResult, error) {
+// compile compiles x. entry, when not nil, adjusts the run's configuration
+// for a REPL entry.
+func (e *Env) compile(x *Expr, opts []CheckOption, result bool, entry func(*eval.Config)) (*Program, *CheckResult, error) {
 	c := e.cached()
 	if len(c.missing) > 0 {
 		return nil, nil, &Error{Diagnostics: c.missing}
@@ -580,6 +582,9 @@ func (e *Env) compile(x *Expr, opts []CheckOption, result bool) (*Program, *Chec
 	}
 	if cr != nil && !e.untyped { // F11: only a checked program
 		cfg.GoTypes = c.goTypes
+	}
+	if entry != nil {
+		entry(cfg)
 	}
 	p, err := eval.Compile(x.tree, x.file, res, cfg)
 	if err != nil {
@@ -622,51 +627,49 @@ func (p *Program) Measure(ctx context.Context, vars Vars) (any, Usage, error) {
 	}
 	v, u, d := p.p.Run(ctx, vars)
 	if d != nil {
-		if p.dynamic != nil {
-			checkedClass(d, p.dynamic, p.host, p.val)
-		}
-		return nil, u, &Error{Diagnostics: []Diagnostic{*d}}
+		return nil, u, p.fail(d)
 	}
 	return v, u, nil
+}
+
+// fail is the error of a run diagnostic, with its checked class.
+func (p *Program) fail(d *Diagnostic) error {
+	if p.dynamic != nil {
+		checkedClass(d, p.dynamic, p.host, p.val)
+	}
+	return &Error{Diagnostics: []Diagnostic{*d}}
 }
 
 // Expr returns the parsed program.
 func (p *Program) Expr() *Expr { return p.x }
 
-// RunEntry checks, compiles, and runs x as a REPL entry (package F12 5 item 6):
-// the first len(heldSlots) top-level const lines use their previously evaluated
-// slot values without re-evaluating or re-charging them, and on success all
-// top-level const lines' bound slot values are returned for the next entry.
-func (e *Env) RunEntry(ctx context.Context, x *Expr, vars Vars, heldSlots [][]any) (any, [][]any, error) {
-	c := e.cached()
-	if len(c.missing) > 0 {
-		return nil, nil, &Error{Diagnostics: c.missing}
-	}
-	cfg := new(eval.Config)
-	*cfg = c.cfg
-	res, cr, err := e.analyze(x, c.names, c.varNames, nil)
+// Held is the values of the const lines a REPL session holds (package F12
+// 5 item 6). The zero Held holds no line.
+type Held struct{ vals [][]any }
+
+// Lines is the number of const lines held.
+func (h Held) Lines() int { return len(h.vals) }
+
+// RunEntry checks, compiles and runs x as an entry of a REPL session that
+// holds h (package F12 5 item 6). The first h.Lines() const lines of x must
+// be the held lines, unchanged: they take the values h keeps, and are not
+// run, so the usage is the entry's own. On success it gives the value and
+// the values of all of x's const lines, to hold for the next entry.
+func (e *Env) RunEntry(ctx context.Context, x *Expr, vars Vars, h Held) (any, Held, error) {
+	p, _, err := e.compile(x, nil, false, func(cfg *eval.Config) {
+		cfg.Entry, cfg.Held = true, h.vals
+	})
 	if err != nil {
-		return nil, nil, err
-	}
-	if cr != nil && !e.untyped {
-		cfg.GoTypes = c.goTypes
-	}
-	cfg.HeldConsts = len(heldSlots)
-	cfg.HeldSlots = heldSlots
-	cfg.CaptureConsts = true
-	p, err := eval.Compile(x.tree, x.file, res, cfg)
-	if err != nil {
-		return nil, nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
+		return nil, Held{}, err
 	}
 	if vars == nil {
 		vars = Map(nil)
 	}
-	v, _, nextSlots, d := p.RunCaptured(ctx, vars)
+	v, _, held, d := p.p.RunEntry(ctx, vars)
 	if d != nil {
-		checkedClass(d, dynamicSpans(x, cr), hostSpans(x, cr), valueSpans(x, cr))
-		return nil, nil, &Error{Diagnostics: []Diagnostic{*d}}
+		return nil, Held{}, p.fail(d)
 	}
-	return v, nextSlots, nil
+	return v, Held{held}, nil
 }
 
 // TypedLayer turns the typed layer on or off (package F11). It is on by
