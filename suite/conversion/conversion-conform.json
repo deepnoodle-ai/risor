@@ -1,0 +1,2190 @@
+{
+ "cases": [
+  {
+   "name": "any: a value of any kind, nothing looked at",
+   "conform": {
+    "type": "any",
+    "value": [
+     1,
+     [
+      2,
+      [
+       3
+      ]
+     ]
+    ]
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 0
+   }
+  },
+  {
+   "name": "any: null",
+   "conform": {
+    "type": "any",
+    "value": null
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 0
+   }
+  },
+  {
+   "name": "never: a number",
+   "conform": {
+    "type": "never",
+    "value": 1
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected never, found 1",
+    "steps": 1
+   }
+  },
+  {
+   "name": "never: null",
+   "conform": {
+    "type": "never",
+    "value": null
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected never, found null",
+    "steps": 1
+   }
+  },
+  {
+   "name": "null: null conforms",
+   "conform": {
+    "type": "null",
+    "value": null
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "null: 0 does not",
+   "conform": {
+    "type": "null",
+    "value": 0
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected null, found 0",
+    "steps": 1
+   }
+  },
+  {
+   "name": "bool: true conforms",
+   "conform": {
+    "type": "bool",
+    "value": true
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "bool: \"true\" does not",
+   "conform": {
+    "type": "bool",
+    "value": "true"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected bool, found \"true\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "bool: false conforms",
+   "conform": {
+    "type": "bool",
+    "value": false
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "bool: 0 does not",
+   "conform": {
+    "type": "bool",
+    "value": 0
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected bool, found 0",
+    "steps": 1
+   }
+  },
+  {
+   "name": "string: \"\" conforms",
+   "conform": {
+    "type": "string",
+    "value": ""
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "string: null does not",
+   "conform": {
+    "type": "string",
+    "value": null
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected string, found null",
+    "steps": 1
+   }
+  },
+  {
+   "name": "string: \"x\" conforms",
+   "conform": {
+    "type": "string",
+    "value": "x"
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "string: 1 does not",
+   "conform": {
+    "type": "string",
+    "value": 1
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected string, found 1",
+    "steps": 1
+   }
+  },
+  {
+   "name": "float: 1.5 conforms",
+   "conform": {
+    "type": "float",
+    "value": 1.5
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "float: \"1.5\" does not",
+   "conform": {
+    "type": "float",
+    "value": "1.5"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected float, found \"1.5\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "float: 1e+300 conforms",
+   "conform": {
+    "type": "float",
+    "value": 1e+300
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "float: [1.0] does not",
+   "conform": {
+    "type": "float",
+    "value": [
+     1.0
+    ]
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected float, found list",
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: 3 conforms",
+   "conform": {
+    "type": "int",
+    "value": 3
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: 3.5 does not",
+   "conform": {
+    "type": "int",
+    "value": 3.5
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found 3.5",
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: 3.0 conforms",
+   "conform": {
+    "type": "int",
+    "value": 3.0
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: \"3\" does not",
+   "conform": {
+    "type": "int",
+    "value": "3"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found \"3\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: -9007199254740991 conforms",
+   "conform": {
+    "type": "int",
+    "value": -9007199254740991
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: 1e+20 does not",
+   "conform": {
+    "type": "int",
+    "value": 1e+20
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found 100000000000000000000",
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: 0 conforms",
+   "conform": {
+    "type": "int",
+    "value": 0
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: 9007199254740992 does not",
+   "conform": {
+    "type": "int",
+    "value": 9007199254740992
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found 9007199254740992",
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: negative zero reads as zero",
+   "conform": {
+    "type": "int",
+    "value": -0.0
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "int: a whole float of the largest magnitude",
+   "conform": {
+    "type": "int",
+    "value": 9007199254740991.0
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a literal set: a member",
+   "conform": {
+    "type": "\"pass\" | \"fail\"",
+    "value": "fail"
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a literal set: not a member",
+   "conform": {
+    "type": "\"pass\" | \"fail\"",
+    "value": "skip"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected \"fail\" | \"pass\", found \"skip\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a literal set: the case matters",
+   "conform": {
+    "type": "\"pass\" | \"fail\"",
+    "value": "PASS"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected \"fail\" | \"pass\", found \"PASS\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a literal set: a string with an escape",
+   "conform": {
+    "type": "\"a\\nb\"",
+    "value": "a\nb"
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a literal set: a raw string literal",
+   "conform": {
+    "type": "r\"a\\nb\"",
+    "value": "a\\nb"
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a literal set: no number",
+   "conform": {
+    "type": "\"1\"",
+    "value": 1
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected \"1\", found 1",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a literal set: a long member is charged its size",
+   "conform": {
+    "type": "\"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm\"",
+    "value": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm"
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "a literal set: a long non-member is charged its size",
+   "conform": {
+    "type": "\"a\" | \"b\"",
+    "value": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected \"a\" | \"b\", found \"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz...",
+    "steps": 4
+   }
+  },
+  {
+   "name": "a literal set: a supplementary character counts twice in the size",
+   "conform": {
+    "type": "\"a\"",
+    "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected \"a\", found \"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a union: the alternative of the value's kind",
+   "conform": {
+    "type": "int | string",
+    "value": "a"
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a union: no alternative of that kind",
+   "conform": {
+    "type": "int | string",
+    "value": true
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int | string, found true",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a union with null",
+   "conform": {
+    "type": "{a: int} | null",
+    "value": null
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a union with null: the record fails",
+   "conform": {
+    "type": "{a: int} | null",
+    "value": {
+     "a": "x"
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "a"
+    ],
+    "message": "expected int, found \"x\"",
+    "steps": 2
+   }
+  },
+  {
+   "name": "int | float is float",
+   "conform": {
+    "type": "int | float",
+    "value": 1.5
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a list: empty",
+   "conform": {
+    "type": "string[]",
+    "value": []
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a list: all conform",
+   "conform": {
+    "type": "string[]",
+    "value": [
+     "a",
+     "b"
+    ]
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "a list: the first failure",
+   "conform": {
+    "type": "string[]",
+    "value": [
+     "a",
+     1,
+     null
+    ]
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     1
+    ],
+    "message": "expected string, found 1",
+    "steps": 3
+   }
+  },
+  {
+   "name": "a list: of lists",
+   "conform": {
+    "type": "int[][]",
+    "value": [
+     [
+      1,
+      2
+     ],
+     [],
+     [
+      3
+     ]
+    ]
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 7
+   }
+  },
+  {
+   "name": "a list: of lists, failure inside",
+   "conform": {
+    "type": "int[][]",
+    "value": [
+     [
+      1,
+      2
+     ],
+     [],
+     [
+      3,
+      4.5
+     ]
+    ]
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     2,
+     1
+    ],
+    "message": "expected int, found 4.5",
+    "steps": 8
+   }
+  },
+  {
+   "name": "a list: of records",
+   "conform": {
+    "type": "{n: int}[]",
+    "value": [
+     {
+      "n": 1
+     },
+     {
+      "n": 2,
+      "m": 3
+     }
+    ]
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     1,
+     "m"
+    ],
+    "message": "the type does not allow key \"m\"",
+    "steps": 6
+   }
+  },
+  {
+   "name": "a list: of any",
+   "conform": {
+    "type": "any[]",
+    "value": [
+     1,
+     "a",
+     null,
+     [
+      [
+       []
+      ]
+     ]
+    ]
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "a list: not a list",
+   "conform": {
+    "type": "any[]",
+    "value": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected any[], found map",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a list: null is not a list",
+   "conform": {
+    "type": "int[]",
+    "value": null
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int[], found null",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a list: of nullable elements",
+   "conform": {
+    "type": "(int | null)[]",
+    "value": [
+     1,
+     null,
+     2
+    ]
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 4
+   }
+  },
+  {
+   "name": "a list: of a literal set",
+   "conform": {
+    "type": "(\"a\" | \"b\")[]",
+    "value": [
+     "a",
+     "b",
+     "c"
+    ]
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     2
+    ],
+    "message": "expected \"a\" | \"b\", found \"c\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "{}: the empty map",
+   "conform": {
+    "type": "{}",
+    "value": {}
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "{}: a map with a key",
+   "conform": {
+    "type": "{}",
+    "value": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "a"
+    ],
+    "message": "the type does not allow key \"a\"",
+    "steps": 2
+   }
+  },
+  {
+   "name": "{...}: any map",
+   "conform": {
+    "type": "{...}",
+    "value": {
+     "a": 1,
+     "b": [
+      2
+     ]
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "map<any>: any map",
+   "conform": {
+    "type": "map<any>",
+    "value": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "map<int>: the empty map",
+   "conform": {
+    "type": "map<int>",
+    "value": {}
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "map<int>: every value an int",
+   "conform": {
+    "type": "map<int>",
+    "value": {
+     "a": 1,
+     "b": 2
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "map<int>: the least failing key is reported",
+   "conform": {
+    "type": "map<int>",
+    "value": {
+     "c": "x",
+     "a": 1,
+     "b": "y"
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "b"
+    ],
+    "message": "expected int, found \"y\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "map<int>: a later key's walk is still charged",
+   "conform": {
+    "type": "map<int[]>",
+    "value": {
+     "a": "x",
+     "b": [
+      1,
+      2,
+      3
+     ]
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "a"
+    ],
+    "message": "expected int[], found \"x\"",
+    "steps": 6
+   }
+  },
+  {
+   "name": "map<int>: not a map",
+   "conform": {
+    "type": "map<int>",
+    "value": [
+     1
+    ]
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected map<int>, found list",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a record: exact, all present",
+   "conform": {
+    "type": "{id: string, n: int}",
+    "value": {
+     "id": "a",
+     "n": 1
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: exact, one more key",
+   "conform": {
+    "type": "{id: string, n: int}",
+    "value": {
+     "id": "a",
+     "n": 1,
+     "x": true
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "x"
+    ],
+    "message": "the type does not allow key \"x\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: exact, two more keys, the least reported",
+   "conform": {
+    "type": "{id: string}",
+    "value": {
+     "id": "a",
+     "z": 1,
+     "m": 2
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "m"
+    ],
+    "message": "the type does not allow key \"m\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: a required field missing",
+   "conform": {
+    "type": "{id: string, n: int}",
+    "value": {
+     "n": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "id"
+    ],
+    "message": "required field \"id\" is missing",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: a field of the wrong kind",
+   "conform": {
+    "type": "{id: string, n: int}",
+    "value": {
+     "id": 1,
+     "n": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "id"
+    ],
+    "message": "expected string, found 1",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: declared fields stop the walk before other keys",
+   "conform": {
+    "type": "{id: string}",
+    "value": {
+     "id": 1,
+     "a": 2
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "id"
+    ],
+    "message": "expected string, found 1",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: optional absent",
+   "conform": {
+    "type": "{id: string, note?: string}",
+    "value": {
+     "id": "a"
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: optional present",
+   "conform": {
+    "type": "{id: string, note?: string}",
+    "value": {
+     "id": "a",
+     "note": "x"
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: optional present with null",
+   "conform": {
+    "type": "{id: string, note?: string}",
+    "value": {
+     "id": "a",
+     "note": null
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "note"
+    ],
+    "message": "expected string, found null",
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: optional nullable present with null",
+   "conform": {
+    "type": "{id: string, note?: string | null}",
+    "value": {
+     "id": "a",
+     "note": null
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: required nullable absent",
+   "conform": {
+    "type": "{id: string, note: string | null}",
+    "value": {
+     "id": "a"
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "note"
+    ],
+    "message": "required field \"note\" is missing",
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: open, other keys not visited",
+   "conform": {
+    "type": "{id: string, ...}",
+    "value": {
+     "id": "a",
+     "x": [
+      1,
+      {
+       "y": 2
+      }
+     ]
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: open, a field missing",
+   "conform": {
+    "type": "{id: string, ...}",
+    "value": {
+     "x": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "id"
+    ],
+    "message": "required field \"id\" is missing",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: a typed rest, all pass",
+   "conform": {
+    "type": "{id: string, ...int}",
+    "value": {
+     "id": "a",
+     "x": 1,
+     "y": 2
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: a typed rest, two fail",
+   "conform": {
+    "type": "{id: string, ...int}",
+    "value": {
+     "id": "a",
+     "y": "q",
+     "x": "p"
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "x"
+    ],
+    "message": "expected int, found \"p\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: a typed rest is reached only after the fields",
+   "conform": {
+    "type": "{id: string, ...int}",
+    "value": {
+     "id": 1,
+     "y": "q"
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "id"
+    ],
+    "message": "expected string, found 1",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: a field of type any looked up",
+   "conform": {
+    "type": "{meta: any, ...}",
+    "value": {
+     "meta": null
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: a field of type any absent",
+   "conform": {
+    "type": "{meta: any, ...}",
+    "value": {}
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "meta"
+    ],
+    "message": "required field \"meta\" is missing",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: an optional field of type any absent",
+   "conform": {
+    "type": "{meta?: any}",
+    "value": {}
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: nested",
+   "conform": {
+    "type": "{a: {b: {c: int}}}",
+    "value": {
+     "a": {
+      "b": {
+       "c": 1
+      }
+     }
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: nested failure",
+   "conform": {
+    "type": "{a: {b: {c: int}}}",
+    "value": {
+     "a": {
+      "b": {
+       "c": "x"
+      }
+     }
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "a",
+     "b",
+     "c"
+    ],
+    "message": "expected int, found \"x\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: nested extra key",
+   "conform": {
+    "type": "{a: {b: int}}",
+    "value": {
+     "a": {
+      "b": 1,
+      "e": 2
+     }
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "a",
+     "e"
+    ],
+    "message": "the type does not allow key \"e\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: not a map",
+   "conform": {
+    "type": "{a: int}",
+    "value": "a"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {a: int}, found \"a\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "a record: keys in code point order, upper case first",
+   "conform": {
+    "type": "{a: int, Z: int}",
+    "value": {
+     "a": "x"
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "Z"
+    ],
+    "message": "required field \"Z\" is missing",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: keys in code point order, digits before letters",
+   "conform": {
+    "type": "{a: int, \"1\": int}",
+    "value": {
+     "a": "x"
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "1"
+    ],
+    "message": "required field \"1\" is missing",
+    "steps": 2
+   }
+  },
+  {
+   "name": "a record: a key past U+FFFF sorts after U+FF5E",
+   "conform": {
+    "type": "{\"😀\": int, \"～\": int}",
+    "value": {
+     "😀": "s",
+     "～": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "😀"
+    ],
+    "message": "expected int, found \"s\"",
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: other keys, least by code point past U+FFFF",
+   "conform": {
+    "type": "{}",
+    "value": {
+     "😀": 1,
+     "～": 2
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "～"
+    ],
+    "message": "the type does not allow key \"～\"",
+    "steps": 3
+   }
+  },
+  {
+   "name": "a record: the key of a lookup charges its size",
+   "conform": {
+    "type": "{\"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\": int}",
+    "value": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 4
+   }
+  },
+  {
+   "name": "a record: other keys taken together charge their size",
+   "conform": {
+    "type": "{}",
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2,
+     "cccccccccccccccccccccccccccccccc": 3
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "message": "the type does not allow key \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"",
+    "steps": 5
+   }
+  },
+  {
+   "name": "a record: a typed rest charges the size of its keys",
+   "conform": {
+    "type": "map<int>",
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2,
+     "cccccccccccccccccccccccccccccccc": 3
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 5
+   }
+  },
+  {
+   "name": "worked: a value that conforms",
+   "conform": {
+    "type": "{id: string, lines: {sku: string, qty: int}[], ...}",
+    "value": {
+     "id": "a",
+     "note": "x",
+     "lines": [
+      {
+       "sku": "a",
+       "qty": 1
+      },
+      {
+       "sku": "a",
+       "qty": 1
+      },
+      {
+       "sku": "a",
+       "qty": 1
+      }
+     ]
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 12
+   }
+  },
+  {
+   "name": "worked: the second line fails at qty",
+   "conform": {
+    "type": "{id: string, lines: {sku: string, qty: int}[], ...}",
+    "value": {
+     "id": "a",
+     "note": "x",
+     "lines": [
+      {
+       "sku": "a",
+       "qty": 1
+      },
+      {
+       "sku": "b",
+       "qty": "2"
+      },
+      {
+       "sku": "a",
+       "qty": 1
+      }
+     ]
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "lines",
+     1,
+     "qty"
+    ],
+    "message": "expected int, found \"2\"",
+    "steps": 8
+   }
+  },
+  {
+   "name": "worked: an exact record with two other keys",
+   "conform": {
+    "type": "{id: string}",
+    "value": {
+     "id": "a",
+     "note": "x",
+     "z": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "note"
+    ],
+    "message": "the type does not allow key \"note\"",
+    "steps": 4
+   }
+  },
+  {
+   "name": "opaque: a value with the name",
+   "conform": {
+    "type": "Time",
+    "value": {
+     "$opaque": {
+      "type": "Time",
+      "id": 1
+     }
+    }
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "opaque: a value with another name",
+   "conform": {
+    "type": "Time",
+    "value": {
+     "$opaque": {
+      "type": "Stamp",
+      "id": 1
+     }
+    }
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected Time, found opaque",
+    "steps": 1
+   }
+  },
+  {
+   "name": "opaque: a string is not opaque",
+   "conform": {
+    "type": "Time",
+    "value": "2026-01-01"
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected Time, found \"2026-01-01\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "opaque: either of two names",
+   "conform": {
+    "type": "Time | Stamp",
+    "value": {
+     "$opaque": {
+      "type": "Stamp",
+      "id": 2
+     }
+    }
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "opaque: a list of opaque values",
+   "conform": {
+    "type": "Time[]",
+    "value": [
+     {
+      "$opaque": {
+       "type": "Time",
+       "id": 1
+      }
+     },
+     {
+      "$opaque": {
+       "type": "Stamp",
+       "id": 1
+      }
+     }
+    ]
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [
+     1
+    ],
+    "message": "expected Time, found opaque",
+    "steps": 3
+   }
+  },
+  {
+   "name": "opaque: under any",
+   "conform": {
+    "type": "any",
+    "value": {
+     "$opaque": {
+      "type": "Time",
+      "id": 1
+     }
+    }
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": true,
+    "steps": 0
+   }
+  },
+  {
+   "name": "opaque: in a record field",
+   "conform": {
+    "type": "{at: Time | null}",
+    "value": {
+     "at": {
+      "$opaque": {
+       "type": "Time",
+       "id": 3
+      }
+     }
+    }
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": true,
+    "steps": 2
+   }
+  },
+  {
+   "name": "opaque: is not a map",
+   "conform": {
+    "type": "{...}",
+    "value": {
+     "$opaque": {
+      "type": "Time",
+      "id": 1
+     }
+    }
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected map<any>, found opaque",
+    "steps": 1
+   }
+  },
+  {
+   "name": "opaque: is not null",
+   "conform": {
+    "type": "null",
+    "value": {
+     "$opaque": {
+      "type": "Time",
+      "id": 1
+     }
+    }
+   },
+   "opaque": [
+    "Time",
+    "Stamp"
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected null, found opaque",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: true",
+   "conform": {
+    "type": "{n: int}",
+    "value": true
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found true",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: false",
+   "conform": {
+    "type": "{n: int}",
+    "value": false
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found false",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: null",
+   "conform": {
+    "type": "{n: int}",
+    "value": null
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found null",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: 0.1",
+   "conform": {
+    "type": "{n: int}",
+    "value": 0.1
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found 0.1",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: -0.5",
+   "conform": {
+    "type": "{n: int}",
+    "value": -0.5
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found -0.5",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: 1e+21",
+   "conform": {
+    "type": "{n: int}",
+    "value": 1e+21
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found 1e+21",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: 123456789012345680000",
+   "conform": {
+    "type": "{n: int}",
+    "value": 123456789012345680000
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found 123456789012345680000",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: \"q\"",
+   "conform": {
+    "type": "{n: int}",
+    "value": "q"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found \"q\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: []",
+   "conform": {
+    "type": "{n: int}",
+    "value": []
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {n: int}, found list",
+    "steps": 1
+   }
+  },
+  {
+   "name": "found: {}",
+   "conform": {
+    "type": "int",
+    "value": {}
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found map",
+    "steps": 1
+   }
+  },
+  {
+   "name": "message: a long type is cut",
+   "conform": {
+    "type": "{alpha: int, bravo: int, charlie: int, delta: int, echo: int, foxtrot: int}",
+    "value": []
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {alpha: int, bravo: int, charlie: int, delta: int, echo: int,..., found list",
+    "steps": 1
+   }
+  },
+  {
+   "name": "message: a long string is cut",
+   "conform": {
+    "type": "int",
+    "value": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy...",
+    "steps": 1
+   }
+  },
+  {
+   "name": "message: a string of 62 code points in its JSON form is whole",
+   "conform": {
+    "type": "int",
+    "value": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found \"wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww\"",
+    "steps": 1
+   }
+  },
+  {
+   "name": "message: a string of 65 code points in its JSON form is cut",
+   "conform": {
+    "type": "int",
+    "value": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+   },
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected int, found \"wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww...",
+    "steps": 1
+   }
+  },
+  {
+   "name": "message: a long missing key is cut",
+   "conform": {
+    "type": "{\"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm\": int}",
+    "value": {}
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm"
+    ],
+    "message": "required field \"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm... is missing",
+    "steps": 3
+   }
+  },
+  {
+   "name": "named: a value that conforms",
+   "conform": {
+    "type": "Order",
+    "value": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 1
+      }
+     ]
+    }
+   },
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "expect": {
+    "conforms": true,
+    "steps": 6
+   }
+  },
+  {
+   "name": "named: the first failure is in the second line",
+   "conform": {
+    "type": "{id: string, lines: Line[], ...}",
+    "value": {
+     "id": "a",
+     "note": 1,
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 1
+      },
+      {
+       "sku": "y",
+       "qty": "2"
+      }
+     ]
+    }
+   },
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [
+     "lines",
+     1,
+     "qty"
+    ],
+    "message": "expected int, found \"2\"",
+    "steps": 8
+   }
+  },
+  {
+   "name": "named: a message prints the type by its structure",
+   "conform": {
+    "type": "Line",
+    "value": 5
+   },
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [],
+    "message": "expected {qty: int, sku: string}, found 5",
+    "steps": 1
+   }
+  },
+  {
+   "name": "named: a list of a named type",
+   "conform": {
+    "type": "Line[]",
+    "value": [
+     {
+      "sku": "x",
+      "qty": 1,
+      "z": 0
+     }
+    ]
+   },
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [
+     0,
+     "z"
+    ],
+    "message": "the type does not allow key \"z\"",
+    "steps": 5
+   }
+  },
+  {
+   "name": "named: a named type and null",
+   "conform": {
+    "type": "Order | null",
+    "value": null
+   },
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "expect": {
+    "conforms": true,
+    "steps": 1
+   }
+  },
+  {
+   "name": "declare: a type the grammar refuses",
+   "conform": {
+    "type": "number",
+    "value": 1
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: a type variable",
+   "conform": {
+    "type": "T",
+    "value": 1
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: an undeclared name",
+   "conform": {
+    "type": "Order",
+    "value": 1
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: two records",
+   "conform": {
+    "type": "{a: int} | {b: int}",
+    "value": 1
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: type text deeper than 64",
+   "conform": {
+    "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]",
+    "value": 1
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: a type deeper than 64 through a name",
+   "conform": {
+    "type": "Deep[]",
+    "value": 1
+   },
+   "types": [
+    {
+     "name": "Deep",
+     "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: a key written twice",
+   "conform": {
+    "type": "{a: int, a: int}",
+    "value": 1
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: a named type of the case is refused",
+   "conform": {
+    "type": "int",
+    "value": 1
+   },
+   "types": [
+    {
+     "name": "Bad",
+     "type": "nope"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "declare: a type over the size limit",
+   "conform": {
+    "type": "Exact[]",
+    "value": 1
+   },
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  }
+ ]
+}

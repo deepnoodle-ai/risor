@@ -2093,3 +2093,4 @@ Its chapter is the home of its rules.
 | F3, string forms | The types of the new string nodes, and raw strings in type text | `spec/packages/f03-strings.md` 8 |
 | F6, opt-in groups | The signatures of the groups' entries and the types of the constants; `renders` on `json.stringify` | `spec/packages/f06-groups.md` 10 |
 | F13, math functions | The signatures of its eleven entries | `spec/packages/f13-math.md` |
+| F4, checked conversion | The types of `x as T` and `x is T`, the facts of `is`, the site of `as`, named types in type text, `untagged-union` for a program type with two records | `spec/packages/f04-conversion.md` 3 and 6 |

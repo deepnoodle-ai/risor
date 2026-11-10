@@ -829,3 +829,4 @@ own forms and changes no row above. Its chapter is the home of those rows.
 | F3, string forms | A raw string and a text block with no interpolation: 0 steps, 0 units. A text block with an interpolation: as a template | `spec/packages/f03-strings.md` 7 |
 | F6, opt-in groups | The cost of each entry of the four groups, in the form of `04-library.md`. Two formula symbols, `c` and `u`, for `json.parse` | `spec/packages/f06-groups.md` 5 |
 | F13, math functions | Each entry: 0 steps and 0 units beyond the call | `spec/packages/f13-math.md` |
+| F4, checked conversion | The conformance walk of `as` and `is`: its steps for each value visited and each key, its place in the depth count, the units of an error value's path | `spec/packages/f04-conversion.md` 4 and 5 |

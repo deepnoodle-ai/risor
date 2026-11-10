@@ -1,0 +1,1353 @@
+{
+ "cases": [
+  {
+   "name": "a name of one upper-case letter is a type variable",
+   "source": "1",
+   "types": [
+    {
+     "name": "T",
+     "type": "int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a name that starts with a lower-case letter",
+   "source": "1",
+   "types": [
+    {
+     "name": "order",
+     "type": "int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a name with a hyphen",
+   "source": "1",
+   "types": [
+    {
+     "name": "Or-der",
+     "type": "int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a name that starts with _",
+   "source": "1",
+   "types": [
+    {
+     "name": "_Order",
+     "type": "int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty name",
+   "source": "1",
+   "types": [
+    {
+     "name": "",
+     "type": "int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a name with a character that is not ASCII",
+   "source": "1",
+   "types": [
+    {
+     "name": "Ordér",
+     "type": "int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "two named types of one name",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "int"
+    },
+    {
+     "name": "Order",
+     "type": "string"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "name-clash"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a named type and an opaque type of one name",
+   "source": "1",
+   "types": [
+    {
+     "name": "Time",
+     "type": "int"
+    }
+   ],
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "name-clash"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a word that is not a type",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "{a: number}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a ? suffix",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "int?"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "empty text",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": ""
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text deeper than 64",
+   "source": "1",
+   "types": [
+    {
+     "name": "Deep",
+     "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key written twice",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "{a: int, a: int}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a type variable in the text",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "{a: T}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "condition is not a type",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "condition"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a signature is not a type",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "(x: int) => int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template is not a string",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "`a`"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a named type cannot name itself",
+   "source": "1",
+   "types": [
+    {
+     "name": "Node",
+     "type": "{next: Node | null}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a named type cannot name a later one",
+   "source": "1",
+   "types": [
+    {
+     "name": "Pair",
+     "type": "Item[]"
+    },
+    {
+     "name": "Item",
+     "type": "int"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a name nothing declares",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "{line: Missing}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "two records in a named type",
+   "source": "1",
+   "types": [
+    {
+     "name": "Either",
+     "type": "{a: int} | {b: int}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "map<T> and a record are two records",
+   "source": "1",
+   "types": [
+    {
+     "name": "Either",
+     "type": "map<int> | {a: int}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "two named records joined",
+   "source": "1",
+   "types": [
+    {
+     "name": "A1",
+     "type": "{a: int}"
+    },
+    {
+     "name": "B1",
+     "type": "{b: int}"
+    },
+    {
+     "name": "Either",
+     "type": "A1 | B1"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a record and a named record joined",
+   "source": "1",
+   "types": [
+    {
+     "name": "A1",
+     "type": "{a: int}"
+    },
+    {
+     "name": "Either",
+     "type": "A1 | {b: int} | null"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a type deeper than 64 once names are replaced",
+   "source": "1",
+   "types": [
+    {
+     "name": "D1",
+     "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"
+    },
+    {
+     "name": "D2",
+     "type": "D1[]"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "depth adds up through two names",
+   "source": "1",
+   "types": [
+    {
+     "name": "D1",
+     "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"
+    },
+    {
+     "name": "D2",
+     "type": "{a: D1}"
+    },
+    {
+     "name": "D3",
+     "type": "D2[][][][][][][][][][][][][][][][][][][][][][][][]"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a named type is not a method's receiver",
+   "source": "1",
+   "types": [
+    {
+     "name": "Order",
+     "type": "{id: int}"
+    }
+   ],
+   "methods": {
+    "Order.total": "() => int"
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-signature"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a name of two characters",
+   "source": "x as Id",
+   "types": [
+    {
+     "name": "Id",
+     "type": "string"
+    }
+   ],
+   "vars": {
+    "x": "a"
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a name with digits and _",
+   "source": "x as Order_2x",
+   "types": [
+    {
+     "name": "Order_2x",
+     "type": "int"
+    }
+   ],
+   "vars": {
+    "x": 2
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": 2,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a literal set by name",
+   "source": "match x as Kind { \"bug\" => 1, \"feature\" => 2 }",
+   "types": [
+    {
+     "name": "Kind",
+     "type": "\"bug\" | \"feature\""
+    }
+   ],
+   "vars": {
+    "x": "feature"
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": 2,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a name for any costs nothing",
+   "source": "x as Blob",
+   "types": [
+    {
+     "name": "Blob",
+     "type": "any"
+    }
+   ],
+   "vars": {
+    "x": [
+     1
+    ]
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": [
+     1
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a name for never",
+   "source": "x is Nothing",
+   "types": [
+    {
+     "name": "Nothing",
+     "type": "never"
+    }
+   ],
+   "vars": {
+    "x": null
+   },
+   "env": "{x: any}",
+   "reject": [],
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a named type that uses an earlier one",
+   "source": "(x as Order).lines[0].qty",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "vars": {
+    "x": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 2
+      }
+     ]
+    }
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": 2,
+    "steps": 9,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a named type fails as its structure",
+   "source": "x as Order",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "vars": {
+    "x": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x"
+      }
+     ]
+    }
+   },
+   "env": "{x: any}",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "path": [
+       "lines",
+       0,
+       "qty"
+      ],
+      "message": "required field \"qty\" is missing",
+      "class": "value"
+     }
+    ],
+    "steps": 5,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a message prints a named type by its structure",
+   "source": "x as Line",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    }
+   ],
+   "vars": {
+    "x": 7
+   },
+   "env": "{x: any}",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ],
+      "path": [],
+      "message": "expected {qty: int, sku: string}, found 7",
+      "class": "value"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a named type with an opaque field",
+   "source": "x as Stamped",
+   "types": [
+    {
+     "name": "Stamped",
+     "type": "{at: Time}"
+    }
+   ],
+   "vars": {
+    "x": {
+     "at": {
+      "$opaque": {
+       "type": "Time",
+       "id": 1
+      }
+     }
+    }
+   },
+   "env": "{x: any}",
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "value": {
+     "at": {
+      "$opaque": {
+       "type": "Time",
+       "id": 1
+      }
+     }
+    },
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a variable declared with a named type",
+   "source": "o.lines[0].qty",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "vars": {
+    "o": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 2
+      }
+     ]
+    }
+   },
+   "env": "{o: Order}",
+   "expect": {
+    "value": 2,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a variable's type names a type that names another",
+   "source": "o.n",
+   "types": [
+    {
+     "name": "Num",
+     "type": "int"
+    },
+    {
+     "name": "Wrap",
+     "type": "{n: Num}"
+    }
+   ],
+   "vars": {
+    "o": {
+     "n": 1
+    }
+   },
+   "env": "{o: Wrap}",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a host function's signature with named types",
+   "source": "total(x as Order)",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "vars": {
+    "x": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 2
+      }
+     ]
+    }
+   },
+   "env": "{x: any}",
+   "functions": {
+    "total": {
+     "type": "(o: Order) => int",
+     "calls": [
+      {
+       "result": 2
+      }
+     ]
+    }
+   },
+   "expect": {
+    "value": 2,
+    "steps": 7,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the expected result by name",
+   "source": "x as Order",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "vars": {
+    "x": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 2
+      }
+     ]
+    }
+   },
+   "env": "{x: any}",
+   "returns": "Order",
+   "expect": {
+    "value": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 2
+      }
+     ]
+    },
+    "steps": 6,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a type name and a variable name never clash",
+   "source": "Order as Order",
+   "types": [
+    {
+     "name": "Order",
+     "type": "int"
+    }
+   ],
+   "vars": {
+    "Order": 3
+   },
+   "env": "{Order: any}",
+   "expect": {
+    "value": 3,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a named type or null",
+   "source": "x as Line | null",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    }
+   ],
+   "vars": {
+    "x": null
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw string in a named type",
+   "source": "x as Path",
+   "types": [
+    {
+     "name": "Path",
+     "type": "r\"C:\\new\""
+    }
+   ],
+   "vars": {
+    "x": "C:\\new"
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": "C:\\new",
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a named type of depth 64 is accepted",
+   "source": "1",
+   "types": [
+    {
+     "name": "Deep",
+     "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"
+    }
+   ],
+   "vars": {},
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list of two named records joins them",
+   "source": "x as (A1[] | B1[])",
+   "types": [
+    {
+     "name": "A1",
+     "type": "{a: int}"
+    },
+    {
+     "name": "B1",
+     "type": "{b: int}"
+    }
+   ],
+   "vars": {
+    "x": [
+     {
+      "a": 1
+     },
+     {
+      "b": 2
+     }
+    ]
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": [
+     {
+      "a": 1
+     },
+     {
+      "b": 2
+     }
+    ],
+    "steps": 7,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a doubling chain of named types, size exactly 100,000",
+   "source": "x is Exact",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "vars": {
+    "x": 1
+   },
+   "env": "{x: any}",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a named type of size 100,001",
+   "source": "1",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Over",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, h: int, l: A15, r: A14}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a doubling chain past the size limit",
+   "source": "1",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "A16",
+     "type": "{l: A15, r: A15}"
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a variable's type over the size limit through a name",
+   "source": "1",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "env": "{x: {p: Exact}}",
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  }
+ ]
+}

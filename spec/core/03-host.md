@@ -1339,8 +1339,7 @@ above. A package's chapter is the home of its rules: this table only points.
 | F1, host types | The declaration of a variable's type by JSON Schema (a row of 3.3.1), the environment's description, the contract for a type taken from a host type. The case field `schemas`, the result field `description` | `spec/packages/f01-host-types.md` |
 | F2, templates and analysis | The stages of template parsing and of analysis. The case field `template`, the result field `analysis` | `spec/packages/f02-templates-analysis.md` |
 | F3, string forms | Nothing in the host contract. Its cases use Core's format | `spec/packages/f03-strings.md` |
-| Named types | The declaration of a named type, and the case field `types` | Not written yet |
-| Checked conversion | The conformance function, and the case of the second kind, with the field `conform` | Not written yet |
+| F4, checked conversion | The declaration of a named type, and the case field `types`. The conformance function, and the case of the second kind, with the field `conform` | `spec/packages/f04-conversion.md` |
 | F6, opt-in groups | The declaration that turns a group on: `json`, `time`, `math`, `base64`. The case field `groups`, and the result field `json`, which compares the binding's JSON text of a result (3.2.4) | `spec/packages/f06-groups.md` |
 | F13, math functions | Nothing in the host contract: eleven entries of the group `math` | `spec/packages/f13-math.md` |
 | Errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings. The `parse` and `check` templates of the catalog | Not written yet |

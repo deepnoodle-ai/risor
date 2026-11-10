@@ -1,0 +1,507 @@
+{
+ "types": [
+  {
+   "name": "Order",
+   "type": "{id: string, total: float, ...}"
+  }
+ ],
+ "cases": [
+  {
+   "name": "11.1 an open record lets another key pass",
+   "source": "body as {id: string, ...}",
+   "vars": {
+    "body": {
+     "id": "a",
+     "x": 1
+    }
+   },
+   "expect": {
+    "value": {
+     "id": "a",
+     "x": 1
+    },
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.2 an exact record refuses another key",
+   "source": "body as {id: string}",
+   "vars": {
+    "body": {
+     "id": "a",
+     "x": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ],
+      "path": [
+       "x"
+      ],
+      "message": "the type does not allow key \"x\"",
+      "class": "value"
+     }
+    ],
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.3 a list of any is not visited",
+   "source": "body is any[]",
+   "vars": {
+    "body": [
+     1,
+     "a"
+    ]
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.4 3.0 is an int",
+   "source": "body as int",
+   "vars": {
+    "body": 3.0
+   },
+   "expect": {
+    "value": 3,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.5 1.5 is not an int",
+   "source": "body as int",
+   "vars": {
+    "body": 1.5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "path": [],
+      "message": "expected int, found 1.5",
+      "class": "value"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.6 absent is not null",
+   "source": "body as {id: string, note?: string}",
+   "vars": {
+    "body": {
+     "id": "a",
+     "note": null
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       36
+      ],
+      "path": [
+       "note"
+      ],
+      "message": "expected string, found null",
+      "class": "value"
+     }
+    ],
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.7 err.path of a named type",
+   "source": "try { body as Order } catch (err) { err.path }",
+   "vars": {
+    "body": {
+     "id": 1
+    }
+   },
+   "expect": {
+    "value": [
+     "id"
+    ],
+    "steps": 4,
+    "allocated": 12
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.8 is narrows to a named type",
+   "source": "body is Order ? body.total : 0",
+   "expect": {
+    "type": "float",
+    "sites": []
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.9 a read through as",
+   "source": "(body as Order).total",
+   "expect": {
+    "type": "float",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       2,
+       1,
+       15
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.10 a test that cannot pass",
+   "source": "n as string",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.11 a test that always passes",
+   "source": "n is float",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.12 is narrows both branches",
+   "source": "v is int ? v + 1 : v.trim()",
+   "expect": {
+    "type": "int | string",
+    "sites": []
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.13 a literal set for a match",
+   "source": "match body as \"bug\" | \"feature\" { \"bug\" => 1, \"feature\" => 2 }",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       7,
+       1,
+       32
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.14 an opaque value against its name",
+   "source": "t is Time",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.15 an undeclared type name",
+   "source": "body as Item",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       9,
+       1,
+       13
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.16 two records",
+   "source": "body as {a: int} | {b: int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       9,
+       1,
+       28
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.17 a type variable",
+   "source": "body as T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.18 an operator after a type",
+   "source": "x as int + 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.19 a ! operand",
+   "source": "!body is int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "9.7 a valid order",
+   "source": "(body as Order).lines[0].qty",
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "vars": {
+    "body": {
+     "id": "a",
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 2
+      }
+     ]
+    }
+   },
+   "expect": {
+    "value": 2,
+    "steps": 9,
+    "allocated": 0
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "9.7 the first failure is in the second line",
+   "conform": {
+    "type": "Order",
+    "value": {
+     "id": "a",
+     "note": 1,
+     "lines": [
+      {
+       "sku": "x",
+       "qty": 1
+      },
+      {
+       "sku": "y",
+       "qty": "2"
+      }
+     ]
+    }
+   },
+   "types": [
+    {
+     "name": "Line",
+     "type": "{sku: string, qty: int}"
+    },
+    {
+     "name": "Order",
+     "type": "{id: string, lines: Line[], ...}"
+    }
+   ],
+   "expect": {
+    "conforms": false,
+    "path": [
+     "lines",
+     1,
+     "qty"
+    ],
+    "message": "expected int, found \"2\"",
+    "steps": 8
+   }
+  }
+ ]
+}

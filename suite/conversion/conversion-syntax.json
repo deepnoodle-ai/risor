@@ -1,0 +1,2406 @@
+{
+ "cases": [
+  {
+   "name": "as then the end of input",
+   "source": "x as",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       5,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as then a closing parenthesis",
+   "source": "(x as)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as then a comma in an argument list",
+   "source": "f(x as, 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as then a right parenthesis after a space",
+   "source": "x as )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is then a number: compare with ==",
+   "source": "x is 3",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is then true",
+   "source": "x is true",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is then false",
+   "source": "x is false",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "number is not a type word",
+   "source": "x as number",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "boolean is not a type word",
+   "source": "x as boolean",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "object is not a type word",
+   "source": "x as object",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "one upper-case letter is a type variable",
+   "source": "x as T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a type variable inside a list type",
+   "source": "x as T[]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unknown cannot stand after as",
+   "source": "x as unknown",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "condition cannot stand after is",
+   "source": "x is condition",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word where a type is expected: nil",
+   "source": "x as nil",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word where a type is expected: is",
+   "source": "x is is",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the word _ is not a type",
+   "source": "x as _",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lower-case name is not a type",
+   "source": "x as order",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a word that starts with _ is not a type name",
+   "source": "x as _Order",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a minus sign where a type is expected",
+   "source": "x as -1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bang where a type is expected",
+   "source": "x is !int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template where a type is expected",
+   "source": "x as `a`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template with an interpolation where a type is expected",
+   "source": "x as `${1}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block where a type is expected",
+   "source": "x as \"\"\"\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a raw text block where a type is expected",
+   "source": "x as r\"\"\"\n  a\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a list literal where a type is expected",
+   "source": "x as [int]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a question mark where a type is expected",
+   "source": "x is ? 1 : 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bar then the end of input",
+   "source": "x as int |",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       11,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bar then a bar",
+   "source": "x as int | | string",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bar then a lower-case name",
+   "source": "x as int | y",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bar then a number",
+   "source": "x is \"a\" | 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "map without its angle bracket",
+   "source": "x is map int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       10,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "map then the end of input",
+   "source": "x is map",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       9,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "map< with nothing inside",
+   "source": "x as map<>",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "map<int then the end of input",
+   "source": "x as map<int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       13,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "map<int closed by >= is an error: put a space",
+   "source": "x is map<int>=1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       13,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "map<int closed by ]",
+   "source": "x is map<int]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a parenthesized type with no closing parenthesis",
+   "source": "x as (int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       10,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a parenthesized type closed by ]",
+   "source": "x as (int]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "empty parentheses where a type is expected",
+   "source": "x as ()",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a record field with no colon",
+   "source": "x as {a int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       9,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a question mark then a comma",
+   "source": "x as {a?, b: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two fields with no comma",
+   "source": "x as {a: int b: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       14,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a field after the rest",
+   "source": "x as {..., a: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a field after a typed rest",
+   "source": "x as {a: int, ...string, b: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       26,
+       1,
+       27
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a number as a key of a record type",
+   "source": "x as {1: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a template as a key of a record type",
+   "source": "x as {`a`: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       7,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block as a key of a record type",
+   "source": "x as {\"\"\"\n  a\n  \"\"\": int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       7,
+       3,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a record type with no closing brace",
+   "source": "x as {a: int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       13,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a field with no type",
+   "source": "x as {a: }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key written twice",
+   "source": "x as {a: int, a: string}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       15,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key written twice, once as a string",
+   "source": "x as {\"a\": int, a: string}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       17,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key written twice, the second with an escape",
+   "source": "x as {a: int, \"\\u0061\": string}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       15,
+       1,
+       23
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key written twice, the second a raw string",
+   "source": "x as {\"a\\\\b\": int, r\"a\\b\": string}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       20,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key written twice in a nested record",
+   "source": "x as {a: {b: int, b: int}}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       19,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key written twice, after a reserved-word key",
+   "source": "x as {if: int, if: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       16,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the rest twice",
+   "source": "x as {..., ...}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       12,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a question mark on the rest",
+   "source": "x as {...?}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "x as const keeps Core's span at as",
+   "source": "x as const",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "x is not T keeps Core's span at is",
+   "source": "x is not string",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "x is const is a type error at const",
+   "source": "x is const",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "x as not is a type error at not",
+   "source": "x as not",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "x as const after an operand in parentheses",
+   "source": "(a + b) as const",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "!x is int is an error at the !",
+   "source": "!x is int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "!x as a valid type is an error at the !",
+   "source": "!x as {a: int}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "!!x is int is an error at the first !",
+   "source": "!!x is int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "!-x is int is an error at the !",
+   "source": "!-x is int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "== then !x is int fails at the !",
+   "source": "a == !x is int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the ! rule is found before the type is read",
+   "source": "!x is )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the ! rule at a second as",
+   "source": "x as int as !y",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "+ after a type",
+   "source": "x as int + 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "- after a type",
+   "source": "x as int - 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "* after a type",
+   "source": "x as int * 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "/ after a type",
+   "source": "x as float / 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "% after a type",
+   "source": "x as int % 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "** after a type",
+   "source": "x as int ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "?? after a type",
+   "source": "x as int ?? 0",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as after ??",
+   "source": "x ?? y as int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is after ??",
+   "source": "x ?? y is int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a field read after a type",
+   "source": "x as Order.f",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an optional field read after a type",
+   "source": "x as int?.f",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an optional index after a type",
+   "source": "x as int?.[0]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an index after a type",
+   "source": "x as int[0]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an index after a list type",
+   "source": "x as int[][1]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a [ after a type, then the end of input",
+   "source": "x as int[",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an index after a space",
+   "source": "x as int[] [0]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a call after a type",
+   "source": "x as Order(1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a brace after a type outside a match",
+   "source": "x as int {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a ? suffix is a conditional with no else",
+   "source": "x as int?",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a stray character in a type",
+   "source": "x as @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a stray character after a valid type comes first",
+   "source": "x as int[0] @",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated string in a type",
+   "source": "x as \"a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       6,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a token no rule accepts, in a type",
+   "source": "x as ===",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the block token in a type",
+   "source": "x as '''a'''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a prefixed literal in a type",
+   "source": "x as R\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block's own code comes first",
+   "source": "x as \"\"\"a\"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "text-block-open",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bad escape in a type's string",
+   "source": "x as \"\\q\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an earlier syntax error comes first",
+   "source": ") as int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an error in the subject comes first",
+   "source": "1 + as int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as binds tighter than >: (x as int) > 3",
+   "source": "x as int > 3",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "as groups with < from the left: (3 < x) as bool",
+   "source": "3 < x as bool",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "== takes a test as its right operand",
+   "source": "y == x as int",
+   "vars": {
+    "x": 2,
+    "y": 2
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "== takes a test as its left operand",
+   "source": "x as int == y",
+   "vars": {
+    "x": 2,
+    "y": 2
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "&& takes a test as its left operand",
+   "source": "x is int && y",
+   "vars": {
+    "x": 1,
+    "y": "a"
+   },
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "|| ends the type",
+   "source": "x is int || y",
+   "vars": {
+    "x": "a",
+    "y": 7
+   },
+   "expect": {
+    "value": 7,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "? ends the type",
+   "source": "x is string ? 1 : 2",
+   "vars": {
+    "x": "s"
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a ? after a list type ends it",
+   "source": "x is int[] ? 1 : 2",
+   "vars": {
+    "x": [
+     1
+    ]
+   },
+   "expect": {
+    "value": 1,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "| continues the type: int | null",
+   "source": "x is int | null",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "as then as: (x as any) as int",
+   "source": "x as any as int",
+   "vars": {
+    "x": 4
+   },
+   "expect": {
+    "value": 4,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "as then is",
+   "source": "x as float is int",
+   "vars": {
+    "x": 4
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "in then as: (a in b) as bool",
+   "source": "x in y as bool",
+   "vars": {
+    "x": 1,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "as then in: (x as int) in [1, 2]",
+   "source": "x as int in [1, 2]",
+   "vars": {
+    "x": 2
+   },
+   "expect": {
+    "value": true,
+    "steps": 3,
+    "allocated": 3
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "the : of a conditional ends the type",
+   "source": "c ? x as int : 0",
+   "vars": {
+    "c": true,
+    "x": 3
+   },
+   "expect": {
+    "value": 3,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "the , of a map literal ends the type",
+   "source": "{k: x as int, j: 1}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": {
+     "k": 3,
+     "j": 1
+    },
+    "steps": 1,
+    "allocated": 5
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "the ] of a list literal ends the type",
+   "source": "[x as int, 2]",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": [
+     3,
+     2
+    ],
+    "steps": 1,
+    "allocated": 3
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "the ] of an index ends the type",
+   "source": "[10, 20][x as int]",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 20,
+    "steps": 2,
+    "allocated": 3
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "the ) of an argument list ends the type",
+   "source": "len(x as string)",
+   "vars": {
+    "x": "abc"
+   },
+   "expect": {
+    "value": 3,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a type in an interpolation",
+   "source": "`${x as int}`",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": "5",
+    "steps": 2,
+    "allocated": 1
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a type in a spread",
+   "source": "[...x as int[]]",
+   "vars": {
+    "x": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": [
+     1,
+     2
+    ],
+    "steps": 5,
+    "allocated": 3
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a type in a lambda body",
+   "source": "[1, 2].map(e => e as int)",
+   "vars": {},
+   "expect": {
+    "value": [
+     1,
+     2
+    ],
+    "steps": 8,
+    "allocated": 6
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a record type is not a map",
+   "source": "x as {a: int} == {a: 1}",
+   "vars": {
+    "x": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 4,
+    "allocated": 3
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "{} after as is the empty exact record",
+   "source": "x as {}",
+   "vars": {
+    "x": {}
+   },
+   "expect": {
+    "value": {},
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "{...} after is is the open record",
+   "source": "x is {...}",
+   "vars": {
+    "x": {
+     "q": 1
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a > after map<int> is a comparison",
+   "source": "(x as map<int>) == {a: 1}",
+   "vars": {
+    "x": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 4,
+    "allocated": 3
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "map<map<int>> ends with two >",
+   "source": "x as map<map<int>>",
+   "vars": {
+    "x": {
+     "a": {
+      "b": 1
+     }
+    }
+   },
+   "expect": {
+    "value": {
+     "a": {
+      "b": 1
+     }
+    },
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "parentheses in a type",
+   "source": "x as ((int | string))[]",
+   "vars": {
+    "x": [
+     1,
+     "a"
+    ]
+   },
+   "expect": {
+    "value": [
+     1,
+     "a"
+    ],
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a list of lists",
+   "source": "x as int[][]",
+   "vars": {
+    "x": [
+     [
+      1
+     ],
+     [
+      2,
+      3
+     ]
+    ]
+   },
+   "expect": {
+    "value": [
+     [
+      1
+     ],
+     [
+      2,
+      3
+     ]
+    ],
+    "steps": 6,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "white space between [ and ]",
+   "source": "x as int[ ]",
+   "vars": {
+    "x": [
+     1
+    ]
+   },
+   "expect": {
+    "value": [
+     1
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a comment inside a type",
+   "source": "x as /* a type */ int // done",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a type over several lines",
+   "source": "x as {\n  a: int,\n  b?: string,\n}",
+   "vars": {
+    "x": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": {
+     "a": 1
+    },
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a raw string in a type",
+   "source": "x as r\"a\\b\"",
+   "vars": {
+    "x": "a\\b"
+   },
+   "expect": {
+    "value": "a\\b",
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a single-quoted string in a type",
+   "source": "x as 'a' | 'b'",
+   "vars": {
+    "x": "b"
+   },
+   "expect": {
+    "value": "b",
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "reserved words as keys of a record type",
+   "source": "x as {if: int, \"a-b\": string}",
+   "vars": {
+    "x": {
+     "if": 1,
+     "a-b": "s"
+    }
+   },
+   "expect": {
+    "value": {
+     "if": 1,
+     "a-b": "s"
+    },
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a match subject that ends with a type",
+   "source": "match x as \"a\" | \"b\" { \"a\" => 1, \"b\" => 2 }",
+   "vars": {
+    "x": "b"
+   },
+   "expect": {
+    "value": 2,
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a test whose subject is in parentheses",
+   "source": "(x) as int",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a test of a parenthesized test",
+   "source": "(x as int) as int",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 1,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a test inside !( )",
+   "source": "!(x is int)",
+   "vars": {
+    "x": "a"
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "(!x) is bool",
+   "source": "(!x) is bool",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "reject": [],
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a minus operand needs no parentheses",
+   "source": "-x as int",
+   "vars": {
+    "x": 2
+   },
+   "expect": {
+    "value": -2,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a test as a const value",
+   "source": "const n = x as int; n + 1",
+   "vars": {
+    "x": 2
+   },
+   "expect": {
+    "value": 3,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  },
+  {
+   "name": "a test as a default",
+   "source": "const f = (a = x as int) => a; f()",
+   "vars": {
+    "x": 2
+   },
+   "expect": {
+    "value": 2,
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{x: any, y: any, c: any}"
+  }
+ ]
+}

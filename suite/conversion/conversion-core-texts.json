@@ -1,0 +1,119 @@
+[
+ {
+  "name": "x as T",
+  "source": "x as int",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "undefined-name",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "x is T",
+  "source": "x is string",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "undefined-name",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a number as T",
+  "source": "1 as int",
+  "expect": {
+   "value": 1,
+   "steps": 1,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a parenthesized operand as T",
+  "source": "(x) as T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-type-text",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a field read is T",
+  "source": "x.a is T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-type-text",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "T1: + then !x as T fails at the as",
+  "source": "a + !x as T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-type-text",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "T1: < then !x as T fails at the as",
+  "source": "a < !x as T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-type-text",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ]
+    }
+   ]
+  }
+ }
+]

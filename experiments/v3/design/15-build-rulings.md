@@ -342,3 +342,25 @@ Its source is `06` 2.8.
 | R135 | `base64.decode`: one alphabet in a text, leftover bits zero, no white space, padding absent or complete, units of the result as written. |
 | R136 | `json.parse`: a number that reads as an infinity is `number-range`; failures in the order grammar, first bad number, depth; the text's nesting counts as a walk. A `not-json` failure gives no position, since Core's template is fixed. |
 | R137 | A group is turned on by a declaration. A name of a group that is on clashes with a variable or a host function; of a group that is off, it does not. A group's entry is removed by its full name. A constant is a record with `type` and `value`. The result field `json` compares a binding's JSON text of a result. |
+
+### 14.2 F4, checked conversion
+
+The chapter is `spec/packages/f04-conversion.md`, with 617 cases in
+`suite/conversion/`. Plan `07` is its source. Seven cases were removed from
+`suite/core-run/parse-follow-on.json` under R98.
+
+| # | Ruling |
+| --- | --- |
+| R138 | `untagged-union` arrives with F4, as a static diagnostic for a program type with two records; F5 turns the tagged ones into results. `untagged-union` and `check-limit` are static at a program type, so a compile with the static rules alone refuses them too. |
+| R139 | The conformance walk charges by Core's key rule: a declared field's lookup costs 1 plus the size of its key, a string tested against a literal set costs its size. Plan `04` A.3 charged 1 for each value and nothing for text. A list or a map is always entered, an empty one too, and the depth test comes before the value's step. |
+| R140 | **Under `\|\|`, two `is` tests of one path combine:** after `v is int \|\| v is string`, `v` is `int \| string`. Plan `03` gave no fact there. |
+| R141 | A compile with the static rules alone still resolves every named type and program type in full. |
+| R142 | The description gains a key `types` only when an environment has a named type. A conform case may hold opaque values. `x as const`, `x is not T` and the texts that need parentheses stay Core's errors, for F8 to replace. |
+
+### 14.3 A hole in Core found on the way
+
+| # | Ruling |
+| --- | --- |
+| R143 | **The size of a type is at most 100,000,** counted as the type written out with no sharing. A type is held with shared parts, and forty `const` lines that each make a record of two copies of the one before give a type of 2^40 nodes; joining two such types did not return. Past the limit an expression is `check-limit` at a node the chapter names for each construct, and a declared type is `bad-type`. The test is constant work: the size is kept with the type. F1 (a schema's `$ref`) and F4 (a named type) share parts in declarations and cite the same limit. |
+| R144 | A site of class `index`, `divide`, `value` or `host` covers a failure only on its own node; the wider reach (an operand, a receiver, an argument, a callback's body) is for `dynamic` sites. |
+| R145 | **Child environments.** There are two spaces of names, values and types. A child's declaration replaces the inherited declaration of the same name in the same space, whatever kind it is, and whole: a redeclared opaque type has only the child's methods. The clash rules then apply to the child's whole environment. |

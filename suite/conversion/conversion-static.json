@@ -1,0 +1,994 @@
+{
+ "types": [
+  {
+   "name": "Line",
+   "type": "{sku: string, qty: int}"
+  },
+  {
+   "name": "Order",
+   "type": "{id: string, total: float, ...}"
+  },
+  {
+   "name": "Deep",
+   "type": "int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"
+  }
+ ],
+ "cases": [
+  {
+   "name": "a type name nothing declares",
+   "source": "blob as Missing",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       9,
+       1,
+       16
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "each undeclared name is reported",
+   "source": "blob is {a: Missing, b: Other}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       13,
+       1,
+       20
+      ]
+     },
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       25,
+       1,
+       30
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "an undeclared name stops the test of records",
+   "source": "blob as Missing | {a: int} | {b: int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       9,
+       1,
+       16
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "an undeclared name anywhere stops the test of records",
+   "source": "blob as {x: {a: int} | {b: int}, y: Missing}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       37,
+       1,
+       44
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "an undeclared value name and an undeclared type name",
+   "source": "zz as Missing",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     },
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       7,
+       1,
+       14
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "an undeclared name in a lambda body",
+   "source": "xs.map(x => x as Nope)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       18,
+       1,
+       22
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "type names among other static diagnostics",
+   "source": "{a: blob as Missing, a: 1}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "duplicate-key",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     },
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       13,
+       1,
+       20
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "the static rules alone report an undeclared type name",
+   "source": "blob as Missing",
+   "check": false,
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       9,
+       1,
+       16
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "two records in a type",
+   "source": "blob as {a: int} | {b: int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       9,
+       1,
+       28
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "two records and null: the whole type",
+   "source": "blob as {a: int} | {b: int} | null",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       9,
+       1,
+       35
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a record in parentheses is still a record of the type",
+   "source": "blob as ({a: int}) | {b: int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       9,
+       1,
+       30
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "the innermost type that holds the records",
+   "source": "blob as ({a: int} | {b: int})",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       10,
+       1,
+       29
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "two records inside a list type",
+   "source": "blob as ({a: int} | {b: int} | null)[]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       10,
+       1,
+       36
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "each type with two records is reported",
+   "source": "blob as {x: {a: int} | {b: int}, y: {c: int} | map<int>}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       13,
+       1,
+       32
+      ]
+     },
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       37,
+       1,
+       56
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "two named records",
+   "source": "blob as Order | Line",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       9,
+       1,
+       21
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "map<T> is a record",
+   "source": "blob as map<int> | {a: int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       9,
+       1,
+       28
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "two records after is",
+   "source": "blob is {a: int} | {b: int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       9,
+       1,
+       28
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a type deeper than 64",
+   "source": "blob as int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "check-limit",
+      "span": [
+       1,
+       9,
+       1,
+       142
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a named type makes a short text deep",
+   "source": "blob as Deep[]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "check-limit",
+      "span": [
+       1,
+       9,
+       1,
+       15
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a named type in a record field",
+   "source": "blob as {a: Deep}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "check-limit",
+      "span": [
+       1,
+       9,
+       1,
+       18
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a type with two records is not tested for depth",
+   "source": "blob as ({a: int} | {b: int})[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "untagged-union",
+      "span": [
+       1,
+       10,
+       1,
+       29
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a type with an undeclared name is not tested for depth",
+   "source": "blob is Missing[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "undefined-name",
+      "span": [
+       1,
+       9,
+       1,
+       16
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a type of depth 64 by a name",
+   "source": "blob is Deep",
+   "vars": {
+    "blob": 1
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a type of depth 64 written out",
+   "source": "blob is int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]",
+   "vars": {
+    "blob": 1
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a list of two record types is one type",
+   "source": "blob as {a: int}[] | {b: int}[]",
+   "vars": {
+    "blob": [
+     {
+      "a": 1
+     }
+    ]
+   },
+   "expect": {
+    "value": [
+     {
+      "a": 1
+     }
+    ],
+    "steps": 4,
+    "allocated": 0
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a named record or null",
+   "source": "blob as Order | null",
+   "vars": {
+    "blob": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "an opaque name is a type name",
+   "source": "blob is Time",
+   "vars": {
+    "blob": {
+     "$opaque": {
+      "type": "Time",
+      "id": 1
+     }
+    }
+   },
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a program type over the size limit",
+   "source": "blob as {p: Exact}",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "check-limit",
+      "span": [
+       1,
+       9,
+       1,
+       19
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a list of a type at the size limit",
+   "source": "blob is Exact[]",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "check-limit",
+      "span": [
+       1,
+       9,
+       1,
+       16
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "null added to a type at the size limit",
+   "source": "blob is Exact | null",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "check-limit",
+      "span": [
+       1,
+       9,
+       1,
+       21
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "the static rules alone test the size of a program type",
+   "source": "blob is {p: Exact}",
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "check": false,
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "check-limit",
+      "span": [
+       1,
+       9,
+       1,
+       19
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  },
+  {
+   "name": "a program type of size exactly 100,000",
+   "source": "blob is Exact",
+   "vars": {
+    "blob": {}
+   },
+   "types": [
+    {
+     "name": "A0",
+     "type": "int"
+    },
+    {
+     "name": "A1",
+     "type": "{l: A0, r: A0}"
+    },
+    {
+     "name": "A2",
+     "type": "{l: A1, r: A1}"
+    },
+    {
+     "name": "A3",
+     "type": "{l: A2, r: A2}"
+    },
+    {
+     "name": "A4",
+     "type": "{l: A3, r: A3}"
+    },
+    {
+     "name": "A5",
+     "type": "{l: A4, r: A4}"
+    },
+    {
+     "name": "A6",
+     "type": "{l: A5, r: A5}"
+    },
+    {
+     "name": "A7",
+     "type": "{l: A6, r: A6}"
+    },
+    {
+     "name": "A8",
+     "type": "{l: A7, r: A7}"
+    },
+    {
+     "name": "A9",
+     "type": "{l: A8, r: A8}"
+    },
+    {
+     "name": "A10",
+     "type": "{l: A9, r: A9}"
+    },
+    {
+     "name": "A11",
+     "type": "{l: A10, r: A10}"
+    },
+    {
+     "name": "A12",
+     "type": "{l: A11, r: A11}"
+    },
+    {
+     "name": "A13",
+     "type": "{l: A12, r: A12}"
+    },
+    {
+     "name": "A14",
+     "type": "{l: A13, r: A13}"
+    },
+    {
+     "name": "A15",
+     "type": "{l: A14, r: A14}"
+    },
+    {
+     "name": "Exact",
+     "type": "{a: A9, b: A8, c: A6, d: A4, e: A1, f: int, g: int, l: A15, r: A14}"
+    }
+   ],
+   "expect": {
+    "value": false,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{blob: any, xs: (int | string)[], n: int}"
+  }
+ ]
+}

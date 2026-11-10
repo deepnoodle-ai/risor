@@ -1,0 +1,1528 @@
+{
+ "types": [
+  {
+   "name": "Line",
+   "type": "{sku: string, qty: int}"
+  },
+  {
+   "name": "Order",
+   "type": "{id: string, total: float, ...}"
+  }
+ ],
+ "cases": [
+  {
+   "name": "an untyped subject is a value site",
+   "source": "blob as int",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a subject that surely fits: no site",
+   "source": "n as int",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "int surely fits float: no site, and the type is float",
+   "source": "n as float",
+   "expect": {
+    "type": "float",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "float against int: neither sure nor disjoint",
+   "source": "f as int",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "int against string: never-conforms",
+   "source": "n as string",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "string against int: never-conforms",
+   "source": "s as int",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a literal set narrowed by as",
+   "source": "role as \"admin\" | \"owner\"",
+   "expect": {
+    "type": "\"admin\" | \"owner\"",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       26
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a literal set that shares no string",
+   "source": "role as \"x\" | \"y\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a literal set surely fits string",
+   "source": "role as string",
+   "expect": {
+    "type": "string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an empty list widened",
+   "source": "[] as string[]",
+   "expect": {
+    "type": "string[]",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an empty map stated as a record with an optional field",
+   "source": "{} as {a?: int}",
+   "expect": {
+    "type": "{a?: int}",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an exact record surely fits an open one",
+   "source": "o as {id: int, ...}",
+   "expect": {
+    "type": "{id: int, ...}",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "records with a required key of disjoint types",
+   "source": "o as {id: string}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an exact record against a required key it lacks",
+   "source": "o as {name: string}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       20
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an exact record against two optional keys",
+   "source": "o as {id?: int, name?: string}",
+   "expect": {
+    "type": "{id?: int, name?: string}",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an optional key of a disjoint type, present in the subject",
+   "source": "o as {id?: string}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       19
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an open record against another key",
+   "source": "w as {b: string, ...}",
+   "expect": {
+    "type": "{b: string, ...}",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       22
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "never: nothing conforms",
+   "source": "blob as never",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "any: everything surely fits any",
+   "source": "blob as any",
+   "expect": {
+    "type": "any",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "any: an int as any",
+   "source": "n as any",
+   "expect": {
+    "type": "any",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a subject of type never: nothing reported",
+   "source": "fail(\"x\") as int",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a nullable subject against its non-null part",
+   "source": "mv as int",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a nullable subject against its own type",
+   "source": "mv as int | null",
+   "expect": {
+    "type": "int | null",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "two list types are never disjoint",
+   "source": "xs as int[]",
+   "expect": {
+    "type": "int[]",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a list against a string",
+   "source": "xs as string",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       13
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an opaque value against its name",
+   "source": "t as Time",
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "type": "Time",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}"
+  },
+  {
+   "name": "an opaque value against a string",
+   "source": "t as string",
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}"
+  },
+  {
+   "name": "a nullable opaque value",
+   "source": "ts as Time",
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "type": "Time",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}"
+  },
+  {
+   "name": "a read through a named type",
+   "source": "(blob as Order).total",
+   "expect": {
+    "type": "float",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       2,
+       1,
+       15
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a field a named record cannot have",
+   "source": "(blob as Line).nope",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-field",
+      "span": [
+       1,
+       16,
+       1,
+       20
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an open named record: an unlisted field is any",
+   "source": "(blob as Order).nope",
+   "expect": {
+    "type": "any",
+    "sites": [
+     {
+      "class": "dynamic",
+      "span": [
+       1,
+       2,
+       1,
+       15
+      ]
+     },
+     {
+      "class": "value",
+      "span": [
+       1,
+       2,
+       1,
+       15
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "the type of as is the named type's structure",
+   "source": "blob as Order",
+   "expect": {
+    "type": "{id: string, total: float, ...}",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a match covers a subject that a test narrowed",
+   "source": "match blob as \"bug\" | \"feature\" { \"bug\" => 1, \"feature\" => 2 }",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       7,
+       1,
+       32
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a match on a tested subject must cover it",
+   "source": "match role as \"admin\" | \"owner\" { \"admin\" => 1 }",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "non-exhaustive",
+      "span": [
+       1,
+       1,
+       1,
+       49
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a float index made an int by as",
+   "source": "xs[(len(xs) / 2) as int]",
+   "expect": {
+    "type": "int | string",
+    "sites": [
+     {
+      "class": "index",
+      "span": [
+       1,
+       1,
+       1,
+       25
+      ]
+     },
+     {
+      "class": "value",
+      "span": [
+       1,
+       4,
+       1,
+       24
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is on an untyped subject: bool, no site",
+   "source": "blob is int",
+   "expect": {
+    "type": "bool",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is that always passes",
+   "source": "n is int",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is that never passes",
+   "source": "n is string",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-falsy",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is that always passes, with constant-condition taken out",
+   "source": "n is int",
+   "reject": [],
+   "expect": {
+    "type": "bool",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is any always passes",
+   "source": "blob is any",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is never never passes",
+   "source": "blob is never",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-falsy",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is on a subject of type never: nothing reported",
+   "source": "fail(\"x\") is int",
+   "expect": {
+    "type": "bool",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is on an opaque value against its name",
+   "source": "t is Time",
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}"
+  },
+  {
+   "name": "is on a nullable opaque value",
+   "source": "ts is Time",
+   "opaque": [
+    "Time"
+   ],
+   "expect": {
+    "type": "bool",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}"
+  },
+  {
+   "name": "is in a tested position is reported once",
+   "source": "n is int ? 1 : 2",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "mv is int | null always passes",
+   "source": "mv is int | null",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       17
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is narrows both branches",
+   "source": "v is int ? v + 1 : v.trim()",
+   "expect": {
+    "type": "int | string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is narrows a literal set both ways",
+   "source": "role is \"admin\" | \"owner\" ? 1 : role",
+   "expect": {
+    "type": "\"member\" | int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is narrows any in the passing branch",
+   "source": "if (blob is {id: string}[]) { len(blob) } else { 0 }",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is gives the not-null fact and its prefixes",
+   "source": "input?.note is string ? input.note.trim() : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a plain read of an optional field is still maybe-absent",
+   "source": "input.note is string",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ],
+      "class": "constant-condition"
+     },
+     {
+      "code": "maybe-absent",
+      "span": [
+       1,
+       7,
+       1,
+       11
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "!is swaps the branches",
+   "source": "!(v is int) ? v.trim() : v + 1",
+   "expect": {
+    "type": "int | string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is && a use under its true facts",
+   "source": "v is int && v > 0",
+   "expect": {
+    "type": "bool",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is || a use under its false facts",
+   "source": "v is int || v.trim() == \"\"",
+   "expect": {
+    "type": "bool",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a test of null removes null on the failing side",
+   "source": "mv is null ? 0 : mv + 1",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a test of int removes null on the passing side",
+   "source": "mv is int ? mv + 1 : 0",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "the same fact on both sides of || is kept",
+   "source": "(v is int && n > 0) || (v is int && n < 0) ? v + 1 : 0",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "|| joins two facts of is",
+   "source": "if (u is int || u is string) { u } else { \"x\" }",
+   "expect": {
+    "type": "int | string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "|| of two facts of is: the failing side",
+   "source": "u is int || u is string ? \"x\" : u",
+   "expect": {
+    "type": "bool | \"x\"",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "|| joins three facts of is",
+   "source": "u3 is int || u3 is string || u3 is bool ? u3 : []",
+   "expect": {
+    "type": "bool | int | string | never[]",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "|| joins two literal sets",
+   "source": "role is \"admin\" || role is \"owner\" ? role : \"x\"",
+   "expect": {
+    "type": "\"admin\" | \"owner\" | \"x\"",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "|| of two literal sets: the failing side",
+   "source": "role is \"admin\" || role is \"owner\" ? \"x\" : role",
+   "expect": {
+    "type": "\"member\" | \"x\"",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "|| joins a fact of is nested in &&",
+   "source": "(u is int && n > 0) || u is string ? u : \"x\"",
+   "expect": {
+    "type": "int | string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "|| with a side that has no fact of is gives none",
+   "source": "u is int || u ? u : \"x\"",
+   "expect": {
+    "type": "bool | int | string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "the joined fact is the Join of the two types",
+   "source": "u is int || u is string ? u + 1 : 0",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "kind",
+      "span": [
+       1,
+       27,
+       1,
+       28
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a const name is a path",
+   "source": "{ const b = blob; b is int ? b + 1 : 0 }",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a field of an untyped value is a path",
+   "source": "blob.a is int ? blob.a + 1 : 0",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "dynamic",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     },
+     {
+      "class": "dynamic",
+      "span": [
+       1,
+       17,
+       1,
+       21
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "an index is not a path, so it gives no fact",
+   "source": "xs[0] is int ? xs[0] + 1 : 0",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "kind",
+      "span": [
+       1,
+       16,
+       1,
+       21
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a fact never widens a type",
+   "source": "n is float ? n : 0",
+   "reject": [],
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "the passing side takes the type as written",
+   "source": "w is {b: string, ...} ? w.b : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "the passing side may lose a field the subject had",
+   "source": "w is {b: string, ...} ? w.a : 0",
+   "expect": {
+    "type": "any",
+    "sites": [
+     {
+      "class": "dynamic",
+      "span": [
+       1,
+       25,
+       1,
+       26
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is narrows the element of filter",
+   "source": "xs.filter(x => x is string)",
+   "expect": {
+    "type": "string[]",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is narrows the result of find",
+   "source": "xs.find(x => x is int)",
+   "expect": {
+    "type": "int | null",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "!is narrows filter by without",
+   "source": "xs.filter(x => !(x is string))",
+   "expect": {
+    "type": "int[]",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "is and a named type narrow any",
+   "source": "blob is Order ? blob.total : 0",
+   "expect": {
+    "type": "float",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "strict mode accepts an as of untyped data",
+   "source": "(blob as int) + 1",
+   "reject": [
+    "constant-condition",
+    "dynamic"
+   ],
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       2,
+       1,
+       13
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "strict mode refuses the same data used directly",
+   "source": "blob + 1",
+   "reject": [
+    "constant-condition",
+    "dynamic"
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "unchecked",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "class": "dynamic"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "rejecting value makes as a diagnostic",
+   "source": "blob as int",
+   "reject": [
+    "constant-condition",
+    "value"
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "may-fail",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "class": "value"
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "rejecting value: an as in a try is dropped",
+   "source": "try { blob as int } catch { 0 }",
+   "reject": [
+    "constant-condition",
+    "value"
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "rejecting value: is is never a site",
+   "source": "blob is int ? 1 : 0",
+   "reject": [
+    "constant-condition",
+    "value"
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "rejecting value: an as that surely fits is no site",
+   "source": "n as float",
+   "reject": [
+    "constant-condition",
+    "value"
+   ],
+   "expect": {
+    "type": "float",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "try: the error value is a record, and the body's site is dropped",
+   "source": "try { blob as Order } catch (err) { err.path }",
+   "expect": {
+    "type": "(int | string)[] | {id: string, total: float, ...} | null",
+    "sites": []
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "the expected result through a test",
+   "source": "blob as Order",
+   "returns": "Order",
+   "expect": {
+    "type": "{id: string, total: float, ...}",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a test whose type does not fit the expected result",
+   "source": "blob as Line",
+   "returns": "Order",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       13
+      ]
+     }
+    ]
+   },
+   "env": "{blob: any, n: int, f: float, s: string, role: \"admin\" | \"member\" | \"owner\", v: int | string, mv: int | null, input: {note?: string, tags: string[]}, xs: (int | string)[], u: bool | int | string, u3: bool | int | string | float[], o: {id: int}, w: {a: int, ...}, t: Time, ts: Time | null}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "a variable of a named type",
+   "source": "o2",
+   "env": "{o2: Line[]}",
+   "expect": {
+    "type": "{qty: int, sku: string}[]",
+    "sites": []
+   },
+   "opaque": [
+    "Time"
+   ]
+  }
+ ]
+}

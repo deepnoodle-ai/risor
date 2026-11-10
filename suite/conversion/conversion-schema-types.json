@@ -1,0 +1,623 @@
+[
+ {
+  "name": "a named type by schema: a value that conforms",
+  "source": "x as Order",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   }
+  ],
+  "vars": {
+   "x": {
+    "id": 1,
+    "z": true
+   }
+  },
+  "expect": {
+   "value": {
+    "id": 1,
+    "z": true
+   },
+   "steps": 3,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a named type by schema: a required property missing",
+  "source": "x as Order",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   }
+  ],
+  "vars": {
+   "x": {
+    "note": "a"
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "not-conforming",
+     "span": [
+      1,
+      1,
+      1,
+      11
+     ],
+     "path": [
+      "id"
+     ],
+     "message": "required field \"id\" is missing",
+     "class": "value"
+    }
+   ],
+   "steps": 2,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a named type by schema: its type",
+  "source": "x as Order",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   }
+  ],
+  "expect": {
+   "type": "{id: int, note?: string, ...}",
+   "sites": [
+    {
+     "class": "value",
+     "span": [
+      1,
+      1,
+      1,
+      11
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a named type by schema under closed is exact",
+  "source": "x as Order",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   }
+  ],
+  "vars": {
+   "x": {
+    "id": 1,
+    "z": true
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "not-conforming",
+     "span": [
+      1,
+      1,
+      1,
+      11
+     ],
+     "path": [
+      "z"
+     ],
+     "message": "the type does not allow key \"z\"",
+     "class": "value"
+    }
+   ],
+   "steps": 4,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a named type by schema under absent-is-null",
+  "source": "x as Order",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    },
+    "options": [
+     "absent-is-null"
+    ]
+   }
+  ],
+  "vars": {
+   "x": {
+    "id": 1
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "not-conforming",
+     "span": [
+      1,
+      1,
+      1,
+      11
+     ],
+     "path": [
+      "note"
+     ],
+     "message": "required field \"note\" is missing",
+     "class": "value"
+    }
+   ],
+   "steps": 3,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a named type by schema takes no option by default",
+  "source": "x as Order",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   }
+  ],
+  "vars": {
+   "x": {
+    "id": 1
+   }
+  },
+  "expect": {
+   "value": {
+    "id": 1
+   },
+   "steps": 3,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a schema the mapping refuses",
+  "source": "1",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "nope"
+    }
+   }
+  ],
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema with a cycle of $ref",
+  "source": "1",
+  "types": [
+   {
+    "name": "Node",
+    "schema": {
+     "$ref": "#/$defs/n",
+     "$defs": {
+      "n": {
+       "type": "object",
+       "properties": {
+        "next": {
+         "$ref": "#/$defs/n"
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-type"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema named type follows the name rules",
+  "source": "1",
+  "types": [
+   {
+    "name": "order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   }
+  ],
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "bad-name"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a schema named type and a text named type of one name",
+  "source": "1",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   },
+   {
+    "name": "Order",
+    "type": "int"
+   }
+  ],
+  "expect": {
+   "phase": "declare",
+   "diagnostics": [
+    {
+     "code": "name-clash"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a text named type uses a schema named type",
+  "source": "x as Orders",
+  "env": "{x: any}",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   },
+   {
+    "name": "Orders",
+    "type": "Order[]"
+   }
+  ],
+  "vars": {
+   "x": [
+    {
+     "id": 1
+    },
+    {
+     "id": 2
+    }
+   ]
+  },
+  "expect": {
+   "value": [
+    {
+     "id": 1
+    },
+    {
+     "id": 2
+    }
+   ],
+   "steps": 7,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a conform case against a schema named type",
+  "types": [
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   }
+  ],
+  "conform": {
+   "type": "Order[]",
+   "value": [
+    {
+     "id": 1
+    },
+    {
+     "id": "2"
+    }
+   ]
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    1,
+    "id"
+   ],
+   "message": "expected int, found \"2\"",
+   "steps": 6
+  }
+ },
+ {
+  "name": "the description lists named types by their structure",
+  "source": "1",
+  "env": "{o: Order, l: Line}",
+  "types": [
+   {
+    "name": "Line",
+    "type": "{sku: string, qty: int}"
+   },
+   {
+    "name": "Order",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    }
+   }
+  ],
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {
+     "l": "{qty: int, sku: string}",
+     "o": "{id: int, note?: string, ...}"
+    },
+    "types": {
+     "Line": "{qty: int, sku: string}",
+     "Order": "{id: int, note?: string, ...}"
+    }
+   }
+  }
+ },
+ {
+  "name": "the description replaces a name inside a named type",
+  "source": "1",
+  "types": [
+   {
+    "name": "Line",
+    "type": "{sku: string, qty: int}"
+   },
+   {
+    "name": "Order",
+    "type": "{id: string, lines: Line[], ...}"
+   }
+  ],
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {},
+    "types": {
+     "Line": "{qty: int, sku: string}",
+     "Order": "{id: string, lines: {qty: int, sku: string}[], ...}"
+    }
+   }
+  }
+ },
+ {
+  "name": "the description of a signature with a named type",
+  "source": "1",
+  "types": [
+   {
+    "name": "Id",
+    "type": "string"
+   }
+  ],
+  "functions": {
+   "get": "(id: Id) => Id | null"
+  },
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {
+     "get": "(id: string) => string | null"
+    },
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {},
+    "types": {
+     "Id": "string"
+    }
+   }
+  }
+ },
+ {
+  "name": "an empty list of named types gives no key types",
+  "source": "1",
+  "types": [],
+  "expect": {
+   "description": {
+    "version": "3.0",
+    "functions": {},
+    "opaque": {},
+    "removed": [],
+    "reject": [
+     "constant-condition"
+    ],
+    "limits": {
+     "steps": 1000000,
+     "allocation": 1000000,
+     "depth": 200
+    },
+    "variables": {}
+   }
+  }
+ }
+]
