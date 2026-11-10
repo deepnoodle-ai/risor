@@ -34,6 +34,7 @@ concurrency:
 jobs:
   go:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GOWORK: "off"
     defaults:
@@ -64,6 +65,7 @@ jobs:
 
   typescript:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Temporary: the suite holds the cases of round 13 (the fuzzers'
     # findings), which this implementation has not caught up with yet. Remove
     # this line when it has.
@@ -97,6 +99,7 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Temporary: the suite holds the cases of round 13 (the fuzzers'
     # findings), which this implementation has not caught up with yet. Remove
     # this line when it has.
@@ -134,6 +137,7 @@ jobs:
 
   fuzz:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GOWORK: "off"
     defaults:
