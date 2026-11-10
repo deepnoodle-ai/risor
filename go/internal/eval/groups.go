@@ -16,7 +16,7 @@ import (
 // (spec/packages/f06-groups.md 6 to 9). No result comes from a platform
 // parser where the chapter gives its own rule.
 
-var groupImplemented = map[string]libFunc{
+var groupImplemented = withMath(map[string]libFunc{
 	"json.stringify": jsonStringify,
 	"json.parse":     jsonParse,
 	"time.parse":     timeParse,
@@ -31,6 +31,14 @@ var groupImplemented = map[string]libFunc{
 	},
 	"base64.encode": base64Encode,
 	"base64.decode": base64Decode,
+})
+
+// withMath adds the entries of package F13 (math.go).
+func withMath(m map[string]libFunc) map[string]libFunc {
+	for k, f := range mathEntries {
+		m[k] = f
+	}
+	return m
 }
 
 // --- json ------------------------------------------------------------------

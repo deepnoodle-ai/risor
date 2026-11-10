@@ -1354,7 +1354,7 @@ above. A package's chapter is the home of its rules: this table only points.
    reports each directory by itself (3.10.8).
 2. A runner runs only the directories of the packages its implementation
    offers. The packages are offered in a fixed order, each only with all
-   before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13. So a
+   before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F12. So a
    package's cases may use what an earlier package adds.
 3. For a runner, a field of a package it does not offer is a field 3.10.3
    does not list, so a file that uses it is invalid (3.10.10).

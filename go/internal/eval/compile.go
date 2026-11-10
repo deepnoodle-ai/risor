@@ -60,6 +60,10 @@ type lambdaCode struct {
 	// simple holds the slot of each parameter (-1 for none) when every
 	// parameter is a name without a default; then a bind is one store.
 	simple []int
+	// ref is set when the typed layer may give the lambda's element
+	// parameter by reference: every use of it is a planned field read
+	// (typed.go, package F11).
+	ref *refInfo
 }
 
 type paramCode func(r *run, v any, present bool)
@@ -100,13 +104,15 @@ type compiler struct {
 	// goSlots are the Go types of the lambda parameters the typed layer
 	// knows, while their lambda's body is compiled (typed.go).
 	goSlots map[int]reflect.Type
-	plans   int
+	// slotUses counts the planned reads compiled on a typed parameter.
+	slotUses map[int]int
+	plans    int
 }
 
 // Compile compiles a program whose static rules found nothing.
 func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *Config) (p *Program, err error) {
 	c := &compiler{cfg: cfg, res: res, lambdas: map[*syntax.Lambda]*lambdaCode{}, vars: map[int]int{},
-		goSlots: map[int]reflect.Type{}}
+		goSlots: map[int]reflect.Type{}, slotUses: map[int]int{}}
 	defer func() {
 		if x := recover(); x != nil {
 			err = fmt.Errorf("compile: %v", x)

@@ -224,6 +224,13 @@ func init() {
 		}
 		GroupEntries = append(GroupEntries, e)
 	}
+	// Package F13's records (f13-math.md 5): eleven functions of the group
+	// math, beside F6's.
+	var maths []*Entry
+	if err := json.Unmarshal([]byte(sourceMathJSON), &maths); err != nil {
+		panic("library: the math table does not parse: " + err.Error())
+	}
+	GroupEntries = append(GroupEntries, maths...)
 	// Package F7's records (f07-queries.md 6.1): a record with extends takes
 	// the place of the Core record; the others are new entries.
 	var queries []*Entry

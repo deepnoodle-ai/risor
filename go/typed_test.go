@@ -125,10 +125,69 @@ func TestTypedLayerSameOutcomes(t *testing.T) {
 		`n.ptrs[*]?.name`, // a nil element
 		`n.ptrs.map(p => p?.name)`,
 		`n.items.reduce((a, x) => a + x.name, "")`,
+		// Elements by reference, and the string comparison in place.
+		`n.items.some(x => x.name == "i1")`,
+		`n.items.every(x => x.name != "zz")`,
+		`n.items.count(x => x.name == "i0")`,
+		`n.items.find(x => x.name == "i1")`,
+		`n.items.find(x => x.name == "none")`,
+		`n.items.filter(x => x.name == "i1")`,
+		`n.items.filter(x => x.name == "café")`, // invalid text: the general path
+		`n.items.filter(x => x.small == 0).map(x => x.name)`,
+		`n.items.flatMap(x => [x.name, x.small])`,
+		`n.items.map(x => x)`,           // the element escapes
+		`n.items.map(x => [x.name, x])`, // a whole use beside a read
+		`n.items.sortBy(x => x.name, "desc")`,
+		`n.ptrs.filter(p => p?.name == "q2")`, // a nil element
+		`n.ptrs.map(p => p?.name ?? "nil")`,
+		`n.ptrs.count(p => p?.name != "q0")`,
+		`n.items.map(x => n.items.count(y => y.name == x.name))`,
+		`n.leaf.name == "a"`,
+		`n.leaf.name != "b"`,
 	} {
 		before := typedPlans
 		sameBoth(t, src, tnode())
 		assert.True(t, typedPlans > before, "no read planned: "+src)
+	}
+}
+
+type tOther struct {
+	Name string `json:"name"`
+}
+
+func TestTypedLayerOtherSlices(t *testing.T) {
+	// A host slice whose elements are of another Go type than declared.
+	for _, items := range []any{[]tOther{{"i1"}, {"x"}}, []any{tLeaf{Name: "i1"}, map[string]any{"name": "i1"}}} {
+		data := map[string]any{"items": items}
+		for _, src := range []string{`n.items.some(x => x.name == "i1")`, `n.items.filter(x => x.name == "i1")`,
+			`n.items.map(x => x.name)`, `n.items[*].name`, `n.items.reduce((a, x) => a + x.name, "")`} {
+			sameBoth(t, src, data)
+		}
+	}
+}
+
+func TestTypedLayerAllocations(t *testing.T) {
+	ty, _ := risor.TypeOf[tNode]()
+	env, _ := risor.NewEnv(risor.VarType("n", ty))
+	n := tnode()
+	n.Items = make([]tLeaf, 100)
+	for i := range n.Items {
+		n.Items[i] = tLeaf{Name: fmt.Sprint(i)}
+	}
+	for _, c := range []struct {
+		src string
+		max float64
+	}{
+		{`n.items.some(x => x.name == "zz")`, 4},
+		{`n.items.count(x => x.name == "5")`, 4},
+		{`n.items.filter(x => x.name == "5")`, 6},
+	} {
+		x, _ := risor.Parse(c.src)
+		p, err := env.Compile(x)
+		assert.NoError(t, err)
+		vars := risor.Map{"n": n}
+		allocs := testing.AllocsPerRun(20, func() { _, _ = p.Run(context.Background(), vars) })
+		assert.True(t, allocs <= c.max, fmt.Sprintf("%s: %v allocations", c.src, allocs))
 	}
 }
 

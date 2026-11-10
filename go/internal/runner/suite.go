@@ -25,6 +25,7 @@ var SuiteDirs = []string{
 	"errors",     // F8
 	"testing",    // F9
 	"config",     // F10
+	"math",       // F13
 }
 
 // SuiteCatalog is a catalog file and the field that names its entries.
@@ -35,6 +36,7 @@ var SuiteCatalogs = []SuiteCatalog{
 	{"library.json", "name"},
 	{"library-groups.json", "name"},   // F6
 	{"library-queries.json", "name"},  // F7
+	{"library-math.json", "name"},     // F13
 	{"messages-queries.json", "code"}, // F7
 	{"messages-parse.json", "code"},   // F8
 	{"messages-check.json", "code"},   // F8

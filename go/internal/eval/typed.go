@@ -2,6 +2,7 @@ package eval
 
 import (
 	"reflect"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/v3/internal/static"
@@ -226,9 +227,17 @@ func (c *compiler) typedChain(x syntax.Node, steps []*stepCode, general func(k i
 	c.plans++
 	if b.Kind == static.Value {
 		slot := b.Slot
+		c.slotUses[slot]++
 		return func(r *run) any {
-			if v, ok := r.typedReads(p, r.slots[slot]); ok {
-				return v
+			rv, ref, ok := p.slotRoot(r.slots[slot])
+			if ok {
+				if fv, ok := p.walk(rv); ok {
+					r.step(p.total)
+					return r.typedLeaf(p, fv)
+				}
+			}
+			if ref != nil {
+				r.slots[slot] = ref.box(r)
 			}
 			return fallback(r)
 		}, k
@@ -309,8 +318,11 @@ func (c *compiler) typedArgs(recv reflect.Type, m *syntax.MethodCall) []argCode 
 	if el == nil || !ok || c.cfg.GoTypes == nil {
 		return c.args(m.Args)
 	}
-	var set []int
-	for _, a := range m.Args {
+	type typedParam struct {
+		arg, slot, uses int
+	}
+	var set []typedParam
+	for ai, a := range m.Args {
 		l, ok := a.(*syntax.Lambda)
 		if !ok || idx >= len(l.Params) {
 			continue
@@ -318,13 +330,20 @@ func (c *compiler) typedArgs(recv reflect.Type, m *syntax.MethodCall) []argCode 
 		if np, ok := l.Params[idx].Pattern.(*syntax.NamePat); ok && l.Params[idx].Default == nil {
 			if s := c.slot(np); s >= 0 {
 				c.goSlots[s] = el
-				set = append(set, s)
+				c.slotUses[s] = 0
+				set = append(set, typedParam{ai, s, c.countUses(l.Body, s)})
 			}
 		}
 	}
 	out := c.args(m.Args)
-	for _, s := range set {
-		delete(c.goSlots, s)
+	for _, tp := range set {
+		// Every use of the parameter is a planned read: the element may be
+		// given by reference.
+		if tp.uses == c.slotUses[tp.slot] && out[tp.arg].lam != nil {
+			out[tp.arg].lam.ref = &refInfo{slice: recv, ptr: el.Kind() == reflect.Pointer}
+		}
+		delete(c.goSlots, tp.slot)
+		delete(c.slotUses, tp.slot)
 	}
 	return out
 }
@@ -375,6 +394,174 @@ func (r *run) typedLevel(ec *eachCode, recv any, out *[]any) bool {
 			}
 		}
 		r.levelElem(ec, value.At(recv, i), out)
+	}
+	return true
+}
+
+// Elements by reference (package F11). When every use of a lambda's
+// element parameter is a planned field read, the element need not be made
+// a value: the parameter holds a reference to the receiver's element, and
+// the planned reads read through it. The element is made a value only
+// where it is needed: by the entry, for its result, or by a planned read
+// that must take the general path, which first puts the value in the
+// parameter.
+
+// refInfo says that a lambda may take its element by reference from a
+// receiver of Go type slice.
+type refInfo struct {
+	slice reflect.Type
+	ptr   bool // the elements are pointers to structs
+}
+
+// elemRef is an element given by reference.
+type elemRef struct {
+	v reflect.Value // the struct
+	c *libCall
+	i int
+}
+
+// box makes the element a value, as the entry would have given it.
+func (e *elemRef) box(r *run) any { return e.c.elem(r, e.i) }
+
+// elemArg gives element i for a lambda: by reference when the lambda takes
+// it so and the receiver has the planned Go type, else the value. boxed
+// reports a value.
+func (c *libCall) elemArg(r *run, lam *lambdaCode, i int) (any, bool) {
+	if ri := lam.ref; ri != nil {
+		if !c.rvSet {
+			c.rvSet = true
+			if reflect.TypeOf(c.recv) == ri.slice {
+				c.rv = reflect.ValueOf(c.recv)
+			}
+		}
+		if c.rv.IsValid() {
+			ev := c.rv.Index(i)
+			if ri.ptr {
+				if ev.IsNil() {
+					return c.elem(r, i), true
+				}
+				ev = ev.Elem()
+			}
+			c.ref = elemRef{v: ev, c: c, i: i}
+			return &c.ref, false
+		}
+	}
+	return c.elem(r, i), true
+}
+
+// callbackAt calls the lambda for element i. It gives the result, and the
+// element when it was made a value.
+func (r *run) callbackAt(c *libCall, lam *lambdaCode, i int) (any, any, bool) {
+	e, boxed := c.elemArg(r, lam, i)
+	return r.callback(c, lam, e, i), e, boxed
+}
+
+// slotRoot gives the struct a planned read on a parameter reads: through a
+// reference, or the parameter's value. ref is set for a reference.
+func (p *typedPlan) slotRoot(v any) (reflect.Value, *elemRef, bool) {
+	if ref, ok := v.(*elemRef); ok {
+		return ref.v, ref, true
+	}
+	rv, ok := p.rootValue(v)
+	return rv, nil, ok
+}
+
+// countUses counts the uses of the parameter in slot s in a lambda's body.
+func (c *compiler) countUses(body syntax.Node, s int) int {
+	n := 0
+	syntax.Walk(body, func(x syntax.Node) bool {
+		if id, ok := x.(*syntax.Ident); ok {
+			if b := c.res.Idents[id]; b != nil && b.Kind == static.Value && b.Slot == s {
+				n++
+			}
+		}
+		return true
+	})
+	return n
+}
+
+// typedStrEq compiles x == "lit" or x != "lit" where x is a chain of
+// planned field reads that ends in a string field: the field is compared
+// in place, without being made a value. general is the code of the whole
+// comparison by the general path.
+func (c *compiler) typedStrEq(x syntax.Node, lit string, neg bool, general code) code {
+	if oc, ok := x.(*syntax.OptChain); ok {
+		x = oc.X
+	}
+	var names []*syntax.Member
+	root := x
+	for {
+		m, ok := root.(*syntax.Member)
+		if !ok {
+			break
+		}
+		if _, k := c.res.Consts[m]; k {
+			return nil
+		}
+		names = append(names, m)
+		root = m.X
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	t, b := c.typedRoot(root)
+	if t == nil {
+		return nil
+	}
+	steps := make([]*stepCode, len(names))
+	for i, m := range names {
+		steps[len(names)-1-i] = &stepCode{kind: stepMember, name: m.Name, size: value.Size(m.Name), span: m.Span()}
+	}
+	p := planReads(t, steps)
+	if p == nil || len(p.steps) != len(steps) || p.basic != reflect.String {
+		return nil
+	}
+	eq := func(r *run, fv reflect.Value) (any, bool) {
+		s := fv.String()
+		if !validText(s) {
+			return nil, false
+		}
+		r.step(p.total)
+		r.step(1 + value.Size(value.CommonPrefix(s, lit)))
+		return (s == lit) != neg, true
+	}
+	if b.Kind == static.Value {
+		slot := b.Slot
+		return func(r *run) any {
+			rv, ref, ok := p.slotRoot(r.slots[slot])
+			if ok {
+				if fv, ok := p.walk(rv); ok {
+					if v, ok := eq(r, fv); ok {
+						return v
+					}
+				}
+			}
+			if ref != nil {
+				r.slots[slot] = ref.box(r)
+			}
+			return general(r)
+		}
+	}
+	i := c.varIndex(b)
+	name, sp := b.Name, root.Span()
+	return func(r *run) any {
+		if rv, ok := p.rootValue(r.varRaw(i, name, sp)); ok {
+			if fv, ok := p.walk(rv); ok {
+				if v, ok := eq(r, fv); ok {
+					return v
+				}
+			}
+		}
+		return general(r)
+	}
+}
+
+// validText reports whether a string is read as itself: valid UTF-8.
+func validText(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return utf8.ValidString(s)
+		}
 	}
 	return true
 }

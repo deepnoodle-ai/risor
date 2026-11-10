@@ -120,6 +120,11 @@ var typedCases = []benchCase{
 	{"filter_map_100", `fetch.tests.filter(t => t.status == "fail").map(t => t.name)`},
 	{"star_100", `fetch.tests[*].name`},
 	{"some_100", `fetch.tests.some(t => t.ms > 1000)`},
+	{"map_100", `fetch.tests.map(t => t.name)`},
+	{"count_100", `fetch.tests.count(t => t.status == "fail")`},
+	{"find_100", `fetch.tests.find(t => t.name == "test_50")?.ms`},
+	{"reduce_100", `fetch.tests.reduce((a, t) => a + t.ms, 0)`},
+	{"sortBy_100", `fetch.tests.sortBy(t => t.ms, "desc")`},
 }
 
 func benchTyped(b *testing.B, data risor.Map, decls []risor.Decl, opts ...risor.CheckOption) {

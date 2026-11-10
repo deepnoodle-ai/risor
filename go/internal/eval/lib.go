@@ -3,6 +3,7 @@ package eval
 import (
 	"math"
 	"math/big"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -34,6 +35,12 @@ type libCall struct {
 	idx    int
 	lam    bool
 	name   string
+	// ref is the element a lambda that takes it by reference reads, and
+	// rv the receiver as a reflect.Value once a reference is made (typed.go,
+	// package F11).
+	ref   elemRef
+	rv    reflect.Value
+	rvSet bool
 }
 
 type libFunc func(r *run, c *libCall) any
@@ -884,8 +891,11 @@ var implemented = map[string]libFunc{
 		// without a size taken from the data.
 		out := make([]any, 0, min(n, 8))
 		for i := 0; i < n; i++ {
-			e := c.elem(r, i)
-			if value.Truthy(r.callback(c, lam, e, i)) {
+			v, e, boxed := r.callbackAt(c, lam, i)
+			if value.Truthy(v) {
+				if !boxed {
+					e = c.elem(r, i)
+				}
 				out = append(out, e)
 			}
 		}
@@ -898,7 +908,7 @@ var implemented = map[string]libFunc{
 		lam, n := c.args[0].(*lambdaCode), c.n()
 		out := make([]any, n)
 		for i := 0; i < n; i++ {
-			out[i] = r.callback(c, lam, c.elem(r, i), i)
+			out[i], _, _ = r.callbackAt(c, lam, i)
 		}
 		f := fenv{c: c, n: int64(n)}
 		r.libSteps(c, f, 2*int64(n))
@@ -910,7 +920,7 @@ var implemented = map[string]libFunc{
 		var parts []any
 		k := 0
 		for i := 0; i < n; i++ {
-			v := r.callback(c, lam, c.elem(r, i), i)
+			v, _, _ := r.callbackAt(c, lam, i)
 			if value.KindOf(v) != value.List {
 				r.raise(fail("wrong-kind", "result", c.span, messages.Word("name", c.e.Name), messages.Val("kind", v)))
 			}
@@ -931,7 +941,7 @@ var implemented = map[string]libFunc{
 	"list.some": func(r *run, c *libCall) any {
 		lam, n := c.args[0].(*lambdaCode), c.n()
 		for i := 0; i < n; i++ {
-			if value.Truthy(r.callback(c, lam, c.elem(r, i), i)) {
+			if v, _, _ := r.callbackAt(c, lam, i); value.Truthy(v) {
 				return true
 			}
 		}
@@ -940,7 +950,7 @@ var implemented = map[string]libFunc{
 	"list.every": func(r *run, c *libCall) any {
 		lam, n := c.args[0].(*lambdaCode), c.n()
 		for i := 0; i < n; i++ {
-			if !value.Truthy(r.callback(c, lam, c.elem(r, i), i)) {
+			if v, _, _ := r.callbackAt(c, lam, i); !value.Truthy(v) {
 				return false
 			}
 		}
@@ -949,8 +959,11 @@ var implemented = map[string]libFunc{
 	"list.find": func(r *run, c *libCall) any {
 		lam, n := c.args[0].(*lambdaCode), c.n()
 		for i := 0; i < n; i++ {
-			e := c.elem(r, i)
-			if value.Truthy(r.callback(c, lam, e, i)) {
+			v, e, boxed := r.callbackAt(c, lam, i)
+			if value.Truthy(v) {
+				if !boxed {
+					e = c.elem(r, i)
+				}
 				return e
 			}
 		}
@@ -959,7 +972,7 @@ var implemented = map[string]libFunc{
 	"list.count": func(r *run, c *libCall) any {
 		lam, k, n := c.args[0].(*lambdaCode), 0, c.n()
 		for i := 0; i < n; i++ {
-			if value.Truthy(r.callback(c, lam, c.elem(r, i), i)) {
+			if v, _, _ := r.callbackAt(c, lam, i); value.Truthy(v) {
 				k++
 			}
 		}
@@ -968,7 +981,8 @@ var implemented = map[string]libFunc{
 	"list.reduce": func(r *run, c *libCall) any {
 		lam, acc, n := c.args[0].(*lambdaCode), c.args[1], c.n()
 		for i := 0; i < n; i++ {
-			acc = r.callback2(c, lam, acc, c.elem(r, i), i)
+			e, _ := c.elemArg(r, lam, i)
+			acc = r.callback2(c, lam, acc, e, i)
 		}
 		return acc
 	},

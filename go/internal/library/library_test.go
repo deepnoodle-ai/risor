@@ -17,6 +17,9 @@ func TestTableIsCurrent(t *testing.T) {
 	if string(data) != sourceJSON {
 		t.Fatal("table_gen.go is stale: run GOWORK=off go generate ./... in go/")
 	}
+	if data, err := os.ReadFile("../../../suite/library-math.json"); err == nil && string(data) != sourceMathJSON {
+		t.Fatal("math_gen.go is stale: run GOWORK=off go generate ./... in go/")
+	}
 	data, err = os.ReadFile("../../../suite/library-groups.json")
 	if err == nil && string(data) != sourceGroupsJSON {
 		t.Fatal("groups_gen.go is stale: run GOWORK=off go generate ./... in go/")
@@ -26,7 +29,7 @@ func TestTableIsCurrent(t *testing.T) {
 func TestTable(t *testing.T) {
 	assert.Equal(t, len(Entries), 59) // 53 of Core and 6 of F7
 	assert.Equal(t, len(Functions), 15)
-	assert.Equal(t, len(GroupEntries), 8)
+	assert.Equal(t, len(GroupEntries), 19) // 8 of F6 and 11 of F13
 	assert.Equal(t, len(Constants), 2)
 	assert.Equal(t, *Constants["math.pi"].Value, 3.141592653589793)
 	m, ok := Method(value.List, "map")

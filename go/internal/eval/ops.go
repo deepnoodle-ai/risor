@@ -185,6 +185,20 @@ func binFnFor(op string) binFn {
 // binary compiles a left-associative chain of operators as one loop over its
 // left spine, so a sum of 100,000 terms costs no stack (01-language.md 13.2).
 func (c *compiler) binary(n *syntax.Binary) code {
+	g := c.binaryGeneral(n)
+	// F11: a planned string field compared with a string literal is
+	// compared in place (typed.go).
+	if n.Op == "==" || n.Op == "!=" {
+		if lit, ok := n.Y.(*syntax.String); ok {
+			if t := c.typedStrEq(n.X, lit.Value, n.Op == "!=", g); t != nil {
+				return t
+			}
+		}
+	}
+	return g
+}
+
+func (c *compiler) binaryGeneral(n *syntax.Binary) code {
 	var spine []*syntax.Binary
 	var x syntax.Node = n
 	for {
