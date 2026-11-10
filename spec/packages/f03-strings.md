@@ -185,6 +185,8 @@ and interpolations. The first row of this table that holds applies.
 6. The text of a line that begins after an interpolation's `}`, on a source line
    that began inside the interpolation, is not at the start of a content line.
    It is not compared with the indentation.
+7. An escape or an interpolation that stands where the indentation is expected
+   differs from it at its first code point, the `\` or the `$`.
 
 ### 4.6 The value
 
@@ -334,6 +336,12 @@ A raw text block follows 4.1 to 4.6, with these differences.
      `unexpected-token`.
 4. After `text-block-open` nothing in the literal is read (4.1 item 3), so its
    content gives no lexical diagnostic.
+5. The lexer goes on after a literal that has one of the three codes, and a
+   lexical diagnostic it then meets comes first. In
+   `r"""⏎··a"""b⏎··"""` the raw text block ends at the first `"""`
+   with `text-block-close`; the last `"""` then opens a text block that the
+   end of input leaves open, and the text is `unterminated-string` at
+   `[3, 3, 3, 6]`.
 
 ### 6.3 Other errors of the new forms
 
@@ -458,7 +466,7 @@ when this package was accepted. The file `strings-core-texts.json` of
 | a raw string r'...' | `unexpected-token`, `[1, 1, 1, 2]` | The value `"a"` |
 | a prefixed string after an operator | `unexpected-token`, `[1, 5, 1, 6]` | Parses; `1 + "a"` then fails with `wrong-kind` |
 | nothing in a prefixed string is an escape | `unexpected-token`, `[1, 1, 1, 2]` | The value `a\q` |
-| a prefixed string runs to the end of its line | `unexpected-token`, `[1, 1, 1, 2]` | `unterminated-string`, `[1, 1, 1, 5]` |
+| a prefixed string runs to the end of its line | `unexpected-token`, `[1, 1, 1, 2]` | `unterminated-string`, `[1, 1, 1, 6]` |
 
 1. No valid Core program changes its meaning. This package changes how the lexer
    reads a place only where a token starts with `"""`, or with the word `r`

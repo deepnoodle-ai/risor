@@ -30,6 +30,10 @@ export interface Token {
   report?: Span;
   /** White space or a comment stands directly before this token. */
   gap: boolean;
+  /** The form of a literal of package F3: r", r', a text block or a raw text block (f03 5.2). */
+  form?: string;
+  /** A code of a text block that the parser reports when it reaches the token (f03 6.2). */
+  blockError?: { code: string; start: number; end: number };
 }
 
 export type TemplatePart =

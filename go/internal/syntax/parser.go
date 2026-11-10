@@ -26,6 +26,7 @@ func Parse(f *File) (prog *Program, err *Error) {
 			prog, err = nil, b.err
 		}
 	}()
+	p.reach()
 	return p.program(), nil
 }
 
@@ -57,6 +58,15 @@ func (p *parser) next() {
 		p.i++
 	}
 	p.tok = p.toks[p.i]
+	p.reach()
+}
+
+// reach reports a text block's code when the parser reaches its token,
+// before anything else is tested of it (F3 6.2).
+func (p *parser) reach() {
+	if e := p.tok.BlockErr; e != nil {
+		panic(bailout{e})
+	}
 }
 
 func (p *parser) peek(k int) Token {
@@ -79,7 +89,7 @@ func (p *parser) unexpected() {
 		e = p.peek(1).End
 	}
 	// 01-language.md 14.3: the word r or R, white space, then a quote.
-	if t.Kind == TokString && (t.Form == '"' || t.Form == '\'') && p.i > 0 {
+	if t.Kind == TokString && (t.Form == '"' || t.Form == '\'' || t.Form == 'r') && p.i > 0 {
 		prev := p.toks[p.i-1]
 		if prev.Kind == Word && (prev.Text == "r" || prev.Text == "R") && prev.End < t.Start {
 			s, e = prev.Start, prev.End
@@ -313,7 +323,7 @@ func (p *parser) mapPat() *MapPat {
 				nt := p.requireName()
 				f.KeyForm, f.Key, f.Name, f.NameSpan = KeyWord, nt.Text, nt.Text, Span{nt.Start, nt.End}
 				f.KeySpan = f.NameSpan
-			case p.tok.Kind == TokString && p.tok.Form != '`':
+			case p.tok.Kind == TokString && p.tok.Form != '`' && !p.tok.Block:
 				f.KeyForm, f.Key, f.KeySpan = KeyString, p.tok.Str, Span{p.tok.Start, p.tok.End}
 				p.next()
 				p.expect(Colon)
@@ -866,7 +876,7 @@ func (p *parser) mapLit() Node {
 				b := p.base(em)
 				entries = append(entries, &Entry{base: b, KeyForm: KeyWord, Key: nt.Text, KeySpan: b.span,
 					Value: &Ident{base: b, Name: nt.Text}, Shorthand: true})
-			case t.Kind == TokString && t.Form != '`':
+			case t.Kind == TokString && t.Form != '`' && !t.Block:
 				p.next()
 				p.expect(Colon)
 				v := p.expr()
@@ -962,7 +972,7 @@ func (p *parser) literal() Node {
 	case t.Kind == TokNumber:
 		p.next()
 		return &Number{base: p.base(m), Value: t.Num}
-	case t.Kind == TokString && t.Form != '`':
+	case t.Kind == TokString && t.Form != '`' && !t.Block:
 		p.next()
 		return &String{base: p.base(m), Value: t.Str, Form: t.Form}
 	case t.isWord("true") || t.isWord("false"):

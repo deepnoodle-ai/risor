@@ -71,8 +71,8 @@ describe("01 14.2: each parse code of Core", () => {
   test("bad-number", () => err("010", "bad-number", [1, 1, 1, 4]));
   test("literal-range", () => err("1e400", "literal-range", [1, 1, 1, 6]));
   test("nesting-exceeded", () => err("(".repeat(101) + "1" + ")".repeat(101), "nesting-exceeded", [1, 101, 1, 102]));
-  test("text-block-open, -close, -indent and bad-type-text are not reported in Core", () => {
-    err('"""\n  a\n  """', "unexpected-token", [1, 1, 1, 4]);
+  test("bad-type-text is not reported in Core; a text block parses with package F3", () => {
+    ok('"""\n  a\n  """');
     err('x as int', "unexpected-token", [1, 3, 1, 5]);
   });
   test("reserved-word: every example of the rule", () => {
@@ -108,12 +108,12 @@ describe("01 14.2: each parse code of Core", () => {
 
 describe("01 14.3: every row", () => {
   test("a text block", () => {
-    err('"""a"""', "unexpected-token", [1, 1, 1, 4]);
+    err('"""a"""', "text-block-open", [1, 1, 1, 4]);
     err("'''a'''", "unexpected-token", [1, 1, 1, 4]);
   });
   test("the prefixed literal", () => {
-    err('r"a"', "unexpected-token", [1, 1, 1, 2]);
-    err("r'a'", "unexpected-token", [1, 1, 1, 2]);
+    ok('r"a"'); // a raw string, with package F3
+    ok("r'a'");
     err('f"x"', "unexpected-token", [1, 1, 1, 2]);
     err('R"x"', "unexpected-token", [1, 1, 1, 2]);
     err("r`x`", "unexpected-token", [1, 1, 1, 2]);

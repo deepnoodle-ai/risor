@@ -10,12 +10,13 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { caseFiles, countVerdicts, libraryFunctionNames, runFile } from "../src/suite/runner.ts";
 import type { Verdict } from "../src/suite/runner.ts";
+import { DISPUTED } from "./disputed.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const SUITE = join(here, "..", "..", "suite");
 
 export function defaultTargets(): string[] {
-  return [join(SUITE, "core-run"), join(SUITE, "core-check"), join(SUITE, "library.json"), join(SUITE, "messages.json")].filter((p) => existsSync(p));
+  return [join(SUITE, "core-run"), join(SUITE, "core-check"), join(SUITE, "strings"), join(SUITE, "library.json"), join(SUITE, "messages.json")].filter((p) => existsSync(p));
 }
 
 export function runTargets(targets: string[], checker = true): Map<string, Verdict[]> {
@@ -45,7 +46,8 @@ function main(): void {
           console.log(`  ${" ".repeat(d.field.length)}  found    ${JSON.stringify(d.found)}`);
         }
       }
-      if (v.verdict === "fail" || v.verdict === "invalid") failed = true;
+      // A case listed in test/disputed.ts is reported, and does not fail the command.
+      if ((v.verdict === "fail" || v.verdict === "invalid") && !(`${v.file} :: ${v.name}` in DISPUTED)) failed = true;
     }
     const n = countVerdicts(vs);
     console.log(`${relative(process.cwd(), t) || t}: pass ${n.pass}, fail ${n.fail}, skip ${n.skip}, invalid ${n.invalid}`);

@@ -82,17 +82,18 @@ describe("2.3 tokens", () => {
       err(`a ${t} b`, "unexpected-token", [1, 3, 1, 3 + t.length]);
     }
   });
-  test("the block token", () => {
-    err('"""abc"""', "unexpected-token", [1, 1, 1, 4]);
+  test("the block token, and package F3's text block (f03 2, 4.1)", () => {
+    err('"""abc"""', "text-block-open", [1, 1, 1, 4]);
     err("'''abc'''", "unexpected-token", [1, 1, 1, 4]);
-    err('x + """\nabc', "unexpected-token", [1, 5, 1, 8]);
-    // Nothing in a block token is an escape or a line end.
-    err('"""\\q\n"""', "unexpected-token", [1, 1, 1, 4]);
+    err('x + """\nabc', "unterminated-string", [1, 5, 2, 4]);
+    // After text-block-open nothing in the literal is read.
+    err('"""\\q\n"""', "text-block-open", [1, 1, 1, 4]);
     ok('""');
     ok("''");
   });
   test("the prefixed literal", () => {
-    err('r"a\\"b"', "unexpected-token", [1, 1, 1, 2]);
+    // With package F3, r"a\" is a raw string, and b" a prefixed literal.
+    err('r"a\\"b"', "unexpected-token", [1, 6, 1, 7]);
     err("f'x'", "unexpected-token", [1, 1, 1, 2]);
     err("raw`a\nb`", "unexpected-token", [1, 1, 1, 4]);
     err('_"x"', "unexpected-token", [1, 1, 1, 2]);

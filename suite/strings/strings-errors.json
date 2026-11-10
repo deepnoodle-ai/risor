@@ -560,8 +560,8 @@
    }
   },
   {
-   "name": "close: a raw text block cannot hold three quotes",
-   "source": "r\"\"\"\n  a\"\"\"b\n  \"\"\"",
+   "name": "close: a raw text block cannot hold three quotes; the text after them is well formed",
+   "source": "r\"\"\"\n  a\"\"\" + \"\"\"\n  \"\"\"",
    "expect": {
     "phase": "parse",
     "diagnostics": [
@@ -572,6 +572,24 @@
        4,
        2,
        7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "close: three quotes in a raw text block, then a block that never closes: the lexical error comes first",
+   "source": "r\"\"\"\n  a\"\"\"b\n  \"\"\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       3,
+       3,
+       3,
+       6
       ]
      }
     ]

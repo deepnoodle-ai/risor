@@ -49,10 +49,17 @@ function hexValue(c: number): number {
   return c - 0x41 + 10;
 }
 
+/** An item of a content line of a text block (f03 4.3): a code point, an escape, or an interpolation. */
+type BlockItem =
+  | { k: "c"; cp: number; off: number }
+  | { k: "e"; cps: number[]; off: number }
+  | { k: "i"; part: Extract<TemplatePart, { kind: "interp" }> };
+
 type Frame =
   | { t: "top"; tokens: Token[] }
   | { t: "interp"; tokens: Token[]; depth: number }
-  | { t: "tmpl"; token: Token; parts: TemplatePart[]; text: number[] };
+  | { t: "tmpl"; token: Token; parts: TemplatePart[]; text: number[] }
+  | { t: "block"; token: Token; raw: boolean; lines: BlockItem[][]; cur: BlockItem[] };
 
 /** Read the whole source into tokens. Throws ParseError on the first lexical diagnostic. */
 export function lex(src: Source): Token[] {
@@ -86,6 +93,10 @@ class Lexer {
         this.templateText(f);
         continue;
       }
+      if (f.t === "block") {
+        this.blockText(f);
+        continue;
+      }
       this.skipTrivia();
       if (this.pos >= this.cps.length) {
         if (f.t === "top") {
@@ -96,6 +107,15 @@ class Lexer {
         this.unterminatedTemplate();
       }
       const c = this.cps[this.pos];
+      // A text block or a raw text block (f03 2, rows 1 and 6).
+      if (c === DQ && this.at(this.pos + 1) === DQ && this.at(this.pos + 2) === DQ) {
+        this.startBlock(f.tokens, 3, false);
+        continue;
+      }
+      if (c === 0x72 && this.at(this.pos + 1) === DQ && this.at(this.pos + 2) === DQ && this.at(this.pos + 3) === DQ) {
+        this.startBlock(f.tokens, 4, true);
+        continue;
+      }
       if (c === BT) {
         const token = this.tok("template", this.pos, this.pos, "`");
         token.parts = [];
@@ -122,8 +142,8 @@ class Lexer {
   private unterminatedTemplate(): never {
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const f = this.stack[i];
-      if (f.t === "tmpl") {
-        this.fail("unterminated-string", f.token.start, this.cps.length, "the template has no closing `");
+      if (f.t === "tmpl" || f.t === "block") {
+        this.fail("unterminated-string", f.token.start, this.cps.length, "the literal has no closing delimiter");
       }
     }
     throw new Error("unreachable");
@@ -137,7 +157,7 @@ class Lexer {
 
   private parentTokens(): Token[] {
     const f = this.stack[this.stack.length - 1];
-    if (f.t === "tmpl") throw new Error("unreachable");
+    if (f.t === "tmpl" || f.t === "block") throw new Error("unreachable");
     return f.tokens;
   }
 
@@ -226,6 +246,23 @@ class Lexer {
     while (i < cps.length && isWordPart(cps[i])) i++;
     const text = fromCodePoints(cps, start, i);
     const q = this.at(i);
+    // A raw string (f03 2 row 3, 3). `r'''` stays the prefixed literal (row 2).
+    if (text === "r" && (q === DQ || (q === SQ && !(this.at(i + 1) === SQ && this.at(i + 2) === SQ)))) {
+      let j = i + 1;
+      for (;;) {
+        if (j >= cps.length) this.fail("unterminated-string", start, cps.length, "the raw string has no closing quote");
+        const d = cps[j];
+        if (d === q) break;
+        if (d === LF || d === CR) this.fail("unterminated-string", start, j, "the raw string has no closing quote on its line");
+        j++;
+      }
+      this.pos = j + 1;
+      const t = this.tok("string", start, j + 1, q === DQ ? '"' : "'");
+      t.str = fromCodePoints(cps, i + 1, j);
+      t.quote = q === DQ ? '"' : "'";
+      t.form = q === DQ ? 'r"' : "r'";
+      return t;
+    }
     // The prefixed literal (01 2.3 rule 9, 2.9 rule 1).
     if ((q === DQ || q === SQ || q === BT) && !isReserved(text)) {
       let j = i + 1;
@@ -395,6 +432,132 @@ class Lexer {
       v = v * 16 + hexValue(d);
     }
     return v;
+  }
+
+  /** Begin a text block at this.pos; `delim` is 3 for `"""`, 4 for `r"""` (f03 4.1). */
+  private startBlock(into: Token[], delim: number, raw: boolean): void {
+    const cps = this.cps;
+    const start = this.pos;
+    let i = start + delim;
+    let blank = true;
+    while (i < cps.length && cps[i] !== LF && cps[i] !== CR) {
+      if (cps[i] !== SPACE && cps[i] !== TAB) blank = false;
+      i++;
+    }
+    const form = raw ? 'r"""' : '"""';
+    if (!blank) {
+      // text-block-open: the literal runs raw to the end of the next `"""` (f03 4.1 item 3).
+      let end = cps.length;
+      for (let j = start + delim; j + 2 < cps.length; j++) {
+        if (cps[j] === DQ && cps[j + 1] === DQ && cps[j + 2] === DQ) {
+          end = j + 3;
+          break;
+        }
+      }
+      this.pos = end;
+      const t = this.tok("template", start, end, form);
+      t.parts = [];
+      t.form = form;
+      t.blockError = { code: "text-block-open", start, end: start + delim };
+      into.push(t);
+      return;
+    }
+    if (i >= cps.length) this.fail("unterminated-string", start, cps.length, "the text block has no closing delimiter");
+    i += cps[i] === CR && this.at(i + 1) === LF ? 2 : 1;
+    this.pos = i;
+    const token = this.tok("template", start, start, form);
+    token.parts = [];
+    token.form = form;
+    this.stack.push({ t: "block", token, raw, lines: [], cur: [] });
+  }
+
+  // The content of a text block, up to its closing delimiter or the next ${ (f03 4.2).
+  private blockText(f: Extract<Frame, { t: "block" }>): void {
+    const cps = this.cps;
+    let i = this.pos;
+    for (;;) {
+      if (i >= cps.length) {
+        this.fail("unterminated-string", f.token.start, cps.length, "the text block has no closing delimiter");
+      }
+      const c = cps[i];
+      if (c === DQ && this.at(i + 1) === DQ && this.at(i + 2) === DQ) {
+        this.pos = i + 3;
+        this.closeBlock(f, i);
+        return;
+      }
+      if (!f.raw && c === BS) {
+        const n = this.at(i + 1);
+        if (n === LF || n === CR) this.fail("line-continuation", i, i + 1, "a backslash before a line end is not allowed in a text block");
+        if (n < 0) this.fail("unterminated-string", f.token.start, cps.length, "the text block has no closing delimiter");
+        const out: number[] = [];
+        const j = this.escape(i, true, out);
+        f.cur.push({ k: "e", cps: out, off: i });
+        i = j;
+        continue;
+      }
+      if (!f.raw && c === DOLLAR && this.at(i + 1) === LBRACE) {
+        const tokens: Token[] = [];
+        f.cur.push({ k: "i", part: { kind: "interp", open: { start: i, end: i + 2 }, tokens } });
+        this.pos = i + 2;
+        this.gap = false;
+        this.stack.push({ t: "interp", tokens, depth: 0 });
+        return;
+      }
+      if (c === LF || c === CR) {
+        f.lines.push(f.cur);
+        f.cur = [];
+        i += c === CR && this.at(i + 1) === LF ? 2 : 1;
+        continue;
+      }
+      f.cur.push({ k: "c", cp: c, off: i });
+      i++;
+    }
+  }
+
+  /** The closing delimiter at `at`: remove the indentation and build the parts (f03 4.4 to 4.6). */
+  private closeBlock(f: Extract<Frame, { t: "block" }>, at: number): void {
+    this.stack.pop();
+    const t = f.token;
+    t.end = at + 3;
+    this.parentTokens().push(t);
+    const isBlank = (line: BlockItem[]) => line.every((x) => x.k === "c" && (x.cp === SPACE || x.cp === TAB));
+    if (!isBlank(f.cur)) {
+      t.blockError = { code: "text-block-close", start: at, end: at + 3 };
+      return;
+    }
+    const indent = f.cur.map((x) => (x as { cp: number }).cp);
+    const parts: TemplatePart[] = [];
+    let text: number[] = [];
+    f.lines.forEach((line, n) => {
+      if (n > 0) text.push(LF);
+      if (isBlank(line)) return;
+      for (let j = 0; j < indent.length; j++) {
+        const x = line[j];
+        if (x.k !== "c" || x.cp !== indent[j]) {
+          if (t.blockError === undefined) {
+            const off = x.k === "i" ? x.part.open.start : x.off;
+            t.blockError = { code: "text-block-indent", start: off, end: off + 1 };
+          }
+          return;
+        }
+      }
+      for (let j = indent.length; j < line.length; j++) {
+        const x = line[j];
+        if (x.k === "c") text.push(x.cp);
+        else if (x.k === "e") text.push(...x.cps);
+        else {
+          if (text.length > 0) parts.push({ kind: "text", value: fromCodePoints(text) });
+          text = [];
+          parts.push(x.part);
+        }
+      }
+    });
+    if (t.blockError !== undefined) {
+      t.parts = [];
+      return;
+    }
+    if (text.length > 0 || parts.length === 0) parts.push({ kind: "text", value: fromCodePoints(text) });
+    t.parts = parts;
   }
 
   // The text of a template, up to its closing ` or the next ${ (01 2.8).

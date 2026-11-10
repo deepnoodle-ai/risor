@@ -50,7 +50,8 @@ func report(t *testing.T, label string, all []runner.Result) {
 // of case files or directories, separated by the path list separator, to run
 // those instead. Run with -v to see the counts by file.
 func TestSuite(t *testing.T) {
-	paths := []string{filepath.Join("..", "suite", "core-run"), filepath.Join("..", "suite", "core-check")}
+	paths := []string{filepath.Join("..", "suite", "core-run"), filepath.Join("..", "suite", "core-check"),
+		filepath.Join("..", "suite", "strings")} // package F3, string forms
 	if env := os.Getenv("RISOR_CASES"); env != "" {
 		paths = filepath.SplitList(env)
 	}

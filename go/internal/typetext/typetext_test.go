@@ -120,3 +120,12 @@ func TestLibrarySignatures(t *testing.T) {
 		}
 	}
 }
+
+// F3 8.2: a raw string is a String of type text; a text block is not.
+func TestRawStringInTypeText(t *testing.T) {
+	ty, err := ParseType(`r"a\b" | {r"x-y": int}`)
+	assert.NoError(t, err)
+	assert.Equal(t, ty.String(), `"a\\b" | {x-y: int}`)
+	_, err = ParseType("\"\"\"\n  a\n  \"\"\"")
+	assert.Error(t, err)
+}

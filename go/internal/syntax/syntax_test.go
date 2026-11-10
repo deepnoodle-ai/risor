@@ -85,7 +85,7 @@ func TestSection15Examples(t *testing.T) {
 		{`const match = 1; match`, "reserved-word", [4]int{1, 7, 1, 12}},
 		{`a ?? b > c`, "unexpected-token", [4]int{1, 8, 1, 9}},
 		{`x as int`, "unexpected-token", [4]int{1, 3, 1, 5}},
-		{`r"a"`, "unexpected-token", [4]int{1, 1, 1, 2}},
+		{`R"a"`, "unexpected-token", [4]int{1, 1, 1, 2}}, // with F3, r"a" is a raw string
 		{`"a\q"`, "bad-escape", [4]int{1, 3, 1, 5}},
 		{strings.Repeat("(", 101) + "1" + strings.Repeat(")", 101), "nesting-exceeded", [4]int{1, 101, 1, 102}},
 	})
@@ -136,11 +136,10 @@ func TestParseCodes(t *testing.T) {
 // 01-language.md 14.3: every row.
 func TestFollowOnText(t *testing.T) {
 	checkErrors(t, []errCase{
-		{`"""abc"""`, "unexpected-token", [4]int{1, 1, 1, 4}},
+		{`"""abc"""`, "text-block-open", [4]int{1, 1, 1, 4}}, // F3 6.1
 		{"'''abc\nd'''", "unexpected-token", [4]int{1, 1, 1, 4}},
-		{`1 + """`, "unexpected-token", [4]int{1, 5, 1, 8}},
-		{`r"a\"`, "unexpected-token", [4]int{1, 1, 1, 2}},
-		{`r'abc'`, "unexpected-token", [4]int{1, 1, 1, 2}},
+		{`1 + """`, "unterminated-string", [4]int{1, 5, 1, 8}}, // F3 4.1 item 4
+		{`r"a\"b"`, "unexpected-token", [4]int{1, 6, 1, 7}},    // F3 3 item 3: r"a\" then b"
 		{`f"x"`, "unexpected-token", [4]int{1, 1, 1, 2}},
 		{`R"x"`, "unexpected-token", [4]int{1, 1, 1, 2}},
 		{"r`a\nb`", "unexpected-token", [4]int{1, 1, 1, 2}},
@@ -413,7 +412,7 @@ func TestLexical(t *testing.T) {
 		{"\"a\\q\n", "bad-escape", [4]int{1, 3, 1, 5}},
 		{`) "abc`, "unterminated-string", [4]int{1, 3, 1, 7}},
 		{`const match = 1; @`, "unexpected-character", [4]int{1, 18, 1, 19}},
-		{`r"a\"b"`, "unexpected-token", [4]int{1, 1, 1, 2}},
+		{`R"a\"b"`, "unexpected-token", [4]int{1, 1, 1, 2}},
 		// Unterminated literals.
 		{"\"abc\r\n", "unterminated-string", [4]int{1, 1, 1, 5}},
 		{"'abc\rx'", "unterminated-string", [4]int{1, 1, 1, 5}},

@@ -42,7 +42,8 @@ type lexer struct {
 type interp struct {
 	tmplStart int
 	braces    int
-	headIdx   int // index of the template's TemplateHead token
+	headIdx   int       // index of the template's TemplateHead token
+	blk       *blockLex // the text block the interpolation is in, or nil
 }
 
 // Lex divides the text of f into tokens. The last token is EOF. It returns
@@ -90,7 +91,14 @@ func (l *lexer) run() *Error {
 		if n := len(l.interps); n > 0 && c == '}' && l.interps[n-1].braces == 0 {
 			top := l.interps[n-1]
 			l.interps = l.interps[:n-1]
-			if err := l.templateText(top.tmplStart, l.pos, top.headIdx); err != nil {
+			var err *Error
+			if top.blk != nil {
+				l.pos++ // the } that closes the interpolation
+				err = l.blockText(top.blk, l.pos-1)
+			} else {
+				err = l.templateText(top.tmplStart, l.pos, top.headIdx)
+			}
+			if err != nil {
 				return err
 			}
 			continue
@@ -151,6 +159,17 @@ func (l *lexer) token(c rune) *Error {
 			l.pos++
 		}
 		w := string(l.src[start:l.pos])
+		// F3 2: r directly before a quote begins a raw string or a raw text
+		// block; r''' stays the prefixed literal.
+		if w == "r" {
+			switch q := l.peek(0); {
+			case q == '"' && l.peek(1) == '"' && l.peek(2) == '"':
+				return l.textBlock(start, true)
+			case q == '\'' && l.peek(1) == '\'' && l.peek(2) == '\'':
+			case q == '"' || q == '\'':
+				return l.rawString(start, q)
+			}
+		}
 		if q := l.peek(0); (q == '"' || q == '\'' || q == '`') && !reserved[w] {
 			l.prefixed(start, q)
 			return nil
@@ -159,6 +178,9 @@ func (l *lexer) token(c rune) *Error {
 		return nil
 	case c == '"' || c == '\'':
 		if l.peek(1) == c && l.peek(2) == c {
+			if c == '"' {
+				return l.textBlock(start, false) // F3 4
+			}
 			l.blockToken(c)
 			return nil
 		}

@@ -101,6 +101,8 @@ class Parser {
 
   /** `unexpected-token` at a token that does not fit (01 3.5). */
   private unexpected(t: Token): never {
+    // A text block's code is reported when the parser reaches it, before the fit test (f03 6.2).
+    if (t.blockError !== undefined) this.blockFail(t);
     if (t.kind === "reject") {
       this.fail("unexpected-token", t.report ?? t, `${t.text} is not allowed here`);
     }
@@ -118,6 +120,11 @@ class Parser {
     }
     const what = t.kind === "word" || t.kind === "punct" ? `\`${t.text}\`` : t.kind === "interpEnd" ? "`}`" : `a ${t.kind}`;
     this.fail("unexpected-token", t, `unexpected ${what}`);
+  }
+
+  private blockFail(t: Token): never {
+    const e = t.blockError!;
+    this.fail(e.code, e, `${e.code.replace(/-/g, " ")}`);
   }
 
   private reservedWord(t: Token): never {
@@ -470,7 +477,7 @@ class Parser {
         return { kind: "Number", value: t.num!, span: { start: t.start, end: t.end } };
       case "string":
         this.advance();
-        return { kind: "String", value: t.str!, form: t.quote!, span: { start: t.start, end: t.end } };
+        return { kind: "String", value: t.str!, form: t.form ?? t.quote!, span: { start: t.start, end: t.end } };
       case "template":
         return this.template();
       case "word":
@@ -527,12 +534,13 @@ class Parser {
   }
 
   private template(): A.Expr {
+    if (this.cur.blockError !== undefined) this.blockFail(this.cur);
     const t = this.advance();
     const parts = t.parts!;
     const span = { start: t.start, end: t.end };
     if (!parts.some((p) => p.kind === "interp")) {
       const value = parts.map((p) => (p.kind === "text" ? p.value : "")).join("");
-      return { kind: "String", value, form: "`", span };
+      return { kind: "String", value, form: t.form ?? "`", span };
     }
     const out: (string | A.Expr)[] = [];
     for (const p of parts) {
@@ -552,7 +560,7 @@ class Parser {
       this.close();
       out.push(e);
     }
-    return { kind: "Template", parts: out, form: "`", span };
+    return { kind: "Template", parts: out, form: t.form === '"""' ? '"""' : "`", span };
   }
 
   private args(): A.Arg[] {

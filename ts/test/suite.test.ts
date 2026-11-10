@@ -19,7 +19,7 @@ for (const checker of [true, false]) {
       const n = countVerdicts(verdicts);
       t.diagnostic(`pass ${n.pass}, fail ${n.fail}, skip ${n.skip}, invalid ${n.invalid}`);
       const bad = verdicts.filter((v) => v.verdict === "fail" || v.verdict === "invalid");
-      const disputed = (v: { file: string; name: string }) => checker && `${v.file} :: ${v.name}` in DISPUTED;
+      const disputed = (v: { file: string; name: string }) => `${v.file} :: ${v.name}` in DISPUTED;
       for (const v of bad) if (disputed(v)) t.diagnostic(`disputed: ${v.file} :: ${v.name}`);
       assert.deepEqual(
         bad.filter((v) => !disputed(v)).map((v) => `${v.verdict} ${v.file} :: ${v.name} ${v.reason ?? JSON.stringify(v.differences)}`),

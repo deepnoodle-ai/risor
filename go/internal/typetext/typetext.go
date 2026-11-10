@@ -349,7 +349,7 @@ func (p *parser) prim() *Prim {
 	t := p.tok()
 	switch t.Kind {
 	case syntax.TokString:
-		if t.Form == '`' {
+		if t.Form == '`' || t.Block {
 			p.fail("a backtick literal is not type text")
 		}
 		p.next()
@@ -412,7 +412,7 @@ func (p *parser) record() *Record {
 			switch t := p.tok(); {
 			case t.Kind == syntax.Word:
 				f.Key = t.Text
-			case t.Kind == syntax.TokString && t.Form != '`':
+			case t.Kind == syntax.TokString && t.Form != '`' && !t.Block:
 				f.Key = t.Str
 			default:
 				p.fail("expected a field")

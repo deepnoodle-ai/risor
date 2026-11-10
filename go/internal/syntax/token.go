@@ -95,6 +95,14 @@ type Token struct {
 	Str string
 	// Form is the opening quote of a String: '"', '\'' or '`'.
 	Form rune
+	// Block is set for the tokens of a text block (F3 4). A text block is
+	// never a map key, a pattern key, a match literal or type text. With
+	// F3, Form is also 'r' for a raw string, 'T' for a text block and 'R'
+	// for a raw text block.
+	Block bool
+	// BlockErr is a text block's text-block-open, -close or -indent code,
+	// which the parser reports when it reaches the token (F3 6.2).
+	BlockErr *Error
 	// ErrStart and ErrEnd are the span a diagnostic gives when it names this
 	// token. They equal Start and End except for the block token, the
 	// prefixed literal and the pieces of a template.

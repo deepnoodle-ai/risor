@@ -48,14 +48,15 @@ export interface NumberLit extends Base {
 export interface StringLit extends Base {
   kind: "String";
   value: string;
-  form: '"' | "'" | "`";
+  /** `"`, `'`, a backtick, and with package F3 `"""`, `r"`, `r'` and `r"""` (f03 5.2). */
+  form: string;
 }
 
 export interface Template extends Base {
   kind: "Template";
   /** Text parts as strings, interpolations as expressions, in order. */
   parts: (string | Expr)[];
-  form: "`";
+  form: string;
 }
 
 export interface Bool extends Base {
