@@ -1,8 +1,13 @@
 # Risor
 
-[![CI](https://github.com/deepnoodle-ai/risor/actions/workflows/ci.yml/badge.svg)](https://github.com/deepnoodle-ai/risor/actions/workflows/ci.yml)
+[![CI](https://github.com/deepnoodle-ai/risor/actions/workflows/ci.yml/badge.svg?branch=v2)](https://github.com/deepnoodle-ai/risor/actions/workflows/ci.yml)
 [![Go.Dev reference](https://img.shields.io/badge/go.dev-reference-blue?logo=go&logoColor=white)](https://pkg.go.dev/github.com/deepnoodle-ai/risor/v2)
 [![Apache-2.0 license](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
+
+> **This is the Risor v2 branch.** v2 is released and maintained here. The
+> default branch, `main`, holds the
+> [Risor v3 alpha](https://github.com/deepnoodle-ai/risor), a new language
+> published for comment.
 
 Risor is a fast, embeddable scripting language for Go applications.
 

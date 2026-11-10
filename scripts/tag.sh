@@ -14,15 +14,15 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-git fetch origin main --prune --tags
+git fetch origin v2 --prune --tags
 
-if [[ "$(git branch --show-current)" != "main" ]]; then
-    echo "Refusing to tag outside the main branch." >&2
+if [[ "$(git branch --show-current)" != "v2" ]]; then
+    echo "Refusing to tag outside the v2 branch." >&2
     exit 1
 fi
 
-if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
-    echo "Refusing to tag: local main is not exactly origin/main." >&2
+if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/v2)" ]]; then
+    echo "Refusing to tag: local v2 is not exactly origin/v2." >&2
     exit 1
 fi
 
