@@ -21,6 +21,7 @@ import { staticRules } from "../eval/static.ts";
 import type { Counts, StaticEnv } from "../eval/static.ts";
 import { functionCounts, FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS } from "../library/registry.ts";
 import "../library/groups.ts";
+import "../library/math.ts";
 import "../library/core.ts";
 import { Classifier, DEFAULT_CLASSIFIER, jsonString, mapGet, mapKeys, readHost, sortKeys, truthy as truthyOf, BAD_NUMBER } from "../value/value.ts";
 import { numberToText } from "../value/number.ts";

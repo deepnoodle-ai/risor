@@ -22,9 +22,10 @@ export interface CaseOptions {
   /** Only the cases whose names contain this text are run (f09 8.1). */
   filter?: string;
   /**
-   * The base environment the file is checked against when it is loaded: a stub
-   * with no type is valid when this environment declares the name (03 3.10.10
-   * item 11). Give the same base to `defineCases` or `Case.run`.
+   * The base environment (f09 7.1, 7.3 item 5): the file is checked against it
+   * when it is loaded (a stub with no type is valid when it declares the name,
+   * 03 3.10.10 item 11), and every case runs in a child of it. By default the
+   * default environment.
    */
   base?: Env;
 }
@@ -52,8 +53,8 @@ export interface Verdict {
 
 export interface Case {
   readonly name: string;
-  /** Run the case in a child of `base`, by default the options' base or the default environment. */
-  run(base?: Env): Verdict;
+  /** Run the case in a child of the base of its load (f09 7.3 item 5). */
+  run(): Verdict;
 }
 
 export interface CaseFile {
@@ -91,7 +92,7 @@ class File implements CaseFile {
     const index = selected.map((c) => f.cases.indexOf(c));
     this.all = f.cases.length;
     this.index = index;
-    this.cases = selected.map((c, k) => ({ name: c.name, run: (base?: Env) => this.runOne(c, k, base ?? options.base, options, update) }));
+    this.cases = selected.map((c, k) => ({ name: c.name, run: () => this.runOne(c, k, options.base, options, update) }));
     // A case with `skip` is never run: its status is known now.
     selected.forEach((c, k) => {
       if (c.skip !== undefined) {
@@ -208,10 +209,10 @@ export function caseFileText(text: string, program: boolean, options: CaseOption
 }
 
 /** One test for each case, named by the case (f09 7.3 items 1 and 2). */
-export function defineCases(test: TestFn, base: Env | undefined, file: CaseFile, _options: CaseOptions = {}): void {
+export function defineCases(test: TestFn, file: CaseFile): void {
   for (const c of file.cases) {
     const fn = () => {
-      const v = c.run(base);
+      const v = c.run();
       if (v.status === "fail" || v.status === "invalid") throw new Error(v.report);
     };
     const skipped = file instanceof File && file.skipped(c.name);

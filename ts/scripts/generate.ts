@@ -3,6 +3,7 @@
 //   suite/library.json  -> src/generated/library.ts  (the entries' records, without cases and docs)
 //   suite/library-groups.json -> src/generated/library-groups.ts (package F6: the groups' records)
 //   suite/library-queries.json -> src/generated/library-queries.ts (package F7: its records)
+//   suite/library-math.json -> src/generated/library-math.ts (package F13: the eleven math records)
 //   suite/messages-queries.json joins the catalog of messages.ts (package F7, f07 11)
 //   suite/messages-parse.json and messages-check.json join it too (package F8, f08 3.1)
 // Run with `npm run generate`. A test fails when the generated files are stale.
@@ -46,6 +47,11 @@ export function generated(): Record<string, string> {
     for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
     return r;
   });
+  const math = (JSON.parse(readFileSync(join(suite, "library-math.json"), "utf8")) as Record<string, unknown>[]).map((e) => {
+    const r: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
+    return r;
+  });
   const queries = (JSON.parse(readFileSync(join(suite, "library-queries.json"), "utf8")) as Record<string, unknown>[]).map((e) => {
     const r: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
@@ -67,6 +73,10 @@ export function generated(): Record<string, string> {
       head.replace("%s", "library-groups.json") +
       "export interface GroupRecord {\n  name: string;\n  group: string;\n  signature?: string;\n  type?: string;\n  value?: number;\n  [field: string]: unknown;\n}\n\n" +
       `export const GROUP_LIBRARY: GroupRecord[] = ${JSON.stringify(groups, null, 2)};\n`,
+    "library-math.ts":
+      head.replace("%s", "library-math.json") +
+      'import type { GroupRecord } from "./library-groups.ts";\n\n' +
+      `export const MATH_LIBRARY: GroupRecord[] = ${JSON.stringify(math, null, 2)};\n`,
     "library-queries.ts":
       head.replace("%s", "library-queries.json") +
       'import type { LibraryRecord } from "./library.ts";\n\n' +

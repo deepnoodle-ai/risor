@@ -28,7 +28,7 @@ describe("defineCases (f09 7.3 items 1 and 2)", () => {
         errors.push((e as Error).message);
       }
     }, { skip: (name: string) => void skipped.push(name) });
-    defineCases(t, undefined, f);
+    defineCases(t, f);
     assert.deepEqual(ran, ["ok", "bad"]);
     assert.deepEqual(skipped, ["later"]);
     assert.deepEqual(errors, ["  FAIL bad\n    value: expected 2, found 1\n"]);
@@ -42,12 +42,12 @@ describe("defineCases (f09 7.3 items 1 and 2)", () => {
 describe("the base environment and the host's variables (03 3.10.9 item 3)", () => {
   const base = createEnv({ vars: "{n: int}", functions: { twice: { type: "(x: int) => int", call: (_h, x) => (x as number) * 2 } } });
   test("the host's function and variable are used where the file gives none", () => {
-    const f = caseFile([{ name: "a", env: "{n: int}", source: "twice(n)", expect: { value: 8 } }], { update: false, vars: (k) => (k === "n" ? 4 : undefined) });
-    assert.equal(f.cases[0].run(base).status, "pass");
+    const f = caseFile([{ name: "a", env: "{n: int}", source: "twice(n)", expect: { value: 8 } }], { update: false, base, vars: (k) => (k === "n" ? 4 : undefined) });
+    assert.equal(f.cases[0].run().status, "pass");
   });
   test("a stub with no type keeps the base's signature", () => {
     const f = caseFile([{ name: "a", source: "twice(1)", functions: { twice: { calls: [{ args: [1], result: 5 }] } }, expect: { value: 5, type: "int" } }], { update: false, base });
-    assert.equal(f.cases[0].run(base).status, "pass");
+    assert.equal(f.cases[0].run().status, "pass");
   });
 });
 

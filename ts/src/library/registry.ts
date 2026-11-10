@@ -4,6 +4,7 @@
 import { LIBRARY } from "../generated/library.ts";
 import { GROUP_LIBRARY } from "../generated/library-groups.ts";
 import { QUERY_LIBRARY } from "../generated/library-queries.ts";
+import { MATH_LIBRARY } from "../generated/library-math.ts";
 import type { LibraryRecord } from "../generated/library.ts";
 import type { Span } from "../syntax/source.ts";
 import { parseReceiver, parseSignature } from "../types/typetext.ts";
@@ -123,7 +124,8 @@ export const GROUP_FUNCTIONS = new Map<string, Entry & { group: string }>();
 /** The constants of the groups, by full name (`math.pi`) (f06 3.3). */
 export const GROUP_CONSTANTS = new Map<string, { name: string; group: string; type: string; value: number }>();
 
-for (const rec of GROUP_LIBRARY) {
+// Package F13: the eleven entries of the group math are records of a group (f13 5 item 1).
+for (const rec of [...GROUP_LIBRARY, ...MATH_LIBRARY]) {
   const hasType = rec.type !== undefined;
   if (hasType === (rec.signature !== undefined)) throw new Error(`library-groups record ${rec.name}: exactly one of type and signature`);
   if (hasType) GROUP_CONSTANTS.set(rec.name, { name: rec.name, group: rec.group, type: rec.type!, value: rec.value! });
