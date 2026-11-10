@@ -2200,3 +2200,4 @@ in a file of their own beside `suite/library.json`, in the same format.
 | --- | --- | --- | --- |
 | F6, opt-in groups | The groups `json`, `time`, `math` and `base64`, each off until an environment turns it on: 8 entries and the constants `math.pi` and `math.e` | `spec/packages/f06-groups.md` | `suite/library-groups.json` |
 | F13, math functions | Eleven entries of the group `math`, each correctly rounded: `pow`, `exp`, `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2` | `spec/packages/f13-math.md` | `suite/library-math.json` |
+| F7, queries | `minBy`, `maxBy`, `uniqueBy`, `indexBy`, `countBy` and `mapValues`, and a second parameter of `sortBy`, in a record that extends Core's | `spec/packages/f07-queries.md` | `suite/library-queries.json` |

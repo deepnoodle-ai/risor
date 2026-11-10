@@ -511,60 +511,6 @@
    }
   },
   {
-   "name": "a projection",
-   "source": "xs[*]",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       4,
-       1,
-       5
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "an optional projection",
-   "source": "xs?.[*]",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       6,
-       1,
-       7
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a projection then a field",
-   "source": "xs[*].a",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-token",
-      "span": [
-       1,
-       4,
-       1,
-       5
-      ]
-     }
-    ]
-   }
-  },
-  {
    "name": "match { with no subject (P8)",
    "source": "match { 1 => 2 }",
    "expect": {

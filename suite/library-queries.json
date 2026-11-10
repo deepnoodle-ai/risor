@@ -1,0 +1,246 @@
+[
+  {
+    "name": "sortBy",
+    "extends": "list.sortBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => K, order?: \"asc\" | \"desc\") => T[] where K: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The elements in order of their keys, by a stable sort, ascending or in the direction order gives.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + L*(n + sz(keys))",
+    "units": "1 + n",
+    "null": null,
+    "fails": [
+      {
+        "when": "the keys are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      },
+      {
+        "when": "order is not \"asc\" or \"desc\"",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "order"
+      }
+    ],
+    "wrong": [
+      "sort_by",
+      "orderBy",
+      "toSorted",
+      "sortOn",
+      "sortByDescending"
+    ],
+    "cases": [
+      {"name": "sortBy with \"desc\" keeps the order of equal keys", "source": "xs.sortBy(s => len(s), \"desc\")", "env": "{xs: string[]}", "vars": {"xs": ["bb", "a", "cc", "d"]}, "expect": {"value": ["bb", "cc", "a", "d"], "steps": 22, "allocated": 5}},
+      {"name": "sortBy with \"asc\" is the Core sort", "source": "xs.sortBy(s => len(s), \"asc\")", "env": "{xs: string[]}", "vars": {"xs": ["bb", "a", "cc", "d"]}, "expect": {"value": ["a", "d", "bb", "cc"], "steps": 22, "allocated": 5}},
+      {"name": "sortBy \"desc\" is not sortBy then reverse", "source": "[{n: \"a\", k: 1}, {n: \"b\", k: 2}, {n: \"c\", k: 1}].sortBy(p => p.k, \"desc\").map(p => p.n)", "expect": {"value": ["b", "a", "c"]}},
+      {"name": "sortBy \"desc\" orders strings by code point", "source": "[\"\\u{ffff}\", \"😀\"].sortBy(s => s, \"desc\")", "expect": {"value": ["😀", "￿"]}},
+      {"name": "sortBy \"desc\" of an empty list", "source": "xs.sortBy(x => x, \"desc\")", "env": "{xs: int[]}", "vars": {"xs": []}, "expect": {"value": [], "steps": 2, "allocated": 1}},
+      {"name": "sortBy \"desc\" with a null key on any data", "source": "xs.sortBy(x => x, \"desc\")", "env": "{xs: any}", "vars": {"xs": [1, null]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 26], "class": "dynamic", "message": "sortBy needs all numbers or all strings, found null"}], "steps": 6, "allocated": 0}},
+      {"name": "sortBy with a direction that is not asc or desc", "source": "xs.sortBy(x => x, d)", "env": "{xs: int[], d: any}", "vars": {"xs": [2, 1], "d": "up"}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 21], "class": "dynamic", "message": "sortBy takes \"asc\" or \"desc\", found \"up\""}], "steps": 1, "allocated": 0}},
+      {"name": "sortBy \"desc\" stops at a callback that fails", "source": "[1, 0].sortBy(x => 10 / x, \"desc\")", "expect": {"phase": "run", "diagnostics": [{"code": "divide-by-zero", "span": [1, 20, 1, 26], "class": "divide"}]}}
+    ]
+  },
+  {
+    "name": "minBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => K) => T | null where K: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The element whose key is the least; of equal keys, the first.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + sz(keys)",
+    "units": "0",
+    "null": "the list is empty",
+    "fails": [
+      {
+        "when": "the keys are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "min_by",
+      "minOf",
+      "minimumBy",
+      "minByOrNull"
+    ],
+    "cases": [
+      {"name": "minBy a field", "source": "xs.minBy(p => p.a)", "env": "{xs: {a: int, n: string}[]}", "vars": {"xs": [{"n": "b", "a": 2}, {"n": "a", "a": 1}, {"n": "c", "a": 1}]}, "expect": {"value": {"a": 1, "n": "a"}, "steps": 11, "allocated": 0}},
+      {"name": "minBy of an empty list", "source": "xs.minBy(x => x)", "env": "{xs: int[]}", "vars": {"xs": []}, "expect": {"value": null, "steps": 2, "allocated": 0}},
+      {"name": "minBy with a null key on any data", "source": "xs.minBy(x => x)", "env": "{xs: any}", "vars": {"xs": [1, null]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 17], "class": "dynamic", "message": "minBy needs all numbers or all strings, found null"}], "steps": 6, "allocated": 0}},
+      {"name": "minBy takes the first of equal keys", "source": "[{n: \"x\", a: 1}, {n: \"y\", a: 1.0}].minBy(p => p.a).n", "expect": {"value": "x"}}
+    ]
+  },
+  {
+    "name": "maxBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => K) => T | null where K: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The element whose key is the greatest; of equal keys, the first.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + sz(keys)",
+    "units": "0",
+    "null": "the list is empty",
+    "fails": [
+      {
+        "when": "the keys are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "max_by",
+      "maxOf",
+      "maximumBy",
+      "maxByOrNull"
+    ],
+    "cases": [
+      {"name": "maxBy a field", "source": "xs.maxBy(p => p.a)", "env": "{xs: {a: int, n: string}[]}", "vars": {"xs": [{"n": "b", "a": 2}, {"n": "a", "a": 1}, {"n": "c", "a": 1}]}, "expect": {"value": {"a": 2, "n": "b"}, "steps": 11, "allocated": 0}},
+      {"name": "maxBy takes the first of equal keys", "source": "[{n: \"x\", a: 2}, {n: \"y\", a: 2}].maxBy(p => p.a).n", "expect": {"value": "x"}},
+      {"name": "maxBy of an empty list", "source": "xs.maxBy(x => x)", "env": "{xs: int[]}", "vars": {"xs": []}, "expect": {"value": null, "steps": 2, "allocated": 0}},
+      {"name": "maxBy with mixed keys on any data", "source": "xs.maxBy(x => x)", "env": "{xs: any}", "vars": {"xs": [1, "a"]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 17], "class": "dynamic", "message": "maxBy needs all numbers or all strings, found string"}], "steps": 6, "allocated": 0}}
+    ]
+  },
+  {
+    "name": "uniqueBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => K) => T[] where K: ordered",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The first element with each key, in order.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + sz(keys)",
+    "units": "1 + k",
+    "null": null,
+    "fails": [
+      {
+        "when": "the keys are not all numbers or all strings",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "unordered"
+      }
+    ],
+    "wrong": [
+      "unique_by",
+      "distinctBy",
+      "uniqBy"
+    ],
+    "cases": [
+      {"name": "uniqueBy keeps the first element of each key", "source": "xs.uniqueBy(s => len(s))", "env": "{xs: string[]}", "vars": {"xs": ["bb", "a", "cc", "d"]}, "expect": {"value": ["bb", "a"], "steps": 14, "allocated": 3}},
+      {"name": "uniqueBy with mixed keys on any data", "source": "xs.uniqueBy(x => x)", "env": "{xs: any}", "vars": {"xs": [1, "1"]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 20], "class": "dynamic", "message": "uniqueBy needs all numbers or all strings, found string"}], "steps": 6, "allocated": 0}},
+      {"name": "uniqueBy: 1 and 1.0 are one key", "source": "[1, 1.0, 2].uniqueBy(x => x)", "expect": {"value": [1, 2]}},
+      {"name": "uniqueBy of an empty list", "source": "xs.uniqueBy(x => x)", "env": "{xs: int[]}", "vars": {"xs": []}, "expect": {"value": [], "steps": 2, "allocated": 1}}
+    ]
+  },
+  {
+    "name": "indexBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => string) => map<T>",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "Each element under its key; a later element replaces an earlier one.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + sz(keys)",
+    "units": "1 + 2*n",
+    "null": null,
+    "fails": [
+      {
+        "when": "a result of f is not a string",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "result"
+      }
+    ],
+    "wrong": [
+      "keyBy",
+      "associateBy",
+      "index_by"
+    ],
+    "cases": [
+      {"name": "indexBy keeps the last element of each key", "source": "xs.indexBy(u => u.id)", "env": "{xs: {id: string, v: int}[]}", "vars": {"xs": [{"id": "a", "v": 1}, {"id": "b", "v": 2}, {"id": "a", "v": 3}]}, "expect": {"value": {"a": {"id": "a", "v": 3}, "b": {"id": "b", "v": 2}}, "steps": 11, "allocated": 7}},
+      {"name": "indexBy with a key that is not a string", "source": "xs.indexBy(x => x)", "env": "{xs: any}", "vars": {"xs": [1]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 19], "class": "dynamic", "message": "the callback of indexBy gave a value of kind number, which it cannot take"}], "steps": 4, "allocated": 0}},
+      {"name": "indexBy of an empty list", "source": "xs.indexBy(x => x)", "env": "{xs: string[]}", "vars": {"xs": []}, "expect": {"value": {}, "steps": 2, "allocated": 1}}
+    ]
+  },
+  {
+    "name": "countBy",
+    "receiver": "T[]",
+    "signature": "(f: (item: T, index: int) => string) => map<int>",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "For each distinct key, how many elements have it.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + sz(keys)",
+    "units": "1 + 2*g",
+    "null": null,
+    "fails": [
+      {
+        "when": "a result of f is not a string",
+        "kind": "kind",
+        "code": "wrong-kind",
+        "template": "result"
+      }
+    ],
+    "wrong": [
+      "count_by",
+      "groupingBy",
+      "tally"
+    ],
+    "cases": [
+      {"name": "countBy counts each key", "source": "xs.countBy(x => x)", "env": "{xs: string[]}", "vars": {"xs": ["b", "a", "b"]}, "expect": {"value": {"a": 1, "b": 2}, "steps": 8, "allocated": 5}},
+      {"name": "countBy of an empty list", "source": "xs.countBy(x => x)", "env": "{xs: string[]}", "vars": {"xs": []}, "expect": {"value": {}, "steps": 2, "allocated": 1}},
+      {"name": "countBy with a null key on any data", "source": "xs.countBy(x => x)", "env": "{xs: any}", "vars": {"xs": ["a", null]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 19], "class": "dynamic", "message": "the callback of countBy gave a value of kind null, which it cannot take"}], "steps": 6, "allocated": 0}}
+    ]
+  },
+  {
+    "name": "mapValues",
+    "receiver": "map<T>",
+    "signature": "(f: (value: T, key: string) => U) => map<U>",
+    "group": "core",
+    "since": "3.0",
+    "exact": true,
+    "doc": "The map with the same keys and f of each value, called in key order.",
+    "calls": [
+      "f"
+    ],
+    "steps": "2*n + L*(n + sz(keys))",
+    "units": "1 + 2*n",
+    "null": null,
+    "fails": [],
+    "wrong": [
+      "map_values",
+      "mapObject",
+      "transformValues",
+      "with_entries"
+    ],
+    "cases": [
+      {"name": "mapValues of each value, in key order", "source": "m.mapValues(v => v * 2)", "env": "{m: map<int>}", "vars": {"m": {"b": 1, "a": 2, "c": 3}}, "expect": {"value": {"a": 4, "b": 2, "c": 6}, "steps": 17, "allocated": 7}},
+      {"name": "mapValues passes the key second", "source": "{b: 1, a: 2}.mapValues((v, k) => k + string(v))", "expect": {"value": {"a": "a2", "b": "b1"}, "steps": 12, "allocated": 14}},
+      {"name": "mapValues of an empty map", "source": "m.mapValues(v => v)", "env": "{m: map<int>}", "vars": {"m": {}}, "expect": {"value": {}, "steps": 2, "allocated": 1}}
+    ]
+  }
+]

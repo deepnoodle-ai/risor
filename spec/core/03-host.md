@@ -1341,6 +1341,7 @@ above. A package's chapter is the home of its rules: this table only points.
 | F3, string forms | Nothing in the host contract. Its cases use Core's format | `spec/packages/f03-strings.md` |
 | F4, checked conversion | The declaration of a named type, and the case field `types`. The conformance function, and the case of the second kind, with the field `conform` | `spec/packages/f04-conversion.md` |
 | F6, opt-in groups | The declaration that turns a group on: `json`, `time`, `math`, `base64`. The case field `groups`, and the result field `json`, which compares the binding's JSON text of a result (3.2.4) | `spec/packages/f06-groups.md` |
+| F7, queries | Three run-phase templates, in a catalog file of their own, `suite/messages-queries.json`. A package's templates never enter `suite/messages.json` | `spec/packages/f07-queries.md` 11 |
 | F13, math functions | Nothing in the host contract: eleven entries of the group `math` | `spec/packages/f13-math.md` |
 | Errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings. The `parse` and `check` templates of the catalog | Not written yet |
 | Testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Update mode. Case files written as programs. Kinds of case that test the runner | Not written yet |

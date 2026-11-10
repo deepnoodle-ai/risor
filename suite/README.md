@@ -18,6 +18,7 @@ does it. A case file is JSON, in the format of `spec/core/03-host.md` 3.10.
 | `templates/`, `analysis/` | Package F2: host templates, and the analysis of a program | `spec/packages/f02-templates-analysis.md` |
 | `conversion/` | Package F4: `as`, `is`, named types, the conformance function | `spec/packages/f04-conversion.md` |
 | `library-groups.json`, `groups/` | Package F6: the groups `json`, `time`, `math` and `base64`, as records with their cases, and cases that need more than one entry | `spec/packages/f06-groups.md` |
+| `library-queries.json`, `messages-queries.json`, `queries/` | Package F7: the step `[*]`, six list and map methods, a direction for `sortBy`; their records, their three message templates, their cases | `spec/packages/f07-queries.md` |
 | `library-math.json`, `math/` | Package F13: the correctly rounded functions of `math` | `spec/packages/f13-math.md` |
 
 A runner runs the Core paths and the directories of the packages its

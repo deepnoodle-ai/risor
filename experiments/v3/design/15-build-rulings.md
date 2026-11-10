@@ -364,3 +364,18 @@ The chapter is `spec/packages/f04-conversion.md`, with 617 cases in
 | R143 | **The size of a type is at most 100,000,** counted as the type written out with no sharing. A type is held with shared parts, and forty `const` lines that each make a record of two copies of the one before give a type of 2^40 nodes; joining two such types did not return. Past the limit an expression is `check-limit` at a node the chapter names for each construct, and a declared type is `bad-type`. The test is constant work: the size is kept with the type. F1 (a schema's `$ref`) and F4 (a named type) share parts in declarations and cite the same limit. |
 | R144 | A site of class `index`, `divide`, `value` or `host` covers a failure only on its own node; the wider reach (an operand, a receiver, an argument, a callback's body) is for `dynamic` sites. |
 | R145 | **Child environments.** There are two spaces of names, values and types. A child's declaration replaces the inherited declaration of the same name in the same space, whatever kind it is, and whole: a redeclared opaque type has only the child's methods. The clash rules then apply to the child's whole environment. |
+
+### 14.4 F7, queries
+
+The chapter is `spec/packages/f07-queries.md`, with 329 cases in
+`suite/queries/`, seven records in `suite/library-queries.json` and three
+templates in `suite/messages-queries.json`. Plan `13` is its source. Ten Core
+cases were removed under R98: three in `parse-follow-on.json`, seven in
+`check-library.json`.
+
+| # | Ruling |
+| --- | --- |
+| R146 | **A package's run-phase templates stand in a catalog file of their own,** as its library records do. Core's catalog keeps its 64 templates. |
+| R147 | A record may extend a Core entry (`extends`): `sortBy` gains a direction, and every Core case of it keeps its outcome and its counts. A bad direction is `wrong-kind`, tested before the call's step, so that no `!` is added to `sortBy` and no Core site changes. |
+| R148 | A star's level lasts to the end of its projection. A step inside a projection spans from the chain's first token. A map, a string and a number fail under `[*]`, also under `?.[*]`. |
+| R149 | The five entries that build or probe a map by key charge the size of the keys, by Core's key rule; plan `13` charged it for three of them. `mapValues` charges for ordering its keys before its first call. |

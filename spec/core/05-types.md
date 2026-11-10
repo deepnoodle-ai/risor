@@ -2094,3 +2094,4 @@ Its chapter is the home of its rules.
 | F6, opt-in groups | The signatures of the groups' entries and the types of the constants; `renders` on `json.stringify` | `spec/packages/f06-groups.md` 10 |
 | F13, math functions | The signatures of its eleven entries | `spec/packages/f13-math.md` |
 | F4, checked conversion | The types of `x as T` and `x is T`, the facts of `is`, the site of `as`, named types in type text, `untagged-union` for a program type with two records | `spec/packages/f04-conversion.md` 3 and 6 |
+| F7, queries | The type of a projection and its sites; the signatures of its entries | `spec/packages/f07-queries.md` 4 and 6 |
