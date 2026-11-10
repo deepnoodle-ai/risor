@@ -42,6 +42,10 @@ type Native func(c *Call, args []any) (any, error)
 // Opaque is implemented by a host value that is an opaque value of a
 // declared opaque type. OpaqueType returns the type's name. Two opaque
 // values are == when they are == in Go.
+//
+// TypeOf asks the name of the type's zero value (for a pointer receiver, a
+// nil pointer), so OpaqueType must return a constant and must not read its
+// receiver (F1 6.2, ruling BB20).
 type Opaque interface {
 	OpaqueType() string
 }

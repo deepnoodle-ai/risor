@@ -75,8 +75,12 @@ func KindOf(v any) Kind {
 }
 
 func reflectKind(v any) Kind {
-	if _, ok := v.(encoding.TextMarshaler); ok {
-		return String // F1 6.2: a text type
+	if m, ok := v.(encoding.TextMarshaler); ok {
+		// F1 6.2: a text type; BB21: null when MarshalText fails.
+		if _, ok := marshalText(m); ok {
+			return String
+		}
+		return Null
 	}
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
@@ -156,7 +160,10 @@ func Read(v any) (any, ReadError) {
 	case Opaque:
 		return v, ReadOK
 	case encoding.TextMarshaler:
-		return Read(marshalText(x))
+		if s, ok := marshalText(x); ok {
+			return Read(s)
+		}
+		return nil, ReadOK // BB21
 	}
 	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {

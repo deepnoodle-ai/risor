@@ -623,6 +623,10 @@ first that applies gives the type.
    Every other field is required.
 4. The fields of an embedded struct are presented as `encoding/json` presents
    them.
+5. One shape is the exception to item 4: an exported field reached through
+   an embedded pointer to an unexported struct type, `struct{ *inner }`. It
+   takes part in deciding which field a name means, but it is not presented
+   and is not in the record.
 
 ### 6.3 Rust (binding rules, provisional)
 

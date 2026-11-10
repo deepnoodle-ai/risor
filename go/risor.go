@@ -58,6 +58,9 @@ type Error = diag.Error
 type Expr struct {
 	file *syntax.File
 	tree *syntax.Program
+	// segments and template are set for a template's program (F2).
+	segments []Segment
+	template bool
 }
 
 // Parse parses the source text of a program. A text gives the same Expr,

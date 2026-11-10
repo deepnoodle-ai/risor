@@ -17,6 +17,29 @@ import (
 // Every expect is ignored, and every case that gets as far is run. A program
 // that checks has its type and sites after its name (stage S4).
 func Outcome(c *casefile.Case) string {
+	// F2 4.8: the report is the last field, for every case whose text
+	// parses. An analysis case has name, phase and analysis.
+	x, perr := parseCase(c)
+	if c.Expect != nil && c.Expect.Analysis != nil {
+		var b strings.Builder
+		b.WriteString(`{"name":` + value.QuoteJSON(c.Name))
+		if perr != nil {
+			d := perr.(*risor.Error).Diagnostics[0]
+			a := d.Span.Array()
+			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":[%d,%d,%d,%d]}]}`, value.QuoteJSON(d.Code), a[0], a[1], a[2], a[3])
+			return b.String()
+		}
+		b.WriteString(`,"phase":null,"analysis":` + AnalysisJSON(x.Analyze()) + "}")
+		return b.String()
+	}
+	line := outcome(c)
+	if perr == nil {
+		line = line[:len(line)-1] + `,"analysis":` + AnalysisJSON(x.Analyze()) + "}"
+	}
+	return line
+}
+
+func outcome(c *casefile.Case) string {
 	var b strings.Builder
 	b.WriteString(`{"name":`)
 	b.WriteString(value.QuoteJSON(c.Name))
@@ -77,7 +100,7 @@ func Outcome(c *casefile.Case) string {
 			b.Write(d)
 		}
 	}
-	x, err := risor.Parse(c.Source)
+	x, err := parseCase(c)
 	if err != nil {
 		return fail(err, nil)
 	}

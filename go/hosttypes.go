@@ -154,10 +154,10 @@ func undeclaredOpaque(t *types.Type, declared map[string]bool) (string, bool) {
 }
 
 // TypeOf derives the type of a Go type by the binding rules of F1 6.2: a
-// type that implements Opaque gives its opaque name; one that implements
-// encoding.TextMarshaler gives string; then bool, string, the integer and
-// float types, slices and arrays, maps with string keys, pointers (T or
-// null), any, and structs (an exact record of the fields encoding/json would
+// type that implements Opaque gives its opaque name, asked of the type's
+// zero value; one that implements encoding.TextMarshaler gives string; then
+// bool, string, the integer and float types, slices and arrays, maps with
+// string keys, pointers (T or null), every interface type (any), and structs (an exact record of the fields encoding/json would
 // write). Anything else, a type that contains itself, and a type deeper
 // than 64 are errors with the code bad-type.
 func TypeOf[T any]() (Type, error) {
@@ -187,7 +187,9 @@ type deriver struct {
 }
 
 func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
-	if rt == nil {
+	if rt == nil || rt.Kind() == reflect.Interface {
+		// BB23: every interface type is any; the value it holds is presented
+		// by the rules of its own type, a nil interface as null.
 		return types.Any, nil
 	}
 	if rt.Implements(opaqueIface) {
@@ -232,10 +234,6 @@ func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
 			return nil, err
 		}
 		return types.WithNull(el), nil
-	case reflect.Interface:
-		if rt.NumMethod() == 0 {
-			return types.Any, nil
-		}
 	case reflect.Struct:
 		var fs []types.Field
 		for _, f := range value.StructFields(rt) {

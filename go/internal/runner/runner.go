@@ -307,6 +307,9 @@ func runCase(c *casefile.Case) Result {
 	if c.Skip != nil {
 		return skip(*c.Skip)
 	}
+	if c.Expect.Analysis != nil {
+		return runAnalysis(c)
+	}
 	// Ruling AP1: a case with "check": false is compiled with the static
 	// rules alone, and its class is compared for every code.
 	if c.Check != nil && !*c.Check {
@@ -352,7 +355,7 @@ func runMode(c *casefile.Case, checked, allClasses bool) Result {
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), nil, st)
 	}
-	x, err := risor.Parse(c.Source)
+	x, err := parseCase(c)
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), nil, st)
 	}
@@ -677,4 +680,131 @@ func formatGot(ss []risor.Site) string {
 		parts[i] = fmt.Sprintf("%s [%d, %d, %d, %d]", s.Class, a[0], a[1], a[2], a[3])
 	}
 	return "[" + strings.Join(parts, "; ") + "]"
+}
+
+// parseCase is step 3 of 3.10.5: the text as a program, or as a template in
+// the case's mode (F2 4.1).
+func parseCase(c *casefile.Case) (*risor.Expr, error) {
+	if c.Template == "" {
+		return risor.Parse(c.Source)
+	}
+	t, err := risor.ParseTemplate(c.Source)
+	if err != nil {
+		return nil, err
+	}
+	return t.Program(risor.TemplateMode(c.Template)), nil
+}
+
+// runAnalysis runs an analysis case (F2 4.2): Read, Parse, Analyze. Each
+// field the case states is compared whole.
+func runAnalysis(c *casefile.Case) Result {
+	x, err := parseCase(c)
+	if err != nil {
+		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", "an analysis", "a failure of phase parse: " + err.Error()}}}
+	}
+	text := AnalysisJSON(x.Analyze())
+	got, err := casefile.DecodeJSON([]byte(text))
+	if err != nil {
+		panic(err)
+	}
+	gm := got.(map[string]any)
+	keys := make([]string, 0, len(c.Expect.Analysis))
+	for k := range c.Expect.Analysis {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !value.Equal(gm[k], c.Expect.Analysis[k]) {
+			want, _ := json.Marshal(c.Expect.Analysis)
+			return Result{Verdict: Fail, Diffs: []Diff{{"analysis", string(want), text}}}
+		}
+	}
+	return Result{Verdict: Pass}
+}
+
+// AnalysisJSON writes a report in its JSON form (F2 3.3, 4.3, 4.8): the
+// fields in the order of 3.3, and those of each reference, call and segment
+// in the order of 4.3.
+func AnalysisJSON(a *risor.Analysis) string {
+	var b strings.Builder
+	span := func(s risor.Span) {
+		x := s.Array()
+		fmt.Fprintf(&b, "[%d,%d,%d,%d]", x[0], x[1], x[2], x[3])
+	}
+	b.WriteString(`{"names":[`)
+	for i, n := range a.Names {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(value.QuoteJSON(n))
+	}
+	b.WriteString(`],"refs":[`)
+	for i, r := range a.Refs {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`{"name":` + value.QuoteJSON(r.Name) + `,"path":[`)
+		for j, st := range r.Path {
+			if j > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(value.QuoteJSON(st.Key))
+		}
+		b.WriteString(`],"span":`)
+		span(r.Span)
+		b.WriteByte('}')
+	}
+	b.WriteString(`],"calls":[`)
+	for i, c := range a.Calls {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`{"name":` + value.QuoteJSON(c.Name) + `,"namespace":`)
+		if c.Namespace == "" {
+			b.WriteString("null")
+		} else {
+			b.WriteString(value.QuoteJSON(c.Namespace))
+		}
+		b.WriteString(`,"span":`)
+		span(c.Span)
+		b.WriteString(`,"args":[`)
+		for j, s := range c.ArgSpans {
+			if j > 0 {
+				b.WriteByte(',')
+			}
+			span(s)
+		}
+		fmt.Fprintf(&b, `],"lambda":%t}`, c.InLambda)
+	}
+	b.WriteString(`],"literal":`)
+	if a.IsLiteral {
+		b.WriteString(`{"value":`)
+		writeJSON(&b, a.Literal)
+		b.WriteByte('}')
+	} else {
+		b.WriteString("false")
+	}
+	b.WriteString(`,"segments":`)
+	if !a.Template {
+		b.WriteString("null")
+	} else {
+		b.WriteByte('[')
+		for i, sg := range a.Segments {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			if sg.Expr == nil {
+				b.WriteString(`{"text":` + value.QuoteJSON(sg.Text) + `,"span":`)
+			} else {
+				b.WriteString(`{"part":`)
+				span(sg.ExprSpan)
+				b.WriteString(`,"span":`)
+			}
+			span(sg.Span)
+			b.WriteByte('}')
+		}
+		b.WriteByte(']')
+	}
+	b.WriteByte('}')
+	return b.String()
 }

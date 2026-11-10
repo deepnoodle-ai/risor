@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"unsafe"
 )
 
 // This file presents Go host values by the binding rules of package F1 6.2
@@ -31,10 +30,6 @@ type StructField struct {
 	// ViaPointer is set when the path crosses an embedded pointer, which may
 	// be nil: the field is then absent.
 	ViaPointer bool
-	// ViaUnexported is set when the path crosses an unexported embedded
-	// struct, whose promoted fields encoding/json writes but reflection
-	// reads only through the field's address.
-	ViaUnexported bool
 }
 
 // Optional reports whether the field may be presented as absent.
@@ -68,6 +63,11 @@ type fieldCand struct {
 	StructField
 	depth  int
 	tagged bool
+	// unreadable marks a field reached through an unexported embedded
+	// pointer. encoding/json writes it, but reflect reads it only as a
+	// read-only value, which cannot become a Go value without unsafe; it
+	// takes part in dominance, and is not presented if it wins (BB22).
+	unreadable bool
 }
 
 // collectFields follows encoding/json: exported fields; the fields of an
@@ -76,10 +76,10 @@ type fieldCand struct {
 func collectFields(t reflect.Type) []StructField {
 	var cands []fieldCand
 	type level struct {
-		t     reflect.Type
-		index []int
-		ptr   bool
-		unexp bool
+		t          reflect.Type
+		index      []int
+		ptr        bool
+		unreadable bool
 	}
 	queue := []level{{t: t}}
 	visited := map[reflect.Type]bool{}
@@ -101,13 +101,13 @@ func collectFields(t reflect.Type) []StructField {
 				if sf.Anonymous && !tagged {
 					et := ft
 					ptr := lv.ptr
-					unexp := lv.unexp || !sf.IsExported()
+					unreadable := lv.unreadable || (!sf.IsExported() && et.Kind() == reflect.Pointer)
 					if et.Kind() == reflect.Pointer {
 						et = et.Elem()
 						ptr = true
 					}
 					if et.Kind() == reflect.Struct && !implementsHost(et) {
-						next = append(next, level{t: et, index: index, ptr: ptr, unexp: unexp})
+						next = append(next, level{t: et, index: index, ptr: ptr, unreadable: unreadable})
 						continue
 					}
 				}
@@ -117,8 +117,8 @@ func collectFields(t reflect.Type) []StructField {
 				cands = append(cands, fieldCand{StructField: StructField{
 					Key: name, Index: index, Type: ft,
 					OmitEmpty: strings.Contains(opts, ",omitempty"), OmitZero: strings.Contains(opts, ",omitzero"),
-					ViaPointer: lv.ptr, ViaUnexported: lv.unexp,
-				}, depth: depth, tagged: tagged})
+					ViaPointer: lv.ptr,
+				}, depth: depth, tagged: tagged, unreadable: lv.unreadable})
 			}
 		}
 		queue = next
@@ -144,18 +144,22 @@ func collectFields(t reflect.Type) []StructField {
 				top = append(top, c)
 			}
 		}
+		win := -1
 		if len(top) == 1 {
-			out = append(out, top[0].StructField)
-			continue
-		}
-		var tagged []fieldCand
-		for _, c := range top {
-			if c.tagged {
-				tagged = append(tagged, c)
+			win = 0
+		} else {
+			for i, c := range top {
+				if c.tagged {
+					if win >= 0 {
+						win = -1
+						break
+					}
+					win = i
+				}
 			}
 		}
-		if len(tagged) == 1 {
-			out = append(out, tagged[0].StructField)
+		if win >= 0 && !top[win].unreadable {
+			out = append(out, top[win].StructField)
 		}
 	}
 	return out
@@ -199,11 +203,7 @@ var opaqueType = reflect.TypeFor[Opaque]()
 // field returns a struct value's field, and whether it is present.
 func field(rv reflect.Value, f *StructField) (reflect.Value, bool) {
 	v := rv
-	if f.ViaUnexported && !v.CanAddr() {
-		c := reflect.New(v.Type()).Elem()
-		c.Set(v)
-		v = c
-	}
+
 	for i, x := range f.Index {
 		if i > 0 && v.Kind() == reflect.Pointer {
 			if v.IsNil() {
@@ -213,10 +213,7 @@ func field(rv reflect.Value, f *StructField) (reflect.Value, bool) {
 		}
 		v = v.Field(x)
 	}
-	if f.ViaUnexported && !v.CanInterface() {
-		// The field is exported; only the path to it is not.
-		v = reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
-	}
+
 	if (f.OmitEmpty && isEmptyValue(v)) || (f.OmitZero && isZeroValue(v)) {
 		return reflect.Value{}, false
 	}
@@ -294,11 +291,16 @@ func structKeys(rv reflect.Value, si *structInfo) []string {
 	return keys
 }
 
-// marshalText presents a text type (6.2): the text MarshalText gives.
-func marshalText(m encoding.TextMarshaler) string {
+// marshalText presents a text type (6.2): the text MarshalText gives. It
+// reports false when MarshalText fails, and for a nil pointer, which the
+// value is then presented as null (BB21).
+func marshalText(m encoding.TextMarshaler) (string, bool) {
+	if rv := reflect.ValueOf(m); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return "", false
+	}
 	b, err := m.MarshalText()
 	if err != nil {
-		return ""
+		return "", false
 	}
-	return string(b)
+	return string(b), true
 }

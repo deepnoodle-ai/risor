@@ -47,7 +47,10 @@ type Case struct {
 	// Schemas declares variables by JSON Schema (package F1 7.1). Nil when
 	// absent.
 	Schemas map[string]*SchemaVar
-	Expect  *Expect
+	// Template is "string" or "value" when the text is a template (F2 4.1),
+	// else empty.
+	Template string
+	Expect   *Expect
 }
 
 // SchemaVar is one value of the field schemas (F1 7.1).
@@ -93,8 +96,11 @@ type Expect struct {
 	// Description is the expected description of the environment (F1 7.2).
 	Description    any
 	HasDescription bool
-	Steps          *int64
-	Allocated      *int64
+	// Analysis is the expected analysis report (F2 4.2): only the fields it
+	// has are compared. Nil when absent.
+	Analysis  map[string]any
+	Steps     *int64
+	Allocated *int64
 }
 
 // IsFailure reports whether the expect is a failure.
@@ -190,11 +196,16 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
 		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check",
-		"schemas")
-	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description")
+		"schemas", "template")
+	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis")
+	// F2 4.2, 4.3.
+	analysisFields = set("names", "refs", "calls", "literal", "segments")
+	analysisBanned = []string{"env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version"}
+	refFields      = set("name", "path", "span")
+	callFields     = set("name", "namespace", "span", "args", "lambda")
 	// F1 7.1 and 7.2.
 	schemaVarFields   = set("schema", "options")
 	descriptionFields = set("version", "variables", "functions", "opaque", "removed", "reject", "limits")
@@ -422,6 +433,11 @@ func (v *validator) fields(m map[string]any, where string) error {
 			}
 		}
 	}
+	if x, ok := m["template"]; ok {
+		if s, ok := x.(string); !ok || (s != "string" && s != "value") {
+			return v.invalid("%s: template is not \"string\" or \"value\"", where)
+		}
+	}
 	if x, ok := m["schemas"]; ok {
 		sm, ok := x.(map[string]any)
 		if !ok {
@@ -600,6 +616,9 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 			c.Functions[name] = st
 		}
 	}
+	if s := optString(m, "template"); s != nil {
+		c.Template = *s
+	}
 	if x, ok := m["schemas"]; ok {
 		c.Schemas = map[string]*SchemaVar{}
 		for name, val := range x.(map[string]any) {
@@ -644,6 +663,13 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	e, err := v.expect(m["expect"], where)
 	if err != nil {
 		return nil, err
+	}
+	if e.Analysis != nil {
+		for _, k := range analysisBanned {
+			if _, ok := m[k]; ok {
+				return nil, v.invalid("%s: an analysis case has no field %s", where, k)
+			}
+		}
 	}
 	if e.HasValue {
 		if e.Value, err = v.opaque(e.Value, c.Opaque, where); err != nil {
@@ -879,6 +905,16 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 			}
 			e.Description, e.HasDescription = x, true
 		}
+		if x, ok := m["analysis"]; ok {
+			if len(m) != 1 {
+				return nil, v.invalid("%s: an expect with analysis has no other field", where)
+			}
+			am, err := v.analysis(x, where+": analysis")
+			if err != nil {
+				return nil, err
+			}
+			e.Analysis = am
+		}
 		if x, ok := m["truthy"]; ok {
 			b, ok := x.(bool)
 			if !ok {
@@ -974,4 +1010,98 @@ var StaticCodes = map[string]bool{
 	"call-of-parameter": true, "lambda-to-lambda": true, "duplicate-name": true,
 	"shadows-namespace": true, "duplicate-key": true, "arity": true,
 	"duplicate-case": true, "unreachable-arm": true,
+}
+
+// analysis validates an expected analysis by F2 4.3 and 4.5 item 4.
+func (v *validator) analysis(x any, where string) (map[string]any, error) {
+	m, ok := x.(map[string]any)
+	if !ok {
+		return nil, v.invalid("%s is not an object", where)
+	}
+	if err := v.checkFields(m, analysisFields, where); err != nil {
+		return nil, err
+	}
+	bad := func(k string) (map[string]any, error) {
+		return nil, v.invalid("%s: %s is not of the form of F2 4.3", where, k)
+	}
+	isSpan := func(x any) bool { _, err := v.span(x, where); return err == nil }
+	objects := func(k string, fields map[string]bool, ok func(o map[string]any) bool) bool {
+		arr, isArr := m[k].([]any)
+		if !isArr {
+			return false
+		}
+		for _, el := range arr {
+			o, isObj := el.(map[string]any)
+			if !isObj || len(o) != len(fields) {
+				return false
+			}
+			for f := range fields {
+				if _, has := o[f]; !has {
+					return false
+				}
+			}
+			if !ok(o) {
+				return false
+			}
+		}
+		return true
+	}
+	if x, has := m["names"]; has {
+		if _, ok := stringList(x); !ok {
+			return bad("names")
+		}
+	}
+	if _, has := m["refs"]; has && !objects("refs", refFields, func(o map[string]any) bool {
+		_, n := o["name"].(string)
+		_, p := stringList(o["path"])
+		return n && p && isSpan(o["span"])
+	}) {
+		return bad("refs")
+	}
+	if _, has := m["calls"]; has && !objects("calls", callFields, func(o map[string]any) bool {
+		_, n := o["name"].(string)
+		_, ns := o["namespace"].(string)
+		_, l := o["lambda"].(bool)
+		args, a := o["args"].([]any)
+		for _, s := range args {
+			a = a && isSpan(s)
+		}
+		return n && (ns || o["namespace"] == nil) && l && a && isSpan(o["span"])
+	}) {
+		return bad("calls")
+	}
+	if x, has := m["literal"]; has {
+		switch l := x.(type) {
+		case bool:
+			if l {
+				return bad("literal")
+			}
+		case map[string]any:
+			if _, ok := l["value"]; !ok || len(l) != 1 {
+				return bad("literal")
+			}
+		default:
+			return bad("literal")
+		}
+	}
+	if x, has := m["segments"]; has && x != nil {
+		arr, ok := x.([]any)
+		if !ok {
+			return bad("segments")
+		}
+		for _, el := range arr {
+			o, ok := el.(map[string]any)
+			if !ok || len(o) != 2 || !isSpan(o["span"]) {
+				return bad("segments")
+			}
+			if t, has := o["text"]; has {
+				if _, ok := t.(string); !ok {
+					return bad("segments")
+				}
+			} else if p, has := o["part"]; !has || !isSpan(p) {
+				return bad("segments")
+			}
+		}
+	}
+	return m, nil
 }

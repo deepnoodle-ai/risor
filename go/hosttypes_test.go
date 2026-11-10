@@ -127,7 +127,6 @@ func TestTypeOfRows(t *testing.T) {
 		"chan":        func() (risor.Type, error) { return risor.TypeOf[chan int]() },
 		"func":        func() (risor.Type, error) { return risor.TypeOf[func()]() },
 		"int key":     func() (risor.Type, error) { return risor.TypeOf[map[int]string]() },
-		"interface":   func() (risor.Type, error) { return risor.TypeOf[fmt.Stringer]() },
 		"complex":     func() (risor.Type, error) { return risor.TypeOf[complex128]() },
 		"cycle":       func() (risor.Type, error) { return risor.TypeOf[node]() },
 		"too deep":    func() (risor.Type, error) { return risor.TypeOf[deep]() },
@@ -207,14 +206,20 @@ func TestStructPresentation(t *testing.T) {
 }
 
 func TestTextMarshalerError(t *testing.T) {
-	env, err := risor.NewEnv(risor.Var("v", "string"))
+	// BB21: a MarshalText that fails, and a nil pointer, present null.
+	env, err := risor.NewEnv(risor.Var("v", "string | null"))
 	assert.NoError(t, err)
-	x, _ := risor.Parse("v")
+	x, _ := risor.Parse("[v, type(v)]")
 	p, err := env.Compile(x)
 	assert.NoError(t, err)
-	out, err := p.Run(context.Background(), risor.Map{"v": badText{}})
+	for _, in := range []any{badText{}, &badText{}, (*money)(nil), (*badText)(nil)} {
+		out, err := p.Run(context.Background(), risor.Map{"v": in})
+		assert.NoError(t, err)
+		assert.Equal(t, fmt.Sprint(out), "[<nil> null]", fmt.Sprintf("%T", in))
+	}
+	out, err := p.Run(context.Background(), risor.Map{"v": &money{5}})
 	assert.NoError(t, err)
-	assert.Equal(t, out, "")
+	assert.Equal(t, fmt.Sprint(out), "[0.05 string]")
 }
 
 func TestTypeFromSchema(t *testing.T) {
@@ -359,4 +364,62 @@ func TestUnexportedEmbedded(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, fmt.Sprint(out), "[1 2 4 c 5]")
 	}
+}
+
+type stringer struct{ s string }
+
+func (x stringer) String() string { return x.s }
+
+type withIfaces struct {
+	Err  error        `json:"err"`
+	Name fmt.Stringer `json:"name"`
+	Val  any          `json:"val"`
+}
+
+func TestInterfaceTypes(t *testing.T) {
+	// BB23: every interface type is any.
+	assert.Equal(t, typeOf[fmt.Stringer](t), "any")
+	assert.Equal(t, typeOf[error](t), "any")
+	assert.Equal(t, typeOf[interface{ OpaqueType() string }](t), "any")
+	assert.Equal(t, typeOf[withIfaces](t), "{err: any, name: any, val: any}")
+	ty, _ := risor.TypeOf[withIfaces]()
+	env, err := risor.NewEnv(risor.VarType("w", ty))
+	assert.NoError(t, err)
+	x, _ := risor.Parse("[w.err, w.name, w.val]")
+	p, err := env.Compile(x)
+	assert.NoError(t, err)
+	// The value held is presented by its own type's rules; nil is null.
+	out, err := p.Run(context.Background(), risor.Map{"w": withIfaces{}})
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprint(out), "[<nil> <nil> <nil>]")
+	x, _ = risor.Parse("[len(w.name), w.val.price, type(w.err)]")
+	p, err = env.Compile(x, risor.NoCheck)
+	assert.NoError(t, err)
+	out, err = p.Run(context.Background(), risor.Map{"w": withIfaces{Err: errors.New("e"), Name: stringer{"n"}, Val: item{Price: money{100}}}})
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprint(out), "[0 1.00 map]")
+}
+
+type inner struct {
+	X int `json:"x"`
+}
+
+type viaUnexportedPointer struct {
+	*inner
+	Y int `json:"y"`
+}
+
+func TestUnexportedEmbeddedPointer(t *testing.T) {
+	// BB22: a field reached through an unexported embedded pointer cannot be
+	// read without unsafe, so it is not presented.
+	assert.Equal(t, typeOf[viaUnexportedPointer](t), "{y: int}")
+	ty, _ := risor.TypeOf[viaUnexportedPointer]()
+	env, err := risor.NewEnv(risor.VarType("v", ty))
+	assert.NoError(t, err)
+	x, _ := risor.Parse("[len(v), v.y]")
+	p, err := env.Compile(x)
+	assert.NoError(t, err)
+	out, err := p.Run(context.Background(), risor.Map{"v": viaUnexportedPointer{inner: &inner{X: 1}, Y: 2}})
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprint(out), "[1 2]")
 }
