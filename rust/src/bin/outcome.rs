@@ -26,8 +26,14 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
         Ok(cases) => {
-            let lines: Vec<String> = cases.iter().map(outcome_line).collect();
-            println!("{}", lines.join("\n"));
+            use std::io::Write;
+            let mut out = std::io::stdout().lock();
+            for c in &cases {
+                // A reader that stops early is not a failure of the command.
+                if writeln!(out, "{}", outcome_line(c)).is_err() {
+                    break;
+                }
+            }
             ExitCode::SUCCESS
         }
     }

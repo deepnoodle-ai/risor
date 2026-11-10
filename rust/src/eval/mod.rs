@@ -7,7 +7,7 @@
 //! `match` arms. So the evaluator's recursion follows the source nesting and
 //! the calls in progress, which the depth limit bounds (8.5 item 3).
 
-mod lib;
+pub mod lib;
 
 use crate::compile::{Program, Res};
 use crate::diag::{Diagnostic, Phase};

@@ -373,6 +373,31 @@ fn flat_programs_run() {
     );
 }
 
+/// A depth limit outside 1 to 1,000 is `bad-limit` (rulings round 10 AM4).
+#[test]
+fn a_depth_limit_out_of_range_is_bad_limit() {
+    for depth in [0, 1001] {
+        let e = Env::builder()
+            .limits(Limits {
+                depth,
+                ..Limits::default()
+            })
+            .build()
+            .err()
+            .expect("the environment is refused");
+        assert_eq!(e.first().code, "bad-limit");
+    }
+    for depth in [1, 1000] {
+        assert!(Env::builder()
+            .limits(Limits {
+                depth,
+                ..Limits::default()
+            })
+            .build()
+            .is_ok());
+    }
+}
+
 /// An environment and a compiled program are shared between threads
 /// (`03-host.md` 3.2.2).
 #[test]

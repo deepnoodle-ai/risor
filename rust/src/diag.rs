@@ -51,6 +51,8 @@ pub mod code {
     pub const BAD_CLASS: &str = "bad-class";
     pub const UNSUPPORTED_VERSION: &str = "unsupported-version";
     pub const NO_IMPLEMENTATION: &str = "no-implementation";
+    /// A limit out of range (rulings round 10 AM4).
+    pub const BAD_LIMIT: &str = "bad-limit";
 
     /// The eleven static codes (`05-types.md` 22.1).
     pub const STATIC: [&str; 11] = [

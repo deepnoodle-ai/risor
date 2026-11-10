@@ -556,11 +556,26 @@ fn show_expected(d: &ExpectDiag) -> String {
     s
 }
 
+/// The codes whose class depends on the check (`03-host.md` 3.7.6).
+const CHECKED_CLASS: [&str; 5] = [
+    "null-operand",
+    "wrong-kind",
+    "missing-field",
+    "no-match",
+    "not-conforming",
+];
+
 /// Whether one expected diagnostic matches one actual (3.10.6, 3.10.7).
-/// `class` is not compared: there is no checker (3.10.7 item 8).
+/// `class` is compared but for the five codes whose class depends on a
+/// check this runner does not make (rulings round 10 AM1).
 fn diag_matches(e: &ExpectDiag, a: &Diagnostic) -> bool {
     if e.code != a.code {
         return false;
+    }
+    if let Some(c) = &e.class {
+        if !CHECKED_CLASS.contains(&a.code) && a.class != Some(c.as_str()) {
+            return false;
+        }
     }
     if let Some(s) = e.span {
         if !code::LIMIT.contains(&a.code) && a.span.map(|x| x.0) != Some(s) {
@@ -729,17 +744,29 @@ pub fn outcome_line(case: &Case) -> String {
             result = Err(d);
         }
     }
-    match result {
+    // Ruling AK3: a failure of class `limit` has no span and no usage.
+    let limit = match result {
         Ok(_) => {
             out.push_str(",\"phase\":null,\"value\":");
             out.push_str(&text);
+            false
         }
-        Err(d) => fail_line(&mut out, Phase::Run, &[d]),
+        Err(mut d) => {
+            let limit = d.class == Some("limit");
+            if limit {
+                d.span = None;
+            }
+            fail_line(&mut out, Phase::Run, &[d]);
+            limit
+        }
+    };
+    if !limit {
+        out.push_str(&format!(
+            ",\"steps\":{},\"units\":{}",
+            run.usage.steps, run.usage.allocated
+        ));
     }
-    out.push_str(&format!(
-        ",\"steps\":{},\"units\":{}}}",
-        run.usage.steps, run.usage.allocated
-    ));
+    out.push('}');
     out
 }
 

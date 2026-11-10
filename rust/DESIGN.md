@@ -36,12 +36,13 @@ specification, not here. This file records the crate's own choices.
 | `src/env.rs` | S2 | `Env`, `EnvBuilder`, `Limits`, host functions and methods, the `declare` errors |
 | `src/compile.rs` | S2 | Name resolution to fixed slots, the depth measure of each call, the static rules |
 | `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
-| `src/eval/lib.rs` | S2, S3 | The library entries: `len`, `string`, `type`, `bool`, `fail`, `map`, `filter` in S2 |
+| `src/eval/lib.rs` | S3 | The 53 library entries, their argument tests from the records' signatures, and the table of formulas a test holds equal to `library.json` |
+| `src/casemap.rs` | S3 | The case table, from `suite/casemap.json` |
 | `src/library.rs` | S2 | The records of `suite/library.json`: names, receivers, signatures |
 | `src/messages.rs` | S2 | The catalog of `suite/messages.json` and the building of a message |
 | `src/bin/outcome.rs` | S2 | The outcome command of rulings round 10 AJ |
 
-The data files of `suite/` (`messages.json`, `library.json`) are compiled into
+The data files of `suite/` (`messages.json`, `library.json`, `casemap.json`) are compiled into
 the crate with `include_str!` and read once, at first use. Nothing in them is
 retyped, and the table cannot fall out of date: a change to a file is a change
 to the build.
@@ -190,3 +191,15 @@ steps. Two places are within a factor of `log n`, not a constant: a map
 literal sorts its entries once when it is built, and a host map's keys are
 sorted each time their order shows (a walk, a spread, `==`). Both are charged
 `n` steps or more, so a program pays for each, but the sort is `n log n`.
+
+## The library and the work bound
+
+| Work | How | Why it meets the bound |
+| --- | --- | --- |
+| Searches (`in`, `split`, `replaceAll`, `startsWith`, `endsWith`, `removePrefix`, `removeSuffix`) | The standard library's `str` searches. A needle longer than the text is answered from the lengths first (AC11) | The standard library searches a `&str` pattern with the Two-Way algorithm, which is linear (inference from its documentation; `tests/library.rs` times a pattern that a naive search takes quadratic time on) |
+| `sort`, `sortBy` | The standard library's stable `sort_by` | At most a constant times `n log n` comparisons; a comparison of two strings reads their common prefix, which the charge's `sz` term pays for |
+| `join`, `repeat`, `padStart`, `padEnd`, `replaceAll` | The result's weight is found from the arguments, charged, then the text is built once | Building is linear in the result |
+| String arguments | Read in place, never copied before the charge; `padStart` reads only the part of `fill` it uses | An argument the charge does not count is not walked |
+| `unique`, `groupBy`, `toMap` | Hash sets and maps over the values or keys | Expected work linear in `n` and the keys' weights; building the result map sorts its keys (the AL1 exception) |
+| Case mapping | `suite/casemap.json`, never `char::to_uppercase` | The table is Unicode 16.0.0 whatever the platform's version |
+| `fixed` | Its own exact decimal rounding of the double | Rust's `{:.N}` formatting rounds a tie half to even (from memory), where `fixed` rounds it away from zero |

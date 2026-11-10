@@ -16,6 +16,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod casemap;
 pub mod compile;
 pub mod diag;
 pub mod env;

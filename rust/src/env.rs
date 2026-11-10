@@ -363,6 +363,17 @@ impl EnvBuilder {
                 }
             }
         }
+        // Ruling AM4. Steps and units are unsigned, so only the depth can
+        // be out of range.
+        if !(1..=1000).contains(&self.limits.depth) {
+            bad(
+                code::BAD_LIMIT,
+                format!(
+                    "the depth limit {} is outside 1 to 1,000",
+                    self.limits.depth
+                ),
+            );
+        }
         let reject = match self.reject {
             Some(classes) => {
                 for c in &classes {

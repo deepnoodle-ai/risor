@@ -17,6 +17,9 @@ pub struct Record {
     /// The kind of the receiver of a method; `None` for a function.
     pub receiver: Option<Kind>,
     pub sig: Sig,
+    /// The record's formulas, as written.
+    pub steps: String,
+    pub units: String,
     /// The cases of the record, as written.
     pub cases: Option<Json>,
 }
@@ -54,6 +57,8 @@ pub fn records() -> &'static [Record] {
                     name: s("name").to_string(),
                     receiver,
                     sig: parse_sig(s("signature")).expect("library signatures parse"),
+                    steps: s("steps").to_string(),
+                    units: s("units").to_string(),
                     cases: e.get("cases").cloned(),
                 }
             })
@@ -82,12 +87,10 @@ pub fn is_method_name(name: &str) -> bool {
         .any(|r| r.receiver.is_some() && r.name == name)
 }
 
-/// The entries this build runs. The others are named in a runner's skip.
+/// The entries this build runs: all 53. A runner names any other in a
+/// skip.
 pub fn implemented(idx: usize) -> bool {
-    let r = &records()[idx];
-    match r.receiver {
-        None => matches!(r.name.as_str(), "len" | "string" | "type" | "bool" | "fail"),
-        Some(Kind::List) => matches!(r.name.as_str(), "map" | "filter"),
-        Some(_) => false,
-    }
+    crate::eval::lib::FORMULAS
+        .iter()
+        .any(|(n, k, _, _)| *n == records()[idx].name && *k == records()[idx].receiver)
 }
