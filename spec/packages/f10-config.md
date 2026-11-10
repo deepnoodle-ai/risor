@@ -640,7 +640,7 @@ exceptions. Each is an error, never a second meaning.
 | A number whose value is not finite, such as `1e400` | `literal-range` on the number | `01-language.md` 2.5 |
 | An escape of a lone surrogate, such as `"\ud800"` | `bad-escape` on the escape | `01-language.md` 2.7 |
 | Arrays and objects nested deeper than 100 levels | `nesting-exceeded`, phase `parse` | `01-language.md` 13.2 |
-| Nesting whose type is deeper than 64 | `check-limit`, phase `check`, on the innermost node whose type is too deep. A load always checks, so such a document does not load | `05-types.md` 20.4 |
+| Nesting whose type is deeper than 64 | `check-limit`, phase `check`, on the innermost node whose type is too deep, by the type rules only (the static rules alone give the value). A load always checks, so such a document does not load | `05-types.md` 20.4 |
 
 1. Everything else a JSON document holds means what it means in JSON: `\/`
    and `\u` escapes, an escaped surrogate pair, `1E3`, `-0` (which is zero),
@@ -831,11 +831,16 @@ with both `returns` and `returnsSchema` after the header rule.
 2. A runner of an implementation that does not offer F10 does not run
    `suite/config/`. For it the fields `returnsSchema` and `load` are unknown
    fields (`03-host.md` 3.10.10).
-3. In `suite/config/` the static codes are those of `suite/unions/` (F5 11.2
-   item 3). No file of the directory ends `-check.json`: every case whose
-   expectation needs the type rules states `type`, `sites`, a `check` code
-   that is not static, or `load`.
-4. **Every failure of step 4.** A load case compares the first failure of
+3. In `suite/config/` the static codes are the eleven of Core and
+   `untagged-union`. `check-limit` is static only at a program type of F4
+   (F4 6.1 item 4), after `as` or `is`; no case of the directory expects it
+   there. Every other `check-limit`, such as a literal whose type is deeper
+   than 64 (`05-types.md` 20.4), comes from the type rules only.
+4. A case whose expectation holds only when checked stands in
+   `config-check.json`, which is run checked only (`03-host.md` 3.11 item
+   7), unless it states `type`, `sites`, a `check` code that is not static,
+   or `load`.
+5. **Every failure of step 4.** A load case compares the first failure of
    step 4 (10.2 item 4). The walk of every failure is tested by conform cases
    in the form of F8 7.5, with `max` and `failures`, against config types
    declared by schema under `closed` (`config-conform-all.json`).
