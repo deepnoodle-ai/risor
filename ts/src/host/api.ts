@@ -96,7 +96,7 @@ export interface EnvOptions {
   inheritedTypes?: Declarations["inheritedTypes"];
 }
 
-/** An opaque type in a child environment: with no `test`, it adds methods to an inherited type (03 3.3.2, ruling CH4). */
+/** An opaque type in a child environment: with no `test`, it adds methods to an inherited type (03 3.3.2). */
 export interface ChildOpaqueType {
   test?(value: unknown): boolean;
   methods?: Record<string, HostFunction>;
@@ -491,9 +491,9 @@ export class Env {
   /**
    * A child environment (03 3.3.2). A child's declaration replaces the parent's
    * declaration of the same name in the same space: variables and host
-   * functions are one space, opaque types another (rulings CH2, CH3). An opaque
+   * functions are one space, opaque types another (03 3.3.4 item 1). An opaque
    * type the child declares (with `test`) replaces the parent's whole; one given
-   * with methods only adds or replaces those methods (CH4). The clash rules
+   * with methods only adds or replaces those methods. The clash rules
    * apply to the child as it stands. Rejected classes and limits are the
    * parent's unless given; removed entries add up. Throws RisorError of phase
    * `declare`.
@@ -680,7 +680,7 @@ export class Program {
       } else if (f.code === "no-match") cls = "environment";
       // f04 5.1 item 4: `value` at the `value` site of its `as`, else `environment`.
       else if (f.code === "not-conforming") cls = f.span !== undefined && this.valueSpans!.has(spanKey(f.span)) ? "value" : "environment";
-      // The mark `!` is a promise: an error is `host` only at a `host` site on the failing call (05 18.5, rulings CE2, CH1).
+      // The mark `!` is a promise: an error is `host` only at a `host` site on the failing call (05 18.3, 18.5).
       else if (f.code === "function-error") cls = f.span !== undefined && this.hostSpans!.has(spanKey(f.span)) ? "host" : "environment";
     }
     if (cls !== undefined) d.class = cls;
@@ -720,7 +720,7 @@ export class ParsedProgram {
     this.source = source;
     this.program = program;
   }
-  /** The text the spans point into: the whole program or template text (ruling BD13). */
+  /** The text the spans point into: the whole program or template text (f02 3). */
   get text(): string {
     return this.source.slice(0, this.source.length);
   }

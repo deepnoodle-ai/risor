@@ -1,4 +1,4 @@
-// The case reader: the field `check` of ruling AP1 and its invalid-file rules.
+// The case reader: the field `check` (03 3.10.3) and its invalid-file rules.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

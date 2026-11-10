@@ -25,7 +25,7 @@
 // - Text to number (01 6.3 rule 2) checks the JSON grammar first and then uses
 //   `parseDecimal`: `Number(text)` up to 20 significant digits, which is what
 //   ECMAScript promises to round correctly, and exact BigInt arithmetic past
-//   that (ruling T6).
+//   that (01 6.3: the double nearest the decimal value).
 // - Integer literals are range-checked with BigInt in the lexer only, because
 //   a literal such as 9007199254740993 must be `literal-range`, and `Number()`
 //   of its text would round it to a value that looks in range.
@@ -61,7 +61,7 @@ export function textToNumber(text: string): number | null {
   return norm(x);
 }
 
-// ---- Exact decimal to binary64 (ruling T6) ---------------------------------
+// ---- Exact decimal to binary64 (01 6.3) ------------------------------------
 //
 // ECMAScript promises a correctly rounded `Number(text)` only up to 20
 // significant digits. Past that, this conversion is used: BigInt arithmetic,

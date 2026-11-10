@@ -1,4 +1,4 @@
-// The outcome of a case as one line of JSON (ruling AJ, round 10): what the
+// The outcome of a case as one line of JSON (suite/README.md): what the
 // differential fuzzer compares between the three implementations.
 
 import { numberToText } from "../value/number.ts";
@@ -31,7 +31,7 @@ export function valueJSON(v: unknown, depth = 0): string {
   }
 }
 
-/** The line of ruling AJ item 3 for one case. Every `expect` is ignored. */
+/** The line of suite/README.md for one case. Every `expect` is ignored. */
 export function outcomeLine(c: Case): string {
   // f02 4.8 item 2: an analysis case has name, phase and analysis.
   if (c.expect.kind === "result" && c.expect.analysis !== undefined) {
@@ -49,7 +49,7 @@ export function outcomeLine(c: Case): string {
   const parts: string[] = [`"name":${jsonString(c.name)}`];
   // f01 7.4: the description, when the case has schemas and its environment was built.
   if ((c.schemas !== undefined || c.types !== undefined) && e.env !== null) parts.push(`"description":${descriptionText(e.env.describe())}`);
-  // When the program checks: its type and sites (brief S4 item 8).
+  // When the program checks: its type and sites.
   const ti = o as { type?: string | null; sites?: { class: string; span: number[] }[] };
   if (ti.type !== undefined && ti.type !== null) {
     parts.push(`"type":${jsonString(ti.type)}`);
@@ -79,7 +79,7 @@ export function outcomeLine(c: Case): string {
     }
     parts.push(`"diagnostics":[${diags.join(",")}]`);
   }
-  // Ruling AK3: a failure of class `limit` has no usage in its line.
+  // suite/README.md item 2: a failure of class `limit` has no usage in its line.
   const limit = o.kind === "failure" && o.diagnostics.some((d) => d.class === "limit");
   if (o.usage !== undefined && !limit) parts.push(`"steps":${o.usage.steps}`, `"units":${o.usage.allocated}`);
   // f02 4.8: the analysis, last, when the text parses.

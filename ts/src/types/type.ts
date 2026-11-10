@@ -31,9 +31,23 @@ export interface Alts {
   readonly str?: "string" | ReadonlySet<string>;
   /** The element type of a list. */
   readonly list?: Type;
+  /**
+   * The record of the map alternative. With a tagged union (package F5,
+   * f05 2.2) it is flat(U), the Join of the variants (f05 2.3), so that every
+   * rule that reads "the record of a type" sees flat(U) (f05 4.3).
+   */
   readonly map?: Rec;
+  /** Package F5: the map alternative is this tagged union, and `map` is its flat. */
+  readonly union?: Union;
   /** Opaque type names. */
   readonly opaque?: ReadonlySet<string>;
+}
+
+/** A tagged union (f05 2.2): two or more records with a tag, held as a set. */
+export interface Union {
+  readonly variants: readonly Rec[];
+  /** The least key that is a tag of the variants (f05 2.1). */
+  readonly tag: string;
 }
 
 export interface AnyType {
@@ -90,7 +104,7 @@ export function alternatives(t: Alts): Alts[] {
   if (t.num) out.push({ num: t.num });
   if (t.str) out.push({ str: t.str });
   if (t.list) out.push({ list: t.list });
-  if (t.map) out.push({ map: t.map });
+  if (t.map) out.push(t.union ? { map: t.map, union: t.union } : { map: t.map });
   if (t.opaque) for (const n of [...t.opaque].sort(compareText)) out.push({ opaque: new Set([n]) });
   if (t.null) out.push(NULL);
   return out;
@@ -148,7 +162,7 @@ export function join(a: Type, b: Type): Type {
   if (isAny(a) || isAny(b)) return ANY;
   if (a === b) return a;
   // A type is held with shared parts: the Join of two is kept, so joining
-  // two records that share parts does no work twice (05 20.7, ruling CG5).
+  // two records that share parts does no work twice (05 20.7: no work grows with the expansion of a type).
   if ((a.list || a.map) && (b.list || b.map)) {
     let m = joinMemo.get(a);
     const hit = m?.get(b);
@@ -170,13 +184,24 @@ function join0(a: Alts, b: Alts): Type {
   if (s !== undefined) out.str = s;
   if (a.list && b.list) out.list = join(a.list, b.list);
   else if (a.list || b.list) out.list = a.list ?? b.list;
-  if (a.map && b.map) out.map = joinRec(a.map, b.map);
-  else if (a.map || b.map) out.map = a.map ?? b.map;
+  if (a.map && b.map) {
+    // f05 4.1: a union survives only beside one the same by structure; else the record Join of the flats.
+    if ((a.union || b.union) && sameMapAlt(a, b)) {
+      out.map = a.map;
+      out.union = a.union;
+    } else out.map = joinRec(a.map, b.map);
+  } else if (a.map) {
+    out.map = a.map;
+    if (a.union) out.union = a.union;
+  } else if (b.map) {
+    out.map = b.map;
+    if (b.union) out.union = b.union;
+  }
   if (a.opaque || b.opaque) out.opaque = new Set([...(a.opaque ?? []), ...(b.opaque ?? [])]);
   return out;
 }
 
-/** The Join of many types; literal sets are merged in one pass (ruling CG10). */
+/** The Join of many types; literal sets are merged in one pass (05 20.7: building a type is at most n log n). */
 export function joinAll(ts: Type[]): Type {
   const acc = new TypeAcc();
   for (const x of ts) acc.add(x);
@@ -184,7 +209,7 @@ export function joinAll(ts: Type[]): Type {
 }
 
 /**
- * An accumulating Join (ruling CG10): the literal sets go into one mutable
+ * An accumulating Join (05 20.7, n log n in the values joined): the literal sets go into one mutable
  * set, so joining n types is at most n log n, and the size of the Join so far
  * is known at any time without building it.
  */
@@ -223,7 +248,7 @@ export class TypeAcc {
   }
 }
 
-// ---- Size (05 20.7, ruling CG) -------------------------------------------------------
+// ---- Size (05 20.7) ----------------------------------------------------------------
 
 /** The limit on the size of a type (05 20.7). */
 export const SIZE_LIMIT = 100_000;
@@ -244,7 +269,8 @@ function altSum(t: Alts): number {
   if (t.str) n += t.str === "string" ? 1 : t.str.size;
   if (t.opaque) n += t.opaque.size;
   if (t.list) n = sat(n + 1 + typeSize(t.list));
-  if (t.map) n = sat(n + recSize(t.map));
+  if (t.union) for (const v of t.union.variants) n = sat(n + recSize(v));
+  else if (t.map) n = sat(n + recSize(t.map));
   n = sat(n);
   sizeMemo.set(t, n);
   return n;
@@ -326,7 +352,21 @@ function fits0(s: Alts, t: Alts): Fit {
   }
   if (s.map) {
     if (!t.map) return 0;
-    r = both(r, fitsRec(s.map, t.map));
+    // f05 4.2: each variant of S fits some variant of T; it uses any only when it fits none without.
+    const tv = variantsOf(t);
+    for (const sv of variantsOf(s)) {
+      let best: Fit = 0;
+      for (const v of tv) {
+        const f = fitsRec(sv, v);
+        if (f === 1) {
+          best = 1;
+          break;
+        }
+        if (f === 2) best = 2;
+      }
+      if (best === 0) return 0;
+      r = both(r, best);
+    }
   }
   return r;
 }
@@ -393,7 +433,10 @@ export function truthyPart(t: Type): Type {
     }
   }
   if (t.list && !isNever(t.list)) out.list = t.list;
-  if (t.map && !(t.map.fields.size === 0 && isNever(t.map.rest))) out.map = t.map;
+  if (t.map && !(t.map.fields.size === 0 && isNever(t.map.rest))) {
+    out.map = t.map;
+    if (t.union) out.union = t.union;
+  }
   if (t.opaque && t.opaque.size > 0) out.opaque = t.opaque;
   return out;
 }
@@ -461,7 +504,7 @@ function hasOpaque0(t: Alts, depth: number): boolean {
   return false;
 }
 
-/** has-any(T) (ruling AO2): T is `any`, or an element, field or rest type of T has `any`. */
+/** has-any(T) (05 4.5): T is `any`, or an element, field or rest type of T has `any`. */
 export function hasAny(t: Type, depth = 0): boolean {
   if (isAny(t)) return true;
   if (depth > 200) return false;
@@ -542,16 +585,27 @@ export function typeEqual(a: Type, b: Type): boolean {
   const bo = b.opaque ?? new Set<string>();
   if (ao.size !== bo.size || [...ao].some((n) => !bo.has(n))) return false;
   if ((a.map === undefined) !== (b.map === undefined)) return false;
-  if (a.map) {
-    const x = a.map;
-    const y = b.map!;
-    if (x.fields.size !== y.fields.size || !typeEqual(x.rest, y.rest)) return false;
-    for (const [k, f] of x.fields) {
-      const g = y.fields.get(k);
-      if (g === undefined || g.optional !== f.optional || !typeEqual(f.type, g.type)) return false;
-    }
+  if (a.map) return sameMapAlt(a, b);
+  return true;
+}
+
+function recEqual(x: Rec, y: Rec): boolean {
+  if (x === y) return true;
+  if (x.fields.size !== y.fields.size || !typeEqual(x.rest, y.rest)) return false;
+  for (const [k, f] of x.fields) {
+    const g = y.fields.get(k);
+    if (g === undefined || g.optional !== f.optional || !typeEqual(f.type, g.type)) return false;
   }
   return true;
+}
+
+/** Two map alternatives the same by structure (f05 2.5): the same variants, in any order. */
+function sameMapAlt(a: Alts, b: Alts): boolean {
+  const x = variantsOf(a);
+  const y = variantsOf(b);
+  if (x.length !== y.length) return false;
+  if (x.length === 1) return recEqual(x[0], y[0]);
+  return x.every((v) => y.some((w) => recEqual(v, w)));
 }
 
 // ---- Printing (3.9) -----------------------------------------------------------------
@@ -570,7 +624,12 @@ function altTexts(t: Alts): string[] {
     const e = printType(t.list);
     out.push((topLevelUnion(t.list) ? `(${e})` : e) + "[]");
   }
-  if (t.map) out.push(printRecord(t.map));
+  if (t.union) {
+    // f05 2.4: the variants, in code point order of the least string of each tag set.
+    const tag = t.union.tag;
+    const least = (v: Rec) => [...(v.fields.get(tag)!.type as Alts & { str: ReadonlySet<string> }).str].sort(compareText)[0];
+    out.push(...[...t.union.variants].sort((x, y) => compareText(least(x), least(y))).map(printRecord));
+  } else if (t.map) out.push(printRecord(t.map));
   // An opaque name; a type variable of a printed signature is held as a name
   // that starts with U+FFFF, so it sorts after every opaque name (f01 5.2).
   if (t.opaque) out.push(...[...t.opaque].sort(compareText).map((n) => (n.charCodeAt(0) === 0xffff ? n.slice(1) : n)));
@@ -586,7 +645,7 @@ function topLevelUnion(t: Type): boolean {
   if (t.num) n++;
   if (t.str) n += t.str === "string" ? 1 : t.str.size;
   if (t.list) n++;
-  if (t.map) n++;
+  if (t.map) n += t.union ? t.union.variants.length : 1;
   if (t.opaque) n += t.opaque.size;
   if (t.null) n++;
   return n > 1;
@@ -665,14 +724,21 @@ export function fromNode(n: TypeNode, ctx: FromContext): Type {
     case "list":
       return listOf(fromNode(n.elem, ctx));
     case "union": {
+      // f05 3.1: the records of a Type, a parenthesized one and a named union giving their variants.
       const acc = new TypeAcc();
-      let records = 0;
+      const recs: Rec[] = [];
       for (const a of n.alts) {
         const x = fromNode(a, ctx);
-        if (a.t !== "var" && !isAny(x) && x.map) records++;
-        acc.add(x);
+        if (a.t !== "var" && !isAny(x) && x.map) {
+          recs.push(...variantsOf(x));
+          acc.add(withoutMap(x));
+        } else acc.add(x);
       }
-      if (records > 1) throw new TypeError("two record alternatives in one type");
+      if (recs.length > 0) {
+        const m = mapAlt(recs);
+        if (m === null) throw new TypeError("records that form no tagged union in one type");
+        acc.add(m);
+      }
       return acc.type();
     }
   }
@@ -701,7 +767,11 @@ export function disjoint(a: Type, b: Type): boolean {
     if ([...a.str].some((x) => bs.has(x))) return false;
   }
   if (a.list && b.list) return false;
-  if (a.map && b.map && !recordsDisjoint(a.map, b.map)) return false;
+  // f05 4.5: unless every variant of A is disjoint from every variant of B.
+  if (a.map && b.map) {
+    const bv = variantsOf(b);
+    if (!variantsOf(a).every((x) => bv.every((y) => recordsDisjoint(x, y)))) return false;
+  }
   return true;
 }
 
@@ -735,10 +805,134 @@ export function without(x: Type, t: Type): Type {
     }
   }
   if (x.list && keep({ list: x.list })) out.list = x.list;
-  if (x.map && keep({ map: x.map })) out.map = x.map;
+  if (x.map) {
+    // f05 4.5: the map alternative loses each variant that surely fits T.
+    const left = variantsOf(x).filter((v) => keep({ map: v }));
+    if (left.length === variantsOf(x).length) {
+      out.map = x.map;
+      if (x.union) out.union = x.union;
+    } else if (left.length > 0) Object.assign(out, variantsType(left));
+  }
   if (x.opaque) {
     const names = [...x.opaque].filter((n) => keep(opaque(n)));
     if (names.length > 0) out.opaque = new Set(names);
   }
   return out;
+}
+
+// ---- tagged unions (package F5, f05 2) ----------------------------------------------
+
+/** The variants of a map alternative: of a union, its variants; of a record, that record. */
+export function variantsOf(t: Alts): readonly Rec[] {
+  if (t.union) return t.union.variants;
+  return t.map ? [t.map] : [];
+}
+
+/** A type less its map alternative. */
+export function withoutMap(t: Alts): Alts {
+  const { map: _m, union: _u, ...rest } = t;
+  return rest;
+}
+
+/** A literal set and nothing else (f05 2.1 item 1.2). */
+function litSetOnly(t: Type): ReadonlySet<string> | null {
+  if (isAny(t) || t.str === undefined || t.str === "string") return null;
+  if (t.null || t.bool || t.num || t.list || t.map || (t.opaque && t.opaque.size > 0)) return null;
+  return t.str;
+}
+
+/**
+ * The tag of records (f05 2.1): the least key that each lists as required,
+ * typed by a literal set alone, with no string in two sets. A key that a
+ * record fills is no tag (f05 8.1 item 6). null when there is none.
+ */
+export function findTag(recs: readonly Rec[]): string | null {
+  if (recs.length < 2) return null;
+  const keys = [...recs[0].fields.keys()].sort(compareText);
+  for (const k of keys) {
+    const seen = new Set<string>();
+    let ok = true;
+    for (const r of recs) {
+      const f = r.fields.get(k);
+      const set = f === undefined || f.optional || f.fill !== undefined ? null : litSetOnly(f.type);
+      if (set === null) {
+        ok = false;
+        break;
+      }
+      for (const x of set) {
+        if (seen.has(x)) {
+          ok = false;
+          break;
+        }
+        seen.add(x);
+      }
+      if (!ok) break;
+    }
+    if (ok) return k;
+  }
+  return null;
+}
+
+const flatMemo = new WeakMap<Union, Rec>();
+
+/** flat(U) (f05 2.3). */
+function flatOf(u: Union): Rec {
+  let f = flatMemo.get(u);
+  if (f === undefined) {
+    f = u.variants.reduce((x, y) => joinRec(x, y));
+    flatMemo.set(u, f);
+  }
+  return f;
+}
+
+/** A type whose only alternative is a map alternative of these variants, or null when two or more form no union. */
+export function mapAlt(recs: readonly Rec[]): Alts | null {
+  if (recs.length === 0) return NEVER;
+  if (recs.length === 1) return { map: recs[0] };
+  const tag = findTag(recs);
+  if (tag === null) return null;
+  const u: Union = { variants: [...recs], tag };
+  return { map: flatOf(u), union: u };
+}
+
+/** The type of a list of variants (f05 4.5 item 2). */
+export function variantsType(recs: readonly Rec[]): Alts {
+  return mapAlt(recs) ?? { map: recs.reduce((x, y) => joinRec(x, y)) };
+}
+
+/** The tag type of a union: the literal set of every string of every tag set (f05 2.3 item 2). */
+export function tagSetOf(v: Rec, tag: string): ReadonlySet<string> {
+  return (v.fields.get(tag)!.type as Alts).str as ReadonlySet<string>;
+}
+
+/** Unite(A, B) (f05 4.5). */
+export function unite(a: Type, b: Type): Type {
+  const j = join(a, b);
+  if (isAny(a) || isAny(b) || isAny(j) || !a.map || !b.map) return j;
+  const recs: Rec[] = [];
+  for (const v of [...variantsOf(a), ...variantsOf(b)]) if (!recs.some((w) => recEqual(v, w))) recs.push(v);
+  if (recs.length < 2) return j;
+  const m = mapAlt(recs);
+  if (m === null) return j;
+  return { ...withoutMap(j), ...m };
+}
+
+/** The variants of M in which the type of f is not disjoint from the literal set of S (f05 4.5). */
+export function hitVariants(m: Alts, f: string, strs: ReadonlySet<string>): Rec[] {
+  const s: Alts = { str: strs };
+  return variantsOf(m).filter((v) => !disjoint(keyType(v, f), s));
+}
+
+/** The variants of M that require f with a type that surely fits the literal set of S (f05 4.5). */
+export function allVariants(m: Alts, f: string, strs: ReadonlySet<string>): Rec[] {
+  const s: Alts = { str: strs };
+  return variantsOf(m).filter((v) => {
+    const fl = v.fields.get(f);
+    return fl !== undefined && !fl.optional && surelyFits(fl.type, s);
+  });
+}
+
+/** The type of a key in a record (f05 4.5 item 1). */
+export function keyType(r: Rec, k: string): Type {
+  return r.fields.get(k)?.type ?? r.rest;
 }

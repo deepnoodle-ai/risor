@@ -1,4 +1,4 @@
-// Ruling AA7: the stack this binding needs. The deepest programs within the
+// 02 8.4, 01 13.2: the stack this binding needs. The deepest programs within the
 // limits run in a child process whose V8 stack is 500 KB, about half of
 // Node's default (984 KB). Measured: 400 KB suffices at depth limit 1,000.
 

@@ -821,11 +821,11 @@ This package adds no field to the case format. Its cases use the fields of
 
 ## 12. Earlier cases
 
-1. **Files removed.** When this package is accepted, the two files that pinned
-   its texts as errors are removed (`03-host.md` 3.11 item 4):
-   `suite/host-types/until-f05-tagged-branches.json` (6 cases) and
-   `suite/conversion/until-f05-tagged-unions.json` (5 cases). Each of their
-   cases has a case of the same name and text in
+1. **Files removed.** Two files pinned this package's texts as errors, for
+   an implementation that did not offer it (`03-host.md` 3.11 item 4): one in
+   `suite/host-types/` (6 cases) and one in `suite/conversion/` (5 cases).
+   They were deleted when every implementation offered the package. Each of
+   their cases has a case of the same name and text in
    `suite/unions/unions-until-texts.json`, with this chapter's outcome.
 2. **Core and earlier cases.** No case of `suite/core-run/`,
    `suite/core-check/`, `suite/host-types/` or `suite/conversion/` outside the

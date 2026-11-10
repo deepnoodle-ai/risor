@@ -14,9 +14,9 @@ import type { SigNode, TypeNode } from "./typetext.ts";
 import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, alternatives, depth, falsyPart, finiteValues, fits, fromNode, hasNull,
   hasOpaque, isAny, isNever, join, joinAll, kindCount, lit, listOf, merge, nonnull, overlap, record, recordValues,
-  truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc, surelyFits, disjoint, without, printType,
+  truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc, surelyFits, disjoint, without, printType, unite, hitVariants, allVariants, variantsType, tagSetOf,
 } from "./type.ts";
-import type { Alts, Fit, Rec, Type } from "./type.ts";
+import type { Alts, Fit, Rec, Type, Union } from "./type.ts";
 import { CATALOG } from "../generated/messages.ts";
 
 /** A signature the checker calls (13.1). */
@@ -30,7 +30,7 @@ export interface CheckSig {
   narrows: boolean;
   /** Tested argument positions (10.1). */
   tested: number[];
-  /** Rendered argument positions (ruling AO2). */
+  /** Rendered argument positions (05 13.5): an argument the entry renders as text. */
   renders: number[];
 }
 
@@ -148,7 +148,7 @@ export function check(program: A.Program, res: Resolution, env: CheckEnv, expect
     sites.push({ class: s.class, span: s.span });
   }
   sites.sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end || cmp(a.class, b.class));
-  // A callback's result is at a `dynamic` site on the lambda's body (18.3, ruling CB3).
+  // A callback's result is at a `dynamic` site on the lambda's body (18.3).
   const extra: string[] = [];
   for (const { body, call } of c.callbacks) if (dynamicSpans.has(spanKey(body))) extra.push(spanKey(call));
   for (const k of extra) dynamicSpans.add(k);
@@ -173,7 +173,7 @@ type LambdaArg = { lambda: A.Lambda; id: number | null; span: Span };
 class Checker {
   readonly diags: DiagRec[] = [];
   readonly sites: SiteRec[] = [];
-  /** Each lambda body checked as an argument of a call, with the call's span (18.3, ruling CB3). */
+  /** Each lambda body checked as an argument of a call, with the call's span (18.3). */
   readonly callbacks: { body: Span; call: Span }[] = [];
   private readonly res: Resolution;
   private readonly env: CheckEnv;
@@ -192,7 +192,7 @@ class Checker {
   constructor(res: Resolution, env: CheckEnv) {
     this.res = res;
     this.env = env;
-    // A read of the name as a value is not a use (13.9, ruling CA2).
+    // A read of the name as a value is not a use (13.9).
     for (const [id, r] of res.refs) if (r.k === "lambda" && res.lambdaArgs.has(id)) this.used.add(r.id);
     for (const t of res.targets.values()) if (t.k === "lambda") this.used.add(t.id);
   }
@@ -278,6 +278,7 @@ class Checker {
   private facts(e: A.Expr): { t: string[]; f: string[] } {
     const memo = this.factsMemo.get(e);
     if (memo !== undefined) return memo;
+    const vol = this.volatile;
     let out: { t: string[]; f: string[] } = { t: [], f: [] };
     const p = this.pathOf(e);
     if (p !== null) out = { t: [p], f: [] };
@@ -299,6 +300,11 @@ class Checker {
       if (e.op === "==" || e.op === "!=") {
         const q = e.y.kind === "Null" ? this.pathOf(e.x) : e.x.kind === "Null" ? this.pathOf(e.y) : null;
         if (q !== null) out = e.op === "!=" ? { t: [q], f: [] } : { t: [], f: [q] };
+        // f05 5.2: a test of a field against a string literal.
+        else if (e.y.kind === "String") out = this.fieldTest(e.x, new Set([e.y.value]), e.op === "!=");
+        else if (e.x.kind === "String") out = this.fieldTest(e.y, new Set([e.x.value]), e.op === "!=");
+      } else if ((e.op === "in" || e.op === "not-in") && e.y.kind === "List" && e.y.items.length > 0 && e.y.items.every((it) => it.kind === "String")) {
+        out = this.fieldTest(e.x, new Set(e.y.items.map((it) => (it as A.StringLit).value)), e.op === "not-in");
       } else if (e.op === "&&" || e.op === "||") {
         // A long chain of && and || is a left spine: walk it by a loop.
         const spine: A.Binary[] = [];
@@ -320,17 +326,62 @@ class Checker {
         out = acc;
       }
     }
-    this.factsMemo.set(e, out);
+    // A fact of a test of a field depends on the types where it stands: not kept.
+    if (this.volatile === vol) this.factsMemo.set(e, out);
     return out;
+  }
+
+  /** Bumped whenever a fact is made from the types where a test stands (f05 5.2). */
+  private volatile = 0;
+
+  /** The receiver path p and key f of a path q with at least one step (f05 5.2 item 1). */
+  private fieldPath(q: A.Expr): { p: string; pNode: A.Expr; key: string } | null {
+    const full = this.pathOf(q);
+    if (full === null) return null;
+    const qq = q.kind === "OptChain" ? q.x : q;
+    let key: string;
+    if (qq.kind === "Member") key = qq.name;
+    else if (qq.kind === "Index" && qq.index.kind === "String") key = qq.index.value;
+    else return null;
+    const p = this.pathOf(qq.x);
+    if (p === null) return null;
+    return { p, pNode: qq.x, key };
+  }
+
+  /** Whether a test of a field about p gives facts: M is a union, or a record with such a fact in force (f05 5.2 item 3). */
+  private fieldFactsHold(m: Type, _p: string): boolean {
+    if (isAny(m) || !m.map) return false;
+    if (m.union) return true;
+    return this.narrowedByField.has(m);
+  }
+
+  /** The types that a fact of a test of a field gave a path (f05 5.2 item 3). */
+  private readonly narrowedByField = new WeakSet<object>();
+
+  /** T and F of `q == L`, `q in [...]` (f05 5.2); `negated` swaps them. */
+  private fieldTest(q: A.Expr, strs: ReadonlySet<string>, negated: boolean): { t: string[]; f: string[] } {
+    const fp = this.fieldPath(q);
+    if (fp === null) return { t: [], f: [] };
+    const pt = this.types.get(fp.pNode);
+    if (pt === undefined || !this.fieldFactsHold(pt, fp.p)) return { t: [], f: [] };
+    this.volatile++;
+    const m = pt as Alts;
+    const hit = hitVariants(m, fp.key, strs);
+    const all = allVariants(m, fp.key, strs);
+    const yes: string[] = hit.length > 0 ? [this.typeFact("=", fp.p, variantsType(hit), true), fp.p] : [];
+    const no: string[] = all.length > 0 ? [this.typeFact("!", fp.p, variantsType(all), true)] : [];
+    return negated ? { t: no, f: yes } : { t: yes, f: no };
   }
 
   // ---- the facts of `is` (package F4, f04 6.4) ------------------------------
 
-  private readonly factTypes = new Map<string, { kind: "=" | "!"; path: string; type: Type }>();
+  private readonly factTypes = new Map<string, { kind: "=" | "!"; path: string; type: Type; field: boolean }>();
 
-  private typeFact(kind: "=" | "!", path: string, type: Type): string {
+  private typeFact(kind: "=" | "!", path: string, type: Type, field = false): string {
     const key = `${TYPE_FACT}${kind}${path}${TYPE_SEP}${printType(type)}`;
-    if (!this.factTypes.has(key)) this.factTypes.set(key, { kind, path, type });
+    const known = this.factTypes.get(key);
+    if (known === undefined) this.factTypes.set(key, { kind, path, type, field });
+    else if (field) known.field = true;
     return key;
   }
 
@@ -356,7 +407,8 @@ class Checker {
         const as = ca.get(tf.path)!;
         const other = cb.get(tf.path);
         if (as.length === 1 && other !== undefined && other.length === 1) {
-          out.push(this.typeFact("=", tf.path, join(tf.type, this.factTypes.get(other[0])!.type)));
+          // f05 5.4 item 1: Unite, not Join.
+          out.push(this.typeFact("=", tf.path, unite(tf.type, this.factTypes.get(other[0])!.type), tf.field || this.factTypes.get(other[0])!.field));
         }
         continue;
       }
@@ -372,8 +424,14 @@ class Checker {
       if (!k.startsWith(TYPE_FACT)) continue;
       const tf = this.factTypes.get(k);
       if (tf === undefined || tf.path !== path) continue;
+      const before = t;
       if (tf.kind === "=") t = surelyFits(t, tf.type) ? t : tf.type;
       else t = without(t, tf.type);
+      if (tf.field) {
+        // A type a fact of a test of a field gave: such a fact is in force at p (f05 5.2 item 3).
+        if (t === before || this.narrowedByField.has(t) === false) t = { ...t };
+        this.narrowedByField.add(t);
+      }
     }
     return t;
   }
@@ -449,7 +507,7 @@ class Checker {
     }
   }
 
-  /** A pattern with nothing to read: every name is `never`, and each default is still checked (12.2, ruling CA3). */
+  /** A pattern with nothing to read: every name is `never`, and each default is still checked (12.2). */
   private failedPattern(p: A.Pattern, f: Facts): void {
     this.neverNames(p);
     if (p.kind === "MapPat") for (const fl of p.fields) if (fl.default !== null) this.synth(fl.default, f);
@@ -482,7 +540,7 @@ class Checker {
         for (const e of p.elems) {
           let t: Type = ANY;
           if (e.default !== null) t = join(ANY, this.synth(e.default, f));
-          // Ruling AO6 (b): the index site on each element without a default.
+          // 12.4: the index site on each element without a default.
           else this.site("index", e.pat.span);
           this.setSlot(e.pat, t);
         }
@@ -508,7 +566,7 @@ class Checker {
           const d = this.synth(fl.default, f);
           t = this.sizeLimit(join(nonnull(read), d), valueSpan);
         } else {
-          // Ruling AO6 (a): the dynamic site of an unlisted key is on the key in the pattern.
+          // 12.4: the dynamic site of an unlisted key is on the key in the pattern.
           t = this.readKey(r, fl.key, false, fl.keySpan, fl.keySpan, false, [p.span, fl.span]);
         }
         this.setSlot(fl, t);
@@ -603,7 +661,7 @@ class Checker {
     return this.applyTypeFacts(t, key, f);
   }
 
-  /** A rendered expression (ruling AO2). */
+  /** A rendered expression (05 7.3): opaque is `kind`, any is a `dynamic` site. */
   private rendered(e: A.Expr, t: Type, owners: Span[]): void {
     if (hasOpaque(t)) this.diag("kind", e.span);
     else if (hasAny(t)) this.site("dynamic", e.span, ...owners);
@@ -628,7 +686,7 @@ class Checker {
   }
 
   private list(e: A.List, f: Facts): Type {
-    // The item types are joined once, at the end (ruling CG10).
+    // The item types are joined once, at the end (05 20.7).
     const acc = new TypeAcc();
     const add = (t: Type) => acc.add(t);
     for (const it of e.items) {
@@ -886,7 +944,7 @@ class Checker {
       c = c.else;
     }
     // Each Cond's type is the Join of the branches from it on: tested from the
-    // innermost outward (05 20.7), with one accumulating Join (ruling CG10).
+    // innermost outward (05 20.7), with one accumulating Join.
     let acc = new TypeAcc();
     acc.add(this.synth(c, facts));
     for (let k = conds.length - 1; k >= 0; k--) {
@@ -919,19 +977,38 @@ class Checker {
     const acc = new TypeAcc();
     let hasDefault = false;
     const covered = new Set<string | boolean | null | number>();
+    // f05 5.3: a `match` on a field of p narrows p in each arm.
+    const fp = this.fieldPath(e.subject);
+    let pt: Type | undefined = fp === null ? undefined : this.types.get(fp.pNode);
+    if (fp === null || pt === undefined || !this.fieldFactsHold(pt, fp.p)) pt = undefined;
     for (const arm of e.arms) {
       let listsNull = false;
+      const strs = new Set<string>();
       for (const l of arm.literals) {
         const v = l.kind === "Null" ? null : l.value;
         if (l.kind === "Null") listsNull = true;
-        // Ruling CA4: a literal equal to an earlier one is duplicate-case only.
+        // 11.2: a literal equal to an earlier one is duplicate-case only.
         if (covered.has(v)) continue;
         covered.add(v);
-        // Ruling CA1: the conditions of `==` (8.2).
+        if (l.kind === "String") strs.add(l.value);
+        // 11.2, never-equal: the conditions of `==` (8.2).
         if (l.kind !== "Null" && !isNever(s) && !isExactlyNull(s) && !overlap(this.litType(l), s)) this.diag("never-equal", l.span);
       }
       if (arm.isDefault) hasDefault = true;
-      acc.add(this.synth(arm.result, facts));
+      let armFacts = facts;
+      if (pt !== undefined && fp !== null && !isAny(pt)) {
+        const allStrings = arm.literals.length > 0 && arm.literals.every((l) => l.kind === "String");
+        const hit = hitVariants(pt as Alts, fp.key, strs);
+        if (allStrings && strs.size > 0 && hit.length > 0) armFacts = this.withFacts(facts, [this.typeFact("=", fp.p, variantsType(hit), true), fp.p]);
+        if (strs.size > 0) {
+          const all = allVariants(pt as Alts, fp.key, strs);
+          if (all.length > 0) {
+            facts = this.withFacts(facts, [this.typeFact("!", fp.p, variantsType(all), true)]);
+            pt = without(pt, variantsType(all));
+          }
+        }
+      }
+      acc.add(this.synth(arm.result, armFacts));
       if (listsNull && path !== null) facts = this.withFacts(facts, [path]);
     }
     if (!hasDefault && !isNever(s)) {
@@ -1004,7 +1081,7 @@ class Checker {
       if (isAny(cur)) {
         this.synth(s.index, f);
         if (this.site("dynamic", recvSpan, s.span)) return NEVER;
-        // A plain index on an `any` receiver also records an `index` site (9.3, ruling CB1).
+        // A plain index on an `any` receiver also records an `index` site (9.3).
         if (!optional) this.site("index", s.span);
         return ANY;
       }
@@ -1029,7 +1106,7 @@ class Checker {
       }
       if (cur.map) {
         const r = cur.map;
-        // Ruling AO11: a key that is not a string is `kind` on the index only.
+        // 9.2: a key that is not a string is `kind` on the index only.
         if (fits(k, STRING) === 0 && !isNever(k)) return NEVER;
         const v = recordValues(r);
         if (optional) return withNull(v);
@@ -1127,7 +1204,7 @@ class Checker {
         if (la === null) this.synth(a as A.Expr, f);
         else this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level);
       }
-      // A method of that name marked `!` somewhere: a `value` or `host` site on the call (13.3, ruling CB2).
+      // A method of that name marked `!` somewhere: a `value` or `host` site on the call (13.3).
       if ([...this.env.libraryMethods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("value", s.span);
       if ([...this.env.methods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("host", s.span);
       return ANY;
@@ -1234,7 +1311,7 @@ class Checker {
       const m = this.mark();
       let b = this.lambdaUse(la, qs.map(inst), f, level);
       if (b === null) continue;
-      // 3a. The seed rule, also on a fit that used any (ruling AO3).
+      // 3a. The seed rule of 13.5, also on a fit that used any.
       const qVars = new Set(qs.flatMap(varsOf));
       const seed = varsOf(r).find((v) => qVars.has(v) && before.has(v) && fits(b!.type, before.get(v)!) !== 1);
       if (seed !== undefined) {
@@ -1243,12 +1320,12 @@ class Checker {
         if (typeSize(sol.get(seed)!) > SIZE_LIMIT) return this.sizeFail(span);
         b = this.lambdaUse(la, qs.map(inst), f, level, true);
         if (b === null) continue;
-        // No bind on the second check (ruling AO3 (a)).
+        // No bind on the second check (13.5).
       } else {
         this.bind(r, b.type, gain);
         if (over) return this.sizeFail(span);
       }
-      // The body always fits R, every Var by its solution (ruling AO1).
+      // The body always fits R, every Var by its solution (13.5).
       this.fitSimple(b.type, inst(r), la.lambda.body.span, "arg-mismatch");
     }
     // 4. Bounds.
@@ -1308,6 +1385,11 @@ class Checker {
       gain(p.name, a);
       return;
     }
+    // f05 4.3 item 4: a union of records binds each variant against A's record.
+    if (p.t === "union" && a.map && p.alts.every((x) => x.t === "record" || x.t === "name" || (x.t === "word" && x.word === "null"))) {
+      for (const x of p.alts) if (x.t === "record") this.bind(x, nonnull(a), gain);
+      return;
+    }
     if (p.t === "union" && p.alts.some((x) => x.t === "word" && x.word === "null")) {
       const rest = p.alts.filter((x) => !(x.t === "word" && x.word === "null"));
       this.bind(rest.length === 1 ? rest[0] : { t: "union", alts: rest }, nonnull(a), gain);
@@ -1360,7 +1442,8 @@ class Checker {
       return;
     }
     if (e.kind === "Map" && want.map && e.entries.every((en) => en.kind === "Spread" || en.key.kind !== "expr")) {
-      this.fitMap(e, t, want, want.map, code, place, owners);
+      if (want.union) this.fitUnionMap(e, t, want, want.union, code, place, owners);
+      else this.fitMap(e, t, want, want.map, code, place, owners);
       return;
     }
     if (e.kind === "Cond") {
@@ -1381,6 +1464,50 @@ class Checker {
       return;
     }
     this.diag(code(t, want), place);
+  }
+
+  /** A map literal with no computed key against a tagged union (f05 6): the tag's contributors choose the variant. */
+  private fitUnionMap(e: A.MapLit, t: Type, want: Type, u: Union, code: (place: Type, want: Type) => string, place: Span, owners: Span[]): void {
+    const tag = u.tag;
+    type Contributor = { span: Span; type: Type; sure: boolean };
+    const cs: Contributor[] = [];
+    for (const en of e.entries) {
+      if (en.kind === "Entry") {
+        const key = en.key.kind === "word" ? en.key.text : (en.key as { value: string }).value;
+        if (key !== tag) continue;
+        cs.push({ span: en.shorthand ? (en.key as { span: Span }).span : en.value.span, type: this.types.get(en.value) ?? NEVER, sure: true });
+        continue;
+      }
+      const m = nonnull(this.types.get(en.value) ?? NEVER);
+      if (isAny(m)) cs.push({ span: en.value.span, type: ANY, sure: false });
+      else if (!isNever(m) && kindCount(m) === 1 && m.map) {
+        const fl = m.map.fields.get(tag);
+        if (fl !== undefined) cs.push({ span: en.value.span, type: fl.type, sure: !fl.optional });
+        else if (!isNever(m.map.rest)) cs.push({ span: en.value.span, type: m.map.rest, sure: false });
+      }
+    }
+    let first = -1;
+    for (let i = cs.length - 1; i >= 0; i--) {
+      if (cs[i].sure) {
+        first = i;
+        break;
+      }
+    }
+    if (first < 0) {
+      this.diag(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place);
+      return;
+    }
+    const contributors = cs.slice(first);
+    const j = joinAll(contributors.map((c) => c.type));
+    const v = !isAny(j) && j.str !== undefined && j.str !== "string" && kindCount(j) === 1
+      ? u.variants.find((x) => [...(j.str as ReadonlySet<string>)].every((y) => tagSetOf(x, tag).has(y)))
+      : undefined;
+    if (v === undefined) {
+      const tagType: Alts = { str: new Set(u.variants.flatMap((x) => [...tagSetOf(x, tag)])) };
+      for (const c of contributors) this.diag(code(c.type, tagType), c.span);
+      return;
+    }
+    this.fitMap(e, t, want, v, code, place, owners);
   }
 
   /** A map literal with no computed key against a record (15.1, "A map literal against a record"). */

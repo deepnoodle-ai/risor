@@ -6,6 +6,7 @@
 
 import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, SIZE_LIMIT, TypeAcc, fits, isAny, isNever, join, lit, listOf, nonnull, record, typeSize,
+  mapAlt, variantsOf, withoutMap,
 } from "./type.ts";
 import type { Alts, Field, Rec, Type } from "./type.ts";
 
@@ -63,12 +64,22 @@ export function pick(ts: Type[]): Type {
   const left = ts.filter((t) => !isAny(t));
   if (left.length === 0) return ANY;
   if (left.every(onlyRecord)) {
-    let r = left[0].map!;
-    for (let i = 1; i < left.length; i++) r = meet(r, (left[i] as Alts).map!);
-    return { map: r };
+    // Step 2, with package F5 (f05 8.3): records and unions meet, folded from the left.
+    let acc: Alts | null = left[0] as Alts;
+    for (let i = 1; i < left.length && acc !== null; i++) acc = meetMaps(acc, left[i] as Alts);
+    if (acc !== null) return acc;
   }
   for (const t of left) if (left.every((u) => u === t || fits(t, u) === 1)) return t;
   return left[0];
+}
+
+/** The meet of two map alternatives (f05 8.3): null when it fails. */
+function meetMaps(a: Alts, b: Alts): Alts | null {
+  if (!a.union && !b.union) return { map: meet(a.map!, b.map!) };
+  if (a.union && b.union) return null;
+  const recs = a.union ? a.union.variants.map((v) => meet(v, b.map!)) : b.union!.variants.map((v) => meet(a.map!, v));
+  const m = mapAlt(recs);
+  return m !== null && m.union ? m : null;
 }
 
 export function meet(a: Rec, b: Rec): Rec {
@@ -102,9 +113,14 @@ export function close(t: Type, memo = new Map<Type, Type>()): Type {
     const o: { -readonly [K in keyof Alts]: Alts[K] } = { ...t };
     if (t.list) o.list = close(t.list, memo);
     if (t.map) {
-      const fields = new Map<string, Field>();
-      for (const [k, f] of t.map.fields) fields.set(k, { type: close(f.type, memo), optional: f.optional });
-      o.map = { fields, rest: t.map.closable ? NEVER : close(t.map.rest, memo) };
+      const closeRec = (r: Rec): Rec => {
+        const fields = new Map<string, Field>();
+        for (const [k, f] of r.fields) fields.set(k, { type: close(f.type, memo), optional: f.optional });
+        return { fields, rest: r.closable ? NEVER : close(r.rest, memo) };
+      };
+      // f05 8.2 item 2: Close closes each variant of a union.
+      if (t.union) Object.assign(o, mapAlt(t.union.variants.map(closeRec)));
+      else o.map = closeRec(t.map);
     }
     out = o;
   }
@@ -193,12 +209,7 @@ class Mapper {
       if (!Array.isArray(branches) || branches.length === 0) fail(`${k} is a non-empty array of schemas`);
       const types = branches.map(sub);
       if (k === "allOf") parts.push(pick(types));
-      else {
-        tagTest(types);
-        let t: Type = NEVER;
-        for (const x of types) t = join(t, x);
-        parts.push(t);
-      }
+      else parts.push(branchUnion(types));
     }
     let t = parts.length === 0 ? ANY : pick(parts);
     if (s.nullable === true) t = join(t, NULL);
@@ -261,7 +272,7 @@ class Mapper {
         if (!Array.isArray(s.enum)) fail("enum is an array");
         values = s.enum;
       }
-      // One accumulating Join: n log n (ruling CG10). Each literal type is tested (3.10 item 8).
+      // One accumulating Join: n log n (05 20.7). Each literal type is tested (3.10 item 8).
       const acc = new TypeAcc();
       for (const v of values) {
         if (names !== null && !names.some((n) => allows(n, v))) continue;
@@ -371,38 +382,18 @@ function allows(n: string, v: unknown): boolean {
   return false;
 }
 
-/** The test of 3.9: records of one `anyOf` or `oneOf` that have a tag are bad-type until F5. */
-function tagTest(types: Type[]): void {
-  const recs = types.filter((t): t is Alts & { map: Rec } => !isAny(t) && t.map !== undefined).map((t) => t.map);
-  if (recs.length < 2) return;
-  const literalSet = (t: Type): ReadonlySet<string> | null => {
-    if (isAny(t) || !t.str || t.str === "string") return null;
-    if (t.null || t.bool || t.num || t.list || t.map || (t.opaque && t.opaque.size > 0)) return null;
-    return t.str;
-  };
-  for (const [k] of recs[0].fields) {
-    const sets: ReadonlySet<string>[] = [];
-    let tag = true;
-    for (const r of recs) {
-      const f = r.fields.get(k);
-      const set = f !== undefined && !f.optional ? literalSet(f.type) : null;
-      if (set === null) {
-        tag = false;
-        break;
-      }
-      sets.push(set);
-    }
-    if (!tag) continue;
-    const seen = new Set<string>();
-    let disjoint = true;
-    for (const set of sets) {
-      for (const x of set) {
-        if (seen.has(x)) disjoint = false;
-      }
-      for (const x of set) seen.add(x);
-    }
-    if (disjoint) fail(`the branches have the tag ${k}: a tagged union needs package F5`);
-  }
+/** The part of an `anyOf` or `oneOf` (f05 8.1): the records of its branches may form a tagged union. */
+function branchUnion(types: Type[]): Type {
+  let joined: Type = NEVER;
+  for (const x of types) joined = join(joined, x);
+  if (isAny(joined)) return joined;
+  const recs = types.flatMap((t) => (isAny(t) ? [] : variantsOf(t)));
+  if (recs.length < 2) return joined;
+  const m = mapAlt(recs);
+  if (m === null || !m.union) return joined;
+  let other: Type = NEVER;
+  for (const x of types) other = join(other, withoutMap(x as Alts));
+  return { ...(other as Alts), ...m };
 }
 
 /** Percent-decoding of a fragment (3.7 item 2): bytes, which must be UTF-8. */

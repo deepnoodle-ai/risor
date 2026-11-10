@@ -1,6 +1,6 @@
-// The library: the registry against suite/library.json (brief S3 item 1),
-// host numbers read by entries (ruling AC16), and the work bound of the
-// algorithms this binding wrote itself (02 8.5; brief S3 item 6).
+// The library: the registry against suite/library.json (04 1),
+// host numbers read by entries (03 3.4.4), and the work bound of the
+// algorithms this binding wrote itself (02 8.5).
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -49,7 +49,7 @@ describe("the registry is suite/library.json", () => {
   test("the case table is Unicode 16.0.0", () => assert.equal(CASEMAP_UNICODE, "16.0.0"));
 });
 
-describe("ruling AC16: an entry that reads an element reads a host number", () => {
+describe("03 3.4.4: an entry that reads an element reads a host number", () => {
   const env = createEnv({ vars: "{xs: any}" });
   const code = (src: string, xs: unknown[]) => {
     const o = env.compile(src, { check: false }).execute({ xs });
@@ -63,7 +63,7 @@ describe("ruling AC16: an entry that reads an element reads a host number", () =
   for (const src of ["len(xs)", "xs.reverse()", "xs.slice(0)", "[...xs]", "xs.first()"]) {
     test(`${src} copies or measures without reading the element`, () => assert.equal(code(src, big), "ok"));
   }
-  test("the failure has the span of the call (ruling W4)", () => {
+  test("the failure has the span of the call (04 2.6 item 6)", () => {
     try {
       env.compile("1 + xs.sort()", { check: false }).run({ xs: big });
       assert.fail("no failure");
@@ -108,7 +108,7 @@ describe("work in proportion to the charge", () => {
   });
 });
 
-describe("ruling AN1: a type variable with no bound accepts null", () => {
+describe("04 2.6: a type variable with no bound accepts null", () => {
   test("[].reduce(p => 0, null) gives null", () => {
     const env = createEnv({});
     assert.equal(env.compile("[].reduce(p => 0, null)", { check: false }).run(), null);

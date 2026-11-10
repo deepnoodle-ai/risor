@@ -1,4 +1,4 @@
-// The deepest programs within the limits (ruling AA7). Run by deep.test.ts in
+// The deepest programs within the limits (02 8.4, 01 13.2). Run by deep.test.ts in
 // a child process with a small V8 stack. Prints one line per program.
 
 import { createEnv } from "../../src/host/api.ts";

@@ -19,7 +19,7 @@
 //
 // Positions are code-point offsets everywhere (src/syntax/source.ts).
 //
-// STACK (ruling AA7). The evaluator recurses only where the text opens a
+// STACK (02 8.4, 01 13.2). The evaluator recurses only where the text opens a
 // nesting level, through calls in progress, and in walks; long flat forms run
 // in loops. The deepest programs within the limits (depth limit 1,000 reached
 // by calls at nesting 0 plus a walk; 100 levels of source nesting) run with a

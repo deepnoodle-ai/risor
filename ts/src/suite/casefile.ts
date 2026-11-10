@@ -74,13 +74,13 @@ export interface Case {
   vars?: JsonObject;
   limits?: { steps?: number; allocation?: number; depth?: number };
   precondition?: boolean;
-  /** Ruling CD4: library entries the environment removes (`len`, `string.repeat`). */
+  /** 03 3.10.3: library entries the environment removes (`len`, `string.repeat`). */
   removed?: string[];
   /** Package F4: named types, in order (f04 9.1). */
   types?: ({ name: string; type: string } | { name: string; schema: Json; options?: string[] })[];
   /** Package F4: a case of the second kind (f04 9.2). */
   conform?: { type: string; value: Json };
-  /** Ruling AP1: false compiles the case with the static rules alone. */
+  /** 03 3.10.3: false compiles the case with the static rules alone. */
   check?: boolean;
   /** Package F2: the text is a template, in this mode (f02 4.1). */
   template?: "string" | "value";
@@ -106,14 +106,14 @@ export const CONVERSION_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SE
 
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
-/** The fields a header and a case share (03 3.10.3). `precondition` is ruling A4. */
+/** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
 const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
 /** Read and validate a case file on disk. */
 export interface ReadOptions {
-  /** Accept cases with no `expect` (the outcome command, ruling AJ item 2). */
+  /** Accept cases with no `expect` (the outcome command, suite/README.md item 1). */
   noExpect?: boolean;
 }
 
@@ -390,11 +390,11 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   }
   if ("check" in merged) {
     c.check = merged.check as boolean;
-    // Ruling AP1: a case compiled without a check states no type or sites, and expects static check codes only.
+    // 03 3.10.10: a case compiled without a check states no type or sites, and expects static check codes only.
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
-      const staticCodes = basename(dir) === "conversion" ? CONVERSION_STATIC : STATIC_CODE_SET;
+      const staticCodes = basename(dir) === "conversion" || basename(dir) === "unions" ? CONVERSION_STATIC : STATIC_CODE_SET;
       if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
       }
@@ -541,7 +541,7 @@ function buildExpect(v: Json, where: string): Expect {
         out[k] = v[k] as number;
       }
     }
-    // Ruling A5: a case that expects a limit code states no counts.
+    // 03 3.10.10: a case that expects a limit code states no counts.
     if ((out.steps !== undefined || out.allocated !== undefined) && diagnostics.some((d) => LIMIT_CODES.has(d.code))) {
       fail(`${where}: a case that expects a limit code states steps or allocated`);
     }

@@ -74,7 +74,7 @@ describe("02 section 7: worked counts", () => {
   }
 });
 
-describe("ruling AH2: an empty pair is entered, with the depth test", () => {
+describe("02 8.4: an empty pair is entered, with the depth test", () => {
   const at = (depth: number, src: string) => {
     const o = createEnv({ limits: { depth } }).compile(src, { check: false }).execute();
     return o.ok ? "ok" : o.diagnostic.code;
@@ -97,7 +97,7 @@ describe("ruling AH2: an empty pair is entered, with the depth test", () => {
   });
 });
 
-describe("ruling AM3: == on maps visits the left map in key order when a value is a list or a map", () => {
+describe("02 5.3: == on maps visits the left map in key order when a value is a list or a map", () => {
   test("the first key's lists pass the depth limit before the last key's long string passes the step limit", () => {
     let deep: unknown = 1;
     for (let i = 0; i < 10; i++) deep = [deep];

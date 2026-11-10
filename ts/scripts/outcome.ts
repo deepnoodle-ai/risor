@@ -1,4 +1,4 @@
-// The outcome command (ruling AJ): `node scripts/outcome.ts FILE` writes one
+// The outcome command (suite/README.md): `node scripts/outcome.ts FILE` writes one
 // line of JSON for each case of a case file, in order. Status 0 when every
 // case has its line; status 2, with a message on standard error, when the
 // file is invalid (03 3.10.10). It sets no deadline and reads no clock.

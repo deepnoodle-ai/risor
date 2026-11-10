@@ -924,10 +924,7 @@ and expects an answer.
    description, are in `suite/conversion/conversion-schema-types.json`.
 4. The analysis cases of F2 4.2 for programs that hold a test are in
    `suite/conversion/conversion-analysis.json`, run as F2 4.7 runs them.
-5. The file `suite/conversion/until-f05-tagged-unions.json` holds cases whose
-   types are records that form a tagged union. F5 removes it (`03-host.md`
-   3.11 item 4).
-6. The description of 8 is compared by the result field `description` of F1
+5. The description of 8 is compared by the result field `description` of F1
    7.2.
 
 ### 9.5 The `outcome` command

@@ -43,7 +43,7 @@ export interface Verdict {
   differences?: Difference[];
 }
 
-/** The static codes (01 14.4); every implementation reports them (ruling A1). */
+/** The static codes (01 14.4); every implementation reports them. */
 export const STATIC_CODES: ReadonlySet<string> = new Set([
   "undefined-name", "undefined-function", "call-of-parameter", "lambda-to-lambda", "not-a-value",
   "arity", "duplicate-name", "shadows-namespace", "duplicate-key", "duplicate-case", "unreachable-arm",
@@ -58,7 +58,7 @@ export interface RunnerOptions {
   library?: ReadonlySet<string>;
   /** Run step 4 with the type checker (default), or with the static rules alone. */
   checker?: boolean;
-  /** The case is of suite/core-check/: run checked only (ruling AP2). */
+  /** The case is of suite/core-check/: run checked only (03 3.10.8 item 5). */
   checkOnly?: boolean;
   /** The static codes of the case's directory (f04 6.1 item 4 for suite/conversion/). */
   staticCodes?: ReadonlySet<string>;
@@ -151,11 +151,11 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
       return v("skip", { reason: "needs the type checker (a check code outside the static rules)" });
     }
   }
-  // Ruling AP1: "check": false compiles with the static rules alone, and
+  // 03 3.10.8: "check": false compiles with the static rules alone, and
   // compares `class` for every code.
   if (c.check === false) return judge(c, v, false, true);
   if (!checker) return judge(c, v, false, false);
-  // Ruling AP2: checked, and again with the static rules alone, unless the
+  // 03 3.10.8: checked, and again with the static rules alone, unless the
   // case needs the checker or is of suite/core-check/.
   const needsChecker =
     opts.checkOnly === true ||
@@ -212,9 +212,8 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
       types: c.types as NamedTypeDecl[] | undefined,
       schemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
     });
-    if (!checker && c.returns !== undefined && c.returns !== "condition" && !parseType(c.returns).ok) {
-      throw new RisorError([{ phase: "declare", code: "bad-type", message: "the expected result is not a type" }]);
-    }
+    // The expected result is declared type text, resolved in every compile (03 3.3.1).
+    if (!checker && c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
     // Steps 3 and 4: parse (a template in its mode, f02 4.1), then the check (or the static rules alone).
     let input: string | ParsedProgram = c.source;
     if (c.template !== undefined) {
@@ -433,7 +432,7 @@ function describeFailure(o: Outcome): string {
   return `failure of phase ${o.phase}: ${d.code}${span} (${d.message})`;
 }
 
-/** Whether `class` is compared for every code (03 3.10.7 item 8, ruling AP1). */
+/** Whether `class` is compared for every code (03 3.10.7 item 8). */
 let RUN_CHECKED = true;
 /** The environment of the case being judged, to read its expected `type`. */
 let CURRENT_ENV: Env | null = null;
@@ -465,7 +464,7 @@ function foundDiag(d: Diagnostic, source?: Source): FoundDiag {
 function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
   if (f === undefined) return false;
   if (e.code !== f.code) return false;
-  // Ruling AM1: `class` is compared, except for the five codes whose class
+  // 03 3.10.7 item 8: `class` is compared, except for the five codes whose class
   // depends on the check, since this runner does not check.
   if (e.class !== undefined && (RUN_CHECKED || !CHECK_DEPENDENT.has(e.code)) && e.class !== f.class) return false;
   if (e.span !== undefined && !LIMIT_CODES.has(e.code)) {
@@ -522,15 +521,15 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     }
     return out;
   }
-  // Ruling BA8 (03 3.11): a file `until-fNN-` is not run when this implementation offers package NN.
+  // 03 3.11: a file `until-fNN-` is not run when this implementation offers package NN.
   const until = /^until-f(\d\d)-/.exec(basename(path));
   if (until !== null && OFFERED_PACKAGES.has(Number(until[1]))) return [];
   // f01 7.3 item 1: every case of suite/host-types/ is run checked, once.
-  // Ruling BA11: in a package directory, a file ending `-check.json` is run checked, once.
+  // 03 3.11: in a package directory, a file ending `-check.json` is run checked, once.
   const dir = basename(dirname(path));
   const packageDir = basename(dirname(dirname(path))) === "suite" && dir !== "core-run" && dir !== "core-check";
   const checkOnly = opts.checkOnly ?? (["core-check", "host-types"].includes(dir) || (packageDir && basename(path).endsWith("-check.json")));
-  const staticCodes = dir === "conversion" ? CONVERSION_STATIC : undefined;
+  const staticCodes = dir === "conversion" || dir === "unions" ? CONVERSION_STATIC : undefined;
   // f02 4.7: suite/templates/ runs as suite/core-run/ does; an analysis case runs once.
   return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly, staticCodes });
 }
@@ -543,8 +542,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1, F2, F3, F4. */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4]);
+/** The packages this implementation offers: F1 to F5. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

@@ -106,7 +106,7 @@ class Reader {
       if (c === 0x22) {
         out += s.slice(from, this.i);
         this.i++;
-        // Ruling V4: a lone surrogate reads as U+FFFD.
+        // 03 3.4.5: a lone surrogate reads as U+FFFD.
         return out.isWellFormed() ? out : out.toWellFormed();
       }
       if (c < 0x20) this.fail("control character in a string");
@@ -133,7 +133,7 @@ class Reader {
   }
 
   private array(depth: number): Json[] {
-    // 03 3.10.1 item 4 (ruling AA6): at most 1,024 levels.
+    // 03 3.10.1 item 4: at most 1,024 levels.
     if (depth >= 1024) this.fail("JSON nested deeper than 1,024 levels");
     this.i++;
     const out: Json[] = [];

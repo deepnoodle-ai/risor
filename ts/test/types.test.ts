@@ -1,4 +1,4 @@
-// Unit tests of the checker for what the data cannot hold (brief S4 item 9):
+// Unit tests of the checker for what the data cannot hold (05):
 // the laws of Join, Fits, Merge, Truthy and Falsy on hand-made types, printing
 // read back through the parser, and the limits of 05-types.md section 20.
 
@@ -118,7 +118,7 @@ describe("05 section 20: the checker's limits", () => {
     const c = env.check(src);
     return c.ok ? [] : c.diagnostics.map((d) => d.code);
   };
-  test("20.2 (ruling AO10): the chain f0 to f100", () => {
+  test("20.2: the chain f0 to f100", () => {
     const chain = (n: number) => {
       let s = "const f0 = q => q;";
       for (let i = 1; i <= n; i++) s += ` const f${i} = q => f${i - 1}(q);`;

@@ -3,7 +3,7 @@
 // Each entry runs after its receiver and arguments are evaluated, after the
 // tests of 2.6 and after the call's step (src/eval/compile.ts, callEntry).
 // What follows is each entry's own order, as its record's "Order" gives it.
-// Every failure an entry raises has the span of the whole call (ruling W4).
+// Every failure an entry raises has the span of the whole call (04 2.6 item 6).
 
 import { RunFailure } from "../eval/failure.ts";
 import { L, render, sizeTogether } from "../eval/ops.ts";
@@ -17,7 +17,7 @@ import { codePoints, cpOffsets, mapCase, occurrences, resolve, trimWhiteSpace } 
 
 // ---- shared ---------------------------------------------------------------
 
-/** The elements of the receiver list, each read (ruling AC16). */
+/** The elements of the receiver list, each read as a host value (03 3.4.4). */
 function elements(c: CallContext): unknown[] {
   const xs = c.receiver as unknown[];
   const out = new Array<unknown>(xs.length);

@@ -210,7 +210,7 @@ describe("01 14.3: every row", () => {
     err("-2 ** 2", "unexpected-token", [1, 1, 1, 2]);
     err("!a ** b", "unexpected-token", [1, 1, 1, 2]);
     err("2 ** -2 ** 2", "unexpected-token", [1, 6, 1, 7]);
-    // Ruling R37: the first prefix operator in the text; `not in` whole.
+    // 01 3.4 rule 1: the first prefix operator in the text; `not in` whole.
     err("- -2 ** 2", "unexpected-token", [1, 1, 1, 2]);
     err("-!a ** 2", "unexpected-token", [1, 1, 1, 2]);
     err("!!a in b", "unexpected-token", [1, 1, 1, 2]);

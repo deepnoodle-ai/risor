@@ -1,7 +1,7 @@
 // The environment (03 3.3) and its declaration errors (03 3.3.4, 05 19.5).
 //
 // An implementation with no type checker parses every type text by the
-// grammar (ruling A2) and applies the rules of names. The rules beyond the
+// grammar (03 3.3.1 item 2) and applies the rules of names. The rules beyond the
 // grammar (two records, an undeclared type name, depth, a key written twice)
 // need the type checker and are not applied here.
 
@@ -127,7 +127,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     library,
   };
 
-  // Ruling AM4: `bad-limit`.
+  // 03 3.3.4: `bad-limit`.
   for (const [k, v] of Object.entries(d.limits ?? {})) {
     if (k === "depth") {
       if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 1 || v > 1000) {
@@ -143,7 +143,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     else env.version = d.version;
   }
 
-  // A removed entry is named `len` or `string.repeat` (03 3.3.1, ruling CD1); any other name is `bad-name` (CD3).
+  // A removed entry is named `len` or `string.repeat` (03 3.3.1); any other name is `bad-name` (03 3.3.4).
   for (const name of d.removed ?? []) {
     const dot = name.indexOf(".");
     const ok = dot < 0 ? FUNCTIONS.has(name) : METHODS.get(name.slice(0, dot))?.has(name.slice(dot + 1)) === true;
@@ -357,7 +357,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
         typeOf(n, true);
       } catch (e) {
         if (!(e instanceof TypeRuleError)) throw e;
-        // Ruling AO4: every error in a host signature or a method's text is bad-signature.
+        // 03 3.3.4: every error in a host signature or a method's text is bad-signature.
         errs.push(diag("bad-signature", `the signature of ${fn.name}: ${e.message}`));
         break;
       }

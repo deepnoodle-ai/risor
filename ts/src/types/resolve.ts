@@ -3,7 +3,7 @@
 
 import type { Span } from "../syntax/source.ts";
 import type { TypeNode } from "./typetext.ts";
-import { depth, fromNode, isAny, SIZE_LIMIT, typeSize } from "./type.ts";
+import { depth, findTag, fromNode, isAny, SIZE_LIMIT, typeSize, variantsOf } from "./type.ts";
 import type { Type } from "./type.ts";
 
 /** The type names of an environment: opaque types and named types (f04 3.3). */
@@ -36,37 +36,40 @@ export function resolveProgramType(node: TypeNode, typeSpan: Span, spans: Readon
   };
   visitNames(node);
   if (undef.length > 0) return { ok: false, diagnostics: undef };
-  // 2. Records: the innermost PType whose alternatives, parentheses removed, hold two (3.5 step 4).
-  const recs = (n: TypeNode): number => {
+  // 2. Records (f05 3.2): each Type from the innermost out; one that holds an error is not tested again.
+  const ctx = { opaque: names.opaque, named: names.named };
+  const unions: { code: string; span: Span }[] = [];
+  const visit = (n: TypeNode): boolean => {
     switch (n.t) {
-      case "record": case "map": return 1;
-      case "union": return n.alts.reduce((k, a) => k + recs(a), 0);
-      case "name": {
-        const t = names.named.get(n.name);
-        return t !== undefined && !isAny(t) && t.map ? 1 : 0;
+      case "list": return visit(n.elem);
+      case "map": return visit(n.rest);
+      case "record": {
+        let ok = true;
+        for (const f of n.fields) ok = visit(f.type) && ok;
+        if (typeof n.rest !== "string") ok = visit(n.rest) && ok;
+        return ok;
+      }
+      case "union": {
+        let ok = true;
+        for (const a of n.alts) ok = visit(a) && ok;
+        if (!ok) return false;
+        const recs = n.alts.flatMap((a) => {
+          const x = fromNode(a, ctx);
+          return isAny(x) ? [] : variantsOf(x);
+        });
+        if (recs.length >= 2 && findTag(recs) === null) {
+          unions.push({ code: "untagged-union", span: spans.get(n)! });
+          return false;
+        }
+        return true;
       }
     }
-    return 0;
+    return true;
   };
-  const unions: { code: string; span: Span }[] = [];
-  const visitRecs = (n: TypeNode): void => {
-    switch (n.t) {
-      case "list": return visitRecs(n.elem);
-      case "map": return visitRecs(n.rest);
-      case "record":
-        for (const f of n.fields) visitRecs(f.type);
-        if (typeof n.rest !== "string") visitRecs(n.rest);
-        return;
-      case "union":
-        if (recs(n) >= 2 && !n.alts.some((a) => a.t === "union" && recs(a) >= 2)) unions.push({ code: "untagged-union", span: spans.get(n)! });
-        for (const a of n.alts) visitRecs(a);
-        return;
-    }
-  };
-  visitRecs(node);
+  visit(node);
   if (unions.length > 0) return { ok: false, diagnostics: unions };
   // 3. Depth and size: one check-limit for both (3.5 steps 5 and 6).
-  const t = fromNode(node, { opaque: names.opaque, named: names.named });
+  const t = fromNode(node, ctx);
   if (depth(t, 70) > 64 || typeSize(t) > SIZE_LIMIT) return { ok: false, diagnostics: [{ code: "check-limit", span: typeSpan }] };
   return { ok: true, type: t };
 }

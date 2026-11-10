@@ -1,4 +1,4 @@
-// The outcome command (ruling AJ): its output form.
+// The outcome command (suite/README.md): its output form.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,7 +24,7 @@ test("one line of JSON for each case, in order, fields in the order of AJ item 3
     "{\"name\":\"check\",\"phase\":\"check\",\"diagnostics\":[{\"code\":\"undefined-name\",\"span\":[1,1,1,2]},{\"code\":\"undefined-name\",\"span\":[1,5,1,6]}],\"analysis\":{\"names\":[\"y\",\"z\"],\"refs\":[{\"name\":\"y\",\"path\":[],\"span\":[1,1,1,2]},{\"name\":\"z\",\"path\":[],\"span\":[1,5,1,6]}],\"calls\":[],\"literal\":false,\"segments\":null}}",
     "{\"name\":\"declare\",\"phase\":\"declare\",\"diagnostics\":[{\"code\":\"name-clash\"}],\"analysis\":{\"names\":[],\"refs\":[],\"calls\":[],\"literal\":{\"value\":1},\"segments\":null}}",
     "{\"name\":\"run\",\"type\":\"any\",\"sites\":[{\"class\":\"divide\",\"span\":[1,1,1,6]},{\"class\":\"dynamic\",\"span\":[1,5,1,6]}],\"phase\":\"run\",\"diagnostics\":[{\"code\":\"divide-by-zero\",\"span\":[1,1,1,6],\"class\":\"divide\",\"message\":\"the divisor of / is zero\"}],\"steps\":1,\"units\":0,\"analysis\":{\"names\":[\"x\"],\"refs\":[{\"name\":\"x\",\"path\":[],\"span\":[1,5,1,6]}],\"calls\":[],\"literal\":false,\"segments\":null}}",
-    "{\"name\":\"limit\",\"type\":\"int[]\",\"sites\":[],\"phase\":\"run\",\"diagnostics\":[{\"code\":\"allocation-exceeded\",\"span\":null,\"class\":\"limit\",\"message\":\"the run needed more than its limit of 1 allocation units\"}],\"analysis\":{\"names\":[],\"refs\":[],\"calls\":[],\"literal\":{\"value\":[1,2]},\"segments\":null}}", // ruling AK3: no usage
+    "{\"name\":\"limit\",\"type\":\"int[]\",\"sites\":[],\"phase\":\"run\",\"diagnostics\":[{\"code\":\"allocation-exceeded\",\"span\":null,\"class\":\"limit\",\"message\":\"the run needed more than its limit of 1 allocation units\"}],\"analysis\":{\"names\":[],\"refs\":[],\"calls\":[],\"literal\":{\"value\":[1,2]},\"segments\":null}}", // suite/README.md item 2: no usage
   ]);
   for (const line of r.stdout.trimEnd().split("\n")) JSON.parse(line);
 });
@@ -48,7 +48,7 @@ test("an invalid file: status 2 and a message on standard error", () => {
   assert.match(r.stderr, /invalid case file/);
 });
 
-test('ruling AP3: a case with "check": false has no type and no sites', () => {
+test('suite/README.md: a case with "check": false has no type and no sites', () => {
   const dir = mkdtempSync(join(tmpdir(), "risor-outcome-"));
   const f = join(dir, "c.json");
   writeFileSync(f, JSON.stringify([{ name: "u", source: "1 < 2 < 3", check: false }]));

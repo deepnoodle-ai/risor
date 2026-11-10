@@ -329,8 +329,9 @@ F5 only adds.
    required field, its type in each is a literal set and nothing else, and no
    string is in the sets of two records.
 3. Two or more records that have a tag are `bad-type`. Otherwise the branches
-   join (3.6). The cases that pin this error are in
-   `suite/host-types/until-f05-tagged-branches.json`, which F5 removes.
+   join (3.6). With package F5 such records form a tagged union and are no
+   error (`spec/packages/f05-unions.md`); the cases that pinned the error
+   stood until every implementation offered F5.
 4. The test is made at each `anyOf` and `oneOf`, after its branches are
    mapped. A nested `anyOf` joins first, and its record then takes part in the
    test of the one outside it.

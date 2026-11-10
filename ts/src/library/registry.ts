@@ -27,7 +27,7 @@ export interface Callback {
 
 export interface CallContext {
   run: Run;
-  /** The whole call: every failure of an entry has this span (ruling W4). */
+  /** The whole call: every failure of an entry has this span (04 2.6 item 6). */
   span: Span;
   /** The entry's name as written. */
   name: string;

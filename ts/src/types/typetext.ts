@@ -1,7 +1,7 @@
 // Type text (05 3.1, 3.2): a parser that yields a tree.
 //
 // Every implementation parses type text, with or without a type checker
-// (ruling A2): it needs the names of declared variables and the count of
+// (03 3.3.1 item 2): it needs the names of declared variables and the count of
 // parameters of each declared function. Text that does not fit the grammar
 // is an error; the caller turns it into `bad-type` or `bad-signature`.
 // Rules beyond the grammar (two records, an undeclared name, type depth, a key
@@ -110,7 +110,7 @@ function run<T>(text: string, f: (p: TypeParser) => T, vars: boolean): TypeTextR
 }
 
 /**
- * The depth of type text (05 20.5, ruling AA3): a `[]` suffix is 1 deeper
+ * The depth of type text (05 20.5): a `[]` suffix is 1 deeper
  * than what it follows; a bracketed form is 1 deeper than its contents.
  */
 function textDepth(toks: Token[]): number {
@@ -153,7 +153,7 @@ function textDepth(toks: Token[]): number {
   return stack[0];
 }
 
-/** Parse the record of an environment (03 3.10.3, rulings T4, AG4): a `Record` with no optional field and no rest. */
+/** Parse the record of an environment (03 3.10.3, 3.3.4): a `Record` with no optional field and no rest. */
 export function parseEnvRecord(text: string): TypeTextResult<TypeNode> {
   const r = run(text, (p) => p.envRecord(), false);
   if (!r.ok) return r;

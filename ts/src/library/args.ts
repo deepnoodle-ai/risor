@@ -1,4 +1,4 @@
-// The top-level tests of a library call's arguments (04 2.6, rulings AC5, AC6).
+// The top-level tests of a library call's arguments (04 2.6).
 
 import { RunFailure } from "../eval/failure.ts";
 import type { Run } from "../eval/run.ts";
@@ -40,7 +40,7 @@ function accepts(t: TypeNode, v: unknown, run: Run): Verdict {
     case "name":
       return k === "opaque" ? "ok" : "kind";
     case "var":
-      // Ruling AN1: a type variable with no bound accepts every value, null
+      // 04 2.6: a type variable with no bound accepts every value, null
       // included, like `any`. A bound is tested apart (ordered, number).
       return "ok";
     case "union": {
@@ -92,7 +92,7 @@ export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: 
     const verdict = accepts(t, v, run);
     const bound = boundOf(e, t);
     if (bound === "ordered") {
-      // Every failure of kind at an `ordered` parameter is `unordered` (rulings AC3, AC5):
+      // Every failure of kind at an `ordered` parameter is `unordered` (04 2.6):
       // the arguments bound to the variable are one ordered set, tested left to right.
       const set = args.slice(0, i + 1).filter((_, j) => {
         const q = paramAt(e, j);

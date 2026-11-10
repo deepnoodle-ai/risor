@@ -3,8 +3,8 @@
 // template of the first failure. Used by `as` and `is` in a run (charged, with
 // the depth count) and by the conformance function (f04 7: nothing charged).
 
-import { isAny, printType } from "../types/type.ts";
-import type { Rec, Type } from "../types/type.ts";
+import { isAny, printType, tagSetOf } from "../types/type.ts";
+import type { Alts, Rec, Type, Union } from "../types/type.ts";
 import { ABSENT, BAD_NUMBER, Classifier, compareText, mapGet, mapKeys, readHost, size } from "../value/value.ts";
 
 /** The value of `found` for a host number that cannot enter the language (f04 4.4 item 3). */
@@ -108,7 +108,8 @@ class Walker {
         return null;
       }
       case "map":
-        return t.map === undefined ? this.wrong(t, v) : this.record(v as object, t.map);
+        if (t.map === undefined) return this.wrong(t, v);
+        return t.union === undefined ? this.record(v as object, t.map) : this.union(v as object, t.union);
       default: {
         const name = this.ctx.cls.opaqueName(v);
         return name !== null && t.opaque?.has(name) === true ? null : this.wrong(t, v);
@@ -116,11 +117,32 @@ class Walker {
     }
   }
 
-  /** f04 4.3. */
-  private record(m: object, r: Rec): ConformFailure | null {
+  /** f05 7.2: the tag first, then the rows of f04 4.3 for its variant, passing over the tag. */
+  private union(m: object, u: Union): ConformFailure | null {
+    const tag = u.tag;
+    this.ctx.charge(1 + size(tag));
+    const val = mapGet(m, tag);
+    this.path.push(tag);
+    if (val === ABSENT) {
+      const f = this.fail("missing", { key: tag });
+      this.path.pop();
+      return f;
+    }
+    const tagType: Alts = { str: new Set(u.variants.flatMap((v) => [...tagSetOf(v, tag)])) };
+    const f = this.test(val, tagType, true);
+    this.path.pop();
+    if (f !== null) return f;
+    const s = readHost(val) as string;
+    const variant = u.variants.find((v) => tagSetOf(v, tag).has(s))!;
+    return this.record(m, variant, tag);
+  }
+
+  /** f04 4.3. `skip`: the tag of a union, already looked up and tested (f05 7.2 step 3). */
+  private record(m: object, r: Rec, skip: string | null = null): ConformFailure | null {
     const ctx = this.ctx;
-    let present = 0;
+    let present = skip === null ? 0 : 1;
     for (const key of declaredKeys(r)) {
+      if (key === skip) continue;
       const fl = r.fields.get(key)!;
       ctx.charge(1 + size(key));
       const val = mapGet(m, key);

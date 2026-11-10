@@ -1,5 +1,5 @@
-// Unit tests of the host API, for what no data case can raise (brief S2
-// item 9, ruling W3): the deadline, cancellation, a host crash, opaque values,
+// Unit tests of the host API, for what no data case can raise (03
+// 3.10): the deadline, cancellation, a host crash, opaque values,
 // host numbers that cannot enter, ill-formed host text.
 
 import { describe, test } from "node:test";
@@ -94,7 +94,7 @@ describe("host functions", () => {
   test("an error is function-error, caught, with the host's text", () => {
     assert.equal(env.compile("try { oops() } catch (e) { e.message }", { check: false }).run(), "it broke");
   });
-  test("a host integer outside the whole range cannot enter (ruling T7)", () => {
+  test("a host integer outside the whole range cannot enter (03 3.4.4)", () => {
     assert.equal(code(() => env.compile("big()", { check: false }).run()), "number-range");
     assert.equal(env.compile('try { big() } catch (e) { e.code }', { check: false }).run(), "number-range");
     assert.equal(code(() => env.compile("nan()", { check: false }).run()), "number-range");
@@ -109,7 +109,7 @@ describe("host functions", () => {
     assert.equal(env.compile("bad()", { check: false }).run(), "a�b");
     assert.equal(env.compile('bad() == "a\\u{FFFD}b"', { check: false }).run(), true);
   });
-  test("arguments are not tested against the signature (ruling AC7)", () => {
+  test("arguments are not tested against the signature (03 3.5)", () => {
     const e2 = createEnv({ functions: { id: { type: "(x: int) => any", call: (_h, x) => x } } });
     assert.equal(e2.compile('id("text")', { check: false }).run(), "text");
   });
@@ -174,7 +174,7 @@ describe("host values read in place", () => {
   });
 });
 
-describe("ruling AM4: bad-limit", () => {
+describe("03 3.3.4: bad-limit", () => {
   const declareCode = (limits: Record<string, unknown>) => {
     try {
       createEnv({ limits: limits as never });
@@ -203,7 +203,7 @@ describe("ruling AM4: bad-limit", () => {
   });
 });
 
-describe("ruling AR1: a call handle used after its function returned", () => {
+describe("03 3.5.2 item 6: a call handle used after its function returned", () => {
   test("charge and allocate throw, charge nothing, and the signal reads as cancelled", () => {
     let kept: import("../src/host/api.ts").CallHandle | undefined;
     const env = createEnv({ functions: { keep: { type: "() => int", call: (h) => ((kept = h), h.charge(2), 1) } } });
@@ -217,7 +217,7 @@ describe("ruling AR1: a call handle used after its function returned", () => {
   });
 });
 
-// Child environments (03 3.3.2, rulings CH2 to CH4): the case format cannot
+// Child environments (03 3.3.2, 3.3.4): the case format cannot
 // state a parent and a child.
 describe("child environments", () => {
   const geo = { "geo.distance": { type: "(a: string, b: string) => float", call: () => 1.5 } };

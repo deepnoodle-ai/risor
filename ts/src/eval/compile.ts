@@ -477,7 +477,7 @@ class Compiler {
         if (a.isDefault) return a.result(r);
         for (const l of a.lits) {
           if (typeof l === "string" && sk === "string") {
-            // Ruling W5: a string literal against a string subject reads text.
+            // 02 5.2, `match`: a string literal against a string subject compares text.
             r.charge(Math.floor(lcpWeight(l, s as string) / 64));
             if (l === s) return a.result(r);
           } else if (l === null ? sk === "null" : l === s) {
@@ -677,7 +677,7 @@ class Compiler {
     const shapes = s.args.map((a) => this.lambdaArg(a));
     const args = this.args(s.args, this.measure(s.level));
     const env = this.env;
-    // A removed method is absent at run time too (ruling CD2).
+    // A removed method is absent at run time too (03 3.3.1 item 6).
     const removed = this.env.removed;
     const gone = (kind: string) => removed !== undefined && removed.has(`${kind}.${name}`);
     const goneString = gone("string");
@@ -693,7 +693,7 @@ class Compiler {
         if (optional) return SHORT;
         throw new RunFailure("null-operand", span, "method", { name });
       }
-      // The shape test (02 2.3, rulings M1, AC1).
+      // The shape test (02 2.3, 04 2.2).
       let entry: Entry | undefined;
       let host: HostImpl | undefined;
       let counts: Counts;
@@ -785,8 +785,8 @@ function callEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], spa
 /** A call of a host function or of a method of an opaque type (02 11.4, 03 3.5). */
 function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: Span): unknown {
   r.charge(1);
-  // The handle is valid until the function returns (03 3.5.2 item 6, ruling
-  // AR1). After that, charge and allocate throw a host-side Error and charge
+  // The handle is valid until the function returns (03 3.5.2 item 6).
+  // After that, charge and allocate throw a host-side Error and charge
   // nothing, and the signal reads as cancelled.
   let open = true;
   const late = () => new Error("the call handle was used after its host function returned");

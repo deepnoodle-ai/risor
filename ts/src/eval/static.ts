@@ -74,7 +74,7 @@ export interface Resolution {
 type Binding = { k: "value"; slot: number } | { k: "var"; name: string } | { k: "lambda"; id: number; counts: Counts };
 
 export function lambdaCounts(l: A.Lambda): Counts {
-  // Ruling AC10: the required count is the position of the last parameter with no default.
+  // 05 22: the required count is the position of the last parameter with no default.
   let min = 0;
   l.params.forEach((p, i) => {
     if (p.default === null) min = i + 1;

@@ -133,7 +133,7 @@ class Parser {
     }
     if (t.kind === "eof") this.fail("unexpected-token", t, "unexpected end of input");
     if (t.kind === "word" && t.text === "not" && this.toks[this.i] === t && this.isW(this.peek(1), "in")) {
-      // Ruling R37: an operator `not in` that cannot follow spans both words.
+      // 01 3.5: an operator `not in` that cannot follow spans both words.
       this.fail("unexpected-token", { start: t.start, end: this.peek(1).end }, "unexpected `not in`");
     }
     const what = t.kind === "word" || t.kind === "punct" ? `\`${t.text}\`` : t.kind === "interpEnd" ? "`}`" : `a ${t.kind}`;
@@ -571,7 +571,7 @@ class Parser {
     if (this.isP(t, "!") || this.isP(t, "-")) {
       this.advance();
       this.open(t);
-      // Ruling R37: the span of 3.4 rule 1 is the first prefix operator.
+      // 01 3.4 rule 1: the span is the first prefix operator.
       const x = this.unary(prefix ?? t);
       this.close();
       return { kind: "Unary", op: t.text as "!" | "-", x, span: { start: t.start, end: this.outer(x).end } };

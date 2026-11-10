@@ -34,7 +34,7 @@ function mulChecked(x: number, y: number, whole: boolean, op: string, span: Span
   return p;
 }
 
-/** `a ** b`, `b` whole (01 6.2, rulings A9, Y3). */
+/** `a ** b`, `b` whole (01 6.2). */
 function power(a: number, b: number, span: Span): number {
   if (b >= 0) {
     const whole = isWhole(a);
@@ -166,7 +166,7 @@ export function equal(r: Run, a: unknown, b: unknown, span: Span, level = 0): bo
         r.charge(1);
         return false;
       }
-      // Ruling AH2: an empty pair is entered too.
+      // 02 8.4: an empty pair is entered too.
       r.testDepth(r.depth + level + 1);
       for (let i = 0; i < x.length; i++) {
         r.charge(1);
@@ -197,7 +197,7 @@ export function equal(r: Run, a: unknown, b: unknown, span: Span, level = 0): bo
   }
 }
 
-/** A search for x in s whose work is bounded by 1 + w(s) (ruling AC11). */
+/** A search for x in s whose work is bounded by 1 + w(s) (02 8.5). */
 export function textContains(s: string, x: string): boolean {
   if (x.length > s.length) return false;
   if (x.length < 64) return s.includes(x);
@@ -216,7 +216,7 @@ export function textContains(s: string, x: string): boolean {
   return false;
 }
 
-/** `x in y` with its charges (01 6.8, 02 5.3, ruling AE). `op` is `in` or `not in`. */
+/** `x in y` with its charges (01 6.8, 02 5.3). `op` is `in` or `not in`. */
 export function contains(r: Run, op: string, x: unknown, y: unknown, span: Span): boolean {
   const ky = r.kind(y);
   if (ky === "null") throw new RunFailure("null-operand", span, "operand", { op });
