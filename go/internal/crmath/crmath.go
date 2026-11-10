@@ -11,6 +11,11 @@
 // no precision decides, are found first: the trivial arguments, the powers
 // of ten for log10, and the exact cases of pow. Elsewhere the value is
 // transcendental, so it is never a midpoint, and the loop ends.
+//
+// That evaluation is the slow path. Each entry first tries a fast phase in
+// double-double arithmetic with a proven error bound (fast.go), which
+// decides nearly every call in tens of nanoseconds; the slow path runs only
+// when the fast phase's error interval straddles a rounding boundary.
 package crmath
 
 import (
@@ -42,6 +47,10 @@ const (
 // Rounds counts the evaluations and the evaluations past the first
 // precision, for measurement.
 var Rounds, Retries atomic.Int64
+
+// Fallbacks counts the calls whose fast phase did not decide the result
+// and that ran the slow path, for measurement.
+var Fallbacks atomic.Int64
 
 // ziv evaluates f at growing precision until its value rounds.
 func ziv(f func(w uint) *big.Float) (float64, Status) {
@@ -357,7 +366,9 @@ func atanBig(z *big.Float, w uint) *big.Float {
 // --- the entries -----------------------------------------------------------
 
 // Exp is e^x.
-func Exp(x float64) (float64, Status) {
+func Exp(x float64) (float64, Status) { return exp(x, true) }
+
+func exp(x float64, fast bool) (float64, Status) {
 	switch {
 	case x == 0:
 		return 1, OK
@@ -366,22 +377,38 @@ func Exp(x float64) (float64, Status) {
 	case x < -1000:
 		return 0, OK
 	}
+	if fast {
+		if v, st, ok := expFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
+	}
 	return ziv(func(w uint) *big.Float { return expBig(fl(x, w), w) })
 }
 
 // Log is the natural logarithm.
-func Log(x float64) (float64, Status) {
+func Log(x float64) (float64, Status) { return log(x, true) }
+
+func log(x float64, fast bool) (float64, Status) {
 	switch {
 	case x <= 0:
 		return 0, NotReal
 	case x == 1:
 		return 0, OK
 	}
+	if fast {
+		if v, st, ok := logFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
+	}
 	return ziv(func(w uint) *big.Float { return logBig(fl(x, w), w) })
 }
 
 // Log10 is the base-10 logarithm.
-func Log10(x float64) (float64, Status) {
+func Log10(x float64) (float64, Status) { return log10(x, true) }
+
+func log10(x float64, fast bool) (float64, Status) {
 	if x <= 0 {
 		return 0, NotReal
 	}
@@ -392,6 +419,12 @@ func Log10(x float64) (float64, Status) {
 		}
 		p *= 10
 	}
+	if fast {
+		if v, st, ok := log10Fast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
+	}
 	return ziv(func(w uint) *big.Float {
 		l := logBig(fl(x, w+16), w+16)
 		return nf(w).Quo(l, l10C.get(w+16))
@@ -399,25 +432,49 @@ func Log10(x float64) (float64, Status) {
 }
 
 // Sin is the sine.
-func Sin(x float64) (float64, Status) {
+func Sin(x float64) (float64, Status) { return sin(x, true) }
+
+func sin(x float64, fast bool) (float64, Status) {
 	if x == 0 {
 		return 0, OK
+	}
+	if fast {
+		if v, st, ok := sinFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
 	}
 	return ziv(func(w uint) *big.Float { s, _ := sinCos(x, w); return s })
 }
 
 // Cos is the cosine.
-func Cos(x float64) (float64, Status) {
+func Cos(x float64) (float64, Status) { return cos(x, true) }
+
+func cos(x float64, fast bool) (float64, Status) {
 	if x == 0 {
 		return 1, OK
+	}
+	if fast {
+		if v, st, ok := cosFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
 	}
 	return ziv(func(w uint) *big.Float { _, c := sinCos(x, w); return c })
 }
 
 // Tan is the tangent.
-func Tan(x float64) (float64, Status) {
+func Tan(x float64) (float64, Status) { return tan(x, true) }
+
+func tan(x float64, fast bool) (float64, Status) {
 	if x == 0 {
 		return 0, OK
+	}
+	if fast {
+		if v, st, ok := tanFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
 	}
 	return ziv(func(w uint) *big.Float {
 		s, c := sinCos(x, w+16)
@@ -426,12 +483,20 @@ func Tan(x float64) (float64, Status) {
 }
 
 // Asin is the arcsine.
-func Asin(x float64) (float64, Status) {
+func Asin(x float64) (float64, Status) { return asin(x, true) }
+
+func asin(x float64, fast bool) (float64, Status) {
 	switch {
 	case x < -1 || x > 1:
 		return 0, NotReal
 	case x == 0:
 		return 0, OK
+	}
+	if fast {
+		if v, st, ok := asinFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
 	}
 	return ziv(func(w uint) *big.Float {
 		p := w + 16
@@ -453,12 +518,20 @@ func Asin(x float64) (float64, Status) {
 }
 
 // Acos is the arccosine.
-func Acos(x float64) (float64, Status) {
+func Acos(x float64) (float64, Status) { return acos(x, true) }
+
+func acos(x float64, fast bool) (float64, Status) {
 	switch {
 	case x < -1 || x > 1:
 		return 0, NotReal
 	case x == 1:
 		return 0, OK
+	}
+	if fast {
+		if v, st, ok := acosFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
 	}
 	return ziv(func(w uint) *big.Float {
 		p := w + 16
@@ -476,15 +549,31 @@ func Acos(x float64) (float64, Status) {
 }
 
 // Atan is the arctangent.
-func Atan(x float64) (float64, Status) {
+func Atan(x float64) (float64, Status) { return atan(x, true) }
+
+func atan(x float64, fast bool) (float64, Status) {
 	if x == 0 {
 		return 0, OK
+	}
+	if fast {
+		if v, st, ok := atanFast(x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
 	}
 	return ziv(func(w uint) *big.Float { return atanBig(fl(x, w), w) })
 }
 
 // Atan2 is the angle of the point (x, y), in (−π, π].
-func Atan2(y, x float64) (float64, Status) {
+func Atan2(y, x float64) (float64, Status) { return atan2(y, x, true) }
+
+func atan2(y, x float64, fast bool) (float64, Status) {
+	if fast && (x != 0 || y != 0) {
+		if v, st, ok := atan2Fast(y, x); ok {
+			return v, st
+		}
+		Fallbacks.Add(1)
+	}
 	switch {
 	case y == 0 && x >= 0:
 		return 0, OK

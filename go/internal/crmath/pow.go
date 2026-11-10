@@ -7,7 +7,9 @@ import (
 )
 
 // Pow is x to the power y (f13-math.md 4.1).
-func Pow(x, y float64) (float64, Status) {
+func Pow(x, y float64) (float64, Status) { return pow(x, y, true) }
+
+func pow(x, y float64, fast bool) (float64, Status) {
 	switch {
 	case y == 0:
 		return 1, OK
@@ -35,6 +37,15 @@ func Pow(x, y float64) (float64, Status) {
 			return 0, st
 		}
 		return sign(v, neg), OK
+	}
+	if fast {
+		if v, st, ok := powFast(x, y); ok {
+			if st != OK {
+				return 0, st
+			}
+			return sign(v, neg), OK
+		}
+		Fallbacks.Add(1)
 	}
 	v, st := ziv(func(w uint) *big.Float {
 		p := w + 32
