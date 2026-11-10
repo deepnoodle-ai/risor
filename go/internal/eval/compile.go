@@ -38,17 +38,25 @@ type Config struct {
 	// GoTypes are the Go types behind the variables declared from Go
 	// types, by name, for the typed layer (package F11). Nil turns it off.
 	GoTypes map[string]reflect.Type
+	// Entry compiles the program as an entry of a REPL session (package F12
+	// 5 item 6). Its first len(Held) top-level const lines are the lines
+	// the session holds: they bind the values Held gives, by the slots of
+	// their patterns, and are not run, so they charge nothing. RunEntry
+	// then gives the values of every top-level const line.
+	Entry bool
+	Held  [][]any
 }
 
 // Program is a compiled program. It does not change, and several runs may
 // use it at once.
 type Program struct {
-	cfg    *Config
-	file   *syntax.File
-	root   code
-	nslots int
-	nvars  int // the variables the program reads, numbered densely
-	pool   sync.Pool
+	cfg        *Config
+	file       *syntax.File
+	root       code
+	nslots     int
+	nvars      int     // the variables the program reads, numbered densely
+	constSlots [][]int // for Entry: the slots of each top-level const line
+	pool       sync.Pool
 	// TypedPlans counts the reads the typed layer planned (package F11).
 	TypedPlans int
 }
@@ -118,13 +126,27 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 			err = fmt.Errorf("compile: %v", x)
 		}
 	}()
-	root := c.block(prog.Consts, prog.Result)
-	return &Program{cfg: cfg, file: file, root: root, nslots: res.NSlots, nvars: len(c.vars), TypedPlans: c.plans}, nil
+	var root code
+	var constSlots [][]int
+	if cfg.Entry {
+		root, constSlots = c.entry(prog.Consts, prog.Result)
+	} else {
+		root = c.block(prog.Consts, prog.Result)
+	}
+	return &Program{cfg: cfg, file: file, root: root, nslots: res.NSlots, nvars: len(c.vars), constSlots: constSlots, TypedPlans: c.plans}, nil
 }
 
 // Run runs the program. It returns the value or one run diagnostic, and the
 // usage in both cases.
 func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, d *diag.Diagnostic) {
+	result, usage, _, d = p.RunEntry(ctx, vars)
+	return result, usage, d
+}
+
+// RunEntry runs the program as Run does. For a program compiled as an
+// entry (Config.Entry) that succeeds, it also gives the values of each
+// top-level const line, by the slots of its pattern.
+func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Usage, held [][]any, d *diag.Diagnostic) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -138,14 +160,22 @@ func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, 
 	var trace []diag.TraceEntry
 	if f != nil {
 		trace = r.trace(p.file)
+	} else if p.cfg.Entry {
+		held = make([][]any, len(p.constSlots))
+		for i, slots := range p.constSlots {
+			held[i] = make([]any, len(slots))
+			for j, s := range slots {
+				held[i][j] = r.slots[s]
+			}
+		}
 	}
 	p.putRun(r)
 	if f != nil {
 		dd := f.diagnostic(p.file)
 		dd.Trace = trace
-		return nil, usage, &dd
+		return nil, usage, nil, &dd
 	}
-	return v, usage, nil
+	return v, usage, held, nil
 }
 
 // getRun gives a run state from the program's pool, or a new one. A run
@@ -226,6 +256,66 @@ func (c *compiler) block(consts []*syntax.Const, result syntax.Node) code {
 		}
 		return res(r)
 	}
+}
+
+// entry compiles the top level of a REPL entry (Config.Entry). A held
+// lambda line is compiled, since calls name it, but not run.
+func (c *compiler) entry(consts []*syntax.Const, result syntax.Node) (code, [][]int) {
+	held := c.cfg.Held
+	if len(held) > len(consts) {
+		panic("more held values than const lines")
+	}
+	slots := make([][]int, len(consts))
+	for i, k := range consts {
+		slots[i] = c.patternSlots(k.Pattern)
+		if i < len(held) {
+			if lam, ok := k.Value.(*syntax.Lambda); ok {
+				c.lambdas[lam] = c.lambda(lam)
+			}
+		}
+	}
+	body := c.block(consts[len(held):], result)
+	return func(r *run) any {
+		for i, vals := range held {
+			for j, s := range slots[i] {
+				r.slots[s] = vals[j]
+			}
+		}
+		return body(r)
+	}, slots
+}
+
+// patternSlots are the slots a const pattern binds, in the order of the
+// pattern. A slot depends on the pattern alone, so a held line's slots
+// line up in every entry. _ has no slot and is left out.
+func (c *compiler) patternSlots(p syntax.Pattern) []int {
+	var out []int
+	add := func(key any) {
+		if s := c.slot(key); s >= 0 {
+			out = append(out, s)
+		}
+	}
+	switch p := p.(type) {
+	case *syntax.NamePat:
+		add(p)
+	case *syntax.MapPat:
+		for _, f := range p.Fields {
+			add(f)
+		}
+		if p.Rest != nil {
+			add(p.Rest)
+		}
+	case *syntax.ListPat:
+		for _, e := range p.Elems {
+			if e.Name != nil {
+				add(e.Name)
+			}
+		}
+		if p.Rest != nil {
+			add(p.Rest)
+		}
+	}
+	return out
 }
 
 func (c *compiler) constLine(k *syntax.Const) code {

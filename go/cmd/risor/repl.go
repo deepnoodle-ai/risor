@@ -32,10 +32,11 @@ const replHelp = `Enter const lines and an expression. Commands:
 
 // session is the state of a REPL.
 type session struct {
-	env   *risor.Env
-	vars  risor.Map
-	held  string // the held const lines, as program text
-	color bool
+	env      *risor.Env
+	vars     risor.Map
+	held     string     // the held const lines, as program text
+	heldVals risor.Held // the values of the held lines (F12 5 item 6)
+	color    bool
 	// internal maps each name shadow gave a held binding to the name its
 	// author wrote, so that no internal name reaches the user.
 	internal map[string]string
@@ -139,15 +140,12 @@ func (s *session) eval(entry string) result {
 	if err != nil {
 		return result{diags: s.render(err, entry, k)}
 	}
-	p, _, err := s.env.CheckCompile(x)
-	if err != nil {
-		return result{diags: s.render(err, entry, k)}
-	}
-	v, err := p.Run(context.Background(), s.vars)
+	v, nextHeld, err := s.env.RunEntry(context.Background(), x, s.vars, s.heldVals)
 	if err != nil {
 		return result{diags: s.render(err, entry, k)}
 	}
 	s.held = heldLines(full)
+	s.heldVals = nextHeld
 	if !hasExpr {
 		return result{}
 	}
@@ -675,6 +673,7 @@ func repl(s *session, in lineReader, stdout, stderr io.Writer) int {
 				return 0
 			case ":reset":
 				s.held = ""
+				s.heldVals = risor.Held{}
 				continue
 			case ":help":
 				fmt.Fprint(stdout, replHelp)
