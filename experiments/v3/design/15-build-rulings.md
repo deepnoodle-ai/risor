@@ -202,8 +202,15 @@ that the checker ends.
 | R90 | **A new case field `check`.** `"check": false` marks a case whose program the type rules reject on purpose; it pins what a program compiled without a check does. A runner with a checker runs every other case of the run suite twice, checked and with the static rules alone, and both must pass. |
 | R91 | In every binding, compile checks by default; compiling without a check is an explicit option; the check alone is its own call. |
 | R92 | In a checked program the nesting of calls never passes 100, so the default depth limit of 200 is met only by a walk of data. |
+| R93 | A method call fits its receiver with the type the chain gives it at that step, so with null removed after `?.`: `report?.keys()` reports nothing for the receiver. |
+| R94 | When a const-bound lambda is passed by name, `xs.map(f)`, the use is the name: the `arity` diagnostic is on it, and the limit of R88 counts its nesting. |
 
 The Go checker, the first of the three, passed all 1,441 cases of
 `suite/core-check/` (hand-derived before any checker existed) once rulings R81
 to R89 were applied, and found nine older run cases whose programs the type
 rules reject. Those nine were changed or marked by R90.
+
+The TypeScript and Rust checkers were then written apart, each from the
+chapter and the cases alone. Both pass the same 1,441 cases, and the whole run
+suite checked and unchecked. Between them they raised R93 and R94 and no
+other question that changed a rule.
