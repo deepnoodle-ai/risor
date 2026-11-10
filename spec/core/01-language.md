@@ -355,8 +355,8 @@ choose. Each is part of the grammar.
 | 2 | A `{` directly after `if (` `Expr` `)`, after `else`, after `try`, after `catch` and after `catch (` `Name` `)` | It starts a `Branch`, whatever follows it. It is never a `Map`. A map as a branch's value is written inside the branch: `{ {id: 1} }` |
 | 3 | `else` followed by `if` | The `if` continues the same `If`. `else` followed by `{` is the last branch |
 | 4 | `Binary` | Read an `Add`. If the next token is `??`, it is a `Coal`. Otherwise the `Add` is the first operand of an `Or` |
-| 5 | Where an `Arg`, or the value of a `Const`, may stand | A `Name` or `_` directly followed by `=>` begins a `Lambda`. `_ => e` is the same as `(_) => e`. A `(` begins a `Lambda` when the token after its matching `)` is `=>`. Otherwise the place holds an `Expr` |
-| 6 | The matching `)` of rule 5 | Count `(`, `[`, `?.[` and `{` as openers and `)`, `]` and `}` as closers, over the tokens after the `(`. The matching token is the first closer that brings the count below zero. If it is not a `)`, or there is none, the `(` does not begin a `Lambda` |
+| 5 | Where an `Arg`, or the value of a `Const`, may stand | A `Name` or `_` directly followed by `=>` begins a `Lambda`. `_ => e` is the same as `(_) => e`. A `(` begins a `Lambda`, and the text up to its matching `)` is a parameter list, when the token after that `)` is `=>`. This is decided before anything between the two is parsed (3.5 rule 3). Otherwise the place holds an `Expr`, and the `(` is read as a parenthesized expression: `(a, b)` with no `=>` after it fails at the `,`. Nowhere else does a `(` begin a `Lambda`: at the top of a program, `(x) => x` fails at the `=>` |
+| 6 | The matching `)` of rule 5 | Found by tokens, before parsing. Count `(`, `[`, `?.[` and `{` as openers and `)`, `]` and `}` as closers, over the tokens after the `(`. The matching token is the first closer that brings the count below zero. A literal is one token, and nothing inside it is counted: a string, a template with all of its interpolations, the block token and the prefixed literal of 2.3, and a literal that a package adds. If the matching token is not a `)`, or there is none before the end of input, the `(` does not begin a `Lambda`: `[1].map((x] => x)` fails at the `]`, and `f((a, b` fails at the `,` |
 | 7 | An `Entry` that starts with a `Word` | If the token after the word is `:`, the word is a `Key`. Otherwise the entry is the shorthand `Name`. `_` is not a name, so `{_}` is `unexpected-token` at the `_`. A template as a key, `` {`a`: 1} ``, is `unexpected-token` with the span of the whole template (3.5) |
 | 8 | A `Field` that starts with a `Word` | The same rules: `const {_} = m;` is `unexpected-token` at the `_`, and a template as a field's key is `unexpected-token` with the span of the whole template |
 | 9 | `.` or `?.` followed by a `Word` and then `(` | A method call. Without the `(`, a field read |
@@ -417,6 +417,16 @@ Core, at the span in the third column.
    complete is reported at that `}` alone.
 2. A reserved word at a place where the grammar needs a `Name` or an operand is
    `reserved-word` by 14.2, not `unexpected-token`.
+3. **A parameter list.** When 3.2 rule 5 makes a `(` begin a `Lambda`, the
+   tokens up to its matching `)` are read as a parameter list, and its first
+   error is reported as an error of a parameter list. Where a `Pattern` must
+   stand, a token that cannot begin one is `unexpected-token` on that token, by
+   rule 1. For a template that is the whole template, and the tokens of its
+   interpolations are not reached: in ``const f=(`${[}`)=>``, the error spans
+   the template, `[1, 10, 1, 16]`. A number, a string or any other literal there
+   is the same. A default is an `Expr`, and its own tokens are read as an
+   expression: in `f((a = 1 +) => a)` the error is at the `)`. A lexical
+   diagnostic anywhere in the text still comes first (2.11).
 
 ## 4. The syntax tree
 
@@ -997,12 +1007,11 @@ Patterns stand in `const` lines, in parameters and nowhere else.
    "some" }` tests for the number zero.
 7. An arm binds no name, and there are no guards.
 8. A `match` without a subject is not in the language (3.4).
-9. These are static rules (14.4): a literal listed twice; an arm after `_`.
-   A literal is listed twice when it is equal by `==` (6.7) to an earlier
-   literal of the same `match`: `1` and `1.0` are one literal, and so are
-   `"A"` and `'\u{41}'` (`05-types.md` 22.8). `05-types.md` has the rules
-   that need types: a literal the subject can never equal, and cases that are
-   not covered.
+9. These are static rules (14.4): a literal listed twice; an arm after `_`. A
+   literal is listed twice when it is equal by `==` (6.7) to an earlier literal
+   of the same `match`: `1` and `1.0` are one literal, and so are `"A"` and
+   `'\u{41}'` (`05-types.md` 22.8). `05-types.md` has the rules that need types:
+   a literal the subject can never equal, and cases that are not covered.
 
 ## 10. Building lists and maps
 
@@ -1402,16 +1411,15 @@ node in the third column (4.3). The `path` of each is null.
 
 ## 14A. What packages add
 
-A package of the specification gives a meaning to text that is an error in
-Core, and changes nothing else. Its chapter is the home of its rules.
+A package of the specification gives a meaning to text that is an error in Core,
+and changes nothing else. Its chapter is the home of its rules.
 
 | Package | Adds | Chapter |
 | --- | --- | --- |
 | F3, string forms | The raw string `r"..."` and `r'...'`, the text block `"""`, the raw text block `r"""`. It reports the codes `text-block-open`, `text-block-close` and `text-block-indent` (14.2). It replaces rows 7 and 9 of 2.3 for these forms | `spec/packages/f03-strings.md` |
 
-1. Where this chapter calls such a text an error, it speaks of Core alone:
-   the rows of 2.3, 14.2 and 14.3 for these forms, and the examples that use
-   them.
+1. Where this chapter calls such a text an error, it speaks of Core alone: the
+   rows of 2.3, 14.2 and 14.3 for these forms, and the examples that use them.
 2. For a text that is an error with and without a package, the package may
    change the code and the span. The rule of 14.3, that a later targeted code
    keeps the Core span, binds the texts that Core's cases state.
