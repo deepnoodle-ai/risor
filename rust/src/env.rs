@@ -716,8 +716,21 @@ impl EnvBuilder {
             .limits
             .or(parent.as_ref().map(|p| p.limits))
             .unwrap_or_default();
-        // `03-host.md` 3.3.4, `bad-limit`. Steps and units are unsigned, so only the depth can
-        // be out of range.
+        // `03-host.md` 3.3.4, `bad-limit`: a step or allocation limit must be a whole number
+        // (`02-evaluation.md` 3.1 item 2, at most 2^53 - 1), and the depth from 1 to 1,000.
+        const MAX_WHOLE: u64 = 9_007_199_254_740_991;
+        if limits.steps.is_some_and(|n| n > MAX_WHOLE) {
+            bad(
+                code::BAD_LIMIT,
+                "the steps limit is above 2^53 - 1".to_string(),
+            );
+        }
+        if limits.allocation.is_some_and(|n| n > MAX_WHOLE) {
+            bad(
+                code::BAD_LIMIT,
+                "the allocation limit is above 2^53 - 1".to_string(),
+            );
+        }
         if !(1..=1000).contains(&limits.depth) {
             bad(
                 code::BAD_LIMIT,

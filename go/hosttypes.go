@@ -673,7 +673,7 @@ func Description(data []byte) (Decl, error) {
 			}
 			n = NoLimit
 		case float64:
-			if x != math.Trunc(x) || x < 0 || x > 1<<53 {
+			if x != math.Trunc(x) || x < 0 || x > value.MaxWhole {
 				decls = append(decls, declFunc(func(e *Env) {
 					e.errf(diag.CodeBadLimit, fmt.Sprintf("the limit %s is not a whole number of 0 or more", k))
 				}))
