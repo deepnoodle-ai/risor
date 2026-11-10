@@ -96,3 +96,17 @@ describe("ruling AH2: an empty pair is entered, with the depth test", () => {
     assert.deepEqual(createEnv({}).compile("[] == []").execute().usage, { steps: 0, allocated: 2 });
   });
 });
+
+describe("ruling AM3: == on maps visits the left map in key order when a value is a list or a map", () => {
+  test("the first key's lists pass the depth limit before the last key's long string passes the step limit", () => {
+    let deep: unknown = 1;
+    for (let i = 0; i < 10; i++) deep = [deep];
+    const long = "x".repeat(64 * 50);
+    const m = { a: deep, z: long };
+    const n = { a: deep, z: long };
+    const env = createEnv({ vars: "{m: any, n: any}", limits: { depth: 5, steps: 20 } });
+    const o = env.compile("m == n").execute({ m, n });
+    assert.ok(!o.ok);
+    assert.equal(o.diagnostic.code, "depth-exceeded");
+  });
+});

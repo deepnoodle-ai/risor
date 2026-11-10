@@ -173,3 +173,32 @@ describe("host values read in place", () => {
     assert.equal(toJSON(new Map<string, unknown>([["b", [1, "x"]], ["a", null]])), '{"a":null,"b":[1,"x"]}');
   });
 });
+
+describe("ruling AM4: bad-limit", () => {
+  const declareCode = (limits: Record<string, unknown>) => {
+    try {
+      createEnv({ limits: limits as never });
+      return "ok";
+    } catch (e) {
+      assert.ok(e instanceof RisorError);
+      assert.equal(e.phase, "declare");
+      return e.diagnostics[0].code;
+    }
+  };
+  test("a limit that is not a whole number", () => {
+    assert.equal(declareCode({ steps: 1.5 }), "bad-limit");
+    assert.equal(declareCode({ allocation: -1 }), "bad-limit");
+    assert.equal(declareCode({ steps: Infinity }), "bad-limit");
+    assert.equal(declareCode({ steps: "10" }), "bad-limit");
+    assert.equal(declareCode({ timeoutMs: -5 }), "bad-limit");
+  });
+  test("a depth limit outside 1 to 1,000", () => {
+    assert.equal(declareCode({ depth: 0 }), "bad-limit");
+    assert.equal(declareCode({ depth: 1001 }), "bad-limit");
+    assert.equal(declareCode({ depth: 2.5 }), "bad-limit");
+  });
+  test("limits in range, and limits turned off, are accepted", () => {
+    assert.equal(declareCode({ steps: 0, allocation: 0, depth: 1 }), "ok");
+    assert.equal(declareCode({ steps: null, allocation: null, depth: 1000, timeoutMs: null }), "ok");
+  });
+});

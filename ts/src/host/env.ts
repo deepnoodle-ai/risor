@@ -98,6 +98,17 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     library,
   };
 
+  // Ruling AM4: `bad-limit`.
+  for (const [k, v] of Object.entries(d.limits ?? {})) {
+    if (k === "depth") {
+      if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 1 || v > 1000) {
+        errs.push(diag("bad-limit", `the depth limit must be a whole number from 1 to 1,000`));
+      }
+    } else if (v !== null && (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0)) {
+      errs.push(diag("bad-limit", `the ${k} limit must be a whole number of 0 or more, or off`));
+    }
+  }
+
   if (d.version !== undefined) {
     if (!SUPPORTED_VERSIONS.has(d.version)) errs.push(diag("unsupported-version", `version ${d.version} is not offered`));
     else env.version = d.version;

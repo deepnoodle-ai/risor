@@ -261,7 +261,10 @@ function describeFailure(o: Outcome): string {
   return `failure of phase ${o.phase}: ${d.code}${span} (${d.message})`;
 }
 
+const CHECK_DEPENDENT: ReadonlySet<string> = new Set(["null-operand", "wrong-kind", "missing-field", "no-match", "not-conforming"]);
+
 interface FoundDiag {
+  class?: string;
   data?: unknown;
   rawData?: unknown;
   code: string;
@@ -274,6 +277,7 @@ function foundDiag(d: Diagnostic, source?: Source): FoundDiag {
   const f: FoundDiag = { code: d.code, message: d.message };
   if (d.span !== undefined && source !== undefined) f.span = source.lineSpan(d.span);
   if (d.path !== undefined) f.path = d.path;
+  if (d.class !== undefined) f.class = d.class;
   if (d.code === "failed") {
     f.data = show(d.data);
     f.rawData = d.data;
@@ -284,7 +288,9 @@ function foundDiag(d: Diagnostic, source?: Source): FoundDiag {
 function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
   if (f === undefined) return false;
   if (e.code !== f.code) return false;
-  // `class` is compared only after a check (03 3.10.7 item 8): never in S1.
+  // Ruling AM1: `class` is compared, except for the five codes whose class
+  // depends on the check, since this runner does not check.
+  if (e.class !== undefined && !CHECK_DEPENDENT.has(e.code) && e.class !== f.class) return false;
   if (e.span !== undefined && !LIMIT_CODES.has(e.code)) {
     if (f.span === undefined || e.span.some((n, i) => n !== f.span![i])) return false;
   }

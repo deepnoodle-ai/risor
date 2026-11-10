@@ -143,6 +143,10 @@ export function createEnv(options: EnvOptions = {}): Env {
   const functions: Record<string, string> = {};
   for (const [k, f] of Object.entries(options.functions ?? {})) functions[k] = f.type;
   const limits = options.limits ?? {};
+  const t = limits.timeoutMs;
+  if (t !== undefined && t !== null && (typeof t !== "number" || !Number.isFinite(t) || t < 0)) {
+    throw new RisorError([{ phase: "declare", code: "bad-limit", message: "the deadline must be a number of milliseconds of 0 or more, or off" }]);
+  }
   const decls: Declarations = {
     version: options.version,
     env: options.vars,
