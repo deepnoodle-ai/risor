@@ -454,7 +454,7 @@ The chapter is `spec/packages/f10-config.md`, with 166 cases in
 
 ### 14.11 F12, tools
 
-The chapter is `spec/packages/f12-tools.md`, with 386 cases in `suite/tools/`.
+The chapter is `spec/packages/f12-tools.md`, with 399 cases in `suite/tools/`.
 
 | # | Ruling |
 | --- | --- |
@@ -462,6 +462,9 @@ The chapter is `spec/packages/f12-tools.md`, with 386 cases in `suite/tools/`.
 | R176 | The formatter lays a program out by an algorithm, at width 80 and indent 2, with no options, and does not keep the author's line breaks: it is the way to one output in three implementations. Parentheses follow from the tree. A string literal is copied as written. A comment never crosses a token. |
 | R177 | For completion and hover the text is cut at the position and closed by a fixed rule, so a text that does not parse still gives a result. |
 | R182 | In completion and hover, the detail of a library entry is the signature text of its record, verbatim. `--color auto` gives no color when standard output is not a terminal or `NO_COLOR` is set and not empty. In the REPL a later `const` of a held name shadows it; what is already held keeps its binding. |
+| R187 | **The repair closes before it fills.** At the end of a cut text, where the parser accepts the closing bracket of the innermost open bracket, the repair inserts it; otherwise it inserts as before. An unfinished call is closed: hover on `first(` shows the type of `first()`, and on `len(` shows `never` with the signature, an honest arity error. **An unclosed `(` is never a parameter list:** the lambda decision stays the one rule of `01-language.md` 3.2, so `(a, b = a` does not parse and completion falls back to the environment. A second lambda rule for the repair alone was refused. |
+| R188 | Only a library record carries a `doc` in 3.0. Hover gives null for a host function and for a method of an opaque type; a binding does not invent one. Go built F12 against the cases and found two wrong cases, corrected. |
+| R189 | **The empty string is a key like any other.** The fuzzers found the Go implementation reading the key `""` of a record type as "no key": `b as {"": string}` gave `{}` and `b is {"": null}` an internal error. They also found Rust printing a number one digit off where two shortest texts tie; the tie takes the even digit. 100 cases pin both. A tie exists only for a double in [2^30, 2^51). |
 
 ## 15. Round 14: the first host
 
