@@ -2,10 +2,26 @@ package value
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
+
+// EscapeExtra measures what WriteEscaped writes: the renderer charges a long
+// string by the one and builds it with the other.
+func TestEscapeExtraMatchesWriteEscaped(t *testing.T) {
+	var cases []string
+	for c := 0; c < 0x80; c++ {
+		cases = append(cases, string(rune(c)), "a"+string(rune(c))+"b")
+	}
+	cases = append(cases, "é😀", "\xff\xfe", "a\xc3", "\"\\\n\x01é\x7f", "")
+	for _, s := range cases {
+		var b strings.Builder
+		WriteEscaped(&b, s)
+		assert.Equal(t, b.Len(), len(s)+EscapeExtra(s), "%q", s)
+	}
+}
 
 func TestFormatNumber(t *testing.T) {
 	for f, s := range map[float64]string{

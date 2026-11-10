@@ -923,47 +923,41 @@ impl<'h> Run<'h> {
         }
         // The map's units come before the map (`02-evaluation.md` 6.2 item
         // 3). When nk keys could pass the limit, the number of entries is
-        // found first, without building: a key counts at the last entry that
-        // writes it.
+        // found first, without building: the keys written, each counted once.
+        // The pass is linear in nk, which the spreads have charged as steps.
+        let is_spread = |i: usize| spreads.binary_search(&i).is_ok();
         let room = self
             .m
             .limits
             .allocation
             .map(|l| l.saturating_sub(self.m.units));
-        let charged = room.is_some_and(|room| 1 + 2 * nk as u64 > room);
-        if charged {
-            let has = |j: usize, key: &str| {
-                if spreads.contains(&j) {
-                    es[j].1.field(key).is_some()
+        let mut size = None;
+        if room.is_some_and(|room| 1 + 2 * nk as u64 > room) {
+            let mut seen = std::collections::HashSet::with_capacity(es.len());
+            for (i, (key, v)) in es.iter().enumerate() {
+                if is_spread(i) {
+                    v.for_each_key(|k| {
+                        seen.insert(k);
+                    });
                 } else {
-                    es[j].0.as_str() == key
-                }
-            };
-            let mut n = 0u64;
-            for i in 0..es.len() {
-                let mut count = |key: &str| {
-                    if !(i + 1..es.len()).any(|j| has(j, key)) {
-                        n += 1;
-                    }
-                };
-                if spreads.contains(&i) {
-                    es[i].1.for_each_key(&mut count);
-                } else {
-                    count(es[i].0.as_str());
+                    seen.insert(key.as_str());
                 }
             }
-            self.alloc(1 + 2 * n)?;
+            self.alloc(1 + 2 * seen.len() as u64)?;
+            size = Some(seen.len());
         }
+        // The entries written, in order: scratch space for the stable sort
+        // of `MapVal::from_written`.
         let mut written = Vec::with_capacity(nk);
         for (i, (key, v)) in es.into_iter().enumerate() {
-            if spreads.contains(&i) {
+            if is_spread(i) {
                 written.extend(v.entries());
             } else {
                 written.push((key, v));
             }
         }
-        let m = MapVal::from_written(written);
-        if !charged {
+        let m = MapVal::from_written_sized(written, size);
+        if size.is_none() {
             self.alloc(1 + 2 * m.0.len() as u64)?;
         }
         Ok(Value::Map(Rc::new(m)))
@@ -2800,5 +2794,27 @@ impl Program {
         let mut d = f.diagnostic(&self.parsed.source);
         d.class = self.class_of(f);
         d
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The weight and length measured for a string not kept are those of
+    /// the JSON form kept for it.
+    #[test]
+    fn a_measured_quote_is_the_kept_one() {
+        let mut cases: Vec<String> = (0u8..0x80).map(|c| (c as char).to_string()).collect();
+        cases.extend(["é😀", "\"\\\n\u{1}é\u{7f}", ""].map(String::from));
+        for s in &cases {
+            let mut kept = Rendering::new(String::new());
+            kept.quote(s);
+            let mut measured = Rendering::new(String::new());
+            measured.keep_to = 0;
+            measured.quote(s);
+            assert_eq!(measured.n, kept.buf.len(), "{s:?}");
+            assert_eq!(measured.weight(), kept.weight(), "{s:?}");
+        }
     }
 }

@@ -926,14 +926,6 @@ func (c *compiler) mapLit(n *syntax.Map) code {
 		v      any
 		spread bool
 	}
-	// has reports whether e writes the key k.
-	has := func(e written, k string) bool {
-		if e.spread {
-			_, ok := value.Get(e.v, k)
-			return ok
-		}
-		return e.key == k
-	}
 	return func(r *run) any {
 		var buf [8]written
 		ws := buf[:0]
@@ -945,30 +937,22 @@ func (c *compiler) mapLit(n *syntax.Map) code {
 		}
 		// The map's units come before the map (02-evaluation.md 6.2 item 3).
 		// When k keys could pass the limit, the number of entries is found
-		// first, without building: a key counts at the last entry that
-		// writes it.
-		charged := false
+		// first, without building: the keys written, each counted once. The
+		// pass is linear in k, which the spreads have charged as steps.
+		size, charged := k, false
 		if r.maxUnits >= 0 && 1+2*int64(k) > r.maxUnits-r.units {
-			n := 0
-			last := func(i int, key string) {
-				for _, l := range ws[i+1:] {
-					if has(l, key) {
-						return
-					}
-				}
-				n++
-			}
-			for i, e := range ws {
+			seen := make(map[string]struct{}, len(ws))
+			for _, e := range ws {
 				if e.spread {
-					value.ForEachKey(e.v, func(key string) { last(i, key) })
+					value.ForEachKey(e.v, func(key string) { seen[key] = struct{}{} })
 				} else {
-					last(i, e.key)
+					seen[e.key] = struct{}{}
 				}
 			}
-			r.unit(1 + 2*int64(n))
-			charged = true
+			size, charged = len(seen), true
+			r.unit(1 + 2*int64(size))
 		}
-		out := make(map[string]any, k)
+		out := make(map[string]any, size)
 		for _, e := range ws {
 			if e.spread {
 				value.ForEachKey(e.v, func(key string) { out[key], _ = value.Get(e.v, key) })

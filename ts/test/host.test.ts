@@ -5,6 +5,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createEnv, HostError, RisorError, toJSON, truthy } from "../src/host/api.ts";
+import { Rendering } from "../src/eval/ops.ts";
+import { jsonString } from "../src/value/value.ts";
 
 class Time {
   readonly ms: number;
@@ -354,5 +356,17 @@ describe("pre-allocation unit charging before building containers and strings (0
     assert.equal(okEnv.compile("`<${s}>`", { check: false }).run({ s: sample }), `<${sample}>`);
     assert.equal(okEnv.compile("json.stringify(s)", { check: false }).run({ s: sample }), toJSON(sample));
     assert.equal(okEnv.compile("string([s])", { check: false }).run({ s: sample }), `[${toJSON(sample)}]`);
+  });
+
+  test("the length measured for a long string put off is that of its JSON form", () => {
+    const tails = ["é😀", "\ud800", "\"\\\n\x01é\x7f"];
+    for (let c = 0; c < 0x80; c++) tails.push(String.fromCharCode(c));
+    for (const tail of tails) {
+      const s = "x".repeat(300) + tail;
+      const out = new Rendering();
+      out.quote(s);
+      assert.equal(out.length, jsonString(s).length, JSON.stringify(tail));
+      assert.equal(out.text(), jsonString(s));
+    }
   });
 });

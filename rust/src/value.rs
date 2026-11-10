@@ -168,11 +168,19 @@ impl<'h> MapVal<'h> {
 
     /// Build from entries in written order: a later key replaces an earlier
     /// one.
-    pub fn from_written(mut entries: Vec<(Str<'h>, Value<'h>)>) -> MapVal<'h> {
+    pub fn from_written(entries: Vec<(Str<'h>, Value<'h>)>) -> MapVal<'h> {
+        MapVal::from_written_sized(entries, None)
+    }
+
+    /// As `from_written`, for a map of `size` entries when it is known.
+    pub fn from_written_sized(
+        mut entries: Vec<(Str<'h>, Value<'h>)>,
+        size: Option<usize>,
+    ) -> MapVal<'h> {
         // A stable sort keeps the written order among equal keys; the last
         // of each run of one key is the one that stands.
         entries.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-        let mut out: Vec<(Str<'h>, Value<'h>)> = Vec::with_capacity(entries.len());
+        let mut out: Vec<(Str<'h>, Value<'h>)> = Vec::with_capacity(size.unwrap_or(entries.len()));
         for e in entries {
             match out.last_mut() {
                 Some(last) if last.0.as_str() == e.0.as_str() => *last = e,
@@ -371,7 +379,7 @@ impl<'h> Value<'h> {
 
     /// Visit each key of a map in any order, without sorting or cloning
     /// values.
-    pub fn for_each_key(&self, mut f: impl FnMut(&str)) {
+    pub fn for_each_key<'a>(&'a self, mut f: impl FnMut(&'a str)) {
         match self {
             Value::Map(m) => {
                 for (k, _) in &m.0 {

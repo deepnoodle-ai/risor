@@ -864,7 +864,6 @@ class Compiler {
     });
     // An entry evaluated: a key and its value, or a spread's map and its keys.
     type Written = { key: string; v: unknown } | { keys: string[]; m: object };
-    const has = (w: Written, key: string) => ("m" in w ? mapGet(w.m, key) !== ABSENT : w.key === key);
     return (r) => {
       const ws: Written[] = [];
       let k = 0; // the keys written, at least the map's entries
@@ -896,18 +895,16 @@ class Compiler {
       }
       // The map's units come before the map (02 6.2 item 3). When k keys could
       // pass the limit, the number of entries is found first, without
-      // building: a key counts at the last entry that writes it.
+      // building: the keys written, each counted once. The pass is linear in
+      // k, which the spreads have charged as steps.
       let charged = false;
       if (1 + 2 * k > r.unitLimit - r.units) {
-        let n = 0;
-        ws.forEach((w, i) => {
-          for (const key of "m" in w ? w.keys : [w.key]) {
-            let last = true;
-            for (let j = i + 1; last && j < ws.length; j++) last = !has(ws[j], key);
-            if (last) n++;
-          }
-        });
-        r.alloc(1 + 2 * n);
+        const seen = new Set<string>();
+        for (const w of ws) {
+          if ("m" in w) for (const key of w.keys) seen.add(key);
+          else seen.add(w.key);
+        }
+        r.alloc(1 + 2 * seen.size);
         charged = true;
       }
       const m = new RMap();
