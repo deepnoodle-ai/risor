@@ -112,7 +112,7 @@ F8 is part of version `3.0`. It adds no version number. Each entry of 3.1 has
 | Term | Meaning |
 | --- | --- |
 | **A complete operand has been read** | The parser reads an `Expr` and the tokens before the failing token form a whole operand, after which a binary operator, `?`, a step or the end of the expression could stand |
-| **Where an operand must begin** | The parser needs the start of an `Expr`, an operand or a `Lambda` there |
+| **Where an operand must begin** | The parser needs the start of an `Expr`, an operand or a `Lambda` there. The start of an entry of a map literal, or of a field of a map pattern, is not such a place: it needs a word, a string, `[`, `...` or a name |
 | **The index step** | The production `"[" Expr "]"` or `"?.[" Expr "]"` of a `Chain` (`01-language.md` 3.1) |
 | **The pattern of a `Const`** | The `Pattern` between `const` and `=` |
 | **A program type** | F4 2.2 |
@@ -267,7 +267,10 @@ item 2 keeps. They are tried in this order.
    = 1 }`, `x => { [k] = 1 }` and `{ "a" = 1 }` are each `unexpected-token` with
    the template `key` (3.4). After a value or a spread, `=` follows a complete
    operand: `{a: b = 1}` and `{...a = 1}` are E7. After a shorthand entry
-   outside a lambda body, as `1 + { a = 1 }`, no row holds.
+   outside a lambda body, as `1 + { a = 1 }`, no row holds. A literal of a
+   `match` arm is a `Lit`, not an operand, so `match 0 { 1 = 2 }` is
+   `unexpected-token`. A default in a pattern is an `Expr`, so `const [_ = t =
+   1] = x;` is E7 at the second `=`.
 2. E9: `(x: int) => x` at the top of a program, where `(` cannot begin a lambda,
    is the third case; `[1].map((x: int) => x)` is the second; `const n: int = 1;
    n` is the first.
@@ -279,7 +282,12 @@ item 2 keeps. They are tried in this order.
 5. E21: in `a?[i]` the conditional's `:` should stand at the end of input. In `c
    ? [1] : [2]`, with the `:`, nothing fails.
 6. E23 covers `x => { x + 1 }`. B9 covers `x => { if (c) { 1 } else { 2 } }`. B3
-   covers `x => { return x }`.
+   covers `x => { return x }`. B9 and E23 follow the `=>` of a lambda only: the
+   `=>` of a `match` arm is not one, so `match x { 1 => { a + 1 } }` is
+   `unexpected-token` at the `+`. **At the level of that map** means not inside
+   a bracket the map holds, a computed key among them: by 2.1 item 7 the
+   innermost production open at t is then the key. So `y(() => {[` is
+   `unexpected-token` at the end of input, and `y(() => {[k + }` at the `}`.
 7. E22 covers `{max-retries: 3}` and `const {max-retries: r} = m;`, and comes
    before E23, so `x => {max-retries: 1}` is `unquoted-key`. `{a - b: 1}`, with
    spaces, stays `unexpected-token`.
@@ -615,11 +623,16 @@ reserved word or `_`, `lower`; any other token or the end of input, `expected`.
 
 **`unexpected-token`.** `key` where the failing token stands where the `:` after
 a string key or a computed key `[e]` is needed, in a map literal or a map
-pattern: `{"a" = 1}`, `{[k] 1}`, `const {"a" = 1} = m;`. `default` everywhere
-else.
+pattern: `{"a" = 1}`, `{[k] 1}`, `const {"a" = 1} = m;`, and `{""b"`, where the
+prefixed literal `b"` stands after the key and C9 does not hold (2.2). `default`
+everywhere else, the start of an entry among them: `{n"` and `{<` are
+`unexpected n` and `unexpected <`.
 
 **`unterminated-string`.** The literal is the innermost that is still open, the
-one whose span the diagnostic has (`01-language.md` 2.11 item 2).
+one whose span the diagnostic has (`01-language.md` 2.11 item 2). An
+interpolation is not a literal: in `"""`, a line end, then `${` and the end of
+input, the innermost literal still open is the text block, so the template is
+`text-block`, whatever the line end is.
 
 **`text-block-indent`.** The first code point of the line that differs from the
 indentation (F3 4.5) decides: a tab where the indentation has a space, `tab`; a
@@ -752,19 +765,25 @@ The parameters of each code, with their kinds:
    receiver's before the null step of `05-types.md` 9.1, the value bound's, the
    computed key's, or the type at a place of failure.
 4. **`kind`.** The template is chosen by the rule of `05-types.md` that reports
-   it, and `star` by the rule of F7 for a star's receiver. For an operand the
+   it. At a star F7 applies `05-types.md` 9.1 steps 2 to 4 first, so a receiver
+   of more than one kind takes `receiver`, as `(0 && "")[*]` does; `star` is
+   for a receiver of one kind that is not a list. For an operand the
    type is shown without its null alternative, since a null is `maybe-null`.
-5. **`arity`.** required and most are the counts of `05-types.md` 22.3. For a
+5. **`no-field` and `maybe-absent` on a union.** A field read, and a field of
+   a map pattern, on a receiver whose map alternative is a tagged union reads
+   flat(U) (F5 2.3, 5.1). The `type` of both messages is that one joined record,
+   printed by `05-types.md` 3.9, never the union.
+6. **`arity`.** required and most are the counts of `05-types.md` 22.3. For a
    method call argument zero is not counted, and count is the number of
    arguments written. For a `const`-bound lambda they are its own counts.
    `parameters` gives most as the parameters of the `Fn`.
-6. **`always-truthy`, `always-falsy`.** `test` is chosen for an `As` node of F4,
+7. **`always-truthy`, `always-falsy`.** `test` is chosen for an `As` node of F4,
    and `default` for every other tested expression.
-7. **`may-fail`.** The template is the class of the site. For a `value` site on
+8. **`may-fail`.** The template is the class of the site. For a `value` site on
    a call, name is the method's or the function's name; on an `As` node of F4,
    `test`. For a `host` site, name is the host function's name with its
    namespace, or the method's name.
-8. **`never-equal`.** `match` for a literal of a `match`, whose text is the
+9. **`never-equal`.** `match` for a literal of a `match`, whose text is the
    literal with its `-`; `in` for `in` and `not in` on a list; `equality` for
    `==` and `!=`.
 
