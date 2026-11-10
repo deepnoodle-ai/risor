@@ -74,3 +74,11 @@ describe("signatures and methods", () => {
     }
   });
 });
+
+describe("ruling AA3: the depth of type text counts a [] suffix", () => {
+  test("int with 64 and with 65 [] suffixes", () => {
+    assert.ok(parseType("int" + "[]".repeat(64)).ok);
+    assert.equal(parseType("int" + "[]".repeat(65)).ok, false);
+    assert.equal(parseType("(".repeat(32) + "int" + ")".repeat(32) + "[]".repeat(33)).ok, false);
+  });
+});

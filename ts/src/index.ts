@@ -14,7 +14,18 @@
 //                      suite/casemap.json
 //   src/suite/     S1  strict JSON, case files (03 3.10) and the runner
 //
+//   src/generated/ S2 the run catalog and the library records, generated from
+//                      suite/*.json by scripts/generate.ts (never edited by hand)
+//
 // Positions are code-point offsets everywhere (src/syntax/source.ts).
+//
+// STACK (ruling AA7). The evaluator recurses only where the text opens a
+// nesting level, through calls in progress, and in walks; long flat forms run
+// in loops. The deepest programs within the limits (depth limit 1,000 reached
+// by calls at nesting 0 plus a walk; 100 levels of source nesting) run with a
+// V8 stack of 400 KB; test/deep.test.ts runs them with 500 KB. Node's default
+// is 984 KB, so no option is needed. A stack overflow, should a host run with
+// less, is reported as `internal-error`, never thrown to the host.
 
 export { parse, parseProgram, MAX_LEVELS } from "./syntax/parser.ts";
 export type { ParseResult } from "./syntax/parser.ts";
@@ -27,3 +38,5 @@ export { parseType, parseSignature, parseMethod, parseReceiver, arity } from "./
 export type { TypeNode, SigNode, MethodNode, FnNode } from "./types/typetext.ts";
 export { declare, DEFAULT_LIMITS, VERSION } from "./host/env.ts";
 export type { Declarations, Environment, Limits } from "./host/env.ts";
+export { createEnv, Env, Program, RisorError, HostError, truthy, toJSON } from "./host/api.ts";
+export type { EnvOptions, HostFunction, OpaqueType, Limits as RunLimits, Usage, Vars, Outcome, CallHandle } from "./host/api.ts";

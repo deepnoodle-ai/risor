@@ -138,6 +138,8 @@ export type Arg = Expr | Lambda;
 
 export interface Call extends Base {
   kind: "Call";
+  /** The levels open at the node's first token (01 13.2 rule 5). */
+  level: number;
   namespace: string | null;
   name: string;
   nameSpan: Span;
@@ -146,6 +148,8 @@ export interface Call extends Base {
 
 export interface MethodCall extends Base {
   kind: "MethodCall";
+  /** The levels open at the node's first token (01 13.2 rule 5). */
+  level: number;
   x: Expr;
   name: string;
   nameSpan: Span;
@@ -160,6 +164,8 @@ export interface OptChain extends Base {
 
 export interface Lambda extends Base {
   kind: "Lambda";
+  /** The levels open at the node's first token (01 13.2 rule 5). */
+  level: number;
   params: Param[];
   body: Expr;
 }

@@ -96,6 +96,8 @@ function run<T>(text: string, f: (p: TypeParser) => T, vars: boolean): TypeTextR
     if (e instanceof ParseError) return { ok: false, message: e.diagnostic.message };
     throw e;
   }
+  const depth = textDepth(tokens);
+  if (depth > MAX_TYPE_BRACKETS) return { ok: false, message: `type text deeper than ${MAX_TYPE_BRACKETS}` };
   const p = new TypeParser(tokens, vars);
   try {
     const node = f(p);
@@ -105,6 +107,60 @@ function run<T>(text: string, f: (p: TypeParser) => T, vars: boolean): TypeTextR
     if (e instanceof TypeTextError) return { ok: false, message: e.message };
     throw e;
   }
+}
+
+/**
+ * The depth of type text (05 20.5, ruling AA3): a `[]` suffix is 1 deeper
+ * than what it follows; a bracketed form is 1 deeper than its contents.
+ */
+function textDepth(toks: Token[]): number {
+  const stack: number[] = [0];
+  let last = 0; // the depth of the primary just read
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.kind !== "punct") {
+      last = 0;
+      continue;
+    }
+    switch (t.text) {
+      case "[":
+        if (i + 1 < toks.length && toks[i + 1].kind === "punct" && toks[i + 1].text === "]") {
+          last += 1;
+          stack[stack.length - 1] = Math.max(stack[stack.length - 1], last);
+          i++;
+          continue;
+        }
+        stack.push(0);
+        continue;
+      case "(":
+      case "{":
+      case "<":
+        stack.push(0);
+        continue;
+      case ")":
+      case "}":
+      case ">":
+      case "]":
+        if (stack.length > 1) {
+          last = 1 + stack.pop()!;
+          stack[stack.length - 1] = Math.max(stack[stack.length - 1], last);
+        }
+        continue;
+      default:
+        last = 0;
+    }
+  }
+  return stack[0];
+}
+
+/** Parse the record of an environment (03 3.10.3, rulings T4, AG4): a `Record` with no optional field and no rest. */
+export function parseEnvRecord(text: string): TypeTextResult<TypeNode> {
+  const r = run(text, (p) => p.envRecord(), false);
+  if (!r.ok) return r;
+  const n = r.node as Extract<TypeNode, { t: "record" }>;
+  if (n.rest !== "exact") return { ok: false, message: "the record of an environment has no rest" };
+  if (n.fields.some((f) => f.optional)) return { ok: false, message: "the record of an environment has no optional field" };
+  return r;
 }
 
 function isUpper(c: string): boolean {
@@ -168,6 +224,11 @@ class TypeParser {
 
   end(): void {
     if (this.cur.kind !== "eof") this.fail(this.cur);
+  }
+
+  envRecord(): TypeNode {
+    if (!this.isP(this.cur, "{")) this.fail(this.cur);
+    return this.record();
   }
 
   /** Type = Alt { "|" Alt }. */
@@ -237,7 +298,7 @@ class TypeParser {
   }
 
   /** Record = "{" [ ( Field { "," Field } [ "," Rest ] | Rest ) [ "," ] ] "}". */
-  private record(): TypeNode {
+  record(): TypeNode {
     this.advance();
     this.open();
     const fields: RecordField[] = [];
@@ -290,6 +351,16 @@ class TypeParser {
     }
     this.expect(")");
     this.close();
+    // 05 3.6: every optional parameter follows every required one; a rest
+    // parameter is the last, and its type is a list.
+    let seenOptional = false;
+    params.forEach((p, i) => {
+      if (p.rest) {
+        if (i !== params.length - 1 || p.optional) throw new TypeTextError("a rest parameter must be the last");
+        if (p.type.t !== "list") throw new TypeTextError("the type of a rest parameter must be a list");
+      } else if (p.optional) seenOptional = true;
+      else if (seenOptional) throw new TypeTextError("an optional parameter must follow every required one");
+    });
     this.expect("=>");
     const result = this.type();
     let canFail = false;

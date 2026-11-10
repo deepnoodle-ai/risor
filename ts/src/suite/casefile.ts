@@ -55,7 +55,7 @@ export interface Case {
   version?: string;
   env?: string;
   opaque?: string[];
-  methods?: Record<string, string>;
+  methods?: Record<string, Stub>;
   functions?: Record<string, Stub>;
   reject?: string[];
   returns?: string;
@@ -168,7 +168,7 @@ function checkShared(o: JsonObject, where: string): void {
     if (!isObject(m)) fail(`${where}: methods is not an object`);
     for (const [k, v] of Object.entries(m)) {
       if (!/^[A-Z][A-Za-z0-9_]+\.[A-Za-z_][A-Za-z0-9_]*$/.test(k)) fail(`${where}: methods has the key ${k}`);
-      if (typeof v !== "string") fail(`${where}: methods.${k} is not a string`);
+      checkStub(v, `${where}: methods.${k}`);
     }
   }
   if ("functions" in o) {
@@ -264,7 +264,14 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string): Case {
   if ("version" in merged) c.version = merged.version as string;
   if ("env" in merged) c.env = merged.env as string;
   if ("opaque" in merged) c.opaque = merged.opaque as string[];
-  if ("methods" in merged) c.methods = { ...(merged.methods as Record<string, string>) };
+  if ("methods" in merged) {
+    c.methods = {};
+    for (const [k, v] of Object.entries(merged.methods as JsonObject)) {
+      const stub = toStub(v);
+      if (stub.type === undefined) fail(`${where}: the method stub ${k} has no type and the base environment does not declare it`);
+      c.methods[k] = stub;
+    }
+  }
   if ("functions" in merged) {
     c.functions = {};
     for (const [k, v] of Object.entries(merged.functions as JsonObject)) {
@@ -281,6 +288,18 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string): Case {
   if ("precondition" in merged) c.precondition = merged.precondition as boolean;
   if ("skip" in raw) c.skip = raw.skip as string;
 
+  // 3.10.3 items 7 and 9: opaque values.
+  const declared = new Set(c.opaque ?? []);
+  const opaqueOk = (v: Json, at: string) => checkOpaque(v, declared, `${where}: ${at}`);
+  if (c.vars !== undefined) opaqueOk(c.vars, "vars");
+  for (const st of [...Object.values(c.functions ?? {}), ...Object.values(c.methods ?? {})]) {
+    for (const row of st.calls) {
+      if (row.args !== undefined) opaqueOk(row.args, "a stub's args");
+      if (row.result !== undefined) opaqueOk(row.result.value, "a stub's result");
+    }
+  }
+  if (c.expect.kind === "result" && c.expect.value !== undefined) opaqueOk(c.expect.value.value, "the expected value");
+
   // 3.10.10 item 9: a key of vars that is not a field of env.
   if (c.vars !== undefined) {
     const keys = Object.keys(c.vars);
@@ -295,6 +314,26 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string): Case {
     }
   }
   return c;
+}
+
+/** Every `$opaque` object is of the form of 3.10.3 item 7, with a declared type. */
+function checkOpaque(v: Json, declared: ReadonlySet<string>, where: string): void {
+  const stack: Json[] = [v];
+  while (stack.length > 0) {
+    const x = stack.pop()!;
+    if (Array.isArray(x)) stack.push(...x);
+    else if (isObject(x)) {
+      if ("$opaque" in x) {
+        const o = x.$opaque;
+        const ok =
+          Object.keys(x).length === 1 && isObject(o) && Object.keys(o).length === 2 &&
+          typeof o.type === "string" && declared.has(o.type) && isInt(o.id, 0);
+        if (!ok) fail(`${where}: a $opaque object is not of the form of 3.10.3 item 7, or names an undeclared type`);
+        continue;
+      }
+      stack.push(...Object.values(x));
+    }
+  }
 }
 
 function checkSpan(v: Json, where: string): LineSpan {
@@ -317,6 +356,8 @@ function buildExpect(v: Json, where: string): Expect {
     if (phase !== "declare" && phase !== "parse" && phase !== "check" && phase !== "run") fail(`${where}: bad phase`);
     if (!Array.isArray(v.diagnostics) || v.diagnostics.length === 0) fail(`${where}: diagnostics is not a non-empty list`);
     const diagnostics = v.diagnostics.map((d) => buildDiag(d, where));
+    // 3.10.10 item 16.
+    if ((phase === "parse" || phase === "declare") && diagnostics.length > 1) fail(`${where}: an expect of phase ${phase} states more than one diagnostic`);
     const out: Expect = { kind: "failure", phase, diagnostics };
     for (const k of ["steps", "allocated"] as const) {
       if (k in v) {

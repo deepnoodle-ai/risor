@@ -421,6 +421,7 @@ class Parser {
 
   /** Chain = Primary { step }. A loop: steps open no level. */
   private chain(): A.Expr {
+    const level = this.level;
     let x = this.primary();
     const start = this.outer(x).start;
     let optional = false;
@@ -434,7 +435,7 @@ class Parser {
         this.advance();
         if (this.isP(this.cur, "(")) {
           const args = this.args();
-          x = { kind: "MethodCall", x, name: w.text, nameSpan: { start: w.start, end: w.end }, args, optional: opt, span: this.span(start) };
+          x = { kind: "MethodCall", x, name: w.text, nameSpan: { start: w.start, end: w.end }, args, optional: opt, level, span: this.span(start) };
         } else {
           x = { kind: "Member", x, name: w.text, nameSpan: { start: w.start, end: w.end }, optional: opt, span: this.span(start) };
         }
@@ -513,10 +514,11 @@ class Parser {
     }
     if (isReserved(t.text)) this.reservedWord(t);
     if (t.text === "_") this.unexpected(t);
+    const level = this.level;
     this.advance();
     if (this.isP(this.cur, "(")) {
       const args = this.args();
-      return { kind: "Call", namespace: null, name: t.text, nameSpan: { start: t.start, end: t.end }, args, span: this.span(t.start) };
+      return { kind: "Call", namespace: null, name: t.text, nameSpan: { start: t.start, end: t.end }, args, level, span: this.span(t.start) };
     }
     return { kind: "Ident", name: t.text, span: { start: t.start, end: t.end } };
   }
@@ -747,6 +749,7 @@ class Parser {
 
   private lambda(onArrow: ((arrow: Token) => void) | null): A.Lambda {
     const t = this.cur;
+    const level = this.level;
     const params: A.Param[] = [];
     if (t.kind === "word") {
       this.advance();
@@ -772,7 +775,7 @@ class Parser {
     const arrow = this.expect("=>");
     if (onArrow !== null) onArrow(arrow);
     const body = this.expr();
-    return { kind: "Lambda", params, body, span: { start: t.start, end: this.outer(body).end } };
+    return { kind: "Lambda", params, body, level, span: { start: t.start, end: this.outer(body).end } };
   }
 
   private param(): A.Param {

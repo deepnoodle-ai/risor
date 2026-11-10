@@ -1,18 +1,22 @@
 // The case runner (03 3.10.5 to 3.10.8).
 //
-// Stage S1 has the declare stage (by the grammar of type text), the parser,
-// and no evaluator and no static rules yet. A case whose outcome depends on
-// what S1 lacks gets the verdict `skip` with the reason.
+// The runner builds each case's environment through the host API, with its
+// stubs as host functions, and runs every step this implementation has: the
+// declare stage, the parser, the static rules (no type checker yet) and the
+// evaluator. A case that needs a library entry this build does not implement
+// gets `skip`, with the entries named.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { declare } from "../host/env.ts";
-import type { Declarations } from "../host/env.ts";
+import { createEnv, HostError, RisorError } from "../host/api.ts";
+import type { Env, HostFunction, OpaqueType } from "../host/api.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
-import { parse } from "../syntax/parser.ts";
 import type { Source } from "../syntax/source.ts";
+import { parseType } from "../types/typetext.ts";
+import { plainEqual, truthy } from "../value/value.ts";
+import type { Classifier } from "../value/value.ts";
 import { loadCaseFile, validateCaseFile } from "./casefile.ts";
-import type { Case, CaseFile, ExpectDiagnostic } from "./casefile.ts";
+import type { Case, CaseFile, ExpectDiagnostic, Stub } from "./casefile.ts";
 import { JsonError, isObject, readJson } from "./json.ts";
 import type { Json } from "./json.ts";
 
@@ -43,16 +47,79 @@ const LIMIT_CODES: ReadonlySet<string> = new Set([
 ]);
 
 export interface RunnerOptions {
-  /** The library function names of the base environment. */
-  library: ReadonlySet<string>;
+  /** Kept for callers; the library comes from this build. */
+  library?: ReadonlySet<string>;
 }
 
 type Outcome =
-  | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source }
-  | { kind: "result" };
+  | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source; usage?: { steps: number; allocated: number } }
+  | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number } };
+
+/** An opaque value of a case file (03 3.10.3 item 7): one object for each type and id. */
+export class OpaqueRef {
+  readonly type: string;
+  readonly id: number;
+  constructor(type: string, id: number) {
+    this.type = type;
+    this.id = id;
+  }
+}
+const OPAQUES = new Map<string, OpaqueRef>();
+function opaqueRef(type: string, id: number): OpaqueRef {
+  const k = `${type}\u0000${id}`;
+  let o = OPAQUES.get(k);
+  if (o === undefined) OPAQUES.set(k, (o = new OpaqueRef(type, id)));
+  return o;
+}
+
+/** A JSON value of a case file as a host value: `$opaque` objects become opaque values. */
+export function hostValue(v: Json): unknown {
+  if (Array.isArray(v)) return v.map(hostValue);
+  if (isObject(v)) {
+    if ("$opaque" in v) {
+      const o = v.$opaque as { type: string; id: number };
+      return opaqueRef(o.type, o.id);
+    }
+    const out: Record<string, unknown> = Object.create(null);
+    for (const [k, x] of Object.entries(v)) out[k] = hostValue(x);
+    return out;
+  }
+  return v;
+}
+
+/** A host function from a stub (03 3.10.4). `unmatched` records a call no row answers. */
+function stubFunction(st: Stub, cls: () => Classifier, unmatched: string[], name: string): HostFunction {
+  const rows = st.calls.map((r) => ({ ...r, hostArgs: r.args?.map(hostValue), hostResult: r.result === undefined ? undefined : hostValue(r.result.value) }));
+  return {
+    type: st.type!,
+    call: (handle, ...args) => {
+      for (const r of rows) {
+        if (r.hostArgs !== undefined) {
+          if (r.hostArgs.length !== args.length) continue;
+          if (!r.hostArgs.every((a, i) => plainEqual(args[i], a, cls()))) continue;
+        }
+        handle.charge(r.charge);
+        handle.allocate(r.allocate);
+        if (r.error !== undefined) throw new HostError(r.error);
+        return r.hostResult;
+      }
+      unmatched.push(name);
+      throw new HostError(`no row of the stub ${name} matches the call`);
+    },
+  };
+}
+
+function needsRun(c: Case): boolean {
+  const ex = c.expect;
+  return (
+    c.vars !== undefined ||
+    (ex.kind === "result" && (ex.value !== undefined || ex.truthy !== undefined || ex.steps !== undefined || ex.allocated !== undefined)) ||
+    (ex.kind === "failure" && ex.phase === "run")
+  );
+}
 
 /** Run one case and give its verdict. */
-export function runCase(c: Case, file: string, opts: RunnerOptions): Verdict {
+export function runCase(c: Case, file: string, _opts: RunnerOptions = {}): Verdict {
   const v = (verdict: VerdictKind, extra: Partial<Verdict> = {}): Verdict => ({ file, name: c.name, verdict, ...extra });
   if (c.skip !== undefined) return v("skip", { reason: c.skip });
   const ex = c.expect;
@@ -65,37 +132,56 @@ export function runCase(c: Case, file: string, opts: RunnerOptions): Verdict {
   }
 
   // Step 2: declare.
-  const functions: Record<string, string> = {};
-  for (const [k, s] of Object.entries(c.functions ?? {})) functions[k] = s.type!;
-  const decls: Declarations = {
-    version: c.version, env: c.env, opaque: c.opaque, methods: c.methods, functions,
-    reject: c.reject, returns: c.returns, limits: c.limits,
-  };
-  const d = declare(decls, opts.library);
-  let outcome: Outcome;
-  if (!d.ok) {
-    outcome = { kind: "failure", phase: "declare", diagnostics: d.diagnostics };
-  } else {
-    // Step 3: parse.
-    const p = parse(c.source);
-    if (!p.ok) outcome = { kind: "failure", phase: "parse", diagnostics: p.diagnostics, source: p.source };
-    else {
-      // Steps 4 and 5 come with stage S2. Judge what can be judged now.
-      if (ex.kind === "failure" && (ex.phase === "parse" || ex.phase === "declare")) {
-        return v("fail", { differences: [{ field: "outcome", expected: `failure of phase ${ex.phase}`, found: "the program parses" }] });
-      }
-      const needsRun =
-        c.vars !== undefined ||
-        (ex.kind === "result" && (ex.value !== undefined || ex.truthy !== undefined || ex.steps !== undefined || ex.allocated !== undefined)) ||
-        (ex.kind === "failure" && ex.phase === "run");
-      if (ex.kind === "failure" && ex.phase === "check") return v("skip", { reason: "needs the static rules (S2)" });
-      if (needsRun) return v("skip", { reason: "needs the evaluator (S2)" });
-      // A result with no field to compare: the program parses. The static
-      // rules of step 4 come with S2.
-      outcome = { kind: "result" };
-    }
+  const unmatched: string[] = [];
+  let env: Env | undefined;
+  const cls = () => env!.classifier;
+  const opaque: Record<string, OpaqueType> = {};
+  for (const t of c.opaque ?? []) opaque[t] = { test: (x) => x instanceof OpaqueRef && x.type === t, methods: {} };
+  for (const [key, st] of Object.entries(c.methods ?? {})) {
+    const dot = key.indexOf(".");
+    const t = key.slice(0, dot);
+    const m = key.slice(dot + 1);
+    // A method of a type that `opaque` does not declare: let declare report it.
+    if (opaque[t] === undefined) opaque[t] = { test: () => false, methods: {} };
+    opaque[t].methods![m] = stubFunction(st, cls, unmatched, key);
   }
-  const diffs = compare(c, outcome);
+  const functions: Record<string, HostFunction> = {};
+  for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = stubFunction(st, cls, unmatched, k);
+  let outcome: Outcome;
+  try {
+    env = createEnv({ version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [] });
+    const declErrs: Diagnostic[] = [];
+    if (c.returns !== undefined && c.returns !== "condition" && !parseType(c.returns).ok) {
+      declErrs.push({ phase: "declare", code: "bad-type", message: "the expected result is not a type" });
+    }
+    if (declErrs.length > 0) throw new RisorError(declErrs);
+  } catch (x) {
+    if (!(x instanceof RisorError)) throw x;
+    outcome = { kind: "failure", phase: "declare", diagnostics: [...x.diagnostics] };
+    return finish(c, outcome, unmatched, v);
+  }
+  // Steps 3 and 4: parse, and the static rules.
+  const compiled = env.tryCompile(c.source);
+  if (!compiled.ok) {
+    outcome = { kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source };
+    return finish(c, outcome, unmatched, v);
+  }
+  // Step 5: run.
+  if (!needsRun(c)) return finish(c, { kind: "result", ran: false }, unmatched, v);
+  if (compiled.program.missing.size > 0) {
+    return v("skip", { reason: `needs library entries (S3): ${[...compiled.program.missing].sort().join(", ")}` });
+  }
+  const vars = c.vars ?? {};
+  const o = compiled.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : undefined));
+  outcome = o.ok
+    ? { kind: "result", ran: true, value: o.value, usage: o.usage }
+    : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage };
+  return finish(c, outcome, unmatched, v);
+}
+
+function finish(c: Case, o: Outcome, unmatched: string[], v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
+  const diffs = compare(c, o);
+  if (unmatched.length > 0) diffs.push({ field: "functions", expected: "a row for every call", found: `no row matched a call of ${unmatched.join(", ")}` });
   return diffs.length === 0 ? v("pass") : v("fail", { differences: diffs });
 }
 
@@ -105,7 +191,14 @@ function compare(c: Case, o: Outcome): Difference[] {
     if (o.kind !== "result") {
       return [{ field: "outcome", expected: "a result", found: describeFailure(o) }];
     }
-    return [];
+    const d: Difference[] = [];
+    if (ex.value !== undefined && !plainEqual(o.value, hostValue(ex.value.value), CLASSIFIER)) {
+      d.push({ field: "value", expected: ex.value.value, found: show(o.value) });
+    }
+    if (ex.truthy !== undefined && truthy(o.value, CLASSIFIER) !== ex.truthy) d.push({ field: "truthy", expected: ex.truthy, found: !ex.truthy });
+    if (ex.steps !== undefined && o.usage?.steps !== ex.steps) d.push({ field: "steps", expected: ex.steps, found: o.usage?.steps });
+    if (ex.allocated !== undefined && o.usage?.allocated !== ex.allocated) d.push({ field: "allocated", expected: ex.allocated, found: o.usage?.allocated });
+    return d;
   }
   if (o.kind !== "failure" || o.phase !== ex.phase) {
     return [{ field: "outcome", expected: `failure of phase ${ex.phase}`, found: o.kind === "result" ? "a result" : describeFailure(o) }];
@@ -119,7 +212,34 @@ function compare(c: Case, o: Outcome): Difference[] {
   } else {
     ok = ex.diagnostics.length === found.length && ex.diagnostics.every((e, i) => diagMatches(e, found[i]));
   }
-  return ok ? [] : [{ field: "diagnostics", expected: ex.diagnostics, found }];
+  const d: Difference[] = ok ? [] : [{ field: "diagnostics", expected: ex.diagnostics, found }];
+  if (ex.phase === "run" && !found.some((f) => LIMIT_CODES.has(f.code))) {
+    if (ex.steps !== undefined && o.usage?.steps !== ex.steps) d.push({ field: "steps", expected: ex.steps, found: o.usage?.steps });
+    if (ex.allocated !== undefined && o.usage?.allocated !== ex.allocated) d.push({ field: "allocated", expected: ex.allocated, found: o.usage?.allocated });
+  }
+  return d;
+}
+
+/** Opaque values of a case are OpaqueRef objects: classified by this test. */
+const CLASSIFIER_TESTS: [string, (v: unknown) => boolean][] = [];
+import { Classifier as ClassifierClass } from "../value/value.ts";
+const CLASSIFIER = new (class extends ClassifierClass {
+  override opaqueName(v: unknown): string | null {
+    return v instanceof OpaqueRef ? v.type : super.opaqueName(v);
+  }
+  override kind(v: unknown) {
+    return v instanceof OpaqueRef ? ("opaque" as const) : super.kind(v);
+  }
+})(CLASSIFIER_TESTS);
+
+/** A value as JSON, for a report. */
+export function show(v: unknown, depth = 0): unknown {
+  if (depth > 50) return "...";
+  if (v instanceof OpaqueRef) return { $opaque: { type: v.type, id: v.id } };
+  if (Array.isArray(v)) return v.map((x) => show(x, depth + 1));
+  if (v instanceof Map) return Object.fromEntries([...v].map(([k, x]) => [k, show(x, depth + 1)]));
+  if (typeof v === "object" && v !== null) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, show(x, depth + 1)]));
+  return v;
 }
 
 function describeFailure(o: Outcome): string {
@@ -130,6 +250,8 @@ function describeFailure(o: Outcome): string {
 }
 
 interface FoundDiag {
+  data?: unknown;
+  rawData?: unknown;
   code: string;
   span?: [number, number, number, number];
   message: string;
@@ -140,6 +262,10 @@ function foundDiag(d: Diagnostic, source?: Source): FoundDiag {
   const f: FoundDiag = { code: d.code, message: d.message };
   if (d.span !== undefined && source !== undefined) f.span = source.lineSpan(d.span);
   if (d.path !== undefined) f.path = d.path;
+  if (d.code === "failed") {
+    f.data = show(d.data);
+    f.rawData = d.data;
+  }
   return f;
 }
 
@@ -151,6 +277,7 @@ function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
     if (f.span === undefined || e.span.some((n, i) => n !== f.span![i])) return false;
   }
   if (e.message !== undefined && e.message !== f.message) return false;
+  if (e.data !== undefined && !plainEqual(f.rawData, hostValue(e.data.value), CLASSIFIER)) return false;
   if (e.path !== undefined) {
     if (f.path === undefined || f.path.length !== e.path.length || e.path.some((s, i) => s !== f.path![i])) return false;
   }

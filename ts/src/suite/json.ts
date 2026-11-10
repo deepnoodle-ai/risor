@@ -4,6 +4,8 @@
 // invalid, and every number is read by the rule of text to number of
 // 01 6.3, where a number that reads as an infinity makes the file invalid.
 
+import { parseDecimal } from "../value/number.ts";
+
 export type Json = null | boolean | number | string | Json[] | JsonObject;
 export interface JsonObject {
   [key: string]: Json;
@@ -51,7 +53,6 @@ class Reader {
   }
 
   private value(depth: number): Json {
-    if (depth > 10000) this.fail("JSON nested too deep");
     const c = this.s[this.i];
     switch (c) {
       case "{":
@@ -89,7 +90,7 @@ class Reader {
       text = m2![0];
     }
     this.i += text.length;
-    const x = Number(text);
+    const x = parseDecimal(text)!;
     if (!Number.isFinite(x)) this.fail("a number that reads as an infinity");
     return x + 0;
   }
@@ -105,7 +106,8 @@ class Reader {
       if (c === 0x22) {
         out += s.slice(from, this.i);
         this.i++;
-        return out;
+        // Ruling V4: a lone surrogate reads as U+FFFD.
+        return out.isWellFormed() ? out : out.toWellFormed();
       }
       if (c < 0x20) this.fail("control character in a string");
       if (c === 0x5c) {
@@ -131,6 +133,8 @@ class Reader {
   }
 
   private array(depth: number): Json[] {
+    // 03 3.10.1 item 4 (ruling AA6): at most 1,024 levels.
+    if (depth >= 1024) this.fail("JSON nested deeper than 1,024 levels");
     this.i++;
     const out: Json[] = [];
     this.ws();
@@ -156,6 +160,7 @@ class Reader {
   }
 
   private object(depth: number): JsonObject {
+    if (depth >= 1024) this.fail("JSON nested deeper than 1,024 levels");
     this.i++;
     const out: JsonObject = Object.create(null);
     this.ws();

@@ -7,7 +7,7 @@
 
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { isName, isReserved } from "../syntax/token.ts";
-import { parseSignature, parseType } from "../types/typetext.ts";
+import { parseEnvRecord, parseSignature, parseType } from "../types/typetext.ts";
 import type { SigNode, TypeNode } from "../types/typetext.ts";
 
 /** The newest version of the specification this implementation offers. */
@@ -110,7 +110,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
   }
 
   if (d.env !== undefined) {
-    const t = parseType(d.env);
+    const t = parseEnvRecord(d.env);
     if (!t.ok) errs.push(diag("bad-type", `the variables' type: ${t.message}`));
     else if (t.node.t !== "record") errs.push(diag("bad-type", "the variables are not declared as one record type"));
     else {
@@ -163,6 +163,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
   }
   for (const ns of env.namespaces) {
     if (env.variables.has(ns)) errs.push(diag("name-clash", `the variable ${ns} has the name of a namespace`));
+    if (env.functions.has(ns)) errs.push(diag("name-clash", `the function ${ns} has the name of a namespace`));
   }
 
   for (const [key, signature] of Object.entries(d.methods ?? {})) {

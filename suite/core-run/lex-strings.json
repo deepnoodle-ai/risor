@@ -186,7 +186,7 @@
    "name": "escape: braces at U+10FFFF",
    "source": "\"\\u{10FFFF}\"",
    "expect": {
-    "value": "\u10ffff"
+    "value": "\udbff\udfff"
    }
   },
   {

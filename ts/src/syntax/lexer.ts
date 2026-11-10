@@ -11,7 +11,7 @@ import type { Source, Span } from "./source.ts";
 import { fromCodePoints } from "./source.ts";
 import { PUNCT, REJECTED_PUNCT, isReserved } from "./token.ts";
 import type { TemplatePart, Token } from "./token.ts";
-import { MAX_WHOLE } from "../value/number.ts";
+import { MAX_WHOLE, parseDecimal } from "../value/number.ts";
 
 const LF = 0x0a;
 const CR = 0x0d;
@@ -467,7 +467,7 @@ export function numberValue(text: string): number | "bad" | "range" {
     if (v > BigInt(MAX_WHOLE)) return "range";
     return Number(v);
   }
-  const x = Number(clean);
+  const x = parseDecimal(clean)!;
   if (!Number.isFinite(x)) return "range";
   return x + 0;
 }
