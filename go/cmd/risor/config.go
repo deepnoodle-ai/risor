@@ -10,6 +10,7 @@ import (
 
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
+	"github.com/deepnoodle-ai/risor/v3/internal/eval"
 	"github.com/deepnoodle-ai/wonton/cli"
 )
 
@@ -110,9 +111,9 @@ func commandLineError(stderr io.Writer, err error) int {
 	return 2
 }
 
-func configCommand(ctx *cli.Context, eval bool) int {
+func configCommand(ctx *cli.Context, isEval bool) int {
 	stdin, stdout, stderr := ctx.Stdin(), ctx.Stdout(), ctx.Stderr()
-	f, err := configFlagsOf(ctx, eval)
+	f, err := configFlagsOf(ctx, isEval)
 	if err != nil {
 		return commandLineError(stderr, err)
 	}
@@ -127,7 +128,7 @@ func configCommand(ctx *cli.Context, eval bool) int {
 	// Diagnostics go to standard error for eval, to standard output for
 	// check (F12 4.2 item 2).
 	dw := stderr
-	if !eval {
+	if !isEval {
 		dw = stdout
 	}
 	color := f.format == "text" && f.color.on(dw, stdout)
@@ -143,7 +144,7 @@ func configCommand(ctx *cli.Context, eval bool) int {
 	if err != nil {
 		return fail(err)
 	}
-	if !eval {
+	if !isEval {
 		t, err := checkSteps(env, f, schema, source)
 		if err != nil {
 			return fail(err)
@@ -171,7 +172,7 @@ func configCommand(ctx *cli.Context, eval bool) int {
 	case f.format == "json":
 		text, err = risor.JSONText(v)
 	default:
-		text, err = rendering(v)
+		text, err = rendering(env, v)
 	}
 	if err != nil {
 		return fail(err)
@@ -208,24 +209,21 @@ func checkSteps(env *risor.Env, f *configFlags, schema any, source string) (stri
 	return cr.Type, nil
 }
 
-// rendering is the rendering of a value (01-language.md 12), as string(v)
-// gives it.
-func rendering(v any) (string, error) {
-	env, err := risor.NewEnv(risor.Var("v", "any"))
-	if err != nil {
-		return "", err
+// rendering is the rendering of a value (01-language.md 12) under the
+// environment's depth limit. It is not a run, so it charges no steps or units.
+func rendering(env *risor.Env, v any) (string, error) {
+	depth := eval.DefaultLimits.Depth
+	if desc, err := env.Describe(); err == nil {
+		var d struct {
+			Limits struct{ Depth int } `json:"limits"`
+		}
+		if json.Unmarshal(desc, &d) == nil && d.Limits.Depth > 0 {
+			depth = d.Limits.Depth
+		}
 	}
-	x, err := risor.Parse("string(v)")
-	if err != nil {
-		return "", err
+	text, d := eval.RenderText(v, depth)
+	if d != nil {
+		return "", &risor.Error{Diagnostics: []risor.Diagnostic{*d}}
 	}
-	p, err := env.Compile(x, risor.NoCheck)
-	if err != nil {
-		return "", err
-	}
-	s, err := p.Run(context.Background(), risor.Map{"v": v})
-	if err != nil {
-		return "", err
-	}
-	return s.(string), nil
+	return text, nil
 }

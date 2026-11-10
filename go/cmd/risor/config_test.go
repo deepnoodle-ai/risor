@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
@@ -33,6 +36,50 @@ func TestEvalText(t *testing.T) {
 	code, out, _ = runCLI("eval", s)
 	assert.Equal(t, code, 0)
 	assert.Equal(t, out, "plain\n")
+	n := put(t, dir, "n.risor", `null`)
+	code, out, _ = runCLI("eval", n)
+	assert.Equal(t, code, 0)
+	assert.Equal(t, out, "\n")
+}
+
+func TestEvalTextHonorsLimits(t *testing.T) {
+	dir := t.TempDir()
+	// A 220-deep nested list exceeds the default depth limit of 200, so
+	// --depth 300 must govern text rendering too.
+	deep := put(t, dir, "deep.risor", `range(220).reduce((acc, _) => [acc], 0 as any)`)
+	code, out, errOut := runCLI("eval", deep, "--depth", "300")
+	assert.Equal(t, code, 0, errOut)
+	assert.Equal(t, out, strings.Repeat("[", 220)+"0"+strings.Repeat("]", 220)+"\n")
+
+	// Under --depth 5, a 10-deep host value returned in place fails when
+	// rendered as text, with limit 5 and no span into the source file.
+	nestedJSON := `{"x":` + strings.Repeat("[", 10) + "1" + strings.Repeat("]", 10) + `}`
+	vars := put(t, dir, "vars.json", nestedJSON)
+	echo := put(t, dir, "echo.risor", "x\n")
+	code, out, errOut = runCLI("eval", echo, "--vars", vars, "--depth", "5")
+	assert.Equal(t, code, 1)
+	assert.Equal(t, out, "")
+	assert.Equal(t, errOut, "error[depth-exceeded]: calls and nested values went deeper than the depth limit of 5\n")
+
+	// Rendering a large result in --format text is not capped by the
+	// default 1,000,000 step limit when --steps and --allocation allow the run.
+	big := put(t, dir, "big.risor", `range(1100000)`)
+	code, out, errOut = runCLI("eval", big, "--steps", "2000000", "--allocation", "2000000")
+	assert.Equal(t, code, 0, errOut)
+	assert.True(t, strings.HasPrefix(out, "[0,1,2,"))
+}
+
+func TestJSONTextHostNumberRange(t *testing.T) {
+	for _, v := range []any{math.NaN(), math.Inf(1), int64(1)<<53 + 1, []any{math.NaN()}} {
+		_, err := risor.JSONText(v)
+		assert.NotNil(t, err)
+		var rerr *risor.Error
+		assert.True(t, errors.As(err, &rerr))
+		assert.Equal(t, len(rerr.Diagnostics), 1)
+		assert.Equal(t, rerr.Diagnostics[0].Code, "number-range")
+		assert.Equal(t, rerr.Diagnostics[0].Class, "environment")
+		assert.Nil(t, rerr.Diagnostics[0].Span)
+	}
 }
 
 func TestEvalTypeAndSchema(t *testing.T) {
