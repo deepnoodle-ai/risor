@@ -223,9 +223,19 @@ pub fn function(name: &str) -> Option<usize> {
 
 /// The library method of a kind and a name.
 pub fn method(kind: Kind, name: &str) -> Option<usize> {
-    records()
-        .iter()
-        .position(|r| r.receiver == Some(kind) && r.name == name)
+    // The first record of each receiver kind and name, found once.
+    static M: OnceLock<std::collections::HashMap<String, [Option<usize>; 7]>> = OnceLock::new();
+    let m = M.get_or_init(|| {
+        let mut m: std::collections::HashMap<String, [Option<usize>; 7]> =
+            std::collections::HashMap::new();
+        for (i, r) in records().iter().enumerate() {
+            if let Some(k) = r.receiver {
+                m.entry(r.name.clone()).or_default()[k as usize].get_or_insert(i);
+            }
+        }
+        m
+    });
+    m.get(name).and_then(|a| a[kind as usize])
 }
 
 /// The name of an entry as an environment removes it (`03-host.md` 3.3.1,

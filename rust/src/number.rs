@@ -21,38 +21,46 @@ fn norm(x: f64) -> R {
     }
 }
 
-fn exact(r: i128) -> R {
-    if r.abs() > MAX_WHOLE as i128 {
+fn exact(r: i64) -> R {
+    if r.unsigned_abs() > MAX_WHOLE as u64 {
         Err(NumErr::Range)
     } else {
         Ok(r as f64)
     }
 }
 
+#[inline]
 pub fn add(a: f64, b: f64) -> R {
     if is_whole(a) && is_whole(b) {
-        exact(a as i128 + b as i128)
+        exact(a as i64 + b as i64)
     } else {
         norm(a + b)
     }
 }
 
+#[inline]
 pub fn sub(a: f64, b: f64) -> R {
     if is_whole(a) && is_whole(b) {
-        exact(a as i128 - b as i128)
+        exact(a as i64 - b as i64)
     } else {
         norm(a - b)
     }
 }
 
+#[inline]
 pub fn mul(a: f64, b: f64) -> R {
     if is_whole(a) && is_whole(b) {
-        exact(a as i128 * b as i128)
+        // A product that overflows i64 is far past 2^53 − 1.
+        match (a as i64).checked_mul(b as i64) {
+            Some(r) => exact(r),
+            None => Err(NumErr::Range),
+        }
     } else {
         norm(a * b)
     }
 }
 
+#[inline]
 pub fn div(a: f64, b: f64) -> R {
     if b == 0.0 {
         return Err(NumErr::DivZero);
@@ -60,6 +68,7 @@ pub fn div(a: f64, b: f64) -> R {
     norm(a / b)
 }
 
+#[inline]
 pub fn rem(a: f64, b: f64) -> R {
     if b == 0.0 {
         return Err(NumErr::DivZero);
@@ -126,10 +135,46 @@ fn ieee_pow(a: f64, e: u64) -> f64 {
     r
 }
 
+/// The range where two shortest texts can tie: [2^30, 2^51).
+const TIE_LOW: f64 = 1073741824.0;
+const TIE_HIGH: f64 = 2251799813685248.0;
+
+/// Append the text of a number (`to_text`) to `out`.
+pub fn push_text(out: &mut String, x: f64) {
+    if x.fract() == 0.0 && x.abs() <= MAX_WHOLE {
+        // A whole number: its digits, written from the right.
+        let mut buf = [0u8; 20];
+        let mut i = buf.len();
+        let mut n = (x as i64).unsigned_abs();
+        loop {
+            i -= 1;
+            buf[i] = b'0' + (n % 10) as u8;
+            n /= 10;
+            if n == 0 {
+                break;
+            }
+        }
+        if x < 0.0 {
+            out.push('-');
+        }
+        for &b in &buf[i..] {
+            out.push(b as char);
+        }
+        return;
+    }
+    out.push_str(&to_text(x));
+}
+
 /// Number to text: ECMAScript's `Number::toString` (`01-language.md` 6.3).
 pub fn to_text(x: f64) -> String {
     if x == 0.0 {
         return "0".to_string();
+    }
+    // A whole number below 2^53 in magnitude: its integer digits are the
+    // shortest that read back (its neighbours are at most 1 away), and the
+    // text of 6.3 is the integer written out (n ≤ 16 ≤ 21).
+    if x.fract() == 0.0 && x.abs() <= MAX_WHOLE {
+        return (x as i64).to_string();
     }
     if x < 0.0 {
         return format!("-{}", to_text(-x));
@@ -139,7 +184,13 @@ pub fn to_text(x: f64) -> String {
     let e = format!("{x:e}");
     let (mant, exp) = e.split_once('e').unwrap_or((&e, "0"));
     let digits: String = mant.chars().filter(|c| *c != '.').collect();
-    let digits = even_tie(x, digits, exp);
+    // Two shortest texts equally near exist only for doubles in
+    // [2^30, 2^51) (`suite/core-run/number-text-ties.json`).
+    let digits = if (TIE_LOW..TIE_HIGH).contains(&x) {
+        even_tie(x, digits, exp)
+    } else {
+        digits
+    };
     let k = digits.len() as i64;
     let n = exp.parse::<i64>().unwrap_or(0) + 1;
     if k <= n && n <= 21 {
@@ -165,9 +216,10 @@ pub fn to_text(x: f64) -> String {
 /// `5`; then the shortest is the truncation or one more than it.
 fn even_tie(x: f64, digits: String, exp: &str) -> String {
     let k = digits.len();
-    // The exact decimal value of `x`: a double has at most 767 significant
-    // digits, so this precision is exact.
-    let exact = format!("{x:.800e}");
+    // The exact decimal value of `x`: below 2^51 a double has at most 16
+    // integer digits and, at or above 2^30, at most 22 binary and so 22
+    // decimal fraction digits, so 40 significant digits are exact.
+    let exact = format!("{x:.40e}");
     let (em, ee) = exact.split_once('e').unwrap_or((&exact, "0"));
     if ee != exp {
         return digits;
@@ -280,6 +332,86 @@ mod tests {
             (9007199254740991.0 / 6.0, "1501199875790165.2"),
         ] {
             assert_eq!(to_text(x), t);
+        }
+    }
+
+    /// The text by the full search, with the tie test at the exact value
+    /// for every double: the oracle of the fast paths of `to_text`.
+    fn to_text_full(x: f64) -> String {
+        if x == 0.0 {
+            return "0".to_string();
+        }
+        if x < 0.0 {
+            return format!("-{}", to_text_full(-x));
+        }
+        let e = format!("{x:e}");
+        let (mant, exp) = e.split_once('e').unwrap_or((&e, "0"));
+        let digits: String = mant.chars().filter(|c| *c != '.').collect();
+        let k0 = digits.len();
+        let exact = format!("{x:.800e}");
+        let (em, ee) = exact.split_once('e').unwrap_or((&exact, "0"));
+        let ed: String = em.chars().filter(|c| *c != '.').collect();
+        let ed = ed.trim_end_matches('0');
+        let tie = ee == exp && ed.len() == k0 + 1 && ed.ends_with('5');
+        if tie {
+            assert!(
+                (TIE_LOW..TIE_HIGH).contains(&x),
+                "a tie outside the range: {x:e}"
+            );
+        }
+        let digits = if tie {
+            even_tie(x, digits, exp)
+        } else {
+            digits
+        };
+        let k = digits.len() as i64;
+        let n = exp.parse::<i64>().unwrap_or(0) + 1;
+        if k <= n && n <= 21 {
+            format!("{digits}{}", "0".repeat((n - k) as usize))
+        } else if 0 < n && n <= 21 {
+            format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
+        } else if -6 < n && n <= 0 {
+            format!("0.{}{digits}", "0".repeat((-n) as usize))
+        } else {
+            let sign = if n > 0 { '+' } else { '-' };
+            let rest = if k > 1 {
+                format!(".{}", &digits[1..])
+            } else {
+                String::new()
+            };
+            format!("{}{rest}e{sign}{}", &digits[..1], (n - 1).abs())
+        }
+    }
+
+    #[test]
+    fn fast_paths_agree_with_the_full_search() {
+        // A fixed generator: any double by its bits, whole numbers, and
+        // doubles of few fraction bits near the tie range.
+        let mut s: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s
+        };
+        for i in 0..200_000u32 {
+            let r = next();
+            let x = match i % 4 {
+                0 => f64::from_bits(r),
+                1 => (r >> (11 + r % 40)) as f64,
+                2 => (r >> 12) as f64 / (1u64 << (r % 30)) as f64,
+                _ => (r >> 11) as f64 / (1u64 << (r % 64)) as f64,
+            };
+            if !x.is_finite() {
+                continue;
+            }
+            for x in [x, -x] {
+                let full = to_text_full(x);
+                assert_eq!(to_text(x), full, "{x:e}");
+                let mut pushed = String::from("<");
+                push_text(&mut pushed, x);
+                assert_eq!(pushed, format!("<{full}"), "{x:e}");
+            }
         }
     }
 

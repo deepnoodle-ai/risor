@@ -431,14 +431,14 @@ impl<'h> Run<'h> {
     pub(super) fn lib_function(
         &mut self,
         idx: usize,
-        args: Vec<Arg<'h>>,
+        args: &[Arg<'h>],
         span: Span,
     ) -> R<'h, Value<'h>> {
         let rec = &records()[idx];
         let name = rec.name.as_str();
-        self.arg_tests(rec, &args, span)?;
+        self.arg_tests(rec, args, span)?;
         self.charge(1)?;
-        let x = self.val(&args, 0).unwrap_or(Value::Null);
+        let x = self.val(args, 0).unwrap_or(Value::Null);
         let num = |v: &Value<'h>| match v {
             Value::Num(n) => *n,
             _ => 0.0,
@@ -500,7 +500,7 @@ impl<'h> Run<'h> {
             "fail" => {
                 let mut f = fail("failed", "default", span, vec![]);
                 f.text = Some(x.as_str().unwrap_or_default().to_string());
-                f.data = Some(self.val(&args, 1).unwrap_or(Value::Null));
+                f.data = Some(self.val(args, 1).unwrap_or(Value::Null));
                 Err(f)
             }
             "abs" => Ok(Value::Num(number::neg(-num(&x)).abs())),
@@ -519,7 +519,7 @@ impl<'h> Run<'h> {
             }
             "min" | "max" => {
                 let vals: Vec<Value<'h>> =
-                    (0..args.len()).filter_map(|i| self.val(&args, i)).collect();
+                    (0..args.len()).filter_map(|i| self.val(args, i)).collect();
                 let s = sz_all(vals.iter().filter_map(|v| v.as_str()));
                 self.charge(vals.len() as u64 - 1 + s)?;
                 let want = if name == "min" {
@@ -536,7 +536,7 @@ impl<'h> Run<'h> {
                 Ok(best)
             }
             "range" => {
-                let (a, b) = match self.val(&args, 1) {
+                let (a, b) = match self.val(args, 1) {
                     Some(b) => (num(&x), num(&b)),
                     None => (0.0, num(&x)),
                 };
@@ -548,7 +548,7 @@ impl<'h> Run<'h> {
                 ))
             }
             "fixed" => {
-                let d = num(&self.val(&args, 1).unwrap_or(Value::Null));
+                let d = num(&self.val(args, 1).unwrap_or(Value::Null));
                 if !(0.0..=20.0).contains(&d) {
                     return Err(fail(
                         "invalid-argument",
@@ -572,7 +572,7 @@ impl<'h> Run<'h> {
             // F13 3: the value test, the 200 steps, then the result.
             n if n.starts_with("math.") && n != "math.sqrt" => {
                 let a: Vec<f64> = (0..args.len())
-                    .map(|i| self.val(&args, i).map_or(0.0, |v| num(&v)))
+                    .map(|i| self.val(args, i).map_or(0.0, |v| num(&v)))
                     .collect();
                 if crate::math::not_real(n, &a) {
                     return Err(fail(
@@ -599,21 +599,21 @@ impl<'h> Run<'h> {
         &mut self,
         idx: usize,
         recv: Value<'h>,
-        args: Vec<Arg<'h>>,
+        args: &[Arg<'h>],
         span: Span,
         measure: u32,
     ) -> R<'h, Value<'h>> {
         let rec = &records()[idx];
-        self.arg_tests(rec, &args, span)?;
+        self.arg_tests(rec, args, span)?;
         self.charge(1)?;
         match rec.receiver {
-            Some(Kind::String) => self.string_method(rec, recv, &args, span),
+            Some(Kind::String) => self.string_method(rec, recv, args, span),
             Some(Kind::Map) if rec.name == "mapValues" => {
-                self.map_values(recv, &args, span, measure)
+                self.map_values(recv, args, span, measure)
             }
             Some(Kind::Map) => self.map_method(rec, recv, span),
-            _ if rec.queries => self.query_method(rec, recv, &args, span, measure),
-            _ => self.list_method(rec, recv, &args, span, measure),
+            _ if rec.queries => self.query_method(rec, recv, args, span, measure),
+            _ => self.list_method(rec, recv, args, span, measure),
         }
     }
 
@@ -801,7 +801,7 @@ impl<'h> Run<'h> {
                 "mapValues",
                 i,
                 f,
-                &[v, Value::Str(k.clone())],
+                &mut [v, Value::Str(k.clone())],
                 measure,
                 span,
             )?;
@@ -833,7 +833,7 @@ impl<'h> Run<'h> {
                 name,
                 i,
                 f,
-                &[e.clone(), Value::Num(i as f64)],
+                &mut [e.clone(), Value::Num(i as f64)],
                 measure,
                 span,
             )?;
@@ -904,10 +904,10 @@ impl<'h> Run<'h> {
             }
             _ => {
                 // countBy
-                let mut counts: HashMap<String, (Str<'h>, u64)> = HashMap::new();
-                for k in keys {
+                let mut counts: HashMap<&str, (Str<'h>, u64)> = HashMap::new();
+                for k in &keys {
                     if let Value::Str(s) = k {
-                        counts.entry(s.as_str().to_string()).or_insert((s, 0)).1 += 1;
+                        counts.entry(s.as_str()).or_insert_with(|| (s.clone(), 0)).1 += 1;
                     }
                 }
                 let g = counts.len() as u64;
@@ -970,25 +970,58 @@ impl<'h> Run<'h> {
                 let mut out: Vec<Value<'h>> = Vec::new();
                 let mut keys: Vec<Value<'h>> = Vec::new();
                 let mut counted = 0usize;
+                #[derive(Clone, Copy, PartialEq)]
+                enum Op {
+                    Map,
+                    Filter,
+                    FlatMap,
+                    Some,
+                    Every,
+                    Find,
+                    Count,
+                    GroupBy,
+                    SortBy,
+                }
+                let op = match name {
+                    "map" => {
+                        out.reserve(n);
+                        Op::Map
+                    }
+                    "filter" => Op::Filter,
+                    "flatMap" => Op::FlatMap,
+                    "some" => Op::Some,
+                    "every" => Op::Every,
+                    "find" => Op::Find,
+                    "count" => Op::Count,
+                    "groupBy" => Op::GroupBy,
+                    _ => Op::SortBy,
+                };
                 for i in 0..n {
                     self.charge(2)?;
                     let e = self.read(recv.elem(i), span)?;
+                    // The element is kept only where the result uses it.
+                    let keep = matches!(op, Op::Filter | Op::Find | Op::GroupBy | Op::SortBy);
+                    let (arg, e) = if keep {
+                        (e.clone(), e)
+                    } else {
+                        (e, Value::Null)
+                    };
                     let r = self.invoke_for(
                         name,
                         i,
                         f,
-                        &[e.clone(), Value::Num(i as f64)],
+                        &mut [arg, Value::Num(i as f64)],
                         measure,
                         span,
                     )?;
-                    match name {
-                        "map" => out.push(r),
-                        "filter" => {
+                    match op {
+                        Op::Map => out.push(r),
+                        Op::Filter => {
                             if r.truthy() {
                                 out.push(e)
                             }
                         }
-                        "flatMap" => {
+                        Op::FlatMap => {
                             if r.kind() != Kind::List {
                                 return Err(fail(
                                     "wrong-kind",
@@ -1001,11 +1034,11 @@ impl<'h> Run<'h> {
                                 out.push(r.elem(j));
                             }
                         }
-                        "some" if r.truthy() => return Ok(Value::Bool(true)),
-                        "every" if !r.truthy() => return Ok(Value::Bool(false)),
-                        "find" if r.truthy() => return Ok(e),
-                        "count" => counted += r.truthy() as usize,
-                        "groupBy" => {
+                        Op::Some if r.truthy() => return Ok(Value::Bool(true)),
+                        Op::Every if !r.truthy() => return Ok(Value::Bool(false)),
+                        Op::Find if r.truthy() => return Ok(e),
+                        Op::Count => counted += r.truthy() as usize,
+                        Op::GroupBy => {
                             if r.kind() != Kind::String {
                                 return Err(fail(
                                     "wrong-kind",
@@ -1017,7 +1050,7 @@ impl<'h> Run<'h> {
                             keys.push(r);
                             out.push(e);
                         }
-                        "sortBy" => {
+                        Op::SortBy => {
                             keys.push(r);
                             out.push(e);
                         }
@@ -1097,7 +1130,7 @@ impl<'h> Run<'h> {
                         name,
                         i,
                         f,
-                        &[acc, e, Value::Num(i as f64)],
+                        &mut [acc, e, Value::Num(i as f64)],
                         measure,
                         span,
                     )?;

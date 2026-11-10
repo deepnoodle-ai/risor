@@ -50,11 +50,19 @@ pub fn weight(s: &str) -> u64 {
 
 /// The size of a string: its weight divided by 64, rounded down.
 pub fn size(s: &str) -> u64 {
+    // The weight is at most the count of UTF-8 bytes.
+    if s.len() < 64 {
+        return 0;
+    }
     weight(s) / 64
 }
 
 /// The size of the longest common prefix of two strings.
 pub fn lcp_size(a: &str, b: &str) -> u64 {
+    // The prefix's weight is at most the shorter text's count of bytes.
+    if a.len().min(b.len()) < 64 {
+        return 0;
+    }
     let mut w = 0;
     for (x, y) in a.chars().zip(b.chars()) {
         if x != y {
@@ -79,6 +87,7 @@ pub fn log2_ceil(n: u64) -> u64 {
     }
 }
 
+#[inline]
 pub fn is_whole(x: f64) -> bool {
     x.fract() == 0.0 && x.abs() <= MAX_WHOLE
 }
@@ -165,7 +174,8 @@ pub enum Value<'h> {
     Map(Rc<MapVal<'h>>),
     HList(&'h dyn HostList),
     HMap(&'h dyn HostMap),
-    Opaque(OpaqueRef),
+    /// Behind `Rc`, so that a value is small.
+    Opaque(Rc<OpaqueRef>),
     /// A host number that cannot enter. Reading it fails.
     BadNum,
 }
@@ -322,7 +332,7 @@ impl<'h> Value<'h> {
                     .map(|(k, v)| (Str::new(k.clone()), Value::from_data(v)))
                     .collect(),
             ))),
-            Data::Opaque(o) => Value::Opaque(o.clone()),
+            Data::Opaque(o) => Value::Opaque(Rc::new(o.clone())),
         }
     }
 
@@ -351,7 +361,7 @@ impl<'h> Value<'h> {
                     .map(|(k, v)| (k.as_str().to_string(), v.to_data_at(depth + 1)))
                     .collect(),
             ),
-            Value::Opaque(o) => Data::Opaque(o.clone()),
+            Value::Opaque(o) => Data::Opaque(OpaqueRef::clone(o)),
         }
     }
 }
@@ -391,7 +401,7 @@ pub fn from_view<'h>(v: View<'h>) -> Value<'h> {
         View::Str(s) => Value::Str(Str::Lent(s)),
         View::List(l) => Value::HList(l),
         View::Map(m) => Value::HMap(m),
-        View::Opaque(o) => Value::Opaque(o),
+        View::Opaque(o) => Value::Opaque(Rc::new(o)),
     }
 }
 

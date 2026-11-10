@@ -36,6 +36,7 @@ specification, not here. This file records the crate's own choices.
 | `src/env.rs` | S2 | `Env`, `EnvBuilder`, `Limits`, host functions and methods, the `declare` errors |
 | `src/compile.rs` | S2 | Name resolution to fixed slots, the depth measure of each call, the static rules |
 | `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
+| `src/eval/code.rs` | — | The compiled form of the hot node kinds: a tree of closures built with the program, which the walk tries first |
 | `src/eval/lib.rs` | S3 | The 53 library entries, their argument tests from the records' signatures, and the table of formulas a test holds equal to `library.json` |
 | `src/casemap.rs` | S3 | The case table, from `suite/casemap.json` |
 | `src/check/ty.rs` | S4 | Types (`05-types.md` 2): Join, Fits, Merge, Truthy, Falsy, the helpers of 4.5, printing (3.9), and reading type text |
@@ -173,6 +174,35 @@ operators, the steps of a chain, the `else` of `? :` and of `if`, `const`
 lines, `match` arms) is evaluated by a loop over its spine, so the evaluator's
 recursion is bounded by the source nesting times the call depth, which the
 depth limit bounds.
+
+### The compiled form
+
+`compile` also builds, for the hot node kinds, a closure per node
+(`src/eval/code.rs`): literals, names, operators, conditionals, chains of
+field reads, `const` lines, list literals and templates. A closure does
+what the walk does for its node, in the same order and with the same
+charges, but reaches its children directly; `Run::eval` tries a node's
+closure first and walks the node when it has none. The walk stays the
+definition of every form, and every failure is built by the walk's own
+functions.
+
+- **Stack.** A closure recurses where the walk loops (an operator chain, a
+  chain's steps, an `else` chain), so a node gets a closure only when its
+  subtree is at most 48 levels deep. Above that, the walk runs the node as
+  before.
+- **Lambdas.** For a lambda whose parameters are all plain names,
+  `Program::params` holds their slots, so a call binds them without the walk
+  of patterns. Arguments are moved into the slots, not copied.
+- **Per-run cost.** A value is 24 bytes (an opaque value is behind `Rc`). A
+  run's slots and the variables it reads share one buffer; that buffer and
+  the text buffer of templates are kept by the thread from one run to the
+  next, empty. A run asks the host for each variable once, as before
+  (`03-host.md` 3.4.1), with two bit sets for read and missing. A library
+  call of up to three arguments holds them on the stack.
+- **Numbers to text.** A whole number below 2^53 is written as an integer.
+  The test for a tie between two shortest texts runs only in [2^30, 2^51),
+  where `suite/core-run/number-text-ties.json` places every tie; a unit test
+  compares both shortcuts with the full search over 200,000 doubles.
 
 ## Stack
 

@@ -7,6 +7,7 @@
 //! `match` arms. So the evaluator's recursion follows the source nesting and
 //! the calls in progress, which the depth limit bounds (8.5 item 3).
 
+pub(crate) mod code;
 mod groups;
 pub mod lib;
 
@@ -202,7 +203,7 @@ impl Fail<'_> {
     }
 }
 
-type R<'h, T> = Result<T, Box<Fail<'h>>>;
+pub(crate) type R<'h, T> = Result<T, Box<Fail<'h>>>;
 
 /// Options of one run.
 #[derive(Clone, Default)]
@@ -225,12 +226,17 @@ impl Program {
 
     pub fn run_with<'h>(&'h self, vars: &'h dyn Vars, opts: RunOptions) -> Outcome<'h> {
         let limits = self.env.data().limits;
+        let nvars = self.env.data().vars.len();
+        let bufs = BUFS.with(|c| c.take());
         let mut run = Run {
             p: self,
             ast: &self.parsed.ast,
             vars,
-            slots: vec![Value::Null; self.slots],
-            cache: vec![None; self.env.data().vars.len()],
+            // The slots, then the variables as they are read.
+            slots: bufs.slots,
+            var_base: self.slots,
+            vars_read: Bits::new(nvars),
+            vars_missing: Bits::new(nvars),
             m: Meter {
                 steps: 0,
                 units: 0,
@@ -242,10 +248,23 @@ impl Program {
                 stop: None,
             },
             json_mode: false,
+            scratch: bufs.scratch,
+            in_buf: Vec::new(),
         };
+        run.slots.resize_with(self.slots + nvars, || Value::Null);
         // `02-evaluation.md` 8.4: handing the result over is not a read, so the run
         // makes no walk of it.
         let result = run.eval(self.parsed.ast.root);
+        let mut scratch = std::mem::take(&mut run.scratch);
+        scratch.clear();
+        if scratch.capacity() > 65536 {
+            scratch = String::new();
+        }
+        let bufs = Bufs {
+            slots: recast(std::mem::take(&mut run.slots)),
+            scratch,
+        };
+        BUFS.with(|c| c.set(bufs));
         Outcome {
             usage: Usage {
                 steps: run.m.steps,
@@ -263,16 +282,25 @@ enum Arg<'h> {
     Lam(NodeId),
 }
 
-struct Run<'h> {
+pub(crate) struct Run<'h> {
     p: &'h Program,
     ast: &'h Ast,
     vars: &'h dyn Vars,
     slots: Vec<Value<'h>>,
-    cache: Vec<Option<Option<Value<'h>>>>,
+    /// Where the variables' values start in `slots`.
+    var_base: usize,
+    /// The variables asked of the host, and those it did not have: a run
+    /// asks for each name at most once (`03-host.md` 3.4.1).
+    vars_read: Bits,
+    vars_missing: Bits,
     m: Meter,
     /// F6: the rendering walk of `json.stringify`, whose opaque failure has
     /// the template `json` (`f06-groups.md` 6.1 item 5).
     json_mode: bool,
+    /// The elements of a list literal tested by `in`, kept for reuse.
+    in_buf: Vec<Value<'h>>,
+    /// A buffer for building text, kept for reuse.
+    scratch: String,
 }
 
 /// The walk's meter in a run: the run's steps and depth count (F4 5.3,
@@ -319,6 +347,8 @@ fn op_text(op: BinaryOp) -> &'static str {
     }
 }
 
+#[cold]
+#[inline(never)]
 fn fail<'h>(
     code: &'static str,
     template: &'static str,
@@ -341,6 +371,8 @@ fn fail<'h>(
 impl<'h> Run<'h> {
     // ---- charges ------------------------------------------------------
 
+    #[cold]
+    #[inline(never)]
     fn limit(&self, code: &'static str, span: Option<Span>) -> Box<Fail<'h>> {
         let l = &self.m.limits;
         let limit = match code {
@@ -380,6 +412,8 @@ impl<'h> Run<'h> {
         Ok(())
     }
 
+    #[cold]
+    #[inline(never)]
     fn host_number(&self, span: Option<Span>) -> Box<Fail<'h>> {
         Box::new(Fail {
             code: "number-range",
@@ -402,6 +436,8 @@ impl<'h> Run<'h> {
         }
     }
 
+    #[cold]
+    #[inline(never)]
     fn internal(&self, span: Span) -> Box<Fail<'h>> {
         fail("internal-error", "default", span, Vec::new())
     }
@@ -412,9 +448,27 @@ impl<'h> Run<'h> {
 
     // ---- the walk -------------------------------------------------------
 
-    fn eval(&mut self, mut id: NodeId) -> R<'h, Value<'h>> {
+    /// Evaluate a node: by its closure when it has one (`code.rs`), else by
+    /// the walk.
+    #[inline]
+    fn eval(&mut self, id: NodeId) -> R<'h, Value<'h>> {
+        if let Some(Some(c)) = self.p.code.get(id.index()) {
+            return c(self);
+        }
+        self.walk(id)
+    }
+
+    #[inline(never)]
+    fn walk(&mut self, mut id: NodeId) -> R<'h, Value<'h>> {
         let ast = self.ast;
+        let mut first = true;
         loop {
+            if !first {
+                if let Some(Some(c)) = self.p.code.get(id.index()) {
+                    return c(self);
+                }
+            }
+            first = false;
             let node = &ast.nodes[id.index()];
             match &node.kind {
                 NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
@@ -428,7 +482,7 @@ impl<'h> Run<'h> {
                 NodeKind::Bool { value } => return Ok(Value::Bool(*value)),
                 NodeKind::Null => return Ok(Value::Null),
                 NodeKind::Template { parts } => return self.template(node.span, parts),
-                NodeKind::Ident { name } => return self.ident(id, name),
+                NodeKind::Ident { .. } => return self.ident(id),
                 NodeKind::List { items } => return self.list(items),
                 NodeKind::Map { entries } => return self.map(entries),
                 NodeKind::Unary { op, x } => {
@@ -508,26 +562,52 @@ impl<'h> Run<'h> {
         self.bind_pattern(*pattern, v)
     }
 
-    fn ident(&mut self, id: NodeId, name: &'h str) -> R<'h, Value<'h>> {
+    /// The read of variable `v`, written at `id`. The host is asked for it
+    /// at its first read only.
+    #[inline]
+    fn var(&mut self, v: usize, id: NodeId) -> R<'h, Value<'h>> {
+        if !self.vars_read.test(v) {
+            self.fetch_var(v, id);
+        }
+        match &self.slots[self.var_base + v] {
+            _ if self.vars_missing.test(v) => Err(self.missing_var(id)),
+            Value::BadNum => Err(self.host_number(Some(self.ast.span(id)))),
+            x => Ok(x.clone()),
+        }
+    }
+
+    #[inline(never)]
+    fn fetch_var(&mut self, v: usize, id: NodeId) {
+        self.vars_read.set(v);
+        let NodeKind::Ident { name } = self.ast.kind(id) else {
+            return;
+        };
+        match self.vars.get(name) {
+            Some(got) => self.slots[self.var_base + v] = from_view(got),
+            None => self.vars_missing.set(v),
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn missing_var(&self, id: NodeId) -> Box<Fail<'h>> {
+        let name = match self.ast.kind(id) {
+            NodeKind::Ident { name } => name.clone(),
+            _ => String::new(),
+        };
+        fail(
+            "missing-variable",
+            "default",
+            self.ast.span(id),
+            vec![("name", name)],
+        )
+    }
+
+    fn ident(&mut self, id: NodeId) -> R<'h, Value<'h>> {
         let span = self.ast.span(id);
         match self.res(id) {
             Res::Slot(s) => Ok(self.slots[*s as usize].clone()),
-            Res::Var(v) => {
-                let v = *v as usize;
-                if self.cache[v].is_none() {
-                    let got = self.vars.get(name).map(from_view);
-                    self.cache[v] = Some(got);
-                }
-                match self.cache[v].clone().flatten() {
-                    Some(val) => self.read(val, span),
-                    None => Err(fail(
-                        "missing-variable",
-                        "default",
-                        span,
-                        vec![("name", name.to_string())],
-                    )),
-                }
-            }
+            Res::Var(v) => self.var(*v as usize, id),
             _ => Err(self.internal(span)),
         }
     }
@@ -535,7 +615,10 @@ impl<'h> Run<'h> {
     // ---- literals -------------------------------------------------------
 
     fn template(&mut self, span: Span, parts: &'h [TemplatePart]) -> R<'h, Value<'h>> {
-        let mut out = String::new();
+        // The text is built in the run's scratch buffer, then copied once
+        // into the string.
+        let mut out = std::mem::take(&mut self.scratch);
+        out.clear();
         for p in parts {
             match p {
                 TemplatePart::Text(t) => out.push_str(t),
@@ -545,10 +628,18 @@ impl<'h> Run<'h> {
                 }
             }
         }
+        self.template_done(out)
+    }
+
+    /// The end of a template: the charge, then the string; the buffer goes
+    /// back to the run.
+    fn template_done(&mut self, out: String) -> R<'h, Value<'h>> {
         let sz = size(&out);
         self.charge(1 + sz)?;
         self.alloc(1 + sz)?;
-        Ok(Value::str(out))
+        let v = Value::Str(Str::Rc(Rc::from(out.as_str())));
+        self.scratch = out;
+        Ok(v)
     }
 
     /// The rendering of a value, and its walk (`02-evaluation.md` 5.5).
@@ -565,7 +656,7 @@ impl<'h> Run<'h> {
                     out.push('"');
                 }
             }
-            Value::Num(n) => out.push_str(&number::to_text(*n)),
+            Value::Num(n) => number::push_text(out, *n),
             Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
             Value::Null => {
                 if !top {
@@ -737,7 +828,15 @@ impl<'h> Run<'h> {
 
     /// A chain of binary operators along its left operands, by a loop.
     fn binary(&mut self, id: NodeId) -> R<'h, Value<'h>> {
-        let mut stack = Vec::new();
+        let NodeKind::Binary { x, .. } = self.ast.kind(id) else {
+            unreachable!()
+        };
+        // The common case: a left operand that is not itself an operator.
+        if !matches!(self.ast.kind(*x), NodeKind::Binary { .. }) {
+            let v = self.eval(*x)?;
+            return self.binary_step(id, v);
+        }
+        let mut stack = Spine::new();
         let mut n = id;
         while let NodeKind::Binary { x, .. } = self.ast.kind(n) {
             stack.push(n);
@@ -745,41 +844,92 @@ impl<'h> Run<'h> {
         }
         let mut v = self.eval(n)?;
         while let Some(b) = stack.pop() {
-            let NodeKind::Binary { op, y, .. } = self.ast.kind(b) else {
-                unreachable!()
-            };
-            let span = self.ast.span(b);
-            v = match op {
-                BinaryOp::And => {
-                    if v.truthy() {
-                        self.eval(*y)?
-                    } else {
-                        v
-                    }
-                }
-                BinaryOp::Or => {
-                    if v.truthy() {
-                        v
-                    } else {
-                        self.eval(*y)?
-                    }
-                }
-                BinaryOp::Coalesce => {
-                    if v.is_null() {
-                        self.eval(*y)?
-                    } else {
-                        v
-                    }
-                }
-                _ => {
-                    let r = self.eval(*y)?;
-                    self.binop(*op, v, r, span)?
-                }
-            };
+            v = self.binary_step(b, v)?;
         }
         Ok(v)
     }
 
+    /// One operator of a chain, its left operand evaluated.
+    #[inline]
+    fn binary_step(&mut self, b: NodeId, v: Value<'h>) -> R<'h, Value<'h>> {
+        let NodeKind::Binary { op, y, .. } = self.ast.kind(b) else {
+            unreachable!()
+        };
+        let op = *op;
+        match op {
+            BinaryOp::And => {
+                if v.truthy() {
+                    self.eval(*y)
+                } else {
+                    Ok(v)
+                }
+            }
+            BinaryOp::Or => {
+                if v.truthy() {
+                    Ok(v)
+                } else {
+                    self.eval(*y)
+                }
+            }
+            BinaryOp::Coalesce => {
+                if v.is_null() {
+                    self.eval(*y)
+                } else {
+                    Ok(v)
+                }
+            }
+            _ => {
+                let r = self.eval(*y)?;
+                self.operate(op, v, r, self.ast.span(b))
+            }
+        }
+    }
+
+    /// An operator that is not `&&`, `||` or `??`, on its two operands.
+    #[inline]
+    fn operate(
+        &mut self,
+        op: BinaryOp,
+        v: Value<'h>,
+        r: Value<'h>,
+        span: Span,
+    ) -> R<'h, Value<'h>> {
+        // Two numbers: the charge of 1, then the operation, as `binop` does
+        // it.
+        if let (Value::Num(a), Value::Num(c)) = (&v, &r) {
+            let (a, c) = (*a, *c);
+            let quick = match op {
+                BinaryOp::Lt => Some(Value::Bool(a < c)),
+                BinaryOp::Le => Some(Value::Bool(a <= c)),
+                BinaryOp::Gt => Some(Value::Bool(a > c)),
+                BinaryOp::Ge => Some(Value::Bool(a >= c)),
+                BinaryOp::Eq => Some(Value::Bool(a == c)),
+                BinaryOp::Ne => Some(Value::Bool(a != c)),
+                // A result that fails is left to `binop`, which charges
+                // first and then fails.
+                BinaryOp::Add => number::add(a, c).ok().map(Value::Num),
+                BinaryOp::Sub => number::sub(a, c).ok().map(Value::Num),
+                BinaryOp::Mul => number::mul(a, c).ok().map(Value::Num),
+                BinaryOp::Div => number::div(a, c).ok().map(Value::Num),
+                BinaryOp::Rem => number::rem(a, c).ok().map(Value::Num),
+                _ => None,
+            };
+            if let Some(q) = quick {
+                self.charge(1)?;
+                return Ok(q);
+            }
+        }
+        // Two strings, `==` or `!=`: as `eq` charges them.
+        if let (Value::Str(a), Value::Str(c), BinaryOp::Eq | BinaryOp::Ne) = (&v, &r, op) {
+            let (a, c) = (a.as_str(), c.as_str());
+            self.charge(1 + lcp_size(a, c))?;
+            return Ok(Value::Bool((a == c) == (op == BinaryOp::Eq)));
+        }
+        self.binop(op, v, r, span)
+    }
+
+    #[cold]
+    #[inline(never)]
     fn operands(&self, op: BinaryOp, a: &Value<'h>, b: &Value<'h>, span: Span) -> Box<Fail<'h>> {
         if a.is_null() || b.is_null() {
             return fail(
@@ -822,6 +972,7 @@ impl<'h> Run<'h> {
         }
     }
 
+    #[inline(never)]
     fn binop(&mut self, op: BinaryOp, a: Value<'h>, b: Value<'h>, span: Span) -> R<'h, Value<'h>> {
         match op {
             BinaryOp::Eq | BinaryOp::Ne => {
@@ -841,10 +992,7 @@ impl<'h> Run<'h> {
                     let sz = (weight(x.as_str()) + weight(y.as_str())) / 64;
                     self.charge(1 + sz)?;
                     self.alloc(1 + sz)?;
-                    let mut s = String::with_capacity(x.as_str().len() + y.as_str().len());
-                    s.push_str(x.as_str());
-                    s.push_str(y.as_str());
-                    Ok(Value::str(s))
+                    Ok(Value::Str(Str::Rc(concat(x.as_str(), y.as_str()))))
                 }
                 _ => Err(self.operands(op, &a, &b, span)),
             },
@@ -964,6 +1112,56 @@ impl<'h> Run<'h> {
         }
     }
 
+    /// `x in [a, b, ...]` with no spread: the items evaluated, the list's
+    /// units charged, then each element tested, as for the list built.
+    fn in_literal(&mut self, x: &Value<'h>, items: &[code::Code], span: Span) -> R<'h, bool> {
+        let mut vals = std::mem::take(&mut self.in_buf);
+        vals.clear();
+        let found = self.in_items(x, items, &mut vals, span);
+        vals.clear();
+        self.in_buf = vals;
+        found
+    }
+
+    fn in_items(
+        &mut self,
+        x: &Value<'h>,
+        items: &[code::Code],
+        vals: &mut Vec<Value<'h>>,
+        span: Span,
+    ) -> R<'h, bool> {
+        for i in items {
+            vals.push(i(self)?);
+        }
+        self.alloc(1 + vals.len() as u64)?;
+        for e in vals.iter() {
+            if self.in_elem(x, e, span)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// One element of a list tested by `in`: 1 step, then the comparison.
+    #[inline]
+    fn in_elem(&mut self, x: &Value<'h>, e: &Value<'h>, span: Span) -> R<'h, bool> {
+        self.charge(1)?;
+        Ok(match (x, e) {
+            (Value::Str(a), Value::Str(b)) => {
+                self.charge(lcp_size(a.as_str(), b.as_str()))?;
+                a.as_str() == b.as_str()
+            }
+            _ if x.kind() == e.kind() && matches!(x.kind(), Kind::List | Kind::Map) => {
+                if x.len() == e.len() {
+                    self.eq(x, e, span)?
+                } else {
+                    false
+                }
+            }
+            _ => x.kind() == e.kind() && scalar_eq(x, e),
+        })
+    }
+
     /// `x in y` (`01-language.md` 6.8; `02-evaluation.md` 5.3).
     fn contains(&mut self, op: BinaryOp, x: &Value<'h>, y: &Value<'h>, span: Span) -> R<'h, bool> {
         let opp = || vec![("op", op_text(op).to_string())];
@@ -973,22 +1171,7 @@ impl<'h> Run<'h> {
                 let n = y.len().unwrap_or(0);
                 for i in 0..n {
                     let e = self.read(y.elem(i), span)?;
-                    self.charge(1)?;
-                    let equal = match (x, &e) {
-                        (Value::Str(a), Value::Str(b)) => {
-                            self.charge(lcp_size(a.as_str(), b.as_str()))?;
-                            a.as_str() == b.as_str()
-                        }
-                        _ if x.kind() == e.kind() && matches!(x.kind(), Kind::List | Kind::Map) => {
-                            if x.len() == e.len() {
-                                self.eq(x, &e, span)?
-                            } else {
-                                false
-                            }
-                        }
-                        _ => x.kind() == e.kind() && scalar_eq(x, &e),
-                    };
-                    if equal {
+                    if self.in_elem(x, &e, span)? {
                         return Ok(true);
                     }
                 }
@@ -1030,7 +1213,7 @@ impl<'h> Run<'h> {
             NodeKind::OptChain { x } => *x,
             _ => top,
         };
-        let mut steps = Vec::new();
+        let mut steps = Spine::new();
         let mut n = inner;
         loop {
             match self.ast.kind(n) {
@@ -1054,7 +1237,7 @@ impl<'h> Run<'h> {
             }
         }
         let mut v = self.eval(n)?;
-        for &s in steps.iter().rev() {
+        while let Some(s) = steps.pop() {
             match self.step(s, v)? {
                 Some(nv) => v = nv,
                 None => return Ok(Value::Null),
@@ -1125,6 +1308,59 @@ impl<'h> Run<'h> {
         Ok(())
     }
 
+    /// A field read `.name` or `?.name`, the step of a chain. `None` is a
+    /// null receiver of an optional read.
+    #[inline]
+    fn member(
+        &mut self,
+        v: Value<'h>,
+        name: &str,
+        optional: bool,
+        span: Span,
+    ) -> R<'h, Option<Value<'h>>> {
+        match &v {
+            Value::Map(_) | Value::HMap(_) => {}
+            Value::Null if optional => return Ok(None),
+            _ => return Err(self.member_fail(&v, name, span)),
+        }
+        self.charge(1 + size(name))?;
+        let found = match &v {
+            Value::Map(m) => m.get(name).cloned(),
+            Value::HMap(m) => m.get(name).map(from_view),
+            _ => None,
+        };
+        match found {
+            Some(Value::BadNum) => Err(self.host_number(Some(span))),
+            Some(x) => Ok(Some(x)),
+            None if optional => Ok(Some(Value::Null)),
+            None => Err(fail(
+                "missing-field",
+                "field",
+                span,
+                vec![("name", name.to_string())],
+            )),
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn member_fail(&self, v: &Value<'h>, name: &str, span: Span) -> Box<Fail<'h>> {
+        if v.is_null() {
+            return fail(
+                "null-operand",
+                "field",
+                span,
+                vec![("name", name.to_string())],
+            );
+        }
+        fail(
+            "wrong-kind",
+            "field",
+            span,
+            vec![("name", name.to_string()), ("kind", kind_p(v))],
+        )
+    }
+
     fn step(&mut self, s: NodeId, v: Value<'h>) -> R<'h, Option<Value<'h>>> {
         let ast = self.ast;
         let span = ast.span(s);
@@ -1144,38 +1380,7 @@ impl<'h> Run<'h> {
             return Ok(Some(Value::list(out)));
         }
         match &ast.nodes[s.index()].kind {
-            NodeKind::Member { name, optional, .. } => {
-                if v.is_null() {
-                    if *optional {
-                        return Ok(None);
-                    }
-                    return Err(fail(
-                        "null-operand",
-                        "field",
-                        span,
-                        vec![("name", name.clone())],
-                    ));
-                }
-                if v.kind() != Kind::Map {
-                    return Err(fail(
-                        "wrong-kind",
-                        "field",
-                        span,
-                        vec![("name", name.clone()), ("kind", kind_p(&v))],
-                    ));
-                }
-                self.charge(1 + size(name))?;
-                match v.field(name) {
-                    Some(x) => Ok(Some(self.read(x, span)?)),
-                    None if *optional => Ok(Some(Value::Null)),
-                    None => Err(fail(
-                        "missing-field",
-                        "field",
-                        span,
-                        vec![("name", name.clone())],
-                    )),
-                }
-            }
+            NodeKind::Member { name, optional, .. } => self.member(v, name, *optional, span),
             NodeKind::Index {
                 index, optional, ..
             } => {
@@ -1320,19 +1525,49 @@ impl<'h> Run<'h> {
         }
     }
 
-    fn eval_args(&mut self, args: &'h [NodeId]) -> R<'h, Vec<Arg<'h>>> {
-        let mut out = Vec::with_capacity(args.len());
-        for &a in args {
-            if let NodeKind::Lambda { .. } = self.ast.kind(a) {
-                self.charge(1)?;
-                out.push(Arg::Lam(a));
-            } else if let Res::LambdaRef(l) = self.res(a) {
-                out.push(Arg::Lam(*l));
-            } else {
-                out.push(Arg::Val(self.eval(a)?));
+    /// One argument of a library call: a lambda written in place (1 step),
+    /// the name of one, or a value.
+    #[inline]
+    fn arg(&mut self, a: NodeId) -> R<'h, Arg<'h>> {
+        if let NodeKind::Lambda { .. } = self.ast.kind(a) {
+            self.charge(1)?;
+            Ok(Arg::Lam(a))
+        } else if let Res::LambdaRef(l) = self.res(a) {
+            Ok(Arg::Lam(*l))
+        } else {
+            Ok(Arg::Val(self.eval(a)?))
+        }
+    }
+
+    /// The arguments of a library call, left to right, handed to `f`. A
+    /// call of up to three arguments holds them in place.
+    fn with_args<T>(
+        &mut self,
+        args: &'h [NodeId],
+        f: impl FnOnce(&mut Self, &[Arg<'h>]) -> R<'h, T>,
+    ) -> R<'h, T> {
+        match *args {
+            [] => f(self, &[]),
+            [a] => {
+                let v = [self.arg(a)?];
+                f(self, &v)
+            }
+            [a, b] => {
+                let v = [self.arg(a)?, self.arg(b)?];
+                f(self, &v)
+            }
+            [a, b, c] => {
+                let v = [self.arg(a)?, self.arg(b)?, self.arg(c)?];
+                f(self, &v)
+            }
+            _ => {
+                let mut v = Vec::with_capacity(args.len());
+                for &a in args {
+                    v.push(self.arg(a)?);
+                }
+                f(self, &v)
             }
         }
-        Ok(out)
     }
 
     /// A method call: the method by the receiver's kind, the shape test,
@@ -1438,9 +1673,8 @@ impl<'h> Run<'h> {
                 }
             }
         }
-        let vals = self.eval_args(args)?;
         let measure = self.p.measure[s.index()] as u32;
-        self.lib_method(idx, recv, vals, span, measure)
+        self.with_args(args, |r, vals| r.lib_method(idx, recv, vals, span, measure))
     }
 
     // ---- calls ------------------------------------------------------------
@@ -1457,7 +1691,7 @@ impl<'h> Run<'h> {
                 self.charge(1)?;
                 let measure = self.p.measure[id.index()] as u32;
                 // `f08-errors.md` 4.1: in progress from its depth test to its end.
-                self.invoke(l, &vals, measure, span).map_err(|mut f| {
+                self.invoke(l, &mut vals, measure, span).map_err(|mut f| {
                     if let NodeKind::Call { name, .. } = self.ast.kind(id) {
                         f.trace.push((span, name.name.clone(), None));
                     }
@@ -1466,8 +1700,7 @@ impl<'h> Run<'h> {
             }
             Res::CallLib(i) => {
                 let i = *i as usize;
-                let vals = self.eval_args(args)?;
-                self.lib_function(i, vals, span)
+                self.with_args(args, |r, vals| r.lib_function(i, vals, span))
             }
             Res::CallHost(i) => {
                 let f = &self.p.env.data().functions[*i as usize];
@@ -1523,7 +1756,7 @@ impl<'h> Run<'h> {
         entry: &str,
         index: usize,
         l: NodeId,
-        args: &[Value<'h>],
+        args: &mut [Value<'h>],
         measure: u32,
         span: Span,
     ) -> R<'h, Value<'h>> {
@@ -1538,29 +1771,46 @@ impl<'h> Run<'h> {
     fn invoke(
         &mut self,
         l: NodeId,
-        args: &[Value<'h>],
+        args: &mut [Value<'h>],
         measure: u32,
         span: Span,
     ) -> R<'h, Value<'h>> {
         self.depth_test(measure, span)?;
         self.m.depth += measure;
+        let p = self.p;
         let ast = self.ast;
         let NodeKind::Lambda { params, body } = &ast.nodes[l.index()].kind else {
             return Err(self.internal(span));
         };
-        for (i, &p) in params.iter().enumerate() {
-            let NodeKind::Param { pattern, default } = ast.kind(p) else {
-                continue;
-            };
-            let a = args.get(i).cloned();
-            let v = match (a, default) {
-                (Some(v), _) if !v.is_null() => v,
-                (_, Some(d)) => self.eval(*d)?,
-                (a, None) => a.unwrap_or(Value::Null),
-            };
-            self.bind_pattern(*pattern, v)?;
+        if let Some(Some(slots)) = p.params.get(l.index()) {
+            // Each parameter a name with no default: the argument, or null.
+            for (i, s) in slots.iter().enumerate() {
+                let v = match args.get_mut(i) {
+                    Some(a) => std::mem::replace(a, Value::Null),
+                    None => Value::Null,
+                };
+                if let Some(s) = s {
+                    self.slots[*s as usize] = v;
+                }
+            }
+        } else {
+            for (i, &p) in params.iter().enumerate() {
+                let NodeKind::Param { pattern, default } = ast.kind(p) else {
+                    continue;
+                };
+                let a = args.get_mut(i).map(|a| std::mem::replace(a, Value::Null));
+                let v = match (a, default) {
+                    (Some(v), _) if !v.is_null() => v,
+                    (_, Some(d)) => self.eval(*d)?,
+                    (a, None) => a.unwrap_or(Value::Null),
+                };
+                self.bind_pattern(*pattern, v)?;
+            }
         }
-        let v = self.eval(*body)?;
+        let v = match p.code.get(body.index()) {
+            Some(Some(c)) => c(self)?,
+            _ => self.eval(*body)?,
+        };
         self.m.depth -= measure;
         Ok(v)
     }
@@ -1771,6 +2021,127 @@ impl<'h> Run<'h> {
     }
 }
 
+/// The buffers of a run, kept by the thread from one run to the next, empty,
+/// so that a run allocates none of them again. A buffer of `'static` values
+/// serves a run of any lifetime.
+#[derive(Default)]
+struct Bufs {
+    slots: Vec<Value<'static>>,
+    scratch: String,
+}
+
+thread_local! {
+    static BUFS: std::cell::Cell<Bufs> = const {
+        std::cell::Cell::new(Bufs {
+            slots: Vec::new(),
+            scratch: String::new(),
+        })
+    };
+}
+
+/// An empty vector of another element type, with the same allocation: a
+/// collect from a vector's own iterator into one of the same layout is done
+/// in place. A buffer too large to keep is dropped.
+fn recast<A, B>(mut v: Vec<A>) -> Vec<B> {
+    v.clear();
+    if v.capacity() > 4096 {
+        return Vec::new();
+    }
+    v.into_iter().filter_map(|_| None).collect()
+}
+
+/// The text of `a` then `b`, in one allocation when it is short.
+fn concat(a: &str, b: &str) -> Rc<str> {
+    let n = a.len() + b.len();
+    if n <= 256 {
+        let mut buf = [0u8; 256];
+        buf[..a.len()].copy_from_slice(a.as_bytes());
+        buf[a.len()..n].copy_from_slice(b.as_bytes());
+        // Two texts joined are text.
+        if let Ok(t) = std::str::from_utf8(&buf[..n]) {
+            return Rc::from(t);
+        }
+    }
+    let mut s = String::with_capacity(n);
+    s.push_str(a);
+    s.push_str(b);
+    Rc::from(s)
+}
+
+/// A set of small numbers: in place up to 64, else allocated.
+enum Bits {
+    Small(u64),
+    Large(Vec<bool>),
+}
+
+impl Bits {
+    fn new(n: usize) -> Bits {
+        if n <= 64 {
+            Bits::Small(0)
+        } else {
+            Bits::Large(vec![false; n])
+        }
+    }
+
+    #[inline]
+    fn test(&self, i: usize) -> bool {
+        match self {
+            Bits::Small(b) => b >> i & 1 == 1,
+            Bits::Large(v) => v[i],
+        }
+    }
+
+    #[inline]
+    fn set(&mut self, i: usize) {
+        match self {
+            Bits::Small(b) => *b |= 1 << i,
+            Bits::Large(v) => v[i] = true,
+        }
+    }
+}
+
+/// The nodes along the spine of a chain or of an operator chain: a stack
+/// that holds its first few in place, so that a short spine allocates
+/// nothing.
+struct Spine {
+    inline: [NodeId; 8],
+    len: usize,
+    spill: Vec<NodeId>,
+}
+
+impl Spine {
+    fn new() -> Spine {
+        Spine {
+            inline: [NodeId(0); 8],
+            len: 0,
+            spill: Vec::new(),
+        }
+    }
+
+    #[inline]
+    fn push(&mut self, n: NodeId) {
+        if self.len < 8 {
+            self.inline[self.len] = n;
+        } else {
+            self.spill.push(n);
+        }
+        self.len += 1;
+    }
+
+    #[inline]
+    fn pop(&mut self) -> Option<NodeId> {
+        if self.len == 0 {
+            return None;
+        }
+        self.len -= 1;
+        if self.len >= 8 {
+            self.spill.pop()
+        } else {
+            Some(self.inline[self.len])
+        }
+    }
+}
+
 fn scalar_eq(a: &Value<'_>, b: &Value<'_>) -> bool {
     match (a, b) {
         (Value::Null, Value::Null) => true,
@@ -1790,7 +2161,7 @@ pub fn to_json(v: &Value<'_>) -> Result<String, &'static str> {
         match v {
             Value::Null => out.push_str("null"),
             Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-            Value::Num(n) => out.push_str(&number::to_text(*n)),
+            Value::Num(n) => number::push_text(out, *n),
             Value::BadNum => return Err("number-range"),
             Value::Str(s) => {
                 out.push('"');

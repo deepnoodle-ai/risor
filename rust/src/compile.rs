@@ -66,6 +66,10 @@ pub struct Program {
     /// For a program compiled with a check: its sites, which decide the
     /// class of a run failure (`05-types.md` 18.5).
     pub sites: Option<Vec<crate::check::Site>>,
+    /// The compiled form of the hot node kinds (`eval/code.rs`).
+    pub(crate) code: Vec<Option<crate::eval::code::Code>>,
+    /// The slots of each lambda's parameters, when all are plain names.
+    pub(crate) params: Vec<Option<Box<[Option<u32>]>>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -120,8 +124,12 @@ pub fn compile_unchecked(env: &Env, parsed: Parsed) -> Result<Program, Error> {
             diagnostics: r.diags,
         });
     }
+    let code = crate::eval::code::build(&parsed.ast, &r.res);
+    let params = crate::eval::code::params(&parsed.ast, &r.res);
     Ok(Program {
         env: env.clone(),
+        code,
+        params,
         parsed,
         res: r.res,
         measure: r.measure,

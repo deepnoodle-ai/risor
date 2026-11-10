@@ -95,10 +95,13 @@ fn main() {
             }
             let src = c.get("source").unwrap().as_str().unwrap();
             let expect = c.get("expect").unwrap();
-            let build = || compile(&env, parse(src).unwrap()).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let build =
+                || compile(&env, parse(src).unwrap()).unwrap_or_else(|e| panic!("{name}: {e}"));
             let p = build();
             let out = p.run(&vars);
-            let value = out.result.unwrap_or_else(|e| panic!("{name}: {}", e.message()));
+            let value = out
+                .result
+                .unwrap_or_else(|e| panic!("{name}: {}", e.message()));
             assert!(
                 eq_data(&value, &data(expect.get("value").unwrap())),
                 "{name}: value differs from expect: {value:?}"
