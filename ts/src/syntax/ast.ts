@@ -164,6 +164,8 @@ export interface OptChain extends Base {
 
 export interface Lambda extends Base {
   kind: "Lambda";
+  /** The most levels open at any token of the lambda (05 20.2). */
+  maxLevel: number;
   /** The levels open at the node's first token (01 13.2 rule 5). */
   level: number;
   params: Param[];
@@ -212,6 +214,8 @@ export interface MapPatField {
   /** The name bound. */
   name: string;
   nameSpan: Span;
+  /** The key as written: the word, the string, or the shorthand name. */
+  keySpan: Span;
   default: Expr | null;
   span: Span;
 }

@@ -51,6 +51,8 @@ class Parser {
   private toks: Token[];
   private i = 0;
   private level = 0;
+  /** The most levels open so far, for a lambda's maxLevel. */
+  private maxLevel = 0;
   private prevEnd = 0;
   /** The outer span of an expression written in parentheses. */
   private readonly parens = new WeakMap<object, Span>();
@@ -128,6 +130,7 @@ class Parser {
       this.fail("nesting-exceeded", span, `more than ${MAX_LEVELS} levels of nesting`);
     }
     this.level++;
+    if (this.level > this.maxLevel) this.maxLevel = this.level;
   }
 
   private close(): void {
@@ -750,6 +753,8 @@ class Parser {
   private lambda(onArrow: ((arrow: Token) => void) | null): A.Lambda {
     const t = this.cur;
     const level = this.level;
+    const outerMax = this.maxLevel;
+    this.maxLevel = level;
     const params: A.Param[] = [];
     if (t.kind === "word") {
       this.advance();
@@ -775,7 +780,9 @@ class Parser {
     const arrow = this.expect("=>");
     if (onArrow !== null) onArrow(arrow);
     const body = this.expr();
-    return { kind: "Lambda", params, body, level, span: { start: t.start, end: this.outer(body).end } };
+    const maxLevel = this.maxLevel;
+    this.maxLevel = Math.max(outerMax, maxLevel);
+    return { kind: "Lambda", params, body, level, maxLevel, span: { start: t.start, end: this.outer(body).end } };
   }
 
   private param(): A.Param {
@@ -859,7 +866,7 @@ class Parser {
         dflt = this.expr();
       }
       const end = dflt !== null ? this.outer(dflt).end : n.end;
-      fields.push({ key, name: n.text, nameSpan: { start: n.start, end: n.end }, default: dflt, span: { start: t.start, end } });
+      fields.push({ key, name: n.text, nameSpan: { start: n.start, end: n.end }, keySpan: { start: t.start, end: t.end }, default: dflt, span: { start: t.start, end } });
       if (this.isP(this.cur, ",")) {
         this.advance();
         continue;

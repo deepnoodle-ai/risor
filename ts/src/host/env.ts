@@ -9,6 +9,8 @@ import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { isName, isReserved } from "../syntax/token.ts";
 import { parseEnvRecord, parseSignature, parseType } from "../types/typetext.ts";
 import type { SigNode, TypeNode } from "../types/typetext.ts";
+import { ANY, depth, fromNode, TypeError as TypeRuleError } from "../types/type.ts";
+import type { Type } from "../types/type.ts";
 
 /** The newest version of the specification this implementation offers. */
 export const VERSION = "3.0";
@@ -57,6 +59,8 @@ export interface Declarations {
 export interface Environment {
   version: string;
   variables: Map<string, TypeNode>;
+  /** The variables' types, by the checker's rules (05 19.5). */
+  variableTypes: Map<string, Type>;
   functions: Map<string, FunctionDecl>;
   namespaces: Set<string>;
   opaque: Set<string>;
@@ -88,6 +92,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
   const env: Environment = {
     version: VERSION,
     variables: new Map(),
+    variableTypes: new Map(),
     functions: new Map(),
     namespaces: new Set(),
     opaque: new Set(),
@@ -211,6 +216,45 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
       const t = parseType(d.returns);
       if (!t.ok) errs.push(diag("bad-type", `the expected result: ${t.message}`));
       else env.returns = t.node;
+    }
+  }
+
+  // The errors in declared type text that only a type checker finds (05 19.5).
+  const typeOf = (n: TypeNode, vars: boolean): Type => {
+    const t = fromNode(n, { opaque: env.opaque, variable: vars ? () => ANY : undefined });
+    if (depth(t, 70) > 64) throw new TypeRuleError("a type deeper than 64");
+    return t;
+  };
+  const nodesOf = (sig: SigNode): TypeNode[] => [
+    ...sig.params.flatMap((p) => (p.type.t === "fn" ? [...p.type.params.map((q) => q.type), ...(p.type.result === "unknown" ? [] : [p.type.result])] : [p.type])),
+    sig.result,
+  ];
+  for (const [name, node] of env.variables) {
+    try {
+      env.variableTypes.set(name, typeOf(node, false));
+    } catch (e) {
+      if (!(e instanceof TypeRuleError)) throw e;
+      errs.push(diag("bad-type", `the type of ${name}: ${e.message}`));
+    }
+  }
+  for (const fn of [...env.functions.values(), ...env.methods.values()]) {
+    for (const n of nodesOf(fn.sig)) {
+      try {
+        typeOf(n, true);
+      } catch (e) {
+        if (!(e instanceof TypeRuleError)) throw e;
+        // Ruling AO4: every error in a host signature or a method's text is bad-signature.
+        errs.push(diag("bad-signature", `the signature of ${fn.name}: ${e.message}`));
+        break;
+      }
+    }
+  }
+  if (env.returns !== null && env.returns !== "condition") {
+    try {
+      typeOf(env.returns, false);
+    } catch (e) {
+      if (!(e instanceof TypeRuleError)) throw e;
+      errs.push(diag("bad-type", `the expected result: ${e.message}`));
     }
   }
 

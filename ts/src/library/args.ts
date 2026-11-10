@@ -40,7 +40,9 @@ function accepts(t: TypeNode, v: unknown, run: Run): Verdict {
     case "name":
       return k === "opaque" ? "ok" : "kind";
     case "var":
-      return k === "null" ? "kind" : "ok";
+      // Ruling AN1: a type variable with no bound accepts every value, null
+      // included, like `any`. A bound is tested apart (ordered, number).
+      return "ok";
     case "union": {
       let best: Verdict = "kind";
       for (const a of t.alts) {

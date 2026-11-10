@@ -32,9 +32,15 @@ export function valueJSON(v: unknown, depth = 0): string {
 
 /** The line of ruling AJ item 3 for one case. Every `expect` is ignored. */
 export function outcomeLine(c: Case): string {
-  const e = executeCase(c, true);
+  const e = executeCase(c, true, c.check !== false);
   const o = e.outcome;
   const parts: string[] = [`"name":${jsonString(c.name)}`];
+  // When the program checks: its type and sites (brief S4 item 8).
+  const ti = o as { type?: string | null; sites?: { class: string; span: number[] }[] };
+  if (ti.type !== undefined && ti.type !== null) {
+    parts.push(`"type":${jsonString(ti.type)}`);
+    parts.push(`"sites":[${(ti.sites ?? []).map((x) => `{"class":${jsonString(x.class)},"span":${JSON.stringify(x.span)}}`).join(",")}]`);
+  }
   if (o.kind === "result") {
     parts.push(`"phase":null`);
     if (o.ran) parts.push(`"value":${valueJSON(o.value)}`);

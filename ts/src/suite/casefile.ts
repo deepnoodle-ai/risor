@@ -62,6 +62,8 @@ export interface Case {
   vars?: JsonObject;
   limits?: { steps?: number; allocation?: number; depth?: number };
   precondition?: boolean;
+  /** Ruling AP1: false compiles the case with the static rules alone. */
+  check?: boolean;
   skip?: string;
   expect: Expect;
 }
@@ -72,10 +74,15 @@ export type CaseFile =
 
 export class InvalidFile extends Error {}
 
+const STATIC_CODE_SET = new Set([
+  "undefined-name", "undefined-function", "call-of-parameter", "lambda-to-lambda", "not-a-value",
+  "arity", "duplicate-name", "shadows-namespace", "duplicate-key", "duplicate-case", "unreachable-arm",
+]);
+
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is ruling A4. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
@@ -194,6 +201,7 @@ function checkShared(o: JsonObject, where: string): void {
     }
   }
   if ("precondition" in o && typeof o.precondition !== "boolean") fail(`${where}: precondition is not a boolean`);
+  if ("check" in o && typeof o.check !== "boolean") fail(`${where}: check is not a boolean`);
 }
 
 function checkStub(v: Json, where: string): void {
@@ -291,6 +299,17 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("vars" in merged) c.vars = merged.vars as JsonObject;
   if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("precondition" in merged) c.precondition = merged.precondition as boolean;
+  if ("check" in merged) {
+    c.check = merged.check as boolean;
+    // Ruling AP1: a case compiled without a check states no type or sites, and expects static check codes only.
+    const ex = c.expect;
+    if (c.check === false) {
+      if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
+      if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !STATIC_CODE_SET.has(d.code))) {
+        fail(`${where}: "check": false and a check code that is not static`);
+      }
+    }
+  }
   if ("skip" in raw) c.skip = raw.skip as string;
 
   // 3.10.3 items 7 and 9: opaque values.

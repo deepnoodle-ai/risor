@@ -10,7 +10,7 @@ function calls(depth: number): string {
   for (let i = 1; i < n; i++) src += `const f${i} = x => f${i - 1}(x);\n`;
   src += `f${n - 1}(y)`;
   const env = createEnv({ vars: "{y: any}", limits: { depth, steps: null, allocation: null } });
-  const o = env.compile(src).execute({ y: [1] });
+  const o = env.compile(src, { check: false }).execute({ y: [1] });
   return o.ok ? "ok" : o.diagnostic.code;
 }
 
@@ -19,7 +19,7 @@ function walk(depth: number): string {
   let y: unknown = 1;
   for (let i = 0; i < depth; i++) y = [y];
   const env = createEnv({ vars: "{y: any, z: any}", limits: { depth, steps: null, allocation: null } });
-  const o = env.compile("[y == z, `${y}`]").execute({ y, z: y });
+  const o = env.compile("[y == z, `${y}`]", { check: false }).execute({ y, z: y });
   return o.ok ? "ok" : o.diagnostic.code;
 }
 
@@ -35,7 +35,7 @@ function nesting(): string {
     "c ? ".repeat(100) + "1" + " : 2".repeat(100),
   ];
   for (const s of srcs) {
-    const o = env.compile(s).execute({ c: true });
+    const o = env.compile(s, { check: false }).execute({ c: true });
     if (!o.ok) return o.diagnostic.code;
   }
   return "ok";

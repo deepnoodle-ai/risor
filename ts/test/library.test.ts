@@ -52,7 +52,7 @@ describe("the registry is suite/library.json", () => {
 describe("ruling AC16: an entry that reads an element reads a host number", () => {
   const env = createEnv({ vars: "{xs: any}" });
   const code = (src: string, xs: unknown[]) => {
-    const o = env.compile(src).execute({ xs });
+    const o = env.compile(src, { check: false }).execute({ xs });
     return o.ok ? "ok" : o.diagnostic.code;
   };
   const big = [1, 2n ** 60n];
@@ -65,7 +65,7 @@ describe("ruling AC16: an entry that reads an element reads a host number", () =
   }
   test("the failure has the span of the call (ruling W4)", () => {
     try {
-      env.compile("1 + xs.sort()").run({ xs: big });
+      env.compile("1 + xs.sort()", { check: false }).run({ xs: big });
       assert.fail("no failure");
     } catch (e) {
       assert.ok(e instanceof RisorError);
@@ -78,7 +78,7 @@ describe("work in proportion to the charge", () => {
   const env = createEnv({ vars: "{s: any, t: any, xs: any}", limits: { steps: null, allocation: null } });
   const timed = (src: string, vars: Record<string, unknown>) => {
     const t0 = performance.now();
-    const o = env.compile(src).execute(vars);
+    const o = env.compile(src, { check: false }).execute(vars);
     const ms = performance.now() - t0;
     assert.ok(o.ok, o.ok ? "" : o.diagnostic.code);
     return { ms, steps: o.usage.steps, value: o.value };
@@ -105,5 +105,12 @@ describe("work in proportion to the charge", () => {
     const r = timed('xs.join(", ")', { xs });
     assert.ok(r.ms < 1500, `${r.ms} ms`);
     assert.equal((r.value as string).length, 200_000 * 4 + 199_999 * 2);
+  });
+});
+
+describe("ruling AN1: a type variable with no bound accepts null", () => {
+  test("[].reduce(p => 0, null) gives null", () => {
+    const env = createEnv({});
+    assert.equal(env.compile("[].reduce(p => 0, null)", { check: false }).run(), null);
   });
 });

@@ -22,7 +22,7 @@ test("long flat programs need no stack (01 13.2 rule 6)", async () => {
   const m: Record<string, unknown> = {};
   m.a = m;
   const run = (src: string) => {
-    const o = env.compile(src).execute({ m });
+    const o = env.compile(src, { check: false }).execute({ m });
     assert.ok(o.ok, o.ok ? "" : o.diagnostic.code);
     return o.value;
   };

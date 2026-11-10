@@ -11,7 +11,7 @@ const env = createEnv({ vars: "{u: any, m: any, s: any, t: any, xs: any, d: any,
 const vars = { u: { name: "", tags: [] } };
 
 function outcome(src: string, v: Record<string, unknown> = vars): { value?: unknown; code?: string } {
-  const o = env.compile(src).execute(v);
+  const o = env.compile(src, { check: false }).execute(v);
   return o.ok ? { value: o.value } : { code: o.diagnostic.code };
 }
 
@@ -48,7 +48,7 @@ describe("01 section 15", () => {
 });
 
 describe("02 section 7: worked counts", () => {
-  const usage = (src: string, v: Record<string, unknown> = {}) => env.compile(src).execute(v).usage;
+  const usage = (src: string, v: Record<string, unknown> = {}) => env.compile(src, { check: false }).execute(v).usage;
   const rows: [string, Record<string, unknown>, number, number][] = [
     ["1 + 2 * 3", {}, 2, 0],
     ["const xs = [1, 2, 3]; [...xs, 4]", {}, 3, 9],
@@ -76,7 +76,7 @@ describe("02 section 7: worked counts", () => {
 
 describe("ruling AH2: an empty pair is entered, with the depth test", () => {
   const at = (depth: number, src: string) => {
-    const o = createEnv({ limits: { depth } }).compile(src).execute();
+    const o = createEnv({ limits: { depth } }).compile(src, { check: false }).execute();
     return o.ok ? "ok" : o.diagnostic.code;
   };
   test("== on empty lists and maps, at the limit and one past it", () => {
@@ -93,7 +93,7 @@ describe("ruling AH2: an empty pair is entered, with the depth test", () => {
     assert.equal(at(1, "string([{}])"), "depth-exceeded");
   });
   test("the empty pair still charges nothing", () => {
-    assert.deepEqual(createEnv({}).compile("[] == []").execute().usage, { steps: 0, allocated: 2 });
+    assert.deepEqual(createEnv({}).compile("[] == []", { check: false }).execute().usage, { steps: 0, allocated: 2 });
   });
 });
 
@@ -105,7 +105,7 @@ describe("ruling AM3: == on maps visits the left map in key order when a value i
     const m = { a: deep, z: long };
     const n = { a: deep, z: long };
     const env = createEnv({ vars: "{m: any, n: any}", limits: { depth: 5, steps: 20 } });
-    const o = env.compile("m == n").execute({ m, n });
+    const o = env.compile("m == n", { check: false }).execute({ m, n });
     assert.ok(!o.ok);
     assert.equal(o.diagnostic.code, "depth-exceeded");
   });

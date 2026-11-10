@@ -24,6 +24,12 @@ import "../library/core.ts";
 import { Classifier, DEFAULT_CLASSIFIER, jsonString, mapGet, mapKeys, readHost, sortKeys, truthy as truthyOf, BAD_NUMBER } from "../value/value.ts";
 import { numberToText } from "../value/number.ts";
 import { declare, DEFAULT_LIMITS } from "./env.ts";
+import { check, spanKey } from "../types/check.ts";
+import type { CheckEnv, CheckSig, Expected, Site } from "../types/check.ts";
+import { fromNode, printType } from "../types/type.ts";
+import type { Type } from "../types/type.ts";
+import { parseType as parseTypeText, parseReceiver } from "../types/typetext.ts";
+import { METHODS } from "../library/registry.ts";
 import type { Declarations, Environment } from "./env.ts";
 
 export { HostError };
@@ -167,6 +173,38 @@ export function createEnv(options: EnvOptions = {}): Env {
 
 export type CompileResult = { ok: true; program: Program } | { ok: false; diagnostics: Diagnostic[]; source: Source };
 
+export interface CompileOptions {
+  /** Apply the type rules (05-types.md). Default true. The static rules always apply. */
+  check?: boolean;
+  /** The expected result (03 3.2.3): type text, or "condition". */
+  expected?: string;
+}
+
+/** The result of a check (03 3.2.1): the type and sites, or the diagnostics. */
+export type CheckOutcome =
+  | { ok: true; type: string; sites: Site[]; source: Source }
+  | { ok: false; diagnostics: Diagnostic[]; source: Source };
+
+/** The library's signatures, for the checker (05 13.1). */
+function librarySig(e: { name: string; record: { receiver?: string; signature: string; [k: string]: unknown } }, kind: "library"): CheckSig {
+  const s = parseSignature(e.record.signature);
+  if (!s.ok) throw new Error(`library signature ${e.name}`);
+  let recv = null;
+  if (e.record.receiver) {
+    const r = parseReceiver(e.record.receiver);
+    if (!r.ok) throw new Error(`library receiver ${e.name}`);
+    recv = r.node;
+  }
+  return {
+    name: e.name, kind, recv, sig: s.node,
+    narrows: e.record.narrows !== undefined,
+    tested: Array.isArray(e.record.tested) ? (e.record.tested as number[]) : [],
+    renders: Array.isArray(e.record.renders) ? (e.record.renders as string[]).map((n) => s.node.params.findIndex((p) => p.name === n)).filter((i) => i >= 0) : [],
+  };
+}
+const LIBRARY_FUNCTIONS = new Map([...FUNCTIONS].map(([k, e]) => [k, librarySig(e, "library")]));
+const LIBRARY_METHODS = new Map([...METHODS].map(([kind, m]) => [kind, new Map([...m].map(([k, e]) => [k, librarySig(e, "library")]))]));
+
 export class Env {
   readonly environment: Environment;
   private readonly compileEnv: CompileEnv;
@@ -195,21 +233,88 @@ export class Env {
       namespaces: environment.namespaces,
       library: functionCounts(),
     };
+    const hostSig = (name: string, sig: import("../types/typetext.ts").SigNode, recv: import("../types/typetext.ts").TypeNode | null): CheckSig => ({
+      name, kind: "host", recv, sig, narrows: false, tested: [], renders: [],
+    });
+    const methodSigs = new Map<string, Map<string, CheckSig>>();
+    for (const m of environment.methods.values()) {
+      if (!methodSigs.has(m.type)) methodSigs.set(m.type, new Map());
+      methodSigs.get(m.type)!.set(m.name, hostSig(`${m.type}.${m.name}`, m.sig, { t: "name", name: m.type }));
+    }
+    this.checkEnv = {
+      opaque: environment.opaque,
+      variables: environment.variableTypes,
+      functions: new Map([...environment.functions].map(([k, fn]) => [k, hostSig(k, fn.sig, null)])),
+      library: LIBRARY_FUNCTIONS,
+      libraryMethods: LIBRARY_METHODS,
+      methods: methodSigs,
+      reject: environment.reject,
+    };
   }
 
-  /** Parse, apply the static rules and compile. Problems are data. */
-  tryCompile(text: string): CompileResult {
+  private readonly checkEnv: CheckEnv;
+
+  /** The expected result as the checker takes it. Throws RisorError `bad-type` for bad text. */
+  private expected(text: string | undefined): Expected {
+    if (text === undefined) return { kind: "none" };
+    if (text === "condition") return { kind: "condition" };
+    const fail = (m: string): never => {
+      throw new RisorError([{ phase: "declare", code: "bad-type", message: `the expected result: ${m}` }]);
+    };
+    const t = parseTypeText(text);
+    if (!t.ok) fail(t.message);
+    try {
+      return { kind: "type", type: fromNode((t as { node: import("../types/typetext.ts").TypeNode }).node, { opaque: this.environment.opaque }) };
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  }
+
+  /** Read type text against this environment's opaque types. Throws on bad text. */
+  typeOf(text: string): Type {
+    const t = parseTypeText(text);
+    if (!t.ok) throw new Error(t.message);
+    return fromNode(t.node, { opaque: this.environment.opaque });
+  }
+
+  /** Check a program (03 3.2.1): parse, the static rules, the type rules. */
+  check(text: string, expected?: string): CheckOutcome {
+    const exp = this.expected(expected);
     const p = parse(text);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
     const s = staticRules(p.program, this.staticEnv);
-    if (s.diagnostics.length > 0) return { ok: false, diagnostics: s.diagnostics, source: p.source };
-    const c = compileProgram(p.program, s.resolution, this.compileEnv);
-    return { ok: true, program: new Program(this, p.source, c.run, s.resolution.slotCount, c.missing) };
+    const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics);
+    if (c.diagnostics.length > 0) return { ok: false, diagnostics: c.diagnostics, source: p.source };
+    return { ok: true, type: printType(c.type), sites: c.sites, source: p.source };
   }
 
-  /** Compile a program. Throws RisorError of phase `parse` or `check`. */
-  compile(text: string): Program {
-    const r = this.tryCompile(text);
+  /** Parse, apply the static rules and compile. Problems are data. */
+  tryCompile(text: string, options: CompileOptions = {}): CompileResult {
+    const checked = options.check !== false;
+    const exp = checked ? this.expected(options.expected) : { kind: "none" as const };
+    const p = parse(text);
+    if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
+    const s = staticRules(p.program, this.staticEnv);
+    let dynamicSpans: Set<string> | null = null;
+    let type: string | null = null;
+    let sites: Site[] = [];
+    if (checked) {
+      const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics);
+      if (c.diagnostics.length > 0) return { ok: false, diagnostics: c.diagnostics, source: p.source };
+      dynamicSpans = c.dynamicSpans;
+      type = printType(c.type);
+      sites = c.sites;
+    } else if (s.diagnostics.length > 0) return { ok: false, diagnostics: s.diagnostics, source: p.source };
+    const c = compileProgram(p.program, s.resolution, this.compileEnv);
+    const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans);
+    prog.type = type;
+    prog.sites = sites;
+    return { ok: true, program: prog };
+  }
+
+  /** Compile a program, with a check unless `check: false`. Throws RisorError of phase `declare`, `parse` or `check`. */
+  compile(text: string, options: CompileOptions = {}): Program {
+    const r = this.tryCompile(text, options);
     if (!r.ok) throw new RisorError(r.diagnostics);
     return r.program;
   }
@@ -243,7 +348,15 @@ export class Program {
   /** Library entries the program names that this build does not implement yet. */
   readonly missing: ReadonlySet<string>;
 
-  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>) {
+  /** The result type the check gave, printed (05 3.9); null when compiled without a check. */
+  type: string | null = null;
+  /** The sites the check gave. */
+  sites: Site[] = [];
+  /** Spans at a `dynamic` site, for the class of a failure in a checked program; null when not checked. */
+  private readonly dynamicSpans: Set<string> | null;
+
+  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null) {
+    this.dynamicSpans = dynamicSpans;
     this.env = env;
     this.source = source;
     this.code = code;
@@ -291,7 +404,13 @@ export class Program {
   private diagnostic(f: RunFailure): Diagnostic {
     const d: Diagnostic = { phase: "run", code: f.code, message: messageOf(f, this.env.classifier) };
     if (f.span !== undefined) d.span = f.span;
-    const cls = uncheckedClass(f);
+    let cls = uncheckedClass(f);
+    // The class in a checked program (03 3.7.6, 05 18.5).
+    if (this.dynamicSpans !== null) {
+      if (f.code === "null-operand" || f.code === "wrong-kind" || f.code === "missing-field") {
+        cls = f.span !== undefined && this.dynamicSpans.has(spanKey(f.span)) ? "dynamic" : "environment";
+      } else if (f.code === "no-match" || f.code === "not-conforming") cls = "environment";
+    }
     if (cls !== undefined) d.class = cls;
     if (f.code === "failed") d.data = f.data;
     if (f.cause !== undefined) (d as Diagnostic & { cause?: unknown }).cause = f.cause;

@@ -27,6 +27,9 @@ export const LIBRARY: LibraryRecord[] = [
     "since": "3.0",
     "exact": true,
     "calls": [],
+    "renders": [
+      "x"
+    ],
     "steps": "x is string ? 0 : walk(x) + sz(result)",
     "units": "x is string ? 0 : 1 + sz(result)",
     "null": null,

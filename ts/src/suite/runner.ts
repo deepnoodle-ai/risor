@@ -7,13 +7,14 @@
 // gets `skip`, with the entries named.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createEnv, HostError, RisorError } from "../host/api.ts";
 import type { Env, HostFunction, OpaqueType } from "../host/api.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Source } from "../syntax/source.ts";
 import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
+import { typeEqual } from "../types/type.ts";
 import type { Classifier } from "../value/value.ts";
 import { loadCaseFile, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Stub } from "./casefile.ts";
@@ -49,11 +50,15 @@ const LIMIT_CODES: ReadonlySet<string> = new Set([
 export interface RunnerOptions {
   /** Kept for callers; the library comes from this build. */
   library?: ReadonlySet<string>;
+  /** Run step 4 with the type checker (default), or with the static rules alone. */
+  checker?: boolean;
+  /** The case is of suite/core-check/: run checked only (ruling AP2). */
+  checkOnly?: boolean;
 }
 
 export type Outcome =
-  | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source; usage?: { steps: number; allocated: number } }
-  | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number } };
+  | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[] }
+  | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number }; type?: string | null; sites?: { class: string; span: [number, number, number, number] }[] };
 
 /** An opaque value of a case file (03 3.10.3 item 7): one object for each type and id. */
 export class OpaqueRef {
@@ -119,19 +124,41 @@ function needsRun(c: Case): boolean {
 }
 
 /** Run one case and give its verdict. */
-export function runCase(c: Case, file: string, _opts: RunnerOptions = {}): Verdict {
+export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdict {
   const v = (verdict: VerdictKind, extra: Partial<Verdict> = {}): Verdict => ({ file, name: c.name, verdict, ...extra });
   if (c.skip !== undefined) return v("skip", { reason: c.skip });
   const ex = c.expect;
-  // 03 3.10.8 item 5 and ruling A3: no type checker.
-  if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) {
-    return v("skip", { reason: "needs the type checker (type or sites)" });
+  const checker = opts.checker !== false;
+  if (!checker) {
+    // 03 3.10.8 item 5: a runner with no type checker.
+    if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) {
+      return v("skip", { reason: "needs the type checker (type or sites)" });
+    }
+    if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !STATIC_CODES.has(d.code))) {
+      return v("skip", { reason: "needs the type checker (a check code outside the static rules)" });
+    }
   }
-  if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !STATIC_CODES.has(d.code))) {
-    return v("skip", { reason: "needs the type checker (a check code outside the static rules)" });
-  }
+  // Ruling AP1: "check": false compiles with the static rules alone, and
+  // compares `class` for every code.
+  if (c.check === false) return judge(c, v, false, true);
+  if (!checker) return judge(c, v, false, false);
+  // Ruling AP2: checked, and again with the static rules alone, unless the
+  // case needs the checker or is of suite/core-check/.
+  const needsChecker =
+    opts.checkOnly === true ||
+    (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) ||
+    (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !STATIC_CODES.has(d.code)));
+  const first = judge(c, v, true, true);
+  if (needsChecker || first.verdict !== "pass") return first;
+  const second = judge(c, v, false, false);
+  if (second.verdict === "pass") return first;
+  return { ...second, reason: "with the static rules alone" };
+}
 
-  const e = executeCase(c, needsRun(c));
+function judge(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict, checker: boolean, allClasses: boolean): Verdict {
+  const e = executeCase(c, needsRun(c), checker);
+  RUN_CHECKED = allClasses;
+  CURRENT_ENV = e.env;
   if (e.missing !== null) return v("skip", { reason: `needs library entries: ${e.missing.join(", ")}` });
   return finish(c, e.outcome, e.unmatched, v);
 }
@@ -142,10 +169,12 @@ export interface Execution {
   unmatched: string[];
   /** Library entries this build lacks, when the run needed them; else null. */
   missing: string[] | null;
+  /** The case's environment, when it was built. */
+  env: Env | null;
 }
 
 /** Run a case's steps (03 3.10.5), with or without step 5. Judges nothing. */
-export function executeCase(c: Case, run: boolean): Execution {
+export function executeCase(c: Case, run: boolean, checker = true): Execution {
   // Step 2: declare.
   const unmatched: string[] = [];
   let env: Env | undefined;
@@ -162,32 +191,33 @@ export function executeCase(c: Case, run: boolean): Execution {
   }
   const functions: Record<string, HostFunction> = {};
   for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = stubFunction(st, cls, unmatched, k);
-  const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null });
+  const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null, env: env ?? null });
+  let compiled: ReturnType<Env["tryCompile"]>;
   try {
     env = createEnv({ version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [] });
-    const declErrs: Diagnostic[] = [];
-    if (c.returns !== undefined && c.returns !== "condition" && !parseType(c.returns).ok) {
-      declErrs.push({ phase: "declare", code: "bad-type", message: "the expected result is not a type" });
+    if (!checker && c.returns !== undefined && c.returns !== "condition" && !parseType(c.returns).ok) {
+      throw new RisorError([{ phase: "declare", code: "bad-type", message: "the expected result is not a type" }]);
     }
-    if (declErrs.length > 0) throw new RisorError(declErrs);
+    // Steps 3 and 4: parse, then the check (or the static rules alone).
+    compiled = env.tryCompile(c.source, { check: checker, expected: checker ? c.returns : undefined });
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
     return done({ kind: "failure", phase: "declare", diagnostics: [...x.diagnostics] });
   }
-  // Steps 3 and 4: parse, and the static rules.
-  const compiled = env.tryCompile(c.source);
   if (!compiled.ok) {
     return done({ kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source });
   }
+  const prog = compiled.program;
+  const typeInfo = { type: prog.type, sites: prog.sites.map((x) => ({ class: x.class, span: prog.source.lineSpan(x.span) })) };
   // Step 5: run.
-  if (!run) return done({ kind: "result", ran: false });
-  if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort() };
+  if (!run) return done({ kind: "result", ran: false, ...typeInfo });
+  if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort(), env };
   const vars = c.vars ?? {};
   const o = compiled.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : undefined));
   return done(
     o.ok
-      ? { kind: "result", ran: true, value: o.value, usage: o.usage }
-      : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage },
+      ? { kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }
+      : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage, ...typeInfo },
   );
 }
 
@@ -204,6 +234,20 @@ function compare(c: Case, o: Outcome): Difference[] {
       return [{ field: "outcome", expected: "a result", found: describeFailure(o) }];
     }
     const d: Difference[] = [];
+    if (ex.type !== undefined) {
+      let same = false;
+      try {
+        same = o.type != null && CURRENT_ENV !== null && typeEqual(CURRENT_ENV.typeOf(ex.type), CURRENT_ENV.typeOf(o.type));
+      } catch {
+        same = false;
+      }
+      if (!same) d.push({ field: "type", expected: ex.type, found: o.type });
+    }
+    if (ex.sites !== undefined) {
+      const found = o.sites ?? [];
+      const same = found.length === ex.sites.length && ex.sites.every((x, i) => x.class === found[i].class && x.span.every((n, j) => n === found[i].span[j]));
+      if (!same) d.push({ field: "sites", expected: ex.sites, found });
+    }
     if (ex.value !== undefined && !plainEqual(o.value, hostValue(ex.value.value), CLASSIFIER)) {
       d.push({ field: "value", expected: ex.value.value, found: show(o.value) });
     }
@@ -261,6 +305,11 @@ function describeFailure(o: Outcome): string {
   return `failure of phase ${o.phase}: ${d.code}${span} (${d.message})`;
 }
 
+/** Whether `class` is compared for every code (03 3.10.7 item 8, ruling AP1). */
+let RUN_CHECKED = true;
+/** The environment of the case being judged, to read its expected `type`. */
+let CURRENT_ENV: Env | null = null;
+
 const CHECK_DEPENDENT: ReadonlySet<string> = new Set(["null-operand", "wrong-kind", "missing-field", "no-match", "not-conforming"]);
 
 interface FoundDiag {
@@ -290,7 +339,7 @@ function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
   if (e.code !== f.code) return false;
   // Ruling AM1: `class` is compared, except for the five codes whose class
   // depends on the check, since this runner does not check.
-  if (e.class !== undefined && !CHECK_DEPENDENT.has(e.code) && e.class !== f.class) return false;
+  if (e.class !== undefined && (RUN_CHECKED || !CHECK_DEPENDENT.has(e.code)) && e.class !== f.class) return false;
   if (e.span !== undefined && !LIMIT_CODES.has(e.code)) {
     if (f.span === undefined || e.span.some((n, i) => n !== f.span![i])) return false;
   }
@@ -345,7 +394,8 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     }
     return out;
   }
-  return verdictsOf(loadCaseFile(path), file, opts);
+  const checkOnly = opts.checkOnly ?? basename(dirname(path)) === "core-check";
+  return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly });
 }
 
 function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] {
