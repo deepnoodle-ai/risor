@@ -139,6 +139,7 @@ pub fn to_text(x: f64) -> String {
     let e = format!("{x:e}");
     let (mant, exp) = e.split_once('e').unwrap_or((&e, "0"));
     let digits: String = mant.chars().filter(|c| *c != '.').collect();
+    let digits = even_tie(x, digits, exp);
     let k = digits.len() as i64;
     let n = exp.parse::<i64>().unwrap_or(0) + 1;
     if k <= n && n <= 21 {
@@ -156,6 +157,58 @@ pub fn to_text(x: f64) -> String {
         };
         format!("{}{rest}e{sign}{}", &digits[..1], (n - 1).abs())
     }
+}
+
+/// `01-language.md` 6.3 item 1 step 3: of two shortest digit strings
+/// equally near `x`, the one whose last digit is even. Such a tie is when
+/// the exact value of `x` has one digit more than the shortest, and it is
+/// `5`; then the shortest is the truncation or one more than it.
+fn even_tie(x: f64, digits: String, exp: &str) -> String {
+    let k = digits.len();
+    // The exact decimal value of `x`: a double has at most 767 significant
+    // digits, so this precision is exact.
+    let exact = format!("{x:.800e}");
+    let (em, ee) = exact.split_once('e').unwrap_or((&exact, "0"));
+    if ee != exp {
+        return digits;
+    }
+    let ed: String = em.chars().filter(|c| *c != '.').collect();
+    let ed = ed.trim_end_matches('0');
+    if ed.len() != k + 1 || !ed.ends_with('5') {
+        return digits;
+    }
+    let low = ed[..k].to_string();
+    // One more than `low`, at the same length.
+    let mut up: Vec<u8> = low.bytes().collect();
+    let mut i = up.len();
+    loop {
+        if i == 0 {
+            return digits;
+        }
+        i -= 1;
+        if up[i] == b'9' {
+            up[i] = b'0';
+        } else {
+            up[i] += 1;
+            break;
+        }
+    }
+    let high = String::from_utf8(up).unwrap_or_default();
+    let reads_back = |d: &str| {
+        let t = format!("{}.{}e{}", &d[..1], &d[1..], exp);
+        t.parse::<f64>().ok() == Some(x)
+    };
+    let even = |d: &str| {
+        d.bytes()
+            .last()
+            .is_some_and(|b| (b - b'0').is_multiple_of(2))
+    };
+    for c in [&low, &high] {
+        if even(c) && reads_back(c) {
+            return c.trim_end_matches('0').to_string();
+        }
+    }
+    digits
 }
 
 /// Text to number (`01-language.md` 6.3 rule 2): the JSON number grammar.
@@ -223,6 +276,8 @@ mod tests {
             (5e-324, "5e-324"),
             (-2.5, "-2.5"),
             (1e-7, "1e-7"),
+            // A tie between two shortest texts takes the even last digit.
+            (9007199254740991.0 / 6.0, "1501199875790165.2"),
         ] {
             assert_eq!(to_text(x), t);
         }

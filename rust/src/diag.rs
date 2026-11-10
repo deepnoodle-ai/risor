@@ -102,6 +102,22 @@ pub struct Diagnostic {
     /// For `not-conforming` (F4 5.1): the path from the tested value to the
     /// place of the failure (`03-host.md` 3.7.8).
     pub path: Option<Box<Vec<PathStep>>>,
+    /// For a `run` diagnostic: the calls in progress when the run failed,
+    /// from the outermost in (`f08-errors.md` 4). `None` is an empty trace,
+    /// and every other phase has none. Read it with `trace()`.
+    pub trace: Option<Box<Vec<TraceEntry>>>,
+}
+
+/// An entry of a trace (`f08-errors.md` 4.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TraceEntry {
+    /// The span of the call, in code-point offsets and as lines and columns.
+    pub range: Span,
+    pub span: LineSpan,
+    /// The name of a `const`-bound lambda, or of a library entry as written.
+    pub name: String,
+    /// For a library entry, the index of the element; else `None`.
+    pub index: Option<usize>,
 }
 
 /// A step of a path (`03-host.md` 3.7.8): a key or an index.
@@ -112,6 +128,12 @@ pub enum PathStep {
 }
 
 impl Diagnostic {
+    /// The trace of a `run` diagnostic, from the outermost call in
+    /// (`f08-errors.md` 4.1).
+    pub fn trace(&self) -> &[TraceEntry] {
+        self.trace.as_deref().map(|t| t.as_slice()).unwrap_or(&[])
+    }
+
     /// A diagnostic at a span of a source text.
     pub fn at(
         phase: Phase,
@@ -129,6 +151,7 @@ impl Diagnostic {
             message: message.into(),
             data: None,
             path: None,
+            trace: None,
         }
     }
 
@@ -143,6 +166,7 @@ impl Diagnostic {
             message: message.into(),
             data: None,
             path: None,
+            trace: None,
         }
     }
 }

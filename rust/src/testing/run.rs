@@ -14,6 +14,7 @@ use crate::eval::Call;
 use crate::host::{Data, HostError, OpaqueRef};
 use crate::json::Json;
 use crate::library;
+use crate::render::View;
 use crate::syntax::ast::NodeKind;
 use crate::syntax::parse;
 use crate::value::{eq_data, Value};
@@ -454,6 +455,9 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
     {
         return run_analysis_case(case, want);
     }
+    if let Some(r) = &case.render {
+        return run_render_case(r);
+    }
     if case.conform.is_some() {
         return run_conform_case(case);
     }
@@ -796,6 +800,15 @@ fn judge_failure(
         Expect::Failure(f) => {
             let mut d = compare_failure(f, phase, diags, checked);
             if d.is_empty() {
+                if let Some(r) = &f.rendered {
+                    let ds = if phase == Phase::Parse {
+                        &diags[..diags.len().min(1)]
+                    } else {
+                        diags
+                    };
+                    let views: Vec<View> = ds.iter().map(View::of).collect();
+                    rendered_diffs(&mut d, r, &views, Some(&case.source), "rendered");
+                }
                 if let Some(u) = usage {
                     count_diffs(&mut d, f.steps, f.allocated, u);
                 }
@@ -804,6 +817,132 @@ fn judge_failure(
         }
     };
     functions_diff(&mut diffs, unmatched);
+    verdict(diffs)
+}
+
+/// F8 7.3, 7.4: each rendering given, compared whole. `prefix` names the
+/// difference: `rendered`, or nothing for a render case, whose
+/// differences are `line`, `detail` and `json`.
+fn rendered_diffs(
+    diffs: &mut Vec<Difference>,
+    want: &super::case::Renderings,
+    views: &[View<'_>],
+    source: Option<&str>,
+    prefix: &'static str,
+) {
+    let forms: [(&'static str, &Option<String>, String); 3] = [
+        ("line", &want.line, crate::render::line(views)),
+        ("detail", &want.detail, crate::render::detail(views, source)),
+        ("json", &want.json, crate::render::json(views)),
+    ];
+    for (name, w, got) in forms {
+        if let Some(w) = w {
+            if *w != got {
+                diffs.push(Difference {
+                    name: if prefix.is_empty() { name } else { prefix },
+                    expected: format!("{name}: {w:?}"),
+                    found: format!("{got:?}"),
+                });
+            }
+        }
+    }
+}
+
+/// The diagnostics of a render case, owned, for views of them.
+struct Owned {
+    phase: String,
+    code: String,
+    class: Option<String>,
+    message: String,
+    span: Option<[u32; 4]>,
+    path: Option<Vec<crate::diag::PathStep>>,
+    data: Option<Data>,
+    trace: Vec<([u32; 4], String, Option<usize>)>,
+}
+
+fn owned_diags(r: &super::case::RenderCase) -> Vec<Owned> {
+    let mut interner = Interner::default();
+    r.diagnostics
+        .iter()
+        .map(|d| {
+            let s = |k: &str| d.get(k).and_then(|x| x.as_str()).map(String::from);
+            Owned {
+                phase: s("phase").unwrap_or_default(),
+                code: s("code").unwrap_or_default(),
+                class: s("class"),
+                message: s("message").unwrap_or_default(),
+                span: d.get("span").map(|x| {
+                    let mut out = [0u32; 4];
+                    for (i, n) in x.as_arr().unwrap_or_default().iter().take(4).enumerate() {
+                        out[i] = n.as_f64().unwrap_or(0.0) as u32;
+                    }
+                    out
+                }),
+                path: d.get("path").and_then(|p| p.as_arr()).map(|a| {
+                    a.iter()
+                        .map(|st| match st {
+                            Json::Str(k) => crate::diag::PathStep::Key(k.clone()),
+                            n => crate::diag::PathStep::Index(n.as_f64().unwrap_or(0.0) as usize),
+                        })
+                        .collect()
+                }),
+                data: d.get("data").map(|x| interner.data(x)),
+                trace: d
+                    .get("trace")
+                    .and_then(|t| t.as_arr())
+                    .map(|a| {
+                        a.iter()
+                            .map(|e| {
+                                let mut sp = [0u32; 4];
+                                if let Some(x) = e.get("span").and_then(|x| x.as_arr()) {
+                                    for (i, n) in x.iter().take(4).enumerate() {
+                                        sp[i] = n.as_f64().unwrap_or(0.0) as u32;
+                                    }
+                                }
+                                let name = e
+                                    .get("name")
+                                    .and_then(|n| n.as_str())
+                                    .unwrap_or_default()
+                                    .to_string();
+                                let index = e
+                                    .get("index")
+                                    .and_then(|n| n.as_integer())
+                                    .map(|n| n as usize);
+                                (sp, name, index)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
+fn views_of(ds: &[Owned]) -> Vec<View<'_>> {
+    ds.iter()
+        .map(|d| View {
+            phase: &d.phase,
+            code: &d.code,
+            class: d.class.as_deref(),
+            message: &d.message,
+            span: d.span,
+            path: d.path.as_deref(),
+            data: d.data.as_ref(),
+            trace: d
+                .trace
+                .iter()
+                .map(|(s, n, i)| (*s, n.as_str(), *i))
+                .collect(),
+        })
+        .collect()
+}
+
+/// A case of the third kind (`f08-errors.md` 7.4): run once, no program.
+fn run_render_case(r: &super::case::RenderCase) -> Verdict {
+    let owned = owned_diags(r);
+    let views = views_of(&owned);
+    let mut diffs = Vec::new();
+    rendered_diffs(&mut diffs, &r.expect, &views, r.source.as_deref(), "");
     verdict(diffs)
 }
 
@@ -820,7 +959,7 @@ fn show_span(s: Option<[u32; 4]>) -> String {
 
 fn show_diag(d: &Diagnostic) -> String {
     let mut s = format!("{} at {}", d.code, show_span(d.span.map(|s| s.0)));
-    if d.phase == Phase::Run {
+    if d.phase != Phase::Declare {
         s.push_str(&format!(" {:?}", d.message));
         if let Some(x) = &d.data {
             s.push_str(&format!(" data {x:?}"));
@@ -874,6 +1013,21 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
     if let Some(m) = &e.message {
         if *m != a.message {
             return false;
+        }
+    }
+    // F8 7.2: the trace, but for a limit code.
+    if let Some(t) = &e.trace {
+        if !code::LIMIT.contains(&a.code) {
+            let got: Vec<([u32; 4], &str, Option<u64>)> = a
+                .trace()
+                .iter()
+                .map(|x| (x.span.0, x.name.as_str(), x.index.map(|i| i as u64)))
+                .collect();
+            let want: Vec<([u32; 4], &str, Option<u64>)> =
+                t.iter().map(|(s, n, i)| (*s, n.as_str(), *i)).collect();
+            if got != want {
+                return false;
+            }
         }
     }
     if let Some(want) = &e.data {
@@ -998,6 +1152,8 @@ struct Conformed {
     /// The run of `v is T`, and its steps.
     is_run: Result<bool, Diagnostic>,
     is_steps: u64,
+    /// F8: the list of `ConformAll`, when the case has `max`.
+    all: Option<Vec<Diagnostic>>,
 }
 
 fn conform_case(case: &Case) -> Result<Conformed, Error> {
@@ -1008,6 +1164,7 @@ fn conform_case(case: &Case) -> Result<Conformed, Error> {
     let pt = env.ty(text)?;
     let data = interner.data(value);
     let function = pt.conform(&data).err();
+    let all = case.conform_max.map(|m| pt.conform_all(&data, m));
     let child = env.child().var("v", "any").build()?;
     let mut vars = BTreeMap::new();
     vars.insert("v".to_string(), data.clone());
@@ -1034,6 +1191,7 @@ fn conform_case(case: &Case) -> Result<Conformed, Error> {
         as_steps,
         is_run,
         is_steps,
+        all,
     })
 }
 
@@ -1150,6 +1308,59 @@ fn run_conform_case(case: &Case) -> Verdict {
             });
         }
     }
+    // F8 7.5: `ConformAll`, and its agreement with the function of F4 7.
+    if let Some(all) = &c.all {
+        let first = all.first();
+        let agrees = match (&c.function, first) {
+            (None, None) => true,
+            (Some(d), Some(a)) => d.path == a.path && d.message == a.message,
+            _ => false,
+        };
+        if !agrees && !diffs.iter().any(|d| d.name == "conforms") {
+            diffs.push(Difference {
+                name: "conforms",
+                expected: "ConformAll agrees with the conformance function".into(),
+                found: format!(
+                    "function {:?}, ConformAll first {:?}",
+                    c.function.as_ref().map(show_diag),
+                    first.map(show_diag)
+                ),
+            });
+        }
+        if let Some(fs) = &want.failures {
+            let same = fs.len() == all.len()
+                && fs.iter().zip(all).all(|((p, m), d)| {
+                    let path = path_json(d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]));
+                    crate::json::same_data(&Json::Arr(p.clone()), &path)
+                        && m.as_ref().is_none_or(|m| *m == d.message)
+                });
+            if !same {
+                diffs.push(Difference {
+                    name: "failures",
+                    expected: fs
+                        .iter()
+                        .map(|(p, m)| {
+                            format!("{} {m:?}", crate::json::to_text(&Json::Arr(p.clone())))
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                    found: all
+                        .iter()
+                        .map(|d| {
+                            let p =
+                                path_json(d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]));
+                            format!("{} {:?}", crate::json::to_text(&p), d.message)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                });
+            }
+        }
+    }
+    let order = [
+        "outcome", "conforms", "path", "message", "steps", "failures",
+    ];
+    diffs.sort_by_key(|d| order.iter().position(|n| *n == d.name));
     verdict(diffs)
 }
 
@@ -1216,6 +1427,24 @@ pub fn outcome_line(case: &Case) -> String {
         out.push('}');
         return out;
     }
+    // F8 8: a render case writes its three forms.
+    if let Some(r) = &case.render {
+        let owned = owned_diags(r);
+        let views = views_of(&owned);
+        let mut out = String::from("{\"name\":");
+        out.push_str(&json_text(&case.name));
+        out.push_str(",\"line\":");
+        out.push_str(&json_text(&crate::render::line(&views)));
+        out.push_str(",\"detail\":");
+        out.push_str(&json_text(&crate::render::detail(
+            &views,
+            r.source.as_deref(),
+        )));
+        out.push_str(",\"json\":");
+        out.push_str(&json_text(&crate::render::json(&views)));
+        out.push('}');
+        return out;
+    }
     if case.conform.is_some() {
         let mut out = String::from("{\"name\":");
         out.push_str(&json_text(&case.name));
@@ -1249,6 +1478,23 @@ pub fn outcome_line(case: &Case) -> String {
                     c.as_steps,
                     c.agree()
                 ));
+                // F8 8: the list of `ConformAll`.
+                if let Some(all) = &c.all {
+                    out.push_str(",\"failures\":[");
+                    for (i, d) in all.iter().enumerate() {
+                        if i > 0 {
+                            out.push(',');
+                        }
+                        out.push_str("{\"path\":");
+                        out.push_str(&crate::json::to_text(&path_json(
+                            d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
+                        )));
+                        out.push_str(",\"message\":");
+                        out.push_str(&json_text(&d.message));
+                        out.push('}');
+                    }
+                    out.push(']');
+                }
             }
         }
         out.push('}');
@@ -1299,8 +1545,30 @@ fn outcome_core(case: &Case) -> String {
                     Some(c) => out.push_str(&format!("\"{c}\"")),
                     None => out.push_str("null"),
                 }
+            }
+            // F8 8: the message of a parse, a check and a run diagnostic.
+            if phase != Phase::Declare {
                 out.push_str(",\"message\":");
                 out.push_str(&json_text(&d.message));
+            }
+            // F8 8: the trace of a run diagnostic, but for class `limit`.
+            if phase == Phase::Run && d.class != Some("limit") {
+                out.push_str(",\"trace\":[");
+                for (i, e) in d.trace().iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    let [a, b, c, f] = e.span.0;
+                    out.push_str(&format!("{{\"span\":[{a},{b},{c},{f}],\"name\":"));
+                    out.push_str(&json_text(&e.name));
+                    out.push_str(",\"index\":");
+                    match e.index {
+                        Some(n) => out.push_str(&n.to_string()),
+                        None => out.push_str("null"),
+                    }
+                    out.push('}');
+                }
+                out.push(']');
             }
             out.push('}');
         }

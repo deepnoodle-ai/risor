@@ -27,18 +27,69 @@ pub struct Parsed {
 }
 
 /// Parse the text of a program. A failure has phase `parse` and one
-/// diagnostic: the first.
+/// diagnostic: the first, with the targeted code of `f08-errors.md` 2 where
+/// one applies.
 pub fn parse(text: &str) -> Result<Parsed, Error> {
+    parse_with(text, false)
+}
+
+/// Parse as `parse` does, but give the Core diagnostic: the first diagnostic
+/// as an implementation without package F8 finds it (`f08-errors.md` 2.1
+/// item 1), with its message.
+pub fn parse_core(text: &str) -> Result<Parsed, Error> {
+    parse_with(text, true)
+}
+
+fn parse_with(text: &str, core: bool) -> Result<Parsed, Error> {
     let source = Source::new(text);
     let ast = {
-        let toks = lex(&source).map_err(Error::one)?;
+        let toks = lex(&source).map_err(|d| {
+            // Rows A1 to A5 are lexical: the lexer gives their codes.
+            if core && !CORE_CODES.contains(&d.code) {
+                let span = d.range.unwrap_or_default();
+                let msg = super::message::parse_message(
+                    &source,
+                    code::UNEXPECTED_CHARACTER,
+                    "default",
+                    span,
+                    &[],
+                );
+                return Error::one(Diagnostic::at(
+                    Phase::Parse,
+                    code::UNEXPECTED_CHARACTER,
+                    &source,
+                    span,
+                    msg,
+                ));
+            }
+            Error::one(d)
+        })?;
         let mut p = Parser::new(&source, &toks);
-        let root = p.program().map_err(|d| Error::one(*d))?;
+        p.core = core;
+        let root = p.program().map_err(|e| Error::one(p.finish(&e)))?;
         p.ast.root = root;
         p.ast
     };
     Ok(Parsed { source, ast })
 }
+
+/// The `parse` codes of Core and of F3 and F4 (`01-language.md` 14.2).
+const CORE_CODES: [&str; 14] = [
+    code::UNEXPECTED_TOKEN,
+    code::UNEXPECTED_CHARACTER,
+    code::UNTERMINATED_STRING,
+    code::UNTERMINATED_COMMENT,
+    code::BAD_ESCAPE,
+    code::LINE_CONTINUATION,
+    code::BAD_NUMBER,
+    code::LITERAL_RANGE,
+    code::NESTING_EXCEEDED,
+    code::RESERVED_WORD,
+    code::BAD_TYPE_TEXT,
+    code::TEXT_BLOCK_OPEN,
+    code::TEXT_BLOCK_CLOSE,
+    code::TEXT_BLOCK_INDENT,
+];
 
 /// Parse the parts of a template (F2 2.2, 2.3). `toks` holds each part's
 /// tokens followed by its end: an `Eof` token with the span of the closing
@@ -54,10 +105,11 @@ pub(crate) fn parse_parts(
     let mut ids = Vec::new();
     for &(start, open) in parts {
         p.pos = start;
-        p.open(open).map_err(|d| *d)?;
-        let e = p.expr().map_err(|d| *d)?;
+        p.open(open).map_err(|e| p.finish(&e))?;
+        let e = p.expr().map_err(|e| p.finish(&e))?;
         if !matches!(p.peek().tok, Tok::Eof) {
-            return Err(*p.unexpected(p.peek()));
+            let e = p.unexpected(p.peek());
+            return Err(p.finish(&e));
         }
         p.close();
         ids.push(e);
@@ -78,7 +130,85 @@ pub fn is_type_name(w: &str) -> bool {
 
 /// The error is boxed: a large `Err` makes every `?` cost stack in a build
 /// with no optimization, and the parser recurses once for each level.
-type R<T> = Result<T, Box<Diagnostic>>;
+type R<T> = Result<T, Box<PErr>>;
+
+/// The first diagnostic as the parser finds it: Core's code and span, and
+/// the rule of Core that gives it. `finish` maps it by `f08-errors.md` 2 and
+/// builds its message.
+struct PErr {
+    code: &'static str,
+    span: Span,
+    rule: Rule,
+}
+
+/// The rule of Core that gives a diagnostic (`f08-errors.md` 2.1 item 5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Rule {
+    /// `01-language.md` 3.5, or a row of 14.3.
+    General,
+    /// 3.5, where an operand must begin.
+    Operand,
+    /// A code that is never mapped, with the template the text chooses.
+    Final,
+    /// `reserved-word` by 14.2 rule 1, where the grammar needs a `Name`.
+    Name,
+    /// `reserved-word` by 14.2 rule 2.
+    Value,
+    /// `reserved-word` at a shorthand entry of a map literal: a place of
+    /// rows B1 to B9, with the template `name` where the code stays.
+    Shorthand,
+    /// 3.4 rules 1, 2, 3, 5 and 6.
+    Power,
+    NotIn,
+    Coalesce,
+    OperandIf,
+    MatchSubject,
+    /// 3.4 rules 7 and 8.
+    BranchMap,
+    EmptyBranch,
+    /// 3.4 rule 9.
+    LambdaPattern,
+    /// 3.4 rule 10.
+    TryCall,
+    /// 3.4 rule 11.
+    MissingElse,
+    /// 3.4 rule 12: where `catch` should stand; after `catch`; inside its
+    /// parentheses.
+    MissingCatch,
+    TryForm,
+    CatchName,
+    /// F4 2.5, with the word `as` (false) or `is` (true).
+    NotTest(bool),
+    /// F4 2.6 item 2: `x as const` and `x is not T`.
+    AsConst,
+    IsNot,
+    /// After `if`, its test or `else`, a token that does not fit.
+    IfForm,
+    /// Where the `:` of a conditional should stand; the `?` is the token.
+    CondColon(u32),
+    /// The row of 14.3 for the word `r` or `R`, white space, then a string.
+    Prefix,
+    /// `bad-type-text`, with its template.
+    BadType(&'static str),
+}
+
+/// A mapped diagnostic: its code, its template, its span, and its
+/// parameters other than `token` and `char`.
+type Target = (
+    &'static str,
+    &'static str,
+    Span,
+    Vec<(&'static str, String)>,
+);
+
+/// Marks on tokens, for the conditions of `f08-errors.md` 2.
+const MARK_MAP: u8 = 1;
+const MARK_MAP_PATTERN: u8 = 2;
+const MARK_INDEX: u8 = 3;
+const MARK_PAREN: u8 = 4;
+const MARK_IF_TEST: u8 = 5;
+const MARK_OPERAND_WORD: u8 = 6;
+const MARK_LAMBDA_ARROW: u8 = 7;
 
 const PREC_OR: u8 = 3;
 const PREC_REL: u8 = 6;
@@ -99,6 +229,18 @@ struct Parser<'a> {
     tok_level: Vec<u16>,
     /// The greatest level opened since it was last reset.
     max_level: u32,
+    /// For `f08-errors.md` 2: a mark on each token, and the token where the
+    /// last expression, `if` or `try`, program type, `const` pattern and
+    /// parameter pattern ended, and where the last `match` case began.
+    mark: Vec<u8>,
+    expr_end: usize,
+    if_end: usize,
+    type_end: usize,
+    const_pat_end: usize,
+    param_end: usize,
+    arm_start: usize,
+    /// Give the Core diagnostic, unmapped.
+    core: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -149,6 +291,14 @@ impl<'a> Parser<'a> {
             tmpl_end,
             tok_level: vec![0; t.len()],
             max_level: 0,
+            mark: vec![0; t.len()],
+            expr_end: usize::MAX,
+            if_end: usize::MAX,
+            type_end: usize::MAX,
+            const_pat_end: usize::MAX,
+            param_end: usize::MAX,
+            arm_start: usize::MAX,
+            core: false,
         }
     }
 
@@ -192,7 +342,7 @@ impl<'a> Parser<'a> {
                 )
             )
         {
-            return Err(self.unexpected_at(tok.span));
+            return Err(self.perr(code::UNEXPECTED_TOKEN, tok.span, Rule::Prefix));
         }
         Ok(self.bump())
     }
@@ -209,16 +359,26 @@ impl<'a> Parser<'a> {
 
     #[cold]
     #[inline(never)]
-    fn diag(&self, c: &'static str, span: Span, msg: String) -> Box<Diagnostic> {
-        Box::new(Diagnostic::at(Phase::Parse, c, self.src, span, msg))
+    fn perr(&self, code: &'static str, span: Span, rule: Rule) -> Box<PErr> {
+        Box::new(PErr { code, span, rule })
+    }
+
+    /// An error with the rule that gives it, unless it is a code that is
+    /// never mapped.
+    #[cold]
+    fn tag(&self, mut e: Box<PErr>, rule: Rule) -> Box<PErr> {
+        if e.code == code::UNEXPECTED_TOKEN {
+            e.rule = rule;
+        }
+        e
     }
 
     #[cold]
-    fn unexpected(&self, tok: &Token) -> Box<Diagnostic> {
+    fn unexpected(&self, tok: &Token) -> Box<PErr> {
         // F3 6.2: a text block's code is reported where the parser reaches
         // its token, before any test of whether it fits.
         if let Some((c, span)) = tok.code {
-            return self.diag(c, span, c.to_string());
+            return self.perr(c, span, Rule::Final);
         }
         let mut span = tok.diag;
         // `01-language.md` 14.3: where the token that cannot follow is the operator
@@ -226,40 +386,24 @@ impl<'a> Parser<'a> {
         if tok.is_word("not") && std::ptr::eq(tok, self.peek()) && self.peek_n(1).is_word("in") {
             span = span.to(self.peek_n(1).span);
         }
-        let msg = match &tok.tok {
-            Tok::Eof => "the text ends where more is needed".to_string(),
-            _ => format!("unexpected {}", self.src.slice(span)),
-        };
-        self.diag(code::UNEXPECTED_TOKEN, span, msg)
+        self.perr(code::UNEXPECTED_TOKEN, span, Rule::General)
     }
 
     #[cold]
-    fn unexpected_at(&self, span: Span) -> Box<Diagnostic> {
-        self.diag(
-            code::UNEXPECTED_TOKEN,
-            span,
-            format!("unexpected {}", self.src.slice(span)),
-        )
+    fn unexpected_at(&self, span: Span) -> Box<PErr> {
+        self.perr(code::UNEXPECTED_TOKEN, span, Rule::General)
     }
 
     #[cold]
-    fn reserved(&self, tok: &Token) -> Box<Diagnostic> {
-        self.diag(
-            code::RESERVED_WORD,
-            tok.span,
-            format!("{} is a reserved word", self.src.slice(tok.span)),
-        )
+    fn reserved(&self, tok: &Token, rule: Rule) -> Box<PErr> {
+        self.perr(code::RESERVED_WORD, tok.span, rule)
     }
 
     // ---- levels (13) ----------------------------------------------------
 
     fn open(&mut self, span: Span) -> R<()> {
         if self.level >= MAX_LEVELS {
-            return Err(self.diag(
-                code::NESTING_EXCEEDED,
-                span,
-                "the text nests more than 100 levels deep".to_string(),
-            ));
+            return Err(self.perr(code::NESTING_EXCEEDED, span, Rule::Final));
         }
         self.level += 1;
         self.max_level = self.max_level.max(self.level);
@@ -309,8 +453,10 @@ impl<'a> Parser<'a> {
     fn const_line(&mut self) -> R<NodeId> {
         let kw = self.bump();
         let pattern = self.pattern()?;
+        self.const_pat_end = self.pos;
         self.expect(P::Assign)?;
         let pattern_is_name = matches!(self.ast.kind(pattern), NodeKind::NamePat { name: Some(_) });
+        self.reserved_param()?;
         let value = if self.lambda_starts() {
             self.lambda(Some(pattern_is_name))?
         } else {
@@ -329,8 +475,11 @@ impl<'a> Parser<'a> {
         let lb = self.bump();
         self.open(lb.span)?;
         // 3.4 rules 7 and 8, at the `...` and at the `}`.
-        if self.at_punct(P::Ellipsis) || self.at_punct(P::RBrace) {
-            return Err(self.unexpected_at(lb.span));
+        if self.at_punct(P::Ellipsis) {
+            return Err(self.perr(code::UNEXPECTED_TOKEN, lb.span, Rule::BranchMap));
+        }
+        if self.at_punct(P::RBrace) {
+            return Err(self.perr(code::UNEXPECTED_TOKEN, lb.span, Rule::EmptyBranch));
         }
         let mut consts = Vec::new();
         while self.at_word("const") {
@@ -338,7 +487,7 @@ impl<'a> Parser<'a> {
         }
         let e = self.expr()?;
         if self.at_punct(P::Colon) || self.at_punct(P::Comma) {
-            return Err(self.unexpected_at(lb.span));
+            return Err(self.perr(code::UNEXPECTED_TOKEN, lb.span, Rule::BranchMap));
         }
         let rb = self.expect(P::RBrace)?;
         self.close();
@@ -367,11 +516,25 @@ impl<'a> Parser<'a> {
     // ---- expressions ----------------------------------------------------
 
     fn expr(&mut self) -> R<NodeId> {
-        if self.at_word("if") {
-            return self.if_expr();
-        }
-        if self.at_word("try") {
-            return self.try_expr();
+        let e = self.expr_inner()?;
+        self.expr_end = self.pos;
+        Ok(e)
+    }
+
+    /// An `if` or a `try`, and the token after its end.
+    fn whole(&mut self) -> R<NodeId> {
+        let e = if self.at_word("if") {
+            self.if_expr()?
+        } else {
+            self.try_expr()?
+        };
+        self.if_end = self.pos;
+        Ok(e)
+    }
+
+    fn expr_inner(&mut self) -> R<NodeId> {
+        if self.at_word("if") || self.at_word("try") {
+            return self.whole();
         }
         let first = self.binary()?;
         if !self.at_punct(P::Question) {
@@ -381,17 +544,19 @@ impl<'a> Parser<'a> {
         let mut pending = Vec::new();
         let mut test = first;
         let last = loop {
+            let qi = self.pos as u32;
             let q = self.bump();
             self.open(q.span)?;
             let then = self.expr()?;
-            self.expect(P::Colon)?;
+            if !self.at_punct(P::Colon) {
+                let e = self.unexpected(self.peek());
+                return Err(self.tag(e, Rule::CondColon(qi)));
+            }
+            self.bump();
             self.close();
             pending.push((test, then));
-            if self.at_word("if") {
-                break self.if_expr()?;
-            }
-            if self.at_word("try") {
-                break self.try_expr()?;
+            if self.at_word("if") || self.at_word("try") {
+                break self.whole()?;
             }
             let b = self.binary()?;
             if self.at_punct(P::Question) {
@@ -421,22 +586,33 @@ impl<'a> Parser<'a> {
         loop {
             let kw = self.bump();
             if !self.at_punct(P::LParen) {
-                return Err(self.unexpected(self.peek()));
+                let e = self.unexpected(self.peek());
+                return Err(self.tag(e, Rule::IfForm));
             }
+            self.mark[self.pos] = MARK_IF_TEST;
             let lp = self.bump();
             self.open(lp.span)?;
             let test = self.expr()?;
             self.expect(P::RParen)?;
             self.close();
+            if !self.at_punct(P::LBrace) {
+                let e = self.unexpected(self.peek());
+                return Err(self.tag(e, Rule::IfForm));
+            }
             let (then, _) = self.branch()?;
             parts.push((kw.span.start, test, then));
             // 3.4 rule 11.
             if !self.at_word("else") {
-                return Err(self.unexpected(self.peek()));
+                let e = self.unexpected(self.peek());
+                return Err(self.tag(e, Rule::MissingElse));
             }
             self.bump();
             if self.at_word("if") {
                 continue;
+            }
+            if !self.at_punct(P::LBrace) {
+                let e = self.unexpected(self.peek());
+                return Err(self.tag(e, Rule::IfForm));
             }
             let (else_, end) = self.branch()?;
             let mut acc = else_;
@@ -459,20 +635,39 @@ impl<'a> Parser<'a> {
         let kw = self.bump();
         // 3.4 rule 10.
         if self.at_punct(P::LParen) {
-            return Err(self.unexpected_at(kw.span));
+            return Err(self.perr(code::UNEXPECTED_TOKEN, kw.span, Rule::TryCall));
         }
         let (body, _) = self.branch()?;
+        // 3.4 rule 12.
         if !self.at_word("catch") {
-            return Err(self.unexpected(self.peek()));
+            let e = self.unexpected(self.peek());
+            return Err(self.tag(e, Rule::MissingCatch));
         }
         self.bump();
         let mut name = None;
         if self.at_punct(P::LParen) {
             let lp = self.bump();
             self.open(lp.span)?;
+            let t = self.peek();
+            match t.word() {
+                Some(w) if is_reserved(w) => return Err(self.reserved(t, Rule::Name)),
+                Some(w) if is_name(w) => {}
+                _ => {
+                    let e = self.unexpected(t);
+                    return Err(self.tag(e, Rule::CatchName));
+                }
+            }
             name = Some(self.name()?);
-            self.expect(P::RParen)?;
+            if !self.at_punct(P::RParen) {
+                let e = self.unexpected(self.peek());
+                return Err(self.tag(e, Rule::CatchName));
+            }
+            self.bump();
             self.close();
+        }
+        if !self.at_punct(P::LBrace) {
+            let e = self.unexpected(self.peek());
+            return Err(self.tag(e, Rule::TryForm));
         }
         let (handler, end) = self.branch()?;
         Ok(self.node(
@@ -500,9 +695,28 @@ impl<'a> Parser<'a> {
                 self.close();
                 acc = self.binary_node(BinaryOp::Coalesce, acc, right);
             }
+            // 3.4 rule 3, at the operator that cannot follow.
+            if self.mixes_with_coalesce() {
+                let e = self.unexpected(self.peek());
+                return Err(self.tag(e, Rule::Coalesce));
+            }
             return Ok(acc);
         }
-        self.bin_rest(left, PREC_OR)
+        let e = self.bin_rest(left, PREC_OR)?;
+        if self.at_punct(P::QQ) {
+            let e = self.unexpected(self.peek());
+            return Err(self.tag(e, Rule::Coalesce));
+        }
+        Ok(e)
+    }
+
+    /// An operator that does not mix with `??` (3.4 rule 3; F4 2.4).
+    fn mixes_with_coalesce(&self) -> bool {
+        let t = self.peek();
+        matches!(
+            t.tok,
+            Tok::Punct(P::OrOr | P::AndAnd | P::EqEq | P::NotEq | P::Lt | P::Le | P::Gt | P::Ge)
+        ) || matches!(t.word(), Some("in" | "not" | "as" | "is"))
     }
 
     fn binop(&self) -> Option<(BinaryOp, u8)> {
@@ -551,7 +765,7 @@ impl<'a> Parser<'a> {
             if matches!(op, BinaryOp::In | BinaryOp::NotIn) {
                 // 3.4 rule 2, found at the `in`.
                 if let Some(bang) = self.bare_not(lhs) {
-                    return Err(self.unexpected_at(bang));
+                    return Err(self.perr(code::UNEXPECTED_TOKEN, bang, Rule::NotIn));
                 }
             }
             let op_span = if op == BinaryOp::NotIn {
@@ -578,7 +792,8 @@ impl<'a> Parser<'a> {
     fn as_test(&mut self, lhs: NodeId) -> R<NodeId> {
         // 2.5: found at the `as` or `is`, before the type is read.
         if let Some(bang) = self.bare_not(lhs) {
-            return Err(self.unexpected_at(bang));
+            let is = self.at_word("is");
+            return Err(self.perr(code::UNEXPECTED_TOKEN, bang, Rule::NotTest(is)));
         }
         let kw = self.bump();
         let form = if kw.is_word("as") {
@@ -587,14 +802,16 @@ impl<'a> Parser<'a> {
             AsForm::Is
         };
         // 2.6 item 2: Core's errors at the `as` or the `is`.
-        if (form == AsForm::As && self.at_word("const"))
-            || (form == AsForm::Is && self.at_word("not"))
-        {
-            return Err(self.unexpected_at(kw.span));
+        if form == AsForm::As && self.at_word("const") {
+            return Err(self.perr(code::UNEXPECTED_TOKEN, kw.span, Rule::AsConst));
+        }
+        if form == AsForm::Is && self.at_word("not") {
+            return Err(self.perr(code::UNEXPECTED_TOKEN, kw.span, Rule::IsNot));
         }
         self.open(kw.span)?;
         let ty = self.ptype()?;
         self.close();
+        self.type_end = self.pos;
         // 2.4: an operator of levels 7 to 10 cannot follow a type.
         if let Some((_, prec)) = self.binop() {
             if prec > PREC_REL {
@@ -617,19 +834,46 @@ impl<'a> Parser<'a> {
 
     /// `bad-type-text` at a token (2.6): its code first, a refused token as
     /// `unexpected-token`, a template or text block over its whole span.
-    fn bad_type_text(&self, tok: &Token) -> Box<Diagnostic> {
+    /// `place` names the template of `f08-errors.md` 3.4 for the place.
+    fn bad_type_text(&self, tok: &Token, place: &'static str) -> Box<PErr> {
         if let Some((c, span)) = tok.code {
-            return self.diag(c, span, c.to_string());
+            return self.perr(c, span, Rule::Final);
         }
         if matches!(tok.tok, Tok::Refused) {
             return self.unexpected(tok);
         }
-        let span = tok.diag;
-        self.diag(
-            code::BAD_TYPE_TEXT,
-            span,
-            format!("{} cannot stand in a type", self.src.slice(span)),
-        )
+        let literal = matches!(tok.tok, Tok::TmplHead(_))
+            || matches!(
+                tok.tok,
+                Tok::Str(
+                    _,
+                    StrForm::Backtick | StrForm::TripleDouble | StrForm::RawTriple
+                )
+            );
+        let template = if literal {
+            "literal"
+        } else if place == "map-close" && tok.is_punct(P::Ge) {
+            "split"
+        } else if place != "expected" {
+            place
+        } else {
+            match &tok.tok {
+                Tok::Number(_) | Tok::Punct(P::Minus) => "value",
+                Tok::Word(w) => match w.as_str() {
+                    "true" | "false" => "value",
+                    "number" => "number-word",
+                    "boolean" => "boolean-word",
+                    "undefined" | "void" | "nil" => "null-word",
+                    "object" => "object-word",
+                    w if w.len() == 1 && w.as_bytes()[0].is_ascii_uppercase() => "letter",
+                    w if w.starts_with(|c: char| c.is_ascii_lowercase() || c == '_') => "lower",
+                    w if is_reserved(w) => "lower",
+                    _ => "expected",
+                },
+                _ => "expected",
+            }
+        };
+        self.perr(code::BAD_TYPE_TEXT, tok.diag, Rule::BadType(template))
     }
 
     /// `PType = PAlt { "|" PAlt }`.
@@ -690,14 +934,14 @@ impl<'a> Parser<'a> {
                         self.bump();
                         let lt = self.peek();
                         if !lt.is_punct(P::Lt) {
-                            return Err(self.bad_type_text(lt));
+                            return Err(self.bad_type_text(lt, "map-open"));
                         }
                         self.bump();
                         self.open(lt.span)?;
                         let inner = self.ptype()?;
                         let gt = self.peek();
                         if !gt.is_punct(P::Gt) {
-                            return Err(self.bad_type_text(gt));
+                            return Err(self.bad_type_text(gt, "map-close"));
                         }
                         self.bump();
                         self.close();
@@ -707,7 +951,7 @@ impl<'a> Parser<'a> {
                         self.bump();
                         return Ok((PPrim::Name(w.to_string(), t.span), t.span));
                     }
-                    _ => return Err(self.bad_type_text(t)),
+                    _ => return Err(self.bad_type_text(t, "expected")),
                 };
                 self.bump();
                 simple(p)
@@ -722,14 +966,14 @@ impl<'a> Parser<'a> {
                 let inner = self.ptype()?;
                 let rp = self.peek();
                 if !rp.is_punct(P::RParen) {
-                    return Err(self.bad_type_text(rp));
+                    return Err(self.bad_type_text(rp, "paren"));
                 }
                 self.bump();
                 self.close();
                 Ok((PPrim::Paren(Box::new(inner)), t.span.to(rp.span)))
             }
             Tok::Punct(P::LBrace) => self.precord(),
-            _ => Err(self.bad_type_text(t)),
+            _ => Err(self.bad_type_text(t, "expected")),
         }
     }
 
@@ -757,17 +1001,17 @@ impl<'a> Parser<'a> {
                 }
                 let n = self.peek();
                 if !n.is_punct(P::RBrace) {
-                    return Err(self.bad_type_text(n));
+                    return Err(self.bad_type_text(n, "record"));
                 }
                 break;
             }
             let key = match &t.tok {
                 Tok::Word(w) => w.clone(),
                 Tok::Str(s, f) if f.is_line() && t.code.is_none() => s.clone(),
-                _ => return Err(self.bad_type_text(t)),
+                _ => return Err(self.bad_type_text(t, "record")),
             };
             if fields.iter().any(|f| f.key == key) {
-                return Err(self.bad_type_text(t));
+                return Err(self.bad_type_text(t, "duplicate"));
             }
             self.bump();
             let mut optional = false;
@@ -777,7 +1021,7 @@ impl<'a> Parser<'a> {
             }
             let c = self.peek();
             if !c.is_punct(P::Colon) {
-                return Err(self.bad_type_text(c));
+                return Err(self.bad_type_text(c, "record"));
             }
             self.bump();
             let ty = self.ptype()?;
@@ -786,7 +1030,7 @@ impl<'a> Parser<'a> {
             if n.is_punct(P::Comma) {
                 self.bump();
             } else if !n.is_punct(P::RBrace) {
-                return Err(self.bad_type_text(n));
+                return Err(self.bad_type_text(n, "record"));
             }
         }
         let rb = self.bump();
@@ -838,7 +1082,7 @@ impl<'a> Parser<'a> {
             return Ok(base);
         }
         if let Some(p) = prefix {
-            return Err(self.unexpected_at(p));
+            return Err(self.perr(code::UNEXPECTED_TOKEN, p, Rule::Power));
         }
         let op = self.bump();
         self.open(op.span)?;
@@ -901,6 +1145,7 @@ impl<'a> Parser<'a> {
                 }
                 Tok::Punct(p @ (P::LBracket | P::QDotBracket)) => {
                     let optional = p == P::QDotBracket;
+                    self.mark[self.pos] = MARK_INDEX;
                     self.bump();
                     self.open(t.span)?;
                     let index = self.expr()?;
@@ -1003,6 +1248,7 @@ impl<'a> Parser<'a> {
                             continue 'star;
                         }
                         Tok::Punct(p @ (P::LBracket | P::QDotBracket)) => {
+                            self.mark[self.pos] = MARK_INDEX;
                             self.bump();
                             self.open(t.span)?;
                             let index = self.expr()?;
@@ -1069,6 +1315,7 @@ impl<'a> Parser<'a> {
             if self.at_punct(P::RParen) {
                 break;
             }
+            self.reserved_param()?;
             let a = if self.lambda_starts() {
                 self.lambda(None)?
             } else {
@@ -1118,10 +1365,11 @@ impl<'a> Parser<'a> {
                 }
                 "match" => self.match_expr(),
                 // 3.4 rule 5.
-                "if" | "try" => Err(self.unexpected(t)),
+                "if" | "try" => Err(self.perr(code::UNEXPECTED_TOKEN, t.span, Rule::OperandIf)),
                 "_" => Err(self.unexpected(t)),
-                w if is_reserved(w) => Err(self.reserved(t)),
+                w if is_reserved(w) => Err(self.reserved(t, Rule::Value)),
                 _ => {
+                    let wi = self.pos;
                     let nt = self.bump_word()?;
                     let name = SpannedName {
                         name: w.clone(),
@@ -1141,11 +1389,13 @@ impl<'a> Parser<'a> {
                             },
                         ))
                     } else {
+                        self.mark[wi] = MARK_OPERAND_WORD;
                         Ok(self.node(NodeKind::Ident { name: w.clone() }, nt.span))
                     }
                 }
             },
             Tok::Punct(P::LParen) => {
+                self.mark[self.pos] = MARK_PAREN;
                 self.bump();
                 self.open(t.span)?;
                 let e = self.expr()?;
@@ -1162,7 +1412,10 @@ impl<'a> Parser<'a> {
                     self.map()
                 }
             }
-            _ => Err(self.unexpected(t)),
+            _ => {
+                let e = self.unexpected(t);
+                Err(self.tag(e, Rule::Operand))
+            }
         }
     }
 
@@ -1236,6 +1489,7 @@ impl<'a> Parser<'a> {
     }
 
     fn map(&mut self) -> R<NodeId> {
+        self.mark[self.pos] = MARK_MAP;
         let lb = self.bump();
         self.open(lb.span)?;
         let mut entries = Vec::new();
@@ -1277,7 +1531,7 @@ impl<'a> Parser<'a> {
             }
             Tok::Word(w) => {
                 if is_reserved(w) {
-                    return Err(self.reserved(t));
+                    return Err(self.reserved(t, Rule::Shorthand));
                 }
                 if w == "_" {
                     return Err(self.unexpected(t));
@@ -1338,7 +1592,8 @@ impl<'a> Parser<'a> {
         // 3.4 rule 6.
         let t = self.peek();
         if t.is_punct(P::LBrace) || t.is_word("if") || t.is_word("try") {
-            return Err(self.unexpected(t));
+            let e = self.unexpected(t);
+            return Err(self.tag(e, Rule::MatchSubject));
         }
         let subject = self.expr()?;
         self.close();
@@ -1366,6 +1621,7 @@ impl<'a> Parser<'a> {
 
     fn arm(&mut self) -> R<NodeId> {
         let start = self.peek().span;
+        self.arm_start = self.pos;
         let literals = if self.at_word("_") {
             self.bump();
             None
@@ -1407,7 +1663,7 @@ impl<'a> Parser<'a> {
             Tok::Word(w) if w == "false" => Lit::Bool(false),
             Tok::Word(w) if w == "null" => Lit::Null,
             // `01-language.md` 14.2: a reserved word is `reserved-word`.
-            Tok::Word(w) if is_reserved(w) => return Err(self.reserved(t)),
+            Tok::Word(w) if is_reserved(w) => return Err(self.reserved(t, Rule::Value)),
             _ => return Err(self.unexpected(t)),
         };
         self.bump();
@@ -1480,8 +1736,9 @@ impl<'a> Parser<'a> {
         }
         // 3.4 rule 9, found at the `=>`.
         if in_const == Some(false) {
-            return Err(self.unexpected_at(arrow.span));
+            return Err(self.perr(code::UNEXPECTED_TOKEN, arrow.span, Rule::LambdaPattern));
         }
+        self.mark[self.pos] = MARK_LAMBDA_ARROW;
         self.bump();
         let body = self.expr()?;
         let span = start.to(self.outer(body));
@@ -1490,6 +1747,7 @@ impl<'a> Parser<'a> {
 
     fn param(&mut self) -> R<NodeId> {
         let pattern = self.pattern()?;
+        self.param_end = self.pos;
         let mut span = self.ast.span(pattern);
         let mut default = None;
         if self.at_punct(P::Assign) {
@@ -1514,7 +1772,7 @@ impl<'a> Parser<'a> {
                     span: t.span,
                 })
             }
-            Tok::Word(w) if is_reserved(w) => Err(self.reserved(t)),
+            Tok::Word(w) if is_reserved(w) => Err(self.reserved(t, Rule::Name)),
             _ => Err(self.unexpected(t)),
         }
     }
@@ -1544,6 +1802,7 @@ impl<'a> Parser<'a> {
     }
 
     fn map_pat(&mut self) -> R<NodeId> {
+        self.mark[self.pos] = MARK_MAP_PATTERN;
         let lb = self.bump();
         self.open(lb.span)?;
         let mut fields = Vec::new();
@@ -1654,5 +1913,414 @@ impl<'a> Parser<'a> {
         let rb = self.expect(P::RBracket)?;
         self.close();
         Ok(self.node(NodeKind::ListPat { elems, rest }, lb.span.to(rb.span)))
+    }
+
+    /// 14.2 rule 1: a reserved word followed by `=>`, where an argument or
+    /// the value of a `const` may stand, is a parameter.
+    fn reserved_param(&self) -> R<()> {
+        let t = self.peek();
+        if t.word().is_some_and(is_reserved) && self.peek_n(1).is_punct(P::Arrow) {
+            return Err(self.reserved(t, Rule::Name));
+        }
+        Ok(())
+    }
+
+    // ---- the first diagnostic (`f08-errors.md` 2 and 3) -------------------
+
+    /// The diagnostic of a parse error: the Core diagnostic mapped by the
+    /// rows of `f08-errors.md` 2, with its message (3.4).
+    #[cold]
+    fn finish(&self, e: &PErr) -> Diagnostic {
+        let (code, template, span, extra) = if self.core {
+            let template = match e.rule {
+                Rule::Name => "name",
+                Rule::BadType(t) => t,
+                _ => "",
+            };
+            (e.code, template, e.span, Vec::new())
+        } else {
+            self.target(e)
+        };
+        let msg = super::message::parse_message(self.src, code, template, span, &extra);
+        Diagnostic::at(Phase::Parse, code, self.src, span, msg)
+    }
+
+    fn is_opener(t: &Token) -> bool {
+        matches!(
+            t.tok,
+            Tok::Punct(P::LParen | P::LBracket | P::QDotBracket | P::LBrace)
+        )
+    }
+
+    /// The innermost opener that is still open at token `i`.
+    fn enclosing(&self, i: usize) -> Option<usize> {
+        (0..i).rev().find(|&j| {
+            Self::is_opener(&self.t[j]) && self.partner[j].is_none_or(|c| c as usize >= i)
+        })
+    }
+
+    /// Whether token `i` is the `{` of a map literal that is the body of a
+    /// lambda: the token before it is the lambda's `=>`.
+    fn lambda_map(&self, i: usize) -> bool {
+        i >= 1 && self.mark[i] == MARK_MAP && self.mark[i - 1] == MARK_LAMBDA_ARROW
+    }
+
+    /// The code, the template, the span and the other parameters of the
+    /// first diagnostic (`f08-errors.md` 2.1).
+    fn target(&self, e: &PErr) -> Target {
+        let ti = self
+            .t
+            .partition_point(|t| t.span.start < e.span.start)
+            .min(self.t.len() - 1);
+        let t = &self.t[ti];
+        let keep = |template: &'static str| (e.code, template, e.span, Vec::new());
+        match (e.code, e.rule) {
+            (code::RESERVED_WORD, Rule::Name) => keep("name"),
+            (code::RESERVED_WORD, _) => {
+                // 2.4.
+                let c = match t.word().unwrap_or_default() {
+                    "let" | "var" => "let-binding",
+                    "for" | "while" | "do" | "break" | "continue" => "loop-statement",
+                    "return" => "return-statement",
+                    "function" => "function-declaration",
+                    "throw" => "throw-statement",
+                    "finally" => "finally-clause",
+                    "import" => "import-statement",
+                    "nil" => "nil-literal",
+                    _ if ti >= 1 && self.lambda_map(ti - 1) => {
+                        return (
+                            "block-without-const",
+                            "default",
+                            self.t[ti - 1].span,
+                            Vec::new(),
+                        )
+                    }
+                    _ if e.rule == Rule::Shorthand => return keep("name"),
+                    _ => return keep("operand"),
+                };
+                (c, "default", e.span, Vec::new())
+            }
+            (code::BAD_TYPE_TEXT, Rule::BadType(template)) => {
+                let mut extra = Vec::new();
+                if template == "duplicate" {
+                    let key = match &t.tok {
+                        Tok::Word(w) => w.clone(),
+                        Tok::Str(s, _) => s.clone(),
+                        _ => String::new(),
+                    };
+                    extra.push(("key", crate::messages::json_string(&key)));
+                }
+                (e.code, template, e.span, extra)
+            }
+            (code::UNEXPECTED_TOKEN, _) => self.target_token(e, ti),
+            _ => keep(""),
+        }
+    }
+
+    /// 2.5 to 2.7, for `unexpected-token`.
+    fn target_token(&self, e: &PErr, ti: usize) -> Target {
+        let t = &self.t[ti];
+        let prev = |k: usize| ti.checked_sub(k).map(|j| &self.t[j]);
+        let next = self.t.get(ti + 1);
+        let at = |c: &'static str, template: &'static str| (c, template, e.span, Vec::new());
+        let at_span = |c: &'static str, span: Span| {
+            (c, "default", span, Vec::<(&'static str, String)>::new())
+        };
+        let src = self.src.chars();
+        let char_at = |i: u32| src.get(i as usize).copied();
+
+        // 2.5: tokens that no rule accepts.
+        if matches!(t.tok, Tok::Refused) {
+            let text = self.src.slice(t.span);
+            match text.as_str() {
+                "===" => return at("strict-equality", "equal"),
+                "!==" => return at("strict-equality", "not-equal"),
+                "+=" | "-=" | "*=" | "/=" | "%=" | "**=" | "??=" | "||=" | "&&=" => {
+                    return at("assignment", "compound")
+                }
+                "++" => return at("assignment", "increment"),
+                "|>" => return at("pipe-operator", "default"),
+                _ => {}
+            }
+            let quotes = |i: u32| (i..i + 3).all(|k| char_at(k) == Some('\''));
+            if quotes(t.span.start) || (self.src.slice(t.diag) == "r" && quotes(t.diag.end)) {
+                return at("text-block-quote", "default");
+            }
+            let word_end = text
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(0);
+            if word_end > 0 {
+                let after_dot = prev(1).is_some_and(|p| p.is_punct(P::Dot) || p.is_punct(P::QDot));
+                if e.rule == Rule::Operand || after_dot {
+                    return if text[word_end..].starts_with('`') {
+                        at("tagged-template", "default")
+                    } else {
+                        at("string-prefix", "prefix")
+                    };
+                }
+            }
+            return at(e.code, "default");
+        }
+
+        // The rules of 3.4 (2.6), and C10.
+        match e.rule {
+            Rule::Prefix => return at("string-prefix", "space"),
+            Rule::Power => return at("needs-parentheses", "power"),
+            Rule::NotIn => return at("needs-parentheses", "in"),
+            Rule::Coalesce => return at("needs-parentheses", "coalesce"),
+            Rule::OperandIf => return at("needs-parentheses", "operand"),
+            Rule::MatchSubject => return at("needs-parentheses", "match-subject"),
+            Rule::BranchMap => return at("branch-like-map", "default"),
+            Rule::EmptyBranch => return at("empty-branch", "default"),
+            Rule::LambdaPattern => return at("lambda-in-pattern", "default"),
+            Rule::TryCall => return at("try-call", "default"),
+            Rule::MissingElse => return at("missing-else", "default"),
+            Rule::MissingCatch if t.is_word("finally") => return at("finally-clause", "default"),
+            Rule::MissingCatch => return at("missing-catch", "default"),
+            Rule::TryForm => return at("try-form", "default"),
+            Rule::CatchName => return at("catch-name", "default"),
+            Rule::NotTest(is) => {
+                let op = if is { "is" } else { "as" };
+                return (
+                    "needs-parentheses",
+                    "not-test",
+                    e.span,
+                    vec![("op", op.to_string())],
+                );
+            }
+            _ => {}
+        }
+        // 3.4 rule 4: after the last branch of an `if` or the handler of a
+        // `try`, an operator or a step.
+        if ti == self.if_end {
+            let step = matches!(
+                t.tok,
+                Tok::Punct(
+                    P::OrOr
+                        | P::AndAnd
+                        | P::EqEq
+                        | P::NotEq
+                        | P::Lt
+                        | P::Le
+                        | P::Gt
+                        | P::Ge
+                        | P::Plus
+                        | P::Minus
+                        | P::Star
+                        | P::Slash
+                        | P::Percent
+                        | P::StarStar
+                        | P::QQ
+                        | P::Dot
+                        | P::QDot
+                        | P::LBracket
+                        | P::QDotBracket
+                        | P::Question
+                        | P::LParen
+                )
+            ) || matches!(t.word(), Some("in" | "not" | "as" | "is"));
+            if step {
+                return at("needs-parentheses", "after-branch");
+            }
+        }
+
+        // 2.7, in order.
+        let enclosing = self.enclosing(ti);
+        let operand_word = |k: usize, words: &[&str]| {
+            ti >= k
+                && self.mark[ti - k] == MARK_OPERAND_WORD
+                && self.t[ti - k].word().is_some_and(|w| words.contains(&w))
+        };
+        if e.rule == Rule::AsConst {
+            return at("as-const", "default");
+        }
+        if e.rule == Rule::IsNot {
+            return at("negated-is", "default");
+        }
+        if t.is_word("finally") {
+            return at("finally-clause", "default");
+        }
+        if e.rule == Rule::IfForm {
+            return at("if-form", "form");
+        }
+        if t.is_punct(P::Comma) && enclosing.is_some_and(|o| self.mark[o] == MARK_IF_TEST) {
+            return at("if-form", "call");
+        }
+        if prev(1).is_some_and(|p| p.is_word("try"))
+            && !t.is_punct(P::LBrace)
+            && !t.is_punct(P::LParen)
+        {
+            return at("try-form", "default");
+        }
+        if t.is_punct(P::Assign) && ti == self.expr_end {
+            return at("assignment", "assign");
+        }
+        if t.is_punct(P::Colon) && enclosing.is_some_and(|o| self.mark[o] == MARK_INDEX) {
+            return at("slice-syntax", "default");
+        }
+        if t.is_punct(P::Colon)
+            && (ti == self.const_pat_end
+                || ti == self.param_end
+                || (ti >= 2
+                    && self.t[ti - 1].word().is_some_and(is_name)
+                    && self.mark[ti - 2] == MARK_PAREN))
+        {
+            return at("type-annotation", "default");
+        }
+        if t.is_punct(P::Pipe) {
+            return at("bitwise-operator", "or");
+        }
+        if (t.is_punct(P::Star)
+            && prev(1).is_some_and(|p| p.is_punct(P::Dot) || p.is_punct(P::QDot)))
+            || (t.is_punct(P::RBracket) && ti >= 1 && self.mark[ti - 1] == MARK_INDEX)
+        {
+            return at("star-form", "default");
+        }
+        if t.is_punct(P::Question) && ti >= 1 && self.mark[ti - 1] == MARK_INDEX {
+            return at("filter-step", "default");
+        }
+        if t.is_word("satisfies") {
+            return at("satisfies-operator", "default");
+        }
+        if t.is_word("instanceof") {
+            return at("instanceof-operator", "default");
+        }
+        // E15.
+        if operand_word(1, &["switch", "case"]) {
+            return at_span("switch-statement", self.t[ti - 1].span);
+        }
+        if t.is_punct(P::LBrace) && prev(1).is_some_and(|p| p.is_punct(P::RParen)) {
+            let close = ti - 1;
+            let open = (0..close)
+                .rev()
+                .find(|&j| self.partner[j] == Some(close as u32));
+            if let Some(o) = open {
+                let named = o >= 1
+                    && self.t[o].is_punct(P::LParen)
+                    && self.t[o - 1].is_word("switch")
+                    && !(o >= 2
+                        && (self.t[o - 2].is_punct(P::Dot) || self.t[o - 2].is_punct(P::QDot)));
+                if named {
+                    return at_span("switch-statement", self.t[o - 1].span);
+                }
+            }
+        }
+        if t.is_word("case") && ti == self.arm_start {
+            return at_span("switch-statement", t.span);
+        }
+        if operand_word(1, &["typeof"]) {
+            return at_span("typeof-operator", self.t[ti - 1].span);
+        }
+        if operand_word(1, &["interface", "enum", "type"]) {
+            let span = self.t[ti - 1].span;
+            return ("type-declaration", "default", span, Vec::new());
+        }
+        if operand_word(1, &["export"]) {
+            return at_span("export-statement", self.t[ti - 1].span);
+        }
+        if t.is_punct(P::Lt) && e.rule == Rule::Operand {
+            return if char_at(t.span.end) == Some('<') {
+                at("heredoc", "default")
+            } else {
+                at("angle-cast", "default")
+            };
+        }
+        if let Rule::CondColon(q) = e.rule {
+            let q = &self.t[q as usize];
+            if char_at(q.span.end) == Some('[') {
+                return at_span("optional-index", q.span);
+            }
+        }
+        if let Some(r) = self.unquoted_key(ti, enclosing) {
+            return r;
+        }
+        if let Some(o) = enclosing.filter(|&o| self.lambda_map(o)) {
+            let mut depth = 0i32;
+            let mut plain = true;
+            for k in o + 1..ti {
+                let x = &self.t[k];
+                if Self::is_opener(x) {
+                    depth += 1;
+                } else if matches!(x.tok, Tok::Punct(P::RParen | P::RBracket | P::RBrace)) {
+                    depth -= 1;
+                } else if depth == 0
+                    && (x.is_punct(P::Colon) || x.is_punct(P::Comma) || x.is_punct(P::Ellipsis))
+                {
+                    plain = false;
+                    break;
+                }
+            }
+            if plain {
+                return at_span("block-without-const", self.t[o].span);
+            }
+        }
+        if ti == self.type_end
+            && matches!(
+                t.tok,
+                Tok::Punct(
+                    P::Plus
+                        | P::Minus
+                        | P::Star
+                        | P::Slash
+                        | P::Percent
+                        | P::StarStar
+                        | P::Dot
+                        | P::QDot
+                        | P::QDotBracket
+                        | P::LBracket
+                        | P::LParen
+                        | P::LBrace
+                )
+            )
+        {
+            return at("needs-parentheses", "after-type");
+        }
+        if t.is_punct(P::Bang) && ti == self.expr_end && next.is_some_and(|n| n.is_word("is")) {
+            return at("negated-is", "default");
+        }
+        at(e.code, "default")
+    }
+
+    /// E22: a `-` in a map literal or a map pattern, in an entry or a field
+    /// that begins with a word joined to words or numbers by `-`, then `:`.
+    fn unquoted_key(&self, ti: usize, enclosing: Option<usize>) -> Option<Target> {
+        let o = enclosing?;
+        if !self.t[ti].is_punct(P::Minus)
+            || !(self.mark[o] == MARK_MAP || self.mark[o] == MARK_MAP_PATTERN)
+            || ti < 2
+        {
+            return None;
+        }
+        let w = &self.t[ti - 1];
+        w.word()?;
+        let before = &self.t[ti - 2];
+        if !(ti - 2 == o || before.is_punct(P::Comma)) {
+            return None;
+        }
+        let mut j = ti;
+        let mut last = ti - 1;
+        loop {
+            let m = &self.t[j];
+            let n = self.t.get(j + 1)?;
+            let joined = m.is_punct(P::Minus)
+                && m.span.start == self.t[last].span.end
+                && n.span.start == m.span.end
+                && matches!(n.tok, Tok::Word(_) | Tok::Number(_));
+            if !joined {
+                return None;
+            }
+            last = j + 1;
+            j += 2;
+            let after = self.t.get(j)?;
+            if after.is_punct(P::Colon) {
+                break;
+            }
+            if !after.is_punct(P::Minus) {
+                return None;
+            }
+        }
+        let span = w.span.to(self.t[last].span);
+        let key = crate::messages::json_string(&self.src.slice(span));
+        Some(("unquoted-key", "default", span, vec![("key", key)]))
     }
 }

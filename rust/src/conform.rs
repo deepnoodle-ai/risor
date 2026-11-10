@@ -328,8 +328,190 @@ impl ProgramType {
         }
     }
 
+    /// `ConformAll` (`f08-errors.md` 6): every failure of the value, up to
+    /// `max`, in the order of 6.2. A maximum less than 1 is read as 1. The
+    /// list is empty exactly when the value conforms, and its first entry is
+    /// the diagnostic of `conform`. It is not a run and charges nothing.
+    pub fn conform_all(&self, value: &crate::host::Data, max: usize) -> Vec<Diagnostic> {
+        let v = Value::from_data(value);
+        self.conform_all_value(&v, max)
+    }
+
+    /// The same on a run's value, or a host value read in place.
+    pub fn conform_all_value(&self, v: &Value<'_>, max: usize) -> Vec<Diagnostic> {
+        all(v, &self.ty, max.max(1))
+            .iter()
+            .map(Failure::diagnostic)
+            .collect()
+    }
+
     /// The type, printed by structure (`05-types.md` 3.9).
     pub fn print(&self) -> String {
         print(&self.ty)
+    }
+}
+
+/// All(v, T, []) of `f08-errors.md` 6.2: every failure, up to `max`.
+pub fn all(v: &Value<'_>, t: &Ty, max: usize) -> Vec<Failure> {
+    let mut a = All {
+        path: Vec::new(),
+        out: Vec::new(),
+        max,
+    };
+    a.walk(v, t);
+    a.out
+}
+
+/// The walk of every failure. It recurses only where the type has a level,
+/// so its depth is the type's, at most 64.
+struct All {
+    path: Vec<PathStep>,
+    out: Vec<Failure>,
+    max: usize,
+}
+
+impl All {
+    fn full(&self) -> bool {
+        self.out.len() >= self.max
+    }
+
+    fn add(&mut self, f: Failure) {
+        if !self.full() {
+            self.out.push(f);
+        }
+    }
+
+    fn at(&self, k: &str) -> Vec<PathStep> {
+        let mut p = self.path.clone();
+        p.push(PathStep::Key(k.to_string()));
+        p
+    }
+
+    fn walk(&mut self, v: &Value<'_>, t: &Ty) {
+        // 1.
+        if self.full() || t.any {
+            return;
+        }
+        match v {
+            // 2, 3, 4.
+            Value::BadNum => self.add(wrong(&self.path, t, v)),
+            Value::Null if t.null => {}
+            Value::Bool(_) if t.boolean => {}
+            Value::Num(n) => match t.num {
+                Some(Num::Float) => {}
+                Some(Num::Int) if is_whole(*n) => {}
+                _ => self.add(wrong(&self.path, t, v)),
+            },
+            Value::Str(s) => match &t.str {
+                Some(Strs::All) => {}
+                Some(Strs::Lits(l)) if l.contains(s.as_str()) => {}
+                _ => self.add(wrong(&self.path, t, v)),
+            },
+            Value::Opaque(o) if t.opaque.contains(o.type_name.as_ref()) => {}
+            // 5.
+            Value::List(_) | Value::HList(_) if t.list.is_some() => {
+                let e = t.list.as_deref().expect("a list alternative");
+                for i in 0..v.len().unwrap_or(0) {
+                    self.path.push(PathStep::Index(i));
+                    self.walk(&v.elem(i), e);
+                    self.path.pop();
+                    if self.full() {
+                        return;
+                    }
+                }
+            }
+            // 7.
+            Value::Map(_) | Value::HMap(_) if t.variants.is_some() => self.union(v, t),
+            // 6.
+            Value::Map(_) | Value::HMap(_) if t.map.is_some() => {
+                let r = t.map.as_deref().expect("a map alternative");
+                self.record(v, r, None);
+            }
+            _ => self.add(wrong(&self.path, t, v)),
+        }
+    }
+
+    /// Step 7: the tag first; a missing or unknown tag is one failure and
+    /// ends the walk of that value.
+    fn union(&mut self, v: &Value<'_>, t: &Ty) {
+        let flat = t.map.as_deref().expect("a map alternative");
+        let tag = t.tag().unwrap_or_default();
+        let Some(x) = v.field(&tag) else {
+            self.add(Failure {
+                path: self.at(&tag),
+                template: "missing",
+                params: vec![("key", json_string(&tag))],
+            });
+            return;
+        };
+        let tag_ty = flat
+            .fields
+            .get(&tag)
+            .map(|f| f.ty.clone())
+            .unwrap_or_default();
+        let s = x.as_str().unwrap_or_default();
+        let vs = t.variants.as_deref().expect("variants");
+        let var = match &x {
+            Value::Str(_) => vs.iter().find(|r| {
+                matches!(r.fields.get(&tag).and_then(|f| f.ty.str.as_ref()), Some(Strs::Lits(l)) if l.contains(s))
+            }),
+            _ => None,
+        };
+        match var {
+            Some(var) => self.record(v, var, Some(&tag)),
+            None => self.add(wrong(&self.at(&tag), &tag_ty, &x)),
+        }
+    }
+
+    /// Step 6. `skip`: a union's tag, counted as a declared key v has.
+    fn record(&mut self, v: &Value<'_>, r: &crate::check::ty::Rec, skip: Option<&str>) {
+        for (k, f) in &r.fields {
+            if skip == Some(k.as_str()) {
+                continue;
+            }
+            match v.field(k) {
+                None if !f.optional => self.add(Failure {
+                    path: self.at(k),
+                    template: "missing",
+                    params: vec![("key", json_string(k))],
+                }),
+                None => {}
+                Some(x) => {
+                    self.path.push(PathStep::Key(k.clone()));
+                    self.walk(&x, &f.ty);
+                    self.path.pop();
+                }
+            }
+            if self.full() {
+                return;
+            }
+        }
+        if r.rest.any {
+            return;
+        }
+        let mut others: Vec<String> = v
+            .keys()
+            .into_iter()
+            .map(|k| k.as_str().to_string())
+            .filter(|k| !r.fields.contains_key(k))
+            .collect();
+        others.sort();
+        for k in &others {
+            if r.rest.is_never() {
+                self.add(Failure {
+                    path: self.at(k),
+                    template: "extra",
+                    params: vec![("key", json_string(k))],
+                });
+            } else {
+                let x = v.field(k).unwrap_or(Value::Null);
+                self.path.push(PathStep::Key(k.clone()));
+                self.walk(&x, &r.rest);
+                self.path.pop();
+            }
+            if self.full() {
+                return;
+            }
+        }
     }
 }

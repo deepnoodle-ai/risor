@@ -260,7 +260,8 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f03-strings.json", true),
         ("until-f04-as-is.json", true),
         ("until-f07-methods.json", true),
-        ("until-f08-parse-errors.json", false),
+        ("until-f08-parse-errors.json", true),
+        ("until-f09-x.json", false),
         ("until-f13-math.json", false),
         ("until-fx-a.json", false),
         ("until-f02.json", false),
@@ -268,7 +269,7 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(risor::PACKAGES.len(), 7);
+    assert_eq!(risor::PACKAGES.len(), 8);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
@@ -338,4 +339,46 @@ fn queries_package() {
     let total = run(&suite_dir().join("queries"), true);
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F8: `suite/errors/` (`f08-errors.md` 7.8).
+#[test]
+fn errors_package() {
+    let total = run(&suite_dir().join("errors"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F8: the cases of `suite/messages-parse.json`.
+#[test]
+fn catalog_parse_cases() {
+    let lists = risor::messages::catalog().parse_cases.clone();
+    let total = run_lists("suite/messages-parse.json", lists);
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F8: the cases of `suite/messages-check.json`, each run once,
+/// checked (`f08-errors.md` 7.8 item 2).
+#[test]
+fn catalog_check_cases() {
+    let mut total = Counts::default();
+    let mut failed = Vec::new();
+    for (entry, cases) in risor::messages::catalog().check_cases.clone() {
+        let cases = load_doc(&cases, &suite_dir()).expect("the cases are valid");
+        for c in &cases {
+            let v = risor::testing::run_case_in(c, true);
+            if let Verdict::Fail(diffs) = &v {
+                failed.push(c.name.clone());
+                println!("  fail: {entry}: {}", c.name);
+                for d in diffs {
+                    println!("    {}: expected {}, found {}", d.name, d.expected, d.found);
+                }
+            }
+            total.add(&v);
+        }
+    }
+    println!("suite/messages-check.json, checked: {total}");
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert!(failed.is_empty(), "cases failed: {failed:?}");
 }

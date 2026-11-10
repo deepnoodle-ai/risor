@@ -146,6 +146,9 @@ pub struct Fail<'h> {
     pub host_number: bool,
     /// The path of a `not-conforming` failure (F4 5.1).
     pub path: Option<Vec<crate::diag::PathStep>>,
+    /// The calls in progress, the innermost first: each call adds its entry
+    /// as the failure leaves it (`f08-errors.md` 4). Built only on failure.
+    pub trace: Vec<(Span, String, Option<usize>)>,
 }
 
 impl Fail<'_> {
@@ -181,6 +184,20 @@ impl Fail<'_> {
         d.class = self.class();
         d.data = self.data.as_ref().map(|v| Box::new(v.to_data()));
         d.path = self.path.clone().map(Box::new);
+        if !self.trace.is_empty() {
+            d.trace = Some(Box::new(
+                self.trace
+                    .iter()
+                    .rev()
+                    .map(|(s, name, index)| crate::diag::TraceEntry {
+                        range: *s,
+                        span: src.line_span(*s),
+                        name: name.clone(),
+                        index: *index,
+                    })
+                    .collect(),
+            ));
+        }
         d
     }
 }
@@ -317,6 +334,7 @@ fn fail<'h>(
         data: None,
         host_number: false,
         path: None,
+        trace: Vec::new(),
     })
 }
 
@@ -342,6 +360,7 @@ impl<'h> Run<'h> {
             data: None,
             host_number: false,
             path: None,
+            trace: Vec::new(),
         })
     }
 
@@ -371,6 +390,7 @@ impl<'h> Run<'h> {
             data: None,
             host_number: true,
             path: None,
+            trace: Vec::new(),
         })
     }
 
@@ -1436,7 +1456,13 @@ impl<'h> Run<'h> {
                 }
                 self.charge(1)?;
                 let measure = self.p.measure[id.index()] as u32;
-                self.invoke(l, &vals, measure, span)
+                // `f08-errors.md` 4.1: in progress from its depth test to its end.
+                self.invoke(l, &vals, measure, span).map_err(|mut f| {
+                    if let NodeKind::Call { name, .. } = self.ast.kind(id) {
+                        f.trace.push((span, name.name.clone(), None));
+                    }
+                    f
+                })
             }
             Res::CallLib(i) => {
                 let i = *i as usize;
@@ -1487,6 +1513,24 @@ impl<'h> Run<'h> {
             }
             Ok(Ok(d)) => self.read(Value::from_data(&d), span),
         }
+    }
+
+    /// A library entry's call of a lambda passed to it, at the element
+    /// `index`: a failure that leaves it has the entry's trace entry
+    /// (`f08-errors.md` 4.1, 4.2).
+    fn invoke_for(
+        &mut self,
+        entry: &str,
+        index: usize,
+        l: NodeId,
+        args: &[Value<'h>],
+        measure: u32,
+        span: Span,
+    ) -> R<'h, Value<'h>> {
+        self.invoke(l, args, measure, span).map_err(|mut f| {
+            f.trace.push((span, entry.to_string(), Some(index)));
+            f
+        })
     }
 
     /// Call a lambda: by name after its step, or by the library after the two

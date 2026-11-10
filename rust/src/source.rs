@@ -111,6 +111,16 @@ impl Source {
             .collect()
     }
 
+    /// The text of a span as a parameter of a message renders it: visible
+    /// text, cut to 64 code points (`f08-errors.md` 3.2). Only the start of
+    /// a long span is read.
+    pub fn param_text(&self, span: Span) -> String {
+        let start = span.start as usize;
+        let end = (span.end as usize).min(start + 65);
+        let head: String = self.chars[start..end].iter().collect();
+        crate::messages::cut(&crate::messages::visible(&head))
+    }
+
     /// The position of an offset. An offset may be the end of the text.
     pub fn pos(&self, offset: u32) -> Pos {
         let line = match self.line_starts.binary_search(&offset) {

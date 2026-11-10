@@ -17,6 +17,7 @@
 //! | [`hosttype`] | F1: types from host types, and their presentation |
 //! | [`template`] | F2: host templates with `${{ }}` parts |
 //! | [`analysis`] | F2: the names, paths and calls a program reads |
+//! | [`render`] | F8: diagnostics as one line, detail and JSON |
 //! | [`testing`] | The case-file runner |
 
 #![forbid(unsafe_code)]
@@ -24,7 +25,7 @@
 /// The packages of the specification this build offers (`03-host.md` 3.11),
 /// in the order they are offered. This is the one list: the runner reads it
 /// to choose the `until-fNN-` files it does not run.
-pub const PACKAGES: [u32; 7] = [3, 1, 2, 4, 5, 6, 7];
+pub const PACKAGES: [u32; 8] = [3, 1, 2, 4, 5, 6, 7, 8];
 
 pub mod analysis;
 pub mod casemap;
@@ -41,6 +42,7 @@ pub mod json;
 pub mod library;
 pub mod messages;
 pub mod number;
+pub mod render;
 pub mod schema;
 pub mod source;
 pub mod syntax;

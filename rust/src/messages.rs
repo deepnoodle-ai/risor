@@ -25,6 +25,41 @@ pub struct Catalog {
     pub cases: Vec<(String, Json)>,
     /// F7: the cases of `suite/messages-queries.json` (`f07-queries.md` 11).
     pub query_cases: Vec<(String, Json)>,
+    /// F8: the cases of `suite/messages-parse.json` and
+    /// `suite/messages-check.json` (`f08-errors.md` 3.1).
+    pub parse_cases: Vec<(String, Json)>,
+    pub check_cases: Vec<(String, Json)>,
+}
+
+/// Package F8: the catalog files of the `parse` and `check` phases
+/// (`f08-errors.md` 3.1).
+pub const PARSE_SOURCE: &str = include_str!("../../suite/messages-parse.json");
+pub const CHECK_SOURCE: &str = include_str!("../../suite/messages-check.json");
+
+fn read_entry(e: &Json) -> Entry {
+    let s = |k: &str| {
+        e.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    let pairs = |k: &str| -> Vec<(String, String)> {
+        e.get(k)
+            .and_then(|v| v.as_obj())
+            .map(|m| {
+                m.iter()
+                    .map(|(a, b)| (a.clone(), b.as_str().unwrap_or_default().to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    Entry {
+        phase: s("phase"),
+        caught: matches!(e.get("caught"), Some(Json::Bool(true))),
+        params: pairs("params"),
+        templates: pairs("templates"),
+        code: s("code"),
+    }
 }
 
 /// Package F7: the catalog file of its three templates (`f07-queries.md` 11).
@@ -37,33 +72,11 @@ pub fn catalog() -> &'static Catalog {
         let mut entries = Vec::new();
         let mut cases = Vec::new();
         for e in doc.as_arr().unwrap_or_default() {
-            let s = |k: &str| {
-                e.get(k)
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string()
-            };
-            let pairs = |k: &str| -> Vec<(String, String)> {
-                e.get(k)
-                    .and_then(|v| v.as_obj())
-                    .map(|m| {
-                        m.iter()
-                            .map(|(a, b)| (a.clone(), b.as_str().unwrap_or_default().to_string()))
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            };
-            let code = s("code");
+            let entry = read_entry(e);
             if let Some(c) = e.get("cases") {
-                cases.push((code.clone(), c.clone()));
+                cases.push((entry.code.clone(), c.clone()));
             }
-            entries.push(Entry {
-                phase: s("phase"),
-                caught: matches!(e.get("caught"), Some(Json::Bool(true))),
-                params: pairs("params"),
-                templates: pairs("templates"),
-                code,
-            });
+            entries.push(entry);
         }
         // F7 11 item 2: an entry of the second file adds templates to the
         // entry of its code.
@@ -86,10 +99,28 @@ pub fn catalog() -> &'static Catalog {
                 }
             }
         }
+        // F8 3.1 items 6 and 7: each entry of the two files is the entry of
+        // a code no other file has.
+        let mut more = |text: &str, out: &mut Vec<(String, Json)>| {
+            let d = json::parse(text).expect("a catalog file is valid JSON");
+            for e in d.as_arr().unwrap_or_default() {
+                let entry = read_entry(e);
+                if let Some(c) = e.get("cases") {
+                    out.push((entry.code.clone(), c.clone()));
+                }
+                entries.push(entry);
+            }
+        };
+        let mut parse_cases = Vec::new();
+        let mut check_cases = Vec::new();
+        more(PARSE_SOURCE, &mut parse_cases);
+        more(CHECK_SOURCE, &mut check_cases);
         Catalog {
             entries,
             cases,
             query_cases,
+            parse_cases,
+            check_cases,
         }
     })
 }
@@ -111,6 +142,33 @@ pub fn cut(s: &str) -> String {
         t
     } else {
         s.to_string()
+    }
+}
+
+/// Visible text (`f08-errors.md` 1.1): each control character as an escape.
+pub fn visible(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 || (0x7f..=0x9f).contains(&(c as u32)) => {
+                out.push_str(&format!("\\u00{:02x}", c as u32))
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// A parameter of kind `char` (`f08-errors.md` 3.2).
+pub fn char_param(c: char) -> String {
+    let n = c as u32;
+    if (0x21..=0x7e).contains(&n) {
+        format!("U+{n:04X} ({c})")
+    } else {
+        format!("U+{n:04X}")
     }
 }
 

@@ -763,10 +763,17 @@ impl<'h> Run<'h> {
         self.charge(log2_ceil(n) * (n + s))?;
         let f = self.lam(args, 0, span)?;
         let mut out = Vec::with_capacity(es.len());
-        for (k, v) in es {
+        for (i, (k, v)) in es.into_iter().enumerate() {
             self.charge(2)?;
             let v = self.read(v, span)?;
-            let r = self.invoke(f, &[v, Value::Str(k.clone())], measure, span)?;
+            let r = self.invoke_for(
+                "mapValues",
+                i,
+                f,
+                &[v, Value::Str(k.clone())],
+                measure,
+                span,
+            )?;
             out.push((k, r));
         }
         self.alloc(1 + 2 * n)?;
@@ -791,7 +798,14 @@ impl<'h> Run<'h> {
         for i in 0..n {
             self.charge(2)?;
             let e = self.read(recv.elem(i), span)?;
-            let k = self.invoke(f, &[e.clone(), Value::Num(i as f64)], measure, span)?;
+            let k = self.invoke_for(
+                name,
+                i,
+                f,
+                &[e.clone(), Value::Num(i as f64)],
+                measure,
+                span,
+            )?;
             if string_keys && k.kind() != Kind::String {
                 return Err(fail(
                     "wrong-kind",
@@ -928,7 +942,14 @@ impl<'h> Run<'h> {
                 for i in 0..n {
                     self.charge(2)?;
                     let e = self.read(recv.elem(i), span)?;
-                    let r = self.invoke(f, &[e.clone(), Value::Num(i as f64)], measure, span)?;
+                    let r = self.invoke_for(
+                        name,
+                        i,
+                        f,
+                        &[e.clone(), Value::Num(i as f64)],
+                        measure,
+                        span,
+                    )?;
                     match name {
                         "map" => out.push(r),
                         "filter" => {
@@ -1041,7 +1062,14 @@ impl<'h> Run<'h> {
                 for i in 0..n {
                     self.charge(2)?;
                     let e = self.read(recv.elem(i), span)?;
-                    acc = self.invoke(f, &[acc, e, Value::Num(i as f64)], measure, span)?;
+                    acc = self.invoke_for(
+                        name,
+                        i,
+                        f,
+                        &[acc, e, Value::Num(i as f64)],
+                        measure,
+                        span,
+                    )?;
                 }
                 Ok(acc)
             }

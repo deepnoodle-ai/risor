@@ -3,8 +3,9 @@
 
 pub mod ast;
 pub mod lexer;
+pub(crate) mod message;
 pub mod parser;
 pub mod token;
 
 pub use ast::{Ast, Node, NodeId, NodeKind};
-pub use parser::{parse, Parsed, MAX_LEVELS};
+pub use parser::{parse, parse_core, Parsed, MAX_LEVELS};

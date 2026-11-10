@@ -69,6 +69,27 @@ pub struct ConformExpect {
     pub path: Option<Vec<Json>>,
     pub message: Option<String>,
     pub steps: Option<u64>,
+    /// F8: the failures of `ConformAll`, each a path and maybe a message
+    /// (`f08-errors.md` 7.5).
+    pub failures: Option<Vec<(Vec<Json>, Option<String>)>>,
+}
+
+/// F8: the three renderings a case expects, each when given
+/// (`f08-errors.md` 7.3, 7.4).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Renderings {
+    pub line: Option<String>,
+    pub detail: Option<String>,
+    pub json: Option<String>,
+}
+
+/// F8: a case of the third kind (`f08-errors.md` 7.4): diagnostics, a
+/// source text, and the renderings expected.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RenderCase {
+    pub diagnostics: Vec<Json>,
+    pub source: Option<String>,
+    pub expect: Renderings,
 }
 
 /// A named type of the case field `types` (F4 9.1).
@@ -95,6 +116,9 @@ impl ExpectResult {
     }
 }
 
+/// F8: an expected trace, each entry a span, a name and an index.
+pub type ExpectTrace = Vec<([u32; 4], String, Option<u64>)>;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExpectDiag {
     pub code: String,
@@ -103,6 +127,9 @@ pub struct ExpectDiag {
     pub path: Option<Vec<Json>>,
     pub message: Option<String>,
     pub data: Option<Json>,
+    /// F8: the trace, each entry a span, a name and an index
+    /// (`f08-errors.md` 7.2).
+    pub trace: Option<ExpectTrace>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -111,6 +138,8 @@ pub struct ExpectFailure {
     pub diagnostics: Vec<ExpectDiag>,
     pub steps: Option<u64>,
     pub allocated: Option<u64>,
+    /// F8: the renderings of the failure's diagnostics (`f08-errors.md` 7.3).
+    pub rendered: Option<Renderings>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -138,6 +167,10 @@ pub struct Case {
     pub groups: Vec<String>,
     /// F4: a case of the second kind: a type text and a host value (9.2).
     pub conform: Option<(String, Json)>,
+    /// F8: the maximum of `ConformAll` in a conform case (`f08-errors.md` 7.5).
+    pub conform_max: Option<usize>,
+    /// F8: a case of the third kind (`f08-errors.md` 7.4).
+    pub render: Option<RenderCase>,
     /// The case is of `suite/conversion/`, where two more codes are static.
     pub conversion: bool,
     pub opaque: Vec<String>,
@@ -189,7 +222,8 @@ const HEADER_FIELDS: [&str; 20] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 22] = [
+const CASE_FIELDS: [&str; 23] = [
+    "render",
     "groups",
     "types",
     "conform",
@@ -316,6 +350,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         .as_str()
         .unwrap_or_default()
         .to_string();
+    // F8 7.4: a case of the third kind.
+    if let Some(r) = own("render") {
+        return render_case(name, r, header, case);
+    }
     let expect = match own("expect") {
         Some(e) => read_expect(e)?,
         None if lax => Expect::Result(ExpectResult::default()),
@@ -329,6 +367,18 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         } else {
             (hdr("source"), hdr("file"), hdr("conform"))
         };
+    let conform_max = conform
+        .and_then(|c| c.get("max"))
+        .and_then(|m| m.as_integer())
+        .map(|m| m as usize);
+    if let Expect::Result(ExpectResult {
+        conform: Some(c), ..
+    }) = &expect
+    {
+        if c.failures.is_some() && conform_max.is_none() {
+            return Err("a conform result has failures and conform has no max".into());
+        }
+    }
     let conform = match (conform, source, file) {
         (Some(c), None, None) => Some((
             c.get("type")
@@ -542,6 +592,8 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         types,
         groups: strings(get("groups")),
         conform,
+        conform_max,
+        render: None,
         conversion: false,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
         env,
@@ -628,7 +680,7 @@ fn read_expect(v: &Json) -> V<Expect> {
     let count = |k: &str| v.get(k).and_then(|x| x.as_integer()).map(|x| x as u64);
     if has("phase") {
         for (k, _) in obj {
-            if !["phase", "diagnostics", "steps", "allocated"].contains(&k.as_str()) {
+            if !["phase", "diagnostics", "steps", "allocated", "rendered"].contains(&k.as_str()) {
                 return Err(format!("expect is a failure and has the field {k:?}"));
             }
         }
@@ -673,11 +725,31 @@ fn read_expect(v: &Json) -> V<Expect> {
                 }
             }
         }
+        // F8 7.2, 7.3 and 7.6.
+        if phase != Phase::Run && diagnostics.iter().any(|d| d.trace.is_some()) {
+            return Err(format!("a trace in a diagnostic of phase {phase}"));
+        }
+        let rendered = match v.get("rendered") {
+            None => None,
+            Some(r) => {
+                if phase == Phase::Declare {
+                    return Err("rendered in a failure of phase declare".into());
+                }
+                if diagnostics
+                    .iter()
+                    .any(|d| code::LIMIT.contains(&d.code.as_str()))
+                {
+                    return Err("rendered in a failure of a limit code".into());
+                }
+                Some(read_renderings(r).map_err(|e| format!("expect.rendered: {e}"))?)
+            }
+        };
         return Ok(Expect::Failure(ExpectFailure {
             phase,
             diagnostics,
             steps: count("steps"),
             allocated: count("allocated"),
+            rendered,
         }));
     }
     if has("conforms") {
@@ -686,6 +758,7 @@ fn read_expect(v: &Json) -> V<Expect> {
             path: None,
             message: None,
             steps: None,
+            failures: None,
         };
         for (k, x) in obj {
             match k.as_str() {
@@ -714,6 +787,41 @@ fn read_expect(v: &Json) -> V<Expect> {
                 "steps" => {
                     check_count(x).map_err(|e| format!("expect.steps: {e}"))?;
                     c.steps = x.as_integer().map(|n| n as u64);
+                }
+                "failures" => {
+                    let a = x.as_arr().ok_or("expect.failures is not an array")?;
+                    let mut out = Vec::new();
+                    for f in a {
+                        let m = f.as_obj().ok_or("a failure is not an object")?;
+                        for (fk, _) in m {
+                            if fk != "path" && fk != "message" {
+                                return Err(format!("a failure has the field {fk:?}"));
+                            }
+                        }
+                        let p = f
+                            .get("path")
+                            .and_then(|p| p.as_arr())
+                            .ok_or("a failure has no path that is an array")?;
+                        for st in p {
+                            let ok = matches!(st, Json::Str(_))
+                                || st.as_integer().is_some_and(|n| n >= 0.0);
+                            if !ok {
+                                return Err(
+                                    "a step of a path is neither a string nor an index".into()
+                                );
+                            }
+                        }
+                        let msg = match f.get("message") {
+                            None => None,
+                            Some(m) => Some(
+                                m.as_str()
+                                    .ok_or("a failure's message is not a string")?
+                                    .to_string(),
+                            ),
+                        };
+                        out.push((p.to_vec(), msg));
+                    }
+                    c.failures = Some(out);
                 }
                 _ => return Err(format!("a conform result has the field {k:?}")),
             }
@@ -1029,6 +1137,9 @@ fn read_diag(d: &Json) -> V<ExpectDiag> {
                 v.as_str().ok_or("a diagnostic's message is not a string")?;
             }
             "data" => {}
+            "trace" => {
+                read_trace(v)?;
+            }
             _ => return Err(format!("a diagnostic has the field {k:?}")),
         }
     }
@@ -1044,6 +1155,205 @@ fn read_diag(d: &Json) -> V<ExpectDiag> {
         path: d.get("path").and_then(|p| p.as_arr()).map(|a| a.to_vec()),
         message: d.get("message").and_then(|m| m.as_str()).map(String::from),
         data: d.get("data").cloned(),
+        trace: match d.get("trace") {
+            Some(t) => Some(read_trace(t)?),
+            None => None,
+        },
+    })
+}
+
+/// F8 7.2: a trace, a list of entries with exactly `span`, `name` and
+/// `index`.
+fn read_trace(v: &Json) -> V<ExpectTrace> {
+    let a = v.as_arr().ok_or("a trace is not an array")?;
+    let mut out = Vec::new();
+    for e in a {
+        let m = e.as_obj().ok_or("a trace entry is not an object")?;
+        if m.len() != 3 {
+            return Err("a trace entry does not have exactly span, name and index".into());
+        }
+        let span = e.get("span").ok_or("a trace entry has no span")?;
+        check_span(span)?;
+        let name = e
+            .get("name")
+            .and_then(|n| n.as_str())
+            .ok_or("a trace entry has no name that is a string")?;
+        let index = match e.get("index") {
+            Some(Json::Null) => None,
+            Some(n) => match n.as_integer() {
+                Some(i) if i >= 0.0 => Some(i as u64),
+                _ => return Err("a trace entry's index is not a whole number or null".into()),
+            },
+            None => return Err("a trace entry has no index".into()),
+        };
+        out.push((span_of(span), name.to_string(), index));
+    }
+    Ok(out)
+}
+
+/// F8 7.3: an object with one or more of `line`, `detail` and `json`.
+fn read_renderings(v: &Json) -> V<Renderings> {
+    let m = v.as_obj().ok_or("not an object")?;
+    if m.is_empty() {
+        return Err("no rendering".into());
+    }
+    let mut r = Renderings::default();
+    for (k, x) in m {
+        let t = x
+            .as_str()
+            .ok_or_else(|| format!("{k} is not a string"))?
+            .to_string();
+        match k.as_str() {
+            "line" => r.line = Some(t),
+            "detail" => r.detail = Some(t),
+            "json" => r.json = Some(t),
+            _ => return Err(format!("the field {k:?}")),
+        }
+    }
+    Ok(r)
+}
+
+/// F8 7.4: a case with `render`.
+fn render_case(
+    name: String,
+    r: &Json,
+    header: &[(String, Json)],
+    case: &[(String, Json)],
+) -> V<Case> {
+    for (k, _) in case {
+        if !["name", "opaque", "render", "skip", "expect"].contains(&k.as_str()) {
+            return Err(format!("a render case has the field {k:?}"));
+        }
+    }
+    for (k, _) in header {
+        if ["source", "file", "conform"].contains(&k.as_str()) {
+            return Err(format!("a render case under a header with {k:?}"));
+        }
+    }
+    let m = r.as_obj().ok_or("render is not an object")?;
+    for (k, _) in m {
+        if k != "diagnostics" && k != "source" {
+            return Err(format!("render has the field {k:?}"));
+        }
+    }
+    let source = match r.get("source") {
+        None => None,
+        Some(s) => Some(
+            s.as_str()
+                .ok_or("render.source is not a string")?
+                .to_string(),
+        ),
+    };
+    let ds = r
+        .get("diagnostics")
+        .and_then(|d| d.as_arr())
+        .ok_or("render.diagnostics is not an array")?;
+    if ds.is_empty() {
+        return Err("render.diagnostics is empty".into());
+    }
+    let own = |k: &str| case.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+    let get = |k: &str| own(k).or_else(|| header.iter().find(|(n, _)| n == k).map(|(_, v)| v));
+    let opaque: Vec<String> = get("opaque")
+        .and_then(|v| v.as_arr())
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    for d in ds {
+        let dm = d.as_obj().ok_or("a diagnostic is not an object")?;
+        for (k, x) in dm {
+            match k.as_str() {
+                "phase" => {
+                    if !matches!(x.as_str(), Some("declare" | "parse" | "check" | "run")) {
+                        return Err("a diagnostic's phase is not a phase".into());
+                    }
+                }
+                "code" | "message" | "class" => {
+                    x.as_str()
+                        .ok_or_else(|| format!("a diagnostic's {k} is not a string"))?;
+                }
+                "span" => check_span(x)?,
+                "path" => {
+                    let a = x.as_arr().ok_or("a path is not an array")?;
+                    for st in a {
+                        let ok =
+                            matches!(st, Json::Str(_)) || st.as_integer().is_some_and(|n| n >= 0.0);
+                        if !ok {
+                            return Err("a step of a path is neither a string nor an index".into());
+                        }
+                    }
+                }
+                "data" => check_opaque_values(x, &opaque)?,
+                "trace" => {
+                    read_trace(x)?;
+                }
+                _ => return Err(format!("a diagnostic has the field {k:?}")),
+            }
+        }
+        for k in ["phase", "code", "message"] {
+            if d.get(k).is_none() {
+                return Err(format!("a diagnostic has no {k}"));
+            }
+        }
+        let code = d.get("code").and_then(|c| c.as_str()).unwrap_or_default();
+        let phase = d.get("phase").and_then(|c| c.as_str()).unwrap_or_default();
+        if d.get("data").is_some() && code != "failed" {
+            return Err("data on a code other than failed".into());
+        }
+        if d.get("path").is_some() && code != "not-conforming" {
+            return Err("path on a code other than not-conforming".into());
+        }
+        if d.get("trace").is_some() && phase != "run" {
+            return Err("a trace on a phase other than run".into());
+        }
+        // 7.4 item 3: a span inside the source text, when there is one.
+        if let (Some(sp), Some(text)) = (d.get("span"), source.as_deref()) {
+            let [l1, c1, l2, c2] = span_of(sp);
+            let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+            let lines: Vec<usize> = text.split('\n').map(|l| l.chars().count()).collect();
+            let inside = |l: u32, c: u32| {
+                lines
+                    .get(l as usize - 1)
+                    .is_some_and(|n| c as usize <= n + 1)
+            };
+            if !inside(l1, c1) || !inside(l2, c2) || (l2, c2) < (l1, c1) {
+                return Err("a span outside the source text".into());
+            }
+        }
+    }
+    let expect = read_renderings(own("expect").ok_or("the case has no expect")?)
+        .map_err(|e| format!("expect: {e}"))?;
+    Ok(Case {
+        name,
+        source: source.clone().unwrap_or_default(),
+        template: None,
+        version: None,
+        env: None,
+        schemas: Vec::new(),
+        types: Vec::new(),
+        groups: Vec::new(),
+        conform: None,
+        conform_max: None,
+        render: Some(RenderCase {
+            diagnostics: ds.to_vec(),
+            source,
+            expect,
+        }),
+        conversion: false,
+        opaque,
+        methods: Vec::new(),
+        functions: Vec::new(),
+        reject: None,
+        removed: Vec::new(),
+        returns: None,
+        vars: None,
+        limits: Limits::default(),
+        skip: own("skip").and_then(|v| v.as_str()).map(String::from),
+        precondition: None,
+        check: true,
+        expect: Expect::Result(ExpectResult::default()),
     })
 }
 
@@ -1201,7 +1511,16 @@ fn check_field(k: &str, v: &Json) -> V<()> {
         }
         "conform" => {
             let m = v.as_obj().ok_or("conform is not an object")?;
-            if m.len() != 2
+            // F8 7.5: and `max`, a whole number of 1 or more.
+            let max_ok = match v.get("max") {
+                None => true,
+                Some(x) => x.as_integer().is_some_and(|n| n >= 1.0),
+            };
+            if !max_ok {
+                return Err("conform.max is not a whole number of 1 or more".into());
+            }
+            let n = 2 + usize::from(v.get("max").is_some());
+            if m.len() != n
                 || v.get("value").is_none()
                 || !v.get("type").is_some_and(|t| t.as_str().is_some())
             {
@@ -1209,6 +1528,7 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             }
             Ok(())
         }
+        "render" => Ok(()),
         "template" => match v.as_str() {
             Some("string" | "value") => Ok(()),
             _ => Err("template is neither \"string\" nor \"value\"".into()),

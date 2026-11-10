@@ -227,10 +227,39 @@ impl Resolver<'_> {
         self.p.ast.span(id)
     }
 
-    fn diag(&mut self, c: &'static str, span: Span) {
-        let msg = format!("{c}: {}", self.p.source.slice(span));
+    /// A diagnostic, with its message from the catalog (`f08-errors.md` 3.5).
+    fn diag(&mut self, c: &'static str, span: Span, template: &str, params: &[(&str, String)]) {
+        let msg = crate::messages::build(c, template, params);
         self.diags
             .push(Diagnostic::at(Phase::Check, c, &self.p.source, span, msg));
+    }
+
+    /// The source text at a span, as visible text (`f08-errors.md` 3.2).
+    fn text(&self, span: Span) -> String {
+        self.p.source.param_text(span)
+    }
+
+    /// `arity` (`f08-errors.md` 3.5 item 5).
+    fn arity(
+        &mut self,
+        span: Span,
+        name: &str,
+        count: usize,
+        required: usize,
+        most: Option<usize>,
+    ) {
+        let template = match most {
+            None => "at-least",
+            Some(m) if m == required => "exact",
+            Some(_) => "range",
+        };
+        let params = [
+            ("name", name.to_string()),
+            ("count", count.to_string()),
+            ("required", required.to_string()),
+            ("most", most.unwrap_or_default().to_string()),
+        ];
+        self.diag("arity", span, template, &params);
     }
 
     /// F4 3.5 and 6.1: resolve a program type. Names first; then two records
@@ -244,7 +273,8 @@ impl Resolver<'_> {
         });
         if !undefined.is_empty() {
             for s in undefined {
-                self.diag("undefined-name", s);
+                let name = self.text(s);
+                self.diag("undefined-name", s, "type", &[("name", name)]);
             }
             return None;
         }
@@ -253,8 +283,12 @@ impl Resolver<'_> {
         if bad {
             return None;
         }
-        if t.too_big() || t.depth() > 64 {
-            self.diag("check-limit", pt.span);
+        if t.too_big() {
+            self.diag("check-limit", pt.span, "size", &[]);
+            return None;
+        }
+        if t.depth() > 64 {
+            self.diag("check-limit", pt.span, "depth", &[]);
             return None;
         }
         Some(t)
@@ -277,7 +311,7 @@ impl Resolver<'_> {
         match crate::check::ty::union_of_alts(&alts) {
             Some(t) => t,
             None => {
-                self.diag("untagged-union", pt.span);
+                self.diag("untagged-union", pt.span, "default", &[]);
                 *bad = true;
                 Ty::never()
             }
@@ -349,12 +383,22 @@ impl Resolver<'_> {
             return None;
         }
         if self.env.is_namespace(name) {
-            self.diag(code::STATIC[6], span); // shadows-namespace
+            self.diag(
+                code::STATIC[6],
+                span,
+                "default",
+                &[("name", name.to_string())],
+            );
             return None;
         }
         let scope = self.scopes.len() - 1;
         if self.scopes[scope].contains_key(name) {
-            self.diag(code::STATIC[5], span); // duplicate-name
+            self.diag(
+                code::STATIC[5],
+                span,
+                "default",
+                &[("name", name.to_string())],
+            );
         }
         let (bind, slot) = match b {
             Some(b) => (b, None),
@@ -568,12 +612,20 @@ impl Resolver<'_> {
         match self.lookup(name) {
             Some(Bind::Slot(s)) => self.res[id.index()] = Res::Slot(s),
             Some(Bind::Var(v)) => self.res[id.index()] = Res::Var(v),
-            Some(Bind::Lambda(_)) => self.diag(code::STATIC[2], span), // not-a-value
+            Some(Bind::Lambda(_)) => self.diag(
+                code::STATIC[2],
+                span,
+                "lambda",
+                &[("name", name.to_string())],
+            ),
             None => {
-                if self.env.is_namespace(name) || self.is_function_name(name) {
-                    self.diag(code::STATIC[2], span);
+                let p = [("name", name.to_string())];
+                if self.env.is_namespace(name) {
+                    self.diag(code::STATIC[2], span, "namespace", &p);
+                } else if self.is_function_name(name) {
+                    self.diag(code::STATIC[2], span, "function", &p);
                 } else {
-                    self.diag(code::STATIC[0], span); // undefined-name
+                    self.diag(code::STATIC[0], span, "name", &p);
                 }
             }
         }
@@ -714,6 +766,10 @@ impl Resolver<'_> {
         call_span: Span,
     ) {
         self.set_measure(id);
+        let full = match &ns {
+            Some((n, _)) => format!("{n}.{name}"),
+            None => name.to_string(),
+        };
         let callee = match &ns {
             Some((n, s)) => match self.env.function(&format!("{n}.{name}")) {
                 Some(i) => Callee::Host(i),
@@ -724,14 +780,16 @@ impl Resolver<'_> {
                         .expect("an entry"),
                 ),
                 None => {
-                    self.diag(code::STATIC[1], s.to(name_span)); // undefined-function
+                    let p = [("name", full.clone())];
+                    self.diag(code::STATIC[1], s.to(name_span), "default", &p);
                     Callee::Unknown
                 }
             },
             None => match self.lookup(name) {
                 Some(Bind::Lambda(l)) => Callee::Lambda(l),
                 Some(_) => {
-                    self.diag(code::STATIC[3], name_span); // call-of-parameter
+                    let p = [("name", full.clone())];
+                    self.diag(code::STATIC[3], name_span, "default", &p);
                     Callee::Unknown
                 }
                 None => {
@@ -744,7 +802,8 @@ impl Resolver<'_> {
                     } else if let Some(i) = self.env.lib_function(name) {
                         Callee::Lib(i)
                     } else {
-                        self.diag(code::STATIC[1], name_span);
+                        let p = [("name", full.clone())];
+                        self.diag(code::STATIC[1], name_span, "default", &p);
                         Callee::Unknown
                     }
                 }
@@ -774,7 +833,7 @@ impl Resolver<'_> {
         if let Some(c) = counts {
             let n = args.len();
             if n < c.required || c.at_most.is_some_and(|m| n > m) {
-                self.diag(code::STATIC[8], call_span); // arity
+                self.arity(call_span, &full, n, c.required, c.at_most);
             } else {
                 for (i, &a) in args.iter().enumerate() {
                     let Some(l) = self.lambda_arg(a) else {
@@ -782,12 +841,28 @@ impl Resolver<'_> {
                     };
                     let span = self.span(a);
                     match &callee {
-                        Callee::Lambda(_) => self.diag(code::STATIC[4], span), // lambda-to-lambda
+                        Callee::Lambda(_) => {
+                            let p = [("name", full.clone())];
+                            self.diag(code::STATIC[4], span, "default", &p)
+                        }
                         _ => match c.param(i).flatten() {
-                            None => self.diag(code::STATIC[2], span),
+                            None => {
+                                let sig = match &callee {
+                                    Callee::Lib(j) => Some(&library::records()[*j].sig),
+                                    Callee::Host(j) => Some(&self.env.data().functions[*j].sig),
+                                    _ => None,
+                                };
+                                let param = sig
+                                    .and_then(|g| g.param_at(i))
+                                    .map(|q| q.name.clone())
+                                    .unwrap_or_default();
+                                let p = [("name", full.clone()), ("param", param)];
+                                self.diag(code::STATIC[2], span, "argument", &p)
+                            }
                             Some(k) => {
                                 if self.lambda_params(l) > k {
-                                    self.diag(code::STATIC[8], span);
+                                    let p = [("name", full.clone()), ("most", k.to_string())];
+                                    self.diag(code::STATIC[8], span, "parameters", &p);
                                 }
                             }
                         },
@@ -814,8 +889,9 @@ impl Resolver<'_> {
                     EntryKey::Computed(_) => None,
                 };
                 if let Some(k) = k {
+                    let key = crate::messages::json_string(&k);
                     if !seen.insert(k) {
-                        self.diag(code::STATIC[7], key_span); // duplicate-key
+                        self.diag(code::STATIC[7], key_span, "default", &[("key", key)]);
                     }
                 }
             }
@@ -832,14 +908,15 @@ impl Resolver<'_> {
             };
             if after_default {
                 let span = self.span(a);
-                self.diag(code::STATIC[10], span); // unreachable-arm
+                self.diag(code::STATIC[10], span, "default", &[]);
             }
             match literals {
                 None => after_default = true,
                 Some(lits) => {
                     for l in lits {
                         if !seen.insert(lit_key(&l.lit)) {
-                            self.diag(code::STATIC[9], l.span); // duplicate-case
+                            let text = self.text(l.span);
+                            self.diag(code::STATIC[9], l.span, "default", &[("text", text)]);
                         }
                     }
                 }

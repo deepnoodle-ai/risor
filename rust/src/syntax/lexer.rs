@@ -124,8 +124,13 @@ fn is_word_char(c: char) -> bool {
 }
 
 impl<'a> Lexer<'a> {
-    fn err(&self, c: &'static str, start: usize, end: usize, msg: &str) -> Diagnostic {
-        Diagnostic::at(Phase::Parse, c, self.src, Span::new(start, end), msg)
+    /// A diagnostic, with its message from the catalog (`f08-errors.md` 3.4);
+    /// the text at the span chooses the template. `_what` says, for a reader,
+    /// what went wrong.
+    fn err(&self, c: &'static str, start: usize, end: usize, _what: &str) -> Diagnostic {
+        let span = Span::new(start, end);
+        let msg = super::message::parse_message(self.src, c, "", span, &[]);
+        Diagnostic::at(Phase::Parse, c, self.src, span, msg)
     }
 
     fn at(&self, j: usize) -> Option<char> {
@@ -345,14 +350,24 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// `unexpected-character`, or the targeted code of `f08-errors.md` 2.3
+    /// rows A1 to A5, which are lexical still.
     fn unexpected_char(&self) -> Diagnostic {
-        let c = self.s[self.i];
-        self.err(
-            code::UNEXPECTED_CHARACTER,
-            self.i,
-            self.i + 1,
-            &format!("the character U+{:04X} cannot stand here", c as u32),
-        )
+        let i = self.i;
+        let c = self.s[i];
+        let next = self.at(i + 1);
+        let after_r = i >= 1 && self.s[i - 1] == 'r' && (i < 2 || !is_word_char(self.s[i - 2]));
+        let (code, template) = match c {
+            '#' if matches!(next, Some('"' | '\'')) || after_r => ("string-prefix", "guard"),
+            '#' => ("hash-comment", "default"),
+            '$' if matches!(next, Some('"' | '\'' | '`')) => ("string-prefix", "prefix"),
+            '$' if next != Some('{') => ("context-symbol", "default"),
+            '&' => ("bitwise-operator", "and"),
+            _ => (code::UNEXPECTED_CHARACTER, "default"),
+        };
+        let span = Span::new(i, i + 1);
+        let msg = super::message::parse_message(self.src, code, template, span, &[]);
+        Diagnostic::at(Phase::Parse, code, self.src, span, msg)
     }
 
     fn word(&mut self) -> Result<(), Diagnostic> {

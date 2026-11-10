@@ -1,13 +1,14 @@
 //! The lexer and parser against `01-language.md`: every example of section
 //! 15, every row of the tables of 14.2 and 14.3, the spans of 4.3, and the
-//! nesting of section 13.
+//! nesting of section 13. These are Core's diagnostics, before the mapping
+//! of package F8 (`f08-errors.md` 2.1 item 1).
 
 use risor::syntax::ast::{BinaryOp, CondForm, EntryKey, Lit, NodeKind, UnaryOp};
-use risor::syntax::{parse, Parsed};
+use risor::syntax::{parse, parse_core, Parsed};
 
-/// The code and span of the first diagnostic.
+/// The code and span of the Core diagnostic.
 fn err(src: &str) -> (&'static str, [u32; 4]) {
-    match parse(src) {
+    match parse_core(src) {
         Ok(_) => panic!("expected a parse error for {src:?}"),
         Err(e) => {
             let d = e.first();

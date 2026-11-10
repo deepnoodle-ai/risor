@@ -74,13 +74,8 @@ pub fn check(env: &Env, parsed: &Parsed, expected: &Expected) -> CheckResult {
             } else {
                 "may-fail"
             };
-            let mut d = Diagnostic::at(
-                Phase::Check,
-                code,
-                &parsed.source,
-                s.span,
-                format!("{code}: {} site", s.class),
-            );
+            let msg = c.site_message(code, s.class, s.span);
+            let mut d = Diagnostic::at(Phase::Check, code, &parsed.source, s.span, msg);
             d.class = Some(s.class);
             diags.push(d);
         } else {
@@ -280,17 +275,106 @@ impl<'a> Checker<'a> {
         &self.ast.nodes[id.index()].kind
     }
 
-    fn diag(&mut self, code: &'static str, span: Span) {
-        let msg = format!("{code}: {}", self.src.slice(span));
+    /// A diagnostic, with its message from the catalog (`f08-errors.md` 3.5).
+    fn diag(&mut self, code: &'static str, span: Span, template: &str, params: &[(&str, String)]) {
+        let msg = crate::messages::build(code, template, params);
         self.diags
             .push(Diagnostic::at(Phase::Check, code, self.src, span, msg));
     }
 
-    fn diag_class(&mut self, code: &'static str, span: Span, class: &'static str) {
-        let msg = format!("{code}: {}", self.src.slice(span));
+    fn diag_class(
+        &mut self,
+        code: &'static str,
+        span: Span,
+        class: &'static str,
+        template: &str,
+        params: &[(&str, String)],
+    ) {
+        let msg = crate::messages::build(code, template, params);
         let mut d = Diagnostic::at(Phase::Check, code, self.src, span, msg);
         d.class = Some(class);
         self.diags.push(d);
+    }
+
+    /// The source text at a span, as visible text (`f08-errors.md` 3.2).
+    fn text(&self, span: Span) -> String {
+        self.src.param_text(span)
+    }
+
+    /// `maybe-null` at a span whose type is `t` (`f08-errors.md` 3.5 item 3).
+    fn null_at(&mut self, span: Span, t: &Ty) {
+        let params = [("text", self.text(span)), ("type", print(t))];
+        self.diag("maybe-null", span, "default", &params);
+    }
+
+    /// `kind` with one type.
+    fn kind_at(&mut self, span: Span, template: &str, t: &Ty) {
+        self.diag("kind", span, template, &[("type", print(t))]);
+    }
+
+    /// `kind` on an operand of an operator.
+    fn kind_op(&mut self, span: Span, template: &str, op: BinaryOp, t: &Ty) {
+        let params = [("op", op_text(op).to_string()), ("type", print(t))];
+        self.diag("kind", span, template, &params);
+    }
+
+    /// The message of `unchecked` or `may-fail` at a rejected site
+    /// (`f08-errors.md` 3.5 item 7).
+    fn site_message(&self, code: &str, class: &str, span: Span) -> String {
+        if code == "unchecked" {
+            return crate::messages::build(code, "default", &[("text", self.text(span))]);
+        }
+        let node = self.ast.nodes.iter().enumerate().find_map(|(i, n)| {
+            let id = NodeId(i as u32);
+            (n.span == span
+                && matches!(
+                    n.kind,
+                    NodeKind::Call { .. } | NodeKind::MethodCall { .. } | NodeKind::As { .. }
+                ))
+            .then_some(id)
+        });
+        let template = match class {
+            "value" if node.is_some_and(|n| matches!(self.kind(n), NodeKind::As { .. })) => "test",
+            c => c,
+        };
+        let name = node.map(|n| self.call_name(n)).unwrap_or_default();
+        crate::messages::build(code, template, &[("name", name)])
+    }
+
+    /// `no-field` or `maybe-absent` (template `field`) at a key of a record.
+    fn field_diag(&mut self, code: &'static str, span: Span, key: &str, t: &Ty) {
+        let template = if code == "no-field" {
+            "default"
+        } else {
+            "field"
+        };
+        let params = [
+            ("type", print(t)),
+            ("key", crate::messages::json_string(key)),
+        ];
+        self.diag(code, span, template, &params);
+    }
+
+    /// The name of a call as written: the namespace, `.` and the name, or
+    /// the name (`f08-errors.md` 3.2 item 3).
+    fn call_name(&self, id: NodeId) -> String {
+        match self.kind(id) {
+            NodeKind::Call {
+                namespace, name, ..
+            } => match namespace {
+                Some(n) => format!("{}.{}", n.name, name.name),
+                None => name.name.clone(),
+            },
+            NodeKind::MethodCall { x, name, .. } => match self.res[id.index()] {
+                Res::CallHost(_) | Res::CallLib(_) => match self.kind(*x) {
+                    NodeKind::Ident { name: ns } => format!("{ns}.{}", name.name),
+                    _ => name.name.clone(),
+                },
+                _ => name.name.clone(),
+            },
+            NodeKind::Ident { name } => name.clone(),
+            _ => String::new(),
+        }
     }
 
     fn site(&mut self, class: &'static str, span: Span) {
@@ -665,11 +749,15 @@ impl<'a> Checker<'a> {
             return;
         }
         let span = self.span(id);
-        if falsy(t).is_never() {
-            self.diag_class("always-truthy", span, "constant-condition");
+        let code = if falsy(t).is_never() {
+            "always-truthy"
         } else if truthy(t).is_never() {
-            self.diag_class("always-falsy", span, "constant-condition");
-        }
+            "always-falsy"
+        } else {
+            return;
+        };
+        let params = [("text", self.text(span)), ("type", print(t))];
+        self.diag_class(code, span, "constant-condition", "default", &params);
     }
 
     // ---- the walk ---------------------------------------------------------------
@@ -739,7 +827,7 @@ impl<'a> Checker<'a> {
                         let xs = self.span(*x);
                         let mut t = t;
                         if t.null {
-                            self.diag("maybe-null", xs);
+                            self.null_at(xs, &t);
                             t = t.nonnull();
                         }
                         if t.any {
@@ -749,7 +837,8 @@ impl<'a> Checker<'a> {
                             return Ty::any();
                         }
                         if fits(&t, &Ty::float()).is_none() {
-                            self.diag("kind", xs);
+                            let params = [("op", "-".to_string()), ("type", print(&t))];
+                            self.diag("kind", xs, "operand", &params);
                             return Ty::never();
                         }
                         t
@@ -841,19 +930,23 @@ impl<'a> Checker<'a> {
         if s.is_never() {
             return if form == AsForm::As { t } else { Ty::boolean() };
         }
+        let params = || [("text", self.text(span)), ("type", print(&s))];
         if fits(&s, &t) == Some(false) {
             if form == AsForm::Is && self.rejects("constant-condition") {
-                self.diag_class("always-truthy", span, "constant-condition");
+                let p = params();
+                self.diag_class("always-truthy", span, "constant-condition", "test", &p);
             }
             return if form == AsForm::As { t } else { Ty::boolean() };
         }
         if disjoint(&s, &t) {
             if form == AsForm::As {
-                self.diag("never-conforms", span);
+                let p = [("expected", print(&t)), ("found", print(&s))];
+                self.diag("never-conforms", span, "default", &p);
                 return t;
             }
             if self.rejects("constant-condition") {
-                self.diag_class("always-falsy", span, "constant-condition");
+                let p = params();
+                self.diag_class("always-falsy", span, "constant-condition", "test", &p);
             }
             return Ty::boolean();
         }
@@ -938,7 +1031,7 @@ impl<'a> Checker<'a> {
     fn rendered(&mut self, e: NodeId, t: &Ty) {
         let s = self.span(e);
         if has_opaque(t) {
-            self.diag("kind", s);
+            self.kind_at(s, "rendered", t);
         } else if has_any(t) {
             self.dyn_site(s);
         }
@@ -946,16 +1039,16 @@ impl<'a> Checker<'a> {
 
     /// An operand that must fit a type, with the null rule (1.3, 8.3). `None`
     /// after `kind`.
-    fn operand(&mut self, id: NodeId, t: Ty, target: &Ty) -> Option<Ty> {
+    fn operand(&mut self, id: NodeId, t: Ty, target: &Ty, template: &str) -> Option<Ty> {
         let s = self.span(id);
         let mut t = t;
         if t.null {
-            self.diag("maybe-null", s);
+            self.null_at(s, &t);
             t = t.nonnull();
         }
         match fits(&t, target) {
             None => {
-                self.diag("kind", s);
+                self.kind_at(s, template, &t);
                 None
             }
             Some(used) => {
@@ -974,7 +1067,7 @@ impl<'a> Checker<'a> {
         let t = self.size_check(s, t);
         if t.depth() > 64 {
             let s = self.span(id);
-            self.diag("check-limit", s);
+            self.diag("check-limit", s, "depth", &[]);
             return Ty::never();
         }
         t
@@ -984,7 +1077,7 @@ impl<'a> Checker<'a> {
     /// `check-limit` at `span`, and `never` afterwards.
     fn size_check(&mut self, span: Span, t: Ty) -> Ty {
         if t.too_big() {
-            self.diag("check-limit", span);
+            self.diag("check-limit", span, "size", &[]);
             return Ty::never();
         }
         t
@@ -997,7 +1090,7 @@ impl<'a> Checker<'a> {
                 let mut t = self.synth(*value);
                 let vs = self.span(*value);
                 if t.null {
-                    self.diag("maybe-null", vs);
+                    self.null_at(vs, &t);
                     t = t.nonnull();
                 }
                 if t.any {
@@ -1008,7 +1101,7 @@ impl<'a> Checker<'a> {
                 } else if let (1, Some(e)) = (t.kinds(), &t.list) {
                     j = join(&j, e);
                 } else {
-                    self.diag("kind", vs);
+                    self.kind_at(vs, "spread-list", &t);
                 }
                 self.types[item.index()] = t;
             } else {
@@ -1042,7 +1135,7 @@ impl<'a> Checker<'a> {
                     }
                     EntryKey::Computed(k) => {
                         let kt = self.synth(*k);
-                        self.operand(*k, kt, &Ty::string());
+                        self.operand(*k, kt, &Ty::string(), "key");
                         let v = self.synth(*value);
                         rec = merge(&rec, Ty::map_of(v).record());
                     }
@@ -1051,7 +1144,7 @@ impl<'a> Checker<'a> {
                     let mut t = self.synth(*value);
                     let vs = self.span(*value);
                     if t.null {
-                        self.diag("maybe-null", vs);
+                        self.null_at(vs, &t);
                         t = t.nonnull();
                     }
                     if t.any {
@@ -1062,7 +1155,7 @@ impl<'a> Checker<'a> {
                     } else if t.kinds() == 1 && t.map.is_some() {
                         rec = merge(&rec, t.record());
                     } else {
-                        self.diag("kind", vs);
+                        self.kind_at(vs, "spread-map", &t);
                     }
                     self.types[e.index()] = t;
                 }
@@ -1129,7 +1222,8 @@ impl<'a> Checker<'a> {
                         && !bt.is_exactly_null()
                     {
                         let s = self.span(b);
-                        self.diag("never-equal", s);
+                        let p = [("left", print(&cur)), ("right", print(&bt))];
+                        self.diag("never-equal", s, "equality", &p);
                     }
                     Ty::boolean()
                 }
@@ -1163,11 +1257,11 @@ impl<'a> Checker<'a> {
         let (xs, ys, ns) = (self.span(x), self.span(y), self.span(node));
         let (mut a, mut b) = (a, b);
         if a.null {
-            self.diag("maybe-null", xs);
+            self.null_at(xs, &a);
             a = a.nonnull();
         }
         if b.null {
-            self.diag("maybe-null", ys);
+            self.null_at(ys, &b);
             b = b.nonnull();
         }
         let mut any = false;
@@ -1195,15 +1289,20 @@ impl<'a> Checker<'a> {
                 let (bf, bs) = (fit(&b, Ty::float()), fit(&b, Ty::string()));
                 let mut kinded = false;
                 if !af && !as_ {
-                    self.diag("kind", xs);
+                    self.kind_op(xs, "operand", op, &a);
                     kinded = true;
                 }
                 if !bf && !bs {
-                    self.diag("kind", ys);
+                    self.kind_op(ys, "operand", op, &b);
                     kinded = true;
                 }
                 if !kinded && ((af && !as_ && bs && !bf) || (as_ && !af && bf && !bs)) {
-                    self.diag("kind", ns);
+                    let p = [
+                        ("op", op_text(op).to_string()),
+                        ("left", print(&a)),
+                        ("right", print(&b)),
+                    ];
+                    self.diag("kind", ns, "operands", &p);
                     kinded = true;
                 }
                 if order {
@@ -1226,16 +1325,16 @@ impl<'a> Checker<'a> {
             BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Rem | BinaryOp::Div => {
                 let mut kinded = false;
                 if !fit(&a, Ty::float()) {
-                    self.diag("kind", xs);
+                    self.kind_op(xs, "operand", op, &a);
                     kinded = true;
                 }
                 if !fit(&b, Ty::float()) {
-                    self.diag("kind", ys);
+                    self.kind_op(ys, "operand", op, &b);
                     kinded = true;
                 }
                 let lit = self.number_node(y);
                 if op == BinaryOp::Div && lit == Some(0.0) {
-                    self.diag("zero-divisor", ys);
+                    self.diag("zero-divisor", ys, "default", &[]);
                 }
                 if matches!(op, BinaryOp::Rem | BinaryOp::Div) && !lit.is_some_and(|v| v != 0.0) {
                     self.site("divide", ns);
@@ -1255,11 +1354,11 @@ impl<'a> Checker<'a> {
             BinaryOp::Pow => {
                 let mut kinded = false;
                 if !fit(&a, Ty::float()) {
-                    self.diag("kind", xs);
+                    self.kind_op(xs, "operand", op, &a);
                     kinded = true;
                 }
                 if !fit(&b, Ty::int()) {
-                    self.diag("kind", ys);
+                    self.kind_at(ys, "exponent", &b);
                     kinded = true;
                 }
                 let yl = self.number_node(y);
@@ -1285,9 +1384,13 @@ impl<'a> Checker<'a> {
 
     fn in_op(&mut self, node: NodeId, x: NodeId, a: Ty, y: NodeId, b: Ty) -> Ty {
         let (xs, ys) = (self.span(x), self.span(y));
+        let op = match self.kind(node) {
+            NodeKind::Binary { op, .. } => *op,
+            _ => BinaryOp::In,
+        };
         let mut b = b;
         if b.null {
-            self.diag("maybe-null", ys);
+            self.null_at(ys, &b);
             b = b.nonnull();
         }
         if b.any {
@@ -1305,18 +1408,19 @@ impl<'a> Checker<'a> {
                 && !e.is_exactly_null()
             {
                 let s = self.span(node);
-                self.diag("never-equal", s);
+                let p = [("left", print(&a)), ("right", print(&b))];
+                self.diag("never-equal", s, "in", &p);
             }
             return Ty::boolean();
         }
         if b.kinds() == 1 && (b.str.is_some() || b.map.is_some()) {
             let mut a = a;
             if a.null {
-                self.diag("maybe-null", xs);
+                self.null_at(xs, &a);
                 a = a.nonnull();
             }
             match fits(&a, &Ty::string()) {
-                None => self.diag("kind", xs),
+                None => self.kind_op(xs, "in-left", op, &a),
                 Some(true) => {
                     self.dyn_site(xs);
                 }
@@ -1324,7 +1428,7 @@ impl<'a> Checker<'a> {
             }
             return Ty::boolean();
         }
-        self.diag("kind", ys);
+        self.kind_op(ys, "in-right", op, &b);
         Ty::boolean()
     }
 
@@ -1424,7 +1528,8 @@ impl<'a> Checker<'a> {
                             && !s.is_exactly_null()
                             && !overlap(&Self::lit_ty(&l.lit), &s)
                         {
-                            self.diag("never-equal", l.span);
+                            let p = [("type", print(&s)), ("text", self.text(l.span))];
+                            self.diag("never-equal", l.span, "match", &p);
                         }
                         has_null |= matches!(l.lit, Lit::Null);
                     }
@@ -1464,7 +1569,7 @@ impl<'a> Checker<'a> {
             });
             if !covered {
                 let sp = self.span(id);
-                self.diag("non-exhaustive", sp);
+                self.diag("non-exhaustive", sp, "default", &[("type", print(&s))]);
             }
         }
         acc
@@ -1497,7 +1602,7 @@ impl<'a> Checker<'a> {
             NodeKind::MapPat { fields, rest } => {
                 let mut v = v;
                 if v.null {
-                    self.diag("maybe-null", bound);
+                    self.null_at(bound, &v);
                     v = v.nonnull();
                 }
                 if v.any {
@@ -1516,7 +1621,7 @@ impl<'a> Checker<'a> {
                 }
                 if v.is_never() || !(v.kinds() == 1 && v.map.is_some()) {
                     if !v.is_never() {
-                        self.diag("kind", bound);
+                        self.kind_at(bound, "pattern-map", &v);
                     }
                     self.set_names(pat, &Ty::never());
                     // 12.2: a default is always checked.
@@ -1540,7 +1645,7 @@ impl<'a> Checker<'a> {
                                 Some(fl) => fl.ty.clone().with_null(),
                                 None if rec.rest.any => Ty::any(),
                                 None if rec.rest.is_never() => {
-                                    self.diag("no-field", f.key_span);
+                                    self.field_diag("no-field", f.key_span, &f.key, &v);
                                     Ty::never()
                                 }
                                 None => rec.rest.clone().with_null(),
@@ -1553,7 +1658,7 @@ impl<'a> Checker<'a> {
                         None => match rec.fields.get(&f.key) {
                             Some(fl) if !fl.optional => fl.ty.clone(),
                             Some(fl) => {
-                                self.diag("maybe-absent", f.key_span);
+                                self.field_diag("maybe-absent", f.key_span, &f.key, &v);
                                 fl.ty.clone()
                             }
                             None if rec.rest.any => {
@@ -1565,11 +1670,11 @@ impl<'a> Checker<'a> {
                                 }
                             }
                             None if rec.rest.is_never() => {
-                                self.diag("no-field", f.key_span);
+                                self.field_diag("no-field", f.key_span, &f.key, &v);
                                 Ty::never()
                             }
                             None => {
-                                self.diag("maybe-absent", f.key_span);
+                                self.field_diag("maybe-absent", f.key_span, &f.key, &v);
                                 rec.rest.clone()
                             }
                         },
@@ -1591,7 +1696,7 @@ impl<'a> Checker<'a> {
             NodeKind::ListPat { elems, rest } => {
                 let mut v = v;
                 if v.null {
-                    self.diag("maybe-null", bound);
+                    self.null_at(bound, &v);
                     v = v.nonnull();
                 }
                 if v.any {
@@ -1617,7 +1722,7 @@ impl<'a> Checker<'a> {
                 }
                 if v.is_never() || !(v.kinds() == 1 && v.list.is_some()) {
                     if !v.is_never() {
-                        self.diag("kind", bound);
+                        self.kind_at(bound, "pattern-list", &v);
                     }
                     self.set_names(pat, &Ty::never());
                     // 12.2: a default is always checked.
@@ -1703,7 +1808,7 @@ impl<'a> Checker<'a> {
                 if optional {
                     skipped = true;
                 } else {
-                    self.diag("maybe-null", rs);
+                    self.null_at(rs, &cur);
                 }
                 cur = cur.nonnull();
             }
@@ -1718,7 +1823,7 @@ impl<'a> Checker<'a> {
                 continue;
             }
             if !(cur.any || cur.is_never() || cur.kinds() == 1) {
-                self.diag("kind", rs);
+                self.kind_at(rs, "receiver", &cur);
                 cur = Ty::never();
             }
             let key: Option<(String, Span)> = match self.kind(s) {
@@ -1862,7 +1967,7 @@ impl<'a> Checker<'a> {
         } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
             e.as_ref().clone()
         } else {
-            self.diag("kind", rs);
+            self.kind_at(rs, "star", &cur);
             self.synth_indexes(reads);
             return (Ty::never(), false);
         };
@@ -1909,7 +2014,7 @@ impl<'a> Checker<'a> {
                     if *optional {
                         *skipped_elem = true;
                     } else {
-                        self.diag("maybe-null", rs);
+                        self.null_at(rs, &cur);
                     }
                     cur = cur.nonnull();
                 }
@@ -1927,7 +2032,7 @@ impl<'a> Checker<'a> {
                 } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
                     e.as_ref().clone()
                 } else {
-                    self.diag("kind", rs);
+                    self.kind_at(rs, "star", &cur);
                     *failed = true;
                     self.synth_indexes(inner);
                     return Ty::never();
@@ -1944,13 +2049,13 @@ impl<'a> Checker<'a> {
                 if optional {
                     *skipped_elem = true;
                 } else {
-                    self.diag("maybe-null", rs);
+                    self.null_at(rs, &cur);
                 }
                 cur = cur.nonnull();
             }
             let before = self.diags.len();
             if !(cur.any || cur.is_never() || cur.kinds() == 1) {
-                self.diag("kind", rs);
+                self.kind_at(rs, "receiver", &cur);
                 cur = Ty::never();
             }
             cur = if cur.any {
@@ -2023,7 +2128,7 @@ impl<'a> Checker<'a> {
         present: bool,
     ) -> Ty {
         let Some(rec) = cur.record() else {
-            self.diag("kind", rs);
+            self.kind_at(rs, "field-read", cur);
             return Ty::never();
         };
         match rec.fields.get(key) {
@@ -2032,7 +2137,7 @@ impl<'a> Checker<'a> {
                 if optional {
                     f.ty.clone().with_null()
                 } else {
-                    self.diag("maybe-absent", ks);
+                    self.field_diag("maybe-absent", ks, key, cur);
                     f.ty.clone()
                 }
             }
@@ -2044,7 +2149,7 @@ impl<'a> Checker<'a> {
                 Ty::any()
             }
             None if rec.rest.is_never() => {
-                self.diag("no-field", ks);
+                self.field_diag("no-field", ks, key, cur);
                 Ty::never()
             }
             None => {
@@ -2053,7 +2158,7 @@ impl<'a> Checker<'a> {
                 } else if optional {
                     rec.rest.clone().with_null()
                 } else {
-                    self.diag("maybe-absent", ks);
+                    self.field_diag("maybe-absent", ks, key, cur);
                     rec.rest.clone()
                 }
             }
@@ -2073,7 +2178,7 @@ impl<'a> Checker<'a> {
             );
             let any_rest = rec.rest.any;
             // One mistake, one diagnostic.
-            if self.operand(index, it, &Ty::string()).is_none() {
+            if self.operand(index, it, &Ty::string(), "key").is_none() {
                 return Ty::never();
             }
             if optional {
@@ -2085,7 +2190,7 @@ impl<'a> Checker<'a> {
                 }
             } else {
                 let is = self.span(index);
-                self.diag("maybe-absent", is);
+                self.diag("maybe-absent", is, "index", &[("type", print(&cur))]);
             }
             return v;
         }
@@ -2094,10 +2199,10 @@ impl<'a> Checker<'a> {
         } else if cur.str.is_some() {
             Ty::string()
         } else {
-            self.diag("kind", rs);
+            self.kind_at(rs, "index-read", &cur);
             return Ty::never();
         };
-        self.operand(index, it, &Ty::int());
+        self.operand(index, it, &Ty::int(), "index");
         if optional {
             elem.with_null()
         } else {
@@ -2176,7 +2281,8 @@ impl<'a> Checker<'a> {
                 return self.call(Callee::Host(sig, sig.fails), None, args, s, true);
             }
         }
-        self.diag("no-method", name_span);
+        let p = [("type", print(&cur)), ("name", name.to_string())];
+        self.diag("no-method", name_span, "default", &p);
         self.plain_args(args);
         Ty::never()
     }
@@ -2212,11 +2318,24 @@ impl<'a> Checker<'a> {
         };
         let sig: Sig = sig.clone();
         let recv_text = recv_text.cloned();
+        let name = self.call_name(call);
         // 1. Count.
         let n = args.len();
         if n < sig.required() || sig.at_most().is_some_and(|m| n > m) {
             if method {
-                self.diag("arity", cs);
+                // `f08-errors.md` 3.5 item 5: argument zero is not counted.
+                let template = match sig.at_most() {
+                    None => "at-least",
+                    Some(m) if m == sig.required() => "exact",
+                    Some(_) => "range",
+                };
+                let p = [
+                    ("name", name.clone()),
+                    ("count", n.to_string()),
+                    ("required", sig.required().to_string()),
+                    ("most", sig.at_most().unwrap_or_default().to_string()),
+                ];
+                self.diag("arity", cs, template, &p);
             }
             self.plain_args(args);
             return Ty::never();
@@ -2234,12 +2353,14 @@ impl<'a> Checker<'a> {
                 (ParamType::Fn(_), None) => {
                     self.synth(a);
                     let s = self.span(a);
-                    self.diag("arg-mismatch", s);
+                    let pa = [("param", p.name.clone()), ("name", name.clone())];
+                    self.diag("arg-mismatch", s, "function", &pa);
                 }
                 (ParamType::Type(_), Some(_)) => {
                     if method {
                         let s = self.span(a);
-                        self.diag("not-a-value", s);
+                        let pa = [("param", p.name.clone()), ("name", name.clone())];
+                        self.diag("not-a-value", s, "argument", &pa);
                     }
                 }
                 (ParamType::Type(t), None) => {
@@ -2263,7 +2384,7 @@ impl<'a> Checker<'a> {
         // 20.7: each solution is tested when it is made; over the limit, the
         // call is not checked further.
         if sol.values().any(|t| t.too_big()) {
-            self.diag("check-limit", cs);
+            self.diag("check-limit", cs, "size", &[]);
             return Ty::never();
         }
         // 3. Lambda arguments.
@@ -2276,7 +2397,8 @@ impl<'a> Checker<'a> {
             };
             if lparams.len() > f.params.len() {
                 if method {
-                    self.diag("arity", as_);
+                    let p = [("name", name.clone()), ("most", f.params.len().to_string())];
+                    self.diag("arity", as_, "parameters", &p);
                 }
                 continue;
             }
@@ -2286,7 +2408,7 @@ impl<'a> Checker<'a> {
                 .take(lparams.len())
                 .any(|(_, q)| vars(q).iter().any(|v| !sol.contains_key(v)))
             {
-                self.diag("cannot-infer", as_);
+                self.diag("cannot-infer", as_, "default", &[("name", name.clone())]);
                 continue;
             }
             let qs: Vec<Ty> = f
@@ -2332,7 +2454,14 @@ impl<'a> Checker<'a> {
                         let b2 = self.check_lambda(l, named, a, &qs);
                         let rt = substitute(r, self.opaque(), &sol);
                         match fits(&b2, &rt) {
-                            None => self.diag("arg-mismatch", bs),
+                            None => {
+                                let p = [
+                                    ("name", name.clone()),
+                                    ("found", print(&b2)),
+                                    ("expected", print(&rt)),
+                                ];
+                                self.diag("arg-mismatch", bs, "body", &p)
+                            }
                             Some(true) => {
                                 self.dyn_site(bs);
                             }
@@ -2343,7 +2472,14 @@ impl<'a> Checker<'a> {
                         bind(r, &b, &mut sol);
                         let rt = substitute(r, self.opaque(), &sol);
                         match fits(&b, &rt) {
-                            None => self.diag("arg-mismatch", bs),
+                            None => {
+                                let p = [
+                                    ("name", name.clone()),
+                                    ("found", print(&b)),
+                                    ("expected", print(&rt)),
+                                ];
+                                self.diag("arg-mismatch", bs, "body", &p)
+                            }
                             Some(true) => {
                                 self.dyn_site(bs);
                             }
@@ -2354,7 +2490,7 @@ impl<'a> Checker<'a> {
             }
         }
         if sol.values().any(|t| t.too_big()) {
-            self.diag("check-limit", cs);
+            self.diag("check-limit", cs, "size", &[]);
             return Ty::never();
         }
         // 4. Bounds.
@@ -2365,7 +2501,14 @@ impl<'a> Checker<'a> {
                 Bound::Number => fits(&s, &Ty::float()),
             };
             match held {
-                None => self.diag("arg-mismatch", cs),
+                None => {
+                    let template = match bound {
+                        Bound::Ordered => "ordered",
+                        Bound::Number => "number",
+                    };
+                    let p = [("name", name.clone()), ("found", print(&s))];
+                    self.diag("arg-mismatch", cs, template, &p)
+                }
                 Some(true) => {
                     self.dyn_site(cs);
                 }
@@ -2454,13 +2597,14 @@ impl<'a> Checker<'a> {
         let d = self.ast.lambda_levels.get(&l.0).map_or(lvl, |m| *m as i32) - lvl;
         if exp + 1 + d > 100 {
             let s = self.span(at);
-            self.diag("check-limit", s);
+            let name = self.call_name(at);
+            self.diag("check-limit", s, "nesting", &[("name", name)]);
             return None;
         }
         self.body_checks += 1;
         if self.body_checks > 1000 {
             let s = self.span(at);
-            self.diag("check-limit", s);
+            self.diag("check-limit", s, "bodies", &[]);
             return None;
         }
         let facts = std::mem::replace(
@@ -2562,14 +2706,35 @@ impl<'a> Checker<'a> {
 
     // ---- through the form (15.1) ------------------------------------------------------
 
-    fn report(&mut self, span: Span, at: &Ty, target: &Ty, mode: Fit) {
-        match mode {
-            Fit::Result => self.diag("result-mismatch", span),
-            Fit::Arg => {
-                if at.null && fits(&at.nonnull(), target).is_some() {
-                    self.diag("maybe-null", span);
+    /// A place of failure (15.1), with the template of `f08-errors.md` 3.5
+    /// that `why` names.
+    fn report(&mut self, span: Span, at: &Ty, target: &Ty, mode: Fit, why: Why) {
+        let code = match mode {
+            Fit::Result => "result-mismatch",
+            Fit::Arg => "arg-mismatch",
+        };
+        match why {
+            Why::Missing(k) => {
+                let p = [("key", crate::messages::json_string(&k))];
+                self.diag(code, span, "missing", &p);
+            }
+            Why::Extra(k, rec) => {
+                let p = [
+                    ("expected", print(&rec)),
+                    ("key", crate::messages::json_string(&k)),
+                ];
+                self.diag(code, span, "extra", &p);
+            }
+            Why::Fit => {
+                if mode == Fit::Arg && at.null && fits(&at.nonnull(), target).is_some() {
+                    self.null_at(span, at);
                 } else {
-                    self.diag("arg-mismatch", span);
+                    let template = match mode {
+                        Fit::Result => "result",
+                        Fit::Arg => "argument",
+                    };
+                    let p = [("expected", print(target)), ("found", print(at))];
+                    self.diag(code, span, template, &p);
                 }
             }
         }
@@ -2596,7 +2761,7 @@ impl<'a> Checker<'a> {
                             match fits(&vt, &lt) {
                                 None => {
                                     let vs = self.span(*value);
-                                    self.report(vs, &vt, &lt, mode);
+                                    self.report(vs, &vt, &lt, mode, Why::Fit);
                                 }
                                 Some(true) => {
                                     let vs = self.span(*value);
@@ -2629,7 +2794,7 @@ impl<'a> Checker<'a> {
                 }
                 NodeKind::Block { result, .. } => e = *result,
                 _ => {
-                    self.report(es, &et, t, mode);
+                    self.report(es, &et, t, mode, Why::Fit);
                     return;
                 }
             }
@@ -2737,7 +2902,7 @@ impl<'a> Checker<'a> {
                 .rposition(|x| x.as_ref().is_some_and(|(_, sure)| *sure))
             else {
                 let es = self.span(e);
-                self.report(es, et, t, mode);
+                self.report(es, et, t, mode, Why::Fit);
                 return;
             };
             let mut joined = Ty::never();
@@ -2777,12 +2942,12 @@ impl<'a> Checker<'a> {
                                     self.span(*value)
                                 };
                                 let vt = self.types[value.index()].clone();
-                                self.report(vs, &vt, t, mode);
+                                self.report(vs, &vt, t, mode, Why::Fit);
                             }
                             Ent::Spread { operand, .. } => {
                                 let vs = self.span(*operand);
                                 let vt = self.types[operand.index()].clone();
-                                self.report(vs, &vt, t, mode);
+                                self.report(vs, &vt, t, mode, Why::Fit);
                             }
                             Ent::Nothing => {}
                         }
@@ -2853,7 +3018,8 @@ impl<'a> Checker<'a> {
                     Some(f) => self.fit_form(*value, &f.ty, mode),
                     None if r.rest.is_never() => {
                         let vt = self.types[value.index()].clone();
-                        self.report(*key_span, &vt, &Ty::never(), mode);
+                        let why = Why::Extra(key.clone(), Ty::rec(r.clone()));
+                        self.report(*key_span, &vt, &Ty::never(), mode, why);
                     }
                     None => self.fit_form(*value, &r.rest, mode),
                 }
@@ -2867,7 +3033,7 @@ impl<'a> Checker<'a> {
             if let Ent::Spread { operand, .. } = &ents[i] {
                 let vs = self.span(*operand);
                 let vt = self.types[operand.index()].clone();
-                self.report(vs, &vt, t, mode);
+                self.report(vs, &vt, t, mode, Why::Fit);
             }
         }
         for i in used_any {
@@ -2882,13 +3048,31 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        if r.fields
+        if let Some((k, _)) = r
+            .fields
             .iter()
-            .any(|(k, f)| !f.optional && !surely.contains(k))
+            .find(|(k, f)| !f.optional && !surely.contains(k))
         {
             let es = self.span(e);
-            self.report(es, et, t, mode);
+            self.report(es, et, t, mode, Why::Missing(k.clone()));
         }
+    }
+}
+
+/// Which template a place of failure takes (`f08-errors.md` 3.5 item 2).
+enum Why {
+    Fit,
+    /// The least required key with no entry.
+    Missing(String),
+    /// A key the record does not list, and the record.
+    Extra(String, Ty),
+}
+
+/// An operator in its canonical text (`03-host.md` 3.8.3).
+fn op_text(op: BinaryOp) -> &'static str {
+    match op {
+        BinaryOp::NotIn => "not in",
+        _ => op.as_str(),
     }
 }
 

@@ -392,3 +392,25 @@ one call, and a host implementation is a `'static` closure that receives
   six new entries are methods. The three templates of
   `suite/messages-queries.json` join their codes in the catalog.
 
+
+## Package F8, errors, second part
+
+- **Targeted parse codes** (`parser.rs`): the parser finds the Core
+  diagnostic as before and records, with it, the rule of Core that gave it
+  (`Rule`). A few marks on tokens (map, map pattern, index step, paren, `if`
+  test, operand word, lambda arrow) and the token where the last
+  expression, `if`, program type, `const` pattern and parameter ended answer
+  the conditions of 2.3 to 2.7. `finish` maps the diagnostic by the rows in
+  order and builds its message; `parse_core` gives the Core diagnostic
+  unmapped. Rows A1 to A5 are lexical and the lexer gives them.
+- **Messages**: `messages.rs` reads `suite/messages-parse.json` and
+  `suite/messages-check.json` with the other catalog files. The text at a
+  span chooses a lexical template (`syntax/message.rs`); the checker and the
+  resolver name the template and print each type with the 3.9 printer. A
+  text parameter reads only the first 65 code points of its span.
+- **Trace**: built on the failure path only. A call by name and a library
+  entry's call of a lambda each add their entry as a failure leaves them;
+  the diagnostic reverses the list.
+- **Renderings** (`render.rs`) work on a `View` of a diagnostic, so the
+  `render` case renders diagnostics it reads from JSON. `ConformAll` is a
+  second walk in `conform.rs`, with no charges, that stops at the maximum.

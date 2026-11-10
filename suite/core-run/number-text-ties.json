@@ -1,0 +1,310 @@
+{
+ "cases": [
+  {
+   "name": "the reported tie: (2^53 - 1) / 6 is ...165.25, to the even .2 (string)",
+   "source": "string(9007199254740991 / 6)",
+   "expect": {
+    "value": "1501199875790165.2",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the reported tie: (2^53 - 1) / 6 is ...165.25, to the even .2 (template)",
+   "source": "`${9007199254740991 / 6}`",
+   "expect": {
+    "value": "1501199875790165.2",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^30, 2^31): 1622305820.71484375 (string)",
+   "source": "string(1622305820.71484375)",
+   "expect": {
+    "value": "1622305820.7148438",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^30, 2^31): 1622305820.71484375 (template)",
+   "source": "`${1622305820.71484375}`",
+   "expect": {
+    "value": "1622305820.7148438",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^33, 2^34): 12641620852.1015625 (string)",
+   "source": "string(12641620852.1015625)",
+   "expect": {
+    "value": "12641620852.101562",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^33, 2^34): 12641620852.1015625 (template)",
+   "source": "`${12641620852.1015625}`",
+   "expect": {
+    "value": "12641620852.101562",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^36, 2^37): 94063651387.234375 (string)",
+   "source": "string(94063651387.234375)",
+   "expect": {
+    "value": "94063651387.23438",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^36, 2^37): 94063651387.234375 (template)",
+   "source": "`${94063651387.234375}`",
+   "expect": {
+    "value": "94063651387.23438",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^39, 2^40): 1066748729727.46875 (string)",
+   "source": "string(1066748729727.46875)",
+   "expect": {
+    "value": "1066748729727.4688",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^39, 2^40): 1066748729727.46875 (template)",
+   "source": "`${1066748729727.46875}`",
+   "expect": {
+    "value": "1066748729727.4688",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^43, 2^44): 9024797156185.4375 (string)",
+   "source": "string(9024797156185.4375)",
+   "expect": {
+    "value": "9024797156185.438",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^43, 2^44): 9024797156185.4375 (template)",
+   "source": "`${9024797156185.4375}`",
+   "expect": {
+    "value": "9024797156185.438",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^46, 2^47): 109703807669868.375 (string)",
+   "source": "string(109703807669868.375)",
+   "expect": {
+    "value": "109703807669868.38",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^46, 2^47): 109703807669868.375 (template)",
+   "source": "`${109703807669868.375}`",
+   "expect": {
+    "value": "109703807669868.38",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^49, 2^50): 1001417863501125.25 (string)",
+   "source": "string(1001417863501125.25)",
+   "expect": {
+    "value": "1001417863501125.2",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^49, 2^50): 1001417863501125.25 (template)",
+   "source": "`${1001417863501125.25}`",
+   "expect": {
+    "value": "1001417863501125.2",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^50, 2^51): 1438376266440264.75 (string)",
+   "source": "string(1438376266440264.75)",
+   "expect": {
+    "value": "1438376266440264.8",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie in [2^50, 2^51): 1438376266440264.75 (template)",
+   "source": "`${1438376266440264.75}`",
+   "expect": {
+    "value": "1438376266440264.8",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie at 2^50: 1125899906842624.25 (string)",
+   "source": "string(1125899906842624.25)",
+   "expect": {
+    "value": "1125899906842624.2",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie at 2^50: 1125899906842624.25 (template)",
+   "source": "`${1125899906842624.25}`",
+   "expect": {
+    "value": "1125899906842624.2",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie at 2^50: 1125899906842624.75 (string)",
+   "source": "string(1125899906842624.75)",
+   "expect": {
+    "value": "1125899906842624.8",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a tie at 2^50: 1125899906842624.75 (template)",
+   "source": "`${1125899906842624.75}`",
+   "expect": {
+    "value": "1125899906842624.8",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a negative tie: -(2^50 + 0.25) (string)",
+   "source": "string(-1125899906842624.25)",
+   "expect": {
+    "value": "-1125899906842624.2",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a negative tie: -(2^50 + 0.25) (template)",
+   "source": "`${-1125899906842624.25}`",
+   "expect": {
+    "value": "-1125899906842624.2",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a negative tie: -(2^49 + 0.75) (string)",
+   "source": "string(-562949953421312.75)",
+   "expect": {
+    "value": "-562949953421312.8",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a negative tie: -(2^49 + 0.75) (template)",
+   "source": "`${-562949953421312.75}`",
+   "expect": {
+    "value": "-562949953421312.8",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: 0.5 is exact and shortest (string)",
+   "source": "string(1125899906842624.5)",
+   "expect": {
+    "value": "1125899906842624.5",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: 0.5 is exact and shortest (template)",
+   "source": "`${1125899906842624.5}`",
+   "expect": {
+    "value": "1125899906842624.5",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: 0.125 at 2^49 shortens to .1, no tie (string)",
+   "source": "string(562949953421312.125)",
+   "expect": {
+    "value": "562949953421312.1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: 0.125 at 2^49 shortens to .1, no tie (template)",
+   "source": "`${562949953421312.125}`",
+   "expect": {
+    "value": "562949953421312.1",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: above 2^51 there is no tie (string)",
+   "source": "string(2251799813685248.5)",
+   "expect": {
+    "value": "2251799813685248.5",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: above 2^51 there is no tie (template)",
+   "source": "`${2251799813685248.5}`",
+   "expect": {
+    "value": "2251799813685248.5",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: below 2^30 the exact decimal is too long for a tie (string)",
+   "source": "string(536870912.001953125)",
+   "expect": {
+    "value": "536870912.0019531",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "not a tie: below 2^30 the exact decimal is too long for a tie (template)",
+   "source": "`${536870912.001953125}`",
+   "expect": {
+    "value": "536870912.0019531",
+    "steps": 1,
+    "allocated": 1
+   }
+  }
+ ]
+}
