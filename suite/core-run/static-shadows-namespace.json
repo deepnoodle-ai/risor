@@ -1,0 +1,18 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "a const named like a namespace", "source": "const geo = 1; 2", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 7, 1, 10]}]}},
+  {"name": "a parameter named like a namespace", "source": "xs.map(geo => 1)", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 8, 1, 11]}]}},
+  {"name": "a second parameter named like a namespace", "source": "xs.map((x, geo) => x)", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 12, 1, 15]}]}},
+  {"name": "a shorthand field of a map pattern named like a namespace", "source": "const {geo} = blob; 1", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 8, 1, 11]}]}},
+  {"name": "a renamed field of a map pattern named like a namespace", "source": "const {a: geo} = m; 1", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 11, 1, 14]}]}},
+  {"name": "an element of a list pattern named like a namespace", "source": "const [geo] = xs; 1", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 8, 1, 11]}]}},
+  {"name": "the rest of a list pattern named like a namespace", "source": "const [a, ...geo] = xs; a", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 14, 1, 17]}]}},
+  {"name": "a catch name named like a namespace binds nothing, so the name stays a namespace", "source": "try { 1 } catch (geo) { geo }", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 18, 1, 21]}, {"code": "not-a-value", "span": [1, 25, 1, 28]}]}},
+  {"name": "after shadows-namespace the namespace's function is still called", "source": "const geo = 1; geo.distance(\"a\", \"b\")", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 7, 1, 10]}]}},
+  {"name": "a const in a branch named like a namespace", "source": "if (ok) { const geo = 1; 2 } else { 3 }", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 17, 1, 20]}]}},
+  {"name": "a map pattern's key named like a namespace binds nothing of that name", "source": "const {geo: g} = blob; g", "vars": {"blob": {"geo": 5}}, "expect": {"value": 5, "steps": 1, "allocated": 0}},
+  {"name": "a map key and a field named like a namespace", "source": "{geo: 1}.geo", "expect": {"value": 1, "steps": 1, "allocated": 3}}
+ ]
+}

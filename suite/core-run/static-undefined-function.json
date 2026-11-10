@@ -1,0 +1,18 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "an unknown function is undefined-function on its name", "source": "nope(1)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}]}},
+  {"name": "an unknown function with no arguments", "source": "nope()", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}]}},
+  {"name": "a misspelled library function", "source": "lenght(\"a\")", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 7]}]}},
+  {"name": "a library method called as a function", "source": "trim(s)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}]}},
+  {"name": "an entry that is not in Core called as a function", "source": "minBy(xs)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 6]}]}},
+  {"name": "an unknown function in a known namespace", "source": "geo.area(1)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "a namespaced function called without its namespace", "source": "distance(\"a\", \"b\")", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "a const-bound lambda cannot call itself", "source": "const f = x => f(x); 1", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 16, 1, 17]}]}},
+  {"name": "a const-bound lambda cannot call one bound after it", "source": "const f = x => g(x); const g = y => y; f(1)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 16, 1, 17]}]}},
+  {"name": "an unknown function in the body of a lambda argument", "source": "xs.map(x => nope(x))", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 13, 1, 17]}]}},
+  {"name": "the span of undefined-function is the name, not the call", "source": "nope(\n  1)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}]}},
+  {"name": "a const-bound lambda named like a namespace binds nothing, so its call is unknown", "source": "const geo = x => x; geo(1)", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 7, 1, 10]}, {"code": "undefined-function", "span": [1, 21, 1, 24]}]}}
+ ]
+}

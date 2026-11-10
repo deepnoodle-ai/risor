@@ -1,0 +1,24 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "a const name bound twice in a block", "source": "{ const a = 1; const a = 2; a }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 22, 1, 23]}]}},
+  {"name": "a const name bound twice in a branch", "source": "if (ok) { const a = 1; const a = 2; a } else { 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 30, 1, 31]}]}},
+  {"name": "a const name bound twice in the body of a try", "source": "try { const a = 1; const a = 2; a } catch { 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 26, 1, 27]}]}},
+  {"name": "a const in a handler named like its catch name", "source": "try { 1 } catch (e) { const e = 2; e }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 29, 1, 30]}]}},
+  {"name": "two parameters with one name", "source": "const f = (a, a) => a; f(1, 2)", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 15, 1, 16]}]}},
+  {"name": "a parameter and a name in a later parameter's pattern", "source": "const f = (a, {a}) => 1; 1", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 16, 1, 17]}]}},
+  {"name": "two names in one map pattern", "source": "const {a, b: a} = m; a", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 14, 1, 15]}]}},
+  {"name": "two names in one list pattern", "source": "const [a, a] = xs; a", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 11, 1, 12]}]}},
+  {"name": "an element and the rest of a list pattern", "source": "const [a, ...a] = xs; a", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 14, 1, 15]}]}},
+  {"name": "a field and the rest of a map pattern", "source": "const {a, ...a} = m; a", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 14, 1, 15]}]}},
+  {"name": "a pattern name equal to an earlier const name", "source": "const a = 1; const {a} = m; a", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 21, 1, 22]}]}},
+  {"name": "the later binding stands: a value after a const-bound lambda", "source": "const f = x => x; const f = 1; f", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 25, 1, 26]}]}},
+  {"name": "the later binding stands: a const-bound lambda after a value", "source": "const f = 1; const f = x => x; f", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 20, 1, 21]}, {"code": "not-a-value", "span": [1, 32, 1, 33]}]}},
+  {"name": "a name bound three times gives two diagnostics", "source": "const a = 1; const a = 2; const a = 3; a", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 20, 1, 21]}, {"code": "duplicate-name", "span": [1, 33, 1, 34]}]}},
+  {"name": "_ twice in a list pattern binds nothing", "source": "const [_, _] = xs; 1", "vars": {"xs": [1, 2]}, "expect": {"value": 1, "steps": 2, "allocated": 0}},
+  {"name": "_ twice as parameters binds nothing", "source": "const f = (_, _) => 0; f(1, 2)", "expect": {"value": 0, "steps": 2, "allocated": 0}},
+  {"name": "a parameter may shadow a const of the program", "source": "const x = 1; xs.map(x => x)", "expect": {}},
+  {"name": "a block in a lambda's body is a new scope and may bind the parameter's name", "source": "xs.map(x => { const x = 1; x })", "expect": {}}
+ ]
+}

@@ -2650,6 +2650,276 @@
    }
   },
   {
+   "name": "AA1: _ as a shorthand entry of a map",
+   "source": "{_}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA1: _ as a second shorthand entry of a map",
+   "source": "{a: 1, _}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA1: _ as a shorthand field of a parameter pattern",
+   "source": "const f = ({_}) => 1; f({})",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA1: _ as a shorthand field of a lambda argument's pattern",
+   "source": "[{}].map(({_}) => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA2: a template as a map key",
+   "source": "{`a`: 1}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA2: a template with an interpolation as a map key",
+   "source": "{`a${1}b`: 1}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA2: a template as a second map key",
+   "source": "{a: 1, `b`: 2}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA2: a template as a pattern key",
+   "source": "const {`a`: b} = {a: 1}; b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "AA2: a template as a parameter pattern key",
+   "source": "const f = ({`a`: b}) => b; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "V1: a template after an operand",
+   "source": "1 `a`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "V1: a template with an interpolation after an operand",
+   "source": "1 + 2 `x${1}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "V1: a template across lines after an operand",
+   "source": "1 `a\nb`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       2,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "V1: a template after a dot",
+   "source": "x.`a`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "V1: an early } closes an interpolation and is reported alone",
+   "source": "`${1 + }`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "V1: an early } inside a list in an interpolation",
+   "source": "`${[1, }]`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
    "name": "_ cannot be read",
    "source": "_",
    "expect": {

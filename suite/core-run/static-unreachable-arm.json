@@ -1,0 +1,14 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "an arm after _", "source": "match n { 1 => 1, _ => 0, 2 => 2 }", "expect": {"phase": "check", "diagnostics": [{"code": "unreachable-arm", "span": [1, 27, 1, 33]}]}},
+  {"name": "each arm after _ is reported", "source": "match n { _ => 0, 1 => 1, 2 => 2 }", "expect": {"phase": "check", "diagnostics": [{"code": "unreachable-arm", "span": [1, 19, 1, 25]}, {"code": "unreachable-arm", "span": [1, 27, 1, 33]}]}},
+  {"name": "a second _ arm", "source": "match n { _ => 0, _ => 1 }", "expect": {"phase": "check", "diagnostics": [{"code": "unreachable-arm", "span": [1, 19, 1, 25]}]}},
+  {"name": "the span runs from the arm's first literal to the end of its result", "source": "match s { _ => 0, \"a\" | \"b\" => 1 }", "expect": {"phase": "check", "diagnostics": [{"code": "unreachable-arm", "span": [1, 19, 1, 33]}]}},
+  {"name": "the span of an arm with a block result ends at its brace", "source": "match n { _ => 0, 1 => { const k = 1; k } }", "expect": {"phase": "check", "diagnostics": [{"code": "unreachable-arm", "span": [1, 19, 1, 42]}]}},
+  {"name": "the result of an unreachable arm is walked", "source": "match n { _ => 0, 1 => nope }", "expect": {"phase": "check", "diagnostics": [{"code": "unreachable-arm", "span": [1, 19, 1, 28]}, {"code": "undefined-name", "span": [1, 24, 1, 28]}]}},
+  {"name": "an unreachable arm on a later line", "source": "match n {\n  _ => 0,\n  1 => 1\n}", "expect": {"phase": "check", "diagnostics": [{"code": "unreachable-arm", "span": [3, 3, 3, 9]}]}},
+  {"name": "_ as the last arm is reachable", "source": "match s { \"a\" => 1, _ => 0 }", "vars": {"s": "b"}, "expect": {"value": 0, "steps": 2, "allocated": 0}}
+ ]
+}

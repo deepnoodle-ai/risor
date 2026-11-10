@@ -1,0 +1,30 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "a library function in a list", "source": "[len]", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 2, 1, 5]}]}},
+  {"name": "a host function read as a value", "source": "rate", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 1, 1, 5]}]}},
+  {"name": "a namespace as a map value", "source": "{g: geo}", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 5, 1, 8]}]}},
+  {"name": "a namespaced function read without a call is a read of the namespace", "source": "geo.distance", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 1, 1, 4]}]}},
+  {"name": "a const-bound lambda as a map value", "source": "const inc = n => n + 1; {f: inc}", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 29, 1, 32]}]}},
+  {"name": "a const-bound lambda as the value of a const", "source": "const inc = n => n + 1; const g = inc; 1", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 35, 1, 38]}]}},
+  {"name": "a const-bound lambda as an operand", "source": "const inc = n => n + 1; inc ?? 1", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 25, 1, 28]}]}},
+  {"name": "a const-bound lambda as the result", "source": "const inc = n => n + 1; inc", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 25, 1, 28]}]}},
+  {"name": "a const-bound lambda as a default", "source": "const inc = n => n + 1; const g = (a = inc) => a; g()", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 40, 1, 43]}]}},
+  {"name": "a const-bound lambda in a template", "source": "const inc = n => n + 1; `${inc}`", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 28, 1, 31]}]}},
+  {"name": "a const-bound lambda as a shorthand map entry", "source": "const inc = n => n + 1; {inc}", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 26, 1, 29]}]}},
+  {"name": "a lambda passed to a library function", "source": "len(x => x)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 5, 1, 11]}]}},
+  {"name": "a const-bound lambda passed to a library function", "source": "const inc = n => n + 1; len(inc)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 29, 1, 32]}]}},
+  {"name": "a lambda passed to fail", "source": "fail(x => 1)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 6, 1, 12]}]}},
+  {"name": "a lambda at the optional parameter of a host function", "source": "opt(\"a\", x => 1)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 10, 1, 16]}]}},
+  {"name": "a lambda taken by the rest parameter of a host function", "source": "many(1, 2, x => x)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 12, 1, 18]}]}},
+  {"name": "a lambda passed to a namespaced host function", "source": "geo.distance(x => 1, \"b\")", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 14, 1, 20]}]}},
+  {"name": "a const-bound lambda passed to a host function", "source": "const inc = n => n + 1; rate(inc)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 30, 1, 33]}]}},
+  {"name": "each lambda passed to a library function is reported", "source": "min(x => 1, y => 2)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 5, 1, 11]}, {"code": "not-a-value", "span": [1, 13, 1, 19]}]}},
+  {"name": "a library function's name passed to a method is an identifier, and not-a-value", "source": "blob.map(len)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 10, 1, 13]}]}},
+  {"name": "a library function's name passed to a host function", "source": "rate(len)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 6, 1, 9]}]}},
+  {"name": "a host function as a lambda's body", "source": "xs.map(x => rate)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 13, 1, 17]}]}},
+  {"name": "a namespace as an index", "source": "xs[geo]", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 4, 1, 7]}]}},
+  {"name": "?. after a namespace reads the namespace as a value (AC14)", "source": "geo?.distance(\"a\", \"b\")", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 1, 1, 4]}]}}
+ ]
+}

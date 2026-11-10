@@ -1,0 +1,14 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "diagnostics are ordered by position, not by the order of the walk", "source": "const geo = nope; 1", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 7, 1, 10]}, {"code": "undefined-name", "span": [1, 13, 1, 17]}]}},
+  {"name": "a diagnostic in a lambda's default comes after the const's name", "source": "const geo = (x = nope) => x; 1", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 7, 1, 10]}, {"code": "undefined-name", "span": [1, 18, 1, 22]}]}},
+  {"name": "positions on a later line", "source": "const a = 1;\nconst a = b;\na", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [2, 7, 2, 8]}, {"code": "undefined-name", "span": [2, 11, 2, 12]}]}},
+  {"name": "a diagnostic on line 1 comes before one on line 2", "source": "zz +\n  yy", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 3]}, {"code": "undefined-name", "span": [2, 3, 2, 5]}]}},
+  {"name": "four codes in one program, by position", "source": "const f = (a, a) => g(a); {k: 1, k: f}", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 15, 1, 16]}, {"code": "undefined-function", "span": [1, 21, 1, 22]}, {"code": "duplicate-key", "span": [1, 34, 1, 35]}, {"code": "not-a-value", "span": [1, 37, 1, 38]}]}},
+  {"name": "a diagnostic in a lambda with no use stands with the others", "source": "const f = x => zz; yy", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 16, 1, 18]}, {"code": "undefined-name", "span": [1, 20, 1, 22]}]}},
+  {"name": "same start: the shorter span first", "source": "match n { 2 => 1, _ => 0, 2 | 3 => 2 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 27, 1, 28]}, {"code": "unreachable-arm", "span": [1, 27, 1, 37]}]}},
+  {"name": "three codes at increasing positions", "source": "nope(zz, rate)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}, {"code": "undefined-name", "span": [1, 6, 1, 8]}, {"code": "not-a-value", "span": [1, 10, 1, 14]}]}}
+ ]
+}

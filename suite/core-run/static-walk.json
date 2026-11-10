@@ -1,0 +1,20 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "the default of a lambda passed to an unknown function is walked", "source": "nope((x = zz) => x)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}, {"code": "undefined-name", "span": [1, 11, 1, 13]}]}},
+  {"name": "a const-bound lambda's name passed to an unknown function is not walked", "source": "const inc = n => n + 1; nope(inc)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 25, 1, 29]}]}},
+  {"name": "a library function's name passed to an unknown function is walked", "source": "nope(len)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}, {"code": "not-a-value", "span": [1, 6, 1, 9]}]}},
+  {"name": "a lambda passed to a value is walked", "source": "n(x => zz)", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 1, 1, 2]}, {"code": "undefined-name", "span": [1, 8, 1, 10]}]}},
+  {"name": "a lambda at a parameter that takes no function is walked", "source": "len(x => zz)", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 5, 1, 12]}, {"code": "undefined-name", "span": [1, 10, 1, 12]}]}},
+  {"name": "a method call's receiver and lambda argument are walked", "source": "zz.map(x => yy)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 3]}, {"code": "undefined-name", "span": [1, 13, 1, 15]}]}},
+  {"name": "a lambda at a method's value parameter is not a static error", "source": "blob.slice(x => 1)", "expect": {}},
+  {"name": "a const-bound lambda passed to a method is not a static error", "source": "const inc = n => n + 1; blob.trim(inc)", "expect": {}},
+  {"name": "a lambda with too many parameters at a method is not a static error", "source": "blob.map((a, b, c) => a)", "expect": {}},
+  {"name": "the body and the handler of a try are both walked", "source": "try { zz } catch (e) { yy }", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 7, 1, 9]}, {"code": "undefined-name", "span": [1, 24, 1, 26]}]}},
+  {"name": "every test and branch of an if is walked", "source": "if (zz) { yy } else { ww }", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 5, 1, 7]}, {"code": "undefined-name", "span": [1, 11, 1, 13]}, {"code": "undefined-name", "span": [1, 23, 1, 25]}]}},
+  {"name": "both branches of ? : are walked", "source": "ok ? zz : yy", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 6, 1, 8]}, {"code": "undefined-name", "span": [1, 11, 1, 13]}]}},
+  {"name": "every arm's result is walked", "source": "match n { 1 => zz, _ => yy }", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 16, 1, 18]}, {"code": "undefined-name", "span": [1, 25, 1, 27]}]}},
+  {"name": "the right operand of && is walked", "source": "zz && yy", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 3]}, {"code": "undefined-name", "span": [1, 7, 1, 9]}]}}
+ ]
+}

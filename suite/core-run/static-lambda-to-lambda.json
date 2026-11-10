@@ -1,0 +1,14 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "a lambda written in place passed to a const-bound lambda", "source": "const ap = v => v; ap(x => x)", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 23, 1, 29]}]}},
+  {"name": "a const-bound lambda's name passed as the first of two arguments", "source": "const inc = n => n + 1; const ap = (v, w) => w; ap(inc, 1)", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 52, 1, 55]}]}},
+  {"name": "_ => e is a lambda", "source": "const ap = v => v; ap(_ => 1)", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 23, 1, 29]}]}},
+  {"name": "each lambda argument is reported", "source": "const ap = (a, b) => 1; ap(x => x, y => y)", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 28, 1, 34]}, {"code": "lambda-to-lambda", "span": [1, 36, 1, 42]}]}},
+  {"name": "a lambda with no parameters", "source": "const ap = v => 1; ap(() => 2)", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 23, 1, 30]}]}},
+  {"name": "a const-bound lambda passed to itself", "source": "const f = x => x; f(f)", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 21, 1, 22]}]}},
+  {"name": "the body of a lambda passed to a const-bound lambda is walked", "source": "const ap = v => v; ap(x => nope)", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 23, 1, 32]}, {"code": "undefined-name", "span": [1, 28, 1, 32]}]}},
+  {"name": "the span of a lambda argument runs to the end of its block body", "source": "const ap = v => v; ap(x => { const y = x; y })", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 23, 1, 46]}]}}
+ ]
+}

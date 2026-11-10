@@ -1,0 +1,20 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "a lambda parameter called", "source": "xs.map(f => f(1))", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 13, 1, 14]}]}},
+  {"name": "a const value called", "source": "const t = 1; t()", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 14, 1, 15]}]}},
+  {"name": "a name from a map pattern called", "source": "const {a} = m; a(1)", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 16, 1, 17]}]}},
+  {"name": "a name from a list pattern called", "source": "const [h] = xs; h()", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 17, 1, 18]}]}},
+  {"name": "a catch name called", "source": "try { 1 } catch (e) { e() }", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 23, 1, 24]}]}},
+  {"name": "a variable of the environment called", "source": "n(1)", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 1, 1, 2]}]}},
+  {"name": "a variable named like a library function is a value binding, and calling it is call-of-parameter", "source": "len(\"a\")", "env": "{len: int}", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 1, 1, 4]}]}},
+  {"name": "a const named like a library function shadows it", "source": "const len = 1; len(\"a\")", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 16, 1, 19]}]}},
+  {"name": "a parameter named like a host function shadows it", "source": "xs.map(rate => rate(\"a\"))", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 16, 1, 20]}]}},
+  {"name": "the arguments of a called value are walked", "source": "const t = 1; t(nope)", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 14, 1, 15]}, {"code": "undefined-name", "span": [1, 16, 1, 20]}]}},
+  {"name": "a lambda argument of a called value is not tested", "source": "const inc = n => n + 1; const t = 1; t(inc)", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 38, 1, 39]}]}},
+  {"name": "a parameter called in a const-bound lambda with no use", "source": "const twice = (f, x) => f(x); 1", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 25, 1, 26]}]}},
+  {"name": "a variable named type shadows the library function (AC15)", "source": "type(\"a\")", "env": "{type: int}", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 1, 1, 5]}]}},
+  {"name": "a variable named max shadows the library function (AC15)", "source": "max(1, 2)", "env": "{max: int}", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 1, 1, 4]}]}}
+ ]
+}

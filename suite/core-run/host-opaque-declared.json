@@ -1,0 +1,17 @@
+{
+ "env": "{t: Time, u: Time}",
+ "opaque": ["Time"],
+ "methods": {"Time.format": "(layout: string) => string", "Time.add": "(n: int, unit?: string) => Time"},
+ "cases": [
+  {"name": "a method of an opaque type is called", "source": "t.format(\"x\")", "expect": {}},
+  {"name": "a method with an optional parameter, given and left out", "source": "t.add(1).add(2, \"h\")", "expect": {}},
+  {"name": "an opaque value may be compared with ==", "source": "t == u", "expect": {}},
+  {"name": "an opaque value may be bound to a name", "source": "const v = t; v.format(\"x\")", "expect": {}},
+  {"name": "an opaque value may be put in a list and a map", "source": "[t, {at: t}]", "expect": {}},
+  {"name": "an opaque value may be passed to a host function", "source": "fmt(t)", "functions": {"fmt": "(t: Time) => string"}, "expect": {}},
+  {"name": "a host function may return an opaque value", "source": "now(\"utc\").format(\"x\")", "functions": {"now": "(zone: string) => Time"}, "expect": {}},
+  {"name": "an opaque value in a test is always truthy, which the default set rejects; with no class rejected it checks", "source": "t ? 1 : 2", "reject": [], "expect": {}},
+  {"name": "two opaque types", "source": "[t, m]", "env": "{t: Time, m: Money}", "opaque": ["Time", "Money"], "expect": {}},
+  {"name": "a method's name may be a library method's name", "source": "t.slice(\"x\")", "methods": {"Time.slice": "(s: string) => string"}, "expect": {}}
+ ]
+}

@@ -357,8 +357,8 @@ choose. Each is part of the grammar.
 | 4 | `Binary` | Read an `Add`. If the next token is `??`, it is a `Coal`. Otherwise the `Add` is the first operand of an `Or` |
 | 5 | Where an `Arg`, or the value of a `Const`, may stand | A `Name` or `_` directly followed by `=>` begins a `Lambda`. `_ => e` is the same as `(_) => e`. A `(` begins a `Lambda` when the token after its matching `)` is `=>`. Otherwise the place holds an `Expr` |
 | 6 | The matching `)` of rule 5 | Count `(`, `[`, `?.[` and `{` as openers and `)`, `]` and `}` as closers, over the tokens after the `(`. The matching token is the first closer that brings the count below zero. If it is not a `)`, or there is none, the `(` does not begin a `Lambda` |
-| 7 | An `Entry` that starts with a `Word` | If the token after the word is `:`, the word is a `Key`. Otherwise the entry is the shorthand `Name` |
-| 8 | A `Field` that starts with a `Word` | The same rule |
+| 7 | An `Entry` that starts with a `Word` | If the token after the word is `:`, the word is a `Key`. Otherwise the entry is the shorthand `Name`. `_` is not a name, so `{_}` is `unexpected-token` at the `_`. A template as a key, `` {`a`: 1} ``, is `unexpected-token` with the span of the whole template (3.5) |
+| 8 | A `Field` that starts with a `Word` | The same rules: `const {_} = m;` is `unexpected-token` at the `_`, and a template as a field's key is `unexpected-token` with the span of the whole template |
 | 9 | `.` or `?.` followed by a `Word` and then `(` | A method call. Without the `(`, a field read |
 | 10 | A `Name` followed by `(` where a `Primary` may stand | A call. Without the `(`, a name |
 | 11 | `Lambda` body | The longest `Expr`. It ends at the first token that cannot continue that `Expr` |
@@ -399,7 +399,7 @@ Core, at the span in the third column.
 | 4 | An `if` or a `try` is a whole expression, not an operand. After its last branch or its handler, only a token that may follow an `Expr` may stand. `if (c) { 1 } else { 2 } + 3` is an error, and so is a `.`, `[`, `?`, `?.` or `?.[` there. Write `(if (c) { 1 } else { 2 }) + 3`. The productions give this | The token that cannot follow |
 | 5 | An `if` or a `try` may not stand where an operand is needed: `1 + if (c) { 1 } else { 2 }` | The `if` or the `try` |
 | 6 | A `match` subject may not start with `{`, `if` or `try`. Write it in parentheses. `match {` with no subject is this error | That first token of the subject |
-| 7 | A branch is **written like a map** when its expression is followed by `:` or `,`, or when the branch starts with `...`. That is an error | The `{` of the branch |
+| 7 | A branch is **written like a map** when its expression is followed by `:` or `,`, or when the branch starts with `...` directly after its `{`. That is an error | The `{` of the branch |
 | 8 | A branch with nothing between its braces, `{}`, is an error | The `{` of the branch |
 | 9 | A `Lambda` may be the value of a `Const` only when its pattern is a `Name`: `const {a} = x => x;` is an error | The `=>` |
 | 10 | `try` followed by the token `(` is an error: `try(e, d)` | The `try` |
@@ -411,7 +411,10 @@ Core, at the span in the third column.
 1. Text that does not fit section 3.1 and that no rule of 3.4 or 14.3 covers is
    `unexpected-token`. Its span is the first token at which the tokens read so
    far, together with the choices of 3.2, cannot be continued to a `Program`. At
-   the end of input, the span is the empty span there (2.3).
+   the end of input, the span is the empty span there (2.3). Where that token is
+   a template, the span is the whole template, from its opening backtick to its
+   closing one. A `}` that closes an interpolation before its expression is
+   complete is reported at that `}` alone.
 2. A reserved word at a place where the grammar needs a `Name` or an operand is
    `reserved-word` by 14.2, not `unexpected-token`.
 
@@ -484,7 +487,7 @@ later package adds nodes with new numbers and never renumbers one.
 | A `Template` token with an interpolation | `Template`. Its parts are its text parts and its interpolations, in order |
 | `-5` | `Unary` `-` over `Number` `5`. In a `Lit` of a `match`, the arm holds the number `-5` |
 | `f(a)` | `Call` with no namespace |
-| `ns.f(a)` | `MethodCall` from the parser. When `ns` names a namespace of the environment (`03-host.md`), name resolution makes it a `Call` with that namespace |
+| `ns.f(a)` | `MethodCall` from the parser. When `ns` names a namespace of the environment (`03-host.md`), name resolution makes it a `Call` with that namespace. Only a plain `.` makes a call of a namespace: in `ns?.f(a)` the name `ns` is read as a value, which is a static error (14.4) |
 | `x.f`, `x.m(a)`, `x[i]` | `Member`, `MethodCall`, `Index` with `optional` false |
 | `x?.f`, `x?.m(a)`, `x?.[i]` | The same nodes with `optional` true |
 | A chain with at least one optional step | The outermost node of the chain is wrapped in one `OptChain`. The chain is the `Chain` production: it ends at a closing parenthesis around it and at any operator (7.4) |
@@ -615,13 +618,16 @@ There are seven kinds of value.
 6. Any result that is NaN or not finite fails with `number-range`. In `a ** b`
    with `b` below zero and `a` not zero: a `p` that is not finite gives the
    result zero, so `2 ** -2000` is zero; a `p` that is zero fails with
-   `number-range`, so `0.1 ** -400` fails. With `a` zero the failure is
-   `divide-by-zero` (rule 5).
+   `number-range`, so `0.1 ** -400` fails. A `p` that is finite and not zero
+   still fails with `number-range` when `1 / p` is not finite, by the general
+   rule: `0.5 ** -1024` fails. With `a` zero the failure is `divide-by-zero`
+   (rule 5).
 7. A result too small to represent is zero.
 8. Each operator rounds once (`02-evaluation.md`).
 9. The operands of `+`, `-`, `*`, `/`, `%`, `**` and of prefix `-` are tested by
    14.5: a null operand fails with `null-operand`, and an operand of another
-   kind with `wrong-kind`. `+` also joins two strings (6.4).
+   kind with `wrong-kind`. `+` also joins two strings (6.4). Null is tested
+   first, over both operands: see 14.5 rule 2.
 
 ### 6.3 Numbers and text
 
@@ -787,8 +793,8 @@ There are seven kinds of value.
    The name never reads the map's data: `m.keys()` calls the method even when
    `m` has a key `keys`.
 2. A null receiver of `x.m(...)` fails with `null-operand`.
-3. **The shape test.** Where the method was not resolved when compiling, it is
-   found at run time from the receiver's kind and the name. Then, before any
+3. **The shape test.** At every `MethodCall`, the run selects the method by the
+   receiver's kind and the name, whatever a checker inferred. Then, before any
    argument is evaluated and before the call's charge, these are tested in
    order. The first that fails raises `wrong-kind` at the `MethodCall`:
 
@@ -804,8 +810,11 @@ Tests 3 and 4 are one pass over the arguments, left to right: the first argument
 that fails either decides. Test 5 is a second pass, left to right. A method of
 an opaque type takes no callback, so there test 4 fails for any lambda argument.
 The five need only the text and the method's record. An implementation may
-prepare them when compiling but does not report them then. `04-library.md` and
-`02-evaluation.md` have the same tests.
+prepare them when compiling but does not report them then. Resolving a method
+when compiling is an optimization: an implementation guards it with a test of
+the receiver's kind, and it is never observable. So `x.slice(1)`, with `x`
+declared `string` and supplied as the list `[1, 2, 3]`, gives `[2, 3]`.
+`04-library.md` and `02-evaluation.md` have the same tests.
 
 4. `x?.m(...)` with a null receiver makes the chain null (7.4). Otherwise it is
    `x.m(...)`.
@@ -883,7 +892,9 @@ fails when `input.event` is a map with no key `pull_request`.
 4. **Only a function can be called.** In `f(a)`, if the innermost binding of `f`
    is a parameter, a name bound by a pattern, a `const` whose value is not a
    lambda, the name of a `catch`, or a variable of the environment, the call is
-   an error. A value cannot be called, whatever it holds.
+   an error. A value cannot be called, whatever it holds. This holds when a
+   variable of the environment has the name of a library function: the variable
+   hides the function, so with a variable `type`, `type(x)` is an error.
 5. These rules are static rules (14.4). They are decided from the text and the
    bindings alone, with no type, wherever the text stands: `const twice = (f, x)
    => f(f(x));` is an error even when `twice` is never called.
@@ -900,15 +911,18 @@ fails when `input.event` is a map with no key `pull_request`.
 
 ### 8.3 Calling a lambda
 
-1. **A call by name** of a `const`-bound lambda supplies an argument for every
-   parameter that has no default, and no more arguments than there are
-   parameters. Another count is a static error (14.4).
+1. **A call by name** of a `const`-bound lambda supplies at least its required
+   count of arguments and no more than its count of parameters. Another count is
+   a static error (14.4). The **required count** is the position of its last
+   parameter that has no default, counting from 1, or 0 when every parameter has
+   a default. So with `const f = (a = 1, b) => b;`, `f(5)` is an error, and
+   `f(null, 5)` gives `a` its default.
 2. **A call by the library** passes the arguments that `04-library.md` gives.
    When it passes more arguments than the lambda has parameters, the extra ones
    are dropped. A lambda that has more parameters than the library's signature
    gives is an error: a static error (`arity`, 14.4) in a call by name; a type
-   rule of `05-types.md` at a method call whose receiver's type is known; and
-   otherwise `wrong-kind` at run time, by the shape test of 7.2.
+   rule of `05-types.md` at a method call whose receiver's type is known; and at
+   run time, at every method call, `wrong-kind` by the shape test of 7.2.
 3. **Binding.** The parameters are bound left to right. Each parameter's pattern
    is matched against its argument (8.4). A parameter whose argument is omitted
    or is null takes its default, if it has one. The default is evaluated only
@@ -1006,7 +1020,8 @@ Patterns stand in `const` lines, in parameters and nowhere else.
    - `[k]: e` has the key that is the value of `k`, which must be a string. A
      null `k` fails with `null-operand`. Any other kind fails with
      `wrong-kind`.
-   - `a`, a shorthand entry, means `a: a`.
+   - `a`, a shorthand entry, means `a: a`. `_` cannot be a shorthand entry
+     (3.2 rule 7), and a key cannot be a template.
    - `...e` puts each entry of the map `e`. Null fails with `null-operand`. Any
      other kind fails with `wrong-kind`.
 2. A key written as a word, a string or a shorthand name, twice in one literal,
@@ -1171,7 +1186,7 @@ Nothing else opens a level. In particular these do not:
 1. At most **100** levels may be open at once.
 2. The token that would open level 101 is `nesting-exceeded`, of phase `parse`.
    Its span is that token. For `not in`, the span runs from `not` to the end of
-   `in`.
+   `in`. For a `${`, it is the two code points `${`.
 3. Parsing ends at that token. Nothing is reported for the text after it.
 4. The number belongs to this specification. A host cannot change it.
 5. The **nesting depth** of an expression is the number of levels open at its
@@ -1225,7 +1240,7 @@ Core has 14 `parse` codes: the 13 general codes and `reserved-word`.
 | `line-continuation` | A `\` directly before a line end in a template (2.8) | The `\` |
 | `bad-number` | A number token that does not match `Number` (2.5) | The number token |
 | `literal-range` | A number literal that is not in range (2.5) | The number token |
-| `nesting-exceeded` | A token would open level 101 (13.2) | That token, or `not in` |
+| `nesting-exceeded` | A token would open level 101 (13.2) | That token: `not in` from `not` to the end of `in`, a `${` its two code points |
 | `text-block-open` | Not reported in Core | |
 | `text-block-close` | Not reported in Core | |
 | `text-block-indent` | Not reported in Core | |
@@ -1289,13 +1304,12 @@ diagnostic. A lexical diagnostic comes first (2.11).
 | A `\` before a line end in a template | `line-continuation` | The `\` |
 | Every other text that a later package covers: `if c { a } else { b }`, `if (c) a else b`, `if(c, a, b)`, `try e catch d`, `catch (e: T)`, `catch ({message})`, `catch (_)`, `catch ()`, `switch`, `typeof x`, `x instanceof T`, `x satisfies T`, `interface`, `enum`, `type Name = T`, `export const`, `x => { x + 1 }`, `a?[i]`, `{max-retries: 3}` | `unexpected-token` | 3.5 |
 
-`02` 3.2 fixes the span of some rows only in general terms and leaves the exact
-span to the suite. For those rows the Core suite states the phase and no span,
-and follow-on F8 adds the cases that pin it. They are the last row of the table;
-`x as const` and `x is not T`; `xs.*.f` and `xs[].f`; `const {a} = x => x;`; and
-a `match` subject that starts with `{`, `if` or `try`, but for `match {`, whose
-span, the `{`, the Core suite pins. The Core suite pins the span of every other
-row.
+A span that the table states exactly, as a named token, is normative, and the
+Core suite pins it. The design document `experiments/v3/design/02-language.md`
+3.2 leaves the exact span of some targeted errors to the suite. For the rows of
+this table whose span column cites 3.5, or a rule only in general terms, the
+Core suite states the phase and no span, and follow-on F8 adds the cases that
+pin it.
 
 ### 14.4 Static rules
 
@@ -1323,8 +1337,8 @@ skipped after one. The message of a `check` diagnostic is not specified in Core.
 At a method call none of these is a static rule: the count of arguments, a
 lambda where the method takes a value, a value where it takes a function, and a
 lambda with too many parameters. Each needs the receiver's type, so it is a type
-rule of `05-types.md` (`arity`, `not-a-value`, `arg-mismatch`). Where no type
-rule applied, the run tests them by the shape test of 7.2.
+rule of `05-types.md` (`arity`, `not-a-value`, `arg-mismatch`). The run always
+tests them too, by the shape test of 7.2.
 
 ### 14.5 The run codes the language raises
 
@@ -1363,9 +1377,15 @@ node in the third column (4.3). The `path` of each is null.
 
 1. A `null-operand` and a `wrong-kind` at the same place are different codes: a
    null raises the first, and a value of another kind the second.
-2. `not-conforming` is a run code of Core, and `catch` catches it, but no form
+2. **Null first.** For a binary operator that takes two operands and rejects
+   null in either (`+`, `-`, `*`, `/`, `%`, `**`, `<`, `<=`, `>`, `>=`), both
+   operands are evaluated. Then, if the left operand is null, or else the right
+   one is, the failure is `null-operand`. Only then are the kinds tested, and a
+   pair that does not go together is `wrong-kind`. So `"a" * null`, `null < [1]`
+   and `[1] + null` all fail with `null-operand`. `in` and `not in` follow 6.8.
+3. `not-conforming` is a run code of Core, and `catch` catches it, but no form
    of Core raises it.
-3. These codes are raised by other chapters, at forms of this chapter:
+4. These codes are raised by other chapters, at forms of this chapter:
    `missing-variable`, when a name of the environment is read and the host did
    not supply it (`03-host.md`); `number-range` for a host number that cannot
    enter the language (`03-host.md`); `function-error` and `function-panic` from
@@ -1374,7 +1394,7 @@ node in the third column (4.3). The `path` of each is null.
    library entry (`04-library.md`); `depth-exceeded`, `steps-exceeded`,
    `allocation-exceeded`, `deadline-exceeded` and `cancelled`
    (`02-evaluation.md`).
-4. The message of each code is built from `messages.json` (`03-host.md`). The
+5. The message of each code is built from `messages.json` (`03-host.md`). The
    class of each is in `03-host.md`.
 
 ## 15. Examples

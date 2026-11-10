@@ -117,7 +117,8 @@ An environment is a set of declarations. Core has these kinds.
    names of the variables and the count of parameters of each function. Text
    that the grammar does not accept is `bad-type`, or `bad-signature` for a
    signature, in every implementation. The rules of `05-types.md` beyond the
-   grammar (two record alternatives, an undeclared type name, depth, a key
+   grammar (two record alternatives, an undeclared type name, type depth
+   (`05-types.md` 2.5), a key
    written twice) need the type checker.
 3. Check uses the types of variables. A run uses only their names.
 4. An environment with no rejected-classes declaration rejects the default
@@ -161,25 +162,35 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 
 | Situation | Code |
 | --- | --- |
-| Two declarations of one name in one environment: two variables, two functions, or a variable and a function | `name-clash` |
-| A variable named like a namespace that a function of the environment uses | `name-clash` |
-| A host function named like a library entry that the environment has | `name-clash` |
+| Two declarations of one name in one environment: two variables, two host functions, or a variable and a host function. A key written twice in the record of `env` (`{a: int, a: int}`) is two variables of one name, in every implementation | `name-clash` |
+| A variable, or a host function, named like a namespace that a host function of the environment uses: a variable or a function `geo` beside `geo.distance` | `name-clash` |
+| A host function named like a library function that the environment has. A host function named like a library method (`trim`) does not clash, and `geo.len` is a different name from `len` | `name-clash` |
 | Two opaque types with one name in one environment | `name-clash` |
 | A host function in the namespace `json`, `time`, `math` or `base64` | `reserved-namespace` |
 | A variable, a function or a namespace named with a reserved word of `01-language.md` | `bad-name` |
+| A variable, a function or a namespace whose name is not a `Name` of `01-language.md`, such as a field `"a-b"` of `env`, a variable or function `_`, or a function with two namespace prefixes (`a.b.c`) | `bad-name` |
 | An opaque type name not of the form of 3.3.3, item 4. One upper-case letter alone is a type variable of a signature | `bad-name` |
 | A signature that is malformed, that has a parameter of a function type, or a method whose receiver is not a declared opaque type | `bad-signature` |
 | A type text that is malformed, that nests past the 64 levels of `05-types.md`, that names a type no declaration gives, or that `05-types.md` otherwise refuses in a declaration | `bad-type` |
-
-Which of these an implementation with no type checker reports is 3.3.1, item
-2. `05-types.md` gives the full list of errors in declared type text.
+| An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
 | A rejected class that is not a check class | `bad-class` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
 | A compile against an environment that has a function or a method with no implementation | `no-implementation` |
 
+Which of these an implementation with no type checker reports is 3.3.1, item
+2. `05-types.md` gives the full list of errors in declared type text.
+
 1. A type name and a variable, function or namespace name never clash. A type
    name is read only where a type is written.
-2. A `declare` diagnostic has a code, a phase and a message. It has no span.
+2. A variable named like a library function is allowed (`{type: string}`,
+   `{max: int}`). A library entry is not a host function for the first row.
+   The variable shadows the library function, as a `const` of that name
+   would: a call `type(x)` in that environment is `call-of-parameter`.
+3. A method of an opaque type may be named with a reserved word
+   (`Time.if`): after `.` it is a word like any other.
+4. An implementation reports every `declare` error it finds, in no specified
+   order.
+5. A `declare` diagnostic has a code, a phase and a message. It has no span.
 
 ## 3.4 Variables and values
 
@@ -228,16 +239,31 @@ Which of these an implementation with no type checker reports is 3.3.1, item
    size. So `1e20` given as a floating value enters, and is a number that is
    not whole (`01-language.md`).
 3. A run fails where it reads a number that cannot enter, with the code
-   `number-range` and the class `environment`. A value is read lazily, so a
-   number that is only passed through is still read, and still fails.
-4. `catch` catches this failure.
-5. A host passes an identifier that does not fit as a string.
+   `number-range` and the class `environment`, at the span of the node that
+   read it.
+4. A host number is **read** when an operation yields it as a value: a
+   variable read, a field or index read, a pattern binding, an element handed
+   to a callback, an element that a library entry or a walk tests, compares,
+   adds or renders, an argument passed to a host function, and each number of
+   the run's result when the result is handed to the host.
+5. An operation that copies or measures a container without looking at its
+   elements does not read them: `len`, a spread, `slice`, `reverse` and
+   `concat` among them.
+6. A host `-0.0` reads as zero.
+7. `catch` catches this failure.
+8. A host passes an identifier that does not fit as a string.
 
 ### 3.4.5 Text that is not valid
 
-Host text that is not a valid sequence of Unicode scalar values reads as if
-each malformed unit were U+FFFD. A malformed unit is one byte of UTF-8 or one
-unit of UTF-16. An unpaired surrogate is one malformed unit.
+1. Host text that is not a valid sequence of Unicode scalar values reads with
+   U+FFFD in place of each ill-formed part, by the practice Unicode
+   recommends: in UTF-8, one U+FFFD for each maximal subpart of an ill-formed
+   sequence. The bytes `E2 82` followed by `41` read as one U+FFFD and `A`.
+2. In UTF-16, each unpaired surrogate reads as one U+FFFD.
+3. **Source text.** A host passes the source text of a program as text of its
+   own language, or as bytes in UTF-8. A binding that takes bytes decodes them
+   by item 1. A binding that takes UTF-16 text decodes it by item 2. Positions
+   are counted in the decoded text (3.7.7).
 
 ### 3.4.6 Opaque values
 
@@ -466,7 +492,9 @@ catalog (3.8).
 
 ### 3.7.6 The class of a run diagnostic
 
-The class depends on whether the program was checked.
+The class depends on whether the program was checked. A failure is **at** a
+site as `05-types.md` 18.3 defines it: the site is on the failing node, or on
+a node that is its operand, receiver, index or argument.
 
 | Failure | Class in a checked program | Class in a program compiled without a check |
 | --- | --- | --- |
@@ -565,7 +593,7 @@ The file is a JSON array. Each element is an entry for one code.
 
 | Kind | Rendering |
 | --- | --- |
-| `word` | A name, a field word or an operator of the program or of the environment, as written |
+| `word` | A name or a field word of the program or of the environment, as written. An operator, by its canonical text: `not in` with one space, whatever stands between the two words in the program |
 | `string` | A string, in its JSON form (`01-language.md`), with the quotes |
 | `value` | A null, a bool, a number or a string in its JSON form. For any other value, the word `list`, `map` or `opaque` |
 | `kind` | What `type(x)` gives for the value (`04-library.md`): `null`, `bool`, `number`, `string`, `list`, `map` or `opaque` |
@@ -605,6 +633,13 @@ else.
 
 The limits make accidents cheap. They are not a sandbox for hostile code.
 
+**The stack a binding needs.** Each binding documents the stack that an
+optimized build needs to parse a program at the source nesting limit, and to
+run at the depth limits 200 and 1,000. It has a test that runs its deepest
+cases on a thread with that stack. A binding never answers a program or data
+within the limits with a stack overflow. This specification fixes no number of
+bytes for all bindings.
+
 ### 3.9.2 Versions
 
 1. A version is one number, `major.minor`, for the grammar, the semantics,
@@ -633,6 +668,9 @@ the one contract for all runners.
    header.
 3. The `cases` of a catalog entry in `messages.json`, and of an entry in
    `library.json`, are a list of cases with no header.
+4. A case file nests JSON at most 1,024 levels deep. The top value is level
+   1, and each array or object adds one level for the values inside it. A
+   reader accepts every file within that depth. A deeper file is invalid.
 
 ### 3.10.2 The header
 
@@ -653,7 +691,7 @@ the one contract for all runners.
 | `version` | The specification version, as `"3.0"` | The base environment's |
 | `env` | One record type in type text. Each field is a declared variable, with its type. Text that is a type but not a record by the grammar of `05-types.md`, such as `"int"`, is `bad-type`, in every implementation | No variable is declared |
 | `opaque` | A list of opaque type names | No opaque type is declared |
-| `methods` | An object that maps `Type.method` to a method signature in type text | No method is declared |
+| `methods` | An object that maps `Type.method` to a stub of that method (3.10.4). `Type` is a name of `opaque`. The stub's signature is the method's, in type text, without the receiver | No method is declared |
 | `functions` | Host functions, as stubs (3.10.4) | No function is declared |
 | `reject` | The whole set of rejected check classes, as a list of names | The base environment's set |
 | `returns` | The expected result (3.2.3): a type text, or the word `condition` | Nothing is expected |
@@ -683,6 +721,53 @@ the one contract for all runners.
    types. A later package adds that test, which `"precondition": false` turns
    off (3.11). So a case that breaks a declared type on purpose carries
    `"precondition": false` from the start.
+7. **Opaque values.** Wherever a case file holds a host value, and wherever it
+   holds an expected `value`, a JSON object with exactly one key, `"$opaque"`,
+   stands for an opaque value. The host values are the values of `vars`, and
+   the `args` and the `result` of a stub's row, at any depth inside a list or a
+   map. The value of `"$opaque"` is an object with exactly two keys: `"type"`,
+   a name that the case's `opaque` declares, and `"id"`, a whole number of 0
+   or more. Example: `{"$opaque": {"type": "Token", "id": 1}}`.
+8. Two such objects stand for the same host value exactly when their `type`
+   and their `id` are equal. That is the identity test of 3.4.6. So `==` on
+   two opaque values in the run, the match of a stub row's `args`, and the
+   comparison of a result with `value` all use it.
+9. A JSON object that has the key `"$opaque"` and is not of the form of item 7
+   makes the file invalid, and so does one whose `type` the case does not
+   declare in `opaque`. So a case cannot supply a map whose only key is
+   `$opaque`.
+10. A runner supplies each opaque value as a host value of the declared
+    opaque type, as a binding would (3.4.6). It is read in place like any
+    other host value.
+
+This complete case file supplies an opaque value, calls a stubbed method on
+it, and passes it to a stubbed host function.
+
+```json
+{
+  "env": "{tok: Token}",
+  "opaque": ["Token"],
+  "methods": {
+    "Token.owner": {"type": "() => string",
+                    "calls": [{"args": [{"$opaque": {"type": "Token", "id": 1}}],
+                               "result": "ana"}]}
+  },
+  "functions": {
+    "renew": {"type": "(t: Token) => Token",
+              "calls": [{"args": [{"$opaque": {"type": "Token", "id": 1}}],
+                         "result": {"$opaque": {"type": "Token", "id": 2}}}]}
+  },
+  "vars": {"tok": {"$opaque": {"type": "Token", "id": 1}}},
+  "cases": [
+    {"name": "a method of an opaque type", "source": "tok.owner()",
+     "expect": {"value": "ana"}},
+    {"name": "an opaque result, compared by identity", "source": "renew(tok)",
+     "expect": {"value": {"$opaque": {"type": "Token", "id": 2}}}},
+    {"name": "an opaque value is not equal to another one",
+     "source": "renew(tok) == tok", "expect": {"value": false}}
+  ]
+}
+```
 
 ### 3.10.4 Stubs
 
@@ -701,7 +786,14 @@ a function name to a stub.
 
 1. A stub with `error` gives the run `function-error`, class `host`. Its
    message is the string of `error`.
-2. A case cannot describe a function that crashes, or one that waits until it
+2. **A method's stub.** A method of an opaque type, in `methods`, is stubbed
+   like a host function, with one difference: the receiver is the first value
+   of a row's `args`, and the method's arguments follow it. So a row of a
+   method that takes `n` arguments matches a call when its `args` has `n` + 1
+   values. A row with no `args` matches every call.
+3. A stub's `type` may be left out for a method only when the base
+   environment declares that method.
+4. A case cannot describe a function that crashes, or one that waits until it
    is cancelled. Each binding tests those with tests of its own.
 
 ### 3.10.5 How a case is run
@@ -777,13 +869,12 @@ Each element of `diagnostics` is an object with these fields.
 4. `diagnostics` for phase `check` or `run` is compared whole: the same
    number of diagnostics, and each expected one with the actual one at the
    same position. A run failure has one.
-5. `diagnostics` for phase `parse` is compared with the start of what the
-   parser reported: the first expected diagnostic with the first reported, and
-   so on, for as many as the case gives. Further reported diagnostics are not
-   compared.
-6. `diagnostics` for phase `declare` is compared without regard to order: the
-   same number of diagnostics, and each expected one equal to a different
-   actual one.
+5. `diagnostics` for phase `parse` has exactly one element (3.10.10, item
+   16). It is compared with the first diagnostic the parser reported. Further
+   reported diagnostics are not compared.
+6. `diagnostics` for phase `declare` has exactly one element (3.10.10, item
+   16). The environment then has exactly one error, and the expected
+   diagnostic is compared with the one reported.
 7. For a limit code, `span` is not compared, even when the case gives it.
 8. `class` is compared only by an implementation that checked the program at
    step 4.
@@ -846,18 +937,30 @@ verdict `invalid`.
 8. A `file` that cannot be read.
 9. A key of `vars` that is not a field of `env`.
 10. A stub row with both `result` and `error`, or with neither.
-11. A stub with no `type`, for a name the base environment does not declare.
+11. A stub with no `type`, for a function or a method the base environment
+    does not declare. A stub with no `type` whose name is a library entry is
+    among these: a library entry is not a host function.
 12. An `expect` that breaks 3.10.6, item 1, 2 or 3: a failure with `type`,
     `sites`, `value` or `truthy`; `steps` or `allocated` on a failure whose
     phase is not `run`; or `steps` or `allocated` on a failure whose
     diagnostic has a limit code.
 13. A JSON number that reads as an infinity.
+14. A JSON object with the key `"$opaque"`, where a host value or `value`
+    stands, that is not of the form of 3.10.3, item 7, or whose `type` the case
+    does not declare in `opaque` (3.10.3, item 9).
+15. JSON nested deeper than 1,024 levels (3.10.1, item 4).
+16. An `expect` of phase `parse` or `declare` whose `diagnostics` has more than
+    one element. Only the first `parse` diagnostic is specified, and the order
+    of `declare` diagnostics is not. A case that expects phase `declare` has an
+    environment with exactly one error.
 
 ### 3.10.11 JSON Schema of a case file
 
 The schema gives the shape of the file. The rules of 3.10.2 and 3.10.10 that
 it cannot express still apply: the header rule, the one of `source` and `file`
-after it, unique names, keys of `vars`, and stubs without `type`.
+after it, unique names, keys of `vars`, stubs without `type`, the `type` of
+an opaque value being a name the case declares, and the depth of 3.10.1,
+item 4.
 
 ```json
 {
@@ -889,13 +992,14 @@ after it, unique names, keys of `vars`, and stubs without `type`.
         "methods": {
           "type": "object",
           "propertyNames": {"pattern": "^[A-Z][A-Za-z0-9_]+\\.[A-Za-z_][A-Za-z0-9_]*$"},
-          "additionalProperties": {"type": "string"}},
+          "additionalProperties": {"$ref": "#/$defs/stub"}},
         "functions": {
           "type": "object",
           "additionalProperties": {"$ref": "#/$defs/stub"}},
         "reject": {"type": "array", "items": {"type": "string"}},
         "returns": {"type": "string"},
-        "vars": {"type": "object"},
+        "vars": {"type": "object",
+                 "additionalProperties": {"$ref": "#/$defs/hostValue"}},
         "limits": {"$ref": "#/$defs/limits"},
         "precondition": {"type": "boolean"}
       }
@@ -937,8 +1041,8 @@ after it, unique names, keys of `vars`, and stubs without `type`.
     "row": {
       "type": "object",
       "properties": {
-        "args": {"type": "array"},
-        "result": true,
+        "args": {"type": "array", "items": {"$ref": "#/$defs/hostValue"}},
+        "result": {"$ref": "#/$defs/hostValue"},
         "error": {"type": "string"},
         "charge": {"type": "integer", "minimum": 0},
         "allocate": {"type": "integer", "minimum": 0}
@@ -956,6 +1060,28 @@ after it, unique names, keys of `vars`, and stubs without `type`.
       "maxItems": 4
     },
     "count": {"type": "integer", "minimum": 0},
+    "hostValue": {
+      "if": {"type": "object", "required": ["$opaque"]},
+      "then": {"$ref": "#/$defs/opaque"},
+      "else": {"anyOf": [
+        {"type": ["null", "boolean", "number", "string"]},
+        {"type": "array", "items": {"$ref": "#/$defs/hostValue"}},
+        {"type": "object",
+         "additionalProperties": {"$ref": "#/$defs/hostValue"}}]}
+    },
+    "opaque": {
+      "type": "object",
+      "required": ["$opaque"],
+      "additionalProperties": false,
+      "properties": {
+        "$opaque": {
+          "type": "object",
+          "required": ["type", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"type": "string", "pattern": "^[A-Z][A-Za-z0-9_]+$"},
+            "id": {"type": "integer", "minimum": 0}}}}
+    },
     "limitCode": {"enum": [
       "steps-exceeded", "allocation-exceeded", "depth-exceeded",
       "deadline-exceeded", "cancelled"]},
@@ -980,7 +1106,7 @@ after it, unique names, keys of `vars`, and stubs without `type`.
               "class": {"enum": ["dynamic", "index", "divide", "value", "host"]},
               "span": {"$ref": "#/$defs/span"}},
             "additionalProperties": false}},
-        "value": true,
+        "value": {"$ref": "#/$defs/hostValue"},
         "truthy": {"type": "boolean"},
         "steps": {"$ref": "#/$defs/count"},
         "allocated": {"$ref": "#/$defs/count"}
@@ -1002,6 +1128,8 @@ after it, unique names, keys of `vars`, and stubs without `type`.
       "allOf": [
         {"if": {"properties": {"phase": {"not": {"const": "run"}}}},
          "then": {"$ref": "#/$defs/noUsage"}},
+        {"if": {"properties": {"phase": {"enum": ["parse", "declare"]}}},
+         "then": {"properties": {"diagnostics": {"maxItems": 1}}}},
         {"if": {"properties": {"diagnostics": {"contains": {
            "type": "object", "required": ["code"],
            "properties": {"code": {"$ref": "#/$defs/limitCode"}}}}}},

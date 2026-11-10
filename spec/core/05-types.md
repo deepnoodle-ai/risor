@@ -270,7 +270,7 @@ case's `type` use this text. The printed text reads back as the same type.
 | `any`, `never` | `any`, `never` |
 | Alternatives | In the order bool, number, string, list, map, opaque names in code point order, then `null`, joined with ` \| `. |
 | Null | `null`, last: `int \| null`. |
-| A literal set | Each string in its JSON form (`02-evaluation.md`), in code point order, joined with ` \| `. |
+| A literal set | Each string in its JSON form (`01-language.md` 12), in code point order, joined with ` \| `. |
 | A list | The element, then `[]`. The element is in parentheses when its text has a ` \| ` at the top level: `(int \| string)[]`, `("a" \| "b")[]`, `(int \| null)[]`. |
 | A record | `{`, the fields in code point order of their keys, each as key, `?` if optional, `: ` and its type, separated by `, `; then `, ...` for an `any` rest or `, ...T` for a typed rest; then `}`. A key that is a `Word` is bare, any other key is in its JSON form. A record with no fields and rest `never` is `{}`. |
 | A record with no fields and a rest that is not `never` | `map<T>`, with T the rest: `map<any>`, `map<float>`. |
@@ -347,7 +347,7 @@ over a map of record type R. It types a map spread and a computed key (7.5).
 ### 4.4 Truthy and Falsy
 
 The falsy values are null, `false`, zero, the empty string, the empty list and
-the empty map. Every other value is truthy (`02-evaluation.md`). Truthy(T) is
+the empty map. Every other value is truthy (`01-language.md` 6.5). Truthy(T) is
 the type of the truthy values of T, and Falsy(T) of the falsy values. Each is
 the set of the parts of T's alternatives below. A dash is no part.
 
@@ -426,7 +426,7 @@ A parameter is never bound to a lambda (13.2).
 | --- | --- |
 | An `Ident` | The innermost binding. A value binding gives its type, narrowed by the facts in force (10.4). Anything else (a const-bound lambda used as a value, a namespace, a function of the environment, or no binding) gives `never`. |
 | The name of a `Call` | The innermost binding. A const-bound lambda is called by 13.9. A value binding: the call has type `never`. With no binding: the function of the environment of that name, with its namespace (a host function or a library function), called by 13.5; with none, the call has type `never`. |
-| A `MethodCall` whose receiver is an `Ident` that names a namespace | It is a `Call` of the function of that namespace (5.4). |
+| A `MethodCall` with a plain `.` whose receiver is an `Ident` that names a namespace | It is a `Call` of the function of that namespace (5.4). With `?.`, as `geo?.distance(a, b)`, it is not: the `Ident` is read as a value, which is `not-a-value` (22.4). |
 
 So the callee of every call is known from the scopes alone: a const-bound
 lambda, a function of the environment, or an error. The errors of resolution
@@ -850,7 +850,7 @@ parameter receives.
 | `x` | x has type V. |
 | `_` | Binds nothing. |
 | `{...}`, a `MapPat` | V may be null: `maybe-null` on the value bound (12.3), continuing with nonnull(V). V must then be a record (`kind` on the value bound), or `any` (a `dynamic` site on the value bound; every name, the rest included, is `any`). Each field is read as the plain read `V.key` by 9.2, with a diagnostic on the key of the pattern. A field with a default is read by 12.4. |
-| `[...]`, a `ListPat` | V may be null as above. V must then be a list (`kind`), or `any` as above. Each element name has the element type, and records an `index` site on the name. `_` records nothing. An element with a default is bound by 12.4. |
+| `[...]`, a `ListPat` | V may be null as above. V must then be a list (`kind`), or `any` as above. Each element name has the element type, and records an `index` site on the name. An element `_` binds nothing and records the `index` site on the `_` too: the run needs its position. An element with a default is bound by 12.4. |
 | `...rest` in a map pattern | The record V without the fields the pattern names. An exact record stays exact, and an open record keeps its rest. |
 | `...rest` in a list pattern | V. No site. |
 
@@ -901,12 +901,13 @@ A plain argument at an `Fn` parameter is `arg-mismatch` on the argument, a type
 rule in a `Call` and in a `MethodCall` alike. It is synthesized and binds
 nothing.
 
-Where these type rules do not apply at a `MethodCall` (a receiver of type `any`,
-or a program compiled without the type rules), the run makes the shape test of
-`04-library.md` 2.2 before any argument is evaluated: the method's name, the
-count of arguments, a lambda at each callback parameter, no lambda at another
-parameter, and the lambda's count of parameters. The first that fails is
-`wrong-kind` at the `MethodCall`.
+At run time, at every `MethodCall`, the run selects the method by the receiver's
+kind and makes the shape test of `04-library.md` 2.2 before any argument is
+evaluated: the method's name, the count of arguments, a lambda at each callback
+parameter, no lambda at another parameter, and the lambda's count of parameters.
+The first that fails is `wrong-kind` at the `MethodCall`. It does so whether or
+not the program was checked: a method the checker resolved changes nothing at
+run time.
 
 ### 13.3 Resolving a method
 
@@ -947,7 +948,7 @@ method.
 
 | Step | Rule |
 | --- | --- |
-| 1. Count | The arguments must cover every required parameter, and must not be more than the parameters unless the last is a rest parameter. Otherwise `arity` on the whole call: the call has type `never`, each plain argument is synthesized, no lambda argument is checked, and the call is not checked further. For a `Call` this `arity` is a static rule (22.5) and the type rules do not report it. For a `MethodCall` (argument zero not counted) it is a type rule; where it does not apply, the run's shape test makes the same test (13.2; `04-library.md` 2.2). |
+| 1. Count | The arguments must cover every required parameter, and must not be more than the parameters unless the last is a rest parameter. Otherwise `arity` on the whole call: the call has type `never`, each plain argument is synthesized, no lambda argument is checked, and the call is not checked further. For a `Call` this `arity` is a static rule (22.5) and the type rules do not report it. For a `MethodCall` (argument zero not counted) it is a type rule. At run time the shape test makes the same test at every `MethodCall` (13.2; `04-library.md` 2.2). |
 | 2. Plain arguments | Argument zero first for a method, then left to right: synth the argument to A and bind(P, A). An argument taken by a rest parameter `...rest: P[]` is bound, and in step 5 fitted, against P. |
 | 3. Lambda arguments | Left to right, each against its parameter's `Fn`, `(q1: Q1, ..., qn: Qn) => R`. A lambda with more than n parameters is `arity` on the lambda, and the lambda is not checked; this `arity` is a static rule in a `Call` (22.5) and a type rule in a `MethodCall`. Replace each bound `Var` in the Qs by its solution. A `Var` in a Q that is still unbound is `cannot-infer` on the lambda, and the lambda is not checked. A lambda may declare fewer than n parameters. Bind each parameter of the lambda to its Q by 12.2 and 12.4. Synth the body to B. If R is `unknown`: 13.7. Otherwise bind(R, B), and if R has no `Var`, B must fit R (`arg-mismatch` on the body). |
 | 3a. The seed rule | In step 3, if a `Var` X in R also occurs in a Q, already had a solution A0 before the body was checked, and B does not fit A0: discard the diagnostics and sites of that check of the body, set the solution of X to Join(A0, B), and check the body once more under that solution. B must then fit the solution of R (`arg-mismatch` on the body). |
@@ -1007,7 +1008,7 @@ the name given as a lambda argument at an `Fn` parameter.
 
 | Use | Rule |
 | --- | --- |
-| A call `f(a1, ..., an)` | It must give every parameter that has no default, and no more arguments than parameters (`arity`, a static rule, 22.5; the call has type `never`, and each plain argument is synthesized). Each plain argument is synthesized where the call stands. A lambda argument is `lambda-to-lambda` (13.2), and its parameter has type `never`. Each parameter's pattern is bound to its argument's type, with defaults by 12.4. The body is then checked in the scope, and under the facts, where the lambda was written. The call's type is the body's type. |
+| A call `f(a1, ..., an)` | It must give at least the required count of 22.3 and no more arguments than parameters (`arity`, a static rule, 22.5; the call has type `never`, and each plain argument is synthesized). Each plain argument is synthesized where the call stands. A lambda argument is `lambda-to-lambda` (13.2), and its parameter has type `never`. Each parameter's pattern is bound to its argument's type, with defaults by 12.4. The body is then checked in the scope, and under the facts, where the lambda was written. The call's type is the body's type. |
 | f as a lambda argument at an `Fn` | Checked as if the lambda were written there, by 13.5 step 3, in the scope and under the facts where the lambda was written. |
 | No use | A const-bound lambda whose name no `Call` and no argument in its scope refers to is checked once, where it is written, with every parameter bound to `any`. The sites of that check are dropped. Its diagnostics stand. |
 | Static diagnostics in the body | Reported once, where the text stands, by 22, whether the lambda has no use, one use or many. A check of the body by the type rules reports none. |
@@ -1170,9 +1171,6 @@ Core: `undefined-name` for a type name after `as` or `is`; `check-limit` for a
 type after `as` or `is`; `always-truthy` and `always-falsy` on an `x is T`;
 `kind`, `maybe-null` and `no-method` at a projection step.
 
-The `check` code `needs-version` (`03-host.md`) reports syntax newer than the
-environment's version. No Core program has such syntax.
-
 ## 17. Check classes
 
 A check class is a named group of findings that the checker makes on every
@@ -1220,19 +1218,26 @@ value, and its cost, are follow-on F4.
 
 ### 18.2 The kinds of failure
 
-A run-time failure has a kind (`02-evaluation.md`): `null`, `kind` and `field`
-(the mistakes the checker looks for), `index`, `divide`, `value` and `host`
-(failures on a value), `range` and `limit`.
+A run-time failure has one of nine kinds: `null`, `kind` and `field` (the
+mistakes the checker looks for), `index`, `divide`, `value` and `host` (failures
+on a value), `range` and `limit`. This is the one list of kinds. The field
+`kind` of a `fails` line of `library.json` (`04-library.md` 1.3) names one of
+them; a library entry fails only with `value`, `range`, `kind`, `field` or
+`limit`.
 
 ### 18.3 Sites
 
 | Class | Recorded on | Span |
 | --- | --- | --- |
 | `dynamic` | Each use of an `any` value that needs a kind (below) | The `any` operand, receiver or expression |
-| `index` | A plain index read of a list or a string (9.2); a list pattern element without a default (12.2) | The `Index` node; the element name |
+| `index` | A plain index read of a list or a string (9.2); a list pattern element without a default, `_` included (12.2) | The `Index` node; the element's name or `_` |
 | `divide` | `/`, `%` and `**`, by 8.2 | The `Binary` node |
 | `value` | A call of a library entry marked `!` | The call |
 | `host` | A call of a host function or method marked `!` | The call |
+
+A run failure is **at a site** when the site is on the failing node, or on a
+node that is the failing node's operand, receiver, index or argument. The class
+of a failure (18.5) uses this definition.
 
 | An `any` value | Is a `dynamic` site when it is |
 | --- | --- |
@@ -1292,8 +1297,11 @@ limits and its rejected classes. This section says how its type text is read.
 A variable has a name and a type, written as a `Type` (3.1). A case file's `env`
 field is one record type whose fields are the variables: `{order: {total:
 float}, tier: "gold" | "basic"}`. That text must be a `Record` by the grammar of
-3.1. Text that the grammar accepts as a `Type` but that is not a `Record`, such
-as `"int"`, is `bad-type` in every implementation (19.5).
+3.1, with no optional field and no rest: a variable that may be absent is
+declared `T | null` and supplied as null. Parentheses do not make a record, and
+a key written twice is `name-clash`. Text that the grammar accepts as a `Type`
+but that is not a `Record`, such as `"int"`, is `bad-type` in every
+implementation (19.5).
 
 ### 19.2 Host functions
 
@@ -1335,18 +1343,20 @@ implementation reports them:
 | Error | Code |
 | --- | --- |
 | A variable's type, or the expected result's type, that the grammar of 3.1 and the token rules of 3.2 do not accept as a `Type`. This covers the words of 3.8. | `bad-type` |
-| An environment's text (19.1) that the grammar accepts as a `Type` but that is not a `Record`, such as `int` | `bad-type` |
+| An environment's text (19.1) that the grammar accepts as a `Type` but that is not a `Record`, such as `int` or `({a: int})` | `bad-type` |
+| An environment's record (19.1) with an optional field or a rest, such as `{a?: int}` or `{a: int, ...}` | `bad-type` |
+| An environment's record (19.1) that writes one key twice, such as `{a: int, a: int}`: two variables of one name | `name-clash` |
 | A host function's signature or a method's text that the grammar of 3.1 and the token rules of 3.2 do not accept as a `Sig` or a `Method`, wherever in it the error lies | `bad-signature` |
 | A `Sig` with an optional parameter before a required one, or with a rest parameter that is not the last (3.6) | `bad-signature` |
 | A host signature with an `Fn` parameter (19.2) | `bad-signature` |
-| Type text that nests brackets of any kind past 64 (20.5) | `bad-type` in a `Type`, `bad-signature` in a `Sig` or a `Method` |
+| Type text whose depth (20.5) is over 64. A `[]` suffix counts, and a bracketed form counts once over its deepest content | `bad-type` in a `Type`, `bad-signature` in a `Sig` or a `Method` |
 
 **An implementation with a type checker** also reports these. They are rules
 beyond the grammar:
 
 | Error | Code |
 | --- | --- |
-| A key written twice in one `Record` (3.3) | `bad-type` |
+| A key written twice in one `Record` (3.3) deeper in a type than the environment's record | `bad-type` |
 | Two or more record alternatives in one `Type` (3.4), wherever it stands | `bad-type` |
 | A `Name` that is not a declared opaque type (3.5), wherever it stands | `bad-type` |
 | A method whose `Recv` is not a declared opaque type (19.3) | `bad-signature` |
@@ -1391,9 +1401,30 @@ and facts never do. The type of a `catch` name has depth 2.
 
 ### 20.5 Type text
 
-Type text may nest brackets of any kind at most 64 deep. Deeper text is
-`bad-type`, or `bad-signature` in a `Sig` or a `Method` (19.5). Every
-implementation applies this limit.
+The **depth of type text** is defined on the text as 3.1 parses it:
+
+| Text | Depth |
+| --- | --- |
+| A `[]` suffix of an `Alt` | 1 more than the depth of what it follows: the `Prim` and the suffixes before it. So `P` with k suffixes has the depth of `P` plus k. |
+| A bracketed form: `( ... )` (a parenthesized `Type`, a `Sig`'s or an `Fn`'s parameter list), `{ ... }` (a `Record`), `< ... >` (of `map`) | 1 more than the deepest of its contents |
+| A sequence of parts: the alternatives of a `Type`, the parameters of a list, the fields of a `Record`, a `Sig` with its result and bounds, a `Method` with its `Recv` | The deepest of its parts |
+| Any other text: a word, a `Name`, a `Var`, a `String`, punctuation | 0 |
+
+Type text deeper than 64 is `bad-type`, or `bad-signature` in a `Sig` or a
+`Method` (19.5). Every implementation applies this limit, with or without a type
+checker. It is a limit on text and is not the depth of a type (2.5), which an
+implementation with a type checker tests after names are replaced.
+
+| Text | Depth | Result |
+| --- | --- | --- |
+| `int` followed by 64 `[]` | 64 | Accepted |
+| `int` followed by 65 `[]` | 65 | `bad-type` |
+| 64 `(`, then `int`, then 64 `)` | 64 | Accepted |
+| 65 `(`, then `int`, then 65 `)` | 65 | `bad-type` |
+| `{a: ` then `int` followed by 63 `[]`, then `}` | 64 | Accepted |
+| `{a: ` then `int` followed by 64 `[]`, then `}` | 65 | `bad-type` |
+| `(int[])[]` | 3 | Accepted |
+| `(x: (item: T) => U[]) => T`, a `Sig` | 2: the `Fn` has depth 1 (its `( )` over `T`, and `U[]`), and the outer `( )` adds 1 | Accepted |
 
 ### 20.6 Loops, not recursion
 
@@ -1631,8 +1662,11 @@ type text is parsed by 3.1 and 3.2, and its grammar errors are reported in phase
 | The parameter at argument i | The i-th parameter, from 0. When i is at or past a rest parameter, that rest parameter. |
 | An `Fn` parameter | Whether the parameter is an `Fn`, and if so its number of parameters |
 
-A `const`-bound lambda has these counts: required, the parameters with no
+A `const`-bound lambda has these counts: required, the position of its last
+parameter that has no default, counted from 1, or 0 when every parameter has a
 default; at most, the number of its parameters. A parameter written `_` counts.
+So `const f = (a = 1, b) => b;` requires 2: `f(5)` is `arity`, and `f(null, 5)`
+gives `a` its default.
 
 ### 22.4 The walk
 
@@ -1650,7 +1684,7 @@ that a diagnostic turns off are listed in 22.5, and they are the only ones.
 | The handler of a `try` | A new scope. The name of `catch (err)`, if any, is bound in it first (22.7). Then each `Const` in order, then the result. |
 | `Ident` | Resolved by the table below. |
 | `Call` | 22.5 |
-| `MethodCall` | When its receiver is an `Ident` that names a namespace, it is a `Call` of that namespace (5.4), walked by 22.5. Otherwise 22.6. |
+| `MethodCall` | When its step is a plain `.` and its receiver is an `Ident` that names a namespace, it is a `Call` of that namespace (5.4), walked by 22.5. Otherwise 22.6: with `?.`, the receiver `Ident` is walked as an `Ident`, so a namespace there is `not-a-value`. |
 | `Lambda` | A new scope for its parameters. Each `Param` left to right: its default first, if any, then its pattern is bound (22.7). Then the body. |
 | `Map` | Each entry in order. 22.8 for its keys. A shorthand entry's name is an `Ident`. |
 | `Match` | The subject, then each arm's result in order. 22.8 for its literals and arms. |
@@ -1681,6 +1715,11 @@ The callee of a `Call` is found from its name:
 | Its innermost binding is a `const`-bound lambda | That lambda | None |
 | Its innermost binding is a value binding | Unknown | `call-of-parameter` on the name |
 | No binding, and the environment has a host function or a library function of that name | That function | None |
+
+An environment variable is a binding (22.2). A variable may have the name of a
+library function, and then it shadows the function as a `const` of that name
+would: with a variable `type`, `type(x)` is `call-of-parameter` on `type`, and
+`type` alone reads the variable.
 | No binding, and no such function | Unknown | `undefined-function` on the name |
 
 Then, by the callee:
@@ -1697,12 +1736,13 @@ a lambda argument not at all, any other argument as itself.
 
 ### 22.6 Method calls
 
-A `MethodCall` that is not a call of a namespace: the receiver is walked, then
-each argument by the last paragraph of 22.5. No count is tested and no lambda
-argument is tested. Where the receiver's type is known, the type rules test them
-(13.2, 13.5). Otherwise the run tests them, before any argument is evaluated, by
-the shape test of `04-library.md` 2.2, and a failure is `wrong-kind` at the
-`MethodCall`.
+A `MethodCall` that is not a call of a namespace (22.4): the receiver is walked,
+then each argument by the last paragraph of 22.5. No count is tested and no
+lambda argument is tested. Where the receiver's type is known, the type rules
+test them (13.2, 13.5). At run time, at every `MethodCall`, checked or not, the
+run selects the method by the receiver's kind and tests them by the shape test
+of `04-library.md` 2.2, before any argument is evaluated. A failure is
+`wrong-kind` at the `MethodCall`.
 
 ### 22.7 Bindings
 

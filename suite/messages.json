@@ -151,7 +151,7 @@
     "caught": false,
     "params": {},
     "templates": {
-      "default": "the run passed its time limit"
+      "default": "the run passed its deadline"
     }
   },
   {
@@ -341,7 +341,7 @@
       "host": "a number from the host is out of range"
     },
     "when": {
-      "operator": "An operator gives a result out of range or not finite. op is the operator as written",
+      "operator": "An operator gives a result out of range or not finite. op is the operator's canonical text",
       "entry": "A library entry gives a result out of range or not finite. Its fails line in library.json names this template. name is the entry's name as written in the program",
       "host": "The run reads a host number that cannot enter the language: a value of a host integer type whose magnitude is over 2^53 − 1, a NaN or an infinity"
     },
@@ -612,7 +612,7 @@
       "field": "The receiver of a plain .name is null. name is the field word",
       "index": "The receiver of a plain [e] is null",
       "method": "The receiver of a plain method call is null. name is the method's name",
-      "operand": "An operand of +, -, *, /, %, ** or prefix -, an operand of <, <=, > or >=, or the right operand of in or not in, is null; or the right operand of in or not in is a string or a map and the left operand is null. op is the operator as written",
+      "operand": "An operand of +, -, *, /, %, ** or prefix -, an operand of <, <=, > or >=, or the right operand of in or not in, is null; or the right operand of in or not in is a string or a map and the left operand is null. op is the operator's canonical text, such as not in with one space",
       "spread": "The value of a spread is null",
       "key": "A computed key of a map literal is null, or the index or key of [e] or ?.[e] is null",
       "pattern": "The value that a list pattern or a map pattern is matched against is null"
@@ -798,12 +798,12 @@
       "parameters": "the function given to method {name} has more than {count} parameters"
     },
     "when": {
-      "field": "The receiver of a plain .name is not null and not a map. name is the field word; kind is the receiver's kind",
-      "index": "The receiver of a plain [ ] is not null, and not a list, a string or a map. kind is the receiver's kind",
+      "field": "The receiver of .name or ?.name is not null and not a map. name is the field word; kind is the receiver's kind",
+      "index": "The receiver of [e] or ?.[e] is not null, and not a list, a string or a map. kind is the receiver's kind",
       "method": "In the shape test of a method call whose method is found at run time, first: the receiver is not null and its kind has no method of that name. Raised before the arguments are evaluated. kind is the receiver's kind; name is the method's name",
-      "operands": "A binary operator is given two operands whose kinds do not go together. op is the operator as written; left and right are the kinds of the two operands",
-      "operand": "A unary operator is given an operand of a kind it does not take. op is the operator as written; kind is the operand's kind",
-      "whole": "A list or string index, an exponent, or an argument for a library parameter of type int, is a number that is not a whole number, or an index on a list or string is not a number. found is that value",
+      "operands": "A binary operator is given two operands, neither null, whose kinds do not go together. op is the operator's canonical text, such as not in with one space; left and right are the kinds of the two operands",
+      "operand": "A unary operator is given an operand of a kind it does not take. op is the operator's canonical text; kind is the operand's kind",
+      "whole": "A list or string index or an exponent is not a whole number, or an index on a list or string is not a number; or an argument of the right kind for a library parameter of type int is a number that is not whole. found is that value",
       "key": "A computed key, the key in [k] on a map, or the key field of an element of toMap, is not a string. found is that value",
       "spread-list": "A spread in a list literal is given a value that is not null and not a list. kind is its kind",
       "spread-map": "A spread in a map literal is given a value that is not null and not a map. kind is its kind",
@@ -811,9 +811,9 @@
       "pattern-map": "A map pattern is matched against a value that is not null and not a map. kind is its kind",
       "text": "An opaque value is rendered as text, at any depth: in a template, or by string",
       "json": "An opaque value is written as JSON",
-      "argument": "An argument of a library function is of a kind its parameter does not accept, null included. name is the function's name as written in the program; kind is the argument's kind",
+      "argument": "An argument of a library function or method is of a kind its parameter does not accept, null included, and the parameter is not bound ordered. The receiver is tested first, then each argument left to right; for one argument the test of kind comes before the test for a whole number, so fixed(\"a\", 2.5) takes this template. name is the entry's name as written in the program; kind is the argument's kind",
       "count": "In the shape test of a method call whose method is found at run time, after method: the method does not accept that count of arguments. name is the method's name; count is the count of arguments written",
-      "unordered": "A library entry needs an ordered set (the arguments of min and max, the elements of min, max, sort and unique, the keys sortBy's callback gave), and the set is not all numbers or all strings. name is the entry's name; kind is the kind of the first value, in order, that is neither a number nor a string, or else the kind of the first value whose kind differs from the first value's",
+      "unordered": "A library entry needs an ordered set (the arguments of min and max, the elements of min, max, sort and unique, the keys sortBy's callback gave), and the set is not all numbers or all strings. Every failure of kind at a parameter or element bound ordered takes this template, null and a list included. The scan stops at the first value that fails: the first that is neither a number nor a string, or the first whose kind differs from the first value's, whichever comes first. name is the entry's name; kind is the kind of that value",
       "element": "A library entry tests the elements of its receiver and one is of a kind it does not take, null included: sum, flat, join, and an element of toMap that is not a map. name is the entry's name; kind is the kind of the first such element",
       "result": "A library entry tests each result of its callback and one is of a kind it does not take, null included: flatMap and groupBy. name is the entry's name; kind is that result's kind",
       "callback": "In the shape test of a method call whose method is found at run time, an argument at a callback parameter is not a lambda written in place or the name of a const-bound lambda. Tested with not-callback in one pass, left to right, after method and count. count is the argument's position, from 1, not counting the receiver; name is the method's name",
@@ -1204,6 +1204,156 @@
             }
           ]
         }
+      },
+      {
+        "name": "wrong-kind: text, an opaque value in a template",
+        "source": "`token ${t}`",
+        "env": "{t: Token}",
+        "opaque": [
+          "Token"
+        ],
+        "vars": {
+          "t": {
+            "$opaque": {
+              "type": "Token",
+              "id": 1
+            }
+          }
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "an opaque value cannot be rendered as text"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: text, string of a list that holds an opaque value",
+        "source": "string([1, t])",
+        "env": "{t: Token}",
+        "opaque": [
+          "Token"
+        ],
+        "vars": {
+          "t": {
+            "$opaque": {
+              "type": "Token",
+              "id": 1
+            }
+          }
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "an opaque value cannot be rendered as text"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: text, an opaque value read from any data",
+        "source": "`${x}`",
+        "env": "{x: any}",
+        "opaque": [
+          "Token"
+        ],
+        "vars": {
+          "x": {
+            "k": {
+              "$opaque": {
+                "type": "Token",
+                "id": 3
+              }
+            }
+          }
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "an opaque value cannot be rendered as text"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: operands, not in is written with one space",
+        "source": "x not   in 5",
+        "env": "{x: any}",
+        "vars": {
+          "x": "a"
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "cannot apply not in to string and number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: unordered, the scan stops at the first kind that differs",
+        "source": "x.sort()",
+        "env": "{x: any}",
+        "vars": {
+          "x": [
+            1,
+            "a",
+            null
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "sort needs all numbers or all strings, found string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: unordered, a null argument of max",
+        "source": "max(1, x)",
+        "env": "{x: any}",
+        "vars": {
+          "x": null
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "max needs all numbers or all strings, found null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "wrong-kind: argument, kind before whole",
+        "source": "fixed(x, y)",
+        "env": "{x: any, y: any}",
+        "vars": {
+          "x": "a",
+          "y": 2.5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "fixed cannot take a value of kind string"
+            }
+          ]
+        }
       }
     ]
   },
@@ -1219,12 +1369,12 @@
     "templates": {
       "field": "the map has no field {name}",
       "key": "the map has no key {key}",
-      "pattern": "field {name} of the pattern is missing and has no default"
+      "pattern": "key {key} is missing from the map and the pattern gives no default"
     },
     "when": {
       "field": "A plain .name reads a key the map does not have, or an element of toMap has no key key or value. name is the field word, or key or value",
       "key": "A plain [k] reads a string key the map does not have. key is that key",
-      "pattern": "A field of a map pattern is absent from the map and has no default. name is the field's name in the pattern"
+      "pattern": "A field of a map pattern is absent from the map and has no default. key is the key the map lacks, not the name the pattern binds, as a string in its JSON form with the quotes, whether the pattern writes it as a word, a shorthand or a string: the rendering the template key gives for a failed [k]"
     },
     "cases": [
       {
@@ -1273,7 +1423,41 @@
           "diagnostics": [
             {
               "code": "missing-field",
-              "message": "field a of the pattern is missing and has no default"
+              "message": "key \"a\" is missing from the map and the pattern gives no default"
+            }
+          ]
+        }
+      },
+      {
+        "name": "missing-field: pattern, the key and not the bound name",
+        "source": "const {b: x} = m; x",
+        "env": "{m: any}",
+        "vars": {
+          "m": {}
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-field",
+              "message": "key \"b\" is missing from the map and the pattern gives no default"
+            }
+          ]
+        }
+      },
+      {
+        "name": "missing-field: pattern, a key that is not a word",
+        "source": "const {\"a-b\": x} = m; x",
+        "env": "{m: any}",
+        "vars": {
+          "m": {}
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "missing-field",
+              "message": "key \"a-b\" is missing from the map and the pattern gives no default"
             }
           ]
         }
@@ -1372,7 +1556,7 @@
       "power": "zero cannot be raised to a negative power"
     },
     "when": {
-      "divisor": "The divisor of / or % is zero. op is the operator",
+      "divisor": "The divisor of / or % is zero. op is the operator's canonical text",
       "power": "The base of ** is zero and the exponent is below zero"
     },
     "cases": [

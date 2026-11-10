@@ -1,0 +1,19 @@
+{
+ "env": "{n: int, s: string, ok: bool, xs: int[], m: {a: int, b: string}, blob: any}",
+ "functions": {"rate": "(code: string) => float !", "opt": "(s: string, n?: int) => string", "many": "(a: int, ...rest: int[]) => int", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "a string literal in two arms", "source": "match s { \"a\" => 1, \"b\" => 2, \"a\" => 3, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 31, 1, 34]}]}},
+  {"name": "a string literal twice in one arm", "source": "match s { \"a\" | \"a\" => 1, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 17, 1, 20]}]}},
+  {"name": "1 and 1.0 are equal", "source": "match n { 1 => 1, 1.0 => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 19, 1, 22]}]}},
+  {"name": "the span of a negative literal holds its minus", "source": "match n { -1 => 1, -1 => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 20, 1, 22]}]}},
+  {"name": "a hex literal and the decimal literal of the same number", "source": "match n { 0x10 => 1, 16 => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 22, 1, 24]}]}},
+  {"name": "-0 is zero, so it equals 0", "source": "match n { 0 => 1, -0 => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 19, 1, 21]}]}},
+  {"name": "true twice", "source": "match blob { true => 1, true => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 25, 1, 29]}]}},
+  {"name": "null twice", "source": "match blob { null => 1, null => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 25, 1, 29]}]}},
+  {"name": "a single-quoted and a double-quoted literal", "source": "match s { 'a' => 1, \"a\" => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 21, 1, 24]}]}},
+  {"name": "string literals are compared after escapes", "source": "match s { \"\\t\" => 1, \"\\u0009\" => 2, _ => 0 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 22, 1, 30]}]}},
+  {"name": "a literal after _ is compared too; the literal comes before the arm", "source": "match n { 1 => 1, _ => 0, 1 => 2 }", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 27, 1, 28]}, {"code": "unreachable-arm", "span": [1, 27, 1, 33]}]}},
+  {"name": "1 and \"1\" are different literals", "source": "match blob { 1 => \"n\", \"1\" => \"s\", _ => \"o\" }", "vars": {"blob": "1"}, "expect": {"value": "s", "steps": 2, "allocated": 0}},
+  {"name": "true and 1 are different literals", "source": "match blob { true => \"b\", 1 => \"n\", _ => \"o\" }", "vars": {"blob": 1}, "expect": {"value": "n", "steps": 2, "allocated": 0}}
+ ]
+}

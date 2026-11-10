@@ -1,0 +1,30 @@
+{
+ "version": "3.0",
+ "cases": [
+  {"name": "a header's version is the case's version", "source": "1 + 2", "expect": {"value": 3, "steps": 1, "allocated": 0}},
+  {"name": "a case may state the version itself", "source": "1 + 2", "version": "3.0", "expect": {"value": 3, "steps": 1, "allocated": 0}},
+  {"name": "a skipped case is not run, whatever it expects", "source": "1 + 2", "skip": "kept to show that skip wins over a wrong expectation", "expect": {"value": 4}},
+  {"name": "a skipped case is not parsed", "source": ")))", "skip": "kept to show that a skipped case is not parsed", "expect": {"value": 1}},
+  {"name": "returns does not change the run", "source": "1 + 2", "returns": "int", "expect": {"value": 3, "steps": 1, "allocated": 0}},
+  {"name": "returns float does not convert a whole result", "source": "2", "returns": "float", "expect": {"value": 2, "steps": 0, "allocated": 0}},
+  {"name": "returns condition with a bool result", "source": "n > 1", "returns": "condition", "env": "{n: int}", "vars": {"n": 2}, "expect": {"value": true, "truthy": true, "steps": 1, "allocated": 0}},
+  {"name": "returns condition does not make the result a bool", "source": "n", "returns": "condition", "env": "{n: int}", "vars": {"n": 5}, "expect": {"value": 5, "truthy": true, "steps": 0, "allocated": 0}},
+  {"name": "returns a record type", "source": "{a: n}", "returns": "{a: int}", "env": "{n: int}", "vars": {"n": 1}, "expect": {"value": {"a": 1}, "steps": 0, "allocated": 3}},
+  {"name": "truthy of an empty list is false", "source": "[]", "expect": {"value": [], "truthy": false, "steps": 0, "allocated": 1}},
+  {"name": "truthy of an empty map is false", "source": "{}", "expect": {"value": {}, "truthy": false, "steps": 0, "allocated": 1}},
+  {"name": "truthy of the string \"0\" is true", "source": "\"0\"", "expect": {"value": "0", "truthy": true, "steps": 0, "allocated": 0}},
+  {"name": "truthy of null is false", "source": "null", "expect": {"value": null, "truthy": false, "steps": 0, "allocated": 0}},
+  {"name": "limits: a run that charges exactly the step limit passes", "source": "1 + 2 * 3", "limits": {"steps": 2}, "expect": {"value": 7, "steps": 2, "allocated": 0}},
+  {"name": "limits: one step under the run's count is steps-exceeded", "source": "1 + 2 * 3", "limits": {"steps": 1}, "expect": {"phase": "run", "diagnostics": [{"code": "steps-exceeded"}]}},
+  {"name": "limits: a step limit of 0 lets a literal run", "source": "1", "limits": {"steps": 0}, "expect": {"value": 1, "steps": 0, "allocated": 0}},
+  {"name": "limits: a step limit of 0 stops the first charge", "source": "-1", "limits": {"steps": 0}, "expect": {"phase": "run", "diagnostics": [{"code": "steps-exceeded"}]}},
+  {"name": "limits: a run that charges exactly the allocation limit passes", "source": "[1, 2, 3]", "limits": {"allocation": 4}, "expect": {"value": [1, 2, 3], "steps": 0, "allocated": 4}},
+  {"name": "limits: one unit under is allocation-exceeded", "source": "[1, 2, 3]", "limits": {"allocation": 3}, "expect": {"phase": "run", "diagnostics": [{"code": "allocation-exceeded"}]}},
+  {"name": "limits: a depth limit of 1 allows one call", "source": "const f = x => x; f(1)", "limits": {"depth": 1}, "expect": {"value": 1, "steps": 2, "allocated": 0}},
+  {"name": "limits: a depth limit of 1 stops a call inside a call", "source": "const f = x => x; const g = x => f(x); g(1)", "limits": {"depth": 1}, "expect": {"phase": "run", "diagnostics": [{"code": "depth-exceeded"}]}},
+  {"name": "limits: a depth limit of 2 allows a call inside a call", "source": "const f = x => x; const g = x => f(x); g(1)", "limits": {"depth": 2}, "expect": {"value": 1, "steps": 4, "allocated": 0}},
+  {"name": "limits: a depth limit of 1 stops a comparison that enters two levels", "source": "[[1]] == [[1]]", "limits": {"depth": 1}, "expect": {"phase": "run", "diagnostics": [{"code": "depth-exceeded"}]}},
+  {"name": "limits: a depth limit of 2 allows that comparison", "source": "[[1]] == [[1]]", "limits": {"depth": 2}, "expect": {"value": true, "steps": 3, "allocated": 8}},
+  {"name": "precondition false in a case that keeps its values", "source": "n + 1", "env": "{n: int}", "vars": {"n": 1}, "precondition": false, "expect": {"value": 2, "steps": 1, "allocated": 0}}
+ ]
+}
