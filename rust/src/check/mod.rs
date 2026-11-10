@@ -124,7 +124,7 @@ pub struct Probe {
     pub types: Vec<Ty>,
     /// The type of each slot at the end of the check.
     pub slots: Vec<Ty>,
-    /// The type of each slot where the check last reached the probe node.
+    /// The type of each slot where the check first reached the probe node.
     pub at: Option<Vec<Ty>>,
     pub res: Vec<Res>,
 }
@@ -911,7 +911,8 @@ impl<'a> Checker<'a> {
     }
 
     fn synth(&mut self, id: NodeId) -> Ty {
-        if self.probe == Some(id) {
+        // F12 3.12: the first check that reaches the probe.
+        if self.probe == Some(id) && self.probe_slots.is_none() {
             self.probe_slots = Some(self.slots.clone());
         }
         let t = self.synth_inner(id);

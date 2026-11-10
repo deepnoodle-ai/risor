@@ -48,3 +48,31 @@ fn a_long_text_is_helped() {
     let c = complete(&env(), &text, &Expected::Nothing, text.chars().count());
     assert_eq!(c.items.len(), 1);
 }
+
+/// F12 3.12: a lambda checked more than once, as a `const` lambda is at
+/// each use, gives a parameter the type of the first check that reaches the
+/// position. Completion never reads past the cut, so this is tested on the
+/// check that assist reads.
+#[test]
+fn a_parameter_takes_the_first_check() {
+    use risor::compile::Res;
+    use risor::syntax::ast::NodeKind;
+    let p = risor::parse("const f = x => x;\n[f(1), f(\"a\")]").unwrap();
+    // The `x` of the body: the second `Ident` named x.
+    let id = p
+        .ast
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| matches!(&n.kind, NodeKind::Ident { name } if name == "x"))
+        .map(|(i, _)| risor::syntax::ast::NodeId(i as u32))
+        .last()
+        .unwrap();
+    let pr = risor::check::check_probe(&env(), &p, &Expected::Nothing, Some(id));
+    let Res::Slot(s) = pr.res[id.index()] else {
+        panic!("x reads a slot");
+    };
+    let at = pr.at.expect("the check reached x");
+    assert_eq!(risor::check::ty::print(&at[s as usize]), "int");
+    assert_eq!(risor::check::ty::print(&pr.slots[s as usize]), "\"a\"");
+}

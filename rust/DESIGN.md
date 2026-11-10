@@ -483,7 +483,7 @@ one call, and a host implementation is a `'static` closure that receives
   repair inserts one token, re-parses, and keeps it when the parser stands
   past it; `parse_repair` matches no bracket among the inserted tokens.
   `check::check_probe` gives the types of the nodes and of the slots where
-  the check last reached the hole.
+  the check first reached the hole (F12 3.12).
 - **Records** (`library.rs`): a record keeps its `signature` text and `doc`
   verbatim, which completion and hover show.
 - **Cases** (`testing/tools.rs`): a format, completion or hover case is read
