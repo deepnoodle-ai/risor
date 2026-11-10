@@ -45,12 +45,17 @@ export function readHost(v: unknown): unknown {
 }
 
 /** Tells the kind of a value, and the declared opaque type of a host object. */
+const OBJECT_PROTO = Object.prototype;
+
 export class Classifier {
   private readonly tests: [string, (v: unknown) => boolean][];
   private readonly cache = new WeakMap<object, string | null>();
+  /** No opaque type has a test: a host plain object is always a map. */
+  readonly plain: boolean;
 
   constructor(tests: [string, (v: unknown) => boolean][] = []) {
     this.tests = tests;
+    this.plain = tests.length === 0;
   }
 
   kind(v: unknown): Kind {
@@ -65,6 +70,11 @@ export class Classifier {
         return "string";
       case "object":
         if (Array.isArray(v)) return "list";
+        if (this.plain) {
+          const p = Object.getPrototypeOf(v);
+          if (p === OBJECT_PROTO || p === null || v instanceof Map) return "map";
+          return "opaque";
+        }
         if (v instanceof RMap) return "map";
         if (this.tests.length > 0 && this.opaqueName(v) !== null) return "opaque";
         if (v instanceof Map) return "map";
@@ -148,9 +158,17 @@ export function weight(s: string): number {
   return s.length;
 }
 
+/**
+ * floor(n / 64) for a whole number n: a shift for a 32-bit integer, so the
+ * optimizer never speculates that a division by 64 is exact.
+ */
+export function div64(n: number): number {
+  return (n | 0) === n ? n >> 6 : Math.floor(n / 64);
+}
+
 /** The size of a string (02 4). */
 export function size(s: string): number {
-  return Math.floor(s.length / 64);
+  return div64(s.length);
 }
 
 /** The number of code points of a well-formed string. */

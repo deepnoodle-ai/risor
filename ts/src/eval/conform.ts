@@ -5,7 +5,7 @@
 
 import { isAny, printType, tagSetOf } from "../types/type.ts";
 import type { Alts, Rec, Type, Union } from "../types/type.ts";
-import { ABSENT, BAD_NUMBER, Classifier, compareText, mapGet, mapKeys, readHost, size } from "../value/value.ts";
+import { ABSENT, BAD_NUMBER, Classifier, compareText, mapGet, mapKeys, readHost, size, div64 } from "../value/value.ts";
 
 /** The value of `found` for a host number that cannot enter the language (f04 4.4 item 3). */
 export const CANNOT_ENTER: unique symbol = Symbol("a number that cannot enter");
@@ -167,7 +167,7 @@ class Walker {
     const others = keys.filter((x) => !r.fields.has(x)).sort(compareText);
     let together = 0;
     for (const x of others) together += x.length;
-    const sz = Math.floor(together / 64);
+    const sz = div64(together);
     if (!r.rest.null && !r.rest.bool && !r.rest.num && !r.rest.str && !r.rest.list && !r.rest.map && !(r.rest.opaque && r.rest.opaque.size > 0)) {
       // An exact record (4.3 step 4).
       ctx.charge(others.length + sz);

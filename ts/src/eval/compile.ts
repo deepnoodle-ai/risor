@@ -5,16 +5,26 @@
 // Every binding has one fixed slot for the whole run (02 11.1): no lambda is
 // entered while an earlier call of it is in progress. Long flat forms (a chain
 // of binary operators, a chain of steps, an `else` chain, `const` lines) are
-// compiled and run by loops, so no host stack is spent on them.
+// compiled and run by loops, so no host stack is spent on their length; a
+// short chain (NEST_MAX) is nested closures.
+//
+// Speed. The closures of one kind share one function literal, so the engine
+// sees every site of a kind at once: calls between closures are indirect.
+// The code is shaped by that. Constants, slots and variables are read in
+// place (Operand) rather than by a closure; each operator has its own
+// closure with a fast path for the common kinds; a field of a map is read
+// with no general classification (quickMap, quickGet); a lambda whose
+// parameters are plain names is entered without a list of arguments.
 
 import type * as A from "../syntax/ast.ts";
 import type { Span } from "../syntax/source.ts";
-import { ABSENT, RMap, mapGet, mapKeys, size, truthy, cpAt, cpLength, lcpWeight } from "../value/value.ts";
+import { ABSENT, RMap, mapGet, mapKeys, size, truthy, cpAt, cpLength, lcpWeight, div64 } from "../value/value.ts";
 import { isWhole } from "../value/number.ts";
 import { conformWalk } from "./conform.ts";
 import { RunFailure, caught, messageOf } from "./failure.ts";
 import { arith, contains, equal, negate, order, render, sizeTogether } from "./ops.ts";
-import type { ArithOp, OrderOp } from "./ops.ts";
+import type { Kind } from "../value/value.ts";
+import type { ArithOp } from "./ops.ts";
 import type { Run } from "./run.ts";
 import type { Counts, Resolution, Target } from "./static.ts";
 import { libraryFunction, method as libraryMethod } from "../library/registry.ts";
@@ -48,29 +58,362 @@ export interface CompileEnv {
   removed?: ReadonlySet<string>;
 }
 
+/**
+ * A parameter of a lambda. `slot`: the slot of a parameter that is a name
+ * (NAME_UNUSED when the name is never read), or PATTERN when `bind` binds it.
+ */
+interface ParamCode {
+  bind: Binder;
+  dflt: Code | null;
+  slot: number;
+}
+
+const PATTERN = -1;
+const NAME_UNUSED = -2;
+
 interface LambdaCode {
-  params: { bind: Binder; dflt: Code | null }[];
+  params: ParamCode[];
   body: Code;
+  bodyOp: Operand;
   n: number;
+  /**
+   * At most three parameters, each a name with no default: the slots of the
+   * first three (NAME_UNUSED for a name never read or a parameter not there).
+   */
+  simple: boolean;
+  s0: number;
+  s1: number;
+  s2: number;
 }
 
 const SHORT: unique symbol = Symbol("short");
+
+/**
+ * A chain of binary operators, or of steps, up to this long is compiled into
+ * nested closures, one for each operator or step. A longer chain runs in a
+ * loop, so the host stack a chain spends stays small (01 13.2 bounds the
+ * nesting of the source).
+ */
+const NEST_MAX = 4;
 
 export interface Compiled {
   run: Code;
   /** Library entries the program names that have no implementation yet. */
   missing: Set<string>;
+  /** The number of variables of the environment the program reads. */
+  varCount: number;
+}
+
+/** Run a list of `const` lines, then a result. */
+function sequence(consts: Code[], result: Code): Code {
+  switch (consts.length) {
+    case 0:
+      return result;
+    case 1: {
+      const [a] = consts;
+      return (r) => {
+        a(r);
+        return result(r);
+      };
+    }
+    case 2: {
+      const [a, b] = consts;
+      return (r) => {
+        a(r);
+        b(r);
+        return result(r);
+      };
+    }
+    default:
+      return (r) => {
+        for (let i = 0; i < consts.length; i++) consts[i](r);
+        return result(r);
+      };
+  }
 }
 
 export function compileProgram(p: A.Program, res: Resolution, env: CompileEnv): Compiled {
   const c = new Compiler(res, env);
   const consts = p.consts.map((k) => c.constLine(k));
   const result = c.expr(p.result);
-  const run: Code = (r) => {
-    for (const k of consts) k(r);
-    return result(r);
-  };
-  return { run, missing: c.missing };
+  return { run: sequence(consts, result), missing: c.missing, varCount: c.varCount };
+}
+
+// ---- fast paths ---------------------------------------------------------------
+//
+// Each fast path below gives the result, the charges and the failure of the
+// general path it stands in front of, for the values it accepts; any other
+// value goes to the general path.
+
+const OBJECT_PROTO = Object.prototype;
+const RMAP_PROTO = RMap.prototype;
+const getProto = Object.getPrototypeOf;
+const isEnum = Object.prototype.propertyIsEnumerable;
+const isSafe = Number.isSafeInteger;
+const isFiniteNumber = Number.isFinite;
+
+/** 1: a host plain object, which is a map; 2: an RMap; 0: let the classifier decide. */
+function quickMap(r: Run, v: unknown): number {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return 0;
+  const p = getProto(v);
+  if (p === RMAP_PROTO) return 2;
+  if ((p === OBJECT_PROTO || p === null) && r.cls.plain) return 1;
+  return 0;
+}
+
+/** The raw value under a key of a map that quickMap classed as `q`, or ABSENT (as mapGet). */
+function quickGet(v: object, q: number, key: string): unknown {
+  if (q === 2) {
+    const g = (v as RMap).get(key);
+    return g === undefined ? ABSENT : g;
+  }
+  if (!isEnum.call(v, key)) return ABSENT;
+  const g = (v as Record<string, unknown>)[key];
+  return g === undefined ? ABSENT : g;
+}
+
+/** Read a value out of host data or a container (as Run.read). */
+function readQ(r: Run, g: unknown, span: Span): unknown {
+  return typeof g === "object" ? g : r.read(g, span);
+}
+
+/** The language's truthiness (as truthy). */
+function truthyQ(r: Run, v: unknown): boolean {
+  return typeof v === "boolean" ? v : truthy(v, r.cls);
+}
+
+/** The kind of a value (as Run.kind). */
+function kindQ(r: Run, v: unknown): Kind {
+  if (typeof v === "string") return "string";
+  if (Array.isArray(v)) return "list";
+  return r.kind(v);
+}
+
+function rangeFail(op: string, span: Span): never {
+  throw new RunFailure("number-range", span, "operator", { op });
+}
+
+/**
+ * An operand: compiled code (k 0), a constant (1), a slot (2) or a variable
+ * of the environment (3). A constant, a slot or a variable is read in place,
+ * with no call of a closure.
+ */
+interface Operand {
+  k: 0 | 1 | 2 | 3;
+  c: Code;
+  v: unknown;
+  /** The slot, or the index of the variable. */
+  s: number;
+  /** The variable's name and span. */
+  name: string;
+  span: Span | null;
+}
+
+const NO_CODE: Code = () => null;
+
+function codeOperand(c: Code): Operand {
+  return { k: 0, c, v: null, s: 0, name: "", span: null };
+}
+
+/** The value of an operand. */
+function ev(r: Run, o: Operand): unknown {
+  switch (o.k) {
+    case 0:
+      return o.c(r);
+    case 1:
+      return o.v;
+    case 2:
+      return r.slots[o.s];
+    default:
+      return r.variable(o.s, o.name, o.span!);
+  }
+}
+
+// The operators that take both operands, each with its fast path (01 6; 02 5.3).
+
+function opEq(r: Run, x: unknown, y: unknown, span: Span): boolean {
+  const t = typeof x;
+  if (t === typeof y) {
+    if (t === "number" || t === "boolean") {
+      r.charge(1);
+      return x === y;
+    }
+    // 02 5.3: 1 + the size of the common prefix, which is 0 when either is shorter than 64.
+    if (t === "string" && ((x as string).length < 64 || (y as string).length < 64)) {
+      r.charge(1);
+      return x === y;
+    }
+  }
+  return equal(r, x, y, span);
+}
+
+function opLt(r: Run, x: unknown, y: unknown, span: Span): boolean {
+  if (typeof x === "number" && typeof y === "number") {
+    r.charge(1);
+    return x < y;
+  }
+  return order(r, "<", x, y, span);
+}
+
+function opLe(r: Run, x: unknown, y: unknown, span: Span): boolean {
+  if (typeof x === "number" && typeof y === "number") {
+    r.charge(1);
+    return x <= y;
+  }
+  return order(r, "<=", x, y, span);
+}
+
+function opGt(r: Run, x: unknown, y: unknown, span: Span): boolean {
+  if (typeof x === "number" && typeof y === "number") {
+    r.charge(1);
+    return x > y;
+  }
+  return order(r, ">", x, y, span);
+}
+
+function opGe(r: Run, x: unknown, y: unknown, span: Span): boolean {
+  if (typeof x === "number" && typeof y === "number") {
+    r.charge(1);
+    return x >= y;
+  }
+  return order(r, ">=", x, y, span);
+}
+
+function opAdd(r: Run, x: unknown, y: unknown, span: Span): unknown {
+  if (typeof x === "number" && typeof y === "number") {
+    r.charge(1);
+    const res = x + y;
+    if (isSafe(x) && isSafe(y) ? !isSafe(res) : !isFiniteNumber(res)) rangeFail("+", span);
+    return res + 0;
+  }
+  return arith(r, "+", x, y, span);
+}
+
+function opSub(r: Run, x: unknown, y: unknown, span: Span): unknown {
+  if (typeof x === "number" && typeof y === "number") {
+    r.charge(1);
+    const res = x - y;
+    if (isSafe(x) && isSafe(y) ? !isSafe(res) : !isFiniteNumber(res)) rangeFail("-", span);
+    return res + 0;
+  }
+  return arith(r, "-", x, y, span);
+}
+
+function opMul(r: Run, x: unknown, y: unknown, span: Span): unknown {
+  if (typeof x === "number" && typeof y === "number") {
+    r.charge(1);
+    const res = x * y;
+    if (isSafe(x) && isSafe(y) ? !isSafe(res) : !isFiniteNumber(res)) rangeFail("*", span);
+    return res + 0;
+  }
+  return arith(r, "*", x, y, span);
+}
+
+function opDiv(r: Run, x: unknown, y: unknown, span: Span): unknown {
+  if (typeof x === "number" && typeof y === "number" && y !== 0) {
+    r.charge(1);
+    const res = x / y;
+    if (!isFiniteNumber(res)) rangeFail("/", span);
+    return res + 0;
+  }
+  return arith(r, "/", x, y, span);
+}
+
+function opRem(r: Run, x: unknown, y: unknown, span: Span): unknown {
+  if (typeof x === "number" && typeof y === "number" && y !== 0) {
+    r.charge(1);
+    return (x % y) + 0;
+  }
+  return arith(r, "%", x, y, span);
+}
+
+/** A binary operator on two operands. */
+function binaryOp(op: A.Binary["op"], a: Operand, b: Operand, span: Span): Code {
+  switch (op) {
+    case "&&":
+      return (r) => {
+        const v = ev(r, a);
+        return truthyQ(r, v) ? ev(r, b) : v;
+      };
+    case "||":
+      return (r) => {
+        const v = ev(r, a);
+        return truthyQ(r, v) ? v : ev(r, b);
+      };
+    case "??":
+      return (r) => {
+        const v = ev(r, a);
+        return v === null || v === undefined ? ev(r, b) : v;
+      };
+    case "==":
+      return (r) => opEq(r, ev(r, a), ev(r, b), span);
+    case "!=":
+      return (r) => !opEq(r, ev(r, a), ev(r, b), span);
+    case "<":
+      return (r) => opLt(r, ev(r, a), ev(r, b), span);
+    case "<=":
+      return (r) => opLe(r, ev(r, a), ev(r, b), span);
+    case ">":
+      return (r) => opGt(r, ev(r, a), ev(r, b), span);
+    case ">=":
+      return (r) => opGe(r, ev(r, a), ev(r, b), span);
+    case "in":
+      return (r) => contains(r, "in", ev(r, a), ev(r, b), span);
+    case "not-in":
+      return (r) => !contains(r, "not in", ev(r, a), ev(r, b), span);
+    case "+":
+      return (r) => opAdd(r, ev(r, a), ev(r, b), span);
+    case "-":
+      return (r) => opSub(r, ev(r, a), ev(r, b), span);
+    case "*":
+      return (r) => opMul(r, ev(r, a), ev(r, b), span);
+    case "/":
+      return (r) => opDiv(r, ev(r, a), ev(r, b), span);
+    case "%":
+      return (r) => opRem(r, ev(r, a), ev(r, b), span);
+    default:
+      return (r) => arith(r, op as ArithOp, ev(r, a), ev(r, b), span);
+  }
+}
+
+/** A binary operator whose left operand is the value so far of a chain of operators. */
+function binaryStep(op: A.Binary["op"], b: Operand, span: Span): (r: Run, x: unknown) => unknown {
+  switch (op) {
+    case "&&":
+      return (r, x) => (truthyQ(r, x) ? ev(r, b) : x);
+    case "||":
+      return (r, x) => (truthyQ(r, x) ? x : ev(r, b));
+    case "??":
+      return (r, x) => (x === null || x === undefined ? ev(r, b) : x);
+    case "==":
+      return (r, x) => opEq(r, x, ev(r, b), span);
+    case "!=":
+      return (r, x) => !opEq(r, x, ev(r, b), span);
+    case "<":
+      return (r, x) => opLt(r, x, ev(r, b), span);
+    case "<=":
+      return (r, x) => opLe(r, x, ev(r, b), span);
+    case ">":
+      return (r, x) => opGt(r, x, ev(r, b), span);
+    case ">=":
+      return (r, x) => opGe(r, x, ev(r, b), span);
+    case "in":
+      return (r, x) => contains(r, "in", x, ev(r, b), span);
+    case "not-in":
+      return (r, x) => !contains(r, "not in", x, ev(r, b), span);
+    case "+":
+      return (r, x) => opAdd(r, x, ev(r, b), span);
+    case "-":
+      return (r, x) => opSub(r, x, ev(r, b), span);
+    case "*":
+      return (r, x) => opMul(r, x, ev(r, b), span);
+    case "/":
+      return (r, x) => opDiv(r, x, ev(r, b), span);
+    case "%":
+      return (r, x) => opRem(r, x, ev(r, b), span);
+    default:
+      return (r, x) => arith(r, op as ArithOp, x, ev(r, b), span);
+  }
 }
 
 class Compiler {
@@ -81,6 +424,12 @@ class Compiler {
   private readonly codes = new Map<A.Lambda, LambdaCode>();
   /** The levels open at the first token of the lambda whose body is being compiled. */
   private lambdaLevel = 0;
+  /** The index of each variable of the environment the program reads. */
+  private readonly varIndex = new Map<string, number>();
+
+  get varCount(): number {
+    return this.varIndex.size;
+  }
 
   constructor(res: Resolution, env: CompileEnv) {
     this.res = res;
@@ -98,6 +447,19 @@ class Compiler {
       };
     }
     const v = this.expr(k.value);
+    if (k.pattern.kind === "NamePat") {
+      const s = this.res.slots.get(k.pattern);
+      if (s === undefined) {
+        return (r) => {
+          v(r);
+          return null;
+        };
+      }
+      return (r) => {
+        r.slots[s] = v(r);
+        return null;
+      };
+    }
     const bind = this.pattern(k.pattern);
     return (r) => {
       bind(r, v(r));
@@ -108,10 +470,18 @@ class Compiler {
   private lambda(l: A.Lambda): LambdaCode {
     const saved = this.lambdaLevel;
     this.lambdaLevel = l.level;
-    const params = l.params.map((p) => ({ dflt: p.default === null ? null : this.expr(p.default), bind: this.pattern(p.pattern) }));
+    const params = l.params.map((p): ParamCode => {
+      const dflt = p.default === null ? null : this.expr(p.default);
+      const bind = this.pattern(p.pattern);
+      const slot = p.pattern.kind === "NamePat" ? (this.res.slots.get(p.pattern) ?? NAME_UNUSED) : PATTERN;
+      return { dflt, bind, slot };
+    });
     const body = this.expr(l.body);
+    const bodyOp = this.operand(l.body, body);
     this.lambdaLevel = saved;
-    const lc = { params, body, n: l.params.length };
+    const simple = params.length <= 3 && params.every((p) => p.slot !== PATTERN && p.dflt === null);
+    const slotAt = (i: number) => (simple && i < params.length ? params[i].slot : NAME_UNUSED);
+    const lc: LambdaCode = { params, body, bodyOp, n: l.params.length, simple, s0: slotAt(0), s1: slotAt(1), s2: slotAt(2) };
     this.codes.set(l, lc);
     return lc;
   }
@@ -145,12 +515,16 @@ class Compiler {
     const restSlot = p.rest === null ? undefined : this.res.slots.get(p.rest);
     const hasRest = p.rest !== null;
     return (r, v) => {
-      const k = r.kind(v);
-      if (k === "null") throw new RunFailure("null-operand", span, "pattern");
-      if (k !== "map") throw new RunFailure("wrong-kind", span, "pattern-map", { kind: k });
-      for (const f of fields) {
+      const q = quickMap(r, v);
+      if (q === 0) {
+        const k = r.kind(v);
+        if (k === "null") throw new RunFailure("null-operand", span, "pattern");
+        if (k !== "map") throw new RunFailure("wrong-kind", span, "pattern-map", { kind: k });
+      }
+      for (let i = 0; i < fields.length; i++) {
+        const f = fields[i];
         r.charge(1 + f.keySize);
-        const g = mapGet(v as object, f.key);
+        const g = q === 0 ? mapGet(v as object, f.key) : quickGet(v as object, q, f.key);
         let val: unknown = g === ABSENT ? ABSENT : r.read(g, f.span);
         if (val === ABSENT || val === null) {
           if (f.dflt !== null) val = f.dflt(r);
@@ -230,7 +604,7 @@ class Compiler {
         return (r) => {
           const v = x(r);
           r.charge(1);
-          return !truthy(v, r.cls);
+          return !truthyQ(r, v);
         };
       }
       case "Binary":
@@ -239,11 +613,7 @@ class Compiler {
         return this.cond(e);
       case "Block": {
         const consts = e.consts.map((k) => this.constLine(k));
-        const result = this.expr(e.result);
-        return (r) => {
-          for (const k of consts) k(r);
-          return result(r);
-        };
+        return sequence(consts, this.expr(e.result));
       }
       case "Match":
         return this.match(e);
@@ -364,17 +734,75 @@ class Compiler {
     }
     if (ref.k === "var") {
       const name = ref.name;
-      return (r) => r.variable(name, span);
+      let i = this.varIndex.get(name);
+      if (i === undefined) {
+        i = this.varIndex.size;
+        this.varIndex.set(name, i);
+      }
+      const index = i;
+      return (r) => r.variable(index, name, span);
     }
     throw new Error("a lambda name is not a value");
   }
 
+  /** An operand for an expression whose code is `code`. */
+  private operand(e: A.Expr, code: Code): Operand {
+    const o = codeOperand(code);
+    switch (e.kind) {
+      case "Number":
+      case "String":
+      case "Bool":
+        o.k = 1;
+        o.v = e.value;
+        return o;
+      case "Null":
+        o.k = 1;
+        return o;
+      case "Ident": {
+        const ref = this.res.refs.get(e);
+        if (ref !== undefined && ref.k === "slot") {
+          o.k = 2;
+          o.s = ref.slot;
+        } else if (ref !== undefined && ref.k === "var") {
+          o.k = 3;
+          o.s = this.varSlot(ref.name);
+          o.name = ref.name;
+          o.span = e.span;
+        }
+        return o;
+      }
+      default:
+        return o;
+    }
+  }
+
+  /** An operand for an expression. */
+  private operandOf(e: A.Expr): Operand {
+    return this.operand(e, this.expr(e));
+  }
+
+  private varSlot(name: string): number {
+    let i = this.varIndex.get(name);
+    if (i === undefined) {
+      i = this.varIndex.size;
+      this.varIndex.set(name, i);
+    }
+    return i;
+  }
+
   private template(e: A.Template): Code {
-    const parts = e.parts.map((p) => (typeof p === "string" ? p : this.expr(p)));
+    const parts = e.parts.map((p) => (typeof p === "string" ? p : this.operandOf(p)));
     const span = e.span;
     return (r) => {
       let out = "";
-      for (const p of parts) out += typeof p === "string" ? p : render(r, p(r), span);
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (typeof p === "string") out += p;
+        else {
+          const v = ev(r, p);
+          out += typeof v === "string" ? v : render(r, v, span);
+        }
+      }
       const sz = size(out);
       r.charge(1 + sz);
       r.alloc(1 + sz);
@@ -466,43 +894,22 @@ class Compiler {
       };
     }
     spine.reverse();
-    const first = this.expr(x);
-    const ops = spine.map((n) => ({ op: n.op, y: this.expr(n.y), span: n.span }));
-    return (r) => {
-      let acc = first(r);
-      for (const o of ops) {
-        switch (o.op) {
-          case "&&":
-            if (truthy(acc, r.cls)) acc = o.y(r);
-            break;
-          case "||":
-            if (!truthy(acc, r.cls)) acc = o.y(r);
-            break;
-          case "??":
-            if (r.kind(acc) === "null") acc = o.y(r);
-            break;
-          case "==":
-            acc = equal(r, acc, o.y(r), o.span);
-            break;
-          case "!=":
-            acc = !equal(r, acc, o.y(r), o.span);
-            break;
-          case "<":
-          case "<=":
-          case ">":
-          case ">=":
-            acc = order(r, o.op as OrderOp, acc, o.y(r), o.span);
-            break;
-          case "in":
-            acc = contains(r, "in", acc, o.y(r), o.span);
-            break;
-          case "not-in":
-            acc = !contains(r, "not in", acc, o.y(r), o.span);
-            break;
-          default:
-            acc = arith(r, o.op as ArithOp, acc, o.y(r), o.span);
-        }
+    const first = this.operand(x, this.expr(x));
+    if (spine.length <= NEST_MAX) {
+      let left = first;
+      let code: Code = NO_CODE;
+      for (const n of spine) {
+        code = binaryOp(n.op, left, this.operandOf(n.y), n.span);
+        left = codeOperand(code);
       }
+      return code;
+    }
+    // A longer chain runs in a loop, so it spends no host stack on its length.
+    const steps = spine.map((n) => binaryStep(n.op, this.operandOf(n.y), n.span));
+    const n = steps.length;
+    return (r) => {
+      let acc = ev(r, first);
+      for (let i = 0; i < n; i++) acc = steps[i](r, acc);
       return acc;
     };
   }
@@ -518,6 +925,12 @@ class Compiler {
       c = c.else;
     }
     const otherwise = this.expr(c);
+    if (tests.length === 1) {
+      const test = this.operand(e.test, tests[0]);
+      const then = this.operand(e.then, thens[0]);
+      const other = this.operand(c, otherwise);
+      return (r) => (truthyQ(r, ev(r, test)) ? ev(r, then) : ev(r, other));
+    }
     return (r) => {
       for (let i = 0; i < tests.length; i++) {
         if (truthy(tests[i](r), r.cls)) return thens[i](r);
@@ -536,14 +949,16 @@ class Compiler {
     const span = e.span;
     return (r) => {
       const s = subject(r);
-      const sk = r.kind(s);
-      for (const a of arms) {
+      const sk = kindQ(r, s);
+      for (let i = 0; i < arms.length; i++) {
+        const a = arms[i];
         r.charge(1);
         if (a.isDefault) return a.result(r);
-        for (const l of a.lits) {
+        for (let j = 0; j < a.lits.length; j++) {
+          const l = a.lits[j];
           if (typeof l === "string" && sk === "string") {
             // 02 5.2, `match`: a string literal against a string subject compares text.
-            r.charge(Math.floor(lcpWeight(l, s as string) / 64));
+            if (l.length >= 64 && (s as string).length >= 64) r.charge(div64(lcpWeight(l, s as string)));
             if (l === s) return a.result(r);
           } else if (l === null ? sk === "null" : l === s) {
             return a.result(r);
@@ -622,37 +1037,103 @@ class Compiler {
       const value = this.res.constants.get(x)!;
       primary = () => value;
     } else primary = x.kind === "Call" || x.kind === "MethodCall" ? this.call(x) : this.expr(x);
+    if (steps.length === 0 && x.kind !== "Each") return primary;
+    if (steps.length <= NEST_MAX) {
+      // Each step is a closure around the code before it. `mayShort`: the code so far can give SHORT.
+      let code = primary;
+      let mayShort = x.kind === "Each";
+      let first = true;
+      for (const s of steps) {
+        code = s.kind === "Member" && !mayShort ? this.memberOn(first ? this.operand(x, primary) : codeOperand(code), s) : this.stepOn(code, this.step(s), mayShort);
+        first = false;
+        if ((s.kind === "Member" || s.kind === "Index" || s.kind === "MethodCall") && s.optional) mayShort = true;
+      }
+      if (!mayShort || raw) return code;
+      return (r) => {
+        const v = code(r);
+        return v === SHORT ? null : v;
+      };
+    }
+    // A longer chain runs in a loop, so it spends no host stack on its length.
     const codes = steps.map((s) => this.step(s));
     const short = raw ? SHORT : null;
+    const first = this.operand(x, primary);
+    const n = codes.length;
     return (r) => {
-      let v = primary(r);
+      let v = ev(r, first);
       if (v === SHORT) return short;
-      for (const s of codes) {
-        v = s(r, v);
+      for (let i = 0; i < n; i++) {
+        v = codes[i](r, v);
         if (v === SHORT) return short;
       }
       return v;
     };
   }
 
+  /** A step after the code before it. */
+  private stepOn(prev: Code, step: (r: Run, v: unknown) => unknown, mayShort: boolean): Code {
+    if (!mayShort) return (r) => step(r, prev(r));
+    return (r) => {
+      const v = prev(r);
+      return v === SHORT ? SHORT : step(r, v);
+    };
+  }
+
+  /** A field step on a value quickMap does not class. */
+  private memberSlow(s: A.Member): (r: Run, v: unknown) => unknown {
+    const { name, optional, span } = s;
+    const nameSize = size(name);
+    return (r, v) => {
+      const k = r.kind(v);
+      if (k === "null") {
+        if (optional) return SHORT;
+        throw new RunFailure("null-operand", span, "field", { name });
+      }
+      if (k !== "map") throw new RunFailure("wrong-kind", span, "field", { name, kind: k });
+      r.charge(1 + nameSize);
+      const g = mapGet(v as object, name);
+      if (g === ABSENT) {
+        if (optional) return null;
+        throw new RunFailure("missing-field", span, "field", { name });
+      }
+      return r.read(g, span);
+    };
+  }
+
+  /** A field step `.name` after an operand that never gives SHORT, with the fast path for a map. */
+  private memberOn(prev: Operand, s: A.Member): Code {
+    const { name, optional, span } = s;
+    const cost = 1 + size(name);
+    const slow = this.memberSlow(s);
+    return (r) => {
+      const v = ev(r, prev);
+      const q = quickMap(r, v);
+      if (q === 0) return slow(r, v);
+      r.charge(cost);
+      const g = quickGet(v as object, q, name);
+      if (g === ABSENT) {
+        if (optional) return null;
+        throw new RunFailure("missing-field", span, "field", { name });
+      }
+      return readQ(r, g, span);
+    };
+  }
+
   private step(s: A.Expr): (r: Run, v: unknown) => unknown {
     if (s.kind === "Member") {
       const { name, optional, span } = s;
-      const nameSize = size(name);
+      const cost = 1 + size(name);
+      const slow = this.memberSlow(s);
       return (r, v) => {
-        const k = r.kind(v);
-        if (k === "null") {
-          if (optional) return SHORT;
-          throw new RunFailure("null-operand", span, "field", { name });
-        }
-        if (k !== "map") throw new RunFailure("wrong-kind", span, "field", { name, kind: k });
-        r.charge(1 + nameSize);
-        const g = mapGet(v as object, name);
+        const q = quickMap(r, v);
+        if (q === 0) return slow(r, v);
+        r.charge(cost);
+        const g = quickGet(v as object, q, name);
         if (g === ABSENT) {
           if (optional) return null;
           throw new RunFailure("missing-field", span, "field", { name });
         }
-        return r.read(g, span);
+        return readQ(r, g, span);
       };
     }
     if (s.kind === "Index") {
@@ -715,91 +1196,117 @@ class Compiler {
 
   /**
    * Compile the arguments of a call. A lambda argument becomes a Callback;
-   * one written in place charges its 1 step where it stands.
+   * one written in place charges its 1 step where it stands. `lambdas`: the
+   * positions of the lambda arguments.
    */
-  private args(args: A.Arg[], measure: number): (r: Run) => unknown[] {
+  private args(args: A.Arg[], measure: number): { eval: (r: Run) => unknown[]; lambdas: number[] } {
     const codes = args.map((a) => {
       const la = this.lambdaArg(a);
-      if (la === null) return { kind: "value" as const, code: this.expr(a as A.Expr) };
+      if (la === null) return { kind: "value" as const, op: this.operandOf(a as A.Expr), lc: null, id: null, inPlace: false, params: 0 };
       const lc = la.lambda !== null ? this.lambda(la.lambda) : null;
-      return { kind: "lambda" as const, lc, id: la.id, inPlace: la.lambda !== null, params: la.params };
+      return { kind: "lambda" as const, op: null, lc, id: la.id, inPlace: la.lambda !== null, params: la.params };
+    });
+    const lambdas: number[] = [];
+    codes.forEach((c, i) => {
+      if (c.kind === "lambda") lambdas.push(i);
     });
     const codesOf = this.codes;
     const named = this.res.lambdas;
-    return (r) => {
-      const out: unknown[] = [];
-      for (const c of codes) {
+    const n = codes.length;
+    if (lambdas.length === 0) {
+      const vs = codes.map((c) => c.op!);
+      switch (n) {
+        case 0:
+          return { eval: () => [], lambdas };
+        case 1: {
+          const [a] = vs;
+          return { eval: (r) => [ev(r, a)], lambdas };
+        }
+        case 2: {
+          const [a, b] = vs;
+          return {
+            eval: (r) => {
+              const x = ev(r, a);
+              return [x, ev(r, b)];
+            },
+            lambdas,
+          };
+        }
+      }
+    }
+    const evalArgs = (r: Run): unknown[] => {
+      const out = new Array<unknown>(n);
+      for (let i = 0; i < n; i++) {
+        const c = codes[i];
         if (c.kind === "value") {
-          out.push(c.code(r));
+          out[i] = ev(r, c.op!);
           continue;
         }
         if (c.inPlace) r.charge(1);
-        const lc = c.lc ?? codesOf.get(named[c.id!])!;
-        const cb: Callback = {
-          params: c.params,
-          call: (args) => {
-            // f08 4.1: the library call is in progress while this call is; its index is the call's position.
-            const tr = cb.trace;
-            return tr === undefined ? invoke(r, lc, args, measure) : invoke(r, lc, args, measure, tr.span, tr.name, tr.count++);
-          },
-        };
-        out.push(cb);
+        out[i] = new LambdaCallback(r, c.lc ?? codesOf.get(named[c.id!])!, c.params, measure);
       }
       return out;
     };
+    return { eval: evalArgs, lambdas };
   }
 
   private methodStep(s: A.MethodCall): (r: Run, v: unknown) => unknown {
     const { name, optional, span } = s;
     const nargs = s.args.length;
     const shapes = s.args.map((a) => this.lambdaArg(a));
-    const args = this.args(s.args, this.measure(s.level));
+    const { eval: args, lambdas } = this.args(s.args, this.measure(s.level));
     const env = this.env;
     // A removed method is absent at run time too (03 3.3.1 item 6).
     const removed = this.env.removed;
     const gone = (kind: string) => removed !== undefined && removed.has(`${kind}.${name}`);
-    const goneString = gone("string");
-    const goneList = gone("list");
-    const goneMap = gone("map");
     for (const kind of ["string", "list", "map"]) {
       const e = gone(kind) ? undefined : libraryMethod(kind as "string", name);
       if (e !== undefined && e.impl === null) this.missing.add(`${kind}.${name}`);
     }
+    // The shape test (02 2.3, 04 2.2) of a receiver of the library's kinds is fixed by the call:
+    // the entry, or the failure the test gives.
+    type Plan = { entry: Entry; fail: null } | { entry: null; fail: () => RunFailure };
+    const plan = (k: Kind): Plan => {
+      const entry = k === "string" || k === "list" || k === "map" ? (gone(k) ? undefined : libraryMethod(k, name)) : undefined;
+      if (entry === undefined) return { entry: null, fail: () => new RunFailure("wrong-kind", span, "method", { kind: k, name }) };
+      const counts = entry.counts;
+      if (nargs < counts.min || nargs > counts.max) return { entry: null, fail: () => new RunFailure("wrong-kind", span, "count", { count: nargs, name }) };
+      for (let i = 0; i < nargs; i++) {
+        const fn = paramAt(entry, i).fn;
+        if (fn !== null && shapes[i] === null) return { entry: null, fail: () => new RunFailure("wrong-kind", span, "callback", { count: i + 1, name }) };
+        if (fn === null && shapes[i] !== null) return { entry: null, fail: () => new RunFailure("wrong-kind", span, "not-callback", { count: i + 1, name }) };
+      }
+      for (let i = 0; i < nargs; i++) {
+        const fn = paramAt(entry, i).fn;
+        if (fn !== null && shapes[i]!.params > fn) return { entry: null, fail: () => new RunFailure("wrong-kind", span, "parameters", { name, count: fn }) };
+      }
+      return { entry, fail: null };
+    };
+    const plans = new Map<Kind, Plan>();
+    for (const k of ["bool", "number", "string", "list", "map"] as const) plans.set(k, plan(k));
+    const listPlan = plans.get("list")!;
+    const stringPlan = plans.get("string")!;
     return (r, v) => {
-      const k = r.kind(v);
+      const k = kindQ(r, v);
       if (k === "null") {
         if (optional) return SHORT;
         throw new RunFailure("null-operand", span, "method", { name });
       }
-      // The shape test (02 2.3, 04 2.2).
-      let entry: Entry | undefined;
-      let host: HostImpl | undefined;
-      let counts: Counts;
       if (k === "opaque") {
         const t = r.cls.opaqueName(v);
-        host = t === null ? undefined : env.methods.get(t)?.get(name);
+        const host = t === null ? undefined : env.methods.get(t)?.get(name);
         if (host === undefined) throw new RunFailure("wrong-kind", span, "method", { kind: k, name });
-        counts = host.counts;
-      } else {
-        entry = (k === "string" ? goneString : k === "list" ? goneList : k === "map" ? goneMap : false) ? undefined : libraryMethod(k, name);
-        if (entry === undefined) throw new RunFailure("wrong-kind", span, "method", { kind: k, name });
-        counts = entry.counts;
-      }
-      if (nargs < counts.min || nargs > counts.max) throw new RunFailure("wrong-kind", span, "count", { count: nargs, name });
-      for (let i = 0; i < nargs; i++) {
-        const fn = entry !== undefined ? paramAt(entry, i).fn : null;
-        if (fn !== null && shapes[i] === null) throw new RunFailure("wrong-kind", span, "callback", { count: i + 1, name });
-        if (fn === null && shapes[i] !== null) throw new RunFailure("wrong-kind", span, "not-callback", { count: i + 1, name });
-      }
-      if (entry !== undefined) {
+        const counts = host.counts;
+        if (nargs < counts.min || nargs > counts.max) throw new RunFailure("wrong-kind", span, "count", { count: nargs, name });
         for (let i = 0; i < nargs; i++) {
-          const fn = paramAt(entry, i).fn;
-          if (fn !== null && shapes[i]!.params > fn) throw new RunFailure("wrong-kind", span, "parameters", { name, count: fn });
+          if (shapes[i] !== null) throw new RunFailure("wrong-kind", span, "not-callback", { count: i + 1, name });
         }
+        const vals = args(r);
+        return callHost(r, host, [v, ...vals], name, span);
       }
-      const vals = args(r);
-      if (host !== undefined) return callHost(r, host, [v, ...vals], name, span);
-      return callEntry(r, entry!, v, vals, span, name);
+      const p = k === "list" ? listPlan : k === "string" ? stringPlan : plans.get(k)!;
+      if (p.fail !== null) throw p.fail();
+      return callEntry(r, p.entry, v, args(r), span, name, lambdas);
     };
   }
 
@@ -808,7 +1315,7 @@ class Compiler {
     const target: Target = this.res.targets.get(node) ?? { k: "unknown" };
     const span = node.span;
     const measure = this.measure(node.level);
-    const args = this.args(node.args, measure);
+    const { eval: args, lambdas } = this.args(node.args, measure);
     switch (target.k) {
       case "lambda": {
         const node = this.res.lambdas[target.id];
@@ -825,7 +1332,7 @@ class Compiler {
         const entry = libraryFunction(target.name)!;
         if (entry.impl === null) this.missing.add(target.name);
         const name = target.name;
-        return (r) => callEntry(r, entry, undefined, args(r), span, name);
+        return (r) => callEntry(r, entry, undefined, args(r), span, name, lambdas);
       }
       case "host": {
         const host = this.env.functions.get(target.name);
@@ -839,18 +1346,21 @@ class Compiler {
   }
 }
 
+/** Bind one parameter of a lambda: its default first when the argument is null (02 11.2). */
+function bindParam(r: Run, p: ParamCode, v: unknown): void {
+  if (v === null && p.dflt !== null) v = p.dflt(r);
+  if (p.slot >= 0) r.slots[p.slot] = v;
+  else if (p.slot === PATTERN) p.bind(r, v);
+}
+
 /** Call a const-bound lambda (02 11.2) or a lambda passed to the library (5.6). */
 function invoke(r: Run, lc: LambdaCode, args: unknown[], measure: number, span?: Span, name?: string, index?: number | null): unknown {
   r.depth += measure;
   try {
     r.testDepth(r.depth);
-    for (let i = 0; i < lc.params.length; i++) {
-      const p = lc.params[i];
-      let v = i < args.length ? args[i] : null;
-      if (v === null && p.dflt !== null) v = p.dflt(r);
-      p.bind(r, v);
-    }
-    const out = lc.body(r);
+    const ps = lc.params;
+    for (let i = 0; i < ps.length; i++) bindParam(r, ps[i], i < args.length ? args[i] : null);
+    const out = ev(r, lc.bodyOp);
     r.depth -= measure;
     return out;
   } catch (x) {
@@ -860,15 +1370,88 @@ function invoke(r: Run, lc: LambdaCode, args: unknown[], measure: number, span?:
   }
 }
 
-/** A call of a library entry, after its receiver and arguments (04 2.2, 2.6, 4.4). */
-function callEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], span: Span, name: string): unknown {
+/** `invoke` with the arguments (a, b, c): what `invoke(r, lc, [a, b, c], ...)` does. */
+function invoke3(r: Run, lc: LambdaCode, a: unknown, b: unknown, c: unknown, measure: number, span?: Span, name?: string, index?: number | null): unknown {
+  r.depth += measure;
+  try {
+    r.testDepth(r.depth);
+    const ps = lc.params;
+    const n = ps.length;
+    if (n > 0) bindParam(r, ps[0], a);
+    if (n > 1) bindParam(r, ps[1], b);
+    if (n > 2) bindParam(r, ps[2], c);
+    for (let i = 3; i < n; i++) bindParam(r, ps[i], null);
+    const out = ev(r, lc.bodyOp);
+    r.depth -= measure;
+    return out;
+  } catch (x) {
+    if (span !== undefined && x instanceof RunFailure) x.trace.unshift({ span, name: name!, index: index ?? null });
+    throw x;
+  }
+}
+
+/** A lambda passed to the library or to a host function. */
+class LambdaCallback implements Callback {
+  readonly params: number;
+  trace: { span: Span; name: string; count: number } | undefined = undefined;
+  private readonly r: Run;
+  private readonly lc: LambdaCode;
+  private readonly measure: number;
+
+  constructor(r: Run, lc: LambdaCode, params: number, measure: number) {
+    this.r = r;
+    this.lc = lc;
+    this.params = params;
+    this.measure = measure;
+  }
+
+  call(args: unknown[]): unknown {
+    // f08 4.1: the library call is in progress while this call is; its index is the call's position.
+    const tr = this.trace;
+    return tr === undefined ? invoke(this.r, this.lc, args, this.measure) : invoke(this.r, this.lc, args, this.measure, tr.span, tr.name, tr.count++);
+  }
+
+  /** call([a, b]) */
+  call2(a: unknown, b: unknown): unknown {
+    return this.call3(a, b, null);
+  }
+
+  /** call([a, b, c]) */
+  call3(a: unknown, b: unknown, c: unknown): unknown {
+    const r = this.r;
+    const lc = this.lc;
+    if (!lc.simple) {
+      const tr = this.trace;
+      return tr === undefined ? invoke3(r, lc, a, b, c, this.measure) : invoke3(r, lc, a, b, c, this.measure, tr.span, tr.name, tr.count++);
+    }
+    // What invoke3 does, for parameters that are names with no default.
+    const tr = this.trace;
+    const index = tr === undefined ? 0 : tr.count++;
+    const measure = this.measure;
+    r.depth += measure;
+    try {
+      if (r.depth > r.depthLimit) r.testDepth(r.depth);
+      const slots = r.slots;
+      if (lc.s0 >= 0) slots[lc.s0] = a;
+      if (lc.s1 >= 0) slots[lc.s1] = b;
+      if (lc.s2 >= 0) slots[lc.s2] = c;
+      const out = ev(r, lc.bodyOp);
+      r.depth -= measure;
+      return out;
+    } catch (x) {
+      if (tr !== undefined && x instanceof RunFailure) x.trace.unshift({ span: tr.span, name: tr.name, index });
+      throw x;
+    }
+  }
+}
+
+/** A call of a library entry, after its receiver and arguments (04 2.2, 2.6, 4.4). `lambdas`: the positions of its lambda arguments. */
+function callEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], span: Span, name: string, lambdas: number[]): unknown {
   testArgs(r, entry, args, span, name);
   r.charge(1);
   if (entry.impl === null) throw new RunFailure("internal-error", span, "default");
   // f08 4.1, 4.2: the entry is in progress while a call of its lambda is; the index is the element's position, in visit order.
-  for (const a of args) {
-    if (a !== null && typeof a === "object" && typeof (a as Callback).call === "function" && "params" in a) (a as Callback).trace = { span, name, count: 0 };
-  }
+  for (let i = 0; i < lambdas.length; i++) (args[lambdas[i]] as LambdaCallback).trace = { span, name, count: 0 };
   return entry.impl({ run: r, span, name, receiver, args });
 }
 

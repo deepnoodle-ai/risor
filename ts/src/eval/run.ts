@@ -19,6 +19,25 @@ export interface RunLimits {
 export const ABSENT_VAR: unique symbol = Symbol("absent variable");
 export type VarSupply = (name: string) => unknown;
 
+/** The variables a host gives a run: a function, a Map or a plain object. */
+export type VarSource = ((name: string) => unknown) | ReadonlyMap<string, unknown> | Record<string, unknown> | undefined;
+
+/** A variable not yet asked for in this run. */
+const UNSET: unique symbol = Symbol("unset");
+/** A variable whose host value cannot enter the language: each read fails. */
+const BAD_VAR: unique symbol = Symbol("bad variable");
+
+const hasOwn = Object.prototype.hasOwnProperty;
+
+function supplied(vars: VarSource, name: string): unknown {
+  if (vars === undefined) return ABSENT_VAR;
+  let v: unknown;
+  if (typeof vars === "function") v = vars(name);
+  else if (vars instanceof Map) v = vars.get(name);
+  else v = hasOwn.call(vars, name) ? (vars as Record<string, unknown>)[name] : undefined;
+  return v === undefined ? ABSENT_VAR : v;
+}
+
 export class Run {
   steps = 0;
   units = 0;
@@ -32,19 +51,25 @@ export class Run {
   private readonly deadline: number | null;
   readonly signal: AbortSignal | undefined;
   private nextCheck = 1024;
-  private readonly supply: VarSupply;
-  private readonly varCache = new Map<string, unknown>();
+  private readonly vars: VarSource;
+  /** Where the variables start in `slots`: each variable of the program, by its index, holds its value once read, UNSET or BAD_VAR. */
+  private readonly varBase: number;
 
-  constructor(limits: RunLimits, slotCount: number, cls: Classifier, supply: VarSupply, signal?: AbortSignal) {
+  constructor(limits: RunLimits, slotCount: number, cls: Classifier, vars: VarSource, varCount: number, signal?: AbortSignal) {
     this.stepLimit = limits.steps ?? Infinity;
     this.unitLimit = limits.allocation ?? Infinity;
     this.depthLimit = limits.depth;
     this.deadline = limits.deadlineMs === null ? null : Date.now() + limits.deadlineMs;
     this.signal = signal;
-    this.slots = new Array<unknown>(slotCount).fill(null);
+    const n = slotCount + varCount;
+    const slots = new Array<unknown>(n);
+    for (let i = 0; i < slotCount; i++) slots[i] = null;
+    for (let i = slotCount; i < n; i++) slots[i] = UNSET;
+    this.slots = slots;
+    this.varBase = slotCount;
     this.cls = cls;
-    this.supply = supply;
-    this.checkTime();
+    this.vars = vars;
+    if (signal !== undefined || this.deadline !== null) this.checkTime();
   }
 
   /** Charge steps (02 8.2). */
@@ -114,12 +139,20 @@ export class Run {
     return r;
   }
 
-  /** Read a variable of the environment, asking the host at most once (03 3.4.1). */
-  variable(name: string, span: Span): unknown {
-    if (this.varCache.has(name)) return this.read(this.varCache.get(name), span);
-    const raw = this.supply(name);
+  /** Read variable `i` of the program, named `name`, asking the host at most once (03 3.4.1). */
+  variable(i: number, name: string, span: Span): unknown {
+    const at = this.varBase + i;
+    const v = this.slots[at];
+    if (v !== UNSET && v !== BAD_VAR) return v;
+    if (v === BAD_VAR) throw new RunFailure("number-range", span, "host");
+    const raw = supplied(this.vars, name);
     if (raw === ABSENT_VAR) throw new RunFailure("missing-variable", span, "default", { name });
-    this.varCache.set(name, raw);
-    return this.read(raw, span);
+    const r = readHost(raw);
+    if (r === BAD_NUMBER) {
+      this.slots[at] = BAD_VAR;
+      throw new RunFailure("number-range", span, "host");
+    }
+    this.slots[at] = r;
+    return r;
   }
 }

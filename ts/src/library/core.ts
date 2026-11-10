@@ -8,7 +8,7 @@
 import { RunFailure } from "../eval/failure.ts";
 import { L, render, sizeTogether } from "../eval/ops.ts";
 import { isWhole, norm, parseDecimal } from "../value/number.ts";
-import { ABSENT, RMap, compareText, cpLength, mapGet, mapKeys, mapSize, size, sortKeys, truthy } from "../value/value.ts";
+import { ABSENT, RMap, compareText, cpLength, mapGet, mapKeys, mapSize, size, sortKeys, truthy, div64 } from "../value/value.ts";
 import { orderedFailure } from "./args.ts";
 import { implement } from "./registry.ts";
 import type { Callback, CallContext } from "./registry.ts";
@@ -21,7 +21,7 @@ import { codePoints, cpOffsets, mapCase, occurrences, resolve, trimWhiteSpace } 
 function elements(c: CallContext): unknown[] {
   const xs = c.receiver as unknown[];
   const out = new Array<unknown>(xs.length);
-  for (let i = 0; i < xs.length; i++) out[i] = c.run.read(xs[i], c.span);
+  for (let i = 0; i < xs.length; i++) out[i] = readElement(c, xs[i]);
   return out;
 }
 
@@ -42,11 +42,21 @@ function scan(c: CallContext, xs: unknown[], test: (v: unknown) => RunFailure | 
 
 /** The ordered test of 04 3.6 over the elements, with the failed-scan charge. */
 function orderedScan(c: CallContext, xs: unknown[]): void {
+  if (allNumbersOrAllStrings(xs)) return;
   const f = orderedFailure(xs.map((x) => c.run.kind(x)));
   if (f !== null) {
     c.run.charge(f.index + 1);
     throw new RunFailure("wrong-kind", c.span, "unordered", { name: c.name, kind: f.kind });
   }
+}
+
+/** Every value a number, or every value a string: an ordered set (04 3.6 rule 4). */
+function allNumbersOrAllStrings(xs: unknown[]): boolean {
+  if (xs.length === 0) return true;
+  const t = typeof xs[0];
+  if (t !== "number" && t !== "string") return false;
+  for (let i = 1; i < xs.length; i++) if (typeof xs[i] !== t) return false;
+  return true;
 }
 
 function elementFail(c: CallContext, v: unknown): RunFailure {
@@ -61,7 +71,7 @@ function rangeFail(c: CallContext): never {
 function stringsSize(xs: unknown[]): number {
   let w = 0;
   for (const x of xs) if (typeof x === "string") w += x.length;
-  return Math.floor(w / 64);
+  return div64(w);
 }
 
 function compareOrdered(a: unknown, b: unknown): number {
@@ -69,23 +79,104 @@ function compareOrdered(a: unknown, b: unknown): number {
   return compareText(a as string, b as string);
 }
 
-/** A stable sort with O(n log n) comparisons: the platform's sort, which ECMAScript requires to be stable. */
-function stableSort<T>(xs: T[], key: (x: T) => unknown): T[] {
-  return xs
-    .map((x, i) => ({ x, k: key(x), i }))
-    .sort((p, q) => compareOrdered(p.k, q.k) || p.i - q.i)
-    .map((p) => p.x);
+/**
+ * The positions of ordered keys (04 3.6) sorted by key, ascending or (`desc`)
+ * descending; equal keys keep their order. The order is total, so it does not
+ * depend on the sort used. O(n log n) comparisons.
+ */
+function sortedPositions(keys: unknown[], desc: boolean): number[] {
+  const n = keys.length;
+  const idx = new Array<number>(n);
+  for (let i = 0; i < n; i++) idx[i] = i;
+  if (n > 0 && typeof keys[0] === "number") {
+    // The ordered test makes every key a number when the first is.
+    const k = new Float64Array(n);
+    for (let i = 0; i < n; i++) k[i] = keys[i] as number;
+    const sorted = mergeSortNumbers(k, desc);
+    for (let i = 0; i < n; i++) idx[i] = sorted[i];
+    return idx;
+  }
+  if (desc) idx.sort((p, q) => compareOrdered(keys[q], keys[p]) || p - q);
+  else idx.sort((p, q) => compareOrdered(keys[p], keys[q]) || p - q);
+  return idx;
+}
+
+/**
+ * The positions 0 to n - 1 sorted by their keys `k`, ascending or (`desc`)
+ * descending, equal keys in the order of their positions: a stable merge sort.
+ */
+function mergeSortNumbers(k: Float64Array, desc: boolean): Int32Array {
+  const n = k.length;
+  let a = new Int32Array(n);
+  let b = new Int32Array(n);
+  for (let i = 0; i < n; i++) a[i] = i;
+  // Runs of RUN by insertion sort.
+  const RUN = 16;
+  for (let lo = 0; lo < n; lo += RUN) {
+    const hi = Math.min(lo + RUN, n);
+    for (let i = lo + 1; i < hi; i++) {
+      const p = a[i];
+      const kp = k[p];
+      let j = i - 1;
+      while (j >= lo && (desc ? k[a[j]] < kp : k[a[j]] > kp)) {
+        a[j + 1] = a[j];
+        j--;
+      }
+      a[j + 1] = p;
+    }
+  }
+  for (let width = RUN; width < n; width *= 2) {
+    for (let lo = 0; lo < n; lo += 2 * width) {
+      const mid = Math.min(lo + width, n);
+      const hi = Math.min(lo + 2 * width, n);
+      let i = lo;
+      let j = mid;
+      let o = lo;
+      while (i < mid && j < hi) {
+        // Take from the right run only when its key comes strictly first.
+        const ki = k[a[i]];
+        const kj = k[a[j]];
+        if (desc ? kj > ki : kj < ki) b[o++] = a[j++];
+        else b[o++] = a[i++];
+      }
+      while (i < mid) b[o++] = a[i++];
+      while (j < hi) b[o++] = a[j++];
+    }
+    const t = a;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+/** A stable sort of ordered values. */
+function stableSort(xs: unknown[]): unknown[] {
+  const idx = sortedPositions(xs, false);
+  const out = new Array<unknown>(idx.length);
+  for (let i = 0; i < idx.length; i++) out[i] = xs[idx[i]];
+  return out;
 }
 
 /** Visit each element: 2 steps, then the callback (04 4.4, the rule for a callback). */
 function each(c: CallContext, f: Callback, visit: (result: unknown, element: unknown, index: number) => boolean | void): number {
   const xs = c.receiver as unknown[];
+  const run = c.run;
   for (let i = 0; i < xs.length; i++) {
-    c.run.charge(2);
-    const e = c.run.read(xs[i], c.span);
-    if (visit(f.call([e, i]), e, i) === false) return i + 1;
+    run.charge(2);
+    const e = readElement(c, xs[i]);
+    if (visit(f.call2(e, i), e, i) === false) return i + 1;
   }
   return xs.length;
+}
+
+/** An element read as a host value (03 3.4.4). */
+function readElement(c: CallContext, x: unknown): unknown {
+  return typeof x === "object" ? x : c.run.read(x, c.span);
+}
+
+/** Truthiness (01 6.5). */
+function isTrue(c: CallContext, v: unknown): boolean {
+  return typeof v === "boolean" ? v : truthy(v, c.run.cls);
 }
 
 const text = (c: CallContext, i: number) => c.args[i] as string;
@@ -290,7 +381,7 @@ implement("string", "replaceAll", (c) => {
   if (old === "") throw new RunFailure("invalid-argument", c.span, "empty-search", {});
   const at = occurrences(s, old);
   const weight = s.length + at.length * (rep.length - old.length);
-  const sz = Math.floor(weight / 64);
+  const sz = div64(weight);
   c.run.charge(size(s) + sz);
   c.run.alloc(1 + sz);
   const out: string[] = [];
@@ -319,7 +410,7 @@ implement("string", "repeat", (c) => {
   const s = c.receiver as string;
   const count = num(c, 0);
   if (count < 0) throw new RunFailure("invalid-argument", c.span, "negative-count", { count });
-  const sz = Math.floor((count * s.length) / 64);
+  const sz = div64(count * s.length);
   c.run.charge(sz);
   c.run.alloc(1 + sz);
   return s.repeat(count);
@@ -345,7 +436,7 @@ function pad(c: CallContext, atStart: boolean): string {
   const full = fcp.length > m ? 0 : Math.floor(m / fcp.length);
   const rest = fcp.slice(0, fcp.length > m ? m : m % fcp.length).join("");
   const weight = s.length + full * fill.length + rest.length;
-  const sz = Math.floor(weight / 64);
+  const sz = div64(weight);
   c.run.charge(sz);
   c.run.alloc(1 + sz);
   const padding = fill.repeat(full) + rest;
@@ -358,20 +449,29 @@ implement("string", "padEnd", (c) => pad(c, false));
 // ---- 5.4 lists ----------------------------------------------------------------
 
 implement("list", "filter", (c) => {
+  const f = c.args[0] as Callback;
+  const xs = c.receiver as unknown[];
+  const run = c.run;
   const out: unknown[] = [];
-  each(c, c.args[0] as Callback, (r, e) => {
-    if (truthy(r, c.run.cls)) out.push(e);
-  });
-  c.run.alloc(1 + out.length);
+  for (let i = 0; i < xs.length; i++) {
+    run.charge(2);
+    const e = readElement(c, xs[i]);
+    if (isTrue(c, f.call2(e, i))) out.push(e);
+  }
+  run.alloc(1 + out.length);
   return out;
 });
 
 implement("list", "map", (c) => {
+  const f = c.args[0] as Callback;
+  const xs = c.receiver as unknown[];
+  const run = c.run;
   const out: unknown[] = [];
-  each(c, c.args[0] as Callback, (r) => {
-    out.push(r);
-  });
-  c.run.alloc(1 + out.length);
+  for (let i = 0; i < xs.length; i++) {
+    run.charge(2);
+    out.push(f.call2(readElement(c, xs[i]), i));
+  }
+  run.alloc(1 + out.length);
   return out;
 });
 
@@ -390,44 +490,36 @@ implement("list", "flatMap", (c) => {
   return out;
 });
 
-implement("list", "some", (c) => {
-  let found = false;
-  each(c, c.args[0] as Callback, (r) => {
-    if (truthy(r, c.run.cls)) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
-});
+/** The first element whose callback result is truthy (`want` true) or falsy (`want` false), or -1. */
+function seek(c: CallContext, want: boolean): number {
+  const f = c.args[0] as Callback;
+  const xs = c.receiver as unknown[];
+  const run = c.run;
+  for (let i = 0; i < xs.length; i++) {
+    run.charge(2);
+    if (isTrue(c, f.call2(readElement(c, xs[i]), i)) === want) return i;
+  }
+  return -1;
+}
 
-implement("list", "every", (c) => {
-  let all = true;
-  each(c, c.args[0] as Callback, (r) => {
-    if (!truthy(r, c.run.cls)) {
-      all = false;
-      return false;
-    }
-  });
-  return all;
-});
+implement("list", "some", (c) => seek(c, true) >= 0);
+
+implement("list", "every", (c) => seek(c, false) < 0);
 
 implement("list", "find", (c) => {
-  let found: unknown = null;
-  each(c, c.args[0] as Callback, (r, e) => {
-    if (truthy(r, c.run.cls)) {
-      found = e;
-      return false;
-    }
-  });
-  return found;
+  const i = seek(c, true);
+  return i < 0 ? null : readElement(c, (c.receiver as unknown[])[i]);
 });
 
 implement("list", "count", (c) => {
+  const f = c.args[0] as Callback;
+  const xs = c.receiver as unknown[];
+  const run = c.run;
   let n = 0;
-  each(c, c.args[0] as Callback, (r) => {
-    if (truthy(r, c.run.cls)) n++;
-  });
+  for (let i = 0; i < xs.length; i++) {
+    run.charge(2);
+    if (isTrue(c, f.call2(readElement(c, xs[i]), i))) n++;
+  }
   return n;
 });
 
@@ -435,17 +527,24 @@ implement("list", "reduce", (c) => {
   const f = c.args[0] as Callback;
   let acc = c.args[1];
   const xs = c.receiver as unknown[];
+  const run = c.run;
   for (let i = 0; i < xs.length; i++) {
-    c.run.charge(2);
-    const e = c.run.read(xs[i], c.span);
-    acc = f.call([acc, e, i]);
+    run.charge(2);
+    acc = f.call3(acc, readElement(c, xs[i]), i);
   }
   return acc;
 });
 
 implement("list", "sum", (c) => {
   const xs = elements(c);
-  scan(c, xs, (v) => (c.run.kind(v) === "number" ? null : elementFail(c, v)));
+  for (let i = 0; i < xs.length; i++) {
+    const v = xs[i];
+    if (typeof v !== "number" && c.run.kind(v) !== "number") {
+      // The scan's charge (4.4 rule 1): the elements tested.
+      c.run.charge(i + 1);
+      throw elementFail(c, v);
+    }
+  }
   c.run.charge(xs.length);
   let acc = 0;
   for (const x of xs) {
@@ -475,31 +574,43 @@ implement("list", "sort", (c) => {
   const n = xs.length;
   c.run.charge(n + L(n) * (n + stringsSize(xs)));
   c.run.alloc(1 + n);
-  return stableSort(xs, (x) => x);
+  return stableSort(xs);
 });
+
+/**
+ * Each element and the result of the callback for it, into `xs` and `keys`:
+ * 2 steps, then the callback (04 4.4). (The results go to arrays the caller
+ * gives: returned in a new object, they made the optimizer deoptimize code
+ * compiled during the loop at each return.)
+ */
+function keyed(c: CallContext, keys: unknown[], xs: unknown[]): void {
+  const f = c.args[0] as Callback;
+  const recv = c.receiver as unknown[];
+  const run = c.run;
+  const n = recv.length;
+  for (let i = 0; i < n; i++) {
+    run.charge(2);
+    const e = readElement(c, recv[i]);
+    xs.push(e);
+    keys.push(f.call2(e, i));
+  }
+}
 
 implement("list", "sortBy", (c) => {
   const keys: unknown[] = [];
   const xs: unknown[] = [];
-  each(c, c.args[0] as Callback, (r, e) => {
-    keys.push(r);
-    xs.push(e);
-  });
+  keyed(c, keys, xs);
   // The ordered test of the keys: a failure charges nothing more (4.5 rule 4).
-  const f = orderedFailure(keys.map((k) => c.run.kind(k)));
+  const f = allNumbersOrAllStrings(keys) ? null : orderedFailure(keys.map((k) => c.run.kind(k)));
   if (f !== null) throw new RunFailure("wrong-kind", c.span, "unordered", { name: c.name, kind: f.kind });
   const n = xs.length;
   c.run.charge(L(n) * (n + stringsSize(keys)));
   c.run.alloc(1 + n);
-  const idx = xs.map((_, i) => i);
   // f07 6.3: with "desc", descending, and still stable.
-  if (c.args[1] === "desc") {
-    return idx
-      .map((i) => ({ i, k: keys[i] }))
-      .sort((p, q) => compareOrdered(q.k, p.k) || p.i - q.i)
-      .map((p) => xs[p.i]);
-  }
-  return stableSort(idx, (i) => keys[i]).map((i) => xs[i]);
+  const idx = sortedPositions(keys, c.args[1] === "desc");
+  const out = new Array<unknown>(n);
+  for (let i = 0; i < n; i++) out[i] = xs[idx[i]];
+  return out;
 });
 
 implement("list", "groupBy", (c) => {
@@ -604,7 +715,7 @@ implement("list", "join", (c) => {
   let w = 0;
   for (const x of xs) w += (x as string).length;
   if (xs.length > 1) w += (xs.length - 1) * sep.length;
-  const sz = Math.floor(w / 64);
+  const sz = div64(w);
   c.run.charge(xs.length + sz);
   c.run.alloc(1 + sz);
   return (xs as string[]).join(sep);
@@ -640,22 +751,18 @@ implement("map", "entries", (c) => {
 // ---- package F7: the methods of queries (f07 6) ----------------------------------
 
 /** The keys a callback gave for each element; the ordered test after the last call (f07 6.2). */
-function orderedKeys(c: CallContext): { keys: unknown[]; xs: unknown[] } {
-  const keys: unknown[] = [];
-  const xs: unknown[] = [];
-  each(c, c.args[0] as Callback, (r, e) => {
-    keys.push(r);
-    xs.push(e);
-  });
-  const f = orderedFailure(keys.map((k) => c.run.kind(k)));
+function orderedKeys(c: CallContext, keys: unknown[], xs: unknown[]): void {
+  keyed(c, keys, xs);
+  const f = allNumbersOrAllStrings(keys) ? null : orderedFailure(keys.map((k) => c.run.kind(k)));
   if (f !== null) throw new RunFailure("wrong-kind", c.span, "unordered", { name: c.name, kind: f.kind });
   c.run.charge(stringsSize(keys));
-  return { keys, xs };
 }
 
 for (const [name, sign] of [["minBy", -1], ["maxBy", 1]] as const) {
   implement("list", name, (c) => {
-    const { keys, xs } = orderedKeys(c);
+    const keys: unknown[] = [];
+  const xs: unknown[] = [];
+  orderedKeys(c, keys, xs);
     if (xs.length === 0) return null;
     // Of equal keys, the first (f07 6.4 item 3, 6.5 item 1).
     let best = 0;
@@ -665,7 +772,9 @@ for (const [name, sign] of [["minBy", -1], ["maxBy", 1]] as const) {
 }
 
 implement("list", "uniqueBy", (c) => {
-  const { keys, xs } = orderedKeys(c);
+  const keys: unknown[] = [];
+  const xs: unknown[] = [];
+  orderedKeys(c, keys, xs);
   const seen = new Set<unknown>();
   const out: unknown[] = [];
   keys.forEach((k, i) => {
@@ -680,20 +789,25 @@ implement("list", "uniqueBy", (c) => {
 });
 
 /** The string keys of `indexBy` and `countBy`, each tested when its call returns (f07 6.2). */
-function stringKeys(c: CallContext): { keys: string[]; xs: unknown[] } {
-  const keys: string[] = [];
-  const xs: unknown[] = [];
-  each(c, c.args[0] as Callback, (r, e) => {
+function stringKeys(c: CallContext, keys: string[], xs: unknown[]): void {
+  const f = c.args[0] as Callback;
+  const recv = c.receiver as unknown[];
+  const run = c.run;
+  for (let i = 0; i < recv.length; i++) {
+    run.charge(2);
+    const e = readElement(c, recv[i]);
+    const r = f.call2(e, i);
     if (typeof r !== "string") throw new RunFailure("wrong-kind", c.span, "result", { name: c.name, kind: c.run.kind(r) });
     keys.push(r);
     xs.push(e);
-  });
+  }
   c.run.charge(sizeTogether(keys));
-  return { keys, xs };
 }
 
 implement("list", "indexBy", (c) => {
-  const { keys, xs } = stringKeys(c);
+  const keys: string[] = [];
+  const xs: unknown[] = [];
+  stringKeys(c, keys, xs);
   c.run.alloc(1 + 2 * xs.length);
   const m = new RMap();
   keys.forEach((k, i) => m.set(k, xs[i]));
@@ -701,7 +815,8 @@ implement("list", "indexBy", (c) => {
 });
 
 implement("list", "countBy", (c) => {
-  const { keys } = stringKeys(c);
+  const keys: string[] = [];
+  stringKeys(c, keys, []);
   const m = new RMap();
   for (const k of keys) m.set(k, ((m.get(k) as number | undefined) ?? 0) + 1);
   c.run.alloc(1 + 2 * m.size);
@@ -718,7 +833,7 @@ implement("map", "mapValues", (c) => {
   for (const k of keys) {
     c.run.charge(2);
     const v = c.run.read(mapGet(c.receiver as object, k), c.span);
-    out.push(f.call([v, k]));
+    out.push(f.call2(v, k));
   }
   c.run.alloc(1 + 2 * n);
   const m = new RMap();

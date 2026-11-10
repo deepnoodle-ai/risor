@@ -2,7 +2,7 @@
 
 import type { Span } from "../syntax/source.ts";
 import { isWhole, norm, numberToText } from "../value/number.ts";
-import { ABSENT, compareText, jsonString, lcpWeight, mapGet, mapKeys, mapSize, size, sortKeys, truthy } from "../value/value.ts";
+import { ABSENT, compareText, jsonString, lcpWeight, mapGet, mapKeys, mapSize, size, sortKeys, truthy, div64 } from "../value/value.ts";
 import { RunFailure } from "./failure.ts";
 import type { Run } from "./run.ts";
 
@@ -18,7 +18,7 @@ export function L(n: number): number {
 export function sizeTogether(xs: string[]): number {
   let w = 0;
   for (const x of xs) w += x.length;
-  return Math.floor(w / 64);
+  return div64(w);
 }
 
 export type ArithOp = "+" | "-" | "*" | "/" | "%" | "**";
@@ -68,7 +68,7 @@ export function arith(r: Run, op: ArithOp, a: unknown, b: unknown, span: Span): 
   if (op === "+" && ka === "string" && kb === "string") {
     const s = a as string;
     const t = b as string;
-    const sz = Math.floor((s.length + t.length) / 64);
+    const sz = div64(s.length + t.length);
     r.charge(1 + sz);
     r.alloc(1 + sz);
     return s + t;
@@ -157,7 +157,7 @@ export function equal(r: Run, a: unknown, b: unknown, span: Span, level = 0): bo
       r.charge(1);
       return a === b;
     case "string":
-      r.charge(1 + Math.floor(lcpWeight(a as string, b as string) / 64));
+      r.charge(1 + div64(lcpWeight(a as string, b as string)));
       return a === b;
     case "list": {
       const x = a as unknown[];
@@ -229,7 +229,7 @@ export function contains(r: Run, op: string, x: unknown, y: unknown, span: Span)
       r.charge(1);
       if (kx !== ke) continue;
       if (kx === "string") {
-        r.charge(Math.floor(lcpWeight(x as string, e as string) / 64));
+        r.charge(div64(lcpWeight(x as string, e as string)));
         if (x === e) return true;
       } else if (kx === "list") {
         if ((x as unknown[]).length === (e as unknown[]).length) {

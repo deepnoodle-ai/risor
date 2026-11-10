@@ -9,7 +9,7 @@
 import { RunFailure } from "../eval/failure.ts";
 import { jsonText } from "../eval/ops.ts";
 import { decimalToDouble, norm, numberToText, parseDecimal } from "../value/number.ts";
-import { RMap, size } from "../value/value.ts";
+import { RMap, size, div64 } from "../value/value.ts";
 import { implement } from "./registry.ts";
 import type { CallContext } from "./registry.ts";
 
@@ -413,8 +413,8 @@ implement(null, "base64.encode", (c: CallContext) => {
   const s = c.args[0] as string;
   const b = utf8(s);
   const weight = 4 * Math.ceil(b.length / 3);
-  c.run.charge(size(s) + Math.floor(weight / 64));
-  c.run.alloc(1 + Math.floor(weight / 64));
+  c.run.charge(size(s) + div64(weight));
+  c.run.alloc(1 + div64(weight));
   let out = "";
   for (let i = 0; i < b.length; i += 3) {
     const n = (b[i] << 16) | ((b[i + 1] ?? 0) << 8) | (b[i + 2] ?? 0);

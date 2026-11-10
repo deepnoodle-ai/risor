@@ -7,8 +7,26 @@ export { CASEMAP_UNICODE };
 const UPPER_MAP = new Map<number, number>(UPPER);
 const LOWER_MAP = new Map<number, number>(LOWER);
 
+/** The table maps each ASCII code point as String.prototype.toUpperCase and toLowerCase do (checked here, once). */
+const ASCII_AS_PLATFORM = ((): boolean => {
+  for (let c = 0; c < 0x80; c++) {
+    const ch = String.fromCharCode(c);
+    const up = UPPER_MAP.get(c);
+    const low = LOWER_MAP.get(c);
+    if ((up === undefined ? ch : String.fromCodePoint(up)) !== ch.toUpperCase()) return false;
+    if ((low === undefined ? ch : String.fromCodePoint(low)) !== ch.toLowerCase()) return false;
+  }
+  return true;
+})();
+
+function isAscii(s: string): boolean {
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) >= 0x80) return false;
+  return true;
+}
+
 /** Map each code point by the case table built from suite/casemap.json (04 3.8). */
 export function mapCase(s: string, upper: boolean): string {
+  if (ASCII_AS_PLATFORM && isAscii(s)) return upper ? s.toUpperCase() : s.toLowerCase();
   const m = upper ? UPPER_MAP : LOWER_MAP;
   const out: string[] = [];
   let from = 0;

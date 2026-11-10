@@ -88,16 +88,42 @@ export function orderedFailure(kinds: string[]): { index: number; kind: string }
   return null;
 }
 
+/** What the test of a parameter needs, worked out once for each parameter of an entry. */
+interface ParamTest {
+  /** The type an argument is tested against. */
+  t: TypeNode;
+  bound: string | null;
+  set: ReadonlySet<string> | null;
+  /** The type accepts every value. */
+  any: boolean;
+}
+
+const paramTests = new WeakMap<Param, ParamTest>();
+
+function paramTest(e: Entry, p: Param): ParamTest {
+  let pt = paramTests.get(p);
+  if (pt === undefined) {
+    let t = p.type!;
+    if (p.rest && t.t === "list") t = t.elem;
+    const bound = boundOf(e, t);
+    const set = literalSet(t);
+    pt = { t, bound, set, any: bound === null && set === null && (t.t === "var" || (t.t === "word" && t.word === "any")) };
+    paramTests.set(p, pt);
+  }
+  return pt;
+}
+
 /** Test each argument against its parameter, left to right. Charges nothing. */
 export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: string): void {
   for (let i = 0; i < args.length; i++) {
     const p = paramAt(e, i);
     if (p.fn !== null || p.type === null) continue;
+    const pt = paramTest(e, p);
+    if (pt.any) continue;
     const v = args[i];
-    let t = p.type;
-    if (p.rest && t.t === "list") t = t.elem;
+    const t = pt.t;
     const verdict = accepts(t, v, run);
-    const bound = boundOf(e, t);
+    const bound = pt.bound;
     if (bound === "ordered") {
       // Every failure of kind at an `ordered` parameter is `unordered` (04 2.6):
       // the arguments bound to the variable are one ordered set, tested left to right.
@@ -115,7 +141,7 @@ export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: 
       continue;
     }
     // f07 6.2: a parameter whose type is a literal set takes a string of the set, else `order`.
-    const set = literalSet(t);
+    const set = pt.set;
     if (set !== null) {
       if (run.kind(v) === "string" && set.has(v as string)) continue;
       throw new RunFailure("wrong-kind", span, "order", { name, found: v });

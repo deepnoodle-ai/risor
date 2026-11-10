@@ -26,6 +26,10 @@ export interface Param {
 export interface Callback {
   params: number;
   call(args: unknown[]): unknown;
+  /** call([a, b]) */
+  call2(a: unknown, b: unknown): unknown;
+  /** call([a, b, c]) */
+  call3(a: unknown, b: unknown, c: unknown): unknown;
   /** Package F8: the library call that calls it, for the trace, and its calls so far (f08 4.2). */
   trace?: { span: Span; name: string; count: number };
 }

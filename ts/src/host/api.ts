@@ -16,7 +16,7 @@ import { compileProgram, HostError } from "../eval/compile.ts";
 import type { CallHandle, CompileEnv, HostImpl } from "../eval/compile.ts";
 import { RunFailure, messageOf, uncheckedClass } from "../eval/failure.ts";
 import { ABSENT_VAR, Run } from "../eval/run.ts";
-import type { VarSupply } from "../eval/run.ts";
+import type { VarSource } from "../eval/run.ts";
 import { staticRules } from "../eval/static.ts";
 import type { Counts, StaticEnv } from "../eval/static.ts";
 import { functionCounts, FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS } from "../library/registry.ts";
@@ -821,7 +821,7 @@ export class Env {
       sites = c.sites;
     } else if (s.diagnostics.length > 0) return { ok: false, diagnostics: s.diagnostics, source: p.source };
     const c = compileProgram(p.program, s.resolution, this.compileEnv);
-    const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans, valueSpans);
+    const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans, valueSpans, c.varCount);
     prog.type = type;
     prog.sites = sites;
     return { ok: true, program: prog };
@@ -833,26 +833,6 @@ export class Env {
     if (!r.ok) throw new RisorError(r.diagnostics);
     return r.program;
   }
-}
-
-function supplyOf(vars: Vars | undefined): VarSupply {
-  if (vars === undefined) return () => ABSENT_VAR;
-  if (typeof vars === "function") {
-    return (name) => {
-      const v = vars(name);
-      return v === undefined ? ABSENT_VAR : v;
-    };
-  }
-  if (vars instanceof Map) {
-    return (name) => {
-      const v = vars.get(name);
-      return v === undefined ? ABSENT_VAR : v;
-    };
-  }
-  return (name) => {
-    const v = Object.prototype.hasOwnProperty.call(vars, name) ? (vars as Record<string, unknown>)[name] : undefined;
-    return v === undefined ? ABSENT_VAR : v;
-  };
 }
 
 export class Program {
@@ -872,7 +852,10 @@ export class Program {
   private readonly hostSpans: Set<string> | null;
   private readonly valueSpans: Set<string> | null;
 
-  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null, hostSpans: Set<string> | null = null, valueSpans: Set<string> | null = null) {
+  private readonly varCount: number;
+
+  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null, hostSpans: Set<string> | null = null, valueSpans: Set<string> | null = null, varCount = 0) {
+    this.varCount = varCount;
     this.dynamicSpans = dynamicSpans;
     this.hostSpans = hostSpans ?? (dynamicSpans === null ? null : new Set());
     this.valueSpans = valueSpans ?? (dynamicSpans === null ? null : new Set());
@@ -883,35 +866,47 @@ export class Program {
     this.missing = missing;
   }
 
+  private newRun(vars: Vars | undefined, signal: AbortSignal | undefined): Run {
+    const e = this.env.environment;
+    return new Run(
+      { steps: e.limits.steps, allocation: e.limits.allocation, depth: e.limits.depth ?? DEFAULT_LIMITS.depth, deadlineMs: this.env.timeoutMs },
+      this.slotCount,
+      this.env.classifier,
+      vars as VarSource,
+      this.varCount,
+      signal,
+    );
+  }
+
+  private failureOf(x: unknown): RunFailure {
+    if (x instanceof RunFailure) return x;
+    if (x instanceof RangeError && /call stack/.test(x.message)) return new RunFailure("internal-error", undefined, "default");
+    return new RunFailure("internal-error", undefined, "default", {}, { cause: x });
+  }
+
   /** Run once. Never throws for a failure of the program. */
   execute(vars?: Vars, options: { signal?: AbortSignal } = {}): Outcome {
-    const e = this.env.environment;
     let run: Run | undefined;
     try {
-      run = new Run(
-        { steps: e.limits.steps, allocation: e.limits.allocation, depth: e.limits.depth ?? DEFAULT_LIMITS.depth, deadlineMs: this.env.timeoutMs },
-        this.slotCount,
-        this.env.classifier,
-        supplyOf(vars),
-        options.signal,
-      );
+      run = this.newRun(vars, options.signal);
       const value = this.code(run);
       return { ok: true, value, usage: { steps: run.steps, allocated: run.units } };
     } catch (x) {
       const usage = { steps: run?.steps ?? 0, allocated: run?.units ?? 0 };
-      let f: RunFailure;
-      if (x instanceof RunFailure) f = x;
-      else if (x instanceof RangeError && /call stack/.test(x.message)) f = new RunFailure("internal-error", undefined, "default");
-      else f = new RunFailure("internal-error", undefined, "default", {}, { cause: x });
-      return { ok: false, diagnostic: this.diagnostic(f), usage };
+      return { ok: false, diagnostic: this.diagnostic(this.failureOf(x)), usage };
     }
   }
 
   /** Run once. Throws RisorError of phase `run`. */
-  run(vars?: Vars, options: { signal?: AbortSignal } = {}): unknown {
-    const o = this.execute(vars, options);
-    if (!o.ok) throw new RisorError([o.diagnostic], o.usage);
-    return o.value;
+  run(vars?: Vars, options?: { signal?: AbortSignal }): unknown {
+    let run: Run | undefined;
+    try {
+      run = this.newRun(vars, options === undefined ? undefined : options.signal);
+      return this.code(run);
+    } catch (x) {
+      const usage = { steps: run?.steps ?? 0, allocated: run?.units ?? 0 };
+      throw new RisorError([this.diagnostic(this.failureOf(x))], usage);
+    }
   }
 
   measure(vars?: Vars, options: { signal?: AbortSignal } = {}): { value: unknown; usage: Usage } {
