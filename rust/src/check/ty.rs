@@ -39,6 +39,10 @@ pub struct Rec {
     pub closable: bool,
     /// The size of the record (`05-types.md` 20.7), worked out once.
     pub size: SizeCache,
+    /// F1 4.4: for each field a fill option made required, its base and its
+    /// fill; the field's type is their Join. Only the mapping of a schema
+    /// sets it, and it is gone from the type the mapping gives.
+    pub fills: BTreeMap<String, (Ty, Ty)>,
 }
 
 /// The type size limit (`05-types.md` 20.7, ruling CG2).
@@ -96,6 +100,7 @@ impl Rec {
             rest,
             closable: false,
             size: SizeCache::default(),
+            fills: Default::default(),
         }
     }
 }
@@ -185,6 +190,7 @@ impl Ty {
             rest: t,
             closable: false,
             size: Default::default(),
+            fills: Default::default(),
         })
     }
     /// `{}`: the empty map only.
@@ -324,35 +330,83 @@ pub fn join(a: &Ty, b: &Ty) -> Ty {
 
 fn join_rec(a: &Rec, b: &Rec) -> Rec {
     let mut fields = BTreeMap::new();
+    let mut fills = BTreeMap::new();
+    // F1 4.4: a key in both has the Join of the bases and of the fills; a
+    // key in one has its base joined with the other's rest, and keeps its
+    // fill. A field that carries a fill is required.
+    let base = |r: &Rec, k: &str, f: &Field| r.fills.get(k).map_or(f.ty.clone(), |x| x.0.clone());
     for (k, fa) in &a.fields {
         let f = match b.fields.get(k) {
-            Some(fb) => Field {
-                ty: join(&fa.ty, &fb.ty),
-                optional: fa.optional || fb.optional,
-            },
-            None => Field {
-                ty: join(&fa.ty, &b.rest),
-                optional: true,
+            Some(fb) => {
+                let fill = match (a.fills.get(k), b.fills.get(k)) {
+                    (Some(x), Some(y)) => Some(join(&x.1, &y.1)),
+                    (Some(x), None) | (None, Some(x)) => Some(x.1.clone()),
+                    (None, None) => None,
+                };
+                match fill {
+                    None => Field {
+                        ty: join(&fa.ty, &fb.ty),
+                        optional: fa.optional || fb.optional,
+                    },
+                    Some(fl) => {
+                        let bs = join(&base(a, k, fa), &base(b, k, fb));
+                        let ty = join(&bs, &fl);
+                        fills.insert(k.clone(), (bs, fl));
+                        Field {
+                            ty,
+                            optional: false,
+                        }
+                    }
+                }
+            }
+            None => match a.fills.get(k) {
+                None => Field {
+                    ty: join(&fa.ty, &b.rest),
+                    optional: true,
+                },
+                Some((bs, fl)) => {
+                    let bs = join(bs, &b.rest);
+                    let ty = join(&bs, fl);
+                    fills.insert(k.clone(), (bs, fl.clone()));
+                    Field {
+                        ty,
+                        optional: false,
+                    }
+                }
             },
         };
         fields.insert(k.clone(), f);
     }
     for (k, fb) in &b.fields {
         if !a.fields.contains_key(k) {
-            fields.insert(
-                k.clone(),
-                Field {
+            let f = match b.fills.get(k) {
+                None => Field {
                     ty: join(&fb.ty, &a.rest),
                     optional: true,
                 },
-            );
+                Some((bs, fl)) => {
+                    let bs = join(bs, &a.rest);
+                    let ty = join(&bs, fl);
+                    fills.insert(k.clone(), (bs, fl.clone()));
+                    Field {
+                        ty,
+                        optional: false,
+                    }
+                }
+            };
+            fields.insert(k.clone(), f);
         }
     }
     Rec {
         fields,
         rest: join(&a.rest, &b.rest),
-        closable: a.closable && b.closable,
-        size: Default::default(),
+        // F1 3.6 item 8: closable when one is closable and the other is
+        // closable or exact.
+        closable: (a.closable || b.closable)
+            && (a.closable || a.rest.is_never())
+            && (b.closable || b.rest.is_never()),
+        size: SizeCache::default(),
+        fills,
     }
 }
 
@@ -487,6 +541,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
             rest: Ty::any(),
             closable: false,
             size: Default::default(),
+            fills: Default::default(),
         };
     };
     let mut fields = BTreeMap::new();
@@ -523,6 +578,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
         rest: join(&r.rest, &m.rest),
         closable: false,
         size: Default::default(),
+        fills: Default::default(),
     }
 }
 
@@ -582,6 +638,7 @@ pub fn falsy(t: &Ty) -> Ty {
                     rest: Ty::never(),
                     closable: false,
                     size: Default::default(),
+                    fills: Default::default(),
                 })
             }),
         opaque: BTreeSet::new(),

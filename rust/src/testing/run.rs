@@ -150,7 +150,8 @@ pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
     // each case checked, once.
     let core_check = path
         .components()
-        .any(|c| c.as_os_str() == "core-check" || c.as_os_str() == "host-types");
+        .any(|c| c.as_os_str() == "core-check" || c.as_os_str() == "host-types")
+        || check_only_file(path);
     match load(path) {
         Ok(file) => FileReport {
             path: path.to_path_buf(),
@@ -172,6 +173,21 @@ pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
             results: vec![("(every case of the file)".into(), Verdict::Invalid(why))],
         },
     }
+}
+
+/// `03-host.md` 3.11 item 7 (ruling BA11): in a package's directory, a file
+/// whose name ends `-check.json` is run as `suite/core-check/` is: each case
+/// once, checked.
+pub fn check_only_file(path: &Path) -> bool {
+    let in_core = path
+        .parent()
+        .and_then(|d| d.file_name())
+        .is_some_and(|d| d == "core-run" || d == "core-check");
+    !in_core
+        && path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with("-check.json"))
 }
 
 /// Whether the runner does not run a file (`03-host.md` 3.11 item 4, ruling

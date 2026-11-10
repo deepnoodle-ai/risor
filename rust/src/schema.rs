@@ -62,7 +62,13 @@ pub fn ty_schema(schema: &Json, opts: SchemaOptions) -> Result<Ty, String> {
         path: Vec::new(),
     };
     let (t, _) = m.map(schema, 0)?;
-    let t = if opts.closed { close(&t) } else { t };
+    // Close when `closed`; either way the fills are dropped (4.4): the
+    // type the mapping gives has the Join of each base and fill only.
+    let t = Closer {
+        close: opts.closed,
+        ..Closer::default()
+    }
+    .ty(&t);
     // `05-types.md` 20.7, ruling CG4: a `$ref` shares, so the type written
     // out can pass the size limit though the schema is small.
     if t.too_big() {
@@ -422,6 +428,7 @@ impl<'a> Mapper<'a> {
             Some(_) => return self.err("required is not an array of strings"),
         };
         let mut fields: BTreeMap<String, Field> = BTreeMap::new();
+        let mut fills: BTreeMap<String, (Ty, Ty)> = BTreeMap::new();
         let props = get("properties");
         if let Some(p) = props {
             let Json::Obj(ps) = p else {
@@ -435,22 +442,34 @@ impl<'a> Mapper<'a> {
                     Json::Obj(o) => o.iter().find(|(n, _)| n == "default").map(|(_, v)| v),
                     _ => None,
                 };
+                // F1 4.4: a field a fill option makes required keeps its base
+                // and its fill apart until the meets are done.
+                let fill = if req {
+                    None
+                } else if let (true, Some(dv)) = (self.opts.defaults_applied, default) {
+                    let Some(lit) = literal(dv, 0) else {
+                        return self.err("a default is deeper than 64");
+                    };
+                    // Ruling CG9: a default's literal type is tested.
+                    if lit.too_big() {
+                        return self.err("a default has a type over the size limit");
+                    }
+                    Some(lit)
+                } else if self.opts.absent_is_null {
+                    Some(Ty::null())
+                } else {
+                    None
+                };
                 let field = if req {
                     Field {
                         ty: t,
                         optional: false,
                     }
-                } else if let (true, Some(dv)) = (self.opts.defaults_applied, default) {
-                    let Some(lit) = literal(dv, 0) else {
-                        return self.err("a default is deeper than 64");
-                    };
+                } else if let Some(fl) = fill {
+                    let ty = join(&t, &fl);
+                    fills.insert(k.clone(), (t, fl));
                     Field {
-                        ty: join(&t, &lit),
-                        optional: false,
-                    }
-                } else if self.opts.absent_is_null {
-                    Field {
-                        ty: join(&t, &Ty::null()),
+                        ty,
                         optional: false,
                     }
                 } else {
@@ -481,6 +500,7 @@ impl<'a> Mapper<'a> {
                 rest,
                 closable,
                 size: Default::default(),
+                fills,
             },
             depth,
         ))
@@ -631,16 +651,36 @@ pub fn pick(ts: &[Ty]) -> Ty {
 pub fn meet(a: &Rec, b: &Rec) -> Rec {
     let keys: BTreeSet<&String> = a.fields.keys().chain(b.fields.keys()).collect();
     let mut fields = BTreeMap::new();
+    let mut fills = BTreeMap::new();
     for k in keys {
         let fa = a.fields.get(k);
         let fb = b.fields.get(k);
-        let ta = fa.map_or(&a.rest, |f| &f.ty);
-        let tb = fb.map_or(&b.rest, |f| &f.ty);
-        let required = fa.is_some_and(|f| !f.optional) || fb.is_some_and(|f| !f.optional);
+        // F1 4.4: the base from each side, the fill from each side that
+        // carries one.
+        let base = |r: &Rec, f: Option<&Field>| match (r.fills.get(k), f) {
+            (Some(x), _) => x.0.clone(),
+            (None, Some(f)) => f.ty.clone(),
+            (None, None) => r.rest.clone(),
+        };
+        let bs = pick(&[base(a, fa), base(b, fb)]);
+        let fill = match (a.fills.get(k), b.fills.get(k)) {
+            (Some(x), Some(y)) => Some(join(&x.1, &y.1)),
+            (Some(x), None) | (None, Some(x)) => Some(x.1.clone()),
+            (None, None) => None,
+        };
+        let required =
+            fa.is_some_and(|f| !f.optional) || fb.is_some_and(|f| !f.optional) || fill.is_some();
+        let ty = match &fill {
+            Some(fl) => join(&bs, fl),
+            None => bs.clone(),
+        };
+        if let Some(fl) = fill {
+            fills.insert(k.clone(), (bs, fl));
+        }
         fields.insert(
             k.clone(),
             Field {
-                ty: pick(&[ta.clone(), tb.clone()]),
+                ty,
                 optional: !required,
             },
         );
@@ -650,6 +690,7 @@ pub fn meet(a: &Rec, b: &Rec) -> Rec {
         rest: pick(&[a.rest.clone(), b.rest.clone()]),
         closable: a.closable && b.closable,
         size: Default::default(),
+        fills,
     }
 }
 
@@ -686,11 +727,16 @@ fn has_tag(branches: &[Ty]) -> bool {
 /// Close(T) (4.1 item 3): the rest of every closable record of T is
 /// `never`, at every depth. Shared parts are closed once.
 pub fn close(t: &Ty) -> Ty {
-    Closer::default().ty(t)
+    Closer {
+        close: true,
+        ..Closer::default()
+    }
+    .ty(t)
 }
 
 #[derive(Default)]
 struct Closer {
+    close: bool,
     lists: HashMap<usize, Arc<Ty>>,
     recs: HashMap<usize, Arc<Rec>>,
 }
@@ -728,7 +774,7 @@ impl Closer {
                             )
                         })
                         .collect();
-                    let rest = if r.closable {
+                    let rest = if self.close && r.closable {
                         Ty::never()
                     } else {
                         self.ty(&r.rest)
@@ -908,6 +954,7 @@ mod tests {
                 rest: Ty::any(),
                 closable,
                 size: Default::default(),
+                fills: Default::default(),
             }
         };
         let both = meet(&open(true, "a"), &open(true, "b"));
@@ -927,6 +974,7 @@ mod tests {
             rest: Ty::any(),
             closable: true,
             size: Default::default(),
+            fills: Default::default(),
         }));
         assert_eq!(print(&close(&nested)), "{p: {a?: int, b?: int}}[]");
     }
@@ -1061,6 +1109,36 @@ mod tests {
         // The same schema without the big part maps.
         let small = format!("{{\"$defs\": {{{defs}}}, \"allOf\": [{{\"type\": \"string\"}}]}}");
         assert_eq!(map(&small, &[]), "string");
+    }
+
+    /// F1 4.4: fills are kept apart through meets and joins (BB28, BB29).
+    #[test]
+    fn fills_are_kept_apart() {
+        let cases: &[(&str, &[&str], &str)] = &[
+            (
+                r#"{"allOf": [{"type": "object", "properties": {"a": {"type": "string"}}}, {"type": "object", "additionalProperties": {"type": "string"}}]}"#,
+                &["absent-is-null"],
+                "{a: string | null, ...string}",
+            ),
+            (
+                r#"{"allOf": [{"type": "object", "properties": {"a": {"type": "string", "default": 5}}}, {"type": "object", "additionalProperties": {"type": "string"}}]}"#,
+                &["defaults-applied"],
+                "{a: int | string, ...string}",
+            ),
+            (
+                r#"{"allOf": [{"type": "object", "properties": {"a": {"type": "string"}}}, {"type": "object", "additionalProperties": false}]}"#,
+                &["absent-is-null"],
+                "{a: null}",
+            ),
+            (
+                r#"{"anyOf": [{"type": "object", "properties": {"a": {"type": "string"}}, "additionalProperties": false}, {"type": "object", "properties": {"b": {"type": "integer"}}, "additionalProperties": false}]}"#,
+                &["absent-is-null"],
+                "{a: string | null, b: int | null}",
+            ),
+        ];
+        for (s, o, want) in cases {
+            assert_eq!(map(s, o), *want, "{s}");
+        }
     }
 
     #[test]

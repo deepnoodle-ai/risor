@@ -246,6 +246,7 @@ impl<'a> Checker<'a> {
                 rest: Ty::never(),
                 closable: false,
                 size: Default::default(),
+                fills: Default::default(),
             }),
             dropping: 0,
         }
@@ -705,6 +706,7 @@ impl<'a> Checker<'a> {
             rest: Ty::never(),
             closable: false,
             size: Default::default(),
+            fills: Default::default(),
         };
         for &e in entries {
             match self.kind(e) {
@@ -2051,37 +2053,7 @@ impl<'a> Checker<'a> {
                 }
                 NodeKind::Map { entries } if t.map.is_some() && self.plain_map(entries) => {
                     let r = t.map.as_ref().unwrap().as_ref().clone();
-                    let mut seen = Vec::new();
-                    for &en in entries {
-                        let NodeKind::Entry {
-                            key,
-                            key_span,
-                            value,
-                            ..
-                        } = self.kind(en)
-                        else {
-                            continue;
-                        };
-                        let k = match key {
-                            EntryKey::Word(k) | EntryKey::Str(k) => k.clone(),
-                            EntryKey::Computed(_) => continue,
-                        };
-                        match r.fields.get(&k) {
-                            Some(f) => self.fit_form(*value, &f.ty, mode),
-                            None if r.rest.is_never() => {
-                                let vt = self.types[value.index()].clone();
-                                self.report(*key_span, &vt, &Ty::never(), mode);
-                            }
-                            None => self.fit_form(*value, &r.rest, mode),
-                        }
-                        seen.push(k);
-                    }
-                    if r.fields
-                        .iter()
-                        .any(|(k, f)| !f.optional && !seen.contains(k))
-                    {
-                        self.report(es, &et, t, mode);
-                    }
+                    self.fit_map(e, &et, entries, &r, t, mode);
                     return;
                 }
                 NodeKind::Cond { then, else_, .. } => {
@@ -2105,6 +2077,7 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A map with no computed key: spreads are followed (15.1, ruling CI3).
     fn plain_map(&self, entries: &[NodeId]) -> bool {
         entries.iter().all(|&e| {
             matches!(
@@ -2112,9 +2085,184 @@ impl<'a> Checker<'a> {
                 NodeKind::Entry {
                     key: EntryKey::Word(_) | EntryKey::Str(_),
                     ..
-                }
+                } | NodeKind::Spread { .. }
             )
         })
+    }
+
+    /// 15.1, "A map literal against a record": each key's contributors are
+    /// the last entry that surely gives it and every later entry that may
+    /// give it; each contributor is fitted.
+    fn fit_map(&mut self, e: NodeId, et: &Ty, entries: &'a [NodeId], r: &Rec, t: &Ty, mode: Fit) {
+        enum Ent<'b> {
+            Written {
+                key: String,
+                key_span: Span,
+                value: NodeId,
+            },
+            Spread {
+                operand: NodeId,
+                /// `None`: `any`, which may give every key.
+                rec: Option<&'b Rec>,
+            },
+            Nothing,
+        }
+        let tys: Vec<Ty> = entries
+            .iter()
+            .map(|&en| match self.kind(en) {
+                NodeKind::Spread { value } => self.types[value.index()].nonnull(),
+                _ => Ty::never(),
+            })
+            .collect();
+        let mut ents: Vec<Ent> = Vec::new();
+        for (i, &en) in entries.iter().enumerate() {
+            ents.push(match self.kind(en) {
+                NodeKind::Entry {
+                    key: EntryKey::Word(k) | EntryKey::Str(k),
+                    key_span,
+                    value,
+                    ..
+                } => Ent::Written {
+                    key: k.clone(),
+                    key_span: *key_span,
+                    value: *value,
+                },
+                NodeKind::Spread { value } => {
+                    let m = &tys[i];
+                    if m.any {
+                        Ent::Spread {
+                            operand: *value,
+                            rec: None,
+                        }
+                    } else if m.kinds() == 1 && m.map.is_some() {
+                        Ent::Spread {
+                            operand: *value,
+                            rec: m.map.as_deref(),
+                        }
+                    } else {
+                        Ent::Nothing
+                    }
+                }
+                _ => Ent::Nothing,
+            });
+        }
+        // What an entry gives for a key (`None`: the other key): its type,
+        // and whether surely.
+        let gives = |en: &Ent, k: Option<&str>| -> Option<(Ty, bool)> {
+            match en {
+                Ent::Written { key, value, .. } => match k {
+                    Some(k) if k == key => Some((self.types[value.index()].clone(), true)),
+                    _ => None,
+                },
+                Ent::Spread { rec: None, .. } => Some((Ty::any(), false)),
+                Ent::Spread { rec: Some(m), .. } => {
+                    if let Some(f) = k.and_then(|k| m.fields.get(k)) {
+                        Some((f.ty.clone(), !f.optional))
+                    } else if !m.rest.is_never() {
+                        Some((m.rest.clone(), false))
+                    } else {
+                        None
+                    }
+                }
+                Ent::Nothing => None,
+            }
+        };
+        let mut keys: Vec<String> = r.fields.keys().cloned().collect();
+        for en in &ents {
+            match en {
+                Ent::Written { key, .. } => keys.push(key.clone()),
+                Ent::Spread { rec: Some(m), .. } => keys.extend(m.fields.keys().cloned()),
+                _ => {}
+            }
+        }
+        keys.sort();
+        keys.dedup();
+        let mut failed: Vec<usize> = Vec::new();
+        let mut used_any: Vec<usize> = Vec::new();
+        let mut written: Vec<usize> = Vec::new();
+        let mut surely: Vec<String> = Vec::new();
+        let all: Vec<Option<&str>> = keys
+            .iter()
+            .map(|k| Some(k.as_str()))
+            .chain(std::iter::once(None))
+            .collect();
+        for k in all {
+            let g: Vec<Option<(Ty, bool)>> = ents.iter().map(|en| gives(en, k)).collect();
+            let start = g
+                .iter()
+                .rposition(|x| x.as_ref().is_some_and(|(_, sure)| *sure))
+                .unwrap_or(0);
+            if let Some(k) = k {
+                if start < g.len() && g[start].as_ref().is_some_and(|(_, sure)| *sure) {
+                    surely.push(k.to_string());
+                }
+            }
+            let want = match k.and_then(|k| r.fields.get(k)) {
+                Some(f) => f.ty.clone(),
+                None => r.rest.clone(),
+            };
+            for (i, x) in g.iter().enumerate().skip(start) {
+                let Some((ty, _)) = x else { continue };
+                match &ents[i] {
+                    Ent::Written { .. } => written.push(i),
+                    Ent::Spread { .. } => match fits(ty, &want) {
+                        None => failed.push(i),
+                        Some(true) => used_any.push(i),
+                        _ => {}
+                    },
+                    Ent::Nothing => {}
+                }
+            }
+        }
+        written.sort_unstable();
+        written.dedup();
+        for i in written {
+            if let Ent::Written {
+                key,
+                key_span,
+                value,
+            } = &ents[i]
+            {
+                match r.fields.get(key) {
+                    Some(f) => self.fit_form(*value, &f.ty, mode),
+                    None if r.rest.is_never() => {
+                        let vt = self.types[value.index()].clone();
+                        self.report(*key_span, &vt, &Ty::never(), mode);
+                    }
+                    None => self.fit_form(*value, &r.rest, mode),
+                }
+            }
+        }
+        failed.sort_unstable();
+        failed.dedup();
+        used_any.sort_unstable();
+        used_any.dedup();
+        for i in failed.iter().copied() {
+            if let Ent::Spread { operand, .. } = &ents[i] {
+                let vs = self.span(*operand);
+                let vt = self.types[operand.index()].clone();
+                self.report(vs, &vt, t, mode);
+            }
+        }
+        for i in used_any {
+            if failed.contains(&i) {
+                continue;
+            }
+            if let Ent::Spread { operand, rec } = &ents[i] {
+                // An `any` operand's site was recorded by 7.7.
+                if rec.is_some() {
+                    let vs = self.span(*operand);
+                    self.dyn_site(vs);
+                }
+            }
+        }
+        if r.fields
+            .iter()
+            .any(|(k, f)| !f.optional && !surely.contains(k))
+        {
+            let es = self.span(e);
+            self.report(es, et, t, mode);
+        }
     }
 }
 

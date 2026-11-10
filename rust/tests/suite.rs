@@ -241,3 +241,20 @@ fn until_files_of_offered_packages_are_not_run() {
     }
     assert_eq!(risor::PACKAGES.len(), 3);
 }
+
+/// Ruling BA11: a package directory's `-check.json` file runs checked only.
+#[test]
+fn check_files_of_package_directories() {
+    use risor::testing::check_only_file;
+    use std::path::Path;
+    assert!(check_only_file(Path::new(
+        "suite/strings/strings-check.json"
+    )));
+    assert!(check_only_file(Path::new(
+        "suite/conversion/conversion-check.json"
+    )));
+    assert!(!check_only_file(Path::new("suite/core-run/x-check.json")));
+    assert!(!check_only_file(Path::new(
+        "suite/strings/strings-raw.json"
+    )));
+}
