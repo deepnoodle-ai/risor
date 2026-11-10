@@ -1,0 +1,9 @@
+1 + 2
+const a = 10;
+a * 2
+`hi ${who}`
+const b = [
+  1,
+  2,
+];
+b.sum() + a

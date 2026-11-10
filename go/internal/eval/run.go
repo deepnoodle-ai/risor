@@ -53,7 +53,7 @@ type Vars interface {
 type HostFunc func(c *Call, args []any) (any, error)
 
 // Call is the call handle a host function receives (03-host.md 3.5.2). It
-// is valid until the function returns (item 6, ruling AR1). A later use,
+// is valid until the function returns (item 6). A later use,
 // from any goroutine, charges nothing and changes no run: Charge and
 // Allocate return ErrCallEnded and Context gives a cancelled context.
 //
@@ -360,7 +360,7 @@ func (r *run) enterWalk() {
 	r.walk++
 }
 
-// read reads a host value at the node that yields it (ruling AC16).
+// read reads a host value at the node that yields it (02-evaluation.md 3.3).
 func (r *run) read(v any, sp syntax.Span) any {
 	switch v.(type) {
 	case float64, map[string]any, nil:
@@ -406,7 +406,7 @@ func (r *run) readMore(v any, sp syntax.Span) any {
 	return x
 }
 
-// readString gives the valid form of host text (ruling AC18). A long string
+// readString gives the valid form of host text (03-host.md 3.4.5). A long string
 // is checked once in a run, so a read costs constant work whatever its size.
 func (r *run) readString(s string) string {
 	if len(s) <= 64 {

@@ -28,6 +28,17 @@ type hostFact struct {
 // a name that is no variable, and a variable named twice are the declare
 // error bad-name. A child keeps its parent's host facts, less those that
 // name a variable it replaces (F14 2.6).
+//
+// Every member must be a variable that the same environment declares. A
+// host that declares only the variables a program reads must filter its
+// facts to those names: it keeps a fact whose members are all declared and
+// leaves out every other fact whole. It must not drop a member from a fact,
+// which would make the fact claim more: of a and b, one is not null does
+// not say that a is not null.
+//
+// The fact is about values, not about which step ran. A member whose value
+// can be null even when its step ran, such as the output of a step that may
+// give null, must not be in a fact.
 func SomeNotNull(names ...string) Decl {
 	return declFunc(func(e *Env) {
 		e.ownFacts = append(e.ownFacts, hostFact{members: append([]string(nil), names...)})

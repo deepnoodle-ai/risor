@@ -1,0 +1,3 @@
+error[undefined-name] 1:1-1:2: a is not defined
+    a
+    ^

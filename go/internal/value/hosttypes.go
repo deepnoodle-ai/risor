@@ -66,7 +66,7 @@ type fieldCand struct {
 	// unreadable marks a field reached through an unexported embedded
 	// pointer. encoding/json writes it, but reflect reads it only as a
 	// read-only value, which cannot become a Go value without unsafe; it
-	// takes part in dominance, and is not presented if it wins (BB22).
+	// takes part in dominance, and is not presented if it wins (F1 6.2 item 5).
 	unreadable bool
 }
 
@@ -293,7 +293,7 @@ func structKeys(rv reflect.Value, si *structInfo) []string {
 
 // marshalText presents a text type (6.2): the text MarshalText gives. It
 // reports false when MarshalText fails, and for a nil pointer, which the
-// value is then presented as null (BB21).
+// value is then presented as null (F1 6.2).
 func marshalText(m encoding.TextMarshaler) (string, bool) {
 	if rv := reflect.ValueOf(m); rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return "", false

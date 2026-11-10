@@ -588,8 +588,11 @@ by the **repair**.
 
 1. The tokens are parsed by `01-language.md` 3 and the packages, with this one
    change: where the parser, at the end of the tokens, would report a `parse`
-   diagnostic, it inserts a token in place of the end and goes on. It inserts the
-   first token of this list that it accepts there:
+   diagnostic, it inserts a token in place of the end and goes on. **The closer
+   first:** when the parser accepts there the closing bracket of the innermost
+   bracket still open (`)` for `(`, `]` for `[` and `?.[`, `}` for `{`), it
+   inserts that bracket. Otherwise it inserts the first token of this list that
+   it accepts there:
 
    `null`, `)`, `]`, `}`, `;`, `:`, `=>`, `=`, `{`, `else`, `catch`, `>`
 
@@ -603,6 +606,15 @@ by the **repair**.
    the hole is `if (◊) { null } else { null }`. The tokens the repair inserts
    never stand before the hole, so the scope of the hole and the type of what
    stands before it are those of the text the author wrote.
+6. So an unfinished call is closed, not filled: `xs.first(` is `xs.first()`, and
+   hover shows the type the call has with no argument. A `(` that begins a
+   parenthesized expression, `if (`, and an operator still need an operand, so
+   there `null` is inserted first: `(` is `(null)`, `x +` is `x + null`.
+7. Whether a `(` begins a parameter list is decided as `01-language.md` 3.2
+   rule 5 says, from the tokens before the end: a `(` whose matching `)` is not
+   among them begins a parenthesized expression. So in `(a, b = a` the `,` is an
+   error before the end, and the repair fails. A completion there is the
+   fallback of 3.5 item 1.
 
 ### 3.4 The hole
 
@@ -779,15 +791,19 @@ When the hole is a string literal, the candidates are string values, kind
 | An `Ident` of an environment variable | `variable` | The same | null | null | null |
 | A name a `const`, a pattern, a parameter or `catch` binds | `name` | The printed type it is bound to | null | null | Its own span |
 | The name of a `Call` of a library function, or of a function of a group | `function` | The printed type of the `Call` | Its record signature | The `doc` of its record | null |
-| The name of a `Call` of a host function | `function` | The same | Its printed signature | The doc its declaration carries in the binding, or null | null |
+| The name of a `Call` of a host function | `function` | The same | Its printed signature | null | null |
 | The name of a `Call` of a const-bound lambda | `lambda` | The printed type of the `Call` | null | null | The span of its name in its `const` line |
-| The word of a `MethodCall` | `method` | The printed type of the `MethodCall` | The method the check resolved: a library method's record signature, an opaque type's method's printed signature without its receiver; or null | The `doc` of its record, or null | null |
+| The word of a `MethodCall` | `method` | The printed type of the `MethodCall` | The method the check resolved: a library method's record signature, an opaque type's method's printed signature without its receiver; or null | For a library method, the `doc` of its record; otherwise null | null |
 | The word of a `Member` | `field` | The printed type of the `Member` | null | null | null |
 | The `Ident` of a namespace | `namespace` | null | null | null | null |
 | A constant of a group (F6) | `constant` | Its printed type | null | The `doc` of its record | null |
 
 4. `span` is the span of the word's token.
-5. Any other word, a keyword or a type word among them, has no hover.
+5. `doc` comes only from a library record. A host function and a method of an
+   opaque type have none in 3.0: neither a declaration in type text nor a
+   description (F1 5.3) carries one, so their `doc` is null. A later minor
+   version may add a field for it; a binding does not invent one.
+6. Any other word, a keyword or a type word among them, has no hover.
 
 ## 4. The command-line program
 

@@ -1,0 +1,6 @@
+const a = 1;
+const b = nope;
+b
+a
+const c = 1 / 0;
+c

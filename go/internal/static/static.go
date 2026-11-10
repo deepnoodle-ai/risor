@@ -299,7 +299,7 @@ func (w *walker) args(args []syntax.Node, s *scope) {
 	}
 }
 
-// lambdaCounts are the counts of a const-bound lambda (22.3, ruling AC10).
+// lambdaCounts are the counts of a const-bound lambda (22.3).
 func lambdaCounts(l *syntax.Lambda) (min, max int) {
 	for i, p := range l.Params {
 		if p.Default == nil {

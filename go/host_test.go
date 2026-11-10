@@ -116,7 +116,7 @@ func TestHostNumbers(t *testing.T) {
 		assert.Equal(t, d.Class, "environment", src)
 		assert.Equal(t, d.Message, "a number from the host is out of range", src)
 	}
-	// What does not read the element does not fail (AC16, AH1).
+	// What does not read the element does not fail (02-evaluation.md 3.3).
 	assert.Equal(t, run(t, env, "[xs[0], m.a, len(xs)]", vars), any([]any{1.0, 2.0, 2.0}))
 	v := run(t, env, "[...xs]", vars).([]any)
 	assert.Equal(t, v[1], any(big))
@@ -188,7 +188,7 @@ func TestOpaqueValues(t *testing.T) {
 	}
 }
 
-// Ruling AH2: an empty pair is entered by ==, and an empty list by a
+// 02-evaluation.md 8.4 item 5: an empty pair is entered by ==, and an empty list by a
 // rendering walk, and the depth test is made for it.
 func TestEmptyContainersAtTheDepthLimit(t *testing.T) {
 	for _, c := range []struct {
@@ -218,7 +218,7 @@ func TestEmptyContainersAtTheDepthLimit(t *testing.T) {
 
 func TestInvalidText(t *testing.T) {
 	env, _ := risor.NewEnv(risor.Declare("{s: string}"))
-	// E2 82 41: one U+FFFD for the maximal subpart E2 82, then A (AC18).
+	// E2 82 41: one U+FFFD for the maximal subpart E2 82, then A (03-host.md 3.4.5).
 	assert.Equal(t, run(t, env, "[len(s), s]", risor.Map{"s": "\xe2\x82A\xff"}), any([]any{3.0, "\ufffdA\ufffd"}))
 	assert.Equal(t, run(t, env, "s == \"\\uFFFD\"", risor.Map{"s": "\xf0\x9f\x98"}), any(true))
 	x, err := risor.Parse("\"\xe2\x82A\"")
@@ -257,7 +257,7 @@ func TestFlatPrograms(t *testing.T) {
 	}
 }
 
-// StackNeeds documents and tests the stack this binding needs (ruling AA7):
+// StackNeeds documents and tests the stack this binding needs:
 // to parse at the nesting limit, and to run at the depth limits 200 and
 // 1,000. Go grows a goroutine's stack as needed; the test caps it at
 // stackCap to show that the deepest programs fit.
@@ -296,7 +296,7 @@ func TestStackNeeds(t *testing.T) {
 	}
 }
 
-// Ruling AM3: map == visits the left map's keys in order when a value is a
+// 02-evaluation.md 5.3 item 3: map == visits the left map's keys in order when a value is a
 // list or a map, so the deep pair under the first key meets the depth limit
 // before the long string under the last key passes the step limit.
 func TestMapEqualKeyOrder(t *testing.T) {
@@ -353,7 +353,7 @@ func TestDeclare(t *testing.T) {
 		assert.True(t, errors.As(err, &e), c.code)
 		assert.Equal(t, e.Diagnostics[0].Code, c.code)
 	}
-	// A variable may be named like a library function (AC15).
+	// A variable may be named like a library function (03-host.md 3.3.4).
 	env, err := risor.NewEnv(risor.Declare("{type: string, max: int}"))
 	assert.NoError(t, err)
 	assert.Equal(t, run(t, env, "type + string(max)", risor.Map{"type": "a", "max": 1}), any("a1"))

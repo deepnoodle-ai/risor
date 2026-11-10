@@ -1,0 +1,4 @@
+bad.risor
+error[unexpected-token] 1:11-1:12: unexpected ;
+    const a = ;
+              ^

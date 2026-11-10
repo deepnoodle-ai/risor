@@ -1,0 +1,4 @@
+error[divide-by-zero] 2:16-2:26: the divisor of / is zero
+    lines.map(l => 10 / l.qty)
+                   ^^^^^^^^^^
+  in map, element 1, at 2:1-2:27

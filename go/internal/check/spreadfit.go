@@ -8,7 +8,7 @@ import (
 )
 
 // This file is the table "A map literal against a record" of 05-types.md
-// 15.1 (rulings CI1 to CI3), and the row of package F5 6 that uses it.
+// 15.1, and the row of package F5 6 that uses it.
 
 // giver is one entry of a map literal, by what it gives (15.1).
 type giver struct {

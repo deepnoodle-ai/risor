@@ -245,7 +245,7 @@ func (c *checker) ident(n *syntax.Ident, fs facts) *types.Type {
 }
 
 // depthLimit tests a type that becomes the type of node n against the
-// depth limit and the size limit (20.7, ruling CG3): over either, it is
+// depth limit and the size limit (20.7): over either, it is
 // check-limit on n and the node has type never. Both tests are constant
 // work: the depth and the size are kept with the type.
 func (c *checker) depthLimit(n syntax.Node, t *types.Type) *types.Type {
@@ -265,7 +265,7 @@ func (c *checker) limitAt(sp syntax.Span, t *types.Type) *types.Type {
 func over(t *types.Type) bool { return types.Size(t) > types.MaxSize }
 
 func (c *checker) list(n *syntax.List, fs facts) *types.Type {
-	// The item types are joined once, at the end (ruling CG10).
+	// The item types are joined once, at the end, so the work is not quadratic.
 	var elems []*types.Type
 	for _, it := range n.Items {
 		if s, ok := it.(*syntax.Spread); ok {
@@ -553,8 +553,7 @@ func (c *checker) cond(n *syntax.Cond, fs facts) *types.Type {
 		n = next
 	}
 	// When the Join of every branch is within the limits, so is the Join
-	// of the branches from any Cond on: one Join serves the chain (ruling
-	// CG10).
+	// of the branches from any Cond on: one Join serves the chain.
 	all := types.JoinAll(append(thens, last))
 	if types.Size(all) <= types.MaxSize && types.Depth(all) <= types.MaxDepth {
 		for _, cn := range chain {
@@ -593,7 +592,7 @@ func (c *checker) match(n *syntax.Match, fs facts) *types.Type {
 	p, isPath := c.pathOf(n.Subject)
 	covered := map[string]bool{}
 	hasDefault := false
-	var arms []*types.Type // joined once (ruling CG10)
+	var arms []*types.Type // joined once, at the end
 	af := fs
 	var seen []syntax.Node
 	// F5 5.3: a match on a field of a union narrows by each arm's strings.
@@ -745,7 +744,7 @@ func (c *checker) constLine(k *syntax.Const, fs facts) {
 	c.bindPattern(k.Pattern, v, k.Value.Span(), fs)
 }
 
-// maxRel is d(L) of ruling AO10: the greatest number of levels open at once
+// maxRel is d(L) of 20.2: the greatest number of levels open at once
 // inside the text of the lambda, parameter list included, less n(L). A node
 // whose own brackets may hold nothing (a list, a map, a pattern, an argument
 // or parameter list) opens one level beyond its first token.
@@ -808,7 +807,7 @@ func (c *checker) readField(r *types.Record, key string, keySpan, recvSpan synta
 		return f.Type
 	}
 	if present && !r.Rest.IsNever() {
-		return r.Rest // a fact says the key is present (ruling AO13)
+		return r.Rest // a fact says the key is present (9.2, 10.4)
 	}
 	switch {
 	case r.Rest.IsAny():
@@ -881,7 +880,7 @@ func (c *checker) mapPat(p *syntax.MapPat, v *types.Type, bound syntax.Span, fs 
 		named[f.Key] = true
 		var t *types.Type
 		// A site of an unlisted key of an open record is on the field's key
-		// (ruling AO6).
+		// (12.2).
 		if f.Default != nil {
 			rt := c.readField(r, f.Key, f.KeySpan, f.KeySpan, true, false)
 			d := c.synth(f.Default, fs)
@@ -912,7 +911,7 @@ func (c *checker) listPat(p *syntax.ListPat, v *types.Type, bound syntax.Span, f
 	switch {
 	case v.IsAny():
 		rejected := c.dyn(bound)
-		// The index site on each element without a default (ruling AO6).
+		// The index site on each element without a default (12.2).
 		for _, e := range p.Elems {
 			if e.Default == nil {
 				c.site("index", e.Name.Span())
@@ -947,12 +946,12 @@ func (c *checker) listPat(p *syntax.ListPat, v *types.Type, bound syntax.Span, f
 	}
 }
 
-// neverEqual is the condition of never-equal (8.2, 8.4, 11.2; ruling AO5).
+// neverEqual is the condition of never-equal (8.2, 8.4, 8.5, 11.2).
 func neverEqual(a, b *types.Type) bool {
 	return !a.IsNever() && !b.IsNever() && !types.Overlap(a, b) && !a.IsExactlyNull() && !b.IsExactlyNull()
 }
 
-// rendered checks a rendered expression (ruling AO2).
+// rendered checks a rendered expression (7.3).
 func (c *checker) rendered(n syntax.Node, t *types.Type) {
 	switch {
 	case types.HasOpaque(t):

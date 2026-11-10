@@ -27,6 +27,7 @@ var SuiteDirs = []string{
 	"config",     // F10
 	"math",       // F13
 	"facts",      // F14
+	"tools",      // F12
 }
 
 // SuiteCatalog is a catalog file and the field that names its entries.

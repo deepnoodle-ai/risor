@@ -327,11 +327,11 @@ func (r *run) charge(c *libCall, f fenv) {
 }
 
 // testArgs makes the tests of 04-library.md 2.6: each argument left to
-// right, the kind before the whole number (ruling AC6). They charge nothing.
+// right, the kind before the whole number. They charge nothing.
 func (r *run) testArgs(c *libCall) {
 	in := c.info
 	if in.minmax {
-		// The ordered test over the arguments (3.6, AC5): no charge.
+		// The ordered test over the arguments (3.6): no charge.
 		r.ordered(c, len(c.args), func(i int) any { return c.args[i] }, false)
 		return
 	}
@@ -364,7 +364,7 @@ func (r *run) testArgs(c *libCall) {
 	}
 }
 
-// ordered tests that a set is all numbers or all strings (3.6, ruling AC3).
+// ordered tests that a set is all numbers or all strings (3.6).
 // With charge, a failure first charges 1 step for each value tested (4.5).
 func (r *run) ordered(c *libCall, n int, at func(int) any, charge bool) {
 	var first value.Kind
@@ -512,7 +512,7 @@ func stableSort(idx []int, lessIdx func(a, b int) bool) {
 }
 
 // occurrences finds the occurrences of a non-empty t in s, left to right
-// without overlap (3.5), in work linear in len(s) (ruling AC11): a t longer
+// without overlap (3.5), in work linear in len(s): a t longer
 // than s is answered from the lengths; a short t is found by the platform's
 // search, whose work is at most len(s) × len(t) with len(t) under 64; a long
 // t by Knuth-Morris-Pratt.

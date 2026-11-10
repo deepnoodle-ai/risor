@@ -36,7 +36,7 @@ type Case struct {
 	Functions map[string]*Stub
 	Reject    []string
 	HasReject bool
-	// Removed lists the removed library entries (ruling CD4).
+	// Removed lists the removed library entries (03-host.md 3.3.1).
 	Removed []string
 	// Groups are the opt-in groups the case turns on (package F6 11.1).
 	Groups []string
@@ -54,7 +54,7 @@ type Case struct {
 	Skip         *string
 	Precondition *bool
 	// Check is false for a case compiled with the static rules alone
-	// (ruling AP1). Nil means true.
+	// (03-host.md 3.10.5 step 4). Nil means true.
 	Check *bool
 	// Schemas declares variables by JSON Schema (package F1 7.1). Nil when
 	// absent.
@@ -82,6 +82,9 @@ type Case struct {
 	ReturnsSchema *ReturnsSchema
 	Load          bool
 	Expect        *Expect
+	// Tools is the field of a format, completion or hover case (package F12
+	// 7), or nil.
+	Tools *Tools
 }
 
 // NamedType is one entry of the field types (F4 9.1).
@@ -236,7 +239,7 @@ func Parse(data []byte, path string) (*File, error) {
 }
 
 // LoadNoExpect reads a case file in which a case may have no expect, as the
-// outcome command of ruling AJ takes.
+// outcome command of the differential fuzzer takes.
 func LoadNoExpect(path string) (*File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -279,7 +282,8 @@ var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
 		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load", "facts")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load", "facts")
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load", "facts",
+		"format", "formatTemplate", "complete", "hover") // the last four: package F12 7
 	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json")
 	// F2 4.2, 4.3.
 	analysisFields = set("names", "refs", "calls", "literal", "segments")
@@ -422,7 +426,7 @@ func (v *validator) file(raw any) (*File, error) {
 			delete(merged, "returns")
 			delete(merged, "returnsSchema")
 		}
-		if hasSource || hasFile || hasConform || hasRender || hasRunner { // F4 9.2 item 1, F8 7.4 item 1, F9 3.1 item 4
+		if hasSource || hasFile || hasConform || hasRender || hasRunner || toolKind(m) != "" { // F4 9.2 item 1, F8 7.4 item 1, F9 3.1 item 4, F12 7.4 item 1
 			delete(merged, "source")
 			delete(merged, "file")
 			delete(merged, "conform")
@@ -685,6 +689,9 @@ func optString(m map[string]any, k string) *string {
 
 // build makes a Case from the merged fields, whose JSON types are checked.
 func (v *validator) build(m map[string]any, where string) (*Case, error) {
+	if toolKind(m) != "" { // F12 7
+		return v.buildTools(m, where)
+	}
 	c := &Case{Name: m["name"].(string), ExpectRaw: m["expect"], Dir: v.dir}
 	src, hasSource := m["source"]
 	file, hasFile := m["file"]
@@ -852,7 +859,7 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 			return nil, err
 		}
 	}
-	// Ruling AP1: a case with "check": false states no type and no sites,
+	// 03-host.md 3.10.7: a case with "check": false states no type and no sites,
 	// and a check failure it expects has static codes only.
 	if c.Check != nil && !*c.Check {
 		if e.Type != nil || e.HasSites {
@@ -1146,7 +1153,8 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 			return nil, err
 		}
 	}
-	// Ruling A5: a case that expects a limit code states no usage.
+	// 03-host.md 3.10.7 item 10: a case that expects a limit code states no
+	// usage.
 	if e.Phase == "run" && (e.Steps != nil || e.Allocated != nil) {
 		for _, d := range e.Diagnostics {
 			if diag.LimitCodes[d.Code] {

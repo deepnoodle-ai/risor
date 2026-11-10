@@ -369,7 +369,7 @@ func valueSpans(x *Expr, cr *check.Result) map[[4]int]bool {
 func checkedClass(d *Diagnostic, dynamic, host, val map[[4]int]bool) {
 	switch d.Code {
 	case "function-error":
-		// The mark ! is a promise (ruling CE2).
+		// The mark ! is a promise (05-types.md 18.5).
 		if d.Span == nil || !host[d.Span.Array()] {
 			d.Class = "environment"
 		}

@@ -54,6 +54,11 @@ type parser struct {
 	q       int    // the ? of a conditional whose : is missing, plus one
 	ctx     []frame
 	marks   map[int]uint8
+
+	// zone is one more than the index of the first token of the end of a
+	// repaired text (package F12 3.3, tools.go), or 0. A ( whose matching
+	// ) is not before it begins a parenthesized expression (3.3 item 7).
+	zone int
 }
 
 // frame is a production open at the failing token, for the mapping.
@@ -149,7 +154,7 @@ func (p *parser) fail(code string, start, end int, msg string) {
 func (p *parser) unexpected() {
 	t := p.tok
 	s, e := t.ErrStart, t.ErrEnd
-	// "not in" is one operator: its span runs to the end of "in" (P7).
+	// "not in" is one operator: its span runs to the end of "in".
 	if t.isWord("not") && p.peek(1).isWord("in") {
 		e = p.peek(1).End
 	}
@@ -267,6 +272,9 @@ func (p *parser) argOrExpr(allowLambda bool) Node {
 func (p *parser) parenLambda() bool {
 	depth := 0
 	for j := p.i + 1; j < len(p.toks); j++ {
+		if p.zone > 0 && j >= p.zone-1 {
+			return false
+		}
 		switch p.toks[j].Kind {
 		case LParen, LBrack, OptLBrack, LBrace:
 			depth++
@@ -768,8 +776,7 @@ func (p *parser) climbFrom(m mark, left Node, bang *Token, min int) (Node, *Toke
 }
 
 // unary parses a Unary. outer is the outermost prefix operator of the run of
-// prefix operators this Unary is in, which is the span of 3.4 rules 1 and 2
-// (ruling P6). The "!" token it returns is the outermost operator when that
+// prefix operators this Unary is in, which is the span of 3.4 rules 1 and 2. The "!" token it returns is the outermost operator when that
 // operator is "!".
 func (p *parser) unary(outer *Token) (Node, *Token) {
 	if p.tok.Kind == Bang || p.tok.Kind == Minus {

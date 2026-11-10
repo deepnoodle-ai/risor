@@ -75,17 +75,17 @@ func TestCheck(t *testing.T) {
 	code, out, errOut := runCLI("check", app, "--var", "n=x", "--env", "PORT", "--type", "{listen: string, max_body: int, name: string}")
 	assert.Equal(t, code, 0, errOut)
 	assert.Equal(t, out, "")
-	code, _, errOut = runCLI("check", app, "--var", "n=x", "--env", "PORT", "--type", "{listen: string}")
+	code, out, _ = runCLI("check", app, "--var", "n=x", "--env", "PORT", "--type", "{listen: string}")
 	assert.Equal(t, code, 1)
-	assert.Equal(t, strings.Count(errOut, "result-mismatch"), 2)
+	assert.Equal(t, strings.Count(out, "result-mismatch"), 2) // check writes its diagnostics to standard output (F12 4.5)
 	// check does not run: a program that would fail its run checks.
 	f := put(t, dir, "f.risor", `fail("x")`)
 	code, _, _ = runCLI("check", f)
 	assert.Equal(t, code, 0)
 	// A misspelled setting of an undeclared variable.
-	code, _, errOut = runCLI("check", app)
+	code, out, _ = runCLI("check", app)
 	assert.Equal(t, code, 1)
-	assert.True(t, strings.Contains(errOut, "undefined-name"))
+	assert.True(t, strings.Contains(out, "undefined-name"))
 }
 
 func TestConfigCommandLineErrors(t *testing.T) {
@@ -99,7 +99,7 @@ func TestConfigCommandLineErrors(t *testing.T) {
 		{"eval", app, "--var", "n=1", "--vars", vars},
 		{"eval", app, "--var", "n=1", "--var", "n=2"},
 		{"eval", filepath.Join(dir, "missing.risor")},
-		{"check", app, "--format", "json"},
+		{"check", app, "--pretty"},
 	} {
 		code, _, _ := runCLI(args...)
 		assert.Equal(t, code, 2, args)

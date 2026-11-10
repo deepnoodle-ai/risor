@@ -1,0 +1,281 @@
+{
+ "cases": [
+  {
+   "name": "a declared record with an empty key",
+   "source": "m",
+   "expect": {
+    "type": "{\"\": int, a: string}",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a read of a required empty key",
+   "source": "m[\"\"]",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a read of a required empty key in arithmetic",
+   "source": "m[\"\"] + 1",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a plain read of an optional empty key",
+   "source": "o[\"\"]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-absent",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "an optional read of an optional empty key",
+   "source": "o?.[\"\"]",
+   "expect": {
+    "type": "int | null",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "an exact record has no empty key",
+   "source": "e[\"\"]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "no-field",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "map<int>: a read of the empty key may be absent",
+   "source": "r[\"\"]",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-absent",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a map literal with an empty key",
+   "source": "{\"\": 1}",
+   "expect": {
+    "type": "{\"\": int}",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "the empty key written twice in a map literal",
+   "source": "{\"\": 1, \"\": 2}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "duplicate-key",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a read of the empty key of a map literal",
+   "source": "{\"\": 1, a: \"x\"}[\"\"]",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a pattern field with the empty key",
+   "source": "const {\"\": v} = m; v",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a pattern field with an optional empty key",
+   "source": "const {\"\": v} = o; v",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-absent",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a pattern field with the empty key and a default",
+   "source": "const {\"\": v = 0} = o; v",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a fact about the empty key",
+   "source": "o?.[\"\"] != null ? o[\"\"] + 1 : 0",
+   "expect": {
+    "type": "int",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a literal fits a record with an empty key",
+   "source": "{\"\": 1}",
+   "returns": "{\"\": int}",
+   "expect": {
+    "type": "{\"\": int}",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a literal whose empty key has the wrong type",
+   "source": "{\"\": \"x\"}",
+   "returns": "{\"\": int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a literal that lacks a required empty key",
+   "source": "{a: 1}",
+   "returns": "{\"\": int}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     },
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a literal may omit an optional empty key; the type stays the literal's",
+   "source": "{}",
+   "returns": "{\"\"?: int}",
+   "expect": {
+    "type": "{}",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a spread keeps the empty key",
+   "source": "{...m, a: \"y\"}",
+   "expect": {
+    "type": "{\"\": int, a: \"y\"}",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "Join of two records, one with an empty key",
+   "source": "true ? m : e",
+   "reject": [],
+   "expect": {
+    "type": "{\"\"?: int, a: int | string}",
+    "sites": []
+   },
+   "env": "{m: {\"\": int, a: string}, o: {\"\"?: int}, e: {a: int}, r: map<int>}"
+  },
+  {
+   "name": "a declared type with the empty key written twice",
+   "source": "1",
+   "env": "{x: {\"\": int, \"\": string}}",
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  }
+ ]
+}

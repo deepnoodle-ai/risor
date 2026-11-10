@@ -478,7 +478,27 @@
    }
   },
   {
-   "name": "a default sees the parameters to its left",
+   "name": "a default sees the names to its left in its pattern",
+   "complete": "const {name, age = na‸} = user;\nage",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      20,
+      1,
+      22
+     ],
+     "items": [
+      {
+       "label": "name",
+       "kind": "name"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "an unclosed parameter list is read as parentheses, so the fallback lists the environment",
    "complete": "const f = (a, b = a‸) => b;\nf(1)",
    "expect": {
     "completion": {
@@ -490,8 +510,9 @@
      ],
      "items": [
       {
-       "label": "a",
-       "kind": "name"
+       "label": "abs",
+       "kind": "function",
+       "detail": "(x: T) => T where T: number"
       }
      ]
     }
@@ -661,7 +682,23 @@
        "label": "first",
        "kind": "method",
        "detail": "() => T | null"
-      },
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "methods of a list by the prefix fl",
+   "complete": "user.tags.fl‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      11,
+      1,
+      13
+     ],
+     "items": [
       {
        "label": "flat",
        "kind": "method",

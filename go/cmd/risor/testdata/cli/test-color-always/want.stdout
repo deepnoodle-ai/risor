@@ -1,0 +1,5 @@
+a.test.json
+  [1;31mFAIL[0m a
+    value: expected 4, found 3
+  [33mSKIP[0m s: later
+1 files, 2 cases: 0 pass, 1 fail, 1 skip, 0 invalid

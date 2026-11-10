@@ -1,0 +1,2 @@
+const a = nope;
+[{name: "a", source: "1", expect: {value: a}}]

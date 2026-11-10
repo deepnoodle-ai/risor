@@ -1,0 +1,3 @@
+const total = 10;
+const parts = 0;
+total / parts

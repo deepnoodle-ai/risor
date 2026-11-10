@@ -12,7 +12,7 @@ import (
 // computed by internal/crmath.
 
 // mathEntries are the eleven entries; groups.go adds them to the entries of
-// the groups. Each makes, in the order of f13-math.md 3 (ruling BE12): the
+// the groups. Each makes, in the order of f13-math.md 3: the
 // not-real test, the record's steps (200), then the computation.
 var mathEntries = map[string]libFunc{
 	"math.pow":   mathTwo(crmath.Pow, func(x, y float64) bool { return (x == 0 && y < 0) || (x < 0 && y != math.Trunc(y)) }),

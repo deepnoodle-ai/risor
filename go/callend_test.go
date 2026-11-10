@@ -11,7 +11,7 @@ import (
 )
 
 // A host function that keeps its call handle cannot use it after it returns
-// (03-host.md 3.5.2 item 6, ruling AR1): Charge and Allocate return
+// (03-host.md 3.5.2 item 6): Charge and Allocate return
 // ErrCallEnded and change no run, and Context is cancelled. That holds after
 // the run, and while a second run of the same program, which may reuse the
 // first run's state, is in progress. Run under -race.

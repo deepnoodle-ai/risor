@@ -53,7 +53,7 @@ func TestValid(t *testing.T) {
 	assert.Equal(t, f.Cases[2].Expect.Value, any(2.0))
 	assert.Equal(t, *f.Cases[3].Skip, "later")
 
-	// Ruling AP1: check in the header and in a case.
+	// "check" in the header and in a case (03-host.md 3.10.5 step 4).
 	f, err = load(t, `{"check": false, "cases": [
 		{"name": "a", "source": "1", "expect": {"phase": "check", "diagnostics": [{"code": "arity"}]}},
 		{"name": "b", "source": "1", "check": true, "expect": {"type": "int"}}]}`)
@@ -67,7 +67,7 @@ func TestValid(t *testing.T) {
 	assert.Equal(t, len(f.Cases), 1)
 }
 
-// 03-host.md 3.10.10, item by item, and ruling A5.
+// 03-host.md 3.10.10, item by item.
 func TestInvalid(t *testing.T) {
 	c := func(fields string) string {
 		return `[{"name": "x", "source": "1", ` + fields + `}]`
@@ -118,12 +118,12 @@ func TestInvalid(t *testing.T) {
 		{"12 steps with parse", c(`"expect": {"phase": "parse", "steps": 1, "diagnostics": [{"code": "x"}]}`)},
 		{"12 allocated with check", c(`"expect": {"phase": "check", "allocated": 1, "diagnostics": [{"code": "x"}]}`)},
 		{"13 infinity", c(`"expect": {"value": 1e400}`)},
-		{"A5 limit code with steps", c(`"expect": {"phase": "run", "steps": 3, "diagnostics": [{"code": "steps-exceeded"}]}`)},
-		{"AP1 check not a boolean", c(`"expect": {}, "check": "no"`)},
-		{"AP1 check false with type", c(`"expect": {"type": "int"}, "check": false`)},
-		{"AP1 check false with sites", c(`"expect": {"sites": []}, "check": false`)},
-		{"AP1 check false with a type rule code", c(`"expect": {"phase": "check", "diagnostics": [{"code": "kind"}]}, "check": false`)},
-		{"AP1 header check false with type", `{"check": false, "cases": [{"name": "x", "source": "1", "expect": {"type": "int"}}]}`},
+		{"limit code with steps", c(`"expect": {"phase": "run", "steps": 3, "diagnostics": [{"code": "steps-exceeded"}]}`)},
+		{"check not a boolean", c(`"expect": {}, "check": "no"`)},
+		{"check false with type", c(`"expect": {"type": "int"}, "check": false`)},
+		{"check false with sites", c(`"expect": {"sites": []}, "check": false`)},
+		{"check false with a type rule code", c(`"expect": {"phase": "check", "diagnostics": [{"code": "kind"}]}, "check": false`)},
+		{"header check false with type", `{"check": false, "cases": [{"name": "x", "source": "1", "expect": {"type": "int"}}]}`},
 	} {
 		_, err := load(t, bad.text)
 		assert.Error(t, err, bad.why)

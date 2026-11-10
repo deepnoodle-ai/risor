@@ -1,0 +1,6 @@
+error[undefined-name] 1:11-1:15: nope is not defined
+    const a = nope;
+              ^^^^
+error[undefined-name] 2:17-2:24: missing is not defined
+    {x: a + "s", y: missing}
+                    ^^^^^^^

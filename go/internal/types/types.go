@@ -254,7 +254,7 @@ func unionStrings(a, b []string) []string {
 }
 
 // JoinAll is the Join of several types (4.1), in time n log n in their
-// number and the strings of their literal sets (ruling CG10): the literal
+// number and the strings of their literal sets: the literal
 // sets are gathered and sorted once, and the rest is joined as a balanced
 // tree, so no set is copied once for each type joined.
 func JoinAll(ts []*Type) *Type {
@@ -716,7 +716,7 @@ func HasOpaque(t *Type) bool {
 	return false
 }
 
-// HasAny is has-any(t) of ruling AO2: t is any, or an element, field or
+// HasAny is has-any(t) of 05-types.md 4.5: t is any, or an element, field or
 // rest type of t has any, at any depth.
 func HasAny(t *Type) bool {
 	if t.any {
@@ -765,8 +765,8 @@ func Depth(t *Type) int {
 	return d + 1
 }
 
-// MaxSize is the limit on the size of a type (05-types.md 20.7, ruling
-// CG2). The specification fixes it.
+// MaxSize is the limit on the size of a type (05-types.md 20.7).
+// The specification fixes it.
 const MaxSize = 100000
 
 // Size is the size of a type written out with no sharing (20.7), saturated

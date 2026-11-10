@@ -1,0 +1,4 @@
+error[not-conforming]: expected bool, found "no" at .debug
+error[not-conforming]: expected string, found 1 at .host
+error[not-conforming]: expected int, found "80" at .port
+error[not-conforming]: the type does not allow key "x" at .x

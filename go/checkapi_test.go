@@ -12,9 +12,12 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// Round 13: rulings CF1, CF3 and CD, at the Go API.
+// Rules seen at the Go API: a const-bound lambda named as an argument is a
+// use (05-types.md 13.9); a pattern's failure is at a site on the value
+// bound (18.3); a host site is on the failing call only (18.5); and child
+// environments (03-host.md 3.3.2) with the removed library entries (3.3.1).
 
-func TestCF1NamedLambdaOnAnyReceiver(t *testing.T) {
+func TestNamedLambdaOnAnyReceiver(t *testing.T) {
 	// A const-bound lambda named as an argument of a method on an any
 	// receiver is a use: its body is checked there.
 	env, err := risor.NewEnv(risor.Declare("{m: any}"))
@@ -32,7 +35,7 @@ func TestCF1NamedLambdaOnAnyReceiver(t *testing.T) {
 	assert.Equal(t, r.Sites[0].Span.Array(), [4]int{1, 17, 1, 18})
 }
 
-func TestCF3PatternOnDynamicValue(t *testing.T) {
+func TestPatternOnDynamicValue(t *testing.T) {
 	// A pattern's failure is at a site when the site is on the value bound.
 	env, err := risor.NewEnv(risor.Declare("{items: any}"))
 	assert.NoError(t, err)
@@ -76,7 +79,7 @@ func TestRemovedEntries(t *testing.T) {
 	}
 }
 
-func TestCF1FactsWhereWritten(t *testing.T) {
+func TestLambdaFactsWhereWritten(t *testing.T) {
 	// The body sees the facts where the lambda was written, not those at the
 	// call: a narrowing at the call does not reach it.
 	env, err := risor.NewEnv(risor.Declare("{m: any, o: {n: string} | null}"))
@@ -90,7 +93,7 @@ func TestCF1FactsWhereWritten(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestCH1HostSiteOnTheFailingCallOnly(t *testing.T) {
+func TestHostSiteOnTheFailingCallOnly(t *testing.T) {
 	// The host site of rate("x") is on that call; geo.distance, not
 	// marked !, returns an error: class environment, not host.
 	rate := func(c *risor.Call, args []any) (any, error) { return "x", nil }
@@ -120,7 +123,7 @@ func TestCH1HostSiteOnTheFailingCallOnly(t *testing.T) {
 	assert.Equal(t, e.Diagnostics[0].Class, "host")
 }
 
-func TestCH2ChildEnvironments(t *testing.T) {
+func TestChildEnvironmentsReplace(t *testing.T) {
 	impl := func(c *risor.Call, args []any) (any, error) { return 1.0, nil }
 	parent, err := risor.NewEnv(
 		risor.Var("x", "int"),
@@ -174,7 +177,7 @@ func TestCH2ChildEnvironments(t *testing.T) {
 	assert.Equal(t, e.Diagnostics[0].Code, "name-clash")
 }
 
-func TestCH4OpaqueTypeInChild(t *testing.T) {
+func TestOpaqueTypeInChild(t *testing.T) {
 	impl := func(c *risor.Call, args []any) (any, error) { return "", nil }
 	parent, err := risor.NewEnv(risor.OpaqueType{Name: "Time", Methods: map[string]risor.Function{
 		"format": {Type: "(layout: string) => string", Impl: impl},
@@ -224,7 +227,7 @@ type sz14 struct{ L, R sz13 }
 type sz15 struct{ L, R sz14 }
 type sz30 struct{ A, B, C, D, E, F, G, H sz15 }
 
-func TestCGTypeSize(t *testing.T) {
+func TestTypeSizeLimit(t *testing.T) {
 	// A Go type that uses one struct in many places is built once; over the
 	// size limit it is bad-type.
 	_, err := risor.TypeOf[sz14]()

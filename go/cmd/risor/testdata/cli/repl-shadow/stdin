@@ -1,0 +1,6 @@
+const a = 1;
+const f = x => x + a;
+const a = 100;
+[a, f(1)]
+const a = a + 1;
+a

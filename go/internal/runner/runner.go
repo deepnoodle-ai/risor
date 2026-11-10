@@ -1,10 +1,15 @@
 // Package runner runs case files (spec/core/03-host.md 3.10) against the
 // implementation and gives each case a verdict.
 //
-// This implementation has no type checker yet. By 3.10.8 item 5 and ruling
-// A3 it gives skip to a case that states type or sites, or that expects a
-// check code outside the static list. It compares class by the column of a
-// program compiled without a check (03-host.md 3.7.6).
+// It is a runner with a type checker (03-host.md 3.10.8 item 5). A case
+// with "check": false is run once, with the static rules alone. A case of
+// core-check, and a case that states type or sites or expects a check code
+// that is not static, is run once, checked. Every other case is run twice,
+// checked and with the static rules alone, and passes only when both runs
+// pass; class is compared as 3.10.7 item 8 says. The files of a package
+// directory are run by the same rules, with the additions each package's
+// chapter makes, and the until- files of an offered package are not run
+// (3.11 item 4).
 package runner
 
 import (
@@ -106,7 +111,7 @@ func RunFile(path string) []Result {
 		}
 		return out
 	}
-	// 03-host.md 3.11 item 7 (ruling BA11): a file of a package directory
+	// 03-host.md 3.11 item 7: a file of a package directory
 	// whose name ends -check.json is run checked only, as core-check is.
 	if CheckOnlyFile(path) && !CheckedOnly {
 		CheckedOnly = true
@@ -129,12 +134,12 @@ func CheckOnlyFile(path string) bool { return strings.HasSuffix(filepath.Base(pa
 // file, else every .json file under the directory, in order.
 // Offered is the one list of the follow-on packages this implementation
 // offers (03-host.md 3.11 item 2: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10,
-// F11, F13, F12, in that order, each with all before it). F12 is not built.
-var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true, "F10": true, "F11": true, "F13": true, "F14": true}
+// F11, F13, F14, F12, in that order, each with all before it).
+var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true, "F10": true, "F11": true, "F13": true, "F14": true, "F12": true}
 
 // Skipped returns whether a case file is one a runner of this
 // implementation does not run: its name begins until-fNN- and package NN is
-// offered (03-host.md 3.11 item 4, ruling BA8).
+// offered (03-host.md 3.11 item 4).
 func Skipped(path string) bool {
 	base := filepath.Base(path)
 	if !strings.HasPrefix(base, "until-f") {
@@ -424,6 +429,9 @@ func missingEntries(x *risor.Expr, c *casefile.Case) []string {
 
 func runCase(cr *caseRun) Result {
 	c := cr.c
+	if c.Tools != nil { // F12 7
+		return runTools(c)
+	}
 	if c.Skip != nil {
 		return skip(*c.Skip)
 	}
@@ -439,15 +447,16 @@ func runCase(cr *caseRun) Result {
 	if c.Render != nil { // F8 7.8 item 3
 		return runRender(c)
 	}
-	// Ruling AP1: a case with "check": false is compiled with the static
-	// rules alone, and its class is compared for every code.
+	// 03-host.md 3.10.8 item 5: a case with "check": false is compiled with
+	// the static rules alone, and its class is compared for every code.
 	if c.Check != nil && !*c.Check {
 		return cr.runMode(false, true)
 	}
 	if c.Load { // F10 10.2 item 3: run once, checked
 		return cr.runMode(true, true)
 	}
-	// Ruling AP2: checked, then with the static rules alone; one verdict.
+	// Checked, then with the static rules alone; one verdict (03-host.md
+	// 3.10.8 item 5).
 	r := cr.runMode(true, true)
 	if r.Verdict != Pass || CheckedOnly {
 		return r

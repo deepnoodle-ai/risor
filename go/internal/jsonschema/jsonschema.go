@@ -95,7 +95,7 @@ func (m *mapper) schema(s any, root bool) result {
 	if res.depth > MaxDepth {
 		m.fail("the schema is deeper than %d", MaxDepth)
 	}
-	// 05-types.md 20.7, ruling CG4: a type over the size limit is bad-type.
+	// 05-types.md 20.7: a type over the size limit is bad-type.
 	// Each part is tested as it is mapped, so no operation on it (Pick,
 	// Meet, Join, Close) works on a type past the limit.
 	if types.Size(res.t) > types.MaxSize {
@@ -331,7 +331,7 @@ func (m *mapper) kindPart(s map[string]any, add func(result) *types.Type) *types
 // items is the element type of an array (3.5).
 func (m *mapper) items(s map[string]any, add func(result) *types.Type) *types.Type {
 	e := types.Never
-	var es []*types.Type // the items of a list, joined once (ruling CG10)
+	var es []*types.Type // the items of a list, joined once, not once for each item
 	schemaList := func(k string, v any) {
 		arr, ok := v.([]any)
 		if !ok {

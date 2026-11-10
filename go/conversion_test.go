@@ -176,3 +176,42 @@ func TestUntaggedUnionInnermost(t *testing.T) {
 	assert.Equal(t, len(ds), 1)
 	assert.Equal(t, ds[0].Span.Array(), [4]int{1, 6, 1, 27})
 }
+
+// A key may be any string, the empty one among them (05-types.md 2.2): it
+// is never read as "no key".
+func TestEmptyKey(t *testing.T) {
+	env, err := risor.NewEnv(risor.Var("b", "any"))
+	assert.NoError(t, err)
+	run := func(src string, v any) (any, risor.Usage, error) {
+		x, err := risor.Parse(src)
+		assert.NoError(t, err)
+		p, err := env.Compile(x, risor.NoCheck)
+		assert.NoError(t, err)
+		return p.Measure(context.Background(), risor.Map{"b": v})
+	}
+	_, u, err := run(`b as {"": string}`, map[string]any{})
+	var e *risor.Error
+	assert.True(t, errors.As(err, &e))
+	assert.Equal(t, e.Diagnostics[0].Message, `required field "" is missing`)
+	assert.Equal(t, u.Steps, int64(2))
+	v, _, err := run(`b is {"": null}`, map[string]any{"": nil})
+	assert.NoError(t, err)
+	assert.Equal(t, v, any(true))
+	ty, err := env.ParseType(`{"": int}`)
+	assert.NoError(t, err)
+	ds := risor.ConformAll(map[string]any{"x": 1.0}, ty, 5)
+	assert.Equal(t, len(ds), 2)
+	assert.Equal(t, ds[0].Path, []any{""})
+	// A named type with an empty key; its name has two characters, since
+	// one upper-case letter is a type variable and so bad-name.
+	_, err = risor.NewEnv(risor.Var("b", "any"), risor.NamedType("E", `{"": int}`))
+	assert.True(t, errors.As(err, &e))
+	assert.Equal(t, e.Diagnostics[0].Code, "bad-name")
+	env, err = risor.NewEnv(risor.Var("b", "any"), risor.NamedType("Em", `{"": int}`))
+	assert.NoError(t, err)
+	_, u, err = run(`b as Em`, map[string]any{"": "x"})
+	assert.True(t, errors.As(err, &e))
+	assert.Equal(t, e.Diagnostics[0].Message, `expected int, found "x"`)
+	assert.Equal(t, e.Diagnostics[0].Path, []any{""})
+	assert.Equal(t, u.Steps, int64(2))
+}

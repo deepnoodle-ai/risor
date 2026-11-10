@@ -132,6 +132,28 @@
   }
  },
  {
+  "name": "an unclosed call of a host function with optional parameters",
+  "hover": "‸f(",
+  "functions": {
+   "f": "(a?: int, b?: int) => int"
+  },
+  "expect": {
+   "hover": {
+    "kind": "function",
+    "span": [
+     1,
+     1,
+     1,
+     2
+    ],
+    "type": "int",
+    "signature": "(a?: int, b?: int) => int",
+    "doc": null,
+    "declaration": null
+   }
+  }
+ },
+ {
   "name": "a method of an opaque type",
   "hover": "tok.‸owner()",
   "env": "{tok: Token}",

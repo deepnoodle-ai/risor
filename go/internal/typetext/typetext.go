@@ -616,7 +616,7 @@ func (s *Sig) String() string {
 	return out
 }
 
-// The depth of type text (05-types.md 20.5, ruling AA3): a "[]" suffix is 1
+// The depth of type text (05-types.md 20.5): a "[]" suffix is 1
 // more than what it follows; a bracketed form is 1 more than the deepest of
 // its contents; any other text is 0.
 

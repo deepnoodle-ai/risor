@@ -1,5 +1,5 @@
 // Command outcome runs every case of one case file and writes one line of
-// JSON for each, for the differential fuzzer (spec rulings, round 10 AJ).
+// JSON for each, for the differential fuzzer.
 // It ignores every expect. Run it from go/ with
 // "GOWORK=off go run ./cmd/outcome FILE".
 package main

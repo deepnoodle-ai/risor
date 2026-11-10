@@ -41,6 +41,8 @@ type Entry struct {
 	// Extends names the Core entry a record of package F7 takes the place
 	// of: list.sortBy.
 	Extends string `json:"extends"`
+	// Doc is the record's doc, which hover shows (package F12 3.13).
+	Doc string `json:"doc"`
 
 	// Sig is the parsed signature.
 	Sig *typetext.Sig `json:"-"`
@@ -128,7 +130,7 @@ func Method(k value.Kind, name string) (*Entry, bool) {
 }
 
 // KindWord is the word that names a method's receiver kind in an entry name
-// (03-host.md 3.3.1, ruling CD1): string, list or map.
+// (03-host.md 3.3.1): string, list or map.
 func KindWord(k value.Kind) string {
 	switch k {
 	case value.String:
@@ -161,7 +163,7 @@ func (e *Entry) EntryName() string {
 	return e.Name
 }
 
-// IsEntryName reports whether a name names an entry by CD1.
+// IsEntryName reports whether a name names an entry (03-host.md 3.3.1).
 func IsEntryName(n string) bool {
 	if _, ok := Functions[n]; ok {
 		return true

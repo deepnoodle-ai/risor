@@ -1,0 +1,4 @@
+bad.test.risor
+  INVALID
+    error[undefined-name] 1:11-1:15: nope is not defined
+1 files, 0 cases: 0 pass, 0 fail, 0 skip, 0 invalid; 1 files invalid

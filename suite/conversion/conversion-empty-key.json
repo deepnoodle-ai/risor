@@ -1,0 +1,725 @@
+{
+ "cases": [
+  {
+   "name": "as: a required empty key, absent",
+   "source": "b as {\"\": string}",
+   "vars": {
+    "b": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ],
+      "path": [
+       ""
+      ],
+      "message": "required field \"\" is missing",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "as: a required empty key, present",
+   "source": "b as {\"\": string}",
+   "vars": {
+    "b": {
+     "": "x"
+    }
+   },
+   "expect": {
+    "value": {
+     "": "x"
+    },
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "as: a required empty key of the wrong kind",
+   "source": "b as {\"\": string}",
+   "vars": {
+    "b": {
+     "": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ],
+      "path": [
+       ""
+      ],
+      "message": "expected string, found 1",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "as: a required empty key, present with null",
+   "source": "b as {\"\": string}",
+   "vars": {
+    "b": {
+     "": null
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ],
+      "path": [
+       ""
+      ],
+      "message": "expected string, found null",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "as: an optional empty key, absent",
+   "source": "b as {\"\"?: string}",
+   "vars": {
+    "b": {}
+   },
+   "expect": {
+    "value": {},
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "as: an optional empty key, present",
+   "source": "b as {\"\"?: string}",
+   "vars": {
+    "b": {
+     "": "x"
+    }
+   },
+   "expect": {
+    "value": {
+     "": "x"
+    },
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "as: an optional empty key, present with null",
+   "source": "b as {\"\"?: string}",
+   "vars": {
+    "b": {
+     "": null
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       19
+      ],
+      "path": [
+       ""
+      ],
+      "message": "expected string, found null",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "as: an empty key that may be null",
+   "source": "b as {\"\": string | null}",
+   "vars": {
+    "b": {
+     "": null
+    }
+   },
+   "expect": {
+    "value": {
+     "": null
+    },
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "is: an empty key whose type is null",
+   "source": "b is {\"\": null}",
+   "vars": {
+    "b": {
+     "": null
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "is: an empty key absent",
+   "source": "b is {\"\": null}",
+   "vars": {
+    "b": {}
+   },
+   "expect": {
+    "value": false,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "is: an optional empty key absent",
+   "source": "b is {\"\"?: null}",
+   "vars": {
+    "b": {}
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "an exact record with an empty key and another key",
+   "source": "b as {\"\": int}",
+   "vars": {
+    "b": {
+     "": 1,
+     "a": 2
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       15
+      ],
+      "path": [
+       "a"
+      ],
+      "message": "the type does not allow key \"a\"",
+      "class": "value"
+     }
+    ],
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "the empty key is the least other key of an exact record",
+   "source": "b as {a: int}",
+   "vars": {
+    "b": {
+     "a": 1,
+     "": 2,
+     "z": 3
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ],
+      "path": [
+       ""
+      ],
+      "message": "the type does not allow key \"\"",
+      "class": "value"
+     }
+    ],
+    "steps": 4,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "the empty key sorts before every declared key",
+   "source": "b as {a: int, \"\": int}",
+   "vars": {
+    "b": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       23
+      ],
+      "path": [
+       ""
+      ],
+      "message": "required field \"\" is missing",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "an open record with an empty key",
+   "source": "b as {\"\": int, ...}",
+   "vars": {
+    "b": {
+     "": 1,
+     "z": [
+      1
+     ]
+    }
+   },
+   "expect": {
+    "value": {
+     "": 1,
+     "z": [
+      1
+     ]
+    },
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "an open record with the empty key absent",
+   "source": "b as {\"\": int, ...}",
+   "vars": {
+    "b": {
+     "z": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       20
+      ],
+      "path": [
+       ""
+      ],
+      "message": "required field \"\" is missing",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "a typed rest: the empty key is the least failing key",
+   "source": "b as map<int>",
+   "vars": {
+    "b": {
+     "": "x",
+     "a": "y",
+     "b": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ],
+      "path": [
+       ""
+      ],
+      "message": "expected int, found \"x\"",
+      "class": "value"
+     }
+    ],
+    "steps": 4,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "a typed rest: the empty key passes",
+   "source": "b as map<int>",
+   "vars": {
+    "b": {
+     "": 1,
+     "a": 2
+    }
+   },
+   "expect": {
+    "value": {
+     "": 1,
+     "a": 2
+    },
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "the empty key nested",
+   "source": "b as {\"\": {\"\": int}}",
+   "vars": {
+    "b": {
+     "": {
+      "": "q"
+     }
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ],
+      "path": [
+       "",
+       ""
+      ],
+      "message": "expected int, found \"q\"",
+      "class": "value"
+     }
+    ],
+    "steps": 3,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "a message prints a record with an empty key",
+   "source": "b as {\"\": string}",
+   "vars": {
+    "b": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ],
+      "path": [],
+      "message": "expected {\"\": string}, found 1",
+      "class": "value"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "the empty key and the key of one space are two keys",
+   "source": "b as {\"\": int, \" \": int}",
+   "vars": {
+    "b": {
+     " ": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       25
+      ],
+      "path": [
+       ""
+      ],
+      "message": "required field \"\" is missing",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "a named type with an empty key",
+   "source": "b as Emp",
+   "types": [
+    {
+     "name": "Emp",
+     "type": "{\"\": int}"
+    }
+   ],
+   "vars": {
+    "b": {
+     "": "x"
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "path": [
+       ""
+      ],
+      "message": "expected int, found \"x\"",
+      "class": "value"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "err.path holds the empty key",
+   "source": "try { b as {\"\": int} } catch (e) { e.path }",
+   "vars": {
+    "b": {}
+   },
+   "expect": {
+    "value": [
+     ""
+    ],
+    "steps": 4,
+    "allocated": 12
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "check: the type of a test with an empty key",
+   "source": "b as {\"\": int}",
+   "expect": {
+    "type": "{\"\": int}",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       15
+      ]
+     }
+    ]
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "check: a read of the empty key after a test",
+   "source": "(b as {\"\": int})[\"\"] + 1",
+   "expect": {
+    "type": "int",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       2,
+       1,
+       16
+      ]
+     }
+    ]
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "check: is narrows to a record with an empty key",
+   "source": "b is {\"\": string} ? b[\"\"].trim() : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "an empty key written twice in a program type",
+   "source": "b as {\"\": int, \"\": string}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-type-text",
+      "span": [
+       1,
+       16,
+       1,
+       18
+      ]
+     }
+    ]
+   },
+   "env": "{b: any}"
+  },
+  {
+   "name": "conform: a required empty key, absent",
+   "conform": {
+    "type": "{\"\": string}",
+    "value": {}
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     ""
+    ],
+    "message": "required field \"\" is missing",
+    "steps": 2
+   }
+  },
+  {
+   "name": "conform: a required empty key, present",
+   "conform": {
+    "type": "{\"\": string}",
+    "value": {
+     "": "x"
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 2
+   }
+  },
+  {
+   "name": "conform: an optional empty key, absent",
+   "conform": {
+    "type": "{\"\"?: string}",
+    "value": {}
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 2
+   }
+  },
+  {
+   "name": "conform: the empty key as an other key of an exact record",
+   "conform": {
+    "type": "{}",
+    "value": {
+     "": 1
+    }
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     ""
+    ],
+    "message": "the type does not allow key \"\"",
+    "steps": 2
+   }
+  },
+  {
+   "name": "conform: an empty key whose type is null",
+   "conform": {
+    "type": "{\"\": null}",
+    "value": {
+     "": null
+    }
+   },
+   "expect": {
+    "conforms": true,
+    "steps": 2
+   }
+  },
+  {
+   "name": "conform: a declared empty key written twice",
+   "conform": {
+    "type": "{\"\": int, \"\": int}",
+    "value": {}
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  }
+ ]
+}

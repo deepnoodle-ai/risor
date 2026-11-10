@@ -1,0 +1,1 @@
+{"version": "3.0", "variables": {"name": "string"}, "functions": {}, "opaque": {}, "removed": [], "reject": ["constant-condition"], "limits": {"steps": 1000000, "allocation": 1000000, "depth": 200}}

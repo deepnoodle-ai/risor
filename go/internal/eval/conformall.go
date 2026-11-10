@@ -109,10 +109,10 @@ func (a *allWalker) all(v any, t *types.Type, path []any) {
 				a.add(cfail{path: extendPath(path, u.Tag), template: "wrong", expected: tt, found: tv})
 				return
 			}
-			a.record(v, types.VariantOf(u, s), path, u.Tag)
+			a.record(v, types.VariantOf(u, s), path, u.Tag, true)
 			return
 		}
-		a.record(v, r, path, "")
+		a.record(v, r, path, "", false)
 	default:
 		wrong()
 	}
@@ -120,12 +120,12 @@ func (a *allWalker) all(v any, t *types.Type, path []any) {
 
 // record is step 6 of 6.2: the declared fields in key order, then every
 // other key, whatever the declared fields gave.
-func (a *allWalker) record(v any, r *types.Record, path []any, tag string) {
+func (a *allWalker) record(v any, r *types.Record, path []any, tag string, hasTag bool) {
 	for _, f := range r.Fields {
 		if a.full() {
 			return
 		}
-		if f.Key == tag {
+		if hasTag && f.Key == tag {
 			continue
 		}
 		fv, ok := value.Get(v, f.Key)
@@ -144,7 +144,7 @@ func (a *allWalker) record(v any, r *types.Record, path []any, tag string) {
 		if a.full() {
 			return
 		}
-		if _, listed := r.Field(k); listed || k == tag {
+		if _, listed := r.Field(k); listed || (hasTag && k == tag) {
 			continue
 		}
 		if r.Rest.IsNever() {

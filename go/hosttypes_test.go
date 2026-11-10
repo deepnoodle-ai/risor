@@ -206,7 +206,7 @@ func TestStructPresentation(t *testing.T) {
 }
 
 func TestTextMarshalerError(t *testing.T) {
-	// BB21: a MarshalText that fails, and a nil pointer, present null.
+	// F1 6.2: a MarshalText that fails, and a nil pointer, present null.
 	env, err := risor.NewEnv(risor.Var("v", "string | null"))
 	assert.NoError(t, err)
 	x, _ := risor.Parse("[v, type(v)]")
@@ -377,7 +377,7 @@ type withIfaces struct {
 }
 
 func TestInterfaceTypes(t *testing.T) {
-	// BB23: every interface type is any.
+	// F1 6.2: every interface type is any.
 	assert.Equal(t, typeOf[fmt.Stringer](t), "any")
 	assert.Equal(t, typeOf[error](t), "any")
 	assert.Equal(t, typeOf[interface{ OpaqueType() string }](t), "any")
@@ -410,7 +410,7 @@ type viaUnexportedPointer struct {
 }
 
 func TestUnexportedEmbeddedPointer(t *testing.T) {
-	// BB22: a field reached through an unexported embedded pointer cannot be
+	// F1 6.2 item 5: a field reached through an unexported embedded pointer cannot be
 	// read without unsafe, so it is not presented.
 	assert.Equal(t, typeOf[viaUnexportedPointer](t), "{y: int}")
 	ty, _ := risor.TypeOf[viaUnexportedPointer]()

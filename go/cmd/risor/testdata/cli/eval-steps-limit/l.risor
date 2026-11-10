@@ -1,0 +1,1 @@
+range(100).map(x => x * 2).sum()

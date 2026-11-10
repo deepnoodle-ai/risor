@@ -261,6 +261,145 @@
    "expect": {
     "hover": null
    }
+  },
+  {
+   "name": "an unclosed call of a function is closed, not filled",
+   "hover": "‸len(",
+   "expect": {
+    "hover": {
+     "kind": "function",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "type": "never",
+     "signature": "(x: string | any[] | map<any>) => int",
+     "doc": "The number of code points of a string, elements of a list or entries of a map.",
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "an unclosed call of a method that takes a function",
+   "hover": "items.‸map(",
+   "expect": {
+    "hover": {
+     "kind": "method",
+     "span": [
+      1,
+      7,
+      1,
+      10
+     ],
+     "type": "never",
+     "signature": "(f: (item: T, index: int) => U) => U[]",
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "an open parenthesis is closed after its operand",
+   "hover": "(‸user",
+   "expect": {
+    "hover": {
+     "kind": "variable",
+     "span": [
+      1,
+      2,
+      1,
+      6
+     ],
+     "type": "{age: int, name: string, tags: string[]}",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "an open list is closed",
+   "hover": "[‸user",
+   "expect": {
+    "hover": {
+     "kind": "variable",
+     "span": [
+      1,
+      2,
+      1,
+      6
+     ],
+     "type": "{age: int, name: string, tags: string[]}",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "an open map is closed after its value",
+   "hover": "{a: ‸user",
+   "expect": {
+    "hover": {
+     "kind": "variable",
+     "span": [
+      1,
+      5,
+      1,
+      9
+     ],
+     "type": "{age: int, name: string, tags: string[]}",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "an operator gets an operand",
+   "hover": "‸user == ",
+   "expect": {
+    "hover": {
+     "kind": "variable",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ],
+     "type": "{age: int, name: string, tags: string[]}",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "an open if test",
+   "hover": "if (‸user",
+   "expect": {
+    "hover": {
+     "kind": "variable",
+     "span": [
+      1,
+      5,
+      1,
+      9
+     ],
+     "type": "{age: int, name: string, tags: string[]}",
+     "signature": null,
+     "doc": null,
+     "declaration": null
+    }
+   }
+  },
+  {
+   "name": "an open parenthesis holding a comma does not repair",
+   "hover": "(user, ‸items",
+   "expect": {
+    "hover": null
+   }
   }
  ]
 }

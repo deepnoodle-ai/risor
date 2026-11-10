@@ -69,7 +69,7 @@ type Expr struct {
 // spec/core/01-language.md 14.1.
 func Parse(source string) (*Expr, error) {
 	if !utf8.ValidString(source) {
-		// Each maximal subpart of ill-formed UTF-8 is one U+FFFD (AC18).
+		// Each maximal subpart of ill-formed UTF-8 is one U+FFFD (03-host.md 3.4.5).
 		source = value.ReplaceInvalid(source)
 	}
 	f := syntax.NewFile(source)

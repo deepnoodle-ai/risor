@@ -50,6 +50,9 @@ type lexer struct {
 	// interps holds, for each interpolation that is open, the offset of the
 	// opening backtick of its template and the count of "{" open inside it.
 	interps []interp
+	// cut is set for the text before a cut of package F12 (tools.go): an
+	// interpolation the end of the text leaves open ends there.
+	cut bool
 }
 
 type interp struct {
@@ -93,6 +96,10 @@ func (l *lexer) run() *Error {
 			return err
 		}
 		if l.pos >= len(l.src) {
+			if n := len(l.interps); n > 0 && l.cut {
+				l.closeAtCut()
+				return nil
+			}
 			if n := len(l.interps); n > 0 {
 				start := l.interps[n-1].tmplStart
 				return l.errf(diag.CodeUnterminatedString, start, len(l.src), "the template has no closing backtick")

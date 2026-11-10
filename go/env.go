@@ -45,7 +45,7 @@ type Native func(c *Call, args []any) (any, error)
 //
 // TypeOf asks the name of the type's zero value (for a pointer receiver, a
 // nil pointer), so OpaqueType must return a constant and must not read its
-// receiver (F1 6.2, ruling BB20).
+// receiver (F1 6.2).
 type Opaque interface {
 	OpaqueType() string
 }
@@ -147,8 +147,7 @@ func (l Limits) apply(e *Env) {
 	}
 }
 
-// Without removes library entries from the environment (03-host.md 3.3.1,
-// rulings CD1 to CD3): a function by its name, as len, and a method by its
+// Without removes library entries from the environment (03-host.md 3.3.1): a function by its name, as len, and a method by its
 // receiver's kind word, a dot and its name, as string.repeat, list.map or
 // map.keys. A name that names no entry is the declare error bad-name.
 // Removing an entry twice is no error, and a child cannot bring back what
@@ -303,7 +302,7 @@ func (e *Env) build(decls []Decl) (*Env, error) {
 	return e, nil
 }
 
-// replaceInherited applies 03-host.md 3.3.2 item 1 (rulings CH2, CH3): a
+// replaceInherited applies 03-host.md 3.3.2 item 1: a
 // declaration of this environment replaces an inherited declaration of the
 // same name in the same space of names. A variable and a function replace
 // each other; an opaque type, whose name is in the other space (3.3.4 item

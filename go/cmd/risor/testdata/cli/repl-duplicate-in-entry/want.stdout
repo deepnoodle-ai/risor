@@ -1,0 +1,6 @@
+error[duplicate-name] 1:20-1:21: a is already bound here
+    const a = 1; const a = 2; a
+                       ^
+error[undefined-name] 1:1-1:2: a is not defined
+    a
+    ^

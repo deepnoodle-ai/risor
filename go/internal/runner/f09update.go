@@ -21,7 +21,7 @@ func (o conformOutcome) whole() any {
 // update runs a case in update mode and gives its update status (4.3).
 func (cr *caseRun) update() Result {
 	c := cr.c
-	if c.Skip != nil || c.Expect.Runner != nil || c.Render != nil || c.Expect.Analysis != nil {
+	if c.Skip != nil || c.Expect.Runner != nil || c.Render != nil || c.Expect.Analysis != nil || c.Tools != nil { // F12 7: not written by update mode
 		return runCase(cr)
 	}
 	if c.NoExpect {

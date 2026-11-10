@@ -1,0 +1,6 @@
+error[result-mismatch] 1:8-1:12: expected int, found "80"
+    {port: "80", extra: 1}
+           ^^^^
+error[result-mismatch] 1:14-1:19: {port: int} does not allow key "extra"
+    {port: "80", extra: 1}
+                 ^^^^^

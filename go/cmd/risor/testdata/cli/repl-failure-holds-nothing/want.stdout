@@ -1,0 +1,13 @@
+error[undefined-name] 1:11-1:15: nope is not defined
+    const b = nope;
+              ^^^^
+error[undefined-name] 1:1-1:2: b is not defined
+    b
+    ^
+1
+error[zero-divisor] 1:15-1:16: the divisor is the number 0
+    const c = 1 / 0;
+                  ^
+error[undefined-name] 1:1-1:2: c is not defined
+    c
+    ^

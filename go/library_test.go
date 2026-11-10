@@ -12,7 +12,7 @@ import (
 )
 
 // A host number that cannot enter fails where an entry reads the element
-// (ruling AC16), with the span of the whole call (W4); an entry that only
+// (02-evaluation.md 3.3), with the span of the whole call; an entry that only
 // copies or measures the list does not read it.
 func TestEntriesReadHostNumbers(t *testing.T) {
 	env, _ := risor.NewEnv(risor.Declare("{xs: any, es: any}"))

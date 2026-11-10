@@ -22,10 +22,11 @@ type testFlags struct {
 	update bool
 	format string
 	suite  string
+	color  colorFlag // F12 4.7 item 1
 }
 
 func parseTestFlags(args []string) (*testFlags, error) {
-	f := &testFlags{format: "text"}
+	f := &testFlags{format: "text", color: colorFlag{"auto"}}
 	value := func(i *int, name string) (string, error) {
 		a := args[*i]
 		if v, ok := strings.CutPrefix(a, name+"="); ok {
@@ -39,6 +40,12 @@ func parseTestFlags(args []string) (*testFlags, error) {
 	}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if ok, err := f.color.parse(args, &i); ok || err != nil {
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
 		switch {
 		case a == "--run" || strings.HasPrefix(a, "--run="):
 			v, err := value(&i, "--run")
@@ -110,7 +117,7 @@ func (c *counts) add(r runner.Result) {
 	}
 }
 
-func testCommand(args []string, stdout, stderr io.Writer) int {
+func testCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	f, err := parseTestFlags(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "risor test: %v\n%s", err, usage)
@@ -125,6 +132,10 @@ func testCommand(args []string, stdout, stderr io.Writer) int {
 	var files []string
 	var c counts
 	for _, p := range f.paths {
+		if p == "-" { // standard input (F12 4.2 item 1)
+			files = append(files, p)
+			continue
+		}
 		found, err := findFiles(p)
 		if err != nil {
 			fmt.Fprintf(stderr, "risor test: %s: no such file or directory\n", p)
@@ -145,9 +156,10 @@ func testCommand(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	ctx := &runner.Ctx{Update: f.update}
+	color := f.format == "text" && f.color.on(stdout, stdout)
 	for _, path := range files {
 		c.files++
-		lf, err := loadFile(path, f.update)
+		lf, err := loadFile(path, f.update, stdin)
 		if err != nil {
 			c.badFiles++
 			reason := err.Error()
@@ -158,7 +170,7 @@ func testCommand(args []string, stdout, stderr io.Writer) int {
 			if f.format == "json" {
 				fmt.Fprintln(stdout, jsonLine(map[string]any{"file": path, "message": reason, "status": "invalid"}))
 			} else {
-				fmt.Fprintf(stdout, "%s\n  INVALID\n", path)
+				fmt.Fprintf(stdout, "%s\n%s\n", path, paintWord("  INVALID", color))
 				for _, l := range strings.Split(reason, "\n") {
 					fmt.Fprintf(stdout, "    %s\n", render.Visible(l))
 				}
@@ -174,9 +186,9 @@ func testCommand(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintln(stdout, caseLine(path, r))
 			}
 		} else if rep := runner.Report(rs); rep != "" {
-			fmt.Fprintf(stdout, "%s\n%s", path, rep)
+			fmt.Fprintf(stdout, "%s\n%s", path, paintReport(rep, color))
 		}
-		if f.update {
+		if f.update && path != "-" {
 			text, written, err := runner.UpdatedText(lf, rs)
 			if err != nil {
 				fmt.Fprintf(stderr, "risor test: %s: %v\n", path, err)
@@ -205,8 +217,14 @@ func testCommand(args []string, stdout, stderr io.Writer) int {
 
 // loadFile reads a case file: a program case file when its name ends in
 // .test.risor, else JSON (F9 8.2 item 1).
-func loadFile(path string, update bool) (*runner.LoadedFile, error) {
-	data, err := os.ReadFile(path)
+func loadFile(path string, update bool, stdin io.Reader) (*runner.LoadedFile, error) {
+	var data []byte
+	var err error
+	if path == "-" {
+		data, err = io.ReadAll(stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
 	if err != nil {
 		return nil, &casefile.InvalidError{Path: path, Reason: err.Error()}
 	}
@@ -384,4 +402,30 @@ func suiteCommand(f *testFlags, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d skip, %d invalid\n", e.rel, c.pass, c.fail, c.skip, c.invalid)
 	}
 	return total.status()
+}
+
+// paintWord colours the word of a verdict line of F9 6 when color is set
+// (F9 8.3 item 4): FAIL and INVALID in red, SKIP in yellow, UPDATED in cyan.
+func paintWord(line string, color bool) string {
+	if !color {
+		return line
+	}
+	for _, w := range []struct{ word, sgr string }{{"FAIL", sgrRed}, {"INVALID", sgrRed}, {"SKIP", sgrYellow}, {"UPDATED", sgrCyan}} {
+		if rest, ok := strings.CutPrefix(line, "  "+w.word); ok && (rest == "" || rest[0] == ' ' || rest[0] == ':' || rest[0] == '\n') {
+			return "  " + w.sgr + w.word + sgrReset + rest
+		}
+	}
+	return line
+}
+
+// paintReport colours the verdict lines of a report.
+func paintReport(rep string, color bool) string {
+	if !color {
+		return rep
+	}
+	lines := strings.SplitAfter(rep, "\n")
+	for i, l := range lines {
+		lines[i] = paintWord(l, true)
+	}
+	return strings.Join(lines, "")
 }

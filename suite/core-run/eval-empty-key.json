@@ -1,0 +1,194 @@
+{
+ "cases": [
+  {
+   "name": "a read of the empty key",
+   "source": "m[\"\"]",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "": 5
+    }
+   },
+   "expect": {
+    "value": 5,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a read of an absent empty key",
+   "source": "m[\"\"]",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "class": "dynamic",
+      "message": "the map has no key \"\""
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an optional read of an absent empty key",
+   "source": "m?.[\"\"]",
+   "env": "{m: any}",
+   "vars": {
+    "m": {}
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a pattern binds the empty key",
+   "source": "const {\"\": v} = m; v",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "": 3
+    }
+   },
+   "expect": {
+    "value": 3,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a pattern with an absent empty key",
+   "source": "const {\"\": v} = m; v",
+   "env": "{m: any}",
+   "vars": {
+    "m": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       8,
+       1,
+       13
+      ],
+      "class": "dynamic",
+      "message": "key \"\" is missing from the map and the pattern gives no default"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a pattern default for an absent empty key",
+   "source": "const {\"\": v = 7} = m; v",
+   "env": "{m: any}",
+   "vars": {
+    "m": {}
+   },
+   "expect": {
+    "value": 7,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a spread keeps the empty key",
+   "source": "{...m, a: 2}",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "": 1
+    }
+   },
+   "expect": {
+    "value": {
+     "": 1,
+     "a": 2
+    },
+    "steps": 1,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "the empty key renders first",
+   "source": "`${ {a: 2, \"\": 1} }`",
+   "env": "{m: any}",
+   "vars": {},
+   "expect": {
+    "value": "{\"\":1,\"a\":2}",
+    "steps": 5,
+    "allocated": 6
+   }
+  },
+  {
+   "name": "two maps with the empty key are equal",
+   "source": "{\"\": 1} == {\"\": 1.0}",
+   "env": "{m: any}",
+   "vars": {},
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 6
+   }
+  },
+  {
+   "name": "the empty key and the key of one space differ",
+   "source": "{\"\": 1} == {\" \": 1}",
+   "env": "{m: any}",
+   "vars": {},
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 6
+   }
+  },
+  {
+   "name": "a declared empty key is read in place",
+   "source": "n[\"\"]",
+   "env": "{n: {\"\": int}}",
+   "vars": {
+    "n": {
+     "": 4
+    }
+   },
+   "expect": {
+    "value": 4,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty key is no variable name",
+   "source": "1",
+   "env": "{\"\": int}",
+   "vars": {},
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  }
+ ]
+}

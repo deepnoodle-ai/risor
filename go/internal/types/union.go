@@ -53,7 +53,7 @@ func FindTag(recs []*Record) (string, bool) {
 		ok := true
 		for _, r := range recs {
 			// A key that any record fills is no tag (F5 8.1 item 6, 8.3
-			// item 8; ruling BH8).
+			// item 8).
 			g, has := r.field(f.Key)
 			if !has || g.Optional || g.Fill != nil || !litOnly(g.Type) {
 				ok = false

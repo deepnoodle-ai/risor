@@ -1,0 +1,4 @@
+a.test.json
+  FAIL a
+    value: expected 4, found 3
+1 files, 1 cases: 0 pass, 1 fail, 0 skip, 0 invalid

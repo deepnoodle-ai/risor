@@ -151,7 +151,7 @@ func (c *checker) index(s *syntax.Index, cur, idx *types.Type, recvSpan syntax.S
 		if c.dyn(recvSpan) {
 			return types.Never // rejected: the receiver is never, no index site
 		}
-		// CB1: a plain index on an any receiver may fail as index-range.
+		// A plain index on an any receiver may fail as index-range.
 		if !optional && c.site("index", s.Span()) {
 			return types.Never
 		}
@@ -161,7 +161,7 @@ func (c *checker) index(s *syntax.Index, cur, idx *types.Type, recvSpan syntax.S
 	case cur.Record() != nil:
 		idx = c.nullable(isp, idx)
 		if !c.mustFitM(isp, idx, types.String, "kind", "key", "") {
-			return types.Never // one mistake, one diagnostic (ruling AO11)
+			return types.Never // one mistake, one diagnostic
 		}
 		r := cur.Record()
 		v := r.Rest
@@ -227,7 +227,7 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 		rejected := c.dyn(recvSpan)
 		for _, a := range m.Args {
 			if l, named := c.lambdaArg(a); l != nil {
-				// CF1: a const-bound lambda named here is a use: every
+				// A const-bound lambda named here is a use: every
 				// parameter any, sites kept, its body checked in the scope
 				// and under the facts where it was written (13.9).
 				if named {
@@ -252,7 +252,7 @@ func (c *checker) method(m *syntax.MethodCall, recvNode syntax.Node, recv *types
 			}
 			c.synth(a, fs)
 		}
-		// CB2: the call may fail by a library method or an opaque method of
+		// 13.3: the call may fail by a library method or an opaque method of
 		// that name marked !.
 		sp := m.Span()
 		if c.libFails(m.Name) && c.named(m).site("value", sp) {
@@ -605,7 +605,7 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 	r := fn.Result
 	rv := map[string]bool{}
 	types.VarsIn(r, rv)
-	// The seed rule (13.5 step 3a; ruling AO3): it fires also when B fits
+	// The seed rule (13.5 step 3a): it fires also when B fits
 	// A0 only by a fit that used any. The second check binds nothing.
 	vars := make([]string, 0, len(rv))
 	for x := range rv {
@@ -634,7 +634,7 @@ func (c *checker) checkLambda(at syntax.Node, l *syntax.Lambda, named bool, fn *
 		}
 	}
 	bind(r, b, sol)
-	// The body is always fitted (ruling AO1).
+	// The body is always fitted (13.5 step 3).
 	c.mustFitM(l.Body.Span(), b, types.Subst(r, sol), "arg-mismatch", "body", c.callName(name))
 	return narrowed
 }
@@ -670,7 +670,7 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 		switch {
 		case at == nil:
 			c.m("missing", keyP(key))
-		case key != "":
+		case expected != nil:
 			c.m("extra", ty("expected", expected), keyP(key))
 		default:
 			c.m(tmpl, ty("expected", w), ty("found", at))
@@ -734,7 +734,7 @@ func (c *checker) fitForm(e syntax.Node, t, want *types.Type, k formKind) {
 }
 
 // libMethod is the library method of a kind by name, unless the environment
-// removed it (03-host.md 3.3.1, ruling CD2).
+// removed it (03-host.md 3.3.1).
 func (c *checker) libMethod(k value.Kind, name string) *library.Entry {
 	e, ok := library.Method(k, name)
 	if !ok || c.env.Removed[library.KindWord(k)+"."+name] {
@@ -744,7 +744,7 @@ func (c *checker) libMethod(k value.Kind, name string) *library.Entry {
 }
 
 // libFails reports whether some library method of that name, for any
-// receiver kind and not removed, is marked ! (13.3, rulings CB2, CD5).
+// receiver kind and not removed, is marked ! (13.3; 03-host.md 3.3.1).
 func (c *checker) libFails(name string) bool {
 	for _, k := range library.MethodKinds(name) {
 		if e := c.libMethod(k, name); e != nil && LibSig(e).Fails {
@@ -755,7 +755,7 @@ func (c *checker) libFails(name string) bool {
 }
 
 // hostFails reports whether a method of that name of a declared opaque type
-// is marked ! (13.3, ruling CB2).
+// is marked ! (13.3).
 func (c *checker) hostFails(name string) bool {
 	for _, ms := range c.env.Methods {
 		if s := ms[name]; s != nil && s.Fails {

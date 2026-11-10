@@ -1,0 +1,10 @@
+eval
+any.risor
+--description
+desc.json
+--vars
+v.json
+--type
+{port: int, host: string, debug: bool}
+--max-failures
+2

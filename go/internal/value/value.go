@@ -76,7 +76,7 @@ func KindOf(v any) Kind {
 
 func reflectKind(v any) Kind {
 	if m, ok := v.(encoding.TextMarshaler); ok {
-		// F1 6.2: a text type; BB21: null when MarshalText fails.
+		// F1 6.2: a text type, and null when MarshalText fails.
 		if _, ok := marshalText(m); ok {
 			return String
 		}
@@ -114,7 +114,7 @@ const (
 )
 
 // Read turns a host value into the form the evaluator works on: a number to
-// float64, a string to valid UTF-8 (AC18), a nil slice, map or pointer to
+// float64, a string to valid UTF-8 (03-host.md 3.4.5), a nil slice, map or pointer to
 // nil. Containers are left as they are; their elements are read when an
 // operation yields them. A host integer whose magnitude is over 2^53 - 1, a
 // NaN and an infinity give ReadRange (03-host.md 3.4.4).
@@ -163,7 +163,7 @@ func Read(v any) (any, ReadError) {
 		if s, ok := marshalText(x); ok {
 			return Read(s)
 		}
-		return nil, ReadOK // BB21
+		return nil, ReadOK // null when MarshalText fails (F1 6.2)
 	}
 	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
@@ -235,7 +235,7 @@ func midNum(i int) any {
 }
 
 // ReplaceInvalid replaces each maximal subpart of an ill-formed UTF-8
-// sequence with one U+FFFD, as Unicode recommends (ruling AC18).
+// sequence with one U+FFFD, as Unicode recommends (03-host.md 3.4.5).
 func ReplaceInvalid(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))

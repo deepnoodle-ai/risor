@@ -49,7 +49,7 @@ func TestCheckAPI(t *testing.T) {
 	assert.Equal(t, ds[0].Class, "dynamic")
 }
 
-// Ruling AN3 and 05-types.md 19.5: the errors of declared type text that
+// 05-types.md 19.5: the errors of declared type text that
 // need the checker.
 func TestDeclareWithChecker(t *testing.T) {
 	for _, d := range []risor.Decl{
@@ -62,7 +62,7 @@ func TestDeclareWithChecker(t *testing.T) {
 		assert.True(t, errors.As(err, &e))
 		assert.Equal(t, e.Diagnostics[0].Code, "bad-type")
 	}
-	// Ruling AO4: an error in a host signature is bad-signature.
+	// An error in a host signature is bad-signature (03-host.md 3.3.4).
 	_, err0 := risor.NewEnv(risor.Function{Name: "f", Type: "(t: Order) => int"})
 	var e0 *risor.Error
 	assert.True(t, errors.As(err0, &e0))

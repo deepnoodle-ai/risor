@@ -159,7 +159,7 @@ func TestSizeLimit(t *testing.T) {
 	assert.Equal(t, types.Size(ty), 1<<14-1)
 }
 
-// TestEnumIsNLogN compares two sizes of enum (ruling CG10): four times the
+// TestEnumIsNLogN compares two sizes of enum: four times the
 // strings must cost far less than sixteen times the time, which a quadratic
 // Join of literal sets would.
 func TestEnumIsNLogN(t *testing.T) {

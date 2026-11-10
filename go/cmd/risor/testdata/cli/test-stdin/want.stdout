@@ -1,0 +1,4 @@
+-
+  FAIL b
+    value: expected 3, found 2
+1 files, 2 cases: 1 pass, 1 fail, 0 skip, 0 invalid

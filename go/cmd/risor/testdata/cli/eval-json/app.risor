@@ -1,0 +1,2 @@
+const mb = 1024 * 1024;
+{max_body: 2 * mb, name: n}

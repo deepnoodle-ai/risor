@@ -11,7 +11,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/value"
 )
 
-// opText is the canonical text of an operator (ruling Y6).
+// opText is the canonical text of an operator (03-host.md 3.8.3).
 func opText(op string) string {
 	if op == "not-in" {
 		return "not in"
@@ -431,7 +431,7 @@ func (r *run) binop(op string, a, b any, sp syntax.Span) any {
 	case "not-in":
 		return !r.in(a, b, op, sp)
 	}
-	// Null first (ruling Y2), then the kinds.
+	// Null first, then the kinds.
 	if a == nil || b == nil {
 		r.raise(fail("null-operand", "operand", sp, messages.Word("op", opText(op))))
 	}
@@ -702,8 +702,8 @@ func (r *run) mapEqual(a, b any, sp syntax.Span) bool {
 	r.enterWalk()
 	// The entries are visited in key order when some value is a list or a
 	// map, whose walk could meet the depth limit: the order then decides
-	// which limit a run passes first (02-evaluation.md 5.3 item 3, ruling
-	// AM3). Otherwise the order cannot show, and no sort is made.
+	// which limit a run passes first (02-evaluation.md 5.3 item
+	// 3). Otherwise the order cannot show, and no sort is made.
 	var keys []string
 	var w int64
 	nested := false
@@ -739,7 +739,7 @@ func (r *run) mapEqual(a, b any, sp syntax.Span) bool {
 	return eq
 }
 
-// in is x in y (01-language.md 6.8, ruling AE).
+// in is x in y (01-language.md 6.8).
 func (r *run) in(x, y any, op string, sp syntax.Span) bool {
 	ky := value.KindOf(y)
 	switch ky {
@@ -833,8 +833,7 @@ func plainEqual(a, b any) bool {
 	return false
 }
 
-// contains reports whether t occurs in s, in work linear in the length of s
-// (ruling AC11): a text longer than s is answered from the lengths, and the
+// contains reports whether t occurs in s, in work linear in the length of s: a text longer than s is answered from the lengths, and the
 // search is Knuth-Morris-Pratt over the bytes of valid UTF-8.
 func contains(s, t string) bool {
 	if len(t) > len(s) {

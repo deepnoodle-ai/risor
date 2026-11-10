@@ -1,0 +1,2 @@
+error[not-conforming]: expected bool, found "no" at .debug
+error[not-conforming]: expected string, found 1 at .host

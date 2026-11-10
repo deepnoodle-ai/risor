@@ -1,310 +1,231 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"sort"
-	"strings"
 
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
 )
 
-// The commands eval and check (package F10 9). The layout of diagnostics,
-// errors of the command line and --pretty are package F12's; until then a
-// diagnostic is written to standard error in the one-line form of F8, and
-// an error of the command line has the status 2.
-
-const evalUsage = `usage: risor eval FILE [--type TEXT | --schema FILE] [--format text|json] [--var NAME=TEXT ...] [--vars FILE.json] [--env NAME ...]
-       risor check FILE [--type TEXT | --schema FILE] [--var NAME=TEXT ...] [--vars FILE.json] [--env NAME ...]
-`
+// The commands eval and check: the steps of a load are package F10 9's;
+// the layout of diagnostics, the flags of the environment, --format for
+// check, --print-type, --pretty, --max-failures, --color and the statuses
+// are package F12 4's.
 
 type configFlags struct {
-	file    string
-	typ     *string
-	schema  *string
-	format  string
-	strVars map[string]string
-	varFile string
-	envKeys []string
+	file      string
+	typ       *string
+	schema    *string
+	format    string
+	pretty    bool
+	printType bool
+	maxFail   int64
+	env       *envFlags
+	color     colorFlag
 }
 
 func parseConfigFlags(args []string, eval bool) (*configFlags, error) {
-	f := &configFlags{format: "text", strVars: map[string]string{}}
-	val := func(i *int, name string) (string, error) {
-		a := args[*i]
-		if v, ok := strings.CutPrefix(a, name+"="); ok {
-			return v, nil
-		}
-		if *i+1 >= len(args) {
-			return "", fmt.Errorf("%s needs a value", name)
-		}
-		*i++
-		return args[*i], nil
-	}
-	is := func(a, name string) bool { return a == name || strings.HasPrefix(a, name+"=") }
+	f := &configFlags{format: "text", maxFail: 10, env: newEnvFlags(), color: colorFlag{"auto"}}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if ok, err := f.env.parse(args, &i); ok || err != nil {
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if ok, err := f.color.parse(args, &i); ok || err != nil {
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
 		switch {
-		case is(a, "--type"):
-			v, err := val(&i, "--type")
+		case isFlag(a, "--type"):
+			v, err := flagValue(args, &i, "--type")
 			if err != nil {
 				return nil, err
 			}
 			f.typ = &v
-		case is(a, "--schema"):
-			v, err := val(&i, "--schema")
+		case isFlag(a, "--schema"):
+			v, err := flagValue(args, &i, "--schema")
 			if err != nil {
 				return nil, err
 			}
 			f.schema = &v
-		case eval && is(a, "--format"):
-			v, err := val(&i, "--format")
+		case isFlag(a, "--format"):
+			v, err := flagValue(args, &i, "--format")
 			if err != nil {
 				return nil, err
 			}
 			if v != "text" && v != "json" {
-				return nil, fmt.Errorf("--format is text or json, not %q", v)
+				return nil, cmdErrorf("--format is text or json, not %q", v)
 			}
 			f.format = v
-		case is(a, "--var"):
-			v, err := val(&i, "--var")
+		case eval && a == "--pretty":
+			f.pretty = true
+		case eval && isFlag(a, "--max-failures"):
+			v, err := flagValue(args, &i, "--max-failures")
 			if err != nil {
 				return nil, err
 			}
-			name, text, ok := strings.Cut(v, "=")
-			if !ok || name == "" {
-				return nil, fmt.Errorf("--var takes NAME=TEXT, not %q", v)
-			}
-			if _, dup := f.strVars[name]; dup {
-				return nil, fmt.Errorf("the variable %s is named twice", name)
-			}
-			f.strVars[name] = text
-		case is(a, "--vars"):
-			v, err := val(&i, "--vars")
-			if err != nil {
+			if f.maxFail, err = wholeNumber("--max-failures", v, 1); err != nil {
 				return nil, err
 			}
-			if f.varFile != "" {
-				return nil, errors.New("--vars is given twice")
-			}
-			f.varFile = v
-		case is(a, "--env"):
-			v, err := val(&i, "--env")
-			if err != nil {
-				return nil, err
-			}
-			f.envKeys = append(f.envKeys, v)
-		case strings.HasPrefix(a, "-") && a != "-":
-			return nil, fmt.Errorf("unknown flag %s", a)
+		case !eval && a == "--print-type":
+			f.printType = true
+		case len(a) > 1 && a[0] == '-':
+			return nil, cmdErrorf("unknown flag %s", a)
 		default:
 			if f.file != "" {
-				return nil, fmt.Errorf("one FILE only, found %s and %s", f.file, a)
+				return nil, cmdErrorf("one FILE only, found %s and %s", f.file, a)
 			}
 			f.file = a
 		}
 	}
 	if f.file == "" {
-		return nil, errors.New("no FILE")
+		return nil, cmdErrorf("no FILE")
 	}
 	if f.typ != nil && f.schema != nil {
-		return nil, errors.New("--type and --schema exclude each other")
+		return nil, cmdErrorf("--type and --schema exclude each other")
 	}
 	return f, nil
 }
 
-// environment declares and supplies the variables of the flags (9.4).
-func (f *configFlags) environment() (*risor.Env, risor.Map, error) {
-	var decls []risor.Decl
-	vars := risor.Map{}
-	names := map[string]bool{}
-	add := func(name string) error {
-		if names[name] {
-			return fmt.Errorf("the variable %s is named twice", name)
-		}
-		names[name] = true
-		return nil
-	}
-	keys := make([]string, 0, len(f.strVars))
-	for k := range f.strVars {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		if err := add(k); err != nil {
-			return nil, nil, err
-		}
-		decls = append(decls, risor.Var(k, "string"))
-		vars[k] = f.strVars[k]
-	}
-	if f.varFile != "" {
-		data, err := os.ReadFile(f.varFile)
-		if err != nil {
-			return nil, nil, err
-		}
-		raw, err := casefile.DecodeJSON(data)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %v", f.varFile, err)
-		}
-		obj, ok := raw.(map[string]any)
-		if !ok {
-			return nil, nil, fmt.Errorf("%s: not a JSON object", f.varFile)
-		}
-		ks := make([]string, 0, len(obj))
-		for k := range obj {
-			ks = append(ks, k)
-		}
-		sort.Strings(ks)
-		for _, k := range ks {
-			if err := add(k); err != nil {
-				return nil, nil, err
-			}
-			// The literal type of the value (F1 3.4) is the type of a schema
-			// that is the value's const.
-			t, err := risor.TypeFromSchema(map[string]any{"const": obj[k]})
-			if err != nil {
-				return nil, nil, fmt.Errorf("%s: %s: %v", f.varFile, k, err)
-			}
-			decls = append(decls, risor.VarType(k, t))
-			vars[k] = obj[k]
-		}
-	}
-	if len(f.envKeys) > 0 {
-		if err := add("env"); err != nil {
-			return nil, nil, err
-		}
-		decls = append(decls, risor.Var("env", "map<string>"))
-		m := map[string]any{}
-		for _, k := range f.envKeys {
-			if v, ok := os.LookupEnv(k); ok {
-				m[k] = v
-			}
-		}
-		vars["env"] = m
-	}
-	env, err := risor.NewEnv(decls...)
-	return env, vars, err
-}
-
 // expected is the load option of --type or --schema.
-func (f *configFlags) expected() ([]risor.LoadOption, error) {
+func (f *configFlags) expected() ([]risor.LoadOption, any, error) {
 	switch {
 	case f.typ != nil:
-		return []risor.LoadOption{risor.LoadType(*f.typ)}, nil
+		return []risor.LoadOption{risor.LoadType(*f.typ)}, nil, nil
 	case f.schema != nil:
-		data, err := os.ReadFile(*f.schema)
+		text, err := readInput(*f.schema, nil)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		s, err := casefile.DecodeJSON(data)
+		s, err := casefile.DecodeJSON([]byte(text))
 		if err != nil {
-			return nil, fmt.Errorf("%s: %v", *f.schema, err)
+			return nil, nil, cmdErrorf("%s: %v", *f.schema, err)
 		}
-		return []risor.LoadOption{risor.LoadSchema(s)}, nil
+		return []risor.LoadOption{risor.LoadSchema(s)}, s, nil
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
-func writeDiagnostics(w io.Writer, err error) {
-	var e *risor.Error
-	if errors.As(err, &e) {
-		fmt.Fprint(w, risor.RenderLine(e.Diagnostics))
-		return
-	}
-	fmt.Fprintf(w, "risor: %v\n", err)
+func evalCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return configCommand(args, stdin, stdout, stderr, true)
 }
 
-func evalCommand(args []string, stdout, stderr io.Writer) int {
-	return configCommand(args, stdout, stderr, true)
+func checkCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return configCommand(args, stdin, stdout, stderr, false)
 }
 
-func checkCommand(args []string, stdout, stderr io.Writer) int {
-	return configCommand(args, stdout, stderr, false)
+// commandLineError writes an error of the command line (F12 4.9).
+func commandLineError(stderr io.Writer, err error) int {
+	fmt.Fprintf(stderr, "risor: %v\n", err)
+	return 2
 }
 
-func configCommand(args []string, stdout, stderr io.Writer, eval bool) int {
+func configCommand(args []string, stdin io.Reader, stdout, stderr io.Writer, eval bool) int {
 	f, err := parseConfigFlags(args, eval)
 	if err != nil {
-		fmt.Fprintf(stderr, "risor: %v\n%s", err, evalUsage)
+		fmt.Fprintf(stderr, "risor: %v\n%s", err, usage)
 		return 2
 	}
-	data, err := os.ReadFile(f.file)
+	source, err := readInput(f.file, stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "risor: %v\n", err)
-		return 2
+		return commandLineError(stderr, err)
 	}
-	opts, err := f.expected()
+	opts, schema, err := f.expected()
 	if err != nil {
-		fmt.Fprintf(stderr, "risor: %v\n", err)
-		return 2
+		return commandLineError(stderr, err)
 	}
-	env, vars, err := f.environment()
-	if err != nil {
-		var e *risor.Error
-		if errors.As(err, &e) {
-			writeDiagnostics(stderr, err)
-			return 1
+	// Diagnostics go to standard error for eval, to standard output for
+	// check (F12 4.2 item 2).
+	dw := stderr
+	if !eval {
+		dw = stdout
+	}
+	color := f.format == "text" && f.color.on(dw, stdout)
+	fail := func(err error) int {
+		ds, ok := diagnosticsOf(err)
+		if !ok {
+			return commandLineError(stderr, err)
 		}
-		fmt.Fprintf(stderr, "risor: %v\n", err)
-		return 2
+		writeDiagnostics(dw, ds, &source, f.format, color)
+		return 1
+	}
+	env, vars, err := f.env.environment()
+	if err != nil {
+		return fail(err)
 	}
 	if !eval {
-		// Steps 0, 1 and 2 of a load (9.3).
-		if err := f.checkSteps(env, string(data)); err != nil {
-			writeDiagnostics(stderr, err)
-			return 1
+		t, err := checkSteps(env, f, schema, source)
+		if err != nil {
+			return fail(err)
+		}
+		if f.printType {
+			fmt.Fprintln(stdout, t)
 		}
 		return 0
 	}
-	v, _, err := risor.LoadValue(context.Background(), env, string(data), vars, opts...)
+	opts = append(opts, risor.MaxFailures(int(f.maxFail)))
+	v, _, err := risor.LoadValue(context.Background(), env, source, vars, opts...)
 	if err != nil {
-		writeDiagnostics(stderr, err)
-		return 1
+		return fail(err)
 	}
 	var text string
-	if f.format == "json" {
+	switch {
+	case f.pretty:
 		text, err = risor.JSONText(v)
-	} else {
+		if err == nil {
+			var b bytes.Buffer
+			if json.Indent(&b, []byte(text), "", "  ") == nil {
+				text = b.String()
+			}
+		}
+	case f.format == "json":
+		text, err = risor.JSONText(v)
+	default:
 		text, err = rendering(v)
 	}
 	if err != nil {
-		writeDiagnostics(stderr, err)
-		return 1
+		return fail(err)
 	}
 	fmt.Fprint(stdout, text+"\n")
 	return 0
 }
 
-// checkSteps makes steps 0 to 2 of a load: declare, parse, check (9.3).
-func (f *configFlags) checkSteps(env *risor.Env, source string) error {
+// checkSteps makes steps 0, 1 and 2 of a load: declare, parse, check (F10
+// 9.3). It gives the printed result type.
+func checkSteps(env *risor.Env, f *configFlags, schema any, source string) (string, error) {
 	var copts []risor.CheckOption
 	switch {
 	case f.typ != nil:
 		t, err := env.ParseType(*f.typ)
 		if err != nil {
-			return err
+			return "", err
 		}
 		copts = append(copts, risor.ExpectType(t))
 	case f.schema != nil:
-		data, err := os.ReadFile(*f.schema)
-		if err != nil {
-			return err
-		}
-		sch, err := casefile.DecodeJSON(data)
-		if err != nil {
-			return fmt.Errorf("%s: %v", *f.schema, err)
-		}
-		copts = append(copts, risor.ExpectSchema(sch, risor.Closed))
+		copts = append(copts, risor.ExpectSchema(schema, risor.Closed))
 	}
 	x, err := risor.Parse(source)
 	if err != nil {
-		return err
+		return "", err
 	}
-	_, err = env.Check(x, copts...)
-	return err
+	cr, err := env.Check(x, copts...)
+	if err != nil {
+		return "", err
+	}
+	if cr == nil {
+		return "", errors.New("no check result")
+	}
+	return cr.Type, nil
 }
 
 // rendering is the rendering of a value (01-language.md 12), as string(v)

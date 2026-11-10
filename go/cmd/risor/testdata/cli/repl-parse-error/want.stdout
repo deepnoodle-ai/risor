@@ -1,0 +1,6 @@
+error[unexpected-token] 1:5-1:6: unexpected *
+    1 + * 2
+        ^
+error[unexpected-token] 1:4-1:4: unexpected end of input
+    [1,
+       ^

@@ -1,0 +1,2 @@
+{"code":"undefined-name","message":"nope is not defined","phase":"check","span":[1,11,1,15]}
+{"code":"undefined-name","message":"missing is not defined","phase":"check","span":[2,17,2,24]}

@@ -115,7 +115,7 @@ func TestJSONLines(t *testing.T) {
 }
 
 func TestUsage(t *testing.T) {
-	code, _, errOut := runCLI()
+	code, _, errOut := runCLI("nope")
 	assert.Equal(t, code, 2)
 	assert.True(t, len(errOut) > 0)
 	code, _, _ = runCLI("test", "--format", "xml")

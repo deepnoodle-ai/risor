@@ -142,7 +142,7 @@ func (w *walker) test(v any, t *types.Type, path []any, looked bool) *cfail {
 		if u := t.Union(); u != nil {
 			return w.union(v, u, path)
 		}
-		return w.record(v, r, path, "")
+		return w.record(v, r, path, "", false)
 	default:
 		return wrong()
 	}
@@ -173,13 +173,15 @@ func hasLit(lits []string, s string) bool {
 }
 
 // record is 4.3.
-func (w *walker) record(v any, r *types.Record, path []any, tag string) *cfail {
+// tag is the tag of a union's variant, passed over among the fields;
+// hasTag says there is one (a key may be any string, "" among them).
+func (w *walker) record(v any, r *types.Record, path []any, tag string, hasTag bool) *cfail {
 	present := 0
-	if tag != "" {
+	if hasTag {
 		present = 1 // the tag: already looked up and tested (F5 7.2 step 3)
 	}
 	for _, f := range r.Fields {
-		if f.Key == tag {
+		if hasTag && f.Key == tag {
 			continue
 		}
 		w.step(1 + value.Size(f.Key))
@@ -234,7 +236,7 @@ func (w *walker) union(v any, u *types.Union, path []any) *cfail {
 		return c
 	}
 	s, _ := value.Read(tv)
-	return w.record(v, types.VariantOf(u, s.(string)), path, u.Tag)
+	return w.record(v, types.VariantOf(u, s.(string)), path, u.Tag, true)
 }
 
 // Conform is the conformance function of F4 7: nil when v conforms to t,

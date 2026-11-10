@@ -173,7 +173,7 @@ type Result struct {
 	Dynamic map[syntax.Span]bool
 	// Host holds the span of every call with a host site, dropped or not:
 	// a function-error there has the class host, elsewhere environment
-	// (18.5, ruling CE2).
+	// (18.5).
 	Host map[syntax.Span]bool
 	// Value holds the span of every node with a value site, dropped or not:
 	// a not-conforming there has the class value (F4 6.6).
@@ -370,7 +370,16 @@ type checker struct {
 
 // Check runs the type rules on a program whose names res resolved.
 func Check(prog *syntax.Program, res *static.Result, env *Env, exp Expect) *Result {
-	c := &checker{
+	var c checker
+	t := c.run(prog, res, env, exp)
+	return c.result(prog, t)
+}
+
+// run is the one path of a check, for Check and CheckTypes: it applies
+// the rules, leaves what it recorded in c, and gives the program's type.
+// The caller owns c, so that an ordinary check keeps it off the heap.
+func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Expect) *types.Type {
+	*c = checker{
 		env: env, res: res,
 		slots:    make([]*types.Type, res.NSlots),
 		ty:       map[syntax.Node]*types.Type{},
@@ -393,7 +402,7 @@ func Check(prog *syntax.Program, res *static.Result, env *Env, exp Expect) *Resu
 	case ExpectCondition:
 		c.tested(prog.Result, t)
 	}
-	return c.result(prog, t)
+	return t
 }
 
 func (c *checker) result(prog *syntax.Program, t *types.Type) *Result {
@@ -537,7 +546,7 @@ func (c *checker) findUses(prog *syntax.Program) {
 		}
 	}
 	// Only a name given as an argument is a use; a read of the name as a
-	// value is not-a-value and no use (13.9, ruling CA2).
+	// value is not-a-value and no use (13.9).
 	mark := func(args []syntax.Node) {
 		for _, a := range args {
 			if id, ok := a.(*syntax.Ident); ok {
@@ -618,7 +627,7 @@ func (c *checker) covered(prog *syntax.Program) map[syntax.Span]bool {
 			if c.dynSites[n.Value.Span()] {
 				out[n.Pattern.Span()] = true
 				// A field's or an element's failure is a failure of the
-				// pattern on the value bound (ruling CF3).
+				// pattern on the value bound (18.3).
 				switch p := n.Pattern.(type) {
 				case *syntax.MapPat:
 					for _, f := range p.Fields {
@@ -633,7 +642,7 @@ func (c *checker) covered(prog *syntax.Program) map[syntax.Span]bool {
 			return true
 		case *syntax.Call, *syntax.MethodCall:
 			// A callback's result, key or value: at a site on the body of a
-			// lambda that is an argument, or that an argument names (CB3).
+			// lambda that is an argument, or that an argument names (18.3).
 			var args []syntax.Node
 			if call, ok := n.(*syntax.Call); ok {
 				args = call.Args
@@ -647,7 +656,7 @@ func (c *checker) covered(prog *syntax.Program) map[syntax.Span]bool {
 			}
 			kids = syntax.Children(n)
 		case *syntax.MapPat:
-			// A field's failure is at a site on its key (ruling AO6).
+			// A field's failure is at a site on its key (18.3).
 			for _, f := range n.Fields {
 				if c.dynSites[f.KeySpan] {
 					out[f.Span] = true

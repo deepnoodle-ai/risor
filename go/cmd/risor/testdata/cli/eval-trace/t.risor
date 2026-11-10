@@ -1,0 +1,2 @@
+const lines = [{qty: 2}, {qty: 0}];
+lines.map(l => 10 / l.qty)

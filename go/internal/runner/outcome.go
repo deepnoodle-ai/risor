@@ -12,13 +12,16 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/value"
 )
 
-// Outcome runs one case and writes the line of the outcome command (ruling
-// AJ): one JSON object with name, phase, value or diagnostics, and usage.
+// Outcome runs one case and writes the line of the outcome command of the
+// differential fuzzer: one JSON object with name, phase, value or diagnostics, and usage.
 // Every expect is ignored, and every case that gets as far is run. A program
 // that checks has its type and sites after its name (stage S4).
 func Outcome(c *casefile.Case) string {
 	// F2 4.8: the report is the last field, for every case whose text
 	// parses. An analysis case has name, phase and analysis.
+	if c.Tools != nil { // F12 7.7
+		return toolsLine(c)
+	}
 	var x *risor.Expr
 	var perr error
 	if c.Conform == nil {
@@ -122,7 +125,7 @@ func outcome(c *casefile.Case) string {
 			b.WriteByte('}')
 		}
 		b.WriteByte(']')
-		// AK3: a limit failure has no fixed usage, so none is written.
+		// A limit failure has no fixed usage, so none is written.
 		if u != nil && !(ph == "run" && diag.LimitCodes[ds[0].Code]) {
 			fmt.Fprintf(&b, `,"steps":%d,"units":%d`, u.Steps, u.Alloc)
 		}
@@ -147,7 +150,7 @@ func outcome(c *casefile.Case) string {
 	var opts []risor.CheckOption
 	unchecked := c.Check != nil && !*c.Check
 	if unchecked {
-		// Ruling AP3: compiled without a check; no type and no sites.
+		// "check": false (03-host.md 3.10.8 item 5): compiled without a check; no type and no sites.
 		opts = append(opts, risor.NoCheck)
 	} else if c.Returns != nil {
 		if *c.Returns == "condition" {

@@ -283,7 +283,7 @@ type deriver struct {
 
 func (d *deriver) derive(rt reflect.Type) (*types.Type, error) {
 	if rt == nil || rt.Kind() == reflect.Interface {
-		// BB23: every interface type is any; the value it holds is presented
+		// F1 6.2: every interface type is any; the value it holds is presented
 		// by the rules of its own type, a nil interface as null.
 		return types.Any, nil
 	}
