@@ -618,6 +618,10 @@ class Checker {
         return NEVER;
       case "As":
         return this.asNode(e, f);
+      case "Each": {
+        const r = this.eachType(e, f);
+        return r.skipped ? withNull(r.type) : r.type;
+      }
       case "Ident":
         return this.ident(e, f);
       case "Template":
@@ -1031,9 +1035,16 @@ class Checker {
   // ---- chains (9) -------------------------------------------------------------------
 
   private chain(e: A.Expr, f: Facts): Type {
+    const r = this.chainRaw(e, f);
+    return r.skipped ? withNull(r.type) : r.type;
+  }
+
+  /** A chain's type before the null of its optional steps is added, and whether one may skip (05 9.1). */
+  private chainRaw(e: A.Expr, f: Facts): { type: Type; skipped: boolean } {
     const steps: A.Expr[] = [];
     let x: A.Expr = e.kind === "OptChain" ? e.x : e;
     for (;;) {
+      if (x.kind === "Member" && this.res.constants.has(x)) break; // the read of a constant (f06 10 item 2)
       if (x.kind === "Member" || x.kind === "Index") {
         steps.push(x);
         x = x.x;
@@ -1044,10 +1055,19 @@ class Checker {
       } else break;
     }
     steps.reverse();
-    let cur = x.kind === "MethodCall" ? this.call(x, f) : this.synth(x, f);
-    if (x.kind === "MethodCall") this.types.set(x, cur);
-    let path: string | null = x.kind === "Ident" ? this.pathOf(x) : null;
     let skipped = false;
+    let cur: Type;
+    if (x.kind === "Each") {
+      // A projection (f07 5.1): a first star `?.[*]` sets the chain's skipped.
+      const r = this.eachType(x, f);
+      cur = r.type;
+      skipped = r.skipped;
+    } else {
+      // Both constants of the groups have type float (f06 8.2).
+      cur = x.kind === "Member" && this.res.constants.has(x) ? FLOAT : x.kind === "MethodCall" ? this.call(x, f) : this.synth(x, f);
+    }
+    if (x.kind === "MethodCall" || x.kind === "Member" || x.kind === "Each") this.types.set(x, cur);
+    let path: string | null = x.kind === "Ident" ? this.pathOf(x) : null;
     let recvSpan: Span = x.span;
     for (const s of steps) {
       const optional = (s as A.Member | A.Index | A.MethodCall).optional;
@@ -1071,7 +1091,101 @@ class Checker {
       recvSpan = s.span;
       this.types.set(s, cur);
     }
-    return skipped ? withNull(cur) : cur;
+    return { type: cur, skipped };
+  }
+
+  /** The walk of a projection (f07 5.1) and its type (5.2). `skipped`: a first star `?.[*]` may find null. */
+  private eachType(e: A.Each, f: Facts): { type: Type; skipped: boolean } {
+    let skipped = false;
+    let skippedElement = false;
+    let failed = false;
+    let neverRecv = false;
+    const ex = e.x!;
+    let cur: Type;
+    // The chain before the first star is one chain with the projection: its optional steps skip the whole.
+    if (ex.kind === "Member" || ex.kind === "Index" || ex.kind === "MethodCall") {
+      const r = this.chainRaw(ex, f);
+      this.types.set(ex, r.skipped ? withNull(r.type) : r.type);
+      cur = r.type;
+      skipped = r.skipped;
+    } else cur = this.synth(ex, f);
+    // A star on *cur*: the element type, or null when the projection fails or meets never.
+    const star = (p: A.Each, first: boolean): Type | null => {
+      if (hasNull(cur)) {
+        if (p.optional) {
+          if (first) skipped = true;
+          else skippedElement = true;
+        } else this.diag("maybe-null", p.recvSpan);
+        cur = nonnull(cur);
+      }
+      if (isAny(cur)) {
+        if (this.site("dynamic", p.recvSpan, p.starSpan)) {
+          failed = true;
+          return null;
+        }
+        if (p.optional) {
+          if (first) skipped = true;
+          else skippedElement = true;
+        }
+        return ANY;
+      }
+      if (isNever(cur)) {
+        if (first) neverRecv = true;
+        return NEVER;
+      }
+      if (kindCount(cur) === 1 && cur.list) return cur.list;
+      this.diag("kind", p.recvSpan);
+      failed = true;
+      return null;
+    };
+    const walk = (p: A.Each, first: boolean): void => {
+      const elem = star(p, first);
+      if (elem === null) {
+        // Nothing more is reported for the reads; the index expressions are synthesized (05 9.4).
+        this.synthReads(p, f);
+        return;
+      }
+      cur = elem;
+      let recvSpan = p.starSpan;
+      for (const s of p.reads) {
+        if (s.kind === "Each") {
+          if (isNever(cur) && !failed) {
+            // A later star on never: its elements are never, nothing is reported.
+            this.synthReads(s, f);
+            continue;
+          }
+          walk(s, false);
+          return;
+        }
+        if (hasNull(cur)) {
+          if (s.optional) skippedElement = true;
+          else this.diag("maybe-null", recvSpan);
+          cur = nonnull(cur);
+        }
+        if (!isAny(cur) && !isNever(cur) && kindCount(cur) !== 1) {
+          this.diag("kind", recvSpan);
+          cur = NEVER;
+          failed = true;
+        }
+        const before = this.diags.length;
+        const wasNever = isNever(cur);
+        cur = this.step(s, cur, recvSpan, f, false);
+        if (!wasNever && isNever(cur) && this.diags.length > before) failed = true;
+        this.types.set(s, cur);
+        recvSpan = s.span;
+      }
+    };
+    walk(e, true);
+    if (failed || neverRecv) return { type: NEVER, skipped };
+    return { type: listOf(skippedElement ? withNull(cur) : cur), skipped };
+  }
+
+  /** Synthesize the index expressions of a projection's reads, at every level. */
+  private synthReads(p: A.Each, f: Facts): void {
+    for (const s of p.reads) {
+      if (s.kind === "Index") this.synth(s.index, f);
+      else if (s.kind === "Each") this.synthReads(s, f);
+    }
   }
 
   private step(s: A.Expr, cur: Type, recvSpan: Span, f: Facts, present: boolean): Type {

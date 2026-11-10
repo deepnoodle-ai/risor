@@ -55,6 +55,13 @@ function accepts(t: TypeNode, v: unknown, run: Run): Verdict {
   }
 }
 
+/** The strings of a parameter type that is a literal set and nothing else, or null. */
+function literalSet(t: TypeNode): ReadonlySet<string> | null {
+  if (t.t === "literal") return new Set([t.value]);
+  if (t.t === "union" && t.alts.every((a) => a.t === "literal")) return new Set(t.alts.map((a) => (a as { value: string }).value));
+  return null;
+}
+
 export function paramAt(e: Entry, i: number): Param {
   return i < e.params.length ? e.params[i] : e.params[e.params.length - 1];
 }
@@ -106,6 +113,12 @@ export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: 
     if (bound === "number") {
       if (run.kind(v) !== "number") throw new RunFailure("wrong-kind", span, "argument", { name, kind: run.kind(v) });
       continue;
+    }
+    // f07 6.2: a parameter whose type is a literal set takes a string of the set, else `order`.
+    const set = literalSet(t);
+    if (set !== null) {
+      if (run.kind(v) === "string" && set.has(v as string)) continue;
+      throw new RunFailure("wrong-kind", span, "order", { name, found: v });
     }
     if (verdict === "ok") continue;
     if (verdict === "whole") throw new RunFailure("wrong-kind", span, "whole", { found: v });

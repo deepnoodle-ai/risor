@@ -39,6 +39,8 @@ export interface StaticEnv {
   library: ReadonlyMap<string, Counts>;
   /** Package F4: the type names and the named types' types (f04 6.1 item 1). */
   typeNames?: TypeNames;
+  /** Package F6: the constants of the groups that are on, by full name (f06 2.5). */
+  constants?: ReadonlyMap<string, number>;
 }
 
 export type Ref =
@@ -68,6 +70,8 @@ export interface Resolution {
   lambdaArgs: Set<A.Ident>;
   /** Package F4: each `As` node's resolved type; null after a diagnostic of f04 6.1. */
   asTypes: Map<A.As, Type | null>;
+  /** Package F6: each `Member` that reads a constant of a group, with its value (f06 2.4 item 2). */
+  constants: Map<A.Member, number>;
   slotCount: number;
 }
 
@@ -110,7 +114,7 @@ export function staticRules(program: A.Program, env: StaticEnv): StaticResult {
 
 class Walker {
   readonly diags: Diagnostic[] = [];
-  readonly res: Resolution = { refs: new Map(), targets: new Map(), slots: new Map(), catchSlots: new Map(), lambdas: [], lambdaArgs: new Set(), asTypes: new Map(), slotCount: 0 };
+  readonly res: Resolution = { refs: new Map(), targets: new Map(), slots: new Map(), catchSlots: new Map(), lambdas: [], lambdaArgs: new Set(), asTypes: new Map(), constants: new Map(), slotCount: 0 };
   private readonly scopes: Map<string, Binding>[] = [];
   private readonly env: StaticEnv;
 
@@ -279,9 +283,14 @@ class Walker {
     if (namespace !== null) {
       const full = `${namespace}.${name}`;
       const c = this.env.hostFunctions.get(full);
+      const l = this.env.library.get(full);
       if (c !== undefined) {
         target = { k: "host", name: full };
         counts = c;
+      } else if (l !== undefined) {
+        // f06 2.5 item 1: an entry of a group that is on.
+        target = { k: "library", name: full };
+        counts = l;
       } else this.diag("undefined-function", nameSpan);
     } else {
       const b = this.lookup(name);
@@ -350,6 +359,10 @@ class Walker {
           this.expr(e.x);
           this.programType(e);
           return;
+        case "Each":
+          // f07 5.7: `x`, then each read in order, an index's expression, and a later `Each`.
+          this.each(e);
+          return;
         case "Binary": {
           const spine: A.Binary[] = [];
           let x: A.Expr = e;
@@ -407,6 +420,14 @@ class Walker {
     }
   }
 
+  private each(e: A.Each): void {
+    if (e.x !== null) this.expr(e.x);
+    for (const r of e.reads) {
+      if (r.kind === "Index") this.expr(r.index);
+      else if (r.kind === "Each") this.each(r);
+    }
+  }
+
   /** Resolve the program type of an `As` node (f04 3.5, 6.1). */
   private programType(e: A.As): void {
     const r = resolveProgramType(e.type, e.typeSpan, e.typeSpans, this.env.typeNames ?? NO_TYPE_NAMES);
@@ -417,6 +438,12 @@ class Walker {
     }
   }
 
+  /** The value of a constant that a plain `Member` on a group's name reads (f06 2.4 item 2). */
+  private constantOf(m: A.Member): number | undefined {
+    if (m.optional || m.x.kind !== "Ident" || !this.env.namespaces.has(m.x.name) || this.lookup(m.x.name) !== undefined) return undefined;
+    return this.env.constants?.get(`${m.x.name}.${m.name}`);
+  }
+
   /** A chain, walked from its primary. */
   private chain(e: A.Expr): void {
     const steps: A.Expr[] = [];
@@ -424,6 +451,11 @@ class Walker {
     // chain of its own, written in parentheses (01 7.4 rule 5).
     let x: A.Expr = e.kind === "OptChain" ? e.x : e;
     for (;;) {
+      if (x.kind === "Member" && this.constantOf(x) !== undefined) {
+        // f06 2.4 item 2: the read of a constant is a primary; its receiver is not walked.
+        this.res.constants.set(x, this.constantOf(x)!);
+        break;
+      }
       if (x.kind === "Member" || x.kind === "Index") {
         steps.push(x);
         x = x.x;
@@ -440,7 +472,7 @@ class Walker {
     // x is the primary, unless the innermost step is a namespace call.
     const innermost = steps[steps.length - 1];
     const nsCall = innermost !== undefined && innermost.kind === "MethodCall" && !innermost.optional && innermost.x === x && x.kind === "Ident" && this.env.namespaces.has(x.name);
-    if (!nsCall) {
+    if (!nsCall && !(x.kind === "Member" && this.res.constants.has(x))) {
       if (x.kind === "Call") this.call(x, null, x.name, x.nameSpan, x.args);
       else this.expr(x);
     }

@@ -19,7 +19,8 @@ import { ABSENT_VAR, Run } from "../eval/run.ts";
 import type { VarSupply } from "../eval/run.ts";
 import { staticRules } from "../eval/static.ts";
 import type { Counts, StaticEnv } from "../eval/static.ts";
-import { functionCounts, FUNCTIONS } from "../library/registry.ts";
+import { functionCounts, FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS } from "../library/registry.ts";
+import "../library/groups.ts";
 import "../library/core.ts";
 import { Classifier, DEFAULT_CLASSIFIER, jsonString, mapGet, mapKeys, readHost, sortKeys, truthy as truthyOf, BAD_NUMBER } from "../value/value.ts";
 import { numberToText } from "../value/number.ts";
@@ -90,6 +91,8 @@ export interface EnvOptions {
   removed?: string[];
   /** Internal: the variables a child keeps from its parent (03 3.3.2). */
   inherited?: Declarations["inherited"];
+  /** Package F6: the opt-in groups to turn on: `json`, `time`, `math`, `base64` (f06 2.1). */
+  groups?: string[];
   /** Package F4: named types, in the order declared (f04 3.1). */
   types?: NamedTypeDecl[];
   /** Internal: the named types a child keeps from its parent (f04 3.4). */
@@ -196,6 +199,7 @@ export function createEnv(options: EnvOptions = {}): Env {
     schemas: options.schemas,
     variableTexts: options.variables,
     removed: options.removed,
+    groups: options.groups,
     inherited: options.inherited,
     types: options.types,
     inheritedTypes: options.inheritedTypes,
@@ -232,6 +236,8 @@ export interface Description {
   limits: { steps: number | null; allocation: number | null; depth: number };
   /** Package F4 (f04 8): each named type, printed by structure; only when there is one. */
   types?: Record<string, string>;
+  /** Package F6 (f06 2.7): the groups that are on, in code point order; only when one is. */
+  groups?: string[];
 }
 
 /** The JSON text of a description (f01 5.3 item 5): keys in code point order, no white space. */
@@ -257,9 +263,10 @@ export function envFromDescription(description: unknown): Env {
   };
   if (!isObj(d)) bad("not an object");
   const keys = ["version", "variables", "functions", "opaque", "removed", "reject", "limits"];
-  for (const k of Object.keys(d)) if (!keys.includes(k) && k !== "types") bad(`the key ${k}`);
+  for (const k of Object.keys(d)) if (!keys.includes(k) && k !== "types" && k !== "groups") bad(`the key ${k}`);
   for (const k of keys) if (!(k in d)) bad(`no key ${k}`);
   // f04 8 item 3: each entry of `types` is a named type by type text.
+  const groups = "groups" in d ? (Array.isArray(d.groups) && d.groups.every((x) => typeof x === "string") ? (d.groups as string[]) : bad("groups")) : undefined;
   const types = "types" in d ? Object.entries(strings(d.types, "types")).map(([name, type]) => ({ name, type })) : undefined;
   if (typeof d.version !== "string") bad("version");
   const variables = strings(d.variables, "variables");
@@ -295,6 +302,7 @@ export function envFromDescription(description: unknown): Env {
     removed,
     reject,
     types,
+    groups,
     limits: {
       steps: num(lim.steps, true, "steps"),
       allocation: num(lim.allocation, true, "allocation"),
@@ -341,6 +349,7 @@ function librarySig(e: { name: string; record: { receiver?: string; signature: s
   };
 }
 const LIBRARY_FUNCTIONS = new Map([...FUNCTIONS].map(([k, e]) => [k, librarySig(e, "library")]));
+const GROUP_SIGS = new Map([...GROUP_FUNCTIONS].map(([k, e]) => [k, librarySig(e, "library")]));
 const LIBRARY_METHODS = new Map([...METHODS].map(([kind, m]) => [kind, new Map([...m].map(([k, e]) => [k, librarySig(e, "library")]))]));
 
 export class Env {
@@ -368,12 +377,17 @@ export class Env {
     this.compileEnv = { functions: fns, methods, removed: environment.removed };
     const hostCounts = new Map<string, Counts>();
     for (const [k, f] of fns) hostCounts.set(k, f.counts);
+    // f06 2.5: a group that is on is a namespace; its entries are library functions, its constants are read.
+    const on = environment.groups;
+    const groupEntries = [...GROUP_FUNCTIONS].filter(([k, e]) => on.has(e.group) && !environment.removed.has(k));
+    const constants = new Map([...GROUP_CONSTANTS].filter(([k, c]) => on.has(c.group) && !environment.removed.has(k)).map(([k, c]) => [k, c.value]));
     this.staticEnv = {
       variables: new Set(environment.variables.keys()),
       hostFunctions: hostCounts,
-      namespaces: environment.namespaces,
-      library: new Map([...functionCounts()].filter(([k]) => !environment.removed.has(k))),
+      namespaces: on.size === 0 ? environment.namespaces : new Set([...environment.namespaces, ...on]),
+      library: new Map([...functionCounts()].filter(([k]) => !environment.removed.has(k)).concat(groupEntries.map(([k, e]) => [k, e.counts]))),
       typeNames: { opaque: environment.opaque, named: environment.named },
+      constants,
     };
     const hostSig = (name: string, sig: import("../types/typetext.ts").SigNode, recv: import("../types/typetext.ts").TypeNode | null): CheckSig => ({
       name, kind: "host", recv, sig, narrows: false, tested: [], renders: [],
@@ -388,7 +402,9 @@ export class Env {
       named: environment.named,
       variables: environment.variableTypes,
       functions: new Map([...environment.functions].map(([k, fn]) => [k, hostSig(k, fn.sig, null)])),
-      library: environment.removed.size === 0 ? LIBRARY_FUNCTIONS : new Map([...LIBRARY_FUNCTIONS].filter(([k]) => !environment.removed.has(k))),
+      library: environment.removed.size === 0 && groupEntries.length === 0
+        ? LIBRARY_FUNCTIONS
+        : new Map([...LIBRARY_FUNCTIONS].filter(([k]) => !environment.removed.has(k)).concat(groupEntries.map(([k]) => [k, GROUP_SIGS.get(k)!]))),
       libraryMethods:
         environment.removed.size === 0
           ? LIBRARY_METHODS
@@ -443,6 +459,7 @@ export class Env {
       reject: [...e.reject].sort(compareText),
       limits: { steps: e.limits.steps, allocation: e.limits.allocation, depth: e.limits.depth },
       ...(e.named.size > 0 ? { types: sorted([...e.named].map(([k, t]) => [k, printType(t)])) } : {}),
+      ...(e.groups.size > 0 ? { groups: [...e.groups].sort(compareText) } : {}),
     };
   }
 
@@ -540,6 +557,8 @@ export class Env {
       reject: options.reject ?? (p.reject !== undefined ? p.reject : [...pe.reject]),
       limits: options.limits ?? p.limits,
       removed: [...pe.removed, ...(options.removed ?? [])],
+      // f06 2.6 item 1: the parent's groups and the child's own.
+      groups: [...pe.groups, ...(options.groups ?? [])],
     });
     env.noImplementation = this.noImplementation;
     return env;
@@ -793,7 +812,8 @@ export interface AnalysisCall {
 /** The report of an analysis (f02 3.3), in this binding's types. Spans are code-point offsets. */
 export interface AnalysisReport {
   names: string[];
-  refs: { name: string; path: string[]; span: Span }[];
+  /** A path step is a key, or a star of package F7 (f07 9.3). */
+  refs: { name: string; path: (string | { star: true })[]; span: Span }[];
   calls: AnalysisCall[];
   literal: { value: unknown } | false;
   segments: ({ text: string; span: Span } | { part: Span; span: Span })[] | null;
@@ -802,7 +822,7 @@ export interface AnalysisReport {
 function reportOf(r: Report, source: Source): AnalysisReport {
   return {
     names: r.names,
-    refs: r.refs.map((x) => ({ name: x.name, path: x.path.map((p) => p.key), span: x.span })),
+    refs: r.refs.map((x) => ({ name: x.name, path: x.path.map((p) => ("star" in p ? { star: true as const } : p.key)), span: x.span })),
     calls: r.calls.map((c) => ({
       name: c.name,
       namespace: c.namespace,
@@ -824,7 +844,7 @@ export function reportJSON(r: AnalysisReport, source: Source): string {
   const lit = r.literal === false ? "false" : `{"value":${toJSON(r.literal.value)}}`;
   const parts = [
     `"names":[${r.names.map(jsonString).join(",")}]`,
-    `"refs":[${r.refs.map((x) => `{"name":${jsonString(x.name)},"path":[${x.path.map(jsonString).join(",")}],"span":${sp(x.span)}}`).join(",")}]`,
+    `"refs":[${r.refs.map((x) => `{"name":${jsonString(x.name)},"path":[${x.path.map((p) => (typeof p === "string" ? jsonString(p) : '{"star":true}')).join(",")}],"span":${sp(x.span)}}`).join(",")}]`,
     `"calls":[${r.calls
       .map((c) => `{"name":${jsonString(c.name)},"namespace":${c.namespace === null ? "null" : jsonString(c.namespace)},"span":${sp(c.span)},"args":[${c.args.map((a) => sp(a.span)).join(",")}],"lambda":${c.lambda}}`)
       .join(",")}]`,

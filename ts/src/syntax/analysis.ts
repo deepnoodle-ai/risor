@@ -8,8 +8,8 @@ import type { Span } from "./source.ts";
 import type { Segment } from "./template.ts";
 import { RMap, compareText } from "../value/value.ts";
 
-/** A step of a path: a key. Package F7 adds a star beside it (f02 5). */
-export type PathStep = { key: string };
+/** A step of a path: a key, or with package F7 a star (f07 9.1). */
+export type PathStep = { key: string } | { star: true };
 
 export interface Reference {
   name: string;
@@ -197,6 +197,7 @@ class Walker {
         case "Member":
         case "Index":
         case "OptChain":
+        case "Each":
           this.chain(e);
           return;
       }
@@ -205,12 +206,27 @@ class Walker {
 
   /** A chain: its primary, then each step. A parenthesis ends a chain. */
   private chain(e: A.Expr): void {
-    const steps: A.Expr[] = [];
+    type Step = A.Member | A.Index | A.MethodCall | { kind: "Star"; span: Span };
+    const steps: Step[] = [];
     let x: A.Expr = e.kind === "OptChain" ? e.x : e;
     let cut = false;
-    while (x.kind === "Member" || x.kind === "Index" || x.kind === "MethodCall") {
-      steps.push(x);
-      x = (x as A.Member).x;
+    // A projection's steps in order: its star, then its reads, a later star with its own (f07 9.1).
+    const projection = (p: A.Each): Step[] => {
+      const out: Step[] = [{ kind: "Star", span: p.starSpan }];
+      for (const r of p.reads) {
+        if (r.kind === "Each") out.push(...projection(r));
+        else out.push(r);
+      }
+      return out;
+    };
+    for (;;) {
+      if (x.kind === "Member" || x.kind === "Index" || x.kind === "MethodCall") {
+        steps.push(x);
+        x = x.x;
+      } else if (x.kind === "Each" && x.x !== null) {
+        steps.push(...projection(x).reverse());
+        x = x.x;
+      } else break;
       if (x.parens) {
         cut = true; // the receiver is written in parentheses: a chain of its own
         break;
@@ -228,6 +244,7 @@ class Walker {
         for (const s of steps) {
           if (s.kind === "Member") path.push({ key: s.name });
           else if (s.kind === "Index" && s.index.kind === "String") path.push({ key: s.index.value });
+          else if (s.kind === "Star") path.push({ star: true });
           else break;
           end = s.span.end;
         }

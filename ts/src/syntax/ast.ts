@@ -12,6 +12,8 @@ export const NODE_NUMBER = {
   NamePat: 27, MapPat: 28, ListPat: 29, Bad: 30,
   // Package F4 (f04 2.7).
   As: 31,
+  // Package F7 (f07 2.3).
+  Each: 32,
 } as const;
 
 export type NodeKind = keyof typeof NODE_NUMBER;
@@ -263,10 +265,27 @@ export interface As extends Base {
   typeSpans: Map<TypeNode, Span>;
 }
 
+/**
+ * A projection, `xs[*].f` (package F7, f07 2.3). The first star has `x`; a
+ * later star is an `Each` with `x` null, the last of the reads of the level
+ * before it. A read is a `Member` or `Index` whose `x` is a `Bad` node: it is
+ * applied to the element in hand.
+ */
+export interface Each extends Base {
+  kind: "Each";
+  x: Expr | null;
+  reads: (Member | Index | Each)[];
+  optional: boolean;
+  /** The star span: from the first token of the chain to the star's `]` (f07 2.4). */
+  starSpan: Span;
+  /** The span of the receiver of the star (f07 2.4 item 2). */
+  recvSpan: Span;
+}
+
 export type Expr =
   | Block | Ident | NumberLit | StringLit | Template | Bool | Null | List | MapLit
   | Unary | Binary | Cond | Member | Index | Call | MethodCall | OptChain | Match
-  | Try | Bad | As;
+  | Try | Bad | As | Each;
 
 export type Node =
   | Program | Const | Expr | Entry | Spread | Lambda | Param | Arm | Pattern;

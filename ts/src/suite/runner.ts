@@ -8,7 +8,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { createEnv, HostError, RisorError } from "../host/api.ts";
+import { createEnv, HostError, RisorError, toJSON } from "../host/api.ts";
 import type { Env, HostFunction, OpaqueType } from "../host/api.ts";
 import type { NamedTypeDecl } from "../host/env.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
@@ -126,7 +126,7 @@ function needsRun(c: Case): boolean {
   const ex = c.expect;
   return (
     c.vars !== undefined ||
-    (ex.kind === "result" && (ex.value !== undefined || ex.truthy !== undefined || ex.steps !== undefined || ex.allocated !== undefined)) ||
+    (ex.kind === "result" && (ex.value !== undefined || ex.json !== undefined || ex.truthy !== undefined || ex.steps !== undefined || ex.allocated !== undefined)) ||
     (ex.kind === "failure" && ex.phase === "run")
   );
 }
@@ -143,6 +143,8 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
   const checker = opts.checker !== false;
   const staticCodes = opts.staticCodes ?? STATIC_CODES;
   if (!checker) {
+    // 03 3.11: a file that is run checked only is not run with the static rules alone.
+    if (opts.checkOnly === true) return v("skip", { reason: "run checked only" });
     // 03 3.10.8 item 5: a runner with no type checker.
     if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) {
       return v("skip", { reason: "needs the type checker (type or sites)" });
@@ -210,6 +212,7 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
     env = createEnv({
       version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [], removed: c.removed,
       types: c.types as NamedTypeDecl[] | undefined,
+      groups: c.groups,
       schemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
     });
     // The expected result is declared type text, resolved in every compile (03 3.3.1).
@@ -377,7 +380,17 @@ function compare(c: Case, o: Outcome): Difference[] {
     if (ex.value !== undefined && !plainEqual(o.value, hostValue(ex.value.value), CLASSIFIER)) {
       d.push({ field: "value", expected: ex.value.value, found: show(o.value) });
     }
-    if (ex.truthy !== undefined && truthy(o.value, CLASSIFIER) !== ex.truthy) d.push({ field: "truthy", expected: ex.truthy, found: !ex.truthy });
+    if (ex.json !== undefined) {
+      // f06 11.2: the binding's JSON text of the value, code point by code point.
+      let found: string | null;
+      try {
+        found = toJSON(o.value);
+      } catch {
+        found = null;
+      }
+      if (found !== ex.json) d.push({ field: "json", expected: ex.json, found });
+    }
+        if (ex.truthy !== undefined && truthy(o.value, CLASSIFIER) !== ex.truthy) d.push({ field: "truthy", expected: ex.truthy, found: !ex.truthy });
     if (ex.steps !== undefined && o.usage?.steps !== ex.steps) d.push({ field: "steps", expected: ex.steps, found: o.usage?.steps });
     if (ex.allocated !== undefined && o.usage?.allocated !== ex.allocated) d.push({ field: "allocated", expected: ex.allocated, found: o.usage?.allocated });
     return d;
@@ -542,8 +555,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F5. */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5]);
+/** The packages this implementation offers: F1 to F7. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

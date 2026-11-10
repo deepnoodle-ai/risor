@@ -37,6 +37,8 @@ export type Expect =
       type?: string;
       /** Package F1: the description of the case's environment (f01 7.2). */
       description?: { value: Json };
+      /** Package F6: the JSON text of the run's value (f06 11.2). */
+      json?: string;
       /** Package F2: the expected report of the analysis (f02 4.2). */
       analysis?: JsonObject;
       sites?: { class: string; span: LineSpan }[];
@@ -76,6 +78,8 @@ export interface Case {
   precondition?: boolean;
   /** 03 3.10.3: library entries the environment removes (`len`, `string.repeat`). */
   removed?: string[];
+  /** Package F6: the groups the case's environment turns on (f06 11.1). */
+  groups?: string[];
   /** Package F4: named types, in order (f04 9.1). */
   types?: ({ name: string; type: string } | { name: string; schema: Json; options?: string[] })[];
   /** Package F4: a case of the second kind (f04 9.2). */
@@ -107,7 +111,7 @@ export const CONVERSION_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SE
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
@@ -246,6 +250,11 @@ function checkShared(o: JsonObject, where: string): void {
       }
     }
   }
+  if ("groups" in o) {
+    // f06 11.1 item 4.
+    const g = o.groups;
+    if (!Array.isArray(g) || !g.every((x) => typeof x === "string") || new Set(g).size !== g.length) fail(`${where}: groups is not a list of strings, each once`);
+  }
   if ("conform" in o) {
     const cf = o.conform;
     if (!isObject(cf) || Object.keys(cf).length !== 2 || typeof cf.type !== "string" || !("value" in cf)) fail(`${where}: conform is not an object of type and value`);
@@ -376,6 +385,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("schemas" in merged) c.schemas = merged.schemas as Record<string, { schema: Json; options?: string[] }>;
   if ("template" in merged) c.template = merged.template as "string" | "value";
   if ("types" in merged) c.types = merged.types as Case["types"];
+  if ("groups" in merged) c.groups = merged.groups as string[];
   if (hasConform) c.conform = merged.conform as { type: string; value: Json };
   // f04 9.2 item 5: a conform result only in a conform case; a conform case expects one or a declare failure.
   if (c.expect.kind === "conform" && !hasConform) fail(`${where}: a conform result in a case without conform`);
@@ -473,7 +483,8 @@ function checkAnalysis(v: Json, where: string): void {
         for (const r of x) {
           const o = exact(r, ["name", "path", "span"], "a ref");
           if (typeof o.name !== "string") fail(`${w}: a ref's name`);
-          strings(o.path, "a ref's path");
+          // f07 9.3: a step is a string or {"star": true}.
+          if (!Array.isArray(o.path) || !o.path.every((p) => typeof p === "string" || (isObject(p) && Object.keys(p).length === 1 && p.star === true))) fail(`${w}: a ref's path`);
           checkSpan(o.span, w);
         }
         break;
@@ -593,6 +604,10 @@ function buildExpect(v: Json, where: string): Expect {
         break;
       case "description":
         out.description = { value: val };
+        break;
+      case "json":
+        if (typeof val !== "string") fail(`${where}: json is not a string`);
+        out.json = val;
         break;
       case "truthy":
         if (typeof val !== "boolean") fail(`${where}: truthy is not a boolean`);

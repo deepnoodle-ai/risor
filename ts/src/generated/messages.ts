@@ -178,7 +178,8 @@ export const CATALOG: CatalogEntry[] = [
       "operand": "an operand of {op} is null",
       "spread": "cannot spread null",
       "key": "a key or an index is null",
-      "pattern": "cannot destructure null"
+      "pattern": "cannot destructure null",
+      "star": "cannot apply [*] to null"
     }
   },
   {
@@ -215,7 +216,9 @@ export const CATALOG: CatalogEntry[] = [
       "result": "the callback of {name} gave a value of kind {kind}, which it cannot take",
       "callback": "argument {count} of method {name} must be a function",
       "not-callback": "argument {count} of method {name} cannot be a function",
-      "parameters": "the function given to method {name} has more than {count} parameters"
+      "parameters": "the function given to method {name} has more than {count} parameters",
+      "star": "cannot apply [*] to a value of kind {kind}",
+      "order": "{name} takes \"asc\" or \"desc\", found {found}"
     }
   },
   {

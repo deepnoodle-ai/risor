@@ -1,6 +1,9 @@
 // Generate src/generated/*.ts from the suite's data files:
 //   suite/messages.json -> src/generated/messages.ts (the run catalog)
 //   suite/library.json  -> src/generated/library.ts  (the entries' records, without cases and docs)
+//   suite/library-groups.json -> src/generated/library-groups.ts (package F6: the groups' records)
+//   suite/library-queries.json -> src/generated/library-queries.ts (package F7: its records)
+//   suite/messages-queries.json joins the catalog of messages.ts (package F7, f07 11)
 // Run with `npm run generate`. A test fails when the generated files are stale.
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -14,10 +17,28 @@ const out = join(here, "..", "src", "generated");
 export function generated(): Record<string, string> {
   const messages = JSON.parse(readFileSync(join(suite, "messages.json"), "utf8")) as Record<string, unknown>[];
   const catalog = messages.map((e) => ({
-    code: e.code, phase: e.phase, caught: e.caught ?? null, params: e.params, templates: e.templates,
+    code: e.code, phase: e.phase, caught: e.caught ?? null, params: { ...(e.params as object) } as Record<string, string>, templates: { ...(e.templates as object) } as Record<string, string>,
   }));
+  // f07 11 item 2: a package's catalog file adds templates and params to Core's entries.
+  const more = JSON.parse(readFileSync(join(suite, "messages-queries.json"), "utf8")) as Record<string, unknown>[];
+  for (const e of more) {
+    const c = catalog.find((x) => x.code === e.code);
+    if (c === undefined) throw new Error(`messages-queries.json: no code ${String(e.code)} in messages.json`);
+    Object.assign(c.params, e.params as object);
+    Object.assign(c.templates, e.templates as object);
+  }
   const library = JSON.parse(readFileSync(join(suite, "library.json"), "utf8")) as Record<string, unknown>[];
   const records = library.map((e) => {
+    const r: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
+    return r;
+  });
+  const groups = (JSON.parse(readFileSync(join(suite, "library-groups.json"), "utf8")) as Record<string, unknown>[]).map((e) => {
+    const r: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
+    return r;
+  });
+  const queries = (JSON.parse(readFileSync(join(suite, "library-queries.json"), "utf8")) as Record<string, unknown>[]).map((e) => {
     const r: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
     return r;
@@ -34,6 +55,14 @@ export function generated(): Record<string, string> {
       head.replace("%s", "library.json") +
       "export interface LibraryRecord {\n  name: string;\n  receiver?: string;\n  signature: string;\n  [field: string]: unknown;\n}\n\n" +
       `export const LIBRARY: LibraryRecord[] = ${JSON.stringify(records, null, 2)};\n`,
+    "library-groups.ts":
+      head.replace("%s", "library-groups.json") +
+      "export interface GroupRecord {\n  name: string;\n  group: string;\n  signature?: string;\n  type?: string;\n  value?: number;\n  [field: string]: unknown;\n}\n\n" +
+      `export const GROUP_LIBRARY: GroupRecord[] = ${JSON.stringify(groups, null, 2)};\n`,
+    "library-queries.ts":
+      head.replace("%s", "library-queries.json") +
+      'import type { LibraryRecord } from "./library.ts";\n\n' +
+      `export const QUERY_LIBRARY: LibraryRecord[] = ${JSON.stringify(queries, null, 2)};\n`,
     "casemap.ts":
       head.replace("%s", "casemap.json") +
       `/** The Unicode version of the case table (04-library.md 3.8). */\nexport const CASEMAP_UNICODE = ${JSON.stringify(casemap.unicode)};\n\n` +

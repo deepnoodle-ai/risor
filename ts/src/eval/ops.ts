@@ -280,7 +280,14 @@ export function render(r: Run, v: unknown, span: Span): string {
   return parts.join("");
 }
 
-function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[]): void {
+/** The JSON form of a value, made in a run: `json.stringify` (f06 6.1). An opaque value is `wrong-kind`, template `json`. */
+export function jsonText(r: Run, v: unknown, span: Span): string {
+  const parts: string[] = [];
+  jsonForm(r, v, span, 0, parts, "json");
+  return parts.join("");
+}
+
+function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[], opaqueTemplate = "text"): void {
   switch (r.kind(v)) {
     case "string":
       out.push(jsonString(v as string));
@@ -295,7 +302,7 @@ function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[]):
       out.push(numberToText(v as number));
       return;
     case "opaque":
-      throw new RunFailure("wrong-kind", span, "text", {});
+      throw new RunFailure("wrong-kind", span, opaqueTemplate, {});
     case "list": {
       const xs = v as unknown[];
       r.testDepth(r.depth + level + 1);
@@ -303,7 +310,7 @@ function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[]):
       out.push("[");
       for (let i = 0; i < xs.length; i++) {
         if (i > 0) out.push(",");
-        jsonForm(r, r.read(xs[i], span), span, level + 1, out);
+        jsonForm(r, r.read(xs[i], span), span, level + 1, out, opaqueTemplate);
       }
       out.push("]");
       return;
@@ -317,7 +324,7 @@ function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[]):
       keys.forEach((k, i) => {
         if (i > 0) out.push(",");
         out.push(jsonString(k), ":");
-        jsonForm(r, r.read(mapGet(v as object, k), span), span, level + 1, out);
+        jsonForm(r, r.read(mapGet(v as object, k), span), span, level + 1, out, opaqueTemplate);
       });
       out.push("}");
       return;

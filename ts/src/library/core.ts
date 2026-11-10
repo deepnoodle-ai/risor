@@ -492,6 +492,13 @@ implement("list", "sortBy", (c) => {
   c.run.charge(L(n) * (n + stringsSize(keys)));
   c.run.alloc(1 + n);
   const idx = xs.map((_, i) => i);
+  // f07 6.3: with "desc", descending, and still stable.
+  if (c.args[1] === "desc") {
+    return idx
+      .map((i) => ({ i, k: keys[i] }))
+      .sort((p, q) => compareOrdered(q.k, p.k) || p.i - q.i)
+      .map((p) => xs[p.i]);
+  }
   return stableSort(idx, (i) => keys[i]).map((i) => xs[i]);
 });
 
@@ -628,4 +635,93 @@ implement("map", "entries", (c) => {
   const keys = sortedKeys(c);
   c.run.alloc(1 + 6 * keys.length);
   return keys.map((k) => new RMap([["key", k], ["value", mapGet(c.receiver as object, k)]]));
+});
+
+// ---- package F7: the methods of queries (f07 6) ----------------------------------
+
+/** The keys a callback gave for each element; the ordered test after the last call (f07 6.2). */
+function orderedKeys(c: CallContext): { keys: unknown[]; xs: unknown[] } {
+  const keys: unknown[] = [];
+  const xs: unknown[] = [];
+  each(c, c.args[0] as Callback, (r, e) => {
+    keys.push(r);
+    xs.push(e);
+  });
+  const f = orderedFailure(keys.map((k) => c.run.kind(k)));
+  if (f !== null) throw new RunFailure("wrong-kind", c.span, "unordered", { name: c.name, kind: f.kind });
+  c.run.charge(stringsSize(keys));
+  return { keys, xs };
+}
+
+for (const [name, sign] of [["minBy", -1], ["maxBy", 1]] as const) {
+  implement("list", name, (c) => {
+    const { keys, xs } = orderedKeys(c);
+    if (xs.length === 0) return null;
+    // Of equal keys, the first (f07 6.4 item 3, 6.5 item 1).
+    let best = 0;
+    for (let i = 1; i < xs.length; i++) if (compareOrdered(keys[i], keys[best]) * sign > 0) best = i;
+    return xs[best];
+  });
+}
+
+implement("list", "uniqueBy", (c) => {
+  const { keys, xs } = orderedKeys(c);
+  const seen = new Set<unknown>();
+  const out: unknown[] = [];
+  keys.forEach((k, i) => {
+    // `1` and `1.0` are one key: numbers are held as doubles.
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(xs[i]);
+    }
+  });
+  c.run.alloc(1 + out.length);
+  return out;
+});
+
+/** The string keys of `indexBy` and `countBy`, each tested when its call returns (f07 6.2). */
+function stringKeys(c: CallContext): { keys: string[]; xs: unknown[] } {
+  const keys: string[] = [];
+  const xs: unknown[] = [];
+  each(c, c.args[0] as Callback, (r, e) => {
+    if (typeof r !== "string") throw new RunFailure("wrong-kind", c.span, "result", { name: c.name, kind: c.run.kind(r) });
+    keys.push(r);
+    xs.push(e);
+  });
+  c.run.charge(sizeTogether(keys));
+  return { keys, xs };
+}
+
+implement("list", "indexBy", (c) => {
+  const { keys, xs } = stringKeys(c);
+  c.run.alloc(1 + 2 * xs.length);
+  const m = new RMap();
+  keys.forEach((k, i) => m.set(k, xs[i]));
+  return m;
+});
+
+implement("list", "countBy", (c) => {
+  const { keys } = stringKeys(c);
+  const m = new RMap();
+  for (const k of keys) m.set(k, ((m.get(k) as number | undefined) ?? 0) + 1);
+  c.run.alloc(1 + 2 * m.size);
+  return m;
+});
+
+implement("map", "mapValues", (c) => {
+  // f07 6.9: the keys in key order, charged first; then each entry: 2 steps, then f(value, key).
+  const keys = sortKeys(mapKeys(c.receiver as object));
+  const n = keys.length;
+  c.run.charge(L(n) * (n + sizeTogether(keys)));
+  const f = c.args[0] as Callback;
+  const out: unknown[] = [];
+  for (const k of keys) {
+    c.run.charge(2);
+    const v = c.run.read(mapGet(c.receiver as object, k), c.span);
+    out.push(f.call([v, k]));
+  }
+  c.run.alloc(1 + 2 * n);
+  const m = new RMap();
+  keys.forEach((k, i) => m.set(k, out[i]));
+  return m;
 });

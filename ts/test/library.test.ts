@@ -15,12 +15,17 @@ import { CASEMAP_UNICODE } from "../src/library/text.ts";
 
 interface Rec { name: string; receiver?: string; signature: string; steps: string; units: string }
 
-describe("the registry is suite/library.json", () => {
-  const records = JSON.parse(readFileSync(join(SUITE, "library.json"), "utf8")) as Rec[];
+describe("the registry is suite/library.json and suite/library-queries.json", () => {
+  const core = JSON.parse(readFileSync(join(SUITE, "library.json"), "utf8")) as Rec[];
+  // f07 6.1: the queries' records, one of which extends `list.sortBy` in its place.
+  const queries = JSON.parse(readFileSync(join(SUITE, "library-queries.json"), "utf8")) as (Rec & { extends?: string })[];
+  const replaced = new Set(queries.filter((q) => q.extends !== undefined).map((q) => q.extends));
+  const records = [...core.filter((r) => !replaced.has(`${r.receiver === undefined ? "" : "list."}${r.name}`)), ...queries];
   const registered: Entry[] = [...FUNCTIONS.values(), ...[...METHODS.values()].flatMap((m) => [...m.values()])];
-  test("53 entries, each implemented, none added in code alone", () => {
-    assert.equal(records.length, 53);
-    assert.equal(registered.length, 53);
+  test("59 entries (53 of Core, 6 of F7), each implemented, none added in code alone", () => {
+    assert.equal(core.length, 53);
+    assert.equal(records.length, 59);
+    assert.equal(registered.length, 59);
     for (const e of registered) assert.ok(e.impl !== null, `${e.name} has no implementation`);
   });
   for (const r of records) {

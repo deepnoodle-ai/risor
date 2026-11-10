@@ -12,7 +12,7 @@ import type { SigNode, TypeNode } from "../types/typetext.ts";
 import { ANY, depth, fromNode, SIZE_LIMIT, typeSize, TypeError as TypeRuleError } from "../types/type.ts";
 import type { Type } from "../types/type.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
-import { FUNCTIONS, METHODS } from "../library/registry.ts";
+import { FUNCTIONS, GROUP_CONSTANTS, GROUP_FUNCTIONS, GROUPS, METHODS } from "../library/registry.ts";
 import type { SchemaOption } from "../types/schema.ts";
 
 /** The newest version of the specification this implementation offers. */
@@ -57,6 +57,8 @@ export interface Declarations {
   schemas?: Record<string, { schema: unknown; options?: SchemaOption[] }>;
   /** Library entries the environment does not have (03 3.3.1). */
   removed?: string[];
+  /** Package F6: the opt-in groups that are on (f06 2.1). */
+  groups?: string[];
   /** Variables a child environment keeps from its parent, with their types (03 3.3.2). */
   inherited?: ReadonlyMap<string, { node: TypeNode; type: Type | undefined }>;
   opaque?: string[];
@@ -81,6 +83,8 @@ export interface Environment {
   variableTypes: Map<string, Type>;
   /** The library entries removed (03 3.3.1). */
   removed: Set<string>;
+  /** Package F6: the groups that are on (f06 2.1). */
+  groups: Set<string>;
   functions: Map<string, FunctionDecl>;
   namespaces: Set<string>;
   opaque: Set<string>;
@@ -116,6 +120,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     variables: new Map(),
     variableTypes: new Map(),
     removed: new Set(d.removed ?? []),
+    groups: new Set(),
     functions: new Map(),
     namespaces: new Set(),
     opaque: new Set(),
@@ -146,8 +151,17 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
   // A removed entry is named `len` or `string.repeat` (03 3.3.1); any other name is `bad-name` (03 3.3.4).
   for (const name of d.removed ?? []) {
     const dot = name.indexOf(".");
-    const ok = dot < 0 ? FUNCTIONS.has(name) : METHODS.get(name.slice(0, dot))?.has(name.slice(dot + 1)) === true;
+    // f06 2.6 item 2: an entry or a constant of a group by its full name.
+    const ok = dot < 0
+      ? FUNCTIONS.has(name)
+      : GROUP_FUNCTIONS.has(name) || GROUP_CONSTANTS.has(name) || METHODS.get(name.slice(0, dot))?.has(name.slice(dot + 1)) === true;
     if (!ok) errs.push(diag("bad-name", `${name} is no entry of the library`));
+  }
+
+  // f06 2.1 item 3: a name that is not one of the four groups is bad-name.
+  for (const g of d.groups ?? []) {
+    if (!GROUPS.has(g)) errs.push(diag("bad-name", `${JSON.stringify(g)} is not a group`));
+    else env.groups.add(g);
   }
 
   for (const name of d.opaque ?? []) {
@@ -292,6 +306,11 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
   for (const ns of env.namespaces) {
     if (env.variables.has(ns)) errs.push(diag("name-clash", `the variable ${ns} has the name of a namespace`));
     if (env.functions.has(ns)) errs.push(diag("name-clash", `the function ${ns} has the name of a namespace`));
+  }
+  // f06 2.2: a variable or a function with no namespace named like a group that is on.
+  for (const g of env.groups) {
+    if (env.variables.has(g)) errs.push(diag("name-clash", `the variable ${g} has the name of a group that is on`));
+    if (env.functions.has(g)) errs.push(diag("name-clash", `the function ${g} has the name of a group that is on`));
   }
 
   for (const [key, signature] of Object.entries(d.methods ?? {})) {

@@ -619,6 +619,13 @@ class Parser {
         optional ||= opt;
         continue;
       }
+      if ((this.isP(t, "[") || this.isP(t, "?.[")) && this.isP(this.peek(1), "*")) {
+        // f07 2.1: a star begins a projection; only a first star `?.[*]` wraps the chain (2.3 item 6).
+        const opt = t.text === "?.[";
+        x = this.projection(x, start, opt);
+        optional ||= opt;
+        continue;
+      }
       if (this.isP(t, "[") || this.isP(t, "?.[")) {
         const opt = t.text === "?.[";
         this.advance();
@@ -634,6 +641,71 @@ class Parser {
     }
     if (optional) x = { kind: "OptChain", x, span: { start, end: x.span.end } };
     return x;
+  }
+
+  /**
+   * A projection (f07 2.1 to 2.5), at its first star: the star and the reads
+   * and stars that follow, up to a method call or the end of the chain. Each
+   * star opens a level that closes at the end of the projection.
+   */
+  private projection(x: A.Expr, start: number, optional: boolean): A.Each {
+    let opened = 0;
+    const star = (): Span => {
+      const t = this.advance(); // `[` or `?.[`
+      this.open(t);
+      opened++;
+      this.advance(); // `*`
+      if (!this.isP(this.cur, "]")) this.unexpected(this.cur);
+      this.advance();
+      return this.span(start);
+    };
+    const bad = (): A.Bad => ({ kind: "Bad", span: { start, end: start } });
+    const root: A.Each = { kind: "Each", x, reads: [], optional, starSpan: { start, end: start }, recvSpan: this.outer(x), span: { start, end: start } };
+    root.starSpan = star();
+    const all: A.Each[] = [root];
+    let level = root;
+    let recv = root.starSpan;
+    for (;;) {
+      const t = this.cur;
+      if (this.isP(t, ".") || this.isP(t, "?.")) {
+        // A method call ends the projection (f07 3.4).
+        if (this.peek(1).kind === "word" && this.isP(this.peek(2), "(")) break;
+        const opt = t.text === "?.";
+        this.advance();
+        const w = this.cur;
+        if (w.kind !== "word") this.unexpected(w);
+        this.advance();
+        const m: A.Member = { kind: "Member", x: bad(), name: w.text, nameSpan: { start: w.start, end: w.end }, optional: opt, span: this.span(start) };
+        level.reads.push(m);
+        recv = m.span;
+        continue;
+      }
+      if (this.isP(t, "[") || this.isP(t, "?.[")) {
+        const opt = t.text === "?.[";
+        if (this.isP(this.peek(1), "*")) {
+          const later: A.Each = { kind: "Each", x: null, reads: [], optional: opt, starSpan: { start, end: start }, recvSpan: recv, span: { start, end: start } };
+          later.starSpan = star();
+          level.reads.push(later);
+          all.push(later);
+          level = later;
+          recv = later.starSpan;
+          continue;
+        }
+        this.advance();
+        this.open(t);
+        const index = this.expr();
+        this.expect("]");
+        this.close();
+        const ix: A.Index = { kind: "Index", x: bad(), index, optional: opt, span: this.span(start) };
+        level.reads.push(ix);
+        recv = ix.span;
+        continue;
+      }
+      break;
+    }
+    for (let k = 0; k < opened; k++) this.close();
+    for (const e of all) e.span = { start, end: this.prevEnd };
+    return root;
   }
 
   private primary(): A.Expr {

@@ -140,9 +140,11 @@ describe("01 14.3: every row", () => {
     err("a == !x is T", "unexpected-token", [1, 6, 1, 7]);
     err("(!x) is T", "bad-type-text", [1, 9, 1, 10]);
   });
-  test("a projection", () => {
-    err("xs[*]", "unexpected-token", [1, 4, 1, 5]);
-    err("xs?.[*]", "unexpected-token", [1, 6, 1, 7]);
+  test("a projection (package F7, f07 2.2)", () => {
+    ok("xs[*]");
+    ok("xs?.[*].a");
+    err("xs[*1]", "unexpected-token", [1, 5, 1, 6]);
+    err("[*]", "unexpected-token", [1, 2, 1, 3]);
   });
   test("match with no subject", () => err("match { 1 => 2 }", "unexpected-token", [1, 7, 1, 8]));
   test("=== and !==", () => {
@@ -370,11 +372,12 @@ describe("01 3.3: precedence and associativity", () => {
 });
 
 describe("01 4: nodes and spans", () => {
-  test("30 node kinds", () => {
-    // Core's 30, and `As` of package F4 (f04 2.7).
-    assert.equal(Object.keys(NODE_NUMBER).length, 31);
+  test("32 node kinds", () => {
+    // Core's 30, `As` of package F4 (f04 2.7) and `Each` of package F7 (f07 2.3).
+    assert.equal(Object.keys(NODE_NUMBER).length, 32);
     assert.equal(NODE_NUMBER.Bad, 30);
     assert.equal(NODE_NUMBER.As, 31);
+    assert.equal(NODE_NUMBER.Each, 32);
   });
   test("parentheses belong to the node that holds them", () => {
     const b = result("(a + b) * c") as A.Binary;

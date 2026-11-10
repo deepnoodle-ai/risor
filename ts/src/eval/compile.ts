@@ -17,7 +17,7 @@ import { arith, contains, equal, negate, order, render, sizeTogether } from "./o
 import type { ArithOp, OrderOp } from "./ops.ts";
 import type { Run } from "./run.ts";
 import type { Counts, Resolution, Target } from "./static.ts";
-import { FUNCTIONS, method as libraryMethod } from "../library/registry.ts";
+import { libraryFunction, method as libraryMethod } from "../library/registry.ts";
 import type { Callback, Entry } from "../library/registry.ts";
 import { paramAt, testArgs } from "../library/args.ts";
 
@@ -257,9 +257,74 @@ class Compiler {
         return this.chain(e);
       case "As":
         return this.asExpr(e);
+      case "Each": {
+        const code = this.each(e);
+        // A first star `?.[*]` on null makes its chain null (f07 3.1 item 2).
+        return (r) => {
+          const v = code(r);
+          return v === SHORT ? null : v;
+        };
+      }
       case "Bad":
         throw new Error("a Bad node is never compiled");
     }
+  }
+
+  /**
+   * A projection (package F7, f07 3, 4): level by level, element by element,
+   * into one list whose units are charged once at the end. SHORT: a first
+   * star `?.[*]` found null.
+   */
+  private each(e: A.Each): Code {
+    type Level = { optional: boolean; starSpan: Span; reads: ((r: Run, v: unknown) => unknown)[]; next: Level | null };
+    const level = (p: A.Each): Level => {
+      const reads: ((r: Run, v: unknown) => unknown)[] = [];
+      let next: Level | null = null;
+      for (const s of p.reads) {
+        if (s.kind === "Each") next = level(s);
+        else reads.push(this.step(s));
+      }
+      return { optional: p.optional, starSpan: p.starSpan, reads, next };
+    };
+    const first = level(e);
+    const ex = e.x!;
+    // The chain before the first star is one chain with it: an optional step there that finds null makes it null.
+    const x = ex.kind === "Member" || ex.kind === "Index" || ex.kind === "MethodCall" ? this.chain(ex, true) : this.expr(ex);
+    const visit = (r: Run, recv: unknown, lv: Level, out: unknown[], isFirst: boolean): boolean => {
+      const k = r.kind(recv);
+      if (k === "null") {
+        if (!lv.optional) throw new RunFailure("null-operand", lv.starSpan, "star", {});
+        if (isFirst) return false;
+        out.push(null);
+        return true;
+      }
+      if (k !== "list") throw new RunFailure("wrong-kind", lv.starSpan, "star", { kind: k });
+      const xs = recv as unknown[];
+      const stepped = lv.reads.length > 0 || lv.next !== null;
+      outer: for (let i = 0; i < xs.length; i++) {
+        r.charge(1);
+        // An element is read when a step is applied to it, and copied when none is (f07 3.6).
+        let v = stepped ? r.read(xs[i], lv.starSpan) : xs[i];
+        for (const read of lv.reads) {
+          v = read(r, v);
+          if (v === SHORT) {
+            out.push(null);
+            continue outer;
+          }
+        }
+        if (lv.next !== null) visit(r, v, lv.next, out, false);
+        else out.push(v);
+      }
+      return true;
+    };
+    return (r) => {
+      const recv = x(r);
+      if (recv === SHORT) return SHORT;
+      const out: unknown[] = [];
+      if (!visit(r, recv, first, out, true)) return SHORT;
+      r.alloc(1 + out.length);
+      return out;
+    };
   }
 
   /** `x as T`, `x is T` (package F4, f04 5.1, 5.2). */
@@ -532,12 +597,14 @@ class Compiler {
   }
 
   /** A chain: its primary, then each step left to right (02 2.3). */
-  private chain(e: A.Expr): Code {
+  /** `raw`: an optional step that finds null gives SHORT, for the chain a projection goes on (f07 3.1). */
+  private chain(e: A.Expr, raw = false): Code {
     const steps: A.Expr[] = [];
     // Only the outermost node of a chain is an OptChain: an inner one is a
     // chain of its own, written in parentheses (01 7.4 rule 5).
     let x: A.Expr = e.kind === "OptChain" ? e.x : e;
     for (;;) {
+      if (x.kind === "Member" && this.res.constants.has(x)) break; // the read of a constant is a primary
       if (x.kind === "Member" || x.kind === "Index") {
         steps.push(x);
         x = x.x;
@@ -548,14 +615,21 @@ class Compiler {
       } else break;
     }
     steps.reverse();
-    const primary = x.kind === "Call" || x.kind === "MethodCall" ? this.call(x) : this.expr(x);
-    if (steps.length === 0) return primary;
+    let primary: Code;
+    if (x.kind === "Each") primary = this.each(x);
+    else if (x.kind === "Member" && this.res.constants.has(x)) {
+      // f06 5.3: the read of a constant charges nothing.
+      const value = this.res.constants.get(x)!;
+      primary = () => value;
+    } else primary = x.kind === "Call" || x.kind === "MethodCall" ? this.call(x) : this.expr(x);
     const codes = steps.map((s) => this.step(s));
+    const short = raw ? SHORT : null;
     return (r) => {
       let v = primary(r);
+      if (v === SHORT) return short;
       for (const s of codes) {
         v = s(r, v);
-        if (v === SHORT) return null;
+        if (v === SHORT) return short;
       }
       return v;
     };
@@ -742,7 +816,7 @@ class Compiler {
         };
       }
       case "library": {
-        const entry = FUNCTIONS.get(target.name)!;
+        const entry = libraryFunction(target.name)!;
         if (entry.impl === null) this.missing.add(target.name);
         const name = target.name;
         return (r) => callEntry(r, entry, undefined, args(r), span, name);
