@@ -1,21 +1,27 @@
 // The correctly rounded functions of package F13 (f13 2.1): of the exact value
 // of the function at its arguments, the nearest double, ties to even.
 //
-// The method is the chapter's to leave open (f13 2.1 item 5). Here every value
-// is computed in binary fixed point on BigInt, at a working precision p, with
-// a bound on its error. When both ends of the interval round to the same
-// double, that double is the result; otherwise p grows and the value is
-// computed again. No platform function gives a result: `Math` is used only
-// for estimates that pick a reduction or a precision, never for a digit of a
-// result.
+// The method is the chapter's to leave open (f13 2.1 item 5). Each entry first
+// tries the fast phase of mathfast.ts, which decides nearly every call in
+// double-double arithmetic. The calls it leaves are decided here, by the exact
+// path, which is also the oracle of the fast phase's tests.
+//
+// In the exact path every value is computed in binary fixed point on BigInt,
+// at a working precision p, with a bound on its error. When both ends of the
+// interval round to the same double, that double is the result; otherwise p
+// grows and the value is computed again. No platform function gives a result:
+// `Math` is used only for estimates that pick a reduction or a precision,
+// never for a digit of a result.
 //
 // An exact value that is a double stops the search, since both ends of a small
 // interval around it round to it. An exact value that is half way between two
 // doubles never does: it occurs only in `pow`, whose exact cases are computed
 // as rationals (powExact) or tested exactly (powMidpoint).
 
+import { fastAcos, fastAsin, fastAtan, fastAtan2, fastCos, fastExp, fastLog, fastLog10, fastPow, fastSin, fastTan } from "./mathfast.ts";
+
 /** A value m * 2^e with an error of at most err * 2^e. */
-interface Approx {
+export interface Approx {
   m: bigint;
   e: number;
   err: bigint;
@@ -29,7 +35,7 @@ const PRECISIONS = [64, 160, 400, 1000, 2500, 6000];
 const view = new DataView(new ArrayBuffer(8));
 
 /** A finite nonzero double as an odd or even integer m and an exponent q: |x| = m * 2^q. */
-function decompose(x: number): { m: bigint; q: number } {
+export function decompose(x: number): { m: bigint; q: number } {
   view.setFloat64(0, Math.abs(x));
   const hi = view.getUint32(0);
   const lo = view.getUint32(4);
@@ -45,7 +51,7 @@ function exponent(x: number): number {
   return q + bitLength(m) - 1;
 }
 
-function bitLength(n: bigint): number {
+export function bitLength(n: bigint): number {
   if (n < 0n) n = -n;
   return n === 0n ? 0 : n.toString(2).length;
 }
@@ -127,7 +133,7 @@ function ziv(f: (p: number) => Approx | number): number {
 // ---- fixed point --------------------------------------------------------------
 
 /** x as a fixed-point number of scale S (x * 2^S), truncated toward zero. */
-function fixed(x: number, S: number): bigint {
+export function fixed(x: number, S: number): bigint {
   if (x === 0) return 0n;
   const { m, q } = decompose(x);
   const k = q + S;
@@ -191,7 +197,7 @@ const LN2 = new Map<number, bigint>();
 const PI = new Map<number, bigint>();
 
 /** ln 2 at scale S, with an error of at most 1. */
-function ln2(S: number): bigint {
+export function ln2(S: number): bigint {
   let v = LN2.get(S);
   if (v === undefined) {
     // ln 2 = 2 atanh(1/3), computed with 16 guard bits.
@@ -202,7 +208,7 @@ function ln2(S: number): bigint {
 }
 
 /** pi at scale S, with an error of at most 1. */
-function pi(S: number): bigint {
+export function pi(S: number): bigint {
   let v = PI.get(S);
   if (v === undefined) {
     // Machin: pi = 16 atan(1/5) - 4 atan(1/239).
@@ -218,7 +224,7 @@ function pi(S: number): bigint {
  * exp(T * 2^-S) for a fixed-point T with an error of at most errT: the value
  * E * 2^(k - S), and its error in units of 2^(k - S).
  */
-function expFixed(T: bigint, S: number, errT: bigint): Approx {
+export function expFixed(T: bigint, S: number, errT: bigint): Approx {
   const one = 1n << BigInt(S);
   const L = ln2(S);
   // k = round(T / ln2), then R = T - k ln2, |R| <= ln2 / 2 or a little more.
@@ -246,7 +252,7 @@ function expFixed(T: bigint, S: number, errT: bigint): Approx {
 }
 
 /** ln x for a double x > 0, at scale S: the fixed-point value and its error. */
-function logFixed(x: number, S: number): { v: bigint; err: bigint } {
+export function logFixed(x: number, S: number): { v: bigint; err: bigint } {
   const one = 1n << BigInt(S);
   const { m, q } = decompose(x);
   // x = f * 2^n with f in [0.75, 1.5).
@@ -273,7 +279,7 @@ function logFixed(x: number, S: number): { v: bigint; err: bigint } {
 }
 
 /** atan(N / D) for N, D >= 0, not both zero, at scale S: the value and its error. */
-function atanRatio(N: bigint, D: bigint, S: number): { v: bigint; err: bigint } {
+export function atanRatio(N: bigint, D: bigint, S: number): { v: bigint; err: bigint } {
   const one = 1n << BigInt(S);
   if (N === 0n) return { v: 0n, err: 0n };
   const big = N > D;
@@ -305,7 +311,7 @@ function atanRatio(N: bigint, D: bigint, S: number): { v: bigint; err: bigint } 
 }
 
 /** sin and cos of x, reduced by multiples of pi/2, at scale S: the two values, their error, and k mod 4. */
-function sinCos(x: number, S: number): { s: bigint; c: bigint; err: bigint; quadrant: number } {
+export function sinCos(x: number, S: number): { s: bigint; c: bigint; err: bigint; quadrant: number } {
   const one = 1n << BigInt(S);
   const X = fixed(x, S);
   // pi/2 at a scale with room for k * (pi/2) to stay within a unit of scale S.
@@ -349,70 +355,159 @@ function divide(N: bigint, eN: bigint, D: bigint, eD: bigint, S: number): { v: b
 }
 
 // ---- the entries --------------------------------------------------------------
+//
+// Each entry first tries the fast phase of mathfast.ts, which gives its result
+// in double-double arithmetic with a proven error bound and returns NaN when
+// that interval does not decide the rounding. Only then is the exact search
+// below run. The exact path is also the oracle of the tests of the fast phase.
 
 /** The guard bits beyond p at which each function works. */
 const GUARD = 64;
 
+/** The number of calls that the fast phase did not decide (for the tests and the bench). */
+export const fallbacks = { count: 0 };
+
 export function crExp(x: number): number {
+  const r = fastExp(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactExp(x);
+}
+export function crLog(x: number): number {
+  const r = fastLog(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactLog(x);
+}
+export function crLog10(x: number): number {
+  const r = fastLog10(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactLog10(x);
+}
+export function crSin(x: number): number {
+  const r = fastSin(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactSin(x);
+}
+export function crCos(x: number): number {
+  const r = fastCos(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactCos(x);
+}
+export function crTan(x: number): number {
+  const r = fastTan(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactTan(x);
+}
+export function crAtan(x: number): number {
+  const r = fastAtan(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactAtan(x);
+}
+export function crAtan2(y: number, x: number): number {
+  const r = fastAtan2(y, x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactAtan2(y, x);
+}
+export function crAsin(x: number): number {
+  const r = fastAsin(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactAsin(x);
+}
+export function crAcos(x: number): number {
+  const r = fastAcos(x);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactAcos(x);
+}
+export function crPow(x: number, y: number): number {
+  const r = fastPow(x, y);
+  if (r === r) return r;
+  fallbacks.count++;
+  return exactPow(x, y);
+}
+
+// ---- the exact path -----------------------------------------------------------
+
+export function exactExp(x: number): number {
   if (x === 0) return 1;
   if (x > 710) return Infinity;
   if (x < -746) return 0;
-  return ziv((p) => {
-    const S = p + GUARD;
-    return expFixed(fixed(x, S), S, 1n);
-  });
+  return ziv((p) => expAt(x, p));
 }
 
-export function crLog(x: number): number {
+function expAt(x: number, p: number): Approx {
+  const S = p + GUARD;
+  return expFixed(fixed(x, S), S, 1n);
+}
+
+export function exactLog(x: number): number {
   if (x === 1) return 0;
-  return ziv((p) => {
-    // ln x is at least 2^-54 in magnitude for a double x other than 1.
-    const S = p + GUARD + 60;
-    const r = logFixed(x, S);
-    return { m: r.v, e: -S, err: r.err };
-  });
+  return ziv((p) => logAt(x, p));
 }
 
-export function crLog10(x: number): number {
+function logAt(x: number, p: number): Approx {
+  // ln x is at least 2^-54 in magnitude for a double x other than 1.
+  const S = p + GUARD + 60;
+  const r = logFixed(x, S);
+  return { m: r.v, e: -S, err: r.err };
+}
+
+export function exactLog10(x: number): number {
   if (x === 1) return 0;
-  return ziv((p) => {
-    const S = p + GUARD + 60;
-    const a = logFixed(x, S);
-    const b = logFixed(10, S);
-    const d = divide(a.v, a.err, b.v, b.err, S);
-    return d === null ? { m: 0n, e: 0, err: 1n << 4000n } : { m: d.v, e: -S, err: d.err };
-  });
+  return ziv((p) => log10At(x, p));
 }
 
-export function crSin(x: number): number {
+function log10At(x: number, p: number): Approx {
+  const S = p + GUARD + 60;
+  const a = logFixed(x, S);
+  const b = logFixed(10, S);
+  const d = divide(a.v, a.err, b.v, b.err, S);
+  return d === null ? { m: 0n, e: 0, err: 1n << 4000n } : { m: d.v, e: -S, err: d.err };
+}
+
+export function exactSin(x: number): number {
   if (x === 0) return 0;
-  return ziv((p) => {
-    const S = p + GUARD + Math.max(0, -exponent(x)) + exactScaleMargin(x);
-    const r = sinCos(x, S);
-    const v = [r.s, r.c, -r.s, -r.c][r.quadrant];
-    return { m: v, e: -S, err: r.err };
-  });
+  return ziv((p) => sinAt(x, p));
 }
 
-export function crCos(x: number): number {
+function sinAt(x: number, p: number): Approx {
+  const S = p + GUARD + Math.max(0, -exponent(x)) + exactScaleMargin(x);
+  const r = sinCos(x, S);
+  const v = [r.s, r.c, -r.s, -r.c][r.quadrant];
+  return { m: v, e: -S, err: r.err };
+}
+
+export function exactCos(x: number): number {
   if (x === 0) return 1;
-  return ziv((p) => {
-    const S = p + GUARD + exactScaleMargin(x);
-    const r = sinCos(x, S);
-    const v = [r.c, -r.s, -r.c, r.s][r.quadrant];
-    return { m: v, e: -S, err: r.err };
-  });
+  return ziv((p) => cosAt(x, p));
 }
 
-export function crTan(x: number): number {
+function cosAt(x: number, p: number): Approx {
+  const S = p + GUARD + exactScaleMargin(x);
+  const r = sinCos(x, S);
+  const v = [r.c, -r.s, -r.c, r.s][r.quadrant];
+  return { m: v, e: -S, err: r.err };
+}
+
+export function exactTan(x: number): number {
   if (x === 0) return 0;
-  return ziv((p) => {
-    const S = p + GUARD + Math.max(0, -exponent(x)) + exactScaleMargin(x);
-    const r = sinCos(x, S);
-    const odd = r.quadrant % 2 === 1;
-    const d = odd ? divide(-r.c, r.err, r.s, r.err, S) : divide(r.s, r.err, r.c, r.err, S);
-    return d === null ? { m: 0n, e: 0, err: 1n << 4000n } : { m: d.v, e: -S, err: d.err };
-  });
+  return ziv((p) => tanAt(x, p));
+}
+
+function tanAt(x: number, p: number): Approx {
+  const S = p + GUARD + Math.max(0, -exponent(x)) + exactScaleMargin(x);
+  const r = sinCos(x, S);
+  const odd = r.quadrant % 2 === 1;
+  const d = odd ? divide(-r.c, r.err, r.s, r.err, S) : divide(r.s, r.err, r.c, r.err, S);
+  return d === null ? { m: 0n, e: 0, err: 1n << 4000n } : { m: d.v, e: -S, err: d.err };
 }
 
 /** Room for every bit of x in its fixed-point form at scale S. */
@@ -420,37 +515,41 @@ function exactScaleMargin(x: number): number {
   return Math.max(0, exactScale(x) - GUARD);
 }
 
-export function crAtan(x: number): number {
+export function exactAtan(x: number): number {
   if (x === 0) return 0;
-  return ziv((p) => {
-    const S = Math.max(p + GUARD + Math.max(0, -exponent(x)), exactScale(x));
-    const { m, q } = decompose(x);
-    // |x| = m * 2^q as a ratio of integers.
-    const N = q >= 0 ? m << BigInt(q) : m;
-    const D = q >= 0 ? 1n : 1n << BigInt(-q);
-    const r = atanRatio(N, D, S);
-    return { m: x < 0 ? -r.v : r.v, e: -S, err: r.err };
-  });
+  return ziv((p) => atanAt(x, p));
 }
 
-export function crAtan2(y: number, x: number): number {
+function atanAt(x: number, p: number): Approx {
+  const S = Math.max(p + GUARD + Math.max(0, -exponent(x)), exactScale(x));
+  const { m, q } = decompose(x);
+  // |x| = m * 2^q as a ratio of integers.
+  const N = q >= 0 ? m << BigInt(q) : m;
+  const D = q >= 0 ? 1n : 1n << BigInt(-q);
+  const r = atanRatio(N, D, S);
+  return { m: x < 0 ? -r.v : r.v, e: -S, err: r.err };
+}
+
+export function exactAtan2(y: number, x: number): number {
   if (y === 0) return x < 0 ? crPi() : 0;
   if (x === 0) return y > 0 ? crHalfPi() : -crHalfPi();
-  return ziv((p) => {
-    const ey = exponent(y);
-    const ex = exponent(x);
-    const S = p + GUARD + Math.max(0, ex - ey);
-    const a = decompose(y);
-    const b = decompose(x);
-    const lo = Math.min(a.q, b.q);
-    const N = a.m << BigInt(a.q - lo);
-    const D = b.m << BigInt(b.q - lo);
-    const r = atanRatio(N, D, S);
-    let v = x > 0 ? r.v : pi(S) - r.v;
-    const err = r.err + 2n;
-    if (y < 0) v = -v;
-    return { m: v, e: -S, err };
-  });
+  return ziv((p) => atan2At(y, x, p));
+}
+
+function atan2At(y: number, x: number, p: number): Approx {
+  const ey = exponent(y);
+  const ex = exponent(x);
+  const S = p + GUARD + Math.max(0, ex - ey);
+  const a = decompose(y);
+  const b = decompose(x);
+  const lo = Math.min(a.q, b.q);
+  const N = a.m << BigInt(a.q - lo);
+  const D = b.m << BigInt(b.q - lo);
+  const r = atanRatio(N, D, S);
+  let v = x > 0 ? r.v : pi(S) - r.v;
+  const err = r.err + 2n;
+  if (y < 0) v = -v;
+  return { m: v, e: -S, err };
 }
 
 function crPi(): number {
@@ -462,45 +561,74 @@ function crHalfPi(): number {
 }
 
 /** asin for -1 <= x <= 1. */
-export function crAsin(x: number): number {
+export function exactAsin(x: number): number {
   if (x === 0) return 0;
   if (x === 1) return crHalfPi();
   if (x === -1) return -crHalfPi();
-  return ziv((p) => {
-    const S = Math.max(p + GUARD + Math.max(0, -exponent(x)) + 30, exactScale(x) + 1);
-    const one = 1n << BigInt(S);
-    const X = abs(fixed(x, S));
-    // asin x = atan(x / sqrt(1 - x^2)).
-    const D = isqrt((one << BigInt(S)) - X * X);
-    const r = atanRatio(X, D, S);
-    // D carries an error of a unit, at least 2^-27 of one: a relative error of 2^(27-S).
-    const err = r.err + 4n + ((r.v >> BigInt(S - 30)) + 1n);
-    return { m: x < 0 ? -r.v : r.v, e: -S, err };
-  });
+  return ziv((p) => asinAt(x, p));
+}
+
+function asinAt(x: number, p: number): Approx {
+  const S = Math.max(p + GUARD + Math.max(0, -exponent(x)) + 30, exactScale(x) + 1);
+  const one = 1n << BigInt(S);
+  const X = abs(fixed(x, S));
+  // asin x = atan(x / sqrt(1 - x^2)).
+  const D = isqrt((one << BigInt(S)) - X * X);
+  const r = atanRatio(X, D, S);
+  // D carries an error of a unit, at least 2^-27 of one: a relative error of 2^(27-S).
+  const err = r.err + 4n + ((r.v >> BigInt(S - 30)) + 1n);
+  return { m: x < 0 ? -r.v : r.v, e: -S, err };
 }
 
 /** acos for -1 <= x <= 1. */
-export function crAcos(x: number): number {
+export function exactAcos(x: number): number {
   if (x === 1) return 0;
   if (x === -1) return crPi();
   if (x === 0) return crHalfPi();
-  return ziv((p) => {
-    const S = Math.max(p + GUARD + 60, exactScale(x) + 1);
-    const one = 1n << BigInt(S);
-    const X = abs(fixed(x, S));
-    // acos x = atan(sqrt(1 - x^2) / x) for x > 0, and pi less that for x < 0.
-    const D = isqrt((one << BigInt(S)) - X * X);
-    const r = atanRatio(D, X, S);
-    const v = x > 0 ? r.v : pi(S) - r.v;
-    const err = r.err + 4n + ((one >> BigInt(S - 30)) + 1n);
-    return { m: v, e: -S, err };
-  });
+  return ziv((p) => acosAt(x, p));
+}
+
+function acosAt(x: number, p: number): Approx {
+  const S = Math.max(p + GUARD + 60, exactScale(x) + 1);
+  const one = 1n << BigInt(S);
+  const X = abs(fixed(x, S));
+  // acos x = atan(sqrt(1 - x^2) / x) for x > 0, and pi less that for x < 0.
+  const D = isqrt((one << BigInt(S)) - X * X);
+  const r = atanRatio(D, X, S);
+  const v = x > 0 ? r.v : pi(S) - r.v;
+  const err = r.err + 4n + ((one >> BigInt(S - 30)) + 1n);
+  return { m: v, e: -S, err };
+}
+
+/**
+ * For the tests: the exact path's approximation of an entry at precision p,
+ * the value m * 2^e with an error of at most err * 2^e. The arguments are
+ * those of the general case of the entry (no special value).
+ */
+export function exactApprox(name: string, x: number, y: number, p: number): Approx {
+  switch (name) {
+    case "exp": return expAt(x, p);
+    case "log": return logAt(x, p);
+    case "log10": return log10At(x, p);
+    case "sin": return sinAt(x, p);
+    case "cos": return cosAt(x, p);
+    case "tan": return tanAt(x, p);
+    case "atan": return atanAt(x, p);
+    case "atan2": return atan2At(x, y, p);
+    case "asin": return asinAt(x, p);
+    case "acos": return acosAt(x, p);
+    case "pow": {
+      const a = powApprox(Math.abs(x), y, p);
+      return x < 0 && Math.abs(y % 2) === 1 ? { m: -a.m, e: a.e, err: a.err } : a;
+    }
+  }
+  throw new Error(`no entry ${name}`);
 }
 
 // ---- pow ----------------------------------------------------------------------
 
 /** x^y for x != 0, y != 0, and y an integer when x < 0 (f13 4.1 items 1 to 4). */
-export function crPow(x: number, y: number): number {
+export function exactPow(x: number, y: number): number {
   const neg = x < 0 && Number.isInteger(y) && Math.abs(y % 2) === 1;
   const ax = Math.abs(x);
   if (ax === 1) return neg ? -1 : 1;
