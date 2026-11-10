@@ -939,7 +939,7 @@ run time.
 | --- | --- |
 | By kind | A method is found by the one kind of its receiver (9.1, step 4): the library's methods for string, list and map, and the declared methods of an opaque type. No method of that name for that kind is `no-method` on the method's name. |
 | A record receiver | Has the map methods. |
-| Argument zero | The receiver is argument zero. It is bound against `Recv` in step 2 of 13.5, before the other arguments, and fitted in step 5 like any plain argument. |
+| Argument zero | The receiver is argument zero. It is bound against `Recv` in step 2 of 13.5, before the other arguments, and fitted in step 5 like any plain argument. Its type is the type the chain gives the receiver at that step: *cur* after steps 2 to 4 of 9.1, so with null removed after `?.` or after `maybe-null`. `report?.keys()` reports nothing for the receiver. |
 | An `any` receiver | The call records a `dynamic` site on the receiver. Each plain argument is synthesized. Each lambda argument's parameters are bound to `any` and its body is synthesized. The type is `any`. |
 | `no-method` | The call has type `never`. Its plain arguments are synthesized. Its lambda arguments are not checked. |
 
