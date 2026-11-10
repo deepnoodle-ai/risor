@@ -69,7 +69,7 @@ func run() int {
 		noProbe    = flag.Bool("noprobe", false, "do not probe which library entries each implementation has")
 		maxPerKind = flag.Int("max", 3, "findings written for each distinct difference")
 		exclude    = flag.String("exclude", "", "library entries not to call, by name, comma separated")
-		useKnown   = flag.Bool("known", true, "count the known differences of the checkers apart (see known.go)")
+		useKnown   = flag.Bool("known", true, "count the known differences apart (see known.go)")
 		noF3       = flag.Bool("nof3", false, "leave out the string forms of package F3")
 		soundMode  = flag.Bool("sound", false, "the soundness mode: test the promise of 05-types.md 18.4 (-cases is programs a round)")
 		only       = flag.String("case", "", "R:I: make and run only case I of round R (with -seed and the mode weights)")
@@ -517,7 +517,7 @@ func fuzz(cfg *config) int {
 			ks = append(ks, k)
 		}
 		sort.Strings(ks)
-		fmt.Println("known differences of the checkers (not findings):")
+		fmt.Println("known differences, by package offered (not findings):")
 		for _, k := range ks {
 			fmt.Printf("  %6d  %s\n", knownCount[k], k)
 		}

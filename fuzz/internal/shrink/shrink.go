@@ -79,6 +79,9 @@ func Candidates(c *gen.Case) []*gen.Case {
 	if c.Limits != nil {
 		add(func(k *gen.Case) bool { k.Limits = nil; return true })
 	}
+	for i := range c.Removed {
+		add(func(k *gen.Case) bool { k.Removed = append(k.Removed[:i:i], k.Removed[i+1:]...); return true })
+	}
 	for i := range c.Functions {
 		add(func(k *gen.Case) bool { k.Functions = append(k.Functions[:i:i], k.Functions[i+1:]...); return true })
 	}

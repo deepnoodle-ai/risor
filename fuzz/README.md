@@ -43,7 +43,9 @@ by default, carries `"check": false` and is compiled with the static rules
 alone, so that the unchecked path is compared too. A variable is declared with
 the type of its value most often; sometimes `any`; sometimes a wider type (a
 field made optional, `| null` added, an open record); and sometimes a type the
-value does not conform to, with `"precondition": false`.
+value does not conform to, with `"precondition": false`. About one case in
+twelve removes one or two library entries with the field `removed` (`03-host.md`
+3.3.1 item 6), and its program may still call them.
 
 The generator has three modes, mixed by weight:
 
@@ -100,7 +102,7 @@ The status is 1 when there was any finding, else 0.
 | `-nocheck P` | The percent of cases with `"check": false`, 20 by default; -1 for none |
 | `-sound` | The soundness mode (below). `-cases` is then programs a round |
 | `-nof3` | Leave out the string forms of package F3 |
-| `-known=false` | Report the known differences of the checkers as findings too |
+| `-known=false` | Report the known differences (packages offered) as findings too |
 | `-exclude a,b` | Library entries not to call |
 | `-cmd name=command` | The `outcome` command of an implementation. The file is added at the end |
 | `-build name=command` | A command run once before the first file |
@@ -119,13 +121,13 @@ implementation. An entry that one implementation reports it does not have
 generation, and the fuzzer says so. A difference of that kind found later is
 counted apart, not as a finding.
 
-Some differences of the checkers are known and are being fixed. They are listed
-in `cmd/fuzz/known.go`: a `never-equal` on a `match` whose subject is exactly
-null or on a literal listed twice; diagnostics in the body of a lambda bound by
-`const` whose name is only read as a value; diagnostics in a pattern's default
-when the value bound failed; and `cannot-infer` in place of `kind` when the
-`init` of `reduce` is a lambda. A difference made only of these is counted
-apart, by name, so that anything new stands out.
+The implementations may offer different packages (`03-host.md` 3.11), and the
+`outcome` command cannot turn a package off. A package gives some texts that
+Core rejects a meaning, or a targeted parse code of its own. A difference that
+comes only from that is counted apart, by name, so that anything new stands out.
+`cmd/fuzz/known.go` lists the two forms: a targeted parse code where the others
+give a Core code, and a text that holds `as`, `is` or `[*]`. `-known=false`
+reports them as findings too.
 
 If a build fails and a program built before exists, the fuzzer says so and runs
 the old program.

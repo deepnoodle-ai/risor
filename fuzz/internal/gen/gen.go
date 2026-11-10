@@ -18,6 +18,8 @@ type Options struct {
 	LimitShare int
 	// NoCheckShare is the share of cases, in percent, with "check": false.
 	NoCheckShare int
+	// NoRemoved leaves out the case field removed.
+	NoRemoved bool
 	// NoF3 leaves out the string forms of package F3.
 	NoF3 bool
 	// Exclude names library entries not to call, by name.
@@ -158,6 +160,9 @@ func (g *Gen) env(c *Case) {
 	}
 	if r.IntN(4) == 0 {
 		g.hostStubs(c)
+	}
+	if !g.opts.NoRemoved && r.IntN(12) == 0 {
+		g.removeEntries(c)
 	}
 	g.frames = [][]bind{nil}
 	nv := r.IntN(5)
@@ -1355,4 +1360,34 @@ func (g *Gen) nonLiteral(e ast.Expr) ast.Expr {
 		return &ast.Call{Name: "string", Args: []ast.Expr{e}}
 	}
 	return e
+}
+
+// removeEntries removes one or two library entries from the environment. The
+// program may still call them: a call of a removed entry is
+// undefined-function, no-method, or wrong-kind at run time (03-host.md
+// 3.3.1 item 6). A loose case may remove a name that is no entry.
+func (g *Gen) removeEntries(c *Case) {
+	r := g.r
+	for range 1 + r.IntN(2) {
+		e := g.lib.Entries[r.IntN(len(g.lib.Entries))]
+		c.Removed = append(c.Removed, EntryName(e))
+	}
+	if g.loose && r.IntN(4) == 0 {
+		c.Removed = append(c.Removed, pick(r, []string{"lenn", "repeat", "string.map", "list", "number.abs"}))
+	}
+}
+
+// EntryName writes the name of an entry as the field removed does: a
+// function by its name, a method by its kind and name.
+func EntryName(e *LibEntry) string {
+	switch {
+	case e.Receiver == "":
+		return e.Name
+	case e.Receiver == "string":
+		return "string." + e.Name
+	case strings.HasPrefix(e.Receiver, "map<"):
+		return "map." + e.Name
+	default:
+		return "list." + e.Name
+	}
 }

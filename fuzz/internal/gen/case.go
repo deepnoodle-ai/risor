@@ -68,6 +68,9 @@ type Case struct {
 	// NoCheck writes "check": false: the case is compiled with the static
 	// rules alone (03-host.md 3.10.3).
 	NoCheck bool
+	// Removed names library entries the environment removes (03-host.md
+	// 3.3.1 item 6), as the case field removed writes them.
+	Removed []string
 	// Broken writes "precondition": false: a variable's value does not
 	// conform to its declared type, on purpose.
 	Broken bool
@@ -92,6 +95,7 @@ func (c *Case) Clone() *Case {
 		d.Vars[i].Value = cloneValue(d.Vars[i].Value)
 	}
 	d.Opaque = append([]string(nil), c.Opaque...)
+	d.Removed = append([]string(nil), c.Removed...)
 	d.Methods = append([]Stub(nil), c.Methods...)
 	d.Functions = append([]Stub(nil), c.Functions...)
 	if c.Limits != nil {
@@ -262,6 +266,13 @@ func (c *Case) JSON() []byte {
 	}
 	if len(c.Functions) > 0 {
 		o.field("functions", stubsJSON(c.Functions))
+	}
+	if len(c.Removed) > 0 {
+		names := make([]any, len(c.Removed))
+		for i, n := range c.Removed {
+			names[i] = n
+		}
+		o.field("removed", jsonValue(names))
 	}
 	var vars obj
 	for _, v := range c.Vars {

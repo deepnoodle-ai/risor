@@ -84,6 +84,7 @@ type printer struct {
 	line, col int
 	spans     map[Expr]Span
 	nodes     []NodeSpan
+	lamBodies map[string]Span // the body of each const-bound lambda, by name
 }
 
 // Span is a span of 03-host.md 3.7.7: line and column of the start, and of
@@ -125,7 +126,7 @@ func (w *printer) span(start [2]int) Span { return Span{start[0], start[1], w.li
 
 // PrintSpans writes a program and gives the span of every node.
 func PrintSpans(p *Program) (string, []NodeSpan) {
-	w := printer{rec: true, line: 1, col: 1, spans: map[Expr]Span{}}
+	w := printer{rec: true, line: 1, col: 1, spans: map[Expr]Span{}, lamBodies: map[string]Span{}}
 	w.consts(p.Consts)
 	w.expr(p.Result, LevelExpr)
 	if p.Semi {
@@ -142,11 +143,16 @@ func (w *printer) consts(cs []*Const) {
 		w.expr(c.Value, LevelExpr)
 		w.s("; ")
 		if w.rec {
-			if _, ok := c.Value.(*Lambda); ok {
+			if lam, ok := c.Value.(*Lambda); ok {
 				w.nodes = append(w.nodes, NodeSpan{Kind: "ConstLambda", Span: w.spans[c.Value]})
+				if np, ok := c.Pat.(*NamePat); ok {
+					w.lamBodies[np.Name] = w.spans[unparen(lam.Body)]
+				}
 			}
 			// 12.3: the value bound is the const's value expression.
-			vs, ok := w.spans[c.Value]
+			// Parentheses have no node: the value bound is the expression
+			// inside them.
+			vs, ok := w.spans[unparen(c.Value)]
 			for _, ps := range pats {
 				ns := NodeSpan{Kind: ps.kind, Span: ps.span}
 				if ps.key != nil {
@@ -198,6 +204,28 @@ func (w *printer) expr(e Expr, need int) {
 						continue
 					}
 					break
+				}
+			}
+			// 05-types.md 18.3: a failed test of a callback's result is at a
+			// site on the body of a lambda argument, or of the const-bound
+			// lambda an argument names.
+			var args []Expr
+			switch e := e.(type) {
+			case *Call:
+				args = e.Args
+			case *MethodCall:
+				args = e.Args
+			}
+			for _, a := range args {
+				switch a := a.(type) {
+				case *Lambda:
+					if bs, ok := w.spans[unparen(a.Body)]; ok {
+						ns.Children = append(ns.Children, bs)
+					}
+				case *Ident:
+					if bs, ok := w.lamBodies[a.Name]; ok {
+						ns.Children = append(ns.Children, bs)
+					}
 				}
 			}
 			w.nodes = append(w.nodes, ns)
@@ -260,7 +288,7 @@ func (w *printer) expr(e Expr, need int) {
 			}
 			w.expr(it.X, LevelExpr)
 			if it.Spread && w.rec {
-				w.nodes = append(w.nodes, NodeSpan{Kind: "Spread", Span: w.span(st), Children: []Span{w.spans[it.X]}})
+				w.nodes = append(w.nodes, NodeSpan{Kind: "Spread", Span: w.span(st), Children: []Span{w.spans[unparen(it.X)]}})
 			}
 		}
 		w.s("]")
@@ -290,9 +318,9 @@ func (w *printer) expr(e Expr, need int) {
 				w.expr(en.X, LevelExpr)
 			}
 			if w.rec && (en.Kind == EntryComputed || en.Kind == EntrySpread) {
-				ch := []Span{w.spans[en.X]}
+				ch := []Span{w.spans[unparen(en.X)]}
 				if en.Kind == EntryComputed {
-					ch = []Span{w.spans[en.KeyX]}
+					ch = []Span{w.spans[unparen(en.KeyX)]}
 				}
 				w.nodes = append(w.nodes, NodeSpan{Kind: map[EntryKind]string{EntryComputed: "Entry", EntrySpread: "Spread"}[en.Kind], Span: w.span(st), Children: ch})
 			}
@@ -760,4 +788,22 @@ func (s Span) Within(outer Span) bool {
 	starts := s[0] > outer[0] || s[0] == outer[0] && s[1] >= outer[1]
 	ends := s[2] < outer[2] || s[2] == outer[2] && s[3] <= outer[3]
 	return starts && ends
+}
+
+// unparen gives the expression inside any parentheses, and the result of a
+// block with no const line, which the printer writes in parentheses.
+func unparen(e Expr) Expr {
+	for {
+		switch x := e.(type) {
+		case *Paren:
+			e = x.X
+		case *Block:
+			if len(x.Consts) > 0 {
+				return e
+			}
+			e = x.Result
+		default:
+			return e
+		}
+	}
 }

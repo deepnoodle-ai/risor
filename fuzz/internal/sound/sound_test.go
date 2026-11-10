@@ -50,3 +50,35 @@ func TestJudge(t *testing.T) {
 		t.Error("a check failure counted as clean")
 	}
 }
+
+// 05-types.md 18.3: a failed test of a callback's result is at a site on
+// the body of the lambda argument.
+func TestJudgeCallbackBody(t *testing.T) {
+	p := &ast.Program{Result: &ast.MethodCall{X: &ast.List{Items: []ast.Item{{X: &ast.Num{Text: "0"}}}}, Name: "flatMap",
+		Args: []ast.Expr{&ast.Lambda{Body: &ast.Ident{Name: "x"}}}}}
+	src, nodes := ast.PrintSpans(p)
+	if src != "[0].flatMap(() => x)" {
+		t.Fatalf("got %q", src)
+	}
+	l := line(t, `{"name":"a","type":"any[]","sites":[{"class":"dynamic","span":[1,19,1,20]}],"phase":"run","diagnostics":[{"code":"wrong-kind","span":[1,1,1,21],"class":"dynamic","message":"m"}],"steps":4,"units":2}`)
+	if v := Judge(l, nodes); v.Violation != "" || v.Undecided != "" {
+		t.Errorf("got %+v", v)
+	}
+}
+
+// 12.3: the value bound is the const's value expression, inside any
+// parentheses.
+func TestJudgePatternValueInParens(t *testing.T) {
+	p := &ast.Program{
+		Consts: []*ast.Const{{Pat: &ast.MapPat{Fields: []ast.Field{{Name: "a"}}}, Value: &ast.Paren{X: &ast.Ident{Name: "xs"}}}},
+		Result: &ast.Ident{Name: "a"},
+	}
+	src, nodes := ast.PrintSpans(p)
+	if src != "const {a} = (xs); a" {
+		t.Fatalf("got %q", src)
+	}
+	l := line(t, `{"name":"a","type":"any","sites":[{"class":"dynamic","span":[1,14,1,16]}],"phase":"run","diagnostics":[{"code":"wrong-kind","span":[1,7,1,10],"class":"dynamic","message":"m"}],"steps":0,"units":0}`)
+	if v := Judge(l, nodes); v.Violation != "" || v.Undecided != "" {
+		t.Errorf("got %+v", v)
+	}
+}
