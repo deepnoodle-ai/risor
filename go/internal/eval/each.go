@@ -1,6 +1,8 @@
 package eval
 
 import (
+	"reflect"
+
 	"github.com/deepnoodle-ai/risor/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
 	"github.com/deepnoodle-ai/risor/v3/internal/value"
@@ -15,6 +17,10 @@ type eachCode struct {
 	starSpan syntax.Span
 	reads    []*stepCode
 	next     *eachCode
+	// typed plans the reads over a slice of structs of Go type typedSlice
+	// (typed.go, package F11); nil when the layer does not apply.
+	typed      *typedPlan
+	typedSlice reflect.Type
 }
 
 func (c *compiler) eachCode(n *syntax.Each) *eachCode {
@@ -60,13 +66,22 @@ func (r *run) project(ec *eachCode, v any) any {
 
 // level visits the elements of one level, in order, depth first.
 func (r *run) level(ec *eachCode, recv any, out *[]any) {
+	if ec.typed != nil && r.typedLevel(ec, recv, out) {
+		return
+	}
 	n := value.Len(recv)
 	for i := 0; i < n; i++ {
 		r.step(1)
-		el := value.At(recv, i)
+		r.levelElem(ec, value.At(recv, i), out)
+	}
+}
+
+// levelElem visits one element, after its step.
+func (r *run) levelElem(ec *eachCode, el any, out *[]any) {
+	{
 		if len(ec.reads) == 0 && ec.next == nil {
 			*out = append(*out, el) // copied, not read (3.6)
-			continue
+			return
 		}
 		v := r.read(el, ec.starSpan)
 		skipped := false

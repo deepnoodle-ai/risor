@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"time"
 
@@ -34,6 +35,9 @@ type Config struct {
 	// Removed is the set of removed library entries (03-host.md 3.3.1): a
 	// removed method is absent from the run, as a name no entry has.
 	Removed map[string]bool
+	// GoTypes are the Go types behind the variables declared from Go
+	// types, by name, for the typed layer (package F11). Nil turns it off.
+	GoTypes map[string]reflect.Type
 }
 
 // Program is a compiled program. It does not change, and several runs may
@@ -45,6 +49,8 @@ type Program struct {
 	nslots int
 	nvars  int // the variables the program reads, numbered densely
 	pool   sync.Pool
+	// TypedPlans counts the reads the typed layer planned (package F11).
+	TypedPlans int
 }
 
 type lambdaCode struct {
@@ -91,18 +97,23 @@ type compiler struct {
 	lambdas  map[*syntax.Lambda]*lambdaCode
 	lamDepth int
 	vars     map[int]int // variable index to the program's dense index
+	// goSlots are the Go types of the lambda parameters the typed layer
+	// knows, while their lambda's body is compiled (typed.go).
+	goSlots map[int]reflect.Type
+	plans   int
 }
 
 // Compile compiles a program whose static rules found nothing.
 func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *Config) (p *Program, err error) {
-	c := &compiler{cfg: cfg, res: res, lambdas: map[*syntax.Lambda]*lambdaCode{}, vars: map[int]int{}}
+	c := &compiler{cfg: cfg, res: res, lambdas: map[*syntax.Lambda]*lambdaCode{}, vars: map[int]int{},
+		goSlots: map[int]reflect.Type{}}
 	defer func() {
 		if x := recover(); x != nil {
 			err = fmt.Errorf("compile: %v", x)
 		}
 	}()
 	root := c.block(prog.Consts, prog.Result)
-	return &Program{cfg: cfg, file: file, root: root, nslots: res.NSlots, nvars: len(c.vars)}, nil
+	return &Program{cfg: cfg, file: file, root: root, nslots: res.NSlots, nvars: len(c.vars), TypedPlans: c.plans}, nil
 }
 
 // Run runs the program. It returns the value or one run diagnostic, and the

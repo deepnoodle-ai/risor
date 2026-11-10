@@ -165,7 +165,7 @@ func (e *Env) ParseType(text string) (Type, error) {
 	if err != nil {
 		return Type{}, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: err.Error()}}}
 	}
-	return Type{t}, nil
+	return Type{t: t}, nil
 }
 
 // Conform tests a value against a type by the conformance walk of F4 4: the

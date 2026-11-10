@@ -3,6 +3,7 @@ package risor
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -184,6 +185,9 @@ type varDecl struct {
 	name string
 	typ  *typetext.Type
 	ty   *types.Type // a type given whole: by schema or by TypeOf (F1)
+	// rt is the Go type behind a variable declared from TypeOf, for the
+	// typed layer (package F11).
+	rt reflect.Type
 }
 
 type funcDecl struct {
@@ -208,10 +212,12 @@ type Env struct {
 	// named holds the named types (package F4 3), in the order declared.
 	named []*namedDecl
 	// groups holds the opt-in groups that are on (package F6 2.1).
-	groups   map[string]bool
-	removed  map[string]bool
-	reject   []string
-	limits   eval.Limits
+	groups  map[string]bool
+	removed map[string]bool
+	reject  []string
+	limits  eval.Limits
+	// untyped turns the typed layer off (package F11).
+	untyped  bool
 	envTypes // the declarations as types, for the checker (check.go)
 
 	// while building
@@ -232,7 +238,7 @@ func NewEnv(decls ...Decl) (*Env, error) {
 // With returns a child environment: its declarations replace the parent's
 // of the same name (03-host.md 3.3.2).
 func (e *Env) With(decls ...Decl) (*Env, error) {
-	c := &Env{version: e.version, versionSet: e.versionSet, reject: e.reject, limits: e.limits,
+	c := &Env{version: e.version, versionSet: e.versionSet, reject: e.reject, limits: e.limits, untyped: e.untyped,
 		vars: map[string]*varDecl{}, funcs: map[string]*funcDecl{}, opaque: map[string]*opaqueDecl{},
 		removed: map[string]bool{}}
 	for k, v := range e.vars {
@@ -578,6 +584,16 @@ func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cr != nil && !e.untyped { // F11: only a checked program
+		for _, n := range varNames {
+			if rt := e.vars[n].rt; rt != nil {
+				if cfg.GoTypes == nil {
+					cfg.GoTypes = map[string]reflect.Type{}
+				}
+				cfg.GoTypes[n] = rt
+			}
+		}
+	}
 	p, err := eval.Compile(x.tree, x.file, res, cfg)
 	if err != nil {
 		return nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
@@ -623,3 +639,11 @@ func (p *Program) Measure(ctx context.Context, vars Vars) (any, Usage, error) {
 
 // Expr returns the parsed program.
 func (p *Program) Expr() *Expr { return p.x }
+
+// TypedLayer turns the typed layer on or off (package F11). It is on by
+// default: when a program is checked, a field read on a variable declared
+// from a Go type with TypeOf, and on the structs of its lists, reads the
+// field by an index path planned at compile time. It changes no result,
+// only speed; a value that does not have the declared Go type takes the
+// general path.
+func TypedLayer(on bool) Decl { return declFunc(func(e *Env) { e.untyped = !on }) }

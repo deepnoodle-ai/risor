@@ -230,22 +230,46 @@ loop:
 	}
 	base := c.expr(x)
 	steps := make([]*stepCode, 0, len(nodes))
+	// goT is the Go type of the chain's value so far, when the typed layer
+	// knows it (typed.go, package F11).
+	goT, _ := c.typedRoot(x)
 	for i := len(nodes) - 1; i >= 0; i-- {
+		var sc *stepCode
 		switch t := nodes[i].(type) {
 		case *syntax.Member:
-			steps = append(steps, &stepCode{kind: stepMember, optional: t.Optional, name: t.Name,
-				size: value.Size(t.Name), span: t.Span()})
+			sc = &stepCode{kind: stepMember, optional: t.Optional, name: t.Name,
+				size: value.Size(t.Name), span: t.Span()}
 		case *syntax.Index:
-			steps = append(steps, &stepCode{kind: stepIndex, optional: t.Optional, idx: c.expr(t.Index), span: t.Span()})
+			sc = &stepCode{kind: stepIndex, optional: t.Optional, idx: c.expr(t.Index), span: t.Span()}
 		case *syntax.Each:
-			steps = append(steps, &stepCode{kind: stepEach, optional: t.Optional, each: c.eachCode(t), span: t.StarSpan})
+			sc = &stepCode{kind: stepEach, optional: t.Optional, each: c.eachCode(t), span: t.StarSpan}
+			c.typedEach(goT, sc.each)
 		case *syntax.MethodCall:
-			sc := &stepCode{kind: stepMethod, optional: t.Optional, name: t.Name,
-				args: c.args(t.Args), span: t.Span(), measure: c.measure(t)}
+			sc = &stepCode{kind: stepMethod, optional: t.Optional, name: t.Name,
+				args: c.typedArgs(goT, t), span: t.Span(), measure: c.measure(t)}
 			c.plan(sc)
-			steps = append(steps, sc)
 		}
+		goT = stepGoType(goT, sc)
+		steps = append(steps, sc)
 	}
+	// F11: the leading field reads on a base of known Go type are planned.
+	if tc, k := c.typedChain(x, steps, func(k int) code {
+		if k == len(steps) {
+			return c.chainCode(x, base, steps)
+		}
+		return c.chainCode(x, base, steps[:k])
+	}); tc != nil {
+		if k == len(steps) {
+			return tc
+		}
+		return c.chainCode(nil, tc, steps[k:])
+	}
+	return c.chainCode(x, base, steps)
+}
+
+// chainCode is the loop of a chain's steps on its base. x is the base's
+// node, or nil.
+func (c *compiler) chainCode(x syntax.Node, base code, steps []*stepCode) code {
 	allMember := true
 	for _, st := range steps {
 		if st.kind != stepMember {
@@ -254,7 +278,7 @@ loop:
 	}
 	if allMember && len(steps) == 1 {
 		st := steps[0]
-		if slot, ok := c.valueSlot(x); ok {
+		if slot, ok := c.valueSlot(x); ok && x != nil {
 			return func(r *run) any {
 				v := r.slots[slot]
 				if v == nil && st.optional {

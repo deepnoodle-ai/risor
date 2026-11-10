@@ -304,3 +304,24 @@ func marshalText(m encoding.TextMarshaler) (string, bool) {
 	}
 	return string(b), true
 }
+
+// FieldOf returns a struct value's field, and whether it is present: not
+// behind a nil embedded pointer, and not left out by omitempty or omitzero.
+// It is what a read of the field's key finds (package F11).
+func FieldOf(rv reflect.Value, f *StructField) (reflect.Value, bool) { return field(rv, f) }
+
+// FieldByKey returns the field a struct type presents under a key.
+func FieldByKey(t reflect.Type, key string) (*StructField, bool) {
+	si := structOf(t)
+	i, ok := si.byKey[key]
+	if !ok {
+		return nil, false
+	}
+	return &si.fields[i], true
+}
+
+// PlainStruct reports whether a type is a struct presented by the struct
+// rule: neither it nor a pointer to it is opaque or a text type.
+func PlainStruct(t reflect.Type) bool {
+	return t.Kind() == reflect.Struct && !implementsHost(t) && !implementsHost(reflect.PointerTo(t))
+}

@@ -22,7 +22,12 @@ import (
 
 // Type is a type of the language (05-types.md 2). Its String method prints
 // it by 05-types.md 3.9, which is also its description (F1 5.1).
-type Type struct{ t *types.Type }
+type Type struct {
+	t *types.Type
+	// rt is the Go type a type from TypeOf was derived from, for the
+	// typed layer (package F11); nil for every other type.
+	rt reflect.Type
+}
 
 // String prints the type.
 func (t Type) String() string {
@@ -79,7 +84,7 @@ func TypeFromSchema(schema any, opts ...SchemaOption) (Type, error) {
 	if err != nil {
 		return Type{}, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType, Message: err.Error()}}}
 	}
-	return Type{t}, nil
+	return Type{t: t}, nil
 }
 
 func mapSchema(schema any, opts []SchemaOption) (*types.Type, error) {
@@ -115,6 +120,9 @@ func VarType(name string, t Type) Decl {
 			return
 		}
 		e.putVarType(name, t.t)
+		if d := e.vars[name]; d != nil && d.ty == t.t {
+			d.rt = t.rt
+		}
 	})
 }
 
@@ -177,7 +185,7 @@ func typeOfReflect(rt reflect.Type) (Type, error) {
 		return Type{}, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
 			Message: fmt.Sprintf("%v: %v", rt, err)}}}
 	}
-	return Type{t}, nil
+	return Type{t: t, rt: rt}, nil
 }
 
 var (

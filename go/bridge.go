@@ -1,6 +1,7 @@
 package risor
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/bridge"
@@ -8,6 +9,8 @@ import (
 )
 
 func init() {
+	bridge.TypedPlans = func(p any) int { return p.(*Program).p.TypedPlans }
+	bridge.TypeOf = func(rt reflect.Type) (any, error) { return typeOfReflect(rt) }
 	bridge.EnvTypes = func(env any) (map[string]*types.Type, map[string]*types.Sig, map[string]map[string]*types.Sig) {
 		e := env.(*Env)
 		return e.varTypes, e.hostSigs, e.methodSigs
