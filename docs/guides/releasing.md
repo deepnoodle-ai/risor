@@ -42,20 +42,20 @@ generated version rather than `dev`:
 ```
 
 The exact snapshot path varies by operating system and architecture. Merge the
-release-preparation pull request and wait for `main` CI to pass before tagging.
+release-preparation pull request and wait for `v2` CI to pass before tagging.
 
 ### 2. Tag the exact release commit
 
-Synchronize a clean local `main`, then use the checked-in helper:
+Synchronize a clean local `v2`, then use the checked-in helper:
 
 ```bash
-git switch main
-git pull --ff-only origin main
+git switch v2
+git pull --ff-only origin v2
 scripts/tag.sh v2.x.x
 ```
 
-The helper refuses dirty worktrees, non-`main` branches, commits that differ
-from `origin/main`, and existing tags. Risor v2 publishes one repository tag.
+The helper refuses dirty worktrees, non-`v2` branches, commits that differ
+from `origin/v2`, and existing tags. Risor v2 publishes one repository tag.
 GoReleaser builds the `risor` CLI from `cmd/risor` and the `risor-lsp` language
 server from `cmd/risor-lsp`. Each archive and the Homebrew cask include both
 binaries.

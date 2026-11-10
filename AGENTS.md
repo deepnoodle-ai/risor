@@ -8,7 +8,14 @@ repository.
 Risor is a fast, embedded scripting language for Go. Scripts compile to bytecode
 and run on a lightweight virtual machine.
 
-We are making major modifications for a new `v2` version of the library.
+## This is the `v2` branch
+
+Risor v2 is released and is maintained on this branch. Branch from `v2` and
+open pull requests against it (`gh pr create --base v2`). Releases of v2 are
+tagged from `v2`.
+
+`main` holds Risor v3, a new language and code base, published as an alpha.
+Do not merge between `v2` and `main`.
 
 Our priorities when designing and building `v2`:
 
@@ -189,7 +196,7 @@ Pull requests do not edit `CHANGELOG.md`. Every PR edits the same `Unreleased`
 section, so each merge makes the other open PRs conflict.
 
 Instead, describe the user-visible change in the PR title and description. PRs
-are squash-merged, so the PR title becomes the commit message on `main`. At
+are squash-merged, so the PR title becomes the commit message on `v2`. At
 release time, the `Unreleased` section is written from the PRs merged since the
 last release. See [docs/guides/releasing.md](docs/guides/releasing.md).
 
