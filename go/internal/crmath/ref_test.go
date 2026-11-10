@@ -110,14 +110,13 @@ func refExp(x *big.Float, p uint) *big.Float {
 
 func refLog(x *big.Float, p uint) *big.Float {
 	w := p + 64
-	xf, _ := x.Float64()
-	y := rf(math.Log(xf), w)
-	if math.IsInf(math.Log(xf), 0) || xf == 0 {
-		m := new(big.Float)
-		e := x.MantExp(m)
-		mf, _ := m.Float64()
-		y = rf(math.Log(mf)+float64(e)*math.Ln2, w)
-	}
+	// The first guess is taken from the mantissa, which is in [0.5, 1), and
+	// not from math.Log of x itself: on some platforms math.Log is far off
+	// for a subnormal argument, and Newton's steps below do not recover.
+	m := new(big.Float)
+	e := x.MantExp(m)
+	mf, _ := m.Float64()
+	y := rf(math.Log(mf)+float64(e)*math.Ln2, w)
 	for i := 0; i < 6; i++ {
 		ey := refExp(y, w)
 		num := new(big.Float).SetPrec(w).Sub(x, ey)
