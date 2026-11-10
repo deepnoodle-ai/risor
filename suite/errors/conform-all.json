@@ -728,5 +728,345 @@
     }
    ]
   }
+ },
+ {
+  "name": "a union: a value that conforms gives an empty list",
+  "conform": {
+   "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}",
+   "value": {
+    "kind": "rect",
+    "w": 2,
+    "h": 3
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": true,
+   "failures": []
+  }
+ },
+ {
+  "name": "a union: a missing tag is one failure, and nothing more of the value is visited",
+  "conform": {
+   "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}",
+   "value": {
+    "r": "x",
+    "z": 1
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "kind"
+   ],
+   "message": "required field \"kind\" is missing",
+   "failures": [
+    {
+     "path": [
+      "kind"
+     ],
+     "message": "required field \"kind\" is missing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: an unknown tag is one failure, and nothing more of the value is visited",
+  "conform": {
+   "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}",
+   "value": {
+    "kind": "oval",
+    "r": "x",
+    "z": 1
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "kind"
+   ],
+   "message": "expected \"circle\" | \"rect\", found \"oval\"",
+   "failures": [
+    {
+     "path": [
+      "kind"
+     ],
+     "message": "expected \"circle\" | \"rect\", found \"oval\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: a tag of the wrong kind",
+  "conform": {
+   "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}",
+   "value": {
+    "kind": 7
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "kind"
+   ],
+   "message": "expected \"circle\" | \"rect\", found 7",
+   "failures": [
+    {
+     "path": [
+      "kind"
+     ],
+     "message": "expected \"circle\" | \"rect\", found 7"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: every failure of the chosen variant, in order",
+  "conform": {
+   "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}",
+   "value": {
+    "kind": "rect",
+    "w": "2",
+    "z": 1
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "h"
+   ],
+   "message": "required field \"h\" is missing",
+   "failures": [
+    {
+     "path": [
+      "h"
+     ],
+     "message": "required field \"h\" is missing"
+    },
+    {
+     "path": [
+      "w"
+     ],
+     "message": "expected float, found \"2\""
+    },
+    {
+     "path": [
+      "z"
+     ],
+     "message": "the type does not allow key \"z\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: the maximum cuts inside the chosen variant",
+  "conform": {
+   "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}",
+   "value": {
+    "kind": "rect",
+    "w": "2",
+    "z": 1
+   },
+   "max": 2
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "h"
+   ],
+   "message": "required field \"h\" is missing",
+   "failures": [
+    {
+     "path": [
+      "h"
+     ],
+     "message": "required field \"h\" is missing"
+    },
+    {
+     "path": [
+      "w"
+     ],
+     "message": "expected float, found \"2\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: the tag is read first, before a key that sorts before it",
+  "conform": {
+   "type": "{a: int, kind: \"x\"} | {kind: \"y\"}",
+   "value": {
+    "a": "s",
+    "kind": "z"
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "kind"
+   ],
+   "message": "expected \"x\" | \"y\", found \"z\"",
+   "failures": [
+    {
+     "path": [
+      "kind"
+     ],
+     "message": "expected \"x\" | \"y\", found \"z\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: the tag is not tested again in its variant",
+  "conform": {
+   "type": "{a: int, kind: \"x\"} | {kind: \"y\"}",
+   "value": {
+    "a": "s",
+    "kind": "x"
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a"
+   ],
+   "message": "expected int, found \"s\"",
+   "failures": [
+    {
+     "path": [
+      "a"
+     ],
+     "message": "expected int, found \"s\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union in a list",
+  "conform": {
+   "type": "({kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float})[]",
+   "value": [
+    {
+     "kind": "circle",
+     "r": 1
+    },
+    {
+     "kind": "tri"
+    },
+    {
+     "kind": "rect",
+     "h": 1
+    }
+   ],
+   "max": 10
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    1,
+    "kind"
+   ],
+   "message": "expected \"circle\" | \"rect\", found \"tri\"",
+   "failures": [
+    {
+     "path": [
+      1,
+      "kind"
+     ],
+     "message": "expected \"circle\" | \"rect\", found \"tri\""
+    },
+    {
+     "path": [
+      2,
+      "w"
+     ],
+     "message": "required field \"w\" is missing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: a value that is not a map expects the whole union, printed by F5 2.4",
+  "conform": {
+   "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}",
+   "value": "circle",
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [],
+   "message": "expected {kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float}, found \"circle\"",
+   "failures": [
+    {
+     "path": [],
+     "message": "expected {kind: \"circle\", r: float} | {h: float, kind: \"rect\", w: float}, found \"circle\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union under a field, with null beside it",
+  "conform": {
+   "type": "{s: {kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float} | null}",
+   "value": {
+    "s": {
+     "kind": "circle",
+     "r": "1",
+     "q": 2
+    }
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "s",
+    "r"
+   ],
+   "message": "expected float, found \"1\"",
+   "failures": [
+    {
+     "path": [
+      "s",
+      "r"
+     ],
+     "message": "expected float, found \"1\""
+    },
+    {
+     "path": [
+      "s",
+      "q"
+     ],
+     "message": "the type does not allow key \"q\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a union: a long expected union is cut at 64 code points",
+  "conform": {
+   "type": "{kind: \"circle\", radius: float} | {height: float, kind: \"rect\", width: float}",
+   "value": [
+    1
+   ],
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [],
+   "message": "expected {kind: \"circle\", radius: float} | {height: float, kind: \"rect..., found list",
+   "failures": [
+    {
+     "path": [],
+     "message": "expected {kind: \"circle\", radius: float} | {height: float, kind: \"rect..., found list"
+    }
+   ]
+  }
  }
 ]

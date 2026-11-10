@@ -1,0 +1,473 @@
+{
+ "groups": [
+  "json"
+ ],
+ "env": "{s: string}",
+ "returnsSchema": {
+  "schema": {
+   "type": "object",
+   "properties": {
+    "port": {
+     "type": "integer"
+    },
+    "hosts": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "port"
+   ]
+  },
+  "options": [
+   "closed"
+  ]
+ },
+ "load": true,
+ "cases": [
+  {
+   "name": "a load whose value conforms",
+   "source": "{port: 8080, hosts: [\"a\"]}",
+   "expect": {
+    "value": {
+     "port": 8080,
+     "hosts": [
+      "a"
+     ]
+    },
+    "json": "{\"hosts\":[\"a\"],\"port\":8080}",
+    "steps": 0,
+    "allocated": 7
+   }
+  },
+  {
+   "name": "a value through json.parse that conforms",
+   "source": "json.parse(s)",
+   "vars": {
+    "s": "{\"port\": 1}"
+   },
+   "expect": {
+    "type": "any",
+    "sites": [
+     {
+      "class": "dynamic",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ]
+     },
+     {
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ]
+     }
+    ],
+    "value": {
+     "port": 1
+    },
+    "steps": 3,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "through json.parse, a value of the wrong kind under a key",
+   "source": "json.parse(s)",
+   "vars": {
+    "s": "{\"port\": \"80\"}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "port"
+      ],
+      "message": "expected int, found \"80\""
+     }
+    ],
+    "steps": 3,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "through json.parse, a key the closed schema does not list",
+   "source": "json.parse(s)",
+   "vars": {
+    "s": "{\"port\": 1, \"debug\": true}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "debug"
+      ],
+      "message": "the type does not allow key \"debug\""
+     }
+    ],
+    "steps": 4,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "through json.parse, a required field that is missing",
+   "source": "json.parse(s)",
+   "vars": {
+    "s": "{}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "port"
+      ],
+      "message": "required field \"port\" is missing"
+     }
+    ],
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "through json.parse, a value that is not a map",
+   "source": "json.parse(s)",
+   "vars": {
+    "s": "[1]"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [],
+      "message": "expected {hosts?: string[], port: int}, found list"
+     }
+    ],
+    "steps": 3,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "through json.parse, a list element",
+   "source": "json.parse(s)",
+   "vars": {
+    "s": "{\"port\": 1, \"hosts\": [\"a\", 2]}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "hosts",
+       1
+      ],
+      "message": "expected string, found 2"
+     }
+    ],
+    "steps": 6,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "the run of a load that fails at step 4 charges what the run alone charges",
+   "source": "json.parse(s)",
+   "load": false,
+   "vars": {
+    "s": "{\"port\": \"80\"}"
+   },
+   "expect": {
+    "value": {
+     "port": "80"
+    },
+    "steps": 3,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "step 4 comes after the run: a try in the program does not catch it",
+   "source": "try { json.parse(s) } catch { {port: 0} }",
+   "vars": {
+    "s": "{\"port\": \"x\"}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "port"
+      ],
+      "message": "expected int, found \"x\""
+     }
+    ],
+    "steps": 3,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "an as in the program fails in the run, with its span",
+   "source": "json.parse(s) as {port: int, hosts?: string[]}",
+   "vars": {
+    "s": "{\"port\": \"80\"}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       47
+      ],
+      "path": [
+       "port"
+      ],
+      "message": "expected int, found \"80\""
+     }
+    ],
+    "steps": 6,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "a variable of type any that does not conform",
+   "source": "x",
+   "env": "{x: any}",
+   "groups": [],
+   "vars": {
+    "x": {
+     "port": 1.5
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "port"
+      ],
+      "message": "expected int, found 1.5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a host value that breaks its declared type is found at step 4",
+   "source": "x",
+   "env": "{x: {port: int}}",
+   "groups": [],
+   "vars": {
+    "x": {
+     "port": "80"
+    }
+   },
+   "precondition": false,
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "port"
+      ],
+      "message": "expected int, found \"80\""
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a run failure ends the load before step 4",
+   "source": "fail(\"no config for this region\")",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "failed",
+      "class": "value",
+      "span": [
+       1,
+       1,
+       1,
+       34
+      ],
+      "message": "no config for this region"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a check failure ends the load before the run",
+   "source": "{port: \"x\"}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       8,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a parse failure ends the load before the check",
+   "source": "{port: 1,,}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an expected result that is refused ends the load first",
+   "source": "{port: 1}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "port": {
+       "type": "integer"
+      },
+      "hosts": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "port"
+     ]
+    },
+    "options": [
+     "defaults-applied"
+    ]
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a load with an expected result in type text",
+   "source": "json.parse(s)",
+   "returns": "{port: int}",
+   "vars": {
+    "s": "{\"port\": 1, \"extra\": 2}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "extra"
+      ],
+      "message": "the type does not allow key \"extra\""
+     }
+    ],
+    "steps": 4,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "a load with an open type in type text lets the key pass",
+   "source": "json.parse(s)",
+   "returns": "{port: int, ...}",
+   "vars": {
+    "s": "{\"port\": 1, \"extra\": 2}"
+   },
+   "expect": {
+    "value": {
+     "port": 1,
+     "extra": 2
+    },
+    "json": "{\"extra\":2,\"port\":1}"
+   }
+  },
+  {
+   "name": "a load in strict mode: an unchecked read of any is a check error",
+   "source": "json.parse(s)",
+   "reject": [
+    "constant-condition",
+    "dynamic"
+   ],
+   "vars": {
+    "s": "{\"port\": 1}"
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "unchecked",
+      "class": "dynamic",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

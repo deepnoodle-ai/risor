@@ -1,0 +1,444 @@
+{
+ "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: string}}",
+ "vars": {
+  "base": {
+   "listen": ":8080",
+   "db": {
+    "host": "db",
+    "port": 5432
+   },
+   "hosts": [
+    "a",
+    "b"
+   ]
+  }
+ },
+ "returns": "{db: {host: string, port: int}, hosts: string[], listen: string, max_body?: int}",
+ "cases": [
+  {
+   "name": "an overlay sets one key over a base",
+   "source": "{...base, max_body: 16 * 1024 * 1024}",
+   "expect": {
+    "value": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ],
+     "max_body": 16777216
+    },
+    "json": "{\"db\":{\"host\":\"db\",\"port\":5432},\"hosts\":[\"a\",\"b\"],\"listen\":\":8080\",\"max_body\":16777216}",
+    "steps": 5,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "a nested override spreads the nested map too",
+   "source": "{...base, db: {...base.db, port: 5433}}",
+   "expect": {
+    "value": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5433
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    },
+    "steps": 6,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "an overlay appends to a list of the base",
+   "source": "{...base, hosts: [...base.hosts, \"c\"]}",
+   "expect": {
+    "value": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b",
+      "c"
+     ]
+    },
+    "steps": 6,
+    "allocated": 11
+   }
+  },
+  {
+   "name": "a misspelled key in an overlay is reported at the key",
+   "source": "{...base, max_bdy: 1}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       11,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a wrong value in an overlay is reported at the value",
+   "source": "{...base, max_body: \"big\"}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       21,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the overlay of rulings CI: a key the exact record does not list",
+   "source": "{...base, prot: 8080}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       11,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an overlay that overrides a base key with a wrong type: at the value",
+   "source": "{...base, listen: 8080}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       19,
+       1,
+       23
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a failing key that comes from the base is reported on base",
+   "source": "{...base, max_body: 1}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: int}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       5,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the failing key of the base overridden by a written entry: no report",
+   "source": "{...base, listen: \":80\"}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: int}}",
+   "vars": {
+    "base": {
+     "listen": 1,
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    }
+   },
+   "expect": {
+    "value": {
+     "listen": ":80",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    }
+   }
+  },
+  {
+   "name": "a written entry that a later spread overrides is not fitted",
+   "source": "{listen: 1, ...base}",
+   "expect": {
+    "value": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    }
+   }
+  },
+  {
+   "name": "two layers: a key the second layer may give with a wrong type, on that layer",
+   "source": "{...base, ...region, listen: \":9000\"}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: string}, region: {max_body?: string}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       14,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an optional overlay whose fields fit",
+   "source": "{...base, ...maybe}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: string}, maybe: {listen?: string, max_body?: int}}",
+   "vars": {
+    "base": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    },
+    "maybe": {
+     "max_body": 1
+    }
+   },
+   "expect": {
+    "value": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ],
+     "max_body": 1
+    }
+   }
+  },
+  {
+   "name": "an optional overlay that may give a field of the wrong type, on the overlay",
+   "source": "{...base, ...maybe}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: string}, maybe: {listen?: int}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       14,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an overlay of map<string> may give any key: one report, on the overlay",
+   "source": "{...base, ...maybe}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: string}, maybe: map<string>}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       14,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a required key that no entry surely gives: the whole map",
+   "source": "{...over, hosts: []}",
+   "env": "{over: {db: {host: string, port: int}, listen?: string}}",
+   "vars": {
+    "over": {
+     "db": {
+      "host": "h",
+      "port": 1
+     }
+    }
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a setting that may be absent falls back to the base",
+   "source": "{...base, listen: over?.listen ?? base.listen}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: string}, over: {listen?: string}}",
+   "vars": {
+    "base": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    },
+    "over": {}
+   },
+   "expect": {
+    "value": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    },
+    "steps": 5,
+    "allocated": 7
+   }
+  },
+  {
+   "name": "two layers over a base",
+   "source": "{...base, ...region, listen: \":9000\"}",
+   "env": "{base: {db: {host: string, port: int}, hosts: string[], listen: string}, region: {max_body?: int}}",
+   "vars": {
+    "base": {
+     "listen": ":8080",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ]
+    },
+    "region": {
+     "max_body": 1024
+    }
+   },
+   "expect": {
+    "value": {
+     "listen": ":9000",
+     "db": {
+      "host": "db",
+      "port": 5432
+     },
+     "hosts": [
+      "a",
+      "b"
+     ],
+     "max_body": 1024
+    },
+    "steps": 4,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "import is reserved and has no meaning in 3.0",
+   "source": "import \"./base.risor\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "import as the value of a const is reserved",
+   "source": "const base = import \"./base.risor\"; base",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       14,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,278 @@
+[
+ {
+  "name": "a setting from outside with a default",
+  "source": "{region: env?.REGION ?? \"us-east-1\"}",
+  "env": "{env: map<string>}",
+  "vars": {
+   "env": {}
+  },
+  "expect": {
+   "value": {
+    "region": "us-east-1"
+   },
+   "steps": 1,
+   "allocated": 3
+  }
+ },
+ {
+  "name": "a setting from outside that is given",
+  "source": "{region: env?.REGION ?? \"us-east-1\"}",
+  "env": "{env: map<string>}",
+  "vars": {
+   "env": {
+    "REGION": "eu-west-1"
+   }
+  },
+  "expect": {
+   "value": {
+    "region": "eu-west-1"
+   },
+   "steps": 1,
+   "allocated": 3
+  }
+ },
+ {
+  "name": "a misspelled setting of an exact record is no-field",
+  "source": "{region: env.REGOIN}",
+  "env": "{env: {REGION: string, DEBUG?: string}}",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "no-field",
+     "span": [
+      1,
+      14,
+      1,
+      20
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a setting is text: a conversion that fails",
+  "source": "{port: int(env.PORT)}",
+  "env": "{env: {PORT: string}}",
+  "vars": {
+   "env": {
+    "PORT": "80x"
+   }
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "invalid-argument",
+     "class": "value",
+     "span": [
+      1,
+      8,
+      1,
+      21
+     ],
+     "message": "\"80x\" is not a number"
+    }
+   ],
+   "steps": 2,
+   "allocated": 0
+  }
+ },
+ {
+  "name": "a setting is text: a conversion that succeeds",
+  "source": "{port: int(env.PORT)}",
+  "env": "{env: {PORT: string}}",
+  "vars": {
+   "env": {
+    "PORT": "8080"
+   }
+  },
+  "expect": {
+   "value": {
+    "port": 8080
+   },
+   "steps": 2,
+   "allocated": 3
+  }
+ },
+ {
+  "name": "the text false is truthy: compare with a string",
+  "source": "{debug: env.DEBUG == \"true\", truthy: env.DEBUG ? 1 : 0}",
+  "env": "{env: {DEBUG: string}}",
+  "vars": {
+   "env": {
+    "DEBUG": "false"
+   }
+  },
+  "expect": {
+   "value": {
+    "debug": false,
+    "truthy": 1
+   }
+  }
+ },
+ {
+  "name": "a declared setting the host did not supply",
+  "source": "{region: env.REGION}",
+  "env": "{env: {REGION: string}}",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "missing-variable",
+     "class": "environment",
+     "span": [
+      1,
+      10,
+      1,
+      13
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the library has no clock: time.now is no entry",
+  "source": "{started: time.now()}",
+  "groups": [
+   "time"
+  ],
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "undefined-function",
+     "span": [
+      1,
+      11,
+      1,
+      19
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the current time is a variable the host supplies",
+  "source": "{started: time.format(now)}",
+  "groups": [
+   "time"
+  ],
+  "env": "{now: float}",
+  "vars": {
+   "now": 1709251200
+  },
+  "expect": {
+   "value": {
+    "started": "2024-03-01T00:00:00Z"
+   }
+  }
+ },
+ {
+  "name": "a setting that holds JSON, parsed with the group json",
+  "source": "{extra: json.parse(env.EXTRA)}",
+  "groups": [
+   "json"
+  ],
+  "env": "{env: {EXTRA: string}}",
+  "vars": {
+   "env": {
+    "EXTRA": "{\"a\": [1]}"
+   }
+  },
+  "expect": {
+   "type": "{extra: any}",
+   "sites": [
+    {
+     "class": "value",
+     "span": [
+      1,
+      9,
+      1,
+      30
+     ]
+    }
+   ],
+   "value": {
+    "extra": {
+     "a": [
+      1
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "the group json is off unless the host turns it on",
+  "source": "{extra: json.parse(env.EXTRA)}",
+  "env": "{env: {EXTRA: string}}",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "undefined-name",
+     "span": [
+      1,
+      9,
+      1,
+      13
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a host function in a config",
+  "source": "{password: secret(\"db\")}",
+  "functions": {
+   "secret": {
+    "type": "(name: string) => string !",
+    "calls": [
+     {
+      "args": [
+       "db"
+      ],
+      "result": "pw"
+     }
+    ]
+   }
+  },
+  "expect": {
+   "value": {
+    "password": "pw"
+   },
+   "steps": 1
+  }
+ },
+ {
+  "name": "a load is bounded by the step limit",
+  "source": "{hosts: [1, 2, 3, 4, 5].map(i => `h${i}`)}",
+  "limits": {
+   "steps": 5
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "steps-exceeded",
+     "class": "limit"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the same config within the default limits",
+  "source": "{hosts: [1, 2, 3, 4, 5].map(i => `h${i}`)}",
+  "expect": {
+   "value": {
+    "hosts": [
+     "h1",
+     "h2",
+     "h3",
+     "h4",
+     "h5"
+    ]
+   }
+  }
+ }
+]

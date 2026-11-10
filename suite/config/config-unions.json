@@ -1,0 +1,303 @@
+{
+ "returnsSchema": {
+  "schema": {
+   "type": "object",
+   "properties": {
+    "auth": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "const": "none"
+        }
+       },
+       "required": [
+        "kind"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "const": "token"
+        },
+        "header": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "kind",
+        "header"
+       ]
+      }
+     ]
+    },
+    "checks": {
+     "type": "array",
+     "items": {
+      "oneOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "const": "none"
+         }
+        },
+        "required": [
+         "kind"
+        ]
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "const": "token"
+         },
+         "header": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "kind",
+         "header"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   "required": [
+    "auth"
+   ]
+  },
+  "options": [
+   "closed"
+  ]
+ },
+ "cases": [
+  {
+   "name": "a variant picked by its tag fits",
+   "source": "{auth: {kind: \"token\", header: \"X-Token\"}}",
+   "expect": {
+    "value": {
+     "auth": {
+      "kind": "token",
+      "header": "X-Token"
+     }
+    }
+   }
+  },
+  {
+   "name": "the other variant fits",
+   "source": "{auth: {kind: \"none\"}}",
+   "expect": {}
+  },
+  {
+   "name": "the variant the tag picks lacks a required field: the map",
+   "source": "{auth: {kind: \"token\"}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       8,
+       1,
+       23
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a tag no variant has: the tag's value",
+   "source": "{auth: {kind: \"oauth\"}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       15,
+       1,
+       22
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "no entry has the tag: the map, once",
+   "source": "{auth: {header: \"x\"}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       8,
+       1,
+       21
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "under closed each variant is exact: a key its variant lacks",
+   "source": "{auth: {kind: \"none\", header: \"x\"}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       23,
+       1,
+       29
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "without closed the variant is open",
+   "source": "{auth: {kind: \"none\", header: \"x\"}}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "auth": {
+       "oneOf": [
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "const": "none"
+          }
+         },
+         "required": [
+          "kind"
+         ]
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "const": "token"
+          },
+          "header": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "kind",
+          "header"
+         ]
+        }
+       ]
+      },
+      "checks": {
+       "type": "array",
+       "items": {
+        "oneOf": [
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "const": "none"
+           }
+          },
+          "required": [
+           "kind"
+          ]
+         },
+         {
+          "type": "object",
+          "properties": {
+           "kind": {
+            "const": "token"
+           },
+           "header": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "kind",
+           "header"
+          ]
+         }
+        ]
+       }
+      }
+     },
+     "required": [
+      "auth"
+     ]
+    }
+   },
+   "expect": {}
+  },
+  {
+   "name": "a tag whose type is not a literal set: the value",
+   "source": "{auth: {kind: k, header: \"x\"}}",
+   "env": "{k: string}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       15,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a branch inside an entry fits through its form",
+   "source": "{auth: if (tok) { {kind: \"token\", header: \"h\"} } else { {kind: \"none\", header: \"h\"} }}",
+   "env": "{tok: bool}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       72,
+       1,
+       78
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a list of a union: the wrong element's entry",
+   "source": "{auth: {kind: \"none\"}, checks: [{kind: \"none\"}, {kind: \"token\", header: 1}]}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       73,
+       1,
+       74
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

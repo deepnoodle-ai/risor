@@ -1,0 +1,181 @@
+{
+ "env": "{a: any}",
+ "returnsSchema": {
+  "schema": {
+   "type": "object",
+   "properties": {
+    "auth": {
+     "oneOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "const": "none"
+        }
+       },
+       "required": [
+        "kind"
+       ]
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "const": "token"
+        },
+        "header": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "kind",
+        "header"
+       ]
+      }
+     ]
+    },
+    "checks": {
+     "type": "array",
+     "items": {
+      "oneOf": [
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "const": "none"
+         }
+        },
+        "required": [
+         "kind"
+        ]
+       },
+       {
+        "type": "object",
+        "properties": {
+         "kind": {
+          "const": "token"
+         },
+         "header": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "kind",
+         "header"
+        ]
+       }
+      ]
+     }
+    }
+   },
+   "required": [
+    "auth"
+   ]
+  },
+  "options": [
+   "closed"
+  ]
+ },
+ "load": true,
+ "cases": [
+  {
+   "name": "a variant from any that lacks a field the tag requires",
+   "source": "{auth: a}",
+   "vars": {
+    "a": {
+     "kind": "token"
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "auth",
+       "header"
+      ],
+      "message": "required field \"header\" is missing"
+     }
+    ],
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a tag from any that no variant has",
+   "source": "{auth: a}",
+   "vars": {
+    "a": {
+     "kind": "oauth"
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "auth",
+       "kind"
+      ],
+      "message": "expected \"none\" | \"token\", found \"oauth\""
+     }
+    ],
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a key from any that the closed variant does not allow",
+   "source": "{auth: a}",
+   "vars": {
+    "a": {
+     "kind": "none",
+     "extra": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "auth",
+       "extra"
+      ],
+      "message": "the type does not allow key \"extra\""
+     }
+    ],
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a variant from any that conforms",
+   "source": "{auth: a}",
+   "vars": {
+    "a": {
+     "kind": "token",
+     "header": "h"
+    }
+   },
+   "expect": {
+    "value": {
+     "auth": {
+      "kind": "token",
+      "header": "h"
+     }
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  }
+ ]
+}

@@ -1,7 +1,7 @@
 {
-  "env": "{c: bool, k: string, blob: any, s: Shape}",
-  "types": [{"name": "Shape", "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}"}],
-  "functions": {"area": "(s: Shape) => float"},
+  "env": "{c: bool, k: string, blob: any, s: Shape, common: {host: string}, bad: {host: int}, tcpBase: {host: string, kind: \"tcp\"}, common2: {host: string, kind: string}}",
+  "types": [{"name": "Shape", "type": "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}"}, {"name": "Conn", "type": "{host: string, kind: \"tcp\", port: int} | {host: string, kind: \"unix\", path: string}"}],
+  "functions": {"area": "(s: Shape) => float", "connect": "(c: Conn) => bool"},
   "cases": [
     {"name": "a list literal: the element with a missing field", "source": "[{kind: \"circle\", r: 1}, {kind: \"rect\", w: 2}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 26, 1, 46]}]}},
     {"name": "a list literal: a tag in no tag set", "source": "[{kind: \"oval\", r: 1}]", "returns": "Shape[]", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 9, 1, 15]}]}},
@@ -23,7 +23,15 @@
     {"name": "fields of a variant and no tag", "source": "{w: 1, h: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 13]}]}},
     {"name": "a tag entry of type any, and a wrong field", "source": "{kind: blob, r: \"x\"}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 8, 1, 12]}]}},
     {"name": "a tag entry of type any: the fit uses any", "source": "{kind: blob, r: 1}", "returns": "Shape", "expect": {"type": "{kind: any, r: int}", "sites": [{"class": "dynamic", "span": [1, 1, 1, 19]}]}},
-    {"name": "a spread is not followed", "source": "{...s, r: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 13]}]}},
+    {"name": "a spread of a union gives the tag two strings: the place is its operand", "source": "{...s, r: 1}", "returns": "Shape", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 5, 1, 6]}]}},
+    {"name": "a spread, then a written tag: a wrong field", "source": "{...common, kind: \"tcp\", port: \"x\"}", "returns": "Conn", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 32, 1, 35]}]}},
+    {"name": "a spread, then a written tag: a key the variant does not list, and a field missing", "source": "{...common, kind: \"tcp\", prot: 1}", "returns": "Conn", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 34]}, {"code": "result-mismatch", "span": [1, 26, 1, 30]}]}},
+    {"name": "a spread whose field does not fit the variant", "source": "{...bad, kind: \"tcp\", port: 1}", "returns": "Conn", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 5, 1, 8]}]}},
+    {"name": "a spread that gives the tag chooses the variant", "source": "{...tcpBase, port: \"x\"}", "returns": "Conn", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 20, 1, 23]}]}},
+    {"name": "a later spread overrides a written tag", "source": "{kind: \"tcp\", ...common2, port: 1}", "returns": "Conn", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 18, 1, 25]}]}},
+    {"name": "a map with a spread and a computed key is not followed", "source": "{...common, [k]: 1, kind: \"tcp\"}", "returns": "Conn", "expect": {"phase": "check", "diagnostics": [{"code": "result-mismatch", "span": [1, 1, 1, 33]}]}},
+    {"name": "a spread and a written tag that fit", "source": "{...common, kind: \"tcp\", port: 1}", "returns": "Conn", "expect": {"type": "{host: string, kind: \"tcp\", port: int}", "sites": []}},
+    {"name": "an argument with a spread: a wrong field of the variant", "source": "connect({...common, kind: \"unix\", path: 1})", "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 41, 1, 42]}]}},
     {"name": "an argument: a missing field", "source": "area({kind: \"rect\", w: 2})", "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 6, 1, 26]}]}},
     {"name": "an argument: a tag in no tag set", "source": "area({kind: \"oval\"})", "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 13, 1, 19]}]}},
     {"name": "an argument that fits its variant", "source": "area({kind: \"circle\", r: 1})", "expect": {"type": "float", "sites": []}}

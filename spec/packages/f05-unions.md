@@ -390,9 +390,14 @@ These rows join the table of `05-types.md` 10.5.
    right operand of `in` and `not in` is a `List` node of one or more items,
    each a `String` node, with no spread. S is the set of strings of the test:
    {L}, or the strings L1 to Ln.
-2. **`in` and `==` agree.** A test `q in [L1, ..., Ln]` gives the facts of the
-   `||` of the tests `q == Li`, combined by 5.4. A test `q not in [L1, ..., Ln]`
-   gives the facts of the `&&` of the tests `q != Li`.
+2. **`in` and `==`.** Where `q in [L1, ..., Ln]` held, its fact is the one the
+   `||` of the tests `q == Li` gives (5.4): hit(M, f, S) holds the variants of
+   each hit. Where it failed, its fact {p: not A} removes, as the `||` does,
+   each variant whose type of f surely fits one Li, and also each whose type of
+   f surely fits S without fitting one string: with `t: {kind: "a" | "b", x:
+   int} | {kind: "c"}`, `t.kind in ["a", "b"]` failing leaves `{kind: "c"}`,
+   where the `||` of two `==` tests leaves both. The rows of the table are the
+   rule; `not in` swaps the two sides.
 3. **When it gives facts.** Let M be the map alternative of the type of p as
    narrowed where the test stands. The test gives facts when M is a union; or
    when M is a record and a fact that a test of this section or of 5.3 gave
@@ -545,14 +550,25 @@ in force.
 
 ## 6. An expression against a written type
 
-This row joins the table of `05-types.md` 15.1, after the row of a `Map`.
+This row joins the table of `05-types.md` 15.1, after the row of a `Map`. It
+uses Core's table "A map literal against a record" and its terms (what an entry
+gives, the contributors of a key).
 
 | e | It fits when | Place of a failure |
 | --- | --- | --- |
-| A `Map` with no spread and no computed key, where T's map alternative is a union U | Let t be U's tag. An entry of e has the key t, and the type of its value is a literal set within the tag set of one variant V. e then fits V by the row of a `Map` | e, once, when no entry has the key t. The entry's value (a shorthand's name) when its type is not a literal set within one tag set. Otherwise the places the row of a `Map` gives for V |
+| A `Map` with no computed key, where T's map alternative is a union U | Let t be U's tag. Some entry of e surely gives t, and the Join of the types the contributors of t give for it is a literal set within the tag set of one variant V. e then fits V by Core's table "A map literal against a record" | e, once, when no entry surely gives t. Each contributor of t, when that Join is not within one tag set: a written entry's value (a shorthand's name), a spread's operand. Otherwise the places Core's table gives for V |
 
-1. As in Core, the row is tried only when the type of e does not fit T.
-2. So a list literal against `Shape[]` is reported at its element that is wrong,
+1. As in Core, the row is tried only when the type of e does not fit T. A `Map`
+   with a computed key is not followed.
+2. **The variant is chosen by the tag only;** the other fields are then checked
+   against V. The tag may come from a written entry, as in `{...common, kind:
+   "tcp", port: 1}`, or from a spread whose operand's type gives it within one
+   tag set, as in `{...tcpBase, port: 1}` with `tcpBase: {host: string, kind:
+   "tcp"}`.
+3. **Soundness.** Core's table is sound for a record (`05-types.md` 15.1): when
+   e fits V by it, every value of e conforms to V, and so to U, of which V is a
+   variant. The test of the tag only chooses V.
+4. So a list literal against `Shape[]` is reported at its element that is wrong,
    and inside that element at the entry that is wrong.
 
 | e, against `Shape[]` | Place of failure |
@@ -562,6 +578,7 @@ This row joins the table of `05-types.md` 15.1, after the row of a `Map`.
 | `[{r: 1}]` | The map: it has no `kind` |
 | `[{kind: "rect", w: 2, h: "3"}]` | `"3"` |
 | `[c ? {kind: "circle", r: 1} : {kind: "rect", w: 1, h: 1}]` | None: each branch fits |
+| `[{...s, r: 1}]`, `s: Shape` | `s`: it is the one contributor of `kind`, and gives `"circle" \| "rect"` |
 
 ## 7. Conformance and the walk
 
@@ -652,13 +669,17 @@ These rules replace F1 3.9 and its row of F1 3.11.
    set and nothing else: a `const` string, or an `enum` of strings only. A tag
    property outside `required`, typed `string`, or with `null` in its `enum`, is
    no tag. The branches join, and nothing is reported.
-6. `discriminator` is ignored, as F1 3.12 says. The tag is found from the
+6. **A filled key is no tag.** A key that any of the records fills (F1 4.4), by
+   `absent-is-null` or by `defaults-applied`, is no tag of them, whatever its
+   type, Join(base, fill). The host fills a key the value lacked, so it would
+   have to fill the tag before any variant could be chosen.
+7. `discriminator` is ignored, as F1 3.12 says. The tag is found from the
    branches.
-7. **Soundness.** A value valid by the `anyOf` or `oneOf` is valid by some
-   branch i. If it is a map, it conforms to the record of branch i (F1 2.3), so
-   its tag's value is in that record's tag set, which no other record shares: it
-   conforms to the union. Any other value conforms to the joined other
-   alternatives.
+8. **Soundness.** A value valid by the `anyOf` or `oneOf` is valid by some
+   branch i, and has the tag, which no record fills. If it is a map, it conforms
+   to the record of branch i (F1 2.3), so its tag's value is in that record's
+   tag set, which no other record shares: it conforms to the union. Any other
+   value conforms to the joined other alternatives.
 
 | Branches | Type |
 | --- | --- |
@@ -670,20 +691,22 @@ These rules replace F1 3.9 and its row of F1 3.11.
 ### 8.2 The options
 
 1. The options of F1 4 apply to the object schema of each branch as to any
-   object schema. The test of 8.1 is made on the records as the options map
-   them: under `absent-is-null`, a `kind` outside `required` becomes a required
-   field of type `"a" | null`, which is no tag; under `defaults-applied`, a
-   `kind` outside `required` whose `default` is a string of its own `const`
-   becomes a required field of that one string, which may be a tag.
+   object schema, and a field of a variant keeps its base and its fill apart (F1
+   4.4). The test of 8.1 is made on the records as the options map them: a
+   `kind` outside `required` is filled, by `null` or by its `default`, and is no
+   tag (8.1 item 6).
 2. **`closed`.** A variant keeps the mark *closable* of F1 4.1. Close (F1 4.1
    item 3) closes each variant of a union, at every depth. So under `closed`
    each variant whose schema has `properties` and neither `additionalProperties`
    nor `patternProperties` is exact.
 3. A Join of a union with another map alternative is closable when every record
    joined is closable (F1 3.6 item 8).
-4. The statement of `closed` reads, for an object whose type is a union: the
-   host has removed from it each key that the variant whose tag set holds its
-   tag's value does not list, when Close made that variant exact.
+4. The statements of the options read, for an object whose type is a union, by
+   the variant whose tag set holds its tag's value: the host has removed from it
+   each key that variant does not list, when Close made that variant exact
+   (`closed`), and has filled each key that variant marks as filled and the
+   object lacked (`absent-is-null`, `defaults-applied`, F1 4.4). The tag itself
+   is never filled (8.1 item 6).
 
 ### 8.3 Pick, and the meet of a record with a union
 
@@ -705,21 +728,26 @@ This replaces step 2 of Pick (F1 3.6 item 2). Steps 1 and 3 are unchanged.
    Close, applied once at the root, then closes each variant (8.2).
 7. **Soundness.** A value valid by both parts is valid by R and by one branch of
    U, so it conforms to R and to the variant V of that branch (F1 2.3). By F1's
-   argument (F1 3.6 item 4) it conforms to Meet(R, V). Each Meet(R, V) types the
-   tag by a literal set alone, its tag set, and the tag sets share no string, so
-   the value's tag picks Meet(R, V), and it conforms to the union. Under
-   `closed`, the argument of F1 4.1 item 8 holds variant by variant.
-8. The tag of the meet is found again (2.1): a base that types the tag key
-   narrows each tag set by Pick, and the meet fails when the narrowed sets share
-   a string or one is not a literal set.
+   argument (F1 3.6 item 4, and F1 4.4 item 5 for a key the host filled) it
+   conforms to Meet(R, V). Each Meet(R, V) types the tag by a literal set alone,
+   its tag set, and the tag sets share no string, so the value's tag picks
+   Meet(R, V), and it conforms to the union. Under `closed`, the argument of F1
+   4.1 item 8 holds variant by variant.
+8. The tag of the meet is found again (2.1), reading each field's type as
+   Join(base, fill) (F1 4.4). A record part that types the tag key narrows each
+   tag set by Pick, and the meet fails when the narrowed sets share a string or
+   one is not a literal set. A tag key that a fill reaches, from either side, is
+   no tag (8.1 item 6), so that meet fails too, and step 3 decides.
 
 | `allOf` of | Type |
 | --- | --- |
 | A `$ref` to `{"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}`, and a `oneOf` of the circle and rectangle objects of 8.1 | `{id: int, kind: "circle", r: float, ...} \| {h: float, id: int, kind: "rect", w: float, ...}` |
 | The same, with the `oneOf` first | The same union |
-| A base with `kind` of type `string` required, and the same `oneOf` | The same union without `id`: Pick(`string`, `"circle"`) is `"circle"` |
-| A base with `kind` an `enum` of `"a"` and `"b"`, and a `oneOf` with tags `"a"`, `"b"` and `"c"` | The meets type the third tag `"a" \| "b"`, which shares its strings: the meet fails, and step 3 gives the base, which stands first |
-| An exact base `{id: int}`, and a `oneOf` of open variants with tags | Each meet types `kind` as `never`, which is no tag: the meet fails, and step 3 gives the base `{id: int}`, which stands first |
+| A record with `kind` of type `string` required, and the same `oneOf` | The same union without `id`: Pick(`string`, `"circle"`) is `"circle"` |
+| A record with `kind` an `enum` of `"a"` and `"b"`, and a `oneOf` with tags `"a"`, `"b"` and `"c"` | The meets type the third tag `"a" \| "b"`, which shares its strings: the meet fails, and step 3 gives the record, which stands first |
+| An exact record `{id: int}`, and a `oneOf` of open variants with tags | Each meet types `kind` as `never`, which is no tag: the meet fails, and step 3 gives `{id: int}`, which stands first |
+| Under `absent-is-null`, a record with an optional `note`, and the same `oneOf` | Each meet has `note: string \| null`, required and filled |
+| Under `defaults-applied`, a record whose optional `kind` has a `default` | The tag key is filled: the meet fails, and step 3 decides |
 | Two `oneOf` parts | Two unions: step 3 |
 
 9. No other rule of F1 3 changes. Depth and the limits of F1 3.10 are those of

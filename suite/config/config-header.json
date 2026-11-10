@@ -1,0 +1,95 @@
+{
+ "returns": "int",
+ "cases": [
+  {
+   "name": "returnsSchema in a case replaces returns of the header",
+   "source": "{listen: \"x\", backends: []}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      },
+      "max_body": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "log": {
+       "enum": [
+        "debug",
+        "info",
+        "warn"
+       ]
+      },
+      "backends": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/backend"
+       }
+      },
+      "tls": {
+       "type": "object",
+       "properties": {
+        "cert": {
+         "type": "string"
+        },
+        "key": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "cert",
+        "key"
+       ]
+      }
+     },
+     "required": [
+      "listen",
+      "backends"
+     ],
+     "$defs": {
+      "backend": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string",
+         "format": "uri"
+        }
+       },
+       "required": [
+        "name",
+        "url"
+       ]
+      }
+     }
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {}
+  },
+  {
+   "name": "the header's returns applies to a case without either",
+   "source": "{listen: \"x\", backends: []}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       28
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

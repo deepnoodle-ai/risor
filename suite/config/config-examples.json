@@ -1,0 +1,301 @@
+{
+ "env": "{env: map<string>}",
+ "returns": "{auth: {kind: \"none\"} | {header: string, kind: \"token\"}, backends: {name: string, url: string}[], banner?: string, listen: string, max_body?: int}",
+ "load": true,
+ "cases": [
+  {
+   "name": "the config of the chapter, loaded",
+   "source": "// app.risor\nconst mb = 1024 * 1024;\nconst backend = (name, port) => {name, url: `http://${name}.internal:${port}`};\n\n{\n  listen: `0.0.0.0:${env?.PORT ?? \"8080\"}`,\n  max_body: 8 * mb,\n  backends: [backend(\"a\", 9001), backend(\"b\", 9002)],\n  auth: {kind: \"token\", header: \"X-Token\"},\n  banner: \"\"\"\n    Maintenance on Sunday,\n    02:00 to 03:00 UTC.\n    \"\"\"\n}\n",
+   "vars": {
+    "env": {
+     "PORT": "9000"
+    }
+   },
+   "expect": {
+    "value": {
+     "listen": "0.0.0.0:9000",
+     "max_body": 8388608,
+     "backends": [
+      {
+       "name": "a",
+       "url": "http://a.internal:9001"
+      },
+      {
+       "name": "b",
+       "url": "http://b.internal:9002"
+      }
+     ],
+     "auth": {
+      "kind": "token",
+      "header": "X-Token"
+     },
+     "banner": "Maintenance on Sunday,\n02:00 to 03:00 UTC."
+    },
+    "json": "{\"auth\":{\"header\":\"X-Token\",\"kind\":\"token\"},\"backends\":[{\"name\":\"a\",\"url\":\"http://a.internal:9001\"},{\"name\":\"b\",\"url\":\"http://b.internal:9002\"}],\"banner\":\"Maintenance on Sunday,\\n02:00 to 03:00 UTC.\",\"listen\":\"0.0.0.0:9000\",\"max_body\":8388608}",
+    "steps": 9,
+    "allocated": 32
+   }
+  },
+  {
+   "name": "the misspelled key of the chapter, at line 7",
+   "source": "// app.risor\nconst mb = 1024 * 1024;\nconst backend = (name, port) => {name, url: `http://${name}.internal:${port}`};\n\n{\n  listen: `0.0.0.0:${env?.PORT ?? \"8080\"}`,\n  max_bod: 8 * mb,\n  backends: [backend(\"a\", 9001), backend(\"b\", 9002)],\n  auth: {kind: \"token\", header: \"X-Token\"},\n  banner: \"\"\"\n    Maintenance on Sunday,\n    02:00 to 03:00 UTC.\n    \"\"\"\n}\n",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       7,
+       3,
+       7,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the same config against the schema of the chapter",
+   "source": "// app.risor\nconst mb = 1024 * 1024;\nconst backend = (name, port) => {name, url: `http://${name}.internal:${port}`};\n\n{\n  listen: `0.0.0.0:${env?.PORT ?? \"8080\"}`,\n  max_body: 8 * mb,\n  backends: [backend(\"a\", 9001), backend(\"b\", 9002)],\n  auth: {kind: \"token\", header: \"X-Token\"},\n  banner: \"\"\"\n    Maintenance on Sunday,\n    02:00 to 03:00 UTC.\n    \"\"\"\n}\n",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      },
+      "max_body": {
+       "type": "integer"
+      },
+      "backends": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "url": {
+          "type": "string",
+          "format": "uri"
+         }
+        },
+        "required": [
+         "name",
+         "url"
+        ]
+       }
+      },
+      "auth": {
+       "oneOf": [
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "const": "none"
+          }
+         },
+         "required": [
+          "kind"
+         ]
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "const": "token"
+          },
+          "header": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "kind",
+          "header"
+         ]
+        }
+       ]
+      },
+      "banner": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "listen",
+      "backends",
+      "auth"
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "vars": {
+    "env": {
+     "PORT": "9000"
+    }
+   },
+   "expect": {
+    "value": {
+     "listen": "0.0.0.0:9000",
+     "max_body": 8388608,
+     "backends": [
+      {
+       "name": "a",
+       "url": "http://a.internal:9001"
+      },
+      {
+       "name": "b",
+       "url": "http://b.internal:9002"
+      }
+     ],
+     "auth": {
+      "kind": "token",
+      "header": "X-Token"
+     },
+     "banner": "Maintenance on Sunday,\n02:00 to 03:00 UTC."
+    }
+   }
+  },
+  {
+   "name": "the misspelled key against the schema",
+   "source": "// app.risor\nconst mb = 1024 * 1024;\nconst backend = (name, port) => {name, url: `http://${name}.internal:${port}`};\n\n{\n  listen: `0.0.0.0:${env?.PORT ?? \"8080\"}`,\n  max_bod: 8 * mb,\n  backends: [backend(\"a\", 9001), backend(\"b\", 9002)],\n  auth: {kind: \"token\", header: \"X-Token\"},\n  banner: \"\"\"\n    Maintenance on Sunday,\n    02:00 to 03:00 UTC.\n    \"\"\"\n}\n",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      },
+      "max_body": {
+       "type": "integer"
+      },
+      "backends": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "url": {
+          "type": "string",
+          "format": "uri"
+         }
+        },
+        "required": [
+         "name",
+         "url"
+        ]
+       }
+      },
+      "auth": {
+       "oneOf": [
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "const": "none"
+          }
+         },
+         "required": [
+          "kind"
+         ]
+        },
+        {
+         "type": "object",
+         "properties": {
+          "kind": {
+           "const": "token"
+          },
+          "header": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "kind",
+          "header"
+         ]
+        }
+       ]
+      },
+      "banner": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "listen",
+      "backends",
+      "auth"
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       7,
+       3,
+       7,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "prod over base, without imports",
+   "source": "{...base, max_body: 16 * 1024 * 1024}",
+   "env": "{base: {auth: {kind: \"none\"} | {header: string, kind: \"token\"}, backends: {name: string, url: string}[], banner?: string, listen: string, max_body?: int}}",
+   "vars": {
+    "base": {
+     "listen": "0.0.0.0:9000",
+     "max_body": 8388608,
+     "backends": [
+      {
+       "name": "a",
+       "url": "http://a.internal:9001"
+      },
+      {
+       "name": "b",
+       "url": "http://b.internal:9002"
+      }
+     ],
+     "auth": {
+      "kind": "token",
+      "header": "X-Token"
+     },
+     "banner": "Maintenance on Sunday,\n02:00 to 03:00 UTC."
+    }
+   },
+   "expect": {
+    "value": {
+     "listen": "0.0.0.0:9000",
+     "max_body": 16777216,
+     "backends": [
+      {
+       "name": "a",
+       "url": "http://a.internal:9001"
+      },
+      {
+       "name": "b",
+       "url": "http://b.internal:9002"
+      }
+     ],
+     "auth": {
+      "kind": "token",
+      "header": "X-Token"
+     },
+     "banner": "Maintenance on Sunday,\n02:00 to 03:00 UTC."
+    },
+    "steps": 7,
+    "allocated": 11
+   }
+  }
+ ]
+}

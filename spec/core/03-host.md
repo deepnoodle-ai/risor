@@ -1343,9 +1343,10 @@ above. A package's chapter is the home of its rules: this table only points.
 | F5, tagged unions | Nothing in the case format. A union in declared type text, from the branches of a schema, and in a description | `spec/packages/f05-unions.md` |
 | F6, opt-in groups | The declaration that turns a group on: `json`, `time`, `math`, `base64`. The case field `groups`, and the result field `json`, which compares the binding's JSON text of a result (3.2.4) | `spec/packages/f06-groups.md` |
 | F7, queries | Three run-phase templates, in a catalog file of their own, `suite/messages-queries.json`. A package's templates never enter `suite/messages.json` | `spec/packages/f07-queries.md` 11 |
+| F10, config files | The expected result given by a JSON Schema, with the option `closed`; the load of a config and the decode of its result into host types. The case fields `returnsSchema` and `load`, and `"span": null` in an expected diagnostic of a load | `spec/packages/f10-config.md` |
 | F13, math functions | Nothing in the host contract: eleven entries of the group `math` | `spec/packages/f13-math.md` |
 | F8, errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings, the field `rendered` and the `render` case. The `parse` and `check` templates of the catalog, in `suite/messages-parse.json` and `suite/messages-check.json`, and `message` in an expected parse or check diagnostic. `ConformAll`, with `max` and `failures` in a conform case | `spec/packages/f08-errors.md` |
-| Testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Update mode. Case files written as programs. Kinds of case that test the runner | Not written yet |
+| F9, testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Cases that test a runner: the fields `runner`, `update` and `program`, and an `expect` of verdicts. Update mode. Case files written as programs. The report text. The command `risor test` | `spec/packages/f09-testing.md` |
 | Tools | The assist stage: completion and hover | Not written yet |
 
 1. The cases of a package are in a directory of their own, and its library

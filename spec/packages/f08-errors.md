@@ -311,6 +311,10 @@ literal of a package where it does not fit; a name at the start of a `match`
 case other than `case`; a `?` with no `:` that is not directly followed by `[`;
 and `_` read as a value.
 
+Two or more records in one program type that form no tagged union are
+`untagged-union`, a `check` code (F5 3.2), never a `parse` code: no row of this
+section applies to type text, but those of F4's `bad-type-text` (3.4).
+
 ### 2.11 The parse codes
 
 With this package the `parse` phase has 58 codes: the 14 of `01-language.md`
@@ -420,8 +424,10 @@ These rows join the table of `03-host.md` 3.8.3.
 2. **Types in a `check` message.** `03-host.md` 3.8.3 item 2, that a parameter
    is never taken from an inferred type, is a rule of `run` messages. A
    parameter of kind `type` in a `check` message is a type the checker gives at
-   that place by `05-types.md`, printed by `05-types.md` 3.9. Each template of
-   3.5 names which type.
+   that place by `05-types.md`, printed by `05-types.md` 3.9, and a tagged union
+   by F5 2.4. Each template of 3.5 names which type. The `expected` of
+   `not-conforming` (F4 4.4) prints a union the same way, and is cut at 64 code
+   points like any type.
 3. A `word` is the name as written; for a call with a namespace, the namespace,
    `.` and the name: `geo.nowhere`. An operator is in its canonical text
    (3.8.3).
@@ -977,12 +983,14 @@ in this order. The walk stops at once when the list holds the maximum.
 | 4. Scalars | As F4 4.2 step 6: an `int` that is not whole, or a string not in a literal set, is one failure at path, template `wrong` |
 | 5. A list, E`[]` | All(v[i], E, path + [i]) for each index i in order |
 | 6. A record, R | First the declared fields, in code point order of their keys: a required field v lacks is one failure at path + [k], template `missing`; a field v has is All(v[k], the field's type, path + [k]); an optional field v lacks adds nothing. Then the other keys of v, in code point order, always, whatever the declared fields gave: with rest `any`, nothing; with rest `never`, one failure at path + [k], template `extra`, for each other key k; with another rest U, All(v[k], U, path + [k]) for each other key k |
+| 7. A tagged union U (F5) | The map alternative of T is a union with the tag t (F5 7.2). First the tag: when v lacks t, one failure at path + [t], template `missing`; when v[t] does not conform to the tag type of U, one failure at path + [t], template `wrong`, its `expected` the tag type. Either way nothing more of v is visited. Otherwise V is the variant whose tag set holds v[t], and v is walked against V by step 6, with t passed over among the declared fields and counted as a declared key that v has |
 
 1. **The first failure.** The walk of F4 4.2 stops at the first failure of a
    list, stops at the first failing declared field, reaches the other keys only
    when every declared field passed, and for a rest U reports the least failing
-   key. All visits in the same order and goes on, so its first failure is that
-   failure.
+   key. Against a union it reads the tag first, and a failure of the tag is the
+   answer (F5 7.2). All visits in the same order and goes on, so its first
+   failure is that failure.
 2. **The other keys** are reached by All even after a declared field failed.
    With an exact record, each key it does not list is a failure of its own, not
    only the least.

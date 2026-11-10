@@ -1,0 +1,475 @@
+[
+ {
+  "name": "a JSON document is a program",
+  "source": "{\n  \"name\": \"api\",\n  \"ports\": [80, 443],\n  \"tls\": null,\n  \"debug\": false,\n  \"ratio\": 0.5,\n  \"big\": 1E3,\n  \"neg\": -1,\n  \"esc\": \"\\u00e9\\/\\\"\",\n  \"nested\": {\"a\": [], \"b\": {}}\n}\n",
+  "expect": {
+   "value": {
+    "name": "api",
+    "ports": [
+     80,
+     443
+    ],
+    "tls": null,
+    "debug": false,
+    "ratio": 0.5,
+    "big": 1000,
+    "neg": -1,
+    "esc": "é/\"",
+    "nested": {
+     "a": [],
+     "b": {}
+    }
+   },
+   "steps": 1,
+   "allocated": 29
+  }
+ },
+ {
+  "name": "a key written twice in JSON is duplicate-key",
+  "source": "{\"a\": 1, \"a\": 2}",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "duplicate-key",
+     "span": [
+      1,
+      10,
+      1,
+      13
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "an integer outside the safe range is literal-range",
+  "source": "{\"id\": 12345678901234567890}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "literal-range",
+     "span": [
+      1,
+      8,
+      1,
+      28
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a number that is not finite is literal-range",
+  "source": "{\"x\": 1e400}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "literal-range",
+     "span": [
+      1,
+      7,
+      1,
+      12
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "an escape of a lone surrogate is bad-escape",
+  "source": "{\"s\": \"\\ud800\"}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-escape",
+     "span": [
+      1,
+      8,
+      1,
+      14
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "an escaped surrogate pair is one code point",
+  "source": "{\"s\": \"\\ud83d\\ude00\"}",
+  "expect": {
+   "value": {
+    "s": "😀"
+   }
+  }
+ },
+ {
+  "name": "JSON nested past 100 levels is nesting-exceeded",
+  "source": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nesting-exceeded",
+     "span": [
+      1,
+      101,
+      1,
+      102
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "JSON nested 100 levels parses, and its type is deeper than the checker's limit",
+  "source": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      36,
+      1,
+      166
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "JSON nested 100 levels runs with the static rules alone",
+  "source": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "check": false,
+  "expect": {
+   "value": [
+    [
+     [
+      [
+       [
+        [
+         [
+          [
+           [
+            [
+             [
+              [
+               [
+                [
+                 [
+                  [
+                   [
+                    [
+                     [
+                      [
+                       [
+                        [
+                         [
+                          [
+                           [
+                            [
+                             [
+                              [
+                               [
+                                [
+                                 [
+                                  [
+                                   [
+                                    [
+                                     [
+                                      [
+                                       [
+                                        [
+                                         [
+                                          [
+                                           [
+                                            [
+                                             [
+                                              [
+                                               [
+                                                [
+                                                 [
+                                                  [
+                                                   [
+                                                    [
+                                                     [
+                                                      [
+                                                       [
+                                                        [
+                                                         [
+                                                          [
+                                                           [
+                                                            [
+                                                             [
+                                                              [
+                                                               [
+                                                                [
+                                                                 [
+                                                                  [
+                                                                   [
+                                                                    [
+                                                                     [
+                                                                      [
+                                                                       [
+                                                                        [
+                                                                         [
+                                                                          [
+                                                                           [
+                                                                            [
+                                                                             [
+                                                                              [
+                                                                               [
+                                                                                [
+                                                                                 [
+                                                                                  [
+                                                                                   [
+                                                                                    [
+                                                                                     [
+                                                                                      [
+                                                                                       [
+                                                                                        [
+                                                                                         [
+                                                                                          [
+                                                                                           [
+                                                                                            [
+                                                                                             [
+                                                                                              [
+                                                                                               [
+                                                                                                [
+                                                                                                 [
+                                                                                                  [
+                                                                                                   [
+                                                                                                    [
+                                                                                                     [
+                                                                                                      []
+                                                                                                     ]
+                                                                                                    ]
+                                                                                                   ]
+                                                                                                  ]
+                                                                                                 ]
+                                                                                                ]
+                                                                                               ]
+                                                                                              ]
+                                                                                             ]
+                                                                                            ]
+                                                                                           ]
+                                                                                          ]
+                                                                                         ]
+                                                                                        ]
+                                                                                       ]
+                                                                                      ]
+                                                                                     ]
+                                                                                    ]
+                                                                                   ]
+                                                                                  ]
+                                                                                 ]
+                                                                                ]
+                                                                               ]
+                                                                              ]
+                                                                             ]
+                                                                            ]
+                                                                           ]
+                                                                          ]
+                                                                         ]
+                                                                        ]
+                                                                       ]
+                                                                      ]
+                                                                     ]
+                                                                    ]
+                                                                   ]
+                                                                  ]
+                                                                 ]
+                                                                ]
+                                                               ]
+                                                              ]
+                                                             ]
+                                                            ]
+                                                           ]
+                                                          ]
+                                                         ]
+                                                        ]
+                                                       ]
+                                                      ]
+                                                     ]
+                                                    ]
+                                                   ]
+                                                  ]
+                                                 ]
+                                                ]
+                                               ]
+                                              ]
+                                             ]
+                                            ]
+                                           ]
+                                          ]
+                                         ]
+                                        ]
+                                       ]
+                                      ]
+                                     ]
+                                    ]
+                                   ]
+                                  ]
+                                 ]
+                                ]
+                               ]
+                              ]
+                             ]
+                            ]
+                           ]
+                          ]
+                         ]
+                        ]
+                       ]
+                      ]
+                     ]
+                    ]
+                   ]
+                  ]
+                 ]
+                ]
+               ]
+              ]
+             ]
+            ]
+           ]
+          ]
+         ]
+        ]
+       ]
+      ]
+     ]
+    ]
+   ]
+  }
+ },
+ {
+  "name": "JSON nested 64 levels checks",
+  "source": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "expect": {}
+ },
+ {
+  "name": "JSON nested 65 levels: the type of the whole is too deep",
+  "source": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "check-limit",
+     "span": [
+      1,
+      1,
+      1,
+      131
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "-0 in JSON is zero",
+  "source": "-0",
+  "expect": {
+   "value": 0,
+   "json": "0"
+  }
+ },
+ {
+  "name": "a quoted key with a hyphen, and a CR LF line end",
+  "source": "{\"max-retries\": 3}\r\n",
+  "expect": {
+   "value": {
+    "max-retries": 3
+   }
+  }
+ },
+ {
+  "name": "a JSON document checked against a closed schema: the quoted key",
+  "source": "{\"listen\": \":8080\", \"backends\": [], \"max_bod\": 1}",
+  "returnsSchema": {
+   "schema": {
+    "type": "object",
+    "properties": {
+     "listen": {
+      "type": "string"
+     },
+     "max_body": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "log": {
+      "enum": [
+       "debug",
+       "info",
+       "warn"
+      ]
+     },
+     "backends": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/backend"
+      }
+     },
+     "tls": {
+      "type": "object",
+      "properties": {
+       "cert": {
+        "type": "string"
+       },
+       "key": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "cert",
+       "key"
+      ]
+     }
+    },
+    "required": [
+     "listen",
+     "backends"
+    ],
+    "$defs": {
+     "backend": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "url": {
+        "type": "string",
+        "format": "uri"
+       }
+      },
+      "required": [
+       "name",
+       "url"
+      ]
+     }
+    }
+   },
+   "options": [
+    "closed"
+   ]
+  },
+  "expect": {
+   "phase": "check",
+   "diagnostics": [
+    {
+     "code": "result-mismatch",
+     "span": [
+      1,
+      37,
+      1,
+      46
+     ]
+    }
+   ]
+  }
+ }
+]

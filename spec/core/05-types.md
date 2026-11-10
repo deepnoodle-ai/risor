@@ -1129,7 +1129,7 @@ twice, and no type changes.
 | e | It fits when | Place of a failure |
 | --- | --- | --- |
 | A `List`, where T has a list alternative `E[]` | Each item fits E through its form, and the type of each spread's operand fits `E[]`. | The item, or a place inside it by these rows; the spread's operand. |
-| A `Map` with no spread and no computed key, where T has a record R | Each entry whose key R lists fits that field's type through its form. Each other entry fits R's rest through its form. Each required field of R has an entry. | The entry's value, or a place inside it by these rows. The entry's key, when R does not list it and R's rest is `never`. The whole of e, once, when one or more required fields have no entry. |
+| A `Map` with no computed key, where T has a record R | By the table "A map literal against a record" below. With no spread: each entry whose key R lists fits that field's type through its form; each other entry fits R's rest through its form; each required field of R has an entry. | The entry's value, or a place inside it by these rows. The entry's key, when R does not list it and R's rest is `never`. A spread's operand. The whole of e, once, when one or more required fields have no entry. |
 | A `Cond` of either form | Each branch fits T through its form. | By these rows, in each branch. |
 | A `Match` | Each arm's result fits T through its form. | By these rows, in each arm. |
 | A `Block` | Its result fits T through its form. | By these rows. |
@@ -1141,7 +1141,33 @@ twice, and no type changes.
 | A fit that used any | A `dynamic` site on the expression whose fit used it: e itself where the first test passed, or the part a row fitted. |
 | Not followed | An `Ident`, a call, a chain, a `try`, an operator, a template. The report is on that node: `const cfg = {...}; cfg` is reported on `cfg`. |
 | A shorthand entry | Its value is the `Ident`; its place is the shorthand name. |
-| Follow-on | F5 adds a row for a `Map` against a tagged union. |
+| A computed key | A `Map` with a computed key is not followed: the place is e. |
+| Follow-on | F5 adds a row for a `Map` with no spread against a tagged union. |
+
+**A map literal against a record.** Let e be a `Map` with no computed key, and R
+the record of T. The entries are taken in written order.
+
+| Term | Definition |
+| --- | --- |
+| What a written entry gives | `k: v`, or a shorthand `k`: it surely gives the key k, with the type of v. |
+| What a spread gives | Let M be the type of its operand, with null removed (7.7 reported it). For a record M: it may give each key M lists, with that field's type, and surely gives each key M lists as required; when M's rest is not `never`, it may also give every key M does not list, with the rest's type. So an exact record may give its fields only, an open record and `map<T>` may give any key, and `map<T>` surely gives none. For M of type `any`: it may give every key, with type `any`, and surely gives none. For M of type `never`, or a spread that was `kind` (7.7): it gives nothing. |
+| The contributors of a key k | The last entry that surely gives k, and every entry after it that may give k. With no entry that surely gives k, every entry that may give k. |
+
+The keys taken are those R lists, those written, and those any spread's record
+lists; and one **other key**, standing for every key none of these name, whose
+contributors are the spreads that may give every key.
+
+| Check | Place of a failure |
+| --- | --- |
+| A written entry that is a contributor of its key: its value fits R's type for that key (R's field, or R's rest) through its form. A written entry that is not a contributor was overridden and is not fitted. | The value, or a place inside it by these rows. The entry's key, when R does not list it and R's rest is `never`. |
+| A spread that is a contributor of a key: the type it gives for that key fits R's type for that key. For the other key, R's type is R's rest. | The spread's operand, once for each spread. |
+| Each required field of R is surely given by some entry. | The whole of e, once. |
+
+With no spread this is the row of a `Map` above, and gives the same results. A
+spread's fit that used any records a `dynamic` site on its operand; for an
+operand of type `any`, 7.7 has recorded it already. So in `{...base, prot:
+8080}` against an exact record, the misspelled key is reported at `prot`, and a
+field of `base` whose type does not fit is reported on `base`.
 
 ### 15.2 The code at a place of failure
 
@@ -1842,6 +1868,28 @@ lines 16 to n + 16. Spans are written `line:column`.
 | 133 | A(14), B(14), then `gate.failed > 0 ? a14 : b14` on line 31 | `check-limit` 31:1-31:28, on the `Cond`. The Join is `{l?: …, r?: …, x?: …, y?: …}` with four fields of size s(13) = 32,767: 1 + 4 × 32,767 = 131,069. |
 | 134 | A(14), B(14), then `const m = gate.failed > 0 ? a14 : null; m != null ? [m, b14] : []` on line 31 | `check-limit` 31:53-31:61, on the list `[m, b14]`, reached through `m` narrowed to the type of `a14`: its element type has size 131,069. `m` itself has size 65,536 and is not reported. |
 
+### 21.16 A map literal with spreads against a record
+
+The environment is `{base: {db: {host: string, port: int}, hosts: string[],
+listen: string}, bad: {listen: int}, maybe: {listen?: int}, part: {db: {host:
+string, port: int}, hosts: string[]}, nums: map<int>, extra: {listen: string,
+...}, blob: any}`, and the expected result is `{db: {host: string, port: int},
+hosts: string[], listen: string, max_body?: int}` (15.1).
+
+| # | Program | Result |
+| --- | --- | --- |
+| 136 | `{...base, max_bdy: 1}` | `result-mismatch` 1:11-1:18, on the key |
+| 137 | `{...base, max_body: "big"}` | `result-mismatch` 1:21-1:26, on the value |
+| 138 | `{...base, ...bad}` | `result-mismatch` 1:14-1:17, on `bad`: it surely gives `listen`, an `int` |
+| 139 | `{...bad, ...base}` | Checks: `base` overrides `listen` |
+| 140 | `{listen: 1, ...base}` | Checks: `base` surely gives `listen`, so the written `listen` is overridden |
+| 141 | `{...base, ...maybe}` | `result-mismatch` 1:14-1:19, on `maybe`: it may give `listen`, an `int`, after `base` |
+| 142 | `{...base, ...nums}` | `result-mismatch` 1:14-1:18, once, on `nums`: it may give every key, as an `int` |
+| 143 | `{...base, ...extra}` | Checks, with a `dynamic` site 1:1-1:20: the type of e fits, its rest `any` fitting by using any |
+| 144 | `{...base, ...blob}` | Checks, with `dynamic` sites 1:1-1:19 and 1:14-1:18 |
+| 145 | `{...part, max_body: 1}` | `result-mismatch` 1:1-1:23: no entry surely gives `listen` |
+| 146 | `{...base, db: {...base.db, prot: 1}}` | `result-mismatch` 1:28-1:32, on the key `prot` of the inner map |
+
 ## 22. The static rules alone
 
 ### 22.1 Static diagnostics
@@ -2097,3 +2145,4 @@ Its chapter is the home of its rules.
 | F7, queries | The type of a projection and its sites; the signatures of its entries | `spec/packages/f07-queries.md` 4 and 6 |
 | F5, tagged unions | Several record alternatives told apart by a tag: the definition, Join, Fits, Merge, printing, the facts of a test of the tag, `match` over the tag, `in` with a list of literals. `untagged-union` is then for records that form no union | `spec/packages/f05-unions.md` |
 | F8, errors, second part | A message template for every `check` code, with the types it prints | `spec/packages/f08-errors.md` 3 |
+| F10, config files | What a checked result promises against a type mapped from a schema, and where a host must still validate | `spec/packages/f10-config.md` 2 and 3 |

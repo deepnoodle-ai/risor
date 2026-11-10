@@ -413,3 +413,33 @@ to `until-f08-` files under R150.
 | R158 | **The renderings are narrower than plan `10`,** so that three implementations give the same bytes: no `help`, `fix` or origin; one column for each code point; a control character in the excerpt is a space; a long line is cut to a window of 120 columns. |
 | R159 | A projection has no entry in a trace. A trace is built only on the path of a failure and is bounded by the depth limit. |
 | R160 | A package's entry in a catalog file, for a code Core's catalog has, adds templates to that code. |
+
+### 14.8 F9, testing for authors
+
+The chapter is `spec/packages/f09-testing.md`, with 291 cases in
+`suite/testing/`. Plan `11` is its source. Its lane tested the fixtures of
+every case of the suite that runs: 2,314 fixtures in 1,752 cases, and each
+conforms or is marked as breaking its type on purpose.
+
+| # | Ruling |
+| --- | --- |
+| R161 | A fixture that does not conform to its declared type makes that one case `invalid`, with the place and the path; the other cases of the file run. Fixtures are tested in code point order of their names, before the first run, whether or not the program is checked. A type variable in a stub's result is tested as `any`. |
+| R162 | **Update mode never rewrites a case that passes,** so a second update writes nothing. It writes compact JSON with sorted keys in place of the value of `expect` and keeps every other byte of the file. It never writes a `declare` failure the author did not expect. |
+| R163 | A case can test a runner: it holds a case file, as data or as text, and expects verdicts or an invalid file. Every invalid-file rule of the case format then has a case in the suite. |
+| R164 | Case files written as programs are in 3.0. `risor test --run` matches a substring, since the three languages share no pattern language. The report text is normative. |
+
+### 14.9 F10, config files
+
+The chapter is `spec/packages/f10-config.md`, with 166 cases in
+`suite/config/`. Plan `12` is its source.
+
+| # | Ruling |
+| --- | --- |
+| R165 | For an expected result only the option `closed` applies; the two fill options are refused. A load fills nothing in: defaults come from the program, or from the host before the decode. |
+| R166 | **The fit through a form follows a map literal with spreads** (a change to Core, `05-types.md` 15.1). A config is layered `{...base, port: 8080}`; a misspelled or mistyped key beside the spread is reported at that key, and a failing key that the base gives on the base. Every entry that may give a key is fitted: taking only the last one was unsound, since an optional field does not hide an earlier entry. |
+| R167 | **A decode fails when the value does not conform to the type the host type derives.** Null into a field that cannot hold null is an error in every binding, never a zero value left in place; so is a missing required key. Go's decode therefore differs from `encoding/json` on purpose. |
+| R168 | A config's value is checked, so its literal nesting is bounded by the type depth of 64, although text parses to 100 levels. |
+| R169 | The case format gains `returnsSchema` and `load`. A load reports up to a given number of failures by F8's function. |
+
+| R170 | A key that a host fills, with null or with a default, is no tag: a value that lacks it gives the host no way to choose the variant. Found by the F5 lane's fuzzer under the option `defaults-applied`. |
+| R171 | On its failing side `in` also removes a variant whose tag set lies within the list, so there it says more than the chain of `==` (R152). The fit of a map literal against a union follows spreads, the variant chosen from the entries that give the tag. |

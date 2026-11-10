@@ -1,0 +1,129 @@
+[
+ {
+  "name": "the JSON text of a config",
+  "source": "{listen: \":8080\", max_body: 16 * 1024 * 1024, backends: [{url: \"http://a\", name: \"a\"}], tls: null, debug: false}",
+  "expect": {
+   "json": "{\"backends\":[{\"name\":\"a\",\"url\":\"http://a\"}],\"debug\":false,\"listen\":\":8080\",\"max_body\":16777216,\"tls\":null}"
+  }
+ },
+ {
+  "name": "keys of a config in code point order",
+  "source": "{\"a_b\": 1, ab: 2, \"a-b\": 3, Z: 4, _: 5, a: 6, \"1\": 7, \"\": 8, \"é\": 9}",
+  "expect": {
+   "json": "{\"\":8,\"1\":7,\"Z\":4,\"_\":5,\"a\":6,\"a-b\":3,\"a_b\":1,\"ab\":2,\"é\":9}"
+  }
+ },
+ {
+  "name": "numbers in the JSON text of a config",
+  "source": "[1e21, 0.1 * 3, 9007199254740991, 1 / 3, -0, 1e-7, 100 / 4, 1e20, 123.0]",
+  "expect": {
+   "json": "[1e+21,0.30000000000000004,9007199254740991,0.3333333333333333,0,1e-7,25,100000000000000000000,123]"
+  }
+ },
+ {
+  "name": "strings in the JSON text of a config",
+  "source": "{banner: \"Line one\\nLine two\\ttab\", path: \"/srv/<app>&\", ctl: \"\\u0000\\u007f\\u2028\", e: \"😀\"}",
+  "expect": {
+   "json": "{\"banner\":\"Line one\\nLine two\\ttab\",\"ctl\":\"\\u0000 \",\"e\":\"😀\",\"path\":\"/srv/<app>&\"}"
+  }
+ },
+ {
+  "name": "empty values in the JSON text",
+  "source": "{a: {}, b: [], c: [{}, []], d: \"\"}",
+  "expect": {
+   "json": "{\"a\":{},\"b\":[],\"c\":[{},[]],\"d\":\"\"}"
+  }
+ },
+ {
+  "name": "host data in the result, read in place",
+  "source": "{...base, port: 1}",
+  "env": "{base: {host: string, port: int, tags: string[]}}",
+  "vars": {
+   "base": {
+    "tags": [
+     "x"
+    ],
+    "port": 5432,
+    "host": "db"
+   }
+  },
+  "expect": {
+   "json": "{\"host\":\"db\",\"port\":1,\"tags\":[\"x\"]}"
+  }
+ },
+ {
+  "name": "a host number that is whole and above 2^53 in the JSON text",
+  "source": "x",
+  "env": "{x: float[]}",
+  "vars": {
+   "x": [
+    1e+20,
+    1e+21
+   ]
+  },
+  "expect": {
+   "json": "[100000000000000000000,1e+21]"
+  }
+ },
+ {
+  "name": "a template result is a JSON string",
+  "source": "`http://${host}:${port}`",
+  "env": "{host: string, port: int}",
+  "vars": {
+   "host": "db",
+   "port": 5432
+  },
+  "expect": {
+   "json": "\"http://db:5432\""
+  }
+ },
+ {
+  "name": "a string result is quoted",
+  "source": "\"x\"",
+  "expect": {
+   "json": "\"x\""
+  }
+ },
+ {
+  "name": "a null result",
+  "source": "null",
+  "expect": {
+   "json": "null"
+  }
+ },
+ {
+  "name": "booleans and null in a list",
+  "source": "[true, false, null]",
+  "expect": {
+   "json": "[true,false,null]"
+  }
+ },
+ {
+  "name": "the first value of the chapter's table",
+  "source": "{max_body: 16 * 1024 * 1024, listen: \":8080\", tls: null}",
+  "expect": {
+   "json": "{\"listen\":\":8080\",\"max_body\":16777216,\"tls\":null}"
+  }
+ },
+ {
+  "name": "the second value of the chapter's table",
+  "source": "{\"a_b\": 1, ab: 2, \"a-b\": 3, Z: 4, _: 5, a: 6, \"1\": 7, \"\": 8}",
+  "expect": {
+   "json": "{\"\":8,\"1\":7,\"Z\":4,\"_\":5,\"a\":6,\"a-b\":3,\"a_b\":1,\"ab\":2}"
+  }
+ },
+ {
+  "name": "the third value of the chapter's table",
+  "source": "[1e21, 0.1 * 3, 1e20, 123.0, -0, 1e-7]",
+  "expect": {
+   "json": "[1e+21,0.30000000000000004,100000000000000000000,123,0,1e-7]"
+  }
+ },
+ {
+  "name": "the fourth value of the chapter's table",
+  "source": "\"/srv/<app>&\"",
+  "expect": {
+   "json": "\"/srv/<app>&\""
+  }
+ }
+]

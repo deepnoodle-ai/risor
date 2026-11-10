@@ -1,0 +1,19 @@
+[
+{"name": "a program file: const and spread share a fixture", "runner": "const base = {order: {total: 200, coupon: null}};\n// Every case reads the same order.\n{\n  env: \"{order: {total: float, coupon: string | null}}\",\n  cases: [\n    {name: \"no coupon\", source: \"order.total\", vars: base, expect: {value: 200}},\n    {name: \"a coupon\", source: \"order.coupon ?? \\\"none\\\"\",\n     vars: {order: {...base.order, coupon: \"SAVE\"}}, expect: {value: \"SAVE\"}},\n  ],\n}\n", "program": true, "expect": {"verdicts": [{"name": "no coupon", "status": "pass"}, {"name": "a coupon", "status": "pass"}]}},
+{"name": "a program file: a text block for source", "runner": "{cases: [{name: \"quotes\", source: r\"\"\"\n  \"say \\\"hi\\\"\"\n  \"\"\", expect: {value: \"say \\\"hi\\\"\"}}]}", "program": true, "expect": {"verdicts": [{"name": "quotes", "status": "pass"}]}},
+{"name": "a program file: cases built with map", "runner": "{cases: [1, 2, 3].map(n => {name: `double ${n}`, source: `${n} * 2`, expect: {value: n * 2}})}", "program": true, "expect": {"verdicts": [{"name": "double 1", "status": "pass"}, {"name": "double 2", "status": "pass"}, {"name": "double 3", "status": "pass"}]}},
+{"name": "a program file: an array of cases", "runner": "[{name: \"a\", source: \"1\", expect: {value: 2}}]", "program": true, "expect": {"verdicts": [{"name": "a", "status": "fail", "differs": ["value"]}], "report": "  FAIL a\n    value: expected 2, found 1\n"}},
+{"name": "a program file: JSON text is a program", "runner": "{\"cases\": [{\"name\": \"a\", \"source\": \"1\", \"expect\": {\"value\": 1}}]}", "program": true, "expect": {"verdicts": [{"name": "a", "status": "pass"}]}},
+{"name": "a program file: fixtures are tested", "runner": "{env: \"{n: int}\", cases: [{name: \"a\", source: \"n\", vars: {n: 1.5}, expect: {value: 1.5}}]}", "program": true, "expect": {"verdicts": [{"name": "a", "status": "invalid", "fixture": ["vars", "n"], "message": "expected int, found 1.5"}]}},
+{"name": "a program file that does not parse", "runner": "{cases: [}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file with a duplicate key", "runner": "{cases: [], cases: []}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file that fails its check", "runner": "{cases: q}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file whose run fails", "runner": "{cases: [][0]}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file whose value is a number", "runner": "1", "program": true, "expect": {"invalid": true}},
+{"name": "a program file with an unknown field", "runner": "{cases: [{name: \"a\", source: \"1\", expcet: {}}]}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file with a case with no expect", "runner": "{cases: [{name: \"a\", source: \"1\"}]}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file holds no function", "runner": "{cases: [{name: \"a\", source: \"1\", expect: x => x}]}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file reads no variable", "runner": "{cases: [{name: \"a\", source: n, expect: {}}]}", "program": true, "expect": {"invalid": true}},
+{"name": "a program file with $opaque is data, as in JSON", "runner": "{opaque: [\"Token\"], env: \"{t: Token}\", vars: {t: {\"$opaque\": {type: \"Token\", id: 1}}}, cases: [{name: \"a\", source: \"t\", expect: {value: {\"$opaque\": {type: \"Token\", id: 1}}}}]}", "program": true, "expect": {"verdicts": [{"name": "a", "status": "pass"}]}},
+{"name": "a program file is never written by update", "runner": "{cases: [{name: \"a\", source: \"1\", expect: {value: 2}}]}", "update": true, "program": true, "expect": {"verdicts": [{"name": "a", "status": "fail", "differs": ["value"]}], "text": "{cases: [{name: \"a\", source: \"1\", expect: {value: 2}}]}"}}
+]

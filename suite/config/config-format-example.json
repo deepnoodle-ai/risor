@@ -1,0 +1,66 @@
+{
+ "groups": [
+  "json"
+ ],
+ "env": "{s: string}",
+ "returnsSchema": {
+  "schema": {
+   "type": "object",
+   "properties": {
+    "port": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "port"
+   ]
+  },
+  "options": [
+   "closed"
+  ]
+ },
+ "load": true,
+ "cases": [
+  {
+   "name": "a key the schema does not list",
+   "source": "{port: 1, prot: 2}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       11,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the same key through json.parse",
+   "source": "json.parse(s)",
+   "vars": {
+    "s": "{\"port\": 1, \"prot\": 2}"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "not-conforming",
+      "class": "value",
+      "span": null,
+      "path": [
+       "prot"
+      ],
+      "message": "the type does not allow key \"prot\""
+     }
+    ],
+    "steps": 4,
+    "allocated": 5
+   }
+  }
+ ]
+}

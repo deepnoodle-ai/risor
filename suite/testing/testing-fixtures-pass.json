@@ -1,0 +1,14 @@
+[
+{"name": "int: 3.0 conforms, and the run sees 3", "env": "{n: int}", "source": "n + 1", "vars": {"n": 3.0}, "expect": {"value": 4, "steps": 1, "allocated": 0}},
+{"name": "int: 2^53 - 1 conforms", "env": "{n: int}", "source": "n", "vars": {"n": 9007199254740991}, "expect": {"value": 9007199254740991, "steps": 0, "allocated": 0}},
+{"name": "float: a whole number conforms", "env": "{x: float}", "source": "x / 2", "vars": {"x": 1}, "expect": {"value": 0.5, "steps": 1, "allocated": 0}},
+{"name": "an open record accepts other keys", "env": "{m: {a: int, ...}}", "source": "m.a", "vars": {"m": {"a": 1, "z": [1]}}, "expect": {"value": 1, "steps": 1, "allocated": 0}},
+{"name": "null where the type has null", "env": "{m: {a: int} | null}", "source": "m?.a ?? 0", "vars": {"m": null}, "expect": {"value": 0}},
+{"name": "nothing under any is looked at", "env": "{x: any, m: {meta: any}}", "source": "1", "vars": {"x": {"deep": [1, "a", null]}, "m": {"meta": [[{}]]}}, "expect": {"value": 1}},
+{"name": "a declared variable that is not supplied is not tested", "env": "{n: int, m: int}", "source": "n", "vars": {"n": 1}, "expect": {"value": 1}},
+{"name": "an optional field that is absent", "env": "{m: {a?: int}}", "source": "m", "vars": {"m": {}}, "expect": {"value": {}}},
+{"name": "a type variable in a stub's result", "source": "f(1)", "functions": {"f": {"type": "(x: T) => T", "calls": [{"result": 1}]}}, "expect": {"value": 1, "steps": 1, "allocated": 0}},
+{"name": "a marked stub with error", "source": "try { f() } catch (e) { e.message }", "functions": {"f": {"type": "() => int !", "calls": [{"error": "no"}]}}, "expect": {"value": "no"}},
+{"name": "an opaque result conforms to its opaque result type", "env": "{t: Token}", "opaque": ["Token"], "source": "renew(t) == t", "vars": {"t": {"$opaque": {"type": "Token", "id": 1}}}, "functions": {"renew": {"type": "(t: Token) => Token", "calls": [{"result": {"$opaque": {"type": "Token", "id": 2}}}]}}, "expect": {"value": false}},
+{"name": "a list of records, each conforming", "env": "{xs: {a: int, b?: string}[]}", "source": "xs.map(x => x.a).sum()", "vars": {"xs": [{"a": 1}, {"a": 2, "b": "y"}]}, "expect": {"value": 3}}
+]

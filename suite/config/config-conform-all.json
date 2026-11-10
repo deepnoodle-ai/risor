@@ -1,0 +1,507 @@
+{
+ "types": [
+  {
+   "name": "Config",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "listen": {
+      "type": "string"
+     },
+     "max_body": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "log": {
+      "enum": [
+       "debug",
+       "info",
+       "warn"
+      ]
+     },
+     "backends": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/backend"
+      }
+     },
+     "tls": {
+      "type": "object",
+      "properties": {
+       "cert": {
+        "type": "string"
+       },
+       "key": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "cert",
+       "key"
+      ]
+     }
+    },
+    "required": [
+     "listen",
+     "backends"
+    ],
+    "$defs": {
+     "backend": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "url": {
+        "type": "string",
+        "format": "uri"
+       }
+      },
+      "required": [
+       "name",
+       "url"
+      ]
+     }
+    }
+   },
+   "options": [
+    "closed"
+   ]
+  },
+  {
+   "name": "Open",
+   "schema": {
+    "type": "object",
+    "properties": {
+     "listen": {
+      "type": "string"
+     },
+     "max_body": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "log": {
+      "enum": [
+       "debug",
+       "info",
+       "warn"
+      ]
+     },
+     "backends": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/backend"
+      }
+     },
+     "tls": {
+      "type": "object",
+      "properties": {
+       "cert": {
+        "type": "string"
+       },
+       "key": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "cert",
+       "key"
+      ]
+     }
+    },
+    "required": [
+     "listen",
+     "backends"
+    ],
+    "$defs": {
+     "backend": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "url": {
+        "type": "string",
+        "format": "uri"
+       }
+      },
+      "required": [
+       "name",
+       "url"
+      ]
+     }
+    }
+   }
+  }
+ ],
+ "cases": [
+  {
+   "name": "every failure of a config, a maximum above their number",
+   "conform": {
+    "type": "Config",
+    "value": {
+     "listen": 8080,
+     "backends": [
+      {
+       "name": "a"
+      },
+      {
+       "name": "b",
+       "url": "u",
+       "weight": 1
+      }
+     ],
+     "log": "loud",
+     "max_bod": 1
+    },
+    "max": 10
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "backends",
+     0,
+     "url"
+    ],
+    "message": "required field \"url\" is missing",
+    "steps": 5,
+    "failures": [
+     {
+      "path": [
+       "backends",
+       0,
+       "url"
+      ],
+      "message": "required field \"url\" is missing"
+     },
+     {
+      "path": [
+       "backends",
+       1,
+       "weight"
+      ],
+      "message": "the type does not allow key \"weight\""
+     },
+     {
+      "path": [
+       "listen"
+      ],
+      "message": "expected string, found 8080"
+     },
+     {
+      "path": [
+       "log"
+      ],
+      "message": "expected \"debug\" | \"info\" | \"warn\", found \"loud\""
+     },
+     {
+      "path": [
+       "max_bod"
+      ],
+      "message": "the type does not allow key \"max_bod\""
+     }
+    ]
+   }
+  },
+  {
+   "name": "every failure of a config, a maximum of 5",
+   "conform": {
+    "type": "Config",
+    "value": {
+     "listen": 8080,
+     "backends": [
+      {
+       "name": "a"
+      },
+      {
+       "name": "b",
+       "url": "u",
+       "weight": 1
+      }
+     ],
+     "log": "loud",
+     "max_bod": 1
+    },
+    "max": 5
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "backends",
+     0,
+     "url"
+    ],
+    "message": "required field \"url\" is missing",
+    "failures": [
+     {
+      "path": [
+       "backends",
+       0,
+       "url"
+      ],
+      "message": "required field \"url\" is missing"
+     },
+     {
+      "path": [
+       "backends",
+       1,
+       "weight"
+      ],
+      "message": "the type does not allow key \"weight\""
+     },
+     {
+      "path": [
+       "listen"
+      ],
+      "message": "expected string, found 8080"
+     },
+     {
+      "path": [
+       "log"
+      ],
+      "message": "expected \"debug\" | \"info\" | \"warn\", found \"loud\""
+     },
+     {
+      "path": [
+       "max_bod"
+      ],
+      "message": "the type does not allow key \"max_bod\""
+     }
+    ]
+   }
+  },
+  {
+   "name": "a maximum of 2 gives the first two",
+   "conform": {
+    "type": "Config",
+    "value": {
+     "listen": 8080,
+     "backends": [
+      {
+       "name": "a"
+      },
+      {
+       "name": "b",
+       "url": "u",
+       "weight": 1
+      }
+     ],
+     "log": "loud",
+     "max_bod": 1
+    },
+    "max": 2
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "backends",
+     0,
+     "url"
+    ],
+    "message": "required field \"url\" is missing",
+    "failures": [
+     {
+      "path": [
+       "backends",
+       0,
+       "url"
+      ],
+      "message": "required field \"url\" is missing"
+     },
+     {
+      "path": [
+       "backends",
+       1,
+       "weight"
+      ],
+      "message": "the type does not allow key \"weight\""
+     }
+    ]
+   }
+  },
+  {
+   "name": "a maximum of 1 gives what the first-failure function gives",
+   "conform": {
+    "type": "Config",
+    "value": {
+     "listen": 8080,
+     "backends": [
+      {
+       "name": "a"
+      },
+      {
+       "name": "b",
+       "url": "u",
+       "weight": 1
+      }
+     ],
+     "log": "loud",
+     "max_bod": 1
+    },
+    "max": 1
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "backends",
+     0,
+     "url"
+    ],
+    "message": "required field \"url\" is missing",
+    "steps": 5,
+    "failures": [
+     {
+      "path": [
+       "backends",
+       0,
+       "url"
+      ],
+      "message": "required field \"url\" is missing"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a config that conforms has no failure",
+   "conform": {
+    "type": "Config",
+    "value": {
+     "listen": ":80",
+     "backends": [
+      {
+       "name": "a",
+       "url": "u"
+      }
+     ],
+     "log": "info"
+    },
+    "max": 3
+   },
+   "expect": {
+    "conforms": true,
+    "failures": []
+   }
+  },
+  {
+   "name": "other keys are reached after a declared field fails",
+   "conform": {
+    "type": "Config",
+    "value": {
+     "listen": 1,
+     "backends": [],
+     "x": 1,
+     "y": 2
+    },
+    "max": 10
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "listen"
+    ],
+    "message": "expected string, found 1",
+    "failures": [
+     {
+      "path": [
+       "listen"
+      ],
+      "message": "expected string, found 1"
+     },
+     {
+      "path": [
+       "x"
+      ],
+      "message": "the type does not allow key \"x\""
+     },
+     {
+      "path": [
+       "y"
+      ],
+      "message": "the type does not allow key \"y\""
+     }
+    ]
+   }
+  },
+  {
+   "name": "nothing inside a value of the wrong kind is visited",
+   "conform": {
+    "type": "Config",
+    "value": {
+     "listen": "x",
+     "backends": {
+      "name": 1
+     }
+    },
+    "max": 10
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "backends"
+    ],
+    "message": "expected {name: string, url: string}[], found map",
+    "failures": [
+     {
+      "path": [
+       "backends"
+      ],
+      "message": "expected {name: string, url: string}[], found map"
+     }
+    ]
+   }
+  },
+  {
+   "name": "without closed the other keys are allowed",
+   "conform": {
+    "type": "Open",
+    "value": {
+     "listen": 8080,
+     "backends": [
+      {
+       "name": "a"
+      },
+      {
+       "name": "b",
+       "url": "u",
+       "weight": 1
+      }
+     ],
+     "log": "loud",
+     "max_bod": 1
+    },
+    "max": 10
+   },
+   "expect": {
+    "conforms": false,
+    "path": [
+     "backends",
+     0,
+     "url"
+    ],
+    "message": "required field \"url\" is missing",
+    "failures": [
+     {
+      "path": [
+       "backends",
+       0,
+       "url"
+      ],
+      "message": "required field \"url\" is missing"
+     },
+     {
+      "path": [
+       "listen"
+      ],
+      "message": "expected string, found 8080"
+     },
+     {
+      "path": [
+       "log"
+      ],
+      "message": "expected \"debug\" | \"info\" | \"warn\", found \"loud\""
+     }
+    ]
+   }
+  }
+ ]
+}

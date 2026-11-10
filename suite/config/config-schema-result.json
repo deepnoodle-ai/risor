@@ -1,0 +1,1783 @@
+{
+ "returnsSchema": {
+  "schema": {
+   "type": "object",
+   "properties": {
+    "listen": {
+     "type": "string"
+    },
+    "max_body": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "log": {
+     "enum": [
+      "debug",
+      "info",
+      "warn"
+     ]
+    },
+    "backends": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/backend"
+     }
+    },
+    "tls": {
+     "type": "object",
+     "properties": {
+      "cert": {
+       "type": "string"
+      },
+      "key": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "cert",
+      "key"
+     ]
+    }
+   },
+   "required": [
+    "listen",
+    "backends"
+   ],
+   "$defs": {
+    "backend": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "url": {
+       "type": "string",
+       "format": "uri"
+      }
+     },
+     "required": [
+      "name",
+      "url"
+     ]
+    }
+   }
+  },
+  "options": [
+   "closed"
+  ]
+ },
+ "cases": [
+  {
+   "name": "a config that fits the closed schema",
+   "source": "{listen: \":8080\", backends: [{name: \"a\", url: \"http://a\"}]}",
+   "expect": {
+    "type": "{backends: {name: \"a\", url: \"http://a\"}[], listen: \":8080\"}",
+    "sites": [],
+    "value": {
+     "listen": ":8080",
+     "backends": [
+      {
+       "name": "a",
+       "url": "http://a"
+      }
+     ]
+    },
+    "steps": 0,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "a key the closed schema does not list is reported at the key",
+   "source": "{listen: \":8080\", backends: [], max_bod: 1}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       33,
+       1,
+       40
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "without the option closed the same key is allowed",
+   "source": "{listen: \":8080\", backends: [], max_bod: 1}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      },
+      "max_body": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "log": {
+       "enum": [
+        "debug",
+        "info",
+        "warn"
+       ]
+      },
+      "backends": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/backend"
+       }
+      },
+      "tls": {
+       "type": "object",
+       "properties": {
+        "cert": {
+         "type": "string"
+        },
+        "key": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "cert",
+        "key"
+       ]
+      }
+     },
+     "required": [
+      "listen",
+      "backends"
+     ],
+     "$defs": {
+      "backend": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string",
+         "format": "uri"
+        }
+       },
+       "required": [
+        "name",
+        "url"
+       ]
+      }
+     }
+    }
+   },
+   "expect": {}
+  },
+  {
+   "name": "a quoted key the schema does not list: the span holds the quotes",
+   "source": "{listen: \":8080\", backends: [], \"max_bod\": 1}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       33,
+       1,
+       42
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "additionalProperties false refuses a key without the option",
+   "source": "{listen: \":8080\", extra: 1}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      }
+     },
+     "additionalProperties": false
+    }
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       19,
+       1,
+       24
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a missing required field is reported once, on the whole map",
+   "source": "{listen: \":8080\"}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two missing required fields are still one report",
+   "source": "{max_body: 1}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a value of the wrong kind is reported at the value",
+   "source": "{listen: 8080, backends: []}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       10,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key the definition behind $ref does not list, inside a list item",
+   "source": "{listen: \"x\", backends: [{name: \"a\", url: \"u\", weight: 2}]}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       48,
+       1,
+       54
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "without closed the record behind $ref is open",
+   "source": "{listen: \"x\", backends: [{name: \"a\", url: \"u\", weight: 2}]}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      },
+      "max_body": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "log": {
+       "enum": [
+        "debug",
+        "info",
+        "warn"
+       ]
+      },
+      "backends": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/backend"
+       }
+      },
+      "tls": {
+       "type": "object",
+       "properties": {
+        "cert": {
+         "type": "string"
+        },
+        "key": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "cert",
+        "key"
+       ]
+      }
+     },
+     "required": [
+      "listen",
+      "backends"
+     ],
+     "$defs": {
+      "backend": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string",
+         "format": "uri"
+        }
+       },
+       "required": [
+        "name",
+        "url"
+       ]
+      }
+     }
+    }
+   },
+   "expect": {}
+  },
+  {
+   "name": "a list item missing a required field: the item's map",
+   "source": "{listen: \"x\", backends: [{name: \"a\"}]}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       26,
+       1,
+       37
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an enum of strings is a literal set: a string outside it",
+   "source": "{listen: \"x\", backends: [], log: \"verbose\"}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       34,
+       1,
+       43
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an enum of strings: a string in it",
+   "source": "{listen: \"x\", backends: [], log: \"warn\"}",
+   "expect": {}
+  },
+  {
+   "name": "integer is int: a number with a fraction",
+   "source": "{listen: \"x\", backends: [], max_body: 1.5}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       39,
+       1,
+       42
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "integer is int: 2.0 is a whole number",
+   "source": "{listen: \"x\", backends: [], max_body: 2.0}",
+   "expect": {}
+  },
+  {
+   "name": "minimum is not part of the type: -1 checks and runs",
+   "source": "{listen: \"x\", backends: [], max_body: -1}",
+   "expect": {
+    "value": {
+     "listen": "x",
+     "backends": [],
+     "max_body": -1
+    }
+   }
+  },
+  {
+   "name": "format is not part of the type",
+   "source": "{listen: \"x\", backends: [{name: \"a\", url: \"not a uri\"}]}",
+   "expect": {}
+  },
+  {
+   "name": "several places of failure, each reported, in source order",
+   "source": "{listen: 1, backends: [], max_bod: 1, log: \"loud\"}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     },
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       27,
+       1,
+       34
+      ]
+     },
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       44,
+       1,
+       50
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "each branch of an if fits through its form",
+   "source": "if (prod) { {listen: \":443\", backends: []} } else { {listen: \":8080\", backends: [], debug: true} }",
+   "env": "{prod: bool}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       85,
+       1,
+       90
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "each arm of a match fits through its form",
+   "source": "match stage { \"prod\" => {listen: \":443\", backends: []}, _ => {listen: 8080, backends: []} }",
+   "env": "{stage: string}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       71,
+       1,
+       75
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the result of a block fits through its form",
+   "source": "{ const b = []; {listen: \"x\", backends: b, extra: 1} }",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       44,
+       1,
+       49
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const name is not followed: the report is on the name",
+   "source": "const cfg = {listen: \"x\", backends: [], extra: 1}; cfg",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       52,
+       1,
+       55
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a call is not followed: the report is on the call",
+   "source": "const mk = (n) => {listen: n, backends: []}; mk(1)",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       46,
+       1,
+       51
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a helper lambda that builds list items",
+   "source": "const be = (n) => {name: n, url: `http://${n}`}; {listen: \"x\", backends: [be(\"a\"), be(\"b\")]}",
+   "expect": {
+    "value": {
+     "listen": "x",
+     "backends": [
+      {
+       "name": "a",
+       "url": "http://a"
+      },
+      {
+       "name": "b",
+       "url": "http://b"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a field from a variable of type any: the type fits by any, a dynamic site on the result",
+   "source": "{listen: x, backends: []}",
+   "env": "{x: any}",
+   "vars": {
+    "x": ":80"
+   },
+   "expect": {
+    "type": "{backends: never[], listen: any}",
+    "sites": [
+     {
+      "class": "dynamic",
+      "span": [
+       1,
+       1,
+       1,
+       26
+      ]
+     }
+    ],
+    "value": {
+     "listen": ":80",
+     "backends": []
+    }
+   }
+  },
+  {
+   "name": "a shorthand entry is reported at its name",
+   "source": "const listen = 8080; {listen, backends: []}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       23,
+       1,
+       29
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a required name that properties lacks may hold any value",
+   "source": "{a: \"x\", z: [1]}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "a",
+      "z"
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {}
+  },
+  {
+   "name": "a required name that properties lacks must be present",
+   "source": "{a: \"x\"}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "a",
+      "z"
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a required name that properties lacks: another key under closed",
+   "source": "{a: \"x\", z: 1, y: 2}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "a",
+      "z"
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       16,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the schema true accepts any result",
+   "source": "[1, \"a\", {b: null}]",
+   "returnsSchema": {
+    "schema": true,
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {}
+  },
+  {
+   "name": "the schema false accepts no result",
+   "source": "1",
+   "returnsSchema": {
+    "schema": false
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a type list with null allows null",
+   "source": "{a: null}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "a": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "a"
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {}
+  },
+  {
+   "name": "a nested object missing a required field: the nested map",
+   "source": "{listen: \"x\", backends: [], tls: {cert: \"c\"}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       34,
+       1,
+       45
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "additionalProperties with a schema types every other key",
+   "source": "{a: 1, b: \"x\"}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "integer"
+     }
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       11,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a list with a spread: a plain item is followed",
+   "source": "{listen: \"x\", backends: [...more, {name: 1, url: \"u\"}]}",
+   "env": "{more: {name: string, url: string}[]}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       42,
+       1,
+       43
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a list with a spread whose elements do not fit: the operand",
+   "source": "{listen: \"x\", backends: [...more]}",
+   "env": "{more: int[]}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       29,
+       1,
+       33
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key beside a spread that the closed record does not list: at the key",
+   "source": "{...base, extra: 1}",
+   "env": "{base: {backends: {name: string, url: string}[], listen: string}}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       11,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a map with a computed key is not followed: the whole map",
+   "source": "{[\"listen\"]: \"x\", backends: []}",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       32
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the expected result does not change the program's type",
+   "source": "{listen: \"x\", backends: []}",
+   "expect": {
+    "type": "{backends: never[], listen: \"x\"}",
+    "sites": []
+   }
+  },
+  {
+   "name": "the expected result is not a declaration of the environment",
+   "source": "{listen: \"x\", backends: []}",
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "variables": {},
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     }
+    }
+   }
+  },
+  {
+   "name": "the option absent-is-null is refused for an expected result",
+   "source": "{listen: \"x\", backends: [], max_body: 1}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      },
+      "max_body": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "log": {
+       "enum": [
+        "debug",
+        "info",
+        "warn"
+       ]
+      },
+      "backends": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/backend"
+       }
+      },
+      "tls": {
+       "type": "object",
+       "properties": {
+        "cert": {
+         "type": "string"
+        },
+        "key": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "cert",
+        "key"
+       ]
+      }
+     },
+     "required": [
+      "listen",
+      "backends"
+     ],
+     "$defs": {
+      "backend": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string",
+         "format": "uri"
+        }
+       },
+       "required": [
+        "name",
+        "url"
+       ]
+      }
+     }
+    },
+    "options": [
+     "absent-is-null"
+    ]
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "the option defaults-applied is refused for an expected result",
+   "source": "{listen: \"x\", backends: [], max_body: 1}",
+   "returnsSchema": {
+    "schema": {
+     "type": "object",
+     "properties": {
+      "listen": {
+       "type": "string"
+      },
+      "max_body": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "log": {
+       "enum": [
+        "debug",
+        "info",
+        "warn"
+       ]
+      },
+      "backends": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/backend"
+       }
+      },
+      "tls": {
+       "type": "object",
+       "properties": {
+        "cert": {
+         "type": "string"
+        },
+        "key": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "cert",
+        "key"
+       ]
+      }
+     },
+     "required": [
+      "listen",
+      "backends"
+     ],
+     "$defs": {
+      "backend": {
+       "type": "object",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "url": {
+         "type": "string",
+         "format": "uri"
+        }
+       },
+       "required": [
+        "name",
+        "url"
+       ]
+      }
+     }
+    },
+    "options": [
+     "closed",
+     "defaults-applied"
+    ]
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a schema that F1 refuses is bad-type",
+   "source": "{listen: \"x\", backends: [], max_body: 1}",
+   "returnsSchema": {
+    "schema": {
+     "type": "Integer"
+    }
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a $ref cycle is bad-type",
+   "source": "{listen: \"x\", backends: [], max_body: 1}",
+   "returnsSchema": {
+    "schema": {
+     "$ref": "#/$defs/a",
+     "$defs": {
+      "a": {
+       "$ref": "#/$defs/a"
+      }
+     }
+    }
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an expected result by schema with check false: the schema is still mapped",
+   "source": "1",
+   "check": false,
+   "returnsSchema": {
+    "schema": {
+     "type": "Integer"
+    }
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "with check false the fit is not made",
+   "source": "1",
+   "check": false,
+   "returnsSchema": {
+    "schema": {
+     "type": "string"
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a schema whose type is just under the size limit",
+   "source": "1",
+   "returnsSchema": {
+    "schema": {
+     "$ref": "#/$defs/a15",
+     "$defs": {
+      "a0": {
+       "type": "string"
+      },
+      "a1": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a0"
+        },
+        "r": {
+         "$ref": "#/$defs/a0"
+        }
+       }
+      },
+      "a2": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a1"
+        },
+        "r": {
+         "$ref": "#/$defs/a1"
+        }
+       }
+      },
+      "a3": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a2"
+        },
+        "r": {
+         "$ref": "#/$defs/a2"
+        }
+       }
+      },
+      "a4": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a3"
+        },
+        "r": {
+         "$ref": "#/$defs/a3"
+        }
+       }
+      },
+      "a5": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a4"
+        },
+        "r": {
+         "$ref": "#/$defs/a4"
+        }
+       }
+      },
+      "a6": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a5"
+        },
+        "r": {
+         "$ref": "#/$defs/a5"
+        }
+       }
+      },
+      "a7": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a6"
+        },
+        "r": {
+         "$ref": "#/$defs/a6"
+        }
+       }
+      },
+      "a8": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a7"
+        },
+        "r": {
+         "$ref": "#/$defs/a7"
+        }
+       }
+      },
+      "a9": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a8"
+        },
+        "r": {
+         "$ref": "#/$defs/a8"
+        }
+       }
+      },
+      "a10": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a9"
+        },
+        "r": {
+         "$ref": "#/$defs/a9"
+        }
+       }
+      },
+      "a11": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a10"
+        },
+        "r": {
+         "$ref": "#/$defs/a10"
+        }
+       }
+      },
+      "a12": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a11"
+        },
+        "r": {
+         "$ref": "#/$defs/a11"
+        }
+       }
+      },
+      "a13": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a12"
+        },
+        "r": {
+         "$ref": "#/$defs/a12"
+        }
+       }
+      },
+      "a14": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a13"
+        },
+        "r": {
+         "$ref": "#/$defs/a13"
+        }
+       }
+      },
+      "a15": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a14"
+        },
+        "r": {
+         "$ref": "#/$defs/a14"
+        }
+       }
+      }
+     }
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a schema whose type is over the size limit is bad-type",
+   "source": "1",
+   "returnsSchema": {
+    "schema": {
+     "$ref": "#/$defs/a16",
+     "$defs": {
+      "a0": {
+       "type": "string"
+      },
+      "a1": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a0"
+        },
+        "r": {
+         "$ref": "#/$defs/a0"
+        }
+       }
+      },
+      "a2": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a1"
+        },
+        "r": {
+         "$ref": "#/$defs/a1"
+        }
+       }
+      },
+      "a3": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a2"
+        },
+        "r": {
+         "$ref": "#/$defs/a2"
+        }
+       }
+      },
+      "a4": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a3"
+        },
+        "r": {
+         "$ref": "#/$defs/a3"
+        }
+       }
+      },
+      "a5": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a4"
+        },
+        "r": {
+         "$ref": "#/$defs/a4"
+        }
+       }
+      },
+      "a6": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a5"
+        },
+        "r": {
+         "$ref": "#/$defs/a5"
+        }
+       }
+      },
+      "a7": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a6"
+        },
+        "r": {
+         "$ref": "#/$defs/a6"
+        }
+       }
+      },
+      "a8": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a7"
+        },
+        "r": {
+         "$ref": "#/$defs/a7"
+        }
+       }
+      },
+      "a9": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a8"
+        },
+        "r": {
+         "$ref": "#/$defs/a8"
+        }
+       }
+      },
+      "a10": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a9"
+        },
+        "r": {
+         "$ref": "#/$defs/a9"
+        }
+       }
+      },
+      "a11": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a10"
+        },
+        "r": {
+         "$ref": "#/$defs/a10"
+        }
+       }
+      },
+      "a12": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a11"
+        },
+        "r": {
+         "$ref": "#/$defs/a11"
+        }
+       }
+      },
+      "a13": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a12"
+        },
+        "r": {
+         "$ref": "#/$defs/a12"
+        }
+       }
+      },
+      "a14": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a13"
+        },
+        "r": {
+         "$ref": "#/$defs/a13"
+        }
+       }
+      },
+      "a15": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a14"
+        },
+        "r": {
+         "$ref": "#/$defs/a14"
+        }
+       }
+      },
+      "a16": {
+       "type": "object",
+       "properties": {
+        "l": {
+         "$ref": "#/$defs/a15"
+        },
+        "r": {
+         "$ref": "#/$defs/a15"
+        }
+       }
+      }
+     }
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-type"
+     }
+    ]
+   }
+  },
+  {
+   "name": "allOf of a base and an extension, closed after the meet: a wrong key",
+   "source": "{id: \"a\", prot: 1}",
+   "returnsSchema": {
+    "schema": {
+     "allOf": [
+      {
+       "$ref": "#/$defs/base"
+      },
+      {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "integer"
+        }
+       }
+      }
+     ],
+     "$defs": {
+      "base": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     }
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       11,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "allOf of a base and an extension: a fitting result",
+   "source": "{id: \"a\", port: 1}",
+   "returnsSchema": {
+    "schema": {
+     "allOf": [
+      {
+       "$ref": "#/$defs/base"
+      },
+      {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "integer"
+        }
+       }
+      }
+     ],
+     "$defs": {
+      "base": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     }
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {}
+  },
+  {
+   "name": "allOf: a field the base requires",
+   "source": "{port: 1}",
+   "returnsSchema": {
+    "schema": {
+     "allOf": [
+      {
+       "$ref": "#/$defs/base"
+      },
+      {
+       "type": "object",
+       "properties": {
+        "port": {
+         "type": "integer"
+        }
+       }
+      }
+     ],
+     "$defs": {
+      "base": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     }
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "anyOf of two records with no tag: the join admits any value under a listed key",
+   "source": "{a: 1, b: \"x\"}",
+   "returnsSchema": {
+    "schema": {
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "string"
+        }
+       }
+      },
+      {
+       "type": "object",
+       "properties": {
+        "b": {
+         "type": "integer"
+        }
+       }
+      }
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {}
+  },
+  {
+   "name": "anyOf of two records with no tag, closed: a key neither lists",
+   "source": "{c: 1}",
+   "returnsSchema": {
+    "schema": {
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "string"
+        }
+       }
+      },
+      {
+       "type": "object",
+       "properties": {
+        "b": {
+         "type": "integer"
+        }
+       }
+      }
+     ]
+    },
+    "options": [
+     "closed"
+    ]
+   },
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the expected result in the header is replaced by returns in a case",
+   "source": "{listen: \"x\", backends: [], extra: 1}",
+   "returns": "map<any>",
+   "expect": {}
+  }
+ ]
+}
