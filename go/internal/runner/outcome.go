@@ -8,6 +8,7 @@ import (
 
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
+	"github.com/deepnoodle-ai/risor/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/v3/internal/value"
 )
 
@@ -38,7 +39,7 @@ func Outcome(c *casefile.Case) string {
 			b.WriteString(`{"code":` + value.QuoteJSON(d.Code))
 			if ph != "declare" {
 				b.WriteString(`,"span":`)
-				if d.Span != nil {
+				if d.Span != nil && !diag.LimitCodes[d.Code] {
 					a := d.Span.Array()
 					fmt.Fprintf(&b, "[%d,%d,%d,%d]", a[0], a[1], a[2], a[3])
 				} else {
@@ -57,7 +58,8 @@ func Outcome(c *casefile.Case) string {
 			b.WriteByte('}')
 		}
 		b.WriteByte(']')
-		if u != nil {
+		// AK3: a limit failure has no fixed usage, so none is written.
+		if u != nil && !(ph == "run" && diag.LimitCodes[ds[0].Code]) {
 			fmt.Fprintf(&b, `,"steps":%d,"units":%d`, u.Steps, u.Alloc)
 		}
 		b.WriteByte('}')

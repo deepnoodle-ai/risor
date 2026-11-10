@@ -295,6 +295,36 @@ func TestStackNeeds(t *testing.T) {
 	}
 }
 
+// Ruling AM3: map == visits the left map's keys in order when a value is a
+// list or a map, so the deep pair under the first key meets the depth limit
+// before the long string under the last key passes the step limit.
+func TestMapEqualKeyOrder(t *testing.T) {
+	env, _ := risor.NewEnv(risor.Declare("{m: any, n: any}"), risor.Limits{Depth: 5, Steps: 10})
+	deep := func() any {
+		var v any = []any{1}
+		for i := 0; i < 10; i++ {
+			v = []any{v}
+		}
+		return v
+	}
+	long := strings.Repeat("a", 6400)
+	for i := 0; i < 20; i++ { // Go's map order varies from run to run
+		m := map[string]any{"a": deep(), "z": long}
+		n := map[string]any{"a": deep(), "z": long}
+		d := runErr(t, env, "m == n", risor.Map{"m": m, "n": n})
+		assert.Equal(t, d.Code, "depth-exceeded")
+	}
+}
+
+func TestBadLimit(t *testing.T) {
+	for _, l := range []risor.Limits{{Depth: 1001}, {Depth: -1}, {Steps: -5}, {Alloc: -9}} {
+		_, err := risor.NewEnv(l)
+		var e *risor.Error
+		assert.True(t, errors.As(err, &e))
+		assert.Equal(t, e.Diagnostics[0].Code, "bad-limit")
+	}
+}
+
 func TestDeclare(t *testing.T) {
 	for _, c := range []struct {
 		decls []risor.Decl

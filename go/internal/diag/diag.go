@@ -135,6 +135,7 @@ const (
 	CodeBadClass           = "bad-class"
 	CodeUnsupportedVersion = "unsupported-version"
 	CodeNoImplementation   = "no-implementation"
+	CodeBadLimit           = "bad-limit"
 )
 
 // LimitCodes are the run codes of class limit (03-host.md 3.7.4).

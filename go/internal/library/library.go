@@ -29,6 +29,8 @@ type Entry struct {
 
 	// Sig is the parsed signature.
 	Sig *typetext.Sig `json:"-"`
+	// StepsF and UnitsF are the parsed formulas.
+	StepsF, UnitsF *Formula `json:"-"`
 	// Kind is the receiver's kind for a method: String, List or Map.
 	Kind value.Kind `json:"-"`
 	// Params describes each parameter, for the tests of 2.6 and the shape
@@ -107,6 +109,15 @@ func init() {
 			panic("library: " + e.Name + ": " + err.Error())
 		}
 		e.Sig = sig
+		if e.Steps == "" || e.Units == "" {
+			panic("library: " + e.Name + " has no steps or no units")
+		}
+		if e.StepsF, err = ParseFormula(e.Steps); err != nil {
+			panic("library: " + e.Name + ": " + err.Error())
+		}
+		if e.UnitsF, err = ParseFormula(e.Units); err != nil {
+			panic("library: " + e.Name + ": " + err.Error())
+		}
 		bounds := map[string]string{}
 		for _, b := range sig.Bounds {
 			bounds[b.Var] = b.Bound

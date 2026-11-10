@@ -108,6 +108,10 @@ type Limits struct {
 }
 
 func (l Limits) apply(e *Env) {
+	if l.Steps < ZeroLimit || l.Alloc < ZeroLimit || l.Timeout < 0 {
+		e.errf(diag.CodeBadLimit, "a limit must be a whole number of 0 or more")
+		return
+	}
 	switch l.Steps {
 	case 0:
 	case ZeroLimit:
@@ -127,7 +131,7 @@ func (l Limits) apply(e *Env) {
 	}
 	if l.Depth != 0 {
 		if l.Depth < 1 || l.Depth > 1000 {
-			e.errf(diag.CodeBadName, "the depth limit must be from 1 to 1000")
+			e.errf(diag.CodeBadLimit, "the depth limit must be from 1 to 1000")
 		}
 		e.limits.Depth = l.Depth
 	}

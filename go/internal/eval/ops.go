@@ -3,6 +3,7 @@ package eval
 import (
 	"math"
 	"math/bits"
+	"sort"
 	"strings"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/messages"
@@ -379,14 +380,27 @@ func (r *run) listEqual(a, b any, n int, sp syntax.Span) bool {
 
 func (r *run) mapEqual(a, b any, sp syntax.Span) bool {
 	r.enterWalk()
-	// The entries are visited in no particular order: the outcome and the
-	// usage do not depend on it, and sorting would be work no step pays for.
+	// The entries are visited in key order when some value is a list or a
+	// map, whose walk could meet the depth limit: the order then decides
+	// which limit a run passes first (02-evaluation.md 5.3 item 3, ruling
+	// AM3). Otherwise the order cannot show, and no sort is made.
 	var keys []string
 	var w int64
+	nested := false
 	value.ForEachKey(a, func(k string) {
 		keys = append(keys, k)
 		w += value.Weight(k)
+		if !nested {
+			x, _ := value.Get(a, k)
+			switch value.KindOf(x) {
+			case value.List, value.Map:
+				nested = true
+			}
+		}
 	})
+	if nested {
+		sort.Strings(keys)
+	}
 	r.step(w / 64)
 	eq := true
 	for _, k := range keys {
