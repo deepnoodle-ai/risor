@@ -115,3 +115,20 @@ differ. Each is now fixed by a rule and a case.
 | R42 | Environment text that is a type but not a record (`"int"`) is `bad-type` in every implementation. |
 | R43 | Text to number is correctly rounded for any count of digits. An implementation whose platform does not promise that does it itself. |
 | R44 | What cannot enter the language is a value of a host **integer** type over 2^53 − 1 in magnitude, a NaN and an infinity. A finite host float always enters: `1e20` is a number that is not whole. |
+
+## 7. Round 6: questions from the control-flow cases
+
+| # | Ruling |
+| --- | --- |
+| R45 | A call is in progress, for the depth count, from its depth test to its end. Its arguments run before that. |
+| R46 | A `match` arm that compares a string subject with a string literal charges the size of their common prefix, as `==` does, on top of the arm's step. |
+| R47 | Every failure a library entry raises has the span of the whole call, whichever argument or element failed. |
+| R48 | The `missing-field` message of a pattern names the key the data lacks, not the name the pattern binds. |
+
+## 8. Round 7: questions from the evaluation cases
+
+| # | Ruling |
+| --- | --- |
+| R49 | **Null first.** A binary operator that rejects null tests both operands for null before it tests their kinds. `"a" * null` is `null-operand`, not `wrong-kind`. |
+| R50 | A case file can hold an opaque value: `{"$opaque": {"type": "Token", "id": 1}}`. Two are the same host value when type and id are equal. Without this, opaque types were in Core and no case could test them. |
+| R51 | A message names an operator by its canonical text (`not in`), and every parameter of a message is cut at 64 code points, names included. |

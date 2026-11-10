@@ -1,0 +1,15 @@
+[
+  {"name": "block: a block is an expression with its own lines", "source": "{ const a = 2; a * a } + 1", "expect": {"value": 5, "steps": 2, "allocated": 0}},
+  {"name": "block: a block as a list item", "source": "[{ const a = 1; a + 1 }, 3]", "expect": {"value": [2, 3], "steps": 1, "allocated": 3}},
+  {"name": "block: an inner block hides a name of an outer block", "source": "{ const a = 1; { const a = 2; a } + a }", "expect": {"value": 3, "steps": 1, "allocated": 0}},
+  {"name": "block: every line of a block runs, used or not", "source": "{ const a = 1 / d; 0 }", "env": "{d: any}", "vars": {"d": 0}, "expect": {"phase": "run", "diagnostics": [{"code": "divide-by-zero", "span": [1, 13, 1, 18], "message": "the divisor of / is zero"}], "steps": 1, "allocated": 0}},
+  {"name": "block: a block as a lambda body", "source": "xs.map(x => { const y = x * 2; y + 1 })", "env": "{xs: any}", "vars": {"xs": [1, 2]}, "expect": {"value": [3, 5], "steps": 10, "allocated": 3}},
+  {"name": "block: an inner block reads an outer line", "source": "const k = 5; { const j = k + 1; j * 2 }", "expect": {"value": 12, "steps": 2, "allocated": 0}},
+  {"name": "block: a branch with lines", "source": "if (c) { const a = 2; a * 3 } else { 0 }", "env": "{c: any}", "vars": {"c": true}, "expect": {"value": 6, "steps": 1, "allocated": 0}},
+  {"name": "block: the lines of a branch not taken are not charged", "source": "if (c) { const a = [1, 2, 3]; len(a) } else { 0 }", "env": "{c: any}", "vars": {"c": false}, "expect": {"value": 0, "steps": 0, "allocated": 0}},
+  {"name": "block: the lines of a branch taken are charged", "source": "if (c) { const a = [1, 2, 3]; len(a) } else { 0 }", "env": "{c: any}", "vars": {"c": true}, "expect": {"value": 3, "steps": 1, "allocated": 4}},
+  {"name": "block: a branch's name is not in scope after the if", "source": "const r = if (c) { const z = 1; z } else { 0 }; z", "env": "{c: any}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 49, 1, 50]}]}},
+  {"name": "block: a name of a try body is not in scope in the handler", "source": "const r = try { const z = 1; z } catch { z }; r", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 42, 1, 43]}]}},
+  {"name": "block: a block's result may be a map", "source": "{ const k = 1; {id: k} }", "expect": {"value": {"id": 1}, "steps": 0, "allocated": 3}},
+  {"name": "block: nested blocks three deep", "source": "{ const a = 1; { const b = a + 1; { const c = b + 1; [a, b, c] } } }", "expect": {"value": [1, 2, 3], "steps": 2, "allocated": 4}}
+]
