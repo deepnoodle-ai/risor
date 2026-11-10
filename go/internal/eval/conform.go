@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"github.com/deepnoodle-ai/risor/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
 	"github.com/deepnoodle-ai/risor/v3/internal/types"
@@ -275,44 +276,46 @@ func (c *compiler) as(n *syntax.As) code {
 }
 
 // JSONText is the JSON text of 03-host.md 3.2.4: the JSON form of a value a
-// run returned, keys in code point order. It fails with wrong-kind on an
-// opaque value, number-range on a host number that cannot enter the language,
-// and depth-exceeded past the default depth limit; code and message are
-// returned, and ok is false.
-func JSONText(v any) (text, code, msg string, ok bool) {
-	return jsonText(v, DefaultLimits.Depth, "json")
+// run returned, keys in code point order. It fails, with no span, with
+// wrong-kind on an opaque value, number-range on a host number that cannot
+// enter the language, and depth-exceeded past the default depth limit.
+func JSONText(v any) (string, *diag.Diagnostic) {
+	return textOf(v, DefaultLimits.Depth, false)
 }
 
-// RenderText is the rendering of a value (01-language.md 12) under maxDepth:
-// empty for null, the string itself for a string, and the JSON form for
-// booleans, numbers, lists and maps. It fails with wrong-kind on an opaque
-// value, number-range on a host number that cannot enter the language, and
-// depth-exceeded past maxDepth.
-func RenderText(v any, maxDepth int) (text, code, msg string, ok bool) {
-	if maxDepth <= 0 {
-		maxDepth = DefaultLimits.Depth
-	}
-	r, rerr := value.Read(v)
-	if rerr == value.ReadRange {
-		return "", "number-range", messages.Build("number-range", "host"), false
-	}
-	switch value.KindOf(r) {
-	case value.Null:
-		return "", "", "", true
-	case value.String:
-		return r.(string), "", "", true
-	}
-	return jsonText(v, maxDepth, "text")
+// RenderText is the rendering of a value a run returned (01-language.md 12)
+// under the depth limit maxDepth: empty for null, the string itself for a
+// string, and the JSON form otherwise. It fails as JSONText does, with the
+// opaque value's message of string(x).
+func RenderText(v any, maxDepth int) (string, *diag.Diagnostic) {
+	return textOf(v, maxDepth, true)
 }
 
-func jsonText(v any, maxDepth int, opaqueTemplate string) (text, code, msg string, ok bool) {
+func textOf(v any, maxDepth int, render bool) (string, *diag.Diagnostic) {
+	if r, rerr := value.Read(v); render && rerr == value.ReadOK {
+		switch value.KindOf(r) {
+		case value.Null:
+			return "", nil
+		case value.String:
+			return r.(string), nil
+		}
+	}
+	text, f := jsonText(v, maxDepth, render)
+	if f != nil {
+		d := f.diagnostic(nil)
+		return "", &d
+	}
+	return text, nil
+}
+
+func jsonText(v any, maxDepth int, render bool) (string, *failure) {
+	var fail *failure
 	var b strings.Builder
 	var walk func(v any, depth int) bool
 	walk = func(v any, depth int) bool {
 		var rerr value.ReadError
-		v, rerr = value.Read(v)
-		if rerr == value.ReadRange {
-			code, msg = "number-range", messages.Build("number-range", "host")
+		if v, rerr = value.Read(v); rerr == value.ReadRange {
+			fail = &failure{code: "number-range", template: "host", host: true}
 			return false
 		}
 		switch value.KindOf(v) {
@@ -332,7 +335,7 @@ func jsonText(v any, maxDepth int, opaqueTemplate string) (text, code, msg strin
 			b.WriteByte('"')
 		case value.List, value.Map:
 			if depth+1 > maxDepth {
-				code, msg = "depth-exceeded", messages.Build("depth-exceeded", "", messages.Word("limit", strconv.Itoa(maxDepth)))
+				fail = &failure{code: "depth-exceeded", params: []messages.Param{messages.Word("limit", strconv.Itoa(maxDepth))}}
 				return false
 			}
 			if value.KindOf(v) == value.List {
@@ -363,13 +366,16 @@ func jsonText(v any, maxDepth int, opaqueTemplate string) (text, code, msg strin
 			}
 			b.WriteByte('}')
 		default:
-			code, msg = "wrong-kind", messages.Build("wrong-kind", opaqueTemplate)
+			fail = &failure{code: "wrong-kind", template: "json"}
+			if render {
+				fail.template = "text"
+			}
 			return false
 		}
 		return true
 	}
 	if !walk(v, 0) {
-		return "", code, msg, false
+		return "", fail
 	}
-	return b.String(), "", "", true
+	return b.String(), nil
 }

@@ -73,20 +73,9 @@ func (e *Env) groupList() []string {
 // the default depth limit, with no span. For the same value it gives the
 // text json.stringify gives.
 func JSONText(v any) (string, error) {
-	text, code, msg, ok := eval.JSONText(v)
-	if ok {
-		return text, nil
+	text, d := eval.JSONText(v)
+	if d != nil {
+		return "", &Error{Diagnostics: []Diagnostic{*d}}
 	}
-	return "", renderDiagError(code, msg)
-}
-
-func renderDiagError(code, msg string) error {
-	class := "dynamic"
-	switch code {
-	case "depth-exceeded":
-		class = "limit"
-	case "number-range":
-		class = "environment"
-	}
-	return &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: class, Message: msg}}}
+	return text, nil
 }
