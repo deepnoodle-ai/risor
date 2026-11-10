@@ -50,7 +50,7 @@ func report(t *testing.T, label string, all []runner.Result) {
 // of case files or directories, separated by the path list separator, to run
 // those instead. Run with -v to see the counts by file.
 func TestSuite(t *testing.T) {
-	paths := []string{filepath.Join("..", "suite", "core-run")}
+	paths := []string{filepath.Join("..", "suite", "core-run"), filepath.Join("..", "suite", "core-check")}
 	if env := os.Getenv("RISOR_CASES"); env != "" {
 		paths = filepath.SplitList(env)
 	}
@@ -64,9 +64,12 @@ func TestSuite(t *testing.T) {
 			t.Fatal(err)
 		}
 		var all []runner.Result
+		// suite/core-check is run with the checker only (3.10.13).
+		runner.CheckedOnly = filepath.Base(root) == "core-check"
 		for _, f := range files {
 			all = append(all, runner.RunFile(f)...)
 		}
+		runner.CheckedOnly = false
 		report(t, root, all)
 	}
 }

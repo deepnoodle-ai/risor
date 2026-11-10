@@ -314,6 +314,8 @@ type MapField struct {
 	Span    Span
 	KeyForm KeyForm // KeyWord or KeyString
 	Key     string
+	// KeySpan is the span of the key as written: the name for {a}.
+	KeySpan Span
 	Name    string
 	// NameSpan is the span of the bound name.
 	NameSpan Span

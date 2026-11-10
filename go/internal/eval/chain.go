@@ -3,6 +3,7 @@ package eval
 import (
 	"fmt"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/v3/internal/messages"
@@ -47,18 +48,58 @@ func (c *compiler) args(ns []syntax.Node) []argCode {
 func (r *run) evalArgs(as []argCode) []any {
 	out := make([]any, len(as))
 	for i := range as {
-		a := &as[i]
-		if a.lam != nil {
-			if a.inPlace {
-				r.step(1)
-			}
-			out[i] = a.lam
-			continue
-		}
-		out[i] = a.x(r)
+		out[i] = r.argValue(&as[i])
 	}
 	return out
 }
+
+func (r *run) argValue(a *argCode) any {
+	if a.lam != nil {
+		if a.inPlace {
+			r.step(1)
+		}
+		return a.lam
+	}
+	return a.x(r)
+}
+
+// pushArgs evaluates the arguments onto the run's argument stack, for a
+// callee that does not keep the slice. popArgs(base) removes them. A try
+// that catches a failure restores the stack's length.
+func (r *run) pushArgs(as []argCode) (args []any, base int) {
+	base = len(r.args)
+	n := len(as)
+	for range as {
+		r.args = append(r.args, nil)
+	}
+	for i := range as {
+		// An argument's evaluation may grow the stack, so the store reads
+		// r.args after it.
+		v := r.argValue(&as[i])
+		r.args[base+i] = v
+	}
+	return r.args[base : base+n : base+n], base
+}
+
+// popArgs leaves the values in place; the run's end clears them.
+func (r *run) popArgs(base int) { r.args = r.args[:base] }
+
+// pushCall takes a library call from the run's stack of them. popCall gives
+// it back. A try that catches a failure restores the stack's top.
+func (r *run) pushCall() *libCall {
+	if r.lcTop == len(r.lcs) {
+		r.lcs = append(r.lcs, libCall{})
+		// The append may have moved the stack; the calls in progress keep
+		// pointers into the old array, which stays valid.
+	}
+	c := &r.lcs[r.lcTop]
+	r.lcTop++
+	return c
+}
+
+// popCall leaves the call's fields in place; the next push or the run's
+// end clears them.
+func (r *run) popCall(*libCall) { r.lcTop-- }
 
 type stepKind uint8
 
@@ -77,6 +118,72 @@ type stepCode struct {
 	args     []argCode
 	span     syntax.Span
 	measure  int
+	// plans holds the library method for a string, a list and a map
+	// receiver, found when the chain is compiled.
+	plans [3]methodPlan
+}
+
+// methodPlan is a library method selected for one receiver kind, with the
+// result of its shape test, which depends only on the call's text.
+type methodPlan struct {
+	e      *library.Entry
+	info   *entryInfo
+	shape  string // "" when the shape test passes
+	params []messages.Param
+}
+
+func planIndex(k value.Kind) int { return int(k - value.String) }
+
+func (c *compiler) plan(s *stepCode) {
+	for _, k := range []value.Kind{value.String, value.List, value.Map} {
+		p := &s.plans[planIndex(k)]
+		e, ok := library.Method(k, s.name)
+		if !ok {
+			continue
+		}
+		p.e, p.info = e, infoOf(e)
+		name := messages.Word("name", s.name)
+		n := len(s.args)
+		if n < e.MinArgs() || (e.MaxArgs() >= 0 && n > e.MaxArgs()) {
+			p.shape, p.params = "count", []messages.Param{messages.Word("count", numText(n)), name}
+			continue
+		}
+		for i := range s.args {
+			pa := e.ParamAt(i)
+			if pa.Callback >= 0 && !s.args[i].isLambda() {
+				p.shape, p.params = "callback", []messages.Param{messages.Word("count", numText(i+1)), name}
+				break
+			}
+			if pa.Callback < 0 && s.args[i].isLambda() {
+				p.shape, p.params = "not-callback", []messages.Param{messages.Word("count", numText(i+1)), name}
+				break
+			}
+		}
+		if p.shape != "" {
+			continue
+		}
+		for i := range s.args {
+			pa := e.ParamAt(i)
+			if s.args[i].isLambda() && s.args[i].nparams > pa.Callback {
+				p.shape, p.params = "parameters", []messages.Param{name, messages.Word("count", numText(pa.Callback))}
+				break
+			}
+		}
+	}
+}
+
+// valueSlot gives the slot of a name bound by const, a parameter or a
+// pattern.
+func (c *compiler) valueSlot(n syntax.Node) (int, bool) {
+	id, ok := n.(*syntax.Ident)
+	if !ok {
+		return 0, false
+	}
+	b := c.res.Idents[id]
+	if b == nil || b.Kind != static.Value {
+		return 0, false
+	}
+	return b.Slot, true
 }
 
 // chain compiles a chain as a base and a list of steps run by a loop
@@ -117,8 +224,47 @@ loop:
 		case *syntax.Index:
 			steps = append(steps, &stepCode{kind: stepIndex, optional: t.Optional, idx: c.expr(t.Index), span: t.Span()})
 		case *syntax.MethodCall:
-			steps = append(steps, &stepCode{kind: stepMethod, optional: t.Optional, name: t.Name,
-				args: c.args(t.Args), span: t.Span(), measure: c.measure(t)})
+			sc := &stepCode{kind: stepMethod, optional: t.Optional, name: t.Name,
+				args: c.args(t.Args), span: t.Span(), measure: c.measure(t)}
+			c.plan(sc)
+			steps = append(steps, sc)
+		}
+	}
+	allMember := true
+	for _, st := range steps {
+		if st.kind != stepMember {
+			allMember = false
+		}
+	}
+	if allMember && len(steps) == 1 {
+		st := steps[0]
+		if slot, ok := c.valueSlot(x); ok {
+			return func(r *run) any {
+				v := r.slots[slot]
+				if v == nil && st.optional {
+					return nil
+				}
+				return r.member(st, v)
+			}
+		}
+		return func(r *run) any {
+			v := base(r)
+			if v == nil && st.optional {
+				return nil
+			}
+			return r.member(st, v)
+		}
+	}
+	if allMember {
+		return func(r *run) any {
+			v := base(r)
+			for _, s := range steps {
+				if v == nil && s.optional {
+					return nil
+				}
+				v = r.member(s, v)
+			}
+			return v
 		}
 	}
 	return func(r *run) any {
@@ -140,7 +286,27 @@ loop:
 	}
 }
 
+// member reads a field. The common case, a present field of a host map
+// whose value needs no reading, is small enough to inline.
 func (r *run) member(s *stepCode, v any) any {
+	if m, ok := v.(map[string]any); ok {
+		r.step(1 + s.size)
+		if x, ok := m[s.name]; ok {
+			return r.read(x, s.span)
+		}
+	}
+	return r.memberMore(s, v)
+}
+
+// memberMore is member for a field that is missing or not of a host map.
+// The map case has charged its step already.
+func (r *run) memberMore(s *stepCode, v any) any {
+	if _, ok := v.(map[string]any); ok {
+		if s.optional {
+			return nil
+		}
+		r.raise(fail("missing-field", "field", s.span, messages.Word("name", s.name)))
+	}
 	switch value.KindOf(v) {
 	case value.Map:
 		r.step(1 + s.size)
@@ -244,34 +410,22 @@ func (r *run) method(s *stepCode, v any) any {
 	default:
 		r.shapeFail(s, "method", messages.Val("kind", v), name)
 	}
-	e, ok := library.Method(k, s.name)
-	if !ok {
+	p := &s.plans[planIndex(k)]
+	if p.e == nil {
 		r.shapeFail(s, "method", messages.Val("kind", v), name)
 	}
-	n := len(s.args)
-	if n < e.MinArgs() || (e.MaxArgs() >= 0 && n > e.MaxArgs()) {
-		r.shapeFail(s, "count", messages.Word("count", numText(n)), name)
+	if p.shape != "" {
+		r.shapeFail(s, p.shape, p.params...)
 	}
-	for i := range s.args {
-		p := e.ParamAt(i)
-		if p.Callback >= 0 && !s.args[i].isLambda() {
-			r.shapeFail(s, "callback", messages.Word("count", numText(i+1)), name)
-		}
-		if p.Callback < 0 && s.args[i].isLambda() {
-			r.shapeFail(s, "not-callback", messages.Word("count", numText(i+1)), name)
-		}
-	}
-	for i := range s.args {
-		p := e.ParamAt(i)
-		if s.args[i].isLambda() && s.args[i].nparams > p.Callback {
-			r.shapeFail(s, "parameters", name, messages.Word("count", numText(p.Callback)))
-		}
-	}
-	args := r.evalArgs(s.args)
-	lc := &libCall{e: e, recv: v, args: args, span: s.span, measure: s.measure}
+	args, base := r.pushArgs(s.args)
+	lc := r.pushCall()
+	*lc = libCall{e: p.e, info: p.info, recv: v, args: args, span: s.span, measure: s.measure}
 	r.testArgs(lc)
 	r.step(1)
-	return r.runEntry(lc)
+	res := r.runEntry(lc)
+	r.popCall(lc)
+	r.popArgs(base)
+	return res
 }
 
 func (r *run) opaqueMethod(s *stepCode, v any) any {
@@ -307,32 +461,73 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 		lam := c.lambdas[callee.Lambda]
 		m := c.measure(n)
 		return func(r *run) any {
-			vals := r.evalArgs(args)
+			vals, base := r.pushArgs(args)
 			r.step(1)
 			r.enterCall(m)
 			v := lam.invoke(r, vals)
 			r.depth -= m
+			r.popArgs(base)
 			return v
 		}
 	case static.Host:
 		f := callee.Host
+		name := f.FullName()
 		return func(r *run) any {
 			vals := r.evalArgs(args)
 			r.step(1)
-			return r.hostCall(r.prog.cfg.Hosts[f.Index], vals, sp, f.FullName())
+			return r.hostCall(r.prog.cfg.Hosts[f.Index], vals, sp, name)
 		}
 	case static.Lib:
 		e := callee.Lib
+		info := infoOf(e)
 		m := c.measure(n)
+		if e.Name == "len" && !e.IsMethod() && len(args) == 1 && !args[0].isLambda() &&
+			e.Steps == "sz(x)" && e.Units == "0" && len(info.params) == 1 && info.params[0].test {
+			return lenCall(e, info, args[0].x, sp)
+		}
 		return func(r *run) any {
-			vals := r.evalArgs(args)
-			lc := &libCall{e: e, args: vals, span: sp, measure: m}
+			vals, base := r.pushArgs(args)
+			lc := r.pushCall()
+			*lc = libCall{e: e, info: info, args: vals, span: sp, measure: m}
 			r.testArgs(lc)
 			r.step(1)
-			return r.runEntry(lc)
+			v := r.runEntry(lc)
+			r.popCall(lc)
+			r.popArgs(base)
+			return v
 		}
 	}
 	panic("call")
+}
+
+// lenCall is a call of len, made without a library call record. It tests,
+// charges and fails as the general path does: the argument test, the call's
+// step, then the entry's sz(x) steps and no units.
+func lenCall(e *library.Entry, info *entryInfo, x code, sp syntax.Span) code {
+	p := &info.params[0]
+	return func(r *run) any {
+		v := x(r)
+		var k value.Kind
+		switch v.(type) {
+		case string:
+			k = value.String
+		case []any:
+			k = value.List
+		case map[string]any:
+			k = value.Map
+		default:
+			k = value.KindOf(v)
+		}
+		if !p.kinds[k] {
+			r.raise(fail("wrong-kind", "argument", sp, messages.Word("name", e.Name), messages.Val("kind", v)))
+		}
+		r.step(1)
+		if s, ok := v.(string); ok {
+			r.step(value.Weight(s) / 64)
+			return numBox(float64(utf8.RuneCountInString(s)))
+		}
+		return numBox(float64(value.Len(v)))
+	}
 }
 
 // hostCall calls a host function (03-host.md 3.5).

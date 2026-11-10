@@ -154,7 +154,7 @@ func RejectClasses(classes ...string) Decl {
 				e.errf(diag.CodeBadClass, fmt.Sprintf("%q is not a check class", c))
 			}
 		}
-		e.reject = append([]string(nil), classes...)
+		e.reject = append(make([]string, 0, len(classes)), classes...)
 	})
 }
 
@@ -188,6 +188,7 @@ type Env struct {
 	removed    map[string]bool
 	reject     []string
 	limits     eval.Limits
+	envTypes   // the declarations as types, for the checker (check.go)
 
 	// while building
 	own  map[string]bool
@@ -234,6 +235,7 @@ func (e *Env) build(decls []Decl) (*Env, error) {
 		e.errf(diag.CodeUnsupportedVersion, fmt.Sprintf("version %q is not offered", e.version))
 	}
 	e.checkClashes()
+	e.typeEnv()
 	e.own = nil
 	if len(e.errs) > 0 {
 		errs := e.errs
@@ -457,7 +459,7 @@ func (e *Env) checkClashes() {
 // program. This implementation has no type checker yet: it compiles without
 // the type rules. A static diagnostic fails the compile with phase check; a
 // function with no implementation fails it with no-implementation.
-func (e *Env) Compile(x *Expr) (*Program, error) {
+func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
 	names := &static.Names{Vars: map[string]int{}, Funcs: map[string]*static.Func{},
 		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}}
 	cfg := &eval.Config{Names: names, Methods: map[string]map[string]*eval.Method{}, Limits: e.limits}
@@ -508,20 +510,15 @@ func (e *Env) Compile(x *Expr) (*Program, error) {
 	if len(missing) > 0 {
 		return nil, &Error{Diagnostics: missing}
 	}
-	res := static.Check(x.tree, names)
-	if len(res.Diags) > 0 {
-		ds := make([]Diagnostic, len(res.Diags))
-		for i, d := range res.Diags {
-			sp := x.file.Span(d.Span.Start, d.Span.End)
-			ds[i] = Diagnostic{Phase: PhaseCheck, Code: d.Code, Span: &sp, Message: d.Code}
-		}
-		return nil, &Error{Diagnostics: ds}
+	res, cr, err := e.analyze(x, names, varNames, opts)
+	if err != nil {
+		return nil, err
 	}
 	p, err := eval.Compile(x.tree, x.file, res, cfg)
 	if err != nil {
 		return nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
 	}
-	return &Program{p: p, x: x}, nil
+	return &Program{p: p, x: x, dynamic: dynamicSpans(x, cr)}, nil
 }
 
 // Program is a compiled program. It does not change, and several goroutines
@@ -529,6 +526,8 @@ func (e *Env) Compile(x *Expr) (*Program, error) {
 type Program struct {
 	p *eval.Program
 	x *Expr
+	// dynamic is set for a checked program: the spans at a dynamic site.
+	dynamic map[[4]int]bool
 }
 
 // Run runs the program with the values of its variables. vars may be nil
@@ -546,6 +545,9 @@ func (p *Program) Measure(ctx context.Context, vars Vars) (any, Usage, error) {
 	}
 	v, u, d := p.p.Run(ctx, vars)
 	if d != nil {
+		if p.dynamic != nil {
+			checkedClass(d, p.dynamic)
+		}
 		return nil, u, &Error{Diagnostics: []Diagnostic{*d}}
 	}
 	return v, u, nil

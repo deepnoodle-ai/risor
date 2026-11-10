@@ -21,6 +21,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/v3/internal/eval"
 	"github.com/deepnoodle-ai/risor/v3/internal/library"
+	"github.com/deepnoodle-ai/risor/v3/internal/types"
 	"github.com/deepnoodle-ai/risor/v3/internal/typetext"
 	"github.com/deepnoodle-ai/risor/v3/internal/value"
 )
@@ -141,12 +142,7 @@ func RunCase(c *casefile.Case) Result {
 }
 
 // staticCodes are the eleven static codes (05-types.md 22.1).
-var staticCodes = map[string]bool{
-	"undefined-name": true, "undefined-function": true, "not-a-value": true,
-	"call-of-parameter": true, "lambda-to-lambda": true, "duplicate-name": true,
-	"shadows-namespace": true, "duplicate-key": true, "arity": true,
-	"duplicate-case": true, "unreachable-arm": true,
-}
+var staticCodes = casefile.StaticCodes
 
 // checkedClass are the codes whose class differs between a checked and an
 // unchecked program (03-host.md 3.7.6).
@@ -156,6 +152,7 @@ var checkedClass = map[string]bool{"null-operand": true, "wrong-kind": true,
 // stubState records whether a call of a stub matched no row (3.10.4).
 type stubState struct {
 	unmatched []string
+	checked   bool
 }
 
 func (st *stubState) native(name string, s *casefile.Stub) risor.Native {
@@ -296,18 +293,47 @@ func runCase(c *casefile.Case) Result {
 	if c.Skip != nil {
 		return skip(*c.Skip)
 	}
+	// Ruling AP1: a case with "check": false is compiled with the static
+	// rules alone, and its class is compared for every code.
+	if c.Check != nil && !*c.Check {
+		return runMode(c, false, true)
+	}
+	// Ruling AP2: checked, then with the static rules alone; one verdict.
+	r := runMode(c, true, true)
+	if r.Verdict != Pass || CheckedOnly {
+		return r
+	}
+	// The case is also run with the static rules alone (3.10.8 item 5),
+	// unless it needs the checker.
 	e := c.Expect
 	if e.Type != nil || e.HasSites {
-		return skip("needs the type checker")
+		return r
 	}
 	if e.Phase == "check" {
 		for _, d := range e.Diagnostics {
 			if !staticCodes[d.Code] {
-				return skip("needs the type checker")
+				return r
 			}
 		}
 	}
-	st := &stubState{}
+	u := runMode(c, false, false)
+	if u.Verdict != Pass {
+		for i := range u.Diffs {
+			u.Diffs[i].Name += " (unchecked)"
+		}
+	}
+	return u
+}
+
+// CheckedOnly makes RunCase run each case with the checker only, as the
+// directory suite/core-check is run.
+var CheckedOnly bool
+
+// runMode runs a case with the checker, or with the static rules alone.
+// allClasses compares class for every code.
+func runMode(c *casefile.Case, checked, allClasses bool) Result {
+	e := c.Expect
+	st := &stubState{checked: allClasses}
 	env, err := buildEnv(c, st)
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), nil, st)
@@ -316,23 +342,37 @@ func runCase(c *casefile.Case) Result {
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), nil, st)
 	}
-	if miss := missingEntries(x, c); len(miss) > 0 {
-		return skip("S3: needs library entry " + strings.Join(miss, ", "))
+	var opts []risor.CheckOption
+	if !checked {
+		opts = append(opts, risor.NoCheck)
 	}
-	prog, err := env.Compile(x)
+	if c.Returns != nil && checked {
+		if *c.Returns == "condition" {
+			opts = append(opts, risor.Condition)
+		} else {
+			opts = append(opts, risor.Expect(*c.Returns))
+		}
+	}
+	var cr *risor.CheckResult
+	if checked {
+		cr, err = env.Check(x, opts...)
+		if err != nil {
+			return compareFailure(c, err.(*risor.Error), nil, st)
+		}
+	}
+	prog, err := env.Compile(x, opts...)
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), nil, st)
 	}
 	needRun := c.Vars != nil || e.HasValue || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
 	if !needRun {
-		return compareResult(c, nil, false, nil, st)
+		return compareResult(c, cr, nil, false, nil, st)
 	}
-	vars := risor.Map(c.Vars)
-	v, usage, err := prog.Measure(context.Background(), vars)
+	v, usage, err := prog.Measure(context.Background(), risor.Map(c.Vars))
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), &usage, st)
 	}
-	return compareResult(c, v, true, &usage, st)
+	return compareResult(c, cr, v, true, &usage, st)
 }
 
 func fmtValue(v any) string {
@@ -357,12 +397,30 @@ func finish(diffs []Diff, st *stubState) Result {
 	return Result{Verdict: Pass}
 }
 
-func compareResult(c *casefile.Case, v any, ran bool, u *risor.Usage, st *stubState) Result {
+func compareResult(c *casefile.Case, cr *risor.CheckResult, v any, ran bool, u *risor.Usage, st *stubState) Result {
 	e := c.Expect
 	if e.IsFailure() {
 		return finish([]Diff{{"outcome", "a failure of phase " + e.Phase, "a result " + fmtValue(v)}}, st)
 	}
 	var diffs []Diff
+	if e.Type != nil {
+		found := "no type"
+		if cr != nil {
+			found = cr.Type
+		}
+		if cr == nil || !sameType(*e.Type, cr.Type, c.Opaque) {
+			diffs = append(diffs, Diff{"type", *e.Type, found})
+		}
+	}
+	if e.HasSites {
+		want, got := formatSites(e.Sites), "[]"
+		if cr != nil {
+			got = formatGot(cr.Sites)
+		}
+		if want != got {
+			diffs = append(diffs, Diff{"sites", want, got})
+		}
+	}
 	if e.HasValue && !value.Equal(v, e.Value) {
 		diffs = append(diffs, Diff{"value", fmtValue(e.Value), fmtValue(v)})
 	}
@@ -391,7 +449,7 @@ func compareFailure(c *casefile.Case, err *risor.Error, u *risor.Usage, st *stub
 		return finish([]Diff{{"outcome", want, "a failure of phase " + ph + ": " + err.Error()}}, st)
 	}
 	var diffs []Diff
-	if d := compareDiagnostics(e, err.Diagnostics); d != nil {
+	if d := compareDiagnostics(e, err.Diagnostics, st.checked); d != nil {
 		diffs = append(diffs, *d)
 	}
 	if u != nil && ph == "run" && !diag.LimitCodes[err.Diagnostics[0].Code] {
@@ -445,14 +503,14 @@ func formatExp(ds []*casefile.ExpDiag) string {
 	return "[" + strings.Join(parts, "; ") + "]"
 }
 
-func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic) bool {
+func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic, checked bool) bool {
 	if want.Code != got.Code {
 		return false
 	}
 	// Class is compared where the two columns of 03-host.md 3.7.6 agree.
 	// For the codes below the class depends on the check (3.10.7 item 8),
 	// and this implementation compiles without one.
-	if want.Class != nil && !checkedClass[got.Code] && *want.Class != got.Class {
+	if want.Class != nil && (checked || !checkedClass[got.Code]) && *want.Class != got.Class {
 		return false
 	}
 	if want.Span != nil && !diag.LimitCodes[got.Code] {
@@ -479,7 +537,7 @@ func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic) bool {
 	return true
 }
 
-func compareDiagnostics(e *casefile.Expect, got []risor.Diagnostic) *Diff {
+func compareDiagnostics(e *casefile.Expect, got []risor.Diagnostic, checked bool) *Diff {
 	d := &Diff{Name: "diagnostics", Expected: formatExp(e.Diagnostics), Found: formatDiags(got)}
 	switch e.Phase {
 	case "parse": // compared with the start of what the parser reported
@@ -487,7 +545,7 @@ func compareDiagnostics(e *casefile.Expect, got []risor.Diagnostic) *Diff {
 			return d
 		}
 		for i, w := range e.Diagnostics {
-			if !diagMatches(w, got[i]) {
+			if !diagMatches(w, got[i], checked) {
 				return d
 			}
 		}
@@ -499,7 +557,7 @@ func compareDiagnostics(e *casefile.Expect, got []risor.Diagnostic) *Diff {
 		for _, w := range e.Diagnostics {
 			found := false
 			for j, g := range got {
-				if !used[j] && diagMatches(w, g) {
+				if !used[j] && diagMatches(w, g, checked) {
 					used[j], found = true, true
 					break
 				}
@@ -513,7 +571,7 @@ func compareDiagnostics(e *casefile.Expect, got []risor.Diagnostic) *Diff {
 			return d
 		}
 		for i, w := range e.Diagnostics {
-			if !diagMatches(w, got[i]) {
+			if !diagMatches(w, got[i], checked) {
 				return d
 			}
 		}
@@ -555,4 +613,42 @@ func RunEntries(path, key string) []Result {
 		}
 	}
 	return out
+}
+
+// sameType compares two type texts by structure (3.10.6).
+func sameType(want, got string, opaque []string) bool {
+	set := map[string]bool{}
+	for _, o := range opaque {
+		set[o] = true
+	}
+	parse := func(s string) *types.Type {
+		tt, err := typetext.ParseType(s)
+		if err != nil {
+			return nil
+		}
+		t, err := types.FromText(tt, set, false)
+		if err != nil {
+			return nil
+		}
+		return t
+	}
+	a, b := parse(want), parse(got)
+	return a != nil && b != nil && types.Equal(a, b)
+}
+
+func formatSites(ss []casefile.Site) string {
+	parts := make([]string, len(ss))
+	for i, s := range ss {
+		parts[i] = fmt.Sprintf("%s [%d, %d, %d, %d]", s.Class, s.Span[0], s.Span[1], s.Span[2], s.Span[3])
+	}
+	return "[" + strings.Join(parts, "; ") + "]"
+}
+
+func formatGot(ss []risor.Site) string {
+	parts := make([]string, len(ss))
+	for i, s := range ss {
+		a := s.Span.Array()
+		parts[i] = fmt.Sprintf("%s [%d, %d, %d, %d]", s.Class, a[0], a[1], a[2], a[3])
+	}
+	return "[" + strings.Join(parts, "; ") + "]"
 }

@@ -26,6 +26,12 @@ type Entry struct {
 	Steps     string   `json:"steps"`
 	Units     string   `json:"units"`
 	Fails     []Fail   `json:"fails"`
+	// Narrows names the callback parameter whose true facts narrow the
+	// result (filter, find); Tested lists the tested argument positions.
+	Narrows string `json:"narrows"`
+	Tested  []int  `json:"tested"`
+	// Renders names the parameters whose argument is rendered as text.
+	Renders []string `json:"renders"`
 
 	// Sig is the parsed signature.
 	Sig *typetext.Sig `json:"-"`

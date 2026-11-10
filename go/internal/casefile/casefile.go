@@ -41,7 +41,10 @@ type Case struct {
 	Limits       *Limits
 	Skip         *string
 	Precondition *bool
-	Expect       *Expect
+	// Check is false for a case compiled with the static rules alone
+	// (ruling AP1). Nil means true.
+	Check  *bool
+	Expect *Expect
 }
 
 // Limits is the field limits of a case.
@@ -173,9 +176,9 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition")
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check")
 	resultFields  = set("type", "sites", "value", "truthy", "steps", "allocated")
 	failureFields = set("phase", "diagnostics", "steps", "allocated")
 	diagFields    = set("code", "class", "span", "path", "message", "data")
@@ -401,9 +404,11 @@ func (v *validator) fields(m map[string]any, where string) error {
 			}
 		}
 	}
-	if x, ok := m["precondition"]; ok {
-		if _, ok := x.(bool); !ok {
-			return v.invalid("%s: precondition is not a boolean", where)
+	for _, k := range []string{"precondition", "check"} {
+		if x, ok := m[k]; ok {
+			if _, ok := x.(bool); !ok {
+				return v.invalid("%s: %s is not a boolean", where, k)
+			}
 		}
 	}
 	return nil
@@ -518,6 +523,10 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 		b := x.(bool)
 		c.Precondition = &b
 	}
+	if x, ok := m["check"]; ok {
+		b := x.(bool)
+		c.Check = &b
+	}
 	if x, ok := m["limits"]; ok {
 		c.Limits = &Limits{}
 		for k, val := range x.(map[string]any) {
@@ -576,6 +585,20 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	if e.HasValue {
 		if e.Value, err = v.opaque(e.Value, c.Opaque, where); err != nil {
 			return nil, err
+		}
+	}
+	// Ruling AP1: a case with "check": false states no type and no sites,
+	// and a check failure it expects has static codes only.
+	if c.Check != nil && !*c.Check {
+		if e.Type != nil || e.HasSites {
+			return nil, v.invalid("%s: a case with \"check\": false states no type and no sites", where)
+		}
+		if e.Phase == "check" {
+			for _, d := range e.Diagnostics {
+				if !StaticCodes[d.Code] {
+					return nil, v.invalid("%s: a case with \"check\": false expects static codes only, not %s", where, d.Code)
+				}
+			}
 		}
 	}
 	if (e.Phase == "parse" || e.Phase == "declare") && len(e.Diagnostics) > 1 {
@@ -865,4 +888,12 @@ func (v *validator) diagnostic(x any, where string) (*ExpDiag, error) {
 		d.Data, d.HasData = x, true
 	}
 	return d, nil
+}
+
+// StaticCodes are the eleven codes of the static rules (05-types.md 22.1).
+var StaticCodes = map[string]bool{
+	"undefined-name": true, "undefined-function": true, "not-a-value": true,
+	"call-of-parameter": true, "lambda-to-lambda": true, "duplicate-name": true,
+	"shadows-namespace": true, "duplicate-key": true, "arity": true,
+	"duplicate-case": true, "unreachable-arm": true,
 }

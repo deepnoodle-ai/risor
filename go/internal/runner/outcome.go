@@ -14,7 +14,8 @@ import (
 
 // Outcome runs one case and writes the line of the outcome command (ruling
 // AJ): one JSON object with name, phase, value or diagnostics, and usage.
-// Every expect is ignored, and every case that gets as far is run.
+// Every expect is ignored, and every case that gets as far is run. A program
+// that checks has its type and sites after its name (stage S4).
 func Outcome(c *casefile.Case) string {
 	var b strings.Builder
 	b.WriteString(`{"name":`)
@@ -73,7 +74,34 @@ func Outcome(c *casefile.Case) string {
 	if err != nil {
 		return fail(err, nil)
 	}
-	prog, err := env.Compile(x)
+	var opts []risor.CheckOption
+	unchecked := c.Check != nil && !*c.Check
+	if unchecked {
+		// Ruling AP3: compiled without a check; no type and no sites.
+		opts = append(opts, risor.NoCheck)
+	} else if c.Returns != nil {
+		if *c.Returns == "condition" {
+			opts = append(opts, risor.Condition)
+		} else {
+			opts = append(opts, risor.Expect(*c.Returns))
+		}
+	}
+	if !unchecked {
+		cr, err := env.Check(x, opts...)
+		if err != nil {
+			return fail(err, nil)
+		}
+		b.WriteString(`,"type":` + value.QuoteJSON(cr.Type) + `,"sites":[`)
+		for i, st := range cr.Sites {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			a := st.Span.Array()
+			fmt.Fprintf(&b, `{"class":%s,"span":[%d,%d,%d,%d]}`, value.QuoteJSON(st.Class), a[0], a[1], a[2], a[3])
+		}
+		b.WriteByte(']')
+	}
+	prog, err := env.Compile(x, opts...)
 	if err != nil {
 		return fail(err, nil)
 	}

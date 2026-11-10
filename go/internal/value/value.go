@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
 )
 
@@ -134,21 +135,21 @@ func Read(v any) (any, ReadError) {
 	case int64:
 		return readInt(x)
 	case int32:
-		return float64(x), ReadOK
+		return Num(float64(x)), ReadOK
 	case int16:
-		return float64(x), ReadOK
+		return Num(float64(x)), ReadOK
 	case int8:
-		return float64(x), ReadOK
+		return Num(float64(x)), ReadOK
 	case uint:
 		return readUint(uint64(x))
 	case uint64:
 		return readUint(x)
 	case uint32:
-		return float64(x), ReadOK
+		return Num(float64(x)), ReadOK
 	case uint16:
-		return float64(x), ReadOK
+		return Num(float64(x)), ReadOK
 	case uint8:
-		return float64(x), ReadOK
+		return Num(float64(x)), ReadOK
 	case float32:
 		return Read(float64(x))
 	case Opaque:
@@ -164,14 +165,57 @@ func readInt(x int64) (any, ReadError) {
 	if x > MaxWhole || x < -MaxWhole {
 		return nil, ReadRange
 	}
-	return float64(x), ReadOK
+	return Num(float64(x)), ReadOK
 }
 
 func readUint(x uint64) (any, ReadError) {
 	if x > MaxWhole {
 		return nil, ReadRange
 	}
-	return float64(x), ReadOK
+	return Num(float64(x)), ReadOK
+}
+
+// smallNums holds the whole numbers 0 to 1023 as values, so that making one
+// of them a value allocates nothing.
+var smallNums = func() (t [1024]any) {
+	for i := range t {
+		t[i] = float64(i)
+	}
+	return
+}()
+
+// midNums holds the whole numbers 1024 to 16383 as values, each made the
+// first time it is needed. The table's size is fixed, so it does not grow
+// with what a host passes; it is safe for many goroutines.
+var midNums [16384 - 1024]atomic.Pointer[any]
+
+// Num makes a number a value. A whole number from 0 to 16383 is taken from
+// a table and allocates nothing after its first use; -0 gives 0, as the
+// language has one zero.
+func Num(f float64) any {
+	if f >= 0 && f < 1024 {
+		if i := int(f); float64(i) == f {
+			return smallNums[i]
+		}
+	} else if f >= 1024 && f < 16384 {
+		if i := int(f); float64(i) == f {
+			return midNum(i)
+		}
+	}
+	return f
+}
+
+func midNum(i int) any {
+	slot := &midNums[i-1024]
+	if p := slot.Load(); p != nil {
+		return *p
+	}
+	p := new(any)
+	*p = float64(i)
+	if !slot.CompareAndSwap(nil, p) {
+		p = slot.Load()
+	}
+	return *p
 }
 
 // ReplaceInvalid replaces each maximal subpart of an ill-formed UTF-8

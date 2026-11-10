@@ -13,11 +13,12 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
+// compile compiles without the type rules: these tests are of the run.
 func compile(t *testing.T, env *risor.Env, src string) *risor.Program {
 	t.Helper()
 	x, err := risor.Parse(src)
 	assert.NoError(t, err)
-	p, err := env.Compile(x)
+	p, err := env.Compile(x, risor.NoCheck)
 	assert.NoError(t, err, src)
 	return p
 }

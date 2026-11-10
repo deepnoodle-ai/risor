@@ -304,7 +304,7 @@ func (p *parser) mapPat() *MapPat {
 			fs := p.tok.Start
 			switch {
 			case p.tok.Kind == Word && p.peek(1).Kind == Colon:
-				f.KeyForm, f.Key = KeyWord, p.tok.Text
+				f.KeyForm, f.Key, f.KeySpan = KeyWord, p.tok.Text, Span{p.tok.Start, p.tok.End}
 				p.next()
 				p.next()
 				nt := p.requireName()
@@ -312,8 +312,9 @@ func (p *parser) mapPat() *MapPat {
 			case p.tok.Kind == Word:
 				nt := p.requireName()
 				f.KeyForm, f.Key, f.Name, f.NameSpan = KeyWord, nt.Text, nt.Text, Span{nt.Start, nt.End}
+				f.KeySpan = f.NameSpan
 			case p.tok.Kind == TokString && p.tok.Form != '`':
-				f.KeyForm, f.Key = KeyString, p.tok.Str
+				f.KeyForm, f.Key, f.KeySpan = KeyString, p.tok.Str, Span{p.tok.Start, p.tok.End}
 				p.next()
 				p.expect(Colon)
 				nt := p.requireName()

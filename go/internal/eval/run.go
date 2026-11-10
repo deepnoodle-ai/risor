@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
@@ -149,11 +150,24 @@ type run struct {
 
 	steps, units       int64
 	maxSteps, maxUnits int64
+	// stepEdge is the most steps the run can reach without a test: the
+	// lesser of the step limit and the last step before the next deadline
+	// check. unitEdge is the unit limit. Both make the common charge one
+	// compare (02-evaluation.md 8.2, 8.3 are unchanged).
+	stepEdge, unitEdge int64
 	depth, walk        int
 	maxDepth           int
 	deadline           time.Time
 	pending            *failure
 	strs               map[strKey]string
+
+	// args is a stack of argument values for calls whose callee does not
+	// keep them; lcs is a stack of library calls. Both are reused between
+	// runs and restored by a try.
+	args  []any
+	lcs   []libCall
+	lcTop int
+	fe    fenv
 }
 
 func (r *run) raise(f *failure) { panic(f) }
@@ -176,12 +190,22 @@ func (r *run) tryStep(n int64) *failure {
 	}
 	old := r.steps
 	r.steps += n
+	r.setStepEdge()
 	if old>>10 != r.steps>>10 {
 		if f := r.checkDeadline(); f != nil {
 			return f
 		}
 	}
 	return nil
+}
+
+// setStepEdge sets stepEdge after a change of steps.
+func (r *run) setStepEdge() {
+	e := r.steps | 1023
+	if r.maxSteps >= 0 && r.maxSteps < e {
+		e = r.maxSteps
+	}
+	r.stepEdge = e
 }
 
 func (r *run) tryUnit(n int64) *failure {
@@ -192,8 +216,19 @@ func (r *run) tryUnit(n int64) *failure {
 	return nil
 }
 
-// step charges n steps (02-evaluation.md 8.2).
+// step charges n steps (02-evaluation.md 8.2). A charge that meets neither
+// the limit nor a deadline check is one compare; a negative n takes the slow
+// path, as before.
 func (r *run) step(n int64) {
+	if uint64(n) <= uint64(r.stepEdge-r.steps) {
+		r.steps += n
+		return
+	}
+	r.stepSlow(n)
+}
+
+//go:noinline
+func (r *run) stepSlow(n int64) {
 	if n == 0 {
 		return
 	}
@@ -204,6 +239,15 @@ func (r *run) step(n int64) {
 
 // unit charges n allocation units.
 func (r *run) unit(n int64) {
+	if uint64(n) <= uint64(r.unitEdge-r.units) {
+		r.units += n
+		return
+	}
+	r.unitSlow(n)
+}
+
+//go:noinline
+func (r *run) unitSlow(n int64) {
 	if n == 0 {
 		return
 	}
@@ -231,9 +275,14 @@ func (r *run) checkDeadline() *failure {
 // (02-evaluation.md 8.4).
 func (r *run) enterCall(measure int) {
 	if r.depth+r.walk+measure > r.maxDepth {
-		r.raise(r.limitFailure("depth-exceeded", int64(r.maxDepth)))
+		r.depthFail()
 	}
 	r.depth += measure
+}
+
+//go:noinline
+func (r *run) depthFail() {
+	r.raise(r.limitFailure("depth-exceeded", int64(r.maxDepth)))
 }
 
 // enterWalk enters one level of a walk.
@@ -247,10 +296,35 @@ func (r *run) enterWalk() {
 // read reads a host value at the node that yields it (ruling AC16).
 func (r *run) read(v any, sp syntax.Span) any {
 	switch v.(type) {
-	case nil, bool, float64, []any, map[string]any:
+	case float64, map[string]any, nil:
+		return v
+	}
+	return r.readMore(v, sp)
+}
+
+func (r *run) readMore(v any, sp syntax.Span) any {
+	switch x := v.(type) {
+	case bool, []any:
 		return v
 	case string:
-		return r.readString(v.(string))
+		if len(x) <= 64 {
+			if utf8.ValidString(x) {
+				return v
+			}
+			return value.ReplaceInvalid(x)
+		}
+		if y := r.readString(x); len(y) != len(x) || y != x {
+			return y
+		}
+		return v
+	case int64:
+		if x <= value.MaxWhole && x >= -value.MaxWhole {
+			return value.Num(float64(x))
+		}
+	case int:
+		if x <= value.MaxWhole && x >= -value.MaxWhole {
+			return value.Num(float64(x))
+		}
 	}
 	x, e := value.Read(v)
 	if e == value.ReadRange {
@@ -265,13 +339,10 @@ func (r *run) read(v any, sp syntax.Span) any {
 // is checked once in a run, so a read costs constant work whatever its size.
 func (r *run) readString(s string) string {
 	if len(s) <= 64 {
-		for i := 0; i < len(s); i++ {
-			if s[i] >= 0x80 {
-				x, _ := value.Read(s)
-				return x.(string)
-			}
+		if utf8.ValidString(s) {
+			return s
 		}
-		return s
+		return value.ReplaceInvalid(s)
 	}
 	key := strKey{unsafe.StringData(s), len(s)}
 	if x, ok := r.strs[key]; ok {

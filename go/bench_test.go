@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	risor "github.com/deepnoodle-ai/risor/v3"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 type benchCase struct{ name, src string }
@@ -166,5 +167,52 @@ func BenchmarkCompile(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// TestConcurrentRuns runs each benchmark program on 16 goroutines at once
+// and checks that every run gives the value and usage of a run made alone.
+// Run it under -race: the run state is pooled per program.
+func TestConcurrentRuns(t *testing.T) {
+	data := workflowData()
+	for k, v := range heavyData() {
+		data[k] = v
+	}
+	decl := "{"
+	for k := range data {
+		decl += k + ": any, "
+	}
+	decl += "}"
+	env, err := risor.NewEnv(risor.Declare(decl), risor.Limits{Steps: 100_000_000, Alloc: 100_000_000})
+	assert.NoError(t, err)
+	ctx := context.Background()
+	for _, c := range append(append([]benchCase{}, workflowCases...), heavyCases...) {
+		x, err := risor.Parse(c.src)
+		assert.NoError(t, err)
+		p, err := env.Compile(x)
+		assert.NoError(t, err, c.name)
+		want, wantUse, err := p.Measure(ctx, data)
+		assert.NoError(t, err, c.name)
+		wantText := fmt.Sprint(want)
+		errs := make(chan error, 16)
+		for g := 0; g < 16; g++ {
+			go func() {
+				for i := 0; i < 20; i++ {
+					got, use, err := p.Measure(ctx, data)
+					switch {
+					case err != nil:
+						errs <- err
+						return
+					case use != wantUse || fmt.Sprint(got) != wantText:
+						errs <- fmt.Errorf("%s: run %d differs: %v %v", c.name, i, use, wantUse)
+						return
+					}
+				}
+				errs <- nil
+			}()
+		}
+		for g := 0; g < 16; g++ {
+			assert.NoError(t, <-errs)
+		}
 	}
 }

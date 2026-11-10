@@ -3,6 +3,8 @@ package eval
 import (
 	"context"
 	"fmt"
+	"math"
+	"sync"
 	"time"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
@@ -38,12 +40,17 @@ type Program struct {
 	file   *syntax.File
 	root   code
 	nslots int
+	nvars  int // the variables the program reads, numbered densely
+	pool   sync.Pool
 }
 
 type lambdaCode struct {
 	params  []paramCode
 	body    code
 	nparams int
+	// simple holds the slot of each parameter (-1 for none) when every
+	// parameter is a name without a default; then a bind is one store.
+	simple []int
 }
 
 type paramCode func(r *run, v any, present bool)
@@ -51,33 +58,48 @@ type paramCode func(r *run, v any, present bool)
 type binder func(r *run, v any)
 
 func (l *lambdaCode) invoke(r *run, args []any) any {
-	for i, p := range l.params {
+	for i := 0; i < l.nparams; i++ {
 		if i < len(args) {
-			p(r, args[i], true)
+			l.bind(r, i, args[i], true)
 		} else {
-			p(r, nil, false)
+			l.bind(r, i, nil, false)
 		}
 	}
 	return l.body(r)
 }
+
+// bind binds parameter i.
+func (l *lambdaCode) bind(r *run, i int, v any, present bool) {
+	if l.simple == nil {
+		l.bindSlow(r, i, v, present)
+		return
+	}
+	if s := l.simple[i]; s >= 0 {
+		r.slots[s] = v
+	}
+}
+
+//go:noinline
+func (l *lambdaCode) bindSlow(r *run, i int, v any, present bool) { l.params[i](r, v, present) }
 
 type compiler struct {
 	cfg      *Config
 	res      *static.Result
 	lambdas  map[*syntax.Lambda]*lambdaCode
 	lamDepth int
+	vars     map[int]int // variable index to the program's dense index
 }
 
 // Compile compiles a program whose static rules found nothing.
 func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *Config) (p *Program, err error) {
-	c := &compiler{cfg: cfg, res: res, lambdas: map[*syntax.Lambda]*lambdaCode{}}
+	c := &compiler{cfg: cfg, res: res, lambdas: map[*syntax.Lambda]*lambdaCode{}, vars: map[int]int{}}
 	defer func() {
 		if x := recover(); x != nil {
 			err = fmt.Errorf("compile: %v", x)
 		}
 	}()
 	root := c.block(prog.Consts, prog.Result)
-	return &Program{cfg: cfg, file: file, root: root, nslots: res.NSlots}, nil
+	return &Program{cfg: cfg, file: file, root: root, nslots: res.NSlots, nvars: len(c.vars)}, nil
 }
 
 // Run runs the program. It returns the value or one run diagnostic, and the
@@ -86,24 +108,61 @@ func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	lim := p.cfg.Limits
-	r := &run{
-		prog: p, ctx: ctx, vars: vars,
-		slots:    make([]any, p.nslots),
-		varVals:  make([]any, len(p.cfg.VarNames)),
-		varSeen:  make([]bool, len(p.cfg.VarNames)),
-		maxSteps: lim.Steps, maxUnits: lim.Alloc, maxDepth: lim.Depth,
-	}
-	if lim.Timeout > 0 {
-		r.deadline = time.Now().Add(lim.Timeout)
+	r := p.getRun()
+	r.ctx, r.vars = ctx, vars
+	if t := p.cfg.Limits.Timeout; t > 0 {
+		r.deadline = time.Now().Add(t)
 	}
 	v, f := r.protectAll(p.root)
 	usage = Usage{Steps: r.steps, Alloc: r.units}
+	p.putRun(r)
 	if f != nil {
 		dd := f.diagnostic(p.file)
 		return nil, usage, &dd
 	}
 	return v, usage, nil
+}
+
+// getRun gives a run state from the program's pool, or a new one. A run
+// state is used by one run at a time; the pool makes a program that runs
+// many times allocate no state per run.
+func (p *Program) getRun() *run {
+	if x, ok := p.pool.Get().(*run); ok {
+		return x
+	}
+	lim := p.cfg.Limits
+	r := &run{
+		prog:     p,
+		slots:    make([]any, p.nslots),
+		varVals:  make([]any, p.nvars),
+		varSeen:  make([]bool, p.nvars),
+		maxSteps: lim.Steps, maxUnits: lim.Alloc, maxDepth: lim.Depth,
+		unitEdge: lim.Alloc,
+	}
+	if lim.Alloc < 0 {
+		r.unitEdge = math.MaxInt64
+	}
+	r.setStepEdge()
+	return r
+}
+
+// putRun clears a run state of the run's values and returns it to the pool.
+// The clearing is bounded by the program's size and the depth limit, not by
+// host data.
+func (p *Program) putRun(r *run) {
+	r.ctx, r.vars, r.pending = nil, nil, nil
+	clear(r.slots)
+	clear(r.varVals)
+	clear(r.varSeen)
+	clear(r.args[:cap(r.args)])
+	r.args = r.args[:0]
+	clear(r.lcs)
+	r.lcTop = 0
+	r.strs = nil
+	r.steps, r.units, r.depth, r.walk = 0, 0, 0, 0
+	r.deadline = time.Time{}
+	r.setStepEdge()
+	p.pool.Put(r)
 }
 
 // protectAll is protect that also turns a Go panic into internal-error.
@@ -157,7 +216,13 @@ func (c *compiler) lambda(l *syntax.Lambda) *lambdaCode {
 	c.lamDepth = l.Depth()
 	defer func() { c.lamDepth = saved }()
 	lc := &lambdaCode{nparams: len(l.Params)}
+	simple := make([]int, 0, len(l.Params))
 	for _, p := range l.Params {
+		if np, ok := p.Pattern.(*syntax.NamePat); ok && p.Default == nil && simple != nil {
+			simple = append(simple, c.slot(np))
+		} else {
+			simple = nil
+		}
 		var def code
 		if p.Default != nil {
 			def = c.expr(p.Default)
@@ -170,6 +235,7 @@ func (c *compiler) lambda(l *syntax.Lambda) *lambdaCode {
 			bind(r, v)
 		})
 	}
+	lc.simple = simple
 	lc.body = c.expr(l.Body)
 	return lc
 }
@@ -388,7 +454,12 @@ func (c *compiler) ident(n *syntax.Ident) code {
 		s := b.Slot
 		return func(r *run) any { return r.slots[s] }
 	case static.EnvVar:
-		i, name, sp := b.Var, b.Name, n.Span()
+		i, ok := c.vars[b.Var]
+		if !ok {
+			i = len(c.vars)
+			c.vars[b.Var] = i
+		}
+		name, sp := b.Name, n.Span()
 		return func(r *run) any {
 			if !r.varSeen[i] {
 				v, ok := r.vars.Var(name)
@@ -504,7 +575,7 @@ func (c *compiler) try(n *syntax.Try) code {
 		slot = c.slot(n)
 	}
 	return func(r *run) any {
-		depth, walk := r.depth, r.walk
+		depth, walk, nargs, lcTop := r.depth, r.walk, len(r.args), r.lcTop
 		v, f := r.protect(body)
 		if f == nil {
 			return v
@@ -512,7 +583,8 @@ func (c *compiler) try(n *syntax.Try) code {
 		if !messages.Caught(f.code) {
 			r.raise(f)
 		}
-		r.depth, r.walk = depth, walk
+		r.depth, r.walk, r.lcTop = depth, walk, lcTop
+		r.popArgs(nargs)
 		if named {
 			var msg string
 			var steps, units int64

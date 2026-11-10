@@ -3,6 +3,7 @@ package eval
 import (
 	"math"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -18,6 +19,7 @@ import (
 // *lambdaCode.
 type libCall struct {
 	e       *library.Entry
+	info    *entryInfo
 	recv    any
 	args    []any
 	span    syntax.Span
@@ -47,7 +49,7 @@ func RegistryKeys() []string {
 }
 
 func (r *run) runEntry(c *libCall) any {
-	f := implemented[Key(c.e)]
+	f := c.info.impl
 	if f == nil {
 		r.raise(&failure{code: "internal-error", span: c.span, hasSpan: true})
 	}
@@ -122,13 +124,180 @@ func (f *fenv) Walk(string) int64         { return f.walkSteps }
 // steps charges the rest of the steps formula: the whole formula less what
 // the entry already charged (its callbacks' 2 steps for each element, or the
 // rendering walk).
-func (r *run) libSteps(c *libCall, f *fenv, done int64) {
-	r.step(c.e.StepsF.Eval(f) - done)
+//
+// The sizes are passed by value and evaluated through the run's one fenv,
+// so a charge allocates nothing. A formula calls no callback, so one fenv
+// serves every call.
+func (r *run) libSteps(c *libCall, f fenv, done int64) {
+	if q := &c.info.steps; q.kind != 0 {
+		r.step(q.eval(c, &f) - done)
+		return
+	}
+	r.fe = f
+	r.step(c.e.StepsF.Eval(&r.fe) - done)
 }
 
-func (r *run) libUnits(c *libCall, f *fenv) { r.unit(c.e.UnitsF.Eval(f)) }
+func (r *run) libUnits(c *libCall, f fenv) {
+	if q := &c.info.units; q.kind != 0 {
+		r.unit(q.eval(c, &f))
+		return
+	}
+	r.fe = f
+	r.unit(c.e.UnitsF.Eval(&r.fe))
+}
 
-func (r *run) charge(c *libCall, f *fenv) {
+// quickFormula is a formula of one of the common shapes, evaluated without
+// the formula tree, to the same value (04-library.md 4.3).
+type quickFormula struct {
+	kind   uint8 // 0 for none
+	c0, c1 int64
+	sym    byte
+	arg    int
+}
+
+const (
+	qConst = 1 + iota
+	qSzRecv
+	qSzArg
+	qLinear // c0 + c1*sym; c0 < 0 when there is no addition
+)
+
+var (
+	qSzRe  = regexp.MustCompile(`^sz\(([a-z]+)\)$`)
+	qLinRe = regexp.MustCompile(`^(?:(\d+) \+ )?(?:(\d+)\*)?([nkv])$`)
+)
+
+func newQuick(e *library.Entry, text string, f *library.Formula) quickFormula {
+	if f == nil {
+		return quickFormula{}
+	}
+	text = strings.TrimSpace(text)
+	if n, err := strconv.ParseInt(text, 10, 64); err == nil {
+		return quickFormula{kind: qConst, c0: n}
+	}
+	if m := qSzRe.FindStringSubmatch(text); m != nil {
+		switch m[1] {
+		case "s":
+			return quickFormula{kind: qSzRecv}
+		case "result", "elements", "keys", "arguments":
+			return quickFormula{}
+		}
+		for i, p := range e.Params {
+			if p.Name == m[1] {
+				return quickFormula{kind: qSzArg, arg: i}
+			}
+		}
+		return quickFormula{}
+	}
+	if m := qLinRe.FindStringSubmatch(text); m != nil {
+		q := quickFormula{kind: qLinear, c0: -1, c1: 1, sym: m[3][0]}
+		if m[1] != "" {
+			q.c0, _ = strconv.ParseInt(m[1], 10, 64)
+		}
+		if m[2] != "" {
+			q.c1, _ = strconv.ParseInt(m[2], 10, 64)
+		}
+		return q
+	}
+	return quickFormula{}
+}
+
+func (q *quickFormula) eval(c *libCall, f *fenv) int64 {
+	switch q.kind {
+	case qConst:
+		return q.c0
+	case qSzRecv:
+		if s, ok := c.recv.(string); ok {
+			return value.Weight(s) / 64
+		}
+		return 0
+	case qSzArg:
+		if q.arg < len(c.args) {
+			if s, ok := c.args[q.arg].(string); ok {
+				return value.Weight(s) / 64
+			}
+		}
+		return 0
+	}
+	var y int64
+	switch q.sym {
+	case 'n':
+		y = f.n
+	case 'k':
+		y = f.k
+	default:
+		y = f.v
+	}
+	if q.c1 != 1 {
+		if q.c1 != 0 && y > (1<<62)/q.c1 {
+			y = 1 << 62
+		} else {
+			y = q.c1 * y
+		}
+	}
+	if q.c0 < 0 {
+		return y
+	}
+	x := q.c0 + y
+	if x > 1<<62 || x < 0 {
+		return 1 << 62
+	}
+	return x
+}
+
+// entryInfo is what a call of an entry needs, found once: the
+// implementation, the argument tests with the kinds as an array, and the
+// formulas that are a constant.
+type entryInfo struct {
+	impl         libFunc
+	params       []paramInfo
+	rest         bool // the last parameter takes the rest
+	minmax       bool
+	steps, units quickFormula
+}
+
+type paramInfo struct {
+	test  bool
+	kinds [value.OpaqueKind + 1]bool
+	whole bool
+}
+
+var infos = func() map[*library.Entry]*entryInfo {
+	m := map[*library.Entry]*entryInfo{}
+	for _, e := range library.Entries {
+		m[e] = newInfo(e)
+	}
+	return m
+}()
+
+// infoOf gives the information of an entry.
+func infoOf(e *library.Entry) *entryInfo {
+	if in, ok := infos[e]; ok {
+		return in
+	}
+	return newInfo(e)
+}
+
+func newInfo(e *library.Entry) *entryInfo {
+	in := &entryInfo{impl: implemented[Key(e)], minmax: !e.IsMethod() && (e.Name == "min" || e.Name == "max")}
+	for _, p := range e.Params {
+		pi := paramInfo{test: p.Callback < 0 && !p.Any, whole: p.Whole}
+		for k, ok := range p.Kinds {
+			if ok && int(k) < len(pi.kinds) {
+				pi.kinds[k] = true
+			}
+		}
+		in.params = append(in.params, pi)
+	}
+	if n := len(e.Params); n > 0 && e.Params[n-1].Rest {
+		in.rest = true
+	}
+	in.steps = newQuick(e, e.Steps, e.StepsF)
+	in.units = newQuick(e, e.Units, e.UnitsF)
+	return in
+}
+
+func (r *run) charge(c *libCall, f fenv) {
 	r.libSteps(c, f, 0)
 	r.libUnits(c, f)
 }
@@ -136,22 +305,30 @@ func (r *run) charge(c *libCall, f *fenv) {
 // testArgs makes the tests of 04-library.md 2.6: each argument left to
 // right, the kind before the whole number (ruling AC6). They charge nothing.
 func (r *run) testArgs(c *libCall) {
-	name := messages.Word("name", c.e.Name)
-	if !c.e.IsMethod() && (c.e.Name == "min" || c.e.Name == "max") {
+	in := c.info
+	if in.minmax {
 		// The ordered test over the arguments (3.6, AC5): no charge.
 		r.ordered(c, len(c.args), func(i int) any { return c.args[i] }, false)
 		return
 	}
 	for i, v := range c.args {
-		p := c.e.ParamAt(i)
-		if p == nil || p.Callback >= 0 || p.Any {
+		var p *paramInfo
+		switch {
+		case i < len(in.params):
+			p = &in.params[i]
+		case in.rest:
+			p = &in.params[len(in.params)-1]
+		default:
+			continue
+		}
+		if !p.test {
 			continue
 		}
 		k := value.KindOf(v)
-		if !p.Kinds[k] {
-			r.raise(fail("wrong-kind", "argument", c.span, name, messages.Val("kind", v)))
+		if !p.kinds[k] {
+			r.raise(fail("wrong-kind", "argument", c.span, messages.Word("name", c.e.Name), messages.Val("kind", v)))
 		}
-		if p.Whole && k == value.Number && !whole(v.(float64)) {
+		if p.whole && k == value.Number && !whole(v.(float64)) {
 			r.raise(fail("wrong-kind", "whole", c.span, messages.Val("found", v)))
 		}
 	}
@@ -188,15 +365,51 @@ func (r *run) elemFail(tested int, f *failure) {
 
 // callback calls a lambda for one element: 2 steps, the depth test, the
 // call (04-library.md 4.4).
-func (r *run) callback(c *libCall, lam *lambdaCode, args ...any) any {
+// The index i is made a value only when the lambda has a parameter for it.
+func (r *run) callback(c *libCall, lam *lambdaCode, e any, i int) any {
 	r.step(2)
 	r.enterCall(c.measure)
-	v := lam.invoke(r, args)
+	if lam.nparams > 0 {
+		lam.bind(r, 0, e, true)
+	}
+	if lam.nparams > 1 {
+		lam.bind(r, 1, numBox(float64(i)), true)
+		for k := 2; k < lam.nparams; k++ {
+			lam.bind(r, k, nil, false)
+		}
+	}
+	v := lam.body(r)
 	r.depth -= c.measure
 	return v
 }
 
-func (c *libCall) elem(r *run, i int) any { return r.read(value.At(c.recv, i), c.span) }
+// callback2 is callback with two values before the index, for reduce.
+func (r *run) callback2(c *libCall, lam *lambdaCode, a, e any, i int) any {
+	r.step(2)
+	r.enterCall(c.measure)
+	if lam.nparams > 0 {
+		lam.bind(r, 0, a, true)
+	}
+	if lam.nparams > 1 {
+		lam.bind(r, 1, e, true)
+	}
+	if lam.nparams > 2 {
+		lam.bind(r, 2, numBox(float64(i)), true)
+		for k := 3; k < lam.nparams; k++ {
+			lam.bind(r, k, nil, false)
+		}
+	}
+	v := lam.body(r)
+	r.depth -= c.measure
+	return v
+}
+
+func (c *libCall) elem(r *run, i int) any {
+	if xs, ok := c.recv.([]any); ok {
+		return r.read(xs[i], c.span)
+	}
+	return r.read(value.At(c.recv, i), c.span)
+}
 
 func (c *libCall) n() int { return value.Len(c.recv) }
 
@@ -459,15 +672,15 @@ var implemented = map[string]libFunc{
 	// 5.1 Conversion, inspection and errors.
 	"len": func(r *run, c *libCall) any {
 		x := c.args[0]
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		if s, ok := x.(string); ok {
-			return float64(utf8.RuneCountInString(s))
+			return numBox(float64(utf8.RuneCountInString(s)))
 		}
-		return float64(value.Len(x))
+		return numBox(float64(value.Len(x)))
 	},
 	"string": func(r *run, c *libCall) any {
 		x := c.args[0]
-		f := &fenv{c: c}
+		f := fenv{c: c}
 		if s, ok := x.(string); ok {
 			r.charge(c, f)
 			return s
@@ -483,7 +696,7 @@ var implemented = map[string]libFunc{
 		return s
 	},
 	"int": func(r *run, c *libCall) any {
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		v, ok := c.args[0].(float64)
 		if !ok {
 			v = r.readNumber(c, c.args[0].(string))
@@ -495,7 +708,7 @@ var implemented = map[string]libFunc{
 		return zero(t)
 	},
 	"float": func(r *run, c *libCall) any {
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		if v, ok := c.args[0].(float64); ok {
 			return v
 		}
@@ -513,7 +726,7 @@ var implemented = map[string]libFunc{
 	},
 
 	// 5.2 Numbers.
-	"abs": func(r *run, c *libCall) any { r.charge(c, &fenv{c: c}); return zero(math.Abs(c.args[0].(float64))) },
+	"abs": func(r *run, c *libCall) any { r.charge(c, fenv{c: c}); return zero(math.Abs(c.args[0].(float64))) },
 	"floor": func(r *run, c *libCall) any {
 		return r.toWhole(c, math.Floor(c.args[0].(float64)))
 	},
@@ -534,7 +747,7 @@ var implemented = map[string]libFunc{
 		if b > a {
 			k = int64(b - a)
 		}
-		r.charge(c, &fenv{c: c, k: k})
+		r.charge(c, fenv{c: c, k: k})
 		out := make([]any, k)
 		for i := range out {
 			out[i] = zero(a + float64(i))
@@ -549,17 +762,17 @@ var implemented = map[string]libFunc{
 		if math.Abs(x) >= 1e21 {
 			r.invalid(c, "too-large", messages.Val("x", x))
 		}
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		return fixed(x, int(d))
 	},
 
 	// 5.3 Strings.
 	"string.toUpperCase": func(r *run, c *libCall) any {
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		return casemap.Upper(c.recv.(string))
 	},
 	"string.toLowerCase": func(r *run, c *libCall) any {
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		return casemap.Lower(c.recv.(string))
 	},
 	"string.trim": func(r *run, c *libCall) any {
@@ -572,11 +785,11 @@ var implemented = map[string]libFunc{
 		return r.substring(c, strings.TrimSuffix(c.recv.(string), c.args[0].(string)))
 	},
 	"string.startsWith": func(r *run, c *libCall) any {
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		return strings.HasPrefix(c.recv.(string), c.args[0].(string))
 	},
 	"string.endsWith": func(r *run, c *libCall) any {
-		r.charge(c, &fenv{c: c})
+		r.charge(c, fenv{c: c})
 		return strings.HasSuffix(c.recv.(string), c.args[0].(string))
 	},
 	"string.split": func(r *run, c *libCall) any {
@@ -587,7 +800,7 @@ var implemented = map[string]libFunc{
 		} else {
 			p = occurrences(s, sep, nil) + 1
 		}
-		r.charge(c, &fenv{c: c, p: int64(p)})
+		r.charge(c, fenv{c: c, p: int64(p)})
 		out := make([]any, 0, p)
 		if sep == "" {
 			for _, cp := range s {
@@ -608,7 +821,7 @@ var implemented = map[string]libFunc{
 			r.invalid(c, "empty-search")
 		}
 		n := int64(occurrences(s, old, nil))
-		f := &fenv{c: c, resultW: value.Weight(s) + n*(value.Weight(nw)-value.Weight(old))}
+		f := fenv{c: c, resultW: value.Weight(s) + n*(value.Weight(nw)-value.Weight(old))}
 		r.charge(c, f)
 		var b strings.Builder
 		b.Grow(len(s) + int(n)*(len(nw)-len(old)))
@@ -633,7 +846,7 @@ var implemented = map[string]libFunc{
 		if n < 0 {
 			r.invalid(c, "negative-count", messages.Val("count", n))
 		}
-		r.charge(c, &fenv{c: c, resultW: satMul(int64(n), value.Weight(s))})
+		r.charge(c, fenv{c: c, resultW: satMul(int64(n), value.Weight(s))})
 		return strings.Repeat(s, int(n))
 	},
 	"string.padStart": func(r *run, c *libCall) any { return r.pad(c, true) },
@@ -645,11 +858,11 @@ var implemented = map[string]libFunc{
 		out := []any{}
 		for i := 0; i < n; i++ {
 			e := c.elem(r, i)
-			if value.Truthy(r.callback(c, lam, e, float64(i))) {
+			if value.Truthy(r.callback(c, lam, e, i)) {
 				out = append(out, e)
 			}
 		}
-		f := &fenv{c: c, n: int64(n), k: int64(len(out))}
+		f := fenv{c: c, n: int64(n), k: int64(len(out))}
 		r.libSteps(c, f, 2*int64(n))
 		r.libUnits(c, f)
 		return out
@@ -658,9 +871,9 @@ var implemented = map[string]libFunc{
 		lam, n := c.args[0].(*lambdaCode), c.n()
 		out := make([]any, n)
 		for i := 0; i < n; i++ {
-			out[i] = r.callback(c, lam, c.elem(r, i), float64(i))
+			out[i] = r.callback(c, lam, c.elem(r, i), i)
 		}
-		f := &fenv{c: c, n: int64(n)}
+		f := fenv{c: c, n: int64(n)}
 		r.libSteps(c, f, 2*int64(n))
 		r.libUnits(c, f)
 		return out
@@ -670,14 +883,14 @@ var implemented = map[string]libFunc{
 		var parts []any
 		k := 0
 		for i := 0; i < n; i++ {
-			v := r.callback(c, lam, c.elem(r, i), float64(i))
+			v := r.callback(c, lam, c.elem(r, i), i)
 			if value.KindOf(v) != value.List {
 				r.raise(fail("wrong-kind", "result", c.span, messages.Word("name", c.e.Name), messages.Val("kind", v)))
 			}
 			parts = append(parts, v)
 			k += value.Len(v)
 		}
-		f := &fenv{c: c, n: int64(n), k: int64(k)}
+		f := fenv{c: c, n: int64(n), k: int64(k)}
 		r.libSteps(c, f, 2*int64(n))
 		r.libUnits(c, f)
 		out := make([]any, 0, k)
@@ -689,46 +902,46 @@ var implemented = map[string]libFunc{
 		return out
 	},
 	"list.some": func(r *run, c *libCall) any {
-		lam := c.args[0].(*lambdaCode)
-		for i := 0; i < c.n(); i++ {
-			if value.Truthy(r.callback(c, lam, c.elem(r, i), float64(i))) {
+		lam, n := c.args[0].(*lambdaCode), c.n()
+		for i := 0; i < n; i++ {
+			if value.Truthy(r.callback(c, lam, c.elem(r, i), i)) {
 				return true
 			}
 		}
 		return false
 	},
 	"list.every": func(r *run, c *libCall) any {
-		lam := c.args[0].(*lambdaCode)
-		for i := 0; i < c.n(); i++ {
-			if !value.Truthy(r.callback(c, lam, c.elem(r, i), float64(i))) {
+		lam, n := c.args[0].(*lambdaCode), c.n()
+		for i := 0; i < n; i++ {
+			if !value.Truthy(r.callback(c, lam, c.elem(r, i), i)) {
 				return false
 			}
 		}
 		return true
 	},
 	"list.find": func(r *run, c *libCall) any {
-		lam := c.args[0].(*lambdaCode)
-		for i := 0; i < c.n(); i++ {
+		lam, n := c.args[0].(*lambdaCode), c.n()
+		for i := 0; i < n; i++ {
 			e := c.elem(r, i)
-			if value.Truthy(r.callback(c, lam, e, float64(i))) {
+			if value.Truthy(r.callback(c, lam, e, i)) {
 				return e
 			}
 		}
 		return nil
 	},
 	"list.count": func(r *run, c *libCall) any {
-		lam, k := c.args[0].(*lambdaCode), 0
-		for i := 0; i < c.n(); i++ {
-			if value.Truthy(r.callback(c, lam, c.elem(r, i), float64(i))) {
+		lam, k, n := c.args[0].(*lambdaCode), 0, c.n()
+		for i := 0; i < n; i++ {
+			if value.Truthy(r.callback(c, lam, c.elem(r, i), i)) {
 				k++
 			}
 		}
-		return float64(k)
+		return numBox(float64(k))
 	},
 	"list.reduce": func(r *run, c *libCall) any {
-		lam, acc := c.args[0].(*lambdaCode), c.args[1]
-		for i := 0; i < c.n(); i++ {
-			acc = r.callback(c, lam, acc, c.elem(r, i), float64(i))
+		lam, acc, n := c.args[0].(*lambdaCode), c.args[1], c.n()
+		for i := 0; i < n; i++ {
+			acc = r.callback2(c, lam, acc, c.elem(r, i), i)
 		}
 		return acc
 	},
@@ -743,7 +956,7 @@ var implemented = map[string]libFunc{
 			}
 			vals[i] = x
 		}
-		r.charge(c, &fenv{c: c, n: int64(n)})
+		r.charge(c, fenv{c: c, n: int64(n)})
 		total := 0.0
 		for _, x := range vals {
 			if whole(total) && whole(x) {
@@ -765,7 +978,7 @@ var implemented = map[string]libFunc{
 	"list.max": func(r *run, c *libCall) any { return r.pickList(c, false) },
 	"list.sort": func(r *run, c *libCall) any {
 		vals := r.orderedElems(c)
-		r.charge(c, &fenv{c: c, n: int64(len(vals)), elemsW: strW(vals)})
+		r.charge(c, fenv{c: c, n: int64(len(vals)), elemsW: strW(vals)})
 		idx := make([]int, len(vals))
 		for i := range idx {
 			idx[i] = i
@@ -782,10 +995,10 @@ var implemented = map[string]libFunc{
 		elems, keys := make([]any, n), make([]any, n)
 		for i := 0; i < n; i++ {
 			elems[i] = c.elem(r, i)
-			keys[i] = r.callback(c, lam, elems[i], float64(i))
+			keys[i] = r.callback(c, lam, elems[i], i)
 		}
 		r.ordered(c, n, func(i int) any { return keys[i] }, false)
-		f := &fenv{c: c, n: int64(n), keysW: strW(keys)}
+		f := fenv{c: c, n: int64(n), keysW: strW(keys)}
 		r.libSteps(c, f, 2*int64(n))
 		r.libUnits(c, f)
 		idx := make([]int, n)
@@ -805,7 +1018,7 @@ var implemented = map[string]libFunc{
 		var w int64
 		for i := 0; i < n; i++ {
 			e := c.elem(r, i)
-			k := r.callback(c, lam, e, float64(i))
+			k := r.callback(c, lam, e, i)
 			ks, ok := k.(string)
 			if !ok {
 				r.raise(fail("wrong-kind", "result", c.span, messages.Word("name", c.e.Name), messages.Val("kind", k)))
@@ -813,7 +1026,7 @@ var implemented = map[string]libFunc{
 			w += value.Weight(ks)
 			groups[ks] = append(groups[ks], e)
 		}
-		f := &fenv{c: c, n: int64(n), g: int64(len(groups)), keysW: w}
+		f := fenv{c: c, n: int64(n), g: int64(len(groups)), keysW: w}
 		r.libSteps(c, f, 2*int64(n))
 		r.libUnits(c, f)
 		out := make(map[string]any, len(groups))
@@ -848,7 +1061,7 @@ var implemented = map[string]libFunc{
 			keys[i], vals[i] = ks, v
 			w += value.Weight(ks)
 		}
-		r.charge(c, &fenv{c: c, n: int64(n), keysW: w})
+		r.charge(c, fenv{c: c, n: int64(n), keysW: w})
 		out := make(map[string]any, n)
 		for i, k := range keys {
 			out[k] = vals[i]
@@ -857,7 +1070,7 @@ var implemented = map[string]libFunc{
 	},
 	"list.unique": func(r *run, c *libCall) any {
 		vals := r.orderedElems(c)
-		r.libSteps(c, &fenv{c: c, n: int64(len(vals)), elemsW: strW(vals)}, 0)
+		r.libSteps(c, fenv{c: c, n: int64(len(vals)), elemsW: strW(vals)}, 0)
 		seen := make(map[any]bool, len(vals))
 		out := []any{}
 		for _, v := range vals {
@@ -866,7 +1079,7 @@ var implemented = map[string]libFunc{
 				out = append(out, v)
 			}
 		}
-		r.libUnits(c, &fenv{c: c, n: int64(len(vals)), k: int64(len(out))})
+		r.libUnits(c, fenv{c: c, n: int64(len(vals)), k: int64(len(out))})
 		return out
 	},
 	"list.flat": func(r *run, c *libCall) any {
@@ -880,7 +1093,7 @@ var implemented = map[string]libFunc{
 			lists[i] = e
 			k += value.Len(e)
 		}
-		r.charge(c, &fenv{c: c, n: int64(n), k: int64(k)})
+		r.charge(c, fenv{c: c, n: int64(n), k: int64(k)})
 		out := make([]any, 0, k)
 		for _, l := range lists {
 			for j := 0; j < value.Len(l); j++ {
@@ -891,7 +1104,7 @@ var implemented = map[string]libFunc{
 	},
 	"list.reverse": func(r *run, c *libCall) any {
 		n := c.n()
-		r.charge(c, &fenv{c: c, n: int64(n)})
+		r.charge(c, fenv{c: c, n: int64(n)})
 		out := make([]any, n)
 		for i := 0; i < n; i++ {
 			out[i] = value.At(c.recv, n-1-i)
@@ -899,7 +1112,7 @@ var implemented = map[string]libFunc{
 		return out
 	},
 	"list.first": func(r *run, c *libCall) any {
-		r.charge(c, &fenv{c: c, n: int64(c.n())})
+		r.charge(c, fenv{c: c, n: int64(c.n())})
 		if c.n() == 0 {
 			return nil
 		}
@@ -907,7 +1120,7 @@ var implemented = map[string]libFunc{
 	},
 	"list.last": func(r *run, c *libCall) any {
 		n := c.n()
-		r.charge(c, &fenv{c: c, n: int64(n)})
+		r.charge(c, fenv{c: c, n: int64(n)})
 		if n == 0 {
 			return nil
 		}
@@ -916,7 +1129,7 @@ var implemented = map[string]libFunc{
 	"list.slice": func(r *run, c *libCall) any {
 		n := c.n()
 		start, end := c.sliceBounds(n)
-		r.charge(c, &fenv{c: c, n: int64(n), k: int64(end - start)})
+		r.charge(c, fenv{c: c, n: int64(n), k: int64(end - start)})
 		out := make([]any, end-start)
 		for i := range out {
 			out[i] = value.At(c.recv, start+i)
@@ -939,7 +1152,7 @@ var implemented = map[string]libFunc{
 		if n > 1 {
 			w += int64(n-1) * value.Weight(sep)
 		}
-		r.charge(c, &fenv{c: c, n: int64(n), resultW: w})
+		r.charge(c, fenv{c: c, n: int64(n), resultW: w})
 		return strings.Join(parts, sep)
 	},
 
@@ -972,7 +1185,7 @@ var implemented = map[string]libFunc{
 }
 
 func (r *run) toWhole(c *libCall, f float64) any {
-	r.charge(c, &fenv{c: c})
+	r.charge(c, fenv{c: c})
 	if !whole(f) {
 		r.entryRange(c)
 	}
@@ -981,7 +1194,7 @@ func (r *run) toWhole(c *libCall, f float64) any {
 
 // pick is the functions min and max: the first least or greatest argument.
 func (r *run) pick(c *libCall, vals []any, min bool) any {
-	r.charge(c, &fenv{c: c})
+	r.charge(c, fenv{c: c})
 	best := vals[0]
 	for _, v := range vals[1:] {
 		if (min && less(v, best)) || (!min && less(best, v)) {
@@ -1003,7 +1216,7 @@ func (r *run) orderedElems(c *libCall) []any {
 
 func (r *run) pickList(c *libCall, min bool) any {
 	vals := r.orderedElems(c)
-	r.charge(c, &fenv{c: c, n: int64(len(vals)), elemsW: strW(vals)})
+	r.charge(c, fenv{c: c, n: int64(len(vals)), elemsW: strW(vals)})
 	if len(vals) == 0 {
 		return nil
 	}
@@ -1017,7 +1230,7 @@ func (r *run) pickList(c *libCall, min bool) any {
 }
 
 func (r *run) substring(c *libCall, s string) any {
-	r.charge(c, &fenv{c: c, resultW: value.Weight(s)})
+	r.charge(c, fenv{c: c, resultW: value.Weight(s)})
 	return s
 }
 
@@ -1036,7 +1249,7 @@ func (r *run) pad(c *libCall, start bool) any {
 	fr := int64(utf8.RuneCountInString(fill))
 	fw := value.Weight(fill)
 	w := value.Weight(s) + satMul(m/fr, fw) + runePrefixW(fill, int(m%fr))
-	r.charge(c, &fenv{c: c, resultW: w})
+	r.charge(c, fenv{c: c, resultW: w})
 	var b strings.Builder
 	padding := strings.Repeat(fill, int(m/fr))
 	rem := fill[:byteIndex(fill, int(m%fr))]
@@ -1055,7 +1268,7 @@ func (r *run) sortedKeys(c *libCall) []string {
 	n := value.Len(c.recv)
 	var w int64
 	value.ForEachKey(c.recv, func(k string) { w += value.Weight(k) })
-	r.charge(c, &fenv{c: c, n: int64(n), keysW: w})
+	r.charge(c, fenv{c: c, n: int64(n), keysW: w})
 	return value.Keys(c.recv)
 }
 

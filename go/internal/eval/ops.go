@@ -47,9 +47,136 @@ func (c *compiler) unary(n *syntax.Unary) code {
 }
 
 type binStep struct {
-	op   string
-	y    code
-	span syntax.Span
+	logic uint8 // 0, or one of logicAnd, logicOr, logicNull
+	fn    binFn
+	y     code
+	k     any // the right operand when it is a number or string literal
+	span  syntax.Span
+}
+
+// literal gives the value of a number or string literal, or nil. Such an
+// operand charges nothing, so it is used without a call.
+func literal(n syntax.Node) any {
+	switch n := n.(type) {
+	case *syntax.Number:
+		return n.Value
+	case *syntax.String:
+		return n.Value
+	}
+	return nil
+}
+
+const (
+	logicAnd = 1 + iota
+	logicOr
+	logicNull
+)
+
+// binFn is one operator, chosen when the program is compiled.
+type binFn func(r *run, a, b any, sp syntax.Span) any
+
+// binFnFor gives the function of an operator: a fast path for two numbers
+// (or ==, != for any values), and binop for the rest. Both charge and fail
+// the same way.
+func binFnFor(op string) binFn {
+	switch op {
+	case "==":
+		return func(r *run, a, b any, sp syntax.Span) any { return r.equal(a, b, sp) }
+	case "!=":
+		return func(r *run, a, b any, sp syntax.Span) any { return !r.equal(a, b, sp) }
+	case "+":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok {
+					r.step(1)
+					return r.add(fa, fb, "+", sp)
+				}
+			} else if sa, ok := a.(string); ok {
+				if sb, ok := b.(string); ok {
+					sz := (value.Weight(sa) + value.Weight(sb)) / 64
+					r.step(1 + sz)
+					r.unit(1 + sz)
+					return sa + sb
+				}
+			}
+			return r.binop("+", a, b, sp)
+		}
+	case "-":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok {
+					r.step(1)
+					return r.add(fa, -fb, "-", sp)
+				}
+			}
+			return r.binop("-", a, b, sp)
+		}
+	case "*":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok {
+					r.step(1)
+					return r.mul(fa, fb, "*", sp)
+				}
+			}
+			return r.binop("*", a, b, sp)
+		}
+	case "in":
+		return func(r *run, a, b any, sp syntax.Span) any { return r.in(a, b, "in", sp) }
+	case "not-in":
+		return func(r *run, a, b any, sp syntax.Span) any { return !r.in(a, b, "not-in", sp) }
+	case "%":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok && fb != 0 && whole(fa) && whole(fb) {
+					r.step(1)
+					return numBox(float64(int64(fa) % int64(fb)))
+				}
+			}
+			return r.binop("%", a, b, sp)
+		}
+	case "<":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok {
+					r.step(1)
+					return fa < fb
+				}
+			}
+			return r.binop(op, a, b, sp)
+		}
+	case "<=":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok {
+					r.step(1)
+					return fa <= fb
+				}
+			}
+			return r.binop(op, a, b, sp)
+		}
+	case ">":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok {
+					r.step(1)
+					return fa > fb
+				}
+			}
+			return r.binop(op, a, b, sp)
+		}
+	case ">=":
+		return func(r *run, a, b any, sp syntax.Span) any {
+			if fa, ok := a.(float64); ok {
+				if fb, ok := b.(float64); ok {
+					r.step(1)
+					return fa >= fb
+				}
+			}
+			return r.binop(op, a, b, sp)
+		}
+	}
+	return func(r *run, a, b any, sp syntax.Span) any { return r.binop(op, a, b, sp) }
 }
 
 // binary compiles a left-associative chain of operators as one loop over its
@@ -69,29 +196,183 @@ func (c *compiler) binary(n *syntax.Binary) code {
 	steps := make([]binStep, len(spine))
 	for i := range spine {
 		b := spine[len(spine)-1-i]
-		steps[i] = binStep{op: b.Op, y: c.expr(b.Y), span: b.Span()}
+		st := binStep{y: c.expr(b.Y), k: literal(b.Y), span: b.Span()}
+		switch b.Op {
+		case "&&":
+			st.logic = logicAnd
+		case "||":
+			st.logic = logicOr
+		case "??":
+			st.logic = logicNull
+		default:
+			st.fn = binFnFor(b.Op)
+			if b.Op == "in" || b.Op == "not-in" {
+				if y := constList(b.Y); y != nil {
+					st.y = y
+				}
+			}
+		}
+		steps[i] = st
+	}
+	if len(steps) > 1 && allPlus(spine) {
+		return plusChain(base, steps)
+	}
+	if len(steps) == 1 && steps[0].logic == 0 {
+		fn, y, sp := steps[0].fn, steps[0].y, steps[0].span
+		// A name or a literal operand is read in place, without a call.
+		xs, xSlot := c.valueSlot(x)
+		ys, ySlot := c.valueSlot(spine[0].Y)
+		k := steps[0].k
+		switch {
+		case xSlot && k != nil:
+			return func(r *run) any { return fn(r, r.slots[xs], k, sp) }
+		case xSlot && ySlot:
+			return func(r *run) any { return fn(r, r.slots[xs], r.slots[ys], sp) }
+		case xSlot:
+			return func(r *run) any {
+				a := r.slots[xs]
+				return fn(r, a, y(r), sp)
+			}
+		case k != nil:
+			return func(r *run) any { return fn(r, base(r), k, sp) }
+		case ySlot:
+			return func(r *run) any { return fn(r, base(r), r.slots[ys], sp) }
+		}
+		return func(r *run) any {
+			a := base(r)
+			return fn(r, a, y(r), sp)
+		}
+	}
+	if len(steps) == 2 && steps[0].logic == 0 && steps[1].logic == 0 && steps[0].k != nil && steps[1].k != nil {
+		f0, k0, sp0 := steps[0].fn, steps[0].k, steps[0].span
+		f1, k1, sp1 := steps[1].fn, steps[1].k, steps[1].span
+		return func(r *run) any { return f1(r, f0(r, base(r), k0, sp0), k1, sp1) }
 	}
 	return func(r *run) any {
 		v := base(r)
-		for _, s := range steps {
-			switch s.op {
-			case "&&":
+		for i := range steps {
+			s := &steps[i]
+			switch s.logic {
+			case logicAnd:
 				if value.Truthy(v) {
 					v = s.y(r)
 				}
-			case "||":
+			case logicOr:
 				if !value.Truthy(v) {
 					v = s.y(r)
 				}
-			case "??":
+			case logicNull:
 				if v == nil {
 					v = s.y(r)
 				}
 			default:
-				v = r.binop(s.op, v, s.y(r), s.span)
+				if s.k != nil {
+					v = s.fn(r, v, s.k, s.span)
+				} else {
+					v = s.fn(r, v, s.y(r), s.span)
+				}
 			}
 		}
 		return v
+	}
+}
+
+func allPlus(spine []*syntax.Binary) bool {
+	for _, b := range spine {
+		if b.Op != "+" {
+			return false
+		}
+	}
+	return true
+}
+
+// plusChain is a chain of + whose run of string operands is joined once at
+// its end. Each + charges what binop charges, from the weights of its
+// operands, at the same point; an operand that is not a string first makes
+// the text so far, so a failure sees the same left operand.
+func plusChain(base code, steps []binStep) code {
+	return func(r *run) any {
+		v := base(r)
+		var parts [8]string
+		np := 0
+		var w int64 // weight of the text so far, while np > 0
+		flush := func() {
+			if np > 0 {
+				v = joinParts(parts[:np])
+				np = 0
+			}
+		}
+		for i := range steps {
+			st := &steps[i]
+			y := st.y(r)
+			if np > 0 {
+				if ys, ok := y.(string); ok && np < len(parts) {
+					wy := value.Weight(ys)
+					sz := (w + wy) / 64
+					r.step(1 + sz)
+					r.unit(1 + sz)
+					parts[np], w = ys, w+wy
+					np++
+					continue
+				}
+				flush()
+			} else if vs, ok := v.(string); ok {
+				if ys, ok := y.(string); ok {
+					wv, wy := value.Weight(vs), value.Weight(ys)
+					sz := (wv + wy) / 64
+					r.step(1 + sz)
+					r.unit(1 + sz)
+					parts[0], parts[1], np, w = vs, ys, 2, wv+wy
+					continue
+				}
+			}
+			v = st.fn(r, v, y, st.span)
+		}
+		flush()
+		return v
+	}
+}
+
+func joinParts(ps []string) string {
+	n := 0
+	for _, p := range ps {
+		n += len(p)
+	}
+	var b strings.Builder
+	b.Grow(n)
+	for _, p := range ps {
+		b.WriteString(p)
+	}
+	return b.String()
+}
+
+// constList compiles a list literal of literals on the right of in. The
+// operator only reads the list and does not keep it, so the run uses one list
+// made at compile time; it charges the units of the literal as before.
+func constList(n syntax.Node) code {
+	l, ok := n.(*syntax.List)
+	if !ok {
+		return nil
+	}
+	items := make([]any, len(l.Items))
+	for i, it := range l.Items {
+		switch it := it.(type) {
+		case *syntax.Number:
+			items[i] = it.Value
+		case *syntax.String:
+			items[i] = it.Value
+		case *syntax.Bool:
+			items[i] = it.Value
+		case *syntax.Null:
+		default:
+			return nil
+		}
+	}
+	units := 1 + int64(len(items))
+	var list any = items
+	return func(r *run) any {
+		r.unit(units)
+		return list
 	}
 }
 
@@ -102,6 +383,10 @@ func (c *compiler) power(n *syntax.Binary) code {
 }
 
 func whole(f float64) bool { return value.IsWhole(f) }
+
+// numBox makes a number a value without an allocation for a small whole
+// number.
+func numBox(f float64) any { return value.Num(f) }
 
 func (r *run) rangeFail(op string, sp syntax.Span) {
 	r.raise(fail("number-range", "operator", sp, messages.Word("op", opText(op))))
@@ -164,16 +449,16 @@ func (r *run) binop(op string, a, b any, sp syntax.Span) any {
 				if fb == 0 {
 					r.raise(fail("divide-by-zero", "divisor", sp, messages.Word("op", "/")))
 				}
-				return r.finite(fa/fb, op, sp)
+				return numBox(r.finite(fa/fb, op, sp))
 			case "%":
 				if fb == 0 {
 					r.raise(fail("divide-by-zero", "divisor", sp, messages.Word("op", "%")))
 				}
 				if whole(fa) && whole(fb) {
 					m := int64(fa) % int64(fb)
-					return float64(m)
+					return numBox(float64(m))
 				}
-				return r.finite(math.Mod(fa, fb), op, sp)
+				return numBox(r.finite(math.Mod(fa, fb), op, sp))
 			case "**":
 				return r.pow(fa, fb, sp)
 			}
@@ -225,9 +510,9 @@ func (r *run) add(a, b float64, op string, sp syntax.Span) any {
 		if s > value.MaxWhole || s < -value.MaxWhole {
 			r.rangeFail(op, sp)
 		}
-		return float64(s)
+		return numBox(float64(s))
 	}
-	return r.finite(a+b, op, sp)
+	return numBox(r.finite(a+b, op, sp))
 }
 
 func (r *run) mul(a, b float64, op string, sp syntax.Span) any {
@@ -236,9 +521,9 @@ func (r *run) mul(a, b float64, op string, sp syntax.Span) any {
 		if !ok {
 			r.rangeFail(op, sp)
 		}
-		return float64(p)
+		return numBox(float64(p))
 	}
-	return r.finite(a*b, op, sp)
+	return numBox(r.finite(a*b, op, sp))
 }
 
 // mulWhole multiplies two whole numbers exactly and reports whether the
@@ -315,6 +600,18 @@ func ieeePow(a float64, e uint64) float64 {
 
 // equal is a == b, charging by 02-evaluation.md 5.3.
 func (r *run) equal(a, b any, sp syntax.Span) bool {
+	switch x := a.(type) {
+	case float64:
+		if y, ok := b.(float64); ok {
+			r.step(1)
+			return x == y
+		}
+	case string:
+		if y, ok := b.(string); ok {
+			r.step(1 + value.Size(value.CommonPrefix(x, y)))
+			return x == y
+		}
+	}
 	ka, kb := value.KindOf(a), value.KindOf(b)
 	if ka != kb {
 		r.step(1)
@@ -426,6 +723,23 @@ func (r *run) in(x, y any, op string, sp syntax.Span) bool {
 	case value.Null:
 		r.raise(fail("null-operand", "operand", sp, messages.Word("op", opText(op))))
 	case value.List:
+		if ys, ok := y.([]any); ok {
+			if xs, ok := x.(string); ok {
+				// A string sought in a list: only a string element can be
+				// equal, and it is charged by its common prefix.
+				for _, e := range ys {
+					e = r.read(e, sp)
+					r.step(1)
+					if es, ok := e.(string); ok {
+						r.step(value.Size(value.CommonPrefix(xs, es)))
+						if xs == es {
+							return true
+						}
+					}
+				}
+				return false
+			}
+		}
 		n := value.Len(y)
 		kx := value.KindOf(x)
 		for i := 0; i < n; i++ {

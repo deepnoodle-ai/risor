@@ -53,6 +53,14 @@ func TestValid(t *testing.T) {
 	assert.Equal(t, f.Cases[2].Expect.Value, any(2.0))
 	assert.Equal(t, *f.Cases[3].Skip, "later")
 
+	// Ruling AP1: check in the header and in a case.
+	f, err = load(t, `{"check": false, "cases": [
+		{"name": "a", "source": "1", "expect": {"phase": "check", "diagnostics": [{"code": "arity"}]}},
+		{"name": "b", "source": "1", "check": true, "expect": {"type": "int"}}]}`)
+	assert.NoError(t, err)
+	assert.False(t, *f.Cases[0].Check)
+	assert.True(t, *f.Cases[1].Check)
+
 	// A list of cases with no header.
 	f, err = load(t, `[{"name": "x", "source": "1", "expect": {}}]`)
 	assert.NoError(t, err)
@@ -111,6 +119,11 @@ func TestInvalid(t *testing.T) {
 		{"12 allocated with check", c(`"expect": {"phase": "check", "allocated": 1, "diagnostics": [{"code": "x"}]}`)},
 		{"13 infinity", c(`"expect": {"value": 1e400}`)},
 		{"A5 limit code with steps", c(`"expect": {"phase": "run", "steps": 3, "diagnostics": [{"code": "steps-exceeded"}]}`)},
+		{"AP1 check not a boolean", c(`"expect": {}, "check": "no"`)},
+		{"AP1 check false with type", c(`"expect": {"type": "int"}, "check": false`)},
+		{"AP1 check false with sites", c(`"expect": {"sites": []}, "check": false`)},
+		{"AP1 check false with a type rule code", c(`"expect": {"phase": "check", "diagnostics": [{"code": "kind"}]}, "check": false`)},
+		{"AP1 header check false with type", `{"check": false, "cases": [{"name": "x", "source": "1", "expect": {"type": "int"}}]}`},
 	} {
 		_, err := load(t, bad.text)
 		assert.Error(t, err, bad.why)
