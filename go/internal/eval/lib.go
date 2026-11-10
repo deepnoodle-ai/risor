@@ -721,11 +721,10 @@ var implemented = map[string]libFunc{
 		var b renderer
 		b.r, b.span = r, c.span
 		b.top(x)
-		s := b.String()
-		f.walkSteps, f.resultW = r.steps-before, value.Weight(s)
+		f.walkSteps, f.resultW = r.steps-before, b.resultWeight()
 		r.libSteps(c, f, f.walkSteps)
 		r.libUnits(c, f)
-		return s
+		return b.finish(func(out *strings.Builder) { writeTop(r, out, c.span, x) })
 	},
 	"int": func(r *run, c *libCall) any {
 		r.charge(c, fenv{c: c})

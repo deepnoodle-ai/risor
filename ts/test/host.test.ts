@@ -318,3 +318,41 @@ describe("a star on a receiver of two kinds, and a read of a union (f07 5.1, f05
     assert.deepEqual(msgs("u.n"), ['field "n" may be absent from {id: int, kind: "a" | "b", n?: int}']);
   });
 });
+
+describe("pre-allocation unit charging before building containers and strings (02 6.2 item 3)", () => {
+  const xs = Array.from({ length: 100_000 }, (_, i) => i);
+  const m = new Map<string, number>(Array.from({ length: 50_000 }, (_, i) => [`k${i}`, i]));
+  const s = 'a"\\\n\x01é😀'.repeat(20_000);
+  const env = createEnv({
+    vars: "{xs: int[], m: map<int>, s: string}",
+    groups: ["json"],
+    limits: { steps: null, allocation: 5 },
+  });
+  const vars = { xs, m, s };
+
+  test("spreads and rendering fail with allocation-exceeded before building values", () => {
+    for (const src of ["[...xs]", "{...m}", "`${s}${s}`", "string([s])", "json.stringify(s)"]) {
+      assert.equal(code(() => env.compile(src, { check: false }).run(vars)), "allocation-exceeded", src);
+    }
+  });
+
+  test("evaluation errors and step limits keep precedence", () => {
+    assert.equal(code(() => env.compile("[...xs, 1 / 0]", { check: false }).run(vars)), "divide-by-zero");
+    assert.equal(code(() => env.compile("{...m, [null]: 1}", { check: false }).run(vars)), "null-operand");
+    assert.equal(code(() => env.compile("`${s}${1 / 0}`", { check: false }).run(vars)), "divide-by-zero");
+    const both = createEnv({ vars: "{s: string}", limits: { steps: 2, allocation: 2 } });
+    assert.equal(code(() => both.compile("`${s}`", { check: false }).run(vars)), "steps-exceeded");
+  });
+
+  test("long escaped strings render identically when within budget", () => {
+    const okEnv = createEnv({
+      vars: "{s: string}",
+      groups: ["json"],
+      limits: { steps: null, allocation: null },
+    });
+    const sample = 'x"\\\t\x01é😀'.repeat(300);
+    assert.equal(okEnv.compile("`<${s}>`", { check: false }).run({ s: sample }), `<${sample}>`);
+    assert.equal(okEnv.compile("json.stringify(s)", { check: false }).run({ s: sample }), toJSON(sample));
+    assert.equal(okEnv.compile("string([s])", { check: false }).run({ s: sample }), `[${toJSON(sample)}]`);
+  });
+});

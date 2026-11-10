@@ -258,26 +258,196 @@ export function contains(r: Run, op: string, x: unknown, y: unknown, span: Span)
   throw new RunFailure("wrong-kind", span, "operands", { op, left: kx, right: ky });
 }
 
+/** The UTF-16 length of `jsonString(s)` without building the escaped string. */
+function jsonStringLen(s: string): number {
+  let len = s.length + 2;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0x22 || c === 0x5c || c === 0x08 || c === 0x0c || c === 0x0a || c === 0x0d || c === 0x09) {
+      len += 1;
+    } else if (c < 0x20) {
+      len += 5;
+    }
+  }
+  return len;
+}
+
 /**
  * The rendering of a value (01 12), with the walk's charges (02 5.5). An
  * opaque value fails with `wrong-kind`, template `text`, at `span`.
  */
 export function render(r: Run, v: unknown, span: Span): string {
+  const parts: string[] = [];
+  renderInto(r, v, span, parts);
+  return parts.join("");
+}
+
+/** Append the rendering of a top-level value to `parts` and return its UTF-16 length. */
+export function renderParts(r: Run, v: unknown, span: Span, parts: string[]): number {
+  const start = parts.length;
+  renderInto(r, v, span, parts);
+  let len = 0;
+  for (let i = start; i < parts.length; i++) len += parts[i].length;
+  return len;
+}
+
+function renderInto(r: Run, v: unknown, span: Span, parts: string[]): void {
   switch (r.kind(v)) {
     case "string":
-      return v as string;
+      if ((v as string).length > 0) parts.push(v as string);
+      return;
     case "null":
-      return "";
+      return;
     case "bool":
-      return String(v);
+      parts.push(String(v));
+      return;
     case "number":
-      return numberToText(v as number);
+      parts.push(numberToText(v as number));
+      return;
     case "opaque":
       throw new RunFailure("wrong-kind", span, "text", {});
   }
-  const parts: string[] = [];
   jsonForm(r, v, span, 0, parts);
+}
+
+/**
+ * Render `x` for `string(x)` (04 4.4) or template parts: walk first, collect
+ * fragments with deferred escaping for long strings, and return `[parts, rawIdx, totalLen]`.
+ */
+export function renderWalk(r: Run, v: unknown, span: Span, top: boolean, opaqueTemplate = "text"): [string[], number[], number] {
+  const parts: string[] = [];
+  const rawIdx: number[] = [];
+  const totalLen = appendRendered(r, v, span, top, opaqueTemplate, parts, rawIdx);
+  return [parts, rawIdx, totalLen];
+}
+
+export function appendRendered(
+  r: Run,
+  v: unknown,
+  span: Span,
+  top: boolean,
+  opaqueTemplate: string,
+  parts: string[],
+  rawIdx: number[],
+): number {
+  if (top) {
+    switch (r.kind(v)) {
+      case "string": {
+        const s = v as string;
+        if (s.length > 0) parts.push(s);
+        return s.length;
+      }
+      case "null":
+        return 0;
+      case "bool": {
+        const s = String(v);
+        parts.push(s);
+        return s.length;
+      }
+      case "number": {
+        const s = numberToText(v as number);
+        parts.push(s);
+        return s.length;
+      }
+      case "opaque":
+        throw new RunFailure("wrong-kind", span, opaqueTemplate, {});
+    }
+  }
+  let totalLen = 0;
+  const walk = (x: unknown, level: number): void => {
+    switch (r.kind(x)) {
+      case "string": {
+        const s = x as string;
+        if (s.length <= 256) {
+          const js = jsonString(s);
+          totalLen += js.length;
+          parts.push(js);
+        } else {
+          totalLen += jsonStringLen(s);
+          rawIdx.push(parts.length);
+          parts.push(s);
+        }
+        return;
+      }
+      case "null":
+        totalLen += 4;
+        parts.push("null");
+        return;
+      case "bool": {
+        const s = String(x);
+        totalLen += s.length;
+        parts.push(s);
+        return;
+      }
+      case "number": {
+        const s = numberToText(x as number);
+        totalLen += s.length;
+        parts.push(s);
+        return;
+      }
+      case "opaque":
+        throw new RunFailure("wrong-kind", span, opaqueTemplate, {});
+      case "list": {
+        const xs = x as unknown[];
+        r.testDepth(r.depth + level + 1);
+        r.charge(xs.length);
+        totalLen += 2 + (xs.length > 1 ? xs.length - 1 : 0);
+        parts.push("[");
+        for (let i = 0; i < xs.length; i++) {
+          if (i > 0) parts.push(",");
+          walk(r.read(xs[i], span), level + 1);
+        }
+        parts.push("]");
+        return;
+      }
+      case "map": {
+        r.testDepth(r.depth + level + 1);
+        const keys = sortKeys(mapKeys(x as object));
+        const n = keys.length;
+        r.charge(n + L(n) * (n + sizeTogether(keys)));
+        totalLen += 2 + (n > 1 ? n - 1 : 0) + n;
+        parts.push("{");
+        for (let i = 0; i < n; i++) {
+          const k = keys[i];
+          if (i > 0) parts.push(",");
+          if (k.length <= 256) {
+            const jk = jsonString(k);
+            totalLen += jk.length;
+            parts.push(jk, ":");
+          } else {
+            totalLen += jsonStringLen(k);
+            rawIdx.push(parts.length);
+            parts.push(k, ":");
+          }
+          walk(r.read(mapGet(x as object, k), span), level + 1);
+        }
+        parts.push("}");
+        return;
+      }
+    }
+  };
+  walk(v, 0);
+  return totalLen;
+}
+
+export function finishRendered(parts: string[], rawIdx: number[]): string {
+  for (let i = 0; i < rawIdx.length; i++) {
+    const idx = rawIdx[i];
+    parts[idx] = jsonString(parts[idx]);
+  }
   return parts.join("");
+}
+
+/**
+ * Render `x` for `string(x)` (04 4.4): walk first, charge steps and units,
+ * then escape deferred strings and join the fragments.
+ */
+export function renderCharged(r: Run, v: unknown, span: Span): string {
+  const [parts, rawIdx, totalLen] = renderWalk(r, v, span, true, "text");
+  const sz = div64(totalLen);
+  r.charge(sz);
+  r.alloc(1 + sz);
+  return finishRendered(parts, rawIdx);
 }
 
 /** The JSON form of a value, made in a run: `json.stringify` (f06 6.1). An opaque value is `wrong-kind`, template `json`. */
@@ -285,6 +455,18 @@ export function jsonText(r: Run, v: unknown, span: Span): string {
   const parts: string[] = [];
   jsonForm(r, v, span, 0, parts, "json");
   return parts.join("");
+}
+
+/**
+ * Render `v` for `json.stringify(v)` (f06 6.1): walk first, charge steps and
+ * units from fragment lengths, then escape long strings and join.
+ */
+export function jsonTextCharged(r: Run, v: unknown, span: Span): string {
+  const [parts, rawIdx, totalLen] = renderWalk(r, v, span, false, "json");
+  const sz = div64(totalLen);
+  r.charge(sz);
+  r.alloc(1 + sz);
+  return finishRendered(parts, rawIdx);
 }
 
 function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[], opaqueTemplate = "text"): void {

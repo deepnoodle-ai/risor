@@ -22,7 +22,7 @@ import { ABSENT, RMap, mapGet, mapKeys, size, truthy, cpAt, cpLength, lcpWeight,
 import { isWhole } from "../value/number.ts";
 import { conformWalk } from "./conform.ts";
 import { RunFailure, caught, messageOf } from "./failure.ts";
-import { arith, contains, equal, negate, order, render, sizeTogether } from "./ops.ts";
+import { appendRendered, arith, contains, equal, finishRendered, negate, order, sizeTogether } from "./ops.ts";
 import type { Kind } from "../value/value.ts";
 import type { ArithOp } from "./ops.ts";
 import type { Run } from "./run.ts";
@@ -794,19 +794,32 @@ class Compiler {
     const parts = e.parts.map((p) => (typeof p === "string" ? p : this.operandOf(p)));
     const span = e.span;
     return (r) => {
-      let out = "";
+      const frags: string[] = [];
+      const rawIdx: number[] = [];
+      let totalLen = 0;
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i];
-        if (typeof p === "string") out += p;
-        else {
+        if (typeof p === "string") {
+          if (p.length > 0) {
+            frags.push(p);
+            totalLen += p.length;
+          }
+        } else {
           const v = ev(r, p);
-          out += typeof v === "string" ? v : render(r, v, span);
+          if (typeof v === "string") {
+            if (v.length > 0) {
+              frags.push(v);
+              totalLen += v.length;
+            }
+          } else {
+            totalLen += appendRendered(r, v, span, true, "text", frags, rawIdx);
+          }
         }
       }
-      const sz = size(out);
+      const sz = div64(totalLen);
       r.charge(1 + sz);
       r.alloc(1 + sz);
-      return out;
+      return finishRendered(frags, rawIdx);
     };
   }
 
@@ -814,12 +827,24 @@ class Compiler {
     const items = e.items.map((it) =>
       it.kind === "Spread" ? { spread: true, code: this.expr(it.value), span: it.span } : { spread: false, code: this.expr(it), span: it.span },
     );
+    const hasSpread = items.some((it) => it.spread);
+    if (!hasSpread) {
+      return (r) => {
+        const vals: unknown[] = new Array(items.length);
+        for (let i = 0; i < items.length; i++) vals[i] = items[i].code(r);
+        r.alloc(1 + vals.length);
+        return vals;
+      };
+    }
     return (r) => {
-      const out: unknown[] = [];
-      for (const it of items) {
+      const evaled: { spread: boolean; v: unknown }[] = new Array(items.length);
+      let total = 0;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
         const v = it.code(r);
         if (!it.spread) {
-          out.push(v);
+          evaled[i] = { spread: false, v };
+          total++;
           continue;
         }
         const k = r.kind(v);
@@ -827,9 +852,21 @@ class Compiler {
         if (k !== "list") throw new RunFailure("wrong-kind", it.span, "spread-list", { kind: k });
         const xs = v as unknown[];
         r.charge(xs.length);
-        for (let i = 0; i < xs.length; i++) out.push(xs[i]);
+        evaled[i] = { spread: true, v: xs };
+        total += xs.length;
       }
-      r.alloc(1 + out.length);
+      r.alloc(1 + total);
+      const out = new Array<unknown>(total);
+      let pos = 0;
+      for (let i = 0; i < evaled.length; i++) {
+        const evItem = evaled[i];
+        if (!evItem.spread) {
+          out[pos++] = evItem.v;
+        } else {
+          const xs = evItem.v as unknown[];
+          for (let j = 0; j < xs.length; j++) out[pos++] = xs[j];
+        }
+      }
       return out;
     };
   }
@@ -846,12 +883,15 @@ class Compiler {
       return { t: "key", key, keySize: size(key), code: this.expr(en.value) };
     });
     return (r) => {
-      const m = new RMap();
-      for (const it of items) {
+      type EvalEntry = { spread: false; key: string; v: unknown } | { spread: true; v: object; keys: string[] };
+      const evaled: EvalEntry[] = new Array(items.length);
+      let maxSpread = 0;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
         if (it.t === "key") {
           const v = it.code(r);
           r.charge(it.keySize);
-          m.set(it.key, v);
+          evaled[i] = { spread: false, key: it.key, v };
         } else if (it.t === "computed") {
           const k = it.key(r);
           const kk = r.kind(k);
@@ -859,7 +899,7 @@ class Compiler {
           if (kk !== "string") throw new RunFailure("wrong-kind", it.span, "key", { found: k });
           const v = it.code(r);
           r.charge(size(k as string));
-          m.set(k as string, v);
+          evaled[i] = { spread: false, key: k as string, v };
         } else {
           const v = it.code(r);
           const k = r.kind(v);
@@ -867,7 +907,23 @@ class Compiler {
           if (k !== "map") throw new RunFailure("wrong-kind", it.span, "spread-map", { kind: k });
           const keys = mapKeys(v as object);
           r.charge(keys.length + sizeTogether(keys));
-          for (const key of keys) m.set(key, mapGet(v as object, key));
+          if (keys.length > maxSpread) maxSpread = keys.length;
+          evaled[i] = { spread: true, v: v as object, keys };
+        }
+      }
+      if (1 + 2 * maxSpread > r.unitLimit - r.units) {
+        r.alloc(1 + 2 * maxSpread);
+      }
+      const m = new RMap();
+      for (let i = 0; i < evaled.length; i++) {
+        const evEntry = evaled[i];
+        if (!evEntry.spread) {
+          m.set(evEntry.key, evEntry.v);
+        } else {
+          for (let j = 0; j < evEntry.keys.length; j++) {
+            const key = evEntry.keys[j];
+            m.set(key, mapGet(evEntry.v, key));
+          }
         }
       }
       r.alloc(1 + 2 * m.size);
