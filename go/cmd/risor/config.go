@@ -10,6 +10,7 @@ import (
 
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
+	"github.com/deepnoodle-ai/wonton/cli"
 )
 
 // The commands eval and check: the steps of a load are package F10 9's;
@@ -29,70 +30,57 @@ type configFlags struct {
 	color     colorFlag
 }
 
-func parseConfigFlags(args []string, eval bool) (*configFlags, error) {
-	f := &configFlags{format: "text", maxFail: 10, env: newEnvFlags(), color: colorFlag{"auto"}}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if ok, err := f.env.parse(args, &i); ok || err != nil {
-			if err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if ok, err := f.color.parse(args, &i); ok || err != nil {
-			if err != nil {
-				return nil, err
-			}
-			continue
-		}
-		switch {
-		case isFlag(a, "--type"):
-			v, err := flagValue(args, &i, "--type")
-			if err != nil {
-				return nil, err
-			}
-			f.typ = &v
-		case isFlag(a, "--schema"):
-			v, err := flagValue(args, &i, "--schema")
-			if err != nil {
-				return nil, err
-			}
-			f.schema = &v
-		case isFlag(a, "--format"):
-			v, err := flagValue(args, &i, "--format")
-			if err != nil {
-				return nil, err
-			}
-			if v != "text" && v != "json" {
-				return nil, cmdErrorf("--format is text or json, not %q", v)
-			}
-			f.format = v
-		case eval && a == "--pretty":
-			f.pretty = true
-		case eval && isFlag(a, "--max-failures"):
-			v, err := flagValue(args, &i, "--max-failures")
-			if err != nil {
-				return nil, err
-			}
-			if f.maxFail, err = wholeNumber("--max-failures", v, 1); err != nil {
-				return nil, err
-			}
-		case !eval && a == "--print-type":
-			f.printType = true
-		case len(a) > 1 && a[0] == '-':
-			return nil, cmdErrorf("unknown flag %s", a)
-		default:
-			if f.file != "" {
-				return nil, cmdErrorf("one FILE only, found %s and %s", f.file, a)
-			}
-			f.file = a
-		}
+// configFlagDefs are the flags of eval (eval true) or check.
+func configFlagDefs(eval bool) []cli.Flag {
+	fs := []cli.Flag{
+		cli.String("type").Help("Check the result against the type TEXT"),
+		cli.String("schema").Help("Check the result against the JSON Schema in FILE, closed"),
+		formatFlag(),
 	}
-	if f.file == "" {
-		return nil, cmdErrorf("no FILE")
+	if eval {
+		fs = append(fs,
+			cli.Bool("pretty").Help("Write the value as indented JSON"),
+			cli.String("max-failures").Default("10").Help("Report at most N failures of the result's conformance").
+				ValidateWith(wholeNumberOf("--max-failures", 1)),
+		)
+	} else {
+		fs = append(fs, cli.Bool("print-type").Help("Write the printed result type"))
+	}
+	fs = append(fs, envFlagDefs()...)
+	return append(fs, colorFlagDef())
+}
+
+// configFlagsOf reads the arguments of eval or check.
+func configFlagsOf(ctx *cli.Context, eval bool) (*configFlags, error) {
+	f := &configFlags{
+		file:   ctx.Arg(0),
+		format: ctx.String("format"),
+		color:  colorOf(ctx),
+	}
+	if ctx.IsSet("type") {
+		v := ctx.String("type")
+		f.typ = &v
+	}
+	if ctx.IsSet("schema") {
+		v := ctx.String("schema")
+		f.schema = &v
 	}
 	if f.typ != nil && f.schema != nil {
 		return nil, cmdErrorf("--type and --schema exclude each other")
+	}
+	if eval {
+		f.pretty = ctx.Bool("pretty")
+		n, err := wholeNumber("--max-failures", ctx.String("max-failures"), 1)
+		if err != nil {
+			return nil, err
+		}
+		f.maxFail = n
+	} else {
+		f.printType = ctx.Bool("print-type")
+	}
+	var err error
+	if f.env, err = envFlagsOf(ctx); err != nil {
+		return nil, err
 	}
 	return f, nil
 }
@@ -116,25 +104,17 @@ func (f *configFlags) expected() ([]risor.LoadOption, any, error) {
 	return nil, nil, nil
 }
 
-func evalCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	return configCommand(args, stdin, stdout, stderr, true)
-}
-
-func checkCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	return configCommand(args, stdin, stdout, stderr, false)
-}
-
 // commandLineError writes an error of the command line (F12 4.9).
 func commandLineError(stderr io.Writer, err error) int {
 	fmt.Fprintf(stderr, "risor: %v\n", err)
 	return 2
 }
 
-func configCommand(args []string, stdin io.Reader, stdout, stderr io.Writer, eval bool) int {
-	f, err := parseConfigFlags(args, eval)
+func configCommand(ctx *cli.Context, eval bool) int {
+	stdin, stdout, stderr := ctx.Stdin(), ctx.Stdout(), ctx.Stderr()
+	f, err := configFlagsOf(ctx, eval)
 	if err != nil {
-		fmt.Fprintf(stderr, "risor: %v\n%s", err, usage)
-		return 2
+		return commandLineError(stderr, err)
 	}
 	source, err := readInput(f.file, stdin)
 	if err != nil {

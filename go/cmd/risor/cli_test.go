@@ -126,3 +126,68 @@ func TestReplShowsAuthoredNames(t *testing.T) {
 	assert.True(t, strings.Contains(r.diags, "1:11-1:12: h is a const-bound lambda"), r.diags)
 	assert.False(t, strings.Contains(r.diags, "__"), r.diags)
 }
+
+// The rules of the command line that wonton/cli does not keep by itself
+// (prepareArgs): each is an error of the command line, status 2 (F12 4.9),
+// or a value taken as written.
+func TestCommandLineRules(t *testing.T) {
+	dir := t.TempDir()
+	app := put(t, dir, "app.risor", "{w: who}\n")
+	vars := put(t, dir, "v.json", `{"n": 1}`)
+	desc := put(t, dir, "d.json", `{"variables": {"who": "string"}}`)
+	// A value that begins with - or names a command is the flag's value.
+	for _, v := range []string{"-x", "test", "--", "eval"} {
+		code, out, errOut := runCLI("eval", app, "--var", "who="+v, "--format", "json")
+		assert.Equal(t, code, 0, v, errOut)
+		assert.Equal(t, out, `{"w":`+q(v)+"}\n", v)
+	}
+	code, out, _ := runCLI("eval", app, "--var", "who", "--format=json")
+	assert.Equal(t, code, 2, out) // --var takes NAME=TEXT
+	for _, args := range [][]string{
+		{"eval", app, "--pretty=true"},
+		{"fmt", "--write=false", app},
+		{"eval", app, "--no-color"},
+		{"fmt", "--force-color", app},
+		{"eval", app, "--colour", "always"},
+		{"eval", app, "--vars", vars, "--vars", vars},
+		{"eval", app, "--description", desc, "--description", desc},
+		{"eval", app, "--steps", "-1"},
+		{"eval", app, "--steps", "x"},
+		{"eval", app, "--max-failures", "0"},
+		{"eval", app, "--format"},
+		{"eval", app, "--color", "sometimes"},
+		{"eval", app, "extra"},
+		{"check", app, "--pretty"},
+		{"eval", app, "--print-type"},
+		{"test", "--suite", dir, dir},
+		{"fmt", "--type", "int", app},
+		{"nope"},
+		{"-x"},
+	} {
+		code, out, errOut := runCLI(args...)
+		assert.Equal(t, code, 2, args)
+		assert.Equal(t, out, "", args)
+		assert.True(t, strings.HasPrefix(errOut, "risor: "), args, errOut)
+	}
+	// After --, nothing is a flag.
+	code, _, errOut := runCLI("fmt", "--", "--no-color")
+	assert.Equal(t, code, 2)
+	assert.True(t, strings.Contains(errOut, "--no-color cannot be read"), errOut)
+}
+
+func TestHelpAndVersion(t *testing.T) {
+	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}, {"eval", "--help"}, {"test", "-h"}} {
+		code, out, errOut := runCLI(args...)
+		assert.Equal(t, code, 0, args)
+		assert.True(t, strings.Contains(out, "risor"), args)
+		assert.Equal(t, errOut, "", args)
+	}
+	for _, args := range [][]string{{"version"}, {"--version"}} {
+		code, out, _ := runCLI(args...)
+		assert.Equal(t, code, 0, args)
+		assert.Equal(t, out, version+"\n", args)
+	}
+	code, out, _ := runCLI("completion", "bash")
+	assert.Equal(t, code, 0)
+	assert.True(t, strings.Contains(out, "eval"))
+}

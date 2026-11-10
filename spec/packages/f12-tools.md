@@ -829,6 +829,9 @@ risor help | risor version
 
 ENV stands for the flags of 4.3.
 
+A program may add commands of its own, such as `completion`, which writes a
+shell's completion script. What they do is the product's (1.2).
+
 ### 4.2 Common rules
 
 1. **Input.** A FILE is read as UTF-8 text. `-` as a FILE or a PATH is standard

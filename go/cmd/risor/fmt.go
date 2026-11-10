@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	risor "github.com/deepnoodle-ai/risor/v3"
+	"github.com/deepnoodle-ai/wonton/cli"
 )
 
 // The command fmt (package F12 4.6).
@@ -21,31 +21,24 @@ type fmtFlags struct {
 	color    colorFlag
 }
 
-func parseFmtFlags(args []string) (*fmtFlags, error) {
-	f := &fmtFlags{color: colorFlag{"auto"}}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if ok, err := f.color.parse(args, &i); ok || err != nil {
-			if err != nil {
-				return nil, err
-			}
-			continue
-		}
-		switch {
-		case a == "--write":
-			f.write = true
-		case a == "--check":
-			f.check = true
-		case a == "--template":
-			f.template = true
-		case a == "--":
-			f.paths = append(f.paths, args[i+1:]...)
-			i = len(args)
-		case len(a) > 1 && a[0] == '-':
-			return nil, cmdErrorf("unknown flag %s", a)
-		default:
-			f.paths = append(f.paths, a)
-		}
+// fmtFlagDefs are the flags of fmt.
+func fmtFlagDefs() []cli.Flag {
+	return []cli.Flag{
+		cli.Bool("write").Help("Write each file's formatted text back to the file"),
+		cli.Bool("check").Help("Write the path of each file that is not formatted"),
+		cli.Bool("template").Help("Format each input as a template"),
+		colorFlagDef(),
+	}
+}
+
+// fmtFlagsOf reads the arguments of fmt.
+func fmtFlagsOf(ctx *cli.Context) (*fmtFlags, error) {
+	f := &fmtFlags{
+		paths:    ctx.Args(),
+		write:    ctx.Bool("write"),
+		check:    ctx.Bool("check"),
+		template: ctx.Bool("template"),
+		color:    colorOf(ctx),
 	}
 	if f.write && f.check {
 		return nil, cmdErrorf("--write and --check exclude each other")
@@ -100,11 +93,11 @@ func findRisorFiles(p string) ([]string, error) {
 	return out, nil
 }
 
-func fmtCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	f, err := parseFmtFlags(args)
+func fmtCommand(ctx *cli.Context) int {
+	stdin, stdout, stderr := ctx.Stdin(), ctx.Stdout(), ctx.Stderr()
+	f, err := fmtFlagsOf(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "risor fmt: %v\n%s", err, usage)
-		return 2
+		return commandLineError(stderr, err)
 	}
 	paths := f.paths
 	if len(paths) == 0 {
@@ -175,8 +168,7 @@ func fmtCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		case f.write:
 			if out != in.text {
 				if err := os.WriteFile(in.path, []byte(out), 0o644); err != nil {
-					fmt.Fprintf(stderr, "risor fmt: %s cannot be written: %v\n", in.path, err)
-					return 2
+					return commandLineError(stderr, cmdErrorf("%s cannot be written: %v", in.path, err))
 				}
 			}
 		default:

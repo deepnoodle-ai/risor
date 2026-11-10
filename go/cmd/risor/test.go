@@ -13,6 +13,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/render"
 	"github.com/deepnoodle-ai/risor/v3/internal/runner"
 	"github.com/deepnoodle-ai/risor/v3/internal/value"
+	"github.com/deepnoodle-ai/wonton/cli"
 )
 
 // testFlags are the arguments of risor test (F9 8.1).
@@ -25,62 +26,32 @@ type testFlags struct {
 	color  colorFlag // F12 4.7 item 1
 }
 
-func parseTestFlags(args []string) (*testFlags, error) {
-	f := &testFlags{format: "text", color: colorFlag{"auto"}}
-	value := func(i *int, name string) (string, error) {
-		a := args[*i]
-		if v, ok := strings.CutPrefix(a, name+"="); ok {
-			return v, nil
-		}
-		if *i+1 >= len(args) {
-			return "", fmt.Errorf("%s needs a value", name)
-		}
-		*i++
-		return args[*i], nil
+// testFlagDefs are the flags of test.
+func testFlagDefs() []cli.Flag {
+	return []cli.Flag{
+		cli.Strings("run").Help("Run only the cases whose names contain TEXT; repeatable"),
+		cli.Bool("update").Help("Update mode: write each case's actual result as its expect"),
+		formatFlag(),
+		cli.String("suite").Help("Run the conformance suite at DIR"),
+		colorFlagDef(),
 	}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if ok, err := f.color.parse(args, &i); ok || err != nil {
-			if err != nil {
-				return nil, err
-			}
-			continue
-		}
-		switch {
-		case a == "--run" || strings.HasPrefix(a, "--run="):
-			v, err := value(&i, "--run")
-			if err != nil {
-				return nil, err
-			}
-			f.runs = append(f.runs, v)
-		case a == "--update":
-			f.update = true
-		case a == "--format" || strings.HasPrefix(a, "--format="):
-			v, err := value(&i, "--format")
-			if err != nil {
-				return nil, err
-			}
-			if v != "text" && v != "json" {
-				return nil, fmt.Errorf("--format is text or json, not %q", v)
-			}
-			f.format = v
-		case a == "--suite" || strings.HasPrefix(a, "--suite="):
-			v, err := value(&i, "--suite")
-			if err != nil {
-				return nil, err
-			}
-			f.suite = v
-		case a == "--":
-			f.paths = append(f.paths, args[i+1:]...)
-			i = len(args)
-		case strings.HasPrefix(a, "-") && a != "-":
-			return nil, fmt.Errorf("unknown flag %s", a)
-		default:
-			f.paths = append(f.paths, a)
-		}
+}
+
+// testFlagsOf reads the arguments of test (F9 8.1).
+func testFlagsOf(ctx *cli.Context) (*testFlags, error) {
+	f := &testFlags{
+		paths:  ctx.Args(),
+		runs:   ctx.Strings("run"),
+		update: ctx.Bool("update"),
+		format: ctx.String("format"),
+		suite:  ctx.String("suite"),
+		color:  colorOf(ctx),
+	}
+	if ctx.IsSet("suite") && f.suite == "" {
+		return nil, cmdErrorf("--suite needs a value")
 	}
 	if f.suite != "" && (len(f.paths) > 0 || len(f.runs) > 0 || f.update) {
-		return nil, errors.New("--suite takes no PATH, --run or --update")
+		return nil, cmdErrorf("--suite takes no PATH, --run or --update")
 	}
 	return f, nil
 }
@@ -117,11 +88,11 @@ func (c *counts) add(r runner.Result) {
 	}
 }
 
-func testCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	f, err := parseTestFlags(args)
+func testCommand(cc *cli.Context) int {
+	stdin, stdout, stderr := cc.Stdin(), cc.Stdout(), cc.Stderr()
+	f, err := testFlagsOf(cc)
 	if err != nil {
-		fmt.Fprintf(stderr, "risor test: %v\n%s", err, usage)
-		return 2
+		return commandLineError(stderr, err)
 	}
 	if f.suite != "" {
 		return suiteCommand(f, stdout, stderr)

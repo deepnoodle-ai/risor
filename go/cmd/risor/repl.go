@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +14,8 @@ import (
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
+	"github.com/deepnoodle-ai/wonton/cli"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // The REPL of package F12 5, a product of this implementation. An entry is
@@ -551,26 +555,65 @@ func renameFree(n syntax.Node, name, fresh string, eds *[]edit) {
 	}
 }
 
+// replFlagDefs are the flags of the REPL: those of F12 4.3, and --color.
+func replFlagDefs() []cli.Flag {
+	return append(envFlagDefs(), colorFlagDef())
+}
+
+// errInterrupted is an entry the author abandoned (Ctrl+C).
+var errInterrupted = errors.New("interrupted")
+
+// lineReader reads the lines of the REPL. It gives io.EOF at the end of
+// input and errInterrupted when the author abandons the line.
+type lineReader interface {
+	readLine(prompt string) (string, error)
+}
+
+// scanReader reads lines from a stream that is not a terminal, with no
+// prompt and no editing: piped input and tests.
+type scanReader struct{ sc *bufio.Scanner }
+
+func (r *scanReader) readLine(string) (string, error) {
+	if r.sc.Scan() {
+		return r.sc.Text(), nil
+	}
+	if err := r.sc.Err(); err != nil {
+		return "", err
+	}
+	return "", io.EOF
+}
+
+// promptReader reads lines from the terminal with the line editor of
+// wonton/tui: cursor movement, word and line deletion, and history.
+type promptReader struct {
+	out     io.Writer
+	history []string
+	style   tui.Style
+}
+
+func (r *promptReader) readLine(prompt string) (string, error) {
+	line, err := tui.Prompt(prompt,
+		tui.WithHistory(&r.history),
+		tui.WithPromptOutput(r.out),
+		tui.WithPromptStyle(r.style),
+	)
+	switch {
+	case errors.Is(err, tui.ErrEOF):
+		return "", io.EOF
+	case errors.Is(err, tui.ErrInterrupted):
+		return "", errInterrupted
+	}
+	return line, err
+}
+
 // replCommand is risor with no command (F12 5): the REPL, in the
 // environment of the flags of 4.3.
-func replCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	ef := newEnvFlags()
-	color := colorFlag{"auto"}
-	for i := 0; i < len(args); i++ {
-		if ok, err := ef.parse(args, &i); ok || err != nil {
-			if err != nil {
-				return commandLineError(stderr, err)
-			}
-			continue
-		}
-		if ok, err := color.parse(args, &i); ok || err != nil {
-			if err != nil {
-				return commandLineError(stderr, err)
-			}
-			continue
-		}
-		fmt.Fprintf(stderr, "risor: unknown command or flag %q\n%s", args[i], usage)
-		return 2
+func replCommand(ctx *cli.Context) int {
+	stdin, stdout, stderr := ctx.Stdin(), ctx.Stdout(), ctx.Stderr()
+	color := colorOf(ctx)
+	ef, err := envFlagsOf(ctx)
+	if err != nil {
+		return commandLineError(stderr, err)
 	}
 	env, vars, err := ef.environment()
 	if err != nil {
@@ -581,47 +624,57 @@ func replCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return commandLineError(stderr, err)
 	}
 	s := &session{env: env, vars: vars, color: color.on(stdout, stdout)}
-	interactive := isTerminal(stdin)
-	sc := bufio.NewScanner(stdin)
-	sc.Buffer(make([]byte, 64*1024), 16<<20)
-	var pending []string
-	prompt := func() {
-		if !interactive {
-			return
+	// The line editor reads the process's own standard input, so it is
+	// used only when that is the stream given and it is a terminal.
+	var in lineReader
+	if f, ok := stdin.(*os.File); ok && f == os.Stdin && isTerminal(f) && isTerminal(stdout) {
+		style := tui.NewStyle()
+		if s.color {
+			style = style.WithForeground(tui.ColorCyan)
 		}
-		if len(pending) == 0 {
-			fmt.Fprint(stdout, "> ")
-		} else {
-			fmt.Fprint(stdout, ". ")
-		}
+		in = &promptReader{out: stdout, style: style}
+	} else {
+		sc := bufio.NewScanner(stdin)
+		sc.Buffer(make([]byte, 64*1024), 16<<20)
+		in = &scanReader{sc}
 	}
-	prompt()
-	for sc.Scan() {
-		line := sc.Text()
+	var pending []string
+	for {
+		prompt := "> "
+		if len(pending) > 0 {
+			prompt = ". "
+		}
+		line, err := in.readLine(prompt)
+		if errors.Is(err, errInterrupted) {
+			pending = nil
+			continue
+		}
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return commandLineError(stderr, err)
+			}
+			break
+		}
 		if len(pending) == 0 {
 			switch strings.TrimSpace(line) {
 			case ":quit", ":exit":
 				return 0
 			case ":reset":
 				s.held = ""
-				prompt()
 				continue
 			case ":help":
 				fmt.Fprint(stdout, replHelp)
-				prompt()
 				continue
 			}
 		}
 		pending = append(pending, line)
 		r := s.eval(strings.Join(pending, "\n"))
 		if r.more {
-			prompt()
 			continue
 		}
 		pending = nil
 		fmt.Fprint(stdout, r.value)
 		fmt.Fprint(stdout, r.diags)
-		prompt()
 	}
 	if len(pending) > 0 {
 		// The input ended inside an entry: show why it does not parse.
@@ -632,9 +685,6 @@ func replCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if err != nil {
 			fmt.Fprint(stdout, s.render(err, strings.Join(pending, "\n"), 0))
 		}
-	}
-	if interactive {
-		fmt.Fprintln(stdout)
 	}
 	return 0
 }

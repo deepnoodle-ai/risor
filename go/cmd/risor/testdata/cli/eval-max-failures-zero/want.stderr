@@ -1,12 +1,3 @@
-risor: --max-failures takes a whole number of 1 or more, not "0"
-usage: risor eval FILE [--type TEXT | --schema FILE] [--format text|json] [--pretty]
-                 [ENV ...] [--max-failures N] [--color WHEN]
-       risor check FILE [--type TEXT | --schema FILE] [--format text|json]
-                 [--print-type] [ENV ...] [--color WHEN]
-       risor fmt [PATH ...] [--write | --check] [--template] [--color WHEN]
-       risor test [PATH ...] [--run TEXT ...] [--update] [--format text|json] [--color WHEN]
-       risor test --suite DIR [--format text|json] [--color WHEN]
-       risor [ENV ...]
-       risor help | risor version
-ENV: --var NAME=TEXT, --vars FILE.json, --env NAME, --description FILE,
-     --group NAME, --steps N, --allocation N, --depth N
+risor: invalid value for --max-failures: "0" is not a whole number of 1 or more
+
+Run 'risor eval --help' to see available flags.

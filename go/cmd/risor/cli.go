@@ -13,6 +13,10 @@ import (
 
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
+	"github.com/deepnoodle-ai/wonton/cli"
+	"github.com/deepnoodle-ai/wonton/color"
+	"github.com/deepnoodle-ai/wonton/env"
+	"github.com/deepnoodle-ai/wonton/tty"
 )
 
 // What the commands share (package F12 4.2, 4.3): reading inputs, the
@@ -27,22 +31,6 @@ func (e *cmdError) Error() string { return e.msg }
 func cmdErrorf(format string, args ...any) error {
 	return &cmdError{fmt.Sprintf(format, args...)}
 }
-
-// flagValue reads the value of a flag at args[*i]: --name=value or --name
-// value.
-func flagValue(args []string, i *int, name string) (string, error) {
-	a := args[*i]
-	if v, ok := strings.CutPrefix(a, name+"="); ok {
-		return v, nil
-	}
-	if *i+1 >= len(args) {
-		return "", cmdErrorf("%s needs a value", name)
-	}
-	*i++
-	return args[*i], nil
-}
-
-func isFlag(a, name string) bool { return a == name || strings.HasPrefix(a, name+"=") }
 
 // wholeNumber reads a whole number of at least min.
 func wholeNumber(name, v string, min int64) (int64, error) {
@@ -75,23 +63,27 @@ func readInput(path string, stdin io.Reader) (string, error) {
 	return string(data), nil
 }
 
-// colorFlag is --color WHEN (F12 4.2 item 4).
+// colorFlag is --color WHEN (F12 4.2 item 4): auto, always or never.
 type colorFlag struct{ when string }
 
-func (c *colorFlag) parse(args []string, i *int) (bool, error) {
-	if !isFlag(args[*i], "--color") {
-		return false, nil
-	}
-	v, err := flagValue(args, i, "--color")
+// colorOf reads --color from a command's flags.
+func colorOf(ctx *cli.Context) colorFlag { return colorFlag{ctx.String("color")} }
+
+// processEnv holds the process variables the program reads of its own
+// accord. A flag that names a process variable (--env) reads it by name.
+type processEnv struct {
+	// NoColor is NO_COLOR: set and not empty, --color auto writes no
+	// colour (F12 4.2 item 4).
+	NoColor string `env:"NO_COLOR"`
+}
+
+// readProcessEnv reads the process variables of processEnv.
+func readProcessEnv() processEnv {
+	pe, err := env.Parse[processEnv]()
 	if err != nil {
-		return true, err
+		return processEnv{}
 	}
-	switch v {
-	case "auto", "always", "never":
-		c.when = v
-		return true, nil
-	}
-	return true, cmdErrorf("--color is auto, always or never, not %q", v)
+	return pe
 }
 
 // on reports whether the text written to w is coloured. Under auto, no
@@ -104,28 +96,26 @@ func (c *colorFlag) on(w, stdout io.Writer) bool {
 	case "never":
 		return false
 	}
-	if os.Getenv("NO_COLOR") != "" {
+	if readProcessEnv().NoColor != "" {
 		return false
 	}
 	return isTerminal(w) && isTerminal(stdout)
 }
 
-// isTerminal reports whether a stream is a terminal: a file that is a
-// character device.
+// isTerminal reports whether a stream is a terminal.
 func isTerminal(w any) bool {
 	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	st, err := f.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
+	return ok && tty.IsTerminal(f)
 }
 
-const (
-	sgrRed    = "\x1b[1;31m"
-	sgrYellow = "\x1b[33m"
-	sgrCyan   = "\x1b[36m"
-	sgrReset  = "\x1b[0m"
+// The SGR sequences of colour. Which parts are coloured is not specified
+// (F12 4.2 item 4). The sequences of package color ignore color.Enabled,
+// whose own rule is not the chapter's.
+var (
+	sgrRed    = color.Red.ForegroundSeqBold()
+	sgrYellow = color.Yellow.ForegroundSeq()
+	sgrCyan   = color.Cyan.ForegroundSeq()
+	sgrReset  = color.Reset
 )
 
 // paint colours a detail rendering: the word error and the carets.
@@ -191,78 +181,83 @@ type envFlags struct {
 
 func newEnvFlags() *envFlags { return &envFlags{strVars: map[string]string{}} }
 
-// parse reads an ENV flag at args[*i]. It reports whether args[*i] is one.
-func (f *envFlags) parse(args []string, i *int) (bool, error) {
-	a := args[*i]
-	switch {
-	case isFlag(a, "--var"):
-		v, err := flagValue(args, i, "--var")
-		if err != nil {
-			return true, err
+// envFlagDefs are the flags of F12 4.3, which eval, check and the REPL
+// share. Each command is given its own copies.
+func envFlagDefs() []cli.Flag {
+	return []cli.Flag{
+		cli.Strings("var").Help("Declare a string variable NAME holding TEXT (NAME=TEXT); repeatable"),
+		cli.Strings("vars").Help("Declare one variable for each key of a JSON object in FILE.json"),
+		cli.Strings("env").Help("Add the process variable NAME as a key of the variable env; repeatable"),
+		cli.Strings("description").Help("Use the environment the description in FILE gives"),
+		cli.Strings("group").Help("Turn on the library group NAME; repeatable"),
+		cli.String("steps").Help("Limit the steps of a run to N").ValidateWith(wholeNumberOf("--steps", 0)),
+		cli.String("allocation").Help("Limit the allocation of a run to N units").ValidateWith(wholeNumberOf("--allocation", 0)),
+		cli.String("depth").Help("Limit the depth of a run to N").ValidateWith(wholeNumberOf("--depth", 0)),
+	}
+}
+
+// wholeNumberOf validates the value of a flag that takes a whole number of
+// at least min.
+func wholeNumberOf(name string, min int64) func(string) error {
+	return func(v string) error {
+		if _, err := wholeNumber(name, v, min); err != nil {
+			return fmt.Errorf("%q is not a whole number of %d or more", v, min)
 		}
+		return nil
+	}
+}
+
+// envFlagsOf reads the flags of F12 4.3 from a command's flags.
+func envFlagsOf(ctx *cli.Context) (*envFlags, error) {
+	f := newEnvFlags()
+	for _, v := range ctx.Strings("var") {
 		name, text, ok := strings.Cut(v, "=")
 		if !ok || name == "" {
-			return true, cmdErrorf("--var takes NAME=TEXT, not %q", v)
+			return nil, cmdErrorf("--var takes NAME=TEXT, not %q", v)
 		}
 		if _, dup := f.strVars[name]; dup {
-			return true, cmdErrorf("the variable %s is named twice", name)
+			return nil, cmdErrorf("the variable %s is named twice", name)
 		}
 		f.strVars[name] = text
-	case isFlag(a, "--vars"):
-		v, err := flagValue(args, i, "--vars")
-		if err != nil {
-			return true, err
-		}
-		if f.varFile != "" {
-			return true, cmdErrorf("--vars is given twice")
-		}
-		f.varFile = v
-	case isFlag(a, "--env"):
-		v, err := flagValue(args, i, "--env")
-		if err != nil {
-			return true, err
-		}
-		f.envKeys = append(f.envKeys, v)
-	case isFlag(a, "--description"):
-		v, err := flagValue(args, i, "--description")
-		if err != nil {
-			return true, err
-		}
-		if f.description != "" {
-			return true, cmdErrorf("--description is given twice")
-		}
-		f.description = v
-	case isFlag(a, "--group"):
-		v, err := flagValue(args, i, "--group")
-		if err != nil {
-			return true, err
-		}
-		f.groups = append(f.groups, v)
-	case isFlag(a, "--steps"), isFlag(a, "--allocation"), isFlag(a, "--depth"):
-		name := a
-		if k := strings.IndexByte(a, '='); k >= 0 {
-			name = a[:k]
-		}
-		v, err := flagValue(args, i, name)
-		if err != nil {
-			return true, err
-		}
-		n, err := wholeNumber(name, v, 0)
-		if err != nil {
-			return true, err
-		}
-		switch name {
-		case "--steps":
-			f.steps = &n
-		case "--allocation":
-			f.alloc = &n
-		default:
-			f.depth = &n
-		}
-	default:
-		return false, nil
 	}
-	return true, nil
+	// wonton/cli keeps the last value of a flag given twice; --vars and
+	// --description are slice flags so that a second one is an error.
+	one := func(name string) (string, error) {
+		vs := ctx.Strings(name)
+		if len(vs) > 1 {
+			return "", cmdErrorf("--%s is given twice", name)
+		}
+		if len(vs) == 1 {
+			if vs[0] == "" {
+				return "", cmdErrorf("--%s needs a value", name)
+			}
+			return vs[0], nil
+		}
+		return "", nil
+	}
+	var err error
+	if f.varFile, err = one("vars"); err != nil {
+		return nil, err
+	}
+	if f.description, err = one("description"); err != nil {
+		return nil, err
+	}
+	f.envKeys = ctx.Strings("env")
+	f.groups = ctx.Strings("group")
+	for _, l := range []struct {
+		name string
+		dst  **int64
+	}{{"steps", &f.steps}, {"allocation", &f.alloc}, {"depth", &f.depth}} {
+		if !ctx.IsSet(l.name) {
+			continue
+		}
+		n, err := wholeNumber("--"+l.name, ctx.String(l.name), 0)
+		if err != nil {
+			return nil, err
+		}
+		*l.dst = &n
+	}
+	return f, nil
 }
 
 func (f *envFlags) limits() []risor.Decl {
