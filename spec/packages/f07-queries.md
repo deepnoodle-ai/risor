@@ -148,6 +148,10 @@ Star    = ( "[" | "?.[" ) "*" "]" .
    "receiver" of a step (`05-types.md` 9.1): the receiver of a step of a
    projection is the chain from its start up to that step, and its span is the
    step span of the step before it, or the span of `x` for the first star.
+   The span of `x` is that of its node, so it does not hold parentheses around
+   it, as for any receiver in Core: in `(n)[*].f`, a `kind` on the first
+   star's receiver spans `n`, the star span is `(n)[*]`, and the receiver of
+   `.f` spans `(n)[*]`.
 3. An `Each` spans from the first token of the chain to the last token of its
    projection. An `Each` with no `x` has the same start. Its star span is the
    step span of its own star.

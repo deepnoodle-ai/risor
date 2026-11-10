@@ -283,3 +283,22 @@ describe("child environments", () => {
     assert.equal(r.type, "int");
   });
 });
+
+describe("the receiver of a first star is the node, without its parentheses (f07 2.4 item 2)", () => {
+  const env = createEnv({ vars: "{n: {a: int} | null}", functions: { lookup: { type: "(k: string) => any", call: () => null } } });
+  const diags = (src: string) => {
+    const c = env.check(src);
+    assert.ok(!c.ok);
+    return c.diagnostics.map((d) => [d.code, d.span!.start, d.span!.end]);
+  };
+  test("kind and maybe-null", () => {
+    assert.deepEqual(diags("(0)[*]"), [["kind", 1, 2]]);
+    assert.deepEqual(diags("((0))[*]"), [["kind", 2, 3]]);
+    assert.deepEqual(diags("(n)[*]"), [["kind", 1, 2], ["maybe-null", 1, 2]]);
+  });
+  test("a dynamic site", () => {
+    const c = env.check('(lookup(""))[*]');
+    assert.ok(c.ok);
+    assert.deepEqual(c.sites.map((s) => [s.class, s.span.start, s.span.end]), [["dynamic", 1, 11]]);
+  });
+});

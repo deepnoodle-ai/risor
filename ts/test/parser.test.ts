@@ -200,6 +200,21 @@ describe("01 14.3: every row", () => {
     err("try { e }", "missing-catch", [1, 10, 1, 10]);
     err("try { e } 1", "missing-catch", [1, 11, 1, 12]);
   });
+  test("an earlier row wins over a row the parser meets at a fixed place (f08 2.1 item 2)", () => {
+    // C5 before D13, D11 and D15: a token that no rule accepts.
+    err("try{m}|>", "pipe-operator", [1, 7, 1, 9]);
+    err("if (c) { 1 } === 2", "strict-equality", [1, 14, 1, 17]);
+    err("try { 1 } catch (|>) { 2 }", "pipe-operator", [1, 18, 1, 20]);
+    // E3 before E4 and E6.
+    err("try finally", "finally-clause", [1, 5, 1, 12]);
+    err("if finally", "finally-clause", [1, 4, 1, 11]);
+    err("if (c) finally", "finally-clause", [1, 8, 1, 15]);
+    // E3, E10 and E13 before E21.
+    err("a?[1] finally", "finally-clause", [1, 7, 1, 14]);
+    err("a?[1] | 2", "bitwise-operator", [1, 7, 1, 8]);
+    err("a?[1] satisfies", "satisfies-operator", [1, 7, 1, 16]);
+    err("a?[1] === 2", "strict-equality", [1, 7, 1, 10]);
+  });
   test("rules 3, 2, 1 and 6 of 3.4", () => {
     err("a ?? b > c", "needs-parentheses", [1, 8, 1, 9]);
     err("a ?? b || c", "needs-parentheses", [1, 8, 1, 10]);
