@@ -1,0 +1,17 @@
+[
+  {"name": "a removed entry of a group is an undefined function", "source": "json.parse(\"1\")", "groups": ["json"], "removed": ["json.parse"], "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 11]}]}},
+  {"name": "the other entries of the group stay", "source": "json.stringify(1)", "groups": ["json"], "removed": ["json.parse"], "expect": {"value": "1"}},
+  {"name": "a removed constant: the namespace is read as a value", "source": "math.pi", "groups": ["math"], "removed": ["math.pi"], "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 1, 1, 5]}]}},
+  {"name": "the other constant stays", "source": "math.e", "groups": ["math"], "removed": ["math.pi"], "expect": {"value": 2.718281828459045, "steps": 0, "allocated": 0}},
+  {"name": "a removed entry of math", "source": "math.sqrt(4)", "groups": ["math"], "removed": ["math.sqrt"], "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 10]}]}},
+  {"name": "a host function cannot take a removed entry of a group", "source": "1", "groups": ["math"], "functions": {"math.sqrt": "(x: float) => float"}, "removed": ["math.sqrt"], "expect": {"phase": "declare", "diagnostics": [{"code": "reserved-namespace"}]}},
+  {"name": "removing an entry of a group that is off is no error", "source": "1", "groups": ["math"], "removed": ["json.parse"], "expect": {"value": 1}},
+  {"name": "removing an entry of a group that is off leaves the group off", "source": "json.parse(\"1\")", "removed": ["json.parse"], "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 5]}]}},
+  {"name": "removing one entry twice is no error", "source": "base64.encode(\"a\")", "groups": ["base64"], "removed": ["base64.decode", "base64.decode"], "expect": {"value": "YQ=="}},
+  {"name": "removing an entry of the default group beside a group", "source": "json.stringify(1)", "groups": ["json"], "removed": ["len"], "expect": {"value": "1"}},
+  {"name": "removing a name the group lacks is bad-name", "source": "1", "groups": ["json"], "removed": ["json.nope"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "removing an entry named without its namespace is bad-name", "source": "1", "groups": ["json"], "removed": ["parse"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "removing a group name alone is bad-name", "source": "1", "groups": ["json"], "removed": ["json"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "removing an entry named with another group is bad-name", "source": "1", "groups": ["json"], "removed": ["time.parse.x"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}},
+  {"name": "removing the wrong namespace is bad-name", "source": "1", "groups": ["json"], "removed": ["base64.parse"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}}
+]

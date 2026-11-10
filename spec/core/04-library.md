@@ -2189,3 +2189,14 @@ is the join of its field types (`05-types.md`).
 | --- | --- | --- |
 | `xs.filter(x => x != null)` | `{xs: (int \| null)[]}` | `int[]` |
 | `xs.find(x => x != null)` | `{xs: (int \| null)[]}` | `int \| null` |
+
+## 7. What packages add
+
+A package of the specification adds entries and changes none. Its chapter is
+the home of its entries, written in the form of section 5, and its records are
+in a file of their own beside `suite/library.json`, in the same format.
+
+| Package | Adds | Chapter | Records |
+| --- | --- | --- | --- |
+| F6, opt-in groups | The groups `json`, `time`, `math` and `base64`, each off until an environment turns it on: 8 entries and the constants `math.pi` and `math.e` | `spec/packages/f06-groups.md` | `suite/library-groups.json` |
+| F13, math functions | Eleven entries of the group `math`, each correctly rounded: `pow`, `exp`, `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2` | `spec/packages/f13-math.md` | `suite/library-math.json` |

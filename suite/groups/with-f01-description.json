@@ -1,0 +1,5 @@
+[
+  {"name": "the description lists the groups that are on, in code point order", "source": "1", "groups": ["math", "json"], "expect": {"description": {"version": "3.0", "variables": {}, "functions": {}, "opaque": {}, "removed": [], "reject": ["constant-condition"], "limits": {"steps": 1000000, "allocation": 1000000, "depth": 200}, "groups": ["json", "math"]}}},
+  {"name": "the description has no key groups when none is on", "source": "1", "groups": [], "expect": {"description": {"version": "3.0", "variables": {}, "functions": {}, "opaque": {}, "removed": [], "reject": ["constant-condition"], "limits": {"steps": 1000000, "allocation": 1000000, "depth": 200}}}},
+  {"name": "the description with all four groups", "source": "1", "groups": ["time", "math", "json", "base64"], "expect": {"description": {"version": "3.0", "variables": {}, "functions": {}, "opaque": {}, "removed": [], "reject": ["constant-condition"], "limits": {"steps": 1000000, "allocation": 1000000, "depth": 200}, "groups": ["base64", "json", "math", "time"]}}}
+]

@@ -1,0 +1,14 @@
+[
+  {"name": "F6 without F13: math.pow is a name the group does not have", "source": "math.pow(x, y)", "groups": ["math"], "env": "{x: float, y: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "F6 without F13: math.exp is a name the group does not have", "source": "math.exp(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "F6 without F13: math.log is a name the group does not have", "source": "math.log(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "F6 without F13: math.log10 is a name the group does not have", "source": "math.log10(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 11]}]}},
+  {"name": "F6 without F13: math.sin is a name the group does not have", "source": "math.sin(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "F6 without F13: math.cos is a name the group does not have", "source": "math.cos(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "F6 without F13: math.tan is a name the group does not have", "source": "math.tan(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 9]}]}},
+  {"name": "F6 without F13: math.asin is a name the group does not have", "source": "math.asin(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 10]}]}},
+  {"name": "F6 without F13: math.acos is a name the group does not have", "source": "math.acos(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 10]}]}},
+  {"name": "F6 without F13: math.atan is a name the group does not have", "source": "math.atan(x)", "groups": ["math"], "env": "{x: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 10]}]}},
+  {"name": "F6 without F13: math.atan2 is a name the group does not have", "source": "math.atan2(x, y)", "groups": ["math"], "env": "{x: float, y: float}", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 11]}]}},
+  {"name": "F6 without F13: removing math.sin names no entry", "source": "1", "groups": ["math"], "removed": ["math.sin"], "expect": {"phase": "declare", "diagnostics": [{"code": "bad-name"}]}}
+]

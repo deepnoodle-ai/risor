@@ -1,0 +1,19 @@
+[
+  {"name": "a constant is a float", "source": "math.pi", "groups": ["math"], "expect": {"type": "float", "sites": []}},
+  {"name": "a list of constants", "source": "[math.pi, math.e]", "groups": ["math"], "expect": {"type": "float[]", "sites": []}},
+  {"name": "sqrt is marked ! and records a value site", "source": "math.sqrt(x)", "groups": ["math"], "env": "{x: float}", "expect": {"type": "float", "sites": [{"class": "value", "span": [1, 1, 1, 13]}]}},
+  {"name": "json.parse gives any", "source": "json.parse(s)", "groups": ["json"], "env": "{s: string}", "expect": {"type": "any", "sites": [{"class": "value", "span": [1, 1, 1, 14]}]}},
+  {"name": "json.stringify renders: any records a dynamic site", "source": "json.stringify(x)", "groups": ["json"], "env": "{x: any}", "expect": {"type": "string", "sites": [{"class": "dynamic", "span": [1, 16, 1, 17]}]}},
+  {"name": "json.stringify of an int records nothing", "source": "json.stringify(n)", "groups": ["json"], "env": "{n: int}", "expect": {"type": "string", "sites": []}},
+  {"name": "json.stringify renders: any at depth", "source": "json.stringify({a: x})", "groups": ["json"], "env": "{x: any}", "expect": {"type": "string", "sites": [{"class": "dynamic", "span": [1, 16, 1, 22]}]}},
+  {"name": "json.stringify of an opaque type is kind", "source": "json.stringify(t)", "groups": ["json"], "env": "{t: Token}", "opaque": ["Token"], "expect": {"phase": "check", "diagnostics": [{"code": "kind", "span": [1, 16, 1, 17]}]}},
+  {"name": "time.parse", "source": "time.parse(s)", "groups": ["time"], "env": "{s: string}", "expect": {"type": "float", "sites": [{"class": "value", "span": [1, 1, 1, 14]}]}},
+  {"name": "time.format", "source": "time.format(t)", "groups": ["time"], "env": "{t: float}", "expect": {"type": "string", "sites": [{"class": "value", "span": [1, 1, 1, 15]}]}},
+  {"name": "time.duration", "source": "time.duration(\"1h\")", "groups": ["time"], "expect": {"type": "float", "sites": [{"class": "value", "span": [1, 1, 1, 20]}]}},
+  {"name": "base64.encode is not marked !", "source": "base64.encode(s)", "groups": ["base64"], "env": "{s: string}", "expect": {"type": "string", "sites": []}},
+  {"name": "base64.decode", "source": "base64.decode(s)", "groups": ["base64"], "env": "{s: string}", "expect": {"type": "string", "sites": [{"class": "value", "span": [1, 1, 1, 17]}]}},
+  {"name": "an any argument to a group entry", "source": "time.parse(x)", "groups": ["time"], "env": "{x: any}", "expect": {"type": "float", "sites": [{"class": "value", "span": [1, 1, 1, 14]}, {"class": "dynamic", "span": [1, 12, 1, 13]}]}},
+  {"name": "a string where math takes a number", "source": "math.sqrt(\"4\")", "groups": ["math"], "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 11, 1, 14]}]}},
+  {"name": "a number where json.parse takes a string", "source": "json.parse(1)", "groups": ["json"], "expect": {"phase": "check", "diagnostics": [{"code": "arg-mismatch", "span": [1, 12, 1, 13]}]}},
+  {"name": "a string that may be null", "source": "base64.encode(s)", "groups": ["base64"], "env": "{s: string | null}", "expect": {"phase": "check", "diagnostics": [{"code": "maybe-null", "span": [1, 15, 1, 16]}]}}
+]

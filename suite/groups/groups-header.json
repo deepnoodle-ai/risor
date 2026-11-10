@@ -1,0 +1,5 @@
+{"groups": ["math"], "cases": [
+  {"name": "the header turns a group on", "source": "math.sqrt(16)", "expect": {"value": 4}},
+  {"name": "a case replaces the header groups whole", "source": "math.pi", "groups": ["json"], "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 5]}]}},
+  {"name": "a case with both groups", "source": "json.stringify(math.e)", "groups": ["json", "math"], "expect": {"value": "2.718281828459045"}}
+]}

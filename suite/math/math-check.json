@@ -1,0 +1,6 @@
+[
+  {"name": "sin is not marked !", "source": "math.sin(x)", "groups": ["math"], "env": "{x: float}", "expect": {"type": "float", "sites": []}},
+  {"name": "exp is not marked !", "source": "math.exp(x)", "groups": ["math"], "env": "{x: float}", "expect": {"type": "float", "sites": []}},
+  {"name": "atan2 is not marked !", "source": "math.atan2(y, x)", "groups": ["math"], "env": "{y: float, x: float}", "expect": {"type": "float", "sites": []}},
+  {"name": "pow takes an int", "source": "math.pow(x, 2)", "groups": ["math"], "env": "{x: int}", "expect": {"type": "float", "sites": [{"class": "value", "span": [1, 1, 1, 15]}]}}
+]

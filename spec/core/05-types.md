@@ -2009,3 +2009,5 @@ Its chapter is the home of its rules.
 | F1, host types | The type a JSON Schema gives, with its options. The printing of a signature. The description of an environment | `spec/packages/f01-host-types.md` |
 | F2, templates and analysis | How a host template is checked, and its type in each mode | `spec/packages/f02-templates-analysis.md` 2 |
 | F3, string forms | The types of the new string nodes, and raw strings in type text | `spec/packages/f03-strings.md` 8 |
+| F6, opt-in groups | The signatures of the groups' entries and the types of the constants; `renders` on `json.stringify` | `spec/packages/f06-groups.md` 10 |
+| F13, math functions | The signatures of its eleven entries | `spec/packages/f13-math.md` |

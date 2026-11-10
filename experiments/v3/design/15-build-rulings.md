@@ -324,3 +324,21 @@ implementations shared them.
 | # | Ruling |
 | --- | --- |
 | R130 | **Removed library entries had no test.** Core let an environment remove an entry, and the case format could not say so. An entry is named `len`, `string.repeat`, `list.map` or `map.keys`. A removed entry is absent in every compile, checked or not; removing a name that is no entry is `bad-name`; a child cannot bring an entry back. The case format gains the field `removed`. |
+
+## 14. Round 12, continued: the groups and the functions of `math`
+
+### 14.1 F6, opt-in groups
+
+The chapter is `spec/packages/f06-groups.md`. Its records are
+`suite/library-groups.json` and its other cases `suite/groups/`: 390 cases.
+Its source is `06` 2.8.
+
+| # | Ruling |
+| --- | --- |
+| R131 | **Every entry of `math` is correctly rounded.** The design made the transcendental functions implementation-defined (overview R12). That contradicts the promise of one value and one count everywhere: a result that differs in its last digit can take the other branch of an `if`. R12 is overruled for `math`. |
+| R132 | **The eleven transcendental entries are their own package, F13,** built last: `pow`, `exp`, `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`. 3.0 does not wait for three correctly rounded implementations of them; adding entries is additive. F6 keeps `math.sqrt`, `math.pi` and `math.e`, which are exact: 8 entries and 2 constants. F13's chapter is `spec/packages/f13-math.md`, with 114 cases. |
+| R133 | Packages are offered in a fixed order, each only with all before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13. This replaces R101. |
+| R134 | `time.parse` takes any number of fraction digits, so that `parse(format(t))` is `t`; `time.format` charges for its result. Upper-case `T` and `Z` only. |
+| R135 | `base64.decode`: one alphabet in a text, leftover bits zero, no white space, padding absent or complete, units of the result as written. |
+| R136 | `json.parse`: a number that reads as an infinity is `number-range`; failures in the order grammar, first bad number, depth; the text's nesting counts as a walk. A `not-json` failure gives no position, since Core's template is fixed. |
+| R137 | A group is turned on by a declaration. A name of a group that is on clashes with a variable or a host function; of a group that is off, it does not. A group's entry is removed by its full name. A constant is a record with `type` and `value`. The result field `json` compares a binding's JSON text of a result. |

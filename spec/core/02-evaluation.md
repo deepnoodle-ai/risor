@@ -827,3 +827,5 @@ own forms and changes no row above. Its chapter is the home of those rows.
 | F1, host types | No row. A program's counts do not depend on how its variables were declared | `spec/packages/f01-host-types.md` 8 |
 | F2, templates and analysis | No row. A host template is evaluated as the template of this chapter, in one run with one budget | `spec/packages/f02-templates-analysis.md` 2 |
 | F3, string forms | A raw string and a text block with no interpolation: 0 steps, 0 units. A text block with an interpolation: as a template | `spec/packages/f03-strings.md` 7 |
+| F6, opt-in groups | The cost of each entry of the four groups, in the form of `04-library.md`. Two formula symbols, `c` and `u`, for `json.parse` | `spec/packages/f06-groups.md` 5 |
+| F13, math functions | Each entry: 0 steps and 0 units beyond the call | `spec/packages/f13-math.md` |

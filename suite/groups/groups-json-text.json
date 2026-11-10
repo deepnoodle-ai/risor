@@ -1,0 +1,13 @@
+[
+  {"name": "the JSON text of a result", "source": "x", "env": "{x: any}", "vars": {"x": {"b": [1, 2.5], "a": "é\n"}}, "expect": {"value": {"b": [1, 2.5], "a": "é\n"}, "json": "{\"a\":\"é\\n\",\"b\":[1,2.5]}"}},
+  {"name": "json.stringify gives the same text", "source": "json.stringify(x)", "groups": ["json"], "env": "{x: any}", "vars": {"x": {"b": [1, 2.5], "a": "é\n"}}, "expect": {"value": "{\"a\":\"é\\n\",\"b\":[1,2.5]}"}},
+  {"name": "numbers in the JSON text of a result", "source": "x", "env": "{x: any}", "vars": {"x": [1e+21, 1.5e-07, 1e-07, 123456789012345680000, 0.1, -5e-324, -0.5]}, "expect": {"value": [1e+21, 1.5e-07, 1e-07, 123456789012345680000, 0.1, -5e-324, -0.5], "json": "[1e+21,1.5e-7,1e-7,123456789012345680000,0.1,-5e-324,-0.5]"}},
+  {"name": "numbers in json.stringify", "source": "json.stringify(x)", "groups": ["json"], "env": "{x: any}", "vars": {"x": [1e+21, 1.5e-07, 1e-07, 123456789012345680000, 0.1, -5e-324, -0.5]}, "expect": {"value": "[1e+21,1.5e-7,1e-7,123456789012345680000,0.1,-5e-324,-0.5]"}},
+  {"name": "keys in code point order in the JSON text of a result", "source": "x", "env": "{x: any}", "vars": {"x": {"😀": 2, "～": 1, "z": 0, "é": 3}}, "expect": {"value": {"😀": 2, "～": 1, "z": 0, "é": 3}, "json": "{\"z\":0,\"é\":3,\"～\":1,\"😀\":2}"}},
+  {"name": "keys in code point order in json.stringify", "source": "json.stringify(x)", "groups": ["json"], "env": "{x: any}", "vars": {"x": {"😀": 2, "～": 1, "z": 0, "é": 3}}, "expect": {"value": "{\"z\":0,\"é\":3,\"～\":1,\"😀\":2}"}},
+  {"name": "escapes in the JSON text of a string result", "source": "x", "env": "{x: string}", "vars": {"x": "\u0001\u001f \"\\/"}, "expect": {"value": "\u0001\u001f \"\\/", "json": "\"\\u0001\\u001f \\\"\\\\/\""}},
+  {"name": "escapes in json.stringify", "source": "json.stringify(x)", "groups": ["json"], "env": "{x: string}", "vars": {"x": "\u0001\u001f \"\\/"}, "expect": {"value": "\"\\u0001\\u001f \\\"\\\\/\""}},
+  {"name": "the JSON text of null", "source": "null", "expect": {"value": null, "json": "null"}},
+  {"name": "the JSON text of a computed result", "source": "{b: [1, 2], a: 0.1 + 0.2}", "expect": {"json": "{\"a\":0.30000000000000004,\"b\":[1,2]}"}},
+  {"name": "the JSON text of a result built by the library", "source": "[3, 1, 2].sort()", "expect": {"json": "[1,2,3]", "steps": 10, "allocated": 8}}
+]

@@ -1,0 +1,14 @@
+[
+  {"name": "F6 without F13: math.pow is a name the group does not have", "source": "math.pow(x, y)", "groups": ["math"], "env": "{x: float, y: float}", "vars": {"x": 1, "y": 1}, "expect": {"value": 1, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.exp is a name the group does not have", "source": "math.exp(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 2.718281828459045, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.log is a name the group does not have", "source": "math.log(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 0, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.log10 is a name the group does not have", "source": "math.log10(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 0, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.sin is a name the group does not have", "source": "math.sin(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 0.8414709848078965, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.cos is a name the group does not have", "source": "math.cos(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 0.5403023058681398, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.tan is a name the group does not have", "source": "math.tan(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 1.5574077246549023, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.asin is a name the group does not have", "source": "math.asin(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 1.5707963267948966, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.acos is a name the group does not have", "source": "math.acos(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 0, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.atan is a name the group does not have", "source": "math.atan(x)", "groups": ["math"], "env": "{x: float}", "vars": {"x": 1}, "expect": {"value": 0.7853981633974483, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: math.atan2 is a name the group does not have", "source": "math.atan2(x, y)", "groups": ["math"], "env": "{x: float, y: float}", "vars": {"x": 1, "y": 1}, "expect": {"value": 0.7853981633974483, "steps": 1, "allocated": 0}},
+  {"name": "F6 without F13: removing math.sin names no entry", "source": "1", "groups": ["math"], "removed": ["math.sin"], "expect": {"value": 1}}
+]

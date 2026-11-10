@@ -1,0 +1,3 @@
+[
+  {"name": "atan2 needs two arguments", "source": "math.atan2(1)", "groups": ["json", "math", "base64"], "expect": {"phase": "check", "diagnostics": [{"code": "arity", "span": [1, 1, 1, 14]}]}}
+]

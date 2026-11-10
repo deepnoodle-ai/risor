@@ -1341,17 +1341,19 @@ above. A package's chapter is the home of its rules: this table only points.
 | F3, string forms | Nothing in the host contract. Its cases use Core's format | `spec/packages/f03-strings.md` |
 | Named types | The declaration of a named type, and the case field `types` | Not written yet |
 | Checked conversion | The conformance function, and the case of the second kind, with the field `conform` | Not written yet |
-| Opt-in library groups | The declaration that enables a group, and the case field `groups`. The runner's comparison of a result's JSON text (3.2.4) with what `json.stringify` gives | Not written yet |
+| F6, opt-in groups | The declaration that turns a group on: `json`, `time`, `math`, `base64`. The case field `groups`, and the result field `json`, which compares the binding's JSON text of a result (3.2.4) | `spec/packages/f06-groups.md` |
+| F13, math functions | Nothing in the host contract: eleven entries of the group `math` | `spec/packages/f13-math.md` |
 | Errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings. The `parse` and `check` templates of the catalog | Not written yet |
 | Testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Update mode. Case files written as programs. Kinds of case that test the runner | Not written yet |
 | Tools | The assist stage: completion and hover | Not written yet |
 
-1. The cases of a package are in a directory of their own: `suite/host-types/`,
-   `suite/templates/` and `suite/analysis/`, `suite/strings/`. A runner
+1. The cases of a package are in a directory of their own, and its library
+   records in a file of their own; `suite/README.md` lists them. A runner
    reports each directory by itself (3.10.8).
 2. A runner runs only the directories of the packages its implementation
-   offers. An implementation offers a package only when it offers every
-   package that one depends on.
+   offers. The packages are offered in a fixed order, each only with all
+   before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13. So a
+   package's cases may use what an earlier package adds.
 3. For a runner, a field of a package it does not offer is a field 3.10.3
    does not list, so a file that uses it is invalid (3.10.10).
 4. A case that pins an error which a named later package turns into a result
