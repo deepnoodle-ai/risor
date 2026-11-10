@@ -1419,6 +1419,7 @@ and changes nothing else. Its chapter is the home of its rules.
 | F3, string forms | The raw string `r"..."` and `r'...'`, the text block `"""`, the raw text block `r"""`. It reports the codes `text-block-open`, `text-block-close` and `text-block-indent` (14.2). It replaces rows 7 and 9 of 2.3 for these forms | `spec/packages/f03-strings.md` |
 | F4, checked conversion | The tests `x as T` and `x is T`, at the level of comparison, with a type written in the program. Node 31, `As`. The code `bad-type-text`. It replaces the rows of 14.3 for `as` and `is` | `spec/packages/f04-conversion.md` |
 | F7, queries | The steps `[*]` and `?.[*]` of a chain, and the node `Each`. It replaces the rows of 14.3 for these texts | `spec/packages/f07-queries.md` |
+| F8, errors, second part | 44 targeted `parse` codes, each a mapping of a diagnostic this chapter already reports, at the same place in the order. With it there are 58 `parse` codes. It replaces 14.3 | `spec/packages/f08-errors.md` 2 |
 
 1. Where this chapter calls such a text an error, it speaks of Core alone: the
    rows of 2.3, 14.2 and 14.3 for these forms, and the examples that use them.

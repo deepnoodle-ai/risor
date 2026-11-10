@@ -1,0 +1,54 @@
+{
+ "types": [
+  {
+   "name": "Order",
+   "type": "{id: string, total: float, ...}"
+  }
+ ],
+ "cases": [
+  {
+   "name": "11.18 an operator after a type",
+   "source": "x as int + 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       11
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  },
+  {
+   "name": "11.19 a ! operand",
+   "source": "!body is int",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   },
+   "env": "{body: any, n: int, v: int | string, t: Time}",
+   "opaque": [
+    "Time"
+   ]
+  }
+ ]
+}

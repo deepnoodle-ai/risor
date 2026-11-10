@@ -1,0 +1,40 @@
+{
+ "cases": [
+  {
+   "name": "example 6: R is not a prefix",
+   "source": "R\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "example 7: r then three single quotes",
+   "source": "r'''a'''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

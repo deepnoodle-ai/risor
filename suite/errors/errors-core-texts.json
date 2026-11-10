@@ -1,0 +1,6048 @@
+[
+ {
+  "name": "conversion/conversion-examples: 11.18 an operator after a type",
+  "types": [
+   {
+    "name": "Order",
+    "type": "{id: string, total: float, ...}"
+   }
+  ],
+  "source": "x as int + 1",
+  "env": "{body: any, n: int, v: int | string, t: Time}",
+  "opaque": [
+   "Time"
+  ],
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      11
+     ],
+     "message": "put the as or is test in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-examples: 11.19 a ! operand",
+  "types": [
+   {
+    "name": "Order",
+    "type": "{id: string, total: float, ...}"
+   }
+  ],
+  "source": "!body is int",
+  "env": "{body: any, n: int, v: int | string, t: Time}",
+  "opaque": [
+   "Time"
+  ],
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: x as const keeps Core's span at as",
+  "source": "x as const",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "as-const",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "as const is not needed, because no value can change; remove it"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: x is not T keeps Core's span at is",
+  "source": "x is not string",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "negated-is",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "is has no negated form; write !(x is T)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: x as const after an operand in parentheses",
+  "source": "(a + b) as const",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "as-const",
+     "span": [
+      1,
+      9,
+      1,
+      11
+     ],
+     "message": "as const is not needed, because no value can change; remove it"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: !x is int is an error at the !",
+  "source": "!x is int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: !x as a valid type is an error at the !",
+  "source": "!x as {a: int}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before as; write !(x as T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: !!x is int is an error at the first !",
+  "source": "!!x is int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: !-x is int is an error at the !",
+  "source": "!-x is int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: == then !x is int fails at the !",
+  "source": "a == !x is int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: the ! rule is found before the type is read",
+  "source": "!x is )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: + after a type",
+  "source": "x as int + 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      11
+     ],
+     "message": "put the as or is test in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: - after a type",
+  "source": "x as int - 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      11
+     ],
+     "message": "put the as or is test in parentheses before -"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: * after a type",
+  "source": "x as int * 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      11
+     ],
+     "message": "put the as or is test in parentheses before *"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: / after a type",
+  "source": "x as float / 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      12,
+      1,
+      13
+     ],
+     "message": "put the as or is test in parentheses before /"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: % after a type",
+  "source": "x as int % 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      11
+     ],
+     "message": "put the as or is test in parentheses before %"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: ** after a type",
+  "source": "x as int ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      12
+     ],
+     "message": "put the as or is test in parentheses before **"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: ?? after a type",
+  "source": "x as int ?? 0",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      12
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: as after ??",
+  "source": "x ?? y as int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of as in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: is after ??",
+  "source": "x ?? y is int",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of is in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: a field read after a type",
+  "source": "x as Order.f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "put the as or is test in parentheses before ."
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: an optional field read after a type",
+  "source": "x as int?.f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      9,
+      1,
+      11
+     ],
+     "message": "put the as or is test in parentheses before ?."
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: an optional index after a type",
+  "source": "x as int?.[0]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      9,
+      1,
+      12
+     ],
+     "message": "put the as or is test in parentheses before ?.["
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: an index after a type",
+  "source": "x as int[0]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      9,
+      1,
+      10
+     ],
+     "message": "put the as or is test in parentheses before ["
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: an index after a list type",
+  "source": "x as int[][1]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "put the as or is test in parentheses before ["
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: a [ after a type, then the end of input",
+  "source": "x as int[",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      9,
+      1,
+      10
+     ],
+     "message": "put the as or is test in parentheses before ["
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: an index after a space",
+  "source": "x as int[] [0]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      12,
+      1,
+      13
+     ],
+     "message": "put the as or is test in parentheses before ["
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: a call after a type",
+  "source": "x as Order(1)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "put the as or is test in parentheses before ("
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: a brace after a type outside a match",
+  "source": "x as int {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      10,
+      1,
+      11
+     ],
+     "message": "put the as or is test in parentheses before {"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: a token no rule accepts, in a type",
+  "source": "x as ===",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      6,
+      1,
+      9
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conversion/conversion-syntax: the block token in a type",
+  "source": "x as '''a'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      6,
+      1,
+      9
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: a hash",
+  "source": "#",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "hash-comment",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a comment is written // to the end of the line, or /* */"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: a hash after an expression",
+  "source": "1 # c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "hash-comment",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "a comment is written // to the end of the line, or /* */"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: a dollar",
+  "source": "$",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "context-symbol",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "$ names nothing; write the name of the variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: an ampersand alone",
+  "source": "1 & 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "& is not an operator; write && for a logical and"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: an ampersand before an operand",
+  "source": "1 &2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "& is not an operator; write && for a logical and"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token ===",
+  "source": "1 === 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token !==",
+  "source": "1 !== 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "!== is not an operator; write !=, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token === with no spaces",
+  "source": "1===1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      2,
+      1,
+      5
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: four equals signs read === first",
+  "source": "1 ==== 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token +=",
+  "source": "x += 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "+= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token -=",
+  "source": "x -= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "-= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token *=",
+  "source": "x *= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "*= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token /=",
+  "source": "x /= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "/= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token %=",
+  "source": "x %= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "%= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token **=",
+  "source": "x **= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "**= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token ??=",
+  "source": "x ??= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "??= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token ||=",
+  "source": "x ||= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "||= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token &&=",
+  "source": "x &&= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "&&= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token ++ after a name",
+  "source": "x++",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      2,
+      1,
+      4
+     ],
+     "message": "++ does not exist: a binding cannot be changed; write x + 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token ++ before a name",
+  "source": "++x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      1,
+      1,
+      3
+     ],
+     "message": "++ does not exist: a binding cannot be changed; write x + 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/lex-characters: the token |>",
+  "source": "x |> f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "pipe-operator",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "|> is not an operator; write f(x), or call a method"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 1: minus before a power",
+  "source": "-2 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 1: ! before a power",
+  "source": "!1 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 1: minus before a parenthesized base and **",
+  "source": "-(2) ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 1: minus before a chain and **",
+  "source": "-x.a ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 1: minus before a power on the right of +",
+  "source": "1 + -2 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 1: minus before a power in the exponent of **",
+  "source": "2 ** -2 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: P6: two minus signs before a power: the first",
+  "source": "- -2 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: P6: two adjacent minus signs before a power: the first",
+  "source": "--2 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: P6: ! then minus before a power: the !",
+  "source": "!-2 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: P6: two ! signs before in: the first",
+  "source": "!!a in b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: P6: ! then minus before in: the !",
+  "source": "!-1 in [1]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 2: ! as the left operand of in",
+  "source": "!1 in [1]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 2: ! as the left operand of not in",
+  "source": "!x not in y",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then >",
+  "source": "a ?? b > c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "put one side of > in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: > then ??",
+  "source": "a > b ?? c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then ||",
+  "source": "a ?? b || c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of || in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: || then ??",
+  "source": "a || b ?? c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then &&",
+  "source": "a ?? b && c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of && in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: && then ??",
+  "source": "a && b ?? c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then ==",
+  "source": "a ?? b == c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of == in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: == then ??",
+  "source": "a == b ?? c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then !=",
+  "source": "a ?? b != c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of != in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then <",
+  "source": "a ?? b < c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "put one side of < in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: < then ??",
+  "source": "a < b ?? c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then <=",
+  "source": "a ?? b <= c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of <= in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then >=",
+  "source": "a ?? b >= c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of >= in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: ?? then in",
+  "source": "a ?? b in c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of in in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: in then ??",
+  "source": "a in b ?? c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 3: not in then ??",
+  "source": "a not in b ?? c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      12,
+      1,
+      14
+     ],
+     "message": "put one side of ?? in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: P7: ?? then not in spans not in",
+  "source": "a ?? b not in c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      14
+     ],
+     "message": "put one side of not in in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: P7: ?? then not in across a line end",
+  "source": "a ?? b not\nin c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      2,
+      3
+     ],
+     "message": "put one side of not in in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by +",
+  "source": "if (x) { 1 } else { 2 } + 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      25,
+      1,
+      26
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by .",
+  "source": "if (x) { 1 } else { 2 }.a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      24,
+      1,
+      25
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ."
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by [",
+  "source": "if (x) { 1 } else { 2 }[0]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      24,
+      1,
+      25
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ["
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by ?",
+  "source": "if (x) { 1 } else { 2 } ? 1 : 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      25,
+      1,
+      26
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ?"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by ?.",
+  "source": "if (x) { 1 } else { 2 }?.a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      24,
+      1,
+      26
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ?."
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by ?.[",
+  "source": "if (x) { 1 } else { 2 }?.[0]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      24,
+      1,
+      27
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ?.["
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by ==",
+  "source": "if (x) { 1 } else { 2 } == 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      25,
+      1,
+      27
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by in",
+  "source": "if (x) { 1 } else { 2 } in [1]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      25,
+      1,
+      27
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before in"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if followed by (",
+  "source": "if (x) { 1 } else { 2 } (1)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      25,
+      1,
+      26
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ("
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: a try followed by *",
+  "source": "try { 1 } catch { 2 } * 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      23,
+      1,
+      24
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before *"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: a try followed by ??",
+  "source": "try { 1 } catch { 2 } ?? 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      23,
+      1,
+      25
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ??"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: a try followed by .",
+  "source": "try { 1 } catch { 2 }.a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      22,
+      1,
+      23
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before ."
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 4: an if in the else branch of ? : followed by +",
+  "source": "1 ? 2 : if (x) { 1 } else { 2 } + 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      33,
+      1,
+      34
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 5: an if as the right operand of +",
+  "source": "1 + if (x) { 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      5,
+      1,
+      7
+     ],
+     "message": "put the if in parentheses: it cannot stand as an operand"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 5: an if as the operand of minus",
+  "source": "-if (x) { 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      2,
+      1,
+      4
+     ],
+     "message": "put the if in parentheses: it cannot stand as an operand"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 5: a try as the operand of !",
+  "source": "!try { 1 } catch { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      2,
+      1,
+      5
+     ],
+     "message": "put the try in parentheses: it cannot stand as an operand"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 5: an if as the right operand of ??",
+  "source": "1 ?? if (x) { 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      6,
+      1,
+      8
+     ],
+     "message": "put the if in parentheses: it cannot stand as an operand"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 5: a try as the right operand of **",
+  "source": "1 ** try { 1 } catch { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      6,
+      1,
+      9
+     ],
+     "message": "put the try in parentheses: it cannot stand as an operand"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 5: an if as the right operand of <",
+  "source": "1 < if (x) { 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      5,
+      1,
+      7
+     ],
+     "message": "put the if in parentheses: it cannot stand as an operand"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 6: a match subject that starts with {",
+  "source": "match {a: 1}.a { _ => 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a match needs a subject, and a subject that starts with { is written in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 6: a match subject that starts with if",
+  "source": "match if (x) { 1 } else { 2 } { _ => 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "message": "a match needs a subject, and a subject that starts with if is written in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 6: a match subject that starts with try",
+  "source": "match try { 1 } catch { 2 } { _ => 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      10
+     ],
+     "message": "a match needs a subject, and a subject that starts with try is written in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 6: match { with no subject (P8)",
+  "source": "match { 1 => 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a match needs a subject, and a subject that starts with { is written in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: a branch with a key and :",
+  "source": "if (x) { a: 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: a branch with a string key and :",
+  "source": "if (x) { \"a\": 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: a branch with a comma",
+  "source": "if (x) { 1, 2 } else { 3 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: a branch that starts with ...",
+  "source": "if (x) { ...m } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: an else branch written like a map",
+  "source": "if (x) { 1 } else { a: 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      19,
+      1,
+      20
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: an else if branch written like a map",
+  "source": "if (x) { 1 } else if (x) { b: 2 } else { 3 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      26,
+      1,
+      27
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: a branch with const lines then a comma",
+  "source": "if (x) { const a = 1; a, 2 } else { 3 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: a try body written like a map",
+  "source": "try { a: 1 } catch { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 7: a handler written like a map",
+  "source": "try { 1 } catch { a: 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      17,
+      1,
+      18
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 8: an empty then branch",
+  "source": "if (x) {} else { 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "empty-branch",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 8: an empty else branch",
+  "source": "if (x) { 1 } else {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "empty-branch",
+     "span": [
+      1,
+      19,
+      1,
+      20
+     ],
+     "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 8: an empty try body",
+  "source": "try {} catch { 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "empty-branch",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 8: an empty handler",
+  "source": "try { 1 } catch {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "empty-branch",
+     "span": [
+      1,
+      17,
+      1,
+      18
+     ],
+     "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 8: an empty handler with a name",
+  "source": "try { 1 } catch (e) {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "empty-branch",
+     "span": [
+      1,
+      21,
+      1,
+      22
+     ],
+     "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 9: a lambda as the value of a map pattern",
+  "source": "const {a} = x => x; 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "lambda-in-pattern",
+     "span": [
+      1,
+      15,
+      1,
+      17
+     ],
+     "message": "a lambda is bound to a name, not to a pattern"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 9: a lambda as the value of a list pattern",
+  "source": "const [a] = () => 1; 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "lambda-in-pattern",
+     "span": [
+      1,
+      16,
+      1,
+      18
+     ],
+     "message": "a lambda is bound to a name, not to a pattern"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 9: a lambda as the value of _",
+  "source": "const _ = x => x; 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "lambda-in-pattern",
+     "span": [
+      1,
+      13,
+      1,
+      15
+     ],
+     "message": "a lambda is bound to a name, not to a pattern"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 10: try then (",
+  "source": "try(1, 2)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-call",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "try is not a function; write try and catch, each followed by a branch in braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 10: try then a space then (",
+  "source": "try (1)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-call",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "try is not a function; write try and catch, each followed by a branch in braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 11: no else at the end of input",
+  "source": "if (x) { 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      13,
+      1,
+      13
+     ],
+     "message": "an if needs an else branch, found end of input"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 11: a number where else should be",
+  "source": "if (x) { 1 } 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "an if needs an else branch, found 2"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 11: no else after an else if",
+  "source": "if (x) { 1 } else if (x) { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      31,
+      1,
+      31
+     ],
+     "message": "an if needs an else branch, found end of input"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 11: a semicolon where else should be",
+  "source": "if (x) { 1 };",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      13,
+      1,
+      14
+     ],
+     "message": "an if needs an else branch, found ;"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 11: no else in a const value",
+  "source": "const a = if (x) { 1 }; a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      23,
+      1,
+      24
+     ],
+     "message": "an if needs an else branch, found ;"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 11: no else in a list item",
+  "source": "[if (x) { 1 }]]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "an if needs an else branch, found ]"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 12: no catch at the end of input",
+  "source": "try { 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-catch",
+     "span": [
+      1,
+      10,
+      1,
+      10
+     ],
+     "message": "a try needs a catch, found end of input"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 12: a number where catch should be",
+  "source": "try { 1 } 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-catch",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "a try needs a catch, found 2"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 12: finally where catch should be",
+  "source": "try { 1 } finally { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "finally-clause",
+     "span": [
+      1,
+      11,
+      1,
+      18
+     ],
+     "message": "there is no finally: nothing in a program has an effect to undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 12: two names in the parentheses",
+  "source": "try { 1 } catch (e, f) { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "catch-name",
+     "span": [
+      1,
+      19,
+      1,
+      20
+     ],
+     "message": "the parentheses after catch hold one name, found ,; leave them out when the error is not used"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 12: a name with no parentheses",
+  "source": "try { 1 } catch e { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-form",
+     "span": [
+      1,
+      17,
+      1,
+      18
+     ],
+     "message": "the body of a try and its handler are written in braces, found e"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-errors: rule 12: no closing parenthesis",
+  "source": "try { 1 } catch (e { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "catch-name",
+     "span": [
+      1,
+      20,
+      1,
+      21
+     ],
+     "message": "the parentheses after catch hold one name, found {; leave them out when the error is not used"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-first-diagnostic: rule 1 is found at ** before a later error",
+  "source": "-2 ** )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-first-diagnostic: rule 2 is found at in before a later error",
+  "source": "!1 in )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-first-diagnostic: rule 7 is found at : before a later error",
+  "source": "if (x) { a: ) } else { 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-first-diagnostic: rule 8 is found at } before a later error",
+  "source": "if (x) {} else )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "empty-branch",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-first-diagnostic: rule 10 is found at (",
+  "source": "try( )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-call",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "try is not a function; write try and catch, each followed by a branch in braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-first-diagnostic: the !x as T row is found at as",
+  "source": "!x as )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before as; write !(x as T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-first-diagnostic: rule 5 at an if before rule 4 after it",
+  "source": "1 + if (x) { 1 } else { 2 } + 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      5,
+      1,
+      7
+     ],
+     "message": "put the if in parentheses: it cannot stand as an operand"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a single-quoted text block",
+  "source": "'''abc'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a text block of nothing",
+  "source": "''''''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a prefixed string f\"...\"",
+  "source": "f\"x\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "f is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a prefixed string R\"...\"",
+  "source": "R\"x\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "R is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a tagged template r`...`",
+  "source": "r`x`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a tagged template String.raw`...`",
+  "source": "String.raw`x`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      8,
+      1,
+      11
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a prefixed string with a longer word",
+  "source": "abc'x'",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "abc is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a prefixed template may cross lines",
+  "source": "r`a\nb`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: nothing in a prefixed template is an interpolation",
+  "source": "r`${@}`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the word r, a space, then a double quote",
+  "source": "r \"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the word R, a space, then a single quote",
+  "source": "R 'a'",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the word r, a tab, then a double quote",
+  "source": "r\t\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T1: == then !x is T fails at the !",
+  "source": "a == !x is T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T1: && then !x as T fails at the !",
+  "source": "a && !x as T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a prefix ! cannot stand before as; write !(x as T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T2: r, a block comment, then a string",
+  "source": "r /* c */ \"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T2: r, a line comment, then a string on the next line",
+  "source": "r // c\n\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T2: R, a line end, then a single-quoted string",
+  "source": "1 + R\n'a'",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T2: r after a dot, a space, then a string",
+  "source": "x.r \"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T3: nil as a match case",
+  "source": "match x { nil => 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      11,
+      1,
+      14
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T3: let as a second match case",
+  "source": "match x { 1 => 1, let => 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      19,
+      1,
+      22
+     ],
+     "message": "there is no let; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: T3: return after | in a match case",
+  "source": "match x { 1 | return => 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "return-statement",
+     "span": [
+      1,
+      15,
+      1,
+      21
+     ],
+     "message": "there is no return: the value of a block is its last expression"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: x as const",
+  "source": "x as const",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "as-const",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "as const is not needed, because no value can change; remove it"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: x is not T",
+  "source": "x is not T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "negated-is",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "is has no negated form; write !(x is T)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: !x as T",
+  "source": "!x as T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before as; write !(x as T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: !x is T",
+  "source": "!x is T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before is; write !(x is T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: match { with no subject (P8)",
+  "source": "match { 1 => 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a match needs a subject, and a subject that starts with { is written in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: match { with no subject after an operator (P8)",
+  "source": "1 + match { _ => 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "a match needs a subject, and a subject that starts with { is written in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the token ===",
+  "source": "1 === 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the token !==",
+  "source": "1 !== 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "!== is not an operator; write !=, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: assignment",
+  "source": "x = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: compound assignment +=",
+  "source": "x += 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "+= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: increment after a name",
+  "source": "x ++",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "++ does not exist: a binding cannot be changed; write x + 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the token **=",
+  "source": "x **= 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "**= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the token ??=",
+  "source": "x ??= 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "??= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the token |>",
+  "source": "x |> f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "pipe-operator",
+     "span": [
+      1,
+      3,
+      1,
+      5
+     ],
+     "message": "|> is not an operator; write f(x), or call a method"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a single ampersand",
+  "source": "a & b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "& is not an operator; write && for a logical and"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a dollar alone",
+  "source": "$",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "context-symbol",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "$ names nothing; write the name of the variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a dollar then a field",
+  "source": "$.a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "context-symbol",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "$ names nothing; write the name of the variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a dollar then a string",
+  "source": "$\"x\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "$ is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a hash comment",
+  "source": "# comment",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "hash-comment",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a comment is written // to the end of the line, or /* */"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a single bar",
+  "source": "a | b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a single bar between numbers",
+  "source": "1 | 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a single bar after an arm's result",
+  "source": "match x { 1 => 2 | 3, _ => 4 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      18,
+      1,
+      19
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: if with no else",
+  "source": "if (c) { a }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      13,
+      1,
+      13
+     ],
+     "message": "an if needs an else branch, found end of input"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a branch written like a map",
+  "source": "if (c) { a: 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "branch-like-map",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: an empty branch",
+  "source": "if (c) {} else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "empty-branch",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: an if followed by an operator",
+  "source": "if (c) { 1 } else { 2 } + 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      25,
+      1,
+      26
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: try(e, d)",
+  "source": "try(e, d)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-call",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "try is not a function; write try and catch, each followed by a branch in braces"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: try with no catch",
+  "source": "try { e }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-catch",
+     "span": [
+      1,
+      10,
+      1,
+      10
+     ],
+     "message": "a try needs a catch, found end of input"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: ?? mixed with >",
+  "source": "a ?? b > c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "put one side of > in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: ?? mixed with ||",
+  "source": "a ?? b || c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of || in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: ! then in",
+  "source": "!a in b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: minus then **",
+  "source": "-2 ** 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a match subject that starts with {",
+  "source": "match {a: 1}.a { _ => 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a match needs a subject, and a subject that starts with { is written in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a lambda as the value of a pattern",
+  "source": "const {a} = x => x;",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "lambda-in-pattern",
+     "span": [
+      1,
+      15,
+      1,
+      17
+     ],
+     "message": "a lambda is bound to a name, not to a pattern"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word let where a value starts",
+  "source": "let x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there is no let; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word var where a value starts",
+  "source": "var x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there is no var; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word nil where a value starts",
+  "source": "nil x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word for where a value starts",
+  "source": "for x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word while where a value starts",
+  "source": "while x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word do where a value starts",
+  "source": "do x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      3
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word break where a value starts",
+  "source": "break x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word continue where a value starts",
+  "source": "continue x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      9
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word return where a value starts",
+  "source": "return x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "return-statement",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "there is no return: the value of a block is its last expression"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word function where a value starts",
+  "source": "function x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "function-declaration",
+     "span": [
+      1,
+      1,
+      1,
+      9
+     ],
+     "message": "there is no function declaration; bind a lambda with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word throw where a value starts",
+  "source": "throw x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "throw-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there is no throw; write fail(message)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word finally where a value starts",
+  "source": "finally x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "finally-clause",
+     "span": [
+      1,
+      1,
+      1,
+      8
+     ],
+     "message": "there is no finally: nothing in a program has an effect to undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: the reserved word import where a value starts",
+  "source": "import x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "import-statement",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "there are no imports in 3.0; a host passes shared data as a variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: finally after the handler",
+  "source": "try { 1 } catch { 2 } finally { 3 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "finally-clause",
+     "span": [
+      1,
+      23,
+      1,
+      30
+     ],
+     "message": "there is no finally: nothing in a program has an effect to undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a slice",
+  "source": "x[a:b]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "slice-syntax",
+     "span": [
+      1,
+      4,
+      1,
+      5
+     ],
+     "message": "there is no slice syntax; write x.slice(a, b)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a typed parameter",
+  "source": "(x: int) => x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-annotation",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "types are inferred; remove the annotation"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a typed parameter in an argument",
+  "source": "[1].map((x: int) => x)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-annotation",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "types are inferred; remove the annotation"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a typed const line",
+  "source": "const n: int = 1; n",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-annotation",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "types are inferred; remove the annotation"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a star after .",
+  "source": "xs.*.f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "star-form",
+     "span": [
+      1,
+      4,
+      1,
+      5
+     ],
+     "message": "a projection is written xs[*].f"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a ? in an index",
+  "source": "xs[?c]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "filter-step",
+     "span": [
+      1,
+      4,
+      1,
+      5
+     ],
+     "message": "there is no filter step; write xs.filter(x => test)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: empty brackets then a field",
+  "source": "xs[].f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "star-form",
+     "span": [
+      1,
+      4,
+      1,
+      5
+     ],
+     "message": "a projection is written xs[*].f"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a type assertion",
+  "source": "<T>x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "angle-cast",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "<T>x is not a cast; write x as T"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: a heredoc",
+  "source": "<<EOF",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "heredoc",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no heredocs; write a text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: if c { a } else { b }",
+  "source": "if c { a } else { b }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "if-form",
+     "span": [
+      1,
+      4,
+      1,
+      5
+     ],
+     "message": "the test of an if is written in parentheses and each branch in braces, found c"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: if (c) a else b",
+  "source": "if (c) a else b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "if-form",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "the test of an if is written in parentheses and each branch in braces, found a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: if(c, a, b)",
+  "source": "if(c, a, b)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "if-form",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "if is not a function; write c ? a : b"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: try e catch d",
+  "source": "try e catch d",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-form",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "the body of a try and its handler are written in braces, found e"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: try { 1 } catch (e: T) { 2 }",
+  "source": "try { 1 } catch (e: T) { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "catch-name",
+     "span": [
+      1,
+      19,
+      1,
+      20
+     ],
+     "message": "the parentheses after catch hold one name, found :; leave them out when the error is not used"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: try { 1 } catch ({message}) { 2 }",
+  "source": "try { 1 } catch ({message}) { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "catch-name",
+     "span": [
+      1,
+      18,
+      1,
+      19
+     ],
+     "message": "the parentheses after catch hold one name, found {; leave them out when the error is not used"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: try { 1 } catch (_) { 2 }",
+  "source": "try { 1 } catch (_) { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "catch-name",
+     "span": [
+      1,
+      18,
+      1,
+      19
+     ],
+     "message": "the parentheses after catch hold one name, found _; leave them out when the error is not used"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: try { 1 } catch () { 2 }",
+  "source": "try { 1 } catch () { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "catch-name",
+     "span": [
+      1,
+      18,
+      1,
+      19
+     ],
+     "message": "the parentheses after catch hold one name, found ); leave them out when the error is not used"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: switch (x) { }",
+  "source": "switch (x) { }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "switch-statement",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "there is no switch or case; write a match"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: typeof x",
+  "source": "typeof x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "typeof-operator",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "typeof is not an operator; write type(x) for the kind, or x is T for a test"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: x instanceof T",
+  "source": "x instanceof T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "instanceof-operator",
+     "span": [
+      1,
+      3,
+      1,
+      13
+     ],
+     "message": "instanceof is not an operator; write x is T"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: x satisfies T",
+  "source": "x satisfies T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "satisfies-operator",
+     "span": [
+      1,
+      3,
+      1,
+      12
+     ],
+     "message": "satisfies is not an operator; x as T tests a value when the program runs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: interface T {}",
+  "source": "interface T {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-declaration",
+     "span": [
+      1,
+      1,
+      1,
+      10
+     ],
+     "message": "a program cannot declare a type with interface; write the type in place, or use a name the host declared"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: enum E {}",
+  "source": "enum E {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-declaration",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ],
+     "message": "a program cannot declare a type with enum; write the type in place, or use a name the host declared"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: type Name = T",
+  "source": "type Name = T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-declaration",
+     "span": [
+      1,
+      1,
+      1,
+      5
+     ],
+     "message": "a program cannot declare a type with type; write the type in place, or use a name the host declared"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: export const a = 1; a",
+  "source": "export const a = 1; a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "export-statement",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "a program exports no name; its value is its last expression"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: [1].map(x => { x + 1 })",
+  "source": "[1].map(x => { x + 1 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "block-without-const",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: a?[i]",
+  "source": "a?[i]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "optional-index",
+     "span": [
+      1,
+      2,
+      1,
+      3
+     ],
+     "message": "an optional index is written ?.[ with a dot"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-follow-on: text a later package covers: {max-retries: 3}",
+  "source": "{max-retries: 3}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unquoted-key",
+     "span": [
+      1,
+      2,
+      1,
+      13
+     ],
+     "message": "a key that is not a word is quoted: write \"max-retries\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: nil alone as a program",
+  "source": "nil",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: let alone as a program",
+  "source": "let",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there is no let; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: var alone as a program",
+  "source": "var",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there is no var; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: for alone as a program",
+  "source": "for",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: while alone as a program",
+  "source": "while",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: do alone as a program",
+  "source": "do",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      3
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: break alone as a program",
+  "source": "break",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: continue alone as a program",
+  "source": "continue",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      9
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: return alone as a program",
+  "source": "return",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "return-statement",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "there is no return: the value of a block is its last expression"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: function alone as a program",
+  "source": "function",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "function-declaration",
+     "span": [
+      1,
+      1,
+      1,
+      9
+     ],
+     "message": "there is no function declaration; bind a lambda with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: throw alone as a program",
+  "source": "throw",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "throw-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there is no throw; write fail(message)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: finally alone as a program",
+  "source": "finally",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "finally-clause",
+     "span": [
+      1,
+      1,
+      1,
+      8
+     ],
+     "message": "there is no finally: nothing in a program has an effect to undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: import alone as a program",
+  "source": "import",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "import-statement",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "there are no imports in 3.0; a host passes shared data as a variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: nil as the right operand of +",
+  "source": "1 + nil",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: let as the right operand of +",
+  "source": "1 + let",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "there is no let; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: var as the right operand of +",
+  "source": "1 + var",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "there is no var; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: for as the right operand of +",
+  "source": "1 + for",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: while as the right operand of +",
+  "source": "1 + while",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      5,
+      1,
+      10
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: do as the right operand of +",
+  "source": "1 + do",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      5,
+      1,
+      7
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: break as the right operand of +",
+  "source": "1 + break",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      5,
+      1,
+      10
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: continue as the right operand of +",
+  "source": "1 + continue",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      5,
+      1,
+      13
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: return as the right operand of +",
+  "source": "1 + return",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "return-statement",
+     "span": [
+      1,
+      5,
+      1,
+      11
+     ],
+     "message": "there is no return: the value of a block is its last expression"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: function as the right operand of +",
+  "source": "1 + function",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "function-declaration",
+     "span": [
+      1,
+      5,
+      1,
+      13
+     ],
+     "message": "there is no function declaration; bind a lambda with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: throw as the right operand of +",
+  "source": "1 + throw",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "throw-statement",
+     "span": [
+      1,
+      5,
+      1,
+      10
+     ],
+     "message": "there is no throw; write fail(message)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: finally as the right operand of +",
+  "source": "1 + finally",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "finally-clause",
+     "span": [
+      1,
+      5,
+      1,
+      12
+     ],
+     "message": "there is no finally: nothing in a program has an effect to undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: import as the right operand of +",
+  "source": "1 + import",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "import-statement",
+     "span": [
+      1,
+      5,
+      1,
+      11
+     ],
+     "message": "there are no imports in 3.0; a host passes shared data as a variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as a shorthand entry",
+  "source": "{for}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      2,
+      1,
+      5
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: let at the start of a statement",
+  "source": "let x = 1;",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there is no let; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: var at the start of a statement",
+  "source": "var x = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there is no var; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: return then a value",
+  "source": "return x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "return-statement",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "there is no return: the value of a block is its last expression"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: function at the start",
+  "source": "function f() {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "function-declaration",
+     "span": [
+      1,
+      1,
+      1,
+      9
+     ],
+     "message": "there is no function declaration; bind a lambda with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: throw then a value",
+  "source": "throw 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "throw-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there is no throw; write fail(message)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: for in a list",
+  "source": "[for (x of xs) x]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      2,
+      1,
+      5
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: while at the start",
+  "source": "while (x) {}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "loop-statement",
+     "span": [
+      1,
+      1,
+      1,
+      6
+     ],
+     "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as the operand of minus",
+  "source": "-nil",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      2,
+      1,
+      5
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as the operand of !",
+  "source": "!let",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      2,
+      1,
+      5
+     ],
+     "message": "there is no let; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as a list item",
+  "source": "[1, nil]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as a map value",
+  "source": "{a: nil}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as an argument",
+  "source": "len(nil)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as a branch of ? :",
+  "source": "x ? nil : 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word in an interpolation",
+  "source": "`${nil}`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      4,
+      1,
+      7
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as an index",
+  "source": "[1][nil]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as the test of an if",
+  "source": "if (nil) { 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as the right operand of ??",
+  "source": "1 ?? nil",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      6,
+      1,
+      9
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word as a const value",
+  "source": "const a = return 1; a",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "return-statement",
+     "span": [
+      1,
+      11,
+      1,
+      17
+     ],
+     "message": "there is no return: the value of a block is its last expression"
+    }
+   ]
+  }
+ },
+ {
+  "name": "core-run/parse-reserved: a reserved word before a syntax error",
+  "source": "nil )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "queries/queries-syntax: a lexical error inside the brackets comes first",
+  "source": "xs[* #]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "hash-comment",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a comment is written // to the end of the line, or /* */"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: a single-quoted text block",
+  "source": "'''abc'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: a text block of nothing in single quotes",
+  "source": "''''''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: a prefixed string R\"...\"",
+  "source": "R\"x\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "R is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: a tagged template r`...`",
+  "source": "r`x`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: a prefixed template may cross lines",
+  "source": "r`a\nb`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: nothing in a prefixed template is an interpolation",
+  "source": "r`${@}`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: the word r, a space, then a double quote",
+  "source": "r \"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: the word R, a space, then a single quote",
+  "source": "R 'a'",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: the word r, a tab, then a double quote",
+  "source": "r\t\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: R, a line end, then a single-quoted string",
+  "source": "1 + R\n'a'",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-core-texts: core text kept: r after a dot, a space, then a string",
+  "source": "x.r \"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-errors: still an error: three single quotes",
+  "source": "'''abc'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-errors: still an error: three single quotes as a block",
+  "source": "'''\n  a\n  '''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-errors: still an error: a prefix f",
+  "source": "f\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "f is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-errors: still an error: String.raw",
+  "source": "String.raw`x`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      8,
+      1,
+      11
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-examples: example 6: R is not a prefix",
+  "source": "R\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "R is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-examples: example 7: r then three single quotes",
+  "source": "r'''a'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: a word that ends in r before a quote is not a raw prefix",
+  "source": "xr\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      3
+     ],
+     "message": "xr is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: rr before a quote is not a raw prefix",
+  "source": "rr\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      3
+     ],
+     "message": "rr is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: R before a quote is not a raw prefix",
+  "source": "R\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "R is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: R before a single quote is not a raw prefix",
+  "source": "R'a'",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "R is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: r before a backtick is not a raw prefix",
+  "source": "r`a`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: r before a backtick, after an operator",
+  "source": "\"a\" + r`b`",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "tagged-template",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: r then three single quotes is not a raw literal",
+  "source": "r'''a'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: r, a space, then a string",
+  "source": "r \"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "strings/strings-raw: r, a space, then a raw string: the row of r and white space",
+  "source": "r r\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "the prefix r stands directly before the quote, with nothing between"
+    }
+   ]
+  }
+ },
+ {
+  "name": "templates/errors: a reserved word in a part",
+  "template": "string",
+  "source": "${{ nil }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      5,
+      1,
+      8
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "templates/errors: a dollar in a part is an unexpected character",
+  "template": "string",
+  "source": "${{ $x }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "context-symbol",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "$ names nothing; write the name of the variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "templates/templates-strings: a lexical diagnostic comes before text-block-open",
+  "template": "string",
+  "source": "${{ \"\"\"abc\"\"\" }} ${{ $ }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "context-symbol",
+     "span": [
+      1,
+      22,
+      1,
+      23
+     ],
+     "message": "$ names nothing; write the name of the variable"
+    }
+   ]
+  }
+ }
+]

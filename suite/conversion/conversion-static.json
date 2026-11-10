@@ -151,26 +151,7 @@
    "source": "{a: blob as Missing, a: 1}",
    "expect": {
     "phase": "check",
-    "diagnostics": [
-     {
-      "code": "duplicate-key",
-      "span": [
-       1,
-       10,
-       1,
-       11
-      ]
-     },
-     {
-      "code": "undefined-name",
-      "span": [
-       1,
-       13,
-       1,
-       20
-      ]
-     }
-    ]
+    "diagnostics": [{"code": "undefined-name", "span": [1, 13, 1, 20]}, {"code": "duplicate-key", "span": [1, 22, 1, 23]}]
    },
    "env": "{blob: any, xs: (int | string)[], n: int}"
   },

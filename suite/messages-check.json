@@ -1,0 +1,2284 @@
+[
+  {
+    "code": "undefined-name",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "name": "{name} is not defined",
+      "type": "no type is named {name}"
+    },
+    "when": {
+      "name": "An identifier that resolves to nothing (05-types.md 22.4)",
+      "type": "A type name in a program type that the environment does not declare (F4 6.1)"
+    },
+    "cases": [
+      {
+        "name": "undefined-name: a name",
+        "source": "inptu.role",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "undefined-name",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "inptu is not defined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "undefined-name: a type name in a program type",
+        "source": "1 as Order",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "undefined-name",
+              "span": [
+                1,
+                6,
+                1,
+                11
+              ],
+              "message": "no type is named Order"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "undefined-function",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "no function is named {name}"
+    },
+    "cases": [
+      {
+        "name": "undefined-function: a name",
+        "source": "lenn(1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "undefined-function",
+              "span": [
+                1,
+                1,
+                1,
+                5
+              ],
+              "message": "no function is named lenn"
+            }
+          ]
+        }
+      },
+      {
+        "name": "undefined-function: with a namespace",
+        "functions": {
+          "geo.distance": "(a: string, b: string) => float"
+        },
+        "source": "geo.nowhere(1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "undefined-function",
+              "span": [
+                1,
+                1,
+                1,
+                12
+              ],
+              "message": "no function is named geo.nowhere"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "not-a-value",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word",
+      "param": "word"
+    },
+    "templates": {
+      "namespace": "{name} is a namespace, not a value",
+      "function": "{name} is a function, not a value; call it",
+      "lambda": "{name} is a const-bound lambda, not a value; call it, or pass it to a library entry that takes a function",
+      "argument": "a function cannot stand at parameter {param} of {name}, which takes a value"
+    },
+    "when": {
+      "namespace": "An identifier that names a namespace",
+      "function": "An identifier that names a host function or a library function",
+      "lambda": "An identifier whose innermost binding is a const-bound lambda",
+      "argument": "A lambda argument at a parameter that is not an Fn. name is the callee; param is the parameter's name in the signature"
+    },
+    "cases": [
+      {
+        "name": "not-a-value: a namespace",
+        "functions": {
+          "geo.distance": "(a: string, b: string) => float"
+        },
+        "source": "geo",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "geo is a namespace, not a value"
+            }
+          ]
+        }
+      },
+      {
+        "name": "not-a-value: a library function",
+        "source": "len",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "len is a function, not a value; call it"
+            }
+          ]
+        }
+      },
+      {
+        "name": "not-a-value: a const-bound lambda",
+        "source": "const inc = n => n + 1; [inc]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                26,
+                1,
+                29
+              ],
+              "message": "inc is a const-bound lambda, not a value; call it, or pass it to a library entry that takes a function"
+            }
+          ]
+        }
+      },
+      {
+        "name": "not-a-value: a lambda at a parameter that takes a value",
+        "functions": {
+          "rate": "(code: string) => float !"
+        },
+        "source": "rate(x => x)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                6,
+                1,
+                12
+              ],
+              "message": "a function cannot stand at parameter code of rate, which takes a value"
+            }
+          ]
+        }
+      },
+      {
+        "name": "not-a-value: a lambda at a method parameter that takes a value",
+        "source": "\"a\".repeat(x => 1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                12,
+                1,
+                18
+              ],
+              "message": "a function cannot stand at parameter count of repeat, which takes a value"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "call-of-parameter",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is a value, not a function, and cannot be called"
+    },
+    "cases": [
+      {
+        "name": "call-of-parameter",
+        "source": "const t = 1; t(1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "call-of-parameter",
+              "span": [
+                1,
+                14,
+                1,
+                15
+              ],
+              "message": "t is a value, not a function, and cannot be called"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "lambda-to-lambda",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "a function cannot be passed to {name}, which is a const-bound lambda; pass the data instead"
+    },
+    "cases": [
+      {
+        "name": "lambda-to-lambda",
+        "source": "const inc = n => n + 1; const ap = (v) => v; ap(inc)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "lambda-to-lambda",
+              "span": [
+                1,
+                49,
+                1,
+                52
+              ],
+              "message": "a function cannot be passed to ap, which is a const-bound lambda; pass the data instead"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "duplicate-name",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is already bound here"
+    },
+    "cases": [
+      {
+        "name": "duplicate-name",
+        "source": "const a = 1; const a = 2; a",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "duplicate-name",
+              "span": [
+                1,
+                20,
+                1,
+                21
+              ],
+              "message": "a is already bound here"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "shadows-namespace",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "{name} is a namespace and cannot be bound"
+    },
+    "cases": [
+      {
+        "name": "shadows-namespace",
+        "functions": {
+          "geo.distance": "(a: string, b: string) => float"
+        },
+        "source": "const geo = 1; 2",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "shadows-namespace",
+              "span": [
+                1,
+                7,
+                1,
+                10
+              ],
+              "message": "geo is a namespace and cannot be bound"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "duplicate-key",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "key": "string"
+    },
+    "templates": {
+      "default": "key {key} is written twice in this map"
+    },
+    "cases": [
+      {
+        "name": "duplicate-key: a word and a string",
+        "source": "{a: 1, \"a\": 2}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "duplicate-key",
+              "span": [
+                1,
+                8,
+                1,
+                11
+              ],
+              "message": "key \"a\" is written twice in this map"
+            }
+          ]
+        }
+      },
+      {
+        "name": "duplicate-key: a key after escapes",
+        "source": "{\"a-b\": 1, \"a\\u002db\": 2}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "duplicate-key",
+              "span": [
+                1,
+                12,
+                1,
+                22
+              ],
+              "message": "key \"a-b\" is written twice in this map"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "no-field",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "type": "type",
+      "key": "string"
+    },
+    "templates": {
+      "default": "{type} has no field {key}"
+    },
+    "cases": [
+      {
+        "name": "no-field",
+        "env": "{o: {id: string, qty: int}}",
+        "source": "o.nmae",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "no-field",
+              "span": [
+                1,
+                3,
+                1,
+                7
+              ],
+              "message": "{id: string, qty: int} has no field \"nmae\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "no-field: a key that is not a word",
+        "env": "{o: {id: string}}",
+        "source": "o[\"a b\"]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "no-field",
+              "span": [
+                1,
+                3,
+                1,
+                8
+              ],
+              "message": "{id: string} has no field \"a b\""
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "no-method",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "type": "type",
+      "name": "word"
+    },
+    "templates": {
+      "default": "a value of type {type} has no method {name}"
+    },
+    "cases": [
+      {
+        "name": "no-method",
+        "env": "{s: string}",
+        "source": "s.trimIndent()",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "no-method",
+              "span": [
+                1,
+                3,
+                1,
+                13
+              ],
+              "message": "a value of type string has no method trimIndent"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "maybe-absent",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "type": "type",
+      "key": "string"
+    },
+    "templates": {
+      "field": "field {key} may be absent from {type}",
+      "index": "the key may be absent from {type}"
+    },
+    "when": {
+      "field": "A field or a String key. type is the record read",
+      "index": "An index read of a record with any other index. type is the record read"
+    },
+    "cases": [
+      {
+        "name": "maybe-absent: an optional field",
+        "env": "{o: {id: string, note?: string}}",
+        "source": "o.note",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "maybe-absent",
+              "span": [
+                1,
+                3,
+                1,
+                7
+              ],
+              "message": "field \"note\" may be absent from {id: string, note?: string}"
+            }
+          ]
+        }
+      },
+      {
+        "name": "maybe-absent: a field of a map",
+        "env": "{m: map<int>}",
+        "source": "m.x",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "maybe-absent",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "field \"x\" may be absent from map<int>"
+            }
+          ]
+        }
+      },
+      {
+        "name": "maybe-absent: an index of a map",
+        "env": "{m: map<int>, k: string}",
+        "source": "m[k]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "maybe-absent",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "the key may be absent from map<int>"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "maybe-null",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "text": "text",
+      "type": "type"
+    },
+    "templates": {
+      "default": "{text} may be null; its type is {type}"
+    },
+    "cases": [
+      {
+        "name": "maybe-null: an operand",
+        "env": "{n: int | null}",
+        "source": "n + 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "maybe-null",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "n may be null; its type is int | null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "maybe-null: a receiver",
+        "env": "{o: {name: string} | null}",
+        "source": "o.name.trim()",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "maybe-null",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "o may be null; its type is {name: string} | null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "maybe-null: a long operand is cut",
+        "env": "{aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: {bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: {cccccccccc: int | null}}}",
+        "source": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.cccccccccc + 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "maybe-null",
+              "span": [
+                1,
+                1,
+                1,
+                73
+              ],
+              "message": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb... may be null; its type is int | null"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "kind",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "op": "word",
+      "type": "type",
+      "left": "type",
+      "right": "type"
+    },
+    "templates": {
+      "operand": "{op} cannot take a value of type {type}",
+      "exponent": "the exponent of ** must be of type int, found {type}",
+      "operands": "{op} cannot take values of types {left} and {right}",
+      "in-left": "the left operand of {op} must be a string here, found {type}",
+      "in-right": "the right operand of {op} must be a list, a string or a map, found {type}",
+      "receiver": "a read or a method call needs one kind, and {type} has more than one",
+      "field-read": "a value of type {type} has no fields to read",
+      "index-read": "a value of type {type} cannot be indexed",
+      "index": "a list or string index must be of type int, found {type}",
+      "key": "a map key must be of type string, found {type}",
+      "spread-list": "only a list can be spread into a list, found {type}",
+      "spread-map": "only a map can be spread into a map, found {type}",
+      "pattern-list": "a list pattern needs a list, found {type}",
+      "pattern-map": "a map pattern needs a map, found {type}",
+      "rendered": "a value of type {type} cannot be rendered as text, because it holds an opaque type",
+      "star": "a projection needs a list, found {type}"
+    },
+    "when": {
+      "operand": "An operand of -, *, /, %, unary -, or the left operand of **, that does not fit float; an operand of +, <, <=, > or >= that fits neither float nor string. type is the operand's type without null",
+      "exponent": "The right operand of ** does not fit int. type is its type without null",
+      "operands": "The two operands of +, <, <=, > or >= each fit float or string, and not the same one. left and right are their types without null",
+      "in-left": "The right operand of in or not in is a string or a record, and the left does not fit string. type is the left operand's type without null",
+      "in-right": "The right operand of in or not in has two kinds or more, or another kind. type is its type without null",
+      "receiver": "05-types.md 9.1 step 4. type is the receiver's type then",
+      "field-read": "A field step on a receiver that is not a record. type is the receiver's type",
+      "index-read": "An index step on a receiver that is not a record, a list or a string. type is the receiver's type",
+      "index": "The index of a list or a string does not fit int. type is the index's type without null",
+      "key": "A computed key of a map literal, or the index of a record, does not fit string. type is its type without null",
+      "spread-list": "type is the operand's type without null",
+      "spread-map": "type is the operand's type without null",
+      "pattern-list": "type is the value bound's type without null",
+      "pattern-map": "type is the value bound's type without null",
+      "rendered": "A rendered expression whose type has an opaque type. type is its type",
+      "star": "The receiver of a star of F7 is not a list. type is the receiver's type without null"
+    },
+    "cases": [
+      {
+        "name": "kind: an operand",
+        "source": "\"a\" - 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "- cannot take a value of type \"a\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: the exponent",
+        "env": "{f: float}",
+        "source": "2 ** f",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                6,
+                1,
+                7
+              ],
+              "message": "the exponent of ** must be of type int, found float"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: two operands that do not go together",
+        "source": "1 + \"a\"",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                8
+              ],
+              "message": "+ cannot take values of types int and \"a\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: the left operand of in",
+        "source": "1 in \"abc\"",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "the left operand of in must be a string here, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: the right operand of not in",
+        "source": "1 not in 2",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                10,
+                1,
+                11
+              ],
+              "message": "the right operand of not in must be a list, a string or a map, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a receiver of two kinds",
+        "env": "{v: int | string}",
+        "source": "v.length",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a read or a method call needs one kind, and int | string has more than one"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a field of a string",
+        "env": "{s: string}",
+        "source": "s.a",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a value of type string has no fields to read"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: an index of a bool",
+        "env": "{flag: bool}",
+        "source": "flag[0]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                5
+              ],
+              "message": "a value of type bool cannot be indexed"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a list index that is a string",
+        "env": "{xs: int[]}",
+        "source": "xs[\"a\"]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                4,
+                1,
+                7
+              ],
+              "message": "a list or string index must be of type int, found \"a\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a computed key that is a number",
+        "source": "{[1]: 2}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "a map key must be of type string, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a list spread of a number",
+        "source": "[...1]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                5,
+                1,
+                6
+              ],
+              "message": "only a list can be spread into a list, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a map spread of a number",
+        "source": "{...1}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                5,
+                1,
+                6
+              ],
+              "message": "only a map can be spread into a map, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a list pattern on a number",
+        "source": "const [a] = 1; a",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                13,
+                1,
+                14
+              ],
+              "message": "a list pattern needs a list, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a map pattern on a number",
+        "source": "const {a} = 1; a",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                13,
+                1,
+                14
+              ],
+              "message": "a map pattern needs a map, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: an opaque value rendered",
+        "env": "{t: Token}",
+        "opaque": [
+          "Token"
+        ],
+        "source": "`${t}`",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                4,
+                1,
+                5
+              ],
+              "message": "a value of type Token cannot be rendered as text, because it holds an opaque type"
+            }
+          ]
+        }
+      },
+      {
+        "name": "kind: a star on a map (F7)",
+        "env": "{m: map<int>}",
+        "source": "m[*]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "kind",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a projection needs a list, found map<int>"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "never-equal",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "left": "type",
+      "right": "type",
+      "type": "type",
+      "text": "text"
+    },
+    "templates": {
+      "equality": "a value of type {left} is never equal to a value of type {right}",
+      "in": "a value of type {left} is never an element of a list of type {right}",
+      "match": "the subject, of type {type}, is never equal to {text}"
+    },
+    "when": {
+      "equality": "== or !=. left and right are the operands' types",
+      "in": "in or not in on a list. left is the left operand's type, right the right operand's",
+      "match": "A literal of a match. type is the subject's type; text is the literal"
+    },
+    "cases": [
+      {
+        "name": "never-equal: ==",
+        "source": "1 == \"a\"",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-equal",
+              "span": [
+                1,
+                1,
+                1,
+                9
+              ],
+              "message": "a value of type int is never equal to a value of type \"a\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "never-equal: in on a list",
+        "source": "\"a\" in [1, 2]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-equal",
+              "span": [
+                1,
+                1,
+                1,
+                14
+              ],
+              "message": "a value of type \"a\" is never an element of a list of type int[]"
+            }
+          ]
+        }
+      },
+      {
+        "name": "never-equal: a match literal",
+        "env": "{s: string}",
+        "source": "match s { 1 => 0, _ => 1 }",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-equal",
+              "span": [
+                1,
+                11,
+                1,
+                12
+              ],
+              "message": "the subject, of type string, is never equal to 1"
+            }
+          ]
+        }
+      },
+      {
+        "name": "never-equal: a negative match literal",
+        "env": "{s: string}",
+        "source": "match s { -1 => 0, _ => 1 }",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-equal",
+              "span": [
+                1,
+                11,
+                1,
+                13
+              ],
+              "message": "the subject, of type string, is never equal to -1"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "always-truthy",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "text": "text",
+      "type": "type"
+    },
+    "templates": {
+      "default": "{text} is always truthy: its type is {type}",
+      "test": "{text} is always true for a value of type {type}"
+    },
+    "when": {
+      "default": "type is the tested expression's type, as narrowed",
+      "test": "An x is T that the types decide (F4 6.3). type is the subject's type"
+    },
+    "cases": [
+      {
+        "name": "always-truthy",
+        "source": "\"x\" || 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "always-truthy",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "\"x\" is always truthy: its type is \"x\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "always-truthy: a test that the types decide",
+        "env": "{n: int}",
+        "source": "n is int ? 1 : 2",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "always-truthy",
+              "span": [
+                1,
+                1,
+                1,
+                9
+              ],
+              "message": "n is int is always true for a value of type int"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "always-falsy",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "text": "text",
+      "type": "type"
+    },
+    "templates": {
+      "default": "{text} is always falsy: its type is {type}",
+      "test": "{text} is always false for a value of type {type}"
+    },
+    "when": {
+      "default": "type is the tested expression's type, as narrowed",
+      "test": "An x is T that the types decide (F4 6.3). type is the subject's type"
+    },
+    "cases": [
+      {
+        "name": "always-falsy",
+        "source": "null || 1",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "always-falsy",
+              "span": [
+                1,
+                1,
+                1,
+                5
+              ],
+              "message": "null is always falsy: its type is null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "always-falsy: a test that the types decide",
+        "env": "{n: int}",
+        "source": "n is string ? 1 : 2",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "always-falsy",
+              "span": [
+                1,
+                1,
+                1,
+                12
+              ],
+              "message": "n is string is always false for a value of type int"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "zero-divisor",
+    "phase": "check",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "the divisor is the number 0"
+    },
+    "cases": [
+      {
+        "name": "zero-divisor",
+        "source": "1 / 0",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "zero-divisor",
+              "span": [
+                1,
+                5,
+                1,
+                6
+              ],
+              "message": "the divisor is the number 0"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "arity",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word",
+      "count": "number",
+      "required": "number",
+      "most": "number"
+    },
+    "templates": {
+      "exact": "the argument count of {name} must be {required}, found {count}",
+      "range": "the argument count of {name} must be from {required} to {most}, found {count}",
+      "at-least": "the argument count of {name} must be at least {required}, found {count}",
+      "parameters": "the function given to {name} declares more than {most} parameters"
+    },
+    "when": {
+      "exact": "Required and at most are equal",
+      "range": "At most is more than required",
+      "at-least": "The last parameter is a rest parameter",
+      "parameters": "A lambda argument with too many parameters. most is the count its Fn gives"
+    },
+    "cases": [
+      {
+        "name": "arity: exact",
+        "source": "len(1, 2)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arity",
+              "span": [
+                1,
+                1,
+                1,
+                10
+              ],
+              "message": "the argument count of len must be 1, found 2"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arity: a range",
+        "source": "fail()",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arity",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "the argument count of fail must be from 1 to 2, found 0"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arity: at least",
+        "source": "min(1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arity",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "the argument count of min must be at least 2, found 1"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arity: a host function with a namespace",
+        "functions": {
+          "geo.distance": "(a: string, b: string) => float"
+        },
+        "source": "geo.distance(\"a\")",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arity",
+              "span": [
+                1,
+                1,
+                1,
+                18
+              ],
+              "message": "the argument count of geo.distance must be 2, found 1"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arity: a const-bound lambda",
+        "source": "const inc = n => n + 1; inc()",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arity",
+              "span": [
+                1,
+                25,
+                1,
+                30
+              ],
+              "message": "the argument count of inc must be 1, found 0"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arity: a method call",
+        "source": "[1].map()",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arity",
+              "span": [
+                1,
+                1,
+                1,
+                10
+              ],
+              "message": "the argument count of map must be 1, found 0"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arity: a lambda with too many parameters",
+        "source": "[1].map((a, b, c) => a)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arity",
+              "span": [
+                1,
+                9,
+                1,
+                23
+              ],
+              "message": "the function given to map declares more than 2 parameters"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "arg-mismatch",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "expected": "type",
+      "found": "type",
+      "key": "string",
+      "name": "word",
+      "param": "word"
+    },
+    "templates": {
+      "argument": "expected {expected}, found {found}",
+      "missing": "required field {key} has no entry",
+      "extra": "{expected} does not allow key {key}",
+      "function": "parameter {param} of {name} takes a function",
+      "body": "the function given to {name} gives {found}, which does not fit {expected}",
+      "ordered": "{name} needs all numbers or all strings, found {found}",
+      "number": "{name} needs numbers, found {found}"
+    },
+    "when": {
+      "argument": "A place of failure of a plain argument (05-types.md 15.1). expected is the type there; found is the type of the expression there",
+      "missing": "A map with no entry for a required field. key is the least such key",
+      "extra": "An entry whose key the record does not list, with rest never. expected is the record",
+      "function": "A plain argument at an Fn parameter",
+      "body": "A lambda body that does not fit R. found is the body's type; expected is R with its Vars replaced",
+      "ordered": "A bound ordered that does not hold. found is the solution",
+      "number": "A bound number that does not hold. found is the solution"
+    },
+    "cases": [
+      {
+        "name": "arg-mismatch: an argument",
+        "functions": {
+          "rate": "(code: string) => float !"
+        },
+        "source": "rate(1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                6,
+                1,
+                7
+              ],
+              "message": "expected string, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: a required field with no entry",
+        "functions": {
+          "f": "(o: {a: int, b: int}) => int"
+        },
+        "source": "f({a: 1})",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                3,
+                1,
+                9
+              ],
+              "message": "required field \"b\" has no entry"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: the least missing key",
+        "functions": {
+          "f": "(o: {a: int, c: int, b: int}) => int"
+        },
+        "source": "f({a: 1})",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                3,
+                1,
+                9
+              ],
+              "message": "required field \"b\" has no entry"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: a key the record does not allow",
+        "functions": {
+          "f": "(o: {a: int, b: int}) => int"
+        },
+        "source": "f({a: 1, b: 2, c: 3})",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                16,
+                1,
+                17
+              ],
+              "message": "{a: int, b: int} does not allow key \"c\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: an item of a list",
+        "functions": {
+          "f": "(xs: int[]) => int"
+        },
+        "source": "f([1, \"a\"])",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                7,
+                1,
+                10
+              ],
+              "message": "expected int, found \"a\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: a plain argument at a function parameter",
+        "source": "[1].reduce(1, 2)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                12,
+                1,
+                13
+              ],
+              "message": "parameter f of reduce takes a function"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: a lambda body",
+        "source": "[1].flatMap(x => x)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                18,
+                1,
+                19
+              ],
+              "message": "the function given to flatMap gives int, which does not fit never[]"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: a bound ordered",
+        "source": "[true].sort()",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                1,
+                1,
+                14
+              ],
+              "message": "sort needs all numbers or all strings, found bool"
+            }
+          ]
+        }
+      },
+      {
+        "name": "arg-mismatch: a bound number",
+        "source": "[true].sum()",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "arg-mismatch",
+              "span": [
+                1,
+                1,
+                1,
+                13
+              ],
+              "message": "sum needs numbers, found bool"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "cannot-infer",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "default": "the types of the parameters of this function cannot be inferred from the call of {name}"
+    },
+    "cases": [
+      {
+        "name": "cannot-infer, and not-a-value at a value parameter",
+        "source": "[1].reduce((a, x) => a, y => y)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "cannot-infer",
+              "span": [
+                1,
+                12,
+                1,
+                23
+              ],
+              "message": "the types of the parameters of this function cannot be inferred from the call of reduce"
+            },
+            {
+              "code": "not-a-value",
+              "span": [
+                1,
+                25,
+                1,
+                31
+              ],
+              "message": "a function cannot stand at parameter init of reduce, which takes a value"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "check-limit",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "nesting": "checking this use of {name} passes 100 levels of expanded nesting",
+      "bodies": "the program checks more than 1000 lambda bodies",
+      "depth": "the type here is more than 64 levels deep",
+      "size": "the type here has more than 100000 parts"
+    },
+    "when": {
+      "nesting": "05-types.md 20.2",
+      "bodies": "05-types.md 20.3",
+      "depth": "05-types.md 20.4; a program type (F4 6.1)",
+      "size": "05-types.md 20.7; a program type (F4 6.1)"
+    },
+    "cases": [
+      {
+        "name": "check-limit: expanded nesting",
+        "env": "{x: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][], c: bool}",
+        "functions": {
+          "wrap": "(x: T) => T[]"
+        },
+        "source": "const f0 = x => x; const f1 = x => f0(x); const f2 = x => f1(x); const f3 = x => f2(x); const f4 = x => f3(x); const f5 = x => f4(x); const f6 = x => f5(x); const f7 = x => f6(x); const f8 = x => f7(x); const f9 = x => f8(x); const f10 = x => f9(x); const f11 = x => f10(x); const f12 = x => f11(x); const f13 = x => f12(x); const f14 = x => f13(x); const f15 = x => f14(x); const f16 = x => f15(x); const f17 = x => f16(x); const f18 = x => f17(x); const f19 = x => f18(x); const f20 = x => f19(x); const f21 = x => f20(x); const f22 = x => f21(x); const f23 = x => f22(x); const f24 = x => f23(x); const f25 = x => f24(x); const f26 = x => f25(x); const f27 = x => f26(x); const f28 = x => f27(x); const f29 = x => f28(x); const f30 = x => f29(x); const f31 = x => f30(x); const f32 = x => f31(x); const f33 = x => f32(x); const f34 = x => f33(x); const f35 = x => f34(x); const f36 = x => f35(x); const f37 = x => f36(x); const f38 = x => f37(x); const f39 = x => f38(x); const f40 = x => f39(x); const f41 = x => f40(x); const f42 = x => f41(x); const f43 = x => f42(x); const f44 = x => f43(x); const f45 = x => f44(x); const f46 = x => f45(x); const f47 = x => f46(x); const f48 = x => f47(x); const f49 = x => f48(x); const f50 = x => f49(x); const f51 = x => f50(x); const f52 = x => f51(x); const f53 = x => f52(x); const f54 = x => f53(x); const f55 = x => f54(x); const f56 = x => f55(x); const f57 = x => f56(x); const f58 = x => f57(x); const f59 = x => f58(x); const f60 = x => f59(x); const f61 = x => f60(x); const f62 = x => f61(x); const f63 = x => f62(x); const f64 = x => f63(x); const f65 = x => f64(x); const f66 = x => f65(x); const f67 = x => f66(x); const f68 = x => f67(x); const f69 = x => f68(x); const f70 = x => f69(x); const f71 = x => f70(x); const f72 = x => f71(x); const f73 = x => f72(x); const f74 = x => f73(x); const f75 = x => f74(x); const f76 = x => f75(x); const f77 = x => f76(x); const f78 = x => f77(x); const f79 = x => f78(x); const f80 = x => f79(x); const f81 = x => f80(x); const f82 = x => f81(x); const f83 = x => f82(x); const f84 = x => f83(x); const f85 = x => f84(x); const f86 = x => f85(x); const f87 = x => f86(x); const f88 = x => f87(x); const f89 = x => f88(x); const f90 = x => f89(x); const f91 = x => f90(x); const f92 = x => f91(x); const f93 = x => f92(x); const f94 = x => f93(x); const f95 = x => f94(x); const f96 = x => f95(x); const f97 = x => f96(x); const f98 = x => f97(x); const f99 = x => f98(x); const f100 = x => f99(x); f100(1)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "check-limit",
+              "span": [
+                1,
+                59,
+                1,
+                64
+              ],
+              "message": "checking this use of f1 passes 100 levels of expanded nesting"
+            }
+          ]
+        }
+      },
+      {
+        "name": "check-limit: lambda bodies",
+        "env": "{x: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][], c: bool}",
+        "functions": {
+          "wrap": "(x: T) => T[]"
+        },
+        "source": "const f = q => q; [f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1), f(1)]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "check-limit",
+              "span": [
+                1,
+                6020,
+                1,
+                6024
+              ],
+              "message": "the program checks more than 1000 lambda bodies"
+            }
+          ]
+        }
+      },
+      {
+        "name": "check-limit: a type too deep",
+        "env": "{x: int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][], c: bool}",
+        "functions": {
+          "wrap": "(x: T) => T[]"
+        },
+        "source": "[[x]]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "check-limit",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "the type here is more than 64 levels deep"
+            }
+          ]
+        }
+      },
+      {
+        "name": "check-limit: a type too large",
+        "env": "{input: {role: \"admin\" | \"member\" | \"owner\", note?: string, tags: string[], priority: int | null, options: {retries?: int, backoff?: string} | null}, gate: {failed: int, score: float, items: {name: string, status: \"fail\" | \"pass\", owner: string | null, ms: float}[]}, report: {verdict: \"APPROVE\" | \"REJECT\", body: string} | null, scores: map<float>, event: {action: string, pull_request?: {number: int, head: {sha: string}}, ...}, blob: any, started: Time, ids: (int | null)[]}",
+        "opaque": [
+          "Time"
+        ],
+        "methods": {
+          "Time.format": "(layout: string) => string"
+        },
+        "functions": {
+          "rate": "(code: string) => float !",
+          "geo.distance": "(a: string, b: string) => float"
+        },
+        "source": "const a0 = {l: 1, r: 1};\nconst a1 = {l: a0, r: a0};\nconst a2 = {l: a1, r: a1};\nconst a3 = {l: a2, r: a2};\nconst a4 = {l: a3, r: a3};\nconst a5 = {l: a4, r: a4};\nconst a6 = {l: a5, r: a5};\nconst a7 = {l: a6, r: a6};\nconst a8 = {l: a7, r: a7};\nconst a9 = {l: a8, r: a8};\nconst a10 = {l: a9, r: a9};\nconst a11 = {l: a10, r: a10};\nconst a12 = {l: a11, r: a11};\nconst a13 = {l: a12, r: a12};\nconst a14 = {l: a13, r: a13};\nconst a15 = {l: a14, r: a14};\n0",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "check-limit",
+              "span": [
+                16,
+                13,
+                16,
+                29
+              ],
+              "message": "the type here has more than 100000 parts"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "duplicate-case",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "text": "text"
+    },
+    "templates": {
+      "default": "{text} is listed twice in this match"
+    },
+    "cases": [
+      {
+        "name": "duplicate-case",
+        "env": "{s: string}",
+        "source": "match s { \"a\" => 1, \"a\" => 2, _ => 0 }",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "duplicate-case",
+              "span": [
+                1,
+                21,
+                1,
+                24
+              ],
+              "message": "\"a\" is listed twice in this match"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "unreachable-arm",
+    "phase": "check",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "this arm comes after _ and is never chosen"
+    },
+    "cases": [
+      {
+        "name": "unreachable-arm",
+        "env": "{s: string}",
+        "source": "match s { \"a\" => 1, _ => 0, \"b\" => 2 }",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "unreachable-arm",
+              "span": [
+                1,
+                29,
+                1,
+                37
+              ],
+              "message": "this arm comes after _ and is never chosen"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "non-exhaustive",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "type": "type"
+    },
+    "templates": {
+      "default": "the match has no _ arm and does not cover every value of type {type}"
+    },
+    "cases": [
+      {
+        "name": "non-exhaustive",
+        "env": "{k: \"a\" | \"b\"}",
+        "source": "match k { \"a\" => 1 }",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "non-exhaustive",
+              "span": [
+                1,
+                1,
+                1,
+                21
+              ],
+              "message": "the match has no _ arm and does not cover every value of type \"a\" | \"b\""
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "result-mismatch",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "expected": "type",
+      "found": "type",
+      "key": "string"
+    },
+    "templates": {
+      "result": "expected {expected}, found {found}",
+      "missing": "required field {key} has no entry",
+      "extra": "{expected} does not allow key {key}"
+    },
+    "when": {
+      "result": "A place of failure (05-types.md 15.1). expected is the type there; found is the type of the expression there",
+      "missing": "A map with no entry for a required field. key is the least such key",
+      "extra": "An entry whose key the record does not list, with rest never. expected is the record"
+    },
+    "cases": [
+      {
+        "name": "result-mismatch: the result",
+        "returns": "int",
+        "source": "\"a\"",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "result-mismatch",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "expected int, found \"a\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "result-mismatch: a required field with no entry",
+        "returns": "{a: int, b: int}",
+        "source": "{a: 1}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "result-mismatch",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "required field \"b\" has no entry"
+            }
+          ]
+        }
+      },
+      {
+        "name": "result-mismatch: a key the record does not allow",
+        "returns": "{a: int, b: int}",
+        "source": "{a: 1, b: 2, c: 3}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "result-mismatch",
+              "span": [
+                1,
+                14,
+                1,
+                15
+              ],
+              "message": "{a: int, b: int} does not allow key \"c\""
+            }
+          ]
+        }
+      },
+      {
+        "name": "result-mismatch: each branch",
+        "env": "{flag: bool}",
+        "returns": "int",
+        "source": "flag ? 1 : \"a\"",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "result-mismatch",
+              "span": [
+                1,
+                12,
+                1,
+                15
+              ],
+              "message": "expected int, found \"a\""
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "unchecked",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "text": "text"
+    },
+    "templates": {
+      "default": "the check cannot show the kind of {text}, and this environment rejects dynamic sites"
+    },
+    "cases": [
+      {
+        "name": "unchecked",
+        "env": "{b: any}",
+        "reject": [
+          "constant-condition",
+          "dynamic"
+        ],
+        "source": "b.x",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "unchecked",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "the check cannot show the kind of b, and this environment rejects dynamic sites"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "may-fail",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "name": "word"
+    },
+    "templates": {
+      "index": "this index may be outside its list or string, and this environment rejects index sites",
+      "divide": "this divisor may be zero, and this environment rejects divide sites",
+      "value": "this call of {name} may fail on a value, and this environment rejects value sites",
+      "test": "this test may fail on a value, and this environment rejects value sites",
+      "host": "{name} may return an error, and this environment rejects host sites"
+    },
+    "when": {
+      "index": "A site of class index",
+      "divide": "A site of class divide",
+      "value": "A site of class value on a call. name is the entry's name",
+      "test": "A site of class value on an as (F4 6.6)",
+      "host": "A site of class host. name is the function's or the method's name"
+    },
+    "cases": [
+      {
+        "name": "may-fail: index",
+        "env": "{xs: int[]}",
+        "reject": [
+          "constant-condition",
+          "index"
+        ],
+        "source": "xs[0]",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "may-fail",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "this index may be outside its list or string, and this environment rejects index sites"
+            }
+          ]
+        }
+      },
+      {
+        "name": "may-fail: divide",
+        "env": "{n: int}",
+        "reject": [
+          "constant-condition",
+          "divide"
+        ],
+        "source": "1 / n",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "may-fail",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "this divisor may be zero, and this environment rejects divide sites"
+            }
+          ]
+        }
+      },
+      {
+        "name": "may-fail: value",
+        "env": "{s: string}",
+        "reject": [
+          "constant-condition",
+          "value"
+        ],
+        "source": "int(s)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "may-fail",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "this call of int may fail on a value, and this environment rejects value sites"
+            }
+          ]
+        }
+      },
+      {
+        "name": "may-fail: a value site of a method",
+        "env": "{n: int}",
+        "reject": [
+          "constant-condition",
+          "value"
+        ],
+        "source": "\"a\".repeat(n)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "may-fail",
+              "span": [
+                1,
+                1,
+                1,
+                14
+              ],
+              "message": "this call of repeat may fail on a value, and this environment rejects value sites"
+            }
+          ]
+        }
+      },
+      {
+        "name": "may-fail: an as test",
+        "env": "{b: any}",
+        "reject": [
+          "constant-condition",
+          "value"
+        ],
+        "source": "b as int",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "may-fail",
+              "span": [
+                1,
+                1,
+                1,
+                9
+              ],
+              "message": "this test may fail on a value, and this environment rejects value sites"
+            }
+          ]
+        }
+      },
+      {
+        "name": "may-fail: host",
+        "env": "{s: string}",
+        "functions": {
+          "rate": "(code: string) => float !"
+        },
+        "reject": [
+          "constant-condition",
+          "host"
+        ],
+        "source": "rate(s)",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "may-fail",
+              "span": [
+                1,
+                1,
+                1,
+                8
+              ],
+              "message": "rate may return an error, and this environment rejects host sites"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "never-conforms",
+    "phase": "check",
+    "since": "3.0",
+    "params": {
+      "expected": "type",
+      "found": "type"
+    },
+    "templates": {
+      "default": "no value of type {found} conforms to {expected}"
+    },
+    "cases": [
+      {
+        "name": "never-conforms",
+        "env": "{n: int}",
+        "source": "n as string",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "never-conforms",
+              "span": [
+                1,
+                1,
+                1,
+                12
+              ],
+              "message": "no value of type int conforms to string"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "untagged-union",
+    "phase": "check",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "two record types in one union need a field that tells them apart"
+    },
+    "cases": [
+      {
+        "name": "untagged-union",
+        "env": "{b: any}",
+        "source": "b as {a: int} | {b: string}",
+        "expect": {
+          "phase": "check",
+          "diagnostics": [
+            {
+              "code": "untagged-union",
+              "span": [
+                1,
+                6,
+                1,
+                28
+              ],
+              "message": "two record types in one union need a field that tells them apart"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

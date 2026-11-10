@@ -13,6 +13,7 @@ does it. A case file is JSON, in the format of `spec/core/03-host.md` 3.10.
 | `library.json` | The library's entries, with cases for each | `spec/core/04-library.md` |
 | `messages.json` | The templates of the run-phase messages, with cases | `spec/core/03-host.md` |
 | `casemap.json` | The case mapping of text, taken from the Unicode data | `spec/core/04-library.md` |
+| `*/until-fNN-*.json` | Earlier cases whose outcome package `NN` changes; not run by an implementation that offers it | `spec/core/03-host.md` 3.11 |
 | `strings/` | Package F3: raw strings and text blocks | `spec/packages/f03-strings.md` |
 | `host-types/` | Package F1: types from JSON Schema, descriptions | `spec/packages/f01-host-types.md` |
 | `templates/`, `analysis/` | Package F2: host templates, and the analysis of a program | `spec/packages/f02-templates-analysis.md` |
@@ -20,6 +21,7 @@ does it. A case file is JSON, in the format of `spec/core/03-host.md` 3.10.
 | `unions/` | Package F5: tagged unions, narrowing by the tag | `spec/packages/f05-unions.md` |
 | `library-groups.json`, `groups/` | Package F6: the groups `json`, `time`, `math` and `base64`, as records with their cases, and cases that need more than one entry | `spec/packages/f06-groups.md` |
 | `library-queries.json`, `messages-queries.json`, `queries/` | Package F7: the step `[*]`, six list and map methods, a direction for `sortBy`; their records, their three message templates, their cases | `spec/packages/f07-queries.md` |
+| `messages-parse.json`, `messages-check.json`, `errors/` | Package F8: the templates of the parse and check phases with their cases; targeted parse codes, messages, traces, renderings, `ConformAll` | `spec/packages/f08-errors.md` |
 | `library-math.json`, `math/` | Package F13: the correctly rounded functions of `math` | `spec/packages/f13-math.md` |
 
 A runner runs the Core paths and the directories of the packages its

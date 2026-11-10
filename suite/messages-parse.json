@@ -1,0 +1,3378 @@
+[
+  {
+    "code": "unexpected-token",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "unexpected {token}"
+    },
+    "cases": [
+      {
+        "name": "unexpected-token: a token",
+        "source": "1 )",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "unexpected )"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: the end of input",
+        "source": "1 +",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                4,
+                1,
+                4
+              ],
+              "message": "unexpected end of input"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: the end of input after a line feed",
+        "source": "1 +\n",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                2,
+                1,
+                2,
+                1
+              ],
+              "message": "unexpected end of input"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: a template across lines is shown with escapes",
+        "source": "1 `a\nb`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                3,
+                2,
+                3
+              ],
+              "message": "unexpected `a\\nb`"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: a long template is cut to 61 code points and ...",
+        "source": "1 `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                3,
+                1,
+                75
+              ],
+              "message": "unexpected `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx..."
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: a template of exactly 64 code points is not cut",
+        "source": "1 `yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                3,
+                1,
+                67
+              ],
+              "message": "unexpected `yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy`"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: a template of 65 code points is cut",
+        "source": "1 `zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                3,
+                1,
+                68
+              ],
+              "message": "unexpected `zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz..."
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: a code point above U+FFFF counts one in the cut",
+        "source": "1 `\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                3,
+                1,
+                68
+              ],
+              "message": "unexpected `\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00..."
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: a tab in a template is shown as \\t",
+        "source": "1 `a\tb`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                3,
+                1,
+                8
+              ],
+              "message": "unexpected `a\\tb`"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-token: the closing delimiter of a part",
+        "template": "string",
+        "source": "${{ a + }}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                9,
+                1,
+                11
+              ],
+              "message": "unexpected }}"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "unexpected-character",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "char": "char"
+    },
+    "templates": {
+      "default": "unexpected character {char}"
+    },
+    "cases": [
+      {
+        "name": "unexpected-character: an at sign",
+        "source": "@",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "unexpected character U+0040 (@)"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-character: a backslash",
+        "source": "1 \\ 2",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "unexpected character U+005C (\\)"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-character: a non-breaking space has no printed form",
+        "source": "1\u00a0+ 2",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                2,
+                1,
+                3
+              ],
+              "message": "unexpected character U+00A0"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-character: a code point above U+FFFF",
+        "source": "1 + \ud83d\ude00",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                5,
+                1,
+                6
+              ],
+              "message": "unexpected character U+1F600"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-character: a control character",
+        "source": "1 \u0001",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "unexpected character U+0001"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-character: U+007F",
+        "source": "\u007f",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "unexpected character U+007F"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-character: a letter with an accent",
+        "source": "x\u00e9",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                2,
+                1,
+                3
+              ],
+              "message": "unexpected character U+00E9"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unexpected-character: a dollar before a brace stays",
+        "source": "${x}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-character",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "unexpected character U+0024 ($)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "unterminated-string",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "string": "the string is not closed on its line",
+      "template": "the template has no closing backtick",
+      "text-block": "the text block has no closing delimiter",
+      "part": "the part has no closing delimiter"
+    },
+    "when": {
+      "string": "A one-line string or a raw string has a line end or the end of input before its closing quote",
+      "template": "The end of input comes inside a template, the innermost literal still open",
+      "text-block": "The end of input comes inside a text block or a raw text block, or directly after a blank opening line, the innermost literal still open",
+      "part": "The end of the text of a host template comes inside a part (package F2)"
+    },
+    "cases": [
+      {
+        "name": "unterminated-string: a one-line string at a line end",
+        "source": "\"abc\n\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                1,
+                1,
+                5
+              ],
+              "message": "the string is not closed on its line"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: a one-line string at the end of input",
+        "source": "'abc",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                1,
+                1,
+                5
+              ],
+              "message": "the string is not closed on its line"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: a raw string",
+        "source": "r\"abc",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "the string is not closed on its line"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: the innermost literal is a string",
+        "source": "`${\"abc",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                4,
+                1,
+                8
+              ],
+              "message": "the string is not closed on its line"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: a template",
+        "source": "`a${1}b",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                1,
+                1,
+                8
+              ],
+              "message": "the template has no closing backtick"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: a text block",
+        "source": "\"\"\"\n  a",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                1,
+                2,
+                4
+              ],
+              "message": "the text block has no closing delimiter"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: a text block whose blank opening line meets the end of input",
+        "source": "\"\"\"  ",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "the text block has no closing delimiter"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: a raw text block",
+        "source": "r\"\"\"\n  a",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                1,
+                2,
+                4
+              ],
+              "message": "the text block has no closing delimiter"
+            }
+          ]
+        }
+      },
+      {
+        "name": "unterminated-string: a part of a host template",
+        "template": "string",
+        "source": "a ${{ b + 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-string",
+              "span": [
+                1,
+                3,
+                1,
+                12
+              ],
+              "message": "the part has no closing delimiter"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "unterminated-comment",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "the block comment has no closing */"
+    },
+    "cases": [
+      {
+        "name": "unterminated-comment",
+        "source": "1 /* a",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unterminated-comment",
+              "span": [
+                1,
+                3,
+                1,
+                5
+              ],
+              "message": "the block comment has no closing */"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "bad-escape",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "unknown": "{token} is not an escape",
+      "unicode": "{token} is not a complete Unicode escape",
+      "range": "{token} names no code point",
+      "surrogate": "{token} is half of a surrogate pair"
+    },
+    "when": {
+      "unknown": "A \\ followed by a code point that begins no escape of the literal it stands in. token is the \\ and that code point",
+      "unicode": "\\u not followed by four hex digits or by {, or \\u{ with no hex digit, more than six, or no } after them. token is the span of the diagnostic",
+      "range": "A \\u{X...} whose number is above U+10FFFF or in U+D800 to U+DFFF. token is the escape",
+      "surrogate": "A \\uXXXX in U+D800 to U+DBFF with no partner after it, or one in U+DC00 to U+DFFF that completes no pair. token is that escape"
+    },
+    "cases": [
+      {
+        "name": "bad-escape: an unknown escape",
+        "source": "\"a\\qb\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                3,
+                1,
+                5
+              ],
+              "message": "\\q is not an escape"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: \\x",
+        "source": "\"\\x41\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                4
+              ],
+              "message": "\\x is not an escape"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: \\$ in a one-line string",
+        "source": "\"\\$\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                4
+              ],
+              "message": "\\$ is not an escape"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: \\u with too few digits",
+        "source": "\"\\u12g\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                6
+              ],
+              "message": "\\u12 is not a complete Unicode escape"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: \\u{ with too many digits",
+        "source": "\"\\u{1234567}\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                12
+              ],
+              "message": "\\u{1234567 is not a complete Unicode escape"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: a code point above U+10FFFF",
+        "source": "\"\\u{110000}\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                12
+              ],
+              "message": "\\u{110000} names no code point"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: a surrogate in braces",
+        "source": "\"\\u{D800}\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                10
+              ],
+              "message": "\\u{D800} names no code point"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: a high surrogate alone",
+        "source": "\"\\uD800x\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                8
+              ],
+              "message": "\\uD800 is half of a surrogate pair"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-escape: a low surrogate alone",
+        "source": "\"\\uDC00\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-escape",
+              "span": [
+                1,
+                2,
+                1,
+                8
+              ],
+              "message": "\\uDC00 is half of a surrogate pair"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "line-continuation",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a \\ before a line end does not join lines; write \\\\ for a backslash"
+    },
+    "cases": [
+      {
+        "name": "line-continuation",
+        "source": "`a\\\nb`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "line-continuation",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "a \\ before a line end does not join lines; write \\\\ for a backslash"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "bad-number",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "{token} is not a number"
+    },
+    "cases": [
+      {
+        "name": "bad-number: a leading dot",
+        "source": ".5",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-number",
+              "span": [
+                1,
+                1,
+                1,
+                3
+              ],
+              "message": ".5 is not a number"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-number: a binary literal",
+        "source": "0b1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-number",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "0b1 is not a number"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "literal-range",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "whole": "{token} is larger than the largest whole number, 9007199254740991",
+      "finite": "{token} is too large to be a finite number"
+    },
+    "when": {
+      "whole": "A number with no fraction and no exponent, or a hex number, that is not a whole number",
+      "finite": "Any other number token whose nearest binary64 value is not finite"
+    },
+    "cases": [
+      {
+        "name": "literal-range: a whole number past 2^53 - 1",
+        "source": "9007199254740992",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "literal-range",
+              "span": [
+                1,
+                1,
+                1,
+                17
+              ],
+              "message": "9007199254740992 is larger than the largest whole number, 9007199254740991"
+            }
+          ]
+        }
+      },
+      {
+        "name": "literal-range: a hex number past 2^53 - 1",
+        "source": "0x20000000000000",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "literal-range",
+              "span": [
+                1,
+                1,
+                1,
+                17
+              ],
+              "message": "0x20000000000000 is larger than the largest whole number, 9007199254740991"
+            }
+          ]
+        }
+      },
+      {
+        "name": "literal-range: a number that is not finite",
+        "source": "1e400",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "literal-range",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "1e400 is too large to be a finite number"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "text-block-open",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "only spaces and tabs may follow the opening delimiter of a text block on its line"
+    },
+    "cases": [
+      {
+        "name": "text-block-open",
+        "source": "\"\"\"abc\"\"\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "text-block-open",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "only spaces and tabs may follow the opening delimiter of a text block on its line"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "text-block-close",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "only the indentation may stand before the closing delimiter of a text block on its line"
+    },
+    "cases": [
+      {
+        "name": "text-block-close",
+        "source": "\"\"\"\n  a\"\"\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "text-block-close",
+              "span": [
+                2,
+                4,
+                2,
+                7
+              ],
+              "message": "only the indentation may stand before the closing delimiter of a text block on its line"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "text-block-indent",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "tab": "the line has a tab where the indentation has a space",
+      "space": "the line has a space where the indentation has a tab",
+      "default": "the line does not start with the indentation of the closing delimiter"
+    },
+    "when": {
+      "tab": "The first code point that differs is a tab, and the indentation has a space there",
+      "space": "The first code point that differs is a space, and the indentation has a tab there",
+      "default": "Every other difference"
+    },
+    "cases": [
+      {
+        "name": "text-block-indent: a tab where the indentation has a space",
+        "source": "\"\"\"\n\ta\n  \"\"\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "text-block-indent",
+              "span": [
+                2,
+                1,
+                2,
+                2
+              ],
+              "message": "the line has a tab where the indentation has a space"
+            }
+          ]
+        }
+      },
+      {
+        "name": "text-block-indent: a space where the indentation has a tab",
+        "source": "\"\"\"\n a\n\t\"\"\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "text-block-indent",
+              "span": [
+                2,
+                1,
+                2,
+                2
+              ],
+              "message": "the line has a space where the indentation has a tab"
+            }
+          ]
+        }
+      },
+      {
+        "name": "text-block-indent: a line to the left",
+        "source": "\"\"\"\n  a\n b\n  \"\"\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "text-block-indent",
+              "span": [
+                3,
+                2,
+                3,
+                3
+              ],
+              "message": "the line does not start with the indentation of the closing delimiter"
+            }
+          ]
+        }
+      },
+      {
+        "name": "text-block-indent: an escape where the indentation is expected",
+        "source": "\"\"\"\n\\n\n  \"\"\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "text-block-indent",
+              "span": [
+                2,
+                1,
+                2,
+                2
+              ],
+              "message": "the line does not start with the indentation of the closing delimiter"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "nesting-exceeded",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "{token} opens a level past the limit of 100 levels of nesting"
+    },
+    "cases": [
+      {
+        "name": "nesting-exceeded: a parenthesis",
+        "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "nesting-exceeded",
+              "span": [
+                1,
+                101,
+                1,
+                102
+              ],
+              "message": "( opens a level past the limit of 100 levels of nesting"
+            }
+          ]
+        }
+      },
+      {
+        "name": "nesting-exceeded: not in across a line end is not in",
+        "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a not\nin b))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "nesting-exceeded",
+              "span": [
+                1,
+                103,
+                2,
+                3
+              ],
+              "message": "not in opens a level past the limit of 100 levels of nesting"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "bad-type-text",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token",
+      "key": "string"
+    },
+    "templates": {
+      "value": "{token} is a value, not a type; compare with == to test a value",
+      "number-word": "number is not a type; write int or float",
+      "boolean-word": "boolean is not a type; write bool",
+      "null-word": "{token} is not a type; write null",
+      "object-word": "object is not a type; write a record type or map<T>",
+      "letter": "a type name has two characters or more, and {token} has one",
+      "lower": "{token} is not a type; a type name starts with an upper-case letter",
+      "literal": "a template or a text block cannot stand in a type",
+      "expected": "a type is expected, found {token}",
+      "split": "write a space between the > that closes map< and the = after it",
+      "map-open": "map is followed by <, found {token}",
+      "map-close": "map< is closed by >, found {token}",
+      "paren": "a ( in a type is closed by ), found {token}",
+      "record": "{token} cannot stand here in a record type",
+      "duplicate": "key {key} is written twice in the record type"
+    },
+    "when": {
+      "value": "Where a type is expected: a number, true, false or -",
+      "number-word": "Where a type is expected: the word number",
+      "boolean-word": "Where a type is expected: the word boolean",
+      "null-word": "Where a type is expected: the word undefined, void or nil",
+      "object-word": "Where a type is expected: the word object",
+      "letter": "Where a type is expected: one upper-case letter",
+      "lower": "Where a type is expected: any other lower-case word, a reserved word, or _",
+      "literal": "A template, a text block or a raw text block where a type or a key is expected",
+      "expected": "Where a type is expected: any other token, or the end of input",
+      "split": "The token >= stands where the > of map< is expected",
+      "map-open": "A token other than < after the word map",
+      "map-close": "Any other token where the > of map< is expected",
+      "paren": "A token where the ) of a parenthesized type is expected",
+      "record": "In a record type: a token that cannot begin a field, a rest or the }; a token after a key that is not ? or :; a token after ? that is not :; a token after a field or a rest that is not , or }; a field after a rest",
+      "duplicate": "A key written twice in one record type. key is that key, after escapes"
+    },
+    "cases": [
+      {
+        "name": "bad-type-text: a number",
+        "source": "x is 3",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                7
+              ],
+              "message": "3 is a value, not a type; compare with == to test a value"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: true",
+        "source": "x is true",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                10
+              ],
+              "message": "true is a value, not a type; compare with == to test a value"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a minus",
+        "source": "x is -1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                7
+              ],
+              "message": "- is a value, not a type; compare with == to test a value"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: number",
+        "source": "x as number",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                12
+              ],
+              "message": "number is not a type; write int or float"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: boolean",
+        "source": "x as boolean",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                13
+              ],
+              "message": "boolean is not a type; write bool"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: undefined",
+        "source": "x as undefined",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                15
+              ],
+              "message": "undefined is not a type; write null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: void",
+        "source": "x as void",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                10
+              ],
+              "message": "void is not a type; write null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: nil",
+        "source": "x as nil",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                9
+              ],
+              "message": "nil is not a type; write null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: object",
+        "source": "x as object",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                12
+              ],
+              "message": "object is not a type; write a record type or map<T>"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: one upper-case letter",
+        "source": "x as T",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                7
+              ],
+              "message": "a type name has two characters or more, and T has one"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a lower-case word",
+        "source": "x as integer",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                13
+              ],
+              "message": "integer is not a type; a type name starts with an upper-case letter"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a reserved word",
+        "source": "x is if",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                8
+              ],
+              "message": "if is not a type; a type name starts with an upper-case letter"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: const after is",
+        "source": "x is const",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                11
+              ],
+              "message": "const is not a type; a type name starts with an upper-case letter"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a template",
+        "source": "x as `a`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                9
+              ],
+              "message": "a template or a text block cannot stand in a type"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: the end of input",
+        "source": "x as",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                5,
+                1,
+                5
+              ],
+              "message": "a type is expected, found end of input"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a closing parenthesis",
+        "source": "x is (",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                7,
+                1,
+                7
+              ],
+              "message": "a type is expected, found end of input"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a token that begins no type",
+        "source": "x as )",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                6,
+                1,
+                7
+              ],
+              "message": "a type is expected, found )"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: >= where > closes map<",
+        "source": "x is map<int>=> 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                13,
+                1,
+                15
+              ],
+              "message": "write a space between the > that closes map< and the = after it"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: map with no <",
+        "source": "x as map int",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                10,
+                1,
+                13
+              ],
+              "message": "map is followed by <, found int"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: map< with no >",
+        "source": "x as map<int, y",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                13,
+                1,
+                14
+              ],
+              "message": "map< is closed by >, found ,"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a parenthesis not closed",
+        "source": "x as (int y",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                11,
+                1,
+                12
+              ],
+              "message": "a ( in a type is closed by ), found y"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a field with no colon",
+        "source": "x as {a int}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                9,
+                1,
+                12
+              ],
+              "message": "int cannot stand here in a record type"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a field after a rest",
+        "source": "x as {..., a: int}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "a cannot stand here in a record type"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bad-type-text: a key written twice",
+        "source": "x as {a: int, \"a\": int}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bad-type-text",
+              "span": [
+                1,
+                15,
+                1,
+                18
+              ],
+              "message": "key \"a\" is written twice in the record type"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "reserved-word",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "name": "{token} is a reserved word and cannot be a name",
+      "operand": "{token} is a reserved word and cannot stand here"
+    },
+    "when": {
+      "name": "Where the grammar needs a Name (01-language.md 14.2 rule 1)",
+      "operand": "Where the grammar needs the start of an Expr or an operand (01-language.md 14.2 rule 2)"
+    },
+    "cases": [
+      {
+        "name": "reserved-word: a name",
+        "source": "const match = 1; 2",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "reserved-word",
+              "span": [
+                1,
+                7,
+                1,
+                12
+              ],
+              "message": "match is a reserved word and cannot be a name"
+            }
+          ]
+        }
+      },
+      {
+        "name": "reserved-word: an operand",
+        "source": "1 + else",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "reserved-word",
+              "span": [
+                1,
+                5,
+                1,
+                9
+              ],
+              "message": "else is a reserved word and cannot stand here"
+            }
+          ]
+        }
+      },
+      {
+        "name": "reserved-word: in a match case",
+        "source": "match x { in => 1 }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "reserved-word",
+              "span": [
+                1,
+                11,
+                1,
+                13
+              ],
+              "message": "in is a reserved word and cannot stand here"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "strict-equality",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "equal": "=== is not an operator; write ==, which converts nothing",
+      "not-equal": "!== is not an operator; write !=, which converts nothing"
+    },
+    "when": {
+      "equal": "The token ===",
+      "not-equal": "The token !=="
+    },
+    "cases": [
+      {
+        "name": "strict-equality: ===",
+        "source": "1 === 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "strict-equality",
+              "span": [
+                1,
+                3,
+                1,
+                6
+              ],
+              "message": "=== is not an operator; write ==, which converts nothing"
+            }
+          ]
+        }
+      },
+      {
+        "name": "strict-equality: !==",
+        "source": "1 !== 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "strict-equality",
+              "span": [
+                1,
+                3,
+                1,
+                6
+              ],
+              "message": "!== is not an operator; write !=, which converts nothing"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "missing-else",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "an if needs an else branch, found {token}"
+    },
+    "cases": [
+      {
+        "name": "missing-else: at the end of input",
+        "source": "if (c) { a }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "missing-else",
+              "span": [
+                1,
+                13,
+                1,
+                13
+              ],
+              "message": "an if needs an else branch, found end of input"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "if-form",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "form": "the test of an if is written in parentheses and each branch in braces, found {token}",
+      "call": "if is not a function; write c ? a : b"
+    },
+    "when": {
+      "form": "A token other than ( after if, or other than { after the test or after else",
+      "call": "A , after the test of an if"
+    },
+    "cases": [
+      {
+        "name": "if-form: no parentheses",
+        "source": "if c { a } else { b }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "if-form",
+              "span": [
+                1,
+                4,
+                1,
+                5
+              ],
+              "message": "the test of an if is written in parentheses and each branch in braces, found c"
+            }
+          ]
+        }
+      },
+      {
+        "name": "if-form: expr's if function",
+        "source": "if(c, a, b)",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "if-form",
+              "span": [
+                1,
+                5,
+                1,
+                6
+              ],
+              "message": "if is not a function; write c ? a : b"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "branch-like-map",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+    },
+    "cases": [
+      {
+        "name": "branch-like-map: a key and a colon",
+        "source": "if (c) { a: 1 } else { 2 }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "branch-like-map",
+              "span": [
+                1,
+                8,
+                1,
+                9
+              ],
+              "message": "after if, else, try and catch a brace opens a branch, not a map; write the map inside a second pair of braces"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "empty-branch",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+    },
+    "cases": [
+      {
+        "name": "empty-branch: then",
+        "source": "if (c) {} else { 2 }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "empty-branch",
+              "span": [
+                1,
+                8,
+                1,
+                9
+              ],
+              "message": "a branch needs a value; write null, or an empty map inside a second pair of braces"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "needs-parentheses",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token",
+      "op": "word"
+    },
+    "templates": {
+      "power": "a prefix {token} cannot apply directly to a power; put the operand or the power in parentheses",
+      "in": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses",
+      "coalesce": "put one side of {token} in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them",
+      "after-branch": "an if or a try is a whole expression; put it in parentheses before {token}",
+      "operand": "put the {token} in parentheses: it cannot stand as an operand",
+      "match-subject": "a match needs a subject, and a subject that starts with {token} is written in parentheses",
+      "not-test": "a prefix ! cannot stand before {op}; write !(x {op} T), or put the ! and its operand in parentheses",
+      "after-type": "put the as or is test in parentheses before {token}"
+    },
+    "when": {
+      "power": "01-language.md 3.4 rule 1. token is the prefix operator",
+      "in": "01-language.md 3.4 rule 2",
+      "coalesce": "01-language.md 3.4 rule 3. token is the operator that cannot follow",
+      "after-branch": "01-language.md 3.4 rule 4. token is the token that cannot follow",
+      "operand": "01-language.md 3.4 rule 5. token is the if or the try",
+      "match-subject": "01-language.md 3.4 rule 6. token is the first token of the subject",
+      "not-test": "F4 2.5. op is the word as or is",
+      "after-type": "F4 2.4: an operator of levels 7 to 10, ., ?., ?.[, a [ not followed by ], ( or { after a program type. token is that token"
+    },
+    "cases": [
+      {
+        "name": "needs-parentheses: minus",
+        "source": "-2 ** 2",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a prefix - cannot apply directly to a power; put the operand or the power in parentheses"
+            }
+          ]
+        }
+      },
+      {
+        "name": "needs-parentheses: in",
+        "source": "!a in b",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a prefix ! cannot stand before in; write not in, or put the ! and its operand in parentheses"
+            }
+          ]
+        }
+      },
+      {
+        "name": "needs-parentheses: ?? then >",
+        "source": "a ?? b > c",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                8,
+                1,
+                9
+              ],
+              "message": "put one side of > in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+            }
+          ]
+        }
+      },
+      {
+        "name": "needs-parentheses: an if then +",
+        "source": "if (x) { 1 } else { 2 } + 3",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                25,
+                1,
+                26
+              ],
+              "message": "an if or a try is a whole expression; put it in parentheses before +"
+            }
+          ]
+        }
+      },
+      {
+        "name": "needs-parentheses: an if after +",
+        "source": "1 + if (x) { 1 } else { 2 }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                5,
+                1,
+                7
+              ],
+              "message": "put the if in parentheses: it cannot stand as an operand"
+            }
+          ]
+        }
+      },
+      {
+        "name": "needs-parentheses: a map subject",
+        "source": "match {a: 1}.a { _ => 1 }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                7,
+                1,
+                8
+              ],
+              "message": "a match needs a subject, and a subject that starts with { is written in parentheses"
+            }
+          ]
+        }
+      },
+      {
+        "name": "needs-parentheses: !x as T",
+        "source": "!x as T",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a prefix ! cannot stand before as; write !(x as T), or put the ! and its operand in parentheses"
+            }
+          ]
+        }
+      },
+      {
+        "name": "needs-parentheses: +",
+        "source": "x as int + 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "needs-parentheses",
+              "span": [
+                1,
+                10,
+                1,
+                11
+              ],
+              "message": "put the as or is test in parentheses before +"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "try-call",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "try is not a function; write try and catch, each followed by a branch in braces"
+    },
+    "cases": [
+      {
+        "name": "try-call: two arguments",
+        "source": "try(e, d)",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "try-call",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "try is not a function; write try and catch, each followed by a branch in braces"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "missing-catch",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "a try needs a catch, found {token}"
+    },
+    "cases": [
+      {
+        "name": "missing-catch: at the end of input",
+        "source": "try { e }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "missing-catch",
+              "span": [
+                1,
+                10,
+                1,
+                10
+              ],
+              "message": "a try needs a catch, found end of input"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "try-form",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "the body of a try and its handler are written in braces, found {token}"
+    },
+    "cases": [
+      {
+        "name": "try-form: no braces",
+        "source": "try e catch d",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "try-form",
+              "span": [
+                1,
+                5,
+                1,
+                6
+              ],
+              "message": "the body of a try and its handler are written in braces, found e"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "catch-name",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "the parentheses after catch hold one name, found {token}; leave them out when the error is not used"
+    },
+    "cases": [
+      {
+        "name": "catch-name: a type",
+        "source": "try { 1 } catch (e: T) { 2 }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "catch-name",
+              "span": [
+                1,
+                19,
+                1,
+                20
+              ],
+              "message": "the parentheses after catch hold one name, found :; leave them out when the error is not used"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "finally-clause",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there is no finally: nothing in a program has an effect to undo"
+    },
+    "cases": [
+      {
+        "name": "finally-clause: where a value starts",
+        "source": "finally x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "finally-clause",
+              "span": [
+                1,
+                1,
+                1,
+                8
+              ],
+              "message": "there is no finally: nothing in a program has an effect to undo"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "throw-statement",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there is no throw; write fail(message)"
+    },
+    "cases": [
+      {
+        "name": "throw-statement: throw a value",
+        "source": "throw 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "throw-statement",
+              "span": [
+                1,
+                1,
+                1,
+                6
+              ],
+              "message": "there is no throw; write fail(message)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "switch-statement",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there is no switch or case; write a match"
+    },
+    "cases": [
+      {
+        "name": "switch-statement: switch with a block",
+        "source": "switch (x) { }",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "switch-statement",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "there is no switch or case; write a match"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "function-declaration",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there is no function declaration; bind a lambda with const"
+    },
+    "cases": [
+      {
+        "name": "function-declaration: a declaration",
+        "source": "function f() {}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "function-declaration",
+              "span": [
+                1,
+                1,
+                1,
+                9
+              ],
+              "message": "there is no function declaration; bind a lambda with const"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "return-statement",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there is no return: the value of a block is its last expression"
+    },
+    "cases": [
+      {
+        "name": "return-statement: return a value",
+        "source": "return x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "return-statement",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "there is no return: the value of a block is its last expression"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "let-binding",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "there is no {token}; write const, since a binding never changes"
+    },
+    "cases": [
+      {
+        "name": "let-binding: let",
+        "source": "let x = 1;",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "let-binding",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "there is no let; write const, since a binding never changes"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "loop-statement",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+    },
+    "cases": [
+      {
+        "name": "loop-statement: for",
+        "source": "for x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "loop-statement",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "there are no loops or comprehensions in 3.0; use map, filter or reduce"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "assignment",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "assign": "a binding cannot be reassigned; bind a new name with const, or compare with ==",
+      "compound": "{token} does not exist: a binding cannot be changed; bind a new name with const",
+      "increment": "++ does not exist: a binding cannot be changed; write x + 1"
+    },
+    "when": {
+      "assign": "A = after a complete operand",
+      "compound": "One of +=, -=, *=, /=, %=, **=, ??=, ||=, &&=. token is that token",
+      "increment": "The token ++"
+    },
+    "cases": [
+      {
+        "name": "assignment: x = 1",
+        "source": "x = 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "assignment",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+            }
+          ]
+        }
+      },
+      {
+        "name": "assignment: +=",
+        "source": "x += 1",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "assignment",
+              "span": [
+                1,
+                3,
+                1,
+                5
+              ],
+              "message": "+= does not exist: a binding cannot be changed; bind a new name with const"
+            }
+          ]
+        }
+      },
+      {
+        "name": "assignment: after a name",
+        "source": "x++",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "assignment",
+              "span": [
+                1,
+                2,
+                1,
+                4
+              ],
+              "message": "++ does not exist: a binding cannot be changed; write x + 1"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "import-statement",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there are no imports in 3.0; a host passes shared data as a variable"
+    },
+    "cases": [
+      {
+        "name": "import-statement: a name",
+        "source": "import x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "import-statement",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "there are no imports in 3.0; a host passes shared data as a variable"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "export-statement",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a program exports no name; its value is its last expression"
+    },
+    "cases": [
+      {
+        "name": "export-statement: export const",
+        "source": "export const a = 1; a",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "export-statement",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "a program exports no name; its value is its last expression"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "block-without-const",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    },
+    "cases": [
+      {
+        "name": "block-without-const: an operator",
+        "source": "[1].map(x => { x + 1 })",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "block-without-const",
+              "span": [
+                1,
+                14,
+                1,
+                15
+              ],
+              "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "lambda-in-pattern",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a lambda is bound to a name, not to a pattern"
+    },
+    "cases": [
+      {
+        "name": "lambda-in-pattern: a map pattern",
+        "source": "const {a} = x => x;",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "lambda-in-pattern",
+              "span": [
+                1,
+                15,
+                1,
+                17
+              ],
+              "message": "a lambda is bound to a name, not to a pattern"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "slice-syntax",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there is no slice syntax; write x.slice(a, b)"
+    },
+    "cases": [
+      {
+        "name": "slice-syntax: a:b",
+        "source": "x[a:b]",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "slice-syntax",
+              "span": [
+                1,
+                4,
+                1,
+                5
+              ],
+              "message": "there is no slice syntax; write x.slice(a, b)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "optional-index",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "an optional index is written ?.[ with a dot"
+    },
+    "cases": [
+      {
+        "name": "optional-index: a?[i]",
+        "source": "a?[i]",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "optional-index",
+              "span": [
+                1,
+                2,
+                1,
+                3
+              ],
+              "message": "an optional index is written ?.[ with a dot"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "star-form",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a projection is written xs[*].f"
+    },
+    "cases": [
+      {
+        "name": "star-form: a star after .",
+        "source": "xs.*.f",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "star-form",
+              "span": [
+                1,
+                4,
+                1,
+                5
+              ],
+              "message": "a projection is written xs[*].f"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "filter-step",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there is no filter step; write xs.filter(x => test)"
+    },
+    "cases": [
+      {
+        "name": "filter-step: xs[?c]",
+        "source": "xs[?c]",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "filter-step",
+              "span": [
+                1,
+                4,
+                1,
+                5
+              ],
+              "message": "there is no filter step; write xs.filter(x => test)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "context-symbol",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "$ names nothing; write the name of the variable"
+    },
+    "cases": [
+      {
+        "name": "context-symbol: alone",
+        "source": "$",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "context-symbol",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "$ names nothing; write the name of the variable"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "bitwise-operator",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "and": "& is not an operator; write && for a logical and",
+      "or": "| is not an operator here; write || for a logical or"
+    },
+    "when": {
+      "and": "The code point &",
+      "or": "The token |"
+    },
+    "cases": [
+      {
+        "name": "bitwise-operator: alone",
+        "source": "a & b",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bitwise-operator",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "& is not an operator; write && for a logical and"
+            }
+          ]
+        }
+      },
+      {
+        "name": "bitwise-operator: a bar",
+        "source": "a | b",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "bitwise-operator",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "| is not an operator here; write || for a logical or"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "pipe-operator",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "|> is not an operator; write f(x), or call a method"
+    },
+    "cases": [
+      {
+        "name": "pipe-operator: |>",
+        "source": "x |> f",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "pipe-operator",
+              "span": [
+                1,
+                3,
+                1,
+                5
+              ],
+              "message": "|> is not an operator; write f(x), or call a method"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "nil-literal",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "nil is not a value; write null"
+    },
+    "cases": [
+      {
+        "name": "nil-literal: alone",
+        "source": "nil",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "nil-literal",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "nil is not a value; write null"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "type-annotation",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "types are inferred; remove the annotation"
+    },
+    "cases": [
+      {
+        "name": "type-annotation: a parameter at the top",
+        "source": "(x: int) => x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "type-annotation",
+              "span": [
+                1,
+                3,
+                1,
+                4
+              ],
+              "message": "types are inferred; remove the annotation"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "satisfies-operator",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "satisfies is not an operator; x as T tests a value when the program runs"
+    },
+    "cases": [
+      {
+        "name": "satisfies-operator: satisfies",
+        "source": "x satisfies T",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "satisfies-operator",
+              "span": [
+                1,
+                3,
+                1,
+                12
+              ],
+              "message": "satisfies is not an operator; x as T tests a value when the program runs"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "instanceof-operator",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "instanceof is not an operator; write x is T"
+    },
+    "cases": [
+      {
+        "name": "instanceof-operator: instanceof",
+        "source": "x instanceof T",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "instanceof-operator",
+              "span": [
+                1,
+                3,
+                1,
+                13
+              ],
+              "message": "instanceof is not an operator; write x is T"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "typeof-operator",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "typeof is not an operator; write type(x) for the kind, or x is T for a test"
+    },
+    "cases": [
+      {
+        "name": "typeof-operator: typeof x",
+        "source": "typeof x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "typeof-operator",
+              "span": [
+                1,
+                1,
+                1,
+                7
+              ],
+              "message": "typeof is not an operator; write type(x) for the kind, or x is T for a test"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "angle-cast",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "<T>x is not a cast; write x as T"
+    },
+    "cases": [
+      {
+        "name": "angle-cast: at the start",
+        "source": "<T>x",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "angle-cast",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "<T>x is not a cast; write x as T"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "type-declaration",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "default": "a program cannot declare a type with {token}; write the type in place, or use a name the host declared"
+    },
+    "cases": [
+      {
+        "name": "type-declaration: interface",
+        "source": "interface T {}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "type-declaration",
+              "span": [
+                1,
+                1,
+                1,
+                10
+              ],
+              "message": "a program cannot declare a type with interface; write the type in place, or use a name the host declared"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "as-const",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "as const is not needed, because no value can change; remove it"
+    },
+    "cases": [
+      {
+        "name": "as-const: x as const",
+        "source": "x as const",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "as-const",
+              "span": [
+                1,
+                3,
+                1,
+                5
+              ],
+              "message": "as const is not needed, because no value can change; remove it"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "negated-is",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "is has no negated form; write !(x is T)"
+    },
+    "cases": [
+      {
+        "name": "negated-is: is not",
+        "source": "x is not T",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "negated-is",
+              "span": [
+                1,
+                3,
+                1,
+                5
+              ],
+              "message": "is has no negated form; write !(x is T)"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "text-block-quote",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a text block is written with three double quotes, not '''"
+    },
+    "cases": [
+      {
+        "name": "text-block-quote: '''",
+        "source": "'''abc'''",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "text-block-quote",
+              "span": [
+                1,
+                1,
+                1,
+                4
+              ],
+              "message": "a text block is written with three double quotes, not '''"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "string-prefix",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "token": "token"
+    },
+    "templates": {
+      "prefix": "{token} is not a string prefix; only a lower-case r directly before the quote makes a raw string",
+      "space": "the prefix r stands directly before the quote, with nothing between",
+      "guard": "a raw string has no # guards; write the text in another form, or interpolate what a raw string cannot hold"
+    },
+    "when": {
+      "prefix": "A word, or $, directly before a quote or a backtick. token is the word or the $",
+      "space": "The word r or R, then white space or a comment, then a string",
+      "guard": "A # directly before a quote, or directly after the word r"
+    },
+    "cases": [
+      {
+        "name": "string-prefix: f",
+        "source": "f\"x\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "string-prefix",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "f is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+            }
+          ]
+        }
+      },
+      {
+        "name": "string-prefix: r, a space, a string",
+        "source": "r \"a\"",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "string-prefix",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "the prefix r stands directly before the quote, with nothing between"
+            }
+          ]
+        }
+      },
+      {
+        "name": "string-prefix: #\"...\"#",
+        "source": "#\"a\"#",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "string-prefix",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a raw string has no # guards; write the text in another form, or interpolate what a raw string cannot hold"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "tagged-template",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+    },
+    "cases": [
+      {
+        "name": "tagged-template: r`...`",
+        "source": "r`x`",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "tagged-template",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "there are no tagged templates; raw text is written r\"...\" or as a raw text block"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "heredoc",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "there are no heredocs; write a text block"
+    },
+    "cases": [
+      {
+        "name": "heredoc: <<EOF",
+        "source": "<<EOF",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "heredoc",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "there are no heredocs; write a text block"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "hash-comment",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {},
+    "templates": {
+      "default": "a comment is written // to the end of the line, or /* */"
+    },
+    "cases": [
+      {
+        "name": "hash-comment: alone",
+        "source": "#",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "hash-comment",
+              "span": [
+                1,
+                1,
+                1,
+                2
+              ],
+              "message": "a comment is written // to the end of the line, or /* */"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "code": "unquoted-key",
+    "phase": "parse",
+    "since": "3.0",
+    "params": {
+      "key": "string"
+    },
+    "templates": {
+      "default": "a key that is not a word is quoted: write {key}"
+    },
+    "cases": [
+      {
+        "name": "unquoted-key: a map",
+        "source": "{max-retries: 3}",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unquoted-key",
+              "span": [
+                1,
+                2,
+                1,
+                13
+              ],
+              "message": "a key that is not a word is quoted: write \"max-retries\""
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

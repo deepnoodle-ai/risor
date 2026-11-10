@@ -2096,3 +2096,4 @@ Its chapter is the home of its rules.
 | F4, checked conversion | The types of `x as T` and `x is T`, the facts of `is`, the site of `as`, named types in type text, `untagged-union` for a program type with two records | `spec/packages/f04-conversion.md` 3 and 6 |
 | F7, queries | The type of a projection and its sites; the signatures of its entries | `spec/packages/f07-queries.md` 4 and 6 |
 | F5, tagged unions | Several record alternatives told apart by a tag: the definition, Join, Fits, Merge, printing, the facts of a test of the tag, `match` over the tag, `in` with a list of literals. `untagged-union` is then for records that form no union | `spec/packages/f05-unions.md` |
+| F8, errors, second part | A message template for every `check` code, with the types it prints | `spec/packages/f08-errors.md` 3 |

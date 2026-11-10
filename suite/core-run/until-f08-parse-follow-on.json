@@ -1,0 +1,1600 @@
+{
+ "cases": [
+  {
+   "name": "a single-quoted text block",
+   "source": "'''abc'''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a text block of nothing",
+   "source": "''''''",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a prefixed string f\"...\"",
+   "source": "f\"x\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a prefixed string R\"...\"",
+   "source": "R\"x\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a tagged template r`...`",
+   "source": "r`x`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a tagged template String.raw`...`",
+   "source": "String.raw`x`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a prefixed string with a longer word",
+   "source": "abc'x'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a prefixed template may cross lines",
+   "source": "r`a\nb`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nothing in a prefixed template is an interpolation",
+   "source": "r`${@}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the word r, a space, then a double quote",
+   "source": "r \"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the word R, a space, then a single quote",
+   "source": "R 'a'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the word r, a tab, then a double quote",
+   "source": "r\t\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T1: == then !x is T fails at the !",
+   "source": "a == !x is T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T1: && then !x as T fails at the !",
+   "source": "a && !x as T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T2: r, a block comment, then a string",
+   "source": "r /* c */ \"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T2: r, a line comment, then a string on the next line",
+   "source": "r // c\n\"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T2: R, a line end, then a single-quoted string",
+   "source": "1 + R\n'a'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T2: r after a dot, a space, then a string",
+   "source": "x.r \"a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T3: nil as a match case",
+   "source": "match x { nil => 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T3: let as a second match case",
+   "source": "match x { 1 => 1, let => 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       19,
+       1,
+       22
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "T3: return after | in a match case",
+   "source": "match x { 1 | return => 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       15,
+       1,
+       21
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "x as const",
+   "source": "x as const",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "x is not T",
+   "source": "x is not T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "!x as T",
+   "source": "!x as T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "!x is T",
+   "source": "!x is T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "match { with no subject (P8)",
+   "source": "match { 1 => 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "match { with no subject after an operator (P8)",
+   "source": "1 + match { _ => 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token ===",
+   "source": "1 === 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token !==",
+   "source": "1 !== 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "assignment",
+   "source": "x = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "compound assignment +=",
+   "source": "x += 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "increment after a name",
+   "source": "x ++",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token **=",
+   "source": "x **= 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token ??=",
+   "source": "x ??= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token |>",
+   "source": "x |> f",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a single ampersand",
+   "source": "a & b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dollar alone",
+   "source": "$",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dollar then a field",
+   "source": "$.a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dollar then a string",
+   "source": "$\"x\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a hash comment",
+   "source": "# comment",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a single bar",
+   "source": "a | b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a single bar between numbers",
+   "source": "1 | 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a single bar after an arm's result",
+   "source": "match x { 1 => 2 | 3, _ => 4 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       18,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "if with no else",
+   "source": "if (c) { a }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a branch written like a map",
+   "source": "if (c) { a: 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty branch",
+   "source": "if (c) {} else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an if followed by an operator",
+   "source": "if (c) { 1 } else { 2 } + 3",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       25,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "try(e, d)",
+   "source": "try(e, d)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "try with no catch",
+   "source": "try { e }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "?? mixed with >",
+   "source": "a ?? b > c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "?? mixed with ||",
+   "source": "a ?? b || c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "! then in",
+   "source": "!a in b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "minus then **",
+   "source": "-2 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a match subject that starts with {",
+   "source": "match {a: 1}.a { _ => 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lambda as the value of a pattern",
+   "source": "const {a} = x => x;",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word let where a value starts",
+   "source": "let x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word var where a value starts",
+   "source": "var x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word nil where a value starts",
+   "source": "nil x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word for where a value starts",
+   "source": "for x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word while where a value starts",
+   "source": "while x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word do where a value starts",
+   "source": "do x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word break where a value starts",
+   "source": "break x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word continue where a value starts",
+   "source": "continue x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word return where a value starts",
+   "source": "return x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word function where a value starts",
+   "source": "function x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word throw where a value starts",
+   "source": "throw x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word finally where a value starts",
+   "source": "finally x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the reserved word import where a value starts",
+   "source": "import x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "finally after the handler",
+   "source": "try { 1 } catch { 2 } finally { 3 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       23,
+       1,
+       30
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a slice",
+   "source": "x[a:b]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a typed parameter",
+   "source": "(x: int) => x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a typed parameter in an argument",
+   "source": "[1].map((x: int) => x)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a typed const line",
+   "source": "const n: int = 1; n",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a star after .",
+   "source": "xs.*.f",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a ? in an index",
+   "source": "xs[?c]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "empty brackets then a field",
+   "source": "xs[].f",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a type assertion",
+   "source": "<T>x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a heredoc",
+   "source": "<<EOF",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: if c { a } else { b }",
+   "source": "if c { a } else { b }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: if (c) a else b",
+   "source": "if (c) a else b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: if(c, a, b)",
+   "source": "if(c, a, b)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: try e catch d",
+   "source": "try e catch d",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: try { 1 } catch (e: T) { 2 }",
+   "source": "try { 1 } catch (e: T) { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: try { 1 } catch ({message}) { 2 }",
+   "source": "try { 1 } catch ({message}) { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: try { 1 } catch (_) { 2 }",
+   "source": "try { 1 } catch (_) { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: try { 1 } catch () { 2 }",
+   "source": "try { 1 } catch () { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: switch (x) { }",
+   "source": "switch (x) { }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: typeof x",
+   "source": "typeof x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: x instanceof T",
+   "source": "x instanceof T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: x satisfies T",
+   "source": "x satisfies T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: interface T {}",
+   "source": "interface T {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: enum E {}",
+   "source": "enum E {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: type Name = T",
+   "source": "type Name = T",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: export const a = 1; a",
+   "source": "export const a = 1; a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: [1].map(x => { x + 1 })",
+   "source": "[1].map(x => { x + 1 })",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: a?[i]",
+   "source": "a?[i]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "text a later package covers: {max-retries: 3}",
+   "source": "{max-retries: 3}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  }
+ ]
+}

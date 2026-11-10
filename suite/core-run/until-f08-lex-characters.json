@@ -1,0 +1,382 @@
+{
+ "cases": [
+  {
+   "name": "a hash",
+   "source": "#",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a hash after an expression",
+   "source": "1 # c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dollar",
+   "source": "$",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an ampersand alone",
+   "source": "1 & 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an ampersand before an operand",
+   "source": "1 &2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token ===",
+   "source": "1 === 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token !==",
+   "source": "1 !== 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token === with no spaces",
+   "source": "1===1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "four equals signs read === first",
+   "source": "1 ==== 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token +=",
+   "source": "x += 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token -=",
+   "source": "x -= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token *=",
+   "source": "x *= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token /=",
+   "source": "x /= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token %=",
+   "source": "x %= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token **=",
+   "source": "x **= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token ??=",
+   "source": "x ??= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token ||=",
+   "source": "x ||= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token &&=",
+   "source": "x &&= 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token ++ after a name",
+   "source": "x++",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token ++ before a name",
+   "source": "++x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token |>",
+   "source": "x |> f",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

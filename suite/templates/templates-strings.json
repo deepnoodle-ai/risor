@@ -282,25 +282,6 @@
    }
   },
   {
-   "name": "a lexical diagnostic comes before text-block-open",
-   "template": "string",
-   "source": "${{ \"\"\"abc\"\"\" }} ${{ $ }}",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-character",
-      "span": [
-       1,
-       22,
-       1,
-       23
-      ]
-     }
-    ]
-   }
-  },
-  {
    "name": "text-block-indent in a part",
    "template": "string",
    "source": "${{ \"\"\"\n  a\n b\n  \"\"\" }}",

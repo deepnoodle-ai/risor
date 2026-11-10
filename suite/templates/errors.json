@@ -343,25 +343,6 @@
    }
   },
   {
-   "name": "a reserved word in a part",
-   "template": "string",
-   "source": "${{ nil }}",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "reserved-word",
-      "span": [
-       1,
-       5,
-       1,
-       8
-      ]
-     }
-    ]
-   }
-  },
-  {
    "name": "parts do not nest",
    "template": "string",
    "source": "${{ a ${{ b }} }}",
@@ -375,25 +356,6 @@
        7,
        1,
        8
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "name": "a dollar in a part is an unexpected character",
-   "template": "string",
-   "source": "${{ $x }}",
-   "expect": {
-    "phase": "parse",
-    "diagnostics": [
-     {
-      "code": "unexpected-character",
-      "span": [
-       1,
-       5,
-       1,
-       6
       ]
      }
     ]

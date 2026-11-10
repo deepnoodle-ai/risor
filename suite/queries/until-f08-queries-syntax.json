@@ -1,0 +1,3 @@
+[
+  {"name": "a lexical error inside the brackets comes first", "source": "xs[* #]", "expect": {"phase": "parse", "diagnostics": [{"code": "unexpected-character", "span": [1, 6, 1, 7]}]}}
+]

@@ -397,3 +397,19 @@ The chapter is `spec/packages/f05-unions.md`, with 423 cases in
 | R152 | **`kind in ["a", "b"]` narrows,** as `kind == "a" \|\| kind == "b"` does, when the right side is a list of string literals. Plan `09` 2.5 said `in` gives no fact, and D47 took that plan as written; this one line of it is changed, because an author expects the two forms to mean the same. |
 | R153 | With F5, two `is` tests of one path under `\|\|` combine to a union when their types have a tag. |
 | R154 | **`allOf` of a base record and a `oneOf` of variants keeps the union:** the base is met with each variant. This is how a schema shares fields among variants. The lane's fuzzer found no value that breaks it. |
+
+### 14.7 F8, errors, second part
+
+The chapter is `spec/packages/f08-errors.md`, with 638 cases in
+`suite/errors/` and 221 in the catalogs `suite/messages-parse.json` and
+`suite/messages-check.json`. Plan `10` is its source. 317 earlier cases moved
+to `until-f08-` files under R150.
+
+| # | Ruling |
+| --- | --- |
+| R155 | **A targeted parse code is a mapping of the diagnostic Core already reports,** tried in a fixed order of rows. So it never changes which diagnostic comes first, and it keeps Core's span except in seven rows that no earlier case stated. There are 44 targeted codes, 58 parse codes in all. |
+| R156 | The 13 reserved words that plan `02` gave codes of their own get them where a value may start; where a name is needed every reserved word stays `reserved-word`. |
+| R157 | The message of a `check` diagnostic prints inferred types, so a case that states a message also tests the types of subexpressions. `declare` messages stay each binding's own. |
+| R158 | **The renderings are narrower than plan `10`,** so that three implementations give the same bytes: no `help`, `fix` or origin; one column for each code point; a control character in the excerpt is a space; a long line is cut to a window of 120 columns. |
+| R159 | A projection has no entry in a trace. A trace is built only on the path of a failure and is bounded by the depth limit. |
+| R160 | A package's entry in a catalog file, for a code Core's catalog has, adds templates to that code. |

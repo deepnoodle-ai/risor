@@ -1,0 +1,732 @@
+[
+ {
+  "name": "the example of 6.3, a maximum of 3",
+  "conform": {
+   "type": "{id: string, lines: {qty: int, sku: string}[]}",
+   "value": {
+    "id": 7,
+    "lines": [
+     {
+      "sku": "x",
+      "qty": 1
+     },
+     {
+      "sku": "y",
+      "qty": "2"
+     }
+    ],
+    "note": 1
+   },
+   "max": 3
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "id"
+   ],
+   "message": "expected string, found 7",
+   "failures": [
+    {
+     "path": [
+      "id"
+     ],
+     "message": "expected string, found 7"
+    },
+    {
+     "path": [
+      "lines",
+      1,
+      "qty"
+     ],
+     "message": "expected int, found \"2\""
+    },
+    {
+     "path": [
+      "note"
+     ],
+     "message": "the type does not allow key \"note\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "the example of 6.3, a maximum of 2",
+  "conform": {
+   "type": "{id: string, lines: {qty: int, sku: string}[]}",
+   "value": {
+    "id": 7,
+    "lines": [
+     {
+      "sku": "x",
+      "qty": 1
+     },
+     {
+      "sku": "y",
+      "qty": "2"
+     }
+    ],
+    "note": 1
+   },
+   "max": 2
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "id"
+   ],
+   "message": "expected string, found 7",
+   "failures": [
+    {
+     "path": [
+      "id"
+     ],
+     "message": "expected string, found 7"
+    },
+    {
+     "path": [
+      "lines",
+      1,
+      "qty"
+     ],
+     "message": "expected int, found \"2\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "the example of 6.3, a maximum of 1",
+  "conform": {
+   "type": "{id: string, lines: {qty: int, sku: string}[]}",
+   "value": {
+    "id": 7,
+    "lines": [
+     {
+      "sku": "x",
+      "qty": 1
+     },
+     {
+      "sku": "y",
+      "qty": "2"
+     }
+    ],
+    "note": 1
+   },
+   "max": 1
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "id"
+   ],
+   "message": "expected string, found 7",
+   "failures": [
+    {
+     "path": [
+      "id"
+     ],
+     "message": "expected string, found 7"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the example of 6.3, a maximum past the count",
+  "conform": {
+   "type": "{id: string, lines: {qty: int, sku: string}[]}",
+   "value": {
+    "id": 7,
+    "lines": [
+     {
+      "sku": "x",
+      "qty": 1
+     },
+     {
+      "sku": "y",
+      "qty": "2"
+     }
+    ],
+    "note": 1
+   },
+   "max": 10
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "id"
+   ],
+   "message": "expected string, found 7",
+   "failures": [
+    {
+     "path": [
+      "id"
+     ],
+     "message": "expected string, found 7"
+    },
+    {
+     "path": [
+      "lines",
+      1,
+      "qty"
+     ],
+     "message": "expected int, found \"2\""
+    },
+    {
+     "path": [
+      "note"
+     ],
+     "message": "the type does not allow key \"note\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a value that conforms gives an empty list",
+  "conform": {
+   "type": "{a: int, ...}",
+   "value": {
+    "a": 1,
+    "b": "x"
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": true,
+   "failures": []
+  }
+ },
+ {
+  "name": "every element of a list",
+  "conform": {
+   "type": "int[]",
+   "value": [
+    1,
+    "a",
+    2.5,
+    "b"
+   ],
+   "max": 10
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    1
+   ],
+   "message": "expected int, found \"a\"",
+   "failures": [
+    {
+     "path": [
+      1
+     ],
+     "message": "expected int, found \"a\""
+    },
+    {
+     "path": [
+      2
+     ],
+     "message": "expected int, found 2.5"
+    },
+    {
+     "path": [
+      3
+     ],
+     "message": "expected int, found \"b\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "each key an exact record does not allow, in code point order",
+  "conform": {
+   "type": "{a: int}",
+   "value": {
+    "a": 1,
+    "z": 1,
+    "b": 2
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "b"
+   ],
+   "message": "the type does not allow key \"b\"",
+   "failures": [
+    {
+     "path": [
+      "b"
+     ],
+     "message": "the type does not allow key \"b\""
+    },
+    {
+     "path": [
+      "z"
+     ],
+     "message": "the type does not allow key \"z\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "missing fields, then other keys",
+  "conform": {
+   "type": "{a: int, b: int}",
+   "value": {
+    "c": 1
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a"
+   ],
+   "message": "required field \"a\" is missing",
+   "failures": [
+    {
+     "path": [
+      "a"
+     ],
+     "message": "required field \"a\" is missing"
+    },
+    {
+     "path": [
+      "b"
+     ],
+     "message": "required field \"b\" is missing"
+    },
+    {
+     "path": [
+      "c"
+     ],
+     "message": "the type does not allow key \"c\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a failing declared field does not stop the other keys",
+  "conform": {
+   "type": "{a: int}",
+   "value": {
+    "a": "x",
+    "b": 1
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a"
+   ],
+   "message": "expected int, found \"x\"",
+   "failures": [
+    {
+     "path": [
+      "a"
+     ],
+     "message": "expected int, found \"x\""
+    },
+    {
+     "path": [
+      "b"
+     ],
+     "message": "the type does not allow key \"b\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a typed rest: every other key, in code point order",
+  "conform": {
+   "type": "map<int>",
+   "value": {
+    "b": "x",
+    "a": "y",
+    "c": 1
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a"
+   ],
+   "message": "expected int, found \"y\"",
+   "failures": [
+    {
+     "path": [
+      "a"
+     ],
+     "message": "expected int, found \"y\""
+    },
+    {
+     "path": [
+      "b"
+     ],
+     "message": "expected int, found \"x\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a value of the wrong kind: nothing inside it is visited",
+  "conform": {
+   "type": "int",
+   "value": {
+    "a": 1,
+    "b": "x"
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [],
+   "message": "expected int, found map",
+   "failures": [
+    {
+     "path": [],
+     "message": "expected int, found map"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the whole alternative set is expected",
+  "conform": {
+   "type": "int | string",
+   "value": [
+    1
+   ],
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [],
+   "message": "expected int | string, found list",
+   "failures": [
+    {
+     "path": [],
+     "message": "expected int | string, found list"
+    }
+   ]
+  }
+ },
+ {
+  "name": "nothing under any is looked at",
+  "conform": {
+   "type": "{meta: any, n: int}",
+   "value": {
+    "meta": {
+     "x": [
+      1,
+      "y"
+     ]
+    },
+    "n": "z"
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "n"
+   ],
+   "message": "expected int, found \"z\"",
+   "failures": [
+    {
+     "path": [
+      "n"
+     ],
+     "message": "expected int, found \"z\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a literal set",
+  "conform": {
+   "type": "(\"a\" | \"b\")[]",
+   "value": [
+    "a",
+    "c",
+    "d"
+   ],
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    1
+   ],
+   "message": "expected \"a\" | \"b\", found \"c\"",
+   "failures": [
+    {
+     "path": [
+      1
+     ],
+     "message": "expected \"a\" | \"b\", found \"c\""
+    },
+    {
+     "path": [
+      2
+     ],
+     "message": "expected \"a\" | \"b\", found \"d\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "an optional field that is present is tested; absent is not null",
+  "conform": {
+   "type": "{a?: int, b?: string}",
+   "value": {
+    "a": "x",
+    "b": null
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a"
+   ],
+   "message": "expected int, found \"x\"",
+   "failures": [
+    {
+     "path": [
+      "a"
+     ],
+     "message": "expected int, found \"x\""
+    },
+    {
+     "path": [
+      "b"
+     ],
+     "message": "expected string, found null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "an open record: other keys are not visited",
+  "conform": {
+   "type": "{a: int, ...}",
+   "value": {
+    "a": null,
+    "z": 1
+   },
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a"
+   ],
+   "message": "expected int, found null",
+   "failures": [
+    {
+     "path": [
+      "a"
+     ],
+     "message": "expected int, found null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "records in a list, in order",
+  "conform": {
+   "type": "{id: int}[]",
+   "value": [
+    {
+     "id": "a"
+    },
+    {
+     "id": 1,
+     "x": 1
+    },
+    {}
+   ],
+   "max": 10
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    0,
+    "id"
+   ],
+   "message": "expected int, found \"a\"",
+   "failures": [
+    {
+     "path": [
+      0,
+      "id"
+     ],
+     "message": "expected int, found \"a\""
+    },
+    {
+     "path": [
+      1,
+      "x"
+     ],
+     "message": "the type does not allow key \"x\""
+    },
+    {
+     "path": [
+      2,
+      "id"
+     ],
+     "message": "required field \"id\" is missing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the maximum stops the walk inside a nested value",
+  "conform": {
+   "type": "{a: int[], b: int}",
+   "value": {
+    "a": [
+     "x",
+     "y",
+     "z"
+    ],
+    "b": "w"
+   },
+   "max": 2
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "a",
+    0
+   ],
+   "message": "expected int, found \"x\"",
+   "failures": [
+    {
+     "path": [
+      "a",
+      0
+     ],
+     "message": "expected int, found \"x\""
+    },
+    {
+     "path": [
+      "a",
+      1
+     ],
+     "message": "expected int, found \"y\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "a named type is printed by its structure",
+  "types": [
+   {
+    "name": "Line",
+    "type": "{qty: int, sku: string}"
+   }
+  ],
+  "conform": {
+   "type": "Line[]",
+   "value": [
+    {
+     "sku": 1,
+     "qty": 1
+    }
+   ],
+   "max": 5
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    0,
+    "sku"
+   ],
+   "message": "expected string, found 1",
+   "failures": [
+    {
+     "path": [
+      0,
+      "sku"
+     ],
+     "message": "expected string, found 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a whole number of int",
+  "conform": {
+   "type": "{n: int}",
+   "value": {
+    "n": 1.5
+   },
+   "max": 3
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "n"
+   ],
+   "message": "expected int, found 1.5",
+   "failures": [
+    {
+     "path": [
+      "n"
+     ],
+     "message": "expected int, found 1.5"
+    }
+   ]
+  }
+ },
+ {
+  "name": "an opaque value of another type",
+  "opaque": [
+   "Token"
+  ],
+  "conform": {
+   "type": "{t: Token}",
+   "value": {
+    "t": 1
+   },
+   "max": 3
+  },
+  "expect": {
+   "conforms": false,
+   "path": [
+    "t"
+   ],
+   "message": "expected Token, found 1",
+   "failures": [
+    {
+     "path": [
+      "t"
+     ],
+     "message": "expected Token, found 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a long found value is cut",
+  "conform": {
+   "type": "int",
+   "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "max": 3
+  },
+  "expect": {
+   "conforms": false,
+   "path": [],
+   "message": "expected int, found \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...",
+   "failures": [
+    {
+     "path": [],
+     "message": "expected int, found \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx..."
+    }
+   ]
+  }
+ }
+]

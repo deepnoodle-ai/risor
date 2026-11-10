@@ -1,0 +1,368 @@
+[
+ {
+  "name": "order: a syntax error before === comes first",
+  "source": ") x === 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "unexpected )"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: === before a later syntax error comes first",
+  "source": "x === 1 )",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      3,
+      1,
+      6
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a lexical error after === comes first",
+  "source": "x === 1 @",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-character",
+     "span": [
+      1,
+      9,
+      1,
+      10
+     ],
+     "message": "unexpected character U+0040 (@)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a hash at the end comes before an earlier syntax error",
+  "source": ") #",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "hash-comment",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "a comment is written // to the end of the line, or /* */"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a hash then a line end then a syntax error",
+  "source": "# c\n)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "hash-comment",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a comment is written // to the end of the line, or /* */"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: an unterminated string comes before a hash after it",
+  "source": "\"a # b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unterminated-string",
+     "span": [
+      1,
+      1,
+      1,
+      7
+     ],
+     "message": "the string is not closed on its line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a bad escape before a hash",
+  "source": "\"\\q\" # c",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bad-escape",
+     "span": [
+      1,
+      2,
+      1,
+      4
+     ],
+     "message": "\\q is not an escape"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: nesting-exceeded comes before ===",
+  "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 === 1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nesting-exceeded",
+     "span": [
+      1,
+      101,
+      1,
+      102
+     ],
+     "message": "( opens a level past the limit of 100 levels of nesting"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a text block code comes before a later targeted code",
+  "source": "\"\"\"x\"\"\" + nil",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-open",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "only spaces and tabs may follow the opening delimiter of a text block on its line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: reserved-word as a name comes before an assignment",
+  "source": "const let = 1; let = 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "reserved-word",
+     "span": [
+      1,
+      7,
+      1,
+      10
+     ],
+     "message": "let is a reserved word and cannot be a name"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: the first of two targeted errors",
+  "source": "let x = 1; x += 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "let-binding",
+     "span": [
+      1,
+      1,
+      1,
+      4
+     ],
+     "message": "there is no let; write const, since a binding never changes"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: missing-else before a later |",
+  "source": "if (c) { 1 } | 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "an if needs an else branch, found |"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: <<~ meets a lexical error at the tilde first",
+  "source": "<<~EOF",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-character",
+     "span": [
+      1,
+      3,
+      1,
+      4
+     ],
+     "message": "unexpected character U+007E (~)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a dollar before a brace is not context-symbol",
+  "source": "1 + ${a}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-character",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "unexpected character U+0024 ($)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a lexical error inside a part before a targeted code",
+  "template": "string",
+  "source": "${{ x = 1 }} ${{ @ }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-character",
+     "span": [
+      1,
+      18,
+      1,
+      19
+     ],
+     "message": "unexpected character U+0040 (@)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a targeted code in a part",
+  "template": "string",
+  "source": "${{ x = 1 }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: nil in a part",
+  "template": "string",
+  "source": "a ${{ nil }} b",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "nil-literal",
+     "span": [
+      1,
+      7,
+      1,
+      10
+     ],
+     "message": "nil is not a value; write null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: a dollar in a part is context-symbol",
+  "template": "string",
+  "source": "${{ $x }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "context-symbol",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "$ names nothing; write the name of the variable"
+    }
+   ]
+  }
+ },
+ {
+  "name": "order: parts do not nest, and ${{ stays an unexpected character",
+  "template": "string",
+  "source": "${{ a ${{ b }} }}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-character",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "unexpected character U+0024 ($)"
+    }
+   ]
+  }
+ }
+]

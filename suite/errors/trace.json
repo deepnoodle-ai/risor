@@ -1,0 +1,1157 @@
+[
+ {
+  "name": "a const-bound lambda",
+  "source": "const f = x => 1 / x; f(0)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      16,
+      1,
+      21
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        23,
+        1,
+        27
+       ],
+       "name": "f",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a library entry gives the index of the element",
+  "source": "[1, 0].map(x => 1 / x)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      17,
+      1,
+      22
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        23
+       ],
+       "name": "map",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a call by name is not in progress while its arguments run",
+  "source": "const f = x => 1 / x; f(f(0))",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      16,
+      1,
+      21
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        25,
+        1,
+        29
+       ],
+       "name": "f",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "three calls, from the outermost in",
+  "source": "const h = x => 1 / x; const g = x => h(x); const f = x => g(x); f(0)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      16,
+      1,
+      21
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        65,
+        1,
+        69
+       ],
+       "name": "f",
+       "index": null
+      },
+      {
+       "span": [
+        1,
+        59,
+        1,
+        63
+       ],
+       "name": "g",
+       "index": null
+      },
+      {
+       "span": [
+        1,
+        38,
+        1,
+        42
+       ],
+       "name": "h",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "two library calls nested",
+  "source": "[[1, 2], [3, 0]].map(r => r.map(x => 6 / x))",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      38,
+      1,
+      43
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        45
+       ],
+       "name": "map",
+       "index": 1
+      },
+      {
+       "span": [
+        1,
+        27,
+        1,
+        44
+       ],
+       "name": "map",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a library call around a call by name",
+  "source": "const g = x => 1 / x; [1, 0].map(x => g(x))",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      16,
+      1,
+      21
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        23,
+        1,
+        44
+       ],
+       "name": "map",
+       "index": 1
+      },
+      {
+       "span": [
+        1,
+        39,
+        1,
+        43
+       ],
+       "name": "g",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a lambda passed by name has no entry of its own",
+  "source": "const g = x => 1 / x; [1, 0].map(g)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      16,
+      1,
+      21
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        23,
+        1,
+        36
+       ],
+       "name": "map",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "reduce gives the index of the item",
+  "source": "[1, 2, 0].reduce((a, x) => a / x, 1)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      28,
+      1,
+      33
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        37
+       ],
+       "name": "reduce",
+       "index": 2
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "sortBy while it makes a key",
+  "source": "[2, 0].sortBy(x => 1 / x)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      20,
+      1,
+      25
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        26
+       ],
+       "name": "sortBy",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "filter",
+  "source": "[1, 0].filter(x => 1 / x)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      20,
+      1,
+      25
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        26
+       ],
+       "name": "filter",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "find",
+  "source": "[3, 2, 0].find(x => 1 / x > 1)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      21,
+      1,
+      26
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        31
+       ],
+       "name": "find",
+       "index": 2
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "some",
+  "source": "[1, 0].some(x => 1 / x > 9)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      18,
+      1,
+      23
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        28
+       ],
+       "name": "some",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "every",
+  "source": "[1, 0].every(x => 1 / x > 0)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      19,
+      1,
+      24
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        29
+       ],
+       "name": "every",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "count",
+  "source": "[1, 0].count(x => 1 / x > 0)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      19,
+      1,
+      24
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        29
+       ],
+       "name": "count",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "groupBy",
+  "source": "[1, 0].groupBy(x => string(1 / x))",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      28,
+      1,
+      33
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        35
+       ],
+       "name": "groupBy",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "flatMap while its callback runs",
+  "source": "[1, 0].flatMap(x => [1 / x])",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      22,
+      1,
+      27
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        29
+       ],
+       "name": "flatMap",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "flatMap tests a result after its call of the lambda returned: no entry",
+  "env": "{xs: any}",
+  "vars": {
+   "xs": [
+    [
+     1
+    ],
+    2
+   ]
+  },
+  "source": "xs.flatMap(x => x)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "wrong-kind",
+     "class": "dynamic",
+     "span": [
+      1,
+      1,
+      1,
+      19
+     ],
+     "message": "the callback of flatMap gave a value of kind number, which it cannot take",
+     "trace": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "sortBy tests its keys after the last call: no entry",
+  "env": "{xs: any}",
+  "vars": {
+   "xs": [
+    1,
+    "a"
+   ]
+  },
+  "source": "xs.sortBy(x => x)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "wrong-kind",
+     "class": "dynamic",
+     "span": [
+      1,
+      1,
+      1,
+      18
+     ],
+     "message": "sortBy needs all numbers or all strings, found string",
+     "trace": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "a failure while the parameters are bound",
+  "env": "{m: {a: int}}",
+  "vars": {
+   "m": {}
+  },
+  "precondition": false,
+  "source": "const f = ({a}) => a; f(m)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "missing-field",
+     "class": "environment",
+     "span": [
+      1,
+      13,
+      1,
+      14
+     ],
+     "message": "key \"a\" is missing from the map and the pattern gives no default",
+     "trace": [
+      {
+       "span": [
+        1,
+        23,
+        1,
+        27
+       ],
+       "name": "f",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a failure in a default",
+  "env": "{d: int}",
+  "vars": {
+   "d": 0
+  },
+  "source": "const f = (a = 1 / d) => a; f()",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      16,
+      1,
+      21
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        29,
+        1,
+        32
+       ],
+       "name": "f",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a failure in the argument of a call by name: no entry",
+  "env": "{d: int}",
+  "vars": {
+   "d": 0
+  },
+  "source": "const f = x => x; f(1 / d)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      21,
+      1,
+      26
+     ],
+     "message": "the divisor of / is zero",
+     "trace": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "a host function has no entry",
+  "functions": {
+   "rate": {
+    "type": "(code: string) => float !",
+    "calls": [
+     {
+      "error": "unknown coupon"
+     }
+    ]
+   }
+  },
+  "source": "[\"x\"].map(c => rate(c))",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "function-error",
+     "class": "host",
+     "span": [
+      1,
+      16,
+      1,
+      23
+     ],
+     "message": "unknown coupon",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        24
+       ],
+       "name": "map",
+       "index": 0
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a failure in a handler has the trace of its place",
+  "source": "const f = d => try { 1 / d } catch { 2 / d }; f(0)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      38,
+      1,
+      43
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        47,
+        1,
+        51
+       ],
+       "name": "f",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a caught failure leaves no trace",
+  "source": "try { [0].map(x => 1 / x) } catch { [1, 0].map(x => 1 / x) }",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      53,
+      1,
+      58
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        37,
+        1,
+        59
+       ],
+       "name": "map",
+       "index": 1
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a wrong kind in a lambda body",
+  "env": "{b: any}",
+  "vars": {
+   "b": 1
+  },
+  "source": "const f = x => x.a; f(b)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "wrong-kind",
+     "class": "dynamic",
+     "span": [
+      1,
+      16,
+      1,
+      19
+     ],
+     "message": "cannot read field a of a value of kind number",
+     "trace": [
+      {
+       "span": [
+        1,
+        21,
+        1,
+        25
+       ],
+       "name": "f",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "fail inside a callback and a call by name",
+  "source": "const f = x => fail(\"no\", x); [1, 2].map(x => f(x))",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "failed",
+     "class": "value",
+     "span": [
+      1,
+      16,
+      1,
+      29
+     ],
+     "message": "no",
+     "trace": [
+      {
+       "span": [
+        1,
+        31,
+        1,
+        52
+       ],
+       "name": "map",
+       "index": 0
+      },
+      {
+       "span": [
+        1,
+        47,
+        1,
+        51
+       ],
+       "name": "f",
+       "index": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the trace of a failure on host data",
+  "env": "{xs: int[]}",
+  "vars": {
+   "xs": [
+    4,
+    3,
+    2,
+    0,
+    1
+   ]
+  },
+  "source": "xs.map(x => 1 / x)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      13,
+      1,
+      18
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        19
+       ],
+       "name": "map",
+       "index": 3
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a method call in an optional chain spans the chain",
+  "env": "{m: map<int> | null, d: int}",
+  "vars": {
+   "m": {
+    "a": 1
+   },
+   "d": 0
+  },
+  "source": "m?.keys().map(k => 1 / d)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      1,
+      20,
+      1,
+      25
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        26
+       ],
+       "name": "map",
+       "index": 0
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "the example of 4.4 and 5.7",
+  "env": "{orders: {lines: {qty: float, price: float}[]}[]}",
+  "vars": {
+   "orders": [
+    {
+     "lines": [
+      {
+       "qty": 1,
+       "price": 1
+      }
+     ]
+    },
+    {
+     "lines": [
+      {
+       "qty": 2,
+       "price": 1
+      }
+     ]
+    },
+    {
+     "lines": [
+      {
+       "qty": 1,
+       "price": 1
+      },
+      {
+       "qty": 1e+300,
+       "price": 1e+300
+      }
+     ]
+    }
+   ]
+  },
+  "source": "const total = o => o.lines.map(l => l.qty * l.price).sum();\norders.map(o => total(o))",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "number-range",
+     "class": "range",
+     "span": [
+      1,
+      37,
+      1,
+      52
+     ],
+     "message": "the result of * is out of range",
+     "trace": [
+      {
+       "span": [
+        2,
+        1,
+        2,
+        26
+       ],
+       "name": "map",
+       "index": 2
+      },
+      {
+       "span": [
+        2,
+        17,
+        2,
+        25
+       ],
+       "name": "total",
+       "index": null
+      },
+      {
+       "span": [
+        1,
+        20,
+        1,
+        53
+       ],
+       "name": "map",
+       "index": 1
+      }
+     ]
+    }
+   ],
+   "rendered": {
+    "line": "error[number-range] 1:37-1:52: the result of * is out of range\n",
+    "detail": "error[number-range] 1:37-1:52: the result of * is out of range\n    const total = o => o.lines.map(l => l.qty * l.price).sum();\n                                        ^^^^^^^^^^^^^^^\n  in map, element 1, at 1:20-1:53\n  in total, at 2:17-2:25\n  in map, element 2, at 2:1-2:26\n",
+    "json": "{\"class\":\"range\",\"code\":\"number-range\",\"message\":\"the result of * is out of range\",\"phase\":\"run\",\"span\":[1,37,1,52],\"trace\":[{\"index\":2,\"name\":\"map\",\"span\":[2,1,2,26]},{\"index\":null,\"name\":\"total\",\"span\":[2,17,2,25]},{\"index\":1,\"name\":\"map\",\"span\":[1,20,1,53]}]}\n"
+   }
+  }
+ },
+ {
+  "name": "rendered: a tab in the excerpt is one space",
+  "source": "[1, 0].map(x =>\n\t1 / x)",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "divide-by-zero",
+     "class": "divide",
+     "span": [
+      2,
+      2,
+      2,
+      7
+     ],
+     "message": "the divisor of / is zero",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        2,
+        8
+       ],
+       "name": "map",
+       "index": 1
+      }
+     ]
+    }
+   ],
+   "rendered": {
+    "line": "error[divide-by-zero] 2:2-2:7: the divisor of / is zero\n",
+    "detail": "error[divide-by-zero] 2:2-2:7: the divisor of / is zero\n     1 / x)\n     ^^^^^\n  in map, element 1, at 1:1-2:8\n",
+    "json": "{\"class\":\"divide\",\"code\":\"divide-by-zero\",\"message\":\"the divisor of / is zero\",\"phase\":\"run\",\"span\":[2,2,2,7],\"trace\":[{\"index\":1,\"name\":\"map\",\"span\":[1,1,2,8]}]}\n"
+   }
+  }
+ },
+ {
+  "name": "rendered: a message with a line feed is visible text, and data is in the JSON form",
+  "source": "fail(\"line one\\nline two\", {sku: \"a\"})",
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "failed",
+     "class": "value",
+     "span": [
+      1,
+      1,
+      1,
+      39
+     ],
+     "message": "line one\nline two",
+     "trace": []
+    }
+   ],
+   "rendered": {
+    "line": "error[failed] 1:1-1:39: line one\\nline two\n",
+    "detail": "error[failed] 1:1-1:39: line one\\nline two\n    fail(\"line one\\nline two\", {sku: \"a\"})\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+    "json": "{\"class\":\"value\",\"code\":\"failed\",\"data\":null,\"message\":\"line one\\nline two\",\"phase\":\"run\",\"span\":[1,1,1,39],\"trace\":[]}\n"
+   }
+  }
+ },
+ {
+  "name": "a limit failure: the trace is not compared",
+  "source": "[1, 2, 3].map(x => x * 2)",
+  "limits": {
+   "steps": 4
+  },
+  "expect": {
+   "phase": "run",
+   "diagnostics": [
+    {
+     "code": "steps-exceeded",
+     "class": "limit",
+     "message": "the run needed more than its limit of 4 steps",
+     "trace": [
+      {
+       "span": [
+        1,
+        1,
+        1,
+        26
+       ],
+       "name": "nothing",
+       "index": 9
+      }
+     ]
+    }
+   ]
+  }
+ }
+]
