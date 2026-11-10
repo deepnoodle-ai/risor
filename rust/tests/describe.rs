@@ -3,7 +3,7 @@
 
 use risor::check::{self, ty::print};
 use risor::json::{self, Json};
-use risor::testing::{case_env, case_files, load};
+use risor::testing::{case_env, case_files, load_file};
 use risor::{parse, DescriptionError, Env, Limits, SchemaOptions};
 use std::path::PathBuf;
 
@@ -49,7 +49,7 @@ fn round_trip_over_the_suite() {
         "conversion",
     ] {
         for path in case_files(&suite_dir().join(dir)) {
-            let Ok(file) = load(&path) else { continue };
+            let Ok(file) = load_file(&path) else { continue };
             for case in &file.cases {
                 let Ok(e1) = case_env(case) else { continue };
                 let d1 = e1.describe();

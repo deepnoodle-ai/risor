@@ -8,7 +8,8 @@
 //! `risor::HostType` (the type: an exact record of the fields it presents)
 //! and `risor::Host` with `risor::HostMap` (the presentation: a map of those
 //! fields, read in place). Each field's type must implement `HostType` and
-//! `Host`.
+//! `Host`. For a struct that borrows nothing it also implements
+//! `risor::Decode` (F10 6.5), which needs each field's type to implement it.
 //!
 //! | Attribute on a field | Effect |
 //! | --- | --- |
@@ -16,6 +17,7 @@
 //! | `#[risor(rename = "k")]` | The field is presented under the key `k` |
 //! | `#[risor(skip)]` | The field is not presented and is not in the record |
 //! | `#[risor(absent_if_none)]` | On `Option<T>` only: an optional field `f?: T`, absent when `None` |
+//! | `#[risor(default)]` | An optional field `f?: T`, always presented; a decode gives `Default::default()` for an absent key (`f10-config.md` 6.5) |
 //!
 //! Attributes may be combined in one `#[risor(...)]` or written apart. Any
 //! other content of `#[risor(...)]`, two fields under one key, an `enum`, a
@@ -76,6 +78,24 @@
 //! struct S { a: String, #[risor(rename = "a")] b: String }
 //! ```
 //!
+//! `default` beside `skip`, and `default` on a type with no `Default`:
+//!
+//! ```compile_fail
+//! #[derive(risor_derive::Host)]
+//! struct S { #[risor(default, skip)] a: String }
+//! ```
+//!
+//! ```compile_fail
+//! struct NoDefault;
+//! impl risor::HostType for NoDefault {
+//!     fn host_type(_: &mut risor::TypeCx) -> Result<risor::check::ty::Ty, risor::TypeError> {
+//!         Ok(risor::check::ty::Ty::int())
+//!     }
+//! }
+//! #[derive(risor_derive::Host)]
+//! struct S { #[risor(default)] a: NoDefault }
+//! ```
+//!
 //! A field whose type has no rule (here a `char`):
 //!
 //! ```compile_fail
@@ -101,6 +121,7 @@ struct FieldSpec {
     ty: String,
     skip: bool,
     absent_if_none: bool,
+    default: bool,
 }
 
 struct Item {
@@ -114,6 +135,14 @@ struct Item {
 
 fn derive(input: TokenStream) -> Result<String, String> {
     let item = parse_item(input)?;
+    for f in &item.fields {
+        if f.default && (f.skip || f.absent_if_none) {
+            return Err(format!(
+                "derive(Host): the field {} has default beside skip or absent_if_none",
+                f.ident
+            ));
+        }
+    }
     let mut seen: Vec<&str> = Vec::new();
     for f in item.fields.iter().filter(|f| !f.skip) {
         if seen.contains(&f.key.as_str()) {
@@ -251,6 +280,7 @@ fn parse_fields(body: TokenStream) -> Result<Vec<FieldSpec>, String> {
             ty: String::new(),
             skip: false,
             absent_if_none: false,
+            default: false,
         };
         let mut rename: Option<String> = None;
         // Attributes and visibility.
@@ -333,6 +363,7 @@ fn read_attr(
         match word.as_str() {
             "skip" => spec.skip = true,
             "absent_if_none" => spec.absent_if_none = true,
+            "default" => spec.default = true,
             "rename" => {
                 if !is_punct(inner.get(i), '=') {
                     return Err("derive(Host): write rename = \"key\"".into());
@@ -346,7 +377,7 @@ fn read_attr(
             }
             other => {
                 return Err(format!(
-                    "derive(Host): {other} is not an attribute of risor; there are rename, skip and absent_if_none"
+                    "derive(Host): {other} is not an attribute of risor; there are rename, skip, absent_if_none and default"
                 ))
             }
         }
@@ -484,15 +515,114 @@ fn generate(item: &Item) -> String {
                 "if ::risor::OptionLike::present(&self.{id}).is_some() {{ k.push({key}); }}\n"
             ));
         } else {
-            ty_body.push_str(&format!("r.field({key}, cx.of::<{ty}>()?, false)?;\n"));
+            let optional = f.default;
+            ty_body.push_str(&format!("r.field({key}, cx.of::<{ty}>()?, {optional})?;\n"));
             get_arms.push_str(&format!(
                 "{key} => ::core::option::Option::Some(::risor::Host::view(&self.{id})),\n"
             ));
             keys.push_str(&format!("k.push({key});\n"));
         }
     }
+    // F10 6.5: the decode, for a struct that borrows nothing.
+    let borrows = item
+        .fields
+        .iter()
+        .any(|f| f.ty.contains('&') || f.ty.contains("Cow"))
+        || item
+            .params
+            .iter()
+            .any(|p| matches!(p.first(), Some(TokenTree::Punct(q)) if q.as_char() == '\''));
+    let decode = if borrows {
+        String::new()
+    } else {
+        let mut lets = String::new();
+        let mut build = String::new();
+        for f in &item.fields {
+            let key = format!("{:?}", f.key);
+            let (id, ty) = (&f.ident, &f.ty);
+            let local = format!("__f_{}", id.trim_start_matches("r#"));
+            if f.skip {
+                lets.push_str(&format!(
+                    "let {local}: {ty} = ::core::default::Default::default();\n"
+                ));
+            } else {
+                let absent = if f.absent_if_none || f.default {
+                    "::core::option::Option::Some(::core::default::Default::default())".to_string()
+                } else {
+                    format!("{{ cx.missing({key}); ::core::option::Option::None }}")
+                };
+                lets.push_str(&format!(
+                    "let {local}: ::core::option::Option<{ty}> = match v.field({key}) {{
+                        ::core::option::Option::Some(x) => cx.key::<{ty}>({key}, &x),
+                        ::core::option::Option::None => {absent},
+                    }};\n"
+                ));
+            }
+            build.push_str(&format!("{id}: {local},\n"));
+        }
+        let unwraps: String = item
+            .fields
+            .iter()
+            .filter(|f| !f.skip)
+            .map(|f| {
+                let local = format!("__f_{}", f.ident.trim_start_matches("r#"));
+                format!("let {local} = {local}?;\n")
+            })
+            .collect();
+        let decode_bounds: String = item
+            .params
+            .iter()
+            .filter_map(|p| match p.first() {
+                Some(TokenTree::Ident(id)) if id.to_string() != "const" => {
+                    Some(format!("{id}: ::risor::Decode,"))
+                }
+                _ => None,
+            })
+            .collect();
+        let where_decode = if where_all.is_empty() && decode_bounds.is_empty() {
+            String::new()
+        } else {
+            format!("where {where_all}{decode_bounds}")
+        };
+        format!(
+            r#"
+#[automatically_derived]
+impl{g_decl} ::risor::Decode for {name}{g_args} {where_decode} {{
+    fn decode(
+        v: &::risor::Value<'_>,
+        cx: &mut ::risor::DecodeCx,
+    ) -> ::core::option::Option<Self> {{
+        if v.kind() != ::risor::value::Kind::Map {{
+            cx.fail("the value is not a map");
+            return ::core::option::Option::None;
+        }}
+        {lets}
+        {unwraps}
+        ::core::option::Option::Some({name} {{ {build} }})
+    }}
+}}
+"#
+        )
+    };
+    // `#[risor(default)]` on a type with no `Default` fails the build.
+    let defaults: String = item
+        .fields
+        .iter()
+        .filter(|f| f.default)
+        .map(|f| {
+            format!(
+                "const _: fn() = || {{ fn d<T: ::core::default::Default>() {{}} d::<{}>(); }};\n",
+                f.ty
+            )
+        })
+        .collect();
+    let decode = if item.params.is_empty() {
+        format!("{defaults}{decode}")
+    } else {
+        decode
+    };
     format!(
-        r#"
+        r#"{decode}
 #[automatically_derived]
 impl{g_decl} ::risor::HostType for {name}{g_args} {where_text} {{
     fn host_type(

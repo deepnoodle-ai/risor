@@ -5,7 +5,7 @@
 //! library entry this build does not run yet.
 
 use super::case::{
-    load, opaque_of, Answer, Case, Expect, ExpectDiag, ExpectFailure, ExpectResult, Stub,
+    load_file, opaque_of, Answer, Case, Expect, ExpectDiag, ExpectFailure, ExpectResult, Stub,
 };
 use crate::compile::{compile_unchecked as compile, Program, Res};
 use crate::diag::{code, Diagnostic, Error, Phase};
@@ -21,10 +21,313 @@ use crate::value::{eq_data, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-/// One thing that differed (3.10.8 item 2).
+/// The first call of a stub that no row matched (3.10.4), as the report
+/// writes it (`f09-testing.md` 6.2).
+#[derive(Debug, Default)]
+pub struct Unmatched(std::sync::Mutex<Option<String>>);
+
+impl Unmatched {
+    fn store(&self, text: String) {
+        if let Ok(mut g) = self.0.lock() {
+            if g.is_none() {
+                *g = Some(text);
+            }
+        }
+    }
+
+    fn load(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|g| g.clone())
+    }
+}
+
+/// The JSON form of `01-language.md` 12 (`f09-testing.md` 1.1): no white
+/// space, keys in code point order, numbers in the rendering of 6.3.
+pub fn form(j: &Json) -> String {
+    let mut out = String::new();
+    form_into(j, &mut out);
+    out
+}
+
+fn form_into(j: &Json, out: &mut String) {
+    match j {
+        Json::Null => out.push_str("null"),
+        Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Json::Num(n) => out.push_str(&crate::number::to_text(*n)),
+        Json::Str(s) => out.push_str(&json_text(s)),
+        Json::Arr(a) => {
+            out.push('[');
+            for (i, x) in a.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                form_into(x, out);
+            }
+            out.push(']');
+        }
+        Json::Obj(m) => {
+            let mut keys: Vec<&(String, Json)> = m.iter().collect();
+            keys.sort_by(|a, b| a.0.cmp(&b.0));
+            out.push('{');
+            for (i, (k, x)) in keys.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&json_text(k));
+                out.push(':');
+                form_into(x, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+/// A value of a run as JSON data, an opaque value as a case file writes it.
+pub fn value_to_json(v: &Value<'_>) -> Json {
+    match v {
+        Value::Null | Value::BadNum => Json::Null,
+        Value::Bool(b) => Json::Bool(*b),
+        Value::Num(n) => Json::Num(*n),
+        Value::Str(s) => Json::Str(s.as_str().to_string()),
+        Value::Opaque(o) => {
+            let id = o.value.downcast_ref::<u64>().copied().unwrap_or(0);
+            Json::Obj(vec![(
+                "$opaque".into(),
+                Json::Obj(vec![
+                    ("type".into(), Json::Str(o.type_name.to_string())),
+                    ("id".into(), Json::Num(id as f64)),
+                ]),
+            )])
+        }
+        Value::List(_) | Value::HList(_) => Json::Arr(
+            (0..v.len().unwrap_or(0))
+                .map(|i| value_to_json(&v.elem(i)))
+                .collect(),
+        ),
+        Value::Map(_) | Value::HMap(_) => Json::Obj(
+            v.entries()
+                .into_iter()
+                .map(|(k, x)| (k.as_str().to_string(), value_to_json(&x)))
+                .collect(),
+        ),
+    }
+}
+
+/// The fixture test of `f09-testing.md` 2: the first fixture that does not
+/// conform, with its place and the conformance path, and the message.
+fn fixture_test(case: &Case, env: &Env) -> Option<(Vec<Json>, String)> {
+    if case.precondition == Some(false) {
+        return None;
+    }
+    let data = env.data();
+    let mut interner = Interner::default();
+    let test = |interner: &mut Interner, v: &Json, ty: crate::check::ty::Ty| {
+        let d = interner.data(v);
+        crate::conform::ProgramType { ty }.conform(&d).err()
+    };
+    let with_path = |mut place: Vec<Json>, d: &Diagnostic| {
+        if let Some(p) = &d.path {
+            if let Json::Arr(a) = path_json(p) {
+                place.extend(a);
+            }
+        }
+        (place, d.message.clone())
+    };
+    // 2.3 item 1: the values of `vars`, in code point order of their keys.
+    let mut vars: Vec<&(String, Json)> = case.vars.iter().flatten().collect();
+    vars.sort_by(|a, b| a.0.cmp(&b.0));
+    for (k, v) in vars {
+        let Some(i) = data.vars.iter().position(|n| n == k) else {
+            continue;
+        };
+        if let Some(d) = test(&mut interner, v, data.var_types[i].clone()) {
+            let place = vec![Json::Str("vars".into()), Json::Str(k.clone())];
+            return Some(with_path(place, &d));
+        }
+    }
+    let any: crate::check::ty::Solutions = ('A'..='Z')
+        .map(|c| (c, crate::check::ty::Ty::any()))
+        .collect();
+    let rows = |interner: &mut Interner,
+                kind: &str,
+                name: &str,
+                stub: &Stub,
+                sig: &crate::types::text::Sig|
+     -> Option<(Vec<Json>, String)> {
+        let result = crate::check::ty::substitute(&sig.result, &data.names, &any);
+        for (i, r) in stub.calls.iter().enumerate() {
+            let place = |last: &str| {
+                vec![
+                    Json::Str(kind.into()),
+                    Json::Str(name.into()),
+                    Json::Str("calls".into()),
+                    Json::Num(i as f64),
+                    Json::Str(last.into()),
+                ]
+            };
+            match &r.answer {
+                Answer::Result(v) => {
+                    if let Some(d) = test(interner, v, result.clone()) {
+                        return Some(with_path(place("result"), &d));
+                    }
+                }
+                Answer::Error(_) if !sig.fails => {
+                    return Some((
+                        place("error"),
+                        "the signature has no !, so the stub may not return an error".into(),
+                    ));
+                }
+                Answer::Error(_) => {}
+            }
+        }
+        None
+    };
+    // 2.3 items 2 and 3: the stubs of functions, then of methods, by name.
+    let mut fs: Vec<&(String, Stub)> = case.functions.iter().collect();
+    fs.sort_by(|a, b| a.0.cmp(&b.0));
+    for (name, stub) in fs {
+        if let Some(f) = data.functions.iter().find(|f| f.name == *name) {
+            if let Some(r) = rows(&mut interner, "functions", name, stub, &f.sig) {
+                return Some(r);
+            }
+        }
+    }
+    let mut ms: Vec<&(String, Stub)> = case.methods.iter().collect();
+    ms.sort_by(|a, b| a.0.cmp(&b.0));
+    for (key, stub) in ms {
+        let (t, m) = key.split_once('.').unwrap_or_default();
+        if let Some(h) = data
+            .methods
+            .iter()
+            .find(|h| h.type_name == t && h.name == m)
+        {
+            if let Some(r) = rows(&mut interner, "methods", key, stub, &h.sig) {
+                return Some(r);
+            }
+        }
+    }
+    None
+}
+
+/// A span as JSON.
+pub(super) fn span_json(s: [u32; 4]) -> Json {
+    Json::Arr(s.iter().map(|n| Json::Num(*n as f64)).collect())
+}
+
+/// E of the difference `outcome`: the whole `expect`, or `nothing`.
+fn expected_text(case: &Case) -> String {
+    match &case.expect_raw {
+        Some(e) => form(e),
+        None => "nothing".into(),
+    }
+}
+
+/// A result as an `expect` written whole (`f09-testing.md` 4.4): `type` when
+/// checked; `value`, `steps` and `allocated` when it ran.
+pub(super) fn result_json(ty: Option<&str>, ran: Option<(Json, u64, u64)>) -> Json {
+    let mut m = Vec::new();
+    if let Some(t) = ty {
+        m.push(("type".to_string(), Json::Str(t.to_string())));
+    }
+    if let Some((v, steps, units)) = ran {
+        m.push(("value".into(), v));
+        m.push(("steps".into(), Json::Num(steps as f64)));
+        m.push(("allocated".into(), Json::Num(units as f64)));
+    }
+    Json::Obj(m)
+}
+
+/// The columns a phase may write (`f09-testing.md` 4.4), written whole.
+pub(super) fn whole_columns(phase: Phase) -> &'static [&'static str] {
+    match phase {
+        Phase::Declare => &["code"],
+        Phase::Parse => &["code", "span", "message"],
+        Phase::Check => &["code", "class", "span", "message"],
+        Phase::Run => &["code", "class", "span", "path", "message", "data"],
+    }
+}
+
+/// One diagnostic with the columns named that it has (`f09-testing.md`
+/// 4.4): `class` when it has one; `span` and `trace` never for a limit
+/// code; `path` for `not-conforming`; `data` for `failed`; no message for
+/// `declare`.
+pub fn diag_json(d: &Diagnostic, cols: &[&str]) -> Json {
+    let limit = code::LIMIT.contains(&d.code);
+    let mut m = Vec::new();
+    for c in cols {
+        match *c {
+            "code" => m.push(("code".to_string(), Json::Str(d.code.to_string()))),
+            "class" => {
+                if let Some(c) = d.class {
+                    m.push(("class".into(), Json::Str(c.to_string())));
+                }
+            }
+            "span" => {
+                if let (Some(s), false) = (d.span, limit) {
+                    m.push(("span".into(), span_json(s.0)));
+                }
+            }
+            "message" if d.phase != Phase::Declare => {
+                m.push(("message".into(), Json::Str(d.message.clone())))
+            }
+            "path" if d.code == "not-conforming" => {
+                if let Some(p) = &d.path {
+                    m.push(("path".into(), path_json(p)));
+                }
+            }
+            "data" if d.code == "failed" => {
+                let v = d
+                    .data
+                    .as_deref()
+                    .map(|x| value_to_json(&Value::from_data(x)))
+                    .unwrap_or(Json::Null);
+                m.push(("data".into(), v));
+            }
+            "trace" if d.phase == Phase::Run && !limit => {
+                let t = d
+                    .trace()
+                    .iter()
+                    .map(|e| {
+                        Json::Obj(vec![
+                            ("span".into(), span_json(e.span.0)),
+                            ("name".into(), Json::Str(e.name.clone())),
+                            (
+                                "index".into(),
+                                e.index.map_or(Json::Null, |i| Json::Num(i as f64)),
+                            ),
+                        ])
+                    })
+                    .collect();
+                m.push(("trace".into(), Json::Arr(t)));
+            }
+            _ => {}
+        }
+    }
+    Json::Obj(m)
+}
+
+/// A failure as an `expect`: `phase` and `diagnostics`, with the columns
+/// given, or written whole.
+pub(super) fn failure_json(phase: Phase, diags: &[Diagnostic], cols: Option<&[String]>) -> Json {
+    let whole: Vec<String> = whole_columns(phase).iter().map(|c| c.to_string()).collect();
+    let cols: Vec<&str> = cols.unwrap_or(&whole).iter().map(|c| c.as_str()).collect();
+    let ds: &[Diagnostic] = match phase {
+        Phase::Parse | Phase::Run => &diags[..diags.len().min(1)],
+        _ => diags,
+    };
+    Json::Obj(vec![
+        ("phase".into(), Json::Str(phase.as_str().into())),
+        (
+            "diagnostics".into(),
+            Json::Arr(ds.iter().map(|d| diag_json(d, &cols)).collect()),
+        ),
+    ])
+}
+
+/// One thing that differed (3.10.8 item 2). `expected` and `found` are the
+/// E and F of `f09-testing.md` 6.2; for `functions`, `found` is the text
+/// after the name.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Difference {
     pub name: &'static str,
@@ -38,6 +341,11 @@ pub enum Verdict {
     Fail(Vec<Difference>),
     Skip(String),
     Invalid(String),
+    /// F9 2.4: a fixture that fails its test, with its place and path and
+    /// the message.
+    Fixture(Vec<Json>, String),
+    /// F9 4.3: written by update mode.
+    Updated,
 }
 
 impl Verdict {
@@ -46,7 +354,8 @@ impl Verdict {
             Verdict::Pass => "pass",
             Verdict::Fail(_) => "fail",
             Verdict::Skip(_) => "skip",
-            Verdict::Invalid(_) => "invalid",
+            Verdict::Invalid(_) | Verdict::Fixture(..) => "invalid",
+            Verdict::Updated => "updated",
         }
     }
 }
@@ -65,6 +374,7 @@ pub struct Counts {
     pub fail: usize,
     pub skip: usize,
     pub invalid: usize,
+    pub updated: usize,
 }
 
 impl Counts {
@@ -73,7 +383,8 @@ impl Counts {
             Verdict::Pass => self.pass += 1,
             Verdict::Fail(_) => self.fail += 1,
             Verdict::Skip(_) => self.skip += 1,
-            Verdict::Invalid(_) => self.invalid += 1,
+            Verdict::Invalid(_) | Verdict::Fixture(..) => self.invalid += 1,
+            Verdict::Updated => self.updated += 1,
         }
     }
 
@@ -82,10 +393,11 @@ impl Counts {
         self.fail += o.fail;
         self.skip += o.skip;
         self.invalid += o.invalid;
+        self.updated += o.updated;
     }
 
     pub fn total(&self) -> usize {
-        self.pass + self.fail + self.skip + self.invalid
+        self.pass + self.fail + self.skip + self.invalid + self.updated
     }
 }
 
@@ -131,6 +443,11 @@ impl fmt::Display for FileReport {
                     }
                 }
                 Verdict::Invalid(why) => writeln!(f, "  invalid: {name}: {why}")?,
+                Verdict::Fixture(fx, msg) => writeln!(
+                    f,
+                    "  invalid: {name}: fixture {}: {msg}",
+                    form(&Json::Arr(fx.clone()))
+                )?,
                 _ => {}
             }
         }
@@ -153,7 +470,7 @@ pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
         .components()
         .any(|c| c.as_os_str() == "core-check" || c.as_os_str() == "host-types")
         || check_only_file(path);
-    match load(path) {
+    match load_file(path) {
         Ok(file) => FileReport {
             path: path.to_path_buf(),
             results: file
@@ -171,7 +488,7 @@ pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
         },
         Err(why) => FileReport {
             path: path.to_path_buf(),
-            results: vec![("(every case of the file)".into(), Verdict::Invalid(why))],
+            results: vec![("(every case of the file)".into(), Verdict::Invalid(why.0))],
         },
     }
 }
@@ -283,7 +600,13 @@ struct RowData {
 }
 
 /// A stub as a host function (3.10.4).
-fn stub_impl(stub: &Stub, interner: &mut Interner, unmatched: Arc<AtomicBool>) -> HostImpl {
+fn stub_impl(
+    name: &str,
+    stub: &Stub,
+    interner: &mut Interner,
+    unmatched: Arc<Unmatched>,
+) -> HostImpl {
+    let name = name.to_string();
     let rows: Vec<RowData> = stub
         .calls
         .iter()
@@ -313,7 +636,11 @@ fn stub_impl(stub: &Stub, interner: &mut Interner, unmatched: Arc<AtomicBool>) -
                 return r.answer.clone().map_err(HostError);
             }
         }
-        unmatched.store(true, Ordering::Relaxed);
+        let args: Vec<Json> = args.iter().map(value_to_json).collect();
+        unmatched.store(format!(
+            "no row of {name} matches {}",
+            form(&Json::Arr(args))
+        ));
         Err(HostError("no row of the stub matches the call".into()))
     })
 }
@@ -322,9 +649,23 @@ fn stub_impl(stub: &Stub, interner: &mut Interner, unmatched: Arc<AtomicBool>) -
 fn build_env(
     case: &Case,
     interner: &mut Interner,
-    unmatched: &Arc<AtomicBool>,
+    unmatched: &Arc<Unmatched>,
 ) -> Result<Env, Error> {
-    let mut b = Env::builder();
+    build_env_in(case, interner, unmatched, None)
+}
+
+/// The case's environment, as a child of `base` when one is given
+/// (`03-host.md` 3.10.9; `f09-testing.md` 7.1).
+fn build_env_in(
+    case: &Case,
+    interner: &mut Interner,
+    unmatched: &Arc<Unmatched>,
+    base: Option<&Env>,
+) -> Result<Env, Error> {
+    let mut b = match base {
+        Some(e) => e.child(),
+        None => Env::builder(),
+    };
     if let Some(v) = &case.version {
         b = b.version(v);
     }
@@ -350,11 +691,11 @@ fn build_env(
         b = b.group(g);
     }
     for (key, stub) in &case.methods {
-        let imp = stub_impl(stub, interner, unmatched.clone());
+        let imp = stub_impl(key, stub, interner, unmatched.clone());
         b = b.method_impl(key, stub.ty.as_deref().unwrap_or_default(), Some(imp));
     }
     for (name, stub) in &case.functions {
-        let imp = stub_impl(stub, interner, unmatched.clone());
+        let imp = stub_impl(name, stub, interner, unmatched.clone());
         b = b.function_impl(name, stub.ty.as_deref().unwrap_or_default(), imp);
     }
     if let Some(r) = &case.reject {
@@ -374,6 +715,12 @@ fn build_env(
     b = b.limits(limits);
     let mut errs = match b.build() {
         Ok(env) => {
+            // F10 2.1 item 6: the schema is mapped in either mode.
+            if let Some((sch, o)) = &case.returns_schema {
+                if let Err(d) = crate::check::expected_schema(sch, *o) {
+                    return Err(Error::one(d));
+                }
+            }
             if let Some(r) = &case.returns {
                 if let Err(d) = check_expected(r) {
                     return Err(Error::one(d));
@@ -397,11 +744,33 @@ fn build_env(
     Err(errs)
 }
 
+/// The expected result of a case: by `returns`, or by schema (F10 10.1).
+fn case_expected(case: &Case, env: &Env) -> Result<crate::check::Expected, Diagnostic> {
+    match &case.returns_schema {
+        Some((s, o)) => crate::check::expected_schema(s, *o),
+        None => crate::check::expected(env, case.returns.as_deref()),
+    }
+}
+
+/// F10 10.2 item 4, step 5a: the conformance function on a load's value and
+/// its expected type. A failure has no span.
+fn load_step(case: &Case, env: &Env, v: &Value<'_>) -> Option<Diagnostic> {
+    if !case.load {
+        return None;
+    }
+    match case_expected(case, env) {
+        Ok(crate::check::Expected::Type(ty)) => {
+            crate::conform::ProgramType { ty }.conform_value(v).err()
+        }
+        _ => None,
+    }
+}
+
 /// The environment a case declares (3.10.5 step 2), with its stubs as the
 /// implementations of its functions and methods.
 pub fn case_env(case: &Case) -> Result<Env, Error> {
     let mut interner = Interner::default();
-    let unmatched = Arc::new(AtomicBool::new(false));
+    let unmatched = Arc::new(Unmatched::default());
     build_env(case, &mut interner, &unmatched)
 }
 
@@ -443,8 +812,40 @@ pub fn run_case(case: &Case) -> Verdict {
     run_case_in(case, false)
 }
 
+/// What a helper gives a run (`f09-testing.md` 7.1): a base environment,
+/// and variables for the names a case does not supply.
+#[derive(Clone, Copy, Default)]
+pub struct Ctx<'a> {
+    pub base: Option<&'a Env>,
+    pub vars: Option<&'a dyn crate::host::Vars>,
+}
+
+/// The case's variables over the host's.
+struct Layered<'a> {
+    case: &'a BTreeMap<String, Data>,
+    host: Option<&'a dyn crate::host::Vars>,
+}
+
+impl crate::host::Vars for Layered<'_> {
+    fn get(&self, name: &str) -> Option<crate::host::View<'_>> {
+        match self.case.get(name) {
+            Some(d) => Some(crate::host::Host::view(d)),
+            None => self.host.and_then(|h| h.get(name)),
+        }
+    }
+}
+
+/// Run one case with a helper's base and variables.
+pub fn run_case_ctx(case: &Case, ctx: Ctx<'_>) -> Verdict {
+    run_case_full(case, false, ctx)
+}
+
 /// As `run_case`, for a case of `suite/core-check/` when `core_check`.
 pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
+    run_case_full(case, core_check, Ctx::default())
+}
+
+fn run_case_full(case: &Case, core_check: bool, ctx: Ctx<'_>) -> Verdict {
     if let Some(why) = &case.skip {
         return Verdict::Skip(why.clone());
     }
@@ -458,11 +859,14 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
     if let Some(r) = &case.render {
         return run_render_case(r);
     }
+    if let Some(r) = &case.runner {
+        return run_runner_case(r);
+    }
     if case.conform.is_some() {
         return run_conform_case(case);
     }
     if !case.check {
-        return run_case_with(case, false, true);
+        return run_case_with(case, false, true, ctx);
     }
     let needs_checker = match &case.expect {
         Expect::Result(r) => r.ty.is_some() || r.sites.is_some(),
@@ -476,15 +880,18 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
     // F5 11.2 item 2: a case with `schemas`, or that states `description`,
     // runs once, checked.
     let needs_checker = needs_checker
+        || case.load
         || !case.schemas.is_empty()
         || matches!(&case.expect, Expect::Result(r) if r.description.is_some());
-    let checked = run_case_with(case, true, true);
+    let checked = run_case_with(case, true, true, ctx);
     if core_check || needs_checker {
         return checked;
     }
-    let plain = run_case_with(case, false, false);
+    let plain = run_case_with(case, false, false, ctx);
     match (checked, plain) {
         (Verdict::Pass, Verdict::Pass) => Verdict::Pass,
+        // F9 2.2: the test does not depend on the check.
+        (v @ Verdict::Fixture(..), _) | (_, v @ Verdict::Fixture(..)) => v,
         (a, b) => {
             let mut diffs: Vec<Difference> = Vec::new();
             for v in [a, b] {
@@ -519,6 +926,13 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
 /// Run one case as a runner with no type checker does (3.10.8 item 6): the
 /// static rules alone at step 4, and `skip` for what needs the checker.
 pub fn run_case_unchecked(case: &Case) -> Verdict {
+    // F9 9.3 item 2: a runner case is run once, and has no second pass.
+    if let Some(r) = &case.runner {
+        return run_runner_case(r);
+    }
+    if let Some(r) = &case.render {
+        return run_render_case(r);
+    }
     if let Expect::Result(ExpectResult {
         analysis: Some(want),
         ..
@@ -527,14 +941,14 @@ pub fn run_case_unchecked(case: &Case) -> Verdict {
         return run_analysis_case(case, want);
     }
     if !case.check {
-        return run_case_with(case, false, true);
+        return run_case_with(case, false, true, Ctx::default());
     }
-    run_case_with(case, false, false)
+    run_case_with(case, false, false, Ctx::default())
 }
 
 /// `all_class`: compare `class` for every code, as a checked run and a case
 /// with `"check": false` do (3.10.7 item 8).
-fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
+fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> Verdict {
     if let Some(why) = &case.skip {
         return Verdict::Skip(why.clone());
     }
@@ -556,8 +970,8 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
         _ => {}
     }
     let mut interner = Interner::default();
-    let unmatched = Arc::new(AtomicBool::new(false));
-    let env = match build_env(case, &mut interner, &unmatched) {
+    let unmatched = Arc::new(Unmatched::default());
+    let env = match build_env_in(case, &mut interner, &unmatched, ctx.base) {
         Ok(e) => e,
         Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, all_class),
     };
@@ -572,8 +986,8 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
         if !crate::json::same_data(want, &got) {
             diffs.push(Difference {
                 name: "description",
-                expected: crate::json::to_text(want),
-                found: crate::json::to_text(&got),
+                expected: form(want),
+                found: form(&got),
             });
         }
     }
@@ -592,8 +1006,9 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
     };
     // Step 4: the check, or the static rules alone.
     let mut sites = None;
+    let mut found_ty: Option<String> = None;
     if checked {
-        let exp = match crate::check::expected(&env, case.returns.as_deref()) {
+        let exp = match case_expected(case, &env) {
             Ok(x) => x,
             Err(d) => {
                 return judge_failure(case, Phase::Declare, &[d], None, &unmatched, all_class)
@@ -610,6 +1025,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
                 all_class,
             );
         }
+        found_ty = r.ty.as_ref().map(crate::check::ty::print);
         if let Expect::Result(want) = &case.expect {
             let got = r.ty.clone().unwrap_or_default();
             if let Some(t) = &want.ty {
@@ -619,8 +1035,8 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
                 if wt.as_ref() != Some(&got) {
                     diffs.push(Difference {
                         name: "type",
-                        expected: t.clone(),
-                        found: crate::check::ty::print(&got),
+                        expected: json_text(t),
+                        found: json_text(&crate::check::ty::print(&got)),
                     });
                 }
             }
@@ -633,10 +1049,22 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
                 let ws: Vec<(String, [u32; 4])> =
                     ws.iter().map(|s| (s.class.clone(), s.span)).collect();
                 if gs != ws {
+                    let list = |l: &[(String, [u32; 4])]| {
+                        Json::Arr(
+                            l.iter()
+                                .map(|(c, sp)| {
+                                    Json::Obj(vec![
+                                        ("class".into(), Json::Str(c.clone())),
+                                        ("span".into(), span_json(*sp)),
+                                    ])
+                                })
+                                .collect(),
+                        )
+                    };
                     diffs.push(Difference {
                         name: "sites",
-                        expected: format!("{ws:?}"),
-                        found: format!("{gs:?}"),
+                        expected: form(&list(&ws)),
+                        found: form(&list(&gs)),
                     });
                 }
             }
@@ -653,6 +1081,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
         return Verdict::Skip(format!("needs library entry {}", missing.join(", ")));
     }
     let needs_run = case.vars.is_some()
+        || case.load
         || match &case.expect {
             Expect::Result(r) => r.needs_run(),
             Expect::Failure(f) => f.phase == Phase::Run,
@@ -660,12 +1089,16 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
     if !needs_run {
         return match &case.expect {
             Expect::Result(_) => verdict(diffs),
-            Expect::Failure(f) => Verdict::Fail(vec![Difference {
+            Expect::Failure(_) => Verdict::Fail(vec![Difference {
                 name: "outcome",
-                expected: format!("a failure of phase {}", f.phase),
-                found: "a result".into(),
+                expected: expected_text(case),
+                found: form(&result_json(found_ty.as_deref(), None)),
             }]),
         };
+    }
+    // F9 2.2: the fixture test, before the run.
+    if let Some((fx, msg)) = fixture_test(case, &env) {
+        return Verdict::Fixture(fx, msg);
     }
     let vars: BTreeMap<String, Data> = case
         .vars
@@ -673,8 +1106,24 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
         .flatten()
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
-    let out = program.run(&vars);
+    let layered = Layered {
+        case: &vars,
+        host: ctx.vars,
+    };
+    let out = program.run(&layered);
     let usage = out.usage;
+    if let Ok(v) = &out.result {
+        if let Some(d) = load_step(case, &env, v) {
+            return judge_failure(
+                case,
+                Phase::Run,
+                &[d],
+                Some((usage.steps, usage.allocated)),
+                &unmatched,
+                all_class,
+            );
+        }
+    }
     match out.result {
         Err(f) => {
             let d = program.diagnostic(&f);
@@ -689,19 +1138,22 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
         }
         Ok(v) => {
             match &case.expect {
-                Expect::Failure(f) => diffs.push(Difference {
+                Expect::Failure(_) => diffs.push(Difference {
                     name: "outcome",
-                    expected: format!("a failure of phase {}", f.phase),
-                    found: format!("the value {v:?}"),
+                    expected: expected_text(case),
+                    found: form(&result_json(
+                        found_ty.as_deref(),
+                        Some((value_to_json(&v), usage.steps, usage.allocated)),
+                    )),
                 }),
                 Expect::Result(r) => {
-                    if let Some(want) = &r.value {
-                        let want = interner.data(want);
+                    if let Some(want_json) = &r.value {
+                        let want = interner.data(want_json);
                         if !eq_data(&v, &want) {
                             diffs.push(Difference {
                                 name: "value",
-                                expected: format!("{want:?}"),
-                                found: format!("{v:?}"),
+                                expected: form(r.value.as_ref().unwrap_or(&Json::Null)),
+                                found: form(&value_to_json(&v)),
                             });
                         }
                     }
@@ -711,8 +1163,11 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
                         if got.as_deref() != Ok(want.as_str()) {
                             diffs.push(Difference {
                                 name: "json",
-                                expected: want.clone(),
-                                found: format!("{got:?}"),
+                                expected: json_text(want),
+                                found: match &got {
+                                    Ok(t) => json_text(t),
+                                    Err(e) => json_text(&format!("{e:?}")),
+                                },
                             });
                         }
                     }
@@ -773,12 +1228,12 @@ fn count_diffs(
     }
 }
 
-fn functions_diff(diffs: &mut Vec<Difference>, unmatched: &AtomicBool) {
-    if unmatched.load(Ordering::Relaxed) {
+fn functions_diff(diffs: &mut Vec<Difference>, unmatched: &Unmatched) {
+    if let Some(found) = unmatched.load() {
         diffs.push(Difference {
             name: "functions",
-            expected: "every call of a stub matches a row".into(),
-            found: "a call that matches no row".into(),
+            expected: String::new(),
+            found,
         });
     }
 }
@@ -788,17 +1243,17 @@ fn judge_failure(
     phase: Phase,
     diags: &[Diagnostic],
     usage: Option<(u64, u64)>,
-    unmatched: &AtomicBool,
+    unmatched: &Unmatched,
     checked: bool,
 ) -> Verdict {
     let mut diffs = match &case.expect {
         Expect::Result(_) => vec![Difference {
             name: "outcome",
-            expected: "a result".into(),
-            found: format!("a failure of phase {phase}: {}", show_all(diags)),
+            expected: expected_text(case),
+            found: form(&failure_json(phase, diags, None)),
         }],
         Expect::Failure(f) => {
-            let mut d = compare_failure(f, phase, diags, checked);
+            let mut d = compare_failure(case, f, phase, diags, checked);
             if d.is_empty() {
                 if let Some(r) = &f.rendered {
                     let ds = if phase == Phase::Parse {
@@ -968,20 +1423,6 @@ fn show_diag(d: &Diagnostic) -> String {
     s
 }
 
-fn show_expected(d: &ExpectDiag) -> String {
-    let mut s = match d.span {
-        Some(sp) => format!("{} at {}", d.code, show_span(Some(sp))),
-        None => d.code.clone(),
-    };
-    if let Some(m) = &d.message {
-        s.push_str(&format!(" {m:?}"));
-    }
-    if let Some(x) = &d.data {
-        s.push_str(&format!(" data {x}"));
-    }
-    s
-}
-
 /// The codes whose class depends on the check (`03-host.md` 3.7.6), six of
 /// them with `function-error`.
 const CHECKED_CLASS: [&str; 6] = [
@@ -1009,6 +1450,10 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
         if !code::LIMIT.contains(&a.code) && a.span.map(|x| x.0) != Some(s) {
             return false;
         }
+    }
+    // F10 10.2 item 5: `"span": null` is compared.
+    if e.span_null && a.span.is_some() {
+        return false;
     }
     if let Some(m) = &e.message {
         if *m != a.message {
@@ -1054,6 +1499,7 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
 }
 
 fn compare_failure(
+    case: &Case,
     f: &ExpectFailure,
     phase: Phase,
     diags: &[Diagnostic],
@@ -1062,8 +1508,8 @@ fn compare_failure(
     if f.phase != phase {
         return vec![Difference {
             name: "outcome",
-            expected: format!("a failure of phase {}", f.phase),
-            found: format!("a failure of phase {phase}: {}", show_all(diags)),
+            expected: expected_text(case),
+            found: form(&failure_json(phase, diags, None)),
         }];
     }
     let ok = match phase {
@@ -1102,15 +1548,26 @@ fn compare_failure(
     if ok {
         Vec::new()
     } else {
+        // F9 6.2: the found list with the columns of the expected one.
+        let raw = case
+            .expect_raw
+            .as_ref()
+            .and_then(|e| e.get("diagnostics"))
+            .cloned()
+            .unwrap_or(Json::Arr(Vec::new()));
+        let mut cols: Vec<String> = vec!["code".into()];
+        for d in raw.as_arr().unwrap_or_default() {
+            for (k, _) in d.as_obj().unwrap_or_default() {
+                if !cols.contains(k) {
+                    cols.push(k.clone());
+                }
+            }
+        }
+        let found = failure_json(phase, diags, Some(&cols));
         vec![Difference {
             name: "diagnostics",
-            expected: f
-                .diagnostics
-                .iter()
-                .map(show_expected)
-                .collect::<Vec<_>>()
-                .join("; "),
-            found: show_all(diags),
+            expected: form(&raw),
+            found: form(found.get("diagnostics").unwrap_or(&Json::Null)),
         }]
     }
 }
@@ -1119,7 +1576,7 @@ fn compare_failure(
 /// its `expect` ignored.
 /// The case's program (3.10.5 step 3): its text parsed as a program, or,
 /// with F2's `template`, as a template taken in its mode.
-fn parse_case(case: &Case) -> Result<crate::syntax::Parsed, Error> {
+pub(super) fn parse_case(case: &Case) -> Result<crate::syntax::Parsed, Error> {
     match case.template {
         Some(mode) => crate::template::parse_template(&case.source).map(|t| t.program(mode)),
         None => parse(&case.source),
@@ -1128,7 +1585,7 @@ fn parse_case(case: &Case) -> Result<crate::syntax::Parsed, Error> {
 
 /// The analysis report of the case's text as JSON text (F2 3), when it
 /// parses.
-fn analysis_text(case: &Case) -> Option<String> {
+pub(super) fn analysis_text(case: &Case) -> Option<String> {
     match case.template {
         Some(mode) => {
             let t = crate::template::parse_template(&case.source).ok()?;
@@ -1142,24 +1599,24 @@ fn analysis_text(case: &Case) -> Option<String> {
 }
 
 /// What a conform case found (F4 9.3): `Err` is the `declare` failure.
-struct Conformed {
+pub(super) struct Conformed {
     /// The conformance function's diagnostic, or none.
-    function: Option<Diagnostic>,
+    pub(super) function: Option<Diagnostic>,
     /// The run of `v as T`: pass with the value equal to the one supplied,
     /// or its failure; and its steps.
-    as_run: Result<bool, Diagnostic>,
-    as_steps: u64,
+    pub(super) as_run: Result<bool, Diagnostic>,
+    pub(super) as_steps: u64,
     /// The run of `v is T`, and its steps.
-    is_run: Result<bool, Diagnostic>,
-    is_steps: u64,
+    pub(super) is_run: Result<bool, Diagnostic>,
+    pub(super) is_steps: u64,
     /// F8: the list of `ConformAll`, when the case has `max`.
-    all: Option<Vec<Diagnostic>>,
+    pub(super) all: Option<Vec<Diagnostic>>,
 }
 
-fn conform_case(case: &Case) -> Result<Conformed, Error> {
+pub(super) fn conform_case(case: &Case) -> Result<Conformed, Error> {
     let (text, value) = case.conform.as_ref().expect("a conform case");
     let mut interner = Interner::default();
-    let unmatched = Arc::new(AtomicBool::new(false));
+    let unmatched = Arc::new(Unmatched::default());
     let env = build_env(case, &mut interner, &unmatched)?;
     let pt = env.ty(text)?;
     let data = interner.data(value);
@@ -1195,7 +1652,7 @@ fn conform_case(case: &Case) -> Result<Conformed, Error> {
     })
 }
 
-fn path_json(p: &[crate::diag::PathStep]) -> Json {
+pub(super) fn path_json(p: &[crate::diag::PathStep]) -> Json {
     Json::Arr(
         p.iter()
             .map(|s| match s {
@@ -1209,7 +1666,7 @@ fn path_json(p: &[crate::diag::PathStep]) -> Json {
 impl Conformed {
     /// The answer of each of the three ways, and whether they agree in
     /// answer, path, message and steps.
-    fn agree(&self) -> bool {
+    pub(super) fn agree(&self) -> bool {
         let f = self.function.is_none();
         let a = matches!(self.as_run, Ok(true));
         let i = matches!(self.is_run, Ok(true));
@@ -1229,7 +1686,7 @@ fn run_conform_case(case: &Case) -> Verdict {
     let c = match conform_case(case) {
         Ok(c) => c,
         Err(e) => {
-            let unmatched = AtomicBool::new(false);
+            let unmatched = Unmatched::default();
             return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, true);
         }
     };
@@ -1258,12 +1715,7 @@ fn run_conform_case(case: &Case) -> Verdict {
         diffs.push(Difference {
             name: "conforms",
             expected: want.conforms.to_string(),
-            found: format!(
-                "function {}, as {:?}, is {:?}",
-                answers[0],
-                c.as_run.as_ref().map_err(show_diag),
-                c.is_run.as_ref().map_err(show_diag)
-            ),
+            found: answers[0].to_string(),
         });
     }
     if let Some(p) = &want.path {
@@ -1283,8 +1735,8 @@ fn run_conform_case(case: &Case) -> Verdict {
         if !ok(&got_f) || !ok(&got_a) {
             diffs.push(Difference {
                 name: "path",
-                expected: crate::json::to_text(&want),
-                found: format!("{got_f:?} / {got_a:?}"),
+                expected: form(&want),
+                found: form(&got_f.or(got_a).unwrap_or(Json::Null)),
             });
         }
     }
@@ -1294,8 +1746,8 @@ fn run_conform_case(case: &Case) -> Verdict {
         if got_f.as_deref() != Some(m.as_str()) || got_a.as_deref() != Some(m.as_str()) {
             diffs.push(Difference {
                 name: "message",
-                expected: m.clone(),
-                found: format!("{got_f:?} / {got_a:?}"),
+                expected: json_text(m),
+                found: got_f.or(got_a).map_or("null".into(), |g| json_text(&g)),
             });
         }
     }
@@ -1304,7 +1756,12 @@ fn run_conform_case(case: &Case) -> Verdict {
             diffs.push(Difference {
                 name: "steps",
                 expected: st.to_string(),
-                found: format!("as {}, is {}", c.as_steps, c.is_steps),
+                found: if c.as_steps != st {
+                    c.as_steps
+                } else {
+                    c.is_steps
+                }
+                .to_string(),
             });
         }
     }
@@ -1319,12 +1776,8 @@ fn run_conform_case(case: &Case) -> Verdict {
         if !agrees && !diffs.iter().any(|d| d.name == "conforms") {
             diffs.push(Difference {
                 name: "conforms",
-                expected: "ConformAll agrees with the conformance function".into(),
-                found: format!(
-                    "function {:?}, ConformAll first {:?}",
-                    c.function.as_ref().map(show_diag),
-                    first.map(show_diag)
-                ),
+                expected: (c.function.is_none()).to_string(),
+                found: first.is_none().to_string(),
             });
         }
         if let Some(fs) = &want.failures {
@@ -1337,22 +1790,30 @@ fn run_conform_case(case: &Case) -> Verdict {
             if !same {
                 diffs.push(Difference {
                     name: "failures",
-                    expected: fs
-                        .iter()
-                        .map(|(p, m)| {
-                            format!("{} {m:?}", crate::json::to_text(&Json::Arr(p.clone())))
-                        })
-                        .collect::<Vec<_>>()
-                        .join("; "),
-                    found: all
-                        .iter()
-                        .map(|d| {
-                            let p =
-                                path_json(d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]));
-                            format!("{} {:?}", crate::json::to_text(&p), d.message)
-                        })
-                        .collect::<Vec<_>>()
-                        .join("; "),
+                    expected: form(&Json::Arr(
+                        fs.iter()
+                            .map(|(p, m)| {
+                                let mut o = vec![("path".to_string(), Json::Arr(p.clone()))];
+                                if let Some(m) = m {
+                                    o.push(("message".into(), Json::Str(m.clone())));
+                                }
+                                Json::Obj(o)
+                            })
+                            .collect(),
+                    )),
+                    found: form(&Json::Arr(
+                        all.iter()
+                            .map(|d| {
+                                let p = path_json(
+                                    d.path.as_deref().map(|p| p.as_slice()).unwrap_or(&[]),
+                                );
+                                Json::Obj(vec![
+                                    ("path".into(), p),
+                                    ("message".into(), Json::Str(d.message.clone())),
+                                ])
+                            })
+                            .collect(),
+                    )),
                 });
             }
         }
@@ -1391,8 +1852,8 @@ fn run_analysis_case(case: &Case, want: &Json) -> Verdict {
     } else {
         Verdict::Fail(vec![Difference {
             name: "analysis",
-            expected: crate::json::to_text(want),
-            found: format!("{text} (differs in {})", bad.join(", ")),
+            expected: form(want),
+            found: crate::json::parse(&text).map(|g| form(&g)).unwrap_or(text),
         }])
     }
 }
@@ -1423,6 +1884,64 @@ pub fn outcome_line(case: &Case) -> String {
         if let Some(a) = analysis_text(case) {
             out.push_str(",\"analysis\":");
             out.push_str(&a);
+        }
+        out.push('}');
+        return out;
+    }
+    // F9 9.4: a runner case writes its verdicts, its report and its text.
+    if let Some(rc) = &case.runner {
+        let mut out = String::from("{\"name\":");
+        out.push_str(&json_text(&case.name));
+        match inner_cases(rc) {
+            Err(_) => out.push_str(",\"invalid\":true"),
+            Ok(cases) => {
+                let (results, text) = if rc.update && !rc.program {
+                    let t = match &rc.inner {
+                        super::case::Inner::Text(t) => t.clone(),
+                        _ => String::new(),
+                    };
+                    let (rs, new) = super::update::update_text(&t, &cases);
+                    (rs, Some(new.unwrap_or(t)))
+                } else {
+                    let rs: Vec<(String, Verdict)> = cases
+                        .iter()
+                        .map(|c| (c.name.clone(), run_case(c)))
+                        .collect();
+                    let t = match (&rc.inner, rc.update) {
+                        (super::case::Inner::Text(t), true) => Some(t.clone()),
+                        _ => None,
+                    };
+                    (rs, t)
+                };
+                let entries: Vec<Json> = results
+                    .iter()
+                    .map(|(n, v)| {
+                        let mut m = vec![
+                            ("name".to_string(), Json::Str(n.clone())),
+                            ("status".to_string(), Json::Str(v.label().into())),
+                        ];
+                        if let Verdict::Fail(ds) = v {
+                            m.push((
+                                "differs".into(),
+                                Json::Arr(ds.iter().map(|d| Json::Str(d.name.into())).collect()),
+                            ));
+                        }
+                        if let Verdict::Fixture(fx, msg) = v {
+                            m.push(("fixture".into(), Json::Arr(fx.clone())));
+                            m.push(("message".into(), Json::Str(msg.clone())));
+                        }
+                        Json::Obj(m)
+                    })
+                    .collect();
+                out.push_str(",\"verdicts\":");
+                out.push_str(&form(&Json::Arr(entries)));
+                out.push_str(",\"report\":");
+                out.push_str(&json_text(&report_text(&results)));
+                if let Some(t) = text {
+                    out.push_str(",\"text\":");
+                    out.push_str(&json_text(&t));
+                }
+            }
         }
         out.push('}');
         return out;
@@ -1514,7 +2033,7 @@ fn outcome_core(case: &Case) -> String {
     let mut out = String::from("{\"name\":");
     out.push_str(&json_text(&case.name));
     let mut interner = Interner::default();
-    let unmatched = Arc::new(AtomicBool::new(false));
+    let unmatched = Arc::new(Unmatched::default());
     let fail_line = |out: &mut String, phase: Phase, diags: &[Diagnostic]| {
         out.push_str(&format!(",\"phase\":\"{phase}\",\"diagnostics\":["));
         let mut ds: Vec<&Diagnostic> = match phase {
@@ -1550,6 +2069,11 @@ fn outcome_core(case: &Case) -> String {
             if phase != Phase::Declare {
                 out.push_str(",\"message\":");
                 out.push_str(&json_text(&d.message));
+            }
+            // F10 10.4: the path of a failure of step 5a.
+            if let (Phase::Run, Some(p)) = (phase, &d.path) {
+                out.push_str(",\"path\":");
+                out.push_str(&crate::json::to_text(&path_json(p)));
             }
             // F8 8: the trace of a run diagnostic, but for class `limit`.
             if phase == Phase::Run && d.class != Some("limit") {
@@ -1593,7 +2117,7 @@ fn outcome_core(case: &Case) -> String {
         Err(e) => Err((Phase::Parse, e.diagnostics)),
         // `suite/README.md` item 3: a case with `"check": false` is compiled without.
         Ok(p) if !case.check => compile(&env, p).map_err(|e| (e.phase, e.diagnostics)),
-        Ok(p) => match crate::check::expected(&env, case.returns.as_deref()) {
+        Ok(p) => match case_expected(case, &env) {
             Err(d) => Err((Phase::Declare, vec![d])),
             Ok(exp) => match crate::check::compile_checked(&env, p, &exp) {
                 Err(e) => Err((e.phase, e.diagnostics)),
@@ -1634,6 +2158,12 @@ fn outcome_core(case: &Case) -> String {
         .collect();
     let run = program.run(&vars);
     let mut result = run.result.map_err(|f| program.diagnostic(&f));
+    // F10 10.4: a load that fails at step 5a.
+    if let Ok(v) = &result {
+        if let Some(d) = load_step(case, &env, v) {
+            result = Err(d);
+        }
+    }
     let mut text = String::new();
     if let Ok(v) = &result {
         if let Err(code) = value_json(v, &mut text, 0) {
@@ -1673,7 +2203,7 @@ fn outcome_core(case: &Case) -> String {
     out
 }
 
-fn json_text(s: &str) -> String {
+pub(super) fn json_text(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
         crate::messages::push_json_char(&mut out, c);
@@ -1741,4 +2271,335 @@ fn value_json(v: &Value<'_>, out: &mut String, _depth: u32) -> Result<(), &'stat
         }
     }
     Ok(())
+}
+
+/// The lines of a case in the report (`f09-testing.md` 6.1, 6.2).
+pub fn case_lines(name: &str, v: &Verdict) -> String {
+    let vis = crate::messages::visible;
+    match v {
+        Verdict::Pass => String::new(),
+        Verdict::Fail(diffs) => {
+            let mut out = format!("  FAIL {}\n", vis(name));
+            for d in diffs {
+                if d.name == "functions" {
+                    out.push_str(&format!("    functions: {}\n", d.found));
+                } else {
+                    out.push_str(&format!(
+                        "    {}: expected {}, found {}\n",
+                        d.name, d.expected, d.found
+                    ));
+                }
+            }
+            out
+        }
+        Verdict::Fixture(fx, msg) => {
+            let path: Vec<crate::diag::PathStep> = fx
+                .iter()
+                .map(|s| match s {
+                    Json::Str(k) => crate::diag::PathStep::Key(k.clone()),
+                    n => crate::diag::PathStep::Index(n.as_f64().unwrap_or(0.0) as usize),
+                })
+                .collect();
+            format!(
+                "  INVALID {}\n    fixture {}: {}\n",
+                vis(name),
+                crate::render::path_text(&path),
+                vis(msg)
+            )
+        }
+        Verdict::Skip(why) => format!("  SKIP {}: {}\n", vis(name), vis(why)),
+        Verdict::Updated => format!("  UPDATED {}\n", vis(name)),
+        Verdict::Invalid(why) => format!("  INVALID {}\n    {}\n", vis(name), vis(why)),
+    }
+}
+
+/// The report of a file's cases (`f09-testing.md` 6).
+pub fn report_text(results: &[(String, Verdict)]) -> String {
+    results.iter().map(|(n, v)| case_lines(n, v)).collect()
+}
+
+/// The cases of an inner file (`f09-testing.md` 3.2), or why it is invalid.
+fn inner_cases(rc: &super::case::RunnerCase) -> Result<Vec<Case>, String> {
+    use super::case::Inner;
+    let doc = match &rc.inner {
+        Inner::Data(j) => j.clone(),
+        Inner::Text(t) if rc.program => super::program::program_value(t)?,
+        Inner::Text(t) => crate::json::parse(t)?,
+    };
+    if rc.update {
+        super::case::load_doc_lax(&doc, &rc.dir)
+    } else {
+        super::case::load_doc(&doc, &rc.dir)
+    }
+}
+
+/// A runner case (`f09-testing.md` 3.2, 3.5), run once.
+fn run_runner_case(rc: &super::case::RunnerCase) -> Verdict {
+    let mut diffs = Vec::new();
+    let cases = match inner_cases(rc) {
+        Err(why) => {
+            if !rc.invalid {
+                diffs.push(Difference {
+                    name: "invalid",
+                    expected: "false".into(),
+                    found: json_text(&why),
+                });
+            }
+            return verdict(diffs);
+        }
+        Ok(c) => c,
+    };
+    if rc.invalid {
+        return Verdict::Fail(vec![Difference {
+            name: "invalid",
+            expected: "true".into(),
+            found: "false".into(),
+        }]);
+    }
+    // 4.7: a program case file is never written.
+    let (results, text) = if rc.update && !rc.program {
+        let text = match &rc.inner {
+            super::case::Inner::Text(t) => t.clone(),
+            _ => String::new(),
+        };
+        let (rs, new) = super::update::update_text(&text, &cases);
+        (rs, Some(new.unwrap_or(text)))
+    } else {
+        let rs: Vec<(String, Verdict)> = cases
+            .iter()
+            .map(|c| (c.name.clone(), run_case(c)))
+            .collect();
+        let text = match (&rc.inner, rc.update) {
+            (super::case::Inner::Text(t), true) => Some(t.clone()),
+            _ => None,
+        };
+        (rs, text)
+    };
+    let entry_ok = |e: &super::case::VerdictEntry, (name, v): &(String, Verdict)| {
+        e.name == *name
+            && e.status == v.label()
+            && e.differs.as_ref().is_none_or(|ds| match v {
+                Verdict::Fail(got) => {
+                    ds.len() == got.len() && ds.iter().zip(got).all(|(a, b)| a == b.name)
+                }
+                _ => false,
+            })
+            && e.fixture.as_ref().is_none_or(|fx| match v {
+                Verdict::Fixture(got, _) => {
+                    crate::json::same_data(&Json::Arr(fx.clone()), &Json::Arr(got.clone()))
+                }
+                _ => false,
+            })
+            && e.message.as_ref().is_none_or(|m| match v {
+                Verdict::Fixture(_, got) => m == got,
+                _ => false,
+            })
+    };
+    let same = rc.verdicts.len() == results.len()
+        && rc
+            .verdicts
+            .iter()
+            .zip(&results)
+            .all(|(e, r)| entry_ok(e, r));
+    if !same {
+        diffs.push(Difference {
+            name: "verdicts",
+            expected: rc
+                .verdicts
+                .iter()
+                .map(|e| format!("{} {}", e.name, e.status))
+                .collect::<Vec<_>>()
+                .join("; "),
+            found: results
+                .iter()
+                .map(|(n, v)| {
+                    let mut s = format!("{n} {}", v.label());
+                    if let Verdict::Fail(ds) = v {
+                        s.push_str(&format!(
+                            " {:?}",
+                            ds.iter().map(|d| d.name).collect::<Vec<_>>()
+                        ));
+                    }
+                    if let Verdict::Fixture(fx, m) = v {
+                        s.push_str(&format!(" {} {m:?}", form(&Json::Arr(fx.clone()))));
+                    }
+                    s
+                })
+                .collect::<Vec<_>>()
+                .join("; "),
+        });
+    }
+    if let Some(want) = &rc.report {
+        let got = report_text(&results);
+        if *want != got {
+            diffs.push(Difference {
+                name: "report",
+                expected: json_text(want),
+                found: json_text(&got),
+            });
+        }
+    }
+    if let (Some(want), Some(got)) = (&rc.text, &text) {
+        if want != got {
+            diffs.push(Difference {
+                name: "text",
+                expected: json_text(want),
+                found: json_text(got),
+            });
+        }
+    }
+    verdict(diffs)
+}
+
+/// What a case gave, for update mode (`f09-testing.md` 4.4): from the checked
+/// run, or the run with the static rules alone under `"check": false`.
+#[allow(clippy::large_enum_variant)]
+pub(super) enum Captured {
+    Failure {
+        phase: Phase,
+        diags: Vec<Diagnostic>,
+        usage: Option<(u64, u64)>,
+    },
+    Result {
+        ty: Option<String>,
+        sites: Option<Json>,
+        description: Option<Json>,
+        ran: Option<Ran>,
+    },
+    Conform(Conformed),
+}
+
+/// A result of a run.
+pub(super) struct Ran {
+    pub(super) value: Json,
+    /// The value holds a map of the language with the key `$opaque`.
+    pub(super) opaque_key: bool,
+    pub(super) truthy: bool,
+    pub(super) json: Option<String>,
+    pub(super) steps: u64,
+    pub(super) units: u64,
+}
+
+fn has_opaque_key(v: &Value<'_>) -> bool {
+    match v {
+        Value::List(_) | Value::HList(_) => {
+            (0..v.len().unwrap_or(0)).any(|i| has_opaque_key(&v.elem(i)))
+        }
+        Value::Map(_) | Value::HMap(_) => v
+            .entries()
+            .into_iter()
+            .any(|(k, x)| k.as_str() == "$opaque" || has_opaque_key(&x)),
+        _ => false,
+    }
+}
+
+/// The outcome of a case, through every stage when `force_run`.
+pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
+    if case.conform.is_some() {
+        return match conform_case(case) {
+            Ok(c) => Captured::Conform(c),
+            Err(e) => Captured::Failure {
+                phase: e.phase,
+                diags: e.diagnostics,
+                usage: None,
+            },
+        };
+    }
+    let fail = |phase: Phase, diags: Vec<Diagnostic>| Captured::Failure {
+        phase,
+        diags,
+        usage: None,
+    };
+    let mut interner = Interner::default();
+    let unmatched = Arc::new(Unmatched::default());
+    let env = match build_env(case, &mut interner, &unmatched) {
+        Ok(e) => e,
+        Err(e) => return fail(e.phase, e.diagnostics),
+    };
+    let description = Some(env.describe());
+    let parsed = match parse_case(case) {
+        Ok(p) => p,
+        Err(e) => return fail(Phase::Parse, e.diagnostics),
+    };
+    let (mut ty, mut sites, mut site_list) = (None, None, None);
+    if case.check {
+        let exp = match case_expected(case, &env) {
+            Ok(x) => x,
+            Err(d) => return fail(Phase::Declare, vec![d]),
+        };
+        let r = crate::check::check(&env, &parsed, &exp);
+        if !r.diagnostics.is_empty() {
+            return fail(Phase::Check, r.diagnostics);
+        }
+        ty = r.ty.as_ref().map(crate::check::ty::print);
+        sites = Some(Json::Arr(
+            r.sites
+                .iter()
+                .map(|s| {
+                    Json::Obj(vec![
+                        ("class".into(), Json::Str(s.class.to_string())),
+                        ("span".into(), span_json(parsed.source.line_span(s.span).0)),
+                    ])
+                })
+                .collect(),
+        ));
+        site_list = Some(r.sites);
+    }
+    let mut program = match compile(&env, parsed) {
+        Ok(p) => p,
+        Err(e) => return fail(e.phase, e.diagnostics),
+    };
+    program.sites = site_list;
+    let needs_run = force_run
+        || case.load
+        || case.vars.is_some()
+        || match &case.expect {
+            Expect::Result(r) => r.needs_run(),
+            Expect::Failure(f) => f.phase == Phase::Run,
+        };
+    if !needs_run {
+        return Captured::Result {
+            ty,
+            sites,
+            description,
+            ran: None,
+        };
+    }
+    let vars: BTreeMap<String, Data> = case
+        .vars
+        .iter()
+        .flatten()
+        .map(|(k, v)| (k.clone(), interner.data(v)))
+        .collect();
+    let out = program.run(&vars);
+    let usage = (out.usage.steps, out.usage.allocated);
+    if let Ok(v) = &out.result {
+        if let Some(d) = load_step(case, &env, v) {
+            return Captured::Failure {
+                phase: Phase::Run,
+                diags: vec![d],
+                usage: Some(usage),
+            };
+        }
+    }
+    match out.result {
+        Err(f) => Captured::Failure {
+            phase: Phase::Run,
+            diags: vec![program.diagnostic(&f)],
+            usage: Some(usage),
+        },
+        Ok(v) => Captured::Result {
+            ty,
+            sites,
+            description,
+            ran: Some(Ran {
+                value: value_to_json(&v),
+                opaque_key: has_opaque_key(&v),
+                truthy: v.truthy(),
+                json: crate::eval::to_json(&v).ok(),
+                steps: usage.0,
+                units: usage.1,
+            }),
+        },
+    }
 }

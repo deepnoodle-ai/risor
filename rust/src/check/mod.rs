@@ -59,6 +59,23 @@ pub fn expected(env: &Env, text: Option<&str>) -> Result<Expected, Diagnostic> {
     }
 }
 
+/// An expected result by JSON Schema (`f10-config.md` 2.1): the type the
+/// schema maps to with the options given. Only `closed` is accepted; every
+/// error is the `declare` error `bad-type`.
+pub fn expected_schema(
+    schema: &crate::json::Json,
+    opts: crate::schema::SchemaOptions,
+) -> Result<Expected, Diagnostic> {
+    let bad = |m: String| Diagnostic::bare(Phase::Declare, crate::diag::code::BAD_TYPE, m);
+    if opts.absent_is_null || opts.defaults_applied {
+        return Err(bad(
+            "an expected result takes only the option closed: nobody supplies a result".into(),
+        ));
+    }
+    let ty = crate::schema::ty_schema(schema, opts).map_err(bad)?;
+    Ok(Expected::Type(ty))
+}
+
 /// Check a program against an environment (`03-host.md` 3.2.1).
 pub fn check(env: &Env, parsed: &Parsed, expected: &Expected) -> CheckResult {
     let r = resolve(env, parsed);

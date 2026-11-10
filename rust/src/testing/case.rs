@@ -130,6 +130,8 @@ pub struct ExpectDiag {
     /// F8: the trace, each entry a span, a name and an index
     /// (`f08-errors.md` 7.2).
     pub trace: Option<ExpectTrace>,
+    /// F10: `"span": null`, the diagnostic has no span (10.2 item 5).
+    pub span_null: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -147,6 +149,40 @@ pub struct ExpectFailure {
 pub enum Expect {
     Result(ExpectResult),
     Failure(ExpectFailure),
+}
+
+/// F9: the inner file of a runner case (`f09-testing.md` 3.1).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Inner {
+    /// The file as JSON data.
+    Data(Json),
+    /// The text of the file.
+    Text(String),
+}
+
+/// F9: an entry of `verdicts` (`f09-testing.md` 3.4).
+#[derive(Clone, Debug, PartialEq)]
+pub struct VerdictEntry {
+    pub name: String,
+    pub status: String,
+    pub differs: Option<Vec<String>>,
+    pub fixture: Option<Vec<Json>>,
+    pub message: Option<String>,
+}
+
+/// F9: a runner case (`f09-testing.md` 3).
+#[derive(Clone, Debug, PartialEq)]
+pub struct RunnerCase {
+    pub inner: Inner,
+    pub update: bool,
+    pub program: bool,
+    /// The directory of the file that holds the case.
+    pub dir: PathBuf,
+    /// `expect`: `invalid`, or the verdicts with the report and the text.
+    pub invalid: bool,
+    pub verdicts: Vec<VerdictEntry>,
+    pub report: Option<String>,
+    pub text: Option<String>,
 }
 
 /// One case, with the header laid over it (3.10.2).
@@ -171,6 +207,13 @@ pub struct Case {
     pub conform_max: Option<usize>,
     /// F8: a case of the third kind (`f08-errors.md` 7.4).
     pub render: Option<RenderCase>,
+    /// F9: a runner case (`f09-testing.md` 3).
+    pub runner: Option<RunnerCase>,
+    /// The `expect` as written, or `None` when the case has none (update
+    /// mode, `f09-testing.md` 4.2).
+    pub expect_raw: Option<Json>,
+    /// The base environment of the file it was loaded from (F9 7.4).
+    pub base: Option<Base>,
     /// The case is of `suite/conversion/`, where two more codes are static.
     pub conversion: bool,
     pub opaque: Vec<String>,
@@ -181,6 +224,11 @@ pub struct Case {
     /// The removed library entries (`03-host.md` 3.10.3).
     pub removed: Vec<String>,
     pub returns: Option<String>,
+    /// F10: the expected result by schema, with its options (`f10-config.md`
+    /// 10.1).
+    pub returns_schema: Option<(Json, SchemaOptions)>,
+    /// F10: the case is run as a load (10.2).
+    pub load: bool,
     /// `None` when the case gives no `vars`.
     pub vars: Option<Vec<(String, Json)>>,
     pub limits: Limits,
@@ -197,9 +245,46 @@ pub struct Case {
 pub struct CaseFile {
     pub path: PathBuf,
     pub cases: Vec<Case>,
+    /// The file's text, which update mode rewrites (`f09-testing.md` 4.5).
+    pub text: Option<String>,
+    /// A program case file (`f09-testing.md` 5), which is never written.
+    pub program: bool,
+    /// The base environment the file was loaded with (F9 7.4).
+    pub base: Option<Base>,
 }
 
-const HEADER_FIELDS: [&str; 20] = [
+/// The base environment of a loaded file, in which its cases run.
+#[derive(Clone)]
+pub struct Base(pub crate::env::Env);
+
+impl std::fmt::Debug for Base {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Base")
+    }
+}
+
+impl PartialEq for Base {
+    fn eq(&self, o: &Base) -> bool {
+        std::sync::Arc::ptr_eq(&self.0.data, &o.0.data)
+    }
+}
+
+/// Why a case file is invalid (`03-host.md` 3.10.10): the runner's own
+/// reason (`f09-testing.md` 7.1).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FileError(pub String);
+
+impl std::fmt::Display for FileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the case file is invalid: {}", self.0)
+    }
+}
+
+impl std::error::Error for FileError {}
+
+const HEADER_FIELDS: [&str; 22] = [
+    "returnsSchema",
+    "load",
     "groups",
     "types",
     "conform",
@@ -222,7 +307,12 @@ const HEADER_FIELDS: [&str; 20] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 23] = [
+const CASE_FIELDS: [&str; 28] = [
+    "returnsSchema",
+    "load",
+    "runner",
+    "update",
+    "program",
     "render",
     "groups",
     "types",
@@ -264,16 +354,88 @@ const DIAG_CLASSES: [&str; 9] = [
 
 type V<T> = Result<T, String>;
 
-/// Read a case file. An `Err` is the reason the file is invalid: every case
-/// of it then has the verdict `invalid` (3.10.10).
-pub fn load(path: &Path) -> V<CaseFile> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read the file: {e}"))?;
-    let doc = json::parse(&text)?;
+thread_local! {
+    /// The base environment of the file being loaded (F9 7.1).
+    static LOAD_BASE: std::cell::RefCell<Option<crate::env::Env>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Read a value of the base environment of the load, when there is one.
+fn base_sig(f: impl FnOnce(&crate::env::Env) -> Option<String>) -> Option<String> {
+    LOAD_BASE.with(|b| b.borrow().as_ref().and_then(f))
+}
+
+/// Load with the base environment set for the rules that read it.
+fn with_base<T>(base: Option<&crate::env::Env>, f: impl FnOnce() -> T) -> T {
+    let old = LOAD_BASE.with(|b| b.replace(base.cloned()));
+    let r = f();
+    LOAD_BASE.with(|b| *b.borrow_mut() = old);
+    r
+}
+
+/// Load a case file against a base environment (`f09-testing.md` 7.4): a
+/// stub with no `type` takes the base's signature, and an invalid file is
+/// reported here, before any case runs.
+pub fn load(path: impl AsRef<Path>, base: &crate::env::Env) -> Result<CaseFile, FileError> {
+    let f = with_base(Some(base), || load_file(path.as_ref()))?;
+    Ok(f.with(base))
+}
+
+impl CaseFile {
+    /// The file and each case, with the base they run in.
+    fn with(mut self, base: &crate::env::Env) -> CaseFile {
+        let b = Base(base.clone());
+        for c in &mut self.cases {
+            c.base = Some(b.clone());
+        }
+        self.base = Some(b);
+        self
+    }
+}
+
+/// Load a case file in the suite's base environment, the default one. An
+/// `Err` is the reason the file is invalid: every case of it then has the
+/// verdict `invalid` (3.10.10).
+pub fn load_file(path: &Path) -> Result<CaseFile, FileError> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| FileError(format!("cannot read the file: {e}")))?;
+    // F9 5.1: a name that ends in `.test.risor` is a program case file.
+    let program = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.ends_with(".test.risor"));
     let dir = path.parent().unwrap_or(Path::new("."));
-    let cases = load_doc(&doc, dir)?;
+    let mut f = read_text(&text, program, dir)?;
+    f.path = path.to_path_buf();
+    Ok(f)
+}
+
+/// A case file from its text (`f09-testing.md` 7.4): a program case file
+/// when `program`. A `file` in it is relative to the current directory.
+pub fn from_text(text: &str, program: bool, base: &crate::env::Env) -> Result<CaseFile, FileError> {
+    let f = with_base(Some(base), || read_text(text, program, Path::new(".")))?;
+    Ok(f.with(base))
+}
+
+fn read_text(text: &str, program: bool, dir: &Path) -> Result<CaseFile, FileError> {
+    let doc = if program {
+        super::program::program_value(text).map_err(FileError)?
+    } else {
+        json::parse(text).map_err(FileError)?
+    };
+    let update = std::env::var("RISOR_UPDATE").is_ok_and(|v| v == "1");
+    let cases = if update {
+        load_doc_lax(&doc, dir)
+    } else {
+        load_doc(&doc, dir)
+    }
+    .map_err(FileError)?;
     Ok(CaseFile {
-        path: path.to_path_buf(),
+        path: PathBuf::new(),
         cases,
+        text: Some(text.to_string()),
+        program,
+        base: None,
     })
 }
 
@@ -353,6 +515,13 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
     // F8 7.4: a case of the third kind.
     if let Some(r) = own("render") {
         return render_case(name, r, header, case);
+    }
+    // F9 3: a runner case.
+    if let Some(r) = own("runner") {
+        return runner_case(name, r, header, case, dir);
+    }
+    if own("update").is_some() || own("program").is_some() {
+        return Err("update or program in a case with no runner".into());
     }
     let expect = match own("expect") {
         Some(e) => read_expect(e)?,
@@ -436,9 +605,16 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
     let mut functions = Vec::new();
     if let Some(m) = get("functions").and_then(|v| v.as_obj()) {
         for (fname, stub) in m {
-            let stub = read_stub(stub);
-            // 3.10.10 item 11. The suite's base environment declares no host
-            // function, so every stub needs its type.
+            let mut stub = read_stub(stub);
+            // 3.10.10 item 11: a stub with no type takes the base's
+            // signature (F9 7.1).
+            if stub.ty.is_none() {
+                stub.ty = base_sig(|b| {
+                    let d = b.data();
+                    let f = &d.functions[b.function(fname)?];
+                    Some(crate::describe::print_sig(&f.sig, &d.names))
+                });
+            }
             if stub.ty.is_none() {
                 return Err(format!(
                     "the stub {fname:?} has no type, and the base environment does not declare it"
@@ -450,7 +626,15 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
     let mut methods = Vec::new();
     if let Some(m) = get("methods").and_then(|v| v.as_obj()) {
         for (key, stub) in m {
-            let stub = read_stub(stub);
+            let mut stub = read_stub(stub);
+            if stub.ty.is_none() {
+                stub.ty = base_sig(|b| {
+                    let d = b.data();
+                    let (t, n) = key.split_once('.')?;
+                    let m = d.methods.iter().find(|m| m.type_name == t && m.name == n)?;
+                    Some(crate::describe::print_sig(&m.sig, &d.names))
+                });
+            }
             if stub.ty.is_none() {
                 return Err(format!(
                     "the method stub {key:?} has no type, and the base environment does not declare it"
@@ -529,8 +713,9 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
                 return Err(format!("a conform case has the field {k:?}"));
             }
         }
-        let ok =
-            conform_result || matches!(&expect, Expect::Failure(f) if f.phase == Phase::Declare);
+        let ok = conform_result
+            || matches!(&expect, Expect::Failure(f) if f.phase == Phase::Declare)
+            || (lax && own("expect").is_none());
         if !ok {
             return Err(
                 "a conform case expects neither a conform result nor a declare failure".into(),
@@ -560,6 +745,50 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
                     t.get("schema").cloned().unwrap_or(Json::Null),
                     SchemaOptions::from_names(&names)?,
                 ));
+            }
+        }
+    }
+    // F10 10.1: `returns` and `returnsSchema` count as one field.
+    let (returns, rs) = if own("returns").is_some() || own("returnsSchema").is_some() {
+        (own("returns"), own("returnsSchema"))
+    } else {
+        (hdr("returns"), hdr("returnsSchema"))
+    };
+    if returns.is_some() && rs.is_some() {
+        return Err("a case with both returns and returnsSchema".into());
+    }
+    let returns_schema = match rs {
+        None => None,
+        Some(r) => {
+            let names: Vec<&str> = r
+                .get("options")
+                .and_then(|o| o.as_arr())
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                .unwrap_or_default();
+            Some((
+                r.get("schema").cloned().unwrap_or(Json::Null),
+                SchemaOptions::from_names(&names)?,
+            ))
+        }
+    };
+    // F10 10.2.
+    let load = matches!(get("load"), Some(Json::Bool(true)));
+    if load {
+        let typed = returns_schema.is_some()
+            || returns
+                .and_then(|r| r.as_str())
+                .is_some_and(|r| r != "condition");
+        if !typed {
+            return Err("a load case with no expected type".into());
+        }
+        if matches!(get("check"), Some(Json::Bool(false))) {
+            return Err("a load case with \"check\": false".into());
+        }
+    }
+    if !load {
+        if let Expect::Failure(f) = &expect {
+            if f.diagnostics.iter().any(|d| d.span_null) {
+                return Err("\"span\": null outside a load case".into());
             }
         }
     }
@@ -594,6 +823,8 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         conform,
         conform_max,
         render: None,
+        runner: None,
+        expect_raw: own("expect").cloned(),
         conversion: false,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
         env,
@@ -603,7 +834,9 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         functions,
         reject: get("reject").map(|v| strings(Some(v))),
         removed: strings(get("removed")),
-        returns: get("returns").and_then(|v| v.as_str()).map(String::from),
+        returns: returns.and_then(|v| v.as_str()).map(String::from),
+        returns_schema,
+        load,
         vars,
         limits,
         skip: own("skip").and_then(|v| v.as_str()).map(String::from),
@@ -613,6 +846,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             _ => None,
         },
         expect,
+        base: None,
     })
 }
 
@@ -725,7 +959,10 @@ fn read_expect(v: &Json) -> V<Expect> {
                 }
             }
         }
-        // F8 7.2, 7.3 and 7.6.
+        // F8 7.1, 7.2, 7.3 and 7.6.
+        if phase == Phase::Declare && diagnostics.iter().any(|d| d.message.is_some()) {
+            return Err("a message in a diagnostic of phase declare".into());
+        }
         if phase != Phase::Run && diagnostics.iter().any(|d| d.trace.is_some()) {
             return Err(format!("a trace in a diagnostic of phase {phase}"));
         }
@@ -1120,6 +1357,8 @@ fn read_diag(d: &Json) -> V<ExpectDiag> {
                     return Err("a diagnostic has a class that is not a class".into());
                 }
             }
+            // F10 10.2 item 5: null, in a load case.
+            "span" if *v == Json::Null => {}
             "span" => check_span(v)?,
             "path" => {
                 let a = v.as_arr().ok_or("a path is not an array")?;
@@ -1151,7 +1390,8 @@ fn read_diag(d: &Json) -> V<ExpectDiag> {
             .unwrap_or_default()
             .to_string(),
         class: d.get("class").and_then(|c| c.as_str()).map(String::from),
-        span: d.get("span").map(span_of),
+        span: d.get("span").filter(|v| **v != Json::Null).map(span_of),
+        span_null: d.get("span") == Some(&Json::Null),
         path: d.get("path").and_then(|p| p.as_arr()).map(|a| a.to_vec()),
         message: d.get("message").and_then(|m| m.as_str()).map(String::from),
         data: d.get("data").cloned(),
@@ -1336,6 +1576,8 @@ fn render_case(
         groups: Vec::new(),
         conform: None,
         conform_max: None,
+        runner: None,
+        expect_raw: own("expect").cloned(),
         render: Some(RenderCase {
             diagnostics: ds.to_vec(),
             source,
@@ -1348,12 +1590,15 @@ fn render_case(
         reject: None,
         removed: Vec::new(),
         returns: None,
+        returns_schema: None,
+        load: false,
         vars: None,
         limits: Limits::default(),
         skip: own("skip").and_then(|v| v.as_str()).map(String::from),
         precondition: None,
         check: true,
         expect: Expect::Result(ExpectResult::default()),
+        base: None,
     })
 }
 
@@ -1488,6 +1733,33 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             }
             Ok(())
         }
+        "load" => match v {
+            Json::Bool(_) => Ok(()),
+            _ => Err("load is not true or false".into()),
+        },
+        "returnsSchema" => {
+            let m = v.as_obj().ok_or("returnsSchema is not an object")?;
+            for (k, x) in m {
+                match k.as_str() {
+                    "schema" => {}
+                    "options" => {
+                        let a = x.as_arr().ok_or("returnsSchema.options is not an array")?;
+                        let names: Vec<&str> = a.iter().filter_map(|o| o.as_str()).collect();
+                        if names.len() != a.len() {
+                            return Err(
+                                "returnsSchema.options holds a value that is not a string".into()
+                            );
+                        }
+                        SchemaOptions::from_names(&names)?;
+                    }
+                    _ => return Err(format!("returnsSchema has the field {k:?}")),
+                }
+            }
+            if v.get("schema").is_none() {
+                return Err("returnsSchema has no schema".into());
+            }
+            Ok(())
+        }
         "precondition" | "check" => match v {
             Json::Bool(_) => Ok(()),
             _ => Err("precondition is not a boolean".into()),
@@ -1529,6 +1801,14 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             Ok(())
         }
         "render" => Ok(()),
+        "runner" => match v {
+            Json::Str(_) | Json::Obj(_) | Json::Arr(_) => Ok(()),
+            _ => Err("runner is not a string, an object or an array".into()),
+        },
+        "update" | "program" => match v {
+            Json::Bool(_) => Ok(()),
+            _ => Err(format!("{k} is not true or false")),
+        },
         "template" => match v.as_str() {
             Some("string" | "value") => Ok(()),
             _ => Err("template is neither \"string\" nor \"value\"".into()),
@@ -1623,4 +1903,178 @@ pub fn opaque_of(v: &Json) -> Option<(&str, u64)> {
     let t = inner[0].1.get("type")?.as_str()?;
     let id = inner[0].1.get("id")?.as_integer()?;
     Some((t, id as u64))
+}
+
+/// F9 3: a runner case, and its `expect` (3.3, 9.2).
+fn runner_case(
+    name: String,
+    r: &Json,
+    header: &[(String, Json)],
+    case: &[(String, Json)],
+    dir: &Path,
+) -> V<Case> {
+    const OWN: [&str; 6] = ["name", "runner", "update", "program", "skip", "expect"];
+    for (k, _) in case {
+        if !OWN.contains(&k.as_str()) {
+            return Err(format!("a runner case has the field {k:?}"));
+        }
+    }
+    // After the header rule: the header's fields reach the case, but for
+    // those that count with `runner` as one field.
+    for (k, _) in header {
+        if k != "cases" && !["source", "file", "conform", "render"].contains(&k.as_str()) {
+            return Err(format!("a runner case under a header with {k:?}"));
+        }
+    }
+    let own = |k: &str| case.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+    let flag = |k: &str| matches!(own(k), Some(Json::Bool(true)));
+    let (update, program) = (flag("update"), flag("program"));
+    let inner = match r {
+        Json::Str(t) => Inner::Text(t.clone()),
+        _ => {
+            if update || program {
+                return Err("update or program true beside a runner that is not a string".into());
+            }
+            Inner::Data(r.clone())
+        }
+    };
+    let e = own("expect").ok_or("the case has no expect")?;
+    let m = e.as_obj().ok_or("expect is not an object")?;
+    let mut rc = RunnerCase {
+        inner,
+        update,
+        program,
+        dir: dir.to_path_buf(),
+        invalid: false,
+        verdicts: Vec::new(),
+        report: None,
+        text: None,
+    };
+    if let Some(x) = e.get("invalid") {
+        if *x != Json::Bool(true) || m.len() != 1 {
+            return Err("expect.invalid is not true alone".into());
+        }
+        rc.invalid = true;
+    } else {
+        let vs = e
+            .get("verdicts")
+            .ok_or("a runner case expects neither invalid nor verdicts")?
+            .as_arr()
+            .ok_or("verdicts is not a list")?;
+        for (k, x) in m {
+            match k.as_str() {
+                "verdicts" => {}
+                "report" => {
+                    rc.report = Some(x.as_str().ok_or("report is not a string")?.to_string())
+                }
+                "text" => {
+                    if !update {
+                        return Err("text in a runner case without update".into());
+                    }
+                    rc.text = Some(x.as_str().ok_or("text is not a string")?.to_string());
+                }
+                _ => return Err(format!("the expect of a runner case has the field {k:?}")),
+            }
+        }
+        for v in vs {
+            rc.verdicts.push(verdict_entry(v, update)?);
+        }
+    }
+    Ok(Case {
+        name,
+        source: String::new(),
+        template: None,
+        version: None,
+        env: None,
+        schemas: Vec::new(),
+        types: Vec::new(),
+        groups: Vec::new(),
+        conform: None,
+        conform_max: None,
+        render: None,
+        runner: Some(rc),
+        expect_raw: Some(e.clone()),
+        conversion: false,
+        opaque: Vec::new(),
+        methods: Vec::new(),
+        functions: Vec::new(),
+        reject: None,
+        removed: Vec::new(),
+        returns: None,
+        returns_schema: None,
+        load: false,
+        vars: None,
+        limits: Limits::default(),
+        skip: own("skip").and_then(|v| v.as_str()).map(String::from),
+        precondition: None,
+        check: true,
+        expect: Expect::Result(ExpectResult::default()),
+        base: None,
+    })
+}
+
+/// F9 3.4 and 9.2 item 6.
+fn verdict_entry(v: &Json, update: bool) -> V<VerdictEntry> {
+    let m = v.as_obj().ok_or("a verdict is not an object")?;
+    let mut e = VerdictEntry {
+        name: String::new(),
+        status: String::new(),
+        differs: None,
+        fixture: None,
+        message: None,
+    };
+    for (k, x) in m {
+        match k.as_str() {
+            "name" => {
+                e.name = x
+                    .as_str()
+                    .ok_or("a verdict's name is not a string")?
+                    .to_string()
+            }
+            "status" => {
+                let s = x.as_str().ok_or("a verdict's status is not a string")?;
+                let ok =
+                    matches!(s, "pass" | "fail" | "skip" | "invalid") || (s == "updated" && update);
+                if !ok {
+                    return Err(format!("the status {s:?}"));
+                }
+                e.status = s.to_string();
+            }
+            "differs" => {
+                let a = x.as_arr().ok_or("differs is not a list")?;
+                let mut out = Vec::new();
+                for d in a {
+                    out.push(
+                        d.as_str()
+                            .ok_or("differs holds a value that is not a string")?
+                            .to_string(),
+                    );
+                }
+                e.differs = Some(out);
+            }
+            "fixture" => {
+                let a = x.as_arr().ok_or("fixture is not a path")?;
+                for st in a {
+                    let ok =
+                        matches!(st, Json::Str(_)) || st.as_integer().is_some_and(|n| n >= 0.0);
+                    if !ok {
+                        return Err("fixture is not a path".into());
+                    }
+                }
+                e.fixture = Some(a.to_vec());
+            }
+            "message" => e.message = Some(x.as_str().ok_or("message is not a string")?.to_string()),
+            _ => return Err(format!("a verdict has the field {k:?}")),
+        }
+    }
+    if v.get("name").is_none() || v.get("status").is_none() {
+        return Err("a verdict needs name and status".into());
+    }
+    if e.differs.is_some() && e.status != "fail" {
+        return Err("differs beside a status other than fail".into());
+    }
+    if (e.fixture.is_some() || e.message.is_some()) && e.status != "invalid" {
+        return Err("fixture or message beside a status other than invalid".into());
+    }
+    Ok(e)
 }

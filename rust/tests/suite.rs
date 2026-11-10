@@ -261,7 +261,9 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f04-as-is.json", true),
         ("until-f07-methods.json", true),
         ("until-f08-parse-errors.json", true),
-        ("until-f09-x.json", false),
+        ("until-f09-x.json", true),
+        ("until-f10-x.json", true),
+        ("until-f12-x.json", false),
         ("until-f13-math.json", false),
         ("until-fx-a.json", false),
         ("until-f02.json", false),
@@ -269,7 +271,7 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(risor::PACKAGES.len(), 8);
+    assert_eq!(risor::PACKAGES.len(), 11);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
@@ -381,4 +383,68 @@ fn catalog_check_cases() {
     println!("suite/messages-check.json, checked: {total}");
     assert_eq!(total.invalid, 0, "lists were invalid");
     assert!(failed.is_empty(), "cases failed: {failed:?}");
+}
+
+/// Package F9: `suite/testing/` (`f09-testing.md` 9.3).
+#[test]
+fn testing_package() {
+    let total = run(&suite_dir().join("testing"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// F9 7.1: with the default environment as the base and no variables, the
+/// helper gives every case the verdict the runner gives it.
+#[test]
+fn the_helper_agrees_with_the_runner() {
+    let env = risor::env::Env::default();
+    for dir in ["core-run", "testing", "conversion"] {
+        for path in case_files(&suite_dir().join(dir)) {
+            let Ok(file) = risor::testing::load(&path, &env) else {
+                continue;
+            };
+            let report = file.run(&risor::host::NoVars);
+            for (c, v) in file.cases().iter().zip(report.verdicts()) {
+                assert_eq!(
+                    v.label(),
+                    run_case(c).label(),
+                    "{}: {}",
+                    path.display(),
+                    c.name
+                );
+            }
+        }
+    }
+}
+
+/// F9 7.1: a stub with no `type` takes the signature of the base the file
+/// is loaded with; with the default base the file is invalid.
+#[test]
+fn a_stub_with_no_type_reads_the_base() {
+    let text = r#"[{"name": "a", "source": "rate(\"A\") * 2",
+        "functions": {"rate": {"calls": [{"args": ["A"], "result": 0.5}]}},
+        "expect": {"value": 1}}]"#;
+    let plain = risor::env::Env::default();
+    assert!(risor::testing::from_text(text, false, &plain).is_err());
+    let base = risor::env::Env::builder()
+        .function("rate", "(code: string) => float !", |_, _| {
+            Err(risor::host::HostError("not in a test".into()))
+        })
+        .build()
+        .expect("a base");
+    let file = risor::testing::from_text(text, false, &base).expect("a valid file");
+    let report = file.run(&risor::host::NoVars);
+    assert!(
+        matches!(report.verdicts()[0], Verdict::Pass),
+        "{}",
+        report.text()
+    );
+}
+
+/// Package F10: `suite/config/` (`f10-config.md` 10.3).
+#[test]
+fn config_package() {
+    let total = run(&suite_dir().join("config"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
 }

@@ -414,3 +414,29 @@ one call, and a host implementation is a `'static` closure that receives
 - **Renderings** (`render.rs`) work on a `View` of a diagnostic, so the
   `render` case renders diagnostics it reads from JSON. `ConformAll` is a
   second walk in `conform.rs`, with no charges, that stops at the maximum.
+
+## Package F9, testing for authors
+
+- **The runner is the helper** (`testing/helper.rs`): `load(path, base)` and
+  `from_text(text, program, base)` read a file against its base, and its
+  cases run in a child of that base. A verdict carries each difference's E
+  and F in the JSON form of `f09-testing.md` 6.2, so the report is the
+  differences written out.
+- **The fixture test** runs after the program compiles and before the run,
+  in each run that gets there; both give the same answer.
+- **Update mode** (`testing/update.rs`) captures the outcome of the checked
+  run, builds the new `expect` by shape, and splices it into the text with a
+  scanner of byte offsets: every other byte is kept.
+- **Program case files** (`testing/program.rs`) are checked and run in the
+  default environment, and their value read as JSON data.
+
+## Package F10, config files
+
+- An expected result by schema maps it with `closed` and checks as with a
+  type; the runner's step 5a applies the conformance function after a run.
+- `config.rs` makes the steps of a load and reports the step that failed;
+  the value is copied into `Data`.
+- `decode.rs`: the `Decode` trait. A decode walks every failure against the
+  type derived from the host type, then copies; it fails beyond that only
+  where the host type is narrower. The derive implements `Decode` for a
+  struct that borrows nothing, with the mark `#[risor(default)]`.

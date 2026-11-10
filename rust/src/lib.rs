@@ -17,6 +17,8 @@
 //! | [`hosttype`] | F1: types from host types, and their presentation |
 //! | [`template`] | F2: host templates with `${{ }}` parts |
 //! | [`analysis`] | F2: the names, paths and calls a program reads |
+//! | [`config`] | F10: the load of a config file |
+//! | [`decode`] | F10: the decode of a result into a host type |
 //! | [`render`] | F8: diagnostics as one line, detail and JSON |
 //! | [`testing`] | The case-file runner |
 
@@ -25,13 +27,15 @@
 /// The packages of the specification this build offers (`03-host.md` 3.11),
 /// in the order they are offered. This is the one list: the runner reads it
 /// to choose the `until-fNN-` files it does not run.
-pub const PACKAGES: [u32; 8] = [3, 1, 2, 4, 5, 6, 7, 8];
+pub const PACKAGES: [u32; 11] = [3, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11];
 
 pub mod analysis;
 pub mod casemap;
 pub mod check;
 pub mod compile;
+pub mod config;
 pub mod conform;
+pub mod decode;
 pub mod describe;
 pub mod diag;
 pub mod env;
@@ -54,6 +58,7 @@ pub mod value;
 pub use analysis::{analyze, analyze_template, CallRef, Ref, Report, Step};
 pub use check::{check, CheckResult, Expected};
 pub use compile::{compile, compile_unchecked, Program};
+pub use decode::{decode, Decode, DecodeCx};
 pub use describe::{describe_type, print_sig, DescriptionError};
 pub use diag::{Diagnostic, Error, Phase};
 pub use env::{Env, EnvBuilder, Limits};
