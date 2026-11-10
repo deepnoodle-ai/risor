@@ -600,6 +600,12 @@ one rounding, and must not compute in a wider format.
 9. Within these rules the count depends only on the text and on the values
    walked, so a run reaches the limit at the same call or the same level in
    every implementation.
+10. In a program that the type rules accepted, the calls in progress never add
+    more than 100 to the count: `05-types.md` 20.2 bounds the expanded nesting
+    of every use of a `const`-bound lambda, and the parser bounds the rest
+    (`01-language.md` 13.2). Such a program passes the default limit of 200
+    only in a walk of data. A program compiled without a check has no such
+    bound.
 
 In this table `f` is a `const`-bound lambda.
 

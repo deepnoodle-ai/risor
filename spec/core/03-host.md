@@ -39,9 +39,12 @@ text and the checker).
 2. Check is specified by `05-types.md`. Check gives a result type, a list of
    sites, and a list of diagnostics. The program checks when the list of
    diagnostics is empty.
-3. Compile with a check fails exactly when that check fails, with the same
-   diagnostics.
-4. A program may be compiled without a check. "Without a check" means without
+3. Compile checks by default, in every binding. Compile with a check fails
+   exactly when that check fails, with the same diagnostics. The check alone,
+   which gives the type, the sites and the diagnostics and no runnable
+   program, is a call of its own.
+4. Compiling without a check is an explicit option of the compile call. A
+   program may be compiled without a check. "Without a check" means without
    the type rules, never without the static rules. Every implementation, with
    or without a type checker, applies the static rules of `01-language.md`
    when it compiles, and reports each in phase `check`, as `05-types.md` says
@@ -170,16 +173,20 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | A variable, a function or a namespace named with a reserved word of `01-language.md` | `bad-name` |
 | A variable, a function or a namespace whose name is not a `Name` of `01-language.md`, such as a field `"a-b"` of `env`, a variable or function `_`, or a function with two namespace prefixes (`a.b.c`) | `bad-name` |
 | An opaque type name not of the form of 3.3.3, item 4. One upper-case letter alone is a type variable of a signature | `bad-name` |
-| A signature that is malformed, that has a parameter of a function type, or a method whose receiver is not a declared opaque type | `bad-signature` |
-| A type text that is malformed, that nests past the 64 levels of `05-types.md`, that names a type no declaration gives, or that `05-types.md` otherwise refuses in a declaration | `bad-type` |
+| Any error in the text of a host function's signature or of a method: text that is malformed, a parameter of a function type, a type name no declaration gives, two record alternatives, or any other text `05-types.md` refuses there. A method whose receiver names no declared opaque type, in every implementation | `bad-signature` |
+| Any error in a variable's type or in the expected result's type: text that is malformed, that nests past the 64 levels of `05-types.md`, that names a type no declaration gives, or that `05-types.md` otherwise refuses there | `bad-type` |
 | An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
 | A rejected class that is not a check class | `bad-class` |
 | A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 1,000 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
 | A compile against an environment that has a function or a method with no implementation | `no-implementation` |
 
-Which of these an implementation with no type checker reports is 3.3.1, item
-2. `05-types.md` gives the full list of errors in declared type text.
+The code says where the text stands, and the message says what is wrong:
+every error in a host function's signature or in a method's text is
+`bad-signature`, and every error in a variable's type or in the expected
+result's type is `bad-type`. Which of these an implementation with no type
+checker reports is 3.3.1, item 2. `05-types.md` gives the full list of errors
+in declared type text.
 
 1. A type name and a variable, function or namespace name never clash. A type
    name is read only where a type is written.
@@ -695,12 +702,13 @@ the one contract for all runners.
 | `version` | The specification version, as `"3.0"` | The base environment's |
 | `env` | One record type in type text. Each field is a declared variable, with its type. Text that is a type but not a record by the grammar of `05-types.md`, such as `"int"`, is `bad-type`, in every implementation | No variable is declared |
 | `opaque` | A list of opaque type names | No opaque type is declared |
-| `methods` | An object that maps `Type.method` to a stub of that method (3.10.4). `Type` is a name of `opaque`. The stub's signature is the method's, in type text, without the receiver | No method is declared |
+| `methods` | An object that maps `Type.method` to a stub of that method (3.10.4). The stub's signature is the method's, in type text, without the receiver. A `Type` that `opaque` does not declare is not an invalid file: it is the `declare` error `bad-signature` (3.3.4), and a case may expect it | No method is declared |
 | `functions` | Host functions, as stubs (3.10.4) | No function is declared |
 | `reject` | The whole set of rejected check classes, as a list of names | The base environment's set |
 | `returns` | The expected result (3.2.3): a type text, or the word `condition` | Nothing is expected |
 | `vars` | An object: the value of each variable the case supplies | No variable is supplied |
 | `limits` | An object with any of `steps`, `allocation` and `depth`, each a whole number. Each one given replaces the base environment's limit | The base environment's limits |
+| `check` | `true` or `false`. `false` says that the case's program is one the type rules reject, on purpose. Every runner then compiles it with the static rules alone (3.2.1, item 4), never with the type rules. Such a case has no `type` or `sites` in `expect`, and a `check` failure it expects has static codes only (3.10.13) | `true` |
 | `precondition` | `false`, or `true`. `false` says that the case supplies, on purpose, a value that breaks its declared type: in `vars`, or as a stub's `result` | `true` |
 | `skip` | A reason, as a string. The case is not run | The case is run |
 | `expect` | What is expected (3.10.6) | The file is invalid |
@@ -807,7 +815,7 @@ a function name to a stub.
 | 1. Read | The file is read and checked against 3.10.3 and 3.10.11. Each case is laid over the header | The verdict `invalid` for every case of the file |
 | 2. Declare | The case's environment is built, as a child of the base environment | The outcome: a failure of phase `declare` |
 | 3. Parse | The program is parsed | The outcome: a failure of phase `parse` |
-| 4. Check | The program is checked against the case's environment, with `returns` as the expected result | The outcome: a failure of phase `check`. Otherwise the check gives a type and sites |
+| 4. Check | The program is checked against the case's environment, with `returns` as the expected result. With `"check": false`, the static rules alone are applied (3.2.1, item 4), and the type rules are not | The outcome: a failure of phase `check`. Otherwise the check gives a type and sites; the static rules alone give no type and no sites |
 | 5. Run | Only when the case has `vars`, or `expect` has `value`, `truthy`, `steps` or `allocated`, or `expect` is a failure of phase `run`. The program is compiled and run, with the values of `vars` | The outcome: a value and its usage, or a failure of phase `run` and its usage |
 | 6. Compare | The outcome is compared with `expect` (3.10.7) | The verdict `fail` |
 
@@ -880,11 +888,13 @@ Each element of `diagnostics` is an object with these fields.
    16). The environment then has exactly one error, and the expected
    diagnostic is compared with the one reported.
 7. For a limit code, `span` is not compared, even when the case gives it.
-8. `class` is compared by every implementation, with one exception. An
-   implementation that did not check the program at step 4 does not compare
-   `class` for the five codes whose class depends on the check (3.7.6):
-   `null-operand`, `wrong-kind`, `missing-field`, `no-match` and
-   `not-conforming`. A case states the class of the checked program.
+8. `class` is compared for every code, with one exception. A case states the
+   class of the checked program. In a run with the static rules alone
+   (3.10.8, items 5 and 6), `class` is not compared for the five codes whose
+   class depends on the check (3.7.6): `null-operand`, `wrong-kind`,
+   `missing-field`, `no-match` and `not-conforming`. A case with
+   `"check": false` states instead the class of the column "not checked" of
+   `05-types.md` 18.5, and every runner compares it for every code.
 9. For `function-error`, the message is the string of the stub's `error`. For
    `failed`, it is the text given to `fail`.
 10. Step and unit counts are exact, for a result and for a run failure whose
@@ -906,14 +916,25 @@ Each element of `diagnostics` is an object with these fields.
    what was expected and what was found.
 4. A case with `skip` has the verdict `skip`, whatever else it holds, if the
    file is valid.
-5. A runner with no type checker does not run the directory
-   `suite/core-check/` (3.10.13). In any other case file it gives the verdict
+5. **A runner with a type checker** runs each case in one of three ways:
+   - A case with `"check": false` is run once, with the static rules alone.
+   - A case of `suite/core-check/`, and any case whose `expect` has `type` or
+     `sites` or expects a failure of phase `check` with a code that is not
+     static (3.10.13), is run once, checked.
+   - Every other case, in `suite/core-run/`, in `library.json` and in
+     `messages.json`, is run twice: once checked, and once with the static
+     rules alone. Both runs are compared with `expect` in full, except
+     `class` as 3.10.7 item 8 says. The verdict is `pass` only when both
+     runs pass. A `fail` lists every name that differed in either run, once,
+     in the order of item 2.
+6. **A runner with no type checker,** the lesser case, does not run the
+   directory `suite/core-check/`. In any other case file it gives the verdict
    `skip` to a case whose `expect` has `type` or `sites`, or expects a failure
-   of phase `check` with a code outside the static codes (3.10.13). It runs
-   every other case with the static rules alone at step 4 (3.2.1, item 4), and
-   does not compare `class`.
-6. Each implementation publishes, for each directory of the suite, the number
-   of cases of each verdict.
+   of phase `check` with a code that is not static. It runs every other case
+   once, with the static rules alone, and compares `class` as 3.10.7 item 8
+   says.
+7. Each implementation publishes, for each directory of the suite, the number
+   of cases of each verdict. The counts are of cases, not of runs.
 
 ### 3.10.9 The base environment
 
@@ -960,14 +981,18 @@ verdict `invalid`.
     one element. Only the first `parse` diagnostic is specified, and the order
     of `declare` diagnostics is not. A case that expects phase `declare` has an
     environment with exactly one error.
+17. A case with `"check": false` whose `expect` has `type` or `sites`, or
+    expects a failure of phase `check` with a code that is not static
+    (3.10.13).
 
 ### 3.10.11 JSON Schema of a case file
 
 The schema gives the shape of the file. The rules of 3.10.2 and 3.10.10 that
 it cannot express still apply: the header rule, the one of `source` and `file`
 after it, unique names, keys of `vars`, stubs without `type`, the `type` of
-an opaque value being a name the case declares, and the depth of 3.10.1,
-item 4.
+an opaque value being a name the case declares, the depth of 3.10.1, item 4,
+and the rules for `"check": false` when `check` stands in the header, and for
+the static codes.
 
 ```json
 {
@@ -984,7 +1009,7 @@ item 4.
        "propertyNames": {"enum": [
          "cases", "source", "file", "version", "env", "opaque", "methods",
          "functions", "reject", "returns", "vars", "limits",
-         "precondition"]}}
+         "precondition", "check"]}}
     ]}
   ],
   "$defs": {
@@ -1008,7 +1033,8 @@ item 4.
         "vars": {"type": "object",
                  "additionalProperties": {"$ref": "#/$defs/hostValue"}},
         "limits": {"$ref": "#/$defs/limits"},
-        "precondition": {"type": "boolean"}
+        "precondition": {"type": "boolean"},
+        "check": {"type": "boolean"}
       }
     },
     "case": {
@@ -1023,7 +1049,11 @@ item 4.
          "propertyNames": {"enum": [
            "name", "source", "file", "version", "env", "opaque", "methods",
            "functions", "reject", "returns", "vars", "limits",
-           "precondition", "skip", "expect"]}}
+           "precondition", "check", "skip", "expect"]}},
+        {"if": {"type": "object", "required": ["check"],
+                "properties": {"check": {"const": false}}},
+         "then": {"properties": {"expect": {"not": {"anyOf": [
+           {"required": ["type"]}, {"required": ["sites"]}]}}}}}
       ]
     },
     "limits": {
@@ -1237,7 +1267,7 @@ The Core cases of the suite are in two directories, by what a case needs.
 
 | Directory | Holds |
 | --- | --- |
-| `suite/core-run/` | Cases that every Core implementation passes with no type checker |
+| `suite/core-run/` | Cases that every Core implementation passes with no type checker, and those with `"check": false` |
 | `suite/core-check/` | Every Core case that needs the type checker |
 
 A case belongs in `suite/core-run/` only when all of these hold:
@@ -1247,7 +1277,8 @@ A case belongs in `suite/core-run/` only when all of these hold:
 3. A failure of phase `declare` that it expects is one that the grammar of
    type text alone finds (3.3.1, item 2).
 4. Its program, checked by the full checker against its environment, has no
-   diagnostic other than those it expects.
+   diagnostic other than those it expects. This rule does not bind a case
+   with `"check": false`.
 
 The **static codes** are the codes of the static rules of `01-language.md`:
 `undefined-name`, `undefined-function`, `call-of-parameter`,

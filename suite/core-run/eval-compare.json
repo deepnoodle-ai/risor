@@ -482,6 +482,7 @@
     "b": 2,
     "c": 3
    },
+   "check": false,
    "expect": {
     "phase": "run",
     "diagnostics": [

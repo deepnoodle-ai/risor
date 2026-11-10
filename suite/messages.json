@@ -1208,7 +1208,7 @@
       {
         "name": "wrong-kind: text, an opaque value in a template",
         "source": "`token ${t}`",
-        "env": "{t: Token}",
+        "env": "{t: any}",
         "opaque": [
           "Token"
         ],
@@ -1233,7 +1233,7 @@
       {
         "name": "wrong-kind: text, string of a list that holds an opaque value",
         "source": "string([1, t])",
-        "env": "{t: Token}",
+        "env": "{t: any}",
         "opaque": [
           "Token"
         ],
@@ -1284,10 +1284,11 @@
       },
       {
         "name": "wrong-kind: operands, not in is written with one space",
-        "source": "x not   in 5",
-        "env": "{x: any}",
+        "source": "x not   in y",
+        "env": "{x: any, y: any}",
         "vars": {
-          "x": "a"
+          "x": "a",
+          "y": 5
         },
         "expect": {
           "phase": "run",

@@ -190,3 +190,20 @@ that the checker ends.
 | R78 | A library parameter whose type is a type variable with no bound accepts every value, null included, like `any`: `[].reduce(f, null)` is `null`. The null test is for a parameter whose type names a kind. |
 | R79 | A binding's own conversion of a result is outside the run and must not overflow the host stack on deep data. (A result nested past the depth limit is still handed over, by R68.) |
 | R80 | The rules of type text beyond the grammar belong to the checker. An implementation reports them as `bad-type` when it has the checker, which after R77 is every implementation. |
+| R81 | **A lambda body is always fitted** against its `Fn` result, with each type variable replaced by its solution. Before, a result with a type variable was never fitted, so `[1].flatMap(x => x)` checked and then failed at run time. |
+| R82 | **One rule for every rendered expression:** a template part, and an argument that a library record marks with the new field `renders` (in Core, `string`'s). A type that has an opaque is `kind`; a type that has `any` at any depth records a `dynamic` site. Before, `string(x)` on an opaque value, and a template part with `any` inside a list or map, checked clean and could fail. |
+| R83 | The seed rule of `reduce` also fires when the body fits the seed only by a fit that used any. The accumulator is then `any`, as the run will have it. |
+| R84 | A `declare` code says where the text stands: `bad-signature` for every error in a function's signature or a method's text, `bad-type` for every error in a variable's type or the expected result's type. |
+| R85 | `never-equal` is not reported when a side is `never`: `role in []` is not a mistake. |
+| R86 | Sites of patterns: an unlisted key of an open record has its `dynamic` site on the key in the pattern; a list pattern on `any` records its `index` sites too. A pattern's failure is at a site on the value bound, or on the key or element that failed. |
+| R87 | Gaining `never` binds a type variable: `[].map(x => x + 1)` is `int[]`, not `cannot-infer`. |
+| R88 | The two limits of the checker are exact. Uses of const-bound lambdas are counted in source order as their body checks begin. A use is `check-limit` when the expanded nesting of the use, plus 1, plus the deepest nesting inside the lambda's text, passes 100. |
+| R89 | A fact about a path holds for a key the record does not list: under `scores?.x != null`, `scores.x` reads as present. |
+| R90 | **A new case field `check`.** `"check": false` marks a case whose program the type rules reject on purpose; it pins what a program compiled without a check does. A runner with a checker runs every other case of the run suite twice, checked and with the static rules alone, and both must pass. |
+| R91 | In every binding, compile checks by default; compiling without a check is an explicit option; the check alone is its own call. |
+| R92 | In a checked program the nesting of calls never passes 100, so the default depth limit of 200 is met only by a walk of data. |
+
+The Go checker, the first of the three, passed all 1,441 cases of
+`suite/core-check/` (hand-derived before any checker existed) once rulings R81
+to R89 were applied, and found nine older run cases whose programs the type
+rules reject. Those nine were changed or marked by R90.

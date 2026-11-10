@@ -101,6 +101,9 @@
     "exact": true,
     "doc": "The text of a value: a string unchanged, anything else in the rendering of 01-language.md.",
     "calls": [],
+    "renders": [
+      "x"
+    ],
     "steps": "x is string ? 0 : walk(x) + sz(result)",
     "units": "x is string ? 0 : 1 + sz(result)",
     "null": null,
@@ -4879,12 +4882,13 @@
       },
       {
         "name": "entries with an argument on any data",
-        "source": "x.entries(1 / 0)",
-        "env": "{x: any}",
+        "source": "x.entries(1 / n)",
+        "env": "{x: any, n: int}",
         "vars": {
           "x": {
             "a": 1
-          }
+          },
+          "n": 0
         },
         "expect": {
           "phase": "run",

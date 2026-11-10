@@ -63,6 +63,7 @@ all. The records and this chapter are written together and state the same rules.
 | `doc` | One sentence. Not normative | Always |
 | `calls` | The names of the parameters that are callbacks. The entry calls each during the call and does not keep it. `[]` when there is none | Always |
 | `narrows` | The parameter whose true facts narrow the element type of the result (section 6) | On `filter` and `find` only |
+| `renders` | The names of the parameters whose argument the entry renders as text, by the walk a template part gets. The checker applies the rule of `05-types.md` 7.3 to such an argument: an opaque type there is the check error `kind`, and a type with `any` at any depth records a `dynamic` site. It changes nothing at run time | On `string` only, as `["x"]` |
 | `tested` | The positions, from 0, of the arguments that are tested positions (`05-types.md`): their values are tested by truthiness, and the checker reports a constant condition there | On `bool` only, as `[0]` |
 | `steps` | The steps formula, in the text of 4.3 | Always |
 | `units` | The units formula, in the text of 4.3 | Always |
@@ -731,16 +732,19 @@ example is a case of `suite/library.json`.
 | Null | Never |
 | Fails | `wrong-kind`, template `text`: x is an opaque value or holds one at any depth; `depth-exceeded`: the walk passes the depth limit |
 | Order | Tests; for a string, the result. Otherwise the rendering walk, which charges as it goes; steps `sz(result)`; units; build. |
+| Renders | `x`: rendered as text (1.3) |
 
 1. A string is returned as it is, with no charge.
-2. Any other value gives its rendering (`01-language.md`): null gives `""`; a
+2. The record's field `renders` is `["x"]`: the checker treats `x` as it treats
+   a template part (`05-types.md` 7.3). This changes nothing at run time.
+3. Any other value gives its rendering (`01-language.md`): null gives `""`; a
    number its number to text; a bool `true` or `false`; a list and a map their
    JSON form, with no white space and a map's entries in key order (3.11).
-3. Before it charges for the text, the entry makes the rendering walk of
+4. Before it charges for the text, the entry makes the rendering walk of
    `02-evaluation.md` over `x`. The walk tests the depth limit and charges on
    entering each list and map, as that chapter says; `walk(x)` is the total it
    charges. A number, a bool or null is not walked.
-4. An opaque value, at any depth, fails with `wrong-kind` where the walk meets
+5. An opaque value, at any depth, fails with `wrong-kind` where the walk meets
    it. What the walk charged before stays charged. A list or map nested past the
    depth limit fails with `depth-exceeded`.
 
@@ -2166,7 +2170,7 @@ is the join of its field types (`05-types.md`).
 | `m.entries()` | `{m: map<int>}`, m = `{}` | `[]` |
 | `{b: 1, a: 2}.entries().map(({key, value}) => key + string(value))` |  | `["a2", "b1"]` |
 | `x.entries()` | `{x: any}`, x = `[1]` | Fails: `wrong-kind`; 0 steps, 0 units |
-| `x.entries(1 / 0)` | `{x: any}`, x = `{a: 1}` | Fails: `wrong-kind`; 0 steps, 0 units |
+| `x.entries(1 / n)` | `{x: any, n: int}`, x = `{a: 1}`, n = `0` | Fails: `wrong-kind`, template `count`; 0 steps, 0 units |
 ## 6. Narrowing
 
 1. `filter` and `find` narrow. Their records have `narrows: "f"`.

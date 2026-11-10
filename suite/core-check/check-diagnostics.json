@@ -1,0 +1,25 @@
+{
+ "env": "{input: {role: \"admin\" | \"member\" | \"owner\", note?: string, tags: string[], priority: int | null, options: {retries?: int, backoff?: string} | null}, gate: {failed: int, score: float, items: {name: string, status: \"fail\" | \"pass\", owner: string | null, ms: float}[]}, report: {verdict: \"APPROVE\" | \"REJECT\", body: string} | null, scores: map<float>, event: {action: string, pull_request?: {number: int, head: {sha: string}}, ...}, blob: any, started: Time, ids: (int | null)[], c: bool, s: string, n: int, fl: float, ns: string | null, ni: int | null, xs: int[], xn: int[] | null, m: map<int>, r: {a: int, b?: string}, ra: {a: int}, rab: {a: int, b: int}, rao: {a?: int}, e0: {}, rn: {a: int} | null, op: {a: int, ...}, rs: ({a: int | null} | null)[], a2: {b?: {c: int}}, lit: \"x\" | \"y\", ln: \"x\" | \"y\" | null, ss: string[]}",
+ "opaque": ["Time"],
+ "methods": {"Time.format": "(layout: string) => string"},
+ "functions": {"rate": "(code: string) => float !", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "inptu + gate.nope", "source": "inptu + gate.nope", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-name", "span": [1, 1, 1, 6]}, {"code": "no-field", "span": [1, 14, 1, 18]}]}},
+  {"name": "nope(gate.nope)", "source": "nope(gate.nope)", "expect": {"phase": "check", "diagnostics": [{"code": "undefined-function", "span": [1, 1, 1, 5]}, {"code": "no-field", "span": [1, 11, 1, 15]}]}},
+  {"name": "[len, gate.nope]", "source": "[len, gate.nope]", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 2, 1, 5]}, {"code": "no-field", "span": [1, 12, 1, 16]}]}},
+  {"name": "const t = 1; t(gate.nope)", "source": "const t = 1; t(gate.nope)", "expect": {"phase": "check", "diagnostics": [{"code": "call-of-parameter", "span": [1, 14, 1, 15]}, {"code": "no-field", "span": [1, 21, 1, 25]}]}},
+  {"name": "const f = x => 1; f(y => y) + gate.nope", "source": "const f = x => 1; f(y => y) + gate.nope", "expect": {"phase": "check", "diagnostics": [{"code": "lambda-to-lambda", "span": [1, 21, 1, 27]}, {"code": "no-field", "span": [1, 36, 1, 40]}]}},
+  {"name": "const a = 1; const a = gate.nope; a", "source": "const a = 1; const a = gate.nope; a", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-name", "span": [1, 20, 1, 21]}, {"code": "no-field", "span": [1, 29, 1, 33]}]}},
+  {"name": "const geo = gate.nope; 1", "source": "const geo = gate.nope; 1", "expect": {"phase": "check", "diagnostics": [{"code": "shadows-namespace", "span": [1, 7, 1, 10]}, {"code": "no-field", "span": [1, 18, 1, 22]}]}},
+  {"name": "{a: 1, a: gate.nope}", "source": "{a: 1, a: gate.nope}", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-key", "span": [1, 8, 1, 9]}, {"code": "no-field", "span": [1, 16, 1, 20]}]}},
+  {"name": "len(gate.nope, 1)", "source": "len(gate.nope, 1)", "expect": {"phase": "check", "diagnostics": [{"code": "arity", "span": [1, 1, 1, 18]}, {"code": "no-field", "span": [1, 10, 1, 14]}]}},
+  {"name": "match n { 1 => 1, 1 => 2, _ => 0 } + gate.nope", "source": "match n { 1 => 1, 1 => 2, _ => 0 } + gate.nope", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 19, 1, 20]}, {"code": "no-field", "span": [1, 43, 1, 47]}]}},
+  {"name": "match n { _ => gate.nope, 1 => 2 }", "source": "match n { _ => gate.nope, 1 => 2 }", "expect": {"phase": "check", "diagnostics": [{"code": "no-field", "span": [1, 21, 1, 25]}, {"code": "unreachable-arm", "span": [1, 27, 1, 33]}]}},
+  {"name": "gate.nope + gate.nope", "source": "gate.nope + gate.nope", "expect": {"phase": "check", "diagnostics": [{"code": "no-field", "span": [1, 6, 1, 10]}, {"code": "no-field", "span": [1, 18, 1, 22]}]}},
+  {"name": "two lines", "source": "gate.nope\n+ gate.nope", "expect": {"phase": "check", "diagnostics": [{"code": "no-field", "span": [1, 6, 1, 10]}, {"code": "no-field", "span": [2, 8, 2, 12]}]}},
+  {"name": "const f = (a) => a; f(1, 2) + gate.nope", "source": "const f = (a) => a; f(1, 2) + gate.nope", "expect": {"phase": "check", "diagnostics": [{"code": "arity", "span": [1, 21, 1, 28]}, {"code": "no-field", "span": [1, 36, 1, 40]}]}},
+  {"name": "[len.x, gate.nope]", "source": "[len.x, gate.nope]", "expect": {"phase": "check", "diagnostics": [{"code": "not-a-value", "span": [1, 2, 1, 5]}, {"code": "no-field", "span": [1, 14, 1, 18]}]}},
+  {"name": "const f = x => x.nope; f(gate)", "source": "const f = x => x.nope; f(gate)", "expect": {"phase": "check", "diagnostics": [{"code": "no-field", "span": [1, 18, 1, 22]}]}},
+  {"name": "\"a\" + 1 + gate.nope", "source": "\"a\" + 1 + gate.nope", "expect": {"phase": "check", "diagnostics": [{"code": "kind", "span": [1, 1, 1, 8]}, {"code": "no-field", "span": [1, 16, 1, 20]}]}}
+ ]
+}

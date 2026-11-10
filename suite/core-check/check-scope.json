@@ -1,0 +1,23 @@
+{
+ "env": "{input: {role: \"admin\" | \"member\" | \"owner\", note?: string, tags: string[], priority: int | null, options: {retries?: int, backoff?: string} | null}, gate: {failed: int, score: float, items: {name: string, status: \"fail\" | \"pass\", owner: string | null, ms: float}[]}, report: {verdict: \"APPROVE\" | \"REJECT\", body: string} | null, scores: map<float>, event: {action: string, pull_request?: {number: int, head: {sha: string}}, ...}, blob: any, started: Time, ids: (int | null)[], c: bool, s: string, n: int, fl: float, ns: string | null, ni: int | null, xs: int[], xn: int[] | null, m: map<int>, r: {a: int, b?: string}, ra: {a: int}, rab: {a: int, b: int}, rao: {a?: int}, e0: {}, rn: {a: int} | null, op: {a: int, ...}, rs: ({a: int | null} | null)[], a2: {b?: {c: int}}, lit: \"x\" | \"y\", ln: \"x\" | \"y\" | null, ss: string[]}",
+ "opaque": ["Time"],
+ "methods": {"Time.format": "(layout: string) => string"},
+ "functions": {"rate": "(code: string) => float !", "geo.distance": "(a: string, b: string) => float"},
+ "cases": [
+  {"name": "const gate = 1; gate + 1", "source": "const gate = 1; gate + 1", "expect": {"type": "int", "sites": []}},
+  {"name": "xs.map(gate => gate + 1)", "source": "xs.map(gate => gate + 1)", "expect": {"type": "int[]", "sites": []}},
+  {"name": "const report = report?.body ?? \"\"; report", "source": "const report = report?.body ?? \"\"; report", "expect": {"type": "string", "sites": []}},
+  {"name": "const q = 1; const r2 = q + 0.5; r2", "source": "const q = 1; const r2 = q + 0.5; r2", "expect": {"type": "float", "sites": []}},
+  {"name": "const k = 2; xs.map(x => x * k)", "source": "const k = 2; xs.map(x => x * k)", "expect": {"type": "int[]", "sites": []}},
+  {"name": "const x = \"s\"; xs.map(x => x + 1)", "source": "const x = \"s\"; xs.map(x => x + 1)", "expect": {"type": "int[]", "sites": []}},
+  {"name": "const len = 3; len + 1", "source": "const len = 3; len + 1", "expect": {"type": "int", "sites": []}},
+  {"name": "type + string(max)", "source": "type + string(max)", "env": "{type: string, max: int}", "expect": {"type": "string", "sites": []}},
+  {"name": "const n = ni ?? 0; n + 1", "source": "const n = ni ?? 0; n + 1", "expect": {"type": "int", "sites": []}},
+  {"name": "const ss = 1; ss", "source": "const ss = 1; ss", "expect": {"type": "int", "sites": []}},
+  {"name": "try { 1 } catch (blob) { blob.code }", "source": "try { 1 } catch (blob) { blob.code }", "expect": {"type": "int | \"divide-by-zero\" | \"failed\" | \"function-error\" | \"index-range\" | \"invalid-argument\" | \"missing-field\" | \"no-match\" | \"not-conforming\" | \"null-operand\" | \"number-range\" | \"wrong-kind\"", "sites": []}},
+  {"name": "try { const q = 1; q } catch (q) { q.message }", "source": "try { const q = 1; q } catch (q) { q.message }", "expect": {"type": "int | string", "sites": []}},
+  {"name": "[1].map(q => [q].map(q => q + 0.5))", "source": "[1].map(q => [q].map(q => q + 0.5))", "expect": {"type": "float[][]", "sites": []}},
+  {"name": "const f = x => x; const g = x => f(x); g(\"a\")", "source": "const f = x => x; const g = x => f(x); g(\"a\")", "expect": {"type": "\"a\"", "sites": []}},
+  {"name": "const a = 1; { const a = \"s\"; a }", "source": "const a = 1; { const a = \"s\"; a }", "expect": {"type": "\"s\"", "sites": []}}
+ ]
+}

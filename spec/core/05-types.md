@@ -209,13 +209,13 @@ When two or more alternatives of a `Type` have one kind, they are joined.
 | `Time \| Time`, `null \| null` | `Time`, `null` |
 | `any` among the alternatives | `any` |
 | `never` among the alternatives | The other alternatives. `never` alone is `never`. |
-| **Two or more records**, `map<T>` included | **An error in Core.** In a declaration it is `bad-type` (19.5). Follow-on F5 accepts two or more records that form a tagged union, and keeps the error for records that do not. |
+| **Two or more records**, `map<T>` included | **An error in Core.** In a declaration it is `bad-type`, or `bad-signature` in a signature or a method's text (19.5). Follow-on F5 accepts two or more records that form a tagged union, and keeps the error for records that do not. |
 
 ### 3.5 Names
 
 | Matter | Rule |
 | --- | --- |
-| A `Name` | In Core it must be an opaque type that the environment declares (19.3). Any other `Name` is the error `bad-type` (19.5). Follow-on F4 adds named types, which share the set of names. |
+| A `Name` | In Core it must be an opaque type that the environment declares (19.3). Any other `Name` is an error: `bad-type`, or `bad-signature` in a signature or a method's text (19.5). Follow-on F4 adds named types, which share the set of names. |
 | In a `Recv` | A `Name` must be an opaque type. |
 | Type names and value names | Two separate sets. A type name is read only in type text. |
 
@@ -379,6 +379,7 @@ the set of the parts of T's alternatives below. A dash is no part.
 | nonnull(T) | T without its null alternative. nonnull(`any`) is `any`. nonnull(`null`) is `never`. |
 | overlap(A, B) | False if either is `never`. True if either is `any`. Otherwise true when some kind has an alternative in both, except that two literal sets must share a string. It looks at kinds only and does not recurse. |
 | has-opaque(T) | T has an opaque alternative, or an element, field or rest type of T has one, at any depth. `any` does not have one. |
+| has-any(T) | T is `any`, or an element, field or rest type of T is `any`, at any depth. |
 | finite(T) | T is not `any`, and every alternative of T is `null`, `bool` or a literal set. The **values** of a finite type are null if it has `null`, `true` and `false` if it has `bool`, and each string of its literal set. |
 | record of T | For a type whose map slot holds a record, that record. (F5 defines it for a slot with variants.) |
 
@@ -520,9 +521,20 @@ with no `${ }` is a `String` too.
 
 ### 7.3 `Template`
 
-Synth each expression part. A part whose type has has-opaque is `kind` on the
-part. A part of type `any` records a `dynamic` site on the part. A part may be
-null. The type is `string`.
+Synth each expression part. Each expression part is a rendered expression. The
+type is `string`.
+
+A **rendered expression** is an expression whose value the run renders as text
+(`01-language.md` 12). The rendered expressions of Core are each expression part
+of a `Template`, and each argument of a library entry at a parameter that its
+record names in the field `renders` (13.10). For a rendered expression e of type
+T:
+
+| T | Rule |
+| --- | --- |
+| has-opaque(T) | `kind` on e |
+| Otherwise, has-any(T) | A `dynamic` site on e |
+| Otherwise | Nothing. Null is accepted. |
 
 ### 7.4 `List`
 
@@ -559,6 +571,7 @@ of `failed`.
 | In a map | The operand must be a map (`kind`; null is `maybe-null`). Its record is M in 7.5. |
 | An operand of type `any` | A `dynamic` site on the operand. In a list the element type is `any`; in a map M is `any`. |
 | After `kind` | The spread adds nothing to the list or map type. |
+| An operand of type `never` | Nothing is reported, and the spread adds nothing: `[...fail("x")]` is `never[]`, and in a map the record is unchanged. |
 
 ## 8. Operators
 
@@ -575,7 +588,7 @@ of `failed`.
 | --- | --- | --- | --- |
 | `a && b` | Any types. a is a tested position. b is checked under the true facts of a (10.5). | Join(Falsy(A), B) | From the tested position (10.2). |
 | `a \|\| b` | Any types. a is a tested position. b is checked under the false facts of a. | Join(Truthy(A), B) | The same. |
-| `==`, `!=` | Any types. | `bool` | `never-equal` on the whole `Binary` when overlap(A, B) is false and neither A nor B is exactly the type `null`. Never a site. |
+| `==`, `!=` | Any types. | `bool` | `never-equal` on the whole `Binary` when overlap(A, B) is false, neither A nor B is `never`, and neither is exactly the type `null`. Never a site. |
 | `<`, `<=`, `>`, `>=` | Both fit `float`, or both fit `string` (8.3). | `bool` | `kind` (8.3). |
 | `in`, `not in` | 8.4 | `bool` | 8.4 |
 | `??` | Any types. | Join(nonnull(A), B) | None. |
@@ -588,7 +601,8 @@ A `Number` node is never negative: `-1` is a `Unary` node.
 
 ### 8.3 Null, `any` and `kind` in the operators
 
-These rules apply to every operator but `&&`, `||`, `==`, `!=` and `??`.
+These rules apply to every operator but `&&`, `||`, `==`, `!=` and `??`. For
+`in` and `not in`, 8.4 says to which operand the null rule applies.
 
 | Matter | Rule |
 | --- | --- |
@@ -601,14 +615,17 @@ These rules apply to every operator but `&&`, `||`, `==`, `!=` and `??`.
 
 ### 8.4 `in` and `not in`
 
-Let A be the type of the left operand and B the type of the right, after the
-null rule of 8.3.
+The null rule of 8.3 applies to the right operand always, and to the left
+operand only when the right is a string or a record (the fourth row). Let A be
+the type of the left operand, and B the type of the right after the null rule.
+So `ni in [1, 2]`, with `ni: int | null`, is `bool` with no diagnostic, and `ns
+in s`, with `ns: string | null` and `s: string`, is `maybe-null` on `ns`.
 
 | B | Rule |
 | --- | --- |
 | `any` | A `dynamic` site on the right operand. The left operand may have any type. |
 | `never` | Nothing more is checked. |
-| A list `E[]` (and no other kind) | The left side is compared as by `==` with E: `never-equal` on the whole `Binary` when overlap(A, E) is false and neither A nor E is exactly `null`. No site for the left side. |
+| A list `E[]` (and no other kind) | The left side is compared as by `==` with E: `never-equal` on the whole `Binary` when overlap(A, E) is false, neither A nor E is `never`, and neither is exactly `null`. So `"a" in []` is not reported: E is `never`. No site for the left side, and null on the left is accepted. |
 | `string`, a literal set, or a record (and no other kind) | The left side must fit `string` (`kind` on the left operand; null is `maybe-null`; `any` records a `dynamic` site). |
 | Two or more kinds, or another kind | `kind` on the right operand. |
 
@@ -616,7 +633,8 @@ null rule of 8.3.
 
 `==` and `!=` accept every type and never fail. A comparison with the literal
 `null`, or with a value whose type is exactly `null`, is never `never-equal`.
-Equality is not a test: neither operand is a tested position.
+Nor is a comparison with a side of type `never`: `n == fail("x")` reports
+nothing. Equality is not a test: neither operand is a tested position.
 
 ### 8.6 Order
 
@@ -662,13 +680,19 @@ and a method call's arguments are expressions of their own.
 | | The same: f optional, or unlisted with a rest that is not `never` or `any` | `maybe-absent`; continues with the field's or the rest's type | That type with null added |
 | | The same: f unlisted, rest `any` | `any`, and a `dynamic` site on the receiver | `any` |
 | | The same: f unlisted, rest `never` | `no-field`; `never` | `no-field`; `never` |
-| A record | `[e]` with any other e: e must fit `string` (`kind`; null is `maybe-null`) | `maybe-absent`; or, if the rest is `any`, a `dynamic` site on the receiver and no diagnostic; continues with V | V with null added |
+| A record | `[e]` with any other e: e must fit `string` (`kind` on e; null is `maybe-null`) | `maybe-absent`; or, if the rest is `any`, a `dynamic` site on the receiver and no diagnostic; continues with V. When e does not fit `string`: `kind` on e and nothing else; the read has type `never` | V with null added, and no site. When e does not fit `string`: as for plain |
 | A list `T[]` | `[e]`: e must fit `int` (`kind`; null is `maybe-null`) | T, and an `index` site on the `Index` node | T with null added |
 | `string` or a literal set | `[e]`: e must fit `int` | `string`, and an `index` site on the `Index` node | `string \| null` |
 | Anything else | A field or an index | `kind` on the receiver; `never` | `kind` on the receiver; `never` |
 
 - V is the Join of every field type of the record and its rest.
-- A field that a fact says is present (10.4) reads as required.
+- A key that a fact says is present (10.4) reads as required: its type is the
+  field's type, or for an unlisted key nonnull of the rest. No `maybe-absent` is
+  reported, and for a rest of `any` no site is recorded. A key unlisted in a
+  record whose rest is `never` is still `no-field`.
+- So `scores[1]`, with `scores: map<float>`, is `kind` on `1` only. `op?.[s]` on
+  a record whose rest is `any` has type `any` and records no site; the plain
+  `op[s]` records its `dynamic` site.
 - The span of `maybe-absent` is the field's name, the `String` key, or the index
   expression. The span of `no-field` is the field's name or the `String` key.
 - An absent optional field read with `?.` gives null for that step only. The
@@ -752,7 +776,7 @@ for tests of a field.
 | --- | --- |
 | Meaning | {p}: the value of p is not null. |
 | Effect | An expression that is the path p has nonnull of its type. |
-| Prefixes | {p} for p = `x.a.b` also says that `x` and `x.a` are not null, and that the fields `a` and `b` are present: a read of either reads it as required (9.2). |
+| Prefixes | {p} for p = `x.a.b` also says that `x` and `x.a` are not null, and that the keys `a` and `b` are present: a read of either reads it as required (9.2), whether or not the record lists the key. |
 | Lifetime | A fact is about a binding. It does not reach an inner binding of the same name. Nothing ends a fact: no value changes. |
 | Several facts | They are applied in the order of their tests in the source. |
 | Two facts | Are the same when they are about the same path (10.3). The ∩ of 10.5 compares by this. |
@@ -809,7 +833,7 @@ a tested position.
 | Step | Rule |
 | --- | --- |
 | Literal types | A literal has the type of the same literal expression: a `Number` by 7.1 (with `-`, the same by its value), a `String` its literal set, `true` and `false` `bool`, `null` `null`. |
-| `never-equal` | A literal L whose type does not overlap S (4.5), and that is not `null`. Reported on the literal. |
+| `never-equal` | A literal L whose type does not overlap S (4.5), when S is not `never` and L is not `null`. Reported on the literal, its `-` included. A `match` on a subject of type `never` reports no `never-equal`. |
 | `duplicate-case`, `unreachable-arm` | Static rules (22.8). For the type, a literal equal to an earlier one is ignored, and an arm after `_` is still checked and joined. |
 | Coverage | Without an `_` arm, S must be finite (4.5) and every value of S must be a literal of some arm. Otherwise `non-exhaustive` on the whole `Match`. |
 | `_` after full coverage | Accepted, with no diagnostic. |
@@ -849,8 +873,8 @@ parameter receives.
 | --- | --- |
 | `x` | x has type V. |
 | `_` | Binds nothing. |
-| `{...}`, a `MapPat` | V may be null: `maybe-null` on the value bound (12.3), continuing with nonnull(V). V must then be a record (`kind` on the value bound), or `any` (a `dynamic` site on the value bound; every name, the rest included, is `any`). Each field is read as the plain read `V.key` by 9.2, with a diagnostic on the key of the pattern. A field with a default is read by 12.4. |
-| `[...]`, a `ListPat` | V may be null as above. V must then be a list (`kind`), or `any` as above. Each element name has the element type, and records an `index` site on the name. An element `_` binds nothing and records the `index` site on the `_` too: the run needs its position. An element with a default is bound by 12.4. |
+| `{...}`, a `MapPat` | V may be null: `maybe-null` on the value bound (12.3), continuing with nonnull(V). V must then be a record (`kind` on the value bound), or `any` (a `dynamic` site on the value bound; every name, the rest included, is `any`). Each field is read as the plain read `V.key` by 9.2, with its diagnostic or site on the key of the field in the pattern: a field unlisted in a record whose rest is `any`, as `const {zz} = event;`, has type `any` and records a `dynamic` site on its key. A field with a default is read by 12.4. |
+| `[...]`, a `ListPat` | V may be null as above. V must then be a list (`kind`), or `any` (a `dynamic` site on the value bound; every name, the rest included, is `any`). Each element name has the element type (`any` for an `any` V), and records an `index` site on the name, for a list and for `any` alike. An element `_` binds nothing and records the `index` site on the `_` too: the run needs its position. An element with a default is bound by 12.4 and records no `index` site. |
 | `...rest` in a map pattern | The record V without the fields the pattern names. An exact record stays exact, and an open record keeps its rest. |
 | `...rest` in a list pattern | V. No site. |
 
@@ -878,7 +902,7 @@ value. `{note = null}` gives `note` the type `T | null`.
 
 | Source | Rule |
 | --- | --- |
-| The library | Each entry of `library.json` (`04-library.md`) gives a name, a `receiver` for a method (a `Recv` in type text) and a `signature` (a `Sig`). The `Var`s of the receiver and the signature are one set. An entry with the field `narrows` narrows by 13.8. |
+| The library | Each entry of `library.json` (`04-library.md`) gives a name, a `receiver` for a method (a `Recv` in type text) and a `signature` (a `Sig`). The `Var`s of the receiver and the signature are one set. An entry with the field `narrows` narrows by 13.8. An entry with the field `renders` renders the arguments it names (13.10). An entry with the field `tested` tests the arguments it names (10.1). |
 | The environment | Each host function has a name, with at most one namespace prefix, and a `Sig`. Each method of an opaque type has a `Method` text (19). A host signature has no `Fn` parameter. |
 
 Only the library entries of the environment exist. An entry that Core does not
@@ -927,7 +951,7 @@ with every `Var` unbound and with no bounds gathered.
 | Term | Rule |
 | --- | --- |
 | bind(P, A) | Gathers bounds for the `Var`s of a parameter type P from an argument type A, by the table below. |
-| The solution of a `Var` | The Join of its gathered types. A `Var` with no gathered type is unbound. |
+| The solution of a `Var` | The Join of its gathered types. A `Var` is unbound only when bind gathered nothing for it. A `Var` that gained `never` is bound, with the solution `never`: `[].map(x => x + 1)` gives `x` the type `never`, and the call the type `int[]`, with no diagnostic. |
 
 | bind(P, A) | Rule |
 | --- | --- |
@@ -950,8 +974,8 @@ method.
 | --- | --- |
 | 1. Count | The arguments must cover every required parameter, and must not be more than the parameters unless the last is a rest parameter. Otherwise `arity` on the whole call: the call has type `never`, each plain argument is synthesized, no lambda argument is checked, and the call is not checked further. For a `Call` this `arity` is a static rule (22.5) and the type rules do not report it. For a `MethodCall` (argument zero not counted) it is a type rule. At run time the shape test makes the same test at every `MethodCall` (13.2; `04-library.md` 2.2). |
 | 2. Plain arguments | Argument zero first for a method, then left to right: synth the argument to A and bind(P, A). An argument taken by a rest parameter `...rest: P[]` is bound, and in step 5 fitted, against P. |
-| 3. Lambda arguments | Left to right, each against its parameter's `Fn`, `(q1: Q1, ..., qn: Qn) => R`. A lambda with more than n parameters is `arity` on the lambda, and the lambda is not checked; this `arity` is a static rule in a `Call` (22.5) and a type rule in a `MethodCall`. Replace each bound `Var` in the Qs by its solution. A `Var` in a Q that is still unbound is `cannot-infer` on the lambda, and the lambda is not checked. A lambda may declare fewer than n parameters. Bind each parameter of the lambda to its Q by 12.2 and 12.4. Synth the body to B. If R is `unknown`: 13.7. Otherwise bind(R, B), and if R has no `Var`, B must fit R (`arg-mismatch` on the body). |
-| 3a. The seed rule | In step 3, if a `Var` X in R also occurs in a Q, already had a solution A0 before the body was checked, and B does not fit A0: discard the diagnostics and sites of that check of the body, set the solution of X to Join(A0, B), and check the body once more under that solution. B must then fit the solution of R (`arg-mismatch` on the body). |
+| 3. Lambda arguments | Left to right, each against its parameter's `Fn`, `(q1: Q1, ..., qn: Qn) => R`. A lambda with more than n parameters is `arity` on the lambda argument (for a const-bound lambda named as the argument, as `xs.map(f)`, on the `Ident` `f`), and the lambda is not checked; this `arity` is a static rule in a `Call` (22.5) and a type rule in a `MethodCall`. Replace each bound `Var` in the Qs by its solution. A `Var` in a Q that is still unbound is `cannot-infer` on the lambda, and the lambda is not checked. A lambda may declare fewer than n parameters. Bind each parameter of the lambda to its Q by 12.2 and 12.4. Synth the body to B. If R is `unknown`: 13.7. Otherwise bind(R, B); then, unless the seed rule fires (3a), B must fit R with every `Var` replaced by its solution, an unbound `Var` by `never` (`arg-mismatch` on the body; a fit that used any records a `dynamic` site on the body, 1.3). So `[1].flatMap(x => x)` is `arg-mismatch` on the body `x`: `int` does not fit `never[]`. For `map`, R is `U`: U gains B, and the fit holds. |
+| 3a. The seed rule | In step 3, when a `Var` X in R also occurs in a Q and already had a solution A0 before the body was checked, and B does not fit A0, or fits A0 only by a fit that used any: discard the diagnostics and sites of that check of the body, set the solution of X to Join(A0, B), and check the body once more under that solution. The second check binds nothing. Its body's type must fit the solution of R as it stands after the seed (`arg-mismatch` on the body; a fit that used any records a `dynamic` site on the body). When B fits A0 without using any, the rule does not fire, and step 3 goes on with its fit. So `xs.reduce((a, x) => [a], 0)` is `arg-mismatch` on `[a]`, and in `xs.reduce((a, x) => c ? blob : a + x, 0)` the second check gives `a` the type `any`, so `a + x` records its `dynamic` site. |
 | 4. Bounds | For each `where V: B`, the solution of V must fit `float` or `string` for `ordered`, and must fit `float` for `number`. An unbound V has solution `never`. A failure is `arg-mismatch` on the whole call. A bound that holds only by a fit that used any records a `dynamic` site on the call. |
 | 5. Fit | Each plain argument, argument zero included, must fit its parameter type, with every `Var` replaced by its solution (an unbound `Var` by `never`), **through its form** (15.1). At each place of failure the code is `maybe-null` if the type there has null and fits once null is removed, else `arg-mismatch`. |
 | 6. Result | The result type, with each `Var` replaced by its solution, and an unbound `Var` by `never`. If the signature has `!`: a `value` site on the call for a library entry, a `host` site on the call for a host function or method. After `arg-mismatch` the call keeps this type. |
@@ -995,6 +1019,7 @@ field `narrows`. In Core these are the list methods `filter` and `find`.
 | A const-bound lambda by name | Narrowed as if the lambda were written there. |
 | An `any` receiver | 13.3. The result is `any`. |
 | Depth | The result is a call result, where the depth limit applies (20.4). |
+| A `Block` body | A `Block` gives no facts (10.5), so nothing is narrowed. |
 
 `xs.filter(x => x != null)` with `xs: (int | null)[]` is `int[]`.
 `items.filter(t => t.owner)` keeps the element type: the fact is about
@@ -1017,6 +1042,16 @@ the name given as a lambda argument at an `Fn` parameter.
 A use is checked by the lambda and its parameter types alone. An implementation
 may keep the outcome of a body's check under that key, and counts a use whose
 check it reuses as a check (20.3).
+
+### 13.10 Rendered arguments
+
+This rule applies to the library entries whose `library.json` record has the
+field `renders`: a list of parameter names. Each argument at a named parameter
+is a rendered expression (7.3). In Core the one such entry is the function
+`string`, with `"renders": ["x"]`. So `string(started)`, `started` opaque, is
+`kind` on `started`; `string(blob)` records a `dynamic` site on `blob`; and
+`string(5)` records nothing. The argument is also fitted to its parameter, of
+type `any`, by 13.5, which reports nothing.
 
 ## 14. `try` and `catch`
 
@@ -1137,13 +1172,13 @@ the type rules only.
 | `no-method` | No method of that name for the receiver's kind (13.3) | The method's name | | As `undefined-function` |
 | `maybe-absent` | A plain read of an optional or unlisted field, or an index read of a record (9.2, 12.2) | The field's name, the key, or the index expression | | The field's type (9.2) |
 | `maybe-null` | An operand that may be null where null is not accepted (1.3) | The operand; for a read, the receiver; for a pattern, the value bound; for an argument, each place of failure (15.1) | | nonnull of the operand's type |
-| `kind` | An operand of the wrong kind (7, 8, 9, 12) | The operand; for two operands that do not go together, the whole `Binary` (8.3); for a read or a method call, the receiver | | `bool` for `<`, `<=`, `>`, `>=`, `in` and `not in`; else `never` |
-| `never-equal` | An equality or a `match` literal that can never hold (8.2, 8.4, 11.2) | The whole `Binary`; in a `match`, the literal | | `bool`; the literal is ignored |
+| `kind` | An operand of the wrong kind (7, 8, 9, 12); a rendered expression whose type has an opaque type (7.3) | The operand; for two operands that do not go together, the whole `Binary` (8.3); for a read or a method call, the receiver; for a computed index of a record, the index expression (9.2); for a rendered expression, that expression | | `bool` for `<`, `<=`, `>`, `>=`, `in` and `not in`; else `never` |
+| `never-equal` | An equality or a `match` literal that can never hold, neither side being `never` (8.2, 8.4, 11.2) | The whole `Binary`; in a `match`, the literal, its `-` included | | `bool`; the literal is ignored |
 | `always-truthy` | A tested expression that can never be falsy (10.2) | The tested expression; for a predicate, the lambda's body; for an expected `condition`, the result expression | `constant-condition` | Unchanged |
 | `always-falsy` | A tested expression that can never be truthy (10.2) | The same | `constant-condition` | Unchanged |
 | `zero-divisor` | `/` with a `Number` node 0 as divisor (8.2) | The divisor | | `float` |
-| `arity` | Too few or too many arguments, or a lambda with too many parameters (22.5; at a `MethodCall`, 13.5) | The whole call, or the lambda | | `never` for the call; the lambda is not checked |
-| `arg-mismatch` | An argument that does not fit its parameter; a plain argument at an `Fn`; a lambda body that does not fit R; a bound that does not hold (13.2, 13.5) | For a plain argument, each place of failure (15.1); else the lambda's body, or the whole call | | The signature's result type (13.5, step 6) |
+| `arity` | Too few or too many arguments, or a lambda with too many parameters (22.5; at a `MethodCall`, 13.5) | The whole call; or the lambda argument: the `Lambda`, or the `Ident` that names a const-bound lambda | | `never` for the call; the lambda is not checked |
+| `arg-mismatch` | An argument that does not fit its parameter; a plain argument at an `Fn`; a lambda body that does not fit R with its `Var`s solved (13.5 step 3, 3a); a bound that does not hold (13.2, 13.5) | For a plain argument, each place of failure (15.1); else the lambda's body, or the whole call | | The signature's result type (13.5, step 6) |
 | `cannot-infer` | A `Var` of a lambda's parameter that is still unbound (13.5) | The lambda | | The lambda is not checked. |
 | `check-limit` | A limit of 20 is passed | The use of a const-bound lambda; the node whose type is too deep | | `never` |
 | `duplicate-case` | A `match` literal equal to an earlier one (22.8) | The later literal | | The literal is ignored. |
@@ -1190,6 +1225,7 @@ carries the set of classes it rejects (`03-host.md`).
 | A diagnostic of a rejected class | An error like any other. It carries the class's name (`03-host.md`). |
 | What the set changes | Only which findings are diagnostics. A program that checks under two sets has the same type and the same facts under both, and the same sites less those of a rejected class. No diagnostic outside the classes changes. |
 | `unchecked` and the type | The node on which a rejected `dynamic` site is recorded takes the type `never`, so later steps on it record nothing more. |
+| Dropped sites | A site is dropped (18.3) before the rejected set is applied. A site in the body of a `try`, or in the check of an unused const-bound lambda, is never a diagnostic, whatever the environment rejects, and the node it is on keeps its type. |
 
 ## 18. The promise
 
@@ -1229,24 +1265,27 @@ them; a library entry fails only with `value`, `range`, `kind`, `field` or
 
 | Class | Recorded on | Span |
 | --- | --- | --- |
-| `dynamic` | Each use of an `any` value that needs a kind (below) | The `any` operand, receiver or expression |
+| `dynamic` | Each use of an `any` value that needs a kind, and each rendered expression whose type has `any` (below) | The `any` operand, receiver or expression; the rendered expression; for a map pattern's unlisted field, the field's key (12.2) |
 | `index` | A plain index read of a list or a string (9.2); a list pattern element without a default, `_` included (12.2) | The `Index` node; the element's name or `_` |
 | `divide` | `/`, `%` and `**`, by 8.2 | The `Binary` node |
 | `value` | A call of a library entry marked `!` | The call |
 | `host` | A call of a host function or method marked `!` | The call |
 
 A run failure is **at a site** when the site is on the failing node, or on a
-node that is the failing node's operand, receiver, index or argument. The class
-of a failure (18.5) uses this definition.
+node that is the failing node's operand, receiver, index or argument. A failure
+of a pattern is at a site when the site is on the value bound (12.3), or on the
+key of the field or the name of the element that failed. A rendering failure (an
+opaque value met while rendering) is at a site when the site is on the rendered
+expression (7.3). The class of a failure (18.5) uses this definition.
 
 | An `any` value | Is a `dynamic` site when it is |
 | --- | --- |
-| A site | The receiver of a read or a method call; an operand of `-`, arithmetic, order or `+`; the right operand of `in`, or the left when the right is a string or a record; a spread's operand; a computed key; a destructured value; a template part; an index expression; an argument, a result or a part of one whose fit used any (15.1); a bound that held by any (13.5). |
-| Not a site | Passed on as a result, an item, an entry's value, an argument to an `any` parameter, or through `??`; tested in a tested position, so under `!`, `&&` and `\|\|`; compared with `==` or `!=`; the left operand of `in` with a list on the right; read with `?.` at an unlisted key of an open record. |
+| A site | The receiver of a read or a method call; an operand of `-`, arithmetic, order or `+`; the right operand of `in`, or the left when the right is a string or a record; a spread's operand; a computed key; a destructured value; a map pattern's field unlisted in a record whose rest is `any`; a rendered expression whose type has `any` at any depth (7.3); an index expression; an argument, a result or a part of one whose fit used any (15.1); a bound that held by any (13.5). |
+| Not a site | Passed on as a result, an item, an entry's value, an argument to an `any` parameter that is not rendered, or through `??`; tested in a tested position, so under `!`, `&&` and `\|\|`; compared with `==` or `!=`; the left operand of `in` with a list on the right; read with `?.` at an unlisted key of an open record, by a field step or by a computed key. |
 
 Sites inside the body of a `try` are dropped. Sites of the check of an unused
-const-bound lambda are dropped (13.9). The result lists each remaining site
-once, in the order of 6.1.
+const-bound lambda are dropped (13.9). A dropped site is never a diagnostic
+(17). The result lists each remaining site once, in the order of 6.1.
 
 ### 18.4 The precondition and the promise
 
@@ -1321,7 +1360,7 @@ and a signature written as a `Sig`.
 | --- | --- |
 | Declaration | An environment may declare opaque types by name. The name is a `Name` of 3.1, and is the whole type: no fields, no structure. It fits only itself and `any`. |
 | Methods | An environment may declare methods on an opaque type, each as a `Method` text whose `Recv` is that type's name: `Time.format: (layout: string) => string`. |
-| Use | A value of an opaque type can be bound, passed, put in a list or a map, compared with `==`, tested, and used through its declared methods. It is always truthy. It cannot be rendered in a template (`kind`, 7.3). |
+| Use | A value of an opaque type can be bound, passed, put in a list or a map, compared with `==`, tested, and used through its declared methods. It is always truthy. It cannot be rendered: a rendered expression whose type has an opaque type at any depth, a template part or the argument of `string`, is `kind` (7.3, 13.10). |
 | The binding | It tells, for each host value, whether it is opaque and under which declared name (`03-host.md`). |
 
 ### 19.4 Library signatures
@@ -1333,6 +1372,10 @@ and `!`.
 ### 19.5 Errors in declared type text
 
 Each of these is an error of phase `declare` when the environment is built.
+**The code says where the text stands:** every error in a host function's
+signature or in a method's text is `bad-signature`, and every error in a
+variable's type or in the expected result's type is `bad-type`, whatever is
+wrong. What is wrong is the message's business.
 
 **Every implementation** parses the type text of its environment by the grammar
 of 3.1 and the token rules of 3.2, whether or not it has a type checker. It
@@ -1349,19 +1392,24 @@ implementation reports them:
 | A host function's signature or a method's text that the grammar of 3.1 and the token rules of 3.2 do not accept as a `Sig` or a `Method`, wherever in it the error lies | `bad-signature` |
 | A `Sig` with an optional parameter before a required one, or with a rest parameter that is not the last (3.6) | `bad-signature` |
 | A host signature with an `Fn` parameter (19.2) | `bad-signature` |
-| Type text whose depth (20.5) is over 64. A `[]` suffix counts, and a bracketed form counts once over its deepest content | `bad-type` in a `Type`, `bad-signature` in a `Sig` or a `Method` |
+| Type text whose depth (20.5) is over 64. A `[]` suffix counts, and a bracketed form counts once over its deepest content | `bad-type` in a variable's or the expected result's type, `bad-signature` in a signature or a method's text |
+| A method whose `Recv` is not a declared opaque type (19.3). It needs names only. | `bad-signature` |
 
 **An implementation with a type checker** also reports these. They are rules
 beyond the grammar:
 
-| Error | Code |
-| --- | --- |
-| A key written twice in one `Record` (3.3) deeper in a type than the environment's record | `bad-type` |
-| Two or more record alternatives in one `Type` (3.4), wherever it stands | `bad-type` |
-| A `Name` that is not a declared opaque type (3.5), wherever it stands | `bad-type` |
-| A method whose `Recv` is not a declared opaque type (19.3) | `bad-signature` |
-| A rest parameter whose type is not a list (3.6) | `bad-signature` |
-| A type deeper than 64 (2.5), wherever it stands | `bad-type` |
+| Error | In a variable's or the expected result's type | In a signature or a method's text |
+| --- | --- | --- |
+| A key written twice in one `Record` (3.3), deeper in a type than the environment's record | `bad-type` | `bad-signature` |
+| Two or more record alternatives in one `Type` (3.4) | `bad-type` | `bad-signature` |
+| A `Name` that is not a declared opaque type (3.5) | `bad-type` | `bad-signature` |
+| A rest parameter whose type is not a list (3.6) | | `bad-signature` |
+| A type deeper than 64 (2.5) | `bad-type` | `bad-signature` |
+
+A type deeper than 64 by 2.5 cannot occur in Core: the depth of type text (20.5)
+is never less than the depth of the type it writes, and type text deeper than 64
+is already an error of the first table. The row is for follow-on F4, whose named
+types make a short text stand for a deep type.
 
 ## 20. Limits of the checker
 
@@ -1376,24 +1424,44 @@ counts them. The parser enforces it, so the checker never meets deeper text.
 ### 20.2 Expanded nesting
 
 A use of a const-bound lambda is checked by checking its body (13.9). The
-**expanded nesting** of a node in that body is its own nesting within the
-lambda, plus the expanded nesting of the use, plus 1 for the use. Elsewhere it
-is the node's nesting. A use at which some node of the body would pass 100 is
-`check-limit` on the use, and the use has type `never`.
+counts:
+
+| Term | Definition |
+| --- | --- |
+| n(X) | The nesting depth of a node X: the number of levels open at its first token (`01-language.md` 13.2 item 5). |
+| d(L) | For a lambda L: the greatest number of levels open at once inside the text of L, its parameter list included, less n(L). |
+| E(X), the **expanded nesting** of X | For a node outside every body checked for a use: n(X). For a node X of the body of L checked for a use U: E(U) + 1 + n(X) − n(L). |
+
+A use U of L is `check-limit` on U when E(U) + 1 + d(L) is more than 100. The
+use then has type `never`, and the body of L is not checked for it.
+
+Take `const f0 = x => x; const f1 = x => f0(x);` and so on to `const f100 = x =>
+f99(x); f100(1)`. d(f0) is 0, and every other d is 1: the `(` of the call opens
+one level. `f100(1)` has E 0, the use of f99 in the body of f100 has E 1, and
+the use of f(k) has E 100 − k. The use of f1, in the line of f2, has E 99, and
+99 + 1 + 1 is more than 100: it is `check-limit` on `f1(x)` in the line of f2,
+and nothing else is reported, because the body of f1 is then not checked. The
+same program ending with `const f99 = x => f98(x); f99(1)` checks.
 
 ### 20.3 Lambda body checks
 
-A program may check at most 1,000 lambda bodies by 13.9. Each use counts 1, and
-so does each use met while a body is checked, also when an implementation reuses
-a kept check. The use that would be the 1,001st is `check-limit` on the use, and
-the use has type `never`. The check of an unused const-bound lambda is not a
-use.
+A program may check at most 1,000 lambda bodies by 13.9. Each use counts 1. Uses
+are counted in the order their body checks begin in the walk in source order:
+the `const` lines in order, the children of a node left to right, a call's plain
+arguments before its body, and a lambda argument at step 3 of 13.5. A use met
+while a body is checked is counted at that point, each time that body is
+checked, also when an implementation reuses a kept check. A check that the seed
+rule discards (13.5 step 3a) keeps its counts. Every use past the 1,000th is
+`check-limit` on the use, and has type `never`. The check of an unused
+const-bound lambda is not a use, but the uses met in it count. So 1,001 calls of
+one const-bound lambda written one after another give `check-limit` on the last
+call, and on nothing else.
 
 ### 20.4 Type depth
 
 | Type | Limit 64 | Passing it |
 | --- | --- | --- |
-| A declared type | 2.5 | `bad-type`, phase `declare` |
+| A declared type | 2.5 | `bad-type` or `bad-signature`, phase `declare` (19.5). In Core the limit on type text (20.5) always meets it first. |
 | A type the checker builds | Tested at a `List`, a `Map`, and the result of a call | `check-limit` on that node, which has type `never` |
 
 No other rule makes a type deeper than its inputs: Join, Merge, Truthy, Falsy
@@ -1623,6 +1691,19 @@ program with diagnostics has no type in the result. Spans are on line 1.
 | --- | --- | --- |
 | 106 | `[].sum()` | `int`: `sum` has the result `T \| int` (`04-library.md`), and T is `never`. |
 | 107 | `[1, 2].join(",")` | `arg-mismatch` 1:2-1:3 and 1:5-1:6: the receiver is argument zero and is fitted through its form. |
+
+### 21.12 Bodies, rendering and the seed
+
+| # | Program | Result |
+| --- | --- | --- |
+| 108 | `[1].flatMap(x => x)` | `arg-mismatch` 1:18-1:19: the body `x` is an `int`, and R is `U[]` with U unbound, so `never[]` (13.5 step 3). |
+| 109 | `[].map(x => x + 1)` | `int[]`: U gains `int`; x has type `never` (13.4). |
+| 110 | `string(started)` | `kind` 1:8-1:15: the argument of `string` is rendered, and `started` is opaque (13.10). |
+| 111 | `string(blob)` | `string`; site `dynamic` 1:8-1:12 |
+| 112 | `` `${ {a: blob} }` `` | `string`; site `dynamic` 1:5-1:14: the part's type has `any` at depth 1. |
+| 113 | `gate.items.reduce((a, t) => [a], 0)` | `arg-mismatch` 1:29-1:32: the seed makes A `int \| int[]`, and the second check's `(int \| int[])[]` does not fit it (13.5 step 3a). |
+| 114 | `gate.items.reduce((a, t) => gate.failed > 0 ? blob : a + t.ms, 0)` | `any`; site `dynamic` 1:54-1:55, on `a`: B is `any`, which fits `int` only by using any, so the seed fires and the second check gives `a` the type `any`. |
+| 115 | `"a" in []` | `bool`, with no diagnostic: the element type is `never` (8.4). |
 
 ## 22. The static rules alone
 

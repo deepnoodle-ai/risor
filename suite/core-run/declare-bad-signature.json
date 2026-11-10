@@ -34,6 +34,8 @@
   {"name": "a method with no result type", "opaque": ["Time"], "methods": {"Time.m": "(layout: string) =>"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-signature"}]}},
   {"name": "a method takes no function parameter", "opaque": ["Time"], "methods": {"Time.m": "(f: (t: Time) => bool) => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-signature"}]}},
   {"name": "a method with an optional parameter before a required one", "opaque": ["Time"], "methods": {"Time.m": "(a?: int, b: int) => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-signature"}]}},
-  {"name": "a result with 65 [] in a signature (AA3)", "functions": {"f": "(x: int) => int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-signature"}]}}
+  {"name": "a result with 65 [] in a signature (AA3)", "functions": {"f": "(x: int) => int[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-signature"}]}},
+  {"name": "a method of an opaque type the case does not declare, with no opaque field (AO19)", "methods": {"Foo.bar": "() => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-signature"}]}},
+  {"name": "a method of an opaque type the case does not declare, another being declared (AO19)", "opaque": ["Time"], "methods": {"Foo.bar": "() => int"}, "expect": {"phase": "declare", "diagnostics": [{"code": "bad-signature"}]}}
  ]
 }

@@ -36,5 +36,10 @@
   {"name": "match: a match as the value of a const", "source": "const label = match x { 200 => \"ok\", 404 => \"missing\", _ => \"error\" }; label", "env": "{x: any}", "vars": {"x": 404}, "expect": {"value": "missing", "steps": 2, "allocated": 0}},
   {"name": "match: the default arm takes any subject, a map", "source": "match x { \"a\" => 1, _ => 2 }", "env": "{x: any}", "vars": {"x": {"a": 1}}, "expect": {"value": 2, "steps": 2, "allocated": 0}},
   {"name": "match: an arm with a string and a number literal", "source": "match x { \"1\" | 1 => \"one\", _ => \"other\" }", "env": "{x: any}", "vars": {"x": 1}, "expect": {"value": "one", "steps": 1, "allocated": 0}},
-  {"name": "match: the subject is a field read", "source": "match m.kind { \"bug\" => 1, \"idea\" => 2, _ => 3 }", "env": "{m: any}", "vars": {"m": {"kind": "idea"}}, "expect": {"value": 2, "steps": 3, "allocated": 0}}
+  {"name": "match: the subject is a field read", "source": "match m.kind { \"bug\" => 1, \"idea\" => 2, _ => 3 }", "env": "{m: any}", "vars": {"m": {"kind": "idea"}}, "expect": {"value": 2, "steps": 3, "allocated": 0}},
+  {"name": "match: duplicate-case, 1 then 1.0", "source": "match x { 1 => \"a\", 1.0 => \"b\", _ => \"c\" }", "env": "{x: any}", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 21, 1, 24]}]}},
+  {"name": "match: duplicate-case, 1 then 1e0", "source": "match x { 1 => \"a\", 1e0 => \"b\", _ => \"c\" }", "env": "{x: any}", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 21, 1, 24]}]}},
+  {"name": "match: duplicate-case, a string and the same string by an escape", "source": "match x { \"A\" => 1, '\\u{41}' => 2, _ => 0 }", "env": "{x: any}", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 21, 1, 29]}]}},
+  {"name": "match: duplicate-case, 0 then -0, the span has the -", "source": "match x { 0 => \"z\", -0 => \"n\", _ => \"o\" }", "env": "{x: any}", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 21, 1, 23]}]}},
+  {"name": "match: duplicate-case, two equal literals in one arm", "source": "match x { 1 | 1 => \"a\", _ => \"b\" }", "env": "{x: any}", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-case", "span": [1, 15, 1, 16]}]}}
 ]
