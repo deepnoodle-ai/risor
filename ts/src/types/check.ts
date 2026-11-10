@@ -205,13 +205,24 @@ class Checker {
   private readonly env: CheckEnv;
   private readonly slotTypes: Type[] = [];
 
+  /** Package F12: the type of each node at the first check that reached it (f12 3.12, 3.13). */
   typesOf(): ReadonlyMap<object, Type> {
-    return this.types;
+    return this.firstTypes;
   }
 
-  slotTypesOf(): readonly (Type | undefined)[] {
-    return this.slotTypes;
+  private readonly firstTypes = new Map<object, Type>();
+
+  private setType(e: object, t: Type): void {
+    this.types.set(e, t);
+    if (!this.firstTypes.has(e)) this.firstTypes.set(e, t);
   }
+
+  /** Package F12: the type each slot got at the first check that bound it (f12 3.12). */
+  slotTypesOf(): readonly (Type | undefined)[] {
+    return this.firstSlotTypes;
+  }
+
+  private readonly firstSlotTypes: (Type | undefined)[] = [];
   private readonly types = new Map<object, Type>();
   private readonly factsMemo = new Map<object, { t: string[]; f: string[] }>();
   /** Sites are dropped while this is above 0 (14.1, 13.9). */
@@ -569,7 +580,11 @@ class Checker {
 
   private setSlot(node: object, t: Type): void {
     const s = this.res.slots.get(node);
-    if (s !== undefined && s >= 0) this.slotTypes[s] = t;
+    if (s !== undefined && s >= 0) {
+      this.slotTypes[s] = t;
+      // f12 3.12: a lambda checked more than once gives assist the type of its first check.
+      if (this.firstSlotTypes[s] === undefined) this.firstSlotTypes[s] = t;
+    }
   }
 
   private neverNames(p: A.Pattern): void {
@@ -676,7 +691,7 @@ class Checker {
 
   synth(e: A.Expr, f: Facts): Type {
     const t = this.synth0(e, f);
-    this.types.set(e, t);
+    this.setType(e, t);
     return t;
   }
 
@@ -897,7 +912,7 @@ class Checker {
     let t = this.synth(x, f);
     for (let i = spine.length - 1; i >= 0; i--) {
       t = this.binaryOp(spine[i], t, f);
-      this.types.set(spine[i], t);
+      this.setType(spine[i], t);
     }
     return t;
   }
@@ -1148,7 +1163,10 @@ class Checker {
     const b = this.synth(e.body, f);
     this.drop--;
     const slot = this.res.catchSlots.get(e);
-    if (slot !== undefined) this.slotTypes[slot] = ERROR_TYPE;
+    if (slot !== undefined) {
+      this.slotTypes[slot] = ERROR_TYPE;
+      if (this.firstSlotTypes[slot] === undefined) this.firstSlotTypes[slot] = ERROR_TYPE;
+    }
     return this.sizeLimit(join(b, this.synth(e.handler, f)), e.span);
   }
 
@@ -1186,7 +1204,7 @@ class Checker {
       // Both constants of the groups have type float (f06 8.2).
       cur = x.kind === "Member" && this.res.constants.has(x) ? FLOAT : x.kind === "MethodCall" ? this.call(x, f) : this.synth(x, f);
     }
-    if (x.kind === "MethodCall" || x.kind === "Member" || x.kind === "Each") this.types.set(x, cur);
+    if (x.kind === "MethodCall" || x.kind === "Member" || x.kind === "Each") this.setType(x, cur);
     let path: string | null = x.kind === "Ident" ? this.pathOf(x) : null;
     let recvSpan: Span = x.span;
     for (const s of steps) {
@@ -1209,7 +1227,7 @@ class Checker {
       if (nextPath !== null) cur = this.applyTypeFacts(cur, nextPath, f);
       path = nextPath;
       recvSpan = s.span;
-      this.types.set(s, cur);
+      this.setType(s, cur);
     }
     return { type: cur, skipped };
   }
@@ -1225,7 +1243,7 @@ class Checker {
     // The chain before the first star is one chain with the projection: its optional steps skip the whole.
     if (ex.kind === "Member" || ex.kind === "Index" || ex.kind === "MethodCall") {
       const r = this.chainRaw(ex, f);
-      this.types.set(ex, r.skipped ? withNull(r.type) : r.type);
+      this.setType(ex, r.skipped ? withNull(r.type) : r.type);
       cur = r.type;
       skipped = r.skipped;
     } else cur = this.synth(ex, f);
@@ -1292,7 +1310,7 @@ class Checker {
         const wasNever = isNever(cur);
         cur = this.step(s, cur, recvSpan, f, false);
         if (!wasNever && isNever(cur) && this.diags.length > before) failed = true;
-        this.types.set(s, cur);
+        this.setType(s, cur);
         recvSpan = s.span;
       }
     };

@@ -567,8 +567,8 @@ the cut is not read.
    (`01-language.md` 2.4). Otherwise the prefix is empty. **The prefix span**
    runs from the start of the prefix to the position.
 3. **Hover's cut** is the end of the token that holds the code point at the
-   position, or the end of the `(` that directly follows that token, when one
-   does: so `xs.first(` is still a method call.
+   position, or the end of the `(` that directly follows that token, with no
+   white space or comment between, when one does: so `xs.first(` is still a method call.
 4. **The text before the cut** is lexed by `01-language.md` 2 and F3. When the
    cut stands inside an interpolation of a template or a text block, the
    interpolation and every literal around it end at the cut: their tokens are
@@ -768,7 +768,7 @@ When the hole is a string literal, the candidates are string values, kind
 
 | Kind | Detail |
 | --- | --- |
-| `name` | The printed type the name is bound to: for a `const` name, the type of its value or of its pattern's field; for a parameter, its type in the check of its lambda at that place |
+| `name` | The printed type the name is bound to: for a `const` name, the type of its value or of its pattern's field; for a parameter, its type in the check of its lambda at that place; a lambda checked more than once, as a `const` lambda is at each use, takes the first of those checks that reaches the position, in the order the checker makes them |
 | `variable` | Its declared type, printed |
 | `field` | The printed Join of its field types over the record alternatives that list it |
 | `key` | 3.9 item 2 |

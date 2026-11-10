@@ -57,3 +57,17 @@ describe("the binding's calls (f12 1.2)", () => {
     assert.equal(hover(env, "user", { line: 1, column: 9 }), null);
   });
 });
+
+describe("the clarifications of f12 3.2 and 3.12", () => {
+  const env = createEnv({});
+  test("a parameter's type takes the first check of a const lambda", () => {
+    // Hover on the parameter's use in the body, and on its binding: both from the first use, f(1).
+    assert.equal(hover(env, 'const f = x => x;\n[f(1), f("a")]', { line: 1, column: 16 })?.type, "int");
+    assert.equal(hover(env, 'const f = x => x;\n[f(1), f("a")]', { line: 1, column: 11 })?.type, "int");
+  });
+  test("hover's cut takes a ( only when it is the very next character", () => {
+    const env2 = createEnv({ vars: "{user: {tags: string[]}}" });
+    assert.equal(hover(env2, "user.tags.first(", { line: 1, column: 12 })?.type, "string | null");
+    assert.equal(hover(env2, "user.tags.first (", { line: 1, column: 12 })?.kind, "field");
+  });
+});

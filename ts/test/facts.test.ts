@@ -62,3 +62,14 @@ describe("the description (f14 9)", () => {
     assert.ok(back.check(READ).ok);
   });
 });
+
+describe("the outcome line of a case with facts (f14 10.4)", () => {
+  test('"facts": [] counts as a case with facts: the line writes description', async () => {
+    const { validateCaseFile } = await import("../src/suite/casefile.ts");
+    const { outcomeLine } = await import("../src/suite/outcome.ts");
+    const f = validateCaseFile({ env: "{n: int}", cases: [{ name: "a", source: "1", facts: [], expect: { value: 1 } }, { name: "b", source: "1", expect: { value: 1 } }] }, ".");
+    assert.ok(f.ok);
+    assert.ok(outcomeLine(f.cases[0]).startsWith('{"name":"a","description":'));
+    assert.ok(!outcomeLine(f.cases[1]).includes("description"));
+  });
+});

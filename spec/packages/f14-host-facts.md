@@ -618,6 +618,9 @@ The line of the `outcome` command (`suite/README.md`) changes so:
 | --- | --- |
 | A case with `facts`, whose environment was built | The field `description` of F1 7.4, after `name` |
 
+A case with `facts` is a case where the field is present, in the case or in
+the header, even as an empty list.
+
 ### 10.5 The JSON Schema of the additions
 
 These are added to the schema of `03-host.md` 3.10.11: the property below in
