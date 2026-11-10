@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
     "suite": "node test/suite-report.ts",
-    "generate": "node scripts/generate.ts"
+    "generate": "node scripts/generate.ts",
+    "bench": "node scripts/bench.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

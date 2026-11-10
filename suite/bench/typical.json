@@ -1,0 +1,14 @@
+{
+  "env": "{event: {action: string, pull_request: {number: int, title: string, draft: bool, user: {login: string}, head: {sha: string, ref: string}, base: {sha: string, ref: string}, labels: string[]}}, gate: {failed: int, passed: int}, report: {status: string} | null, approve: {status: string} | null, order: {id: string, customer: {name: string, tier: \"gold\" | \"silver\" | \"bronze\"}, lines: {sku: string, qty: int, price: float}[]}}",
+  "limits": {"steps":100000000,"allocation":100000000},
+  "vars": {"event":{"action":"opened","pull_request":{"number":42,"title":"Fix the thing","draft":false,"user":{"login":"octo"},"head":{"sha":"0123456789abcdef","ref":"fix"},"base":{"sha":"fedcba9876543210","ref":"main"},"labels":["bug","p1","needs-review"]}},"gate":{"failed":2,"passed":48},"report":null,"approve":{"status":"approved"},"order":{"id":"A-1001","customer":{"name":"Acme","tier":"silver"},"lines":[{"sku":"SKU-0","qty":1,"price":2.5},{"sku":"SKU-1","qty":2,"price":3.5},{"sku":"SKU-2","qty":3,"price":4.5},{"sku":"SKU-3","qty":4,"price":5.5},{"sku":"SKU-4","qty":1,"price":6.5},{"sku":"SKU-5","qty":2,"price":7.5},{"sku":"SKU-6","qty":3,"price":8.5},{"sku":"SKU-7","qty":4,"price":9.5}]}},
+  "cases": [
+    {"name": "field_path", "source": "event.pull_request.head.sha", "expect": {"value": "0123456789abcdef", "steps": 3, "allocated": 0}},
+    {"name": "compare", "source": "gate.failed > 0 && gate.passed >= 40", "expect": {"value": true, "steps": 4, "allocated": 0}},
+    {"name": "coalesce", "source": "report?.status ?? approve?.status ?? \"pending\"", "expect": {"value": "approved", "steps": 1, "allocated": 0}},
+    {"name": "template", "source": "`PR #${event.pull_request.number} \"${event.pull_request.title}\" by ${event.pull_request.user.login}: ${gate.failed} failed, ${gate.passed} passed`", "expect": {"value": "PR #42 \"Fix the thing\" by octo: 2 failed, 48 passed", "steps": 10, "allocated": 1}},
+    {"name": "string_build", "source": "event.pull_request.labels.map(l => l.toUpperCase()).join(\", \") + \" | \" + event.pull_request.head.ref.padEnd(8, \".\") + event.pull_request.base.sha.slice(0, 7)", "expect": {"value": "BUG, P1, NEEDS-REVIEW | fix.....fedcba9", "steps": 28, "allocated": 13}},
+    {"name": "match", "source": "match event.action { \"opened\" => if (event.pull_request.draft) { \"draft\" } else { \"review\" }, \"closed\" => \"done\", \"reopened\" => \"review\", _ => \"ignore\" }", "expect": {"value": "review", "steps": 4, "allocated": 0}},
+    {"name": "order_total", "source": "const subtotal = order.lines.reduce((a, l) => a + l.qty * l.price, 0);\nconst rate = match order.customer.tier { \"gold\" => 0.1, \"silver\" => 0.05, _ => 0 };\n{id: order.id, customer: order.customer.name, items: order.lines[*].qty.sum(), subtotal, total: subtotal * (1 - rate)}", "expect": {"value": {"customer": "Acme", "id": "A-1001", "items": 20, "subtotal": 130, "total": 123.5}, "steps": 86, "allocated": 20}}
+  ]
+}
