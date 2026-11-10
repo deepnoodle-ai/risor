@@ -86,3 +86,65 @@ func BenchmarkFastPhase(b *testing.B) {
 		})
 	}
 }
+
+// powArgs are pow's arguments of two kinds: exact, where the value is a
+// double, a midpoint or found by the exact check (small integer powers,
+// squares and roots, powers of two), and inexact, where the exact check
+// finds nothing and the fast phase decides.
+func powArgs() (exact, inexact [][2]float64) {
+	rng := rand.New(rand.NewPCG(9, 9))
+	exact = [][2]float64{{1.5, 2}, {10, 22}, {10, 23}, {-3, 3}, {0.1, 2}, {4, 0.5}, {2, -1075}, {9, 1.5}}
+	for len(exact) < 1024 {
+		switch rng.IntN(3) {
+		case 0: // a short mantissa to a small integer power
+			x := float64(rng.IntN(2000)-1000) / 8
+			exact = append(exact, [2]float64{x, float64(rng.IntN(9))})
+		case 1: // a square
+			exact = append(exact, [2]float64{rng.Float64() * 100, 2})
+		default: // a root of a square
+			s := float64(rng.IntN(1 << 20))
+			exact = append(exact, [2]float64{s * s, 0.5})
+		}
+	}
+	for len(inexact) < 1024 {
+		switch rng.IntN(3) {
+		case 0:
+			inexact = append(inexact, [2]float64{rng.Float64() * 100, (rng.Float64() - 0.5) * 20})
+		case 1:
+			inexact = append(inexact, [2]float64{rng.Float64() * 4, float64(rng.IntN(40) + 5)})
+		default:
+			inexact = append(inexact, [2]float64{rng.Float64() * 100, float64(rng.IntN(64)) / 8})
+		}
+	}
+	return exact, inexact
+}
+
+// BenchmarkPow is pow on exact and inexact arguments.
+//
+//	GOWORK=off go test -run xxx -bench Pow ./internal/crmath
+func BenchmarkPow(b *testing.B) {
+	exact, inexact := powArgs()
+	for _, s := range []struct {
+		name string
+		args [][2]float64
+	}{{"exact", exact}, {"inexact", inexact}} {
+		b.Run(s.name, func(b *testing.B) {
+			i := 0
+			for b.Loop() {
+				a := s.args[i&1023]
+				Pow(a[0], a[1])
+				i++
+			}
+		})
+		per := make([]time.Duration, len(s.args))
+		for i, a := range s.args {
+			t0 := time.Now()
+			for range 64 {
+				Pow(a[0], a[1])
+			}
+			per[i] = time.Since(t0) / 64
+		}
+		slices.Sort(per)
+		b.Logf("pow %s: median %v, p99 %v", s.name, per[len(per)/2], per[len(per)*99/100])
+	}
+}
