@@ -180,10 +180,38 @@ fn catalog_cases() {
 fn library_cases() {
     let lists: Vec<(String, Json)> = risor::library::records()
         .iter()
+        .filter(|r| r.group.is_none() && !r.queries)
         .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))
         .collect();
     let total = run_lists("suite/library.json", lists);
     assert_eq!(total.invalid, 0, "lists were invalid");
+}
+
+/// Package F6: the cases of `suite/library-groups.json`, run as those of
+/// `library.json` are (`f06-groups.md` 3.5).
+#[test]
+fn library_groups_cases() {
+    let lists: Vec<(String, Json)> = risor::library::records()
+        .iter()
+        .filter(|r| r.group.is_some())
+        .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))
+        .chain(
+            risor::library::constants()
+                .iter()
+                .filter_map(|c| c.cases.clone().map(|x| (c.name.clone(), x))),
+        )
+        .collect();
+    let total = run_lists("suite/library-groups.json", lists);
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F6: `suite/groups/` (`f06-groups.md` 11.4).
+#[test]
+fn groups_package() {
+    let total = run(&suite_dir().join("groups"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
 }
 
 /// Package F3, string forms: `suite/strings/`, run as `core-run` is.
@@ -231,6 +259,7 @@ fn until_files_of_offered_packages_are_not_run() {
         ("until-f02-errors.json", true),
         ("until-f03-strings.json", true),
         ("until-f04-as-is.json", true),
+        ("until-f07-methods.json", true),
         ("until-f08-parse-errors.json", false),
         ("until-f13-math.json", false),
         ("until-fx-a.json", false),
@@ -239,7 +268,7 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(risor::PACKAGES.len(), 5);
+    assert_eq!(risor::PACKAGES.len(), 7);
 }
 
 /// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
@@ -271,6 +300,42 @@ fn conversion_package() {
 #[test]
 fn unions_package() {
     let total = run(&suite_dir().join("unions"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F7: the records of `suite/library-queries.json`, the extension of
+/// `sortBy` among them (`f07-queries.md` 12).
+#[test]
+fn library_queries_cases() {
+    let lists: Vec<(String, Json)> = risor::library::records()
+        .iter()
+        .filter_map(|r| {
+            if r.queries {
+                r.cases.clone().map(|c| (r.name.clone(), c))
+            } else {
+                r.ext_cases.clone().map(|c| (r.name.clone(), c))
+            }
+        })
+        .collect();
+    let total = run_lists("suite/library-queries.json", lists);
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F7: the cases of `suite/messages-queries.json`.
+#[test]
+fn catalog_queries_cases() {
+    let lists = risor::messages::catalog().query_cases.clone();
+    let total = run_lists("suite/messages-queries.json", lists);
+    assert_eq!(total.invalid, 0, "lists were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F7: `suite/queries/`.
+#[test]
+fn queries_package() {
+    let total = run(&suite_dir().join("queries"), true);
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
 }

@@ -345,6 +345,9 @@ fn build_env(
     for r in &case.removed {
         b = b.remove(r);
     }
+    for g in &case.groups {
+        b = b.group(g);
+    }
     for (key, stub) in &case.methods {
         let imp = stub_impl(stub, interner, unmatched.clone());
         b = b.method_impl(key, stub.ty.as_deref().unwrap_or_default(), Some(imp));
@@ -496,6 +499,7 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
                 "type",
                 "sites",
                 "value",
+                "json",
                 "truthy",
                 "diagnostics",
                 "steps",
@@ -694,6 +698,17 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
                                 name: "value",
                                 expected: format!("{want:?}"),
                                 found: format!("{v:?}"),
+                            });
+                        }
+                    }
+                    // F6 11.2: the binding's JSON text of the value.
+                    if let Some(want) = &r.json {
+                        let got = crate::eval::to_json(&v);
+                        if got.as_deref() != Ok(want.as_str()) {
+                            diffs.push(Difference {
+                                name: "json",
+                                expected: want.clone(),
+                                found: format!("{got:?}"),
                             });
                         }
                     }

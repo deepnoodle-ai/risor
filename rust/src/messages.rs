@@ -23,7 +23,12 @@ pub struct Catalog {
     pub entries: Vec<Entry>,
     /// The cases of each entry, as written.
     pub cases: Vec<(String, Json)>,
+    /// F7: the cases of `suite/messages-queries.json` (`f07-queries.md` 11).
+    pub query_cases: Vec<(String, Json)>,
 }
+
+/// Package F7: the catalog file of its three templates (`f07-queries.md` 11).
+pub const QUERIES_SOURCE: &str = include_str!("../../suite/messages-queries.json");
 
 pub fn catalog() -> &'static Catalog {
     static C: OnceLock<Catalog> = OnceLock::new();
@@ -60,7 +65,32 @@ pub fn catalog() -> &'static Catalog {
                 code,
             });
         }
-        Catalog { entries, cases }
+        // F7 11 item 2: an entry of the second file adds templates to the
+        // entry of its code.
+        let q = json::parse(QUERIES_SOURCE).expect("suite/messages-queries.json is valid JSON");
+        let mut query_cases = Vec::new();
+        for e in q.as_arr().unwrap_or_default() {
+            let code = e.get("code").and_then(|v| v.as_str()).unwrap_or_default();
+            if let Some(c) = e.get("cases") {
+                query_cases.push((code.to_string(), c.clone()));
+            }
+            if let Some(entry) = entries.iter_mut().find(|x| x.code == code) {
+                for (k, v) in e
+                    .get("templates")
+                    .and_then(|t| t.as_obj())
+                    .unwrap_or_default()
+                {
+                    entry
+                        .templates
+                        .push((k.clone(), v.as_str().unwrap_or_default().to_string()));
+                }
+            }
+        }
+        Catalog {
+            entries,
+            cases,
+            query_cases,
+        }
     })
 }
 

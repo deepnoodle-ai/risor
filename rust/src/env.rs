@@ -71,8 +71,11 @@ pub struct EnvData {
     pub limits: Limits,
     pub reject: Vec<String>,
     /// The removed library entries (`03-host.md` 3.3.1 item 6), as indices
-    /// of `library::records()`, in order and each once.
+    /// of `library::records()`, in order and each once; a group's constant
+    /// is `records().len()` plus its index.
     pub removed: Vec<usize>,
+    /// F6: the opt-in groups that are on, in code point order.
+    pub groups: Vec<String>,
 }
 
 /// A built environment. It does not change, and is cheap to clone and safe
@@ -104,10 +107,31 @@ impl Env {
     }
 
     pub fn is_namespace(&self, name: &str) -> bool {
-        self.data
-            .functions
+        self.data.groups.iter().any(|g| g == name)
+            || self
+                .data
+                .functions
+                .iter()
+                .any(|f| f.namespace.as_deref() == Some(name))
+    }
+
+    /// Whether an opt-in group is on (`f06-groups.md` 2.1).
+    pub fn group_on(&self, name: &str) -> bool {
+        self.data.groups.iter().any(|g| g == name)
+    }
+
+    /// The value of a constant `ns.name` of a group that is on, not removed
+    /// (`f06-groups.md` 2.4 item 2).
+    pub fn constant(&self, ns: &str, name: &str) -> Option<f64> {
+        let full = format!("{ns}.{name}");
+        let n = library::records().len();
+        library::constants()
             .iter()
-            .any(|f| f.namespace.as_deref() == Some(name))
+            .enumerate()
+            .find(|(i, c)| {
+                c.name == full && self.group_on(&c.group) && !self.data.removed.contains(&(n + i))
+            })
+            .map(|(_, c)| c.value)
     }
 
     pub fn method(&self, type_name: &str, name: &str) -> Option<usize> {
@@ -134,7 +158,13 @@ impl Env {
     /// The library function of a name that the environment has: not
     /// removed.
     pub fn lib_function(&self, name: &str) -> Option<usize> {
-        library::function(name).filter(|i| !self.data.removed.contains(i))
+        library::function(name).filter(|&i| {
+            !self.data.removed.contains(&i)
+                && library::records()[i]
+                    .group
+                    .as_ref()
+                    .is_none_or(|g| self.group_on(g))
+        })
     }
 
     /// The library method of a kind and a name that the environment has.
@@ -218,10 +248,18 @@ pub struct EnvBuilder {
     reject: Option<Vec<String>>,
     limits: Option<Limits>,
     removed: Vec<String>,
+    groups: Vec<String>,
     parent: Option<Env>,
 }
 
 impl EnvBuilder {
+    /// Turn an opt-in group on: `json`, `time`, `math` or `base64`
+    /// (`f06-groups.md` 2.1). Another name is the `declare` error `bad-name`.
+    pub fn group(mut self, name: &str) -> Self {
+        self.groups.push(name.to_string());
+        self
+    }
+
     /// A library entry the environment does not have (`03-host.md` 3.3.1):
     /// a function by its name, `len`; a method by its receiver's kind, a dot
     /// and its name, `string.repeat`, `list.map`, `map.keys`. A name that is
@@ -359,6 +397,20 @@ impl EnvBuilder {
         }
         removed.sort_unstable();
         removed.dedup();
+        // F6 2.1, 2.6: the groups on, a child's with its parent's.
+        let mut groups: Vec<String> = parent
+            .as_ref()
+            .map(|p| p.groups.clone())
+            .unwrap_or_default();
+        for g in &self.groups {
+            if library::GROUPS.contains(&g.as_str()) {
+                groups.push(g.clone());
+            } else {
+                bad(code::BAD_NAME, format!("{g:?} is not an opt-in group"));
+            }
+        }
+        groups.sort();
+        groups.dedup();
         let mut opaque: Vec<String> = parent
             .as_ref()
             .map(|p| p.opaque.clone())
@@ -678,6 +730,25 @@ impl EnvBuilder {
             pm.append(&mut methods);
             methods = pm;
         }
+        // F6 2.2: a variable, or a host function with no namespace, named
+        // like a group that is on.
+        for g in &groups {
+            if vars.contains(g) {
+                bad(
+                    code::NAME_CLASH,
+                    format!("the variable {g} is named like a group"),
+                );
+            }
+            if functions
+                .iter()
+                .any(|f| f.namespace.is_none() && f.name == *g)
+            {
+                bad(
+                    code::NAME_CLASH,
+                    format!("the function {g} is named like a group"),
+                );
+            }
+        }
         // `03-host.md` 3.3.2: the clash rules apply to the whole environment, after
         // a child's replacements.
         for f in &functions {
@@ -716,6 +787,7 @@ impl EnvBuilder {
                 limits,
                 reject,
                 removed,
+                groups,
             }),
         })
     }

@@ -16,6 +16,8 @@ use crate::template::{Mode, Segment, Template};
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
     Key(String),
+    /// F7 9.1: a star.
+    Star,
 }
 
 /// A reference: one read of a free name, with its path (3.5).
@@ -204,7 +206,8 @@ impl<'p> Walker<'p> {
             NodeKind::Member { .. }
             | NodeKind::Index { .. }
             | NodeKind::MethodCall { .. }
-            | NodeKind::OptChain { .. } => self.chain(id, lam, out),
+            | NodeKind::OptChain { .. }
+            | NodeKind::Each { .. } => self.chain(id, lam, out),
             NodeKind::Call { name, args, .. } => {
                 if self.free(&name.name) {
                     self.calls.push(CallRef {
@@ -313,7 +316,8 @@ impl<'p> Walker<'p> {
                 NodeKind::OptChain { x } => cur = *x,
                 NodeKind::Member { x, .. }
                 | NodeKind::Index { x, .. }
-                | NodeKind::MethodCall { x, .. } => {
+                | NodeKind::MethodCall { x, .. }
+                | NodeKind::Each { x: Some(x), .. } => {
                     steps.push(cur);
                     cur = *x;
                 }
@@ -321,6 +325,12 @@ impl<'p> Walker<'p> {
             }
         }
         steps.reverse();
+        // F7 9.1: a projection's star and reads stand in place.
+        let mut flat: Vec<NodeId> = Vec::new();
+        for &s in &steps {
+            flat_steps(ast, s, &mut flat);
+        }
+        let steps = flat;
         let primary = cur;
         let free_read = match ast.kind(primary) {
             NodeKind::Ident { name } if self.free(name) => Some(name.clone()),
@@ -346,6 +356,10 @@ impl<'p> Walker<'p> {
                                 }
                                 _ => break,
                             },
+                            NodeKind::Each { star, .. } => {
+                                path.push(Step::Star);
+                                end = star.end;
+                            }
                             _ => break,
                         }
                     }
@@ -387,6 +401,16 @@ impl<'p> Walker<'p> {
                 }
                 _ => {}
             }
+        }
+    }
+}
+
+/// The steps of a chain in order, a projection's reads after its star.
+fn flat_steps(ast: &crate::syntax::ast::Ast, s: NodeId, out: &mut Vec<NodeId>) {
+    out.push(s);
+    if let NodeKind::Each { reads, .. } = ast.kind(s) {
+        for &r in reads {
+            flat_steps(ast, r, out);
         }
     }
 }
@@ -510,6 +534,7 @@ impl Report {
                     .iter()
                     .map(|s| match s {
                         Step::Key(k) => st(k),
+                        Step::Star => "{\"star\":true}".to_string(),
                     })
                     .collect();
                 format!(

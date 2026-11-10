@@ -291,8 +291,10 @@ fn table_14_3_as_and_is() {
 
 #[test]
 fn table_14_3_projection_and_operators() {
-    check("xs[*]", UT, l1(4, 5));
-    check("xs?.[*]", UT, l1(6, 7));
+    // Package F7 makes a projection a program (`f07-queries.md` 2.2 item 3).
+    ok("xs[*]");
+    ok("xs?.[*]");
+    check("xs[*1]", UT, l1(5, 6));
     check("match { 1 => 2 }", UT, l1(7, 8));
     check("a === b", UT, l1(3, 6));
     check("a !== b", UT, l1(3, 6));

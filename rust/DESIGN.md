@@ -361,3 +361,34 @@ one call, and a host implementation is a `'static` closure that receives
   Pick meets a record with a union variant by variant; Close closes each
   variant.
 
+## Package F6, opt-in groups
+
+- **Records** (`library.rs`): `suite/library-groups.json` loads beside
+  `library.json`; a function record keeps its full name (`json.parse`) and
+  its group, and a constant is a record of its own. `Env::lib_function`
+  gives a group's entry only while its group is on; a group that is on is a
+  namespace, and resolution makes `json.parse(s)` a library call and
+  `math.pi` a constant (`Res::Constant`, read at no cost).
+- **The entries** (`eval/groups.rs`) are written by the chapter's rules: a
+  JSON scanner of the grammar of 6.2.1 with an explicit stack that decides
+  `not-json` over the whole text before any number or depth failure; the
+  proleptic Gregorian calendar of 7.1 with exact decimal arithmetic for
+  fractions and durations; RFC 4648 with the strict rules of 9.2. Decimal
+  text is turned into a double by the standard library's `str::parse`,
+  which is correctly rounded for any count of digits, as Core already uses
+  it. `json.stringify` is `string`'s rendering walk, with its own template
+  for an opaque value.
+
+## Package F7, queries
+
+- **Syntax** (`parser.rs`): a `[` or `?.[` followed by `*` begins a
+  projection, parsed to an `Each` whose reads hang off an internal `Elem`
+  node, the element in hand. A later star is the last read of its level.
+- **Evaluation** treats an `Each` as a step of its chain: one loop per
+  level, recursion once per later star, a scratch list charged once at the
+  end. The checker walks a projection with *skipped-element* and *failed*.
+- **Library** (`library.rs`): `suite/library-queries.json` loads after the
+  others; `sortBy` replaces the Core record and keeps its cases, and the
+  six new entries are methods. The three templates of
+  `suite/messages-queries.json` join their codes in the catalog.
+

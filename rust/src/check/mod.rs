@@ -758,17 +758,29 @@ impl<'a> Checker<'a> {
             }
             NodeKind::Binary { .. } => self.binary(id),
             NodeKind::Cond { .. } => self.cond(id),
-            NodeKind::Member { .. } | NodeKind::Index { .. } | NodeKind::OptChain { .. } => {
-                self.chain(id)
+            // F6 10 item 2: a constant is a `float`.
+            NodeKind::Member { .. } if matches!(self.res[id.index()], Res::Constant(_)) => {
+                Ty::float()
             }
-            NodeKind::MethodCall { args, .. } => {
-                if let Res::CallHost(i) = self.res[id.index()] {
+            NodeKind::Member { .. }
+            | NodeKind::Index { .. }
+            | NodeKind::OptChain { .. }
+            | NodeKind::Each { .. } => self.chain(id),
+            NodeKind::MethodCall { args, .. } => match self.res[id.index()] {
+                Res::CallHost(i) => {
                     let sig = &self.env.data().functions[i as usize].sig;
                     self.call(Callee::Host(sig, sig.fails), None, args, id, false)
-                } else {
-                    self.chain(id)
                 }
-            }
+                // F6 2.4: an entry of a group, called through its namespace.
+                Res::CallLib(i) => self.call(
+                    Callee::Lib(&library::records()[i as usize]),
+                    None,
+                    args,
+                    id,
+                    false,
+                ),
+                _ => self.chain(id),
+            },
             NodeKind::Call { args, .. } => match self.res[id.index()] {
                 Res::CallLambda(l) => self.use_lambda(l, args, id),
                 Res::CallLib(i) => self.call(
@@ -1653,13 +1665,18 @@ impl<'a> Checker<'a> {
         let mut n = inner;
         loop {
             match self.kind(n) {
+                NodeKind::Member { .. } if matches!(self.res[n.index()], Res::Constant(_)) => break,
                 NodeKind::Member { x, .. } | NodeKind::Index { x, .. } => {
                     steps.push(n);
                     n = *x;
                 }
                 NodeKind::MethodCall { x, .. }
-                    if !matches!(self.res[n.index()], Res::CallHost(_)) =>
+                    if !matches!(self.res[n.index()], Res::CallHost(_) | Res::CallLib(_)) =>
                 {
+                    steps.push(n);
+                    n = *x;
+                }
+                NodeKind::Each { x: Some(x), .. } => {
                     steps.push(n);
                     n = *x;
                 }
@@ -1678,7 +1695,8 @@ impl<'a> Checker<'a> {
             let optional = match self.kind(s) {
                 NodeKind::Member { optional, .. }
                 | NodeKind::Index { optional, .. }
-                | NodeKind::MethodCall { optional, .. } => *optional,
+                | NodeKind::MethodCall { optional, .. }
+                | NodeKind::Each { optional, .. } => *optional,
                 _ => false,
             };
             if cur.null {
@@ -1688,6 +1706,16 @@ impl<'a> Checker<'a> {
                     self.diag("maybe-null", rs);
                 }
                 cur = cur.nonnull();
+            }
+            // F7 5.1: a projection.
+            if let NodeKind::Each { reads, star, .. } = self.kind(s) {
+                let (t, skip) = self.projection(cur, reads, rs, *star, optional);
+                skipped |= skip;
+                cur = t;
+                path = None;
+                self.types[s.index()] = cur.clone();
+                recv = s;
+                continue;
             }
             if !(cur.any || cur.is_never() || cur.kinds() == 1) {
                 self.diag("kind", rs);
@@ -1809,6 +1837,179 @@ impl<'a> Checker<'a> {
             cur = cur.with_null();
         }
         cur
+    }
+
+    /// F7 5.1, 5.2: the type of a projection whose first star's receiver
+    /// has the type `cur` after the null step; and whether a `?.[*]` on
+    /// `any` makes the chain's type take null.
+    fn projection(
+        &mut self,
+        cur: Ty,
+        reads: &'a [NodeId],
+        rs: Span,
+        star: Span,
+        optional: bool,
+    ) -> (Ty, bool) {
+        let elem = if cur.any {
+            if self.dyn_site(rs) {
+                self.synth_indexes(reads);
+                return (Ty::never(), false);
+            }
+            Ty::any()
+        } else if cur.is_never() {
+            self.synth_indexes(reads);
+            return (Ty::never(), false);
+        } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
+            e.as_ref().clone()
+        } else {
+            self.diag("kind", rs);
+            self.synth_indexes(reads);
+            return (Ty::never(), false);
+        };
+        let mut skipped_elem = false;
+        let mut failed = false;
+        let u = self.proj_level(elem, reads, Some(star), &mut skipped_elem, &mut failed);
+        if failed {
+            return (Ty::never(), false);
+        }
+        let u = if skipped_elem { u.with_null() } else { u };
+        (Ty::list(u), optional && cur.any)
+    }
+
+    /// The reads of one level of a projection, from the element type.
+    /// `star`: the star span of the level, the receiver of its first read;
+    /// `None` takes it from the `Each` that holds the reads.
+    fn proj_level(
+        &mut self,
+        elem: Ty,
+        reads: &'a [NodeId],
+        star: Option<Span>,
+        skipped_elem: &mut bool,
+        failed: &mut bool,
+    ) -> Ty {
+        let mut cur = elem;
+        let mut rs = star.unwrap_or_else(|| {
+            reads
+                .first()
+                .map(|&r| match self.kind(r) {
+                    NodeKind::Member { x, .. } | NodeKind::Index { x, .. } => self.span(*x),
+                    _ => self.span(r),
+                })
+                .unwrap_or_default()
+        });
+        for &r in reads {
+            if let NodeKind::Each {
+                reads: inner,
+                optional,
+                star,
+                ..
+            } = self.kind(r)
+            {
+                if cur.null {
+                    if *optional {
+                        *skipped_elem = true;
+                    } else {
+                        self.diag("maybe-null", rs);
+                    }
+                    cur = cur.nonnull();
+                }
+                let e = if cur.any {
+                    if self.dyn_site(rs) {
+                        *failed = true;
+                        return Ty::never();
+                    }
+                    if *optional {
+                        *skipped_elem = true;
+                    }
+                    Ty::any()
+                } else if cur.is_never() {
+                    Ty::never()
+                } else if let (1, Some(e)) = (cur.kinds(), &cur.list) {
+                    e.as_ref().clone()
+                } else {
+                    self.diag("kind", rs);
+                    *failed = true;
+                    self.synth_indexes(inner);
+                    return Ty::never();
+                };
+                let t = self.proj_level(e, inner, Some(*star), skipped_elem, failed);
+                self.types[r.index()] = t.clone();
+                return t;
+            }
+            let optional = match self.kind(r) {
+                NodeKind::Member { optional, .. } | NodeKind::Index { optional, .. } => *optional,
+                _ => false,
+            };
+            if cur.null {
+                if optional {
+                    *skipped_elem = true;
+                } else {
+                    self.diag("maybe-null", rs);
+                }
+                cur = cur.nonnull();
+            }
+            let before = self.diags.len();
+            if !(cur.any || cur.is_never() || cur.kinds() == 1) {
+                self.diag("kind", rs);
+                cur = Ty::never();
+            }
+            cur = if cur.any {
+                let rejected = self.dyn_site(rs);
+                if let NodeKind::Index { index, .. } = self.kind(r) {
+                    self.synth(*index);
+                    if !optional && !rejected {
+                        let ss = self.span(r);
+                        self.site("index", ss);
+                    }
+                }
+                if rejected {
+                    *failed = true;
+                    Ty::never()
+                } else {
+                    Ty::any()
+                }
+            } else if cur.is_never() {
+                if let NodeKind::Index { index, .. } = self.kind(r) {
+                    self.synth(*index);
+                }
+                Ty::never()
+            } else {
+                match self.kind(r) {
+                    NodeKind::Member {
+                        name, name_span, ..
+                    } => self.read_field(&cur, name, *name_span, rs, optional, false),
+                    NodeKind::Index { index, .. } => match self.kind(*index) {
+                        NodeKind::String { value, .. } if cur.map.is_some() => {
+                            let is = self.span(*index);
+                            self.types[index.index()] = Ty::lit(value);
+                            self.read_field(&cur, value, is, rs, optional, false)
+                        }
+                        _ => self.index(r, rs, cur, *index, optional),
+                    },
+                    _ => Ty::never(),
+                }
+            };
+            if cur.is_never() && self.diags.len() > before {
+                *failed = true;
+            }
+            self.types[r.index()] = cur.clone();
+            rs = self.span(r);
+        }
+        cur
+    }
+
+    /// The index expressions of a projection's reads, synthesized where the
+    /// reads report nothing (`05-types.md` 9.4).
+    fn synth_indexes(&mut self, reads: &'a [NodeId]) {
+        for &r in reads {
+            match self.kind(r) {
+                NodeKind::Index { index, .. } => {
+                    self.synth(*index);
+                }
+                NodeKind::Each { reads, .. } => self.synth_indexes(reads),
+                _ => {}
+            }
+        }
     }
 
     /// A read of a field (9.2).

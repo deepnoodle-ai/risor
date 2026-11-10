@@ -22,9 +22,54 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+/// The strings of a parameter type that is a literal set and nothing else
+/// (F7 6.2).
+fn literal_set(t: &Type) -> Option<Vec<&str>> {
+    match t {
+        Type::Lit(s) => Some(vec![s.as_str()]),
+        Type::Union(alts) => alts
+            .iter()
+            .map(|a| match a {
+                Type::Lit(s) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect(),
+        _ => None,
+    }
+}
+
 /// The formulas each entry implements: name, receiver, steps, units. A unit
 /// test holds them equal to `suite/library.json`.
-pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 53] = [
+pub const FORMULAS: [(&str, Option<Kind>, &str, &str); 67] = [
+    ("minBy", Some(Kind::List), "2*n + sz(keys)", "0"),
+    ("maxBy", Some(Kind::List), "2*n + sz(keys)", "0"),
+    ("uniqueBy", Some(Kind::List), "2*n + sz(keys)", "1 + k"),
+    ("indexBy", Some(Kind::List), "2*n + sz(keys)", "1 + 2*n"),
+    ("countBy", Some(Kind::List), "2*n + sz(keys)", "1 + 2*g"),
+    (
+        "mapValues",
+        Some(Kind::Map),
+        "2*n + L*(n + sz(keys))",
+        "1 + 2*n",
+    ),
+    (
+        "json.stringify",
+        None,
+        "walk(x) + sz(result)",
+        "1 + sz(result)",
+    ),
+    ("json.parse", None, "8*sz(s) + c", "u"),
+    ("time.parse", None, "sz(s)", "0"),
+    ("time.format", None, "sz(result)", "1 + sz(result)"),
+    ("time.duration", None, "sz(s)", "0"),
+    ("math.sqrt", None, "0", "0"),
+    (
+        "base64.encode",
+        None,
+        "sz(s) + sz(result)",
+        "1 + sz(result)",
+    ),
+    ("base64.decode", None, "sz(s)", "1 + sz(result)"),
     ("len", None, "sz(x)", "0"),
     (
         "string",
@@ -292,7 +337,7 @@ impl<'h> Run<'h> {
         )
     }
 
-    fn entry_range(&self, name: &str, span: Span) -> Box<Fail<'h>> {
+    pub(super) fn entry_range(&self, name: &str, span: Span) -> Box<Fail<'h>> {
         fail(
             "number-range",
             "entry",
@@ -333,6 +378,19 @@ impl<'h> Run<'h> {
                     ordered_first.get_or_insert(k);
                     continue;
                 }
+            }
+            // F7 6.2: a parameter whose type is a literal set.
+            if let Some(set) = literal_set(t) {
+                let ok = matches!(v, Value::Str(x) if set.contains(&x.as_str()));
+                if !ok {
+                    return Err(fail(
+                        "wrong-kind",
+                        "order",
+                        span,
+                        vec![("name", rec.name.clone()), ("found", value_p(v))],
+                    ));
+                }
+                continue;
             }
             let (ok, whole) = fits(t, v, &sig.bounds);
             if !ok {
@@ -500,6 +558,8 @@ impl<'h> Run<'h> {
                 self.alloc(1)?;
                 Ok(Value::str(fixed_text(xv, d as u32)))
             }
+            // F6: an entry of an opt-in group.
+            n if n.contains('.') => self.group_entry(n, x, span),
             _ => Err(self.internal(span)),
         }
     }
@@ -517,7 +577,11 @@ impl<'h> Run<'h> {
         self.charge(1)?;
         match rec.receiver {
             Some(Kind::String) => self.string_method(rec, recv, &args, span),
+            Some(Kind::Map) if rec.name == "mapValues" => {
+                self.map_values(recv, &args, span, measure)
+            }
             Some(Kind::Map) => self.map_method(rec, recv, span),
+            _ if rec.queries => self.query_method(rec, recv, &args, span, measure),
             _ => self.list_method(rec, recv, &args, span, measure),
         }
     }
@@ -684,6 +748,134 @@ impl<'h> Run<'h> {
         }
     }
 
+    /// F7 6.9: `mapValues`. The key order is charged first; then each
+    /// entry, in key order: 2 steps, then `f(value, key)`.
+    fn map_values(
+        &mut self,
+        recv: Value<'h>,
+        args: &[Arg<'h>],
+        span: Span,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
+        let es = recv.entries();
+        let n = es.len() as u64;
+        let s = sz_all(es.iter().map(|(k, _)| k.as_str()));
+        self.charge(log2_ceil(n) * (n + s))?;
+        let f = self.lam(args, 0, span)?;
+        let mut out = Vec::with_capacity(es.len());
+        for (k, v) in es {
+            self.charge(2)?;
+            let v = self.read(v, span)?;
+            let r = self.invoke(f, &[v, Value::Str(k.clone())], measure, span)?;
+            out.push((k, r));
+        }
+        self.alloc(1 + 2 * n)?;
+        Ok(Value::Map(Rc::new(MapVal(out))))
+    }
+
+    /// F7 6.4 to 6.8: `minBy`, `maxBy`, `uniqueBy`, `indexBy`, `countBy`.
+    fn query_method(
+        &mut self,
+        rec: &Record,
+        recv: Value<'h>,
+        args: &[Arg<'h>],
+        span: Span,
+        measure: u32,
+    ) -> R<'h, Value<'h>> {
+        let name = rec.name.as_str();
+        let n = recv.len().unwrap_or(0);
+        let f = self.lam(args, 0, span)?;
+        let mut elems: Vec<Value<'h>> = Vec::with_capacity(n);
+        let mut keys: Vec<Value<'h>> = Vec::with_capacity(n);
+        let string_keys = matches!(name, "indexBy" | "countBy");
+        for i in 0..n {
+            self.charge(2)?;
+            let e = self.read(recv.elem(i), span)?;
+            let k = self.invoke(f, &[e.clone(), Value::Num(i as f64)], measure, span)?;
+            if string_keys && k.kind() != Kind::String {
+                return Err(fail(
+                    "wrong-kind",
+                    "result",
+                    span,
+                    vec![("name", name.to_string()), ("kind", kind_p(&k))],
+                ));
+            }
+            elems.push(e);
+            keys.push(k);
+        }
+        if !string_keys {
+            if let Err((_, k)) = ordered(keys.iter()) {
+                return Err(self.unordered(name, k, span));
+            }
+        }
+        self.charge(sz_all(keys.iter().filter_map(|k| k.as_str())))?;
+        // Equal keys: numbers by value, strings by code point.
+        let key_of = |k: &Value<'h>| -> (bool, String) {
+            match k {
+                Value::Num(x) => (true, number::to_text(*x)),
+                Value::Str(x) => (false, x.as_str().to_string()),
+                _ => (false, String::new()),
+            }
+        };
+        match name {
+            "minBy" | "maxBy" => {
+                let want = if name == "minBy" {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                };
+                let mut best: Option<usize> = None;
+                for i in 0..n {
+                    match best {
+                        None => best = Some(i),
+                        Some(b) if cmp(&keys[i], &keys[b]) == want => best = Some(i),
+                        _ => {}
+                    }
+                }
+                Ok(best.map_or(Value::Null, |b| elems[b].clone()))
+            }
+            "uniqueBy" => {
+                let mut seen = HashSet::new();
+                let mut out = Vec::new();
+                for (e, k) in elems.into_iter().zip(keys.iter()) {
+                    if seen.insert(key_of(k)) {
+                        out.push(e);
+                    }
+                }
+                self.alloc(1 + out.len() as u64)?;
+                Ok(Value::list(out))
+            }
+            "indexBy" => {
+                self.alloc(1 + 2 * n as u64)?;
+                let es: Vec<(Str<'h>, Value<'h>)> = keys
+                    .into_iter()
+                    .zip(elems)
+                    .filter_map(|(k, e)| match k {
+                        Value::Str(s) => Some((s, e)),
+                        _ => None,
+                    })
+                    .collect();
+                Ok(Value::Map(Rc::new(MapVal::from_written(es))))
+            }
+            _ => {
+                // countBy
+                let mut counts: HashMap<String, (Str<'h>, u64)> = HashMap::new();
+                for k in keys {
+                    if let Value::Str(s) = k {
+                        counts.entry(s.as_str().to_string()).or_insert((s, 0)).1 += 1;
+                    }
+                }
+                let g = counts.len() as u64;
+                self.alloc(1 + 2 * g)?;
+                let es: Vec<(Str<'h>, Value<'h>)> = counts
+                    .into_values()
+                    .map(|(s, c)| (s, Value::Num(c as f64)))
+                    .collect();
+                Ok(Value::Map(Rc::new(MapVal::from_written(es))))
+            }
+        }
+    }
+
     fn map_method(&mut self, rec: &Record, recv: Value<'h>, _span: Span) -> R<'h, Value<'h>> {
         let es = recv.entries();
         let n = es.len() as u64;
@@ -804,7 +996,14 @@ impl<'h> Run<'h> {
                         self.charge(log2_ceil(nn) * (nn + s))?;
                         self.alloc(1 + nn)?;
                         let mut idx: Vec<usize> = (0..n).collect();
-                        idx.sort_by(|&a, &b| cmp(&keys[a], &keys[b]));
+                        // F7 6.3: `"desc"` is a stable sort in descending
+                        // order of the keys.
+                        let desc = matches!(self.val(args, 1), Some(Value::Str(d)) if d.as_str() == "desc");
+                        if desc {
+                            idx.sort_by(|&a, &b| cmp(&keys[b], &keys[a]));
+                        } else {
+                            idx.sort_by(|&a, &b| cmp(&keys[a], &keys[b]));
+                        }
                         Ok(Value::list(
                             idx.into_iter().map(|i| out[i].clone()).collect(),
                         ))
@@ -1068,7 +1267,7 @@ mod tests {
     #[test]
     fn the_formulas_are_the_records() {
         let recs = records();
-        assert_eq!(recs.len(), 53);
+        assert_eq!(recs.len(), 67);
         for r in recs {
             let f = FORMULAS
                 .iter()

@@ -7,6 +7,7 @@
 //! `match` arms. So the evaluator's recursion follows the source nesting and
 //! the calls in progress, which the depth limit bounds (8.5 item 3).
 
+mod groups;
 pub mod lib;
 
 use crate::compile::{Program, Res};
@@ -223,6 +224,7 @@ impl Program {
                 next_check: 1024,
                 stop: None,
             },
+            json_mode: false,
         };
         // `02-evaluation.md` 8.4: handing the result over is not a read, so the run
         // makes no walk of it.
@@ -251,6 +253,9 @@ struct Run<'h> {
     slots: Vec<Value<'h>>,
     cache: Vec<Option<Option<Value<'h>>>>,
     m: Meter,
+    /// F6: the rendering walk of `json.stringify`, whose opaque failure has
+    /// the template `json` (`f06-groups.md` 6.1 item 5).
+    json_mode: bool,
 }
 
 /// The walk's meter in a run: the run's steps and depth count (F4 5.3,
@@ -417,13 +422,23 @@ impl<'h> Run<'h> {
                     let t = self.eval(*test)?;
                     id = if t.truthy() { *then } else { *else_ };
                 }
-                NodeKind::MethodCall { args, .. } if matches!(self.res(id), Res::CallHost(_)) => {
+                NodeKind::MethodCall { args, .. }
+                    if matches!(self.res(id), Res::CallHost(_) | Res::CallLib(_)) =>
+                {
                     return self.call(id, args);
+                }
+                // F6 5.3: the read of a constant charges nothing.
+                NodeKind::Member { .. } if matches!(self.res(id), Res::Constant(_)) => {
+                    let Res::Constant(v) = self.res(id) else {
+                        unreachable!()
+                    };
+                    return Ok(Value::Num(*v));
                 }
                 NodeKind::Member { .. }
                 | NodeKind::Index { .. }
                 | NodeKind::MethodCall { .. }
-                | NodeKind::OptChain { .. } => return self.chain(id),
+                | NodeKind::OptChain { .. }
+                | NodeKind::Each { .. } => return self.chain(id),
                 NodeKind::Call { args, .. } => return self.call(id, args),
                 NodeKind::Match { subject, arms } => {
                     id = self.match_arm(node.span, *subject, arms)?;
@@ -538,7 +553,10 @@ impl<'h> Run<'h> {
                 }
             }
             Value::BadNum => return Err(self.host_number(Some(span))),
-            Value::Opaque(_) => return Err(fail("wrong-kind", "text", span, Vec::new())),
+            Value::Opaque(_) => {
+                let t = if self.json_mode { "json" } else { "text" };
+                return Err(fail("wrong-kind", t, span, Vec::new()));
+            }
             Value::List(_) | Value::HList(_) => {
                 self.depth_test(1, span)?;
                 let n = v.len().unwrap_or(0);
@@ -996,11 +1014,19 @@ impl<'h> Run<'h> {
         let mut n = inner;
         loop {
             match self.ast.kind(n) {
+                NodeKind::Member { .. } if matches!(self.res(n), Res::Constant(_)) => break,
+                // F7: a projection is a step whose receiver is its `x`.
+                NodeKind::Each { x: Some(x), .. } => {
+                    steps.push(n);
+                    n = *x;
+                }
                 NodeKind::Member { x, .. } | NodeKind::Index { x, .. } => {
                     steps.push(n);
                     n = *x;
                 }
-                NodeKind::MethodCall { x, .. } if !matches!(self.res(n), Res::CallHost(_)) => {
+                NodeKind::MethodCall { x, .. }
+                    if !matches!(self.res(n), Res::CallHost(_) | Res::CallLib(_)) =>
+                {
                     steps.push(n);
                     n = *x;
                 }
@@ -1019,9 +1045,84 @@ impl<'h> Run<'h> {
 
     /// One step of a chain. `None` is a null receiver of an optional step:
     /// the whole chain is null.
+    /// The test of a star's receiver (F7 3.1): `None` for a null receiver of
+    /// `?.[*]`; else the list.
+    fn star_receiver(&self, v: &Value<'h>, optional: bool, star: Span) -> R<'h, Option<()>> {
+        match v.kind() {
+            crate::value::Kind::Null if optional => Ok(None),
+            crate::value::Kind::Null => Err(fail("null-operand", "star", star, vec![])),
+            crate::value::Kind::List => Ok(Some(())),
+            _ => Err(fail("wrong-kind", "star", star, vec![("kind", kind_p(v))])),
+        }
+    }
+
+    /// One level of a projection (F7 3.2, 3.3): each element of `recv` in
+    /// order, its reads applied, and a later star's level in turn.
+    fn level(
+        &mut self,
+        recv: &Value<'h>,
+        reads: &'h [NodeId],
+        out: &mut Vec<Value<'h>>,
+    ) -> R<'h, ()> {
+        let n = recv.len().unwrap_or(0);
+        'elements: for i in 0..n {
+            self.charge(1)?;
+            let e = recv.elem(i);
+            if reads.is_empty() {
+                out.push(e);
+                continue;
+            }
+            let mut cur = match e {
+                Value::BadNum => return Err(self.host_number(Some(self.ast.span(reads[0])))),
+                e => e,
+            };
+            for &r in reads {
+                if let NodeKind::Each {
+                    reads: inner,
+                    optional,
+                    star,
+                    ..
+                } = &self.ast.nodes[r.index()].kind
+                {
+                    match self.star_receiver(&cur, *optional, *star)? {
+                        None => out.push(Value::Null),
+                        Some(()) => self.level(&cur, inner, out)?,
+                    }
+                    continue 'elements;
+                }
+                match self.step(r, cur)? {
+                    Some(v) => cur = v,
+                    None => {
+                        // An optional step on null skips the rest of the
+                        // projection for this element.
+                        out.push(Value::Null);
+                        continue 'elements;
+                    }
+                }
+            }
+            out.push(cur);
+        }
+        Ok(())
+    }
+
     fn step(&mut self, s: NodeId, v: Value<'h>) -> R<'h, Option<Value<'h>>> {
         let ast = self.ast;
         let span = ast.span(s);
+        if let NodeKind::Each {
+            reads,
+            optional,
+            star,
+            ..
+        } = &ast.nodes[s.index()].kind
+        {
+            if self.star_receiver(&v, *optional, *star)?.is_none() {
+                return Ok(None);
+            }
+            let mut out = Vec::new();
+            self.level(&v, reads, &mut out)?;
+            self.alloc(1 + out.len() as u64)?;
+            return Ok(Some(Value::list(out)));
+        }
         match &ast.nodes[s.index()].kind {
             NodeKind::Member { name, optional, .. } => {
                 if v.is_null() {
@@ -1779,6 +1880,28 @@ impl Program {
                 _ => {}
             }
             spans.extend(kids.iter().map(|k| ast.span(*k)));
+        }
+        // F7 5.3: a star's failure is at a site on its receiver: the chain
+        // before the first star, or the read before a later star.
+        for n in &ast.nodes {
+            let NodeKind::Each { x, reads, star, .. } = &n.kind else {
+                continue;
+            };
+            if *star == span {
+                if let Some(x) = x {
+                    spans.push(ast.span(*x));
+                }
+            }
+            if let Some(&last) = reads.last() {
+                if let NodeKind::Each { star: inner, .. } = ast.kind(last) {
+                    if *inner == span {
+                        spans.push(match reads.len() {
+                            1 => *star,
+                            k => ast.span(reads[k - 2]),
+                        });
+                    }
+                }
+            }
         }
         // `05-types.md` 18.3: a field or an element of a pattern that fails is at
         // a site on its key or name, or on the value the pattern binds.

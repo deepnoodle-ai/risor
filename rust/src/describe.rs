@@ -114,6 +114,13 @@ impl Env {
         reject.sort();
         reject.dedup();
         let mut entries = Vec::new();
+        // F6 2.7: the groups on, present only when there is one.
+        if !d.groups.is_empty() {
+            entries.push((
+                "groups".to_string(),
+                Json::Arr(d.groups.iter().cloned().map(Json::Str).collect()),
+            ));
+        }
         // F4 8: the named types, present only when there is one.
         if !d.names.named.is_empty() {
             entries.push((
@@ -166,7 +173,8 @@ impl Env {
         let o = d
             .as_obj()
             .ok_or_else(|| form("a description is a JSON object"))?;
-        const KEYS: [&str; 8] = [
+        const KEYS: [&str; 9] = [
+            "groups",
             "types",
             "version",
             "variables",
@@ -215,6 +223,11 @@ impl Env {
             .as_str()
             .ok_or_else(|| form("version is not a string"))?;
         b = b.version(version);
+        if let Some(g) = d.get("groups") {
+            for name in list_of(g, "groups")? {
+                b = b.group(&name);
+            }
+        }
         // F4 8 item 3: each entry of `types` is a named type by type text.
         if let Some(t) = d.get("types") {
             for (name, text) in strings_of(t, "types")? {

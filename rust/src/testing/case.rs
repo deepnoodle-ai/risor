@@ -58,6 +58,8 @@ pub struct ExpectResult {
     pub analysis: Option<Json>,
     /// F4: a conform result (`f04-conversion.md` 9.2).
     pub conform: Option<ConformExpect>,
+    /// F6: the JSON text of the run's value (`f06-groups.md` 11.2).
+    pub json: Option<String>,
 }
 
 /// A conform result (F4 9.2).
@@ -85,7 +87,8 @@ pub fn is_static(code: &str, conversion: bool) -> bool {
 impl ExpectResult {
     /// Whether the result names something only a run gives (3.10.5 step 5).
     pub fn needs_run(&self) -> bool {
-        self.value.is_some()
+        self.json.is_some()
+            || self.value.is_some()
             || self.truthy.is_some()
             || self.steps.is_some()
             || self.allocated.is_some()
@@ -111,6 +114,7 @@ pub struct ExpectFailure {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Expect {
     Result(ExpectResult),
     Failure(ExpectFailure),
@@ -130,6 +134,8 @@ pub struct Case {
     pub schemas: Vec<(String, Json, SchemaOptions)>,
     /// F4: named types, in order (9.1).
     pub types: Vec<TypeDecl>,
+    /// F6: the opt-in groups the case turns on (`f06-groups.md` 11.1).
+    pub groups: Vec<String>,
     /// F4: a case of the second kind: a type text and a host value (9.2).
     pub conform: Option<(String, Json)>,
     /// The case is of `suite/conversion/`, where two more codes are static.
@@ -160,7 +166,8 @@ pub struct CaseFile {
     pub cases: Vec<Case>,
 }
 
-const HEADER_FIELDS: [&str; 19] = [
+const HEADER_FIELDS: [&str; 20] = [
+    "groups",
     "types",
     "conform",
     "template",
@@ -182,7 +189,8 @@ const HEADER_FIELDS: [&str; 19] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 21] = [
+const CASE_FIELDS: [&str; 22] = [
+    "groups",
     "types",
     "conform",
     "template",
@@ -532,6 +540,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             .and_then(crate::template::Mode::from_name),
         source,
         types,
+        groups: strings(get("groups")),
         conform,
         conversion: false,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
@@ -752,6 +761,9 @@ fn read_expect(v: &Json) -> V<Expect> {
             }
             "steps" | "allocated" => check_count(x).map_err(|e| format!("expect.{k}: {e}"))?,
             "description" => check_description(x)?,
+            "json" => {
+                x.as_str().ok_or("expect.json is not a string")?;
+            }
             "analysis" => {
                 if obj.len() != 1 {
                     return Err("expect has analysis and another field".into());
@@ -785,6 +797,7 @@ fn read_expect(v: &Json) -> V<Expect> {
         description: v.get("description").cloned(),
         analysis: v.get("analysis").cloned(),
         conform: None,
+        json: v.get("json").and_then(|j| j.as_str()).map(String::from),
     }))
 }
 
@@ -822,8 +835,13 @@ fn check_analysis(x: &Json) -> V<()> {
                         .get("path")
                         .and_then(|p| p.as_arr())
                         .ok_or("a reference's path is not an array")?;
-                    if !p.iter().all(|s| s.as_str().is_some()) {
-                        return Err("a path holds a key that is not a string".into());
+                    // F7 9.3: a key, or the star step `{"star": true}`.
+                    let step_ok = |s: &Json| {
+                        s.as_str().is_some()
+                            || matches!(s.as_obj(), Some(o) if o.len() == 1 && o[0].0 == "star" && o[0].1 == Json::Bool(true))
+                    };
+                    if !p.iter().all(step_ok) {
+                        return Err("a path holds a step that is neither a key nor a star".into());
                     }
                     span(r.get("span").unwrap_or(&Json::Null))?;
                 }
@@ -894,8 +912,8 @@ fn check_description(x: &Json) -> V<()> {
     ];
     let m = x.as_obj().ok_or("expect.description is not an object")?;
     for (k, _) in m {
-        // F4 8: `types`, an object of strings.
-        if k == "types" {
+        // F4 8: `types`; F6 2.7: `groups`.
+        if k == "types" || k == "groups" {
             continue;
         }
         if !KEYS.contains(&k.as_str()) {
@@ -1167,6 +1185,20 @@ fn check_field(k: &str, v: &Json) -> V<()> {
         "expect" => Ok(()),
         "schemas" => check_schemas(v),
         "types" => check_types(v),
+        "groups" => {
+            let a = v.as_arr().ok_or("groups is not an array")?;
+            let mut seen: Vec<&str> = Vec::new();
+            for g in a {
+                let g = g
+                    .as_str()
+                    .ok_or("groups holds a value that is not a string")?;
+                if seen.contains(&g) {
+                    return Err(format!("groups names {g:?} twice"));
+                }
+                seen.push(g);
+            }
+            Ok(())
+        }
         "conform" => {
             let m = v.as_obj().ok_or("conform is not an object")?;
             if m.len() != 2

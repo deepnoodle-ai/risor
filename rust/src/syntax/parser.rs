@@ -892,6 +892,13 @@ impl<'a> Parser<'a> {
                     }
                     optional_any |= optional;
                 }
+                // F7 2.1: a `[` or `?.[` whose next token is `*` begins a star.
+                Tok::Punct(p @ (P::LBracket | P::QDotBracket))
+                    if self.peek_n(1).is_punct(P::Star) =>
+                {
+                    optional_any |= p == P::QDotBracket;
+                    x = self.projection(x, start)?;
+                }
                 Tok::Punct(p @ (P::LBracket | P::QDotBracket)) => {
                     let optional = p == P::QDotBracket;
                     self.bump();
@@ -919,6 +926,138 @@ impl<'a> Parser<'a> {
             x = self.node(NodeKind::OptChain { x }, span);
         }
         Ok(x)
+    }
+
+    /// A projection (F7 2.1 to 2.5), at its first star: the outer `Each`. It
+    /// ends before a method call or where the chain ends. Each star opens a
+    /// level that lasts to the end of the projection.
+    fn projection(&mut self, recv: NodeId, start: u32) -> R<NodeId> {
+        struct Level {
+            optional: bool,
+            star: Span,
+            reads: Vec<NodeId>,
+            prev: Option<NodeId>,
+        }
+        let mut levels: Vec<Level> = Vec::new();
+        let mut end = self.ast.span(recv).end;
+        let result = (|| -> R<()> {
+            'star: loop {
+                // A star: `[` or `?.[`, `*`, `]`.
+                let lb = self.bump();
+                let optional = lb.is_punct(P::QDotBracket);
+                self.open(lb.span)?;
+                levels.push(Level {
+                    optional,
+                    star: lb.span,
+                    reads: Vec::new(),
+                    prev: None,
+                });
+                self.bump(); // `*`
+                if !self.at_punct(P::RBracket) {
+                    return Err(self.unexpected(self.peek()));
+                }
+                let rb = self.bump();
+                end = rb.span.end;
+                let star = Span { start, end };
+                levels.last_mut().expect("a level").star = star;
+                // The reads of this level.
+                loop {
+                    let t = self.peek();
+                    match t.tok {
+                        Tok::Punct(p @ (P::Dot | P::QDot)) => {
+                            if self.peek_n(1).word().is_some() && self.peek_n(2).is_punct(P::LParen)
+                            {
+                                return Ok(());
+                            }
+                            self.bump();
+                            if self.peek().word().is_none() {
+                                return Err(self.unexpected(self.peek()));
+                            }
+                            let nt = self.bump_word()?;
+                            let name = nt.word().unwrap_or_default().to_string();
+                            let lv = levels.last_mut().expect("a level");
+                            let x = match lv.prev {
+                                Some(x) => x,
+                                None => {
+                                    let s = lv.star;
+                                    self.node(NodeKind::Elem, s)
+                                }
+                            };
+                            end = nt.span.end;
+                            let n = self.node(
+                                NodeKind::Member {
+                                    x,
+                                    name,
+                                    name_span: nt.span,
+                                    optional: p == P::QDot,
+                                },
+                                Span { start, end },
+                            );
+                            let lv = levels.last_mut().expect("a level");
+                            lv.reads.push(n);
+                            lv.prev = Some(n);
+                        }
+                        Tok::Punct(P::LBracket | P::QDotBracket)
+                            if self.peek_n(1).is_punct(P::Star) =>
+                        {
+                            continue 'star;
+                        }
+                        Tok::Punct(p @ (P::LBracket | P::QDotBracket)) => {
+                            self.bump();
+                            self.open(t.span)?;
+                            let index = self.expr()?;
+                            let rb = self.expect(P::RBracket)?;
+                            self.close();
+                            let lv = levels.last_mut().expect("a level");
+                            let x = match lv.prev {
+                                Some(x) => x,
+                                None => {
+                                    let s = lv.star;
+                                    self.node(NodeKind::Elem, s)
+                                }
+                            };
+                            end = rb.span.end;
+                            let n = self.node(
+                                NodeKind::Index {
+                                    x,
+                                    index,
+                                    optional: p == P::QDotBracket,
+                                },
+                                Span { start, end },
+                            );
+                            let lv = levels.last_mut().expect("a level");
+                            lv.reads.push(n);
+                            lv.prev = Some(n);
+                        }
+                        _ => return Ok(()),
+                    }
+                }
+            }
+        })();
+        for _ in 0..levels.len() {
+            self.close();
+        }
+        result?;
+        // Fold the levels from the innermost: a later star is the last read
+        // of the level before it.
+        let span = Span { start, end };
+        let mut inner: Option<NodeId> = None;
+        while let Some(mut lv) = levels.pop() {
+            if let Some(i) = inner.take() {
+                lv.reads.push(i);
+            }
+            let x = if levels.is_empty() { Some(recv) } else { None };
+            inner = Some(self.node(
+                NodeKind::Each {
+                    x,
+                    reads: lv.reads,
+                    optional: lv.optional,
+                    star: lv.star,
+                },
+                span,
+            ));
+        }
+        Ok(inner.expect("one level"))
     }
 
     /// `Args`. Returns the arguments and the end of the `)`.

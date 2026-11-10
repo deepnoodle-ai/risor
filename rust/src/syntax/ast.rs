@@ -266,6 +266,18 @@ pub enum NodeKind {
         x: NodeId,
         ty: Box<PType>,
     },
+    /// Kind 32, package F7: a projection (`f07-queries.md` 2.3). `x` is the
+    /// chain before the first star, or none for a later star; `reads` are
+    /// the steps of its level, a later star last; `star` is the star span.
+    Each {
+        x: Option<NodeId>,
+        reads: Vec<NodeId>,
+        optional: bool,
+        star: Span,
+    },
+    /// Not a node of the language: the element in hand, the `x` of the first
+    /// read of a level of a projection.
+    Elem,
 }
 
 /// The form of an `As` node (F4 2.7).
@@ -354,6 +366,8 @@ impl NodeKind {
             NodeKind::ListPat { .. } => 29,
             NodeKind::Bad => 30,
             NodeKind::As { .. } => 31,
+            NodeKind::Each { .. } => 32,
+            NodeKind::Elem => 33,
         }
     }
 
@@ -363,7 +377,7 @@ impl NodeKind {
     }
 }
 
-pub const KIND_NAMES: [&str; 31] = [
+pub const KIND_NAMES: [&str; 33] = [
     "Program",
     "Const",
     "Block",
@@ -395,6 +409,8 @@ pub const KIND_NAMES: [&str; 31] = [
     "ListPat",
     "Bad",
     "As",
+    "Each",
+    "Elem",
 ];
 
 #[derive(Clone, Debug, PartialEq)]
