@@ -97,7 +97,10 @@ func outcome(c *casefile.Case) string {
 					b.WriteString("null")
 				}
 				b.WriteString(`,"message":` + value.QuoteJSON(d.Message))
-				if !diag.LimitCodes[d.Code] { // F8 8
+				if d.Span == nil && d.Code == "not-conforming" { // F10 10.4: step 5a
+					b.WriteString(`,"path":`)
+					writeJSON(&b, d.Path)
+				} else if !diag.LimitCodes[d.Code] { // F8 8
 					b.WriteString(`,"trace":[`)
 					for j, t := range d.Trace {
 						if j > 0 {
@@ -152,6 +155,8 @@ func outcome(c *casefile.Case) string {
 		} else {
 			opts = append(opts, risor.Expect(*c.Returns))
 		}
+	} else if rs := c.ReturnsSchema; rs != nil {
+		opts = append(opts, risor.ExpectSchema(rs.Schema, schemaOpts(rs.Options)...))
 	}
 	if !unchecked {
 		cr, err := env.Check(x, opts...)
@@ -175,6 +180,15 @@ func outcome(c *casefile.Case) string {
 	v, u, err := prog.Measure(context.Background(), risor.Map(c.Vars))
 	if err != nil {
 		return fail(err, &u)
+	}
+	if c.Load { // F10 10.2 item 4
+		t, err := resultType(env, c)
+		if err == nil {
+			err = risor.Conform(v, t)
+		}
+		if err != nil {
+			return fail(err, &u)
+		}
 	}
 	b.WriteString(`,"phase":null,"value":`)
 	writeJSON(&b, v)

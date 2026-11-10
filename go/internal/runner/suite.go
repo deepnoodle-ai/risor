@@ -24,6 +24,7 @@ var SuiteDirs = []string{
 	"queries",    // F7
 	"errors",     // F8
 	"testing",    // F9
+	"config",     // F10
 }
 
 // SuiteCatalog is a catalog file and the field that names its entries.
@@ -49,7 +50,7 @@ func RunSuiteDir(dir string) ([]Result, error) {
 	b := filepath.Base(dir)
 	// core-check, and host-types, run with the checker only (3.10.13).
 	CheckedOnly = b == "core-check" || b == "host-types"
-	if b == "conversion" || b == "unions" { // F4 6.1 item 4, F5 11.2 item 3
+	if b == "conversion" || b == "unions" || b == "config" { // F4 6.1 item 4, F5 11.2 item 3, F10 10.3 item 3
 		casefile.ExtraStatic = casefile.ConversionStatic
 	}
 	defer func() {

@@ -135,7 +135,7 @@ func expectedColumns(c *casefile.Case) map[string]bool {
 		if d.Class != nil {
 			cols["class"] = true
 		}
-		if d.Span != nil {
+		if d.Span != nil || d.SpanNull {
 			cols["span"] = true
 		}
 		if d.HasPath {

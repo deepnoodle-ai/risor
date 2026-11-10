@@ -33,6 +33,40 @@ func (noCheck) checkOption() {}
 // must fit it through its form (05-types.md 15).
 func Expect(typeText string) CheckOption { return expectOption{text: typeText} }
 
+// ExpectSchema gives the expected result by a JSON Schema (package F10
+// 2.1): its type is the schema's mapping with the options given. Only
+// Closed is accepted; AbsentIsNull and DefaultsApplied, and any error of
+// the schema, are the declare error bad-type. A compile without a check
+// still maps the schema.
+func ExpectSchema(schema any, opts ...SchemaOption) CheckOption {
+	return expectSchemaOption{schema: schema, opts: opts}
+}
+
+// ExpectType gives the expected result as a type: from TypeOf,
+// TypeFromSchema or Env.ParseType.
+func ExpectType(t Type) CheckOption { return expectTypeOption{t: t} }
+
+type expectSchemaOption struct {
+	schema any
+	opts   []SchemaOption
+}
+
+func (expectSchemaOption) checkOption() {}
+
+type expectTypeOption struct{ t Type }
+
+func (expectTypeOption) checkOption() {}
+
+// resultSchemaType maps a schema given as the expected result (F10 2.1).
+func resultSchemaType(schema any, opts []SchemaOption) (*types.Type, error) {
+	for _, o := range opts {
+		if o == AbsentIsNull || o == DefaultsApplied {
+			return nil, fmt.Errorf("the option %s does not apply to an expected result", string(o))
+		}
+	}
+	return mapSchema(schema, opts)
+}
+
 // Condition states that the result will be tested by truthiness (15.3).
 var Condition CheckOption = expectOption{condition: true}
 
@@ -139,6 +173,19 @@ func (e *Env) expected(opts []CheckOption) (check.Expect, bool, error) {
 					Message: "the expected result: " + err.Error()}}}
 			}
 			exp = check.Expect{Kind: check.ExpectType, Type: t}
+		case expectSchemaOption:
+			t, err := resultSchemaType(o.schema, o.opts)
+			if err != nil {
+				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
+					Message: "the expected result: " + err.Error()}}}
+			}
+			exp = check.Expect{Kind: check.ExpectType, Type: t}
+		case expectTypeOption:
+			if o.t.t == nil {
+				return exp, checked, &Error{Diagnostics: []Diagnostic{{Phase: PhaseDeclare, Code: diag.CodeBadType,
+					Message: "the expected result: no type"}}}
+			}
+			exp = check.Expect{Kind: check.ExpectType, Type: o.t.t}
 		}
 	}
 	return exp, checked, nil

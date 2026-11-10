@@ -74,7 +74,11 @@ type Case struct {
 	// 4.2). ExpectRaw is the expect as the file gives it, for the report.
 	NoExpect  bool
 	ExpectRaw any
-	Expect    *Expect
+	// ReturnsSchema is the expected result by schema, and Load runs the
+	// case as a load (package F10 10).
+	ReturnsSchema *ReturnsSchema
+	Load          bool
+	Expect        *Expect
 }
 
 // NamedType is one entry of the field types (F4 9.1).
@@ -191,6 +195,8 @@ type ExpDiag struct {
 	Message *string
 	Data    any
 	HasData bool
+	// SpanNull is "span": null, allowed in a load case only (F10 10.2).
+	SpanNull bool
 	// Trace is the expected trace (F8 7.2). Nil when absent.
 	Trace []diag.TraceEntry
 }
@@ -268,9 +274,9 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "returnsSchema", "load")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program")
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program", "returnsSchema", "load")
 	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json")
 	// F2 4.2, 4.3.
 	analysisFields = set("names", "refs", "calls", "literal", "segments")
@@ -407,6 +413,12 @@ func (v *validator) file(raw any) (*File, error) {
 		_, hasConform := m["conform"]
 		_, hasRender := m["render"]
 		_, hasRunner := m["runner"]
+		_, hasRet := m["returns"]
+		_, hasRetS := m["returnsSchema"]
+		if hasRet || hasRetS { // F10 10.1 item 1
+			delete(merged, "returns")
+			delete(merged, "returnsSchema")
+		}
 		if hasSource || hasFile || hasConform || hasRender || hasRunner { // F4 9.2 item 1, F8 7.4 item 1, F9 3.1 item 4
 			delete(merged, "source")
 			delete(merged, "file")
@@ -847,6 +859,9 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 		return nil, v.invalid("%s: a failure of phase %s states one diagnostic", where, e.Phase)
 	}
 	c.Expect = e
+	if err := v.buildF10(c, m, where); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
@@ -1152,7 +1167,9 @@ func (v *validator) diagnostic(x any, where string) (*ExpDiag, error) {
 		}
 		d.Class = &cl
 	}
-	if x, ok := m["span"]; ok {
+	if x, ok := m["span"]; ok && x == nil {
+		d.SpanNull = true
+	} else if ok {
 		sp, err := v.span(x, where)
 		if err != nil {
 			return nil, err

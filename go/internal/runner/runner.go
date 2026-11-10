@@ -130,7 +130,7 @@ func CheckOnlyFile(path string) bool { return strings.HasSuffix(filepath.Base(pa
 // Offered is the one list of the follow-on packages this implementation
 // offers (03-host.md 3.11 item 2: F3, F1, F2, F4, F5, F6, F7, ... in that
 // order, each with all before it).
-var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true}
+var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true, "F10": true}
 
 // Skipped returns whether a case file is one a runner of this
 // implementation does not run: its name begins until-fNN- and package NN is
@@ -376,6 +376,11 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 			return nil, err
 		}
 	}
+	if c.ReturnsSchema != nil { // F10 2.1: mapped at declare, checked or not
+		if _, err := resultType(env, c); err != nil {
+			return nil, err
+		}
+	}
 	return env, nil
 }
 
@@ -435,6 +440,9 @@ func runCase(cr *caseRun) Result {
 	// rules alone, and its class is compared for every code.
 	if c.Check != nil && !*c.Check {
 		return cr.runMode(false, true)
+	}
+	if c.Load { // F10 10.2 item 3: run once, checked
+		return cr.runMode(true, true)
 	}
 	// Ruling AP2: checked, then with the static rules alone; one verdict.
 	r := cr.runMode(true, true)
@@ -498,6 +506,9 @@ func (cr *caseRun) runMode(checked, allClasses bool) Result {
 			opts = append(opts, risor.Expect(*c.Returns))
 		}
 	}
+	if rs := c.ReturnsSchema; rs != nil && checked {
+		opts = append(opts, risor.ExpectSchema(rs.Schema, schemaOpts(rs.Options)...))
+	}
 	if checked {
 		o.cr, err = env.Check(x, opts...)
 		if err != nil {
@@ -508,7 +519,7 @@ func (cr *caseRun) runMode(checked, allClasses bool) Result {
 	if err != nil {
 		return fail(err, nil)
 	}
-	needRun := cr.forceRun || c.Vars != nil || e.HasValue || e.JSON != nil || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
+	needRun := cr.forceRun || c.Load || c.Vars != nil || e.HasValue || e.JSON != nil || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
 	if !needRun {
 		return compareResult(c, env, nil, false, nil, st, o)
 	}
@@ -523,6 +534,15 @@ func (cr *caseRun) runMode(checked, allClasses bool) Result {
 	v, usage, err := prog.Measure(cr.ctx.context(), cr.vars())
 	if err != nil {
 		return fail(err, &usage)
+	}
+	if c.Load { // F10 10.2 item 4: step 5a
+		t, err := resultType(env, c)
+		if err != nil {
+			return fail(err, &usage)
+		}
+		if err := risor.Conform(v, t); err != nil {
+			return fail(err, &usage)
+		}
 	}
 	o.v, o.ran, o.usage = v, true, usage
 	return compareResult(c, env, v, true, &usage, st, o)
@@ -702,6 +722,9 @@ func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic, checked bool) boo
 	// For the codes below the class depends on the check (3.10.7 item 8),
 	// and this implementation compiles without one.
 	if want.Class != nil && (checked || !checkedClass[got.Code]) && *want.Class != got.Class {
+		return false
+	}
+	if want.SpanNull && got.Span != nil { // F10 10.2 item 5
 		return false
 	}
 	if want.Span != nil && !diag.LimitCodes[got.Code] {

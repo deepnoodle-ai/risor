@@ -12,7 +12,13 @@ import (
 // disputed lists the cases this implementation believes wrong, each with
 // its question (questions/go.md). A disputed case that fails is logged, not
 // counted as a failure; remove an entry when the case is ruled on.
-var disputed = map[string]string{}
+var disputed = map[string]string{
+	// Package F10, question F10 item 1: check-limit is static in
+	// suite/config, so these run also with the static rules alone, where
+	// nothing reports a type that is too deep.
+	"config-json-programs.json: JSON nested 100 levels parses, and its type is deeper than the checker's limit": "check-limit of a literal is the checker's; the case runs unchecked too",
+	"config-json-programs.json: JSON nested 65 levels: the type of the whole is too deep":                       "check-limit of a literal is the checker's; the case runs unchecked too",
+}
 
 // needsUnoffered lists the case files that use a package this
 // implementation does not offer yet. F5 is not written, so its tagged unions
