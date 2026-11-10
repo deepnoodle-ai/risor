@@ -177,3 +177,16 @@ with a five-digit JSON escape) and fixed.
 | R75 | `==` on two maps visits the left map's entries in key order whenever a value of it is a list or a map, because the order then decides which limit a run passes first. Otherwise any order. |
 | R76 | A new `declare` code `bad-limit`: a limit that is not a whole number, or a depth limit outside 1 to 1,000. Core has 9 `declare` codes. |
 | R77 | **The Core checker is written in all three implementations at once,** not in Go first with TypeScript and Rust after wave 1 (plan `14` M5 and M8). The three evaluators, written apart, agreed on every one of 2,763 hand-derived cases and found the faults in the specification early; the checker's cases are hand-derived too, and three readers of the types chapter test it better than one. The cost is that tagged unions (F5) may change the type representation in three places, not one. |
+
+## 11. Round 11: the differential fuzzer and the checker
+
+The differential fuzzer (`fuzz/`) ran 60,000 generated programs in the three
+implementations. They agreed on every value, count, span and message except
+in three places: one fault in TypeScript, one in Rust, and one difference
+that the checker ends.
+
+| # | Ruling |
+| --- | --- |
+| R78 | A library parameter whose type is a type variable with no bound accepts every value, null included, like `any`: `[].reduce(f, null)` is `null`. The null test is for a parameter whose type names a kind. |
+| R79 | A binding's own conversion of a result is outside the run and must not overflow the host stack on deep data. (A result nested past the depth limit is still handed over, by R68.) |
+| R80 | The rules of type text beyond the grammar belong to the checker. An implementation reports them as `bad-type` when it has the checker, which after R77 is every implementation. |

@@ -998,8 +998,11 @@ Patterns stand in `const` lines, in parameters and nowhere else.
 7. An arm binds no name, and there are no guards.
 8. A `match` without a subject is not in the language (3.4).
 9. These are static rules (14.4): a literal listed twice; an arm after `_`.
-   `05-types.md` has the rules that need types: a literal the subject can never
-   equal, and cases that are not covered.
+   A literal is listed twice when it is equal by `==` (6.7) to an earlier
+   literal of the same `match`: `1` and `1.0` are one literal, and so are
+   `"A"` and `'\u{41}'` (`05-types.md` 22.8). `05-types.md` has the rules
+   that need types: a literal the subject can never equal, and cases that are
+   not covered.
 
 ## 10. Building lists and maps
 
