@@ -1,0 +1,8 @@
+{"env": "{x: any}", "cases": [
+ {"name": "value", "source": "{b: [1, 2.5, \"\\n\"], a: x}", "vars": {"x": null}},
+ {"name": "parse", "source": "1 +"},
+ {"name": "check", "source": "y + z"},
+ {"name": "declare", "env": "{a: int, a: int}", "source": "1"},
+ {"name": "run", "source": "1 / x", "vars": {"x": 0}},
+ {"name": "limit", "source": "[1, 2]", "limits": {"allocation": 1}}
+]}

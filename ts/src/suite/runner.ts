@@ -51,7 +51,7 @@ export interface RunnerOptions {
   library?: ReadonlySet<string>;
 }
 
-type Outcome =
+export type Outcome =
   | { kind: "failure"; phase: Diagnostic["phase"]; diagnostics: Diagnostic[]; source?: Source; usage?: { steps: number; allocated: number } }
   | { kind: "result"; ran: boolean; value?: unknown; usage?: { steps: number; allocated: number } };
 
@@ -131,6 +131,21 @@ export function runCase(c: Case, file: string, _opts: RunnerOptions = {}): Verdi
     return v("skip", { reason: "needs the type checker (a check code outside the static rules)" });
   }
 
+  const e = executeCase(c, needsRun(c));
+  if (e.missing !== null) return v("skip", { reason: `needs library entries: ${e.missing.join(", ")}` });
+  return finish(c, e.outcome, e.unmatched, v);
+}
+
+export interface Execution {
+  outcome: Outcome;
+  /** Stubs that a call matched no row of (03 3.10.4). */
+  unmatched: string[];
+  /** Library entries this build lacks, when the run needed them; else null. */
+  missing: string[] | null;
+}
+
+/** Run a case's steps (03 3.10.5), with or without step 5. Judges nothing. */
+export function executeCase(c: Case, run: boolean): Execution {
   // Step 2: declare.
   const unmatched: string[] = [];
   let env: Env | undefined;
@@ -147,7 +162,7 @@ export function runCase(c: Case, file: string, _opts: RunnerOptions = {}): Verdi
   }
   const functions: Record<string, HostFunction> = {};
   for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = stubFunction(st, cls, unmatched, k);
-  let outcome: Outcome;
+  const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null });
   try {
     env = createEnv({ version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [] });
     const declErrs: Diagnostic[] = [];
@@ -157,26 +172,23 @@ export function runCase(c: Case, file: string, _opts: RunnerOptions = {}): Verdi
     if (declErrs.length > 0) throw new RisorError(declErrs);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
-    outcome = { kind: "failure", phase: "declare", diagnostics: [...x.diagnostics] };
-    return finish(c, outcome, unmatched, v);
+    return done({ kind: "failure", phase: "declare", diagnostics: [...x.diagnostics] });
   }
   // Steps 3 and 4: parse, and the static rules.
   const compiled = env.tryCompile(c.source);
   if (!compiled.ok) {
-    outcome = { kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source };
-    return finish(c, outcome, unmatched, v);
+    return done({ kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source });
   }
   // Step 5: run.
-  if (!needsRun(c)) return finish(c, { kind: "result", ran: false }, unmatched, v);
-  if (compiled.program.missing.size > 0) {
-    return v("skip", { reason: `needs library entries (S3): ${[...compiled.program.missing].sort().join(", ")}` });
-  }
+  if (!run) return done({ kind: "result", ran: false });
+  if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort() };
   const vars = c.vars ?? {};
   const o = compiled.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : undefined));
-  outcome = o.ok
-    ? { kind: "result", ran: true, value: o.value, usage: o.usage }
-    : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage };
-  return finish(c, outcome, unmatched, v);
+  return done(
+    o.ok
+      ? { kind: "result", ran: true, value: o.value, usage: o.usage }
+      : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage },
+  );
 }
 
 function finish(c: Case, o: Outcome, unmatched: string[], v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
@@ -223,7 +235,7 @@ function compare(c: Case, o: Outcome): Difference[] {
 /** Opaque values of a case are OpaqueRef objects: classified by this test. */
 const CLASSIFIER_TESTS: [string, (v: unknown) => boolean][] = [];
 import { Classifier as ClassifierClass } from "../value/value.ts";
-const CLASSIFIER = new (class extends ClassifierClass {
+export const CLASSIFIER = new (class extends ClassifierClass {
   override opaqueName(v: unknown): string | null {
     return v instanceof OpaqueRef ? v.type : super.opaqueName(v);
   }

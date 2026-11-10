@@ -138,7 +138,21 @@ export function parseDecimal(text: string): number | null {
     if (!Number.isFinite(e) || Math.abs(e) > 1e9) {
       x = expText.startsWith("-") ? 0 : Infinity;
     } else {
-      x = decimalToDouble(BigInt(intPart + frac), e - frac.length);
+      // A binary64 value is decided by at most 768 significant digits: keep
+      // 800, and a sticky 1 when a digit dropped is not zero, so the work
+      // stays in proportion to the text (02 8.5).
+      let digits = (intPart + frac).replace(/^0+/, "");
+      let exp = e - frac.length;
+      if (digits.length > 800) {
+        const dropped = digits.slice(800);
+        exp += dropped.length;
+        digits = digits.slice(0, 800);
+        if (/[1-9]/.test(dropped)) {
+          digits += "1";
+          exp -= 1;
+        }
+      }
+      x = decimalToDouble(BigInt(digits), exp);
     }
     if (m[1] === "-") x = -x;
   }

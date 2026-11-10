@@ -68,6 +68,17 @@ function boundOf(e: Entry, t: TypeNode | null): string | null {
   return null;
 }
 
+/** The kinds of an ordered set (04 3.6 rule 4): the index and kind of the first value that fails, or null. */
+export function orderedFailure(kinds: string[]): { index: number; kind: string } | null {
+  if (kinds.length === 0) return null;
+  const first = kinds[0];
+  for (let i = 0; i < kinds.length; i++) {
+    const k = kinds[i];
+    if ((k !== "number" && k !== "string") || k !== first) return { index: i, kind: k };
+  }
+  return null;
+}
+
 /** Test each argument against its parameter, left to right. Charges nothing. */
 export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: string): void {
   for (let i = 0; i < args.length; i++) {
@@ -77,13 +88,24 @@ export function testArgs(run: Run, e: Entry, args: unknown[], span: Span, name: 
     let t = p.type;
     if (p.rest && t.t === "list") t = t.elem;
     const verdict = accepts(t, v, run);
-    if (verdict === "ok") {
-      if (boundOf(e, t) !== "ordered") continue;
-      const k = run.kind(v);
-      if (k === "number" || k === "string") continue;
-      throw new RunFailure("wrong-kind", span, "unordered", { name, kind: k });
+    const bound = boundOf(e, t);
+    if (bound === "ordered") {
+      // Every failure of kind at an `ordered` parameter is `unordered` (rulings AC3, AC5):
+      // the arguments bound to the variable are one ordered set, tested left to right.
+      const set = args.slice(0, i + 1).filter((_, j) => {
+        const q = paramAt(e, j);
+        const qt = q.rest && q.type !== null && q.type.t === "list" ? q.type.elem : q.type;
+        return qt !== null && qt.t === "var" && qt.name === (t as { name: string }).name;
+      });
+      const f = orderedFailure(set.map((x) => run.kind(x)));
+      if (f !== null) throw new RunFailure("wrong-kind", span, "unordered", { name, kind: f.kind });
+      continue;
     }
-    if (boundOf(e, t) === "ordered") throw new RunFailure("wrong-kind", span, "unordered", { name, kind: run.kind(v) });
+    if (bound === "number") {
+      if (run.kind(v) !== "number") throw new RunFailure("wrong-kind", span, "argument", { name, kind: run.kind(v) });
+      continue;
+    }
+    if (verdict === "ok") continue;
     if (verdict === "whole") throw new RunFailure("wrong-kind", span, "whole", { found: v });
     throw new RunFailure("wrong-kind", span, "argument", { name, kind: run.kind(v) });
   }

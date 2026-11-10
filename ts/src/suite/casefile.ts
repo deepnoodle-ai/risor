@@ -80,7 +80,12 @@ const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
 /** Read and validate a case file on disk. */
-export function loadCaseFile(path: string): CaseFile {
+export interface ReadOptions {
+  /** Accept cases with no `expect` (the outcome command, ruling AJ item 2). */
+  noExpect?: boolean;
+}
+
+export function loadCaseFile(path: string, opts: ReadOptions = {}): CaseFile {
   let text: string;
   try {
     text = readFileSync(path, "utf8");
@@ -94,11 +99,11 @@ export function loadCaseFile(path: string): CaseFile {
     if (e instanceof JsonError) return { ok: false, error: `not JSON: ${e.message}`, names: [] };
     throw e;
   }
-  return validateCaseFile(json, dirname(path));
+  return validateCaseFile(json, dirname(path), opts);
 }
 
 /** Validate a parsed case file: an object with `cases`, or an array of cases. */
-export function validateCaseFile(json: Json, dir: string): CaseFile {
+export function validateCaseFile(json: Json, dir: string, opts: ReadOptions = {}): CaseFile {
   try {
     let header: JsonObject = Object.create(null);
     let cases: Json;
@@ -119,7 +124,7 @@ export function validateCaseFile(json: Json, dir: string): CaseFile {
     const seen = new Set<string>();
     for (const raw of cases) {
       if (!isObject(raw)) throw new InvalidFile("a case is not an object");
-      const c = buildCase(header, raw, dir);
+      const c = buildCase(header, raw, dir, opts);
       if (seen.has(c.name)) throw new InvalidFile(`the name ${JSON.stringify(c.name)} is used twice`);
       seen.add(c.name);
       out.push(c);
@@ -226,7 +231,7 @@ function toStub(v: Json): Stub {
   return { type: o.type as string | undefined, calls };
 }
 
-function buildCase(header: JsonObject, raw: JsonObject, dir: string): Case {
+function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadOptions): Case {
   for (const k of Object.keys(raw)) {
     if (!CASE_FIELDS.has(k)) fail(`a case has a field ${k} that 3.10.3 does not list`);
   }
@@ -235,7 +240,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string): Case {
   const where = `case ${JSON.stringify(name)}`;
   checkShared(raw, where);
   if ("skip" in raw && typeof raw.skip !== "string") fail(`${where}: skip is not a string`);
-  if (!("expect" in raw)) fail(`${where} has no expect`);
+  if (!("expect" in raw) && !opts.noExpect) fail(`${where} has no expect`);
 
   // The header rule (3.10.2): a field of the case replaces the header's.
   const merged: JsonObject = Object.create(null);
@@ -260,7 +265,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string): Case {
     source = merged.source as string;
   }
 
-  const c: Case = { name, source, expect: buildExpect(raw.expect, where) };
+  const c: Case = { name, source, expect: "expect" in raw ? buildExpect(raw.expect, where) : { kind: "result" } };
   if ("version" in merged) c.version = merged.version as string;
   if ("env" in merged) c.env = merged.env as string;
   if ("opaque" in merged) c.opaque = merged.opaque as string[];

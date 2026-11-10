@@ -73,3 +73,26 @@ describe("02 section 7: worked counts", () => {
     test(src, () => assert.deepEqual(usage(src, v), { steps, allocated: units }));
   }
 });
+
+describe("ruling AH2: an empty pair is entered, with the depth test", () => {
+  const at = (depth: number, src: string) => {
+    const o = createEnv({ limits: { depth } }).compile(src).execute();
+    return o.ok ? "ok" : o.diagnostic.code;
+  };
+  test("== on empty lists and maps, at the limit and one past it", () => {
+    assert.equal(at(1, "[] == []"), "ok");
+    assert.equal(at(1, "[[]] == [[]]"), "depth-exceeded");
+    assert.equal(at(2, "[[]] == [[]]"), "ok");
+    assert.equal(at(1, "{a: {}} == {a: {}}"), "depth-exceeded");
+    assert.equal(at(1, "const f = x => x == []; f([])"), "depth-exceeded");
+    assert.equal(at(2, "const f = x => x == []; f([])"), "ok");
+  });
+  test("a rendering walk enters an empty list or map", () => {
+    assert.equal(at(1, "`${[[]]}`"), "depth-exceeded");
+    assert.equal(at(2, "`${[[]]}`"), "ok");
+    assert.equal(at(1, "string([{}])"), "depth-exceeded");
+  });
+  test("the empty pair still charges nothing", () => {
+    assert.deepEqual(createEnv({}).compile("[] == []").execute().usage, { steps: 0, allocated: 2 });
+  });
+});

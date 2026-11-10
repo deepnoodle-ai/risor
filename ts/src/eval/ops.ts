@@ -166,7 +166,7 @@ export function equal(r: Run, a: unknown, b: unknown, span: Span, level = 0): bo
         r.charge(1);
         return false;
       }
-      if (x.length === 0) return true;
+      // Ruling AH2: an empty pair is entered too.
       r.testDepth(r.depth + level + 1);
       for (let i = 0; i < x.length; i++) {
         r.charge(1);
@@ -180,7 +180,6 @@ export function equal(r: Run, a: unknown, b: unknown, span: Span, level = 0): bo
         r.charge(1);
         return false;
       }
-      if (n === 0) return true;
       r.testDepth(r.depth + level + 1);
       const keys = sortKeys(mapKeys(a as object));
       r.charge(n + sizeTogether(keys));
