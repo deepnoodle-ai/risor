@@ -48,13 +48,12 @@ func withMath(m map[string]libFunc) map[string]libFunc {
 func jsonStringify(r *run, c *libCall) any {
 	f := fenv{c: c}
 	before := r.steps
-	var b renderer
-	b.r, b.span, b.opaque = r, c.span, "json"
+	b := renderer{r: r, span: c.span, keepTo: renderKeep, opaque: "json"}
 	b.json(c.args[0])
-	f.walkSteps, f.resultW = r.steps-before, b.resultWeight()
+	f.walkSteps, f.resultW = r.steps-before, b.weight()
 	r.libSteps(c, f, f.walkSteps)
 	r.libUnits(c, f)
-	return b.finish(func(out *strings.Builder) { writeJSON(r, out, c.span, c.args[0]) })
+	return b.text(func(b *renderer) { b.json(c.args[0]) })
 }
 
 // jsonPass is the pass of 6.2.4 over a JSON text: it creates no value.

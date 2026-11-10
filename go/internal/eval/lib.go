@@ -718,13 +718,12 @@ var implemented = map[string]libFunc{
 			return s
 		}
 		before := r.steps
-		var b renderer
-		b.r, b.span = r, c.span
+		b := renderer{r: r, span: c.span, keepTo: renderKeep}
 		b.top(x)
-		f.walkSteps, f.resultW = r.steps-before, b.resultWeight()
+		f.walkSteps, f.resultW = r.steps-before, b.weight()
 		r.libSteps(c, f, f.walkSteps)
 		r.libUnits(c, f)
-		return b.finish(func(out *strings.Builder) { writeTop(r, out, c.span, x) })
+		return b.text(func(b *renderer) { b.top(x) })
 	},
 	"int": func(r *run, c *libCall) any {
 		r.charge(c, fenv{c: c})

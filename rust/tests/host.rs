@@ -662,7 +662,8 @@ fn precharge_allocation_before_building_containers_and_strings() {
         Err("steps-exceeded".into())
     );
 
-    // Long strings past RENDER_SMALL render identically when within budget.
+    // Text past the length the walk keeps (64 KiB) is rendered a second
+    // time, after the charges, to the same string.
     let ok_env = Env::builder()
         .vars("{s: string}")
         .group("json")
@@ -673,7 +674,7 @@ fn precharge_allocation_before_building_containers_and_strings() {
         })
         .build()
         .unwrap();
-    let sample = "x\"\\\t\x01é😀".repeat(300);
+    let sample = "x\"\\\t\x01é😀".repeat(6000);
     let sv = vars(&[("s", Data::Str(sample.clone()))]);
     let p_tmpl = program(&ok_env, "`<${s}>`");
     let got_tmpl = p_tmpl.run(&sv).result.unwrap();
@@ -685,4 +686,12 @@ fn precharge_allocation_before_building_containers_and_strings() {
     let p_str = program(&ok_env, "string([s])");
     let got_str = p_str.run(&sv).result.unwrap();
     assert_eq!(got_str.as_str(), Some(format!("[{want_json}]").as_str()));
+    let p_mixed = program(&ok_env, "string([s, 1.5, true, null, {a: s}])");
+    let got_mixed = p_mixed.run(&sv).result.unwrap();
+    let want_mixed = format!("[{want_json},1.5,true,null,{{\"a\":{want_json}}}]");
+    assert_eq!(got_mixed.as_str(), Some(want_mixed.as_str()));
+    let p_parts = program(&ok_env, "`<${s}${1}${[s]}>`");
+    let got_parts = p_parts.run(&sv).result.unwrap();
+    let want_parts = format!("<{}1[{want_json}]>", "x\"\\\t\x01é😀".repeat(6000));
+    assert_eq!(got_parts.as_str(), Some(want_parts.as_str()));
 }

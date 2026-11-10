@@ -878,189 +878,102 @@ func L(n int64) int64 {
 }
 
 // renderer builds the rendering of values (01-language.md 12) and charges
-// the rendering walk (02-evaluation.md 5.5). When the result stays within
-// renderSmall bytes, one pass writes it into b; past renderSmall, b is
-// discarded and the walk finishes in counting mode (measuring exact weight
-// and byte length without growing a buffer) so steps and allocation units
-// are charged before the full string is allocated.
-const renderSmall = 1024
-
+// the rendering walk (02-evaluation.md 5.5).
+//
+// The string's units come before it is built (02-evaluation.md 6.2 item 3),
+// so the walk keeps the text only while it is short: past renderKeep bytes it
+// measures the rest, and text renders the values again, uncharged, once the
+// caller has charged. A short text is built in one pass.
 type renderer struct {
-	b        strings.Builder
-	counting bool
-	weight   int64
-	bytes    int
-	r        *run
-	span     syntax.Span
+	b    strings.Builder
+	r    *run
+	span syntax.Span
 	// opaque is the template of wrong-kind for an opaque value: text, or
 	// json for json.stringify (package F6 6.1).
 	opaque string
+	// keepTo is the length up to which b keeps the text: renderKeep at
+	// first; -1 once the text has passed it, when b is empty and w and n are
+	// the weight and the length in bytes of the text; and no bound for the
+	// second rendering, whose walk is charged.
+	keepTo int
+	w      int64
+	n      int
 }
 
-func (b *renderer) addString(s string) {
-	if !b.counting && b.b.Len()+len(s) <= renderSmall {
+// renderKeep is the length in bytes up to which the walk keeps its text.
+const renderKeep = 64 << 10
+
+// keep reports whether n more bytes of text go into b. When they do not,
+// the caller measures them.
+func (b *renderer) keep(n int) bool {
+	return b.b.Len()+n <= b.keepTo || b.stop()
+}
+
+// stop turns the walk from keeping its text to measuring it. It reports
+// false.
+//
+//go:noinline
+func (b *renderer) stop() bool {
+	if b.keepTo >= 0 {
+		b.keepTo, b.w, b.n = -1, value.Weight(b.b.String()), b.b.Len()
+		b.b = strings.Builder{}
+	}
+	return false
+}
+
+// measure counts s, or its JSON form when quoted, as text not kept.
+//
+//go:noinline
+func (b *renderer) measure(s string, quoted bool) {
+	x := 0
+	if quoted {
+		x = 2 + value.EscapeExtra(s) // the quotes and escapes are ASCII
+	}
+	b.w += value.Weight(s) + int64(x)
+	b.n += len(s) + x
+}
+
+func (b *renderer) write(s string) {
+	if b.keep(len(s)) {
 		b.b.WriteString(s)
-		return
+	} else {
+		b.measure(s, false)
 	}
-	if !b.counting {
-		cur := b.b.String()
-		b.weight = value.Weight(cur)
-		b.bytes = len(cur)
-		b.b = strings.Builder{}
-		b.counting = true
-	}
-	b.weight += value.Weight(s)
-	b.bytes += len(s)
 }
 
-func (b *renderer) addASCII(s string) {
-	if !b.counting && b.b.Len()+len(s) <= renderSmall {
-		b.b.WriteString(s)
-		return
+// quote writes the JSON form of s. Its escapes can take b past keepTo by at
+// most 5 times the length of s.
+func (b *renderer) quote(s string) {
+	if b.keep(len(s) + 2) {
+		b.b.WriteByte('"')
+		value.WriteEscaped(&b.b, s)
+		b.b.WriteByte('"')
+	} else {
+		b.measure(s, true)
 	}
-	if !b.counting {
-		cur := b.b.String()
-		b.weight = value.Weight(cur)
-		b.bytes = len(cur)
-		b.b = strings.Builder{}
-		b.counting = true
-	}
-	b.weight += int64(len(s))
-	b.bytes += len(s)
 }
 
-func (b *renderer) addByte(c byte) {
-	if !b.counting && b.b.Len()+1 <= renderSmall {
-		b.b.WriteByte(c)
-		return
-	}
-	if !b.counting {
-		cur := b.b.String()
-		b.weight = value.Weight(cur)
-		b.bytes = len(cur)
-		b.b = strings.Builder{}
-		b.counting = true
-	}
-	b.weight++
-	b.bytes++
-}
+// paid reports whether this is the second rendering, which charges nothing.
+func (b *renderer) paid() bool { return b.keepTo == math.MaxInt }
 
-func (b *renderer) addEscaped(s string) {
-	if !b.counting && b.b.Len()+len(s) <= renderSmall {
-		var tmp strings.Builder
-		value.WriteEscaped(&tmp, s)
-		if b.b.Len()+tmp.Len() <= renderSmall {
-			b.b.WriteString(tmp.String())
-			return
-		}
-		b.addString(tmp.String())
-		return
-	}
-	if !b.counting {
-		cur := b.b.String()
-		b.weight = value.Weight(cur)
-		b.bytes = len(cur)
-		b.b = strings.Builder{}
-		b.counting = true
-	}
-	ew, eb := escapedMeasure(s)
-	b.weight += ew
-	b.bytes += eb
-}
-
-func escapedMeasure(s string) (weight int64, bytes int) {
-	weight = value.Weight(s)
-	bytes = len(s)
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch c {
-		case '"', '\\', '\b', '\f', '\n', '\r', '\t':
-			weight++
-			bytes++
-		default:
-			if c < 0x20 {
-				weight += 5
-				bytes += 5
-			}
-		}
-	}
-	return weight, bytes
-}
-
-func (b *renderer) resultWeight() int64 {
-	if b.counting {
-		return b.weight
+// weight is the weight of the text.
+func (b *renderer) weight() int64 {
+	if b.keepTo < 0 {
+		return b.w
 	}
 	return value.Weight(b.b.String())
 }
 
-// buildFrom writes the full string after units have been charged when the
-// first pass switched into counting mode.
-func (b *renderer) finish(emit func(*strings.Builder)) string {
-	if !b.counting {
+// text is the string, once its charges are made. When the walk did not keep
+// it, again renders it once more, into a renderer that charges nothing.
+func (b *renderer) text(again func(*renderer)) string {
+	if b.keepTo >= 0 {
 		return b.b.String()
 	}
-	var out strings.Builder
-	out.Grow(b.bytes)
-	emit(&out)
-	return out.String()
-}
-
-// writeTop writes v into out with no charges (used only in pass 2 after
-// pass 1 already validated and charged the walk).
-func writeTop(r *run, out *strings.Builder, sp syntax.Span, v any) {
-	switch x := v.(type) {
-	case nil:
-	case string:
-		out.WriteString(x)
-	case float64:
-		out.WriteString(value.FormatNumber(x))
-	case bool:
-		if x {
-			out.WriteString("true")
-		} else {
-			out.WriteString("false")
-		}
-	default:
-		writeJSON(r, out, sp, v)
-	}
-}
-
-func writeJSON(r *run, out *strings.Builder, sp syntax.Span, v any) {
-	switch value.KindOf(v) {
-	case value.Null:
-		out.WriteString("null")
-	case value.String:
-		out.WriteByte('"')
-		value.WriteEscaped(out, v.(string))
-		out.WriteByte('"')
-	case value.Number, value.Bool:
-		writeTop(r, out, sp, v)
-	case value.List:
-		n := value.Len(v)
-		out.WriteByte('[')
-		for i := 0; i < n; i++ {
-			if i > 0 {
-				out.WriteByte(',')
-			}
-			writeJSON(r, out, sp, r.read(value.At(v, i), sp))
-		}
-		out.WriteByte(']')
-	case value.Map:
-		keys := value.Keys(v)
-		out.WriteByte('{')
-		for i, k := range keys {
-			if i > 0 {
-				out.WriteByte(',')
-			}
-			out.WriteByte('"')
-			value.WriteEscaped(out, k)
-			out.WriteString(`":`)
-			x, _ := value.Get(v, k)
-			writeJSON(r, out, sp, r.read(x, sp))
-		}
-		out.WriteByte('}')
-	}
+	p := renderer{r: b.r, span: b.span, keepTo: math.MaxInt}
+	p.b.Grow(b.n)
+	again(&p)
+	return p.b.String()
 }
 
 // top renders a value as a template part or the argument of string.
@@ -1068,14 +981,14 @@ func (b *renderer) top(v any) {
 	switch x := v.(type) {
 	case nil:
 	case string:
-		b.addString(x)
+		b.write(x)
 	case float64:
-		b.addASCII(value.FormatNumber(x))
+		b.write(value.FormatNumber(x))
 	case bool:
 		if x {
-			b.addASCII("true")
+			b.write("true")
 		} else {
-			b.addASCII("false")
+			b.write("false")
 		}
 	default:
 		b.json(v)
@@ -1083,57 +996,63 @@ func (b *renderer) top(v any) {
 }
 
 func (b *renderer) json(v any) {
+	r := b.r
 	switch value.KindOf(v) {
 	case value.Null:
-		b.addASCII("null")
+		b.write("null")
 	case value.String:
-		b.addByte('"')
-		b.addEscaped(v.(string))
-		b.addByte('"')
+		b.quote(v.(string))
 	case value.Number, value.Bool:
 		b.top(v)
 	case value.List:
-		r := b.r
-		r.enterWalk()
 		n := value.Len(v)
-		r.step(int64(n))
-		b.addByte('[')
+		if !b.paid() {
+			r.enterWalk()
+			r.step(int64(n))
+		}
+		b.write("[")
 		for i := 0; i < n; i++ {
 			if i > 0 {
-				b.addByte(',')
+				b.write(",")
 			}
 			b.json(r.read(value.At(v, i), b.span))
 		}
-		b.addByte(']')
-		r.walk--
-	case value.Map:
-		r := b.r
-		r.enterWalk()
-		keys := value.Keys(v)
-		n := int64(len(keys))
-		var w int64
-		for _, k := range keys {
-			w += value.Weight(k)
+		b.write("]")
+		if !b.paid() {
+			r.walk--
 		}
-		r.step(n + L(n)*(n+w/64))
-		b.addByte('{')
+	case value.Map:
+		if !b.paid() {
+			r.enterWalk()
+		}
+		keys := value.Keys(v)
+		if !b.paid() {
+			n := int64(len(keys))
+			var w int64
+			for _, k := range keys {
+				w += value.Weight(k)
+			}
+			r.step(n + L(n)*(n+w/64))
+		}
+		b.write("{")
 		for i, k := range keys {
 			if i > 0 {
-				b.addByte(',')
+				b.write(",")
 			}
-			b.addByte('"')
-			b.addEscaped(k)
-			b.addASCII(`":`)
+			b.quote(k)
+			b.write(":")
 			x, _ := value.Get(v, k)
 			b.json(r.read(x, b.span))
 		}
-		b.addByte('}')
-		r.walk--
+		b.write("}")
+		if !b.paid() {
+			r.walk--
+		}
 	default:
 		t := b.opaque
 		if t == "" {
 			t = "text"
 		}
-		b.r.raise(fail("wrong-kind", t, b.span))
+		r.raise(fail("wrong-kind", t, b.span))
 	}
 }

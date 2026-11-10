@@ -258,230 +258,90 @@ export function contains(r: Run, op: string, x: unknown, y: unknown, span: Span)
   throw new RunFailure("wrong-kind", span, "operands", { op, left: kx, right: ky });
 }
 
-/** The UTF-16 length of `jsonString(s)` without building the escaped string. */
-function jsonStringLen(s: string): number {
-  let len = s.length + 2;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c === 0x22 || c === 0x5c || c === 0x08 || c === 0x0c || c === 0x0a || c === 0x0d || c === 0x09) {
-      len += 1;
-    } else if (c < 0x20) {
-      len += 5;
-    }
+/**
+ * Text being rendered (01 12), and its length in UTF-16 units. The string's
+ * units come before it is built (02 6.2 item 3), so the JSON form of a long
+ * string is put off: `text` makes it, after the charges.
+ */
+export class Rendering {
+  /** The text before each long string put off, and that string. */
+  private readonly before: [string, string][] = [];
+  private last = "";
+  length = 0;
+
+  add(s: string): void {
+    this.last += s;
+    this.length += s.length;
   }
-  return len;
+
+  /** The JSON form of `s`. */
+  quote(s: string): void {
+    if (s.length <= 256) return this.add(jsonString(s));
+    this.before.push([this.last, s]);
+    this.last = "";
+    let n = s.length + 2;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c === 0x22 || c === 0x5c || c === 0x08 || c === 0x0c || c === 0x0a || c === 0x0d || c === 0x09) n += 1;
+      else if (c < 0x20) n += 5;
+    }
+    this.length += n;
+  }
+
+  /** The string, once its charges are made. */
+  text(): string {
+    let out = "";
+    for (const [t, s] of this.before) out += t + jsonString(s);
+    return out + this.last;
+  }
 }
 
 /**
- * The rendering of a value (01 12), with the walk's charges (02 5.5). An
+ * Renders a value into `out` (01 12), with the walk's charges (02 5.5). An
  * opaque value fails with `wrong-kind`, template `text`, at `span`.
  */
-export function render(r: Run, v: unknown, span: Span): string {
-  const parts: string[] = [];
-  renderInto(r, v, span, parts);
-  return parts.join("");
-}
-
-/** Append the rendering of a top-level value to `parts` and return its UTF-16 length. */
-export function renderParts(r: Run, v: unknown, span: Span, parts: string[]): number {
-  const start = parts.length;
-  renderInto(r, v, span, parts);
-  let len = 0;
-  for (let i = start; i < parts.length; i++) len += parts[i].length;
-  return len;
-}
-
-function renderInto(r: Run, v: unknown, span: Span, parts: string[]): void {
+export function render(r: Run, v: unknown, span: Span, out: Rendering): void {
   switch (r.kind(v)) {
     case "string":
-      if ((v as string).length > 0) parts.push(v as string);
-      return;
+      return out.add(v as string);
     case "null":
       return;
     case "bool":
-      parts.push(String(v));
-      return;
+      return out.add(String(v));
     case "number":
-      parts.push(numberToText(v as number));
-      return;
+      return out.add(numberToText(v as number));
     case "opaque":
       throw new RunFailure("wrong-kind", span, "text", {});
   }
-  jsonForm(r, v, span, 0, parts);
-}
-
-/**
- * Render `x` for `string(x)` (04 4.4) or template parts: walk first, collect
- * fragments with deferred escaping for long strings, and return `[parts, rawIdx, totalLen]`.
- */
-export function renderWalk(r: Run, v: unknown, span: Span, top: boolean, opaqueTemplate = "text"): [string[], number[], number] {
-  const parts: string[] = [];
-  const rawIdx: number[] = [];
-  const totalLen = appendRendered(r, v, span, top, opaqueTemplate, parts, rawIdx);
-  return [parts, rawIdx, totalLen];
-}
-
-export function appendRendered(
-  r: Run,
-  v: unknown,
-  span: Span,
-  top: boolean,
-  opaqueTemplate: string,
-  parts: string[],
-  rawIdx: number[],
-): number {
-  if (top) {
-    switch (r.kind(v)) {
-      case "string": {
-        const s = v as string;
-        if (s.length > 0) parts.push(s);
-        return s.length;
-      }
-      case "null":
-        return 0;
-      case "bool": {
-        const s = String(v);
-        parts.push(s);
-        return s.length;
-      }
-      case "number": {
-        const s = numberToText(v as number);
-        parts.push(s);
-        return s.length;
-      }
-      case "opaque":
-        throw new RunFailure("wrong-kind", span, opaqueTemplate, {});
-    }
-  }
-  let totalLen = 0;
-  const walk = (x: unknown, level: number): void => {
-    switch (r.kind(x)) {
-      case "string": {
-        const s = x as string;
-        if (s.length <= 256) {
-          const js = jsonString(s);
-          totalLen += js.length;
-          parts.push(js);
-        } else {
-          totalLen += jsonStringLen(s);
-          rawIdx.push(parts.length);
-          parts.push(s);
-        }
-        return;
-      }
-      case "null":
-        totalLen += 4;
-        parts.push("null");
-        return;
-      case "bool": {
-        const s = String(x);
-        totalLen += s.length;
-        parts.push(s);
-        return;
-      }
-      case "number": {
-        const s = numberToText(x as number);
-        totalLen += s.length;
-        parts.push(s);
-        return;
-      }
-      case "opaque":
-        throw new RunFailure("wrong-kind", span, opaqueTemplate, {});
-      case "list": {
-        const xs = x as unknown[];
-        r.testDepth(r.depth + level + 1);
-        r.charge(xs.length);
-        totalLen += 2 + (xs.length > 1 ? xs.length - 1 : 0);
-        parts.push("[");
-        for (let i = 0; i < xs.length; i++) {
-          if (i > 0) parts.push(",");
-          walk(r.read(xs[i], span), level + 1);
-        }
-        parts.push("]");
-        return;
-      }
-      case "map": {
-        r.testDepth(r.depth + level + 1);
-        const keys = sortKeys(mapKeys(x as object));
-        const n = keys.length;
-        r.charge(n + L(n) * (n + sizeTogether(keys)));
-        totalLen += 2 + (n > 1 ? n - 1 : 0) + n;
-        parts.push("{");
-        for (let i = 0; i < n; i++) {
-          const k = keys[i];
-          if (i > 0) parts.push(",");
-          if (k.length <= 256) {
-            const jk = jsonString(k);
-            totalLen += jk.length;
-            parts.push(jk, ":");
-          } else {
-            totalLen += jsonStringLen(k);
-            rawIdx.push(parts.length);
-            parts.push(k, ":");
-          }
-          walk(r.read(mapGet(x as object, k), span), level + 1);
-        }
-        parts.push("}");
-        return;
-      }
-    }
-  };
-  walk(v, 0);
-  return totalLen;
-}
-
-export function finishRendered(parts: string[], rawIdx: number[]): string {
-  for (let i = 0; i < rawIdx.length; i++) {
-    const idx = rawIdx[i];
-    parts[idx] = jsonString(parts[idx]);
-  }
-  return parts.join("");
-}
-
-/**
- * Render `x` for `string(x)` (04 4.4): walk first, charge steps and units,
- * then escape deferred strings and join the fragments.
- */
-export function renderCharged(r: Run, v: unknown, span: Span): string {
-  const [parts, rawIdx, totalLen] = renderWalk(r, v, span, true, "text");
-  const sz = div64(totalLen);
-  r.charge(sz);
-  r.alloc(1 + sz);
-  return finishRendered(parts, rawIdx);
+  jsonForm(r, v, span, 0, out);
 }
 
 /** The JSON form of a value, made in a run: `json.stringify` (f06 6.1). An opaque value is `wrong-kind`, template `json`. */
-export function jsonText(r: Run, v: unknown, span: Span): string {
-  const parts: string[] = [];
-  jsonForm(r, v, span, 0, parts, "json");
-  return parts.join("");
+export function jsonText(r: Run, v: unknown, span: Span, out: Rendering): void {
+  jsonForm(r, v, span, 0, out, "json");
 }
 
-/**
- * Render `v` for `json.stringify(v)` (f06 6.1): walk first, charge steps and
- * units from fragment lengths, then escape long strings and join.
- */
-export function jsonTextCharged(r: Run, v: unknown, span: Span): string {
-  const [parts, rawIdx, totalLen] = renderWalk(r, v, span, false, "json");
-  const sz = div64(totalLen);
+/** The string a library entry renders: the steps of its size, then its units, then the string (04 4.4). */
+export function renderedText(r: Run, out: Rendering): string {
+  const sz = div64(out.length);
   r.charge(sz);
   r.alloc(1 + sz);
-  return finishRendered(parts, rawIdx);
+  return out.text();
 }
 
-function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[], opaqueTemplate = "text"): void {
+function jsonForm(r: Run, v: unknown, span: Span, level: number, out: Rendering, opaqueTemplate = "text"): void {
   switch (r.kind(v)) {
     case "string":
-      out.push(jsonString(v as string));
+      out.quote(v as string);
       return;
     case "null":
-      out.push("null");
+      out.add("null");
       return;
     case "bool":
-      out.push(String(v));
+      out.add(String(v));
       return;
     case "number":
-      out.push(numberToText(v as number));
+      out.add(numberToText(v as number));
       return;
     case "opaque":
       throw new RunFailure("wrong-kind", span, opaqueTemplate, {});
@@ -489,12 +349,12 @@ function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[], 
       const xs = v as unknown[];
       r.testDepth(r.depth + level + 1);
       r.charge(xs.length);
-      out.push("[");
+      out.add("[");
       for (let i = 0; i < xs.length; i++) {
-        if (i > 0) out.push(",");
+        if (i > 0) out.add(",");
         jsonForm(r, r.read(xs[i], span), span, level + 1, out, opaqueTemplate);
       }
-      out.push("]");
+      out.add("]");
       return;
     }
     case "map": {
@@ -502,13 +362,14 @@ function jsonForm(r: Run, v: unknown, span: Span, level: number, out: string[], 
       const keys = sortKeys(mapKeys(v as object));
       const n = keys.length;
       r.charge(n + L(n) * (n + sizeTogether(keys)));
-      out.push("{");
+      out.add("{");
       keys.forEach((k, i) => {
-        if (i > 0) out.push(",");
-        out.push(jsonString(k), ":");
+        if (i > 0) out.add(",");
+        out.quote(k);
+        out.add(":");
         jsonForm(r, r.read(mapGet(v as object, k), span), span, level + 1, out, opaqueTemplate);
       });
-      out.push("}");
+      out.add("}");
       return;
     }
   }

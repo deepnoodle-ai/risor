@@ -22,7 +22,7 @@ import { ABSENT, RMap, mapGet, mapKeys, size, truthy, cpAt, cpLength, lcpWeight,
 import { isWhole } from "../value/number.ts";
 import { conformWalk } from "./conform.ts";
 import { RunFailure, caught, messageOf } from "./failure.ts";
-import { appendRendered, arith, contains, equal, finishRendered, negate, order, sizeTogether } from "./ops.ts";
+import { Rendering, arith, contains, equal, negate, order, render, sizeTogether } from "./ops.ts";
 import type { Kind } from "../value/value.ts";
 import type { ArithOp } from "./ops.ts";
 import type { Run } from "./run.ts";
@@ -794,32 +794,20 @@ class Compiler {
     const parts = e.parts.map((p) => (typeof p === "string" ? p : this.operandOf(p)));
     const span = e.span;
     return (r) => {
-      const frags: string[] = [];
-      const rawIdx: number[] = [];
-      let totalLen = 0;
+      const out = new Rendering();
       for (let i = 0; i < parts.length; i++) {
         const p = parts[i];
-        if (typeof p === "string") {
-          if (p.length > 0) {
-            frags.push(p);
-            totalLen += p.length;
-          }
-        } else {
+        if (typeof p === "string") out.add(p);
+        else {
           const v = ev(r, p);
-          if (typeof v === "string") {
-            if (v.length > 0) {
-              frags.push(v);
-              totalLen += v.length;
-            }
-          } else {
-            totalLen += appendRendered(r, v, span, true, "text", frags, rawIdx);
-          }
+          if (typeof v === "string") out.add(v);
+          else render(r, v, span, out);
         }
       }
-      const sz = div64(totalLen);
+      const sz = div64(out.length);
       r.charge(1 + sz);
       r.alloc(1 + sz);
-      return finishRendered(frags, rawIdx);
+      return out.text();
     };
   }
 
@@ -827,45 +815,37 @@ class Compiler {
     const items = e.items.map((it) =>
       it.kind === "Spread" ? { spread: true, code: this.expr(it.value), span: it.span } : { spread: false, code: this.expr(it), span: it.span },
     );
-    const hasSpread = items.some((it) => it.spread);
-    if (!hasSpread) {
+    if (!items.some((it) => it.spread)) {
       return (r) => {
-        const vals: unknown[] = new Array(items.length);
-        for (let i = 0; i < items.length; i++) vals[i] = items[i].code(r);
-        r.alloc(1 + vals.length);
-        return vals;
+        const out: unknown[] = new Array(items.length);
+        for (let i = 0; i < items.length; i++) out[i] = items[i].code(r);
+        r.alloc(1 + out.length);
+        return out;
       };
     }
+    // With a spread, the list's length is found before the list is built (02 6.2 item 3).
     return (r) => {
-      const evaled: { spread: boolean; v: unknown }[] = new Array(items.length);
-      let total = 0;
+      const vals: unknown[] = new Array(items.length); // a spread's value is its list
+      let n = 0;
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        const v = it.code(r);
+        const v = (vals[i] = it.code(r));
         if (!it.spread) {
-          evaled[i] = { spread: false, v };
-          total++;
+          n++;
           continue;
         }
         const k = r.kind(v);
         if (k === "null") throw new RunFailure("null-operand", it.span, "spread");
         if (k !== "list") throw new RunFailure("wrong-kind", it.span, "spread-list", { kind: k });
-        const xs = v as unknown[];
-        r.charge(xs.length);
-        evaled[i] = { spread: true, v: xs };
-        total += xs.length;
+        r.charge((v as unknown[]).length);
+        n += (v as unknown[]).length;
       }
-      r.alloc(1 + total);
-      const out = new Array<unknown>(total);
-      let pos = 0;
-      for (let i = 0; i < evaled.length; i++) {
-        const evItem = evaled[i];
-        if (!evItem.spread) {
-          out[pos++] = evItem.v;
-        } else {
-          const xs = evItem.v as unknown[];
-          for (let j = 0; j < xs.length; j++) out[pos++] = xs[j];
-        }
+      r.alloc(1 + n);
+      const out: unknown[] = new Array(n);
+      let j = 0;
+      for (let i = 0; i < items.length; i++) {
+        if (!items[i].spread) out[j++] = vals[i];
+        else for (const x of vals[i] as unknown[]) out[j++] = x;
       }
       return out;
     };
@@ -882,51 +862,57 @@ class Compiler {
       const key = en.key.kind === "word" ? en.key.text : en.key.value;
       return { t: "key", key, keySize: size(key), code: this.expr(en.value) };
     });
+    // An entry evaluated: a key and its value, or a spread's map and its keys.
+    type Written = { key: string; v: unknown } | { keys: string[]; m: object };
     return (r) => {
-      type EvalEntry = { spread: false; key: string; v: unknown } | { spread: true; v: object; keys: string[] };
-      const evaled: EvalEntry[] = new Array(items.length);
-      let maxSpread = 0;
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
+      const ws: Written[] = [];
+      let k = 0; // the keys written, at least the map's entries
+      for (const it of items) {
         if (it.t === "key") {
           const v = it.code(r);
           r.charge(it.keySize);
-          evaled[i] = { spread: false, key: it.key, v };
+          ws.push({ key: it.key, v });
+          k++;
         } else if (it.t === "computed") {
-          const k = it.key(r);
-          const kk = r.kind(k);
+          const key = it.key(r);
+          const kk = r.kind(key);
           if (kk === "null") throw new RunFailure("null-operand", it.span, "key");
-          if (kk !== "string") throw new RunFailure("wrong-kind", it.span, "key", { found: k });
+          if (kk !== "string") throw new RunFailure("wrong-kind", it.span, "key", { found: key });
           const v = it.code(r);
-          r.charge(size(k as string));
-          evaled[i] = { spread: false, key: k as string, v };
+          r.charge(size(key as string));
+          ws.push({ key: key as string, v });
+          k++;
         } else {
           const v = it.code(r);
-          const k = r.kind(v);
-          if (k === "null") throw new RunFailure("null-operand", it.span, "spread");
-          if (k !== "map") throw new RunFailure("wrong-kind", it.span, "spread-map", { kind: k });
+          const kind = r.kind(v);
+          if (kind === "null") throw new RunFailure("null-operand", it.span, "spread");
+          if (kind !== "map") throw new RunFailure("wrong-kind", it.span, "spread-map", { kind });
           const keys = mapKeys(v as object);
           r.charge(keys.length + sizeTogether(keys));
-          if (keys.length > maxSpread) maxSpread = keys.length;
-          evaled[i] = { spread: true, v: v as object, keys };
+          ws.push({ keys, m: v as object });
+          k += keys.length;
         }
       }
-      if (1 + 2 * maxSpread > r.unitLimit - r.units) {
-        r.alloc(1 + 2 * maxSpread);
+      // The map's units come before the map (02 6.2 item 3). When k keys could
+      // pass the limit, the number of entries is found first, without
+      // building: the keys written, each counted once. The pass is linear in
+      // k, which the spreads have charged as steps.
+      let charged = false;
+      if (1 + 2 * k > r.unitLimit - r.units) {
+        const seen = new Set<string>();
+        for (const w of ws) {
+          if ("m" in w) for (const key of w.keys) seen.add(key);
+          else seen.add(w.key);
+        }
+        r.alloc(1 + 2 * seen.size);
+        charged = true;
       }
       const m = new RMap();
-      for (let i = 0; i < evaled.length; i++) {
-        const evEntry = evaled[i];
-        if (!evEntry.spread) {
-          m.set(evEntry.key, evEntry.v);
-        } else {
-          for (let j = 0; j < evEntry.keys.length; j++) {
-            const key = evEntry.keys[j];
-            m.set(key, mapGet(evEntry.v, key));
-          }
-        }
+      for (const w of ws) {
+        if ("m" in w) for (const key of w.keys) m.set(key, mapGet(w.m, key));
+        else m.set(w.key, w.v);
       }
-      r.alloc(1 + 2 * m.size);
+      if (!charged) r.alloc(1 + 2 * m.size);
       return m;
     };
   }

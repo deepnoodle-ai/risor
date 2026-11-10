@@ -443,18 +443,57 @@ func TestPreAllocationChargingBeforeGrowth(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, runErr(t, bothEnv, "`${s}`", vars).Code, "steps-exceeded")
 
-	// Large strings past the counting threshold still render identically when within budget.
+	// Text past the length the walk keeps (64 KiB) is rendered a second
+	// time, after the charges, to the same string.
 	okEnv, err := risor.NewEnv(
 		risor.Declare("{s: string}"),
 		risor.Groups("json"),
 		risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit},
 	)
 	assert.NoError(t, err)
-	short := strings.Repeat("x\"\\\t\x01é😀", 300)
+	short := strings.Repeat("x\"\\\t\x01é😀", 6000)
 	v := risor.Map{"s": short}
 	assert.Equal(t, run(t, okEnv, "`<${s}>`", v), any("<"+short+">"))
 	wantJSON, err := risor.JSONText(short)
 	assert.NoError(t, err)
 	assert.Equal(t, run(t, okEnv, "json.stringify(s)", v), any(wantJSON))
 	assert.Equal(t, run(t, okEnv, "string([s])", v), any("["+wantJSON+"]"))
+	assert.Equal(t, run(t, okEnv, "string([s, 1.5, true, null, {a: s}])", v),
+		any("["+wantJSON+",1.5,true,null,{\"a\":"+wantJSON+"}]"))
+	assert.Equal(t, run(t, okEnv, "`<${s}${1}${[s]}>`", v), any("<"+short+"1["+wantJSON+"]>"))
+}
+
+// A map literal of many spreads, whose keys written pass the allocation
+// limit, is charged for its entries, each key once, before it is built
+// (02-evaluation.md 6.2 items 2 and 3).
+func TestMapSpreadsCountedBeforeBuilt(t *testing.T) {
+	vars := risor.Map{}
+	decl, src := "{", "{"
+	for i := 0; i < 10; i++ {
+		m := map[string]any{}
+		for j := i * 10; j < i*10+50; j++ {
+			m[fmt.Sprintf("k%d", j)] = float64(i)
+		}
+		vars[fmt.Sprintf("m%d", i)] = m
+		decl += fmt.Sprintf("m%d: map<float>, ", i)
+	}
+	decl += "}"
+	for range 10 {
+		for i := 0; i < 10; i++ {
+			src += fmt.Sprintf("...m%d, ", i)
+		}
+	}
+	src += "z: 1}"
+	// 100 spreads write 5,001 keys; the map has 141 entries.
+	limit := func(alloc int64) *risor.Env {
+		env, err := risor.NewEnv(risor.Declare(decl), risor.Limits{Steps: risor.NoLimit, Alloc: alloc})
+		assert.NoError(t, err)
+		return env
+	}
+	m := run(t, limit(1+2*141), src, vars).(map[string]any)
+	assert.Equal(t, len(m), 141)
+	assert.Equal(t, m["k0"], any(0.0))
+	assert.Equal(t, m["k55"], any(5.0))
+	assert.Equal(t, m["k139"], any(9.0))
+	assert.Equal(t, runErr(t, limit(2*141), src, vars).Code, "allocation-exceeded")
 }

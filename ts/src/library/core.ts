@@ -6,7 +6,7 @@
 // Every failure an entry raises has the span of the whole call (04 2.6 item 6).
 
 import { RunFailure } from "../eval/failure.ts";
-import { L, renderCharged, sizeTogether } from "../eval/ops.ts";
+import { L, Rendering, render, renderedText, sizeTogether } from "../eval/ops.ts";
 import { isWhole, norm, parseDecimal } from "../value/number.ts";
 import { ABSENT, RMap, compareText, cpLength, mapGet, mapKeys, mapSize, size, sortKeys, truthy, div64 } from "../value/value.ts";
 import { orderedFailure } from "./args.ts";
@@ -200,7 +200,9 @@ implement(null, "len", (c) => {
 implement(null, "string", (c) => {
   const x = c.args[0];
   if (c.run.kind(x) === "string") return x;
-  return renderCharged(c.run, x, c.span);
+  const out = new Rendering();
+  render(c.run, x, c.span, out);
+  return renderedText(c.run, out);
 });
 
 const JSON_GRAMMAR = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;

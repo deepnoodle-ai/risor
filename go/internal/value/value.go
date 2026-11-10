@@ -559,6 +559,22 @@ func writeEscaped(b *strings.Builder, s string) {
 // WriteEscaped writes the inside of the JSON form of a string to b.
 func WriteEscaped(b *strings.Builder, s string) { writeEscaped(b, s) }
 
+// EscapeExtra is the number of bytes that WriteEscaped adds to s.
+func EscapeExtra(s string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '"', '\\', '\b', '\f', '\n', '\r', '\t':
+			n++
+		default:
+			if c < 0x20 {
+				n += 5
+			}
+		}
+	}
+	return n
+}
+
 // IsWord reports whether s is a word of 01-language.md 2.4.
 func IsWord(s string) bool {
 	if s == "" {

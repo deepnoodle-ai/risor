@@ -603,17 +603,13 @@ impl<'h> Run<'h> {
                 if let Value::Str(_) = x {
                     return Ok(x);
                 }
-                let mut rbuf = super::RenderBuf::new(String::new());
-                self.render_walk(&x, &mut rbuf, true, span)?;
-                let sz = rbuf.weight() / 64;
+                let mut out = super::Rendering::new(String::new());
+                self.render(&x, &mut out, true, span)?;
+                let sz = out.weight() / 64;
                 self.charge(sz)?;
                 self.alloc(1 + sz)?;
-                if !rbuf.counting {
-                    return Ok(Value::str(rbuf.buf));
-                }
-                let mut out = String::with_capacity(rbuf.bytes);
-                self.write_rendered(&x, &mut out, true, span)?;
-                Ok(Value::str(out))
+                let s = self.rendered(out, |r, o| r.render(&x, o, true, span))?;
+                Ok(Value::str(s))
             }
             "int" | "float" => {
                 let n = match &x {

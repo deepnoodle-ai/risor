@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -740,45 +739,39 @@ func (c *compiler) template(n *syntax.Template) code {
 		x    code
 	}
 	var parts []part
-	exprCount := 0
 	for _, p := range n.Parts {
 		if p.Expr != nil {
 			parts = append(parts, part{x: c.expr(p.Expr)})
-			exprCount++
 		} else if p.Text != "" {
 			parts = append(parts, part{text: p.Text})
 		}
 	}
 	sp := n.Span()
 	return func(r *run) any {
-		var b renderer
-		b.r, b.span = r, sp
-		var stackVals [8]any
-		vals := stackVals[:0]
-		if exprCount > len(stackVals) {
-			vals = make([]any, 0, exprCount)
-		}
+		b := renderer{r: r, span: sp, keepTo: renderKeep}
+		var buf [8]any
+		vals := buf[:0] // the parts' values, for a second rendering
 		for _, p := range parts {
 			if p.x == nil {
-				b.addString(p.text)
+				b.write(p.text)
 				continue
 			}
 			v := p.x(r)
 			vals = append(vals, v)
 			b.top(v)
 		}
-		sz := b.resultWeight() / 64
+		sz := b.weight() / 64
 		r.step(1 + sz)
 		r.unit(1 + sz)
-		return b.finish(func(out *strings.Builder) {
-			vi := 0
+		return b.text(func(b *renderer) {
+			i := 0
 			for _, p := range parts {
 				if p.x == nil {
-					out.WriteString(p.text)
-					continue
+					b.write(p.text)
+				} else {
+					b.top(vals[i])
+					i++
 				}
-				writeTop(r, out, sp, vals[vi])
-				vi++
 			}
 		})
 	}
@@ -791,48 +784,37 @@ func (c *compiler) list(n *syntax.List) code {
 		span   syntax.Span
 	}
 	items := make([]item, len(n.Items))
-	hasSpread := false
+	spreads := false
 	for i, it := range n.Items {
 		if s, ok := it.(*syntax.Spread); ok {
 			items[i] = item{x: c.expr(s.Value), spread: true, span: s.Span()}
-			hasSpread = true
+			spreads = true
 		} else {
 			items[i] = item{x: c.expr(it)}
 		}
 	}
-	if !hasSpread {
+	// Without a spread, the list has one element for each item.
+	if !spreads {
 		return func(r *run) any {
-			var stackVals [8]any
-			vals := stackVals[:0]
-			if len(items) > len(stackVals) {
-				vals = make([]any, 0, len(items))
+			out := make([]any, len(items))
+			for i, it := range items {
+				out[i] = it.x(r)
 			}
-			for _, it := range items {
-				vals = append(vals, it.x(r))
-			}
-			r.unit(1 + int64(len(vals)))
-			out := make([]any, len(vals))
-			copy(out, vals)
+			r.unit(1 + int64(len(out)))
 			return out
 		}
 	}
+	// With a spread, the list's length is found before the list is built
+	// (02-evaluation.md 6.2 item 3).
 	return func(r *run) any {
-		type evalItem struct {
-			v      any
-			length int
-			spread bool
-		}
-		var stackVals [8]evalItem
-		vals := stackVals[:0]
-		if len(items) > len(stackVals) {
-			vals = make([]evalItem, 0, len(items))
-		}
-		total := 0
+		var buf [8]any
+		vals := buf[:0] // the items' values; a spread's is its list
+		k := 0
 		for _, it := range items {
 			v := it.x(r)
+			vals = append(vals, v)
 			if !it.spread {
-				vals = append(vals, evalItem{v: v})
-				total++
+				k++
 				continue
 			}
 			switch value.KindOf(v) {
@@ -842,42 +824,82 @@ func (c *compiler) list(n *syntax.List) code {
 			default:
 				r.raise(fail("wrong-kind", "spread-list", it.span, messages.Val("kind", v)))
 			}
-			k := value.Len(v)
-			r.step(int64(k))
-			vals = append(vals, evalItem{v: v, length: k, spread: true})
-			total += k
+			n := value.Len(v)
+			r.step(int64(n))
+			k += n
 		}
-		r.unit(1 + int64(total))
-		out := make([]any, 0, total)
-		for _, ev := range vals {
-			if !ev.spread {
-				out = append(out, ev.v)
+		r.unit(1 + int64(k))
+		out := make([]any, 0, k)
+		for i, v := range vals {
+			if !items[i].spread {
+				out = append(out, v)
 				continue
 			}
-			for i := 0; i < ev.length; i++ {
-				out = append(out, value.At(ev.v, i))
+			for j, n := 0, value.Len(v); j < n; j++ {
+				out = append(out, value.At(v, j))
 			}
 		}
 		return out
 	}
 }
 
-func (c *compiler) mapLit(n *syntax.Map) code {
-	type entry struct {
-		key    string
-		size   int64
-		keyX   code
-		x      code
-		spread bool
-		span   syntax.Span
+// mapEntry is an entry of a map literal.
+type mapEntry struct {
+	key    string
+	size   int64
+	keyX   code
+	x      code
+	spread bool
+	span   syntax.Span
+}
+
+// eval evaluates the entry, with its tests and the charge for the size of
+// its keys (02-evaluation.md 5.2). It gives a key and its value, or for a
+// spread the map; n is the number of keys written.
+func (e *mapEntry) eval(r *run) (key string, v any, n int) {
+	switch {
+	case e.spread:
+		v = e.x(r)
+		switch value.KindOf(v) {
+		case value.Map:
+		case value.Null:
+			r.raise(fail("null-operand", "spread", e.span))
+		default:
+			r.raise(fail("wrong-kind", "spread-map", e.span, messages.Val("kind", v)))
+		}
+		var w int64
+		value.ForEachKey(v, func(k string) { w += value.Weight(k); n++ })
+		r.step(int64(n) + w/64)
+		return "", v, n
+	case e.keyX != nil:
+		k := e.keyX(r)
+		ks, ok := k.(string)
+		if !ok {
+			if k == nil {
+				r.raise(fail("null-operand", "key", e.span))
+			}
+			r.raise(fail("wrong-kind", "key", e.span, messages.Val("found", k)))
+		}
+		v = e.x(r)
+		r.step(value.Size(ks))
+		return ks, v, 1
+	default:
+		v = e.x(r)
+		r.step(e.size)
+		return e.key, v, 1
 	}
-	entries := make([]entry, len(n.Entries))
+}
+
+func (c *compiler) mapLit(n *syntax.Map) code {
+	entries := make([]mapEntry, len(n.Entries))
+	spreads := false
 	for i, e := range n.Entries {
 		switch e := e.(type) {
 		case *syntax.Spread:
-			entries[i] = entry{x: c.expr(e.Value), spread: true, span: e.Span()}
+			entries[i] = mapEntry{x: c.expr(e.Value), spread: true, span: e.Span()}
+			spreads = true
 		case *syntax.Entry:
-			en := entry{x: c.expr(e.Value), span: e.Span()}
+			en := mapEntry{x: c.expr(e.Value), span: e.Span()}
 			if e.KeyForm == syntax.KeyComputed {
 				en.keyX = c.expr(e.KeyExpr)
 			} else {
@@ -886,73 +908,62 @@ func (c *compiler) mapLit(n *syntax.Map) code {
 			entries[i] = en
 		}
 	}
+	// Without a spread, the map has at most one entry for each written, so
+	// it is built as they are evaluated.
+	if !spreads {
+		return func(r *run) any {
+			out := make(map[string]any, len(entries))
+			for i := range entries {
+				k, v, _ := entries[i].eval(r)
+				out[k] = v
+			}
+			r.unit(1 + 2*int64(len(out)))
+			return out
+		}
+	}
+	// written is an entry evaluated: a key and its value, or a spread's map.
+	type written struct {
+		key    string
+		v      any
+		spread bool
+	}
 	return func(r *run) any {
-		type evalEntry struct {
-			key    string
-			v      any
-			spread bool
+		var buf [8]written
+		ws := buf[:0]
+		k := 0 // the keys written, at least the map's entries
+		for i := range entries {
+			key, v, n := entries[i].eval(r)
+			ws = append(ws, written{key, v, entries[i].spread})
+			k += n
 		}
-		var stackVals [8]evalEntry
-		vals := stackVals[:0]
-		if len(entries) > len(stackVals) {
-			vals = make([]evalEntry, 0, len(entries))
-		}
-		maxSpread := 0
-		for _, e := range entries {
-			switch {
-			case e.spread:
-				v := e.x(r)
-				switch value.KindOf(v) {
-				case value.Map:
-				case value.Null:
-					r.raise(fail("null-operand", "spread", e.span))
-				default:
-					r.raise(fail("wrong-kind", "spread-map", e.span, messages.Val("kind", v)))
+		// The map's units come before the map (02-evaluation.md 6.2 item 3).
+		// When k keys could pass the limit, the number of entries is found
+		// first, without building: the keys written, each counted once. The
+		// pass is linear in k, which the spreads have charged as steps.
+		size, charged := k, false
+		if r.maxUnits >= 0 && 1+2*int64(k) > r.maxUnits-r.units {
+			seen := make(map[string]struct{}, len(ws))
+			for _, e := range ws {
+				if e.spread {
+					value.ForEachKey(e.v, func(key string) { seen[key] = struct{}{} })
+				} else {
+					seen[e.key] = struct{}{}
 				}
-				var w int64
-				keys := 0
-				value.ForEachKey(v, func(k string) { w += value.Weight(k); keys++ })
-				r.step(int64(keys) + w/64)
-				if keys > maxSpread {
-					maxSpread = keys
-				}
-				vals = append(vals, evalEntry{v: v, spread: true})
-			case e.keyX != nil:
-				k := e.keyX(r)
-				ks, ok := k.(string)
-				if !ok {
-					if k == nil {
-						r.raise(fail("null-operand", "key", e.span))
-					}
-					r.raise(fail("wrong-kind", "key", e.span, messages.Val("found", k)))
-				}
-				v := e.x(r)
-				r.step(value.Size(ks))
-				vals = append(vals, evalEntry{key: ks, v: v})
-			default:
-				v := e.x(r)
-				r.step(e.size)
-				vals = append(vals, evalEntry{key: e.key, v: v})
 			}
+			size, charged = len(seen), true
+			r.unit(1 + 2*int64(size))
 		}
-		// Any spread gives a lower bound on the final map's key count, so a
-		// spread that alone exceeds the unit limit fails before allocating out.
-		if r.maxUnits >= 0 && 1+2*int64(maxSpread) > r.maxUnits-r.units {
-			r.unit(1 + 2*int64(maxSpread))
-		}
-		capHint := len(entries)
-		if maxSpread > capHint {
-			capHint = maxSpread
-		}
-		out := make(map[string]any, capHint)
-		for _, ev := range vals {
-			if ev.spread {
-				value.ForEachKey(ev.v, func(k string) { out[k], _ = value.Get(ev.v, k) })
+		out := make(map[string]any, size)
+		for _, e := range ws {
+			if e.spread {
+				value.ForEachKey(e.v, func(key string) { out[key], _ = value.Get(e.v, key) })
 			} else {
-				out[ev.key] = ev.v
+				out[e.key] = e.v
 			}
 		}
-		r.unit(1 + 2*int64(len(out)))
+		if !charged {
+			r.unit(1 + 2*int64(len(out)))
+		}
 		return out
 	}
 }
