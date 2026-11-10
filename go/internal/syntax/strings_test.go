@@ -8,17 +8,34 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// F3 7.3: a text block is read in time linear in its source text.
+// F3 7.3: a text block is read in time linear in its source text. The test
+// compares two sizes, so it does not depend on how fast the machine is: a
+// lexer that looked at each earlier line again would take 64 times as long
+// for 8 times the text.
 func TestTextBlockIsLinear(t *testing.T) {
+	block := func(lines int) string {
+		return "\"\"\"\n" + strings.Repeat("  line of text\n", lines) + "  \"\"\""
+	}
+	timeOf := func(lines int) time.Duration {
+		src := block(lines)
+		best := time.Duration(1 << 62)
+		for i := 0; i < 3; i++ {
+			start := time.Now()
+			parse(t, src)
+			if d := time.Since(start); d < best {
+				best = d
+			}
+		}
+		return best
+	}
 	n := 200000
-	src := "\"\"\"\n" + strings.Repeat("  line of text\n", n) + "  \"\"\""
-	start := time.Now()
-	prog := parse(t, src)
-	assert.True(t, time.Since(start) < 2*time.Second, "took %v", time.Since(start))
+	small, large := timeOf(n/8), timeOf(n)
+	assert.True(t, large < 24*small+50*time.Millisecond, "%d lines took %v, %d lines took %v", n/8, small, n, large)
+	prog := parse(t, block(n))
 	s := prog.Result.(*String)
 	assert.Equal(t, len(s.Value), n*len("line of text\n")-1)
 	// With an interpolation on every line.
-	src = "\"\"\"\n" + strings.Repeat("  a${1}\n", n/10) + "  \"\"\""
+	src := "\"\"\"\n" + strings.Repeat("  a${1}\n", n/10) + "  \"\"\""
 	prog = parse(t, src)
 	assert.Equal(t, len(prog.Result.(*Template).Parts), 2*(n/10)+1)
 }

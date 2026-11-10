@@ -10,10 +10,25 @@ const value = (src: string) => createEnv({}).compile(src).run();
 
 describe("f03: text blocks", () => {
   test("a block of 200,000 lines is read in linear time (7.3)", () => {
-    const lines = Array.from({ length: 200_000 }, (_, i) => `    line ${i}`).join("\n");
-    const t0 = performance.now();
-    const v = value(`"""\n${lines}\n    """`) as string;
-    assert.ok(performance.now() - t0 < 2000);
+    // Two sizes are compared, so the test does not depend on how fast the
+    // machine is: reading each earlier line again would take 64 times as
+    // long for 8 times the text.
+    const block = (n: number) =>
+      `"""\n${Array.from({ length: n }, (_, i) => `    line ${i}`).join("\n")}\n    """`;
+    const timeOf = (n: number) => {
+      const src = block(n);
+      let best = Infinity;
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now();
+        value(src);
+        best = Math.min(best, performance.now() - t0);
+      }
+      return best;
+    };
+    const small = timeOf(25_000);
+    const large = timeOf(200_000);
+    assert.ok(large < 24 * small + 50, `25,000 lines took ${small} ms, 200,000 took ${large} ms`);
+    const v = value(block(200_000)) as string;
     assert.equal(v.split("\n").length, 200_000);
     assert.equal(v.slice(0, 7), "line 0\n");
   });

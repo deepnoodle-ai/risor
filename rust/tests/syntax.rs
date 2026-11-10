@@ -721,15 +721,39 @@ fn str_value(src: &str) -> String {
 /// F3 7.3: a block is read in time linear in its length.
 #[test]
 fn a_long_text_block_reads_in_linear_time() {
-    let n = 200_000;
-    let mut src = String::from("\"\"\"\n");
-    for _ in 0..n {
-        src.push_str("    line of text\n");
+    // Two sizes are compared, so the test does not depend on how fast the
+    // machine is: reading each earlier line again would take 64 times as
+    // long for 8 times the text.
+    fn block(n: usize) -> String {
+        let mut src = String::from("\"\"\"\n");
+        for _ in 0..n {
+            src.push_str("    line of text\n");
+        }
+        src.push_str("    \"\"\"");
+        src
     }
-    src.push_str("    \"\"\"");
-    let start = std::time::Instant::now();
-    let v = str_value(&src);
-    assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    fn time_of(n: usize) -> std::time::Duration {
+        let src = block(n);
+        let mut best = std::time::Duration::MAX;
+        for _ in 0..3 {
+            let start = std::time::Instant::now();
+            let _ = str_value(&src);
+            best = best.min(start.elapsed());
+        }
+        best
+    }
+    let n = 200_000;
+    let small = time_of(n / 8);
+    let large = time_of(n);
+    assert!(
+        large < small * 24 + std::time::Duration::from_millis(50),
+        "{} lines took {:?}, {} lines took {:?}",
+        n / 8,
+        small,
+        n,
+        large
+    );
+    let v = str_value(&block(n));
     assert_eq!(v.len(), n * 13 - 1);
 }
 
