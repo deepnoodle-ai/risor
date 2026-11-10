@@ -32,7 +32,7 @@ type Case struct {
 	Version      string // empty when absent
 	Env          *string
 	Opaque       []string
-	Methods      map[string]string
+	Methods      map[string]*Stub
 	Functions    map[string]*Stub
 	Reject       []string
 	HasReject    bool
@@ -132,6 +132,21 @@ func Parse(data []byte, path string) (*File, error) {
 	return FromValue(raw, path)
 }
 
+// LoadNoExpect reads a case file in which a case may have no expect, as the
+// outcome command of ruling AJ takes.
+func LoadNoExpect(path string) (*File, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, &InvalidError{Path: path, Reason: err.Error()}
+	}
+	raw, err := DecodeJSON(data)
+	if err != nil {
+		return nil, &InvalidError{Path: path, Reason: err.Error()}
+	}
+	v := &validator{path: path, dir: filepath.Dir(path), noExpect: true}
+	return v.file(raw)
+}
+
 // FromValue validates a decoded case file, or a list of cases with no
 // header such as the cases of a library.json entry.
 func FromValue(raw any, path string) (*File, error) {
@@ -145,9 +160,11 @@ func FromValue(raw any, path string) (*File, error) {
 }
 
 type validator struct {
-	path  string
-	dir   string
-	names []string
+	// noExpect accepts a case with no expect (the outcome command).
+	noExpect bool
+	path     string
+	dir      string
+	names    []string
 }
 
 func (v *validator) invalid(format string, args ...any) error {
@@ -264,7 +281,10 @@ func (v *validator) file(raw any) (*File, error) {
 			}
 		}
 		if _, ok := m["expect"]; !ok {
-			return nil, v.invalid("%s has no expect", where)
+			if !v.noExpect {
+				return nil, v.invalid("%s has no expect", where)
+			}
+			m["expect"] = map[string]any{}
 		}
 		merged := map[string]any{}
 		for k, val := range header {
@@ -345,8 +365,8 @@ func (v *validator) fields(m map[string]any, where string) error {
 			if !methodRe.MatchString(k) {
 				return v.invalid("%s: the method name %q is not Type.method", where, k)
 			}
-			if _, ok := s.(string); !ok {
-				return v.invalid("%s: method %s is not a string", where, k)
+			if err := v.stub(s, where+": method "+k); err != nil {
+				return err
 			}
 		}
 	}
@@ -485,9 +505,13 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 		c.HasReject = true
 	}
 	if x, ok := m["methods"]; ok {
-		c.Methods = map[string]string{}
+		c.Methods = map[string]*Stub{}
 		for k, s := range x.(map[string]any) {
-			c.Methods[k] = s.(string)
+			st, err := v.buildStub(s, where, k, c.Opaque)
+			if err != nil {
+				return nil, err
+			}
+			c.Methods[k] = st
 		}
 	}
 	if x, ok := m["precondition"]; ok {
@@ -511,37 +535,19 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	if x, ok := m["functions"]; ok {
 		c.Functions = map[string]*Stub{}
 		for name, s := range x.(map[string]any) {
-			st := &Stub{}
-			switch s := s.(type) {
-			case string:
-				st.Type = &s
-			case map[string]any:
-				st.Type = optString(s, "type")
-				if calls, ok := s["calls"]; ok {
-					for _, r := range calls.([]any) {
-						rm := r.(map[string]any)
-						row := &Row{}
-						if a, ok := rm["args"]; ok {
-							row.Args, row.HasArgs = a.([]any), true
-						}
-						row.Result = rm["result"]
-						row.Error = optString(rm, "error")
-						row.Charge, _ = isWhole(rm["charge"])
-						row.Allocate, _ = isWhole(rm["allocate"])
-						st.Calls = append(st.Calls, row)
-					}
-				}
-			}
-			// 3.10.10 item 11: the base environment of the suite declares no
-			// host function, so a stub needs its type.
-			if st.Type == nil {
-				return nil, v.invalid("%s: the stub %q has no type", where, name)
+			st, err := v.buildStub(s, where, name, c.Opaque)
+			if err != nil {
+				return nil, err
 			}
 			c.Functions[name] = st
 		}
 	}
 	if x, ok := m["vars"]; ok {
-		c.Vars = x.(map[string]any)
+		cv, err := v.opaque(x, c.Opaque, where)
+		if err != nil {
+			return nil, err
+		}
+		c.Vars = cv.(map[string]any)
 		// 3.10.10 item 9: a key of vars that is not a field of env. When env
 		// does not fit the grammar, the case fails at declare instead.
 		var fields map[string]bool
@@ -567,8 +573,112 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 	if err != nil {
 		return nil, err
 	}
+	if e.HasValue {
+		if e.Value, err = v.opaque(e.Value, c.Opaque, where); err != nil {
+			return nil, err
+		}
+	}
+	if (e.Phase == "parse" || e.Phase == "declare") && len(e.Diagnostics) > 1 {
+		return nil, v.invalid("%s: a failure of phase %s states one diagnostic", where, e.Phase)
+	}
 	c.Expect = e
 	return c, nil
+}
+
+func (v *validator) buildStub(s any, where, name string, opaque []string) (*Stub, error) {
+	st := &Stub{}
+	switch s := s.(type) {
+	case string:
+		st.Type = &s
+	case map[string]any:
+		st.Type = optString(s, "type")
+		if calls, ok := s["calls"]; ok {
+			for _, r := range calls.([]any) {
+				rm := r.(map[string]any)
+				row := &Row{}
+				if a, ok := rm["args"]; ok {
+					ca, err := v.opaque(a, opaque, where)
+					if err != nil {
+						return nil, err
+					}
+					row.Args, row.HasArgs = ca.([]any), true
+				}
+				if res, ok := rm["result"]; ok {
+					cr, err := v.opaque(res, opaque, where)
+					if err != nil {
+						return nil, err
+					}
+					row.Result = cr
+				}
+				row.Error = optString(rm, "error")
+				row.Charge, _ = isWhole(rm["charge"])
+				row.Allocate, _ = isWhole(rm["allocate"])
+				st.Calls = append(st.Calls, row)
+			}
+		}
+	}
+	// 3.10.10 item 11: the base environment of the suite declares no host
+	// function and no method, so a stub needs its type.
+	if st.Type == nil {
+		return nil, v.invalid("%s: the stub %q has no type", where, name)
+	}
+	return st, nil
+}
+
+// OpaqueValue is an opaque value of a case file (3.10.3 item 7). Two are the
+// same host value when their type and id are equal.
+type OpaqueValue struct {
+	Type string
+	ID   int64
+}
+
+// OpaqueType returns the declared type name.
+func (o OpaqueValue) OpaqueType() string { return o.Type }
+
+// opaque replaces each "$opaque" object of a host value or expected value.
+func (v *validator) opaque(x any, declared []string, where string) (any, error) {
+	switch t := x.(type) {
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			ce, err := v.opaque(e, declared, where)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = ce
+		}
+		return out, nil
+	case map[string]any:
+		if o, ok := t["$opaque"]; ok {
+			om, ok := o.(map[string]any)
+			if len(t) != 1 || !ok || len(om) != 2 {
+				return nil, v.invalid("%s: a $opaque object is not of the form {\"$opaque\": {\"type\": T, \"id\": n}}", where)
+			}
+			ty, ok1 := om["type"].(string)
+			id, ok2 := isWhole(om["id"])
+			if !ok1 || !ok2 || id < 0 {
+				return nil, v.invalid("%s: a $opaque object needs a type and an id", where)
+			}
+			found := false
+			for _, d := range declared {
+				found = found || d == ty
+			}
+			if !found {
+				return nil, v.invalid("%s: the opaque type %q is not declared", where, ty)
+			}
+			return OpaqueValue{Type: ty, ID: id}, nil
+		}
+		out := make(map[string]any, len(t))
+		for k, e := range t {
+			ce, err := v.opaque(e, declared, where)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = ce
+		}
+		return out, nil
+	}
+	return x, nil
 }
 
 func (v *validator) span(x any, where string) (*[4]int, error) {

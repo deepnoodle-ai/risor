@@ -326,6 +326,9 @@ one rounding, and must not compute in a wider format.
 2. The comparison of two lists or two maps of the same length or size is a walk
    (8.4). It enters one level for the pair.
 3. The comparison of two maps visits the left map's entries in key order.
+   The order can show only in which limit a run passes first, and only when a
+   value under some key is a list or a map. An implementation may visit the
+   entries in any order when no value of the left map is a list or a map.
 4. **Searching text.** A search for a string `x` in a string `s`, as `x in s`
    makes, does work of at most a constant times `1 + w(s)`, where `w` is weight
    (4). A search for text longer than the text searched is answered from the two

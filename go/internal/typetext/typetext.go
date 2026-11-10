@@ -158,7 +158,14 @@ func ParseType(text string) (*Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	return finish(p, p.typ)
+	t, err := finish(p, p.typ)
+	if err != nil {
+		return nil, err
+	}
+	if err := tooDeep(depthType(t)); err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 // ParseSig parses a Sig.
@@ -167,7 +174,14 @@ func ParseSig(text string) (*Sig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return finish(p, p.sig)
+	s, err := finish(p, p.sig)
+	if err != nil {
+		return nil, err
+	}
+	if err := tooDeep(depthSig(s)); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // ParseRecv parses the receiver of a method, an Alt.
@@ -176,7 +190,14 @@ func ParseRecv(text string) (*Alt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return finish(p, p.alt)
+	a, err := finish(p, p.alt)
+	if err != nil {
+		return nil, err
+	}
+	if err := tooDeep(depthAlt(a)); err != nil {
+		return nil, err
+	}
+	return a, nil
 }
 
 // ParseMethod parses a Method: "Recv.name: Sig".
@@ -185,13 +206,20 @@ func ParseMethod(text string) (*Method, error) {
 	if err != nil {
 		return nil, err
 	}
-	return finish(p, func() *Method {
+	m, err := finish(p, func() *Method {
 		recv := p.alt()
 		p.expect(syntax.Dot)
 		name := p.expectWord()
 		p.expect(syntax.Colon)
 		return &Method{Recv: recv, Name: name, Sig: p.sig()}
 	})
+	if err != nil {
+		return nil, err
+	}
+	if err := tooDeep(max(depthAlt(m.Recv), depthSig(m.Sig))); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 type parser struct {
@@ -586,4 +614,62 @@ func (s *Sig) String() string {
 		out += " where " + strings.Join(bs, ", ")
 	}
 	return out
+}
+
+// The depth of type text (05-types.md 20.5, ruling AA3): a "[]" suffix is 1
+// more than what it follows; a bracketed form is 1 more than the deepest of
+// its contents; any other text is 0.
+
+func depthType(t *Type) int {
+	d := 0
+	for _, a := range t.Alts {
+		d = max(d, depthAlt(a))
+	}
+	return d
+}
+
+func depthAlt(a *Alt) int { return depthPrim(a.Prim) + a.Lists }
+
+func depthPrim(p *Prim) int {
+	switch p.Kind {
+	case PrimMap, PrimParen:
+		return 1 + depthType(p.Elem)
+	case PrimRecord:
+		d := 0
+		for _, f := range p.Record.Fields {
+			d = max(d, depthType(f.Type))
+		}
+		if p.Record.Rest != nil {
+			d = max(d, depthType(p.Record.Rest))
+		}
+		return 1 + d
+	}
+	return 0
+}
+
+func depthSig(s *Sig) int {
+	in := 0
+	for _, pm := range s.Params {
+		if pm.Fn != nil {
+			fi := 0
+			for _, q := range pm.Fn.Params {
+				fi = max(fi, depthType(q.Type))
+			}
+			fd := 1 + fi
+			if pm.Fn.Result != nil {
+				fd = max(fd, depthType(pm.Fn.Result))
+			}
+			in = max(in, fd)
+		} else {
+			in = max(in, depthType(pm.Type))
+		}
+	}
+	return max(1+in, depthType(s.Result))
+}
+
+func tooDeep(d int) error {
+	if d > MaxBrackets {
+		return &Error{Message: "type text is nested more than 64 deep"}
+	}
+	return nil
 }

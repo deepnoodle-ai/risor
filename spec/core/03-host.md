@@ -174,6 +174,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | A type text that is malformed, that nests past the 64 levels of `05-types.md`, that names a type no declaration gives, or that `05-types.md` otherwise refuses in a declaration | `bad-type` |
 | An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
 | A rejected class that is not a check class | `bad-class` |
+| A limit that is not a whole number, or a depth limit outside 1 to 1,000 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
 | A compile against an environment that has a function or a method with no implementation | `no-implementation` |
 
@@ -444,7 +445,7 @@ codes.
 
 | Phase | Number | Codes |
 | --- | ---: | --- |
-| `declare` | 8 | `name-clash`, `reserved-namespace`, `bad-name`, `bad-signature`, `bad-type`, `bad-class`, `unsupported-version`, `no-implementation` |
+| `declare` | 9 | `name-clash`, `reserved-namespace`, `bad-name`, `bad-signature`, `bad-type`, `bad-class`, `bad-limit`, `unsupported-version`, `no-implementation` |
 | `parse` | 14 | `unexpected-token`, `unexpected-character`, `unterminated-string`, `unterminated-comment`, `bad-escape`, `line-continuation`, `bad-number`, `literal-range`, `text-block-open`, `text-block-close`, `text-block-indent`, `nesting-exceeded`, `bad-type-text`, `reserved-word` |
 | `check` | — | The codes of `05-types.md` |
 | `run` | 19 | 3.7.4 |
@@ -879,8 +880,11 @@ Each element of `diagnostics` is an object with these fields.
    16). The environment then has exactly one error, and the expected
    diagnostic is compared with the one reported.
 7. For a limit code, `span` is not compared, even when the case gives it.
-8. `class` is compared only by an implementation that checked the program at
-   step 4.
+8. `class` is compared by every implementation, with one exception. An
+   implementation that did not check the program at step 4 does not compare
+   `class` for the five codes whose class depends on the check (3.7.6):
+   `null-operand`, `wrong-kind`, `missing-field`, `no-match` and
+   `not-conforming`. A case states the class of the checked program.
 9. For `function-error`, the message is the string of the stub's `error`. For
    `failed`, it is the text given to `fail`.
 10. Step and unit counts are exact, for a result and for a run failure whose

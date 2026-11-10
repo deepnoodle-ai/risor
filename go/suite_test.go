@@ -3,17 +3,52 @@ package risor_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
+	"sort"
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/runner"
 )
 
+// report fails the test for each fail and invalid verdict, and logs the
+// count of each verdict; with -v also by file and the reasons for skip.
+func report(t *testing.T, label string, all []runner.Result) {
+	t.Helper()
+	byFile := map[string][]runner.Result{}
+	reasons := map[string]int{}
+	for _, r := range all {
+		switch r.Verdict {
+		case runner.Fail, runner.Invalid:
+			t.Error(r.String())
+		case runner.Skip:
+			reasons[r.Reason]++
+		}
+		byFile[r.File] = append(byFile[r.File], r)
+	}
+	t.Logf("%s: %s", label, runner.FormatCounts(runner.Counts(all)))
+	if !testing.Verbose() {
+		return
+	}
+	files := make([]string, 0, len(byFile))
+	for f := range byFile {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	for _, f := range files {
+		t.Logf("  %s: %s", filepath.Base(f), runner.FormatCounts(runner.Counts(byFile[f])))
+	}
+	keys := make([]string, 0, len(reasons))
+	for k := range reasons {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		t.Logf("  skip %d: %s", reasons[k], k)
+	}
+}
+
 // TestSuite runs the case files of suite/core-run. Set RISOR_CASES to a list
 // of case files or directories, separated by the path list separator, to run
-// those instead. Run with -v to see the count of each verdict.
-//
-// A case with the verdict fail or invalid fails the test.
+// those instead. Run with -v to see the counts by file.
 func TestSuite(t *testing.T) {
 	paths := []string{filepath.Join("..", "suite", "core-run")}
 	if env := os.Getenv("RISOR_CASES"); env != "" {
@@ -30,27 +65,9 @@ func TestSuite(t *testing.T) {
 		}
 		var all []runner.Result
 		for _, f := range files {
-			rs := runner.RunFile(f)
-			for _, r := range rs {
-				switch r.Verdict {
-				case runner.Fail, runner.Invalid:
-					t.Error(r.String())
-				}
-			}
-			all = append(all, rs...)
+			all = append(all, runner.RunFile(f)...)
 		}
-		t.Logf("%s: %d files, %s", root, len(files), runner.FormatCounts(runner.Counts(all)))
-		if testing.Verbose() {
-			reasons := map[string]int{}
-			for _, r := range all {
-				if r.Verdict == runner.Skip {
-					reasons[r.Reason]++
-				}
-			}
-			for reason, n := range reasons {
-				t.Logf("  skip %d: %s", n, strings.TrimSpace(reason))
-			}
-		}
+		report(t, root, all)
 	}
 }
 
@@ -65,12 +82,6 @@ func TestCatalogCases(t *testing.T) {
 			t.Logf("%s: not there yet", f.path)
 			continue
 		}
-		rs := runner.RunEntries(f.path, f.key)
-		for _, r := range rs {
-			if r.Verdict == runner.Fail || r.Verdict == runner.Invalid {
-				t.Error(r.String())
-			}
-		}
-		t.Logf("%s: %s", f.path, runner.FormatCounts(runner.Counts(rs)))
+		report(t, f.path, runner.RunEntries(f.path, f.key))
 	}
 }

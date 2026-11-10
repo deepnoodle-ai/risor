@@ -173,3 +173,6 @@ with a five-digit JSON escape) and fixed.
 | R71 | In TypeScript a plain object and a `Map` are maps. A property that holds `undefined` is absent and an `undefined` in an array is null, as in JSON. |
 | R72 | The work bound has one stated exception: ordering the keys of a map of `n` entries may take a constant times `n` × log2(`n`) comparisons, against a charge of `n`. Key order by code point is part of the language and every implementation pays it. |
 | R73 | Each implementation has a test command `outcome` that writes what it found for each case of a case file, one line of JSON each. The differential fuzzer in `fuzz/` compares the lines. A limit failure's line has no span and no usage, since the specification leaves both open. |
+| R74 | Every runner compares the class of a run failure. A runner with no checker leaves out only the five codes whose class depends on the check. |
+| R75 | `==` on two maps visits the left map's entries in key order whenever a value of it is a list or a map, because the order then decides which limit a run passes first. Otherwise any order. |
+| R76 | A new `declare` code `bad-limit`: a limit that is not a whole number, or a depth limit outside 1 to 1,000. Core has 9 `declare` codes. |

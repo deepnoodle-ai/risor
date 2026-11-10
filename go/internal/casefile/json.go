@@ -17,7 +17,7 @@ import (
 func DecodeJSON(data []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	v, err := decodeValue(dec)
+	v, err := decodeValue(dec, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -27,13 +27,19 @@ func DecodeJSON(data []byte) (any, error) {
 	return v, nil
 }
 
-func decodeValue(dec *json.Decoder) (any, error) {
+// MaxDepth is how deep the JSON of a case file may nest (3.10.10 item 15).
+const MaxDepth = 1024
+
+func decodeValue(dec *json.Decoder, depth int) (any, error) {
 	tok, err := dec.Token()
 	if err != nil {
 		return nil, err
 	}
 	switch t := tok.(type) {
 	case json.Delim:
+		if depth > MaxDepth {
+			return nil, fmt.Errorf("JSON nested deeper than %d levels", MaxDepth)
+		}
 		switch t {
 		case '{':
 			m := map[string]any{}
@@ -46,7 +52,7 @@ func decodeValue(dec *json.Decoder) (any, error) {
 				if _, dup := m[k]; dup {
 					return nil, fmt.Errorf("the key %q is repeated", k)
 				}
-				v, err := decodeValue(dec)
+				v, err := decodeValue(dec, depth+1)
 				if err != nil {
 					return nil, err
 				}
@@ -59,7 +65,7 @@ func decodeValue(dec *json.Decoder) (any, error) {
 		case '[':
 			a := []any{}
 			for dec.More() {
-				v, err := decodeValue(dec)
+				v, err := decodeValue(dec, depth+1)
 				if err != nil {
 					return nil, err
 				}

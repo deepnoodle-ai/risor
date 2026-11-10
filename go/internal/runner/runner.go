@@ -3,10 +3,13 @@
 //
 // This implementation has no type checker yet. By 3.10.8 item 5 and ruling
 // A3 it gives skip to a case that states type or sites, or that expects a
-// check code outside the static list, and it does not compare class.
+// check code outside the static list. It compares class by the column of a
+// program compiled without a check (03-host.md 3.7.6).
 package runner
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,7 +19,10 @@ import (
 	risor "github.com/deepnoodle-ai/risor/v3"
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
+	"github.com/deepnoodle-ai/risor/v3/internal/eval"
+	"github.com/deepnoodle-ai/risor/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/v3/internal/typetext"
+	"github.com/deepnoodle-ai/risor/v3/internal/value"
 )
 
 // Verdict is the verdict of a case (3.10.8).
@@ -134,6 +140,158 @@ func RunCase(c *casefile.Case) Result {
 	return r
 }
 
+// staticCodes are the eleven static codes (05-types.md 22.1).
+var staticCodes = map[string]bool{
+	"undefined-name": true, "undefined-function": true, "not-a-value": true,
+	"call-of-parameter": true, "lambda-to-lambda": true, "duplicate-name": true,
+	"shadows-namespace": true, "duplicate-key": true, "arity": true,
+	"duplicate-case": true, "unreachable-arm": true,
+}
+
+// checkedClass are the codes whose class differs between a checked and an
+// unchecked program (03-host.md 3.7.6).
+var checkedClass = map[string]bool{"null-operand": true, "wrong-kind": true,
+	"missing-field": true, "no-match": true, "not-conforming": true}
+
+// stubState records whether a call of a stub matched no row (3.10.4).
+type stubState struct {
+	unmatched []string
+}
+
+func (st *stubState) native(name string, s *casefile.Stub) risor.Native {
+	return func(call *risor.Call, args []any) (any, error) {
+		for _, row := range s.Calls {
+			if row.HasArgs {
+				if len(row.Args) != len(args) {
+					continue
+				}
+				match := true
+				for i := range args {
+					if !value.Equal(args[i], row.Args[i]) {
+						match = false
+						break
+					}
+				}
+				if !match {
+					continue
+				}
+			}
+			if err := call.Charge(row.Charge); err != nil {
+				return nil, err
+			}
+			if err := call.Allocate(row.Allocate); err != nil {
+				return nil, err
+			}
+			if row.Error != nil {
+				return nil, errors.New(*row.Error)
+			}
+			return row.Result, nil
+		}
+		st.unmatched = append(st.unmatched, name)
+		return nil, fmt.Errorf("no row of the stub %s matches the call", name)
+	}
+}
+
+// buildEnv builds the case's environment as a child of the base (3.10.9).
+func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
+	base, err := risor.NewEnv()
+	if err != nil {
+		return nil, err
+	}
+	var decls []risor.Decl
+	if c.Version != "" {
+		decls = append(decls, risor.Version(c.Version))
+	}
+	if c.Env != nil {
+		decls = append(decls, risor.Declare(*c.Env))
+	}
+	for _, o := range c.Opaque {
+		decls = append(decls, risor.OpaqueType{Name: o})
+	}
+	names := make([]string, 0, len(c.Methods))
+	for k := range c.Methods {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		typ, m, _ := strings.Cut(k, ".")
+		s := c.Methods[k]
+		decls = append(decls, risor.AddMethod(typ, m, risor.Function{Type: *s.Type, Impl: st.native(k, s)}))
+	}
+	names = names[:0]
+	for k := range c.Functions {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, k := range names {
+		s := c.Functions[k]
+		decls = append(decls, risor.Function{Name: k, Type: *s.Type, Impl: st.native(k, s)})
+	}
+	if c.HasReject {
+		decls = append(decls, risor.RejectClasses(c.Reject...))
+	}
+	if c.Limits != nil {
+		l := risor.Limits{}
+		if c.Limits.Steps != nil {
+			l.Steps = *c.Limits.Steps
+			if l.Steps == 0 {
+				l.Steps = zeroLimit
+			}
+		}
+		if c.Limits.Allocation != nil {
+			l.Alloc = *c.Limits.Allocation
+			if l.Alloc == 0 {
+				l.Alloc = zeroLimit
+			}
+		}
+		if c.Limits.Depth != nil {
+			l.Depth = int(*c.Limits.Depth)
+		}
+		decls = append(decls, l)
+	}
+	if c.Returns != nil && *c.Returns != "condition" {
+		if _, err := typetext.ParseType(*c.Returns); err != nil {
+			return nil, &risor.Error{Diagnostics: []risor.Diagnostic{{Phase: diag.PhaseDeclare, Code: diag.CodeBadType, Message: err.Error()}}}
+		}
+	}
+	return base.With(decls...)
+}
+
+// zeroLimit stands for a limit of 0, since a zero field of risor.Limits
+// keeps the default.
+const zeroLimit = risor.ZeroLimit
+
+// missingEntries lists the library entries a program calls that this
+// implementation does not have yet.
+func missingEntries(x *risor.Expr, c *casefile.Case) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(n string) {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	risor.WalkCalls(x, func(name string, method bool) {
+		if method {
+			for _, k := range []value.Kind{value.String, value.List, value.Map} {
+				if e, ok := library.Method(k, name); ok && !eval.Implemented(e) {
+					add(k.String() + "." + name)
+				}
+			}
+			return
+		}
+		if _, host := c.Functions[name]; host {
+			return
+		}
+		if e, ok := library.Functions[name]; ok && !eval.Implemented(e) {
+			add(name)
+		}
+	})
+	sort.Strings(out)
+	return out
+}
+
 func runCase(c *casefile.Case) Result {
 	if c.Skip != nil {
 		return skip(*c.Skip)
@@ -142,112 +300,126 @@ func runCase(c *casefile.Case) Result {
 	if e.Type != nil || e.HasSites {
 		return skip("needs the type checker")
 	}
-	// What S1 cannot judge yet: a later stage decides the outcome. A parse
-	// failure is still judged, since the outcome is then known.
-	later := ""
-	switch e.Phase {
-	case "declare":
-		return skip("S1: declare is not built yet")
-	case "check":
-		later = "S1: the static rules are not built yet"
-	case "run":
-		later = "S1: the evaluator is not built yet"
-	case "":
-		if e.HasValue || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || c.Vars != nil {
-			later = "S1: the evaluator is not built yet"
-		} else if c.Functions != nil || c.Opaque != nil || c.Methods != nil || c.HasReject ||
-			(c.Version != "" && c.Version != "3.0") {
-			return skip("S1: declare is not built yet")
+	if e.Phase == "check" {
+		for _, d := range e.Diagnostics {
+			if !staticCodes[d.Code] {
+				return skip("needs the type checker")
+			}
 		}
 	}
-	// Step 2, declare: S1 checks only the grammar of the type text (A2).
-	if d := declareGrammar(c); d != nil {
-		return compare(c, d)
-	}
-	// Step 3, parse.
-	_, err := risor.Parse(c.Source)
+	st := &stubState{}
+	env, err := buildEnv(c, st)
 	if err != nil {
-		return compare(c, err.(*risor.Error))
+		return compareFailure(c, err.(*risor.Error), nil, st)
 	}
-	if later != "" {
-		return skip(later)
+	x, err := risor.Parse(c.Source)
+	if err != nil {
+		return compareFailure(c, err.(*risor.Error), nil, st)
 	}
-	if e.Phase == "" {
-		// The program parses. The static rules of S2 would run here.
-		return Result{Verdict: Pass, Reason: "parsed; static rules not run (S1)"}
+	if miss := missingEntries(x, c); len(miss) > 0 {
+		return skip("S3: needs library entry " + strings.Join(miss, ", "))
 	}
-	return compare(c, nil)
+	prog, err := env.Compile(x)
+	if err != nil {
+		return compareFailure(c, err.(*risor.Error), nil, st)
+	}
+	needRun := c.Vars != nil || e.HasValue || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
+	if !needRun {
+		return compareResult(c, nil, false, nil, st)
+	}
+	vars := risor.Map(c.Vars)
+	v, usage, err := prog.Measure(context.Background(), vars)
+	if err != nil {
+		return compareFailure(c, err.(*risor.Error), &usage, st)
+	}
+	return compareResult(c, v, true, &usage, st)
 }
 
-// declareGrammar checks the grammar of the case's type text (ruling A2).
-func declareGrammar(c *casefile.Case) *risor.Error {
-	var ds []risor.Diagnostic
-	bad := func(code, msg string) {
-		ds = append(ds, risor.Diagnostic{Phase: diag.PhaseDeclare, Code: code, Message: msg})
-	}
-	if c.Env != nil {
-		if ty, err := typetext.ParseType(*c.Env); err != nil {
-			bad(diag.CodeBadType, err.Error())
-		} else if _, ok := ty.RecordFields(); !ok {
-			bad(diag.CodeBadType, "env is not one record type")
-		}
-	}
-	if c.Returns != nil && *c.Returns != "condition" {
-		if _, err := typetext.ParseType(*c.Returns); err != nil {
-			bad(diag.CodeBadType, err.Error())
-		}
-	}
-	names := make([]string, 0, len(c.Functions))
-	for n := range c.Functions {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		if _, err := typetext.ParseSig(*c.Functions[n].Type); err != nil {
-			bad(diag.CodeBadSignature, n+": "+err.Error())
-		}
-	}
-	for k, m := range c.Methods {
-		if _, err := typetext.ParseSig(m); err != nil {
-			bad(diag.CodeBadSignature, k+": "+err.Error())
-		}
-	}
-	if len(ds) == 0 {
+func fmtValue(v any) string {
+	defer func() { recover() }()
+	return value.Debug(v)
+}
+
+func countDiff(name string, want *int64, got int64) *Diff {
+	if want == nil || *want == got {
 		return nil
 	}
-	return &risor.Error{Diagnostics: ds}
+	return &Diff{name, fmt.Sprint(*want), fmt.Sprint(got)}
 }
 
-// compare compares the outcome with expect (3.10.7). err is the failure, or
-// nil for a result.
-func compare(c *casefile.Case, err *risor.Error) Result {
-	e := c.Expect
-	if err == nil {
-		if e.IsFailure() {
-			return Result{Verdict: Fail, Diffs: []Diff{{"outcome", "a failure of phase " + e.Phase, "a result"}}}
-		}
-		return Result{Verdict: Pass}
+func finish(diffs []Diff, st *stubState) Result {
+	if len(st.unmatched) > 0 {
+		diffs = append(diffs, Diff{"functions", "a row for every call", "no row matched a call of " + strings.Join(st.unmatched, ", ")})
 	}
+	if len(diffs) > 0 {
+		return Result{Verdict: Fail, Diffs: diffs}
+	}
+	return Result{Verdict: Pass}
+}
+
+func compareResult(c *casefile.Case, v any, ran bool, u *risor.Usage, st *stubState) Result {
+	e := c.Expect
+	if e.IsFailure() {
+		return finish([]Diff{{"outcome", "a failure of phase " + e.Phase, "a result " + fmtValue(v)}}, st)
+	}
+	var diffs []Diff
+	if e.HasValue && !value.Equal(v, e.Value) {
+		diffs = append(diffs, Diff{"value", fmtValue(e.Value), fmtValue(v)})
+	}
+	if e.Truthy != nil && *e.Truthy != value.Truthy(v) {
+		diffs = append(diffs, Diff{"truthy", fmt.Sprint(*e.Truthy), fmt.Sprint(value.Truthy(v))})
+	}
+	if u != nil {
+		if d := countDiff("steps", e.Steps, u.Steps); d != nil {
+			diffs = append(diffs, *d)
+		}
+		if d := countDiff("allocated", e.Allocated, u.Alloc); d != nil {
+			diffs = append(diffs, *d)
+		}
+	}
+	return finish(diffs, st)
+}
+
+func compareFailure(c *casefile.Case, err *risor.Error, u *risor.Usage, st *stubState) Result {
+	e := c.Expect
 	ph := string(err.Phase())
 	if !e.IsFailure() || e.Phase != ph {
 		want := "a result"
 		if e.IsFailure() {
 			want = "a failure of phase " + e.Phase
 		}
-		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", want, "a failure of phase " + ph + ": " + err.Error()}}}
+		return finish([]Diff{{"outcome", want, "a failure of phase " + ph + ": " + err.Error()}}, st)
 	}
+	var diffs []Diff
 	if d := compareDiagnostics(e, err.Diagnostics); d != nil {
-		return Result{Verdict: Fail, Diffs: []Diff{*d}}
+		diffs = append(diffs, *d)
 	}
-	return Result{Verdict: Pass}
+	if u != nil && ph == "run" && !diag.LimitCodes[err.Diagnostics[0].Code] {
+		if d := countDiff("steps", e.Steps, u.Steps); d != nil {
+			diffs = append(diffs, *d)
+		}
+		if d := countDiff("allocated", e.Allocated, u.Alloc); d != nil {
+			diffs = append(diffs, *d)
+		}
+	}
+	return finish(diffs, st)
 }
 
 func formatDiags(ds []risor.Diagnostic) string {
 	parts := make([]string, len(ds))
 	for i, d := range ds {
 		parts[i] = d.Code
+		if d.Class != "" {
+			parts[i] += " (" + d.Class + ")"
+		}
 		if d.Span != nil {
 			parts[i] += " " + d.Span.String()
+		}
+		if d.Phase == diag.PhaseRun || d.Phase == diag.PhaseDeclare {
+			parts[i] += fmt.Sprintf(" %q", d.Message)
+		}
+		if d.HasData {
+			parts[i] += " data " + fmtValue(d.Data)
 		}
 	}
 	return "[" + strings.Join(parts, "; ") + "]"
@@ -260,8 +432,14 @@ func formatExp(ds []*casefile.ExpDiag) string {
 		if d.Span != nil {
 			parts[i] += fmt.Sprintf(" [%d, %d, %d, %d]", d.Span[0], d.Span[1], d.Span[2], d.Span[3])
 		}
+		if d.Class != nil {
+			parts[i] += " (" + *d.Class + ")"
+		}
 		if d.Message != nil {
 			parts[i] += fmt.Sprintf(" %q", *d.Message)
+		}
+		if d.HasData {
+			parts[i] += " data " + fmtValue(d.Data)
 		}
 	}
 	return "[" + strings.Join(parts, "; ") + "]"
@@ -271,7 +449,12 @@ func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic) bool {
 	if want.Code != got.Code {
 		return false
 	}
-	// Class is compared only after a check (3.10.7 item 8); there is none.
+	// Class is compared where the two columns of 03-host.md 3.7.6 agree.
+	// For the codes below the class depends on the check (3.10.7 item 8),
+	// and this implementation compiles without one.
+	if want.Class != nil && !checkedClass[got.Code] && *want.Class != got.Class {
+		return false
+	}
 	if want.Span != nil && !diag.LimitCodes[got.Code] {
 		if got.Span == nil || got.Span.Array() != *want.Span {
 			return false
@@ -290,7 +473,9 @@ func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic) bool {
 			}
 		}
 	}
-	// data is compared with the language's == once values exist (S2).
+	if want.HasData && (!got.HasData || !value.Equal(want.Data, got.Data)) {
+		return false
+	}
 	return true
 }
 

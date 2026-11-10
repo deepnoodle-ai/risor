@@ -36,7 +36,7 @@ func TestVerdicts(t *testing.T) {
 		"wrong span":                            Fail,
 		"parses but a failure is expected":      Fail,
 		"a value from text that does not parse": Fail,
-		"a value":                               Skip,
+		"a value":                               Pass,
 		"only checks":                           Pass,
 		"needs the checker":                     Skip,
 		"skipped":                               Skip,
@@ -44,7 +44,7 @@ func TestVerdicts(t *testing.T) {
 	})
 	assert.Equal(t, rs[1].Diffs[0].Name, "diagnostics")
 	assert.Equal(t, rs[2].Diffs[0].Name, "outcome")
-	assert.Equal(t, Counts(rs), map[Verdict]int{Pass: 2, Fail: 4, Skip: 3, Invalid: 0})
+	assert.Equal(t, Counts(rs), map[Verdict]int{Pass: 3, Fail: 4, Skip: 2, Invalid: 0})
 
 	assert.NoError(t, os.WriteFile(path, []byte(`[{"name": "a"}, {"name": "b"}]`), 0o644))
 	rs = RunFile(path)
