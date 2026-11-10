@@ -1,0 +1,328 @@
+[
+ {
+  "name": "every member null is invalid, at the host fact",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "(report ?? approve).verdict",
+     "vars": {
+      "report": null,
+      "approve": null
+     },
+     "expect": {
+      "value": "x"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "invalid",
+     "fixture": [
+      "facts",
+      0
+     ],
+     "message": "at least one of report, approve must not be null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "one member not null passes",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "(report ?? approve).verdict",
+     "vars": {
+      "report": null,
+      "approve": {
+       "verdict": "ok"
+      }
+     },
+     "expect": {
+      "value": "ok"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "pass"
+    }
+   ]
+  }
+ },
+ {
+  "name": "precondition false: not tested, and the run fails with class environment",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "(report ?? approve).verdict",
+     "vars": {
+      "report": null,
+      "approve": null
+     },
+     "precondition": false,
+     "expect": {
+      "phase": "run",
+      "diagnostics": [
+       {
+        "code": "null-operand",
+        "class": "environment"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "pass"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a member not supplied: the host fact is not tested",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "approve",
+     "vars": {
+      "approve": null
+     },
+     "expect": {
+      "value": null
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "pass"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the second host fact fails",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null, n: int | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    },
+    {
+     "someNotNull": [
+      "n"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "1",
+     "vars": {
+      "report": {
+       "verdict": "ok"
+      },
+      "approve": null,
+      "n": null
+     },
+     "expect": {
+      "value": 1
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "invalid",
+     "fixture": [
+      "facts",
+      1
+     ],
+     "message": "at least one of n must not be null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the members are named in the order the case lists them",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "approve",
+      "report"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "1",
+     "vars": {
+      "report": null,
+      "approve": null
+     },
+     "expect": {
+      "value": 1
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "invalid",
+     "fixture": [
+      "facts",
+      0
+     ],
+     "message": "at least one of approve, report must not be null"
+    }
+   ]
+  }
+ },
+ {
+  "name": "the values of vars are tested first",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "1",
+     "vars": {
+      "report": 5,
+      "approve": null
+     },
+     "expect": {
+      "value": 1
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "invalid",
+     "fixture": [
+      "vars",
+      "report"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a case that never runs is not tested",
+  "runner": {
+   "env": "{report: {verdict: string} | null, approve: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    }
+   ],
+   "cases": [
+    {
+     "name": "c",
+     "source": "nope",
+     "vars": {
+      "report": null,
+      "approve": null
+     },
+     "expect": {
+      "phase": "check",
+      "diagnostics": [
+       {
+        "code": "undefined-name",
+        "span": [
+         1,
+         1,
+         1,
+         5
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "expect": {
+   "verdicts": [
+    {
+     "name": "c",
+     "status": "pass"
+    }
+   ]
+  }
+ }
+]

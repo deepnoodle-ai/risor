@@ -2146,3 +2146,4 @@ Its chapter is the home of its rules.
 | F5, tagged unions | Several record alternatives told apart by a tag: the definition, Join, Fits, Merge, printing, the facts of a test of the tag, `match` over the tag, `in` with a list of literals. `untagged-union` is then for records that form no union | `spec/packages/f05-unions.md` |
 | F8, errors, second part | A message template for every `check` code, with the types it prints | `spec/packages/f08-errors.md` 3 |
 | F10, config files | What a checked result promises against a type mapped from a schema, and where a host must still validate | `spec/packages/f10-config.md` 2 and 3 |
+| F14, host facts | The fact "is null" for a variable a host fact names, the tests that give it, the facts in the right operand of `??`, and its one effect: a member is not null where every other member is null | `spec/packages/f14-host-facts.md` 4 and 5 |

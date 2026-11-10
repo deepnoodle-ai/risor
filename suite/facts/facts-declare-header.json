@@ -1,0 +1,63 @@
+{
+ "env": "{report: {verdict: string} | null, approve: {verdict: string} | null, n: int}",
+ "facts": [
+  {
+   "someNotNull": [
+    "report",
+    "approve"
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "name": "the header's host fact holds in a case",
+   "source": "1",
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a case that replaces env keeps the header's facts, which name nothing",
+   "source": "1",
+   "env": "{report: {verdict: string} | null}",
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a case that replaces env and facts",
+   "source": "1",
+   "env": "{report: {verdict: string} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "report"
+     ]
+    }
+   ],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a case that removes the header's facts",
+   "source": "1",
+   "env": "{report: {verdict: string} | null}",
+   "facts": [],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

@@ -1,0 +1,380 @@
+{
+ "env": "{report: {verdict: string} | null, approve: {verdict: string} | null, xs: int[]}",
+ "facts": [
+  {
+   "someNotNull": [
+    "report",
+    "approve"
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "name": "the chain when the first member is null",
+   "source": "(report ?? approve).verdict",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok",
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the chain when the second member is null",
+   "source": "(report ?? approve).verdict",
+   "vars": {
+    "report": {
+     "verdict": "a"
+    },
+    "approve": null
+   },
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the chain when both are present",
+   "source": "(report ?? approve).verdict",
+   "vars": {
+    "report": {
+     "verdict": "a"
+    },
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a test for null: the member is null",
+   "source": "report == null ? approve.verdict : report.verdict",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok",
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a test for null: the member is present",
+   "source": "report == null ? approve.verdict : report.verdict",
+   "vars": {
+    "report": {
+     "verdict": "a"
+    },
+    "approve": null
+   },
+   "expect": {
+    "value": "a",
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "match: the arm of null",
+   "source": "match report { null => approve.verdict, _ => report.verdict }",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok",
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "match: the arm _",
+   "source": "match report { null => approve.verdict, _ => report.verdict }",
+   "vars": {
+    "report": {
+     "verdict": "a"
+    },
+    "approve": null
+   },
+   "expect": {
+    "value": "a",
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map pattern from the chain",
+   "source": "const {verdict} = report ?? approve; verdict",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok",
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. on the chain",
+   "source": "(report ?? approve)?.verdict",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok",
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "three members",
+   "source": "(a ?? b ?? c).v",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "vars": {
+    "a": null,
+    "b": null,
+    "c": {
+     "v": 3
+    }
+   },
+   "expect": {
+    "value": 3,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a lambda under the null fact",
+   "source": "report == null ? xs.map(i => approve.verdict) : []",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    },
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": [
+     "ok",
+     "ok"
+    ],
+    "steps": 9,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a const-bound lambda in the branch",
+   "source": "if (report == null) { const f = (i) => approve.verdict; f(1) } else { report.verdict }",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok",
+    "steps": 4,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "is null",
+   "source": "report is null ? approve.verdict : report.verdict",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok",
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a template of the chain",
+   "source": "`${(report ?? approve).verdict}!`",
+   "vars": {
+    "report": null,
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "value": "ok!",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a host that breaks the host fact: the read meets null",
+   "source": "(report ?? approve).verdict",
+   "precondition": false,
+   "vars": {
+    "report": null,
+    "approve": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "class": "environment",
+      "span": [
+       1,
+       1,
+       1,
+       28
+      ]
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a host that breaks the host fact: a read under a null fact",
+   "source": "report == null ? approve.verdict : report.verdict",
+   "precondition": false,
+   "vars": {
+    "report": null,
+    "approve": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "class": "environment",
+      "span": [
+       1,
+       18,
+       1,
+       33
+      ]
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a host that breaks the host fact: the branch it ruled out",
+   "source": "report == null && approve == null ? report.verdict : \"\"",
+   "precondition": false,
+   "vars": {
+    "report": null,
+    "approve": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "class": "environment",
+      "span": [
+       1,
+       37,
+       1,
+       51
+      ]
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a host that breaks a host fact of one member",
+   "source": "solo.v",
+   "env": "{solo: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "solo"
+     ]
+    }
+   ],
+   "precondition": false,
+   "vars": {
+    "solo": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "class": "environment",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a member the host did not supply",
+   "source": "(report ?? approve).verdict",
+   "vars": {
+    "approve": {
+     "verdict": "ok"
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-variable",
+      "class": "environment",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

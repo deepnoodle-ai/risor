@@ -1,0 +1,418 @@
+{
+ "env": "{report: {verdict: string} | null, approve: {verdict: string} | null, n: int}",
+ "functions": {
+  "rate": "() => float",
+  "geo.distance": "(a: float, b: float) => float"
+ },
+ "opaque": [
+  "Token"
+ ],
+ "cases": [
+  {
+   "name": "a host fact with no member",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": []
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that names nothing",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "reprt"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that names a host function",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "rate"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that names a namespace",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "geo"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that names a host function with its namespace",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "geo.distance"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that names an opaque type",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "Token"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that names a library function",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "len"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member named twice",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve",
+      "report"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "one member named twice",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "report"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that is not a name",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "a-b"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that is a reserved word",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "if"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member that is the empty string",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      ""
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member in another case",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "Report",
+      "approve"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a good host fact, then a bad one",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    },
+    {
+     "someNotNull": [
+      "n",
+      "nn"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "declare",
+    "diagnostics": [
+     {
+      "code": "bad-name"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a valid host fact",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    }
+   ],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a valid host fact of one member",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "approve"
+     ]
+    }
+   ],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a member whose type lacks null",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "n"
+     ]
+    }
+   ],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "one host fact declared twice",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    },
+    {
+     "someNotNull": [
+      "approve",
+      "report"
+     ]
+    }
+   ],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two host facts that share a member",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "report",
+      "approve"
+     ]
+    },
+    {
+     "someNotNull": [
+      "approve",
+      "n"
+     ]
+    }
+   ],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an empty list of host facts",
+   "source": "1",
+   "facts": [],
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fact of the case's own env",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "q"
+     ]
+    }
+   ],
+   "env": "{q: int | null}",
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

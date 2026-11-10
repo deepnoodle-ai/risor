@@ -1347,6 +1347,7 @@ above. A package's chapter is the home of its rules: this table only points.
 | F13, math functions | Nothing in the host contract: eleven entries of the group `math` | `spec/packages/f13-math.md` |
 | F8, errors, second part | The trace of a run diagnostic, and the field `trace` in an expected diagnostic. The three renderings, the field `rendered` and the `render` case. The `parse` and `check` templates of the catalog, in `suite/messages-parse.json` and `suite/messages-check.json`, and `message` in an expected parse or check diagnostic. `ConformAll`, with `max` and `failures` in a conform case | `spec/packages/f08-errors.md` |
 | F9, testing for authors | Testing the fixtures of a case against their declared types, which `"precondition": false` turns off. Cases that test a runner: the fields `runner`, `update` and `program`, and an `expect` of verdicts. Update mode. Case files written as programs. The report text. The command `risor test` | `spec/packages/f09-testing.md` |
+| F14, host facts | The declaration of a host fact: a statement about the values of an environment's variables beyond their types, part of the precondition. Its one kind, `someNotNull`. The case field `facts`, and a key of the description | `spec/packages/f14-host-facts.md` |
 | F12, tools | The formatter and the assist stage (completion and hover), each a call in every binding. The case fields `format`, `formatTemplate`, `complete` and `hover`, and the results `formatted`, `completion` and `hover`. The contract of the command line program | `spec/packages/f12-tools.md` |
 
 1. The cases of a package are in a directory of their own, and its library
@@ -1354,7 +1355,7 @@ above. A package's chapter is the home of its rules: this table only points.
    reports each directory by itself (3.10.8).
 2. A runner runs only the directories of the packages its implementation
    offers. The packages are offered in a fixed order, each only with all
-   before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F12. So a
+   before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F12. So a
    package's cases may use what an earlier package adds.
 3. For a runner, a field of a package it does not offer is a field 3.10.3
    does not list, so a file that uses it is invalid (3.10.10).

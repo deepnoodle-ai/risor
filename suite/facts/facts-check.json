@@ -1,0 +1,1353 @@
+{
+ "env": "{report: {verdict: string} | null, approve: {verdict: string} | null, third: {verdict: string} | null, other: int | null, x: bool, xs: int[], ys: ({verdict: string} | null)[]}",
+ "facts": [
+  {
+   "someNotNull": [
+    "report",
+    "approve"
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "name": "a ?? chain over both members reads a field",
+   "source": "(report ?? approve).verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "the chain's type lacks null",
+   "source": "report ?? approve",
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "the chain in the other order",
+   "source": "approve ?? report",
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "with no host fact the chain may be null",
+   "source": "(report ?? approve).verdict",
+   "facts": [],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       2,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "with no host fact the chain's type has null",
+   "source": "report ?? approve",
+   "facts": [],
+   "expect": {
+    "type": "{verdict: string} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "?. on the chain is never skipped",
+   "source": "(report ?? approve)?.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "a map pattern binds from the chain",
+   "source": "const {verdict} = report ?? approve; verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "the chain fits an expected string",
+   "source": "(report ?? approve).verdict",
+   "returns": "string",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "the chain fits an expected record without null",
+   "source": "report ?? approve",
+   "returns": "{verdict: string}",
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "with no host fact the chain does not fit an expected record",
+   "source": "report ?? approve",
+   "returns": "{verdict: string}",
+   "facts": [],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "result-mismatch",
+      "span": [
+       1,
+       1,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a chain with a variable no host fact names",
+   "source": "(report ?? third).verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       2,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member in parentheses is a member path",
+   "source": "(report) ?? approve",
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "N of a conditional is empty",
+   "source": "(x ? report : report) ?? approve",
+   "expect": {
+    "type": "{verdict: string} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "N of a chain with a step is empty",
+   "source": "report?.verdict ?? approve.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       20,
+       1,
+       27
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the right operand is checked under N of the left",
+   "source": "report ?? approve.verdict",
+   "expect": {
+    "type": "string | {verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "the left member keeps its declared type in the right operand",
+   "source": "report ?? report.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       11,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "== null: the true branch",
+   "source": "report == null ? approve.verdict : report.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "null on the left of ==",
+   "source": "null == report ? approve.verdict : report.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "!= null: the false branch",
+   "source": "report != null ? report.verdict : approve.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "null on the left of !=",
+   "source": "null != report ? report.verdict : approve.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "! swaps the facts",
+   "source": "!(report != null) ? approve.verdict : report.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "!! keeps the facts",
+   "source": "!!(report == null) ? approve.verdict : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "an if",
+   "source": "if (report == null) { approve.verdict } else { report.verdict }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "an if chain: the false facts of an earlier test hold in later branches",
+   "source": "if (report != null) { report.verdict } else if (x) { approve.verdict } else { approve.verdict + \"!\" }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "an if chain: a later test gives the fact",
+   "source": "if (x) { \"\" } else if (report == null) { approve.verdict } else { report.verdict }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "the right operand of && is under the true facts",
+   "source": "report == null && approve.verdict == \"ok\"",
+   "expect": {
+    "type": "bool",
+    "sites": []
+   }
+  },
+  {
+   "name": "the right operand of || is under the false facts",
+   "source": "report != null || approve.verdict == \"ok\"",
+   "expect": {
+    "type": "bool",
+    "sites": []
+   }
+  },
+  {
+   "name": "&&: T(d) and T(e) both hold",
+   "source": "report == null && x ? approve.verdict : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "||: a fact both sides give is kept",
+   "source": "report == null || report == null ? approve.verdict : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "||: the false facts of either side hold where it failed",
+   "source": "report != null || x ? \"\" : approve.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "the branch the host fact rules out still checks",
+   "source": "report == null && approve == null ? report.verdict : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "the right operand of || under == null has no null fact",
+   "source": "report == null || approve.verdict == \"ok\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       19,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "||: a fact one side lacks is dropped",
+   "source": "report == null || x ? approve.verdict : \"\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       23,
+       1,
+       30
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "&&: F(d && e) keeps only a fact both sides give",
+   "source": "report != null && x ? \"\" : approve.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       28,
+       1,
+       35
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a false bare path gives no null fact",
+   "source": "report ? report.verdict : approve.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       27,
+       1,
+       34
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "! of a bare path gives no null fact",
+   "source": "!report ? approve.verdict : report.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       11,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a null fact changes no type by itself",
+   "source": "report == null ? report : approve",
+   "expect": {
+    "type": "{verdict: string} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "the false branch of == null: the member is not null by Core's fact",
+   "source": "report == null ? approve : report",
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "match: the arm of null alone",
+   "source": "match report { null => approve.verdict, _ => report.verdict }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "match: the other member as subject",
+   "source": "match approve { null => report.verdict, _ => approve.verdict }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "match: an arm with null and another literal gives no null fact",
+   "source": "match n { null | 0 => m + 1, _ => n }",
+   "env": "{n: int | null, m: int | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "n",
+      "m"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       23,
+       1,
+       24
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "match: an arm of null alone, with numbers",
+   "source": "match n { null => m + 1, _ => n }",
+   "env": "{n: int | null, m: int | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "n",
+      "m"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "match: the arm of null after another arm",
+   "source": "match n { 0 => 0, null => m, _ => n }",
+   "env": "{n: int | null, m: int | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "n",
+      "m"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "is null gives the null fact",
+   "source": "report is null ? approve.verdict : report.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "! of is null",
+   "source": "!(report is null) ? report.verdict : approve.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "is T failing, T without null, gives no null fact",
+   "source": "report is {verdict: string} ? report.verdict : approve.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       48,
+       1,
+       55
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a union: the chain reads the tag",
+   "source": "(s ?? t).kind",
+   "env": "{s: {kind: \"circle\", r: float} | {kind: \"rect\", w: float} | null, t: {kind: \"circle\", r: float} | {kind: \"rect\", w: float} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "s",
+      "t"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "\"circle\" | \"rect\"",
+    "sites": []
+   }
+  },
+  {
+   "name": "a test of a field gives no null fact",
+   "source": "s?.kind == \"circle\" ? s.r : t.kind",
+   "env": "{s: {kind: \"circle\", r: float} | {kind: \"rect\", w: float} | null, t: {kind: \"circle\", r: float} | {kind: \"rect\", w: float} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "s",
+      "t"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       29,
+       1,
+       30
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a union narrowed under the null fact",
+   "source": "s == null ? (t.kind == \"circle\" ? t.r : t.w) : 0",
+   "env": "{s: {kind: \"circle\", r: float} | {kind: \"rect\", w: float} | null, t: {kind: \"circle\", r: float} | {kind: \"rect\", w: float} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "s",
+      "t"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "float",
+    "sites": []
+   }
+  },
+  {
+   "name": "a const bound to a member is not a member",
+   "source": "const r = report; r == null ? approve.verdict : r.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       31,
+       1,
+       38
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const takes the narrowed type of a member",
+   "source": "const a = report == null ? approve : report; a.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "a const bound to the chain",
+   "source": "const r = report ?? approve; r.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "a const that shadows a member is not a member",
+   "source": "const report = approve; report ?? approve",
+   "expect": {
+    "type": "{verdict: string} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "a const null that shadows a member gives no null fact",
+   "source": "const report = null; (report ?? approve).verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       23,
+       1,
+       40
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const in the branch takes the narrowed type",
+   "source": "if (report == null) { const report = approve; report.verdict } else { \"\" }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "a const in the branch that shadows a member is not narrowed",
+   "source": "if (report == null) { const approve = other; approve + 1 } else { 0 }",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       46,
+       1,
+       53
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lambda body holds the facts where it is written",
+   "source": "report == null ? xs.map(i => approve.verdict) : []",
+   "expect": {
+    "type": "string[]",
+    "sites": []
+   }
+  },
+  {
+   "name": "a parameter that shadows the tested member: the fact is about the variable",
+   "source": "report == null ? xs.map(report => approve.verdict) : []",
+   "expect": {
+    "type": "string[]",
+    "sites": []
+   }
+  },
+  {
+   "name": "a parameter that shadows a member is not a member",
+   "source": "xs.map(report => report ?? approve)",
+   "expect": {
+    "type": "(int | {verdict: string} | null)[]",
+    "sites": []
+   }
+  },
+  {
+   "name": "a const-bound lambda written outside the branch",
+   "source": "const f = (i) => approve.verdict; report == null ? f(1) : \"\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       18,
+       1,
+       25
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const-bound lambda written in the branch",
+   "source": "if (report == null) { const f = (i) => approve.verdict; f(1) } else { report.verdict }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "the facts outside a try hold in its body",
+   "source": "report == null ? (try { approve.verdict } catch { \"\" }) : \"\"",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "a try gives no fact",
+   "source": "(try { report == null } catch { false }) ? approve.verdict : \"\"",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       44,
+       1,
+       51
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "filter: a predicate under the null fact",
+   "source": "report == null ? xs.filter(i => approve.verdict == \"ok\") : xs",
+   "expect": {
+    "type": "int[]",
+    "sites": []
+   }
+  },
+  {
+   "name": "filter: a test of the parameter for null gives it no null fact",
+   "source": "ys.filter(y => y == null)",
+   "expect": {
+    "type": "({verdict: string} | null)[]",
+    "sites": []
+   }
+  },
+  {
+   "name": "three members: the whole chain",
+   "source": "(a ?? b ?? c).v",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "three members: two of them may both be null",
+   "source": "a ?? b",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "three members: a chain of two does not read",
+   "source": "(a ?? b).v",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "three members: a chain nested to the right",
+   "source": "a ?? (b ?? c)",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int}",
+    "sites": []
+   }
+  },
+  {
+   "name": "three members: two null facts by &&",
+   "source": "a == null && b == null ? c.v : 0",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "three members: one null fact is not enough",
+   "source": "a == null ? b.v : 0",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "one member: the variable is never null",
+   "source": "solo.v",
+   "env": "{solo: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "solo"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "one member: its type lacks null",
+   "source": "solo",
+   "env": "{solo: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "solo"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int}",
+    "sites": []
+   }
+  },
+  {
+   "name": "two host facts: the first applies",
+   "source": "a ?? b",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "someNotNull": [
+      "a",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int}",
+    "sites": []
+   }
+  },
+  {
+   "name": "two host facts: the second applies",
+   "source": "a ?? c",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "someNotNull": [
+      "a",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int}",
+    "sites": []
+   }
+  },
+  {
+   "name": "two host facts: no one fact covers the pair",
+   "source": "b ?? c",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "someNotNull": [
+      "a",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "two host facts: each member by its own fact",
+   "source": "b == null ? a.v + c.v : b.v",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "someNotNull": [
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "one host fact declared twice",
+   "source": "a ?? b",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "someNotNull": [
+      "b",
+      "a"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int}",
+    "sites": []
+   }
+  },
+  {
+   "name": "a member whose type lacks null: the chain",
+   "source": "p ?? q",
+   "env": "{p: {v: int}, q: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "p",
+      "q"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int}",
+    "sites": []
+   }
+  },
+  {
+   "name": "a member whose type lacks null: no host fact",
+   "source": "p ?? q",
+   "env": "{p: {v: int}, q: {v: int} | null}",
+   "facts": [],
+   "expect": {
+    "type": "{v: int} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "a member whose type lacks null: the other is still nullable",
+   "source": "q.v",
+   "env": "{p: {v: int}, q: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "p",
+      "q"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a member of type null: the chain",
+   "source": "z ?? r",
+   "env": "{z: null, r: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "z",
+      "r"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "{v: int}",
+    "sites": []
+   }
+  },
+  {
+   "name": "a member of type null: a plain read of the other is not narrowed",
+   "source": "r.v",
+   "env": "{z: null, r: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "z",
+      "r"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "members of two kinds",
+   "source": "n ?? s",
+   "env": "{n: int | null, s: string | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "n",
+      "s"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int | string",
+    "sites": []
+   }
+  },
+  {
+   "name": "members of two kinds: a call",
+   "source": "n == null ? len(s) : n",
+   "env": "{n: int | null, s: string | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "n",
+      "s"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "a member of type any",
+   "source": "y ?? r",
+   "env": "{y: any, r: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "y",
+      "r"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "any",
+    "sites": []
+   }
+  },
+  {
+   "name": "gained: a member tested for truth is always truthy",
+   "source": "report == null ? (approve ? 1 : 2) : 0",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       19,
+       1,
+       26
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   }
+  },
+  {
+   "name": "gained: the same with no host fact",
+   "source": "report == null ? (approve ? 1 : 2) : 0",
+   "facts": [],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "gained: the same with constant-condition not rejected",
+   "source": "report == null ? (approve ? 1 : 2) : 0",
+   "reject": [],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "gained: an equality that shared only null is never-equal",
+   "source": "report == null ? approve == other : false",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-equal",
+      "span": [
+       1,
+       18,
+       1,
+       34
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "gained: the same equality with no host fact",
+   "source": "report == null ? approve == other : false",
+   "facts": [],
+   "expect": {
+    "type": "bool",
+    "sites": []
+   }
+  },
+  {
+   "name": "gained: is null on a member that is not null",
+   "source": "report == null ? approve is null : false",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-falsy",
+      "span": [
+       1,
+       18,
+       1,
+       33
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   }
+  },
+  {
+   "name": "gained: the same is with no host fact",
+   "source": "report == null ? approve is null : false",
+   "facts": [],
+   "expect": {
+    "type": "bool",
+    "sites": []
+   }
+  },
+  {
+   "name": "gained: as null on a member that is not null",
+   "source": "report == null ? approve as null : null",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "never-conforms",
+      "span": [
+       1,
+       18,
+       1,
+       33
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "gained: an as that cannot fail records no site",
+   "source": "report == null ? approve as {verdict: string} : report",
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "gained: the same as with no host fact records a value site",
+   "source": "report == null ? approve as {verdict: string} : report",
+   "facts": [],
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": [
+     {
+      "class": "value",
+      "span": [
+       1,
+       18,
+       1,
+       46
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "gained: the chain tested for truth is always truthy",
+   "source": "(report ?? approve) ? 1 : 2",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "always-truthy",
+      "span": [
+       1,
+       2,
+       1,
+       19
+      ],
+      "class": "constant-condition"
+     }
+    ]
+   }
+  }
+ ]
+}

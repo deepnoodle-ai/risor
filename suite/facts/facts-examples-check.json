@@ -1,0 +1,263 @@
+{
+ "env": "{report: {verdict: string} | null, approve: {verdict: string} | null, third: {verdict: string} | null, xs: int[]}",
+ "facts": [
+  {
+   "someNotNull": [
+    "report",
+    "approve"
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "name": "report ?? approve",
+   "source": "report ?? approve",
+   "expect": {
+    "type": "{verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "(report ?? approve).verdict",
+   "source": "(report ?? approve).verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "(report ?? approve)?.verdict",
+   "source": "(report ?? approve)?.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "a pattern from the chain",
+   "source": "const {verdict} = report ?? approve; verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "== null",
+   "source": "report == null ? approve.verdict : report.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "if with != null",
+   "source": "if (report != null) { report.verdict } else { approve.verdict }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "match",
+   "source": "match report { null => approve.verdict, _ => report.verdict }",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "&&",
+   "source": "report == null && approve.verdict == \"ok\"",
+   "expect": {
+    "type": "bool",
+    "sites": []
+   }
+  },
+  {
+   "name": "is null",
+   "source": "report is null ? approve.verdict : report.verdict",
+   "expect": {
+    "type": "string",
+    "sites": []
+   }
+  },
+  {
+   "name": "a lambda",
+   "source": "report == null ? xs.map(i => approve.verdict) : []",
+   "expect": {
+    "type": "string[]",
+    "sites": []
+   }
+  },
+  {
+   "name": "a read in the right operand",
+   "source": "report ?? approve.verdict",
+   "expect": {
+    "type": "string | {verdict: string}",
+    "sites": []
+   }
+  },
+  {
+   "name": "a null fact changes no type",
+   "source": "report == null ? report : approve",
+   "expect": {
+    "type": "{verdict: string} | null",
+    "sites": []
+   }
+  },
+  {
+   "name": "a plain read",
+   "source": "approve.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the left member in the right operand",
+   "source": "report ?? report.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       11,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a falsy path",
+   "source": "report ? report.verdict : approve.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       27,
+       1,
+       34
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a variable no host fact names",
+   "source": "(report ?? third).verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       2,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const bound to a member",
+   "source": "const r = report; r == null ? approve.verdict : r.verdict",
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       31,
+       1,
+       38
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "three members",
+   "source": "(a ?? b ?? c).v",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  },
+  {
+   "name": "three members, a chain of two",
+   "source": "(a ?? b).v",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "phase": "check",
+    "diagnostics": [
+     {
+      "code": "maybe-null",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "three members, two null facts",
+   "source": "a == null && b == null ? c.v : 0",
+   "env": "{a: {v: int} | null, b: {v: int} | null, c: {v: int} | null}",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "type": "int",
+    "sites": []
+   }
+  }
+ ]
+}

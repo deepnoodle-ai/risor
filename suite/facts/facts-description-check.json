@@ -1,0 +1,291 @@
+{
+ "env": "{a: int | null, b: int | null, c: int | null}",
+ "cases": [
+  {
+   "name": "a host fact, its members in code point order",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "b",
+      "a"
+     ]
+    }
+   ],
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     },
+     "variables": {
+      "a": "int | null",
+      "b": "int | null",
+      "c": "int | null"
+     },
+     "facts": [
+      {
+       "someNotNull": [
+        "a",
+        "b"
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "no host fact: no key",
+   "source": "1",
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     },
+     "variables": {
+      "a": "int | null",
+      "b": "int | null",
+      "c": "int | null"
+     }
+    }
+   }
+  },
+  {
+   "name": "an empty list of host facts: no key",
+   "source": "1",
+   "facts": [],
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     },
+     "variables": {
+      "a": "int | null",
+      "b": "int | null",
+      "c": "int | null"
+     }
+    }
+   }
+  },
+  {
+   "name": "two host facts in order of their members",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "c",
+      "b"
+     ]
+    },
+    {
+     "someNotNull": [
+      "b",
+      "a"
+     ]
+    }
+   ],
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     },
+     "variables": {
+      "a": "int | null",
+      "b": "int | null",
+      "c": "int | null"
+     },
+     "facts": [
+      {
+       "someNotNull": [
+        "a",
+        "b"
+       ]
+      },
+      {
+       "someNotNull": [
+        "b",
+        "c"
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "one host fact declared twice is described once",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "someNotNull": [
+      "b",
+      "a"
+     ]
+    }
+   ],
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     },
+     "variables": {
+      "a": "int | null",
+      "b": "int | null",
+      "c": "int | null"
+     },
+     "facts": [
+      {
+       "someNotNull": [
+        "a",
+        "b"
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a list that is a prefix of another comes first",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "a",
+      "b",
+      "c"
+     ]
+    },
+    {
+     "someNotNull": [
+      "b",
+      "a"
+     ]
+    }
+   ],
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     },
+     "variables": {
+      "a": "int | null",
+      "b": "int | null",
+      "c": "int | null"
+     },
+     "facts": [
+      {
+       "someNotNull": [
+        "a",
+        "b"
+       ]
+      },
+      {
+       "someNotNull": [
+        "a",
+        "b",
+        "c"
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a host fact of one member",
+   "source": "1",
+   "facts": [
+    {
+     "someNotNull": [
+      "c"
+     ]
+    }
+   ],
+   "expect": {
+    "description": {
+     "version": "3.0",
+     "functions": {},
+     "opaque": {},
+     "removed": [],
+     "reject": [
+      "constant-condition"
+     ],
+     "limits": {
+      "steps": 1000000,
+      "allocation": 1000000,
+      "depth": 200
+     },
+     "variables": {
+      "a": "int | null",
+      "b": "int | null",
+      "c": "int | null"
+     },
+     "facts": [
+      {
+       "someNotNull": [
+        "c"
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
