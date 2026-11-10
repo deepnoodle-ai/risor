@@ -160,10 +160,12 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 `outcome` command cannot turn a package off. A package gives some texts that
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
-Every implementation offers F1 to F7, and some offer more. `cmd/fuzz/known.go`
-lists the one form of package F8 that not every implementation reads: a targeted
-parse code where the others give a Core code. The forms of F4 to F7 are compared
-exactly. `-known=false` reports them as findings too.
+Every implementation offers F1 to F8, and some offer more. The generator writes
+only forms of F1 to F8, so no difference is filtered: `cmd/fuzz/known.go` is
+where a form of a package that not every implementation offers would be counted
+apart. With F8 a parse or check diagnostic carries a message, and a run
+diagnostic a trace; each is compared among the implementations that write it
+(`spec/packages/f08-errors.md` 8).
 
 If a build fails and a program built before exists, the fuzzer says so and runs
 the old program.

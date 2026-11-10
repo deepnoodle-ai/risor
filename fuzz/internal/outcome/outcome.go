@@ -196,9 +196,26 @@ func Diff(a, b *Line) string {
 			fields = []string{"code", "class", "message"}
 		}
 	}
+	// Package F8 adds a message to parse and check diagnostics and a trace
+	// to a run diagnostic (f08-errors.md 8). Each is compared among the
+	// implementations that write it.
+	var extra []string
+	switch a.Phase {
+	case "parse", "check":
+		extra = []string{"message"}
+	case "run":
+		extra = []string{"trace"}
+	}
 	for i := range a.Diags {
 		for _, f := range fields {
 			if !Equal(a.Diags[i][f], b.Diags[i][f]) {
+				return "diagnostics." + f
+			}
+		}
+		for _, f := range extra {
+			x, okA := a.Diags[i][f]
+			y, okB := b.Diags[i][f]
+			if okA && okB && !Equal(x, y) {
 				return "diagnostics." + f
 			}
 		}
