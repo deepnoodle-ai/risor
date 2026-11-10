@@ -5,14 +5,7 @@ node_modules
 
 /proposals
 
-risor*.vsix
-/risor-lsp
-
-risor-example.db*
-
 /cmd/risor/risor
-/cmd/risor-lsp/risor-lsp
-/cmd/risor-api/risor-api
 
 cpu.out
 cover.out
@@ -31,6 +24,8 @@ test/
 coverage.out
 unit-tests.xml
 
-examples/go/sqlite/test.db*
-
 /.dive
+
+# Test binaries that "go test -c" writes, and built commands.
+*.test
+/bin/

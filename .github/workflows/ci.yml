@@ -1,88 +1,79 @@
-name: CI
+name: ci
+
+# The three implementations of Risor v3, each run against the conformance
+# suite in suite/. The Go implementation is the module at the repository
+# root. Risor v2 is on the v2 branch, tested by its own ci.yml.
 
 on:
   push:
-    branches: [main]
+    branches: [main, v3]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/**"
+      - "internal/**"
+      - "ts/**"
+      - "rust/**"
+      - "fuzz/**"
+      - "suite/**"
+      - ".github/workflows/ci.yml"
   pull_request:
-    branches: [main]
+    branches: [main, v3]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/**"
+      - "internal/**"
+      - "ts/**"
+      - "rust/**"
+      - "fuzz/**"
+      - "suite/**"
+      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  go:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: "off"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.26"
+          cache-dependency-path: go.sum
 
-      - name: Show Go Environment
-        run: go env
+      - name: Build
+        run: go build ./...
 
-      - name: Install Dependencies
-        run: go mod download
+      - name: Vet
+        run: go vet ./...
 
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@latest
+      - name: Test, with the conformance suite
+        run: go test -count=1 ./...
 
-      - name: Run tests
-        run: |
-          mkdir -p /tmp/test-reports
-          make test
+      - name: Test with the race detector
+        run: go test -count=1 -race ./...
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.out
-          fail_ci_if_error: false
-
-  generate:
+  typescript:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-
-      - name: Install gofumpt
-        run: go install mvdan.cc/gofumpt@latest
-
-      - name: Run generate
-        run: make generate
-
-      - name: Check for uncommitted changes
-        run: git diff --exit-code --stat
-
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-
-      - name: Install gofumpt
-        run: go install mvdan.cc/gofumpt@latest
-
-      - name: Run format
-        run: make format
-
-      - name: Check for uncommitted changes
-        run: git diff --exit-code --stat
-
-  vscode:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
     defaults:
       run:
-        working-directory: vscode
+        working-directory: ts
     steps:
       - uses: actions/checkout@v4
         with:
@@ -93,17 +84,78 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: |
-            vscode/package-lock.json
-            vscode/client/package-lock.json
+          cache-dependency-path: ts/package-lock.json
 
       - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Conformance suite
+        run: npm run suite
+
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust
         run: |
-          npm ci --ignore-scripts
-          npm ci --prefix client
+          rustup update stable
+          rustup default stable
+          rustup component add clippy
+
+      # The workspace is the library and its derive crate, rust/derive. The
+      # build uses the default features; the lint and the tests turn on every
+      # feature, so the re-exported derive is tested.
+      - name: Build
+        run: cargo build --workspace --all-targets
 
       - name: Lint
-        run: npm run lint
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Compile
-        run: npm run compile
+      # The limits must hold in the build that uses the most stack, so the
+      # suite runs unoptimized and optimized.
+      - name: Test, unoptimized
+        run: cargo test --workspace --all-features
+
+      - name: Test, optimized
+        run: cargo test --workspace --all-features --release
+
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: "off"
+    defaults:
+      run:
+        working-directory: fuzz
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -count=1 ./...

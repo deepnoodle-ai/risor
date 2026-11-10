@@ -1,2 +1,0 @@
-go test fuzz v1
-string("switch x { case 1: \xf5\xf51 case 2: 2 default: 3 }")

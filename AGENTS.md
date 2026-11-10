@@ -3,22 +3,21 @@
 This file provides guidance to coding agents when working with code in this
 repository.
 
-## This branch is Risor v3
+## This is Risor v3
 
-You are on `v3`, the integration branch for Risor v3. `main` holds Risor v2,
-which is released and is maintained there.
+`main` holds Risor v3, published as an alpha and a request for comment. Risor
+v2 is released and is maintained on the `v2` branch.
 
 v3 is a new language and a new code base. It is not a revision of v2.
 
 **Status: Core is built; the follow-on packages are being built.** The design
 is written. The specification is in `spec/`: Core in `spec/core/`, and one
 chapter for each follow-on package in `spec/packages/`. The conformance suite
-is in `suite/`. All three implementations, in `go/`, `ts/` and `rust/`, pass
-Core with the type checker. Each then builds the packages in a fixed order
+is in `suite/`. All three implementations pass Core with the type checker:
+Go at the repository root, TypeScript in `ts/` and Rust in `rust/`. Each then builds the packages in a fixed order
 (`spec/core/03-host.md` 3.11); the Go implementation is the furthest along.
 `experiments/v3/design/14-implementation-plan.md` is the plan: what Core is,
-what follows it, and the order. The Go code outside `go/`, `fuzz/` and
-`experiments/v3/` is still v2's.
+what follows it, and the order.
 
 ## What v3 is
 
@@ -60,8 +59,7 @@ const verdict = if (!failed) { "pass" }
 }
 ```
 
-This is not v2 syntax. v2 has `let`, `function`, statements and loops. The
-files under `docs/` describe v2.
+This is not v2 syntax. v2 has `let`, `function`, statements and loops.
 
 ## Goals
 
@@ -109,7 +107,7 @@ rules and cite it.
 | `spec/core/` | The Core specification, five chapters: language, evaluation, host, library, types. Normative text only. |
 | `spec/packages/` | One chapter for each follow-on package. A package only adds: its chapter is the home of its rules, and the Core chapters point to it. |
 | `suite/` | Data every implementation shares: the library's records, the message templates, the case mapping, and case files in `suite/core-run/`, `suite/core-check/` and one directory for each package. `suite/README.md` lists them. `spec/core/03-host.md` 3.10 defines the case format. |
-| `go/` | The Go implementation. Its own module, not in `go.work`: run Go there with `GOWORK=off`. |
+| `/` | The Go implementation: the module `github.com/deepnoodle-ai/risor/v3` at the repository root, with `cmd/`, `internal/` and `risortest/`. |
 | `ts/` | The TypeScript implementation. No run-time dependencies. |
 | `rust/` | The Rust implementation. No library dependencies. |
 | `fuzz/` | The fuzzers that compare the three implementations with one another and test the checker's promise. Its own Go module. |
@@ -180,117 +178,38 @@ library are built on rules that might not hold in three languages.
 
 | Branch | Holds |
 | --- | --- |
-| `main` | Risor v2. Releases are cut from it. |
-| `v3` | Risor v3 in development. This branch. |
+| `main` | Risor v3, the alpha. |
+| `v2` | Risor v2. v2 releases are cut from it. |
 | `v1` | Risor v1, kept for reference. |
 
-- **v3 work lands on `v3`.** Branch from `v3` and open the pull request
-  against `v3`, not `main`. With `gh`, pass `--base v3`.
-- **A fix for v2 goes to `main`,** on a branch from `main`.
+- **v3 work lands on `main`.** Branch from `main` and open the pull request
+  against `main`.
+- **A fix for v2 goes to `v2`,** on a branch from `v2`, with `--base v2`. v2's
+  rules (compatibility, resource limits, `make test`) are in the `AGENTS.md`
+  on that branch.
 - **Pull requests are squash-merged.** The title becomes the commit message.
-- **Do not rebase or force-push `v3`.** Other branches are based on it.
-- **`main` is merged into `v3`** with a merge commit, from time to time, while
-  v2's code is still on this branch. When v3 has removed that code, the merges
-  stop.
-- **At release,** a `v2` branch is cut from `main` for maintenance and `v3` is
-  merged into `main`. The Go module path becomes
-  `github.com/deepnoodle-ai/risor/v3`.
+- **Do not rebase or force-push `main` or `v2`.**
 
-`.github/workflows/v3.yml` runs the three implementations and the fuzzer's own
-tests on every push and pull request to `v3` that touches `go/`, `ts/`,
-`rust/`, `fuzz/` or `suite/`. `.github/workflows/ci.yml` tests v2's code and
-names only `main`: for a change to v2's code on this branch, run `make test`
-and `make format` yourself.
+`.github/workflows/ci.yml` runs the three implementations and the fuzzer's own
+tests on every push and pull request that touches Go code, `ts/`, `rust/`,
+`fuzz/` or `suite/`.
 
+## Go code
 
-## Rules that differ between v2 and v3
-
-| Subject | v2 code | v3 code and design |
-| --- | --- | --- |
-| Resource limits | Not a security boundary. Do not add limit machinery. See "Resource limits in v2" below. | Limits are part of the language (C5). Every operation has a specified cost. Adding a cost rule is normal work. |
-| Compatibility | Do not break v2 users. | A break with v2 and expr is acceptable (C7). |
-| Behavior | What the Go implementation does. | What the specification says. Three implementations must agree. |
-
-## Go code on this branch
-
-The Go code outside `experiments/v3/` is Risor v2. Its pipeline is:
-
-```
-Source Code → Lexer (tokens) → Parser (AST) → Compiler (Bytecode) → VM (execution)
-```
-
-- `internal/lexer/` - Tokenization
-- `pkg/parser/` - AST construction (a Pratt parser)
-- `pkg/compiler/` - Bytecode generation
-- `pkg/vm/` - Virtual machine
-- `pkg/object/` - v2's value types
-- `pkg/builtins/`, `pkg/modules/` - v2's library
-- `cmd/risor/` - The CLI and REPL
-- `cmd/risor-lsp/` - The language server
-
-Section 5.3 of the overview says which of these v3 keeps and which it removes.
-
-### Build commands
+The Go implementation is the module at the repository root. `fuzz/` and
+`experiments/v3/` are modules of their own. There is no `go.work`.
 
 ```bash
-# Run tests (uses gotestsum)
-make test
-
-# Run benchmarks
-make bench
-
-# Format code (uses gofumpt)
-make format
-
-# Tidy all module dependencies
-make tidy
+go build ./...
+go vet ./...
+go test ./...            # includes the conformance suite in suite/
+go generate ./internal/... # after a change to suite/library*.json, messages*.json or casemap.json
 ```
-
-### Go workspace
-
-This is a monorepo using Go workspaces (`go.work`).
-
-`experiments/v3/` is its own module and is not in the workspace. Run Go there
-with the workspace off:
-
-```bash
-cd experiments/v3
-GOWORK=off go test ./...
-```
-
-### Tests
 
 All Go tests use the `assert` package of
-[Wonton](https://github.com/deepnoodle-ai/wonton):
-
-```go
-import "github.com/deepnoodle-ai/wonton/assert"
-
-func TestExample(t *testing.T) {
-    assert.Equal(t, actual, expected)
-    assert.Nil(t, err)
-    assert.True(t, condition)
-}
-```
-
-Decision D23 in the overview proposes that the v3 core module have no
-dependencies, which would end this rule for that module. It is not settled.
-Until it is, use `assert`.
-
-### Resource limits in v2
-
-This rule governs v2's code only.
-
-`WithMaxSteps`, `WithTimeout`, `WithMaxStackDepth`, and `WithLimits` catch
-scripts that go wrong by accident. They are not a security boundary, and v2
-does not try to make them one.
-
-- Do not add new limit machinery to v2: no new caps, budgets, size
-  precomputation, or reimplementations of standard library code.
-- When someone reports a gap in v2's limits, add it to the list in
-  [docs/guides/memory-limits.md](docs/guides/memory-limits.md).
-- Still in scope for v2: a wrong result, a crash, a panic, or an inefficiency
-  in normal use that affects everyone.
+[Wonton](https://github.com/deepnoodle-ai/wonton). Decision D23 in the
+overview proposes that the v3 module have no dependencies, which would end
+this rule. It is not settled. Until it is, use `assert`.
 
 ## Changelog
 
@@ -301,5 +220,5 @@ Instead, describe the user-visible change in the PR title and description.
 
 ## Releasing
 
-Nothing is released from `v3`. Releases of v2 are cut from `main`. See
-[docs/guides/releasing.md](docs/guides/releasing.md).
+v3 alpha releases are tagged `v3.0.0-alpha.N` on `main`. v2 releases are cut
+from the `v2` branch; see `docs/guides/releasing.md` there.

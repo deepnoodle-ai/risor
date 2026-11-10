@@ -1,625 +1,162 @@
+// Package risor is the Go implementation of Risor v3, a small expression
+// language that a host program embeds. The language is defined by its
+// specification (spec/core in the repository) and its conformance suite.
+//
+// A host works in four stages (spec/core/03-host.md 3.2): Parse turns source
+// text into a Program; Check and Compile take a Program and an environment;
+// Run takes a compiled program and the values of its variables. Every stage
+// reports a failure as an *Error holding diagnostics of one phase.
+//
+// # Stack
+//
+// The parser and the evaluator recurse only where the text opens a level of
+// nesting, and through calls in progress and walks over values, so a run's
+// recursion is bounded by the limits (02-evaluation.md 8.5). A long flat
+// program (100,000 terms, chain steps, else-if parts or const lines) costs
+// no stack. Measured on darwin/arm64 with Go 1.26: parsing at the nesting
+// limit and running at the depth limits 200 and 1,000 need less than
+// 512 KiB of goroutine stack. TestStackNeeds runs the deepest programs with
+// the stack capped at 1 MiB. Go grows a goroutine's stack as needed, so a
+// host needs no setting for this.
+//
+// # Memory
+//
+// On 64-bit platforms, the heap memory a run creates as values of the
+// language is at most 256 bytes per allocation unit charged plus 16 bytes per
+// step charged (02-evaluation.md 8.5 item 2). The most bytes per unit come
+// from a string just under a unit's 64 weight in three-byte characters: 189
+// bytes, rounded to Go's 192-byte size class, and a 16-byte string header
+// boxed in an interface. A number a step makes is boxed in 8 bytes. This is
+// measured, not derived: TestMemoryConstants runs the worst shapes (such
+// strings, empty and one-entry maps, empty lists, boxed numbers) on Go 1.26,
+// whose maps are Swiss tables, and checks each run's bytes against these
+// constants.
 package risor
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"maps"
-	"slices"
-	"time"
+	"unicode/utf8"
 
-	"github.com/deepnoodle-ai/risor/v2/pkg/builtins"
-	"github.com/deepnoodle-ai/risor/v2/pkg/bytecode"
-	"github.com/deepnoodle-ai/risor/v2/pkg/compiler"
-	modMath "github.com/deepnoodle-ai/risor/v2/pkg/modules/math"
-	modRand "github.com/deepnoodle-ai/risor/v2/pkg/modules/rand"
-	modRegexp "github.com/deepnoodle-ai/risor/v2/pkg/modules/regexp"
-	"github.com/deepnoodle-ai/risor/v2/pkg/object"
-	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
-	"github.com/deepnoodle-ai/risor/v2/pkg/syntax"
-	"github.com/deepnoodle-ai/risor/v2/pkg/vm"
+	"github.com/deepnoodle-ai/risor/v3/internal/diag"
+	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
+	"github.com/deepnoodle-ai/risor/v3/internal/value"
 )
 
-// Sentinel errors for resource limits.
-var (
-	ErrStepLimitExceeded = vm.ErrStepLimitExceeded
-	ErrStackOverflow     = vm.ErrStackOverflow
+// Diagnostic is one problem found by a stage, in the one shape of
+// spec/core/03-host.md 3.7.
+type Diagnostic = diag.Diagnostic
+
+// Span is a start and an exclusive end position in the source text.
+type Span = diag.Span
+
+// Pos is a line and a column, both counted from 1. A line ends at U+000A and
+// a column counts code points.
+type Pos = diag.Pos
+
+// Phase is the stage that reported a diagnostic: declare, parse, check or run.
+type Phase = diag.Phase
+
+// The four phases.
+const (
+	PhaseDeclare = diag.PhaseDeclare
+	PhaseParse   = diag.PhaseParse
+	PhaseCheck   = diag.PhaseCheck
+	PhaseRun     = diag.PhaseRun
 )
 
-// ErrNilCode is returned when Run is called with a nil Code.
-var ErrNilCode = errors.New("code is nil")
+// Error is the failure of a stage: a list of diagnostics of one phase.
+type Error = diag.Error
 
-// Re-export syntax types for convenient access.
-type (
-	SyntaxConfig     = syntax.SyntaxConfig
-	Validator        = syntax.Validator
-	ValidatorFunc    = syntax.ValidatorFunc
-	ValidationError  = syntax.ValidationError
-	ValidationErrors = syntax.ValidationErrors
-	Transformer      = syntax.Transformer
-	TransformerFunc  = syntax.TransformerFunc
-)
-
-// Limits bounds the size of values a single operation may produce. See
-// WithLimits.
-type Limits = object.Limits
-
-// Re-export presets.
-var (
-	ExpressionOnly = syntax.ExpressionOnly
-	BasicScripting = syntax.BasicScripting
-	FullLanguage   = syntax.FullLanguage
-)
-
-// Option configures a Risor compilation or execution.
-type Option func(*options)
-
-type options struct {
-	env          map[string]any
-	filename     string
-	observer     vm.Observer
-	typeRegistry *object.TypeRegistry
-	rawResult    bool
-	// Resource limits
-	maxSteps      int64
-	maxStackDepth int
-	timeout       time.Duration
-	limits        *object.Limits
-	// AST validation and transformation
-	syntaxConfig *syntax.SyntaxConfig
-	validators   []syntax.Validator
-	transformers []syntax.Transformer
+// Expr is a parsed program. It does not change after Parse, and may be
+// used by several compiles at the same time.
+type Expr struct {
+	file *syntax.File
+	tree *syntax.Program
+	// segments and template are set for a template's program (F2).
+	segments []Segment
+	template bool
 }
 
-func collectOptions(opts ...Option) *options {
-	o := &options{env: map[string]any{}}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(o)
-		}
+// Parse parses the source text of a program. A text gives the same Expr,
+// or the same diagnostics, in every environment. On failure the error is an
+// *Error with one diagnostic of phase parse: the first one of
+// spec/core/01-language.md 14.1.
+func Parse(source string) (*Expr, error) {
+	if !utf8.ValidString(source) {
+		// Each maximal subpart of ill-formed UTF-8 is one U+FFFD (03-host.md 3.4.5).
+		source = value.ReplaceInvalid(source)
 	}
-	return o
-}
-
-func (o *options) compilerConfig() *compiler.Config {
-	cfg := &compiler.Config{}
-	if len(o.env) > 0 {
-		cfg.GlobalNames = slices.Sorted(maps.Keys(o.env))
-	}
-	if o.filename != "" {
-		cfg.Filename = o.filename
-	}
-	return cfg
-}
-
-func (o *options) vmOpts() []vm.Option {
-	var opts []vm.Option
-	if len(o.env) > 0 {
-		opts = append(opts, vm.WithGlobals(o.env))
-	}
-	if o.observer != nil {
-		opts = append(opts, vm.WithObserver(o.observer))
-	}
-	if o.typeRegistry != nil {
-		opts = append(opts, vm.WithTypeRegistry(o.typeRegistry))
-	}
-	if o.maxSteps > 0 {
-		opts = append(opts, vm.WithMaxSteps(o.maxSteps))
-	}
-	if o.maxStackDepth > 0 {
-		opts = append(opts, vm.WithMaxStackDepth(o.maxStackDepth))
-	}
-	if o.timeout > 0 {
-		opts = append(opts, vm.WithTimeout(o.timeout))
-	}
-	if o.limits != nil {
-		opts = append(opts, vm.WithLimits(*o.limits))
-	}
-	return opts
-}
-
-// WithEnv provides environment variables that are made available to Risor
-// scripts. This option is additive, so multiple WithEnv options may be
-// supplied. If the same key is supplied multiple times, the last value wins.
-//
-// By default, the environment is empty. Use Builtins() to get the standard
-// library:
-//
-//	result, _ := risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
-//
-// # Concurrency Contract
-//
-// The env map is shallow-copied when this option is applied, but the values
-// within the map are shared with the caller. This has several implications:
-//
-//   - The caller retains a reference to mutable objects passed in the env
-//   - Built-in functions must be thread-safe as they may be invoked concurrently
-//   - Mutable objects (slices, maps, custom types) in env are the caller's
-//     responsibility to synchronize if concurrent access is possible
-//   - Each VM execution gets its own shallow copy of the globals map,
-//     but the underlying objects are shared
-//
-// For safe concurrent execution, either:
-//   - Use immutable values in the environment
-//   - Create fresh environment maps for each concurrent execution
-//   - Synchronize access to mutable objects externally
-func WithEnv(env map[string]any) Option {
-	return func(o *options) {
-		maps.Copy(o.env, env)
-	}
-}
-
-// WithFilename sets the filename for the source code being evaluated.
-// This is used for error messages and stack traces.
-func WithFilename(filename string) Option {
-	return func(o *options) {
-		o.filename = filename
-	}
-}
-
-// WithObserver sets an observer for VM execution events.
-// The observer receives callbacks for instruction steps, function calls,
-// and function returns. This enables profilers, debuggers, code coverage
-// tools, and execution tracers.
-func WithObserver(observer vm.Observer) Option {
-	return func(o *options) {
-		o.observer = observer
-	}
-}
-
-// WithTypeRegistry sets a custom type registry for Go/Risor type conversions.
-// Use NewTypeRegistry() to create a registry with custom converters.
-//
-// Example:
-//
-//	registry := risor.NewTypeRegistry().
-//	    RegisterFromGo(reflect.TypeOf(MyType{}), convertMyType).
-//	    Build()
-//	result, _ := risor.Eval(ctx, source, risor.WithTypeRegistry(registry))
-func WithTypeRegistry(registry *object.TypeRegistry) Option {
-	return func(o *options) {
-		o.typeRegistry = registry
-	}
-}
-
-// WithRawResult configures Run and Eval to return the result as an
-// object.Object instead of converting it to a native Go type.
-//
-// By default, results are converted as follows:
-//   - NilType returns nil
-//   - String returns string
-//   - Int returns int64
-//   - Float returns float64
-//   - Bool returns bool
-//   - List returns []any
-//   - Map returns map[string]any
-//   - Other types (closures, modules, etc.) return their Inspect() string
-//
-// With WithRawResult(), the object.Object is returned directly, allowing
-// embedders to:
-//   - Inspect the exact Risor type
-//   - Access type-specific methods
-//   - Avoid the overhead of conversion
-//   - Handle types that don't have a Go equivalent
-//
-// Example:
-//
-//	result, _ := risor.Eval(ctx, `[1, 2, 3]`, risor.WithRawResult())
-//	list := result.(*object.List)
-//	fmt.Println(list.Len()) // 3
-func WithRawResult() Option {
-	return func(o *options) {
-		o.rawResult = true
-	}
-}
-
-// WithMaxSteps sets the maximum number of instructions the VM will execute.
-// If the limit is exceeded, the VM returns ErrStepLimitExceeded.
-// A value of 0 (default) means unlimited.
-//
-// Example:
-//
-//	result, err := risor.Eval(ctx, source, risor.WithMaxSteps(10000))
-//	if errors.Is(err, risor.ErrStepLimitExceeded) {
-//	    // Handle step limit exceeded
-//	}
-func WithMaxSteps(n int64) Option {
-	return func(o *options) {
-		o.maxSteps = n
-	}
-}
-
-// WithMaxStackDepth sets the maximum stack depth for execution.
-// If exceeded, the VM returns ErrStackOverflow.
-// A value of 0 (default) uses the VM's default limit.
-//
-// Example:
-//
-//	result, err := risor.Eval(ctx, source, risor.WithMaxStackDepth(100))
-//	if errors.Is(err, risor.ErrStackOverflow) {
-//	    // Handle stack overflow
-//	}
-func WithMaxStackDepth(n int) Option {
-	return func(o *options) {
-		o.maxStackDepth = n
-	}
-}
-
-// WithTimeout sets a timeout for script execution.
-// If the timeout is exceeded, the VM returns context.DeadlineExceeded.
-// A value of 0 (default) means no timeout.
-//
-// Example:
-//
-//	ctx := context.Background()
-//	result, err := risor.Eval(ctx, source, risor.WithTimeout(100*time.Millisecond))
-//	if errors.Is(err, context.DeadlineExceeded) {
-//	    // Handle timeout
-//	}
-func WithTimeout(d time.Duration) Option {
-	return func(o *options) {
-		o.timeout = d
-	}
-}
-
-// WithLimits sets allocation limits for operations that can produce large
-// values from small inputs: repeating, replacing, joining, and concatenating
-// strings and bytes, and building lists from ranges and other sequences.
-// Exceeding a limit raises a value error that scripts can catch.
-// Zero or negative fields use the defaults: 64 MiB for strings and bytes,
-// and 4,194,304 list elements.
-//
-// The limits catch accidental blowups from single operations. They are not a
-// security boundary and do not bound a run's total memory. See
-// docs/guides/memory-limits.md for the known gaps.
-//
-// Example:
-//
-//	result, err := risor.Eval(ctx, source, risor.WithLimits(risor.Limits{
-//	    MaxBytesSize:  256 << 20,
-//	    MaxListLength: 1 << 24,
-//	}))
-func WithLimits(limits Limits) Option {
-	return func(o *options) {
-		o.limits = &limits
-	}
-}
-
-// WithSyntax applies a syntax configuration that restricts allowed constructs.
-// The validator runs after parsing and before any transformers.
-//
-// Example:
-//
-//	// Only allow expressions - no variable declarations or control flow
-//	result, err := risor.Eval(ctx, "price * quantity",
-//	    risor.WithEnv(map[string]any{"price": 100.0, "quantity": 5}),
-//	    risor.WithSyntax(risor.ExpressionOnly),
-//	)
-func WithSyntax(config SyntaxConfig) Option {
-	return func(o *options) {
-		o.syntaxConfig = &config
-	}
-}
-
-// WithValidator adds a custom validator to run after parsing.
-// Multiple validators can be added; they run in order.
-// Validation runs before transformation.
-//
-// Example:
-//
-//	// Disallow accessing the "secret" variable
-//	noSecrets := risor.ValidatorFunc(func(p *ast.Program) []risor.ValidationError {
-//	    var errs []risor.ValidationError
-//	    for node := range ast.Preorder(p) {
-//	        if ident, ok := node.(*ast.Ident); ok && ident.Name == "secret" {
-//	            errs = append(errs, risor.ValidationError{
-//	                Message:  "access to 'secret' is not allowed",
-//	                Node:     node,
-//	                Position: node.Pos(),
-//	            })
-//	        }
-//	    }
-//	    return errs
-//	})
-func WithValidator(v Validator) Option {
-	return func(o *options) {
-		o.validators = append(o.validators, v)
-	}
-}
-
-// WithTransform adds a transformer to run after validation.
-// Multiple transformers can be added; they run in order.
-// Each transformer receives the output of the previous one.
-//
-// Example:
-//
-//	// Double all integer literals
-//	doubler := risor.TransformerFunc(func(p *ast.Program) (*ast.Program, error) {
-//	    // Walk and transform...
-//	    return p, nil
-//	})
-//	result, err := risor.Eval(ctx, source, risor.WithTransform(doubler))
-func WithTransform(t Transformer) Option {
-	return func(o *options) {
-		o.transformers = append(o.transformers, t)
-	}
-}
-
-// NewTypeRegistry creates a RegistryBuilder for custom type conversions.
-// Use this to add support for custom Go types in Risor scripts.
-//
-// Example:
-//
-//	registry := risor.NewTypeRegistry().
-//	    RegisterFromGo(reflect.TypeOf(User{}), func(v any) (object.Object, error) {
-//	        u := v.(User)
-//	        return object.NewMap(map[string]object.Object{
-//	            "id":   object.NewInt(int64(u.ID)),
-//	            "name": object.NewString(u.Name),
-//	        }), nil
-//	    }).
-//	    Build()
-//
-//	result, _ := risor.Eval(ctx, source,
-//	    risor.WithEnv(risor.Builtins()),
-//	    risor.WithTypeRegistry(registry))
-func NewTypeRegistry() *object.RegistryBuilder {
-	return object.NewRegistryBuilder()
-}
-
-// Builtins returns a map of standard builtins and modules for Risor scripts.
-// This includes only the builtins and modules that are always available,
-// without pulling in additional Go dependencies.
-//
-// By default, the Risor environment is empty. Use this function to get the
-// standard library:
-//
-//	result, _ := risor.Eval(ctx, source, risor.WithEnv(risor.Builtins()))
-//
-// To customize the environment, modify the returned map:
-//
-//	env := risor.Builtins()
-//	env["myvar"] = myValue           // add custom variable
-//	delete(env, "math")              // remove a module
-//	result, _ := risor.Eval(ctx, source, risor.WithEnv(env))
-func Builtins() map[string]any {
-	env := map[string]any{}
-	for k, v := range builtins.Builtins() {
-		env[k] = v
-	}
-	for k, v := range defaultModules() {
-		env[k] = v
-	}
-	return env
-}
-
-func defaultModules() map[string]object.Object {
-	return map[string]object.Object{
-		"math":   modMath.Module(),
-		"rand":   modRand.Module(),
-		"regexp": modRegexp.Module(),
-	}
-}
-
-// validateGlobals checks that the env keys match the globals expected by the
-// bytecode. Returns an error if there's a mismatch.
-//
-// This uses EnvKeys() which tracks only the globals that were provided via
-// the environment at compile time (not globals defined within the script).
-func validateGlobals(code *bytecode.Code, env map[string]any) error {
-	// EnvKeys returns only the globals from compile-time env,
-	// not script-defined globals like functions or let bindings.
-	required := code.EnvKeys()
-	if len(required) == 0 {
-		return nil // No external globals were required at compile time
-	}
-
-	// Build a set of provided keys
-	provided := make(map[string]bool, len(env))
-	for k := range env {
-		provided[k] = true
-	}
-
-	// Find any required keys that are missing
-	var missing []string
-	for _, name := range required {
-		if !provided[name] {
-			missing = append(missing, name)
-		}
-	}
-
-	if len(missing) > 0 {
-		return fmt.Errorf("missing required globals: %v (bytecode was compiled with: %v)",
-			missing, required)
-	}
-
-	return nil
-}
-
-// Compile parses and compiles source code into executable bytecode.
-// The returned Code is immutable and safe for concurrent use.
-// Multiple goroutines can execute the same Code simultaneously.
-//
-// # Global Name Binding
-//
-// The compiled bytecode is bound to the specific global names present in the
-// environment at compile time. Global variable references are resolved by
-// index, not by name, during execution. This means:
-//
-//   - The same Code can be reused with different env maps that have the same
-//     keys (values may differ)
-//   - Using Code with an env that has different keys will cause undefined
-//     behavior (wrong values or panics)
-//   - To introspect which globals a Code requires, use Code.GlobalNames()
-//
-// Example:
-//
-//	// Compile with env keys "x" and "y"
-//	code, _ := risor.Compile(ctx, "x + y", risor.WithEnv(map[string]any{"x": 1, "y": 2}))
-//
-//	// OK: same keys, different values
-//	result1, _ := risor.Run(ctx, code, risor.WithEnv(map[string]any{"x": 10, "y": 20}))
-//
-//	// NOT OK: different keys - will fail or produce wrong results
-//	// risor.Run(ctx, code, risor.WithEnv(map[string]any{"a": 1, "b": 2}))
-//
-//	// Introspect required globals
-//	names := code.GlobalNames() // returns []string{"x", "y"}
-func Compile(ctx context.Context, source string, opts ...Option) (*bytecode.Code, error) {
-	o := collectOptions(opts...)
-
-	var parserCfg *parser.Config
-	if o.filename != "" {
-		parserCfg = &parser.Config{Filename: o.filename}
-	}
-	program, err := parser.Parse(ctx, source, parserCfg)
+	f := syntax.NewFile(source)
+	tree, err := syntax.Parse(f)
 	if err != nil {
-		return nil, err
+		return nil, &Error{Diagnostics: []Diagnostic{err.Diagnostic(f)}}
 	}
-
-	// Validate syntax config (if specified)
-	if o.syntaxConfig != nil {
-		validator := syntax.NewSyntaxValidator(*o.syntaxConfig)
-		if errs := validator.Validate(program); len(errs) > 0 {
-			return nil, syntax.NewValidationErrors(errs)
-		}
-	}
-
-	// Run custom validators
-	for _, v := range o.validators {
-		if errs := v.Validate(program); len(errs) > 0 {
-			return nil, syntax.NewValidationErrors(errs)
-		}
-	}
-
-	// Run transformers
-	for _, t := range o.transformers {
-		program, err = t.Transform(program)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Pass the original source to the compiler for better error messages
-	cfg := o.compilerConfig()
-	cfg.Source = source
-
-	return compiler.Compile(program, cfg)
+	return &Expr{file: f, tree: tree}, nil
 }
 
-// Run executes compiled bytecode and returns the result.
-// Each call creates fresh runtime state, allowing concurrent execution of the
-// same Code.
-//
-// # Global Name Validation
-//
-// Run validates that the env keys match the globals expected by the bytecode.
-// If there's a mismatch, Run returns an error explaining what's wrong.
-// This prevents subtle bugs where the wrong values are accessed at runtime.
-//
-// # Result Conversion
-//
-// By default, the result is converted to a native Go value using these rules:
-//
-//   - NilType → nil
-//   - String → string
-//   - Int → int64
-//   - Float → float64
-//   - Bool → bool
-//   - Byte → byte
-//   - Bytes → []byte
-//   - List → []any (elements recursively converted)
-//   - Map → map[string]any (values recursively converted)
-//   - Time → time.Time
-//
-// For types without a Go equivalent (closures, modules, errors, etc.),
-// the Inspect() string representation is returned. A List or Map nested more
-// deeply than object.MaxNestingDepth, or one that contains itself, cannot be
-// converted, and errors.Is(err, object.ErrNestingDepth) is true.
-//
-// A conversion error is a *errors.StructuredError with no location, and the
-// typed error (for example *errors.ValueError) is its cause, so errors.As and
-// errors.Is find both.
-//
-// Use WithRawResult() to receive the object.Object directly without conversion.
-func Run(ctx context.Context, code *bytecode.Code, opts ...Option) (any, error) {
-	if code == nil {
-		return nil, ErrNilCode
-	}
+// Source returns the program's source text.
+func (x *Expr) Source() string { return string(x.file.Runes()) }
 
-	o := collectOptions(opts...)
+// Truthy is the language's truthiness test (03-host.md 3.2.4). It takes any
+// value a run can return and cannot fail.
+func Truthy(v any) bool { return value.Truthy(v) }
 
-	// Validate that env keys match the globals expected by the bytecode
-	if err := validateGlobals(code, o.env); err != nil {
-		return nil, err
+// AsFloat returns a number of a result as a float64.
+func AsFloat(v any) (float64, bool) {
+	if value.KindOf(v) != value.Number {
+		return 0, false
 	}
-
-	result, err := vm.Run(ctx, code, o.vmOpts()...)
-	if err != nil {
-		return nil, err
+	x, e := value.Read(v)
+	if e != value.ReadOK {
+		return 0, false
 	}
-
-	// Guard against a VM that returns no result object
-	if result == nil {
-		if o.rawResult {
-			return object.Nil, nil
-		}
-		return nil, nil
-	}
-
-	// Return raw object.Object if requested
-	if o.rawResult {
-		return result, nil
-	}
-
-	// Convert to Go value. This fails if the result is too deeply nested or
-	// contains a cycle (object.ErrNestingDepth), or has more elements in
-	// total than the list length limit.
-	convCtx := ctx
-	if o.limits != nil {
-		convCtx = object.WithLimits(ctx, *o.limits)
-	}
-	interfaceVal, err := object.ToInterface(convCtx, result)
-	if err != nil {
-		return nil, conversionError(err)
-	}
-	// For objects that don't have a Go equivalent (modules, closures),
-	// return their string representation
-	if interfaceVal == nil {
-		if _, isNil := result.(*object.NilType); !isNil {
-			return result.Inspect(), nil
-		}
-	}
-	return interfaceVal, nil
+	return x.(float64), true
 }
 
-// conversionError gives an error from converting the result the same shape as
-// a runtime error: a StructuredError whose cause is the original error, so
-// errors.As finds both. It has no location, because the conversion runs after
-// the script has finished and no one expression owns the result. A context
-// error is returned unchanged, as the VM returns it.
-func conversionError(err error) error {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
+// AsInt returns a number of a result as an int64 when it is whole.
+func AsInt(v any) (int64, bool) {
+	f, ok := AsFloat(v)
+	if !ok || !value.IsWhole(f) {
+		return 0, false
 	}
-	if se := object.NewError(err).Structured(); se != nil {
-		return se
-	}
-	se := object.NewStructuredError(object.ErrRuntime, err.Error(), object.SourceLocation{}, nil)
-	se.Cause = err
-	return se
+	return int64(f), true
 }
 
-// Eval is a convenience function that compiles and runs source code.
-// It is equivalent to Compile() followed by Run().
-//
-// The result is converted to a native Go value by default. See Run for
-// the conversion rules. Use WithRawResult() to receive the object.Object
-// directly.
-func Eval(ctx context.Context, source string, opts ...Option) (any, error) {
-	code, err := Compile(ctx, source, opts...)
-	if err != nil {
-		return nil, err
+// WalkCalls calls fn with the name of each call by name and each method call
+// of the program, for tools and tests. method is true for a method call.
+func WalkCalls(x *Expr, fn func(name string, method bool)) {
+	syntax.Walk(x.tree, func(n syntax.Node) bool {
+		switch n := n.(type) {
+		case *syntax.Call:
+			fn(n.Name, false)
+		case *syntax.MethodCall:
+			fn(n.Name, true)
+		}
+		return true
+	})
+}
+
+// Origin says where a source text sits in a larger document: a name, and
+// the line, column and indent of its first code point (03-host.md 3.7).
+// A reader of case file sources returns one beside the text (package F9
+// 7.2); spans stay positions in the text itself.
+type Origin struct {
+	Name                 string
+	Line, Column, Indent int
+}
+
+// Text is the program's own text: the source between the start and the
+// end of its span. For a whole program it is Source without the white
+// space and comments around it; for a program made of a part of a larger
+// text, such as a call argument (CallSite.Args) or a template's part, it
+// is that part alone, where Source is the whole text.
+func (x *Expr) Text() string {
+	r := x.tree.Result
+	if r == nil {
+		return ""
 	}
-	return Run(ctx, code, opts...)
+	start, end := r.Span().Start, r.Span().End
+	if len(x.tree.Consts) > 0 {
+		start = x.tree.Consts[0].Span().Start
+	}
+	return x.file.Text(start, end)
 }

@@ -1,910 +1,703 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
-	"time"
-	"unicode"
 
-	"github.com/deepnoodle-ai/risor/v2/pkg/errors"
-	"github.com/deepnoodle-ai/risor/v2/pkg/object"
-	"github.com/deepnoodle-ai/risor/v2/pkg/parser"
+	risor "github.com/deepnoodle-ai/risor/v3"
+	"github.com/deepnoodle-ai/risor/v3/internal/diag"
+	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
+	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// replApp implements tui.InlineApplication for the Risor REPL.
-type replApp struct {
-	runner      *tui.InlineApp
-	ctx         context.Context
-	vm          *replVM
-	input       string
-	cursorPos   int
-	history     []string
-	historyIdx  int
-	historyPath string
-	showTiming  bool
-	multiLine   bool // true when input contains newlines
+// The REPL of package F12 5, a product of this implementation. An entry is
+// zero or more const lines, then one expression or nothing. The session
+// holds the const lines of the entries that succeeded; an entry's program
+// is the held lines, then the entry. A later const of a held name shadows
+// it: the held binding is renamed, with every use of it, so that the lines
+// after see the new binding and what was held keeps its own.
+
+const replHelp = `Enter const lines and an expression. Commands:
+  :reset  forget the held const lines
+  :quit   leave
+`
+
+// session is the state of a REPL.
+type session struct {
+	env      *risor.Env
+	vars     risor.Map
+	held     string     // the held const lines, as program text
+	heldVals risor.Held // the values of the held lines (F12 5 item 6)
+	color    bool
+	// internal maps each name shadow gave a held binding to the name its
+	// author wrote, so that no internal name reaches the user.
+	internal map[string]string
+	// undo takes a span of the last entry's renamed program back to the
+	// text the author wrote; nil when shadow renamed nothing.
+	undo func(risor.Span) risor.Span
 }
 
-func runRepl(ctx context.Context, env map[string]any) error {
-	// Load history
-	history, historyPath := loadHistory()
-
-	// Create VM with environment
-	vm, err := newReplVM(env)
-	if err != nil {
-		return err
-	}
-
-	app := &replApp{
-		ctx:         ctx,
-		vm:          vm,
-		history:     history,
-		historyIdx:  -1,
-		historyPath: historyPath,
-	}
-
-	app.runner = tui.NewInlineApp(
-		tui.WithInlineBracketedPaste(true),
-		tui.WithInlineKittyKeyboard(true),
-	)
-
-	// Print branded header
-	app.runner.Print(app.headerView())
-
-	return app.runner.Run(app)
+// result is what an entry shows.
+type result struct {
+	value string // the value's JSON form, and U+000A; empty for none
+	diags string // the rendered diagnostics, or empty
+	more  bool   // the entry needs more lines
 }
 
-// headerView returns the branded REPL header with gradient logo
-func (app *replApp) headerView() tui.View {
-	// ASCII art logo
-	artLines := []string{
-		"  ██████╗ ██╗███████╗ ██████╗ ██████╗ ",
-		"  ██╔══██╗██║██╔════╝██╔═══██╗██╔══██╗",
-		"  ██████╔╝██║███████╗██║   ██║██████╔╝",
-		"  ██╔══██╗██║╚════██║██║   ██║██╔══██╗",
-		"  ██║  ██║██║███████║╚██████╔╝██║  ██║",
-		"  ╚═╝  ╚═╝╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝",
-	}
-
-	// Find max width for consistent gradient
-	maxWidth := 0
-	for _, line := range artLines {
-		if w := len([]rune(line)); w > maxWidth {
-			maxWidth = w
-		}
-	}
-
-	// Build logo with gradient
-	logoViews := make([]tui.View, len(artLines))
-	for row, line := range artLines {
-		runes := []rune(line)
-		charViews := make([]tui.View, len(runes))
-
-		for col, r := range runes {
-			t := float64(col) / float64(maxWidth-1)
-			c := interpolateGradient(t)
-			charViews[col] = tui.Text("%c", r).Style(tui.NewStyle().WithFgRGB(c))
-		}
-		logoViews[row] = tui.Group(charViews...)
-	}
-
-	// Style constants
-	accentColor := tui.RGB{R: 250, G: 180, B: 80}
-	mutedColor := tui.RGB{R: 140, G: 140, B: 155}
-
-	versionLine := tui.Group(
-		tui.Text("  ◆ ").Style(tui.NewStyle().WithFgRGB(accentColor)),
-		tui.Text("v%s", version).Style(tui.NewStyle().WithFgRGB(mutedColor)),
-	)
-
-	helpLine := tui.Group(
-		tui.Text("  ◆ ").Style(tui.NewStyle().WithFgRGB(accentColor)),
-		tui.Text("Type :help for commands").Style(tui.NewStyle().WithFgRGB(mutedColor)),
-	)
-
-	// Combine all views
-	var views []tui.View
-	views = append(views, tui.Text(""))
-	views = append(views, logoViews...)
-	views = append(views, tui.Text(""))
-	views = append(views, versionLine)
-	views = append(views, helpLine)
-	views = append(views, tui.Text(""))
-	return tui.Stack(views...).Gap(0)
-}
-
-// interpolateGradient returns a color along the Risor gradient (warm orange to gold)
-func interpolateGradient(t float64) tui.RGB {
-	type colorStop struct {
-		pos   float64
-		color tui.RGB
-	}
-	stops := []colorStop{
-		{0.0, tui.RGB{R: 255, G: 150, B: 50}},   // warm orange
-		{0.35, tui.RGB{R: 255, G: 200, B: 80}},  // gold
-		{0.65, tui.RGB{R: 255, G: 180, B: 100}}, // amber
-		{1.0, tui.RGB{R: 255, G: 140, B: 60}},   // deep orange
-	}
-
-	// Find the two stops we're between
-	var lo, hi colorStop
-	for i := 0; i < len(stops)-1; i++ {
-		if t >= stops[i].pos && t <= stops[i+1].pos {
-			lo = stops[i]
-			hi = stops[i+1]
-			break
-		}
-	}
-
-	// Interpolate between the two stops
-	localT := (t - lo.pos) / (hi.pos - lo.pos)
-	return tui.RGB{
-		R: uint8(float64(lo.color.R) + localT*(float64(hi.color.R)-float64(lo.color.R))),
-		G: uint8(float64(lo.color.G) + localT*(float64(hi.color.G)-float64(lo.color.G))),
-		B: uint8(float64(lo.color.B) + localT*(float64(hi.color.B)-float64(lo.color.B))),
-	}
-}
-
-// LiveView returns the prompt view for the live region.
-func (app *replApp) LiveView() tui.View {
-	// Choose prompt based on multiline state
-	prompt := ">>> "
-	if app.multiLine {
-		prompt = "... "
-	}
-
-	// Build the input line with cursor
-	inputRunes := []rune(app.input)
-	var beforeCursor, cursorChar, afterCursor string
-
-	if app.cursorPos < len(inputRunes) {
-		beforeCursor = string(inputRunes[:app.cursorPos])
-		cursorChar = string(inputRunes[app.cursorPos])
-		afterCursor = string(inputRunes[app.cursorPos+1:])
+// entryKind classifies an entry's text: whether it parses with an
+// expression, parses as const lines alone, needs more lines, or fails.
+func entryKind(text string) (hasExpr bool, ok bool, more bool, err error) {
+	if _, err := risor.Parse(text); err == nil {
+		return true, true, false, nil
 	} else {
-		beforeCursor = app.input
-		cursorChar = " "
-		afterCursor = ""
-	}
-
-	// Style for prompt
-	promptColor := tui.RGB{R: 250, G: 180, B: 80}
-
-	return tui.Stack(
-		tui.Divider(),
-		tui.Group(
-			tui.Text("%s", prompt).Style(tui.NewStyle().WithFgRGB(promptColor).WithBold()),
-			tui.Text("%s", beforeCursor),
-			tui.Text("%s", cursorChar).Reverse(),
-			tui.Text("%s", afterCursor),
-		),
-		tui.Divider(),
-	)
-}
-
-// HandleEvent processes keyboard events.
-func (app *replApp) HandleEvent(event tui.Event) []tui.Cmd {
-	keyEvent, ok := event.(tui.KeyEvent)
-	if !ok {
-		return nil
-	}
-
-	// Handle paste events
-	if keyEvent.Paste != "" {
-		app.insertString(keyEvent.Paste)
-		app.updateMultiLine()
-		return nil
-	}
-
-	switch keyEvent.Key {
-	case tui.KeyEnter:
-		// Shift+Enter for multi-line
-		if keyEvent.Shift {
-			app.insertRune('\n')
-			app.updateMultiLine()
-			return nil
+		if x, err2 := risor.Parse(text + "\nnull"); err2 == nil && onlyConsts(x, text) {
+			return false, true, false, nil
 		}
-		// Submit
-		return app.submit()
-
-	case tui.KeyCtrlC:
-		// Clear input if not empty, otherwise quit
-		if len(app.input) > 0 {
-			app.input = ""
-			app.cursorPos = 0
-			app.multiLine = false
-			app.historyIdx = -1
-			return nil
+		ds, _ := diagnosticsOf(err)
+		if len(ds) > 0 && atEnd(ds[0], text) {
+			return false, false, true, nil
 		}
-		return []tui.Cmd{tui.Quit()}
-
-	case tui.KeyCtrlD:
-		if len(app.input) == 0 {
-			return []tui.Cmd{tui.Quit()}
-		}
-		app.deleteChar()
-
-	case tui.KeyBackspace:
-		app.backspace()
-		app.updateMultiLine()
-
-	case tui.KeyArrowLeft:
-		if keyEvent.Ctrl {
-			app.wordLeft()
-		} else if app.cursorPos > 0 {
-			app.cursorPos--
-		}
-
-	case tui.KeyArrowRight:
-		if keyEvent.Ctrl {
-			app.wordRight()
-		} else if app.cursorPos < len([]rune(app.input)) {
-			app.cursorPos++
-		}
-
-	case tui.KeyHome, tui.KeyCtrlA:
-		app.cursorPos = 0
-
-	case tui.KeyEnd, tui.KeyCtrlE:
-		app.cursorPos = len([]rune(app.input))
-
-	case tui.KeyCtrlU:
-		app.input = ""
-		app.cursorPos = 0
-		app.multiLine = false
-
-	case tui.KeyCtrlK:
-		inputRunes := []rune(app.input)
-		app.input = string(inputRunes[:app.cursorPos])
-		app.updateMultiLine()
-
-	case tui.KeyCtrlW:
-		// Delete word backward
-		app.deleteWordBackward()
-		app.updateMultiLine()
-
-	case tui.KeyArrowUp:
-		app.historyUp()
-		app.updateMultiLine()
-
-	case tui.KeyArrowDown:
-		app.historyDown()
-		app.updateMultiLine()
-
-	default:
-		if keyEvent.Rune != 0 {
-			app.insertRune(keyEvent.Rune)
-			if keyEvent.Rune == '\n' {
-				app.updateMultiLine()
-			}
-		}
-	}
-
-	return nil
-}
-
-func (app *replApp) updateMultiLine() {
-	app.multiLine = strings.Contains(app.input, "\n")
-}
-
-func (app *replApp) wordLeft() {
-	inputRunes := []rune(app.input)
-	if app.cursorPos == 0 {
-		return
-	}
-
-	// Skip any spaces/punctuation behind us
-	for app.cursorPos > 0 && !isWordChar(inputRunes[app.cursorPos-1]) {
-		app.cursorPos--
-	}
-	// Move to the start of the word
-	for app.cursorPos > 0 && isWordChar(inputRunes[app.cursorPos-1]) {
-		app.cursorPos--
+		return false, false, false, err
 	}
 }
 
-func (app *replApp) wordRight() {
-	inputRunes := []rune(app.input)
-	n := len(inputRunes)
-	if app.cursorPos >= n {
-		return
-	}
-
-	// Skip current word
-	for app.cursorPos < n && isWordChar(inputRunes[app.cursorPos]) {
-		app.cursorPos++
-	}
-	// Skip spaces/punctuation
-	for app.cursorPos < n && !isWordChar(inputRunes[app.cursorPos]) {
-		app.cursorPos++
-	}
-}
-
-func (app *replApp) deleteWordBackward() {
-	if app.cursorPos == 0 {
-		return
-	}
-
-	inputRunes := []rune(app.input)
-	endPos := app.cursorPos
-
-	// Skip any spaces/punctuation behind us
-	for app.cursorPos > 0 && !isWordChar(inputRunes[app.cursorPos-1]) {
-		app.cursorPos--
-	}
-	// Move to the start of the word
-	for app.cursorPos > 0 && isWordChar(inputRunes[app.cursorPos-1]) {
-		app.cursorPos--
-	}
-
-	// Delete from cursorPos to endPos
-	app.input = string(inputRunes[:app.cursorPos]) + string(inputRunes[endPos:])
-	app.historyIdx = -1
-}
-
-func isWordChar(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
-}
-
-func (app *replApp) submit() []tui.Cmd {
-	input := strings.TrimSpace(app.input)
-
-	if input == "" {
-		// Clear input state
-		app.input = ""
-		app.cursorPos = 0
-		app.historyIdx = -1
-		app.multiLine = false
-		return nil
-	}
-
-	// Handle REPL commands (start with :) - these don't need continuation
-	if strings.HasPrefix(input, ":") {
-		// Clear input state
-		app.input = ""
-		app.cursorPos = 0
-		app.historyIdx = -1
-		app.multiLine = false
-
-		// Style for prompt
-		promptColor := tui.RGB{R: 250, G: 180, B: 80}
-
-		// Print input to scrollback
-		app.runner.Print(tui.Group(
-			tui.Text(">>> ").Style(tui.NewStyle().WithFgRGB(promptColor).WithBold()),
-			tui.Text("%s", input),
-		))
-
-		return app.handleCommand(input)
-	}
-
-	// Try to evaluate - check if input is incomplete
-	lineOffset := app.vm.lineOffset()
-	start := time.Now()
-	result, err := app.vm.Eval(app.ctx, input)
-	elapsed := time.Since(start)
-
-	// Check if the error indicates incomplete input
-	if err != nil && isIncompleteInput(err) {
-		// Don't clear input - add a newline and continue in multi-line mode
-		app.input = app.input + "\n"
-		app.cursorPos = len([]rune(app.input))
-		app.multiLine = true
-		return nil
-	}
-
-	// Input is complete (success or real error) - clear state and print
-	app.input = ""
-	app.cursorPos = 0
-	app.historyIdx = -1
-	app.multiLine = false
-
-	// Style for prompt
-	promptColor := tui.RGB{R: 250, G: 180, B: 80}
-
-	// Print input to scrollback
-	app.runner.Print(tui.Group(
-		tui.Text(">>> ").Style(tui.NewStyle().WithFgRGB(promptColor).WithBold()),
-		tui.Text("%s", input),
-	))
-
-	// Add to history
-	app.history = append(app.history, input)
-	appendToHistory(app.historyPath, input)
-
-	// Print result
+// onlyConsts reports whether a program is the const lines of text, then
+// the null the REPL added.
+func onlyConsts(x *risor.Expr, text string) bool {
+	f := syntax.NewFile(text + "\nnull")
+	p, err := syntax.Parse(f)
 	if err != nil {
-		app.runner.Print(tui.Text("%s", formatReplError(err, lineOffset)).Fg(tui.ColorRed).Wrap())
-	} else if result != nil {
-		app.printResult(result)
-	}
-
-	// Optionally show timing
-	if app.showTiming {
-		app.runner.Print(tui.Text("%v", elapsed).Style(
-			tui.NewStyle().WithFgRGB(tui.RGB{R: 140, G: 140, B: 155}),
-		))
-	}
-
-	return nil
-}
-
-// formatReplError formats err for the REPL, with the source line and a caret
-// under the failing text. Parse errors count lines from the start of the
-// input, so lineOffset, the number of lines in the earlier inputs, shifts
-// them to count from the start of the session like other errors.
-func formatReplError(err error, lineOffset int) string {
-	formatted := formattedErrors(err)
-	if formatted == nil {
-		return err.Error()
-	}
-	if _, ok := err.(*parser.Errors); ok {
-		for _, fe := range formatted {
-			if fe.Line > 0 {
-				fe.Line += lineOffset
-			}
-			for i := range fe.SourceLines {
-				fe.SourceLines[i].Number += lineOffset
-			}
-		}
-	}
-	text := errors.NewFormatter(false).FormatMultiple(formatted)
-	return strings.TrimRight(text, "\n")
-}
-
-// isIncompleteInput returns true if the error indicates the input is incomplete
-// and the user should continue typing (e.g., unclosed bracket, incomplete block).
-// Note: We don't auto-continue for string literals since Risor strings can't span lines.
-func isIncompleteInput(err error) bool {
-	msg := err.Error()
-
-	// Don't auto-continue for string/escape errors - these can't be fixed by adding lines
-	if strings.Contains(msg, "string literal") || strings.Contains(msg, "escape sequence") {
 		return false
 	}
+	_, isNull := p.Result.(*syntax.Null)
+	return isNull && p.Result.Span().Start >= len([]rune(strings.TrimPrefix(text, string(rune(0xFEFF)))))
+}
 
-	// Auto-continue for structural incompleteness:
-	// - "unterminated block statement"
-	// - "unterminated function parameters"
-	// - "unterminated switch statement"
-	if strings.Contains(msg, "unterminated") {
-		return true
+// atEnd reports whether a parse diagnostic stands at the end of the text,
+// where the grammar needs more.
+func atEnd(d risor.Diagnostic, text string) bool {
+	if d.Span == nil {
+		return false
 	}
-
-	// Auto-continue for unexpected end of file (unclosed brackets, parens, etc.)
-	// e.g., "unexpected end of file while parsing map (expected })"
-	if strings.Contains(msg, "unexpected end of file") {
-		return true
+	f := syntax.NewFile(text)
+	end := f.Pos(f.Len())
+	switch d.Code {
+	case diag.CodeUnterminatedString, diag.CodeUnterminatedComment, diag.CodeTextBlockClose:
+		return d.Span.End == end
 	}
+	return d.Span.Start == end
+}
 
+// lineCount is the number of lines of a text.
+func lineCount(s string) int { return strings.Count(s, "\n") + 1 }
+
+// program joins the held lines and an entry.
+func (s *session) program(entry string) (string, int) {
+	if s.held == "" {
+		return entry, 0
+	}
+	return s.held + "\n" + entry, lineCount(s.held)
+}
+
+// eval evaluates one entry.
+func (s *session) eval(entry string) result {
+	if strings.TrimSpace(entry) == "" {
+		return result{}
+	}
+	hasExpr, ok, more, err := entryKind(entry)
+	if more {
+		return result{more: true}
+	}
+	if !ok {
+		return result{diags: s.render(err, entry, 0)}
+	}
+	text := entry
+	if !hasExpr {
+		text += "\nnull"
+	}
+	full, k := s.program(text)
+	authoredFull := full
+	full, renamed, passes := shadow(full, k)
+	s.undo = nil
+	if len(passes) > 0 {
+		s.undo = spanBack(full, authoredFull, passes)
+	}
+	if s.internal == nil {
+		s.internal = map[string]string{}
+	}
+	for fresh, name := range renamed {
+		s.internal[fresh] = s.authored(name)
+	}
+	x, err := risor.Parse(full)
+	if err != nil {
+		return result{diags: s.render(err, entry, k)}
+	}
+	v, nextHeld, err := s.env.RunEntry(context.Background(), x, s.vars, s.heldVals)
+	if err != nil {
+		return result{diags: s.render(err, entry, k)}
+	}
+	s.held = heldLines(full)
+	s.heldVals = nextHeld
+	if !hasExpr {
+		return result{}
+	}
+	js, err := risor.JSONText(v)
+	if err != nil {
+		if ds, ok := diagnosticsOf(err); ok && len(ds) > 0 && ds[0].Code == "wrong-kind" {
+			return result{value: "an opaque value, which cannot be shown\n"}
+		}
+		return result{diags: s.render(err, entry, k)}
+	}
+	return result{value: js + "\n"}
+}
+
+// heldLines is the text of a program's const lines.
+func heldLines(text string) string {
+	f := syntax.NewFile(text)
+	p, err := syntax.Parse(f)
+	if err != nil || len(p.Consts) == 0 {
+		return ""
+	}
+	return f.Text(0, p.Consts[len(p.Consts)-1].Span().End)
+}
+
+// render writes the diagnostics of a failure with the entry's text: a span
+// in the held lines is left out, and a span in the entry is moved up by
+// the k lines before it.
+func (s *session) render(err error, entry string, k int) string {
+	ds, ok := diagnosticsOf(err)
+	if !ok {
+		return "risor: " + err.Error() + "\n"
+	}
+	move := func(sp *risor.Span) *risor.Span {
+		if sp == nil || sp.Start.Line <= k {
+			return nil
+		}
+		m := *sp
+		m.Start.Line -= k
+		m.End.Line -= k
+		return &m
+	}
+	out := make([]risor.Diagnostic, len(ds))
+	back := func(sp *risor.Span) *risor.Span {
+		if sp == nil || s.undo == nil {
+			return sp
+		}
+		m := s.undo(*sp)
+		return &m
+	}
+	for i, d := range ds {
+		d.Span = move(back(d.Span))
+		var tr []diag.TraceEntry
+		for _, t := range d.Trace {
+			if m := move(back(&t.Span)); m != nil {
+				t.Span = *m
+				tr = append(tr, t)
+			}
+		}
+		d.Trace = tr
+		d.Message = s.authoredText(d.Message)
+		for j := range d.Trace {
+			d.Trace[j].Name = s.authored(d.Trace[j].Name)
+		}
+		out[i] = d
+	}
+	var b strings.Builder
+	writeDiagnostics(&b, out, &entry, "text", s.color)
+	return b.String()
+}
+
+// shadow renames each held binding that a later const line of the entry
+// binds again: the held const line and every use that refers to it, up to
+// and including the value of the line that binds the name again. k is the
+// number of lines before the entry.
+//
+// It returns the new text, each fresh name with the name it stands for,
+// and the edits of each pass, so that a span can be taken back.
+func shadow(text string, k int) (string, map[string]string, [][]edit) {
+	renamed := map[string]string{}
+	var passes [][]edit
+	if k == 0 {
+		return text, renamed, passes
+	}
+	for guard := 0; guard < 1000; guard++ {
+		f := syntax.NewFile(text)
+		p, err := syntax.Parse(f)
+		if err != nil {
+			return text, renamed, passes
+		}
+		heldEnd := -1
+		for i, c := range p.Consts {
+			if f.Pos(c.Span().Start).Line <= k {
+				heldEnd = i
+			}
+		}
+		// The first held name that a later line binds again.
+		h, name := -1, ""
+	find:
+		for i := 0; i <= heldEnd; i++ {
+			for _, n := range boundNames(p.Consts[i].Pattern) {
+				for j := i + 1; j < len(p.Consts); j++ {
+					for _, m := range boundNames(p.Consts[j].Pattern) {
+						if m == n {
+							h, name = i, n
+							break find
+						}
+					}
+				}
+			}
+		}
+		if h < 0 {
+			return text, renamed, passes
+		}
+		fresh := freshName(name, text)
+		renamed[fresh] = name
+		var eds []edit
+		bindSite(p.Consts[h].Pattern, name, fresh, &eds)
+		for j := h + 1; j < len(p.Consts); j++ {
+			c := p.Consts[j]
+			rebinds := false
+			for _, m := range boundNames(c.Pattern) {
+				if m == name {
+					rebinds = true
+				}
+			}
+			renamePatternDefaults(c.Pattern, name, fresh, &eds)
+			renameFree(c.Value, name, fresh, &eds)
+			if rebinds {
+				break
+			}
+			if j == len(p.Consts)-1 {
+				renameFree(p.Result, name, fresh, &eds)
+			}
+		}
+		passes = append(passes, append([]edit(nil), eds...))
+		text = applyEdits(f.Runes(), eds)
+	}
+	return text, renamed, passes
+}
+
+// spanBack takes a span of the text shadow made (to) back to the text it
+// was given (from), undoing the passes' edits from the last one.
+func spanBack(to, from string, passes [][]edit) func(risor.Span) risor.Span {
+	tf, ff := syntax.NewFile(to), syntax.NewFile(from)
+	offset := func(f *syntax.File, p diag.Pos) int {
+		// The first offset at p's line, then its column.
+		lo, hi := 0, f.Len()
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if f.Pos(mid).Line < p.Line {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		return lo + p.Column - 1
+	}
+	pos := func(p diag.Pos, end bool) diag.Pos {
+		off := offset(tf, p)
+		for i := len(passes) - 1; i >= 0; i-- {
+			off = editBack(passes[i], off, end)
+		}
+		return ff.Pos(off)
+	}
+	return func(sp risor.Span) risor.Span {
+		return risor.Span{Start: pos(sp.Start, false), End: pos(sp.End, true)}
+	}
+}
+
+// editBack takes an offset in the text after a set of edits back to the
+// text before them. An offset inside a replacement goes to its start, or,
+// for the end of a span, to its end.
+func editBack(eds []edit, off int, end bool) int {
+	sorted := append([]edit(nil), eds...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].start < sorted[j].start })
+	delta := 0
+	for _, e := range sorted {
+		ns := e.start + delta
+		ne := ns + len([]rune(e.text))
+		if off <= ns {
+			break
+		}
+		if off >= ne {
+			delta += ne - ns - (e.end - e.start)
+			continue
+		}
+		if end {
+			return e.end
+		}
+		return e.start
+	}
+	return off - delta
+}
+
+// authored is the name the author wrote for a name of the program.
+func (s *session) authored(name string) string {
+	for {
+		orig, ok := s.internal[name]
+		if !ok || orig == name {
+			return name
+		}
+		name = orig
+	}
+}
+
+// authoredText replaces each internal name, as a whole word, in a message.
+func (s *session) authoredText(msg string) string {
+	if len(s.internal) == 0 || !strings.Contains(msg, "__") {
+		return msg
+	}
+	var b strings.Builder
+	rs := []rune(msg)
+	for i := 0; i < len(rs); {
+		if isNameStart(rs[i]) && (i == 0 || !isNamePart(rs[i-1])) {
+			j := i
+			for j < len(rs) && isNamePart(rs[j]) {
+				j++
+			}
+			b.WriteString(s.authored(string(rs[i:j])))
+			i = j
+			continue
+		}
+		b.WriteRune(rs[i])
+		i++
+	}
+	return b.String()
+}
+
+func isNameStart(r rune) bool {
+	return r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+func isNamePart(r rune) bool { return isNameStart(r) || (r >= '0' && r <= '9') }
+
+// edit replaces the code points from start to end.
+type edit struct {
+	start, end int
+	text       string
+}
+
+func applyEdits(src []rune, eds []edit) string {
+	// Apply from the end, so that offsets stay valid.
+	for i := 1; i < len(eds); i++ {
+		for j := i; j > 0 && eds[j].start > eds[j-1].start; j-- {
+			eds[j], eds[j-1] = eds[j-1], eds[j]
+		}
+	}
+	out := append([]rune(nil), src...)
+	for _, e := range eds {
+		out = append(out[:e.start], append([]rune(e.text), out[e.end:]...)...)
+	}
+	return string(out)
+}
+
+// freshName is a name for a shadowed binding that the text does not use.
+func freshName(name, text string) string {
+	for n := 1; ; n++ {
+		c := name + "__" + strconv.Itoa(n)
+		if !strings.Contains(text, c) {
+			return c
+		}
+	}
+}
+
+func boundNames(p syntax.Pattern) []string {
+	var out []string
+	switch p := p.(type) {
+	case *syntax.NamePat:
+		if !p.Discard {
+			out = append(out, p.Name)
+		}
+	case *syntax.MapPat:
+		for _, f := range p.Fields {
+			out = append(out, f.Name)
+		}
+		if p.Rest != nil {
+			out = append(out, p.Rest.Name)
+		}
+	case *syntax.ListPat:
+		for _, e := range p.Elems {
+			if e.Name != nil && !e.Name.Discard {
+				out = append(out, e.Name.Name)
+			}
+		}
+		if p.Rest != nil {
+			out = append(out, p.Rest.Name)
+		}
+	}
+	return out
+}
+
+// bindSite renames the place a pattern binds name.
+func bindSite(p syntax.Pattern, name, fresh string, eds *[]edit) {
+	switch p := p.(type) {
+	case *syntax.NamePat:
+		if p.Name == name {
+			*eds = append(*eds, edit{p.Span().Start, p.Span().End, fresh})
+		}
+	case *syntax.MapPat:
+		for _, f := range p.Fields {
+			if f.Name != name {
+				continue
+			}
+			if f.KeySpan == f.NameSpan { // {a} is {a: a}
+				*eds = append(*eds, edit{f.NameSpan.Start, f.NameSpan.End, name + ": " + fresh})
+			} else {
+				*eds = append(*eds, edit{f.NameSpan.Start, f.NameSpan.End, fresh})
+			}
+		}
+		if p.Rest != nil && p.Rest.Name == name {
+			*eds = append(*eds, edit{p.Rest.Span().Start, p.Rest.Span().End, fresh})
+		}
+	case *syntax.ListPat:
+		for _, e := range p.Elems {
+			if e.Name != nil && e.Name.Name == name {
+				*eds = append(*eds, edit{e.Name.Span().Start, e.Name.Span().End, fresh})
+			}
+		}
+		if p.Rest != nil && p.Rest.Name == name {
+			*eds = append(*eds, edit{p.Rest.Span().Start, p.Rest.Span().End, fresh})
+		}
+	}
+}
+
+// renamePatternDefaults renames the free uses of name in a pattern's
+// defaults, up to a field that binds name.
+func renamePatternDefaults(p syntax.Pattern, name, fresh string, eds *[]edit) {
+	switch p := p.(type) {
+	case *syntax.MapPat:
+		for _, f := range p.Fields {
+			renameFree(f.Default, name, fresh, eds)
+			if f.Name == name {
+				return
+			}
+		}
+	case *syntax.ListPat:
+		for _, e := range p.Elems {
+			renameFree(e.Default, name, fresh, eds)
+			if e.Name != nil && e.Name.Name == name {
+				return
+			}
+		}
+	}
+}
+
+func bindsName(p syntax.Pattern, name string) bool {
+	for _, n := range boundNames(p) {
+		if n == name {
+			return true
+		}
+	}
 	return false
 }
 
-func (app *replApp) handleCommand(input string) []tui.Cmd {
-	parts := strings.Fields(input)
-	cmd := strings.ToLower(parts[0])
-
-	mutedStyle := tui.NewStyle().WithFgRGB(tui.RGB{R: 140, G: 140, B: 155})
-	accentStyle := tui.NewStyle().WithFgRGB(tui.RGB{R: 250, G: 180, B: 80})
-
-	switch cmd {
-	case ":type", ":t":
-		if len(parts) < 2 {
-			app.runner.Print(tui.Text("  Usage: :type <expression>").Style(mutedStyle))
-			return nil
-		}
-		expr := strings.TrimSpace(input[len(parts[0]):])
-		obj, err := app.vm.EvalObject(app.ctx, expr)
-		if err != nil {
-			app.runner.Print(tui.Text("  %s", err.Error()).Fg(tui.ColorRed))
-			return nil
-		}
-		app.runner.Print(tui.Group(
-			tui.Text("  ").Style(mutedStyle),
-			tui.Text("%s", obj.Type()).Style(accentStyle),
-		))
-
-	case ":methods", ":m":
-		if len(parts) < 2 {
-			app.runner.Print(tui.Text("  Usage: :methods <expression>").Style(mutedStyle))
-			return nil
-		}
-		expr := strings.TrimSpace(input[len(parts[0]):])
-		obj, err := app.vm.EvalObject(app.ctx, expr)
-		if err != nil {
-			app.runner.Print(tui.Text("  %s", err.Error()).Fg(tui.ColorRed))
-			return nil
-		}
-		introspectable, ok := obj.(object.Introspectable)
-		if !ok {
-			app.runner.Print(tui.Group(
-				tui.Text("  ").Style(mutedStyle),
-				tui.Text("%s", obj.Type()).Style(accentStyle),
-				tui.Text(" has no methods").Style(mutedStyle),
-			))
-			return nil
-		}
-		attrs := introspectable.Attrs()
-		if len(attrs) == 0 {
-			app.runner.Print(tui.Group(
-				tui.Text("  ").Style(mutedStyle),
-				tui.Text("%s", obj.Type()).Style(accentStyle),
-				tui.Text(" has no methods").Style(mutedStyle),
-			))
-			return nil
-		}
-		app.runner.Print(tui.Group(
-			tui.Text("  ").Style(mutedStyle),
-			tui.Text("%s", obj.Type()).Style(accentStyle),
-			tui.Text(" methods:").Style(mutedStyle),
-		))
-		// Display methods with signatures
-		for _, attr := range attrs {
-			var sig string
-			if args := attr.DisplayArgs(); len(args) > 0 {
-				sig = fmt.Sprintf(".%s(%s)", attr.Name, strings.Join(args, ", "))
-			} else {
-				sig = fmt.Sprintf(".%s()", attr.Name)
-			}
-			app.runner.Print(tui.Group(
-				tui.Text("    %s", sig).Style(accentStyle),
-				tui.Text("  %s", attr.Doc).Style(mutedStyle),
-			))
-		}
-
-	case ":help", ":h", ":?":
-		app.runner.Print(tui.Stack(
-			tui.Text(""),
-			tui.Group(
-				tui.Text("  :help, :h, :?   ").Style(accentStyle),
-				tui.Text("  Show this help").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  :type, :t <expr>").Style(accentStyle),
-				tui.Text("  Show type of expression").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  :methods <expr> ").Style(accentStyle),
-				tui.Text("  List methods on a value").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  :env            ").Style(accentStyle),
-				tui.Text("  List available globals").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  :timing         ").Style(accentStyle),
-				tui.Text("  Toggle execution timing").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  :clear, :cls    ").Style(accentStyle),
-				tui.Text("  Clear the screen").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  :exit, :quit    ").Style(accentStyle),
-				tui.Text("  Exit the REPL").Style(mutedStyle),
-			),
-			tui.Text(""),
-			tui.Group(
-				tui.Text("  Shift+Enter").Style(accentStyle),
-				tui.Text("   Multi-line input").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  Ctrl+C      ").Style(accentStyle),
-				tui.Text("   Clear input / Exit").Style(mutedStyle),
-			),
-			tui.Group(
-				tui.Text("  Ctrl+W      ").Style(accentStyle),
-				tui.Text("   Delete word backward").Style(mutedStyle),
-			),
-			tui.Text(""),
-		).Gap(0))
-
-	case ":clear", ":cls":
-		app.runner.ClearScrollback()
-		app.runner.Print(app.headerView())
-
-	case ":env":
-		names := app.vm.GlobalNames()
-		if len(names) == 0 {
-			app.runner.Print(tui.Text("  (no globals)").Style(mutedStyle))
-		} else {
-			// Display in columns
-			app.runner.Print(tui.Text("  %s", strings.Join(names, ", ")).Style(mutedStyle).Wrap())
-		}
-
-	case ":timing":
-		app.showTiming = !app.showTiming
-		if app.showTiming {
-			app.runner.Print(tui.Text("  Timing enabled").Style(mutedStyle))
-		} else {
-			app.runner.Print(tui.Text("  Timing disabled").Style(mutedStyle))
-		}
-
-	case ":exit", ":quit", ":q":
-		return []tui.Cmd{tui.Quit()}
-
-	default:
-		app.runner.Print(tui.Text("  Unknown command: %s", cmd).Fg(tui.ColorRed))
-	}
-
-	return nil
-}
-
-const maxResultLines = 50
-
-func (app *replApp) printResult(result any) {
-	// Color scheme
-	numberStyle := tui.NewStyle().WithFgRGB(tui.RGB{R: 255, G: 200, B: 100}) // yellow-gold
-	stringStyle := tui.NewStyle().WithFgRGB(tui.RGB{R: 150, G: 220, B: 150}) // soft green
-	boolStyle := tui.NewStyle().WithFgRGB(tui.RGB{R: 180, G: 140, B: 220})   // soft purple
-	typeStyle := tui.NewStyle().WithFgRGB(tui.RGB{R: 100, G: 100, B: 110})   // muted gray
-
-	switch v := result.(type) {
-	case error:
-		app.runner.Print(tui.Text("%s", v.Error()).Fg(tui.ColorRed))
-
+// renameFree renames each use of name in n that is not bound inside n.
+func renameFree(n syntax.Node, name, fresh string, eds *[]edit) {
+	switch n := n.(type) {
 	case nil:
-		app.runner.Print(tui.Group(
-			tui.Text("null").Style(boolStyle),
-		))
-
-	case int64:
-		app.runner.Print(tui.Group(
-			tui.Text("%d", v).Style(numberStyle),
-			tui.Text(" int").Style(typeStyle),
-		))
-
-	case float64:
-		app.runner.Print(tui.Group(
-			tui.Text("%g", v).Style(numberStyle),
-			tui.Text(" float").Style(typeStyle),
-		))
-
-	case bool:
-		app.runner.Print(tui.Group(
-			tui.Text("%v", v).Style(boolStyle),
-			tui.Text(" bool").Style(typeStyle),
-		))
-
-	case string:
-		// Truncate long strings
-		display := v
-		truncated := false
-		if len(v) > 500 {
-			display = v[:500]
-			truncated = true
+	case *syntax.Ident:
+		if n.Name == name {
+			*eds = append(*eds, edit{n.Span().Start, n.Span().End, fresh})
 		}
-		if truncated {
-			app.runner.Print(tui.Group(
-				tui.Text("%q", display).Style(stringStyle).Wrap(),
-				tui.Text("… +%d chars", len(v)-500).Style(typeStyle),
-			))
-		} else {
-			app.runner.Print(tui.Group(
-				tui.Text("%q", display).Style(stringStyle).Wrap(),
-				tui.Text(" string").Style(typeStyle),
-			))
+	case *syntax.Block:
+		for _, c := range n.Consts {
+			renamePatternDefaults(c.Pattern, name, fresh, eds)
+			renameFree(c.Value, name, fresh, eds)
+			if bindsName(c.Pattern, name) {
+				return
+			}
 		}
-
-	case byte:
-		app.runner.Print(tui.Group(
-			tui.Text("%d", v).Style(numberStyle),
-			tui.Text(" byte").Style(typeStyle),
-		))
-
-	case []byte:
-		app.runner.Print(tui.Group(
-			tui.Text("%q", string(v)).Style(stringStyle).Wrap(),
-			tui.Text(" bytes(%d)", len(v)).Style(typeStyle),
-		))
-
-	case []any:
-		app.printList(v, typeStyle)
-
-	case map[string]any:
-		app.printMap(v, typeStyle)
-
+		renameFree(n.Result, name, fresh, eds)
+	case *syntax.Map:
+		for _, x := range n.Entries {
+			if e, ok := x.(*syntax.Entry); ok && e.Shorthand && e.Key == name {
+				*eds = append(*eds, edit{e.Span().Start, e.Span().End, name + ": " + fresh})
+				continue
+			}
+			renameFree(x, name, fresh, eds)
+		}
+	case *syntax.Lambda:
+		for _, p := range n.Params {
+			renamePatternDefaults(p.Pattern, name, fresh, eds)
+			renameFree(p.Default, name, fresh, eds)
+			if bindsName(p.Pattern, name) {
+				return
+			}
+		}
+		renameFree(n.Body, name, fresh, eds)
+	case *syntax.Try:
+		renameFree(n.Body, name, fresh, eds)
+		if n.Name != name {
+			renameFree(n.Handler, name, fresh, eds)
+		}
+	case *syntax.Call:
+		// A call of a const-bound lambda names it by its callee.
+		if n.Namespace == "" && n.Name == name {
+			*eds = append(*eds, edit{n.NameSpan.Start, n.NameSpan.End, fresh})
+		}
+		for _, a := range n.Args {
+			renameFree(a, name, fresh, eds)
+		}
 	default:
-		// For other types, format as string
-		formatted := fmt.Sprintf("%v", v)
-		lines := strings.Split(formatted, "\n")
-		if len(lines) > maxResultLines {
-			truncated := strings.Join(lines[:maxResultLines], "\n")
-			app.runner.Print(tui.Text("%s", truncated).Wrap())
-			app.runner.Print(tui.Text("… +%d lines", len(lines)-maxResultLines).Style(typeStyle))
-		} else {
-			app.runner.Print(tui.Text("%s", formatted).Wrap())
+		for _, c := range syntax.Children(n) {
+			renameFree(c, name, fresh, eds)
 		}
-		app.runner.Print(tui.Text(" %T", v).Style(typeStyle))
 	}
 }
 
-func (app *replApp) printList(list []any, typeStyle tui.Style) {
-	if len(list) == 0 {
-		app.runner.Print(tui.Group(
-			tui.Text("[]"),
-			tui.Text(" list(0)").Style(typeStyle),
-		))
-		return
+// replFlagDefs are the flags of the REPL: those of F12 4.3, and --color.
+func replFlagDefs() []cli.Flag {
+	return append(envFlagDefs(), colorFlagDef())
+}
+
+// errInterrupted is an entry the author abandoned (Ctrl+C).
+var errInterrupted = errors.New("interrupted")
+
+// lineReader reads the lines of the REPL. It gives io.EOF at the end of
+// input and errInterrupted when the author abandons the line.
+type lineReader interface {
+	readLine(prompt string) (string, error)
+}
+
+// scanReader reads lines from a stream that is not a terminal, with no
+// prompt and no editing: piped input and tests.
+type scanReader struct{ sc *bufio.Scanner }
+
+func (r *scanReader) readLine(string) (string, error) {
+	if r.sc.Scan() {
+		return r.sc.Text(), nil
 	}
+	if err := r.sc.Err(); err != nil {
+		return "", err
+	}
+	return "", io.EOF
+}
 
-	// Format as JSON-like output
-	formatted := formatValue(list)
-	lines := strings.Split(formatted, "\n")
+// promptReader reads lines from the terminal with the line editor of
+// wonton/tui: cursor movement, word and line deletion, and history. A
+// reader that is not a terminal gives the editor the keys a terminal in
+// raw mode sends, which is how the tests drive it.
+type promptReader struct {
+	in      io.Reader
+	out     io.Writer
+	history []string
+	style   tui.Style
+}
 
-	if len(lines) > maxResultLines {
-		truncated := strings.Join(lines[:maxResultLines], "\n")
-		app.runner.Print(tui.Text("%s", truncated).Wrap())
-		app.runner.Print(tui.Text("… +%d lines", len(lines)-maxResultLines).Style(typeStyle))
+func (r *promptReader) readLine(prompt string) (string, error) {
+	line, err := tui.Prompt(prompt,
+		tui.WithHistory(&r.history),
+		tui.WithPromptInput(r.in),
+		tui.WithPromptOutput(r.out),
+		tui.WithPromptStyle(r.style),
+		tui.WithPromptFrame(false), // a plain REPL prompt
+	)
+	// The editor ends the line with "\n" while the terminal is still in
+	// raw mode, where "\n" moves down but does not return to column 0.
+	// Return the cursor, so the value starts at the left edge.
+	fmt.Fprint(r.out, "\r")
+	switch {
+	case errors.Is(err, tui.ErrEOF):
+		return "", io.EOF
+	case errors.Is(err, tui.ErrInterrupted):
+		return "", errInterrupted
+	}
+	return line, err
+}
+
+// replCommand is risor with no command (F12 5): the REPL, in the
+// environment of the flags of 4.3.
+func replCommand(ctx *cli.Context) int {
+	stdin, stdout, stderr := ctx.Stdin(), ctx.Stdout(), ctx.Stderr()
+	color := colorOf(ctx)
+	ef, err := envFlagsOf(ctx)
+	if err != nil {
+		return commandLineError(stderr, err)
+	}
+	env, vars, err := ef.environment()
+	if err != nil {
+		if ds, ok := diagnosticsOf(err); ok {
+			writeDiagnostics(stderr, ds, nil, "text", color.on(stderr, stdout))
+			return 1
+		}
+		return commandLineError(stderr, err)
+	}
+	s := &session{env: env, vars: vars, color: color.on(stdout, stdout)}
+	// The line editor is used when standard input and output are
+	// terminals; otherwise lines are read plainly, with no prompt.
+	var in lineReader
+	if f, ok := stdin.(*os.File); ok && isTerminal(f) && isTerminal(stdout) {
+		style := tui.NewStyle()
+		if s.color {
+			style = style.WithForeground(tui.ColorCyan)
+		}
+		in = &promptReader{in: f, out: stdout, style: style}
 	} else {
-		app.runner.Print(tui.Text("%s", formatted).Wrap())
+		sc := bufio.NewScanner(stdin)
+		sc.Buffer(make([]byte, 64*1024), 16<<20)
+		in = &scanReader{sc}
 	}
-	app.runner.Print(tui.Text(" list(%d)", len(list)).Style(typeStyle))
+	return repl(s, in, stdout, stderr)
 }
 
-func (app *replApp) printMap(m map[string]any, typeStyle tui.Style) {
-	if len(m) == 0 {
-		app.runner.Print(tui.Group(
-			tui.Text("{}"),
-			tui.Text(" map(0)").Style(typeStyle),
-		))
-		return
-	}
-
-	// Format as JSON-like output
-	formatted := formatValue(m)
-	lines := strings.Split(formatted, "\n")
-
-	if len(lines) > maxResultLines {
-		truncated := strings.Join(lines[:maxResultLines], "\n")
-		app.runner.Print(tui.Text("%s", truncated).Wrap())
-		app.runner.Print(tui.Text("… +%d lines", len(lines)-maxResultLines).Style(typeStyle))
-	} else {
-		app.runner.Print(tui.Text("%s", formatted).Wrap())
-	}
-	app.runner.Print(tui.Text(" map(%d)", len(m)).Style(typeStyle))
-}
-
-func formatValue(v any) string {
-	// Use JSON marshaling for nice formatting
-	data, err := jsonMarshalIndent(v)
-	if err != nil {
-		return fmt.Sprintf("%v", v)
-	}
-	return string(data)
-}
-
-func jsonMarshalIndent(v any) ([]byte, error) {
-	// Simple JSON formatting
-	switch val := v.(type) {
-	case []any:
-		if len(val) == 0 {
-			return []byte("[]"), nil
+// repl reads and evaluates entries until the input ends or :quit.
+func repl(s *session, in lineReader, stdout, stderr io.Writer) int {
+	var pending []string
+	for {
+		prompt := "> "
+		if len(pending) > 0 {
+			prompt = ". "
 		}
-		var parts []string
-		for _, item := range val {
-			itemBytes, _ := jsonMarshalIndent(item)
-			parts = append(parts, "  "+string(itemBytes))
+		line, err := in.readLine(prompt)
+		if errors.Is(err, errInterrupted) {
+			pending = nil
+			continue
 		}
-		return []byte("[\n" + strings.Join(parts, ",\n") + "\n]"), nil
-
-	case map[string]any:
-		if len(val) == 0 {
-			return []byte("{}"), nil
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return commandLineError(stderr, err)
+			}
+			break
 		}
-		var parts []string
-		for k, item := range val {
-			itemBytes, _ := jsonMarshalIndent(item)
-			parts = append(parts, fmt.Sprintf("  %q: %s", k, string(itemBytes)))
+		if len(pending) == 0 {
+			switch strings.TrimSpace(line) {
+			case ":quit", ":exit":
+				return 0
+			case ":reset":
+				s.held = ""
+				s.heldVals = risor.Held{}
+				continue
+			case ":help":
+				fmt.Fprint(stdout, replHelp)
+				continue
+			}
 		}
-		return []byte("{\n" + strings.Join(parts, ",\n") + "\n}"), nil
-
-	case string:
-		return []byte(fmt.Sprintf("%q", val)), nil
-
-	default:
-		return []byte(fmt.Sprintf("%v", val)), nil
+		pending = append(pending, line)
+		r := s.eval(strings.Join(pending, "\n"))
+		if r.more {
+			continue
+		}
+		pending = nil
+		fmt.Fprint(stdout, r.value)
+		fmt.Fprint(stdout, r.diags)
 	}
-}
-
-func (app *replApp) insertRune(r rune) {
-	inputRunes := []rune(app.input)
-	inputRunes = append(inputRunes[:app.cursorPos], append([]rune{r}, inputRunes[app.cursorPos:]...)...)
-	app.input = string(inputRunes)
-	app.cursorPos++
-	app.historyIdx = -1
-}
-
-func (app *replApp) insertString(s string) {
-	for _, r := range s {
-		app.insertRune(r)
-	}
-}
-
-func (app *replApp) backspace() {
-	if app.cursorPos > 0 {
-		inputRunes := []rune(app.input)
-		inputRunes = append(inputRunes[:app.cursorPos-1], inputRunes[app.cursorPos:]...)
-		app.input = string(inputRunes)
-		app.cursorPos--
-		app.historyIdx = -1
-	}
-}
-
-func (app *replApp) deleteChar() {
-	inputRunes := []rune(app.input)
-	if app.cursorPos < len(inputRunes) {
-		inputRunes = append(inputRunes[:app.cursorPos], inputRunes[app.cursorPos+1:]...)
-		app.input = string(inputRunes)
-	}
-}
-
-func (app *replApp) historyUp() {
-	if len(app.history) == 0 {
-		return
-	}
-
-	if app.historyIdx == -1 {
-		app.historyIdx = len(app.history)
-	}
-
-	if app.historyIdx > 0 {
-		app.historyIdx--
-		app.input = app.history[app.historyIdx]
-		app.cursorPos = len([]rune(app.input))
-	}
-}
-
-func (app *replApp) historyDown() {
-	if app.historyIdx == -1 {
-		return
-	}
-
-	app.historyIdx++
-	if app.historyIdx >= len(app.history) {
-		app.input = ""
-		app.historyIdx = -1
-	} else {
-		app.input = app.history[app.historyIdx]
-	}
-	app.cursorPos = len([]rune(app.input))
-}
-
-func loadHistory() ([]string, string) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, ""
-	}
-
-	historyPath := filepath.Join(homeDir, ".risor_history")
-	data, err := os.ReadFile(historyPath)
-	if err != nil {
-		return nil, historyPath
-	}
-
-	lines := strings.Split(string(data), "\n")
-	history := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if line != "" {
-			history = append(history, line)
+	if len(pending) > 0 {
+		// The input ended inside an entry: show why it does not parse.
+		_, _, _, err := entryKind(strings.Join(pending, "\n"))
+		if err == nil {
+			_, err = risor.Parse(strings.Join(pending, "\n"))
+		}
+		if err != nil {
+			fmt.Fprint(stdout, s.render(err, strings.Join(pending, "\n"), 0))
 		}
 	}
-	return history, historyPath
-}
-
-func appendToHistory(path, line string) {
-	if path == "" || line == "" {
-		return
-	}
-
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	f.WriteString(line + "\n")
+	return 0
 }
