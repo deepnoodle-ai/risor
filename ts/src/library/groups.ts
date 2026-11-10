@@ -409,12 +409,29 @@ function utf8(s: string): number[] {
   return out;
 }
 
+/** The length of the UTF-8 encoding of a well-formed string, with nothing built. */
+function utf8Length(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const u = s.charCodeAt(i);
+    if (u < 0x80) n += 1;
+    else if (u < 0x800) n += 2;
+    else if (u >= 0xd800 && u <= 0xdbff) {
+      n += 4; // a surrogate pair: one code point above U+FFFF
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
+
 implement(null, "base64.encode", (c: CallContext) => {
   const s = c.args[0] as string;
-  const b = utf8(s);
-  const weight = 4 * Math.ceil(b.length / 3);
+  // f06 9.1 item 2: the weight is found from the code points of s before
+  // anything is charged or built.
+  const weight = 4 * Math.ceil(utf8Length(s) / 3);
   c.run.charge(size(s) + div64(weight));
   c.run.alloc(1 + div64(weight));
+  const b = utf8(s);
   let out = "";
   for (let i = 0; i < b.length; i += 3) {
     const n = (b[i] << 16) | ((b[i + 1] ?? 0) << 8) | (b[i + 2] ?? 0);
