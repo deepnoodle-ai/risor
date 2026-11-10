@@ -9,6 +9,7 @@ import { CATALOG } from "../generated/messages.ts";
 import type { CatalogEntry } from "../generated/messages.ts";
 import type { Span } from "../syntax/source.ts";
 import { numberToText } from "../value/number.ts";
+import { CANNOT_ENTER } from "./conform.ts";
 import { Classifier, cpLength, jsonString } from "../value/value.ts";
 
 const BY_CODE = new Map<string, CatalogEntry>(CATALOG.map((e) => [e.code, e]));
@@ -35,6 +36,8 @@ export class RunFailure extends Error {
   readonly text: string | null;
   /** The host's own error, for `function-error`. */
   override readonly cause?: unknown;
+  /** For `not-conforming` (package F4, f04 5.1): the path of the failure. */
+  path?: (string | number)[];
 
   constructor(code: string, span: Span | undefined, template: string | null, params: Record<string, unknown> = {}, extra: { data?: unknown; text?: string; cause?: unknown } = {}) {
     super(code);
@@ -65,6 +68,7 @@ function renderParam(kind: string, v: unknown, cls: Classifier): string {
     case "string":
       return jsonString(String(v));
     case "value":
+      if (v === CANNOT_ENTER) return "number";
       switch (cls.kind(v)) {
         case "null":
           return "null";

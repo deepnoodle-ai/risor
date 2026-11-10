@@ -616,6 +616,8 @@ export class TypeError extends Error {}
 export interface FromContext {
   /** Declared opaque type names. */
   opaque: ReadonlySet<string>;
+  /** Package F4: the named types, each resolved (f04 3.5 step 2). */
+  named?: ReadonlyMap<string, Type>;
   /** The solution of a type variable; undefined when there is none (an error). */
   variable?: (name: string) => Type | undefined;
 }
@@ -649,9 +651,12 @@ export function fromNode(n: TypeNode, ctx: FromContext): Type {
       const rest = n.rest === "exact" ? NEVER : n.rest === "any" ? ANY : fromNode(n.rest, ctx);
       return record(fields, rest);
     }
-    case "name":
+    case "name": {
+      const named = ctx.named?.get(n.name);
+      if (named !== undefined) return named;
       if (!ctx.opaque.has(n.name)) throw new TypeError(`${n.name} is not a declared opaque type`);
       return opaque(n.name);
+    }
     case "var": {
       const v = ctx.variable?.(n.name);
       if (v === undefined) throw new TypeError(`the type variable ${n.name} has no solution`);
@@ -671,4 +676,69 @@ export function fromNode(n: TypeNode, ctx: FromContext): Type {
       return acc.type();
     }
   }
+}
+
+// ---- the helpers of package F4 (f04 6.2) ------------------------------------------
+
+/** S surely fits T: Fits holds, by a fit that did not use any. `any` surely fits only `any`. */
+export function surelyFits(s: Type, t: Type): boolean {
+  if (isAny(t)) return true;
+  if (isAny(s)) return false;
+  return fits(s, t) === 1;
+}
+
+/** disjoint(A, B): the checker can show that no value conforms to both (f04 6.2). */
+export function disjoint(a: Type, b: Type): boolean {
+  if (isNever(a) || isNever(b)) return true;
+  if (isAny(a) || isAny(b)) return false;
+  if (a.null && b.null) return false;
+  if (a.bool && b.bool) return false;
+  if (a.num && b.num) return false;
+  if (a.opaque && b.opaque && [...a.opaque].some((n) => b.opaque!.has(n))) return false;
+  if (a.str && b.str) {
+    if (a.str === "string" || b.str === "string") return false;
+    const bs = b.str;
+    if ([...a.str].some((x) => bs.has(x))) return false;
+  }
+  if (a.list && b.list) return false;
+  if (a.map && b.map && !recordsDisjoint(a.map, b.map)) return false;
+  return true;
+}
+
+function recordsDisjoint(r: Rec, s: Rec): boolean {
+  const keys = new Set<string>();
+  for (const [k, f] of r.fields) if (!f.optional) keys.add(k);
+  for (const [k, f] of s.fields) if (!f.optional) keys.add(k);
+  for (const k of keys) {
+    const a = r.fields.get(k)?.type ?? r.rest;
+    const b = s.fields.get(k)?.type ?? s.rest;
+    if (disjoint(a, b)) return true;
+  }
+  return false;
+}
+
+/** without(X, T): what is left of X when a value of type X does not conform to T (f04 6.2). */
+export function without(x: Type, t: Type): Type {
+  if (isAny(x)) return x;
+  const out: { -readonly [K in keyof Alts]: Alts[K] } = {};
+  const keep = (alt: Alts) => !surelyFits(alt, t);
+  if (x.null && keep(NULL)) out.null = true;
+  if (x.bool && keep(BOOL)) out.bool = true;
+  if (x.num && keep({ num: x.num })) out.num = x.num;
+  if (x.str) {
+    if (x.str === "string") {
+      if (keep(STRING)) out.str = "string";
+    } else if (keep({ str: x.str })) {
+      const ts = !isAny(t) && t.str !== undefined && t.str !== "string" ? t.str : null;
+      const left = ts === null ? [...x.str] : [...x.str].filter((v) => !ts.has(v));
+      if (left.length > 0) out.str = new Set(left);
+    }
+  }
+  if (x.list && keep({ list: x.list })) out.list = x.list;
+  if (x.map && keep({ map: x.map })) out.map = x.map;
+  if (x.opaque) {
+    const names = [...x.opaque].filter((n) => keep(opaque(n)));
+    if (names.length > 0) out.opaque = new Set(names);
+  }
+  return out;
 }

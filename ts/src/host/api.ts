@@ -26,7 +26,8 @@ import { numberToText } from "../value/number.ts";
 import { declare, DEFAULT_LIMITS } from "./env.ts";
 import { check, spanKey } from "../types/check.ts";
 import type { CheckEnv, CheckSig, Expected, Site } from "../types/check.ts";
-import { fromNode, printType, opaque as opaqueType } from "../types/type.ts";
+import { depth, fromNode, printType, opaque as opaqueType, SIZE_LIMIT, typeSize } from "../types/type.ts";
+import { conformWalk, freeCtx } from "../eval/conform.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { compareText } from "../value/value.ts";
@@ -39,7 +40,7 @@ import type { SigNode, TypeNode } from "../types/typetext.ts";
 import type { Type } from "../types/type.ts";
 import { parseType as parseTypeText, parseReceiver, parseEnvRecord } from "../types/typetext.ts";
 import { METHODS } from "../library/registry.ts";
-import type { Declarations, Environment } from "./env.ts";
+import type { Declarations, Environment, NamedTypeDecl } from "./env.ts";
 
 export { HostError };
 export type { CallHandle };
@@ -89,6 +90,10 @@ export interface EnvOptions {
   removed?: string[];
   /** Internal: the variables a child keeps from its parent (03 3.3.2). */
   inherited?: Declarations["inherited"];
+  /** Package F4: named types, in the order declared (f04 3.1). */
+  types?: NamedTypeDecl[];
+  /** Internal: the named types a child keeps from its parent (f04 3.4). */
+  inheritedTypes?: Declarations["inheritedTypes"];
 }
 
 /** An opaque type in a child environment: with no `test`, it adds methods to an inherited type (03 3.3.2, ruling CH4). */
@@ -98,7 +103,7 @@ export interface ChildOpaqueType {
 }
 
 /** The declarations of a child environment (03 3.3.2). */
-export interface ChildOptions extends Omit<EnvOptions, "opaque" | "inherited"> {
+export interface ChildOptions extends Omit<EnvOptions, "opaque" | "inherited" | "inheritedTypes"> {
   opaque?: Record<string, ChildOpaqueType>;
 }
 
@@ -192,6 +197,8 @@ export function createEnv(options: EnvOptions = {}): Env {
     variableTexts: options.variables,
     removed: options.removed,
     inherited: options.inherited,
+    types: options.types,
+    inheritedTypes: options.inheritedTypes,
     limits: {
       ...(limits.steps !== undefined ? { steps: limits.steps } : {}),
       ...(limits.allocation !== undefined ? { allocation: limits.allocation } : {}),
@@ -223,6 +230,8 @@ export interface Description {
   removed: string[];
   reject: string[];
   limits: { steps: number | null; allocation: number | null; depth: number };
+  /** Package F4 (f04 8): each named type, printed by structure; only when there is one. */
+  types?: Record<string, string>;
 }
 
 /** The JSON text of a description (f01 5.3 item 5): keys in code point order, no white space. */
@@ -248,8 +257,10 @@ export function envFromDescription(description: unknown): Env {
   };
   if (!isObj(d)) bad("not an object");
   const keys = ["version", "variables", "functions", "opaque", "removed", "reject", "limits"];
-  for (const k of Object.keys(d)) if (!keys.includes(k)) bad(`the key ${k}`);
+  for (const k of Object.keys(d)) if (!keys.includes(k) && k !== "types") bad(`the key ${k}`);
   for (const k of keys) if (!(k in d)) bad(`no key ${k}`);
+  // f04 8 item 3: each entry of `types` is a named type by type text.
+  const types = "types" in d ? Object.entries(strings(d.types, "types")).map(([name, type]) => ({ name, type })) : undefined;
   if (typeof d.version !== "string") bad("version");
   const variables = strings(d.variables, "variables");
   const functions = strings(d.functions, "functions");
@@ -283,6 +294,7 @@ export function envFromDescription(description: unknown): Env {
     functions: Object.fromEntries(Object.entries(functions).map(([k, sig]) => [k, { type: sig, call: noImplementation }])),
     removed,
     reject,
+    types,
     limits: {
       steps: num(lim.steps, true, "steps"),
       allocation: num(lim.allocation, true, "allocation"),
@@ -361,6 +373,7 @@ export class Env {
       hostFunctions: hostCounts,
       namespaces: environment.namespaces,
       library: new Map([...functionCounts()].filter(([k]) => !environment.removed.has(k))),
+      typeNames: { opaque: environment.opaque, named: environment.named },
     };
     const hostSig = (name: string, sig: import("../types/typetext.ts").SigNode, recv: import("../types/typetext.ts").TypeNode | null): CheckSig => ({
       name, kind: "host", recv, sig, narrows: false, tested: [], renders: [],
@@ -372,6 +385,7 @@ export class Env {
     }
     this.checkEnv = {
       opaque: environment.opaque,
+      named: environment.named,
       variables: environment.variableTypes,
       functions: new Map([...environment.functions].map(([k, fn]) => [k, hostSig(k, fn.sig, null)])),
       library: environment.removed.size === 0 ? LIBRARY_FUNCTIONS : new Map([...LIBRARY_FUNCTIONS].filter(([k]) => !environment.removed.has(k))),
@@ -396,7 +410,7 @@ export class Env {
     const t = parseTypeText(text);
     if (!t.ok) fail(t.message);
     try {
-      return { kind: "type", type: fromNode((t as { node: import("../types/typetext.ts").TypeNode }).node, { opaque: this.environment.opaque }) };
+      return { kind: "type", type: fromNode((t as { node: import("../types/typetext.ts").TypeNode }).node, { opaque: this.environment.opaque, named: this.environment.named }) };
     } catch (e) {
       return fail((e as Error).message);
     }
@@ -406,7 +420,7 @@ export class Env {
   typeOf(text: string): Type {
     const t = parseTypeText(text);
     if (!t.ok) throw new Error(t.message);
-    return fromNode(t.node, { opaque: this.environment.opaque });
+    return fromNode(t.node, { opaque: this.environment.opaque, named: this.environment.named });
   }
 
   /** Set on an environment built from a description: it has no implementation (f01 5.4 item 4). */
@@ -418,17 +432,49 @@ export class Env {
     const sorted = <T>(m: Iterable<[string, T]>) => Object.fromEntries([...m].sort((a, b) => compareText(a[0], b[0])));
     const opaque: Record<string, Record<string, string>> = {};
     for (const t of [...e.opaque].sort(compareText)) opaque[t] = {};
-    for (const m of e.methods.values()) opaque[m.type][m.name] = printSignature(m.sig, e.opaque);
+    for (const m of e.methods.values()) opaque[m.type][m.name] = printSignature(m.sig, e.opaque, e.named);
     for (const t of Object.keys(opaque)) opaque[t] = sorted(Object.entries(opaque[t]));
     return {
       version: e.version,
       variables: sorted([...e.variableTypes].map(([k, t]) => [k, printType(t)])),
-      functions: sorted([...e.functions].map(([k, f]) => [k, printSignature(f.sig, e.opaque)])),
+      functions: sorted([...e.functions].map(([k, f]) => [k, printSignature(f.sig, e.opaque, e.named)])),
       opaque,
       removed: [...e.removed].sort(compareText),
       reject: [...e.reject].sort(compareText),
       limits: { steps: e.limits.steps, allocation: e.limits.allocation, depth: e.limits.depth },
+      ...(e.named.size > 0 ? { types: sorted([...e.named].map(([k, t]) => [k, printType(t)])) } : {}),
     };
+  }
+
+  /**
+   * The conformance function (package F4, f04 7): null when the value conforms
+   * to the type, else the diagnostic, with no span. Not a run: nothing is
+   * charged and no limit applies. Throws RisorError `bad-type` for bad text.
+   */
+  conform(value: unknown, typeText: string): Diagnostic | null {
+    const t = this.declaredType(typeText);
+    const f = conformWalk(value, t, freeCtx(this.classifier));
+    if (f === null) return null;
+    const failure = new RunFailure("not-conforming", undefined, f.template, f.params);
+    return { phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(failure, this.classifier) };
+  }
+
+  /** Type text resolved as declared type text (05 19.5, f04 7.1 item 4). Throws RisorError `bad-type`. */
+  declaredType(text: string): Type {
+    const fail = (m: string): never => {
+      throw new RisorError([{ phase: "declare", code: "bad-type", message: `the type: ${m}` }]);
+    };
+    const p = parseTypeText(text);
+    if (!p.ok) return fail(p.message);
+    let t: Type;
+    try {
+      t = fromNode(p.node, { opaque: this.environment.opaque, named: this.environment.named });
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+    if (depth(t, 70) > 64) fail("a type deeper than 64");
+    if (typeSize(t) > SIZE_LIMIT) fail("a type larger than 100,000");
+    return t;
   }
 
   /** Check a program (03 3.2.1): parse, the static rules, the type rules. */
@@ -477,12 +523,17 @@ export class Env {
       else opaque[t] = { test: () => false, methods: { ...(o.methods ?? {}) } };
     }
     for (const t of childTypes) if (!opaqueNames.includes(t)) opaqueNames.push(t);
+    // f04 3.4: the parent's named types, less those the child declares.
+    const childNamed = new Set((options.types ?? []).map((t) => t.name));
+    const inheritedTypes = new Map([...pe.named].filter(([k]) => !childNamed.has(k)));
     const env = createEnv({
       version: options.version ?? p.version,
       vars: options.vars,
       variables: options.variables,
       schemas: options.schemas,
       inherited,
+      types: options.types,
+      inheritedTypes,
       functions,
       opaque,
       opaqueNames,
@@ -506,6 +557,7 @@ export class Env {
     const s = staticRules(p.program, this.staticEnv);
     let dynamicSpans: Set<string> | null = null;
     let hostSpans: Set<string> | null = null;
+    let valueSpans: Set<string> | null = null;
     let type: string | null = null;
     let sites: Site[] = [];
     if (checked) {
@@ -513,11 +565,12 @@ export class Env {
       if (c.diagnostics.length > 0) return { ok: false, diagnostics: c.diagnostics, source: p.source };
       dynamicSpans = c.dynamicSpans;
       hostSpans = c.hostSpans;
+      valueSpans = c.valueSpans;
       type = printType(c.type);
       sites = c.sites;
     } else if (s.diagnostics.length > 0) return { ok: false, diagnostics: s.diagnostics, source: p.source };
     const c = compileProgram(p.program, s.resolution, this.compileEnv);
-    const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans);
+    const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans, valueSpans);
     prog.type = type;
     prog.sites = sites;
     return { ok: true, program: prog };
@@ -566,10 +619,12 @@ export class Program {
   /** Spans at a `dynamic` site, for the class of a failure in a checked program; null when not checked. */
   private readonly dynamicSpans: Set<string> | null;
   private readonly hostSpans: Set<string> | null;
+  private readonly valueSpans: Set<string> | null;
 
-  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null, hostSpans: Set<string> | null = null) {
+  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null, hostSpans: Set<string> | null = null, valueSpans: Set<string> | null = null) {
     this.dynamicSpans = dynamicSpans;
     this.hostSpans = hostSpans ?? (dynamicSpans === null ? null : new Set());
+    this.valueSpans = valueSpans ?? (dynamicSpans === null ? null : new Set());
     this.env = env;
     this.source = source;
     this.code = code;
@@ -622,12 +677,15 @@ export class Program {
     if (this.dynamicSpans !== null) {
       if (f.code === "null-operand" || f.code === "wrong-kind" || f.code === "missing-field") {
         cls = f.span !== undefined && this.dynamicSpans.has(spanKey(f.span)) ? "dynamic" : "environment";
-      } else if (f.code === "no-match" || f.code === "not-conforming") cls = "environment";
+      } else if (f.code === "no-match") cls = "environment";
+      // f04 5.1 item 4: `value` at the `value` site of its `as`, else `environment`.
+      else if (f.code === "not-conforming") cls = f.span !== undefined && this.valueSpans!.has(spanKey(f.span)) ? "value" : "environment";
       // The mark `!` is a promise: an error is `host` only at a `host` site on the failing call (05 18.5, rulings CE2, CH1).
       else if (f.code === "function-error") cls = f.span !== undefined && this.hostSpans!.has(spanKey(f.span)) ? "host" : "environment";
     }
     if (cls !== undefined) d.class = cls;
     if (f.code === "failed") d.data = f.data;
+    if (f.path !== undefined) d.path = [...f.path];
     if (f.cause !== undefined) (d as Diagnostic & { cause?: unknown }).cause = f.cause;
     return d;
   }
@@ -636,8 +694,8 @@ export class Program {
 export { ABSENT_VAR };
 
 /** Print a signature (f01 5.2). A type variable sorts after the opaque names. */
-export function printSignature(sig: SigNode, opaqueNames: ReadonlySet<string>): string {
-  const ty = (n: TypeNode) => printType(fromNode(n, { opaque: opaqueNames, variable: (v) => opaqueType("\uFFFF" + v) }));
+export function printSignature(sig: SigNode, opaqueNames: ReadonlySet<string>, named?: ReadonlyMap<string, Type>): string {
+  const ty = (n: TypeNode) => printType(fromNode(n, { opaque: opaqueNames, named, variable: (v) => opaqueType("\uFFFF" + v) }));
   const params = sig.params.map((p) => {
     const t = p.type.t === "fn"
       ? `(${p.type.params.map((q) => `${q.name}: ${ty(q.type)}`).join(", ")}) => ${p.type.result === "unknown" ? "unknown" : ty(p.type.result)}`

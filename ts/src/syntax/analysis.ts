@@ -151,6 +151,10 @@ class Walker {
         case "Unary":
           e = e.x;
           continue;
+        case "As":
+          // Package F4: the subject; the program type names no value.
+          e = e.x;
+          continue;
         case "Binary": {
           const spine: A.Binary[] = [];
           let x: A.Expr = e;

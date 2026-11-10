@@ -14,7 +14,7 @@ import type { SigNode, TypeNode } from "./typetext.ts";
 import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, alternatives, depth, falsyPart, finiteValues, fits, fromNode, hasNull,
   hasOpaque, isAny, isNever, join, joinAll, kindCount, lit, listOf, merge, nonnull, overlap, record, recordValues,
-  truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc,
+  truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc, surelyFits, disjoint, without, printType,
 } from "./type.ts";
 import type { Alts, Fit, Rec, Type } from "./type.ts";
 import { CATALOG } from "../generated/messages.ts";
@@ -36,6 +36,8 @@ export interface CheckSig {
 
 export interface CheckEnv {
   opaque: ReadonlySet<string>;
+  /** Package F4: the named types (f04 3.3). */
+  named?: ReadonlyMap<string, Type>;
   variables: ReadonlyMap<string, Type>;
   /** Host functions by full name. */
   functions: ReadonlyMap<string, CheckSig>;
@@ -63,11 +65,20 @@ export interface CheckResult {
   dynamicSpans: Set<string>;
   /** Spans of the nodes that hold a `host` site (18.3, 18.5: `function-error`). */
   hostSpans: Set<string>;
+  /** Spans of the nodes that hold a `value` site (f04 6.6: a failed `as`). */
+  valueSpans: Set<string>;
 }
 
 export type Expected = { kind: "none" } | { kind: "type"; type: Type } | { kind: "condition" };
 
 const SEP = "\u0000";
+/**
+ * Facts are keys: a path (the presence fact {p}) or, with package F4, a fact
+ * of `is` (f04 6.4): TYPE_FACT, `=` or `!`, the path, TYPE_SEP, and the type's
+ * printed text, so that two facts about one type by structure are one key.
+ */
+const TYPE_FACT = "\u0001";
+const TYPE_SEP = "\u0002";
 type Facts = ReadonlySet<string>;
 const NO_FACTS: Facts = new Set();
 
@@ -123,12 +134,14 @@ export function check(program: A.Program, res: Resolution, env: CheckEnv, expect
   const sites: Site[] = [];
   const dynamicSpans = new Set<string>();
   const hostSpans = new Set<string>();
+  const valueSpans = new Set<string>();
   for (const s of c.sites) {
     if (s.class === "dynamic") {
       dynamicSpans.add(spanKey(s.span));
       for (const o of s.owners) dynamicSpans.add(spanKey(o));
     }
     if (s.class === "host") hostSpans.add(spanKey(s.span));
+    if (s.class === "value") valueSpans.add(spanKey(s.span));
     const k = `${s.class}:${s.span.start}:${s.span.end}`;
     if (siteSeen.has(k)) continue;
     siteSeen.add(k);
@@ -139,7 +152,7 @@ export function check(program: A.Program, res: Resolution, env: CheckEnv, expect
   const extra: string[] = [];
   for (const { body, call } of c.callbacks) if (dynamicSpans.has(spanKey(body))) extra.push(spanKey(call));
   for (const k of extra) dynamicSpans.add(k);
-  return { type: t, sites, diagnostics: diags, dynamicSpans, hostSpans };
+  return { type: t, sites, diagnostics: diags, dynamicSpans, hostSpans, valueSpans };
 }
 
 function cmp(a: string, b: string): number {
@@ -251,6 +264,10 @@ class Checker {
     if (keys.length === 0) return f;
     const out = new Set(f);
     for (const k of keys) {
+      if (k.startsWith(TYPE_FACT)) {
+        out.add(k);
+        continue;
+      }
       const parts = k.split(SEP);
       for (let i = 1; i <= parts.length; i++) out.add(parts.slice(0, i).join(SEP));
     }
@@ -264,7 +281,18 @@ class Checker {
     let out: { t: string[]; f: string[] } = { t: [], f: [] };
     const p = this.pathOf(e);
     if (p !== null) out = { t: [p], f: [] };
-    else if (e.kind === "Unary" && e.op === "!") {
+    else if (e.kind === "As") {
+      // f04 6.4: the facts of `p is T`.
+      const q = this.pathOf(e.x);
+      const t = this.res.asTypes.get(e);
+      if (e.form === "is" && q !== null && t !== undefined && t !== null) {
+        const nullable = !isAny(t) && t.null === true;
+        out = {
+          t: [this.typeFact("=", q, t), ...(!nullable && !isAny(t) ? [q] : [])],
+          f: [this.typeFact("!", q, t), ...(nullable ? [q] : [])],
+        };
+      }
+    } else if (e.kind === "Unary" && e.op === "!") {
       const d = this.facts(e.x);
       out = { t: d.f, f: d.t };
     } else if (e.kind === "Binary") {
@@ -286,7 +314,7 @@ class Checker {
           acc =
             n.op === "&&"
               ? { t: union(acc.t, d.t), f: intersect(acc.f, d.f) }
-              : { t: intersect(acc.t, d.t), f: union(acc.f, d.f) };
+              : { t: this.orFacts(acc.t, d.t), f: union(acc.f, d.f) };
           this.factsMemo.set(n, acc);
         }
         out = acc;
@@ -294,6 +322,80 @@ class Checker {
     }
     this.factsMemo.set(e, out);
     return out;
+  }
+
+  // ---- the facts of `is` (package F4, f04 6.4) ------------------------------
+
+  private readonly factTypes = new Map<string, { kind: "=" | "!"; path: string; type: Type }>();
+
+  private typeFact(kind: "=" | "!", path: string, type: Type): string {
+    const key = `${TYPE_FACT}${kind}${path}${TYPE_SEP}${printType(type)}`;
+    if (!this.factTypes.has(key)) this.factTypes.set(key, { kind, path, type });
+    return key;
+  }
+
+  /** T(d || e): ∩, except that one conforms fact about p on each side joins (f04 6.4 item 4). */
+  private orFacts(a: string[], b: string[]): string[] {
+    const conforms = (xs: string[]) => {
+      const by = new Map<string, string[]>();
+      for (const x of xs) {
+        const tf = this.factTypes.get(x);
+        if (tf === undefined || tf.kind !== "=") continue;
+        if (!by.has(tf.path)) by.set(tf.path, []);
+        by.get(tf.path)!.push(x);
+      }
+      return by;
+    };
+    const ca = conforms(a);
+    const cb = conforms(b);
+    const bs = new Set(b);
+    const out: string[] = [];
+    for (const x of a) {
+      const tf = this.factTypes.get(x);
+      if (tf !== undefined && tf.kind === "=") {
+        const as = ca.get(tf.path)!;
+        const other = cb.get(tf.path);
+        if (as.length === 1 && other !== undefined && other.length === 1) {
+          out.push(this.typeFact("=", tf.path, join(tf.type, this.factTypes.get(other[0])!.type)));
+        }
+        continue;
+      }
+      if (bs.has(x)) out.push(x);
+    }
+    return [...new Set(out)];
+  }
+
+  /** The facts of `is` about one path, applied in order (f04 6.4). */
+  private applyTypeFacts(t: Type, path: string, f: Facts): Type {
+    if (this.factTypes.size === 0) return t;
+    for (const k of f) {
+      if (!k.startsWith(TYPE_FACT)) continue;
+      const tf = this.factTypes.get(k);
+      if (tf === undefined || tf.path !== path) continue;
+      if (tf.kind === "=") t = surelyFits(t, tf.type) ? t : tf.type;
+      else t = without(t, tf.type);
+    }
+    return t;
+  }
+
+  /** `x as T`, `x is T` (f04 6.3). */
+  private asNode(e: A.As, f: Facts): Type {
+    const s = this.synth(e.x, f);
+    const t = this.res.asTypes.get(e);
+    const isForm = e.form === "is";
+    if (t === undefined || t === null) return isForm ? BOOL : NEVER;
+    if (isNever(s)) return isForm ? BOOL : t;
+    if (surelyFits(s, t)) {
+      if (isForm && this.env.reject.has("constant-condition")) this.diag("always-truthy", e.span, "constant-condition");
+      return isForm ? BOOL : t;
+    }
+    if (disjoint(s, t)) {
+      if (!isForm) this.diag("never-conforms", e.span);
+      else if (this.env.reject.has("constant-condition")) this.diag("always-falsy", e.span, "constant-condition");
+      return isForm ? BOOL : t;
+    }
+    if (!isForm) this.site("value", e.span);
+    return isForm ? BOOL : t;
   }
 
   // ---- program, blocks, consts ----------------------------------------------
@@ -456,6 +558,8 @@ class Checker {
         return NULL;
       case "Bad":
         return NEVER;
+      case "As":
+        return this.asNode(e, f);
       case "Ident":
         return this.ident(e, f);
       case "Template":
@@ -494,8 +598,9 @@ class Checker {
     const r = this.res.refs.get(e);
     if (r === undefined || r.k === "lambda") return NEVER;
     let t = r.k === "slot" ? (this.slotTypes[r.slot] ?? NEVER) : (this.env.variables.get(r.name) ?? NEVER);
-    if (f.has(r.k === "slot" ? `s${r.slot}` : `v${r.name}`)) t = nonnull(t);
-    return t;
+    const key = r.k === "slot" ? `s${r.slot}` : `v${r.name}`;
+    if (f.has(key)) t = nonnull(t);
+    return this.applyTypeFacts(t, key, f);
   }
 
   /** A rendered expression (ruling AO2). */
@@ -884,6 +989,7 @@ class Checker {
       const present = nextPath !== null && f.has(nextPath);
       cur = this.step(s, cur, recvSpan, f, present);
       if (nextPath !== null && f.has(nextPath)) cur = nonnull(cur);
+      if (nextPath !== null) cur = this.applyTypeFacts(cur, nextPath, f);
       path = nextPath;
       recvSpan = s.span;
       this.types.set(s, cur);
@@ -1115,7 +1221,7 @@ class Checker {
         this.diag("cannot-infer", la.span);
         continue;
       }
-      const inst = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, variable: (v) => sol.get(v) ?? NEVER });
+      const inst = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, named: this.env.named, variable: (v) => sol.get(v) ?? NEVER });
       const r = fn.result;
       const level = node.level;
       if (r === "unknown") {
@@ -1153,7 +1259,7 @@ class Checker {
       else if (fit === 2) this.site("dynamic", span, span);
     }
     // 5. Fit, through the form.
-    const inst = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, variable: (v) => sol.get(v) ?? NEVER });
+    const inst = (n: TypeNode) => fromNode(n, { opaque: this.env.opaque, named: this.env.named, variable: (v) => sol.get(v) ?? NEVER });
     const argCode = (place: Type, want: Type) => (hasNull(place) && fits(nonnull(place), want) !== 0 ? "maybe-null" : "arg-mismatch");
     // The receiver is fitted with its type as the chain gave it, after `?.` and nonnull (9.1).
     if (sig.recv !== null && recv !== null && recvType !== null) {
@@ -1187,7 +1293,9 @@ class Checker {
     if (slot === undefined) return elem;
     const root = `s${slot}`;
     const t = this.facts(la.lambda.body).t;
-    return t.some((k) => k === root || k.startsWith(root + SEP)) ? nonnull(elem) : elem;
+    const out = t.some((k) => k === root || k.startsWith(root + SEP)) ? nonnull(elem) : elem;
+    // f04 6.5: the facts of `is` about the parameter.
+    return this.applyTypeFacts(out, root, new Set(t));
   }
 
   /** bind(P, A) of 13.4. */

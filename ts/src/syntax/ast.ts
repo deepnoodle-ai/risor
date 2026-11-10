@@ -2,6 +2,7 @@
 // Every node has a span (01 4.3) in code-point offsets.
 
 import type { Span } from "./source.ts";
+import type { TypeNode } from "../types/typetext.ts";
 
 export const NODE_NUMBER = {
   Program: 1, Const: 2, Block: 3, Ident: 4, Number: 5, String: 6, Template: 7,
@@ -9,6 +10,8 @@ export const NODE_NUMBER = {
   Binary: 15, Cond: 16, Member: 17, Index: 18, Call: 19, MethodCall: 20,
   OptChain: 21, Lambda: 22, Param: 23, Match: 24, Arm: 25, Try: 26,
   NamePat: 27, MapPat: 28, ListPat: 29, Bad: 30,
+  // Package F4 (f04 2.7).
+  As: 31,
 } as const;
 
 export type NodeKind = keyof typeof NODE_NUMBER;
@@ -247,10 +250,23 @@ export interface Bad extends Base {
 
 export type Pattern = NamePat | MapPat | ListPat;
 
+/** `x as T`, `x is T` (package F4, f04 2.7). */
+export interface As extends Base {
+  kind: "As";
+  form: "as" | "is";
+  x: Expr;
+  /** The program type, as parsed: not resolved, not a node. */
+  type: TypeNode;
+  /** The span of the program type, from its first token to its last. */
+  typeSpan: Span;
+  /** The spans of the type's names and of each PType with alternatives (f04 6.1). */
+  typeSpans: Map<TypeNode, Span>;
+}
+
 export type Expr =
   | Block | Ident | NumberLit | StringLit | Template | Bool | Null | List | MapLit
   | Unary | Binary | Cond | Member | Index | Call | MethodCall | OptChain | Match
-  | Try | Bad;
+  | Try | Bad | As;
 
 export type Node =
   | Program | Const | Expr | Entry | Spread | Lambda | Param | Arm | Pattern;

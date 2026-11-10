@@ -16,7 +16,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const SUITE = join(here, "..", "..", "suite");
 
 export function defaultTargets(): string[] {
-  return [join(SUITE, "core-run"), join(SUITE, "core-check"), join(SUITE, "strings"), join(SUITE, "host-types"), join(SUITE, "templates"), join(SUITE, "analysis"), join(SUITE, "library.json"), join(SUITE, "messages.json")].filter((p) => existsSync(p));
+  return [join(SUITE, "core-run"), join(SUITE, "core-check"), join(SUITE, "strings"), join(SUITE, "host-types"), join(SUITE, "templates"), join(SUITE, "analysis"), join(SUITE, "conversion"), join(SUITE, "library.json"), join(SUITE, "messages.json")].filter((p) => existsSync(p));
 }
 
 export function runTargets(targets: string[], checker = true): Map<string, Verdict[]> {

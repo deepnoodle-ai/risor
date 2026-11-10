@@ -6,6 +6,9 @@
 // (a chain of binary operators, a chain of steps, an `else` chain) are walked
 // by loops, so a program of 100,000 terms needs no deep stack.
 
+import { resolveProgramType } from "../types/resolve.ts";
+import type { TypeNames } from "../types/resolve.ts";
+import type { Type } from "../types/type.ts";
 import type * as A from "../syntax/ast.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Span } from "../syntax/source.ts";
@@ -25,6 +28,8 @@ export function fnAt(c: Counts, i: number): number | null {
   return c.fns[i];
 }
 
+const NO_TYPE_NAMES: TypeNames = { opaque: new Set(), named: new Map() };
+
 export interface StaticEnv {
   variables: ReadonlySet<string>;
   /** Host functions by full name, `geo.distance` or `rate`. */
@@ -32,6 +37,8 @@ export interface StaticEnv {
   namespaces: ReadonlySet<string>;
   /** Library functions (entries with no receiver). */
   library: ReadonlyMap<string, Counts>;
+  /** Package F4: the type names and the named types' types (f04 6.1 item 1). */
+  typeNames?: TypeNames;
 }
 
 export type Ref =
@@ -59,6 +66,8 @@ export interface Resolution {
   lambdas: A.Lambda[];
   /** Each Ident that names a const-bound lambda as an argument (a use, 05 13.9). */
   lambdaArgs: Set<A.Ident>;
+  /** Package F4: each `As` node's resolved type; null after a diagnostic of f04 6.1. */
+  asTypes: Map<A.As, Type | null>;
   slotCount: number;
 }
 
@@ -101,7 +110,7 @@ export function staticRules(program: A.Program, env: StaticEnv): StaticResult {
 
 class Walker {
   readonly diags: Diagnostic[] = [];
-  readonly res: Resolution = { refs: new Map(), targets: new Map(), slots: new Map(), catchSlots: new Map(), lambdas: [], lambdaArgs: new Set(), slotCount: 0 };
+  readonly res: Resolution = { refs: new Map(), targets: new Map(), slots: new Map(), catchSlots: new Map(), lambdas: [], lambdaArgs: new Set(), asTypes: new Map(), slotCount: 0 };
   private readonly scopes: Map<string, Binding>[] = [];
   private readonly env: StaticEnv;
 
@@ -336,6 +345,11 @@ class Walker {
         case "Unary":
           e = e.x;
           continue;
+        case "As":
+          // f04 6.1: the subject as any operand, then the program type.
+          this.expr(e.x);
+          this.programType(e);
+          return;
         case "Binary": {
           const spine: A.Binary[] = [];
           let x: A.Expr = e;
@@ -390,6 +404,16 @@ class Walker {
           this.chain(e);
           return;
       }
+    }
+  }
+
+  /** Resolve the program type of an `As` node (f04 3.5, 6.1). */
+  private programType(e: A.As): void {
+    const r = resolveProgramType(e.type, e.typeSpan, e.typeSpans, this.env.typeNames ?? NO_TYPE_NAMES);
+    if (r.ok) this.res.asTypes.set(e, r.type);
+    else {
+      this.res.asTypes.set(e, null);
+      for (const d of r.diagnostics) this.diag(d.code, d.span);
     }
   }
 
@@ -491,6 +515,8 @@ function messageFor(code: string): string {
     case "arity": return "wrong count of arguments or parameters";
     case "duplicate-case": return "this literal is listed twice";
     case "unreachable-arm": return "no arm can follow _";
+    case "untagged-union": return "two records in one type need a tag";
+    case "check-limit": return "the type is too deep or too large";
   }
   return code;
 }

@@ -9,7 +9,7 @@ import type { Diagnostic } from "../syntax/diagnostic.ts";
 import { isName, isReserved } from "../syntax/token.ts";
 import { parseEnvRecord, parseSignature, parseType } from "../types/typetext.ts";
 import type { SigNode, TypeNode } from "../types/typetext.ts";
-import { ANY, depth, fromNode, TypeError as TypeRuleError } from "../types/type.ts";
+import { ANY, depth, fromNode, SIZE_LIMIT, typeSize, TypeError as TypeRuleError } from "../types/type.ts";
 import type { Type } from "../types/type.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import { FUNCTIONS, METHODS } from "../library/registry.ts";
@@ -60,12 +60,19 @@ export interface Declarations {
   /** Variables a child environment keeps from its parent, with their types (03 3.3.2). */
   inherited?: ReadonlyMap<string, { node: TypeNode; type: Type | undefined }>;
   opaque?: string[];
+  /** Package F4: named types, in the order declared (f04 3.1). */
+  types?: NamedTypeDecl[];
+  /** Named types a child environment keeps from its parent, resolved (f04 3.4). */
+  inheritedTypes?: ReadonlyMap<string, Type>;
   methods?: Record<string, string>;
   functions?: Record<string, string>; // name -> signature
   reject?: string[];
   returns?: string;
   limits?: Partial<Limits>;
 }
+
+/** A named type by type text, or by JSON Schema with F1's options (f04 3.1, 9.1). */
+export type NamedTypeDecl = { name: string; type: string } | { name: string; schema: unknown; options?: SchemaOption[] };
 
 export interface Environment {
   version: string;
@@ -77,6 +84,8 @@ export interface Environment {
   functions: Map<string, FunctionDecl>;
   namespaces: Set<string>;
   opaque: Set<string>;
+  /** Package F4: the named types, in the order declared, each resolved (f04 3.1). */
+  named: Map<string, Type>;
   methods: Map<string, MethodDecl>; // key "Type.method"
   reject: Set<string>;
   limits: Limits;
@@ -110,6 +119,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     functions: new Map(),
     namespaces: new Set(),
     opaque: new Set(),
+    named: new Map(),
     methods: new Map(),
     reject: new Set(["constant-condition"]),
     limits: { ...DEFAULT_LIMITS, ...(d.limits ?? {}) },
@@ -144,6 +154,44 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) errs.push(diag("bad-name", `${name} is not an opaque type name`));
     else if (env.opaque.has(name)) errs.push(diag("name-clash", `the opaque type ${name} is declared twice`));
     else env.opaque.add(name);
+  }
+
+  // Package F4: named types, each resolved in its turn (f04 3.1, 3.2).
+  for (const [name, t] of d.inheritedTypes ?? []) {
+    // f04 3.4 item 2: a child's opaque type with the name of a parent's named type.
+    if (env.opaque.has(name)) errs.push(diag("name-clash", `${name} is a named type and an opaque type`));
+    else env.named.set(name, t);
+  }
+  const childNamed = new Set<string>();
+  for (const nt of d.types ?? []) {
+    const name = nt.name;
+    if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) {
+      errs.push(diag("bad-name", `${name} is not a type name`));
+      continue;
+    }
+    if (childNamed.has(name) || env.opaque.has(name) || (env.named.has(name) && !d.inheritedTypes?.has(name))) {
+      errs.push(diag("name-clash", `the type name ${name} is declared twice`));
+      continue;
+    }
+    childNamed.add(name);
+    let t: Type;
+    try {
+      if ("type" in nt) {
+        const p = parseType(nt.type);
+        if (!p.ok) throw new TypeRuleError(p.message);
+        t = fromNode(p.node, { opaque: env.opaque, named: env.named });
+      } else {
+        t = typeOfSchema(nt.schema, nt.options ?? []);
+      }
+      if (depth(t, 70) > 64) throw new TypeRuleError("a type deeper than 64");
+      if (typeSize(t) > SIZE_LIMIT) throw new TypeRuleError("a type larger than 100,000");
+    } catch (e) {
+      if (!(e instanceof TypeRuleError) && !(e instanceof SchemaError)) throw e;
+      env.named.delete(name);
+      errs.push(diag("bad-type", `the named type ${name}: ${e.message}`));
+      continue;
+    }
+    env.named.set(name, t);
   }
 
   // A child's inherited variables: their types were given when the parent was built.
@@ -285,8 +333,9 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
 
   // The errors in declared type text that only a type checker finds (05 19.5).
   const typeOf = (n: TypeNode, vars: boolean): Type => {
-    const t = fromNode(n, { opaque: env.opaque, variable: vars ? () => ANY : undefined });
+    const t = fromNode(n, { opaque: env.opaque, named: env.named, variable: vars ? () => ANY : undefined });
     if (depth(t, 70) > 64) throw new TypeRuleError("a type deeper than 64");
+    if (typeSize(t) > SIZE_LIMIT) throw new TypeRuleError("a type larger than 100,000");
     return t;
   };
   const nodesOf = (sig: SigNode): TypeNode[] => [

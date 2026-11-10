@@ -15,6 +15,7 @@ import { Source } from "./source.ts";
 import type { Span } from "./source.ts";
 import { isReserved } from "./token.ts";
 import type { Token } from "./token.ts";
+import type { TypeNode } from "../types/typetext.ts";
 
 /** The source nesting limit (01 13.2). Fixed by the specification. */
 export const MAX_LEVELS = 100;
@@ -385,9 +386,11 @@ class Parser {
       if (p === 0 || p < minPrec) return left;
       const t = this.cur;
       if (t.kind === "word" && (t.text === "as" || t.text === "is")) {
-        // 01 14.3: `x as T` at the word; `!x as T` at the `!`.
-        if (this.isBareNot(left)) this.fail("unexpected-token", { start: left.span.start, end: left.span.start + 1 }, "write the `!` expression in parentheses");
-        this.fail("unexpected-token", t, `\`${t.text}\` is not in Core`);
+        left = this.test(left, t);
+        // f04 2.4: an operator of levels 7 to 10 cannot follow a program type.
+        const n = this.cur;
+        if (n.kind === "punct" && (n.text === "+" || n.text === "-" || n.text === "*" || n.text === "/" || n.text === "%")) this.unexpected(n);
+        continue;
       }
       if (t.kind === "word" && t.text === "not" && !this.isW(this.peek(1), "in")) {
         this.advance();
@@ -413,6 +416,153 @@ class Parser {
       this.close();
       left = this.binaryNode(op, left, right);
     }
+  }
+
+  // ---- program types (package F4, f04 2) ------------------------------------
+
+  /** `x as T`, `x is T`, at the word `as` or `is` (f04 2.1 to 2.8). */
+  private test(left: A.Expr, t: Token): A.As {
+    // f04 2.5: `!x as T` at the `!`.
+    if (this.isBareNot(left)) this.fail("unexpected-token", { start: left.span.start, end: left.span.start + 1 }, "write the `!` expression in parentheses");
+    // f04 2.6 item 2: `x as const` and `x is not T` keep Core's span.
+    const nx = this.peek(1);
+    if ((t.text === "as" && this.isW(nx, "const")) || (t.text === "is" && this.isW(nx, "not"))) {
+      this.fail("unexpected-token", t, `\`${t.text} ${nx.text}\` is not a form of the language`);
+    }
+    this.advance();
+    this.open(t);
+    const spans = new Map<TypeNode, Span>();
+    const start = this.cur.start;
+    const type = this.ptype(spans);
+    const typeSpan = { start, end: this.prevEnd };
+    this.close();
+    return { kind: "As", form: t.text as "as" | "is", x: left, type, typeSpan, typeSpans: spans, span: { start: this.outer(left).start, end: this.prevEnd } };
+  }
+
+  private badType(t: Token): never {
+    if (t.blockError !== undefined) this.blockFail(t);
+    if (t.kind === "reject") this.unexpected(t);
+    this.fail("bad-type-text", t, t.kind === "eof" ? "a type is expected" : `${t.kind === "word" || t.kind === "punct" ? `\`${t.text}\`` : "this"} is not a type`);
+  }
+
+  /** PType = PAlt { "|" PAlt }. */
+  private ptype(spans: Map<TypeNode, Span>): TypeNode {
+    const start = this.cur.start;
+    const alts = [this.palt(spans)];
+    while (this.isP(this.cur, "|")) {
+      this.advance();
+      alts.push(this.palt(spans));
+    }
+    if (alts.length === 1) return alts[0];
+    const node: TypeNode = { t: "union", alts };
+    spans.set(node, { start, end: this.prevEnd });
+    return node;
+  }
+
+  /** PAlt = PPrim { "[" "]" }. The levels of the suffixes last to the end of the PAlt (f04 2.8). */
+  private palt(spans: Map<TypeNode, Span>): TypeNode {
+    let node = this.pprim(spans);
+    let opened = 0;
+    while (this.isP(this.cur, "[") && this.isP(this.peek(1), "]")) {
+      this.open(this.cur);
+      opened++;
+      this.advance();
+      this.advance();
+      node = { t: "list", elem: node };
+    }
+    for (let k = 0; k < opened; k++) this.close();
+    return node;
+  }
+
+  private pprim(spans: Map<TypeNode, Span>): TypeNode {
+    const t = this.cur;
+    if (t.kind === "word") {
+      switch (t.text) {
+        case "null": case "bool": case "int": case "float": case "string": case "any": case "never":
+          this.advance();
+          return { t: "word", word: t.text };
+        case "map": {
+          this.advance();
+          const lt = this.cur;
+          if (!this.isP(lt, "<")) this.badType(lt);
+          this.advance();
+          this.open(lt);
+          const rest = this.ptype(spans);
+          if (!this.isP(this.cur, ">")) this.badType(this.cur);
+          this.advance();
+          this.close();
+          return { t: "map", rest };
+        }
+      }
+      if (/^[A-Z][A-Za-z0-9_]+$/.test(t.text)) {
+        this.advance();
+        const node: TypeNode = { t: "name", name: t.text };
+        spans.set(node, { start: t.start, end: t.end });
+        return node;
+      }
+      this.badType(t);
+    }
+    if (t.kind === "string") {
+      this.advance();
+      return { t: "literal", value: t.str! };
+    }
+    if (this.isP(t, "(")) {
+      this.advance();
+      this.open(t);
+      const inner = this.ptype(spans);
+      if (!this.isP(this.cur, ")")) this.badType(this.cur);
+      this.advance();
+      this.close();
+      return inner;
+    }
+    if (this.isP(t, "{")) return this.precord(spans);
+    this.badType(t);
+  }
+
+  /** PRecord (f04 2.1). A key written twice is bad-type-text at the later key (2.6). */
+  private precord(spans: Map<TypeNode, Span>): TypeNode {
+    const lb = this.advance();
+    this.open(lb);
+    const fields: { key: string; optional: boolean; type: TypeNode }[] = [];
+    let rest: "exact" | "any" | TypeNode = "exact";
+    const seen = new Set<string>();
+    for (;;) {
+      const t = this.cur;
+      if (this.isP(t, "}")) break;
+      if (this.isP(t, "...")) {
+        this.advance();
+        rest = this.isP(this.cur, ",") || this.isP(this.cur, "}") ? "any" : this.ptype(spans);
+        if (this.isP(this.cur, ",")) {
+          this.advance();
+          if (!this.isP(this.cur, "}")) this.badType(this.cur);
+        } else if (!this.isP(this.cur, "}")) this.badType(this.cur);
+        break;
+      }
+      let key: string;
+      if (t.kind === "word") key = t.text;
+      else if (t.kind === "string") key = t.str!;
+      else this.badType(t);
+      if (seen.has(key)) this.fail("bad-type-text", t, `the key ${key} is written twice`);
+      seen.add(key);
+      this.advance();
+      let optional = false;
+      if (this.isP(this.cur, "?")) {
+        this.advance();
+        optional = true;
+      }
+      if (!this.isP(this.cur, ":")) this.badType(this.cur);
+      this.advance();
+      fields.push({ key, optional, type: this.ptype(spans) });
+      if (this.isP(this.cur, ",")) {
+        this.advance();
+        continue;
+      }
+      if (!this.isP(this.cur, "}")) this.badType(this.cur);
+      break;
+    }
+    this.advance();
+    this.close();
+    return { t: "record", fields, rest };
   }
 
   /** Unary = ( "!" | "-" ) Unary | Power. */

@@ -11,6 +11,7 @@ import type * as A from "../syntax/ast.ts";
 import type { Span } from "../syntax/source.ts";
 import { ABSENT, RMap, mapGet, mapKeys, size, truthy, cpAt, cpLength, lcpWeight } from "../value/value.ts";
 import { isWhole } from "../value/number.ts";
+import { conformWalk } from "./conform.ts";
 import { RunFailure, caught, messageOf } from "./failure.ts";
 import { arith, contains, equal, negate, order, render, sizeTogether } from "./ops.ts";
 import type { ArithOp, OrderOp } from "./ops.ts";
@@ -254,9 +255,38 @@ class Compiler {
       case "MethodCall":
       case "Call":
         return this.chain(e);
+      case "As":
+        return this.asExpr(e);
       case "Bad":
         throw new Error("a Bad node is never compiled");
     }
+  }
+
+  /** `x as T`, `x is T` (package F4, f04 5.1, 5.2). */
+  private asExpr(e: A.As): Code {
+    const x = this.expr(e.x);
+    const t = this.res.asTypes.get(e);
+    if (t === undefined || t === null) throw new Error("a program type that did not resolve is never compiled");
+    const span = e.span;
+    if (e.form === "is") {
+      return (r) => {
+        const v = x(r);
+        const base = r.depth;
+        const f = conformWalk(v, t, r.walkCtx());
+        r.depth = base;
+        return f === null;
+      };
+    }
+    return (r) => {
+      const v = x(r);
+      const base = r.depth;
+      const f = conformWalk(v, t, r.walkCtx());
+      r.depth = base;
+      if (f === null) return v;
+      const failure = new RunFailure("not-conforming", span, f.template, f.params);
+      failure.path = f.path;
+      throw failure;
+    };
   }
 
   private ident(e: A.Ident): Code {
@@ -480,12 +510,14 @@ class Compiler {
         const built = failure.text === null;
         const sz = size(message);
         if (built) r.charge(1 + sz);
-        r.alloc(9 + (built ? 1 + sz : 0));
+        // f04 5.5: the path of a `not-conforming` failure, 1 + n units.
+        const path = failure.path === undefined ? null : [...failure.path];
+        r.alloc(9 + (built ? 1 + sz : 0) + (path === null ? 0 : 1 + path.length));
         const ev = new RMap([
           ["code", failure.code],
           ["data", failure.data],
           ["message", message],
-          ["path", null],
+          ["path", path],
         ]);
         if (slot !== undefined) r.slots[slot] = ev;
       }

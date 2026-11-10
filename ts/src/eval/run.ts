@@ -4,6 +4,7 @@ import type { Span } from "../syntax/source.ts";
 import { BAD_NUMBER, Classifier, readHost } from "../value/value.ts";
 import type { Kind } from "../value/value.ts";
 import { RunFailure } from "./failure.ts";
+import type { WalkCtx } from "./conform.ts";
 
 export interface RunLimits {
   /** null: off. */
@@ -72,6 +73,27 @@ export class Run {
   checkTime(): void {
     if (this.signal?.aborted) throw new RunFailure("cancelled", undefined, "default");
     if (this.deadline !== null && Date.now() > this.deadline) throw new RunFailure("deadline-exceeded", undefined, "default");
+  }
+
+  private walk: WalkCtx | null = null;
+
+  /** The context of a conformance walk in this run (f04 5.3, 5.4). */
+  walkCtx(): WalkCtx {
+    if (this.walk === null) {
+      const r = this;
+      this.walk = {
+        cls: this.cls,
+        charge: (n) => r.charge(n),
+        enter: () => {
+          r.testDepth(r.depth + 1);
+          r.depth++;
+        },
+        leave: () => {
+          r.depth--;
+        },
+      };
+    }
+    return this.walk;
   }
 
   /** Test a depth count against the limit (02 8.4). */

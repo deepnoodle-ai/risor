@@ -71,9 +71,10 @@ describe("01 14.2: each parse code of Core", () => {
   test("bad-number", () => err("010", "bad-number", [1, 1, 1, 4]));
   test("literal-range", () => err("1e400", "literal-range", [1, 1, 1, 6]));
   test("nesting-exceeded", () => err("(".repeat(101) + "1" + ")".repeat(101), "nesting-exceeded", [1, 101, 1, 102]));
-  test("bad-type-text is not reported in Core; a text block parses with package F3", () => {
+  test("bad-type-text (package F4); a text block parses with package F3", () => {
     ok('"""\n  a\n  """');
-    err('x as int', "unexpected-token", [1, 3, 1, 5]);
+    ok("x as int");
+    err("x as T", "bad-type-text", [1, 6, 1, 7]);
   });
   test("reserved-word: every example of the rule", () => {
     err("const match = 1;", "reserved-word", [1, 7, 1, 12]);
@@ -125,18 +126,19 @@ describe("01 14.3: every row", () => {
     err('f(r /* c */ "x")', "unexpected-token", [1, 3, 1, 4]);
     err('q "x"', "unexpected-token", [1, 3, 1, 6]);
   });
-  test("as and is", () => {
-    err("x as T", "unexpected-token", [1, 3, 1, 5]);
-    err("x is T", "unexpected-token", [1, 3, 1, 5]);
+  test("as and is (package F4, f04 2.4, 2.6)", () => {
+    err("x as T", "bad-type-text", [1, 6, 1, 7]);
+    err("x is T", "bad-type-text", [1, 6, 1, 7]);
     err("x as const", "unexpected-token", [1, 3, 1, 5]);
     err("x is not T", "unexpected-token", [1, 3, 1, 5]);
-    err("a + b as T", "unexpected-token", [1, 7, 1, 9]);
+    err("a + b as T", "bad-type-text", [1, 10, 1, 11]);
+    err("x as int + 1", "unexpected-token", [1, 10, 1, 11]);
   });
   test("!x as T", () => {
     err("!x as T", "unexpected-token", [1, 1, 1, 2]);
     err("!x is T", "unexpected-token", [1, 1, 1, 2]);
     err("a == !x is T", "unexpected-token", [1, 6, 1, 7]);
-    err("(!x) is T", "unexpected-token", [1, 6, 1, 8]);
+    err("(!x) is T", "bad-type-text", [1, 9, 1, 10]);
   });
   test("a projection", () => {
     err("xs[*]", "unexpected-token", [1, 4, 1, 5]);
@@ -369,8 +371,10 @@ describe("01 3.3: precedence and associativity", () => {
 
 describe("01 4: nodes and spans", () => {
   test("30 node kinds", () => {
-    assert.equal(Object.keys(NODE_NUMBER).length, 30);
+    // Core's 30, and `As` of package F4 (f04 2.7).
+    assert.equal(Object.keys(NODE_NUMBER).length, 31);
     assert.equal(NODE_NUMBER.Bad, 30);
+    assert.equal(NODE_NUMBER.As, 31);
   });
   test("parentheses belong to the node that holds them", () => {
     const b = result("(a + b) * c") as A.Binary;

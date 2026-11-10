@@ -1,7 +1,7 @@
 // Case files (03 3.10): reading, the header rule, and validation.
 
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { JsonError, isObject, readJson } from "./json.ts";
 import type { Json, JsonObject } from "./json.ts";
 import { parseType } from "../types/typetext.ts";
@@ -46,6 +46,14 @@ export type Expect =
       allocated?: number;
     }
   | {
+      /** Package F4: a conform result (f04 9.2). */
+      kind: "conform";
+      conforms: boolean;
+      path?: (string | number)[];
+      message?: string;
+      steps?: number;
+    }
+  | {
       kind: "failure";
       phase: "declare" | "parse" | "check" | "run";
       diagnostics: ExpectDiagnostic[];
@@ -68,6 +76,10 @@ export interface Case {
   precondition?: boolean;
   /** Ruling CD4: library entries the environment removes (`len`, `string.repeat`). */
   removed?: string[];
+  /** Package F4: named types, in order (f04 9.1). */
+  types?: ({ name: string; type: string } | { name: string; schema: Json; options?: string[] })[];
+  /** Package F4: a case of the second kind (f04 9.2). */
+  conform?: { type: string; value: Json };
   /** Ruling AP1: false compiles the case with the static rules alone. */
   check?: boolean;
   /** Package F2: the text is a template, in this mode (f02 4.1). */
@@ -89,10 +101,13 @@ const STATIC_CODE_SET = new Set([
   "arity", "duplicate-name", "shadows-namespace", "duplicate-key", "duplicate-case", "unreachable-arm",
 ]);
 
+/** f04 6.1 item 4: in suite/conversion/, two more codes are static at a program type. */
+export const CONVERSION_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "untagged-union", "check-limit"]);
+
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is ruling A4. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
@@ -212,6 +227,29 @@ function checkShared(o: JsonObject, where: string): void {
   }
   if ("precondition" in o && typeof o.precondition !== "boolean") fail(`${where}: precondition is not a boolean`);
   if ("check" in o && typeof o.check !== "boolean") fail(`${where}: check is not a boolean`);
+  if ("types" in o) {
+    // f04 9.1: the invalid-file rules of `types`.
+    const ts = o.types;
+    if (!Array.isArray(ts)) fail(`${where}: types is not an array`);
+    for (const t of ts) {
+      if (!isObject(t)) fail(`${where}: an entry of types is not an object`);
+      for (const k of Object.keys(t)) if (!["name", "type", "schema", "options"].includes(k)) fail(`${where}: an entry of types has the field ${k}`);
+      if (typeof t.name !== "string") fail(`${where}: an entry of types has no name, or a name that is not a string`);
+      if (("type" in t) === ("schema" in t)) fail(`${where}: an entry of types needs exactly one of type and schema`);
+      if ("type" in t && typeof t.type !== "string") fail(`${where}: the type of an entry of types is not a string`);
+      if ("options" in t) {
+        const op = t.options;
+        const names = ["closed", "absent-is-null", "defaults-applied"];
+        if ("type" in t || !Array.isArray(op) || !op.every((x) => typeof x === "string" && names.includes(x)) || new Set(op).size !== op.length) {
+          fail(`${where}: the options of an entry of types`);
+        }
+      }
+    }
+  }
+  if ("conform" in o) {
+    const cf = o.conform;
+    if (!isObject(cf) || Object.keys(cf).length !== 2 || typeof cf.type !== "string" || !("value" in cf)) fail(`${where}: conform is not an object of type and value`);
+  }
   if ("removed" in o && !(Array.isArray(o.removed) && o.removed.every((x) => typeof x === "string"))) fail(`${where}: removed is not a list of strings`);
   if ("template" in o && o.template !== "string" && o.template !== "value") fail(`${where}: template is not "string" or "value"`);
   if ("schemas" in o) {
@@ -281,23 +319,30 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   // The header rule (3.10.2): a field of the case replaces the header's.
   const merged: JsonObject = Object.create(null);
   for (const [k, v] of Object.entries(header)) if (k !== "cases") merged[k] = v;
-  if ("source" in raw || "file" in raw) {
+  if ("source" in raw || "file" in raw || "conform" in raw) {
     delete merged.source;
     delete merged.file;
+    delete merged.conform;
   }
   for (const [k, v] of Object.entries(raw)) merged[k] = v;
 
   const hasSource = "source" in merged;
   const hasFile = "file" in merged;
-  if (hasSource === hasFile) fail(`${where} needs exactly one of source and file`);
-  let source: string;
-  if (hasFile) {
+  const hasConform = "conform" in merged;
+  if (Number(hasSource) + Number(hasFile) + Number(hasConform) !== 1) fail(`${where} needs exactly one of source, file and conform`);
+  let source = "";
+  if (hasConform) {
+    // f04 9.2 item 2: the fields a conform case may have.
+    for (const k of Object.keys(merged)) {
+      if (!["name", "version", "opaque", "types", "conform", "skip", "expect"].includes(k)) fail(`${where}: a conform case has the field ${k}`);
+    }
+  } else if (hasFile) {
     try {
       source = readFileSync(join(dir, ...(merged.file as string).split("/")), "utf8");
     } catch {
       fail(`${where}: the file ${merged.file as string} cannot be read`);
     }
-  } else {
+  } else if (hasSource) {
     source = merged.source as string;
   }
 
@@ -330,6 +375,13 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("removed" in merged) c.removed = merged.removed as string[];
   if ("schemas" in merged) c.schemas = merged.schemas as Record<string, { schema: Json; options?: string[] }>;
   if ("template" in merged) c.template = merged.template as "string" | "value";
+  if ("types" in merged) c.types = merged.types as Case["types"];
+  if (hasConform) c.conform = merged.conform as { type: string; value: Json };
+  // f04 9.2 item 5: a conform result only in a conform case; a conform case expects one or a declare failure.
+  if (c.expect.kind === "conform" && !hasConform) fail(`${where}: a conform result in a case without conform`);
+  if (hasConform && "expect" in raw && c.expect.kind !== "conform" && !(c.expect.kind === "failure" && c.expect.phase === "declare")) {
+    fail(`${where}: a conform case expects neither a conform result nor a declare failure`);
+  }
   // f02 4.2 item 3, 4.5 item 3: an analysis case has none of these fields.
   if (c.expect.kind === "result" && c.expect.analysis !== undefined) {
     for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version"]) {
@@ -342,7 +394,8 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
-      if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !STATIC_CODE_SET.has(d.code))) {
+      const staticCodes = basename(dir) === "conversion" ? CONVERSION_STATIC : STATIC_CODE_SET;
+      if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
       }
     }
@@ -360,6 +413,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     }
   }
   if (c.expect.kind === "result" && c.expect.value !== undefined) opaqueOk(c.expect.value.value, "the expected value");
+  if (c.conform !== undefined) opaqueOk(c.conform.value, "the conform value");
 
   // 3.10.10 item 9: a key of vars that is not a field of env.
   if (c.vars !== undefined) {
@@ -490,6 +544,26 @@ function buildExpect(v: Json, where: string): Expect {
     // Ruling A5: a case that expects a limit code states no counts.
     if ((out.steps !== undefined || out.allocated !== undefined) && diagnostics.some((d) => LIMIT_CODES.has(d.code))) {
       fail(`${where}: a case that expects a limit code states steps or allocated`);
+    }
+    return out;
+  }
+  if ("conforms" in v) {
+    // f04 9.2: a conform result.
+    for (const k of Object.keys(v)) if (!["conforms", "path", "message", "steps"].includes(k)) fail(`${where}: a conform result has the field ${k}`);
+    if (typeof v.conforms !== "boolean") fail(`${where}: conforms is not a boolean`);
+    const out: Expect = { kind: "conform", conforms: v.conforms };
+    if ("path" in v) {
+      if (!Array.isArray(v.path) || !v.path.every((x) => typeof x === "string" || isInt(x, 0))) fail(`${where}: path is not a path`);
+      out.path = v.path as (string | number)[];
+    }
+    if ("message" in v) {
+      if (typeof v.message !== "string") fail(`${where}: message is not a string`);
+      out.message = v.message;
+    }
+    if (v.conforms && (out.path !== undefined || out.message !== undefined)) fail(`${where}: path or message beside conforms true`);
+    if ("steps" in v) {
+      if (!isInt(v.steps, 0)) fail(`${where}: steps is not a whole number of 0 or more`);
+      out.steps = v.steps as number;
     }
     return out;
   }
