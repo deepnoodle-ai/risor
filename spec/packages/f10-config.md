@@ -380,7 +380,17 @@ its diagnostics.
 | 4 | Each failure at a path in the value, with the message of F4 4.4 |
 | 5 | Each failure at a path in the value, with the binding's message |
 
-1. The rendering of a diagnostic for a person (a line, a detail form, color)
+1. The messages of `parse` and `check` diagnostics are F8's (F8 3). For a
+   config those an author meets most are these:
+
+   | Fault | Code and message |
+   | --- | --- |
+   | A key the closed type does not list | `result-mismatch`, `{expected} does not allow key "max_bod"`, where `{expected}` is the record, cut at 64 code points |
+   | A required field with no entry | `result-mismatch`, `required field "backends" has no entry`, naming the least such key |
+   | A value of the wrong type | `result-mismatch`, `expected string, found int` |
+   | A misspelled setting of an exact record | `no-field`, `{DEBUG?: string, REGION: string} has no field "REGOIN"` |
+
+2. The rendering of a diagnostic for a person (a line, a detail form, color)
    is package F8's and F12's.
 
 ### 5.5 Sharing
@@ -684,9 +694,12 @@ where it was written.
 
 ### 8.3 Without imports
 
-1. Imports are not in version 3.0. `import` is a reserved word:
-   `import "./base.risor"` is `reserved-word` on `import` (`01-language.md`
-   14.2), in every place.
+1. Imports are not in version 3.0. `import` is a reserved word. Where a
+   value may start, `import "./base.risor"` and `const base = import
+   "./base.risor"; base` are the `parse` code `import-statement` on the word
+   `import` (F8 2.4, row B7), with the message `there are no imports in 3.0; a
+   host passes shared data as a variable`. Where a name is needed, as in
+   `const import = 1`, it stays `reserved-word` (F8 2.4 item 1).
 2. A host that composes files loads each one, in an order it chooses, and
    supplies the earlier values as variables of the later loads. A file reads
    no other file.

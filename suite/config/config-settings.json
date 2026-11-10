@@ -45,7 +45,8 @@
       14,
       1,
       20
-     ]
+     ],
+     "message": "{DEBUG?: string, REGION: string} has no field \"REGOIN\""
     }
    ]
   }
@@ -147,7 +148,8 @@
       11,
       1,
       19
-     ]
+     ],
+     "message": "no function is named time.now"
     }
    ]
   }

@@ -37,7 +37,8 @@
       10,
       1,
       13
-     ]
+     ],
+     "message": "key \"a\" is written twice in this map"
     }
    ]
   }

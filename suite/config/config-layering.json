@@ -88,7 +88,8 @@
        11,
        1,
        18
-      ]
+      ],
+      "message": "{db: {host: string, port: int}, hosts: string[], listen: stri... does not allow key \"max_bdy\""
      }
     ]
    }
@@ -106,7 +107,8 @@
        21,
        1,
        26
-      ]
+      ],
+      "message": "expected int, found \"big\""
      }
     ]
    }
@@ -411,13 +413,14 @@
     "phase": "parse",
     "diagnostics": [
      {
-      "code": "reserved-word",
+      "code": "import-statement",
       "span": [
        1,
        1,
        1,
        7
-      ]
+      ],
+      "message": "there are no imports in 3.0; a host passes shared data as a variable"
      }
     ]
    }
@@ -429,13 +432,14 @@
     "phase": "parse",
     "diagnostics": [
      {
-      "code": "reserved-word",
+      "code": "import-statement",
       "span": [
        1,
        14,
        1,
        20
-      ]
+      ],
+      "message": "there are no imports in 3.0; a host passes shared data as a variable"
      }
     ]
    }

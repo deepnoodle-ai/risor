@@ -233,13 +233,14 @@
        1,
        1,
        18
-      ]
+      ],
+      "message": "required field \"backends\" has no entry"
      }
     ]
    }
   },
   {
-   "name": "two missing required fields are still one report",
+   "name": "two missing required fields are still one report, naming the least key",
    "source": "{max_body: 1}",
    "expect": {
     "phase": "check",
@@ -251,7 +252,8 @@
        1,
        1,
        14
-      ]
+      ],
+      "message": "required field \"backends\" has no entry"
      }
     ]
    }
@@ -269,7 +271,8 @@
        10,
        1,
        14
-      ]
+      ],
+      "message": "expected string, found int"
      }
     ]
    }
