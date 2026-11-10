@@ -9,6 +9,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -202,6 +203,19 @@ func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
 	if c.Env != nil {
 		decls = append(decls, risor.Declare(*c.Env))
 	}
+	schemaNames := make([]string, 0, len(c.Schemas))
+	for k := range c.Schemas {
+		schemaNames = append(schemaNames, k)
+	}
+	sort.Strings(schemaNames)
+	for _, k := range schemaNames {
+		sv := c.Schemas[k]
+		opts := make([]risor.SchemaOption, len(sv.Options))
+		for i, o := range sv.Options {
+			opts[i] = risor.SchemaOption(o)
+		}
+		decls = append(decls, risor.VarSchema(k, sv.Schema, opts...))
+	}
 	for _, o := range c.Opaque {
 		decls = append(decls, risor.OpaqueType{Name: o})
 	}
@@ -366,13 +380,13 @@ func runMode(c *casefile.Case, checked, allClasses bool) Result {
 	}
 	needRun := c.Vars != nil || e.HasValue || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
 	if !needRun {
-		return compareResult(c, cr, nil, false, nil, st)
+		return compareResult(c, env, cr, nil, false, nil, st)
 	}
 	v, usage, err := prog.Measure(context.Background(), risor.Map(c.Vars))
 	if err != nil {
 		return compareFailure(c, err.(*risor.Error), &usage, st)
 	}
-	return compareResult(c, cr, v, true, &usage, st)
+	return compareResult(c, env, cr, v, true, &usage, st)
 }
 
 func fmtValue(v any) string {
@@ -397,12 +411,24 @@ func finish(diffs []Diff, st *stubState) Result {
 	return Result{Verdict: Pass}
 }
 
-func compareResult(c *casefile.Case, cr *risor.CheckResult, v any, ran bool, u *risor.Usage, st *stubState) Result {
+func compareResult(c *casefile.Case, env *risor.Env, cr *risor.CheckResult, v any, ran bool, u *risor.Usage, st *stubState) Result {
 	e := c.Expect
 	if e.IsFailure() {
 		return finish([]Diff{{"outcome", "a failure of phase " + e.Phase, "a result " + fmtValue(v)}}, st)
 	}
 	var diffs []Diff
+	if e.HasDescription {
+		// F1 7.2: compared as JSON data.
+		text, err := env.Describe()
+		var got any
+		if err == nil {
+			got, err = casefile.DecodeJSON(text)
+		}
+		if err != nil || !value.Equal(got, e.Description) {
+			want, _ := json.Marshal(e.Description)
+			diffs = append(diffs, Diff{"description", string(want), string(text)})
+		}
+	}
 	if e.Type != nil {
 		found := "no type"
 		if cr != nil {

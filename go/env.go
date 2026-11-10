@@ -13,6 +13,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/v3/internal/static"
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
+	"github.com/deepnoodle-ai/risor/v3/internal/types"
 	"github.com/deepnoodle-ai/risor/v3/internal/typetext"
 )
 
@@ -169,6 +170,7 @@ var checkClasses = map[string]bool{"constant-condition": true, "dynamic": true, 
 type varDecl struct {
 	name string
 	typ  *typetext.Type
+	ty   *types.Type // a type given whole: by schema or by TypeOf (F1)
 }
 
 type funcDecl struct {

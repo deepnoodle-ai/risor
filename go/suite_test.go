@@ -51,7 +51,8 @@ func report(t *testing.T, label string, all []runner.Result) {
 // those instead. Run with -v to see the counts by file.
 func TestSuite(t *testing.T) {
 	paths := []string{filepath.Join("..", "suite", "core-run"), filepath.Join("..", "suite", "core-check"),
-		filepath.Join("..", "suite", "strings")} // package F3, string forms
+		filepath.Join("..", "suite", "strings"),    // package F3, string forms
+		filepath.Join("..", "suite", "host-types")} // package F1, host types
 	if env := os.Getenv("RISOR_CASES"); env != "" {
 		paths = filepath.SplitList(env)
 	}
@@ -66,7 +67,7 @@ func TestSuite(t *testing.T) {
 		}
 		var all []runner.Result
 		// suite/core-check is run with the checker only (3.10.13).
-		runner.CheckedOnly = filepath.Base(root) == "core-check"
+		runner.CheckedOnly = filepath.Base(root) == "core-check" || filepath.Base(root) == "host-types"
 		for _, f := range files {
 			all = append(all, runner.RunFile(f)...)
 		}

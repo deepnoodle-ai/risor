@@ -51,6 +51,9 @@ type Field struct {
 type Record struct {
 	Fields []Field // sorted by key
 	Rest   *Type
+	// Closable is the mark of package F1 4.1, used only while a schema is
+	// mapped. A Join keeps it when both records have it.
+	Closable bool
 }
 
 // The basic types.
@@ -283,7 +286,7 @@ func joinRec(a, b *Record) *Record {
 		}
 	}
 	sort.Slice(fs, func(i, j int) bool { return fs[i].Key < fs[j].Key })
-	return &Record{Fields: fs, Rest: Join(a.Rest, b.Rest)}
+	return &Record{Fields: fs, Rest: Join(a.Rest, b.Rest), Closable: a.Closable && b.Closable}
 }
 
 // Fits is the assignability relation (4.2). It also reports whether the
@@ -576,21 +579,28 @@ func Finite(t *Type) bool {
 		len(t.opaque) == 0 && len(t.vars) == 0
 }
 
-// Depth is the depth of a type (2.5).
-func Depth(t *Type) int {
-	if t.any {
+// Depth is the depth of a type (2.5). A type shared at many places, as a
+// schema's $ref gives, is measured once.
+func Depth(t *Type) int { return depth(t, map[*Type]int{}) }
+
+func depth(t *Type, memo map[*Type]int) int {
+	if t.any || (t.list == nil && t.rec == nil) {
 		return 0
+	}
+	if d, ok := memo[t]; ok {
+		return d
 	}
 	d := -1
 	if t.list != nil {
-		d = max(d, Depth(t.list))
+		d = max(d, depth(t.list, memo))
 	}
 	if t.rec != nil {
 		for _, f := range t.rec.Fields {
-			d = max(d, Depth(f.Type))
+			d = max(d, depth(f.Type, memo))
 		}
-		d = max(d, Depth(t.rec.Rest))
+		d = max(d, depth(t.rec.Rest, memo))
 	}
+	memo[t] = d + 1
 	return d + 1
 }
 
@@ -863,4 +873,34 @@ func quote(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// Close makes the rest of each closable record of t never and drops its
+// mark, at every depth (package F1 4.1 item 3).
+func Close(t *Type) *Type { return closeT(t, map[*Type]*Type{}) }
+
+func closeT(t *Type, memo map[*Type]*Type) *Type {
+	if t.any || (t.list == nil && t.rec == nil) {
+		return t
+	}
+	if c, ok := memo[t]; ok {
+		return c
+	}
+	c := t.clone()
+	if c.list != nil {
+		c.list = closeT(c.list, memo)
+	}
+	if c.rec != nil {
+		fs := make([]Field, len(c.rec.Fields))
+		for i, f := range c.rec.Fields {
+			fs[i] = Field{Key: f.Key, Type: closeT(f.Type, memo), Optional: f.Optional}
+		}
+		rest := closeT(c.rec.Rest, memo)
+		if c.rec.Closable {
+			rest = Never
+		}
+		c.rec = &Record{Fields: fs, Rest: rest}
+	}
+	memo[t] = c
+	return c
 }

@@ -69,6 +69,14 @@ func (e *Env) typeEnv() {
 	}
 	sort.Strings(names)
 	for _, n := range names {
+		if t := e.vars[n].ty; t != nil {
+			if name, ok := undeclaredOpaque(t, opaque); !ok {
+				e.errf(diag.CodeBadType, fmt.Sprintf("variable %s: %s is not a declared opaque type", n, name))
+				continue
+			}
+			e.varTypes[n] = t
+			continue
+		}
 		t, err := types.FromText(e.vars[n].typ, opaque, false)
 		if err != nil {
 			e.errf(diag.CodeBadType, fmt.Sprintf("variable %s: %v", n, err))

@@ -14,6 +14,7 @@
 package value
 
 import (
+	"encoding"
 	"math"
 	"reflect"
 	"sort"
@@ -74,26 +75,26 @@ func KindOf(v any) Kind {
 }
 
 func reflectKind(v any) Kind {
+	if _, ok := v.(encoding.TextMarshaler); ok {
+		return String // F1 6.2: a text type
+	}
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-	case reflect.Slice:
-		if rv.IsNil() {
-			return Null
-		}
-		return List
-	case reflect.Array:
-		return List
+	case reflect.Slice, reflect.Array:
+		return List // F1 6.2: a nil slice is an empty list
 	case reflect.Map:
 		if rv.Type().Key().Kind() != reflect.String {
 			return OpaqueKind
 		}
-		if rv.IsNil() {
-			return Null
-		}
-		return Map
+		return Map // F1 6.2: a nil map is an empty map
+	case reflect.Struct:
+		return Map // F1 6.2: a struct presents its fields
 	case reflect.Pointer, reflect.Interface:
 		if rv.IsNil() {
 			return Null
+		}
+		if rv.Kind() == reflect.Pointer {
+			return KindOf(rv.Elem().Interface()) // F1 6.2: *T is T or null
 		}
 	}
 	return OpaqueKind
@@ -154,6 +155,14 @@ func Read(v any) (any, ReadError) {
 		return Read(float64(x))
 	case Opaque:
 		return v, ReadOK
+	case encoding.TextMarshaler:
+		return Read(marshalText(x))
+	}
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil, ReadOK
+		}
+		return Read(rv.Elem().Interface())
 	}
 	if KindOf(v) == Null {
 		return nil, ReadOK
@@ -308,7 +317,7 @@ func Truthy(v any) bool {
 		f, _ := Read(v)
 		return f != nil && f.(float64) != 0
 	case List, Map:
-		return reflect.ValueOf(v).Len() > 0
+		return Len(v) > 0
 	}
 	return true
 }
@@ -320,6 +329,9 @@ func Len(v any) int {
 		return len(x)
 	case map[string]any:
 		return len(x)
+	}
+	if rv, si, ok := isStruct(v); ok {
+		return structLen(rv, si)
 	}
 	return reflect.ValueOf(v).Len()
 }
@@ -338,6 +350,9 @@ func Get(v any, k string) (any, bool) {
 		x, ok := m[k]
 		return x, ok
 	}
+	if rv, si, ok := isStruct(v); ok {
+		return structGet(rv, si, k)
+	}
 	rv := reflect.ValueOf(v)
 	kv := reflect.ValueOf(k).Convert(rv.Type().Key())
 	x := rv.MapIndex(kv)
@@ -355,6 +370,8 @@ func Keys(v any) []string {
 		for k := range m {
 			keys = append(keys, k)
 		}
+	} else if rv, si, ok := isStruct(v); ok {
+		keys = structKeys(rv, si)
 	} else {
 		rv := reflect.ValueOf(v)
 		keys = make([]string, 0, rv.Len())
@@ -372,6 +389,12 @@ func Keys(v any) []string {
 func ForEachKey(v any, fn func(k string)) {
 	if m, ok := v.(map[string]any); ok {
 		for k := range m {
+			fn(k)
+		}
+		return
+	}
+	if rv, si, ok := isStruct(v); ok {
+		for _, k := range structKeys(rv, si) {
 			fn(k)
 		}
 		return

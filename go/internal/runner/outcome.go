@@ -70,6 +70,13 @@ func Outcome(c *casefile.Case) string {
 	if err != nil {
 		return fail(err, nil)
 	}
+	if c.Schemas != nil {
+		// F1 7.4: after name, before type.
+		if d, err := env.Describe(); err == nil {
+			b.WriteString(`,"description":`)
+			b.Write(d)
+		}
+	}
 	x, err := risor.Parse(c.Source)
 	if err != nil {
 		return fail(err, nil)

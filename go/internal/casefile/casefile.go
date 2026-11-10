@@ -43,9 +43,20 @@ type Case struct {
 	Precondition *bool
 	// Check is false for a case compiled with the static rules alone
 	// (ruling AP1). Nil means true.
-	Check  *bool
-	Expect *Expect
+	Check *bool
+	// Schemas declares variables by JSON Schema (package F1 7.1). Nil when
+	// absent.
+	Schemas map[string]*SchemaVar
+	Expect  *Expect
 }
+
+// SchemaVar is one value of the field schemas (F1 7.1).
+type SchemaVar struct {
+	Schema  any
+	Options []string
+}
+
+var schemaOptions = set("closed", "absent-is-null", "defaults-applied")
 
 // Limits is the field limits of a case.
 type Limits struct {
@@ -73,14 +84,17 @@ type Expect struct {
 	Phase       string // empty for a result
 	Diagnostics []*ExpDiag
 
-	Type      *string
-	Sites     []Site
-	HasSites  bool
-	Value     any
-	HasValue  bool
-	Truthy    *bool
-	Steps     *int64
-	Allocated *int64
+	Type     *string
+	Sites    []Site
+	HasSites bool
+	Value    any
+	HasValue bool
+	Truthy   *bool
+	// Description is the expected description of the environment (F1 7.2).
+	Description    any
+	HasDescription bool
+	Steps          *int64
+	Allocated      *int64
 }
 
 // IsFailure reports whether the expect is a failure.
@@ -176,19 +190,23 @@ func (v *validator) invalid(format string, args ...any) error {
 
 var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "precondition", "check")
+		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check")
-	resultFields  = set("type", "sites", "value", "truthy", "steps", "allocated")
-	failureFields = set("phase", "diagnostics", "steps", "allocated")
-	diagFields    = set("code", "class", "span", "path", "message", "data")
-	stubFields    = set("type", "calls")
-	rowFields     = set("args", "result", "error", "charge", "allocate")
-	limitFields   = set("steps", "allocation", "depth")
-	siteFields    = set("class", "span")
-	phases        = set("declare", "parse", "check", "run")
-	siteClasses   = set("dynamic", "index", "divide", "value", "host")
-	diagClasses   = set("constant-condition", "dynamic", "index", "divide", "value", "host",
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check",
+		"schemas")
+	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description")
+	// F1 7.1 and 7.2.
+	schemaVarFields   = set("schema", "options")
+	descriptionFields = set("version", "variables", "functions", "opaque", "removed", "reject", "limits")
+	failureFields     = set("phase", "diagnostics", "steps", "allocated")
+	diagFields        = set("code", "class", "span", "path", "message", "data")
+	stubFields        = set("type", "calls")
+	rowFields         = set("args", "result", "error", "charge", "allocate")
+	limitFields       = set("steps", "allocation", "depth")
+	siteFields        = set("class", "span")
+	phases            = set("declare", "parse", "check", "run")
+	siteClasses       = set("dynamic", "index", "divide", "value", "host")
+	diagClasses       = set("constant-condition", "dynamic", "index", "divide", "value", "host",
 		"environment", "range", "limit")
 
 	versionRe = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
@@ -404,6 +422,37 @@ func (v *validator) fields(m map[string]any, where string) error {
 			}
 		}
 	}
+	if x, ok := m["schemas"]; ok {
+		sm, ok := x.(map[string]any)
+		if !ok {
+			return v.invalid("%s: schemas is not an object", where)
+		}
+		for name, val := range sm {
+			o, ok := val.(map[string]any)
+			if !ok {
+				return v.invalid("%s: schemas.%s is not an object", where, name)
+			}
+			if _, ok := o["schema"]; !ok {
+				return v.invalid("%s: schemas.%s has no schema", where, name)
+			}
+			if err := v.checkFields(o, schemaVarFields, where+": schemas."+name); err != nil {
+				return err
+			}
+			if opts, ok := o["options"]; ok {
+				list, ok := stringList(opts)
+				if !ok {
+					return v.invalid("%s: schemas.%s: options is not a list of strings", where, name)
+				}
+				seen := map[string]bool{}
+				for _, op := range list {
+					if !schemaOptions[op] || seen[op] {
+						return v.invalid("%s: schemas.%s: options has %q, not a name or named twice", where, name, op)
+					}
+					seen[op] = true
+				}
+			}
+		}
+	}
 	for _, k := range []string{"precondition", "check"} {
 		if x, ok := m[k]; ok {
 			if _, ok := x.(bool); !ok {
@@ -551,6 +600,17 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 			c.Functions[name] = st
 		}
 	}
+	if x, ok := m["schemas"]; ok {
+		c.Schemas = map[string]*SchemaVar{}
+		for name, val := range x.(map[string]any) {
+			o := val.(map[string]any)
+			sv := &SchemaVar{Schema: o["schema"]}
+			if opts, ok := o["options"]; ok {
+				sv.Options, _ = stringList(opts)
+			}
+			c.Schemas[name] = sv
+		}
+	}
 	if x, ok := m["vars"]; ok {
 		cv, err := v.opaque(x, c.Opaque, where)
 		if err != nil {
@@ -571,6 +631,9 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 			}
 		}
 		if fields != nil {
+			for k := range c.Schemas {
+				fields[k] = true
+			}
 			for k := range c.Vars {
 				if !fields[k] {
 					return nil, v.invalid("%s: vars has %q, which env does not declare", where, k)
@@ -800,6 +863,21 @@ func (v *validator) expect(x any, where string) (*Expect, error) {
 		}
 		if x, ok := m["value"]; ok {
 			e.Value, e.HasValue = x, true
+		}
+		if x, ok := m["description"]; ok {
+			d, ok := x.(map[string]any)
+			if !ok {
+				return nil, v.invalid("%s: description is not an object", where)
+			}
+			if err := v.checkFields(d, descriptionFields, where+": description"); err != nil {
+				return nil, err
+			}
+			for k := range descriptionFields {
+				if _, ok := d[k]; !ok {
+					return nil, v.invalid("%s: description has no %s", where, k)
+				}
+			}
+			e.Description, e.HasDescription = x, true
 		}
 		if x, ok := m["truthy"]; ok {
 			b, ok := x.(bool)

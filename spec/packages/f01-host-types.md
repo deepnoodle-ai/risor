@@ -602,15 +602,15 @@ first that applies gives the type.
 
 | Go | Type |
 | --- | --- |
-| A type registered as opaque, a struct type among them | Its opaque name. This row is tried before every other |
-| A type that implements `encoding.TextMarshaler` | `string`, presented as the text its `MarshalText` gives |
+| A type that implements the binding's `Opaque` interface, a struct type among them | Its opaque name. This row is tried before every other. The name is asked of the type's zero value, so the method that gives it must not read its receiver |
+| A type that implements `encoding.TextMarshaler` | `string`, presented as the text its `MarshalText` gives. A value whose `MarshalText` returns an error is presented as null, which breaks the declared type (`03-host.md` 3.4.8) |
 | `bool`, `string` | `bool`, `string` |
 | Every integer type | `int` |
 | `float32`, `float64` | `float` |
 | `[]T`, `[N]T` | `T[]`. A nil slice is presented as an empty list |
 | `map[string]T` | `map<T>`. A nil map is presented as an empty map |
 | `*T` | `T \| null` |
-| `any` | `any` |
+| Every interface type, `any` among them | `any`. The value an interface holds is presented by the rules of its own type, and a nil interface as null |
 | A struct | An exact record of the fields it presents, by the rules below |
 | Anything else | `bad-type` |
 
