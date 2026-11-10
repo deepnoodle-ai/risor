@@ -12,7 +12,6 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/v3/internal/eval"
 	"github.com/deepnoodle-ai/risor/v3/internal/library"
-	"github.com/deepnoodle-ai/risor/v3/internal/static"
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
 	"github.com/deepnoodle-ai/risor/v3/internal/types"
 	"github.com/deepnoodle-ai/risor/v3/internal/typetext"
@@ -217,7 +216,12 @@ type Env struct {
 	reject  []string
 	limits  eval.Limits
 	// untyped turns the typed layer off (package F11).
-	untyped  bool
+	untyped bool
+	// parent is the environment a child was made from; scopeKeys holds
+	// whether the child declared an opaque type or a named type.
+	parent *Env
+	// cache holds what every compile of this environment reads, made once.
+	cache    *envCache
 	envTypes // the declarations as types, for the checker (check.go)
 
 	// while building
@@ -236,9 +240,12 @@ func NewEnv(decls ...Decl) (*Env, error) {
 }
 
 // With returns a child environment: its declarations replace the parent's
-// of the same name (03-host.md 3.3.2).
+// of the same name (03-host.md 3.3.2). The child shares its parent's
+// declarations and the types made of them, so its cost is about that of
+// what it adds; declare its variables with VarType to parse nothing. The
+// parent does not change.
 func (e *Env) With(decls ...Decl) (*Env, error) {
-	c := &Env{version: e.version, versionSet: e.versionSet, reject: e.reject, limits: e.limits, untyped: e.untyped,
+	c := &Env{version: e.version, versionSet: e.versionSet, reject: e.reject, limits: e.limits, untyped: e.untyped, parent: e,
 		vars: map[string]*varDecl{}, funcs: map[string]*funcDecl{}, opaque: map[string]*opaqueDecl{},
 		removed: map[string]bool{}}
 	for k, v := range e.vars {
@@ -276,6 +283,13 @@ func (e *Env) build(decls []Decl) (*Env, error) {
 	e.namedEnv()
 	e.typeEnv()
 	e.own = nil
+	e.cache = &envCache{}
+	// A child with its parent's removed entries and groups shares the
+	// parent's table of library names.
+	if p := e.parent; p != nil && len(p.removed) == len(e.removed) && len(p.groups) == len(e.groups) {
+		e.cache.libFrom = p.cached()
+	}
+	e.parent = nil
 	if len(e.errs) > 0 {
 		errs := e.errs
 		e.errs = nil
@@ -524,81 +538,51 @@ func (e *Env) checkClashes() {
 	}
 }
 
-// Compile applies the static rules (05-types.md 22) and compiles a parsed
-// program. This implementation has no type checker yet: it compiles without
-// the type rules. A static diagnostic fails the compile with phase check; a
-// function with no implementation fails it with no-implementation.
+// Compile checks a parsed program against the environment and compiles it
+// (03-host.md 3.2.1): the static rules (05-types.md 22) and the type rules,
+// with the expected result of the options, then the program. With NoCheck it
+// applies the static rules alone. A diagnostic of either fails the compile
+// with an *Error of phase check; an error of the options or of the
+// environment's declarations, of phase declare (a function with no
+// implementation is no-implementation). The returned program may be run by
+// many goroutines at once. CheckCompile also gives the check's result.
 func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
-	names := &static.Names{Vars: map[string]int{}, Funcs: map[string]*static.Func{},
-		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}, Types: e.scope()}
-	cfg := &eval.Config{Names: names, Methods: map[string]map[string]*eval.Method{}, Limits: e.limits, Removed: e.removed}
-	varNames := make([]string, 0, len(e.vars))
-	for n := range e.vars {
-		varNames = append(varNames, n)
+	p, _, err := e.compile(x, opts, false)
+	return p, err
+}
+
+// CheckCompile checks a program and compiles it, in one pass of the static
+// and the type rules: it gives the program and the check's result, as
+// Check and Compile give them. The result is nil when the options compile
+// without the check (NoCheck).
+func (e *Env) CheckCompile(x *Expr, opts ...CheckOption) (*Program, *CheckResult, error) {
+	return e.compile(x, opts, true)
+}
+
+func (e *Env) compile(x *Expr, opts []CheckOption, result bool) (*Program, *CheckResult, error) {
+	c := e.cached()
+	if len(c.missing) > 0 {
+		return nil, nil, &Error{Diagnostics: c.missing}
 	}
-	sort.Strings(varNames)
-	for i, n := range varNames {
-		names.Vars[n] = i
-	}
-	cfg.VarNames = varNames
-	var missing []Diagnostic
-	fnames := make([]string, 0, len(e.funcs))
-	for n := range e.funcs {
-		fnames = append(fnames, n)
-	}
-	sort.Strings(fnames)
-	for _, n := range fnames {
-		f := e.funcs[n]
-		sf := &static.Func{Name: f.name, Namespace: f.ns, Sig: f.sig, Index: len(cfg.Hosts)}
-		names.Funcs[n] = sf
-		if f.ns != "" {
-			names.Namespaces[f.ns] = true
-		}
-		if f.impl == nil {
-			missing = append(missing, Diagnostic{Phase: PhaseDeclare, Code: diag.CodeNoImplementation,
-				Message: "function " + n + " has no implementation"})
-		}
-		cfg.Hosts = append(cfg.Hosts, eval.HostFunc(f.impl))
-	}
-	for name, o := range e.opaque {
-		ms := map[string]*eval.Method{}
-		for m, f := range o.methods {
-			if f.impl == nil {
-				missing = append(missing, Diagnostic{Phase: PhaseDeclare, Code: diag.CodeNoImplementation,
-					Message: "method " + name + "." + m + " has no implementation"})
-			}
-			ms[m] = &eval.Method{Name: m, Min: f.sig.MinArgs(), Max: f.sig.MaxArgs(), Impl: eval.HostFunc(f.impl)}
-		}
-		cfg.Methods[name] = ms
-	}
-	for n, en := range library.Functions {
-		if !e.removed[n] {
-			names.Library[n] = en
-		}
-	}
-	e.groupNames(names)
-	if len(missing) > 0 {
-		return nil, &Error{Diagnostics: missing}
-	}
+	cfg := new(eval.Config)
+	*cfg = c.cfg
+	names, varNames := c.names, c.varNames
 	res, cr, err := e.analyze(x, names, varNames, opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if cr != nil && !e.untyped { // F11: only a checked program
-		for _, n := range varNames {
-			if rt := e.vars[n].rt; rt != nil {
-				if cfg.GoTypes == nil {
-					cfg.GoTypes = map[string]reflect.Type{}
-				}
-				cfg.GoTypes[n] = rt
-			}
-		}
+		cfg.GoTypes = c.goTypes
 	}
 	p, err := eval.Compile(x.tree, x.file, res, cfg)
 	if err != nil {
-		return nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
+		return nil, nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
 	}
-	return &Program{p: p, x: x, dynamic: dynamicSpans(x, cr), host: hostSpans(x, cr), val: valueSpans(x, cr)}, nil
+	prog := &Program{p: p, x: x, dynamic: dynamicSpans(x, cr), host: hostSpans(x, cr), val: valueSpans(x, cr)}
+	if !result {
+		return prog, nil, nil
+	}
+	return prog, checkResult(x, cr), nil
 }
 
 // Program is a compiled program. It does not change, and several goroutines

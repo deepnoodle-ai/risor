@@ -113,11 +113,19 @@ type Result struct {
 type scope struct {
 	parent *scope
 	names  map[string]*Binding
+	// vars are the environment's variables, for the outermost scope: a
+	// binding is made for one when a name reads it, not for every one.
+	vars map[string]int
 }
 
 func (s *scope) lookup(n string) *Binding {
 	for ; s != nil; s = s.parent {
 		if b, ok := s.names[n]; ok {
+			return b
+		}
+		if i, ok := s.vars[n]; ok {
+			b := &Binding{Kind: EnvVar, Name: n, Var: i}
+			s.names[n] = b
 			return b
 		}
 	}
@@ -139,10 +147,7 @@ func Check(prog *syntax.Program, names *Names) *Result {
 		Slots:   map[any]int{},
 		AsTypes: map[*syntax.As]*types.Type{},
 	}}
-	outer := &scope{names: map[string]*Binding{}}
-	for n, i := range names.Vars {
-		outer.names[n] = &Binding{Kind: EnvVar, Name: n, Var: i}
-	}
+	outer := &scope{names: map[string]*Binding{}, vars: names.Vars}
 	s := &scope{parent: outer, names: map[string]*Binding{}}
 	for _, c := range prog.Consts {
 		w.constLine(c, s)

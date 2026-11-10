@@ -130,3 +130,20 @@ type Origin struct {
 	Name                 string
 	Line, Column, Indent int
 }
+
+// Text is the program's own text: the source between the start and the
+// end of its span. For a whole program it is Source without the white
+// space and comments around it; for a program made of a part of a larger
+// text, such as a call argument (CallSite.Args) or a template's part, it
+// is that part alone, where Source is the whole text.
+func (x *Expr) Text() string {
+	r := x.tree.Result
+	if r == nil {
+		return ""
+	}
+	start, end := r.Span().Start, r.Span().End
+	if len(x.tree.Consts) > 0 {
+		start = x.tree.Consts[0].Span().Start
+	}
+	return x.file.Text(start, end)
+}

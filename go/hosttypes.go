@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
@@ -20,8 +21,10 @@ import (
 // a variable's type from a JSON Schema, the description of an environment,
 // and types derived from Go types.
 
-// Type is a type of the language (05-types.md 2). Its String method prints
-// it by 05-types.md 3.9, which is also its description (F1 5.1).
+// Type is a type of the language (05-types.md 2), the checker's own. Its
+// String method prints it by 05-types.md 3.9, which is also its
+// description (F1 5.1). The structural type API (typeapi.go) builds and
+// reads one; the zero Type stands for never.
 type Type struct {
 	t *types.Type
 	// rt is the Go type a type from TypeOf was derived from, for the
@@ -72,13 +75,83 @@ func decodeSchema(schema any) (any, error) {
 	case json.RawMessage:
 		return casefile.DecodeJSON(s)
 	}
-	return schema, nil
+	return schemaData(reflect.ValueOf(schema), 0)
+}
+
+// schemaData reads a schema given as Go values as JSON data: a map with
+// string keys of any value type as map[string]any, a slice or an array of
+// any element type as []any, a number of any Go type as float64, and a
+// pointer or an interface as what it holds.
+func schemaData(v reflect.Value, depth int) (any, error) {
+	if depth > 1000 {
+		return nil, errors.New("the schema nests too deep")
+	}
+	if !v.IsValid() {
+		return nil, nil
+	}
+	if v.Type() == reflect.TypeFor[json.Number]() {
+		f, err := strconv.ParseFloat(v.String(), 64)
+		if err != nil || math.IsInf(f, 0) {
+			return nil, fmt.Errorf("the schema number %s is not a finite number", v.String())
+		}
+		return f, nil
+	}
+	switch v.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if v.IsNil() {
+			return nil, nil
+		}
+		return schemaData(v.Elem(), depth)
+	case reflect.Bool:
+		return v.Bool(), nil
+	case reflect.String:
+		return v.String(), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return float64(v.Int()), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return float64(v.Uint()), nil
+	case reflect.Float32, reflect.Float64:
+		return v.Float(), nil
+	case reflect.Slice, reflect.Array:
+		if v.Kind() == reflect.Slice && v.IsNil() {
+			return nil, nil
+		}
+		out := make([]any, v.Len())
+		for i := range out {
+			x, err := schemaData(v.Index(i), depth+1)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = x
+		}
+		return out, nil
+	case reflect.Map:
+		if v.Type().Key().Kind() != reflect.String {
+			return nil, fmt.Errorf("a schema map has keys of type %v, not string", v.Type().Key())
+		}
+		if v.IsNil() {
+			return nil, nil
+		}
+		out := make(map[string]any, v.Len())
+		it := v.MapRange()
+		for it.Next() {
+			x, err := schemaData(it.Value(), depth+1)
+			if err != nil {
+				return nil, err
+			}
+			out[it.Key().String()] = x
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("a schema holds a value of type %v", v.Type())
 }
 
 // TypeFromSchema maps a JSON Schema to a type (F1 3). schema is JSON text
-// ([]byte or json.RawMessage) or a decoded JSON value (nil, bool, float64,
-// string, []any, map[string]any). An
-// error is an *Error of phase declare with the code bad-type.
+// ([]byte or json.RawMessage), or the schema as Go values: nil, bool, a
+// number of any Go type, string, a slice or array of any element type, and
+// a map with string keys of any value type ([]string for required, a
+// map[string]map[string]any for properties), at any depth. An error is an
+// *Error of phase declare with the code bad-type.
 func TypeFromSchema(schema any, opts ...SchemaOption) (Type, error) {
 	t, err := mapSchema(schema, opts)
 	if err != nil {
@@ -112,7 +185,9 @@ func VarSchema(name string, schema any, opts ...SchemaOption) Decl {
 	})
 }
 
-// VarType declares a variable of a type, from TypeOf or TypeFromSchema.
+// VarType declares a variable of a type: one the structural type API built
+// (RecordType, ListType, ...), or one from TypeOf, TypeFromSchema or
+// ParseType. Nothing is parsed: the type is the checker's own.
 func VarType(name string, t Type) Decl {
 	return declFunc(func(e *Env) {
 		if t.t == nil {
@@ -165,9 +240,10 @@ func undeclaredOpaque(t *types.Type, declared map[string]bool) (string, bool) {
 // type that implements Opaque gives its opaque name, asked of the type's
 // zero value; one that implements encoding.TextMarshaler gives string; then
 // bool, string, the integer and float types, slices and arrays, maps with
-// string keys, pointers (T or null), every interface type (any), and structs (an exact record of the fields encoding/json would
-// write). Anything else, a type that contains itself, and a type deeper
-// than 64 are errors with the code bad-type.
+// string keys, pointers (T or null), every interface type (any), and
+// structs (an exact record of the fields encoding/json would write).
+// Anything else, a type that contains itself, and a type deeper than 64
+// are errors with the code bad-type.
 func TypeOf[T any]() (Type, error) {
 	return typeOfReflect(reflect.TypeFor[T]())
 }

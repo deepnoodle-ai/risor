@@ -6,7 +6,6 @@ import (
 
 	"github.com/deepnoodle-ai/risor/v3/internal/check"
 	"github.com/deepnoodle-ai/risor/v3/internal/diag"
-	"github.com/deepnoodle-ai/risor/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/v3/internal/static"
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
@@ -85,7 +84,10 @@ type Site struct {
 // CheckResult is what a check gives for a program that checks.
 type CheckResult struct {
 	// Type is the result type, printed by 05-types.md 3.9.
-	Type  string
+	Type string
+	// ResultType is the result type itself, the checker's own.
+	ResultType Type
+	// Sites are the places where the program can still fail on a value.
 	Sites []Site
 }
 
@@ -93,15 +95,30 @@ type CheckResult struct {
 // types (05-types.md 19), reporting the errors that need the checker
 // (19.5, second table).
 func (e *Env) typeEnv() {
-	opaque := map[string]bool{}
-	for n := range e.opaque {
-		opaque[n] = true
+	// A child whose declarations leave the scope of type names as its
+	// parent's shares the parent's types of every inherited declaration.
+	p := e.parent
+	if p != nil && !e.scopeChanged() {
+		e.opaqueSet = p.opaqueSet
+	} else {
+		p = nil
+		opaque := make(map[string]bool, len(e.opaque))
+		for n := range e.opaque {
+			opaque[n] = true
+		}
+		e.opaqueSet = opaque
 	}
-	e.opaqueSet = opaque
+	opaque := e.opaqueSet
 	sc := e.scope()
-	e.varTypes = map[string]*types.Type{}
-	names := make([]string, 0, len(e.vars))
-	for n := range e.vars {
+	e.varTypes = make(map[string]*types.Type, len(e.vars))
+	names := make([]string, 0, 8)
+	for n, d := range e.vars {
+		if p != nil && p.vars[n] == d {
+			if t, ok := p.varTypes[n]; ok {
+				e.varTypes[n] = t
+				continue
+			}
+		}
 		names = append(names, n)
 	}
 	sort.Strings(names)
@@ -128,6 +145,12 @@ func (e *Env) typeEnv() {
 	}
 	sort.Strings(fnames)
 	for _, n := range fnames {
+		if p != nil && p.funcs[n] == e.funcs[n] {
+			if s, ok := p.hostSigs[n]; ok {
+				e.hostSigs[n] = s
+				continue
+			}
+		}
 		s, err := types.FromSigIn(nil, e.funcs[n].sig, sc)
 		if err != nil {
 			e.errf(diag.CodeBadSignature, fmt.Sprintf("function %s: %v", n, err))
@@ -137,6 +160,12 @@ func (e *Env) typeEnv() {
 	}
 	e.methodSigs = map[string]map[string]*types.Sig{}
 	for tn, o := range e.opaque {
+		if p != nil && p.opaque[tn] == o {
+			if ms, ok := p.methodSigs[tn]; ok {
+				e.methodSigs[tn] = ms
+				continue
+			}
+		}
 		ms := map[string]*types.Sig{}
 		for m, f := range o.methods {
 			s, err := types.FromSigIn(&typetext.Alt{Prim: &typetext.Prim{Kind: typetext.PrimName, Text: tn}}, f.sig, sc)
@@ -228,7 +257,7 @@ func (e *Env) analyze(x *Expr, names *static.Names, varNames []string, opts []Ch
 	}
 	var cr *check.Result
 	if checked {
-		cr = check.Check(x.tree, res, e.checkEnv(names, varNames), exp)
+		cr = check.Check(x.tree, res, e.cached().checkEnv(e), exp)
 		for _, d := range cr.Diags {
 			add(d.Code, d.Span.Start, d.Span.End, d.Class, d.Tmpl, d.Params)
 		}
@@ -283,14 +312,19 @@ func (e *Env) Check(x *Expr, opts ...CheckOption) (*CheckResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	return checkResult(x, cr), nil
+}
+
+// checkResult is the binding's form of a check's result, or nil.
+func checkResult(x *Expr, cr *check.Result) *CheckResult {
 	if cr == nil {
-		return nil, nil
+		return nil
 	}
-	out := &CheckResult{Type: cr.Type.String()}
+	out := &CheckResult{Type: cr.Type.String(), ResultType: Type{t: cr.Type}}
 	for _, s := range cr.Sites {
 		out.Sites = append(out.Sites, Site{Class: s.Class, Span: x.file.Span(s.Span.Start, s.Span.End)})
 	}
-	return out, nil
+	return out
 }
 
 // dynamicSpans turns the check's dynamic spans into source spans.
@@ -365,36 +399,9 @@ type envTypes struct {
 	methodSigs map[string]map[string]*types.Sig
 }
 
-// staticNames are the names the static rules read (05-types.md 22.2), as
-// Compile builds them.
+// staticNames are the names the static rules read (05-types.md 22.2),
+// made once for the environment.
 func (e *Env) staticNames() (*static.Names, []string) {
-	names := &static.Names{Vars: map[string]int{}, Funcs: map[string]*static.Func{},
-		Namespaces: map[string]bool{}, Library: map[string]*library.Entry{}, Types: e.scope()}
-	varNames := make([]string, 0, len(e.vars))
-	for n := range e.vars {
-		varNames = append(varNames, n)
-	}
-	sort.Strings(varNames)
-	for i, n := range varNames {
-		names.Vars[n] = i
-	}
-	fnames := make([]string, 0, len(e.funcs))
-	for n := range e.funcs {
-		fnames = append(fnames, n)
-	}
-	sort.Strings(fnames)
-	for i, n := range fnames {
-		f := e.funcs[n]
-		names.Funcs[n] = &static.Func{Name: f.name, Namespace: f.ns, Sig: f.sig, Index: i}
-		if f.ns != "" {
-			names.Namespaces[f.ns] = true
-		}
-	}
-	for n, en := range library.Functions {
-		if !e.removed[n] {
-			names.Library[n] = en
-		}
-	}
-	e.groupNames(names)
-	return names, varNames
+	c := e.cached()
+	return c.names, c.varNames
 }
