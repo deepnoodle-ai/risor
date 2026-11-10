@@ -1356,7 +1356,11 @@ above. A package's chapter is the home of its rules: this table only points.
 2. A runner runs only the directories of the packages its implementation
    offers. The packages are offered in a fixed order, each only with all
    before it: F3, F1, F2, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F12. So a
-   package's cases may use what an earlier package adds.
+   package's cases may use what an earlier package adds. F11 is a binding's
+   typed layer: a faster path for the binding's own typed data, which changes
+   no result. It has no chapter, no row above and no cases. A binding that
+   reads its host's data in place has nothing to add, and offers F11 when it
+   offers F10.
 3. For a runner, a field of a package it does not offer is a field 3.10.3
    does not list, so a file that uses it is invalid (3.10.10).
 4. **Files named `until-fNN-`.** A case whose outcome package `NN` changes
