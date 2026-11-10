@@ -59,6 +59,8 @@ export function outcomeLine(c: Case): string {
     }
     parts.push(`"diagnostics":[${diags.join(",")}]`);
   }
-  if (o.usage !== undefined) parts.push(`"steps":${o.usage.steps}`, `"units":${o.usage.allocated}`);
+  // Ruling AK3: a failure of class `limit` has no usage in its line.
+  const limit = o.kind === "failure" && o.diagnostics.some((d) => d.class === "limit");
+  if (o.usage !== undefined && !limit) parts.push(`"steps":${o.usage.steps}`, `"units":${o.usage.allocated}`);
   return `{${parts.join(",")}}`;
 }

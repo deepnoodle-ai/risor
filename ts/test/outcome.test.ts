@@ -24,7 +24,7 @@ test("one line of JSON for each case, in order, fields in the order of AJ item 3
     '{"name":"check","phase":"check","diagnostics":[{"code":"undefined-name","span":[1,1,1,2]},{"code":"undefined-name","span":[1,5,1,6]}]}',
     '{"name":"declare","phase":"declare","diagnostics":[{"code":"name-clash"}]}',
     '{"name":"run","phase":"run","diagnostics":[{"code":"divide-by-zero","span":[1,1,1,6],"class":"divide","message":"the divisor of / is zero"}],"steps":1,"units":0}',
-    '{"name":"limit","phase":"run","diagnostics":[{"code":"allocation-exceeded","span":null,"class":"limit","message":"the run needed more than its limit of 1 allocation units"}],"steps":0,"units":0}',
+    '{"name":"limit","phase":"run","diagnostics":[{"code":"allocation-exceeded","span":null,"class":"limit","message":"the run needed more than its limit of 1 allocation units"}]}', // ruling AK3: no usage
   ]);
   for (const line of r.stdout.trimEnd().split("\n")) JSON.parse(line);
 });
