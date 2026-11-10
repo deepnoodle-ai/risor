@@ -685,6 +685,8 @@ and a method call's arguments are expressions of their own.
 | `string` or a literal set | `[e]`: e must fit `int` | `string`, and an `index` site on the `Index` node | `string \| null` |
 | Anything else | A field or an index | `kind` on the receiver; `never` | `kind` on the receiver; `never` |
 
+- A receiver of type `any` is read by 9.3, which also records an `index` site
+  for a plain index step.
 - V is the Join of every field type of the record and its rest.
 - A key that a fact says is present (10.4) reads as required: its type is the
   field's type, or for an unlisted key nonnull of the rest. No `maybe-absent` is
@@ -704,6 +706,14 @@ and a method call's arguments are expressions of their own.
 Every step on an `any` receiver records a `dynamic` site on that receiver, and
 gives `any`. An optional step on `any` records the same site: the kind is still
 unknown. An index expression is synthesized, and it need not fit anything.
+
+| Step on an `any` receiver | Sites besides the `dynamic` site on the receiver |
+| --- | --- |
+| A plain index step `[e]` | An `index` site on the `Index` node: the value may be a list or a string, and the index may be out of range. |
+| An optional index step `?.[e]` | None: an index out of range gives null. |
+| A method call, plain or optional | 13.3: a `value` site or a `host` site on the call, by the method's name. |
+
+The receiver is `any` here when *cur* is `any` after step 2 or 3 of 9.1.
 
 ### 9.4 `never` in a chain
 
@@ -833,8 +843,8 @@ a tested position.
 | Step | Rule |
 | --- | --- |
 | Literal types | A literal has the type of the same literal expression: a `Number` by 7.1 (with `-`, the same by its value), a `String` its literal set, `true` and `false` `bool`, `null` `null`. |
-| `never-equal` | A literal L whose type does not overlap S (4.5), when S is not `never` and L is not `null`. Reported on the literal, its `-` included. A `match` on a subject of type `never` reports no `never-equal`. |
-| `duplicate-case`, `unreachable-arm` | Static rules (22.8). For the type, a literal equal to an earlier one is ignored, and an arm after `_` is still checked and joined. |
+| `never-equal` | A literal L whose type does not overlap S (4.5), under the conditions of `==` (8.2): S is not `never`, S is not exactly the type `null`, and L is not `null`. Reported on the literal, its `-` included. So a `match` on a subject of type `never` or of type `null` reports no `never-equal`, and `match null { 0 \| null \| "" => 0 }` checks clean. A literal equal to an earlier one of the same `match` is ignored here too: it is `duplicate-case` only (22.8). |
+| `duplicate-case`, `unreachable-arm` | Static rules (22.8). A literal equal to an earlier one is ignored for every type rule, `never-equal` and coverage included. An arm after `_` is still checked and joined. |
 | Coverage | Without an `_` arm, S must be finite (4.5) and every value of S must be a literal of some arm. Otherwise `non-exhaustive` on the whole `Match`. |
 | `_` after full coverage | Accepted, with no diagnostic. |
 | Narrowing | If the subject is a path p, then {p} holds in every arm after an arm that lists `null`. |
@@ -878,7 +888,16 @@ parameter receives.
 | `...rest` in a map pattern | The record V without the fields the pattern names. An exact record stays exact, and an open record keeps its rest. |
 | `...rest` in a list pattern | V. No site. |
 
-After `kind` on a pattern, every name of the pattern has type `never`.
+After `kind` on a pattern, every name of the pattern has type `never`. When V is
+`never`, or becomes `never` after `maybe-null` because the value's type is
+`null`, nothing more is reported for the pattern, and every name of it has type
+`never`.
+
+**A default is always checked**, whatever happened to the value bound: after
+`kind` on the pattern, and when V is `null` or `never`. Each default is an
+expression of its own (12.4). The names to its left have the types the pattern
+gave them, `never` after a failure. So `const {b = 0[""]} = ""; 0` reports
+`kind` on `""` and `kind` on `0`.
 
 ### 12.3 The value bound
 
@@ -889,7 +908,7 @@ expression for a `const`. For a parameter it is the parameter's pattern.
 
 | Pattern part | Rule |
 | --- | --- |
-| A field `name = d` | d is checked with the names to its left in scope. The field is read as by `?.`, so `maybe-absent` is not reported. With T that read's type and D the type of d, the name has Join(nonnull(T), D). |
+| A field `name = d` | d is checked, always (12.2), with the names to its left in scope. The field is read as by `?.`, so `maybe-absent` is not reported. With T that read's type and D the type of d, the name has Join(nonnull(T), D). |
 | An element `name = d` | The same with T the element type. No `index` site is recorded. |
 | A parameter `p = d` | When the argument is given with type A, the name has Join(nonnull(A), D). When the argument is omitted, the name has D. |
 
@@ -940,7 +959,7 @@ run time.
 | By kind | A method is found by the one kind of its receiver (9.1, step 4): the library's methods for string, list and map, and the declared methods of an opaque type. No method of that name for that kind is `no-method` on the method's name. |
 | A record receiver | Has the map methods. |
 | Argument zero | The receiver is argument zero. It is bound against `Recv` in step 2 of 13.5, before the other arguments, and fitted in step 5 like any plain argument. Its type is the type the chain gives the receiver at that step: *cur* after steps 2 to 4 of 9.1, so with null removed after `?.` or after `maybe-null`. `report?.keys()` reports nothing for the receiver. |
-| An `any` receiver | The call records a `dynamic` site on the receiver. Each plain argument is synthesized. Each lambda argument's parameters are bound to `any` and its body is synthesized. The type is `any`. |
+| An `any` receiver | The call records a `dynamic` site on the receiver. It also records a `value` site on the call when some library method of that name, for any receiver kind, is marked `!`, and a `host` site on the call when a method of that name of some opaque type that the environment declares is marked `!`. Each plain argument is synthesized. Each lambda argument's parameters are bound to `any` and its body is synthesized. The type is `any`. So `blob.repeat(2)` records a `dynamic` site on `blob` and a `value` site on the call. |
 | `no-method` | The call has type `never`. Its plain arguments are synthesized. Its lambda arguments are not checked. |
 
 ### 13.4 Type variables
@@ -974,7 +993,7 @@ method.
 | --- | --- |
 | 1. Count | The arguments must cover every required parameter, and must not be more than the parameters unless the last is a rest parameter. Otherwise `arity` on the whole call: the call has type `never`, each plain argument is synthesized, no lambda argument is checked, and the call is not checked further. For a `Call` this `arity` is a static rule (22.5) and the type rules do not report it. For a `MethodCall` (argument zero not counted) it is a type rule. At run time the shape test makes the same test at every `MethodCall` (13.2; `04-library.md` 2.2). |
 | 2. Plain arguments | Argument zero first for a method, then left to right: synth the argument to A and bind(P, A). An argument taken by a rest parameter `...rest: P[]` is bound, and in step 5 fitted, against P. |
-| 3. Lambda arguments | Left to right, each against its parameter's `Fn`, `(q1: Q1, ..., qn: Qn) => R`. A lambda with more than n parameters is `arity` on the lambda argument (for a const-bound lambda named as the argument, as `xs.map(f)`, on the `Ident` `f`), and the lambda is not checked; this `arity` is a static rule in a `Call` (22.5) and a type rule in a `MethodCall`. Replace each bound `Var` in the Qs by its solution. A `Var` in a Q that is still unbound is `cannot-infer` on the lambda, and the lambda is not checked. A lambda may declare fewer than n parameters. Bind each parameter of the lambda to its Q by 12.2 and 12.4. Synth the body to B. If R is `unknown`: 13.7. Otherwise bind(R, B); then, unless the seed rule fires (3a), B must fit R with every `Var` replaced by its solution, an unbound `Var` by `never` (`arg-mismatch` on the body; a fit that used any records a `dynamic` site on the body, 1.3). So `[1].flatMap(x => x)` is `arg-mismatch` on the body `x`: `int` does not fit `never[]`. For `map`, R is `U`: U gains B, and the fit holds. |
+| 3. Lambda arguments | Left to right, each against its parameter's `Fn`, `(q1: Q1, ..., qn: Qn) => R`. A lambda with more than n parameters is `arity` on the lambda argument (for a const-bound lambda named as the argument, as `xs.map(f)`, on the `Ident` `f`), and the lambda is not checked; this `arity` is a static rule in a `Call` (22.5) and a type rule in a `MethodCall`. Replace each bound `Var` in the Qs by its solution. A `Var` still unbound in the Q of a parameter that the lambda declares is `cannot-infer` on the lambda, and the lambda is not checked. A lambda may declare fewer than n parameters; a `Var` unbound only in a Q for which the lambda declares no parameter is no error, and the body is checked. So `[1].reduce((a, x) => a, y => y)` is `cannot-infer` on the first lambda (it declares `a`, whose Q is the unbound `A`), and `[].reduce(() => {} - 0, () => 0)` checks the first lambda's body, which reports `kind` on `{}`. Bind each parameter of the lambda to its Q by 12.2 and 12.4. Synth the body to B. If R is `unknown`: 13.7. Otherwise bind(R, B); then, unless the seed rule fires (3a), B must fit R with every `Var` replaced by its solution, an unbound `Var` by `never` (`arg-mismatch` on the body; a fit that used any records a `dynamic` site on the body, 1.3). So `[1].flatMap(x => x)` is `arg-mismatch` on the body `x`: `int` does not fit `never[]`. For `map`, R is `U`: U gains B, and the fit holds. |
 | 3a. The seed rule | In step 3, when a `Var` X in R also occurs in a Q and already had a solution A0 before the body was checked, and B does not fit A0, or fits A0 only by a fit that used any: discard the diagnostics and sites of that check of the body, set the solution of X to Join(A0, B), and check the body once more under that solution. The second check binds nothing. Its body's type must fit the solution of R as it stands after the seed (`arg-mismatch` on the body; a fit that used any records a `dynamic` site on the body). When B fits A0 without using any, the rule does not fire, and step 3 goes on with its fit. So `xs.reduce((a, x) => [a], 0)` is `arg-mismatch` on `[a]`, and in `xs.reduce((a, x) => c ? blob : a + x, 0)` the second check gives `a` the type `any`, so `a + x` records its `dynamic` site. |
 | 4. Bounds | For each `where V: B`, the solution of V must fit `float` or `string` for `ordered`, and must fit `float` for `number`. An unbound V has solution `never`. A failure is `arg-mismatch` on the whole call. A bound that holds only by a fit that used any records a `dynamic` site on the call. |
 | 5. Fit | Each plain argument, argument zero included, must fit its parameter type, with every `Var` replaced by its solution (an unbound `Var` by `never`), **through its form** (15.1). At each place of failure the code is `maybe-null` if the type there has null and fits once null is removed, else `arg-mismatch`. |
@@ -1029,13 +1048,15 @@ field `narrows`. In Core these are the list methods `filter` and `find`.
 
 A lambda has no type. Each use of a const-bound lambda is checked on its own,
 because only a use gives the parameter types. A **use** is a call by name, or
-the name given as a lambda argument at an `Fn` parameter.
+the name given as a lambda argument at an `Fn` parameter. A read of the name as
+a value is not a use: it is `not-a-value` (22.4), and it does not count as a
+reference for the row "No use" below.
 
 | Use | Rule |
 | --- | --- |
 | A call `f(a1, ..., an)` | It must give at least the required count of 22.3 and no more arguments than parameters (`arity`, a static rule, 22.5; the call has type `never`, and each plain argument is synthesized). Each plain argument is synthesized where the call stands. A lambda argument is `lambda-to-lambda` (13.2), and its parameter has type `never`. Each parameter's pattern is bound to its argument's type, with defaults by 12.4. The body is then checked in the scope, and under the facts, where the lambda was written. The call's type is the body's type. |
 | f as a lambda argument at an `Fn` | Checked as if the lambda were written there, by 13.5 step 3, in the scope and under the facts where the lambda was written. |
-| No use | A const-bound lambda whose name no `Call` and no argument in its scope refers to is checked once, where it is written, with every parameter bound to `any`. The sites of that check are dropped. Its diagnostics stand. |
+| No use | A const-bound lambda whose name no `Call` and no argument in its scope refers to (a read of the name as a value does not count) is checked once, where it is written, with every parameter bound to `any`. The sites of that check are dropped. Its diagnostics stand. |
 | Static diagnostics in the body | Reported once, where the text stands, by 22, whether the lambda has no use, one use or many. A check of the body by the type rules reports none. |
 | Limits | Each use counts against the limits of 20.2 and 20.3. Passing either is `check-limit` on the use, which then has type `never`. |
 
@@ -1173,13 +1194,13 @@ the type rules only.
 | `maybe-absent` | A plain read of an optional or unlisted field, or an index read of a record (9.2, 12.2) | The field's name, the key, or the index expression | | The field's type (9.2) |
 | `maybe-null` | An operand that may be null where null is not accepted (1.3) | The operand; for a read, the receiver; for a pattern, the value bound; for an argument, each place of failure (15.1) | | nonnull of the operand's type |
 | `kind` | An operand of the wrong kind (7, 8, 9, 12); a rendered expression whose type has an opaque type (7.3) | The operand; for two operands that do not go together, the whole `Binary` (8.3); for a read or a method call, the receiver; for a computed index of a record, the index expression (9.2); for a rendered expression, that expression | | `bool` for `<`, `<=`, `>`, `>=`, `in` and `not in`; else `never` |
-| `never-equal` | An equality or a `match` literal that can never hold, neither side being `never` (8.2, 8.4, 11.2) | The whole `Binary`; in a `match`, the literal, its `-` included | | `bool`; the literal is ignored |
+| `never-equal` | An equality or a `match` literal that can never hold, neither side being `never` nor exactly `null`, and the literal not being a duplicate (8.2, 8.4, 11.2) | The whole `Binary`; in a `match`, the literal, its `-` included | | `bool`; the literal is ignored |
 | `always-truthy` | A tested expression that can never be falsy (10.2) | The tested expression; for a predicate, the lambda's body; for an expected `condition`, the result expression | `constant-condition` | Unchanged |
 | `always-falsy` | A tested expression that can never be truthy (10.2) | The same | `constant-condition` | Unchanged |
 | `zero-divisor` | `/` with a `Number` node 0 as divisor (8.2) | The divisor | | `float` |
 | `arity` | Too few or too many arguments, or a lambda with too many parameters (22.5; at a `MethodCall`, 13.5) | The whole call; or the lambda argument: the `Lambda`, or the `Ident` that names a const-bound lambda | | `never` for the call; the lambda is not checked |
 | `arg-mismatch` | An argument that does not fit its parameter; a plain argument at an `Fn`; a lambda body that does not fit R with its `Var`s solved (13.5 step 3, 3a); a bound that does not hold (13.2, 13.5) | For a plain argument, each place of failure (15.1); else the lambda's body, or the whole call | | The signature's result type (13.5, step 6) |
-| `cannot-infer` | A `Var` of a lambda's parameter that is still unbound (13.5) | The lambda | | The lambda is not checked. |
+| `cannot-infer` | A `Var` still unbound in the Q of a parameter that the lambda declares (13.5) | The lambda | | The lambda is not checked. |
 | `check-limit` | A limit of 20 is passed | The use of a const-bound lambda; the node whose type is too deep | | `never` |
 | `duplicate-case` | A `match` literal equal to an earlier one (22.8) | The later literal | | The literal is ignored. |
 | `unreachable-arm` | An arm after `_` (22.8) | The arm | | The arm is checked and joined. |
@@ -1266,17 +1287,21 @@ them; a library entry fails only with `value`, `range`, `kind`, `field` or
 | Class | Recorded on | Span |
 | --- | --- | --- |
 | `dynamic` | Each use of an `any` value that needs a kind, and each rendered expression whose type has `any` (below) | The `any` operand, receiver or expression; the rendered expression; for a map pattern's unlisted field, the field's key (12.2) |
-| `index` | A plain index read of a list or a string (9.2); a list pattern element without a default, `_` included (12.2) | The `Index` node; the element's name or `_` |
+| `index` | A plain index read of a list or a string (9.2), or of a receiver of type `any` (9.3); a list pattern element without a default, `_` included (12.2) | The `Index` node; the element's name or `_` |
 | `divide` | `/`, `%` and `**`, by 8.2 | The `Binary` node |
-| `value` | A call of a library entry marked `!` | The call |
-| `host` | A call of a host function or method marked `!` | The call |
+| `value` | A call of a library entry marked `!`; a method call on a receiver of type `any` when some library method of that name is marked `!` (13.3) | The call |
+| `host` | A call of a host function or method marked `!`; a method call on a receiver of type `any` when a method of that name of some declared opaque type is marked `!` (13.3) | The call |
 
 A run failure is **at a site** when the site is on the failing node, or on a
-node that is the failing node's operand, receiver, index or argument. A failure
-of a pattern is at a site when the site is on the value bound (12.3), or on the
-key of the field or the name of the element that failed. A rendering failure (an
-opaque value met while rendering) is at a site when the site is on the rendered
-expression (7.3). The class of a failure (18.5) uses this definition.
+node that is the failing node's operand, receiver, index, computed key or
+argument. A failure of a library entry's test of a callback's result, or of a
+key or a value a callback gave, is at a site when the site is on the body of a
+lambda that is an argument of the failing call, or that such an argument names
+(a const-bound lambda). A failure of a pattern is at a site when the site is on
+the value bound (12.3), or on the key of the field or the name of the element
+that failed. A rendering failure (an opaque value met while rendering) is at a
+site when the site is on the rendered expression (7.3). The class of a failure
+(18.5) uses this definition.
 
 | An `any` value | Is a `dynamic` site when it is |
 | --- | --- |
@@ -1291,7 +1316,7 @@ const-bound lambda are dropped (13.9). A dropped site is never a diagnostic
 
 | Part | Statement |
 | --- | --- |
-| Precondition | Every variable's value conforms to its declared type, and every host function and method returns a value that conforms to its result type. |
+| Precondition | Every variable's value conforms to its declared type; every host function and method returns a value that conforms to its result type; and a host function or method whose signature has no `!` returns no error. The mark `!` is a promise, as a declared type is. |
 | Promise 1 | If the checker reports no diagnostic, then in every run a failure of kind `null`, `kind` or `field` occurs only at a `dynamic` site. |
 | Promise 2 | A failure of kind `index`, `divide`, `value` or `host` occurs only at a site of that class. |
 | Promise 3 | `range` and `limit` failures, and a cancellation, can occur anywhere. A crash of a host function (`function-panic`, class `host`) can occur at any call of a host function or method, marked `!` or not. A failure inside the implementation has no class. |
@@ -1311,7 +1336,7 @@ checked. A program compiled with no check has no sites.
 | `missing-variable` | `environment` | `environment` |
 | `function-panic` | `host` | `host` |
 | `internal-error` | none | none |
-| `function-error` | `host` | `host` |
+| `function-error` | `host` at a `host` site; `environment` anywhere else: a function or method not marked `!` returned an error | `host` |
 | `number-range` | `range` from arithmetic or a library entry; `environment` for a host number that cannot enter the language | The same |
 | `not-conforming` | `value` at a `value` site; `environment` elsewhere. No Core form raises it (follow-on F4). | `value` |
 | `invalid-argument`, `failed` | `value` | `value` |
@@ -1320,11 +1345,12 @@ checked. A program compiled with no check has no sites.
 | `divide-by-zero` | `divide` | `divide` |
 | `no-match` | `environment` | `dynamic` |
 
-In a checked program the class `environment` means that the precondition failed.
-A program never sees a class: the error value has no class field (14.2), and
-`catch` decides by code. A checked and an unchecked run of one program on the
-same values give the same value, the same usage, and the same code and span on
-failure.
+In a checked program the class `environment` means that the precondition failed:
+a value broke its declared type, a declared variable was not supplied, or a host
+function or method not marked `!` returned an error. A program never sees a
+class: the error value has no class field (14.2), and `catch` decides by code. A
+checked and an unchecked run of one program on the same values give the same
+value, the same usage, and the same code and span on failure.
 
 ## 19. Declaring an environment in type text
 
@@ -1704,6 +1730,33 @@ program with diagnostics has no type in the result. Spans are on line 1.
 | 113 | `gate.items.reduce((a, t) => [a], 0)` | `arg-mismatch` 1:29-1:32: the seed makes A `int \| int[]`, and the second check's `(int \| int[])[]` does not fit it (13.5 step 3a). |
 | 114 | `gate.items.reduce((a, t) => gate.failed > 0 ? blob : a + t.ms, 0)` | `any`; site `dynamic` 1:54-1:55, on `a`: B is `any`, which fits `int` only by using any, so the seed fires and the second check gives `a` the type `any`. |
 | 115 | `"a" in []` | `bool`, with no diagnostic: the element type is `never` (8.4). |
+
+### 21.13 Sites where a kind is not known, and readings made exact
+
+| # | Program | Result |
+| --- | --- | --- |
+| 116 | `match null { 2 => 0 }` | `non-exhaustive` 1:1-1:22 only: the subject is exactly `null`, so no `never-equal` (11.2). |
+| 117 | `match null { 0 \| null \| "" => 0 }` | `int` |
+| 118 | `const f = () => gate.nope; f` | `no-field` 1:22-1:26; `not-a-value` 1:28-1:29: a read as a value is not a use, so the body is checked once (13.9). |
+| 119 | `const {b = 0[""]} = ""; 0` | `kind` 1:12-1:13; `kind` 1:21-1:23: the default is checked after `kind` on the pattern (12.2). |
+| 120 | `const {k = 0[""]} = null; 0` | `kind` 1:12-1:13; `maybe-null` 1:21-1:25 |
+| 121 | `match ({}) { 5 \| 5 => 0 }` | `non-exhaustive` 1:1-1:26; `never-equal` 1:14-1:15; `duplicate-case` 1:18-1:19, and no `never-equal` there (11.2). |
+| 122 | `[].reduce(() => {} - 0, () => 0)` | `kind` 1:17-1:19; `not-a-value` 1:25-1:32: the first lambda declares no parameter, so `A` unbound is no error (13.5 step 3). |
+| 123 | `blob[2]` | `any`; sites `dynamic` 1:1-1:5 and `index` 1:1-1:8 (9.3) |
+| 124 | `blob?.[2]` | `any`; site `dynamic` 1:1-1:5 |
+| 125 | `blob.repeat(2)` | `any`; sites `dynamic` 1:1-1:5 and `value` 1:1-1:15: the library method `repeat` is marked `!` (13.3). |
+| 126 | `blob.format("iso")` | `any`; site `dynamic` 1:1-1:5: neither a library method nor the method of `Time` named `format` is marked `!`. |
+| 127 | `[0].flatMap(() => blob)` | `any[]`; site `dynamic` 1:19-1:23. Run with `blob` = `2`: `wrong-kind` at the call, class `dynamic`, by the site on the body (18.3). |
+
+### 21.14 A host function that returns an error
+
+The host function returns an error in each run. A case states it as a stub with
+`error` (`03-host.md`).
+
+| # | Program | Check | Run, the stub returning an error |
+| --- | --- | --- | --- |
+| 128 | `rate(input.role)` | `float`; site `host` 1:1-1:17: `rate` is marked `!` | `function-error` 1:1-1:17, class `host` |
+| 129 | `geo.distance("a", "b")` | `float`; no site: `geo.distance` is not marked `!` | `function-error` 1:1-1:23, class `environment`: the precondition failed (18.4). Without a check, class `host`. |
 
 ## 22. The static rules alone
 

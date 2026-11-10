@@ -29,6 +29,10 @@ diagnostics, the catalog `suite/messages.json`, case files) and `05-types.md`
 3. An entry is named by its name and, for a method, the kind of its receiver.
    `min`, `max` and `slice` each name two entries: `min` and `max` are a
    function and a list method; `slice` is a string method and a list method.
+   Where one entry is named alone, as in the removed entries of an
+   environment (`03-host.md` 3.3.1), a function is written by its name, `len`,
+   and a method by its receiver's kind, a dot and its name, `string.slice`,
+   `list.min`, `map.keys`.
 
 ### 1.2 Versions
 
@@ -163,7 +167,8 @@ gives `[2, 3]` in every implementation.
 
 The field `wrong` of a record holds names that people try, such as `upper` for
 `toUpperCase`. A diagnostic may give the right name in its `help`, which is not
-specified and which no case compares.
+specified and which no case compares. A suggestion never names an entry that
+the environment removed.
 
 ### 2.4 Null receivers
 

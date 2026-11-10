@@ -109,7 +109,7 @@ An environment is a set of declarations. Core has these kinds.
 | Variable | A name and a type | The type in type text (`05-types.md`) |
 | Function | A name, a signature, an implementation, and documentation | The signature in type text. The implementation is host code. The documentation is not normative |
 | Opaque type | A name for a kind of host value that has behaviour, and its methods | The name. Each method is a name and a signature in type text, with the opaque type as its receiver |
-| Removed entry | A library entry that the environment does not have | The entry's name, as `04-library.md` writes it |
+| Removed entry | A library entry that the environment does not have | The entry's name: a function by its name, `len`; a method by its receiver's kind, a dot and its name, `string.repeat`, `list.map`, `map.keys`. The kind words are `string`, `list` and `map` (`04-library.md` 1.1) |
 | Rejected classes | The check classes whose findings are errors (`05-types.md`) | Class names: the classes added to the default set, and the classes taken out of it |
 | Limits | The limits of 3.6 | Numbers |
 
@@ -128,8 +128,28 @@ An environment is a set of declarations. Core has these kinds.
    set, which is `constant-condition` alone. A name that is not one of the six
    check classes of `05-types.md` is the `declare` error `bad-class`.
 5. An environment with no limits declaration has the default limits of 3.6.1.
-6. A removed entry is absent from the environment: a program cannot call it,
-   and a host function may then take its name.
+6. A removed entry is absent from the environment, in every compile, checked
+   or not:
+   - A call of a removed function is `undefined-function`, a static rule
+     (`05-types.md`), unless a host function of the environment has taken the
+     name. A host function may take the name of a removed function, and that
+     is no `name-clash` (3.3.4).
+   - A call of a removed method, where the checker knows the receiver's kind,
+     is the diagnostic of a method that the kind does not have: `no-method`
+     on the method's name (`05-types.md` 13.3; `04-library.md` 2.3).
+   - In a run that reaches a call of a removed method, in a program compiled
+     without a check or on a receiver of type `any`, the call fails as a call
+     of a method that the value's kind does not have: `wrong-kind`, template
+     `method` of the shape test (`04-library.md` 2.2), with the same code,
+     class, span, message and usage as for a name that no entry has.
+   - A removed method is not a library method of that name for the sites that
+     a call on an `any` receiver records (`05-types.md` 13.3): it adds no
+     `value` site.
+   - A suggestion that a diagnostic's `help` makes never names a removed
+     entry.
+   - The other entries are unchanged: the same results, the same failures and
+     the same steps and units. Removing `min` removes the function `min` and
+     not the method `list.min`.
 7. A binding may derive a signature from its own language's types. The
    signature is still type text in the portable form.
 
@@ -142,6 +162,9 @@ change the parent.
    declaration, in the child only.
 2. A child's rejected-classes declaration and limits declaration apply in the
    child only.
+3. A child may remove further entries. It cannot bring back an entry its
+   parent removed. Removing an entry that the parent already removed is no
+   error.
 
 ### 3.3.3 Names
 
@@ -167,7 +190,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | --- | --- |
 | Two declarations of one name in one environment: two variables, two host functions, or a variable and a host function. A key written twice in the record of `env` (`{a: int, a: int}`) is two variables of one name, in every implementation | `name-clash` |
 | A variable, or a host function, named like a namespace that a host function of the environment uses: a variable or a function `geo` beside `geo.distance` | `name-clash` |
-| A host function named like a library function that the environment has. A host function named like a library method (`trim`) does not clash, and `geo.len` is a different name from `len` | `name-clash` |
+| A host function named like a library function that the environment has. A removed function is not one it has (3.3.1, item 6). A host function named like a library method (`trim`) does not clash, and `geo.len` is a different name from `len` | `name-clash` |
 | Two opaque types with one name in one environment | `name-clash` |
 | A host function in the namespace `json`, `time`, `math` or `base64` | `reserved-namespace` |
 | A variable, a function or a namespace named with a reserved word of `01-language.md` | `bad-name` |
@@ -176,6 +199,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | Any error in the text of a host function's signature or of a method: text that is malformed, a parameter of a function type, a type name no declaration gives, two record alternatives, or any other text `05-types.md` refuses there. A method whose receiver names no declared opaque type, in every implementation | `bad-signature` |
 | Any error in a variable's type or in the expected result's type: text that is malformed, that nests past the 64 levels of `05-types.md`, that names a type no declaration gives, or that `05-types.md` otherwise refuses there | `bad-type` |
 | An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
+| A removed entry whose name names no entry of the library, in the version the environment has: `lenn`, `repeat` (a method is named with its kind), `string.map`, `list`, `number.abs`. Removing one entry twice, in one environment or in a child, is no error | `bad-name` |
 | A rejected class that is not a check class | `bad-class` |
 | A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 1,000 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
@@ -344,7 +368,7 @@ with `depth-exceeded`. No walk over host data loops for ever.
 | The function | The run sees | Class | `catch` |
 | --- | --- | --- | --- |
 | Returns a value | The value, as a host value (3.4) | — | — |
-| Returns an error | `function-error`, at the span of the call. The message is the text of the host's error, as the binding gives it. The host's error is the diagnostic's `cause` | `host` | Catches |
+| Returns an error | `function-error`, at the span of the call. The message is the text of the host's error, as the binding gives it. The host's error is the diagnostic's `cause` | `host` at a `host` site; in a checked program, `environment` when the signature has no `!` (3.7.6) | Catches |
 | Crashes: a panic, or a thrown value that is not an error | `function-panic`, at the span of the call | `host` | Passes |
 
 1. A value that a host function returns is read as any host value is. A
@@ -352,6 +376,10 @@ with `depth-exceeded`. No walk over host data loops for ever.
    as 3.4.8 says.
 2. A host function's error carries no `data`.
 3. What counts as an error and what counts as a crash is the binding's matter.
+4. The mark `!` is a promise. A function or method whose signature has no `!`
+   returns no error. When one does, the run fails with `function-error` as
+   above, and in a checked program its class is `environment`: the host broke
+   its promise, as when a value breaks its declared type (`05-types.md` 18.4).
 
 ### 3.5.4 Duties of a host function
 
@@ -478,7 +506,7 @@ codes.
 | `missing-variable` | A declared variable is read, and the host did not supply it (3.4.1) | `environment` | Passes |
 | `function-panic` | A host function crashes (3.5.3) | `host` | Passes |
 | `internal-error` | The implementation itself fails | None | Passes |
-| `function-error` | A host function returns an error (3.5.3) | `host` | Catches |
+| `function-error` | A host function returns an error (3.5.3) | 3.7.6 | Catches |
 | `number-range` | A result of arithmetic or of a library entry is out of range or not finite (`01-language.md`); or a host number that cannot enter the language is read (3.4.4) | `range` for arithmetic and library results. `environment` for a host number | Catches |
 | `not-conforming` | A value does not conform to a type it is tested against | 3.7.6 | Catches |
 | `invalid-argument` | A library entry is given a value it cannot use (`04-library.md`) | `value` | Catches |
@@ -509,7 +537,7 @@ catalog (3.8).
 
 The class depends on whether the program was checked. A failure is **at** a
 site as `05-types.md` 18.3 defines it: the site is on the failing node, or on
-a node that is its operand, receiver, index or argument.
+a node that is its operand, receiver, index, computed key or argument.
 
 | Failure | Class in a checked program | Class in a program compiled without a check |
 | --- | --- | --- |
@@ -518,6 +546,8 @@ a node that is its operand, receiver, index or argument.
 | `no-match` | `environment` | `dynamic` |
 | `not-conforming`, at a `value` site | `value` | `value` |
 | `not-conforming`, anywhere else | `environment` | `value` |
+| `function-error`, at a `host` site | `host` | `host` |
+| `function-error`, anywhere else | `environment` | `host` |
 | `number-range`, from a host number | `environment` | `environment` |
 | `number-range`, from arithmetic or a library result | `range` | `range` |
 | `missing-variable` | `environment` | `environment` |
@@ -525,7 +555,8 @@ a node that is its operand, receiver, index or argument.
 
 1. `internal-error` has no class. The field is absent.
 2. In a checked program, the class `environment` means that a host value broke
-   its declared type, or that the host did not supply a declared variable.
+   its declared type, that the host did not supply a declared variable, or
+   that a host function or method not marked `!` returned an error.
 3. A program cannot see the class. A checked run and an unchecked run of one
    program on the same values give the same value, the same usage, and on
    failure the same code, span and message.
@@ -708,12 +739,13 @@ the one contract for all runners.
 | `opaque` | A list of opaque type names | No opaque type is declared |
 | `methods` | An object that maps `Type.method` to a stub of that method (3.10.4). The stub's signature is the method's, in type text, without the receiver. A `Type` that `opaque` does not declare is not an invalid file: it is the `declare` error `bad-signature` (3.3.4), and a case may expect it | No method is declared |
 | `functions` | Host functions, as stubs (3.10.4) | No function is declared |
+| `removed` | A list of the names of removed entries, each written as 3.3.1 says: `["len", "string.repeat", "list.map"]`. A string that names no entry is the `declare` failure `bad-name` (3.3.4), not an invalid file | No entry is removed |
 | `reject` | The whole set of rejected check classes, as a list of names | The base environment's set |
 | `returns` | The expected result (3.2.3): a type text, or the word `condition` | Nothing is expected |
 | `vars` | An object: the value of each variable the case supplies | No variable is supplied |
 | `limits` | An object with any of `steps`, `allocation` and `depth`, each a whole number. Each one given replaces the base environment's limit | The base environment's limits |
 | `check` | `true` or `false`. `false` says that the case's program is one the type rules reject, on purpose. Every runner then compiles it with the static rules alone (3.2.1, item 4), never with the type rules. Such a case has no `type` or `sites` in `expect`, and a `check` failure it expects has static codes only (3.10.13) | `true` |
-| `precondition` | `false`, or `true`. `false` says that the case supplies, on purpose, a value that breaks its declared type: in `vars`, or as a stub's `result` | `true` |
+| `precondition` | `false`, or `true`. `false` says that the case breaks the precondition on purpose (`05-types.md` 18.4): a value in `vars` or a stub's `result` that breaks its declared type, or a stub with `error` whose signature has no `!` | `true` |
 | `skip` | A reason, as a string. The case is not run | The case is run |
 | `expect` | What is expected (3.10.6) | The file is invalid |
 
@@ -721,7 +753,7 @@ the one contract for all runners.
 2. A case cannot give a deadline.
 3. The case's environment is a child of the base environment (3.10.9). Its
    declarations are those of `version`, `env`, `opaque`, `methods`,
-   `functions`, `reject` and `limits`.
+   `functions`, `removed`, `reject` and `limits`.
 4. A runner supplies each value of `vars` as a host value: a JSON object as a
    map, an array as a list, and a string, a number, `true`, `false` and `null`
    as the language value of that kind. A key of `vars` whose value is `null`
@@ -735,7 +767,7 @@ the one contract for all runners.
 6. A Core runner accepts `precondition` and does nothing with it. It does not
    test the values of `vars`, or the results of stubs, against their declared
    types. A later package adds that test, which `"precondition": false` turns
-   off (3.11). So a case that breaks a declared type on purpose carries
+   off (3.11). So a case that breaks the precondition on purpose carries
    `"precondition": false` from the start.
 7. **Opaque values.** Wherever a case file holds a host value, and wherever it
    holds an expected `value`, a JSON object with exactly one key, `"$opaque"`,
@@ -800,8 +832,10 @@ a function name to a stub.
 | Where it is declared | In the case's environment. A name the base environment declares is replaced in the child only. With no `type`, the base's signature is kept and only the implementation is replaced |
 | Cost | Matching is the runner's work and charges nothing. A stubbed call costs the one step of any call, plus its row's `charge` steps, plus its row's `allocate` units. So the usage of a case does not depend on the implementation |
 
-1. A stub with `error` gives the run `function-error`, class `host`. Its
-   message is the string of `error`.
+1. A stub with `error` gives the run `function-error`, with the class of
+   3.7.6: `host` when its signature has `!`. Its message is the string of
+   `error`. A stub with `error` whose signature has no `!` breaks the
+   precondition, so its case carries `"precondition": false` (3.10.3).
 2. **A method's stub.** A method of an opaque type, in `methods`, is stubbed
    like a host function, with one difference: the receiver is the first value
    of a row's `args`, and the method's arguments follow it. So a row of a
@@ -894,10 +928,10 @@ Each element of `diagnostics` is an object with these fields.
 7. For a limit code, `span` is not compared, even when the case gives it.
 8. `class` is compared for every code, with one exception. A case states the
    class of the checked program. In a run with the static rules alone
-   (3.10.8, items 5 and 6), `class` is not compared for the five codes whose
+   (3.10.8, items 5 and 6), `class` is not compared for the six codes whose
    class depends on the check (3.7.6): `null-operand`, `wrong-kind`,
-   `missing-field`, `no-match` and `not-conforming`. A case with
-   `"check": false` states instead the class of the column "not checked" of
+   `missing-field`, `no-match`, `not-conforming` and `function-error`. A case
+   with `"check": false` states instead the class of the column "not checked" of
    `05-types.md` 18.5, and every runner compares it for every code.
 9. For `function-error`, the message is the string of the stub's `error`. For
    `failed`, it is the text given to `fail`.
@@ -988,6 +1022,7 @@ verdict `invalid`.
 17. A case with `"check": false` whose `expect` has `type` or `sites`, or
     expects a failure of phase `check` with a code that is not static
     (3.10.13).
+18. A `removed` that is not a list of strings.
 
 ### 3.10.11 JSON Schema of a case file
 
@@ -1013,7 +1048,7 @@ the static codes.
        "propertyNames": {"enum": [
          "cases", "source", "file", "version", "env", "opaque", "methods",
          "functions", "reject", "returns", "vars", "limits",
-         "precondition", "check"]}}
+         "precondition", "check", "removed"]}}
     ]}
   ],
   "$defs": {
@@ -1038,7 +1073,8 @@ the static codes.
                  "additionalProperties": {"$ref": "#/$defs/hostValue"}},
         "limits": {"$ref": "#/$defs/limits"},
         "precondition": {"type": "boolean"},
-        "check": {"type": "boolean"}
+        "check": {"type": "boolean"},
+        "removed": {"type": "array", "items": {"type": "string"}}
       }
     },
     "case": {
@@ -1053,7 +1089,7 @@ the static codes.
          "propertyNames": {"enum": [
            "name", "source", "file", "version", "env", "opaque", "methods",
            "functions", "reject", "returns", "vars", "limits",
-           "precondition", "check", "skip", "expect"]}},
+           "precondition", "check", "removed", "skip", "expect"]}},
         {"if": {"type": "object", "required": ["check"],
                 "properties": {"check": {"const": false}}},
          "then": {"properties": {"expect": {"not": {"anyOf": [
