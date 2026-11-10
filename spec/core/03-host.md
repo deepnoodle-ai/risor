@@ -174,7 +174,7 @@ then, with phase `declare`, except `no-implementation`, which compile reports.
 | A type text that is malformed, that nests past the 64 levels of `05-types.md`, that names a type no declaration gives, or that `05-types.md` otherwise refuses in a declaration | `bad-type` |
 | An `env` record with an optional field (`{a?: int}`) or a rest (`{a: int, ...}`), or `env` text that is not a record by the grammar, parentheses included (`({a: int})`). In every implementation | `bad-type` |
 | A rejected class that is not a check class | `bad-class` |
-| A limit that is not a whole number, or a depth limit outside 1 to 1,000 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
+| A step or allocation limit that is negative or not a whole number, a negative deadline, or a depth limit that is not a whole number from 1 to 1,000 (3.6.1). A binding whose types cannot hold such a limit never reports it | `bad-limit` |
 | A version the implementation does not offer (3.9) | `unsupported-version` |
 | A compile against an environment that has a function or a method with no implementation | `no-implementation` |
 
