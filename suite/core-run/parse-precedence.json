@@ -1,0 +1,410 @@
+{
+ "cases": [
+  {
+   "name": "* binds tighter than + on the right",
+   "source": "1 + 2 * 3",
+   "expect": {
+    "value": 7
+   }
+  },
+  {
+   "name": "* binds tighter than + on the left",
+   "source": "2 * 3 + 1",
+   "expect": {
+    "value": 7
+   }
+  },
+  {
+   "name": "parentheses group first",
+   "source": "(1 + 2) * 3",
+   "expect": {
+    "value": 9
+   }
+  },
+  {
+   "name": "- is left-associative",
+   "source": "10 - 4 - 3",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "- and + are one level, left to right",
+   "source": "8 - 2 + 1",
+   "expect": {
+    "value": 7
+   }
+  },
+  {
+   "name": "+ and - in a row",
+   "source": "1 + 2 - 3 + 4",
+   "expect": {
+    "value": 4
+   }
+  },
+  {
+   "name": "/ is left-associative",
+   "source": "24 / 4 / 2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "% and * are one level, left to right",
+   "source": "2 % 3 * 4",
+   "expect": {
+    "value": 8
+   }
+  },
+  {
+   "name": "% is left-associative",
+   "source": "7 % 4 % 2",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "% binds tighter than +",
+   "source": "1 + 5 % 3",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "/ binds tighter than -",
+   "source": "1 - 4 / 2",
+   "expect": {
+    "value": -1
+   }
+  },
+  {
+   "name": "** is right-associative",
+   "source": "2 ** 3 ** 2",
+   "expect": {
+    "value": 512
+   }
+  },
+  {
+   "name": "** binds tighter than *",
+   "source": "2 * 3 ** 2",
+   "expect": {
+    "value": 18
+   }
+  },
+  {
+   "name": "** binds tighter than * on the left",
+   "source": "2 ** 2 * 3",
+   "expect": {
+    "value": 12
+   }
+  },
+  {
+   "name": "the right operand of ** may be a unary minus",
+   "source": "2 ** -1",
+   "expect": {
+    "value": 0.5
+   }
+  },
+  {
+   "name": "the right operand of ** may be two unary minus signs",
+   "source": "2 ** - - 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a minus over a parenthesized power",
+   "source": "-(2 ** 2)",
+   "expect": {
+    "value": -4
+   }
+  },
+  {
+   "name": "a parenthesized negative base",
+   "source": "(-2) ** 2",
+   "expect": {
+    "value": 4
+   }
+  },
+  {
+   "name": "prefix minus binds tighter than +",
+   "source": "-2 + 3",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a chain binds tighter than prefix minus",
+   "source": "-[5][0]",
+   "expect": {
+    "value": -5
+   }
+  },
+  {
+   "name": "a chain binds tighter than prefix !",
+   "source": "![0][0]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "a field read binds tighter than prefix minus",
+   "source": "-{a: 3}.a",
+   "expect": {
+    "value": -3
+   }
+  },
+  {
+   "name": "a chain binds tighter than **",
+   "source": "[2][0] ** [3][0]",
+   "expect": {
+    "value": 8
+   }
+  },
+  {
+   "name": "+ binds tighter than <",
+   "source": "1 + 2 < 4",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "+ binds tighter than < on the right",
+   "source": "1 < 2 + 3",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "< binds tighter than ==",
+   "source": "1 < 2 == 3 < 4",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "== and != are one level, left to right",
+   "source": "1 == 1 != false",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "== binds tighter than &&",
+   "source": "2 == 2 && 3",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "== binds tighter than && on the right",
+   "source": "0 && 1 == 1",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "&& binds tighter than ||",
+   "source": "1 || 2 && 0",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "&& binds tighter than || on the left",
+   "source": "0 && 1 || 2",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "prefix ! binds tighter than &&",
+   "source": "!0 && 0",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "?? binds looser than + on the right",
+   "source": "null ?? 1 + 2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "?? binds looser than + on the left",
+   "source": "1 + 2 ?? 5",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "?? is left-associative",
+   "source": "null ?? null ?? 3",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a prefix ! may be an operand of ??",
+   "source": "!0 ?? 5",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "a prefix minus may be an operand of ??",
+   "source": "-1 ?? 2",
+   "expect": {
+    "value": -1
+   }
+  },
+  {
+   "name": "?? binds tighter than ? :",
+   "source": "0 ?? 1 ? 2 : 3",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a parenthesized ?? may be compared",
+   "source": "(null ?? 2) > 1",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "|| binds tighter than ? :",
+   "source": "0 || 1 ? 2 : 3",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "? : is right-associative",
+   "source": "1 ? 2 : 0 ? 3 : 4",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "? : in the else branch",
+   "source": "0 ? 1 : 2 ? 3 : 4",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "? : in the middle branch",
+   "source": "1 ? 0 ? 7 : 8 : 9",
+   "expect": {
+    "value": 8
+   }
+  },
+  {
+   "name": "the else branch of ? : takes a whole binary expression",
+   "source": "0 ? 2 : 3 + 4",
+   "expect": {
+    "value": 7
+   }
+  },
+  {
+   "name": "the middle branch of ? : takes a whole binary expression",
+   "source": "1 ? 0 || 5 : 6",
+   "expect": {
+    "value": 5
+   }
+  },
+  {
+   "name": "+ binds tighter than in",
+   "source": "1 + 1 in [2]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "in binds tighter than ==",
+   "source": "1 in [1] == true",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "< and in are one level, left to right",
+   "source": "1 < 2 in [true]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "in and not in are one level, left to right",
+   "source": "1 in [1] not in [false]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "not in",
+   "source": "3 not in [1, 2]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "not in on a string",
+   "source": "\"a\" not in \"abc\"",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "not and in may be split by a line end",
+   "source": "1 not\nin [1]",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "a parenthesized ! may be the left operand of in",
+   "source": "(!1) in [false]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "a prefix minus may be the left operand of in",
+   "source": "-1 in [-1]",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "+ joins strings before ==",
+   "source": "\"a\" + \"b\" == \"ab\"",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "two prefix ! signs",
+   "source": "!!1",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "one prefix !",
+   "source": "!1",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "two prefix minus signs with a space",
+   "source": "- -1",
+   "expect": {
+    "value": 1
+   }
+  }
+ ]
+}

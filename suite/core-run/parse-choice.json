@@ -1,0 +1,299 @@
+{
+ "cases": [
+  {
+   "name": "rule 1: { const : is a map",
+   "source": "{const: 1}",
+   "expect": {
+    "value": {
+     "const": 1
+    }
+   }
+  },
+  {
+   "name": "rule 1: a map with the key const, read back",
+   "source": "{const: 1}.const",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 1: { const then a name is a block",
+   "source": "{ const a = 1; a }",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 1: { const then a comma is a block, and fails at the comma",
+   "source": "{const, a: 1}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 1: { const } is a block, and fails at the }",
+   "source": "{ const }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 2: a map as a branch's value is written inside the branch",
+   "source": "if (x) { {a: 1} } else { {} }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": {}
+   }
+  },
+  {
+   "name": "rule 3: else if continues the same if",
+   "source": "if (x == 1) { 1 } else if (x == 2) { 2 } else { 3 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "rule 4: an Add then ?? is a Coal",
+   "source": "1 + 1 ?? 3",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "rule 5: a name then => in an argument is a lambda",
+   "source": "[1].map(x => x)",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "rule 5: _ then => is a lambda",
+   "source": "[1].map(_ => 2)",
+   "expect": {
+    "value": [
+     2
+    ]
+   }
+  },
+  {
+   "name": "rule 5: ( whose matching ) is followed by => is a lambda",
+   "source": "[1].map((x) => x)",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "rule 5: ( whose matching ) is not followed by => is an expression",
+   "source": "const a = (1) + 1; a",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "rule 5: a parenthesized value of a const line",
+   "source": "const a = (1); a",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 6: brackets inside the parentheses are counted",
+   "source": "const a = ([1, 2])[0]; a",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 6: parentheses in a default are counted",
+   "source": "const f = (a = (1)) => a; f()",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 6: an index in a default is counted",
+   "source": "const f = (a = [1][0]) => a; f()",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 6: braces in a default are counted",
+   "source": "const f = (a = {b: 1}) => a.b; f()",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 6: a parenthesized body",
+   "source": "const f = (x) => (x); f(1)",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 6: a ] that closes first means no lambda",
+   "source": "[1].map((x] => x)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: an argument (1, 2) is an expression and fails at the comma",
+   "source": "len((1, 2))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: (1, 2) at the top is an expression and fails at the comma",
+   "source": "(1, 2)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a word then : is a key",
+   "source": "{a: 1}",
+   "expect": {
+    "value": {
+     "a": 1
+    }
+   }
+  },
+  {
+   "name": "rule 7: a word with no : is a shorthand name",
+   "source": "{x}",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": {
+     "x": 1
+    }
+   }
+  },
+  {
+   "name": "rule 8: a field with a key and a name",
+   "source": "const {a: b} = {a: 1}; b",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 8: a field that is a name",
+   "source": "const {a} = {a: 1}; a",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "rule 9: . then a word then ( is a method call",
+   "source": "{keys: 2}.keys()",
+   "expect": {
+    "value": [
+     "keys"
+    ]
+   }
+  },
+  {
+   "name": "rule 9: . then a word with no ( is a field read",
+   "source": "{keys: 2}.keys",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "rule 10: a name then ( is a call",
+   "source": "len(\"ab\")",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "rule 11: a lambda body is the longest expression",
+   "source": "[1].map(x => x + 1 * 2)",
+   "expect": {
+    "value": [
+     3
+    ]
+   }
+  },
+  {
+   "name": "rule 11: a lambda body takes a whole conditional",
+   "source": "[0].map(x => x ? 1 : 2)",
+   "expect": {
+    "value": [
+     2
+    ]
+   }
+  }
+ ]
+}

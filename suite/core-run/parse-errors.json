@@ -1,0 +1,2779 @@
+{
+ "cases": [
+  {
+   "name": "rule 1: minus before a power",
+   "source": "-2 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 1: ! before a power",
+   "source": "!1 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 1: minus before a parenthesized base and **",
+   "source": "-(2) ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 1: minus before a chain and **",
+   "source": "-x.a ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 1: minus before a power on the right of +",
+   "source": "1 + -2 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 1: minus before a power in the exponent of **",
+   "source": "2 ** -2 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P6: two minus signs before a power: the first",
+   "source": "- -2 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P6: two adjacent minus signs before a power: the first",
+   "source": "--2 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P6: ! then minus before a power: the !",
+   "source": "!-2 ** 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P6: two ! signs before in: the first",
+   "source": "!!a in b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P6: ! then minus before in: the !",
+   "source": "!-1 in [1]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 2: ! as the left operand of in",
+   "source": "!1 in [1]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 2: ! as the left operand of not in",
+   "source": "!x not in y",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 2: not in is valid",
+   "source": "1 not in [1]",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "rule 2: ! over a parenthesized in is valid",
+   "source": "!(1 in [1])",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "rule 3: ?? then >",
+   "source": "a ?? b > c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: > then ??",
+   "source": "a > b ?? c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then ||",
+   "source": "a ?? b || c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: || then ??",
+   "source": "a || b ?? c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then &&",
+   "source": "a ?? b && c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: && then ??",
+   "source": "a && b ?? c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then ==",
+   "source": "a ?? b == c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: == then ??",
+   "source": "a == b ?? c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then !=",
+   "source": "a ?? b != c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then <",
+   "source": "a ?? b < c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: < then ??",
+   "source": "a < b ?? c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then <=",
+   "source": "a ?? b <= c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then >=",
+   "source": "a ?? b >= c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? then in",
+   "source": "a ?? b in c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: in then ??",
+   "source": "a in b ?? c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: not in then ??",
+   "source": "a not in b ?? c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P7: ?? then not in spans not in",
+   "source": "a ?? b not in c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P7: ?? then not in across a line end",
+   "source": "a ?? b not\nin c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       2,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 3: ?? in parentheses under ||",
+   "source": "0 || (null ?? 2)",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "rule 4: an if followed by +",
+   "source": "if (x) { 1 } else { 2 } + 3",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       25,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by .",
+   "source": "if (x) { 1 } else { 2 }.a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       24,
+       1,
+       25
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by [",
+   "source": "if (x) { 1 } else { 2 }[0]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       24,
+       1,
+       25
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by ?",
+   "source": "if (x) { 1 } else { 2 } ? 1 : 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       25,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by ?.",
+   "source": "if (x) { 1 } else { 2 }?.a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       24,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by ?.[",
+   "source": "if (x) { 1 } else { 2 }?.[0]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       24,
+       1,
+       27
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by ==",
+   "source": "if (x) { 1 } else { 2 } == 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       25,
+       1,
+       27
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by in",
+   "source": "if (x) { 1 } else { 2 } in [1]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       25,
+       1,
+       27
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if followed by (",
+   "source": "if (x) { 1 } else { 2 } (1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       25,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: a try followed by *",
+   "source": "try { 1 } catch { 2 } * 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       23,
+       1,
+       24
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: a try followed by ??",
+   "source": "try { 1 } catch { 2 } ?? 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       23,
+       1,
+       25
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: a try followed by .",
+   "source": "try { 1 } catch { 2 }.a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       22,
+       1,
+       23
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 4: an if in the else branch of ? : followed by +",
+   "source": "1 ? 2 : if (x) { 1 } else { 2 } + 3",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       33,
+       1,
+       34
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: an if as the right operand of +",
+   "source": "1 + if (x) { 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: an if as the operand of minus",
+   "source": "-if (x) { 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: a try as the operand of !",
+   "source": "!try { 1 } catch { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: an if as the right operand of ??",
+   "source": "1 ?? if (x) { 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: a try as the right operand of **",
+   "source": "1 ** try { 1 } catch { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 5: an if as the right operand of <",
+   "source": "1 < if (x) { 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 6: a match subject that starts with {",
+   "source": "match {a: 1}.a { _ => 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 6: a match subject that starts with if",
+   "source": "match if (x) { 1 } else { 2 } { _ => 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 6: a match subject that starts with try",
+   "source": "match try { 1 } catch { 2 } { _ => 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 6: match { with no subject (P8)",
+   "source": "match { 1 => 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a branch with a key and :",
+   "source": "if (x) { a: 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a branch with a string key and :",
+   "source": "if (x) { \"a\": 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a branch with a comma",
+   "source": "if (x) { 1, 2 } else { 3 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a branch that starts with ...",
+   "source": "if (x) { ...m } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: an else branch written like a map",
+   "source": "if (x) { 1 } else { a: 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       19,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: an else if branch written like a map",
+   "source": "if (x) { 1 } else if (x) { b: 2 } else { 3 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       26,
+       1,
+       27
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a branch with const lines then a comma",
+   "source": "if (x) { const a = 1; a, 2 } else { 3 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a try body written like a map",
+   "source": "try { a: 1 } catch { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 7: a handler written like a map",
+   "source": "try { 1 } catch { a: 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       17,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 8: an empty then branch",
+   "source": "if (x) {} else { 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 8: an empty else branch",
+   "source": "if (x) { 1 } else {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       19,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 8: an empty try body",
+   "source": "try {} catch { 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 8: an empty handler",
+   "source": "try { 1 } catch {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       17,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 8: an empty handler with a name",
+   "source": "try { 1 } catch (e) {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       21,
+       1,
+       22
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 9: a lambda as the value of a map pattern",
+   "source": "const {a} = x => x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 9: a lambda as the value of a list pattern",
+   "source": "const [a] = () => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 9: a lambda as the value of _",
+   "source": "const _ = x => x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token"
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 10: try then (",
+   "source": "try(1, 2)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 10: try then a space then (",
+   "source": "try (1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 11: no else at the end of input",
+   "source": "if (x) { 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 11: a number where else should be",
+   "source": "if (x) { 1 } 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       14,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 11: no else after an else if",
+   "source": "if (x) { 1 } else if (x) { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       31,
+       1,
+       31
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 11: a semicolon where else should be",
+   "source": "if (x) { 1 };",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 11: no else in a const value",
+   "source": "const a = if (x) { 1 }; a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       23,
+       1,
+       24
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 11: no else in a list item",
+   "source": "[if (x) { 1 }]]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       14,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 12: no catch at the end of input",
+   "source": "try { 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       10,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 12: a number where catch should be",
+   "source": "try { 1 } 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 12: finally where catch should be",
+   "source": "try { 1 } finally { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 12: two names in the parentheses",
+   "source": "try { 1 } catch (e, f) { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       19,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 12: a name with no parentheses",
+   "source": "try { 1 } catch e { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       17,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "rule 12: no closing parenthesis",
+   "source": "try { 1 } catch (e { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       20,
+       1,
+       21
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the end of input after an operator",
+   "source": "1 +",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the end of input inside parentheses",
+   "source": "(1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the end of input inside a list",
+   "source": "[1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two items with no comma",
+   "source": "[1 2]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a closing parenthesis alone",
+   "source": ")",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a closing parenthesis after an operand",
+   "source": "1 )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a closing bracket alone",
+   "source": "]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two operands with no operator",
+   "source": "1 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a call of a call",
+   "source": "f(x)(y)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a call of a parenthesized lambda",
+   "source": "(x => x)(1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a comma alone",
+   "source": ",",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a list of a comma",
+   "source": "[,]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two commas in a list",
+   "source": "[1, ,2]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two commas at the end of a list",
+   "source": "[1,,]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a map of a comma",
+   "source": "{,}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a shorthand entry then an operand",
+   "source": "{a 1}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two entries with no comma",
+   "source": "{a: 1 b: 2}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a key with no value",
+   "source": "{a: }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a spread with no operand in a map",
+   "source": "{...}}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an argument list of a comma",
+   "source": "len(,)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two arguments with no comma",
+   "source": "len(1 2)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unary plus is not an operator",
+   "source": "+1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two binary operators in a row",
+   "source": "1 + + 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "! after an operand",
+   "source": "1 ! 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": ". then [",
+   "source": "a.[0]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": ". then (",
+   "source": "a.(b)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": ". then a string",
+   "source": "a.\"b\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "?. then ( is not an optional call",
+   "source": "a?.()",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "empty parentheses",
+   "source": "()",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "empty parentheses then =>",
+   "source": "() => 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a parenthesized name then => at the top",
+   "source": "(x) => x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a name then => at the top",
+   "source": "x => x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lambda as a list item",
+   "source": "[x => x]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lambda as a map value",
+   "source": "{a: x => x}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "? : with no : at the end of input",
+   "source": "1 ? 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "? : with nothing before :",
+   "source": "1 ? : 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "? : with a semicolon where : should be",
+   "source": "1 ? 2 ;",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line with no semicolon at the end of input",
+   "source": "const a = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line with no semicolon",
+   "source": "const a = 1 a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line and no result",
+   "source": "const a = 1;",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line with no pattern",
+   "source": "const = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line with a number as pattern",
+   "source": "const 1 = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line with == for =",
+   "source": "const a == 1; a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line with two bindings",
+   "source": "const a = 1, b = 2; a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       12,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line with a parenthesized pattern",
+   "source": "const (a) = 1; a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two semicolons after the result",
+   "source": "1;;",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two semicolons after a const line",
+   "source": "const a = 1;; a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       13,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a semicolon after a block's result",
+   "source": "{ const a = 1; a; }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       17,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a block with no result",
+   "source": "{ const a = 1; }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       16,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a block's const line with no semicolon",
+   "source": "{ const a = 1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       15,
+       1,
+       16
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "patterns do not nest: a list in a list",
+   "source": "const [a, [b]] = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "patterns do not nest: a map in a map",
+   "source": "const {a: {b}} = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a number as a field's name",
+   "source": "const {a: 1} = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a number as an element",
+   "source": "const [a, 1] = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an element after a rest",
+   "source": "const [...r, a] = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       14,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two rests in a list pattern",
+   "source": "const [...r, ...s] = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       14,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a field after a rest",
+   "source": "const {...r, a} = m; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       14,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a rest with no name",
+   "source": "const {...}} = m; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a rest named _",
+   "source": "const [..._] = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       11,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a rest with a default",
+   "source": "const {a, ...r = {}} = m; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       16,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a list pattern of a comma",
+   "source": "const [,] = x; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a map pattern of a comma",
+   "source": "const {,} = m; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "_ as a shorthand field",
+   "source": "const {_} = m; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "_ cannot be read",
+   "source": "_",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "_ cannot be an operand",
+   "source": "_ + 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "_ cannot be read in a lambda body",
+   "source": "[1].map((x) => _)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       16,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a token on the third line",
+   "source": "1 +\n\n)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       3,
+       1,
+       3,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "not with no in, at the end of input",
+   "source": "1 not",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "not with no in, before an operand",
+   "source": "1 not [1]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in with no right operand",
+   "source": "1 in",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,752 @@
+{
+ "cases": [
+  {
+   "name": "a line comment after an expression",
+   "source": "1 // c",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a line comment before an expression",
+   "source": "// c\n1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a line comment at the end of input with no text",
+   "source": "1 //",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a line comment ends at a carriage return",
+   "source": "1 // c\r+ 2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a line comment ends at a carriage return and line feed",
+   "source": "1 // c\r\n+ 2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a block comment mark inside a line comment is text",
+   "source": "1 // /* \n + 2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a block comment before an expression",
+   "source": "/* c */ 1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a block comment after an expression",
+   "source": "1 /* c */",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "an empty block comment",
+   "source": "1 /**/",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "block comments do not nest",
+   "source": "1 /* a /* b */ + 2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a block comment across lines",
+   "source": "/*\n\n*/ 1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "block comments separate tokens",
+   "source": "1/**/+/**/2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a block comment of stars",
+   "source": "1 /***/ + 2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a star and a slash apart do not end a block comment",
+   "source": "/* * / */ 1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a line comment mark inside a block comment is text",
+   "source": "/* // */ 1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "white space: tabs",
+   "source": "1\t+\t2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "white space: line feeds",
+   "source": "1\n+\n2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "white space: carriage returns",
+   "source": "1\r+\r2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "white space: carriage return and line feed pairs",
+   "source": "1\r\n+\r\n2",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "white space around a program",
+   "source": " \t\n 1 \n",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a U+FEFF at the start is ignored",
+   "source": "\ufeff1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a U+FEFF at the start then white space",
+   "source": "\ufeff 1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "an unterminated block comment",
+   "source": "/* a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-comment",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated block comment after an expression",
+   "source": "1 /* /* a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-comment",
+      "span": [
+       1,
+       3,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unterminated block comment across lines",
+   "source": "1\n/*\n\n",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-comment",
+      "span": [
+       2,
+       1,
+       2,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "after a block comment the rest is text again",
+   "source": "/* a /* b */ c */",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       17,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the empty text",
+   "source": "",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       1
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "only a line comment",
+   "source": "// c",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "only a block comment",
+   "source": "/* c */",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "only spaces",
+   "source": "   ",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "only a line feed",
+   "source": "\n",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       1,
+       2,
+       1
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "only a carriage return: positions count lines at line feeds only",
+   "source": "\r",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "only a carriage return and line feed",
+   "source": "\r\n",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       1,
+       2,
+       1
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the end of input after a line feed",
+   "source": "1 +\n",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       1,
+       2,
+       1
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the end of input after a carriage return",
+   "source": "1 +\r",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the end of input after a carriage return and line feed",
+   "source": "1 +\r\n",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       1,
+       2,
+       1
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a token two lines down",
+   "source": "1 +\n\n)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       3,
+       1,
+       3,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token after a line comment ended by a carriage return is on the same line",
+   "source": "1 // c\r2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       8,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token after a line comment ended by a line feed is on the next line",
+   "source": "1 // c\n2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the token after a line comment ended by a carriage return and line feed is on the next line",
+   "source": "1 // c\r\n2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a tab is one column",
+   "source": "\t)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a carriage return is one column",
+   "source": "1\r)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a carriage return and line feed starts a line",
+   "source": "1\r\n)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       1,
+       2,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a form feed is not white space",
+   "source": "1 \f",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a vertical tab is not white space",
+   "source": "1 \u000b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "U+0000 is not white space",
+   "source": "1 \u0000",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a non-breaking space is not white space",
+   "source": "1\u00a0+ 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "U+2028 is not white space",
+   "source": "1 \u2028",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "U+3000 is not white space",
+   "source": "1 \u3000",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a U+FEFF after the start is an unexpected character",
+   "source": "1 \ufeff",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a U+FEFF after leading white space is an unexpected character",
+   "source": " \ufeff1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       2,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P1: a leading U+FEFF is not counted as a column",
+   "source": "\ufeff)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P1: columns after a leading U+FEFF",
+   "source": "\ufeff1 )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P1: the end of input after a leading U+FEFF",
+   "source": "\ufeff1 +",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P1: a second U+FEFF is an unexpected character at column 1",
+   "source": "\ufeff\ufeff1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-character",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

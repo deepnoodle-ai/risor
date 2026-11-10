@@ -1,0 +1,1158 @@
+{
+ "cases": [
+  {
+   "name": "a double-quoted string",
+   "source": "\"abc\"",
+   "expect": {
+    "value": "abc"
+   }
+  },
+  {
+   "name": "a single-quoted string",
+   "source": "'abc'",
+   "expect": {
+    "value": "abc"
+   }
+  },
+  {
+   "name": "the empty double-quoted string",
+   "source": "\"\"",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "the empty single-quoted string",
+   "source": "''",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "a double quote inside single quotes",
+   "source": "'\"'",
+   "expect": {
+    "value": "\""
+   }
+  },
+  {
+   "name": "a single quote inside double quotes",
+   "source": "\"'\"",
+   "expect": {
+    "value": "'"
+   }
+  },
+  {
+   "name": "the two quotes give the same string",
+   "source": "\"a\" + 'b'",
+   "expect": {
+    "value": "ab"
+   }
+  },
+  {
+   "name": "escape: double quote",
+   "source": "\"\\\"\"",
+   "expect": {
+    "value": "\""
+   }
+  },
+  {
+   "name": "escape: single quote in single quotes",
+   "source": "'\\''",
+   "expect": {
+    "value": "'"
+   }
+  },
+  {
+   "name": "escape: single quote in double quotes",
+   "source": "\"\\'\"",
+   "expect": {
+    "value": "'"
+   }
+  },
+  {
+   "name": "escape: double quote in single quotes",
+   "source": "'\\\"'",
+   "expect": {
+    "value": "\""
+   }
+  },
+  {
+   "name": "escape: backslash",
+   "source": "\"\\\\\"",
+   "expect": {
+    "value": "\\"
+   }
+  },
+  {
+   "name": "escape: slash",
+   "source": "\"\\/\"",
+   "expect": {
+    "value": "/"
+   }
+  },
+  {
+   "name": "escape: backspace",
+   "source": "\"\\b\"",
+   "expect": {
+    "value": "\b"
+   }
+  },
+  {
+   "name": "escape: form feed",
+   "source": "\"\\f\"",
+   "expect": {
+    "value": "\f"
+   }
+  },
+  {
+   "name": "escape: line feed",
+   "source": "\"\\n\"",
+   "expect": {
+    "value": "\n"
+   }
+  },
+  {
+   "name": "escape: carriage return",
+   "source": "\"\\r\"",
+   "expect": {
+    "value": "\r"
+   }
+  },
+  {
+   "name": "escape: tab",
+   "source": "\"\\t\"",
+   "expect": {
+    "value": "\t"
+   }
+  },
+  {
+   "name": "escape: four hex digits",
+   "source": "\"A\"",
+   "expect": {
+    "value": "A"
+   }
+  },
+  {
+   "name": "escape: four lower-case hex digits",
+   "source": "\"é\"",
+   "expect": {
+    "value": "é"
+   }
+  },
+  {
+   "name": "escape: four upper-case hex digits",
+   "source": "\"é\"",
+   "expect": {
+    "value": "é"
+   }
+  },
+  {
+   "name": "escape: braces with two digits",
+   "source": "\"\\u{41}\"",
+   "expect": {
+    "value": "A"
+   }
+  },
+  {
+   "name": "escape: braces with one digit",
+   "source": "\"\\u{a}\"",
+   "expect": {
+    "value": "\n"
+   }
+  },
+  {
+   "name": "escape: braces with five digits",
+   "source": "\"\\u{00041}\"",
+   "expect": {
+    "value": "A"
+   }
+  },
+  {
+   "name": "escape: braces with six digits",
+   "source": "\"\\u{000041}\"",
+   "expect": {
+    "value": "A"
+   }
+  },
+  {
+   "name": "escape: braces above U+FFFF",
+   "source": "\"\\u{1F600}\"",
+   "expect": {
+    "value": "😀"
+   }
+  },
+  {
+   "name": "escape: braces at U+10FFFF",
+   "source": "\"\\u{10FFFF}\"",
+   "expect": {
+    "value": "\u10ffff"
+   }
+  },
+  {
+   "name": "escape: braces with zero",
+   "source": "\"\\u{0}\"",
+   "expect": {
+    "value": "\u0000"
+   }
+  },
+  {
+   "name": "escape: a surrogate pair is one code point",
+   "source": "\"😀\"",
+   "expect": {
+    "value": "😀"
+   }
+  },
+  {
+   "name": "escape: a lower-case surrogate pair",
+   "source": "\"😀\"",
+   "expect": {
+    "value": "😀"
+   }
+  },
+  {
+   "name": "escape: U+FFFF",
+   "source": "\"\uffff\"",
+   "expect": {
+    "value": "\uffff"
+   }
+  },
+  {
+   "name": "escape: U+E000 after the surrogates",
+   "source": "\"\ue000\"",
+   "expect": {
+    "value": "\ue000"
+   }
+  },
+  {
+   "name": "escape in the middle of text",
+   "source": "\"abc\"",
+   "expect": {
+    "value": "abc"
+   }
+  },
+  {
+   "name": "a raw code point above U+FFFF",
+   "source": "\"😀\"",
+   "expect": {
+    "value": "😀"
+   }
+  },
+  {
+   "name": "a raw letter with an accent",
+   "source": "\"é\"",
+   "expect": {
+    "value": "é"
+   }
+  },
+  {
+   "name": "comment marks inside a string",
+   "source": "\"//\"",
+   "expect": {
+    "value": "//"
+   }
+  },
+  {
+   "name": "block comment marks inside a string",
+   "source": "\"/* x */\"",
+   "expect": {
+    "value": "/* x */"
+   }
+  },
+  {
+   "name": "an interpolation mark in a one-line string is text",
+   "source": "\"${x}\"",
+   "expect": {
+    "value": "${x}"
+   }
+  },
+  {
+   "name": "a backtick in a one-line string is text",
+   "source": "\"`\"",
+   "expect": {
+    "value": "`"
+   }
+  },
+  {
+   "name": "a raw tab in a string",
+   "source": "\"a\tb\"",
+   "expect": {
+    "value": "a\tb"
+   }
+  },
+  {
+   "name": "a raw U+0000 in a string",
+   "source": "\"a\u0000b\"",
+   "expect": {
+    "value": "a\u0000b"
+   }
+  },
+  {
+   "name": "a raw U+FEFF in a string",
+   "source": "\"a\ufeffb\"",
+   "expect": {
+    "value": "a\ufeffb"
+   }
+  },
+  {
+   "name": "characters that begin no token are allowed in a string",
+   "source": "\"#$@^~\\\\\"",
+   "expect": {
+    "value": "#$@^~\\"
+   }
+  },
+  {
+   "name": "an empty string then a string",
+   "source": "\"\" + \"a\"",
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "bad escape: backslash x",
+   "source": "\"\\x41\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash 0",
+   "source": "\"\\0\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash v",
+   "source": "\"\\v\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash a",
+   "source": "\"\\a\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash upper-case U",
+   "source": "\"\\U\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash space",
+   "source": "\"\\ \"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash backtick in a one-line string",
+   "source": "\"\\`\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash dollar in a one-line string",
+   "source": "\"\\$\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape in single quotes",
+   "source": "'\\q'",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash then a letter with an accent",
+   "source": "\"\\é\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: backslash then a code point above U+FFFF",
+   "source": "\"\\😀\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: u with no digits",
+   "source": "\"\\u\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: u with two digits",
+   "source": "\"\\u12\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: u with three digits",
+   "source": "\"\\u123\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: u followed by letters that are not hex",
+   "source": "\"\\uZZZZ\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: u with two digits then a letter that is not hex",
+   "source": "\"\\u12G4\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces with no digit",
+   "source": "\"\\u{}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces with a letter that is not hex",
+   "source": "\"\\u{G}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces not closed",
+   "source": "\"\\u{12\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces with text before the close",
+   "source": "\"\\u{12x}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces above U+10FFFF",
+   "source": "\"\\u{110000}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces far above U+10FFFF",
+   "source": "\"\\u{FFFFFF}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces naming a high surrogate",
+   "source": "\"\\u{D800}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: braces naming a low surrogate",
+   "source": "\"\\u{DFFF}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: a lone high surrogate",
+   "source": "\"\\uD800\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: a high surrogate then text",
+   "source": "\"\\uD800x\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: a high surrogate then a code point escape",
+   "source": "\"\\uD800\\u0041\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: two high surrogates",
+   "source": "\"\\uDBFF\\uDBFF\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: a high surrogate then a braced low surrogate",
+   "source": "\"\\uD800\\u{DC00}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: a lone low surrogate",
+   "source": "\"\\uDC00\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: a low surrogate after text",
+   "source": "\"a\\uDFFF\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       3,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape: a low surrogate after a complete pair",
+   "source": "\"\\uD83D\\uDE00\\uDE00\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       14,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated at the end of input",
+   "source": "\"abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated single-quoted string",
+   "source": "'abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: a lone quote",
+   "source": "\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       2
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: an escaped quote then the end of input",
+   "source": "\"a\\\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated at a line feed",
+   "source": "\"abc\n1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated at a carriage return and line feed",
+   "source": "\"abc\r\n1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated at a carriage return alone",
+   "source": "\"abc\r1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a backslash before a line feed is part of the literal",
+   "source": "\"abc\\\n1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a backslash before a carriage return and line feed is part of the literal",
+   "source": "\"abc\\\r\n1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated after an operator",
+   "source": "1 + \"a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated after a complete string",
+   "source": "\"a\" 'b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P2: every hex digit after \\u{ is read",
+   "source": "\"\\u{1234567}\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P2: seven hex digits with no closing brace",
+   "source": "\"\\u{0000041\"",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P3: a backslash before the end of input is part of the literal",
+   "source": "\"abc\\",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P3: a lone quote and a backslash at the end of input",
+   "source": "'\\",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

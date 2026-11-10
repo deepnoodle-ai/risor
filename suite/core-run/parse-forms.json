@@ -1,0 +1,1290 @@
+{
+ "cases": [
+  {
+   "name": "true",
+   "source": "true",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "false",
+   "source": "false",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "null",
+   "source": "null",
+   "expect": {
+    "value": null
+   }
+  },
+  {
+   "name": "the empty list",
+   "source": "[]",
+   "expect": {
+    "value": []
+   }
+  },
+  {
+   "name": "a list",
+   "source": "[1, 2]",
+   "expect": {
+    "value": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "name": "a list with a trailing comma",
+   "source": "[1, 2,]",
+   "expect": {
+    "value": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "name": "nested lists",
+   "source": "[[1], []]",
+   "expect": {
+    "value": [
+     [
+      1
+     ],
+     []
+    ]
+   }
+  },
+  {
+   "name": "a list spread",
+   "source": "[...[1, 2], 3]",
+   "expect": {
+    "value": [
+     1,
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "name": "a spread of the empty list",
+   "source": "[0, ...[]]",
+   "expect": {
+    "value": [
+     0
+    ]
+   }
+  },
+  {
+   "name": "the empty map",
+   "source": "{}",
+   "expect": {
+    "value": {}
+   }
+  },
+  {
+   "name": "a map",
+   "source": "{a: 1}",
+   "expect": {
+    "value": {
+     "a": 1
+    }
+   }
+  },
+  {
+   "name": "a map with a trailing comma",
+   "source": "{a: 1,}",
+   "expect": {
+    "value": {
+     "a": 1
+    }
+   }
+  },
+  {
+   "name": "a string key",
+   "source": "{\"a-b\": 1}",
+   "expect": {
+    "value": {
+     "a-b": 1
+    }
+   }
+  },
+  {
+   "name": "a single-quoted key",
+   "source": "{'a': 1}",
+   "expect": {
+    "value": {
+     "a": 1
+    }
+   }
+  },
+  {
+   "name": "a computed key",
+   "source": "{[\"k\"]: 2}",
+   "expect": {
+    "value": {
+     "k": 2
+    }
+   }
+  },
+  {
+   "name": "a computed key from a template with no interpolation",
+   "source": "{[`c`]: 3}",
+   "expect": {
+    "value": {
+     "c": 3
+    }
+   }
+  },
+  {
+   "name": "a nested map",
+   "source": "{a: 1, b: {c: 2}}",
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": {
+      "c": 2
+     }
+    }
+   }
+  },
+  {
+   "name": "reserved words as bare keys",
+   "source": "{if: 1, null: 2, true: 3}",
+   "expect": {
+    "value": {
+     "if": 1,
+     "null": 2,
+     "true": 3
+    }
+   }
+  },
+  {
+   "name": "a map spread",
+   "source": "{a: 1, ...{b: 2}}",
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": 2
+    }
+   }
+  },
+  {
+   "name": "a later key replaces a spread one",
+   "source": "{...{a: 1}, a: 2}",
+   "expect": {
+    "value": {
+     "a": 2
+    }
+   }
+  },
+  {
+   "name": "a shorthand entry",
+   "source": "{x}",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": {
+     "x": 3
+    }
+   }
+  },
+  {
+   "name": "a shorthand entry then a keyed entry",
+   "source": "{x, y: 1}",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": {
+     "x": 3,
+     "y": 1
+    }
+   }
+  },
+  {
+   "name": "parentheses",
+   "source": "(1)",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "double parentheses",
+   "source": "((1))",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a field chain",
+   "source": "{a: {b: 1}}.a.b",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "an index chain",
+   "source": "[[1, 2], [3]][1][0]",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a field then an index",
+   "source": "{a: [5]}.a[0]",
+   "expect": {
+    "value": 5
+   }
+  },
+  {
+   "name": "an index with a string key",
+   "source": "{a: 1}[\"a\"]",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a word after . reads a field",
+   "source": "{keys: 1}.keys",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a word and ( after . call a method",
+   "source": "{keys: 1}.keys()",
+   "expect": {
+    "value": [
+     "keys"
+    ]
+   }
+  },
+  {
+   "name": "a method call on a string",
+   "source": "\"abc\".toUpperCase()",
+   "expect": {
+    "value": "ABC"
+   }
+  },
+  {
+   "name": "a method call on a list",
+   "source": "[3, 1, 2].sort()",
+   "expect": {
+    "value": [
+     1,
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "name": "method calls and an index in one chain",
+   "source": "[3, 1, 2].sort().reverse()[0]",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "an optional method call",
+   "source": "\"a\"?.toUpperCase()",
+   "expect": {
+    "value": "A"
+   }
+  },
+  {
+   "name": "an optional method call on a map",
+   "source": "{a: 1}?.keys()",
+   "expect": {
+    "value": [
+     "a"
+    ]
+   }
+  },
+  {
+   "name": "an optional field on null",
+   "source": "null?.a",
+   "expect": {
+    "value": null
+   }
+  },
+  {
+   "name": "an optional step skips the rest of the chain",
+   "source": "null?.a.b.c",
+   "expect": {
+    "value": null
+   }
+  },
+  {
+   "name": "an optional index on null",
+   "source": "null?.[0]",
+   "expect": {
+    "value": null
+   }
+  },
+  {
+   "name": "an optional index out of range",
+   "source": "[1]?.[5]",
+   "expect": {
+    "value": null
+   }
+  },
+  {
+   "name": "two optional steps",
+   "source": "{a: null}?.a?.b",
+   "expect": {
+    "value": null
+   }
+  },
+  {
+   "name": "an optional step that finds a value",
+   "source": "{a: {b: 2}}?.a.b",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a call",
+   "source": "len(\"abc\")",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a call with a trailing comma",
+   "source": "len(\"ab\",)",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a call with a list argument",
+   "source": "len([1, 2, 3])",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a call of string",
+   "source": "string(1)",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "a lambda with a bare parameter",
+   "source": "[1, 2].map(x => x * 2)",
+   "expect": {
+    "value": [
+     2,
+     4
+    ]
+   }
+  },
+  {
+   "name": "a lambda with a parenthesized parameter",
+   "source": "[1, 2].map((x) => x + 1)",
+   "expect": {
+    "value": [
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "name": "a lambda with two parameters",
+   "source": "[1, 2].map((x, i) => i)",
+   "expect": {
+    "value": [
+     0,
+     1
+    ]
+   }
+  },
+  {
+   "name": "a lambda with _ as its bare parameter",
+   "source": "[1, 2].map(_ => 0)",
+   "expect": {
+    "value": [
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "name": "a lambda with _ in parentheses",
+   "source": "[1].map((_) => 5)",
+   "expect": {
+    "value": [
+     5
+    ]
+   }
+  },
+  {
+   "name": "a trailing comma in a parameter list",
+   "source": "[1, 2].map((x, i,) => x + i)",
+   "expect": {
+    "value": [
+     1,
+     3
+    ]
+   }
+  },
+  {
+   "name": "a list pattern as a parameter",
+   "source": "[[1, 2]].map(([a, b]) => a + b)",
+   "expect": {
+    "value": [
+     3
+    ]
+   }
+  },
+  {
+   "name": "a map pattern as a parameter",
+   "source": "[{a: 1}].map(({a}) => a)",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "a parameter with a default",
+   "source": "[1].map((x, i = 9) => x + i)",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "a lambda whose body is a map",
+   "source": "[1].map(x => {id: x})",
+   "expect": {
+    "value": [
+     {
+      "id": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lambda whose body reads a field into a map",
+   "source": "[{id: 1}].map(x => {id: x.id})",
+   "expect": {
+    "value": [
+     {
+      "id": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "a lambda whose body is a block",
+   "source": "[1].map(x => { const y = x + 1; y * 2 })",
+   "expect": {
+    "value": [
+     4
+    ]
+   }
+  },
+  {
+   "name": "a lambda whose body is a conditional",
+   "source": "[0, 1].map(x => x ? \"y\" : \"n\")",
+   "expect": {
+    "value": [
+     "n",
+     "y"
+    ]
+   }
+  },
+  {
+   "name": "a lambda whose body is an if",
+   "source": "[1, 2].map(x => if (x > 1) { \"b\" } else { \"s\" })",
+   "expect": {
+    "value": [
+     "s",
+     "b"
+    ]
+   }
+  },
+  {
+   "name": "a lambda whose body is a list",
+   "source": "[1].map(x => [x, x])",
+   "expect": {
+    "value": [
+     [
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  {
+   "name": "a lambda whose body is parenthesized",
+   "source": "[1].map(x => (x))",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "a predicate lambda",
+   "source": "[1, 2].filter(x => x > 1)",
+   "expect": {
+    "value": [
+     2
+    ]
+   }
+  },
+  {
+   "name": "a lambda body ends at a comma",
+   "source": "[1, 2].reduce((a, b) => a + b, 10)",
+   "expect": {
+    "value": 13
+   }
+  },
+  {
+   "name": "a lambda that returns its first parameter",
+   "source": "[1, 2].reduce((a, b) => a, 0)",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "a const-bound lambda",
+   "source": "const f = x => x + 1; f(2)",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a const-bound lambda with parentheses",
+   "source": "const f = (x) => x * 2; f(4)",
+   "expect": {
+    "value": 8
+   }
+  },
+  {
+   "name": "a const-bound lambda with _",
+   "source": "const f = _ => 1; f(5)",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a const-bound lambda with no parameters",
+   "source": "const k = () => 7; k()",
+   "expect": {
+    "value": 7
+   }
+  },
+  {
+   "name": "a const-bound lambda with a trailing comma",
+   "source": "const p = (a, b,) => a - b; p(5, 3)",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a default that reads an earlier parameter",
+   "source": "const f = (a, b = a * 2) => a + b; f(1)",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a default used when the argument is omitted",
+   "source": "const f = (x = 1) => x; f()",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a map pattern parameter of a const-bound lambda",
+   "source": "const f = ({a, b}) => a + b; f({a: 1, b: 2})",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a list pattern parameter of a const-bound lambda",
+   "source": "const f = ([a, b]) => a * b; f([3, 4])",
+   "expect": {
+    "value": 12
+   }
+  },
+  {
+   "name": "a const-bound lambda whose body is a conditional",
+   "source": "const f = x => x ? 1 : 2; f(0)",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a lambda body ends at the semicolon",
+   "source": "const f = x => x + 1; f(1) * 2",
+   "expect": {
+    "value": 4
+   }
+  },
+  {
+   "name": "a const-bound lambda whose body is an if",
+   "source": "const f = x => if (x) { 1 } else { 2 }; f(0)",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a const-bound lambda passed by name",
+   "source": "const d = x => x * 2; [1, 2].map(d)",
+   "expect": {
+    "value": [
+     2,
+     4
+    ]
+   }
+  },
+  {
+   "name": "a const line and a result",
+   "source": "const a = 1; a",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "two const lines",
+   "source": "const a = 1; const b = a + 1; b",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a final semicolon",
+   "source": "1;",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a final semicolon after const lines",
+   "source": "const a = 1; a;",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "_ as the pattern of a const line",
+   "source": "const _ = 1; 2",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "an inner block hides an outer name",
+   "source": "const a = 1; { const a = 2; a }",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a block",
+   "source": "{ const a = 1; a }",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a block with two const lines",
+   "source": "{ const a = 1; const b = 2; a + b }",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a block whose result is a shorthand map",
+   "source": "{ const a = 1; {a} }",
+   "expect": {
+    "value": {
+     "a": 1
+    }
+   }
+  },
+  {
+   "name": "nested blocks",
+   "source": "{ const a = 2; { const b = a; b } }",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a block is an operand",
+   "source": "1 + { const a = 2; a }",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a block with a list pattern",
+   "source": "{ const [a] = [1]; a }",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a list pattern",
+   "source": "const [a, b] = [1, 2]; a + b",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a list pattern with _",
+   "source": "const [a, _, c] = [1, 2, 3]; a + c",
+   "expect": {
+    "value": 4
+   }
+  },
+  {
+   "name": "a list pattern with a rest",
+   "source": "const [a, ...r] = [1, 2, 3]; r",
+   "expect": {
+    "value": [
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "name": "a list pattern that is only a rest",
+   "source": "const [...r] = [1]; r",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "a list pattern with a trailing comma",
+   "source": "const [a,] = [1]; a",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a list pattern of _ alone",
+   "source": "const [_] = [1]; 2",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "list pattern defaults read earlier names",
+   "source": "const [a = 1, b = a] = []; b",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a map pattern with a renamed field",
+   "source": "const {a, b: x} = {a: 1, b: 2}; a + x",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a map pattern with a rest",
+   "source": "const {a, ...r} = {a: 1, b: 2}; r",
+   "expect": {
+    "value": {
+     "b": 2
+    }
+   }
+  },
+  {
+   "name": "a map pattern that is only a rest",
+   "source": "const {...r} = {a: 1}; r",
+   "expect": {
+    "value": {
+     "a": 1
+    }
+   }
+  },
+  {
+   "name": "a map pattern with a rest and a trailing comma",
+   "source": "const {a, ...r,} = {a: 1}; r",
+   "expect": {
+    "value": {}
+   }
+  },
+  {
+   "name": "a map pattern with a trailing comma",
+   "source": "const {a,} = {a: 1}; a",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a map pattern with a string key",
+   "source": "const {\"a-b\": y} = {\"a-b\": 5}; y",
+   "expect": {
+    "value": 5
+   }
+  },
+  {
+   "name": "a map pattern with a reserved word as key",
+   "source": "const {if: z} = {if: 3}; z",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a map pattern with _ as key",
+   "source": "const {_: a} = {_: 1}; a",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a map pattern default replaces null",
+   "source": "const {a = 5} = {a: null}; a",
+   "expect": {
+    "value": 5
+   }
+  },
+  {
+   "name": "if: the first branch",
+   "source": "if (x > 1) { \"a\" } else { \"b\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 2
+   },
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "if: the else branch",
+   "source": "if (x > 1) { \"a\" } else { \"b\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": "b"
+   }
+  },
+  {
+   "name": "else if: the second branch",
+   "source": "if (x == 1) { \"one\" } else if (x == 2) { \"two\" } else { \"many\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 2
+   },
+   "expect": {
+    "value": "two"
+   }
+  },
+  {
+   "name": "else if: the last branch",
+   "source": "if (x == 1) { \"one\" } else if (x == 2) { \"two\" } else { \"many\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": "many"
+   }
+  },
+  {
+   "name": "a branch with a const line",
+   "source": "if (x) { const y = x * 2; y } else { 0 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": 6
+   }
+  },
+  {
+   "name": "a map as a branch's value",
+   "source": "if (x) { {id: 1} } else { {id: 2} }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": {
+     "id": 1
+    }
+   }
+  },
+  {
+   "name": "an if as a list item",
+   "source": "[if (x) { 1 } else { 2 }]",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "an if as a map value",
+   "source": "{a: if (x) { 1 } else { 2 }}",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": {
+     "a": 2
+    }
+   }
+  },
+  {
+   "name": "an if in an interpolation",
+   "source": "`${if (x) { \"y\" } else { \"n\" }}`",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": "y"
+   }
+  },
+  {
+   "name": "a parenthesized if is an operand",
+   "source": "(if (x) { 1 } else { 2 }) + 3",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 4
+   }
+  },
+  {
+   "name": "an if as a branch of ? :",
+   "source": "x ? if (x) { 1 } else { 2 } : 3",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "an if as a const value",
+   "source": "const r = if (x) { 1 } else { 2 }; r",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "an if then a final semicolon",
+   "source": "if (x) { 1 } else { 2 };",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "? :",
+   "source": "x ? 1 : 2",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "try: the body gives a value",
+   "source": "try { 1 } catch { 2 }",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "try: the handler after a failure",
+   "source": "try { [1][x] } catch { 0 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "try: the catch name",
+   "source": "try { [1][x] } catch (e) { e.code }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": "index-range"
+   }
+  },
+  {
+   "name": "try: a body with a const line",
+   "source": "try { const a = [1][x]; a } catch { 0 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "try: a handler with a const line",
+   "source": "try { 1 / x } catch (e) { const c = e.code; c }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": "divide-by-zero"
+   }
+  },
+  {
+   "name": "a parenthesized try is an operand",
+   "source": "(try { 1 } catch { 2 }) + 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a try as a list item",
+   "source": "[try { 1 } catch { 2 }]",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "match: the first arm",
+   "source": "match x { 1 => \"one\", 2 | 3 => \"few\", _ => \"many\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "one"
+   }
+  },
+  {
+   "name": "match: a second literal joined by |",
+   "source": "match x { 1 => \"one\", 2 | 3 => \"few\", _ => \"many\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": "few"
+   }
+  },
+  {
+   "name": "match: the default arm",
+   "source": "match x { 1 => \"one\", 2 | 3 => \"few\", _ => \"many\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 9
+   },
+   "expect": {
+    "value": "many"
+   }
+  },
+  {
+   "name": "match: a negative literal",
+   "source": "match x { -1 => \"neg\", _ => \"other\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": -1
+   },
+   "expect": {
+    "value": "neg"
+   }
+  },
+  {
+   "name": "match: a hex literal",
+   "source": "match x { 0x10 => 1, _ => 0 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 16
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "match: a fraction literal",
+   "source": "match f { 1.5 => 1, _ => 0 }",
+   "env": "{f: float}",
+   "vars": {
+    "f": 1.5
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "match: a trailing comma",
+   "source": "match x { 1 => 10, _ => 20, }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 10
+   }
+  },
+  {
+   "name": "match: string literals in both quotes",
+   "source": "match s { \"a\" => 1, 'b' => 2, _ => 0 }",
+   "env": "{s: string}",
+   "vars": {
+    "s": "b"
+   },
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "match: bool literals",
+   "source": "match b { true => 1, false => 0 }",
+   "env": "{b: bool}",
+   "vars": {
+    "b": false
+   },
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "match: a null literal",
+   "source": "match v { null => 0, _ => 1 }",
+   "env": "{v: int | null}",
+   "vars": {
+    "v": null
+   },
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "match: the subject is a binary expression",
+   "source": "match x + 1 { 2 => \"two\", _ => \"x\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "two"
+   }
+  },
+  {
+   "name": "match: a parenthesized subject",
+   "source": "match (x) { _ => 1 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "match: a parenthesized map read as subject",
+   "source": "match ({a: x}.a) { 3 => 1, _ => 0 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 3
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "match: only the default arm",
+   "source": "match x { _ => 0 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "match: arms on several lines",
+   "source": "match x {\n  1 => 2,\n  _ => 3\n}",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "match: an if as an arm's result",
+   "source": "match x { 1 => if (x) { 2 } else { 3 }, _ => 4 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "match is an operand",
+   "source": "match x { 1 => 2, _ => 3 } + 1",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "match is an operand on the right",
+   "source": "1 + match x { _ => 2 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 3
+   }
+  }
+ ]
+}

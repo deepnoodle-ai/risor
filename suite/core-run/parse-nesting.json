@@ -1,0 +1,512 @@
+{
+ "cases": [
+  {
+   "name": "100 parentheses",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "101 parentheses",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "101 parentheses with no closers: parsing ends at the 101st",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "100 prefix minus signs",
+   "source": "----------------------------------------------------------------------------------------------------1",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "101 prefix minus signs",
+   "source": "-----------------------------------------------------------------------------------------------------1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "100 prefix ! signs",
+   "source": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "101 prefix ! signs",
+   "source": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "101 brackets",
+   "source": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "101 braces",
+   "source": "{a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: {a: 1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       401,
+       1,
+       402
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "101 ** operators",
+   "source": "1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1 ** 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       503,
+       1,
+       505
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "50 pairs of minus and parenthesis",
+   "source": "-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(1))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "50 pairs of minus and parenthesis then a minus",
+   "source": "-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-(-1))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "100 nested interpolations",
+   "source": "`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${1}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "101 nested interpolations",
+   "source": "`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${`${1}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       302,
+       1,
+       304
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "+ at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 + 1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       103,
+       1,
+       104
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the ? of a conditional at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 ? 2 : 3))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       103,
+       1,
+       104
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "match at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((match x { _ => 1 }))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       106
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "not in at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 not in [1]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       103,
+       1,
+       109
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 in [1]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       103,
+       1,
+       105
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "?.[ at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((x?.[0]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       102,
+       1,
+       105
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a prefix minus at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((-1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "the ${ of a template at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((`${1}`))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       102,
+       1,
+       104
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a map's brace at level 101",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((({a: 1}))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an argument list's parenthesis at level 101",
+   "source": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((\"a\".toUpperCase()))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       116,
+       1,
+       117
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a list's bracket at level 101",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((([1]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       101,
+       1,
+       102
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P5: match at level 100: its level closes before the { of its arms",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((match x { _ => 1 })))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "P5: a bracket inside the arms of a match at level 100",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((match x { _ => (1) })))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "nesting-exceeded",
+      "span": [
+       1,
+       115,
+       1,
+       116
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "+ at level 100",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 + 1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a prefix minus at level 100",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((-1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": -1
+   }
+  },
+  {
+   "name": "the left operand of + opens no level",
+   "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": 150
+   }
+  },
+  {
+   "name": "a sum of 150 terms",
+   "source": "1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1",
+   "expect": {
+    "value": 150
+   }
+  },
+  {
+   "name": "a chain of 150 method calls",
+   "source": "\"a\".toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase().toUpperCase()",
+   "expect": {
+    "value": "A"
+   }
+  },
+  {
+   "name": "150 else branches of ? :",
+   "source": "x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : x ? 1 : 2",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "150 else if parts",
+   "source": "if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else if (x) { 1 } else { 2 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "150 const lines",
+   "source": "const a0 = 1; const a1 = a0; const a2 = a1; const a3 = a2; const a4 = a3; const a5 = a4; const a6 = a5; const a7 = a6; const a8 = a7; const a9 = a8; const a10 = a9; const a11 = a10; const a12 = a11; const a13 = a12; const a14 = a13; const a15 = a14; const a16 = a15; const a17 = a16; const a18 = a17; const a19 = a18; const a20 = a19; const a21 = a20; const a22 = a21; const a23 = a22; const a24 = a23; const a25 = a24; const a26 = a25; const a27 = a26; const a28 = a27; const a29 = a28; const a30 = a29; const a31 = a30; const a32 = a31; const a33 = a32; const a34 = a33; const a35 = a34; const a36 = a35; const a37 = a36; const a38 = a37; const a39 = a38; const a40 = a39; const a41 = a40; const a42 = a41; const a43 = a42; const a44 = a43; const a45 = a44; const a46 = a45; const a47 = a46; const a48 = a47; const a49 = a48; const a50 = a49; const a51 = a50; const a52 = a51; const a53 = a52; const a54 = a53; const a55 = a54; const a56 = a55; const a57 = a56; const a58 = a57; const a59 = a58; const a60 = a59; const a61 = a60; const a62 = a61; const a63 = a62; const a64 = a63; const a65 = a64; const a66 = a65; const a67 = a66; const a68 = a67; const a69 = a68; const a70 = a69; const a71 = a70; const a72 = a71; const a73 = a72; const a74 = a73; const a75 = a74; const a76 = a75; const a77 = a76; const a78 = a77; const a79 = a78; const a80 = a79; const a81 = a80; const a82 = a81; const a83 = a82; const a84 = a83; const a85 = a84; const a86 = a85; const a87 = a86; const a88 = a87; const a89 = a88; const a90 = a89; const a91 = a90; const a92 = a91; const a93 = a92; const a94 = a93; const a95 = a94; const a96 = a95; const a97 = a96; const a98 = a97; const a99 = a98; const a100 = a99; const a101 = a100; const a102 = a101; const a103 = a102; const a104 = a103; const a105 = a104; const a106 = a105; const a107 = a106; const a108 = a107; const a109 = a108; const a110 = a109; const a111 = a110; const a112 = a111; const a113 = a112; const a114 = a113; const a115 = a114; const a116 = a115; const a117 = a116; const a118 = a117; const a119 = a118; const a120 = a119; const a121 = a120; const a122 = a121; const a123 = a122; const a124 = a123; const a125 = a124; const a126 = a125; const a127 = a126; const a128 = a127; const a129 = a128; const a130 = a129; const a131 = a130; const a132 = a131; const a133 = a132; const a134 = a133; const a135 = a134; const a136 = a135; const a137 = a136; const a138 = a137; const a139 = a138; const a140 = a139; const a141 = a140; const a142 = a141; const a143 = a142; const a144 = a143; const a145 = a144; const a146 = a145; const a147 = a146; const a148 = a147; const a149 = a148; a149",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "150 match arms",
+   "source": "match x { 0 => 0, 1 => 1, 2 => 2, 3 => 3, 4 => 4, 5 => 5, 6 => 6, 7 => 7, 8 => 8, 9 => 9, 10 => 10, 11 => 11, 12 => 12, 13 => 13, 14 => 14, 15 => 15, 16 => 16, 17 => 17, 18 => 18, 19 => 19, 20 => 20, 21 => 21, 22 => 22, 23 => 23, 24 => 24, 25 => 25, 26 => 26, 27 => 27, 28 => 28, 29 => 29, 30 => 30, 31 => 31, 32 => 32, 33 => 33, 34 => 34, 35 => 35, 36 => 36, 37 => 37, 38 => 38, 39 => 39, 40 => 40, 41 => 41, 42 => 42, 43 => 43, 44 => 44, 45 => 45, 46 => 46, 47 => 47, 48 => 48, 49 => 49, 50 => 50, 51 => 51, 52 => 52, 53 => 53, 54 => 54, 55 => 55, 56 => 56, 57 => 57, 58 => 58, 59 => 59, 60 => 60, 61 => 61, 62 => 62, 63 => 63, 64 => 64, 65 => 65, 66 => 66, 67 => 67, 68 => 68, 69 => 69, 70 => 70, 71 => 71, 72 => 72, 73 => 73, 74 => 74, 75 => 75, 76 => 76, 77 => 77, 78 => 78, 79 => 79, 80 => 80, 81 => 81, 82 => 82, 83 => 83, 84 => 84, 85 => 85, 86 => 86, 87 => 87, 88 => 88, 89 => 89, 90 => 90, 91 => 91, 92 => 92, 93 => 93, 94 => 94, 95 => 95, 96 => 96, 97 => 97, 98 => 98, 99 => 99, 100 => 100, 101 => 101, 102 => 102, 103 => 103, 104 => 104, 105 => 105, 106 => 106, 107 => 107, 108 => 108, 109 => 109, 110 => 110, 111 => 111, 112 => 112, 113 => 113, 114 => 114, 115 => 115, 116 => 116, 117 => 117, 118 => 118, 119 => 119, 120 => 120, 121 => 121, 122 => 122, 123 => 123, 124 => 124, 125 => 125, 126 => 126, 127 => 127, 128 => 128, 129 => 129, 130 => 130, 131 => 131, 132 => 132, 133 => 133, 134 => 134, 135 => 135, 136 => 136, 137 => 137, 138 => 138, 139 => 139, 140 => 140, 141 => 141, 142 => 142, 143 => 143, 144 => 144, 145 => 145, 146 => 146, 147 => 147, 148 => 148, 149 => 149, _ => -1 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 149
+   },
+   "expect": {
+    "value": 149
+   }
+  },
+  {
+   "name": "a lambda body is at the level of the lambda",
+   "source": "[1].map(x => (((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((x))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+   "expect": {
+    "value": [
+     1
+    ]
+   }
+  }
+ ]
+}

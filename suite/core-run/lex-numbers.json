@@ -1,0 +1,1120 @@
+{
+ "cases": [
+  {
+   "name": "zero",
+   "source": "0",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "a decimal integer",
+   "source": "42",
+   "expect": {
+    "value": 42
+   }
+  },
+  {
+   "name": "underscores between digits",
+   "source": "1_000_000",
+   "expect": {
+    "value": 1000000
+   }
+  },
+  {
+   "name": "hex with upper-case digits",
+   "source": "0x1F",
+   "expect": {
+    "value": 31
+   }
+  },
+  {
+   "name": "hex with lower-case digits",
+   "source": "0xff",
+   "expect": {
+    "value": 255
+   }
+  },
+  {
+   "name": "hex with mixed-case digits",
+   "source": "0xAbC",
+   "expect": {
+    "value": 2748
+   }
+  },
+  {
+   "name": "hex with an underscore between digits",
+   "source": "0x1_F",
+   "expect": {
+    "value": 31
+   }
+  },
+  {
+   "name": "hex zero",
+   "source": "0x0",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "hex 2^53 - 1 is in range",
+   "source": "0x1FFFFFFFFFFFFF",
+   "expect": {
+    "value": 9007199254740991
+   }
+  },
+  {
+   "name": "a fraction",
+   "source": "1.5",
+   "expect": {
+    "value": 1.5
+   }
+  },
+  {
+   "name": "a fraction below one",
+   "source": "0.5",
+   "expect": {
+    "value": 0.5
+   }
+  },
+  {
+   "name": "zero with a fraction",
+   "source": "0.0",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "a fraction with an exponent",
+   "source": "1.5e3",
+   "expect": {
+    "value": 1500
+   }
+  },
+  {
+   "name": "an exponent without a fraction",
+   "source": "1e3",
+   "expect": {
+    "value": 1000
+   }
+  },
+  {
+   "name": "an upper-case exponent mark",
+   "source": "1E3",
+   "expect": {
+    "value": 1000
+   }
+  },
+  {
+   "name": "an exponent with a plus sign",
+   "source": "1e+3",
+   "expect": {
+    "value": 1000
+   }
+  },
+  {
+   "name": "an exponent with a minus sign",
+   "source": "1e-3",
+   "expect": {
+    "value": 0.001
+   }
+  },
+  {
+   "name": "an upper-case exponent mark with a minus sign",
+   "source": "2.5E-1",
+   "expect": {
+    "value": 0.25
+   }
+  },
+  {
+   "name": "underscores in the integer, fraction and exponent",
+   "source": "1_0.2_5e1_0",
+   "expect": {
+    "value": 102500000000
+   }
+  },
+  {
+   "name": "an underscore inside the exponent digits",
+   "source": "1e0_1",
+   "expect": {
+    "value": 10
+   }
+  },
+  {
+   "name": "zero with an exponent",
+   "source": "0e5",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "an underscore in the fraction",
+   "source": "0.000_1",
+   "expect": {
+    "value": 0.0001
+   }
+  },
+  {
+   "name": "2^53 - 1 is in range",
+   "source": "9007199254740991",
+   "expect": {
+    "value": 9007199254740991
+   }
+  },
+  {
+   "name": "2^53 written with a fraction is in range",
+   "source": "9007199254740992.0",
+   "expect": {
+    "value": 9007199254740992
+   }
+  },
+  {
+   "name": "a fraction literal rounds to the nearest binary64",
+   "source": "9007199254740993.0",
+   "expect": {
+    "value": 9007199254740992
+   }
+  },
+  {
+   "name": "1e20 is valid",
+   "source": "1e20",
+   "expect": {
+    "value": 1e+20
+   }
+  },
+  {
+   "name": "a value too small to represent is zero",
+   "source": "1e-400",
+   "expect": {
+    "value": 0
+   }
+  },
+  {
+   "name": "the largest finite binary64",
+   "source": "1.7976931348623157e308",
+   "expect": {
+    "value": 1.7976931348623157e+308
+   }
+  },
+  {
+   "name": "the smallest subnormal",
+   "source": "5e-324",
+   "expect": {
+    "value": 5e-324
+   }
+  },
+  {
+   "name": "a minus sign is an operator, not part of the token",
+   "source": "-9007199254740991",
+   "expect": {
+    "value": -9007199254740991
+   }
+  },
+  {
+   "name": "a plus after e is not part of a hex token",
+   "source": "0x1e+5",
+   "expect": {
+    "value": 35
+   }
+  },
+  {
+   "name": "a minus after E is not part of a hex token",
+   "source": "0x1E-1",
+   "expect": {
+    "value": 29
+   }
+  },
+  {
+   "name": "a minus after an exponent's digits is an operator",
+   "source": "1e-5-3",
+   "expect": {
+    "value": -2.99999
+   }
+  },
+  {
+   "name": "a minus after a digit is an operator",
+   "source": "3-1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a minus after an exponent is an operator when digits come between",
+   "source": "1e1-1",
+   "expect": {
+    "value": 9
+   }
+  },
+  {
+   "name": "a plus after exponent digits is an operator",
+   "source": "2e+1+1",
+   "expect": {
+    "value": 21
+   }
+  },
+  {
+   "name": "a leading dot",
+   "source": ".5",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a trailing dot at the end of input",
+   "source": "5.",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a trailing dot before a closing parenthesis",
+   "source": "5.)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a trailing dot before white space",
+   "source": "5. + 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a leading zero",
+   "source": "010",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two zeros",
+   "source": "00",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a leading zero then an underscore",
+   "source": "0_1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a leading zero before a fraction",
+   "source": "00.5",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two underscores",
+   "source": "1__0",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a trailing underscore",
+   "source": "1_",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an underscore before a dot",
+   "source": "1_.5",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a trailing underscore in the fraction",
+   "source": "0.5_",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an underscore after e",
+   "source": "1e_5",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "hex prefix with no digits",
+   "source": "0x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "hex prefix with an upper-case X",
+   "source": "0X1F",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "hex with an underscore after the prefix",
+   "source": "0x_1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "hex with two underscores",
+   "source": "0x1__2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "hex with a letter that is not a hex digit",
+   "source": "0xg",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "hex followed directly by a letter",
+   "source": "0xFFz",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a binary prefix",
+   "source": "0b1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an octal prefix",
+   "source": "0o7",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "digits run into a reserved word",
+   "source": "3in [3]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "digits run into letters",
+   "source": "12abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a fraction runs into letters",
+   "source": "1.5abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an exponent mark with no digits",
+   "source": "1e",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an exponent sign with no digits",
+   "source": "1e+",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a fraction and an exponent sign with no digits",
+   "source": "1.5e+",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two exponents",
+   "source": "1e5e5",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an exponent then letters after a sign",
+   "source": "1e+5e",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two fractions",
+   "source": "1.5.3",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an exponent with a fraction",
+   "source": "1.5e-3.2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two dots then a digit",
+   "source": "1..2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dot run in a list",
+   "source": "[1...]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dot and a digit after a name start a number token",
+   "source": "x.0",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bad number on the second line",
+   "source": "1 +\n012",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       2,
+       1,
+       2,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a bad number after an operator",
+   "source": "1 + 0b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-number",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "2^53 is out of range",
+   "source": "9007199254740992",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "2^53 in hex is out of range",
+   "source": "0x20000000000000",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an exponent too large",
+   "source": "1e400",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "1e309 is not finite",
+   "source": "1e309",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "past the largest finite binary64",
+   "source": "1.7976931348623159e308",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       23
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "2^64 is out of range",
+   "source": "18446744073709551616",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a large integer with underscores",
+   "source": "1_000_000_000_000_000_000",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       26
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a large hex integer with underscores",
+   "source": "0x1_0000_0000_0000_0000",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       1,
+       1,
+       24
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "negating 2^53 is still a range error on the token",
+   "source": "-9007199254740992",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "literal-range",
+      "span": [
+       1,
+       2,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dot before a letter ends the number token",
+   "source": "5.a )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dot before e ends the number token",
+   "source": "1.e5 )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a dot before an underscore ends the number token",
+   "source": "1._5 )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

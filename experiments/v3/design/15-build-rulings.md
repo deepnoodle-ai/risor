@@ -89,3 +89,19 @@ implementation with no type checker, nothing said what the run does.
 | R29 | **The shape test.** At a method call that was not resolved when compiling, the run tests, before any argument is evaluated: the method exists for the receiver's kind; it takes that count of arguments; each callback parameter gets a lambda; no other parameter gets one; no lambda has more parameters than it is called with. The first failure is `wrong-kind` at the call. | R15, which had the first two |
 | R30 | `wrong-kind` gains the templates `callback`, `not-callback` and `parameters`. The catalog has 64. | R21 |
 | R31 | A method name written without a call is a field read, never `not-a-value`. `m.keys` reads the key `keys`. | `06` 2.3 |
+
+## 5. Round 4: corners of lexing and parsing
+
+Writing 1,028 syntax cases found places where two hand-written lexers could
+differ. Each is now fixed by a rule and a case.
+
+| # | Ruling |
+| --- | --- |
+| R32 | A U+FEFF at the start of the text is removed and not counted: the next code point is line 1, column 1. |
+| R33 | In `\u{...}` every hex digit is read, and the span of a bad one runs to the last of them. |
+| R34 | A `\` directly before the end of input is part of an unterminated literal. The code is `unterminated-string`, never `bad-escape`. |
+| R35 | When two literals stop at the same place, the innermost is reported. |
+| R36 | The nesting level that `match` opens has closed when the `{` of its arms opens. |
+| R37 | In `!!a in b` and `- -2 ** 2`, the span is the first prefix operator in the text. For `a ?? b not in c` it is both words, `not in`. |
+| R38 | `\$` and `` \` `` are escapes of a template only. In a one-line string each is `bad-escape`. |
+| R39 | The control characters are U+0000 to U+001F and U+007F to U+009F. |

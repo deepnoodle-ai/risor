@@ -1,0 +1,773 @@
+{
+ "cases": [
+  {
+   "name": "a template with no interpolation",
+   "source": "`abc`",
+   "expect": {
+    "value": "abc"
+   }
+  },
+  {
+   "name": "the empty template",
+   "source": "``",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "a template with no interpolation equals a string",
+   "source": "`a` == \"a\"",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "two templates joined",
+   "source": "`a` + `b`",
+   "expect": {
+    "value": "ab"
+   }
+  },
+  {
+   "name": "one interpolation",
+   "source": "`a${1}b`",
+   "expect": {
+    "value": "a1b"
+   }
+  },
+  {
+   "name": "two interpolations next to each other",
+   "source": "`${1}${2}`",
+   "expect": {
+    "value": "12"
+   }
+  },
+  {
+   "name": "an expression in an interpolation",
+   "source": "`${1 + 2}`",
+   "expect": {
+    "value": "3"
+   }
+  },
+  {
+   "name": "a string in an interpolation",
+   "source": "`${'x'}`",
+   "expect": {
+    "value": "x"
+   }
+  },
+  {
+   "name": "a template in an interpolation",
+   "source": "`${`in`}`",
+   "expect": {
+    "value": "in"
+   }
+  },
+  {
+   "name": "a template with an interpolation in an interpolation",
+   "source": "`${`a${1}b`}c`",
+   "expect": {
+    "value": "a1bc"
+   }
+  },
+  {
+   "name": "three nested templates",
+   "source": "`${ `${ `x` }` }`",
+   "expect": {
+    "value": "x"
+   }
+  },
+  {
+   "name": "a map literal in an interpolation",
+   "source": "`${ {a: 1}.a }`",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "a nested map literal in an interpolation",
+   "source": "`${ {a: {b: 2}}.a.b }`",
+   "expect": {
+    "value": "2"
+   }
+  },
+  {
+   "name": "a map literal directly after the interpolation mark",
+   "source": "`${{a: 1}.a}`",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "a closing brace in a string is not counted",
+   "source": "`${\"}\"}`",
+   "expect": {
+    "value": "}"
+   }
+  },
+  {
+   "name": "an opening brace in a string is not counted",
+   "source": "`${'{'}`",
+   "expect": {
+    "value": "{"
+   }
+  },
+  {
+   "name": "an interpolation mark in a string inside an interpolation",
+   "source": "`${\"${\"}`",
+   "expect": {
+    "value": "${"
+   }
+  },
+  {
+   "name": "a block comment in an interpolation",
+   "source": "`${1 /* } */}`",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "a line comment in an interpolation",
+   "source": "`${1 // }\n}`",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "line ends in an interpolation",
+   "source": "`${\n1\n}`",
+   "expect": {
+    "value": "1"
+   }
+  },
+  {
+   "name": "a lambda with a template in an interpolation",
+   "source": "`${[1].map(x => `${x}`)}`",
+   "expect": {
+    "value": "[\"1\"]"
+   }
+  },
+  {
+   "name": "a dollar alone is text",
+   "source": "`$`",
+   "expect": {
+    "value": "$"
+   }
+  },
+  {
+   "name": "a dollar between letters is text",
+   "source": "`a$b`",
+   "expect": {
+    "value": "a$b"
+   }
+  },
+  {
+   "name": "a dollar before an interpolation",
+   "source": "`$${1}`",
+   "expect": {
+    "value": "$1"
+   }
+  },
+  {
+   "name": "escape: backslash dollar stops an interpolation",
+   "source": "`\\${1}`",
+   "expect": {
+    "value": "${1}"
+   }
+  },
+  {
+   "name": "escape: backtick",
+   "source": "`\\``",
+   "expect": {
+    "value": "`"
+   }
+  },
+  {
+   "name": "escape: dollar",
+   "source": "`\\$`",
+   "expect": {
+    "value": "$"
+   }
+  },
+  {
+   "name": "escape: line feed",
+   "source": "`\\n`",
+   "expect": {
+    "value": "\n"
+   }
+  },
+  {
+   "name": "escape: carriage return gives U+000D",
+   "source": "`\\r`",
+   "expect": {
+    "value": "\r"
+   }
+  },
+  {
+   "name": "escape: double quote",
+   "source": "`\\\"`",
+   "expect": {
+    "value": "\""
+   }
+  },
+  {
+   "name": "escape: single quote",
+   "source": "`\\'`",
+   "expect": {
+    "value": "'"
+   }
+  },
+  {
+   "name": "escape: braces above U+FFFF",
+   "source": "`\\u{1F600}`",
+   "expect": {
+    "value": "😀"
+   }
+  },
+  {
+   "name": "escape: a surrogate pair",
+   "source": "`😀`",
+   "expect": {
+    "value": "😀"
+   }
+  },
+  {
+   "name": "raw quotes in a template",
+   "source": "`'\"`",
+   "expect": {
+    "value": "'\""
+   }
+  },
+  {
+   "name": "comment marks in a template are text",
+   "source": "`// /* */`",
+   "expect": {
+    "value": "// /* */"
+   }
+  },
+  {
+   "name": "a raw line feed in a template",
+   "source": "`a\nb`",
+   "expect": {
+    "value": "a\nb"
+   }
+  },
+  {
+   "name": "a raw carriage return and line feed reads as a line feed",
+   "source": "`a\r\nb`",
+   "expect": {
+    "value": "a\nb"
+   }
+  },
+  {
+   "name": "a raw carriage return alone reads as a line feed",
+   "source": "`a\rb`",
+   "expect": {
+    "value": "a\nb"
+   }
+  },
+  {
+   "name": "two raw carriage return and line feed pairs",
+   "source": "`a\r\n\r\nb`",
+   "expect": {
+    "value": "a\n\nb"
+   }
+  },
+  {
+   "name": "a list renders in an interpolation",
+   "source": "`${[1, \"a\"]}`",
+   "expect": {
+    "value": "[1,\"a\"]"
+   }
+  },
+  {
+   "name": "null renders as empty text",
+   "source": "`${null}`",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "a bool renders",
+   "source": "`${true}`",
+   "expect": {
+    "value": "true"
+   }
+  },
+  {
+   "name": "a fraction renders",
+   "source": "`${1.5}`",
+   "expect": {
+    "value": "1.5"
+   }
+  },
+  {
+   "name": "unterminated template at the end of input",
+   "source": "`abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated template across lines",
+   "source": "`a\nbc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       2,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: an escaped backtick then the end of input",
+   "source": "`\\`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated inside an interpolation",
+   "source": "`a${1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated right after the interpolation mark",
+   "source": "`${",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated with a brace open in an interpolation",
+   "source": "`a${ {",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: the innermost open template is named",
+   "source": "`a${`b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: the outer template after a closed inner one",
+   "source": "`a${`b`}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "unterminated: a backtick after a closed template",
+   "source": "`${1}``",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "line continuation: backslash before a line feed",
+   "source": "`a\\\nb`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "line continuation: backslash before a carriage return and line feed",
+   "source": "`a\\\r\nb`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "line continuation: backslash before a carriage return",
+   "source": "`a\\\rb`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "line-continuation",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape in a template: x",
+   "source": "`\\x41`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape in a template: 0",
+   "source": "`\\0`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad escape in a template: braces above U+10FFFF",
+   "source": "`\\u{110000}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "bad-escape",
+      "span": [
+       1,
+       2,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "an empty interpolation",
+   "source": "`${}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       4,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "two expressions in an interpolation",
+   "source": "`${1 2}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       6,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a semicolon in an interpolation",
+   "source": "`${1;}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       5,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a const line in an interpolation",
+   "source": "`${const a = 1; a}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       4,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a closing brace outside a template",
+   "source": "1 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       3,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "positions after a template with a raw line feed",
+   "source": "`a\nb` )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       2,
+       4,
+       2,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "positions after a template with a raw carriage return",
+   "source": "`a\rb` )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unexpected-token",
+      "span": [
+       1,
+       7,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P3: a backslash before the end of input in a template",
+   "source": "`abc\\",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P4: a string open in an interpolation is the innermost literal",
+   "source": "`${\"abc",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       4,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P4: a single-quoted string open in an interpolation",
+   "source": "`a${1 + 'b",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       9,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "P4: a template open in a nested interpolation",
+   "source": "`${`${`x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "unterminated-string",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

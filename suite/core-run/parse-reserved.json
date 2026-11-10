@@ -1,0 +1,2035 @@
+{
+ "cases": [
+  {
+   "name": "true as the pattern of a const line",
+   "source": "const true = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "false as the pattern of a const line",
+   "source": "const false = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "null as the pattern of a const line",
+   "source": "const null = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "const as the pattern of a const line",
+   "source": "const const = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "if as the pattern of a const line",
+   "source": "const if = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "else as the pattern of a const line",
+   "source": "const else = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in as the pattern of a const line",
+   "source": "const in = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "not as the pattern of a const line",
+   "source": "const not = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "try as the pattern of a const line",
+   "source": "const try = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "catch as the pattern of a const line",
+   "source": "const catch = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "match as the pattern of a const line",
+   "source": "const match = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as as the pattern of a const line",
+   "source": "const as = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is as the pattern of a const line",
+   "source": "const is = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nil as the pattern of a const line",
+   "source": "const nil = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "let as the pattern of a const line",
+   "source": "const let = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "var as the pattern of a const line",
+   "source": "const var = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "for as the pattern of a const line",
+   "source": "const for = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "while as the pattern of a const line",
+   "source": "const while = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "do as the pattern of a const line",
+   "source": "const do = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "break as the pattern of a const line",
+   "source": "const break = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "continue as the pattern of a const line",
+   "source": "const continue = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "return as the pattern of a const line",
+   "source": "const return = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "function as the pattern of a const line",
+   "source": "const function = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "throw as the pattern of a const line",
+   "source": "const throw = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "finally as the pattern of a const line",
+   "source": "const finally = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "import as the pattern of a const line",
+   "source": "const import = 1; 2",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       7,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "else alone as a program",
+   "source": "else",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in alone as a program",
+   "source": "in",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "not alone as a program",
+   "source": "not",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "catch alone as a program",
+   "source": "catch",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as alone as a program",
+   "source": "as",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is alone as a program",
+   "source": "is",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nil alone as a program",
+   "source": "nil",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "let alone as a program",
+   "source": "let",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "var alone as a program",
+   "source": "var",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "for alone as a program",
+   "source": "for",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "while alone as a program",
+   "source": "while",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "do alone as a program",
+   "source": "do",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "break alone as a program",
+   "source": "break",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "continue alone as a program",
+   "source": "continue",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "return alone as a program",
+   "source": "return",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "function alone as a program",
+   "source": "function",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "throw alone as a program",
+   "source": "throw",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "finally alone as a program",
+   "source": "finally",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "import alone as a program",
+   "source": "import",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "else as the right operand of +",
+   "source": "1 + else",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "in as the right operand of +",
+   "source": "1 + in",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "not as the right operand of +",
+   "source": "1 + not",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "catch as the right operand of +",
+   "source": "1 + catch",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "as as the right operand of +",
+   "source": "1 + as",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is as the right operand of +",
+   "source": "1 + is",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "nil as the right operand of +",
+   "source": "1 + nil",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "let as the right operand of +",
+   "source": "1 + let",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "var as the right operand of +",
+   "source": "1 + var",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "for as the right operand of +",
+   "source": "1 + for",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "while as the right operand of +",
+   "source": "1 + while",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "do as the right operand of +",
+   "source": "1 + do",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "break as the right operand of +",
+   "source": "1 + break",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "continue as the right operand of +",
+   "source": "1 + continue",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "return as the right operand of +",
+   "source": "1 + return",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "function as the right operand of +",
+   "source": "1 + function",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "throw as the right operand of +",
+   "source": "1 + throw",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "finally as the right operand of +",
+   "source": "1 + finally",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "import as the right operand of +",
+   "source": "1 + import",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "const as the right operand of +",
+   "source": "1 + const",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a parenthesized parameter",
+   "source": "const f = (if) => 1; f(1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       12,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a second parameter",
+   "source": "const f = (a, let) => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       15,
+       1,
+       18
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a parameter in an argument",
+   "source": "[1].map((for) => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       10,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word before => in an argument",
+   "source": "[1].map(while => 1)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       9,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word before => as a const value",
+   "source": "const f = do => 1; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "is before => at the top",
+   "source": "is => 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a shorthand field of a pattern",
+   "source": "const {for} = {}; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       8,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a second shorthand field",
+   "source": "const {a, in} = {}; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as the name of a keyed field",
+   "source": "const {x: if} = {}; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a field with a default",
+   "source": "const {null = 1} = {}; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       8,
+       1,
+       12
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as an element",
+   "source": "const [let] = []; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       8,
+       1,
+       11
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a second element",
+   "source": "const [a, true] = []; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       15
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a list rest",
+   "source": "const [...var] = []; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       14
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a map rest",
+   "source": "const {...do} = {}; 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       13
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as the name of a catch",
+   "source": "try { 1 } catch (if) { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       18,
+       1,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "null as the name of a catch",
+   "source": "try { 1 } catch (null) { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       18,
+       1,
+       22
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a shorthand entry",
+   "source": "{for}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a second shorthand entry",
+   "source": "{a: 1, if}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       8,
+       1,
+       10
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "true as a shorthand entry",
+   "source": "{true}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "let at the start of a statement",
+   "source": "let x = 1;",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "var at the start of a statement",
+   "source": "var x = 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "return then a value",
+   "source": "return x",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "function at the start",
+   "source": "function f() {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "throw then a value",
+   "source": "throw 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "for in a list",
+   "source": "[for (x of xs) x]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "while at the start",
+   "source": "while (x) {}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as the operand of minus",
+   "source": "-nil",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as the operand of !",
+   "source": "!let",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       2,
+       1,
+       5
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a list item",
+   "source": "[1, nil]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a map value",
+   "source": "{a: nil}",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as an argument",
+   "source": "len(nil)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a branch of ? :",
+   "source": "x ? nil : 1",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word in an interpolation",
+   "source": "`${nil}`",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       4,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as an index",
+   "source": "[1][nil]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as the test of an if",
+   "source": "if (nil) { 1 } else { 2 }",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       5,
+       1,
+       8
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as the right operand of ??",
+   "source": "1 ?? nil",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       6,
+       1,
+       9
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word as a const value",
+   "source": "const a = return 1; a",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       11,
+       1,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "const in a list",
+   "source": "[const a = 1]",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       2,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "const in parentheses",
+   "source": "(const a = 1; a)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       2,
+       1,
+       7
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "const in a lambda body",
+   "source": "[1].map(x => const a = 1; a)",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       14,
+       1,
+       19
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word before a syntax error",
+   "source": "nil )",
+   "expect": {
+    "phase": "parse",
+    "diagnostics": [
+     {
+      "code": "reserved-word",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "a reserved word after .",
+   "source": "{if: 1}.if",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "reserved words as bare keys, read back",
+   "source": "{for: 1, import: 2}.import",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "a reserved word after . in a chain",
+   "source": "{a: {nil: 3}}.a.nil",
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "a reserved word after ?.",
+   "source": "{catch: 1}?.catch",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a quoted reserved key read with .",
+   "source": "{\"if\": 1}.if",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "a reserved word as a key in a pattern",
+   "source": "const {if: a} = {if: 5}; a",
+   "expect": {
+    "value": 5
+   }
+  },
+  {
+   "name": "a reserved word as a key in a pattern with a default",
+   "source": "const {nil: a = 2} = {nil: null}; a",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "the key true read by a string index",
+   "source": "{true: 1}[\"true\"]",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "_ after . and as a bare key",
+   "source": "{_: 1}._",
+   "expect": {
+    "value": 1
+   }
+  },
+  {
+   "name": "match begins an operand",
+   "source": "1 + match x { _ => 2 }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 3
+   }
+  },
+  {
+   "name": "of is not reserved",
+   "source": "const of = 1; of + 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "it is not reserved",
+   "source": "const it = 1; it + 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "undefined is not reserved",
+   "source": "const undefined = 1; undefined + 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "case is not reserved",
+   "source": "const case = 1; case + 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "r is not reserved",
+   "source": "const r = 1; r + 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "R is not reserved",
+   "source": "const R = 1; R + 1",
+   "expect": {
+    "value": 2
+   }
+  },
+  {
+   "name": "f is not reserved",
+   "source": "const f = 1; f + 1",
+   "expect": {
+    "value": 2
+   }
+  }
+ ]
+}
