@@ -76,7 +76,7 @@ A record of `fails` has these fields.
 | Field | Holds |
 | --- | --- |
 | `when` | The condition, in words |
-| `kind` | `value`, `range`, `kind`, `field` or `limit` |
+| `kind` | One of the kinds of failure (`05-types.md`): `null`, `kind`, `field`, `index`, `divide`, `value`, `host`, `range` or `limit`. The library's lines use `value`, `range`, `kind`, `field` and `limit` |
 | `code` | The run code (`03-host.md`) |
 | `template` | The name of the code's template in `suite/messages.json`, present when the code has several (`03-host.md`): for `invalid-argument`, one of 3.2; for `number-range`, `entry`; for `wrong-kind` and `missing-field`, the one whose condition the line describes. Absent for a code with one template |
 
@@ -103,8 +103,8 @@ A record of `fails` has these fields.
 
 ### 2.2 How a method call is resolved
 
-For a method call `r.name(a1, …)`, the evaluator does this, in order
-(`02-evaluation.md`):
+For a method call `r.name(a1, …)`, the evaluator does this, in order, at every
+method call of every run (`02-evaluation.md`):
 
 1. It evaluates `r`.
 2. If `r` is null, the call fails with `null-operand` (2.4). Nothing more is
@@ -141,8 +141,14 @@ not have is `no-method`; a count it does not accept, and a lambda with too many
 parameters, are `arity`; a lambda where the method takes a value is
 `not-a-value`; and a value where it takes a function is `arg-mismatch`. Where
 the type of `r` is `any`, or where the program was compiled without the type
-rules, nothing about the method is tested when compiling, and step 3 is made at
-run time.
+rules, nothing about the method is tested when compiling.
+
+The run always selects the method by the kind of `r` and always makes the shape
+tests, whatever was found when compiling. An implementation may resolve a method
+when compiling, as an optimization, only if it guards the choice with a test of
+the receiver's kind, so that it is never observable. So `x.slice(1)`, with `x`
+declared `string` and supplied as the list `[1, 2, 3]`, runs the list method and
+gives `[2, 3]` in every implementation.
 
 ### 2.3 A name that is not an entry
 
@@ -198,7 +204,15 @@ specified and which no case compares.
    is known, and otherwise shape tests 3 to 5 (2.2).
 3. **Tests.** At run time the receiver and the arguments are tested against the
    signature. These tests are made on every call. A checked program whose values
-   keep their declared types never fails one.
+   keep their declared types never fails one. The receiver is tested first, then
+   each argument left to right. For one argument the test of its kind comes
+   before the test for a whole number. The first failure is raised. The
+   templates are `argument` for an argument of a kind its parameter does not
+   take, null included, for a function and for a method alike; `whole` for a
+   number that is not whole at an `int` parameter; and `unordered` for any
+   failure at a parameter bound `ordered` (the arguments of the functions `min`
+   and `max`), null and lists included. So `fixed("a", 2.5)` fails with
+   `argument`, and `max(1, null)` with `unordered`.
 
 | Found | Code |
 | --- | --- |
@@ -214,6 +228,19 @@ specified and which no case compares.
    a list, of the results of a callback, or of keys. Each entry's record says
    which, and section 4 says when.
 5. Every failure of a test is raised before the call's step is charged.
+6. **Span.** Every failure that a library entry raises has the span of the whole
+   call: the `Call` node for a function, and the `MethodCall` node for a method,
+   from the first token of its receiver to the closing parenthesis. This holds
+   whichever argument, element, key or callback result failed, for the tests of
+   this section, the shape tests of 2.2, the element tests and value tests of
+   section 4, the failures of each entry's work, and `fail`. A failure raised
+   inside a callback's body is not the entry's: it keeps its own span (3.3).
+
+| Program | Data | Code | Span |
+| --- | --- | --- | --- |
+| `int("0x10")` | | `invalid-argument` | `[1, 1, 1, 12]` |
+| `xs.filter(x => x).sum()` | `{xs: any}`, xs = `[1, "2"]` | `wrong-kind` | `[1, 1, 1, 24]` |
+| `[1, 0].map(x => 10 / x)` | | `divide-by-zero` | `[1, 17, 1, 23]`: `10 / x`, in the callback |
 
 ### 2.7 Signatures
 
@@ -325,9 +352,11 @@ them. That cannot be observed, because no value can be changed.
 | `"abc"` | `"x"` | None |
 
 5. **The work of a search.** A search for a string `x` in a string `s` does work
-   of at most a constant times `w(s) + w(x)`. This binds `split`, `replaceAll`,
-   and the language's `x in s` (`02-evaluation.md`). The charges of the entries
-   do not change.
+   of at most a constant times `1 + w(s)`. A search for text longer than the
+   text searched is answered from the two lengths, before anything else is done
+   with `x`. This binds `split`, `replaceAll`, `startsWith`, `endsWith`,
+   `removePrefix`, `removeSuffix`, and the language's `x in s`
+   (`02-evaluation.md`). The charges of the entries do not change.
 6. An implementation may use its platform's search function only where that
    bound holds for it. Where it does not, it may still use it when `w(x)` is
    under 64, and otherwise uses a search of its own that meets the bound.
@@ -344,9 +373,13 @@ them. That cannot be observed, because no value can be changed.
 4. Where an entry requires an ordered set, every value of the set is tested
    before any two are compared, in order. The test fails at the first value that
    is neither a number nor a string, or that is not of the kind of the first
-   value. The call then fails with `wrong-kind`. So a list of one null fails, at
-   its first element, and `[1, "a", 2]` fails at its second. An empty set is
-   ordered.
+   value, whichever comes first; the scan stops there. The call then fails with
+   `wrong-kind`, template `unordered`, whose parameter `kind` is the kind of
+   that value. So a list of one null fails at its first element, with `null`;
+   `[1, "a", 2]` fails at its second, with `string`; and `[1, "a", null]` also
+   fails at its second, with `string`. An empty set is ordered. Every failure of
+   kind at a parameter or an element bound `ordered` has the template
+   `unordered`, null and lists included.
 
 | Entry | The set |
 | --- | --- |
@@ -360,7 +393,9 @@ them. That cannot be observed, because no value can be changed.
    their keys (3.6). Elements whose keys are equal keep their order in the
    receiver.
 2. That defines exactly one result. An implementation may use any algorithm that
-   gives it, and must use one that makes at most `n × L` comparisons (4.2).
+   gives it, and must use one that makes at most a constant times `n × L`
+   comparisons (4.2). A platform's stable sort may be used where that holds for
+   it.
 3. The steps of a sort come from its formula and never from the comparisons made
    (4.4).
 
@@ -567,12 +602,12 @@ entry by the first. Each entry's record repeats its order under "Order".
 **An entry with no callback.**
 
 1. **Element tests.** The tests of the elements that the entry's record names:
-   the ordered test of 3.6 for `min`, `max`, `sort` and `unique`; every element
-   a number for `sum`, a list for `flat`, a string for `join`; the tests of
-   `toMap`. They read the kind of each element, and for `toMap` the presence and
-   kind of two keys. The elements are tested by index. A test that passes
-   charges nothing. A test that fails charges by 4.5 and then raises its
-   failure.
+   the ordered test of 3.6 for the list methods `min` and `max`, `sort` and
+   `unique`; every element a number for `sum`, a list for `flat`, a string for
+   `join`; the tests of `toMap`. They read the kind of each element, and for
+   `toMap` the presence and kind of two keys. The elements are tested by index.
+   A test that passes charges nothing. A test that fails charges by 4.5 and then
+   raises its failure.
 2. **Value tests that read no text.** `replaceAll` tests that `old` is not
    empty, `repeat` that `count` is not below zero, and `fixed` its `digits` and
    then the magnitude of `x`. A failure is raised here, before anything is
@@ -609,9 +644,10 @@ walk keeps what the walk charged before it.
 ### 4.5 A failed test is paid for
 
 1. This section covers the element tests of an entry with no callback (4.4 rule
-   1): the ordered test of `min`, `max`, `sort` and `unique`, and the element
-   tests of `sum`, `flat`, `join` and `toMap`. They are a scan made before the
-   entry's charges. A test that passes charges nothing.
+   1): the ordered test of the list methods `min` and `max`, `sort` and
+   `unique`, and the element tests of `sum`, `flat`, `join` and `toMap`. They
+   are a scan made before the entry's charges. A test that passes charges
+   nothing.
 2. When one fails at an element, the entry charges 1 step for each element it
    tested, the failing one included, and then raises the failure.
 3. If that charge passes the step budget, the failure is `steps-exceeded`
@@ -620,6 +656,8 @@ walk keeps what the walk charged before it.
    keys charges nothing more. Each of those values was paid for with the 2 steps
    of its element.
 5. The tests of 2.6 are not element tests: they charge nothing, pass or fail.
+   That includes the ordered test of the arguments of the functions `min` and
+   `max`: `min(1, "1")` fails at 0 steps.
 
 | Program | Data | Steps of the failed run |
 | --- | --- | --- |
@@ -712,6 +750,7 @@ example is a case of `suite/library.json`.
 | `string({b: 1, a: [true]})` |  | `"{\"a\":[true],\"b\":1}"` |
 | `string(["a\"b"])` |  | `"[\"a\\\"b\"]"` |
 | `string("x")` |  | `"x"` |
+| `string(x)` | `{x: any}`, x = `{"$opaque": {type: "Token", id: 1}}` | Fails: `wrong-kind`, template `text`, message `"an opaque value cannot be rendered as text"`; 1 step, 0 units |
 | `string(x)` | `{x: any}`, x = `"abc"` | `"abc"`; 1 step, 0 units |
 | `string(x)` | `{x: any}`, x = `42` | `"42"`; 1 step, 1 unit |
 | `string(x)` | `{x: any}`, x = `[]` | `"[]"`; 1 step, 1 unit |
@@ -1002,7 +1041,8 @@ example is a case of `suite/library.json`.
 | `min("é", "z")` |  | `"z"` |
 | `min(-1, -1.5)` |  | `-1.5` |
 | `min(a, b, c)` | `{a: int, b: int, c: int}`, a = `3`, b = `1`, c = `2` | `1`; 3 steps, 0 units |
-| `min(a, b)` | `{a: any, b: any}`, a = `1`, b = `"1"` | Fails: `wrong-kind`; 0 steps, 0 units |
+| `min(a, b)` | `{a: any, b: any}`, a = `1`, b = `"1"` | Fails: `wrong-kind`, template `unordered`, message `"min needs all numbers or all strings, found string"`; 0 steps, 0 units |
+| `min(a, b)` | `{a: any, b: any}`, a = `[1]`, b = `2` | Fails: `wrong-kind`, template `unordered`, message `"min needs all numbers or all strings, found list"`; 0 steps, 0 units |
 
 #### 5.2.6 `max`
 
@@ -1024,7 +1064,7 @@ example is a case of `suite/library.json`.
 | `max("a", "a😀", "b")` |  | `"b"` |
 | `max("", " ")` |  | `" "` |
 | `max(0.1, 0.2)` |  | `0.2` |
-| `max(a, b)` | `{a: any, b: any}`, a = `1`, b = `null` | Fails: `wrong-kind` |
+| `max(a, b)` | `{a: any, b: any}`, a = `1`, b = `null` | Fails: `wrong-kind`, template `unordered`, message `"max needs all numbers or all strings, found null"`; 0 steps, 0 units |
 
 #### 5.2.7 `range`
 
@@ -1096,6 +1136,8 @@ example is a case of `suite/library.json`.
 | `fixed(1e21, 0)` |  | Fails: `invalid-argument`, form `too-large` |
 | `fixed(1, 21)` |  | Fails: `invalid-argument`, form `bad-digits` |
 | `fixed(1e21, 21)` |  | Fails: `invalid-argument`, form `bad-digits` |
+| `fixed(x, y)` | `{x: any, y: any}`, x = `"a"`, y = `2.5` | Fails: `wrong-kind`, template `argument`, message `"fixed cannot take a value of kind string"`; 0 steps, 0 units |
+| `fixed(1, y)` | `{y: any}`, y = `2.5` | Fails: `wrong-kind`, template `whole`, message `"expected a whole number, found 2.5"`; 0 steps, 0 units |
 
 ### 5.3 Strings: 13 methods
 
@@ -1690,6 +1732,7 @@ them.
 | `[9007199254740991, 1, -1].sum()` |  | Fails: `number-range` |
 | `[1e308, 1e308].sum()` |  | Fails: `number-range` |
 | `xs.sum()` | `{xs: any}`, xs = `[1, "2"]` | Fails: `wrong-kind`; 3 steps, 0 units |
+| `xs.filter(x => x).sum()` | `{xs: any}`, xs = `[1, "2"]` | Fails: `wrong-kind` |
 
 #### 5.4.10 `min`
 
@@ -1767,6 +1810,7 @@ them.
 | `["😀", "\u{ffff}"].sort()` |  | `["\u{ffff}", "😀"]` |
 | `xs.sort()` | `{xs: int[]}`, xs = `[]` | `[]` |
 | `xs.sort()` | `{xs: any}`, xs = `[1, "a", 2]` | Fails: `wrong-kind`; 3 steps, 0 units |
+| `xs.sort()` | `{xs: any}`, xs = `[1, "a", null]` | Fails: `wrong-kind`, template `unordered`, message `"sort needs all numbers or all strings, found string"`; 3 steps, 0 units |
 
 #### 5.4.13 `sortBy`
 

@@ -187,6 +187,33 @@
         }
       },
       {
+        "name": "string of an opaque value fails at once",
+        "source": "string(x)",
+        "opaque": [
+          "Token"
+        ],
+        "env": "{x: any}",
+        "vars": {
+          "x": {
+            "$opaque": {
+              "type": "Token",
+              "id": 1
+            }
+          }
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "an opaque value cannot be rendered as text"
+            }
+          ],
+          "steps": 1,
+          "allocated": 0
+        }
+      },
+      {
         "name": "string of a string charges nothing of its own",
         "source": "string(x)",
         "env": "{x: any}",
@@ -352,7 +379,13 @@
           "phase": "run",
           "diagnostics": [
             {
-              "code": "invalid-argument"
+              "code": "invalid-argument",
+              "span": [
+                1,
+                1,
+                1,
+                12
+              ]
             }
           ]
         }
@@ -1128,7 +1161,36 @@
           "phase": "run",
           "diagnostics": [
             {
-              "code": "wrong-kind"
+              "code": "wrong-kind",
+              "span": [
+                1,
+                1,
+                1,
+                10
+              ],
+              "message": "min needs all numbers or all strings, found string"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "min of a list argument on any data",
+        "source": "min(a, b)",
+        "env": "{a: any, b: any}",
+        "vars": {
+          "a": [
+            1
+          ],
+          "b": 2
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "min needs all numbers or all strings, found list"
             }
           ],
           "steps": 0,
@@ -1201,9 +1263,12 @@
           "phase": "run",
           "diagnostics": [
             {
-              "code": "wrong-kind"
+              "code": "wrong-kind",
+              "message": "max needs all numbers or all strings, found null"
             }
-          ]
+          ],
+          "steps": 0,
+          "allocated": 0
         }
       }
     ]
@@ -1456,6 +1521,45 @@
               "code": "invalid-argument"
             }
           ]
+        }
+      },
+      {
+        "name": "fixed tests the kind of an argument before a whole number on any data",
+        "source": "fixed(x, y)",
+        "env": "{x: any, y: any}",
+        "vars": {
+          "x": "a",
+          "y": 2.5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "fixed cannot take a value of kind string"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "fixed with a fractional digits on any data",
+        "source": "fixed(1, y)",
+        "env": "{y: any}",
+        "vars": {
+          "y": 2.5
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "expected a whole number, found 2.5"
+            }
+          ],
+          "steps": 0,
+          "allocated": 0
         }
       }
     ]
@@ -2079,7 +2183,13 @@
           "phase": "run",
           "diagnostics": [
             {
-              "code": "invalid-argument"
+              "code": "invalid-argument",
+              "span": [
+                1,
+                1,
+                1,
+                26
+              ]
             }
           ]
         }
@@ -2579,7 +2689,13 @@
           "phase": "run",
           "diagnostics": [
             {
-              "code": "divide-by-zero"
+              "code": "divide-by-zero",
+              "span": [
+                1,
+                17,
+                1,
+                23
+              ]
             }
           ]
         }
@@ -2597,7 +2713,13 @@
           "phase": "run",
           "diagnostics": [
             {
-              "code": "wrong-kind"
+              "code": "wrong-kind",
+              "span": [
+                1,
+                1,
+                1,
+                9
+              ]
             }
           ],
           "steps": 0,
@@ -2734,7 +2856,13 @@
           "phase": "run",
           "diagnostics": [
             {
-              "code": "wrong-kind"
+              "code": "wrong-kind",
+              "span": [
+                1,
+                1,
+                1,
+                19
+              ]
             }
           ],
           "steps": 4,
@@ -3184,6 +3312,31 @@
           "steps": 3,
           "allocated": 0
         }
+      },
+      {
+        "name": "sum after filter has the span of the whole chain",
+        "source": "xs.filter(x => x).sum()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            "2"
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "span": [
+                1,
+                1,
+                1,
+                24
+              ]
+            }
+          ]
+        }
       }
     ]
   },
@@ -3471,6 +3624,29 @@
           "diagnostics": [
             {
               "code": "wrong-kind"
+            }
+          ],
+          "steps": 3,
+          "allocated": 0
+        }
+      },
+      {
+        "name": "sort stops at the first value that fails",
+        "source": "xs.sort()",
+        "env": "{xs: any}",
+        "vars": {
+          "xs": [
+            1,
+            "a",
+            null
+          ]
+        },
+        "expect": {
+          "phase": "run",
+          "diagnostics": [
+            {
+              "code": "wrong-kind",
+              "message": "sort needs all numbers or all strings, found string"
             }
           ],
           "steps": 3,
