@@ -602,6 +602,10 @@ func (r *promptReader) readLine(prompt string) (string, error) {
 		tui.WithPromptStyle(r.style),
 		tui.WithPromptFrame(false), // a plain REPL prompt
 	)
+	// The editor ends the line with "\n" while the terminal is still in
+	// raw mode, where "\n" moves down but does not return to column 0.
+	// Return the cursor, so the value starts at the left edge.
+	fmt.Fprint(r.out, "\r")
 	switch {
 	case errors.Is(err, tui.ErrEOF):
 		return "", io.EOF
