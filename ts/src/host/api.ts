@@ -319,11 +319,83 @@ function noImplementation(): never {
 
 export type CompileResult = { ok: true; program: Program } | { ok: false; diagnostics: Diagnostic[]; source: Source };
 
+/** The expected result (03 3.2.3): type text, "condition", or a type by JSON Schema (package F10, f10 2.1). */
+export type Expectation = string | { schema: unknown; options?: SchemaOption[] };
+
 export interface CompileOptions {
   /** Apply the type rules (05-types.md). Default true. The static rules always apply. */
   check?: boolean;
-  /** The expected result (03 3.2.3): type text, or "condition". */
-  expected?: string;
+  /** The expected result (03 3.2.3; f10 2.1). */
+  expected?: Expectation;
+}
+
+/** What a load takes besides the text (package F10, f10 5.1). */
+export interface LoadOptions {
+  /** The variables of the run (03 3.4.1). */
+  vars?: Vars;
+  signal?: AbortSignal;
+  /** The most failures step 4 reports (f10 5.2 item 1). Default 1; below 1 is read as 1. */
+  max?: number;
+  /** Make step 5, the decode into plain data (f10 6.6). Default true. */
+  decode?: boolean;
+}
+
+/** The outcome of a load (f10 5.2 item 4). */
+export type LoadOutcome<T = unknown> =
+  | { ok: true; value: T; usage: Usage }
+  | { ok: false; step: 0 | 1 | 2 | 3 | 4 | 5; diagnostics: Diagnostic[]; usage?: Usage; source?: Source };
+
+/** A load that failed (f10 5.2): the step, the diagnostics and the usage. */
+export class LoadError extends RisorError {
+  readonly step: number;
+  constructor(step: number, diagnostics: Diagnostic[], usage?: Usage) {
+    super(diagnostics, usage);
+    this.step = step;
+  }
+}
+
+/**
+ * The decode into plain data (package F10, f10 6.1 and 6.6): a copy in which a
+ * map is an object whose own properties are exactly its keys, and a list an
+ * Array. An opaque value is not-conforming at its path; a host number that
+ * cannot enter the language is number-range; nesting deeper than 200 is
+ * depth-exceeded with no path. Not a run: nothing is charged.
+ */
+export function decode(value: unknown, cls: Classifier = DEFAULT_CLASSIFIER): { ok: true; value: unknown } | { ok: false; diagnostic: Diagnostic } {
+  class Stop {
+    readonly d: Diagnostic;
+    constructor(d: Diagnostic) {
+      this.d = d;
+    }
+  }
+  const walk = (v: unknown, path: (string | number)[]): unknown => {
+    v = readHost(v);
+    if (v === BAD_NUMBER) throw new Stop({ phase: "run", code: "number-range", path, message: "the host number cannot enter the language" });
+    switch (cls.kind(v)) {
+      case "null": return null;
+      case "bool": return v;
+      case "number": return Number(v) + 0;
+      case "string": return v;
+      case "list": {
+        if (path.length >= 200) throw new Stop({ phase: "run", code: "depth-exceeded", message: messageOf(new RunFailure("depth-exceeded", undefined, "default", { limit: 200 }), cls) });
+        return (v as unknown[]).map((x, i) => walk(x, [...path, i]));
+      }
+      case "map": {
+        if (path.length >= 200) throw new Stop({ phase: "run", code: "depth-exceeded", message: messageOf(new RunFailure("depth-exceeded", undefined, "default", { limit: 200 }), cls) });
+        const out: Record<string, unknown> = {};
+        for (const k of mapKeys(v as object)) Object.defineProperty(out, k, { value: walk(mapGet(v as object, k), [...path, k]), enumerable: true, writable: true, configurable: true });
+        return out;
+      }
+      default:
+        throw new Stop({ phase: "run", code: "not-conforming", class: "value", path, message: "an opaque value is not data, and is not decoded" });
+    }
+  };
+  try {
+    return { ok: true, value: walk(value, []) };
+  } catch (e) {
+    if (e instanceof Stop) return { ok: false, diagnostic: e.d };
+    throw e;
+  }
 }
 
 /** The result of a check (03 3.2.1): the type and sites, or the diagnostics. */
@@ -416,13 +488,28 @@ export class Env {
 
   private readonly checkEnv: CheckEnv;
 
-  /** The expected result as the checker takes it. Throws RisorError `bad-type` for bad text. */
-  private expected(text: string | undefined): Expected {
+  /** The expected result as the checker takes it. Throws RisorError `bad-type` for bad text or a bad schema. */
+  private expected(text: Expectation | undefined): Expected {
     if (text === undefined) return { kind: "none" };
     if (text === "condition") return { kind: "condition" };
     const fail = (m: string): never => {
       throw new RisorError([{ phase: "declare", code: "bad-type", message: `the expected result: ${m}` }]);
     };
+    if (typeof text !== "string") {
+      // f10 2.1: only `closed` is accepted; the schema's errors and the limits of F1 3.10 are bad-type.
+      const opts = text.options ?? [];
+      for (const o of opts) if (o !== "closed") fail(`the option ${o} states what a host did to a value it supplied, and nobody supplies a result`);
+      let t: Type;
+      try {
+        t = typeOfSchema(text.schema, opts);
+      } catch (e) {
+        if (e instanceof SchemaError) return fail(e.message);
+        throw e;
+      }
+      if (depth(t, 70) > 64) fail("a type deeper than 64");
+      if (typeSize(t) > SIZE_LIMIT) fail("a type larger than 100,000");
+      return { kind: "type", type: t };
+    }
     const t = parseTypeText(text);
     if (!t.ok) fail(t.message);
     try {
@@ -430,6 +517,13 @@ export class Env {
     } catch (e) {
       return fail((e as Error).message);
     }
+  }
+
+  /** The type of an expected result that is a type (f10 5.2 step 0). Throws RisorError `bad-type`. */
+  expectedType(e: Expectation): Type {
+    const x = this.expected(e);
+    if (x.kind !== "type") throw new RisorError([{ phase: "declare", code: "bad-type", message: "the expected result is not a type" }]);
+    return x.type;
   }
 
   /** Read type text against this environment's opaque types. Throws on bad text. */
@@ -488,6 +582,56 @@ export class Env {
     });
   }
 
+  /**
+   * A load (package F10, f10 5.2): declare T, parse, check and compile with T
+   * as the expected result, run, test the value against T by the conformance
+   * function that reports every failure, and decode it into plain data. A
+   * schema is mapped with `closed` and no other option (f10 5.6). Never throws
+   * for a failure of a step: the outcome gives the step and its diagnostics.
+   */
+  tryLoad<T = unknown>(text: string, expected: string | { schema: unknown }, options: LoadOptions = {}): LoadOutcome<T> {
+    // Step 0: declare.
+    let exp: Expected;
+    try {
+      if (expected === "condition") throw new RisorError([{ phase: "declare", code: "bad-type", message: "the expected result of a load is a type" }]);
+      exp = this.expected(typeof expected === "string" ? expected : { schema: expected.schema, options: ["closed"] });
+    } catch (e) {
+      if (e instanceof RisorError) return { ok: false, step: 0, diagnostics: [...e.diagnostics] };
+      throw e;
+    }
+    const type = (exp as { type: Type }).type;
+    // Steps 1 and 2: parse, then check and compile. A load never compiles without the check.
+    let compiled: CompileResult;
+    try {
+      compiled = this.tryCompile(text, { expected: typeof expected === "string" ? expected : { schema: expected.schema, options: ["closed"] } });
+    } catch (e) {
+      if (e instanceof RisorError) return { ok: false, step: 0, diagnostics: [...e.diagnostics] };
+      throw e;
+    }
+    if (!compiled.ok) return { ok: false, step: compiled.diagnostics[0].phase === "parse" ? 1 : 2, diagnostics: compiled.diagnostics, source: compiled.source };
+    // Step 3: run.
+    const o = compiled.program.execute(options.vars, { signal: options.signal });
+    if (!o.ok) return { ok: false, step: 3, diagnostics: [o.diagnostic], usage: o.usage, source: compiled.program.source };
+    // Step 4: conform, every failure up to the maximum.
+    const fs = conformAllWalk(o.value, type, this.classifier, Math.max(1, Math.floor(options.max ?? 1)));
+    if (fs.length > 0) {
+      const diagnostics = fs.map((f): Diagnostic => ({ phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), this.classifier) }));
+      return { ok: false, step: 4, diagnostics, usage: o.usage };
+    }
+    // Step 5: the decode into plain data.
+    if (options.decode === false) return { ok: true, value: o.value as T, usage: o.usage };
+    const d = decode(o.value, this.classifier);
+    if (!d.ok) return { ok: false, step: 5, diagnostics: [d.diagnostic], usage: o.usage };
+    return { ok: true, value: d.value as T, usage: o.usage };
+  }
+
+  /** A load (f10 5.2) that gives the value, or throws LoadError with the step that failed. */
+  load<T = unknown>(text: string, expected: string | { schema: unknown }, options: LoadOptions = {}): T {
+    const r = this.tryLoad<T>(text, expected, options);
+    if (!r.ok) throw new LoadError(r.step, r.diagnostics, r.usage);
+    return r.value;
+  }
+
   /** Type text resolved as declared type text (05 19.5, f04 7.1 item 4). Throws RisorError `bad-type`. */
   declaredType(text: string): Type {
     const fail = (m: string): never => {
@@ -507,7 +651,7 @@ export class Env {
   }
 
   /** Check a program (03 3.2.1): parse, the static rules, the type rules. */
-  check(text: string | ParsedProgram, expected?: string): CheckOutcome {
+  check(text: string | ParsedProgram, expected?: Expectation): CheckOutcome {
     const exp = this.expected(expected);
     const p = parseInput(text);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
@@ -582,6 +726,8 @@ export class Env {
       throw new RisorError([{ phase: "declare", code: "no-implementation", message: "the environment declares a function with no implementation" }]);
     }
     const checked = options.check !== false;
+    // f10 2.1 item 6: a compile without a check still maps a schema and reports its errors.
+    if (!checked && options.expected !== undefined && typeof options.expected !== "string") this.expected(options.expected);
     const exp = checked ? this.expected(options.expected) : { kind: "none" as const };
     const p = parseInput(text);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };

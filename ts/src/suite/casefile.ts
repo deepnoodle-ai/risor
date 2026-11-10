@@ -25,7 +25,8 @@ export interface Stub {
 export interface ExpectDiagnostic {
   code: string;
   class?: string;
-  span?: LineSpan;
+  /** Null in a load case: the diagnostic has no span (f10 10.2 item 5). */
+  span?: LineSpan | null;
   path?: (string | number)[];
   message?: string;
   data?: { value: Json };
@@ -37,6 +38,15 @@ export interface TraceEntry {
   span: LineSpan;
   name: string;
   index: number | null;
+}
+
+/** An entry of `verdicts` (f09 3.4). */
+export interface RunnerVerdict {
+  name: string;
+  status: string;
+  differs?: string[];
+  fixture?: (string | number)[];
+  message?: string;
 }
 
 /** Package F8: the three renderings (f08 7.3, 7.4). */
@@ -74,6 +84,14 @@ export type Expect =
     }
   | ({ kind: "render" } & Renderings)
   | {
+      /** Package F9: the verdicts a runner gives the inner file (f09 3.3). */
+      kind: "runner";
+      invalid?: true;
+      verdicts?: RunnerVerdict[];
+      report?: string;
+      text?: string;
+    }
+  | {
       kind: "failure";
       phase: "declare" | "parse" | "check" | "run";
       diagnostics: ExpectDiagnostic[];
@@ -93,6 +111,10 @@ export interface Case {
   functions?: Record<string, Stub>;
   reject?: string[];
   returns?: string;
+  /** Package F10: the expected result by schema (f10 10.1). */
+  returnsSchema?: { schema: Json; options?: string[] };
+  /** Package F10: the case is run as a load, steps 0 to 4 (f10 10.2). */
+  load?: boolean;
   vars?: JsonObject;
   limits?: { steps?: number; allocation?: number; depth?: number };
   precondition?: boolean;
@@ -106,6 +128,14 @@ export interface Case {
   conform?: { type: string; value: Json; max?: number };
   /** Package F8: a case of the third kind (f08 7.4). */
   render?: { diagnostics: JsonObject[]; source?: string };
+  /** Package F9: a runner case, its inner file as data or text (f09 3.1). */
+  runner?: Json;
+  update?: boolean;
+  program?: boolean;
+  /** The case's `expect` as written, for the report and for update mode (f09 4, 6). */
+  rawExpect?: Json;
+  /** The directory of the file that holds the case (f09 3.2 item 1). */
+  dir?: string;
   /** 03 3.10.3: false compiles the case with the static rules alone. */
   check?: boolean;
   /** Package F2: the text is a template, in this mode (f02 4.1). */
@@ -130,17 +160,24 @@ const STATIC_CODE_SET = new Set([
 /** f04 6.1 item 4: in suite/conversion/, two more codes are static at a program type. */
 export const CONVERSION_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "untagged-union", "check-limit"]);
 
+/** The static codes of suite/config/ (f10 10.3 item 3): Core's and `untagged-union`. */
+export const CONFIG_STATIC: ReadonlySet<string> = new Set([...STATIC_CODE_SET, "untagged-union"]);
+
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
-const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render"]);
+const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render", "runner", "update", "program"]);
 
 /** Read and validate a case file on disk. */
 export interface ReadOptions {
   /** Accept cases with no `expect` (the outcome command, suite/README.md item 1). */
   noExpect?: boolean;
+  /** f09 7.1: the host's reader for `file`; by default a path relative to the file's directory. */
+  read?: (ref: string) => string;
+  /** 03 3.10.9 item 3: whether the base environment declares a host function, or a method `T.m`. */
+  declares?: (name: string) => boolean;
 }
 
 export function loadCaseFile(path: string, opts: ReadOptions = {}): CaseFile {
@@ -220,6 +257,17 @@ function checkShared(o: JsonObject, where: string): void {
   str("source");
   str("env");
   str("returns");
+  if ("returnsSchema" in o) {
+    // f10 10.1: an object with `schema` and the optional `options`.
+    const r = o.returnsSchema;
+    if (!isObject(r) || !("schema" in r) || !Object.keys(r).every((k) => k === "schema" || k === "options")) fail(`${where}: returnsSchema is not an object with schema and options`);
+    if ("options" in r) {
+      const op = r.options;
+      const names = ["closed", "absent-is-null", "defaults-applied"];
+      if (!Array.isArray(op) || !op.every((x) => typeof x === "string" && names.includes(x)) || new Set(op).size !== op.length) fail(`${where}: the options of returnsSchema`);
+    }
+  }
+  if ("load" in o && typeof o.load !== "boolean") fail(`${where}: load is not true or false`);
   if ("file" in o && (typeof o.file !== "string" || o.file.length === 0)) fail(`${where}: file is not a non-empty string`);
   if ("version" in o && (typeof o.version !== "string" || !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(o.version))) {
     fail(`${where}: version is not of the form major.minor`);
@@ -347,10 +395,37 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   checkShared(raw, where);
   if ("skip" in raw && typeof raw.skip !== "string") fail(`${where}: skip is not a string`);
   if (!("expect" in raw) && !opts.noExpect) fail(`${where} has no expect`);
+  // f09 9.2 items 1 to 6: a runner case.
+  for (const k of ["update", "program"]) {
+    if (k in raw && typeof raw[k] !== "boolean") fail(`${where}: ${k} is not true or false`);
+    if (k in raw && !("runner" in raw)) fail(`${where}: ${k} in a case with no runner`);
+    if (raw[k] === true && typeof raw.runner !== "string") fail(`${where}: ${k} true beside a runner that is not a string`);
+  }
+  if ("runner" in raw) {
+    const r = raw.runner;
+    if (typeof r !== "string" && !Array.isArray(r) && !isObject(r)) fail(`${where}: runner is not a string, an object or an array`);
+    const merged: JsonObject = Object.create(null);
+    for (const [k, v] of Object.entries(header)) if (!["cases", "source", "file", "conform"].includes(k)) merged[k] = v;
+    for (const [k, v] of Object.entries(raw)) merged[k] = v;
+    for (const k of Object.keys(merged)) {
+      if (!["name", "runner", "update", "program", "skip", "expect"].includes(k)) fail(`${where}: a runner case has the field ${k}`);
+    }
+    const c: Case = { name, source: "", expect: "expect" in raw ? runnerExpect(raw.expect, raw.update === true, where) : { kind: "runner" }, runner: r, dir };
+    if (raw.update === true) c.update = true;
+    if (raw.program === true) c.program = true;
+    if ("skip" in raw) c.skip = raw.skip as string;
+    if ("expect" in raw) c.rawExpect = raw.expect;
+    return c;
+  }
 
   // The header rule (3.10.2): a field of the case replaces the header's.
   const merged: JsonObject = Object.create(null);
   for (const [k, v] of Object.entries(header)) if (k !== "cases") merged[k] = v;
+  // f10 10.1 item 1: returns and returnsSchema count as one field for the header rule.
+  if ("returns" in raw || "returnsSchema" in raw) {
+    delete merged.returns;
+    delete merged.returnsSchema;
+  }
   if ("source" in raw || "file" in raw || "conform" in raw || "render" in raw) {
     delete merged.source;
     delete merged.file;
@@ -377,7 +452,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     }
   } else if (hasFile) {
     try {
-      source = readFileSync(join(dir, ...(merged.file as string).split("/")), "utf8");
+      source = opts.read !== undefined ? opts.read(merged.file as string) : readFileSync(join(dir, ...(merged.file as string).split("/")), "utf8");
     } catch {
       fail(`${where}: the file ${merged.file as string} cannot be read`);
     }
@@ -393,7 +468,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     c.methods = {};
     for (const [k, v] of Object.entries(merged.methods as JsonObject)) {
       const stub = toStub(v);
-      if (stub.type === undefined) fail(`${where}: the method stub ${k} has no type and the base environment does not declare it`);
+      if (stub.type === undefined && opts.declares?.(k) !== true) fail(`${where}: the method stub ${k} has no type and the base environment does not declare it`);
       c.methods[k] = stub;
     }
   }
@@ -402,12 +477,22 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     for (const [k, v] of Object.entries(merged.functions as JsonObject)) {
       const stub = toStub(v);
       // 3.10.10 item 11: the base environment declares no host function.
-      if (stub.type === undefined) fail(`${where}: the stub ${k} has no type and the base environment does not declare it`);
+      if (stub.type === undefined && opts.declares?.(k) !== true) fail(`${where}: the stub ${k} has no type and the base environment does not declare it`);
       c.functions[k] = stub;
     }
   }
   if ("reject" in merged) c.reject = merged.reject as string[];
   if ("returns" in merged) c.returns = merged.returns as string;
+  if ("returnsSchema" in merged) c.returnsSchema = merged.returnsSchema as Case["returnsSchema"];
+  if (c.returns !== undefined && c.returnsSchema !== undefined) fail(`${where}: both returns and returnsSchema`);
+  if (merged.load === true) {
+    // f10 10.2 items 1 and 2.
+    c.load = true;
+    if (c.returnsSchema === undefined && (c.returns === undefined || c.returns === "condition")) fail(`${where}: load with no expected type`);
+    if (merged.check === false) fail(`${where}: load with "check": false`);
+  }
+  // f10 10.2 item 5: "span": null only in a load case.
+  if (c.load !== true && c.expect.kind === "failure" && c.expect.diagnostics.some((d) => d.span === null)) fail(`${where}: "span": null in a case that is not a load`);
   if ("vars" in merged) c.vars = merged.vars as JsonObject;
   if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("precondition" in merged) c.precondition = merged.precondition as boolean;
@@ -428,7 +513,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   }
   // f02 4.2 item 3, 4.5 item 3: an analysis case has none of these fields.
   if (c.expect.kind === "result" && c.expect.analysis !== undefined) {
-    for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version"]) {
+    for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "vars", "limits", "check", "precondition", "version"]) {
       if (k in merged) fail(`${where}: an analysis case has the field ${k}`);
     }
   }
@@ -438,13 +523,15 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     const ex = c.expect;
     if (c.check === false) {
       if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) fail(`${where}: "check": false with type or sites`);
-      const staticCodes = basename(dir) === "conversion" || basename(dir) === "unions" ? CONVERSION_STATIC : STATIC_CODE_SET;
+      const staticCodes = basename(dir) === "conversion" || basename(dir) === "unions" ? CONVERSION_STATIC : basename(dir) === "config" ? CONFIG_STATIC : STATIC_CODE_SET;
       if (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code))) {
         fail(`${where}: "check": false and a check code that is not static`);
       }
     }
   }
   if ("skip" in raw) c.skip = raw.skip as string;
+  if ("expect" in raw) c.rawExpect = raw.expect;
+  c.dir = dir;
 
   // 3.10.3 items 7 and 9: opaque values.
   const declared = new Set(c.opaque ?? []);
@@ -554,6 +641,47 @@ function checkAnalysis(v: Json, where: string): void {
         fail(`${w} has the field ${k}`);
     }
   }
+}
+
+/** The `expect` of a runner case (f09 3.3, 9.2 items 5 and 6). */
+function runnerExpect(v: Json, update: boolean, where: string): Expect {
+  if (!isObject(v)) fail(`${where}: expect is not an object`);
+  if ("invalid" in v) {
+    if (v.invalid !== true || Object.keys(v).length !== 1) fail(`${where}: invalid is not true alone`);
+    return { kind: "runner", invalid: true };
+  }
+  if (!("verdicts" in v)) fail(`${where}: a runner case expects neither invalid nor verdicts`);
+  for (const k of Object.keys(v)) if (!["verdicts", "report", "text"].includes(k)) fail(`${where}: a runner expect has the field ${k}`);
+  if (!Array.isArray(v.verdicts)) fail(`${where}: verdicts is not a list`);
+  const statuses = ["pass", "fail", "skip", "invalid", ...(update ? ["updated"] : [])];
+  const verdicts = v.verdicts.map((e): RunnerVerdict => {
+    if (!isObject(e) || typeof e.name !== "string" || typeof e.status !== "string" || !statuses.includes(e.status)) fail(`${where}: an entry of verdicts`);
+    for (const k of Object.keys(e)) if (!["name", "status", "differs", "fixture", "message"].includes(k)) fail(`${where}: an entry of verdicts has the field ${k}`);
+    const out: RunnerVerdict = { name: e.name, status: e.status };
+    if ("differs" in e) {
+      if (e.status !== "fail" || !Array.isArray(e.differs) || !e.differs.every((x) => typeof x === "string")) fail(`${where}: differs`);
+      out.differs = e.differs as string[];
+    }
+    if ("fixture" in e) {
+      if (e.status !== "invalid" || !Array.isArray(e.fixture) || e.fixture.length > 64 || !e.fixture.every((x) => typeof x === "string" || isInt(x, 0))) fail(`${where}: fixture`);
+      out.fixture = e.fixture as (string | number)[];
+    }
+    if ("message" in e) {
+      if (e.status !== "invalid" || typeof e.message !== "string") fail(`${where}: message`);
+      out.message = e.message;
+    }
+    return out;
+  });
+  const out: Expect = { kind: "runner", verdicts };
+  if ("report" in v) {
+    if (typeof v.report !== "string") fail(`${where}: report is not a string`);
+    out.report = v.report;
+  }
+  if ("text" in v) {
+    if (typeof v.text !== "string" || !update) fail(`${where}: text`);
+    out.text = v.text;
+  }
+  return out;
 }
 
 /** A trace of f08 7.2. */
@@ -742,7 +870,7 @@ function buildDiag(v: Json, where: string): ExpectDiagnostic {
         d.class = val;
         break;
       case "span":
-        d.span = checkSpan(val, where);
+        d.span = val === null ? null : checkSpan(val, where);
         break;
       case "path":
         if (!Array.isArray(val) || val.length > 64 || !val.every((s) => typeof s === "string" || isInt(s, 0))) {

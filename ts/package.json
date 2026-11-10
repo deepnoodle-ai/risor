@@ -5,6 +5,10 @@
   "description": "Risor v3, the TypeScript implementation",
   "license": "Apache-2.0",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
   "engines": {
     "node": ">=22.18"
   },

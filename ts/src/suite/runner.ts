@@ -8,23 +8,31 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { createEnv, HostError, RisorError, toJSON } from "../host/api.ts";
-import type { Env, HostFunction, OpaqueType } from "../host/api.ts";
+import { createEnv, HostError, printSignature, RisorError, toJSON } from "../host/api.ts";
+import type { Env, Expectation, HostFunction, OpaqueType } from "../host/api.ts";
 import type { NamedTypeDecl } from "../host/env.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
 import type { Source } from "../syntax/source.ts";
 import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
-import { typeEqual } from "../types/type.ts";
+import { ANY, fromNode, typeEqual } from "../types/type.ts";
+import type { Type } from "../types/type.ts";
+import type { SigNode } from "../types/typetext.ts";
+import { compareText, jsonString, mapGet, mapKeys, readHost } from "../value/value.ts";
+import { conformAllWalk, conformWalk, freeCtx } from "../eval/conform.ts";
+import { RunFailure, messageOf } from "../eval/failure.ts";
+import { jsonForm, valueData, valueForm } from "./forms.ts";
+import type { OpaqueLike } from "./forms.ts";
+import { visibleText } from "../syntax/messages.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { ParsedProgram, Template, reportJSON } from "../host/api.ts";
 import type { AnalysisReport } from "../host/api.ts";
 import { parseTemplateText, templateProgram } from "../syntax/template.ts";
 import { parse } from "../syntax/parser.ts";
 import type { Classifier } from "../value/value.ts";
-import { CONVERSION_STATIC, loadCaseFile, validateCaseFile } from "./casefile.ts";
+import { CONFIG_STATIC, CONVERSION_STATIC, loadCaseFile, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Renderings, Stub } from "./casefile.ts";
-import { renderDetail, renderJSON, renderLine } from "../host/render.ts";
+import { pathText, renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import type { RenderDiagnostic } from "../host/render.ts";
 import { JsonError, isObject, readJson } from "./json.ts";
 import type { Json, JsonObject } from "./json.ts";
@@ -35,6 +43,9 @@ export interface Difference {
   field: string;
   expected: unknown;
   found: unknown;
+  /** E and F of f09 6.2: the JSON forms of what was expected and what was found. */
+  e?: string;
+  f?: string;
 }
 
 export interface Verdict {
@@ -43,6 +54,11 @@ export interface Verdict {
   verdict: VerdictKind;
   reason?: string;
   differences?: Difference[];
+  /** Package F9: a fixture that failed its test, and the message (f09 2.4). */
+  fixture?: (string | number)[];
+  message?: string;
+  /** Package F9: the `expect` update mode would write, or null when the case is not written (f09 4.3, 4.4). */
+  newExpect?: Json | null;
 }
 
 /** The static codes (01 14.4); every implementation reports them. */
@@ -64,6 +80,12 @@ export interface RunnerOptions {
   checkOnly?: boolean;
   /** The static codes of the case's directory (f04 6.1 item 4 for suite/conversion/). */
   staticCodes?: ReadonlySet<string>;
+  /** Package F9: update mode (f09 4). */
+  update?: boolean;
+  /** 03 3.10.9 item 3: the host's base environment, of which each case's is a child. */
+  base?: Env;
+  /** 03 3.10.9 item 3: the host's variables, for the names a case's `vars` does not give. */
+  vars?: (name: string) => unknown;
 }
 
 export type Outcome =
@@ -103,10 +125,16 @@ export function hostValue(v: Json): unknown {
 }
 
 /** A host function from a stub (03 3.10.4). `unmatched` records a call no row answers. */
-function stubFunction(st: Stub, cls: () => Classifier, unmatched: string[], name: string): HostFunction {
+/** A call that no row of a stub matched: the stub's name and the call's arguments (f09 6.2). */
+export interface Unmatched {
+  name: string;
+  args: unknown[];
+}
+
+function stubFunction(st: Stub, cls: () => Classifier, unmatched: Unmatched[], name: string, baseType?: string): HostFunction {
   const rows = st.calls.map((r) => ({ ...r, hostArgs: r.args?.map(hostValue), hostResult: r.result === undefined ? undefined : hostValue(r.result.value) }));
   return {
-    type: st.type!,
+    type: st.type ?? baseType!,
     call: (handle, ...args) => {
       for (const r of rows) {
         if (r.hostArgs !== undefined) {
@@ -118,7 +146,7 @@ function stubFunction(st: Stub, cls: () => Classifier, unmatched: string[], name
         if (r.error !== undefined) throw new HostError(r.error);
         return r.hostResult;
       }
-      unmatched.push(name);
+      unmatched.push({ name, args });
       throw new HostError(`no row of the stub ${name} matches the call`);
     },
   };
@@ -127,6 +155,7 @@ function stubFunction(st: Stub, cls: () => Classifier, unmatched: string[], name
 function needsRun(c: Case): boolean {
   const ex = c.expect;
   return (
+    c.load === true ||
     c.vars !== undefined ||
     (ex.kind === "result" && (ex.value !== undefined || ex.json !== undefined || ex.truthy !== undefined || ex.steps !== undefined || ex.allocated !== undefined)) ||
     (ex.kind === "failure" && ex.phase === "run")
@@ -141,14 +170,17 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
   // f02 4.2: an analysis case is Read, Parse, Analyze, once.
   if (ex.kind === "result" && ex.analysis !== undefined) return analysisCase(c, v);
   // f04 9.3: a conform case.
-  if (c.conform !== undefined) return conformCase(c, v);
+  if (c.conform !== undefined) return conformCase(c, v, opts.update === true);
   // f08 7.4: a render case.
   if (c.render !== undefined) return renderCase(c, v);
+  // f09 3.2, 9.3 item 1: a runner case, run once, by the whole runner.
+  if (c.runner !== undefined) return opts.checker === false ? v("skip", { reason: "a runner case is run once, by the runner with the checker" }) : runnerCase(c, v, opts);
   const checker = opts.checker !== false;
   const staticCodes = opts.staticCodes ?? STATIC_CODES;
   if (!checker) {
     // 03 3.11: a file that is run checked only is not run with the static rules alone.
     if (opts.checkOnly === true) return v("skip", { reason: "run checked only" });
+    if (c.load === true) return v("skip", { reason: "a load is run once, checked" });
     // 03 3.10.8 item 5: a runner with no type checker.
     if (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) {
       return v("skip", { reason: "needs the type checker (type or sites)" });
@@ -157,35 +189,90 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
       return v("skip", { reason: "needs the type checker (a check code outside the static rules)" });
     }
   }
-  // 03 3.10.8: "check": false compiles with the static rules alone, and
-  // compares `class` for every code.
-  if (c.check === false) return judge(c, v, false, true);
-  if (!checker) return judge(c, v, false, false);
-  // 03 3.10.8: checked, and again with the static rules alone, unless the
-  // case needs the checker or is of suite/core-check/.
+  // 03 3.10.8 item 5: "check": false compiles with the static rules alone, and
+  // compares `class` for every code; otherwise checked, and again with the
+  // static rules alone, unless the case needs the checker.
   const needsChecker =
     opts.checkOnly === true ||
+    // f10 10.2 item 3: a load case is run once, checked.
+    c.load === true ||
     (ex.kind === "result" && (ex.type !== undefined || ex.sites !== undefined)) ||
     (ex.kind === "failure" && ex.phase === "check" && ex.diagnostics.some((d) => !staticCodes.has(d.code)));
-  const first = judge(c, v, true, true);
-  if (needsChecker || first.verdict !== "pass") return first;
-  const second = judge(c, v, false, false);
-  if (second.verdict === "pass") return first;
-  return { ...second, reason: "with the static rules alone" };
+  const runs: { checker: boolean; allClasses: boolean }[] =
+    c.check === false ? [{ checker: false, allClasses: true }]
+    : !checker ? [{ checker: false, allClasses: false }]
+    : needsChecker ? [{ checker: true, allClasses: true }]
+    : [{ checker: true, allClasses: true }, { checker: false, allClasses: false }];
+  // f09 2.2: the fixtures are tested once, before the first run that reaches step 5.
+  let toTest = c.precondition !== false;
+  const found = new Map<string, Difference>();
+  let newExpect: Json | null | undefined;
+  let updateOutcome: { o: Outcome; checked: boolean } | undefined;
+  for (const run of runs) {
+    const e = executeCase(c, needsRun(c), run.checker, toTest, opts);
+    if (e.fixtureTested) toTest = false;
+    if (e.fixture !== undefined) return v("invalid", { fixture: e.fixture.path, message: e.fixture.message, newExpect: null });
+    RUN_CHECKED = run.allClasses;
+    CURRENT_ENV = e.env;
+    if (e.missing !== null) return v("skip", { reason: `needs library entries: ${e.missing.join(", ")}` });
+    const diffs = differences(c, e.outcome, e.unmatched, run.checker);
+    for (const d of diffs) if (!found.has(d.field)) found.set(d.field, d);
+    // f09 4.4: the new `expect` is made from the first run, the checked one unless "check" is false.
+    if (opts.update === true && newExpect === undefined) {
+      let o = e.outcome;
+      let unmatched = e.unmatched.length > 0;
+      let env = e.env;
+      // A case written whole is taken through every stage: run when its program compiles.
+      if (o.kind === "result" && !o.ran && !sameShape(c, o)) {
+        const e2 = executeCase(c, true, run.checker, toTest, opts);
+        if (e2.fixtureTested) toTest = false;
+        if (e2.fixture !== undefined) return v("invalid", { fixture: e2.fixture.path, message: e2.fixture.message, newExpect: null });
+        if (e2.missing !== null) return v("skip", { reason: `needs library entries: ${e2.missing.join(", ")}` });
+        o = e2.outcome;
+        unmatched ||= e2.unmatched.length > 0;
+        env = e2.env;
+      }
+      updateOutcome = { o, checked: run.checker };
+      newExpect = unmatched ? null : updatedExpect(c, o, run.checker, env);
+    }
+  }
+  // f09 4.3 item 1: a case with no `expect` differs in `outcome`.
+  if (c.rawExpect === undefined && updateOutcome !== undefined) {
+    found.set("outcome", { field: "outcome", expected: "an expect", found: "an outcome", e: "nothing", f: jsonForm(outcomeWhole(updateOutcome.o, updateOutcome.checked)) });
+  }
+  const diffs = [...found.values()].sort((a, b) => fieldRank(a.field) - fieldRank(b.field));
+  return diffs.length === 0 ? v("pass", { newExpect: newExpect ?? null }) : v("fail", { differences: diffs, newExpect: newExpect ?? null });
 }
 
-function judge(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict, checker: boolean, allClasses: boolean): Verdict {
-  const e = executeCase(c, needsRun(c), checker);
-  RUN_CHECKED = allClasses;
-  CURRENT_ENV = e.env;
-  if (e.missing !== null) return v("skip", { reason: `needs library entries: ${e.missing.join(", ")}` });
-  return finish(c, e.outcome, e.unmatched, v);
+/** The order of the names of differences (03 3.10.8 item 2, with the names packages add). */
+const FIELD_ORDER = ["outcome", "analysis", "description", "type", "sites", "value", "json", "truthy", "diagnostics", "rendered", "steps", "allocated", "functions"];
+
+function fieldRank(f: string): number {
+  const i = FIELD_ORDER.indexOf(f);
+  return i < 0 ? FIELD_ORDER.length : i;
+}
+
+/** The differences of one run, each with its E and F (f09 6.2). */
+function differences(c: Case, o: Outcome, unmatched: Unmatched[], checked: boolean): Difference[] {
+  const diffs = compare(c, o).map((d) => withForms(c, o, d, checked));
+  if (unmatched.length > 0) {
+    const u = unmatched[0];
+    diffs.push({ field: "functions", expected: "a row for every call", found: u.name, e: u.name, f: valueForm(u.args, CLASSIFIER, opaqueOf) });
+  }
+  return diffs;
+}
+
+function opaqueOf(x: unknown): OpaqueLike | null {
+  return x instanceof OpaqueRef ? x : null;
 }
 
 export interface Execution {
   outcome: Outcome;
   /** Stubs that a call matched no row of (03 3.10.4). */
-  unmatched: string[];
+  unmatched: Unmatched[];
+  /** Package F9: whether the fixtures were tested, and the one that failed (f09 2). */
+  fixtureTested?: boolean;
+  fixture?: { path: (string | number)[]; message: string };
   /** Library entries this build lacks, when the run needed them; else null. */
   missing: string[] | null;
   /** The case's environment, when it was built. */
@@ -193,34 +280,43 @@ export interface Execution {
 }
 
 /** Run a case's steps (03 3.10.5), with or without step 5. Judges nothing. */
-export function executeCase(c: Case, run: boolean, checker = true): Execution {
+export function executeCase(c: Case, run: boolean, checker = true, testFixtures = false, ctx: { base?: Env; vars?: (name: string) => unknown } = {}): Execution {
   // Step 2: declare.
-  const unmatched: string[] = [];
+  const unmatched: Unmatched[] = [];
   let env: Env | undefined;
   const cls = () => env!.classifier;
+  const base = ctx.base;
+  const be = base?.environment;
+  // 03 3.10.4: a stub with no type keeps the base environment's signature.
+  const baseSig = (sig: SigNode | undefined) => (sig === undefined || be === undefined ? undefined : printSignature(sig, be.opaque, be.named));
   const opaque: Record<string, OpaqueType> = {};
   for (const t of c.opaque ?? []) opaque[t] = { test: (x) => x instanceof OpaqueRef && x.type === t, methods: {} };
   for (const [key, st] of Object.entries(c.methods ?? {})) {
     const dot = key.indexOf(".");
     const t = key.slice(0, dot);
     const m = key.slice(dot + 1);
-    // A method of a type that `opaque` does not declare: let declare report it.
-    if (opaque[t] === undefined) opaque[t] = { test: () => false, methods: {} };
-    opaque[t].methods![m] = stubFunction(st, cls, unmatched, key);
+    // A method of a type that `opaque` does not declare: let declare report it, or add it to the base's type.
+    if (opaque[t] === undefined) opaque[t] = base !== undefined && be!.opaque.has(t) ? ({ methods: {} } as unknown as OpaqueType) : { test: () => false, methods: {} };
+    opaque[t].methods![m] = stubFunction(st, cls, unmatched, key, baseSig(be?.methods.get(key)?.sig));
   }
   const functions: Record<string, HostFunction> = {};
-  for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = stubFunction(st, cls, unmatched, k);
+  for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = stubFunction(st, cls, unmatched, k, baseSig(be?.functions.get(k)?.sig));
   const done = (outcome: Outcome): Execution => ({ outcome, unmatched, missing: null, env: env ?? null });
   let compiled: ReturnType<Env["tryCompile"]>;
+  let loadType: Type | null = null;
   try {
-    env = createEnv({
+    const options = {
       version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [], removed: c.removed,
       types: c.types as NamedTypeDecl[] | undefined,
       groups: c.groups,
       schemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
-    });
+    };
+    // 03 3.10.9: every case runs in a child of the base environment; each limit given replaces the base's.
+    env = base === undefined ? createEnv(options) : base.child({ ...options, opaqueNames: c.opaque ?? [], limits: c.limits === undefined ? undefined : { ...be!.limits, ...c.limits } });
     // The expected result is declared type text, resolved in every compile (03 3.3.1).
     if (!checker && c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
+    // f10 10.1: the expected result by schema.
+    const expected: Expectation | undefined = c.returnsSchema !== undefined ? { schema: c.returnsSchema.schema, options: c.returnsSchema.options as SchemaOption[] | undefined } : c.returns;
     // Steps 3 and 4: parse (a template in its mode, f02 4.1), then the check (or the static rules alone).
     let input: string | ParsedProgram = c.source;
     if (c.template !== undefined) {
@@ -228,7 +324,8 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
       if (!t.ok) return done({ kind: "failure", phase: "parse", diagnostics: t.diagnostics, source: t.source });
       input = new ParsedProgram(t.template.source, templateProgram(t.template, c.template));
     }
-    compiled = env.tryCompile(input, { check: checker, expected: checker ? c.returns : undefined });
+    compiled = env.tryCompile(input, { check: checker, expected: checker || c.returnsSchema !== undefined ? expected : undefined });
+    if (c.load === true) loadType = env.expectedType(expected!);
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
     return done({ kind: "failure", phase: "declare", diagnostics: [...x.diagnostics] });
@@ -241,13 +338,68 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
   // Step 5: run.
   if (!run) return done({ kind: "result", ran: false, ...typeInfo });
   if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort(), env };
+  // f09 2.2: the fixture test, between steps 4 and 5.
+  if (testFixtures) {
+    const f = fixtureTest(c, env);
+    if (f !== null) return { ...done({ kind: "result", ran: false }), fixtureTested: true, fixture: f };
+  }
   const vars = c.vars ?? {};
-  const o = compiled.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : undefined));
-  return done(
-    o.ok
-      ? { kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }
-      : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage, ...typeInfo },
-  );
+  const o = compiled.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : ctx.vars?.(name)));
+  // f10 10.2 item 4: step 5a, the conformance function on the value of a load, with a maximum of 1.
+  if (o.ok && loadType !== null) {
+    const fs = conformAllWalk(o.value, loadType, env.classifier, 1);
+    if (fs.length > 0) {
+      const f = fs[0];
+      const d: Diagnostic = { phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), env.classifier) };
+      return { ...done({ kind: "failure", phase: "run", diagnostics: [d], source: compiled.program.source, usage: o.usage, ...typeInfo }), fixtureTested: testFixtures };
+    }
+  }
+  return {
+    ...done(
+      o.ok
+        ? { kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }
+        : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage, ...typeInfo },
+    ),
+    fixtureTested: testFixtures,
+  };
+}
+
+/** The fixture test (f09 2): vars, then functions, then methods, each in code point order; the first failure. */
+function fixtureTest(c: Case, env: Env): { path: (string | number)[]; message: string } | null {
+  const e = env.environment;
+  const free = freeCtx(env.classifier);
+  const test = (value: Json, t: Type, place: (string | number)[]) => {
+    const f = conformWalk(hostValue(value), t, free);
+    if (f === null) return null;
+    return { path: [...place, ...f.path], message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), env.classifier) };
+  };
+  for (const k of Object.keys(c.vars ?? {}).sort(compareText)) {
+    const t = e.variableTypes.get(k);
+    if (t === undefined) continue;
+    const r = test(c.vars![k], t, ["vars", k]);
+    if (r !== null) return r;
+  }
+  const stubs = (kind: "functions" | "methods", table: Record<string, Stub> | undefined, sigOf: (k: string) => SigNode | undefined) => {
+    for (const k of Object.keys(table ?? {}).sort(compareText)) {
+      const sig = sigOf(k);
+      if (sig === undefined) continue;
+      const rows = table![k].calls;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.result !== undefined) {
+          // f09 2.1 item 5: each type variable read as any.
+          const t = fromNode(sig.result, { opaque: e.opaque, named: e.named, variable: () => ANY });
+          const r = test(row.result.value, t, [kind, k, "calls", i, "result"]);
+          if (r !== null) return r;
+        }
+        if (row.error !== undefined && !sig.canFail) {
+          return { path: [kind, k, "calls", i, "error"], message: "the signature has no !, so the stub may not return an error" };
+        }
+      }
+    }
+    return null;
+  };
+  return stubs("functions", c.functions, (k) => e.functions.get(k)?.sig) ?? stubs("methods", c.methods, (k) => e.methods.get(k)?.sig);
 }
 
 function compareRenderings(want: Renderings, ds: RenderDiagnostic[], source: string | null, prefix?: string): Difference[] {
@@ -276,6 +428,163 @@ function renderCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>)
   const ex = c.expect as Renderings;
   const d = compareRenderings(ex, renderCaseDiagnostics(c), c.render!.source ?? null);
   return d.length === 0 ? v("pass") : v("fail", { differences: d });
+}
+
+/** The field of the case's `expect` as written, or undefined. */
+function rawField(c: Case, k: string): Json | undefined {
+  const r = c.rawExpect;
+  return isObject(r) && k in r ? r[k] : undefined;
+}
+
+/** The columns a phase may write for a diagnostic (f09 4.4). */
+const COLUMNS: Record<string, string[]> = {
+  declare: ["code"],
+  parse: ["code", "span", "message"],
+  check: ["code", "class", "span", "message"],
+  run: ["code", "class", "span", "path", "message", "data", "trace"],
+};
+
+/** A diagnostic as case-file data, with these columns, those it has (f09 4.4). */
+function diagData(d: Diagnostic, columns: string[], source: Source | undefined): Json {
+  const out: { [k: string]: Json } = Object.create(null);
+  const limit = LIMIT_CODES.has(d.code);
+  for (const col of columns) {
+    switch (col) {
+      case "code":
+        out.code = d.code;
+        break;
+      case "class":
+        if (d.class !== undefined) out.class = d.class;
+        break;
+      case "span":
+        if (d.span !== undefined && !limit && source !== undefined) out.span = source.lineSpan(d.span);
+        break;
+      case "message":
+        if (d.phase !== "declare") out.message = d.message;
+        break;
+      case "path":
+        if (d.code === "not-conforming" && d.path !== undefined) out.path = d.path;
+        break;
+      case "data":
+        if (d.code === "failed") {
+          const v = valueData(d.data, CLASSIFIER, opaqueOf);
+          out.data = v.ok ? v.data : null;
+        }
+        break;
+      case "trace":
+        if (!limit && d.trace !== undefined && source !== undefined) out.trace = d.trace.map((t) => ({ index: t.index, name: t.name, span: source.lineSpan(t.span) }));
+        break;
+    }
+  }
+  return out;
+}
+
+/** The diagnostics of a failure written with these columns: the first for parse and declare (f09 4.4). */
+function diagsData(o: Extract<Outcome, { kind: "failure" }>, columns: string[] | null): Json[] {
+  const list = o.phase === "parse" || o.phase === "declare" || o.phase === "run" ? o.diagnostics.slice(0, 1) : o.diagnostics;
+  const cols = columns ?? COLUMNS[o.phase].filter((c) => c !== "trace");
+  return list.map((d) => diagData(d, cols, o.source));
+}
+
+/** The outcome as an `expect` written whole (f09 4.4). */
+function outcomeWhole(o: Outcome, checked: boolean): Json {
+  if (o.kind === "failure") return { diagnostics: diagsData(o, null), phase: o.phase };
+  const out: { [k: string]: Json } = Object.create(null);
+  if (checked && o.type != null) out.type = o.type;
+  if (o.ran) {
+    const v = valueData(o.value, CLASSIFIER, opaqueOf);
+    out.value = v.ok ? v.data : null;
+    if (o.usage !== undefined) {
+      out.steps = o.usage.steps;
+      out.allocated = o.usage.allocated;
+    }
+  }
+  return out;
+}
+
+/** The columns of an expected list of diagnostics: `code` and every field one of them has (f09 4.4). */
+function expectedColumns(c: Case): string[] {
+  const raw = rawField(c, "diagnostics");
+  const cols = new Set(["code"]);
+  if (Array.isArray(raw)) for (const d of raw) if (isObject(d)) for (const k of Object.keys(d)) cols.add(k);
+  return ["code", "class", "span", "path", "message", "data", "trace"].filter((k) => cols.has(k));
+}
+
+/** E and F of a difference (f09 6.2). */
+function withForms(c: Case, o: Outcome, d: Difference, checked: boolean): Difference {
+  const raw = (k: string) => {
+    const r = rawField(c, k);
+    return r === undefined ? "null" : jsonForm(r);
+  };
+  const vf = (v: unknown) => valueForm(v, CLASSIFIER, opaqueOf);
+  let e = jsonForm((d.expected ?? null) as Json);
+  let f = "null";
+  switch (d.field) {
+    case "outcome":
+      e = c.rawExpect === undefined ? "nothing" : jsonForm(c.rawExpect);
+      f = jsonForm(outcomeWhole(o, checked));
+      break;
+    case "type":
+      e = raw("type");
+      f = o.type == null ? "null" : jsonString(o.type);
+      break;
+    case "sites":
+      e = raw("sites");
+      f = jsonForm((o.sites ?? []).map((x) => ({ class: x.class, span: x.span })) as Json);
+      break;
+    case "value":
+      e = raw("value");
+      f = o.kind === "result" ? vf(o.value) : "null";
+      break;
+    case "truthy":
+      e = raw("truthy");
+      f = o.kind === "result" ? String(truthy(o.value, CLASSIFIER)) : "null";
+      break;
+    case "json":
+      e = raw("json");
+      f = d.found === null ? "null" : jsonString(String(d.found));
+      break;
+    case "description":
+      e = raw("description");
+      f = d.found === undefined ? "null" : vf(d.found);
+      break;
+    case "diagnostics":
+      e = raw("diagnostics");
+      f = o.kind === "failure" ? jsonForm(diagsData(o, expectedColumns(c))) : "null";
+      break;
+    case "rendered":
+      e = raw("rendered");
+      f = jsonForm(d.found as Json);
+      break;
+    case "steps":
+    case "allocated":
+      e = raw(d.field);
+      f = o.usage === undefined ? "null" : String(o.usage[d.field]);
+      break;
+  }
+  return { ...d, e, f };
+}
+
+/** The lines of a case in the report (f09 6.1). */
+export function reportLines(v: Verdict, status: string = v.verdict): string {
+  const name = visibleText(v.name);
+  switch (status) {
+    case "fail": {
+      let out = `  FAIL ${name}\n`;
+      for (const d of v.differences ?? []) {
+        if (d.field === "functions") out += `    functions: no row of ${d.e} matches ${d.f}\n`;
+        else out += `    ${d.field}: expected ${d.e ?? jsonForm((d.expected ?? null) as Json)}, found ${d.f ?? JSON.stringify(d.found ?? null)}\n`;
+      }
+      return out;
+    }
+    case "invalid":
+      return `  INVALID ${name}\n    fixture ${pathText(v.fixture ?? [])}: ${visibleText(v.message ?? "")}\n`;
+    case "skip":
+      return `  SKIP ${name}: ${visibleText(v.reason ?? "")}\n`;
+    case "updated":
+      return `  UPDATED ${name}\n`;
+  }
+  return "";
 }
 
 /** The three answers of a conform case (f04 9.3), or its declare failure. */
@@ -317,9 +626,13 @@ export function runConform(c: Case): ConformRun {
   }
 }
 
-function conformCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
+function conformCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict, update = false): Verdict {
   const r = runConform(c);
   const ex = c.expect;
+  if (update) {
+    const verdict = conformCase(c, v);
+    return { ...verdict, newExpect: verdict.verdict === "pass" ? null : conformExpect(c, r) };
+  }
   if (!r.ok) {
     if (ex.kind === "failure") return finish(c, { kind: "failure", phase: "declare", diagnostics: r.diagnostics }, [], v);
     return v("fail", { differences: [{ field: "outcome", expected: "a conform result", found: describeFailure({ kind: "failure", phase: "declare", diagnostics: r.diagnostics }) }] });
@@ -442,7 +755,7 @@ function compare(c: Case, o: Outcome): Difference[] {
     return d;
   }
   if (ex.kind === "conform") return [{ field: "outcome", expected: "a conform result", found: "a case with a program" }];
-  if (ex.kind === "render") return [{ field: "outcome", expected: "renderings", found: "a case with a program" }];
+  if (ex.kind === "render" || ex.kind === "runner") return [{ field: "outcome", expected: "another kind of case", found: "a case with a program" }];
   if (o.kind !== "failure" || o.phase !== ex.phase) {
     return [{ field: "outcome", expected: `failure of phase ${ex.phase}`, found: o.kind === "result" ? "a result" : describeFailure(o) }];
   }
@@ -459,7 +772,15 @@ function compare(c: Case, o: Outcome): Difference[] {
   if (ex.rendered !== undefined) {
     // f08 7.3: parse renders its first diagnostic; check the whole list; run its one.
     const list = ex.phase === "parse" ? o.diagnostics.slice(0, 1) : o.diagnostics;
-    d.push(...compareRenderings(ex.rendered, list.map((x) => renderable(x, o.source)), renderSource(o), "rendered"));
+    const rd = compareRenderings(ex.rendered, list.map((x) => renderable(x, o.source)), renderSource(o));
+    if (rd.length > 0) {
+      const found: { [k: string]: Json } = Object.create(null);
+      const ds = list.map((x) => renderable(x, o.source));
+      if (ex.rendered.line !== undefined) found.line = renderLine(ds);
+      if (ex.rendered.detail !== undefined) found.detail = renderDetail(ds, renderSource(o));
+      if (ex.rendered.json !== undefined) found.json = renderJSON(ds, CLASSIFIER);
+      d.push({ field: "rendered", expected: ex.rendered, found });
+    }
   }
   if (ex.phase === "run" && !found.some((f) => LIMIT_CODES.has(f.code))) {
     if (ex.steps !== undefined && o.usage?.steps !== ex.steps) d.push({ field: "steps", expected: ex.steps, found: o.usage?.steps });
@@ -550,7 +871,10 @@ function diagMatches(e: ExpectDiagnostic, f: FoundDiag | undefined): boolean {
   // 03 3.10.7 item 8: `class` is compared, except for the five codes whose class
   // depends on the check, since this runner does not check.
   if (e.class !== undefined && (RUN_CHECKED || !CHECK_DEPENDENT.has(e.code)) && e.class !== f.class) return false;
-  if (e.span !== undefined && !LIMIT_CODES.has(e.code)) {
+  // f10 10.2 item 5: "span": null says the diagnostic has no span.
+  if (e.span === null) {
+    if (f.span !== undefined) return false;
+  } else if (e.span !== undefined && !LIMIT_CODES.has(e.code)) {
     if (f.span === undefined || e.span.some((n, i) => n !== f.span![i])) return false;
   }
   if (e.message !== undefined && e.message !== f.message) return false;
@@ -623,7 +947,7 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
   const dir = basename(dirname(path));
   const packageDir = basename(dirname(dirname(path))) === "suite" && dir !== "core-run" && dir !== "core-check";
   const checkOnly = opts.checkOnly ?? (["core-check", "host-types"].includes(dir) || (packageDir && basename(path).endsWith("-check.json")));
-  const staticCodes = dir === "conversion" || dir === "unions" ? CONVERSION_STATIC : undefined;
+  const staticCodes = dir === "conversion" || dir === "unions" ? CONVERSION_STATIC : dir === "config" ? CONFIG_STATIC : undefined;
   // f02 4.7: suite/templates/ runs as suite/core-run/ does; an analysis case runs once.
   return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly, staticCodes });
 }
@@ -636,8 +960,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F8. */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+/** The packages this implementation offers: F1 to F10. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {
@@ -669,4 +993,360 @@ export function countVerdicts(vs: Verdict[]): Record<VerdictKind, number> {
   const n: Record<VerdictKind, number> = { pass: 0, fail: 0, skip: 0, invalid: 0 };
   for (const v of vs) n[v.verdict]++;
   return n;
+}
+
+/** Whether the outcome has the shape of the old `expect`: both results, or both failures of one phase (f09 4.4). */
+function sameShape(c: Case, o: Outcome): boolean {
+  if (c.rawExpect === undefined) return false;
+  const ex = c.expect;
+  if (ex.kind === "result") return o.kind === "result";
+  if (ex.kind === "failure") return o.kind === "failure" && o.phase === ex.phase;
+  return false;
+}
+
+/** The value as data for a new `expect`, or null when it cannot be written (f09 4.3). */
+function writable(v: unknown): { ok: true; data: Json } | { ok: false } {
+  return valueData(v, CLASSIFIER, opaqueOf);
+}
+
+/** The `expect` update mode writes for a case, or null when it writes none (f09 4.3, 4.4). */
+function updatedExpect(c: Case, o: Outcome, checked: boolean, env: Env | null): Json | null {
+  const raw = c.rawExpect;
+  if (o.kind === "failure" && o.phase === "declare") {
+    if (!(isObject(raw) && raw.phase === "declare")) return null;
+    if (o.diagnostics.length > 1) return null;
+  }
+  if (!sameShape(c, o)) {
+    if (o.kind === "result" && o.ran && !writable(o.value).ok) return null;
+    return outcomeWhole(o, checked);
+  }
+  const out: { [k: string]: Json } = Object.create(null);
+  if (o.kind === "result") {
+    for (const k of Object.keys(raw as JsonObject)) {
+      switch (k) {
+        case "type":
+          if (o.type != null) out.type = o.type;
+          break;
+        case "sites":
+          out.sites = (o.sites ?? []).map((x) => ({ class: x.class, span: x.span })) as Json;
+          break;
+        case "value": {
+          if (!o.ran) break;
+          const w = writable(o.value);
+          if (!w.ok) return null;
+          out.value = w.data;
+          break;
+        }
+        case "truthy":
+          if (o.ran) out.truthy = truthy(o.value, CLASSIFIER);
+          break;
+        case "steps":
+        case "allocated":
+          if (o.usage !== undefined) out[k] = o.usage[k];
+          break;
+        case "json":
+          if (o.ran) {
+            try {
+              out.json = toJSON(o.value);
+            } catch {
+              return null;
+            }
+          }
+          break;
+        case "description": {
+          const d = env?.describe();
+          if (d === undefined) return null;
+          const w = writable(d);
+          if (!w.ok) return null;
+          out.description = w.data;
+          break;
+        }
+        default:
+          // A field update mode does not make (analysis) is kept as written.
+          out[k] = (raw as JsonObject)[k];
+      }
+    }
+    return out;
+  }
+  out.phase = o.phase;
+  out.diagnostics = diagsData(o, expectedColumns(c));
+  const limit = o.diagnostics.some((d) => LIMIT_CODES.has(d.code));
+  if (isObject(raw) && !limit && o.usage !== undefined) {
+    if ("steps" in raw) out.steps = o.usage.steps;
+    if ("allocated" in raw) out.allocated = o.usage.allocated;
+  }
+  const rr = rawField(c, "rendered");
+  if (isObject(rr) && !limit) {
+    const list = o.phase === "parse" ? o.diagnostics.slice(0, 1) : o.diagnostics;
+    const ds = list.map((x) => renderable(x, o.source));
+    const r: { [k: string]: Json } = Object.create(null);
+    if ("line" in rr) r.line = renderLine(ds);
+    if ("detail" in rr) r.detail = renderDetail(ds, renderSource(o));
+    if ("json" in rr) r.json = renderJSON(ds, CLASSIFIER);
+    out.rendered = r;
+  }
+  return out;
+}
+
+/** The `expect` update mode writes for a conform case, or null when its three ways disagree (f09 4.3, 4.4). */
+function conformExpect(c: Case, r: ConformRun): Json | null {
+  if (!r.ok) return null;
+  const asOk = r.asRun.ok && plainEqual(r.asRun.value, r.value, CLASSIFIER);
+  const isOk = r.isRun.ok && r.isRun.value === true;
+  const fnOk = r.fn === null;
+  const asDiag = r.asRun.ok ? null : r.asRun.diagnostic;
+  const agree = asOk === isOk && isOk === fnOk && r.isRun.ok && (asOk || asDiag?.code === "not-conforming") && r.asRun.steps === r.isRun.steps;
+  if (!agree) return null;
+  const raw = c.rawExpect;
+  const same = isObject(raw) && "conforms" in raw;
+  const out: { [k: string]: Json } = Object.create(null);
+  const has = (k: string) => !same || (raw as JsonObject)[k] !== undefined;
+  out.conforms = fnOk;
+  if (!fnOk && has("path")) out.path = r.fn!.path as Json;
+  if (!fnOk && has("message")) out.message = r.fn!.message;
+  if (has("steps")) out.steps = r.asRun.steps;
+  if (same && "failures" in raw && r.all !== null) out.failures = r.all.map((x) => ({ path: x.path as Json, message: x.message }));
+  return out;
+}
+
+/** The inner file of a runner case, read in the directory of the file that holds it (f09 3.2). */
+function innerFile(c: Case): CaseFile {
+  const dir = c.dir ?? ".";
+  const opts = { noExpect: c.update === true && c.program !== true };
+  if (typeof c.runner === "string") {
+    if (c.program === true) return programCaseFile(c.runner, dir);
+    let json: Json;
+    try {
+      json = readJson(c.runner);
+    } catch (e) {
+      if (e instanceof JsonError) return { ok: false, error: `not JSON: ${e.message}`, names: [] };
+      throw e;
+    }
+    return validateCaseFile(json, dir, opts);
+  }
+  return validateCaseFile(c.runner!, dir, opts);
+}
+
+/** The update status of a case and its verdict (f09 4.3). */
+export function updateStatus(v: Verdict): string {
+  if (v.verdict === "skip" || v.verdict === "invalid" || v.verdict === "pass") return v.verdict;
+  return v.newExpect === null || v.newExpect === undefined ? "fail" : "updated";
+}
+
+/** Run the cases of a file, with the verdicts and the update statuses (f09 3, 4). */
+export function runCases(cf: Extract<CaseFile, { ok: true }>, file: string, opts: RunnerOptions, fileIsArray = false): { verdicts: Verdict[]; statuses: string[] } {
+  const verdicts = cf.cases.map((x) => runCase(x, file, opts));
+  for (const v of verdicts) if (v.newExpect !== undefined && v.newExpect !== null && tooDeep(fileIsArray, v.newExpect)) v.newExpect = null;
+  const statuses = verdicts.map((v, i) => (opts.update === true && cf.cases[i].runner === undefined && cf.cases[i].render === undefined ? updateStatus(v) : v.verdict));
+  return { verdicts, statuses };
+}
+
+/** The verdict of a case of a runner case's inner file, as 3.4 writes it. */
+export interface RunnerEntry {
+  name: string;
+  status: string;
+  differs?: string[];
+  fixture?: (string | number)[];
+  message?: string;
+}
+
+/** What a runner case finds (f09 3.3): its inner file is invalid, or the verdicts, the report and the text. */
+export type RunnerResult = { invalid: true; reason: string } | { invalid: false; verdicts: RunnerEntry[]; report: string; text: string | null };
+
+/** Run the inner file of a runner case (f09 3.2). */
+export function runnerResult(c: Case, opts: RunnerOptions = {}): RunnerResult {
+  const cf = innerFile(c);
+  if (!cf.ok) return { invalid: true, reason: cf.error };
+  // f09 5.4 item 1: a program case file is run as in an ordinary run, even in update mode.
+  const inner: RunnerOptions = { update: c.update === true && c.program !== true };
+  const isArray = typeof c.runner === "string" ? c.runner.trimStart().startsWith("[") : Array.isArray(c.runner);
+  const { verdicts, statuses } = runCases(cf, "", inner, isArray);
+  const entries = verdicts.map((x, i): RunnerEntry => {
+    const e: RunnerEntry = { name: x.name, status: statuses[i] };
+    if (statuses[i] === "fail") e.differs = (x.differences ?? []).map((y) => y.field);
+    if (statuses[i] === "invalid" && x.fixture !== undefined) {
+      e.fixture = x.fixture;
+      e.message = x.message;
+    }
+    return e;
+  });
+  const report = verdicts.map((x, i) => reportLines(x, statuses[i])).join("");
+  const text = typeof c.runner === "string" ? (inner.update === true ? updatedText(c.runner, cf, verdicts, statuses) : null) ?? c.runner : null;
+  return { invalid: false, verdicts: entries, report, text };
+}
+
+/** A runner case (f09 3): its inner file's verdicts, report and updated text against what it expects. */
+function runnerCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict, opts: RunnerOptions): Verdict {
+  const ex = c.expect as Extract<Case["expect"], { kind: "runner" }>;
+  const r = runnerResult(c, opts);
+  if (r.invalid) {
+    return ex.invalid === true ? v("pass") : v("fail", { differences: [{ field: "invalid", expected: false, found: r.reason, e: "false", f: "true" }] });
+  }
+  if (ex.invalid === true) return v("fail", { differences: [{ field: "invalid", expected: true, found: false, e: "true", f: "false" }] });
+  const d: Difference[] = [];
+  const want = ex.verdicts ?? [];
+  const got = r.verdicts;
+  const same =
+    got.length === want.length &&
+    want.every((w, i) => {
+      const g = got[i];
+      if (w.name !== g.name || w.status !== g.status) return false;
+      if (w.differs !== undefined && JSON.stringify(w.differs) !== JSON.stringify(g.differs ?? [])) return false;
+      if (w.fixture !== undefined && JSON.stringify(w.fixture) !== JSON.stringify(g.fixture)) return false;
+      if (w.message !== undefined && w.message !== g.message) return false;
+      return true;
+    });
+  if (!same) d.push({ field: "verdicts", expected: want, found: got });
+  if (ex.report !== undefined && r.report !== ex.report) d.push({ field: "report", expected: ex.report, found: r.report });
+  if (ex.text !== undefined && r.text !== ex.text) d.push({ field: "text", expected: ex.text, found: r.text });
+  return d.length === 0 ? v("pass") : v("fail", { differences: d });
+}
+
+/** A JSON value of a text, with the offsets of its first and last code units (end exclusive). */
+interface Spot {
+  start: number;
+  end: number;
+  members?: { key: string; value: Spot }[];
+  elements?: Spot[];
+}
+
+/** Scan JSON text that has been read already, keeping where each value stands (f09 4.5). */
+function scanJson(text: string): Spot {
+  let i = 0;
+  const ws = () => {
+    while (i < text.length && " \t\n\r".includes(text[i])) i++;
+  };
+  const str = (): string => {
+    const start = i;
+    i++;
+    while (text[i] !== '"') i += text[i] === "\\" ? 2 : 1;
+    i++;
+    return JSON.parse(text.slice(start, i)) as string;
+  };
+  const value = (): Spot => {
+    ws();
+    const start = i;
+    const ch = text[i];
+    if (ch === "{") {
+      i++;
+      const members: { key: string; value: Spot }[] = [];
+      ws();
+      if (text[i] === "}") i++;
+      else {
+        for (;;) {
+          ws();
+          const key = str();
+          ws();
+          i++; // :
+          members.push({ key, value: value() });
+          ws();
+          if (text[i++] === "}") break;
+        }
+      }
+      return { start, end: i, members };
+    }
+    if (ch === "[") {
+      i++;
+      const elements: Spot[] = [];
+      ws();
+      if (text[i] === "]") i++;
+      else {
+        for (;;) {
+          elements.push(value());
+          ws();
+          if (text[i++] === "]") break;
+        }
+      }
+      return { start, end: i, elements };
+    }
+    if (ch === '"') {
+      str();
+      return { start, end: i };
+    }
+    while (i < text.length && !" \t\n\r,]}".includes(text[i])) i++;
+    return { start, end: i };
+  };
+  return value();
+}
+
+/** The case objects of a scanned file, in order: the elements of an array, or of the member `cases`. */
+function caseSpots(root: Spot): { spots: Spot[]; depth: number } {
+  if (root.elements !== undefined) return { spots: root.elements, depth: 2 };
+  const cases = root.members?.find((m) => m.key === "cases")?.value;
+  return { spots: cases?.elements ?? [], depth: 3 };
+}
+
+/** The nesting of data: 0 for a scalar, one more for each array or object around the deepest. */
+function nesting(v: Json): number {
+  if (Array.isArray(v)) return 1 + Math.max(0, ...v.map(nesting));
+  if (isObject(v)) return 1 + Math.max(0, ...Object.values(v).map(nesting));
+  return 0;
+}
+
+/** f09 4.3: a new `expect` that would nest the file deeper than 03 3.10.1 item 4 allows is not written. */
+export function tooDeep(fileIsArray: boolean, e: Json): boolean {
+  return (fileIsArray ? 2 : 3) + nesting(e) > 1024;
+}
+
+/** The text of a file after update mode, or null when nothing is written (f09 4.5). */
+export function updatedText(text: string, _cf: Extract<CaseFile, { ok: true }> | null, verdicts: Verdict[], statuses: string[]): string | null {
+  if (!statuses.includes("updated")) return null;
+  const { spots } = caseSpots(scanJson(text));
+  const edits: { at: number; end: number; text: string }[] = [];
+  statuses.forEach((st, k) => {
+    if (st !== "updated") return;
+    const spot = spots[k];
+    const form = jsonForm(verdicts[k].newExpect as Json);
+    const member = spot.members!.find((m) => m.key === "expect");
+    if (member !== undefined) edits.push({ at: member.value.start, end: member.value.end, text: form });
+    else {
+      // After the last member in the order of the text.
+      const last = spot.members![spot.members!.length - 1].value;
+      edits.push({ at: last.end, end: last.end, text: `, "expect": ${form}` });
+    }
+  });
+  edits.sort((a, b) => b.at - a.at);
+  let out = text;
+  for (const e of edits) out = out.slice(0, e.at) + e.text + out.slice(e.end);
+  return out;
+}
+
+/** A program case file (f09 5.2): parse, check in the default environment, run, then read the value as JSON. */
+export function programCaseFile(text: string, dir: string): CaseFile {
+  const bad = (error: string): CaseFile => ({ ok: false, error, names: [] });
+  const env = createEnv({ limits: { timeoutMs: null } });
+  const compiled = env.tryCompile(text, { check: true });
+  if (!compiled.ok) return bad(`the program does not compile: ${compiled.diagnostics[0].code}: ${compiled.diagnostics[0].message}`);
+  const o = compiled.program.execute();
+  if (!o.ok) return bad(`the program fails: ${o.diagnostic.code}: ${o.diagnostic.message}`);
+  // 5.3: from the value to the JSON. A function cannot be data.
+  const cls = env.classifier;
+  let error: string | null = null;
+  const walk = (x: unknown, depth: number): Json => {
+    x = readHost(x);
+    if (depth > 1024 && error === null) error = "the value nests deeper than 1,024 levels";
+    switch (cls.kind(x)) {
+      case "null":
+        return null;
+      case "bool":
+        return x as boolean;
+      case "number":
+        return x as number;
+      case "string":
+        return x as string;
+      case "list":
+        return (x as unknown[]).map((y) => walk(y, depth + 1));
+      case "map": {
+        const out: JsonObject = Object.create(null);
+        for (const k of mapKeys(x as object)) out[k] = walk(mapGet(x as object, k), depth + 1);
+        return out;
+      }
+      default:
+        if (error === null) error = `the value holds a ${cls.kind(x)}, which is not data`;
+        return null;
+    }
+  };
+  const json = walk(o.value, 1);
+  if (error !== null) return bad(error);
+  return validateCaseFile(json, dir);
 }

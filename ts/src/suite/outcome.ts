@@ -4,7 +4,7 @@
 import { numberToText } from "../value/number.ts";
 import { jsonString, mapGet, mapKeys, plainEqual, readHost, sortKeys, BAD_NUMBER } from "../value/value.ts";
 import type { Case } from "./casefile.ts";
-import { CLASSIFIER, OpaqueRef, analysisOf, executeCase, renderCaseDiagnostics, runConform } from "./runner.ts";
+import { CLASSIFIER, OpaqueRef, analysisOf, executeCase, renderCaseDiagnostics, runConform, runnerResult } from "./runner.ts";
 import { renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import { descriptionText, reportJSON } from "../host/api.ts";
 
@@ -45,6 +45,20 @@ export function outcomeLine(c: Case): string {
   }
   // f04 9.5: a conform case.
   if (c.conform !== undefined) return conformLine(c);
+  // f09 9.4: a runner case gives name, invalid or verdicts, report, and text in update mode.
+  if (c.runner !== undefined) {
+    const r = runnerResult(c);
+    if (r.invalid) return `{"name":${jsonString(c.name)},"invalid":true}`;
+    const entries = r.verdicts.map((e) => {
+      let line = `{"name":${jsonString(e.name)},"status":${jsonString(e.status)}`;
+      if (e.differs !== undefined) line += `,"differs":${JSON.stringify(e.differs.map(String))}`;
+      if (e.fixture !== undefined) line += `,"fixture":${JSON.stringify(e.fixture)},"message":${jsonString(e.message ?? "")}`;
+      return line + "}";
+    });
+    let line = `{"name":${jsonString(c.name)},"verdicts":[${entries.join(",")}],"report":${jsonString(r.report)}`;
+    if (c.update === true) line += `,"text":${jsonString(r.text ?? "")}`;
+    return line + "}";
+  }
   // f08 8: a render case gives the three forms.
   if (c.render !== undefined) {
     const ds = renderCaseDiagnostics(c);
@@ -83,6 +97,10 @@ export function outcomeLine(c: Case): string {
       default:
         // f08 8: a run diagnostic has its trace, but for class limit.
         diags = o.diagnostics.map((d) => {
+          // f10 10.4: a load that fails at step 5a has code, span null, class, message and path.
+          if (c.load === true && d.span === undefined && d.path !== undefined) {
+            return `{"code":${jsonString(d.code)},"span":null,"class":${jsonString(d.class ?? "value")},"message":${jsonString(d.message)},"path":${JSON.stringify(d.path)}}`;
+          }
           const trace = d.class === "limit" ? "" : `,"trace":[${(d.trace ?? []).map((t) => `{"span":${span(t)},"name":${jsonString(t.name)},"index":${t.index === null ? "null" : t.index}}`).join(",")}]`;
           return `{"code":${jsonString(d.code)},"span":${span(d)},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${trace}}`;
         });

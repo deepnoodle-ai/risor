@@ -39,6 +39,9 @@ export type { TypeNode, SigNode, MethodNode, FnNode } from "./types/typetext.ts"
 export { declare, DEFAULT_LIMITS, VERSION } from "./host/env.ts";
 export type { Declarations, Environment, Limits } from "./host/env.ts";
 export { createEnv, Env, Program, RisorError, HostError, truthy, toJSON } from "./host/api.ts";
+// Package F10: the load and the decode (f10 5, 6.6).
+export { decode, LoadError } from "./host/api.ts";
+export type { Expectation, LoadOptions, LoadOutcome } from "./host/api.ts";
 export { typeFromSchema, envFromDescription, descriptionText, printSignature } from "./host/api.ts";
 export type { Description } from "./host/api.ts";
 export { parseProgramText, parseTemplate, ParsedProgram, Template, reportJSON } from "./host/api.ts";
