@@ -18,6 +18,20 @@
 // 512 KiB of goroutine stack. TestStackNeeds runs the deepest programs with
 // the stack capped at 1 MiB. Go grows a goroutine's stack as needed, so a
 // host needs no setting for this.
+//
+// # Memory
+//
+// On 64-bit platforms, the heap memory a run creates as values of the language
+// is bounded by 320 bytes per allocation unit charged plus 8 bytes per step
+// charged (02-evaluation.md 8.5 item 2):
+//   - string (1 + floor(w/64) units): a 16-byte string header plus at most
+//     3 * 64 = 192 UTF-8 bytes per 64 weight units (256 bytes after Go
+//     size-class rounding);
+//   - list (1 + n units): a 24-byte []any header plus 16 bytes per element;
+//   - map (1 + 2n units): a 48-byte hmap header plus Go map[string]any buckets
+//     (272 bytes per 8-entry bucket, at most two buckets per 6.5 entries);
+//   - step: at most one 8-byte float64 interface box for an uncharged numeric
+//     result outside the small-integer cache.
 package risor
 
 import (
