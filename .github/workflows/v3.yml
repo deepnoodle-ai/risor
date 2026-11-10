@@ -65,7 +65,7 @@ jobs:
 
   typescript:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 6
     # Temporary: the suite holds the cases of round 13 (the fuzzers'
     # findings), which this implementation has not caught up with yet. Remove
     # this line when it has.
@@ -99,7 +99,7 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 6
     # Temporary: the suite holds the cases of round 13 (the fuzzers'
     # findings), which this implementation has not caught up with yet. Remove
     # this line when it has.
