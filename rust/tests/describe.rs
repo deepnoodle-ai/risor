@@ -200,8 +200,23 @@ fn errors_of_a_description() {
         r#"{"steps":1,"allocation":1,"depth":0}"#,
         r#"{"steps":1,"allocation":1,"depth":1001}"#,
         r#"{"steps":1,"allocation":1,"depth":2.5}"#,
+        r#"{"steps":9007199254740992,"allocation":1,"depth":1}"#,
+        r#"{"steps":1,"allocation":9007199254740992,"depth":1}"#,
     ] {
         assert_eq!(declare_codes(&with("limits", l)), ["bad-limit"], "{l}");
+    }
+    for l in [
+        Limits {
+            steps: Some(1 << 53),
+            ..Limits::default()
+        },
+        Limits {
+            allocation: Some(1 << 53),
+            ..Limits::default()
+        },
+    ] {
+        let e = Env::builder().limits(l).build().err().unwrap();
+        assert_eq!(e.diagnostics[0].code, "bad-limit");
     }
     // A wrong JSON kind or a missing key is the binding's own error.
     for (k, v) in [

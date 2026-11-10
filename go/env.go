@@ -15,6 +15,7 @@ import (
 	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
 	"github.com/deepnoodle-ai/risor/v3/internal/types"
 	"github.com/deepnoodle-ai/risor/v3/internal/typetext"
+	"github.com/deepnoodle-ai/risor/v3/internal/value"
 )
 
 // NoLimit turns off a step or allocation limit.
@@ -118,7 +119,7 @@ type Limits struct {
 }
 
 func (l Limits) apply(e *Env) {
-	if l.Steps < ZeroLimit || l.Alloc < ZeroLimit || l.Timeout < 0 {
+	if l.Steps < ZeroLimit || l.Steps > value.MaxWhole || l.Alloc < ZeroLimit || l.Alloc > value.MaxWhole || l.Timeout < 0 {
 		e.errf(diag.CodeBadLimit, "a limit must be a whole number of 0 or more")
 		return
 	}
