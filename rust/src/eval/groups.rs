@@ -102,11 +102,12 @@ impl<'h> Run<'h> {
             }
             "base64.encode" => {
                 let s = x.as_str().unwrap_or_default();
-                let out = b64_encode(s.as_bytes());
-                self.charge(size(s) + size(&out))?;
-                let sz = size(&out);
+                // 9.1 item 2: the result has 4 * ceil(b / 3) code points,
+                // found before anything is charged or built.
+                let sz = (s.len().div_ceil(3) * 4) as u64 / 64;
+                self.charge(size(s) + sz)?;
                 self.alloc(1 + sz)?;
-                Ok(Value::str(out))
+                Ok(Value::str(b64_encode(s.as_bytes())))
             }
             "base64.decode" => {
                 let s = x.as_str().unwrap_or_default().to_string();

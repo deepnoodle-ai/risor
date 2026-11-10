@@ -2351,6 +2351,15 @@
         }
       },
       {
+        "name": "repeat the empty string a count above 2^32",
+        "source": "\"\".repeat(5000000000)",
+        "expect": {
+          "value": "",
+          "steps": 1,
+          "allocated": 1
+        }
+      },
+      {
         "name": "repeat charges the size of the result",
         "source": "s.repeat(40)",
         "env": "{s: string}",

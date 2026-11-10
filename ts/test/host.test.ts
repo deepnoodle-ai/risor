@@ -217,6 +217,57 @@ describe("03 3.5.2 item 6: a call handle used after its function returned", () =
   });
 });
 
+describe("03 3.5.2 item 3: a charge the budget cannot cover ends the run", () => {
+  test("even when the function catches the failure and goes on", () => {
+    const codes: string[] = [];
+    const attempt = (f: () => void) => {
+      try {
+        f();
+        codes.push("ok");
+      } catch (e) {
+        codes.push((e as Error).message);
+      }
+    };
+    const env = createEnv({
+      limits: { steps: 100, allocation: 10 },
+      functions: {
+        greedy: {
+          type: "() => int",
+          call: (h) => {
+            attempt(() => h.allocate(11));
+            attempt(() => h.charge(1000));
+            attempt(() => h.charge(1));
+            attempt(() => h.allocate(1));
+            return 0;
+          },
+        },
+      },
+    });
+    const o = env.compile("greedy()").execute();
+    assert.ok(!o.ok);
+    assert.equal(o.diagnostic.code, "allocation-exceeded");
+    assert.deepEqual(codes, ["allocation-exceeded", "allocation-exceeded", "allocation-exceeded", "allocation-exceeded"]);
+    assert.deepEqual(o.usage, { steps: 1, allocated: 0 });
+  });
+
+  test("a charge that is not above zero charges nothing", () => {
+    const env = createEnv({ functions: { give: { type: "() => int", call: (h) => (h.charge(-5), h.allocate(-5), h.charge(NaN), 0) } } });
+    assert.deepEqual(env.compile("give()").measure().usage, { steps: 1, allocated: 0 });
+  });
+});
+
+describe("03 3.7.1: a limit diagnostic has a span, whose value is not specified", () => {
+  test("for each way a run passes a limit", () => {
+    const env = createEnv({ limits: { steps: 5, allocation: 3 }, functions: { alloc: { type: "() => int", call: (h) => (h.allocate(100), 0) } } });
+    for (const src of ["range(100).map(x => x * 2).sum()", "[1, 2, 3, 4]", "alloc()"]) {
+      const o = env.compile(src, { check: false }).execute();
+      assert.ok(!o.ok, src);
+      assert.equal(o.diagnostic.class, "limit", src);
+      assert.ok(o.diagnostic.span !== undefined, src);
+    }
+  });
+});
+
 // Child environments (03 3.3.2, 3.3.4): the case format cannot
 // state a parent and a child.
 describe("child environments", () => {

@@ -14,7 +14,7 @@ import { Source } from "../syntax/source.ts";
 import { arity, parseSignature } from "../types/typetext.ts";
 import { compileProgram, HostError } from "../eval/compile.ts";
 import type { CallHandle, CompileEnv, HostImpl } from "../eval/compile.ts";
-import { RunFailure, messageOf, uncheckedClass } from "../eval/failure.ts";
+import { LIMIT_CODES, RunFailure, messageOf, uncheckedClass } from "../eval/failure.ts";
 import { ABSENT_VAR, Run } from "../eval/run.ts";
 import type { VarSource } from "../eval/run.ts";
 import { staticRules } from "../eval/static.ts";
@@ -824,6 +824,7 @@ export class Env {
     const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans, valueSpans, c.varCount);
     prog.type = type;
     prog.sites = sites;
+    prog.whole = p.program.span;
     return { ok: true, program: prog };
   }
 
@@ -847,6 +848,8 @@ export class Program {
   type: string | null = null;
   /** The sites the check gave. */
   sites: Site[] = [];
+  /** The span of the whole program: the span of a limit diagnostic raised where no node is at hand (03 3.7.1). */
+  whole: Span = { start: 0, end: 0 };
   /** Spans at a `dynamic` site, for the class of a failure in a checked program; null when not checked. */
   private readonly dynamicSpans: Set<string> | null;
   private readonly hostSpans: Set<string> | null;
@@ -917,7 +920,9 @@ export class Program {
 
   private diagnostic(f: RunFailure): Diagnostic {
     const d: Diagnostic = { phase: "run", code: f.code, message: messageOf(f, this.env.classifier) };
+    // A limit diagnostic has a span whose value is not specified (03 3.7.1).
     if (f.span !== undefined) d.span = f.span;
+    else if (LIMIT_CODES.has(f.code)) d.span = this.whole;
     let cls = uncheckedClass(f);
     // The class in a checked program (03 3.7.6, 05 18.5).
     if (this.dynamicSpans !== null) {

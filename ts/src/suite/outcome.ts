@@ -127,7 +127,9 @@ export function outcomeLine(c: Case): string {
             return `{"code":${jsonString(d.code)},"span":null,"class":${jsonString(d.class ?? "value")},"message":${jsonString(d.message)},"path":${JSON.stringify(d.path)}}`;
           }
           const trace = d.class === "limit" ? "" : `,"trace":[${(d.trace ?? []).map((t) => `{"span":${span(t)},"name":${jsonString(t.name)},"index":${t.index === null ? "null" : t.index}}`).join(",")}]`;
-          return `{"code":${jsonString(d.code)},"span":${span(d)},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${trace}}`;
+          // R73: a limit failure's span is not specified, and its line has none.
+          const sp = d.class === "limit" ? "null" : span(d);
+          return `{"code":${jsonString(d.code)},"span":${sp},"class":${d.class === undefined ? "null" : jsonString(d.class)},"message":${jsonString(d.message)}${trace}}`;
         });
     }
     parts.push(`"diagnostics":[${diags.join(",")}]`);

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/messages"
 	"github.com/deepnoodle-ai/risor/v3/internal/value"
@@ -833,9 +834,10 @@ func timeDuration(r *run, c *libCall) any {
 
 func base64Encode(r *run, c *libCall) any {
 	s := c.args[0].(string)
-	out := base64.StdEncoding.EncodeToString([]byte(s)) // RFC 4648 4, with padding
-	r.charge(c, fenv{c: c, resultW: int64(len(out))})
-	return out
+	// 9.1 item 2: the result's weight, 4 * ceil(b / 3) code points, is found
+	// before anything is charged or built.
+	r.charge(c, fenv{c: c, resultW: int64((len(s) + 2) / 3 * 4)})
+	return base64.StdEncoding.EncodeToString([]byte(s)) // RFC 4648 4, with padding
 }
 
 func b64Val(ch byte) (v int, std, url bool) {
@@ -876,35 +878,36 @@ func decode64(s string) ([]byte, bool) {
 		}
 	}
 	var std, url bool
-	vals := make([]int, n)
 	for i := 0; i < n; i++ {
 		v, st, u := b64Val(t[i])
 		if v < 0 {
 			return nil, false
 		}
 		std, url = std || st, url || u
-		vals[i] = v
 	}
 	if std && url {
 		return nil, false
 	}
+	// Every character of t is in the alphabet: val reads one again, with no
+	// buffer of values.
+	val := func(i int) int { v, _, _ := b64Val(t[i]); return v }
 	out := make([]byte, 0, n*3/4)
 	i := 0
 	for ; i+4 <= n; i += 4 {
-		x := vals[i]<<18 | vals[i+1]<<12 | vals[i+2]<<6 | vals[i+3]
+		x := val(i)<<18 | val(i+1)<<12 | val(i+2)<<6 | val(i+3)
 		out = append(out, byte(x>>16), byte(x>>8), byte(x))
 	}
 	switch n - i {
 	case 2:
-		if vals[i+1]&0xF != 0 {
+		if val(i+1)&0xF != 0 {
 			return nil, false
 		}
-		out = append(out, byte(vals[i]<<2|vals[i+1]>>4))
+		out = append(out, byte(val(i)<<2|val(i+1)>>4))
 	case 3:
-		if vals[i+2]&0x3 != 0 {
+		if val(i+2)&0x3 != 0 {
 			return nil, false
 		}
-		x := vals[i]<<10 | vals[i+1]<<4 | vals[i+2]>>2
+		x := val(i)<<10 | val(i+1)<<4 | val(i+2)>>2
 		out = append(out, byte(x>>8), byte(x))
 	}
 	return out, true
@@ -920,7 +923,9 @@ func base64Decode(r *run, c *libCall) any {
 	if !utf8.Valid(b) { // well-formed UTF-8: no overlong form, no surrogate
 		r.invalid(c, "not-utf8")
 	}
-	out := string(b)
+	// The units are charged before the string is built. Nothing else holds
+	// b, so the string takes its memory without a copy.
+	out := unsafe.String(unsafe.SliceData(b), len(b))
 	r.unit(1 + value.Size(out))
 	return out
 }

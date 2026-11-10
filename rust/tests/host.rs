@@ -121,6 +121,82 @@ fn a_host_function_charges_through_its_handle() {
     assert_eq!(outcome(&p, &BTreeMap::new()), Err("steps-exceeded".into()));
 }
 
+#[test]
+fn a_large_host_charge_does_not_wrap() {
+    let env = Env::builder()
+        .function("alloc", "() => int", |call, _| {
+            assert!(call.allocate(1).is_ok());
+            assert!(call.allocate(u64::MAX).is_err());
+            Ok(Data::Float(0.0))
+        })
+        .function("charge", "() => int", |call, _| {
+            assert!(call.charge(1).is_ok());
+            assert!(call.charge(u64::MAX).is_err());
+            Ok(Data::Float(0.0))
+        })
+        .build()
+        .unwrap();
+    let p = program(&env, "alloc()");
+    let out = p.run(&NoVars);
+    assert_eq!(
+        out.result.err().map(|f| f.code),
+        Some("allocation-exceeded")
+    );
+    assert_eq!(out.usage.allocated, 1);
+    let p = program(&env, "charge()");
+    let out = p.run(&NoVars);
+    assert_eq!(out.result.err().map(|f| f.code), Some("steps-exceeded"));
+    assert_eq!(out.usage.steps, 2);
+    // With no limit, the count stops at u64::MAX.
+    let env = Env::builder()
+        .function("big", "() => int", |call, _| {
+            for _ in 0..3 {
+                assert!(call.charge(u64::MAX).is_ok());
+                assert!(call.allocate(u64::MAX).is_ok());
+            }
+            Ok(Data::Float(0.0))
+        })
+        .limits(Limits {
+            steps: None,
+            allocation: None,
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    let p = program(&env, "big()");
+    let out = p.run(&NoVars);
+    assert!(out.result.is_ok());
+    assert_eq!((out.usage.steps, out.usage.allocated), (u64::MAX, u64::MAX));
+}
+
+#[test]
+fn a_limit_diagnostic_has_a_span() {
+    // `03-host.md` 3.7.1: present, and its value not specified.
+    let env = Env::builder()
+        .function("alloc", "() => int", |call, _| {
+            let _ = call.allocate(100);
+            Ok(Data::Float(0.0))
+        })
+        .limits(Limits {
+            steps: Some(5),
+            allocation: Some(3),
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    for src in [
+        "range(100).map(x => x * 2).sum()",
+        "[1, 2, 3, 4]",
+        "alloc()",
+    ] {
+        let p = program(&env, src);
+        let f = p.run(&NoVars).result.err().unwrap();
+        let d = p.diagnostic(&f);
+        assert_eq!(d.class, Some("limit"), "{src}");
+        assert!(d.span.is_some(), "{src}");
+    }
+}
+
 fn opaque_env() -> Env {
     Env::builder()
         .vars("{t: Token, u: Token}")
@@ -512,6 +588,21 @@ fn compile_checks_by_default() {
     assert_eq!(p.class_of(&f), Some("dynamic"));
     let r = risor::check(&env, &parse("x").unwrap(), &risor::Expected::Nothing);
     assert_eq!(risor::check::ty::print(r.ty.as_ref().unwrap()), "any");
+}
+
+/// R73: the outcome line of a limit failure writes no span, as Go's and
+/// TypeScript's do, though the diagnostic carries one (`03-host.md` 3.7.1).
+#[test]
+fn an_outcome_line_leaves_out_a_limits_span() {
+    let doc =
+        risor::json::parse(r#"[{"name": "steps", "source": "range(10)", "limits": {"steps": 1}}]"#)
+            .unwrap();
+    let cases = risor::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let line = risor::testing::outcome_line(&cases[0]);
+    assert!(
+        line.contains(r#""code":"steps-exceeded","span":null"#),
+        "{line}"
+    );
 }
 
 #[test]

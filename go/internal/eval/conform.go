@@ -302,7 +302,7 @@ func textOf(v any, maxDepth int, render bool) (string, *diag.Diagnostic) {
 	}
 	text, f := jsonText(v, maxDepth, render)
 	if f != nil {
-		d := f.diagnostic(nil)
+		d := f.diagnostic(nil, syntax.Span{})
 		return "", &d
 	}
 	return text, nil
