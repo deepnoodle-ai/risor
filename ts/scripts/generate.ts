@@ -1,6 +1,6 @@
 // Generate src/generated/*.ts from the suite's data files:
 //   suite/messages.json -> src/generated/messages.ts (the run catalog)
-//   suite/library.json  -> src/generated/library.ts  (the entries' records, without cases and docs)
+//   suite/library.json  -> src/generated/library.ts  (the entries' records, without cases)
 //   suite/library-groups.json -> src/generated/library-groups.ts (package F6: the groups' records)
 //   suite/library-queries.json -> src/generated/library-queries.ts (package F7: its records)
 //   suite/library-math.json -> src/generated/library-math.ts (package F13: the eleven math records)
@@ -39,22 +39,22 @@ export function generated(): Record<string, string> {
   const library = JSON.parse(readFileSync(join(suite, "library.json"), "utf8")) as Record<string, unknown>[];
   const records = library.map((e) => {
     const r: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
+    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "wrong") r[k] = v;
     return r;
   });
   const groups = (JSON.parse(readFileSync(join(suite, "library-groups.json"), "utf8")) as Record<string, unknown>[]).map((e) => {
     const r: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
+    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "wrong") r[k] = v;
     return r;
   });
   const math = (JSON.parse(readFileSync(join(suite, "library-math.json"), "utf8")) as Record<string, unknown>[]).map((e) => {
     const r: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
+    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "wrong") r[k] = v;
     return r;
   });
   const queries = (JSON.parse(readFileSync(join(suite, "library-queries.json"), "utf8")) as Record<string, unknown>[]).map((e) => {
     const r: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "doc" && k !== "wrong") r[k] = v;
+    for (const [k, v] of Object.entries(e)) if (k !== "cases" && k !== "wrong") r[k] = v;
     return r;
   });
   const casemap = JSON.parse(readFileSync(join(suite, "casemap.json"), "utf8")) as { unicode: string; upper: Record<string, string>; lower: Record<string, string> };

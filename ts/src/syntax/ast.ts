@@ -22,6 +22,8 @@ interface Base {
   span: Span;
   /** Written in parentheses, which end a chain (01 7.4 rule 5). */
   parens?: true;
+  /** The span with its outermost parentheses, when it has them. */
+  outer?: Span;
 }
 
 export interface Program extends Base {

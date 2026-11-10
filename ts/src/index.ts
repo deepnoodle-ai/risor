@@ -42,6 +42,11 @@ export { createEnv, Env, Program, RisorError, HostError, truthy, toJSON } from "
 // Package F10: the load and the decode (f10 5, 6.6).
 export { decode, LoadError } from "./host/api.ts";
 export type { Expectation, LoadOptions, LoadOutcome } from "./host/api.ts";
+// Package F12: the formatter and the assist stage (f12 2, 3).
+export { formatProgram, formatTemplate } from "./tools/format.ts";
+export type { FormatResult } from "./tools/format.ts";
+export { complete, hover } from "./tools/assist.ts";
+export type { Candidate, CompletionResult, HoverResult } from "./tools/assist.ts";
 // Package F14: a host fact (f14 3.2).
 export type { HostFact } from "./host/api.ts";
 export { typeFromSchema, envFromDescription, descriptionText, printSignature } from "./host/api.ts";

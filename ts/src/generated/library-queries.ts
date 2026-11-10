@@ -11,6 +11,7 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "group": "core",
     "since": "3.0",
     "exact": true,
+    "doc": "The elements in order of their keys, by a stable sort, ascending or in the direction order gives.",
     "calls": [
       "f"
     ],
@@ -39,6 +40,7 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "group": "core",
     "since": "3.0",
     "exact": true,
+    "doc": "The element whose key is the least; of equal keys, the first.",
     "calls": [
       "f"
     ],
@@ -61,6 +63,7 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "group": "core",
     "since": "3.0",
     "exact": true,
+    "doc": "The element whose key is the greatest; of equal keys, the first.",
     "calls": [
       "f"
     ],
@@ -83,6 +86,7 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "group": "core",
     "since": "3.0",
     "exact": true,
+    "doc": "The first element with each key, in order.",
     "calls": [
       "f"
     ],
@@ -105,6 +109,7 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "group": "core",
     "since": "3.0",
     "exact": true,
+    "doc": "Each element under its key; a later element replaces an earlier one.",
     "calls": [
       "f"
     ],
@@ -127,6 +132,7 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "group": "core",
     "since": "3.0",
     "exact": true,
+    "doc": "For each distinct key, how many elements have it.",
     "calls": [
       "f"
     ],
@@ -149,6 +155,7 @@ export const QUERY_LIBRARY: LibraryRecord[] = [
     "group": "core",
     "since": "3.0",
     "exact": true,
+    "doc": "The map with the same keys and f of each value, called in key order.",
     "calls": [
       "f"
     ],

@@ -501,3 +501,17 @@ this round, and Go offers every package.
 | R193 | **What F11 is.** F11 is a binding's typed layer: a faster path for the binding's own typed data. It changes no result, so it has no chapter, no table row and no cases. A binding that reads its host's data in place offers F11 when it offers F10 (`spec/core/03-host.md` 3.11). |
 | R194 | **Four points of the testing package, raised by a second binding.** A stub with no `type` is checked against the base at load, so every call that loads a file takes the base. A file built from parsed data has no updated text. In update mode the file is written once, when every selected case has run. A runner case runs once, and is never `skip` for lack of a static-rules pass (`spec/packages/f09-testing.md` 7.1 to 7.4). |
 | R195 | **A case runs in the base of its load.** The case-level `run` of each binding took a base that had to equal the base of the load, and a different one could only be an error that no verdict status names. The parameter is gone: Go `Case.Run(ctx)`, TypeScript `defineCases(test, file)` and `Case.run()`, Rust `CaseFile::run(vars)` and `Case::run(vars)` (`spec/packages/f09-testing.md` 7.2 to 7.4). Go's update mode writes only when every selected case has run. |
+
+## 17. Round 16: the fuzzers with every error code
+
+The fuzzers' filter of F8's targeted parse codes was removed once all three
+implementations offered F8, and messages and traces were compared. Nine
+differences, all in a parse code or a message; no value, count, type, site
+or trace differed, and the soundness run found no violation. 29 cases pin
+them, in `suite/errors/fuzz-round-7.json` and `fuzz-round-7-check.json`.
+
+| # | Ruling |
+| --- | --- |
+| R196 | **Errors on a union read the joined record.** A field read, or a field of a map pattern, on a tagged union reads flat(U), so `no-field` and `maybe-absent` print that one record and never the union (`f08-errors.md` 3.5). A star on a receiver of two kinds reports `kind` with the `receiver` template; `star` is for one kind that is not a list. |
+| R197 | **Where a targeted parse code applies.** The start of a map entry is not a place where an operand must begin, so a prefixed string, `<` or a tagged template there is `unexpected-token`. A `match` literal is not an operand for `assignment`; a pattern default is. `block-without-const` follows a lambda's `=>` only, and not inside an open computed key. An unclosed interpolation names the innermost literal still open (`f08-errors.md` 2.2, 2.7, 3.4). |
+| R198 | **Facts apply only to paths.** An index read on a value that is not a path took facts about the first `const`, and so lost its type in a branch; it found no unsound result, but it hid an `arity` error. A fact applies to a path (`05-types.md` 10.4), and to nothing else. |

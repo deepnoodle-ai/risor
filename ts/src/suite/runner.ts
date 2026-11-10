@@ -12,7 +12,6 @@ import { createEnv, HostError, printSignature, RisorError, toJSON } from "../hos
 import type { Env, Expectation, HostFunction, OpaqueType } from "../host/api.ts";
 import type { NamedTypeDecl } from "../host/env.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
-import type { Source } from "../syntax/source.ts";
 import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
 import { ANY, fromNode, typeEqual } from "../types/type.ts";
@@ -29,6 +28,10 @@ import { ParsedProgram, Template, reportJSON } from "../host/api.ts";
 import type { AnalysisReport } from "../host/api.ts";
 import { parseTemplateText, templateProgram } from "../syntax/template.ts";
 import { parse } from "../syntax/parser.ts";
+import { Source } from "../syntax/source.ts";
+import { formatProgram, formatTemplate, treeEqual } from "../tools/format.ts";
+import { complete, hover } from "../tools/assist.ts";
+import type { CompletionResult, HoverResult } from "../tools/assist.ts";
 import type { Classifier } from "../value/value.ts";
 import { CONFIG_STATIC, CONVERSION_STATIC, loadCaseFile, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Renderings, Stub } from "./casefile.ts";
@@ -173,6 +176,8 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
   if (c.conform !== undefined) return conformCase(c, v, opts.update === true);
   // f08 7.4: a render case.
   if (c.render !== undefined) return renderCase(c, v);
+  // f12 7: a case of the tools, run once.
+  if (c.tool !== undefined) return opts.checker === false ? v("skip", { reason: "a case of the tools is run once" }) : toolCase(c, v);
   // f09 3.2, 9.3 item 1: a runner case, run once, by the whole runner.
   if (c.runner !== undefined) return opts.checker === false ? v("skip", { reason: "a runner case is run once, by the runner with the checker" }) : runnerCase(c, v, opts);
   const checker = opts.checker !== false;
@@ -763,7 +768,7 @@ function compare(c: Case, o: Outcome): Difference[] {
     return d;
   }
   if (ex.kind === "conform") return [{ field: "outcome", expected: "a conform result", found: "a case with a program" }];
-  if (ex.kind === "render" || ex.kind === "runner") return [{ field: "outcome", expected: "another kind of case", found: "a case with a program" }];
+  if (ex.kind !== "failure") return [{ field: "outcome", expected: "another kind of case", found: "a case with a program" }];
   if (o.kind !== "failure" || o.phase !== ex.phase) {
     return [{ field: "outcome", expected: `failure of phase ${ex.phase}`, found: o.kind === "result" ? "a result" : describeFailure(o) }];
   }
@@ -968,8 +973,8 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   return cf.cases.map((c) => runCase(c, file, opts));
 }
 
-/** The packages this implementation offers: F1 to F11, F13 and F14. */
-export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14]);
+/** The packages this implementation offers: F1 to F14. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {
@@ -1357,4 +1362,137 @@ export function programCaseFile(text: string, dir: string): CaseFile {
   const json = walk(o.value, 1);
   if (error !== null) return bad(error);
   return validateCaseFile(json, dir);
+}
+
+// ---- package F12: the tools (f12 7) -------------------------------------------
+
+/** A format, completion or hover case (f12 7.1 to 7.3). */
+function toolCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
+  const t = c.tool!;
+  if (t.kind === "format" || t.kind === "formatTemplate") {
+    const d = formatDifferences(c);
+    return d.length === 0 ? v("pass") : v("fail", { differences: d });
+  }
+  const r = assistOutcome(c);
+  const ex = c.expect;
+  if (!r.ok) {
+    const o: Outcome = { kind: "failure", phase: "declare", diagnostics: r.diagnostics };
+    const d = ex.kind === "failure" ? compare(c, o) : [{ field: "outcome", expected: t.kind, found: describeFailure(o) }];
+    return d.length === 0 ? v("pass") : v("fail", { differences: d });
+  }
+  if (ex.kind === "failure") return v("fail", { differences: [{ field: "outcome", expected: `failure of phase ${ex.phase}`, found: t.kind }] });
+  if (ex.kind === "completion") {
+    const got = r.completion!;
+    const same =
+      JSON.stringify(got.span) === JSON.stringify(ex.span) &&
+      got.items.length === ex.items.length &&
+      ex.items.every((w, i) => {
+        const g = got.items[i];
+        return w.label === g.label && w.kind === g.kind && (w.detail === undefined || w.detail === g.detail) && (w.insert === undefined || w.insert === g.insert);
+      });
+    return same ? v("pass") : v("fail", { differences: [{ field: "completion", expected: { span: ex.span, items: ex.items }, found: got }] });
+  }
+  if (ex.kind === "hover") {
+    const got = r.hover ?? null;
+    let same: boolean;
+    if (ex.hover === null || got === null) same = ex.hover === got;
+    else {
+      const w = ex.hover;
+      same = Object.entries(w).every(([k, x]) => JSON.stringify(x) === JSON.stringify((got as unknown as Record<string, unknown>)[k]));
+    }
+    return same ? v("pass") : v("fail", { differences: [{ field: "hover", expected: ex.hover, found: got }] });
+  }
+  return v("fail", { differences: [{ field: "outcome", expected: "a result of the tools", found: t.kind }] });
+}
+
+/** The completion or hover of a case, in its environment (f12 7.2 item 1). */
+export function assistOutcome(c: Case): { ok: true; completion?: CompletionResult; hover?: HoverResult | null } | { ok: false; diagnostics: Diagnostic[] } {
+  const t = c.tool!;
+  const opaque: Record<string, OpaqueType> = {};
+  for (const n of c.opaque ?? []) opaque[n] = { test: () => false, methods: {} };
+  for (const [key, st] of Object.entries(c.methods ?? {})) {
+    const dot = key.indexOf(".");
+    const ty = key.slice(0, dot);
+    if (opaque[ty] === undefined) opaque[ty] = { test: () => false, methods: {} };
+    opaque[ty].methods![key.slice(dot + 1)] = { type: st.type ?? "() => any", call: () => null };
+  }
+  const functions: Record<string, HostFunction> = {};
+  for (const [k, st] of Object.entries(c.functions ?? {})) functions[k] = { type: st.type ?? "() => any", call: () => null };
+  let env: Env;
+  try {
+    env = createEnv({ version: c.version, vars: c.env, opaque, opaqueNames: c.opaque ?? [], functions, removed: c.removed, groups: c.groups, types: c.types as NamedTypeDecl[] | undefined });
+    if (c.returns !== undefined && c.returns !== "condition") env.declaredType(c.returns);
+  } catch (x) {
+    if (!(x instanceof RisorError)) throw x;
+    return { ok: false, diagnostics: [...x.diagnostics] };
+  }
+  const caret = [...t.text].indexOf("\u2038");
+  const text = [...t.text].filter((ch) => ch !== "\u2038").join("");
+  const src = new Source(text);
+  const pos = src.position(Math.min(caret, src.length));
+  if (t.kind === "complete") return { ok: true, completion: complete(env, text, pos, c.returns) };
+  return { ok: true, hover: hover(env, text, pos, c.returns) };
+}
+
+/** The differences of a format case (f12 7.1 items 3 to 5). */
+function formatDifferences(c: Case): Difference[] {
+  const t = c.tool!;
+  const isT = t.kind === "formatTemplate";
+  const fmt = (s: string) => (isT ? formatTemplate(s) : formatProgram(s));
+  const r = fmt(t.text);
+  const ex = c.expect;
+  const d: Difference[] = [];
+  if (!r.ok) {
+    const o: Outcome = { kind: "failure", phase: "parse", diagnostics: r.diagnostics, source: isT ? parseTemplateSource(t.text) : new Source(t.text) };
+    if (ex.kind === "failure") d.push(...compare(c, o));
+    else d.push({ field: "outcome", expected: "a format result", found: describeFailure(o) });
+    return d;
+  }
+  if (ex.kind === "failure") d.push({ field: "outcome", expected: `failure of phase ${ex.phase}`, found: "a format result" });
+  else if (ex.kind === "formatted" && ex.formatted !== r.text) d.push({ field: "formatted", expected: ex.formatted, found: r.text });
+  // The laws (f12 2.2, 7.1 item 4).
+  const again = fmt(r.text);
+  if (!again.ok || again.text !== r.text) d.push({ field: "idempotent", expected: r.text, found: again.ok ? again.text : "a parse failure" });
+  if (!sameTree(t.text, r.text, isT)) d.push({ field: "tree", expected: "the tree of the source", found: "another tree" });
+  if (c.vars !== undefined && !isT) {
+    const a = lawRun(c, t.text);
+    const b = lawRun(c, r.text);
+    if (a !== b) d.push({ field: "run", expected: a, found: b });
+  }
+  return d;
+}
+
+function parseTemplateSource(text: string): Source {
+  return new Source(text, { keepBom: true });
+}
+
+/** The outcome of a law run: phase, type, value, code, class, message, steps and units. */
+function lawRun(c: Case, text: string): string {
+  try {
+    const env = createEnv({ vars: c.env });
+    const r = env.tryCompile(text);
+    if (!r.ok) return JSON.stringify(["compile", r.diagnostics.map((x) => [x.phase, x.code, x.class ?? null, x.message])]);
+    const vars = c.vars ?? {};
+    const o = r.program.execute((name) => (Object.prototype.hasOwnProperty.call(vars, name) ? hostValue(vars[name]) : undefined));
+    if (o.ok) return JSON.stringify(["value", r.program.type, valueForm(o.value, CLASSIFIER, opaqueOf), o.usage.steps, o.usage.allocated]);
+    return JSON.stringify(["run", r.program.type, o.diagnostic.code, o.diagnostic.class ?? null, o.diagnostic.message, o.usage.steps, o.usage.allocated]);
+  } catch (x) {
+    if (x instanceof RisorError) return JSON.stringify(["declare", x.diagnostics.map((y) => y.code)]);
+    throw x;
+  }
+}
+
+/** Two texts parse to equal trees (f12 2.2 item 1); for a template, equal segments. */
+function sameTree(a: string, b: string, template: boolean): boolean {
+  if (template) {
+    const x = parseTemplateText(a);
+    const y = parseTemplateText(b);
+    if (!x.ok || !y.ok) return false;
+    const sx = x.template.segments;
+    const sy = y.template.segments;
+    return sx.length === sy.length && sx.every((s, i) => (s.kind === "text" ? sy[i].kind === "text" && s.value === (sy[i] as { value: string }).value : sy[i].kind === "part" && treeEqual(s.expr, (sy[i] as { expr: unknown }).expr)));
+  }
+  const x = parse(a);
+  const y = parse(b);
+  return x.ok && y.ok && treeEqual(x.program, y.program);
 }

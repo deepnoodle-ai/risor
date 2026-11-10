@@ -200,6 +200,10 @@ describe("01 14.3: every row", () => {
     err("try { e }", "missing-catch", [1, 10, 1, 10]);
     err("try { e } 1", "missing-catch", [1, 11, 1, 12]);
   });
+  test("B9 and E23 apply only after the => of a lambda, not of a match arm (f08 2.4, 2.7)", () => {
+    err("match-3{true=>{", "unexpected-token", [1, 16, 1, 16]);
+    err("[1].map(x => { a b })", "block-without-const", [1, 14, 1, 15]);
+  });
   test("a = after a string or computed key is unexpected-token, not E23 (f08 2.7)", () => {
     err('f(x => { "a" = 1 })', "unexpected-token", [1, 14, 1, 15]);
     err("f(x => { [k] = 1 })", "unexpected-token", [1, 14, 1, 15]);

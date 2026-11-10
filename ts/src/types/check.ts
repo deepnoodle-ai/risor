@@ -72,6 +72,9 @@ export interface CheckResult {
   hostSpans: Set<string>;
   /** Spans of the nodes that hold a `value` site (f04 6.6: a failed `as`). */
   valueSpans: Set<string>;
+  /** Package F12: the type of each node checked, and of each slot, for assist (f12 3). */
+  types: ReadonlyMap<object, Type>;
+  slotTypes: readonly (Type | undefined)[];
 }
 
 export type Expected = { kind: "none" } | { kind: "type"; type: Type } | { kind: "condition" };
@@ -175,7 +178,7 @@ export function check(program: A.Program, res: Resolution, env: CheckEnv, expect
   const extra: string[] = [];
   for (const { body, call } of c.callbacks) if (dynamicSpans.has(spanKey(body))) extra.push(spanKey(call));
   for (const k of extra) dynamicSpans.add(k);
-  return { type: t, sites, diagnostics: diags, dynamicSpans, hostSpans, valueSpans };
+  return { type: t, sites, diagnostics: diags, dynamicSpans, hostSpans, valueSpans, types: c.typesOf(), slotTypes: c.slotTypesOf() };
 }
 
 function cmp(a: string, b: string): number {
@@ -201,6 +204,14 @@ class Checker {
   private readonly res: Resolution;
   private readonly env: CheckEnv;
   private readonly slotTypes: Type[] = [];
+
+  typesOf(): ReadonlyMap<object, Type> {
+    return this.types;
+  }
+
+  slotTypesOf(): readonly (Type | undefined)[] {
+    return this.slotTypes;
+  }
   private readonly types = new Map<object, Type>();
   private readonly factsMemo = new Map<object, { t: string[]; f: string[] }>();
   /** Sites are dropped while this is above 0 (14.1, 13.9). */
@@ -1243,7 +1254,8 @@ class Checker {
         return NEVER;
       }
       if (kindCount(cur) === 1 && cur.list) return cur.list;
-      this.kind(p.recvSpan, "star", { type: cur });
+      // 9.1 step 4 comes first (f07 5.1): a receiver of more than one kind.
+      this.kind(p.recvSpan, kindCount(cur) !== 1 ? "receiver" : "star", { type: cur });
       failed = true;
       return null;
     };
@@ -1369,6 +1381,8 @@ class Checker {
   private readKey(r: Rec, key: string, optional: boolean, keySpan: Span, recvSpan: Span, present: boolean, owners: Span[], whole: Type = { map: r }): Type {
     const fl = r.fields.get(key);
     if (fl !== undefined && (!fl.optional || present)) return fl.type;
+    // A read of a field of a union reads flat(U), and its messages print that one record (f05 4.3).
+    if (!isAny(whole) && whole.union !== undefined) whole = { map: r };
     if (fl !== undefined || (!isNever(r.rest) && !isAny(r.rest))) {
       const t = fl !== undefined ? fl.type : r.rest;
       if (present) return t;

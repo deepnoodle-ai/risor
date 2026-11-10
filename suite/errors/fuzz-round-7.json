@@ -1,0 +1,530 @@
+[
+  {
+    "name": "R7-1: a star on a receiver of two kinds takes the template receiver",
+    "source": "(0 && \"\")[*]",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "kind",
+          "span": [
+            1,
+            2,
+            1,
+            9
+          ],
+          "message": "a read or a method call needs one kind, and int | \"\" has more than one"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-1: an optional star on a receiver of two kinds",
+    "source": "(0 ? \"\" : 0)?.[*]",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "kind",
+          "span": [
+            1,
+            2,
+            1,
+            12
+          ],
+          "message": "a read or a method call needs one kind, and int | \"\" has more than one"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-1: a star on a map of one kind keeps the template star",
+    "env": "{m: map<int>}",
+    "source": "m[*]",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "kind",
+          "span": [
+            1,
+            1,
+            1,
+            2
+          ],
+          "message": "a projection needs a list, found map<int>"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-2: no-field on a union prints flat(U), cut at 64",
+    "env": "{ev: {id: int, kind: \"a\"} | {id: int, kind: \"b\", n1: int} | {id: int, kind: \"c\", n2: float, ok2: string[]}}",
+    "source": "ev.B",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "no-field",
+          "span": [
+            1,
+            4,
+            1,
+            5
+          ],
+          "message": "{id: int, kind: \"a\" | \"b\" | \"c\", n1?: int, n2?: float, ok2?: ... has no field \"B\""
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-2: no-field on a map pattern of a union prints flat(U)",
+    "env": "{ev: {id: int, kind: \"a\"} | {id: int, kind: \"b\"}}",
+    "source": "const {b} = ev; 0",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "no-field",
+          "span": [
+            1,
+            8,
+            1,
+            9
+          ],
+          "message": "{id: int, kind: \"a\" | \"b\"} has no field \"b\""
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-2: maybe-absent on a union prints flat(U)",
+    "env": "{msg: {id: int, kind: \"a\", s2: int} | {id: int, kind: \"b\"}}",
+    "source": "msg.s2",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "maybe-absent",
+          "span": [
+            1,
+            5,
+            1,
+            7
+          ],
+          "message": "field \"s2\" may be absent from {id: int, kind: \"a\" | \"b\", s2?: int}"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-2: maybe-null then no-field on a union that may be null",
+    "env": "{msg: {id: int, kind: \"a\"} | {id: int, kind: \"b\", name1: int} | null}",
+    "source": "msg.B",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "maybe-null",
+          "span": [
+            1,
+            1,
+            1,
+            4
+          ],
+          "message": "msg may be null; its type is {id: int, kind: \"a\"} | {id: int, kind: \"b\", name1: int} | null"
+        },
+        {
+          "code": "no-field",
+          "span": [
+            1,
+            5,
+            1,
+            6
+          ],
+          "message": "{id: int, kind: \"a\" | \"b\", name1?: int} has no field \"B\""
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-3: a prefixed literal at the start of a map entry",
+    "source": "{n\"",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            2,
+            1,
+            3
+          ],
+          "message": "unexpected n"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-3: < at the start of a map entry",
+    "source": "{<",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            2,
+            1,
+            3
+          ],
+          "message": "unexpected <"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-3: a tagged template at the start of an entry of a map in a handler",
+    "source": "try{\"\"}catch{{r`",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            15,
+            1,
+            16
+          ],
+          "message": "unexpected r"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-3: a prefixed literal at the start of a field of a map pattern",
+    "source": "const {f\"a\"} = m; 1",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            8,
+            1,
+            9
+          ],
+          "message": "unexpected f"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-3: a prefixed literal where : should follow a key takes key",
+    "source": "{\"a\" n\"x\"}",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            6,
+            1,
+            7
+          ],
+          "message": "a map key is followed by :, found n"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-3: where an operand begins, C9 still holds",
+    "source": "{a: n\"x\"}",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "string-prefix",
+          "span": [
+            1,
+            5,
+            1,
+            6
+          ],
+          "message": "n is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-4: = after a match literal",
+    "source": "match 0{1=",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            10,
+            1,
+            11
+          ],
+          "message": "unexpected ="
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-4: = after a match literal, spaced",
+    "source": "match 0 { 1 = 2 }",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            13,
+            1,
+            14
+          ],
+          "message": "unexpected ="
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-4: = after the default of a list pattern",
+    "source": "const[_=t=",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "assignment",
+          "span": [
+            1,
+            10,
+            1,
+            11
+          ],
+          "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-4: = after the default of a map pattern",
+    "source": "const {a = t = 1} = m; a",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "assignment",
+          "span": [
+            1,
+            14,
+            1,
+            15
+          ],
+          "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-5: a match arm: a brace at the end of input",
+    "source": "match-3{true=>{",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            16,
+            1,
+            16
+          ],
+          "message": "unexpected end of input"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-5: a match arm: a brace and an operator",
+    "source": "match x { 1 => { a + 1 } }",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            20,
+            1,
+            21
+          ],
+          "message": "unexpected +"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-5: a match arm: a reserved word as the first entry",
+    "source": "match x { 1 => { if } }",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "reserved-word",
+          "span": [
+            1,
+            18,
+            1,
+            20
+          ],
+          "message": "if is a reserved word and cannot be a name"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-6: the end of input inside a computed key",
+    "source": "y(()=>{[",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            9,
+            1,
+            9
+          ],
+          "message": "unexpected end of input"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-6: the end of input after an operand in a computed key",
+    "source": "y(() => {[1 +",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            14,
+            1,
+            14
+          ],
+          "message": "unexpected end of input"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-6: a closing brace inside a computed key",
+    "source": "y(() => {[k + })",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            15,
+            1,
+            16
+          ],
+          "message": "unexpected }"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-7: a prefixed literal after an empty string key",
+    "source": "{\"\"b\"",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unexpected-token",
+          "span": [
+            1,
+            4,
+            1,
+            5
+          ],
+          "message": "a map key is followed by :, found b"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-8: a text block with a CR line end and an open interpolation",
+    "source": "\"\"\"\r${",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unterminated-string",
+          "span": [
+            1,
+            1,
+            1,
+            7
+          ],
+          "message": "the text block has no closing delimiter"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-8: a text block with an LF line end and an open interpolation",
+    "source": "\"\"\"\n${",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unterminated-string",
+          "span": [
+            1,
+            1,
+            2,
+            3
+          ],
+          "message": "the text block has no closing delimiter"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-8: a template opened in the interpolation is the innermost",
+    "source": "\"\"\"\n${`a",
+    "expect": {
+      "phase": "parse",
+      "diagnostics": [
+        {
+          "code": "unterminated-string",
+          "span": [
+            2,
+            3,
+            2,
+            5
+          ],
+          "message": "the template has no closing backtick"
+        }
+      ]
+    }
+  }
+]

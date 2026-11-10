@@ -84,6 +84,22 @@ export type Expect =
     }
   | ({ kind: "render" } & Renderings)
   | {
+      /** Package F12: a format result (f12 7.1). */
+      kind: "formatted";
+      formatted: string;
+    }
+  | {
+      /** Package F12: a completion result (f12 7.2). */
+      kind: "completion";
+      span: LineSpan;
+      items: { label: string; kind: string; detail?: string | null; insert?: string }[];
+    }
+  | {
+      /** Package F12: a hover result (f12 7.3). */
+      kind: "hover";
+      hover: null | { kind: string; span: LineSpan; type?: string | null; signature?: string | null; doc?: string | null; declaration?: LineSpan | null };
+    }
+  | {
       /** Package F9: the verdicts a runner gives the inner file (f09 3.3). */
       kind: "runner";
       invalid?: true;
@@ -132,6 +148,8 @@ export interface Case {
   render?: { diagnostics: JsonObject[]; source?: string };
   /** Package F9: a runner case, its inner file as data or text (f09 3.1). */
   runner?: Json;
+  /** Package F12: a case of the tools, its kind and its text (f12 7). */
+  tool?: { kind: "format" | "formatTemplate" | "complete" | "hover"; text: string };
   update?: boolean;
   program?: boolean;
   /** The case's `expect` as written, for the report and for update mode (f09 4, 6). */
@@ -170,7 +188,14 @@ const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-
 /** The fields a header and a case share (03 3.10.3). `precondition` is 3.10.3 too. */
 const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "returnsSchema", "load", "facts", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
-const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render", "runner", "update", "program"]);
+const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect", "render", "runner", "update", "program", "format", "formatTemplate", "complete", "hover"]);
+
+/** Package F12: the fields of a case of the tools (f12 7.1 to 7.3). */
+const TOOL_FIELDS = ["format", "formatTemplate", "complete", "hover"] as const;
+const FORMAT_ALLOWED = ["name", "format", "formatTemplate", "env", "vars", "skip", "expect"];
+const ASSIST_ALLOWED = ["name", "version", "env", "opaque", "methods", "functions", "removed", "groups", "types", "returns", "skip", "expect"];
+const CANDIDATE_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant", "key", "literal", "type"]);
+const HOVER_KINDS = new Set(["name", "lambda", "variable", "function", "namespace", "field", "method", "constant"]);
 
 /** Read and validate a case file on disk. */
 export interface ReadOptions {
@@ -428,6 +453,10 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
     if ("expect" in raw) c.rawExpect = raw.expect;
     return c;
   }
+
+  // f12 7: a format, completion or hover case.
+  const tools = TOOL_FIELDS.filter((k) => k in raw);
+  if (tools.length > 0) return toolCase(header, raw, tools, where, dir, opts);
 
   // The header rule (3.10.2): a field of the case replaces the header's.
   const merged: JsonObject = Object.create(null);
@@ -905,4 +934,90 @@ function buildDiag(v: Json, where: string): ExpectDiagnostic {
     }
   }
   return d;
+}
+
+/** A case of package F12 (f12 7.1 to 7.4). */
+function toolCase(header: JsonObject, raw: JsonObject, tools: string[], where: string, dir: string, opts: ReadOptions): Case {
+  if (tools.length > 1) fail(`${where}: more than one of format, formatTemplate, complete and hover`);
+  const kind = tools[0] as "format" | "formatTemplate" | "complete" | "hover";
+  const text = raw[kind];
+  if (typeof text !== "string") fail(`${where}: ${kind} is not a string`);
+  // 7.4 item 1: the field counts with source, file, template, conform, render and runner as one.
+  const merged: JsonObject = Object.create(null);
+  for (const [k, v] of Object.entries(header)) if (!["cases", "source", "file", "template", "conform", "render", "runner"].includes(k)) merged[k] = v;
+  for (const [k, v] of Object.entries(raw)) merged[k] = v;
+  const allowed = kind === "format" || kind === "formatTemplate" ? FORMAT_ALLOWED : [...ASSIST_ALLOWED, kind];
+  for (const k of Object.keys(merged)) if (!allowed.includes(k)) fail(`${where}: a ${kind} case has the field ${k}`);
+  if ((kind === "complete" || kind === "hover") && [...text].filter((c) => c === "\u2038").length !== 1) fail(`${where}: the caret does not stand exactly once`);
+  let expect: Expect = { kind: "result" };
+  if ("expect" in raw) expect = toolExpect(raw.expect, kind, where);
+  const c: Case = { name: raw.name as string, source: "", expect, tool: { kind, text }, dir };
+  if ("env" in merged) c.env = merged.env as string;
+  if ("vars" in merged) c.vars = merged.vars as JsonObject;
+  if ("version" in merged) c.version = merged.version as string;
+  if ("opaque" in merged) c.opaque = merged.opaque as string[];
+  if ("methods" in merged) {
+    c.methods = {};
+    for (const [k, v] of Object.entries(merged.methods as JsonObject)) c.methods[k] = toStub(v);
+  }
+  if ("functions" in merged) {
+    c.functions = {};
+    for (const [k, v] of Object.entries(merged.functions as JsonObject)) c.functions[k] = toStub(v);
+  }
+  if ("removed" in merged) c.removed = merged.removed as string[];
+  if ("groups" in merged) c.groups = merged.groups as string[];
+  if ("types" in merged) c.types = merged.types as Case["types"];
+  if ("returns" in merged) c.returns = merged.returns as string;
+  if ("skip" in raw) c.skip = raw.skip as string;
+  if ("expect" in raw) c.rawExpect = raw.expect;
+  void opts;
+  return c;
+}
+
+function toolExpect(v: Json, kind: string, where: string): Expect {
+  if (!isObject(v)) fail(`${where}: expect is not an object`);
+  const format = kind === "format" || kind === "formatTemplate";
+  if ("phase" in v) {
+    const e = buildExpect(v, where);
+    if (e.kind !== "failure" || e.phase !== (format ? "parse" : "declare")) fail(`${where}: a ${kind} case expects a failure of another phase`);
+    return e;
+  }
+  const keys = Object.keys(v);
+  if (format) {
+    if (keys.length !== 1 || typeof v.formatted !== "string") fail(`${where}: a format result is an object with formatted`);
+    return { kind: "formatted", formatted: v.formatted };
+  }
+  if (kind === "complete") {
+    if (keys.length !== 1 || !isObject(v.completion)) fail(`${where}: a completion result is an object with completion`);
+    const c = v.completion;
+    if (!Object.keys(c).every((k) => k === "span" || k === "items") || !Array.isArray(c.items)) fail(`${where}: a completion has span and items`);
+    const span = checkSpan(c.span, where);
+    const items = c.items.map((it) => {
+      if (!isObject(it)) fail(`${where}: a candidate is not an object`);
+      for (const k of Object.keys(it)) if (!["label", "kind", "detail", "insert"].includes(k)) fail(`${where}: a candidate has the field ${k}`);
+      if (typeof it.label !== "string" || typeof it.kind !== "string" || !CANDIDATE_KINDS.has(it.kind)) fail(`${where}: a candidate's label or kind`);
+      if ("detail" in it && it.detail !== null && typeof it.detail !== "string") fail(`${where}: a candidate's detail`);
+      if ("insert" in it && typeof it.insert !== "string") fail(`${where}: a candidate's insert`);
+      const out: { label: string; kind: string; detail?: string | null; insert?: string } = { label: it.label, kind: it.kind };
+      if ("detail" in it) out.detail = it.detail as string | null;
+      if ("insert" in it) out.insert = it.insert as string;
+      return out;
+    });
+    return { kind: "completion", span, items };
+  }
+  if (keys.length !== 1 || !("hover" in v)) fail(`${where}: a hover result is an object with hover`);
+  const h = v.hover;
+  if (h === null) return { kind: "hover", hover: null };
+  if (!isObject(h)) fail(`${where}: hover is not an object or null`);
+  for (const k of Object.keys(h)) if (!["kind", "span", "type", "signature", "doc", "declaration"].includes(k)) fail(`${where}: a hover record has the field ${k}`);
+  if (typeof h.kind !== "string" || !HOVER_KINDS.has(h.kind)) fail(`${where}: a hover record's kind`);
+  const out: { kind: string; span: LineSpan; type?: string | null; signature?: string | null; doc?: string | null; declaration?: LineSpan | null } = { kind: h.kind, span: checkSpan(h.span, where) };
+  for (const k of ["type", "signature", "doc"] as const) {
+    if (k in h) {
+      if (h[k] !== null && typeof h[k] !== "string") fail(`${where}: a hover record's ${k}`);
+      out[k] = h[k] as string | null;
+    }
+  }
+  if ("declaration" in h) out.declaration = h.declaration === null ? null : checkSpan(h.declaration, where);
+  return { kind: "hover", hover: out };
 }

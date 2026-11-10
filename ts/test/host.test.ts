@@ -302,3 +302,19 @@ describe("the receiver of a first star is the node, without its parentheses (f07
     assert.deepEqual(c.sites.map((s) => [s.class, s.span.start, s.span.end]), [["dynamic", 1, 11]]);
   });
 });
+
+describe("a star on a receiver of two kinds, and a read of a union (f07 5.1, f05 4.3)", () => {
+  const env = createEnv({ vars: '{u: {kind: "a", id: int} | {kind: "b", id: int, n: int}}' });
+  const msgs = (src: string) => {
+    const c = env.check(src);
+    assert.ok(!c.ok);
+    return c.diagnostics.map((d) => d.message);
+  };
+  test("kind takes the template receiver before star", () => {
+    assert.deepEqual(msgs('(0 && "")[*]'), ['a read or a method call needs one kind, and int | "" has more than one']);
+  });
+  test("no-field and maybe-absent print flat(U)", () => {
+    assert.deepEqual(msgs("u.z"), ['{id: int, kind: "a" | "b", n?: int} has no field "z"']);
+    assert.deepEqual(msgs("u.n"), ['field "n" may be absent from {id: int, kind: "a" | "b", n?: int}']);
+  });
+});

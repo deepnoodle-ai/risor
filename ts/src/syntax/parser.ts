@@ -13,7 +13,7 @@ import type { Diagnostic } from "./diagnostic.ts";
 import { lex } from "./lexer.ts";
 import { Source } from "./source.ts";
 import type { Span } from "./source.ts";
-import { isReserved } from "./token.ts";
+import { HOLE, isReserved } from "./token.ts";
 import type { Token } from "./token.ts";
 import type { TypeNode } from "../types/typetext.ts";
 import { END, parseMessage } from "./messages.ts";
@@ -45,6 +45,11 @@ export function parsePartTokens(tokens: Token[], source?: Source): A.Expr {
   return new Parser(tokens, 1, source).part();
 }
 
+/** Package F12: parse a program from tokens, as the repair makes them (f12 3.3). Throws ParseError. */
+export function parseTokens(tokens: Token[], source: Source): A.Program {
+  return new Parser(tokens, 0, source).program();
+}
+
 export function parseProgram(source: Source): A.Program {
   const tokens = lex(source);
   return new Parser(tokens, 0, source).program();
@@ -69,6 +74,8 @@ class Parser {
   private prevEnd = 0;
   /** The outer span of an expression written in parentheses. */
   private readonly parens = new WeakMap<object, Span>();
+  /** The `=>` tokens of lambdas (f08 2.4 B9, 2.7 E23). */
+  private readonly lambdaArrows = new Set<Token>();
   /** The source text, for the `token` of a message (f08 3.2). */
   private readonly src: Source | undefined;
   /**
@@ -770,7 +777,7 @@ class Parser {
           return { t: "map", rest };
         }
       }
-      if (/^[A-Z][A-Za-z0-9_]+$/.test(t.text)) {
+      if (/^[A-Z][A-Za-z0-9_]+$/.test(t.text) || t.text === HOLE) {
         this.advance();
         const node: TypeNode = { t: "name", name: t.text };
         spans.set(node, { start: t.start, end: t.end });
@@ -1008,6 +1015,7 @@ class Parser {
             this.close();
             this.parens.set(e, this.span(t.start));
             e.parens = true;
+            e.outer = this.span(t.start);
             return e;
           }
           case "[":
@@ -1135,7 +1143,8 @@ class Parser {
     this.open(lb, "map");
     // f08 2.4 B9, 2.7 E23: a map literal that is a lambda body.
     const label = this.top()!;
-    label.arrow = prev !== undefined && this.isP(prev, "=>");
+    // f08 2.4 B9, 2.7 E23: only after the `=>` of a lambda, not of a match arm.
+    label.arrow = prev !== undefined && this.lambdaArrows.has(prev);
     const entries: (A.Entry | A.Spread)[] = [];
     for (;;) {
       const t = this.cur;
@@ -1322,6 +1331,7 @@ class Parser {
       this.close();
     }
     const arrow = this.expect("=>");
+    this.lambdaArrows.add(arrow);
     if (onArrow !== null) onArrow(arrow);
     const body = this.expr();
     const maxLevel = this.maxLevel;

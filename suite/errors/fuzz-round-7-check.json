@@ -1,0 +1,60 @@
+[
+  {
+    "name": "R7-9: a never subject reports nothing, and arity in the else branch stands",
+    "source": "const m = a; m is int[] ? 0 : {\"a-b\": []}?.[\"a-b\"].filter()",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "undefined-name",
+          "span": [
+            1,
+            11,
+            1,
+            12
+          ],
+          "message": "a is not defined"
+        },
+        {
+          "code": "arity",
+          "span": [
+            1,
+            31,
+            1,
+            60
+          ],
+          "message": "the argument count of filter must be 1, found 0"
+        }
+      ]
+    }
+  },
+  {
+    "name": "R7-9: the same with a plain receiver",
+    "source": "const m = a; m is int ? 0 : [].filter()",
+    "expect": {
+      "phase": "check",
+      "diagnostics": [
+        {
+          "code": "undefined-name",
+          "span": [
+            1,
+            11,
+            1,
+            12
+          ],
+          "message": "a is not defined"
+        },
+        {
+          "code": "arity",
+          "span": [
+            1,
+            29,
+            1,
+            40
+          ],
+          "message": "the argument count of filter must be 1, found 0"
+        }
+      ]
+    }
+  }
+]

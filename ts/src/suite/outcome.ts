@@ -4,7 +4,9 @@
 import { numberToText } from "../value/number.ts";
 import { jsonString, mapGet, mapKeys, plainEqual, readHost, sortKeys, BAD_NUMBER } from "../value/value.ts";
 import type { Case } from "./casefile.ts";
-import { CLASSIFIER, OpaqueRef, analysisOf, executeCase, renderCaseDiagnostics, runConform, runnerResult } from "./runner.ts";
+import { CLASSIFIER, OpaqueRef, analysisOf, assistOutcome, executeCase, renderCaseDiagnostics, runConform, runnerResult } from "./runner.ts";
+import { formatProgram, formatTemplate } from "../tools/format.ts";
+import { Source } from "../syntax/source.ts";
 import { renderDetail, renderJSON, renderLine } from "../host/render.ts";
 import { descriptionText, reportJSON } from "../host/api.ts";
 
@@ -45,6 +47,29 @@ export function outcomeLine(c: Case): string {
   }
   // f04 9.5: a conform case.
   if (c.conform !== undefined) return conformLine(c);
+  // f12 7.7: a format, completion or hover case.
+  if (c.tool !== undefined) {
+    const name = `"name":${jsonString(c.name)}`;
+    const t = c.tool;
+    if (t.kind === "format" || t.kind === "formatTemplate") {
+      const r = t.kind === "format" ? formatProgram(t.text) : formatTemplate(t.text);
+      if (r.ok) return `{${name},"formatted":${jsonString(r.text)}}`;
+      const src = t.kind === "format" ? new Source(t.text) : new Source(t.text, { keepBom: true });
+      const d = r.diagnostics[0];
+      return `{${name},"phase":"parse","diagnostics":[{"code":${jsonString(d.code)},"span":${JSON.stringify(src.lineSpan(d.span!))},"message":${jsonString(d.message)}}]}`;
+    }
+    const r = assistOutcome(c);
+    if (!r.ok) return `{${name},"phase":"declare","diagnostics":[${r.diagnostics.map((d) => d.code).sort().map((code) => `{"code":${jsonString(code)}}`).join(",")}]}`;
+    const str = (x: string | null) => (x === null ? "null" : jsonString(x));
+    if (t.kind === "complete") {
+      const cpl = r.completion!;
+      const items = cpl.items.map((i) => `{"label":${jsonString(i.label)},"kind":${jsonString(i.kind)},"detail":${str(i.detail)},"insert":${jsonString(i.insert)}}`);
+      return `{${name},"completion":{"span":${JSON.stringify(cpl.span)},"items":[${items.join(",")}]}}`;
+    }
+    const h = r.hover ?? null;
+    if (h === null) return `{${name},"hover":null}`;
+    return `{${name},"hover":{"kind":${jsonString(h.kind)},"span":${JSON.stringify(h.span)},"type":${str(h.type)},"signature":${str(h.signature)},"doc":${str(h.doc)},"declaration":${h.declaration === null ? "null" : JSON.stringify(h.declaration)}}}`;
+  }
   // f09 9.4: a runner case gives name, invalid or verdicts, report, and text in update mode.
   if (c.runner !== undefined) {
     const r = runnerResult(c);

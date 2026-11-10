@@ -719,6 +719,23 @@ export class Env {
    * parent's unless given; removed entries add up. Throws RisorError of phase
    * `declare`.
    */
+  /**
+   * Package F12: the static rules and the check of a program the assist stage
+   * repaired (f12 3.3 item 4), with the types of its nodes. Its diagnostics are
+   * not reported.
+   */
+  assistCheck(program: import("../syntax/ast.ts").Program, source: Source, expected?: string): { resolution: import("../eval/static.ts").Resolution; check: import("../types/check.ts").CheckResult } {
+    let exp: Expected = { kind: "none" };
+    try {
+      exp = this.expected(expected);
+    } catch {
+      exp = { kind: "none" };
+    }
+    const s = staticRules(program, this.staticEnv, source);
+    const c = check(program, s.resolution, this.checkEnv, exp, s.diagnostics, source);
+    return { resolution: s.resolution, check: c };
+  }
+
   /** A child environment (f14 3.2 names it `with`): the same as `child`. */
   with(options: ChildOptions = {}): Env {
     return this.child(options);

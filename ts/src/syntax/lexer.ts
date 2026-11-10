@@ -68,6 +68,17 @@ export function lex(src: Source): Token[] {
 }
 
 /**
+ * Package F12 (f12 3.2 item 4): read the text before a cut. An interpolation
+ * left open by the end of the text ends there: it gets an `interpEnd` token
+ * marked `cut`, and the literal around it ends too.
+ */
+export function lexCut(src: Source): Token[] {
+  const l = new Lexer(src);
+  l.cut = true;
+  return l.run();
+}
+
+/**
  * Lex the part of a template that starts at `start`, after its `${{`, whose
  * `$` is at `dollar` (f02 2.2). The tokens end with an `interpEnd` token at
  * the closing brace. Throws ParseError on a lexical diagnostic, and
@@ -78,6 +89,8 @@ export function lexPart(src: Source, start: number, dollar: number): Token[] {
 }
 
 class Lexer {
+  /** Package F12: an interpolation left open at the end of the text ends there. */
+  cut = false;
   private readonly cps: Uint32Array;
   private pos = 0;
   private gap = false;
@@ -144,6 +157,10 @@ class Lexer {
           return f.tokens;
         }
         // End of input inside an interpolation: the innermost open template.
+        if (this.cut && f.t === "interp") {
+          this.closeAtCut(f);
+          continue;
+        }
         this.unterminatedTemplate();
       }
       const c = this.cps[this.pos];
@@ -176,6 +193,30 @@ class Lexer {
         }
       }
       f.tokens.push(this.next());
+    }
+  }
+
+  /** f12 3.2 item 4: the interpolation and the literal around it end at the cut. */
+  private closeAtCut(f: Extract<Frame, { t: "interp" }>): void {
+    const end = this.tok("interpEnd", this.pos, this.pos, "}");
+    end.cut = true;
+    f.tokens.push(end);
+    this.stack.pop();
+    const p = this.stack[this.stack.length - 1];
+    if (p === undefined) return;
+    if (p.t === "tmpl") {
+      if (p.text.length > 0) p.parts.push({ kind: "text", value: fromCodePoints(p.text) });
+      p.text = [];
+      p.token.end = this.pos;
+      this.stack.pop();
+      this.parentTokens().push(p.token);
+    } else if (p.t === "block") {
+      const parts: TemplatePart[] = [];
+      for (const line of [...p.lines, p.cur]) for (const x of line) if (x.k === "i") parts.push(x.part);
+      p.token.parts = parts.length > 0 ? parts : [{ kind: "text", value: "" }];
+      p.token.end = this.pos;
+      this.stack.pop();
+      this.parentTokens().push(p.token);
     }
   }
 

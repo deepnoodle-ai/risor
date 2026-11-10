@@ -34,6 +34,8 @@ export interface Token {
   form?: string;
   /** A code of a text block that the parser reports when it reaches the token (f03 6.2). */
   blockError?: { code: string; start: number; end: number; template?: string };
+  /** Package F12: a token that ends the text at a cut, or that the repair inserted there (f12 3.2, 3.3). */
+  cut?: boolean;
   /** A prefixed literal: its word, and the quote or backtick after it (01 2.3 rule 9, f08 2.5). */
   prefix?: { word: string; quote: string; triple: boolean };
 }
@@ -75,3 +77,6 @@ export const PUNCT: readonly string[] = [
   "(", ")", "[", "]", "{", "}", ",", ";", ":", ".", "?", "|",
   "!", "-", "+", "*", "/", "%", "<", ">", "=",
 ];
+
+/** Package F12: the text of the hole, a token that no text can spell (f12 3.4). */
+export const HOLE = "\u2038";
