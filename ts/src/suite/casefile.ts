@@ -37,6 +37,8 @@ export type Expect =
       type?: string;
       /** Package F1: the description of the case's environment (f01 7.2). */
       description?: { value: Json };
+      /** Package F2: the expected report of the analysis (f02 4.2). */
+      analysis?: JsonObject;
       sites?: { class: string; span: LineSpan }[];
       value?: { value: Json };
       truthy?: boolean;
@@ -66,6 +68,8 @@ export interface Case {
   precondition?: boolean;
   /** Ruling AP1: false compiles the case with the static rules alone. */
   check?: boolean;
+  /** Package F2: the text is a template, in this mode (f02 4.1). */
+  template?: "string" | "value";
   /** Package F1: variables declared by JSON Schema (f01 7.1). */
   schemas?: Record<string, { schema: Json; options?: string[] }>;
   skip?: string;
@@ -86,7 +90,7 @@ const STATIC_CODE_SET = new Set([
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is ruling A4. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
@@ -206,6 +210,7 @@ function checkShared(o: JsonObject, where: string): void {
   }
   if ("precondition" in o && typeof o.precondition !== "boolean") fail(`${where}: precondition is not a boolean`);
   if ("check" in o && typeof o.check !== "boolean") fail(`${where}: check is not a boolean`);
+  if ("template" in o && o.template !== "string" && o.template !== "value") fail(`${where}: template is not "string" or "value"`);
   if ("schemas" in o) {
     // f01 7.1: the invalid-file rules of `schemas`.
     const sc = o.schemas;
@@ -320,6 +325,13 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("precondition" in merged) c.precondition = merged.precondition as boolean;
   if ("schemas" in merged) c.schemas = merged.schemas as Record<string, { schema: Json; options?: string[] }>;
+  if ("template" in merged) c.template = merged.template as "string" | "value";
+  // f02 4.2 item 3, 4.5 item 3: an analysis case has none of these fields.
+  if (c.expect.kind === "result" && c.expect.analysis !== undefined) {
+    for (const k of ["env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "check", "precondition", "version"]) {
+      if (k in merged) fail(`${where}: an analysis case has the field ${k}`);
+    }
+  }
   if ("check" in merged) {
     c.check = merged.check as boolean;
     // Ruling AP1: a case compiled without a check states no type or sites, and expects static check codes only.
@@ -382,6 +394,65 @@ function checkOpaque(v: Json, declared: ReadonlySet<string>, where: string): voi
   }
 }
 
+/** The forms of an expected analysis (f02 4.3, 4.5 item 4). */
+function checkAnalysis(v: Json, where: string): void {
+  const w = `${where}: analysis`;
+  if (!isObject(v)) fail(`${w} is not an object`);
+  const exact = (o: Json, keys: string[], what: string): JsonObject => {
+    if (!isObject(o) || Object.keys(o).length !== keys.length || !keys.every((k) => k in o)) fail(`${w}: ${what} is not of its form`);
+    return o;
+  };
+  const strings = (x: Json, what: string) => {
+    if (!Array.isArray(x) || !x.every((s) => typeof s === "string")) fail(`${w}: ${what} is not a list of strings`);
+  };
+  for (const [k, x] of Object.entries(v)) {
+    switch (k) {
+      case "names":
+        strings(x, "names");
+        break;
+      case "refs":
+        if (!Array.isArray(x)) fail(`${w}: refs is not a list`);
+        for (const r of x) {
+          const o = exact(r, ["name", "path", "span"], "a ref");
+          if (typeof o.name !== "string") fail(`${w}: a ref's name`);
+          strings(o.path, "a ref's path");
+          checkSpan(o.span, w);
+        }
+        break;
+      case "calls":
+        if (!Array.isArray(x)) fail(`${w}: calls is not a list`);
+        for (const c of x) {
+          const o = exact(c, ["name", "namespace", "span", "args", "lambda"], "a call");
+          if (typeof o.name !== "string" || (o.namespace !== null && typeof o.namespace !== "string") || typeof o.lambda !== "boolean") fail(`${w}: a call`);
+          checkSpan(o.span, w);
+          if (!Array.isArray(o.args)) fail(`${w}: a call's args`);
+          for (const a of o.args) checkSpan(a, w);
+        }
+        break;
+      case "literal":
+        if (x !== false) exact(x, ["value"], "literal");
+        break;
+      case "segments":
+        if (x === null) break;
+        if (!Array.isArray(x)) fail(`${w}: segments is not a list`);
+        for (const g of x) {
+          if (isObject(g) && "text" in g) {
+            const o = exact(g, ["text", "span"], "a segment");
+            if (typeof o.text !== "string") fail(`${w}: a segment's text`);
+            checkSpan(o.span, w);
+          } else {
+            const o = exact(g, ["part", "span"], "a segment");
+            checkSpan(o.part, w);
+            checkSpan(o.span, w);
+          }
+        }
+        break;
+      default:
+        fail(`${w} has the field ${k}`);
+    }
+  }
+}
+
 function checkSpan(v: Json, where: string): LineSpan {
   if (!Array.isArray(v) || v.length !== 4 || !v.every((x) => isInt(x, 1))) fail(`${where}: a span is not four whole numbers of 1 or more`);
   return v as LineSpan;
@@ -436,6 +507,11 @@ function buildExpect(v: Json, where: string): Expect {
         break;
       case "value":
         out.value = { value: val };
+        break;
+      case "analysis":
+        if (Object.keys(v).length !== 1) fail(`${where}: an expect with analysis has another field`);
+        checkAnalysis(val, where);
+        out.analysis = val as JsonObject;
         break;
       case "description":
         out.description = { value: val };

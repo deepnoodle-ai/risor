@@ -35,6 +35,14 @@ export function parse(text: string | Source): ParseResult {
 }
 
 /** Parse a program. Throws ParseError at the first diagnostic. */
+/**
+ * Parse the tokens of a template part, which end with an `interpEnd` token at
+ * the closing brace or delimiter (f02 2.2). Throws ParseError.
+ */
+export function parsePartTokens(tokens: Token[]): A.Expr {
+  return new Parser(tokens, 1).part();
+}
+
 export function parseProgram(source: Source): A.Program {
   const tokens = lex(source);
   return new Parser(tokens).program();
@@ -57,8 +65,17 @@ class Parser {
   /** The outer span of an expression written in parentheses. */
   private readonly parens = new WeakMap<object, Span>();
 
-  constructor(tokens: Token[]) {
+  constructor(tokens: Token[], level = 0) {
     this.toks = tokens;
+    this.level = level;
+    this.maxLevel = level;
+  }
+
+  /** The expression of a template part (f02 2.2 items 8, 9, 11): one Expr, at level 1. */
+  part(): A.Expr {
+    const e = this.expr();
+    if (this.cur.kind !== "interpEnd" || this.cur.text === "lone") this.unexpected(this.cur);
+    return e;
   }
 
   // ---- tokens -------------------------------------------------------------
@@ -491,6 +508,7 @@ class Parser {
             this.expect(")");
             this.close();
             this.parens.set(e, this.span(t.start));
+            e.parens = true;
             return e;
           }
           case "[":

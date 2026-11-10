@@ -66,11 +66,23 @@ export function lex(src: Source): Token[] {
   return new Lexer(src).run();
 }
 
+/**
+ * Lex the part of a template that starts at `start`, after its `${{`, whose
+ * `$` is at `dollar` (f02 2.2). The tokens end with an `interpEnd` token at
+ * the closing brace. Throws ParseError on a lexical diagnostic, and
+ * `unterminated-string` from the `$` when the text ends first.
+ */
+export function lexPart(src: Source, start: number, dollar: number): Token[] {
+  return new Lexer(src).runPart(start, dollar);
+}
+
 class Lexer {
   private readonly cps: Uint32Array;
   private pos = 0;
   private gap = false;
   private readonly stack: Frame[] = [];
+  /** The `$` of a template part being lexed, or -1 (f02 2.2 item 6). */
+  private partDollar = -1;
 
   constructor(src: Source) {
     this.cps = src.cps;
@@ -84,10 +96,19 @@ class Lexer {
     throw new ParseError(code, { start, end }, message);
   }
 
-  run(): Token[] {
-    const top: Frame = { t: "top", tokens: [] };
-    this.stack.push(top);
+  runPart(start: number, dollar: number): Token[] {
+    const part: Frame = { t: "interp", tokens: [], depth: 0 };
+    this.pos = start;
+    this.partDollar = dollar;
+    this.stack.push(part);
+    this.run(false);
+    return part.tokens;
+  }
+
+  run(top = true): Token[] {
+    if (top) this.stack.push({ t: "top", tokens: [] });
     for (;;) {
+      if (this.stack.length === 0) return [];
       const f = this.stack[this.stack.length - 1];
       if (f.t === "tmpl") {
         this.templateText(f);
@@ -146,6 +167,7 @@ class Lexer {
         this.fail("unterminated-string", f.token.start, this.cps.length, "the literal has no closing delimiter");
       }
     }
+    if (this.partDollar >= 0) this.fail("unterminated-string", this.partDollar, this.cps.length, "the template part has no closing }}");
     throw new Error("unreachable");
   }
 

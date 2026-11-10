@@ -15,6 +15,8 @@ export type NodeKind = keyof typeof NODE_NUMBER;
 
 interface Base {
   span: Span;
+  /** Written in parentheses, which end a chain (01 7.4 rule 5). */
+  parens?: true;
 }
 
 export interface Program extends Base {

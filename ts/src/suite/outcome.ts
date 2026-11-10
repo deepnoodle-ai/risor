@@ -4,8 +4,8 @@
 import { numberToText } from "../value/number.ts";
 import { jsonString, mapGet, mapKeys, readHost, sortKeys, BAD_NUMBER } from "../value/value.ts";
 import type { Case } from "./casefile.ts";
-import { CLASSIFIER, OpaqueRef, executeCase } from "./runner.ts";
-import { descriptionText } from "../host/api.ts";
+import { CLASSIFIER, OpaqueRef, analysisOf, executeCase } from "./runner.ts";
+import { descriptionText, reportJSON } from "../host/api.ts";
 
 /** A result as JSON (03 3.2.4), an opaque value as a case file writes it. */
 export function valueJSON(v: unknown, depth = 0): string {
@@ -33,6 +33,15 @@ export function valueJSON(v: unknown, depth = 0): string {
 
 /** The line of ruling AJ item 3 for one case. Every `expect` is ignored. */
 export function outcomeLine(c: Case): string {
+  // f02 4.8 item 2: an analysis case has name, phase and analysis.
+  if (c.expect.kind === "result" && c.expect.analysis !== undefined) {
+    const a = analysisOf(c);
+    if (!a.ok) {
+      const d = a.diagnostics[0];
+      return `{"name":${jsonString(c.name)},"phase":"parse","diagnostics":[{"code":${jsonString(d.code)},"span":${JSON.stringify(a.source.lineSpan(d.span!))}}]}`;
+    }
+    return `{"name":${jsonString(c.name)},"phase":null,"analysis":${reportJSON(a.report, a.source)}}`;
+  }
   const e = executeCase(c, true, c.check !== false);
   const o = e.outcome;
   const parts: string[] = [`"name":${jsonString(c.name)}`];
@@ -71,5 +80,8 @@ export function outcomeLine(c: Case): string {
   // Ruling AK3: a failure of class `limit` has no usage in its line.
   const limit = o.kind === "failure" && o.diagnostics.some((d) => d.class === "limit");
   if (o.usage !== undefined && !limit) parts.push(`"steps":${o.usage.steps}`, `"units":${o.usage.allocated}`);
+  // f02 4.8: the analysis, last, when the text parses.
+  const a = analysisOf(c);
+  if (a.ok) parts.push(`"analysis":${reportJSON(a.report, a.source)}`);
   return `{${parts.join(",")}}`;
 }

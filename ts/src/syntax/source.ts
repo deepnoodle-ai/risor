@@ -28,11 +28,12 @@ export class Source {
   /** Offsets at which each line starts. Lines end at U+000A only. */
   private readonly lineStarts: number[];
 
-  constructor(text: string) {
+  constructor(text: string, options: { keepBom?: boolean } = {}) {
     const cps = toCodePoints(text);
-    // 01 2.1 rule 2: a U+FEFF at the start of the text is ignored. It is
-    // removed before positions are counted (questions file, ts Q1).
-    this.cps = cps.length > 0 && cps[0] === 0xfeff ? cps.subarray(1) : cps;
+    // 01 2.1 rule 2: a U+FEFF at the start of a program is ignored. It is
+    // removed before positions are counted (questions file, ts Q1). A
+    // template keeps it (f02 2.1 item 2).
+    this.cps = !options.keepBom && cps.length > 0 && cps[0] === 0xfeff ? cps.subarray(1) : cps;
     this.lineStarts = [0];
     for (let i = 0; i < this.cps.length; i++) {
       if (this.cps[i] === 0x0a) this.lineStarts.push(i + 1);

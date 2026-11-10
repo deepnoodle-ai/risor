@@ -30,6 +30,11 @@ import { fromNode, printType, opaque as opaqueType } from "../types/type.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
 import type { SchemaOption } from "../types/schema.ts";
 import { compareText } from "../value/value.ts";
+import { analyze } from "../syntax/analysis.ts";
+import type { Report } from "../syntax/analysis.ts";
+import { parseTemplateText, templateProgram } from "../syntax/template.ts";
+import type { ParsedTemplateData, Segment, TemplateMode } from "../syntax/template.ts";
+import type { Span } from "../syntax/source.ts";
 import type { SigNode, TypeNode } from "../types/typetext.ts";
 import type { Type } from "../types/type.ts";
 import { parseType as parseTypeText, parseReceiver } from "../types/typetext.ts";
@@ -410,9 +415,9 @@ export class Env {
   }
 
   /** Check a program (03 3.2.1): parse, the static rules, the type rules. */
-  check(text: string, expected?: string): CheckOutcome {
+  check(text: string | ParsedProgram, expected?: string): CheckOutcome {
     const exp = this.expected(expected);
-    const p = parse(text);
+    const p = parseInput(text);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
     const s = staticRules(p.program, this.staticEnv);
     const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics);
@@ -421,13 +426,13 @@ export class Env {
   }
 
   /** Parse, apply the static rules and compile. Problems are data. */
-  tryCompile(text: string, options: CompileOptions = {}): CompileResult {
+  tryCompile(text: string | ParsedProgram, options: CompileOptions = {}): CompileResult {
     if (this.noImplementation && (this.environment.functions.size > 0 || this.environment.methods.size > 0)) {
       throw new RisorError([{ phase: "declare", code: "no-implementation", message: "the environment declares a function with no implementation" }]);
     }
     const checked = options.check !== false;
     const exp = checked ? this.expected(options.expected) : { kind: "none" as const };
-    const p = parse(text);
+    const p = parseInput(text);
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
     const s = staticRules(p.program, this.staticEnv);
     let dynamicSpans: Set<string> | null = null;
@@ -448,7 +453,7 @@ export class Env {
   }
 
   /** Compile a program, with a check unless `check: false`. Throws RisorError of phase `declare`, `parse` or `check`. */
-  compile(text: string, options: CompileOptions = {}): Program {
+  compile(text: string | ParsedProgram, options: CompileOptions = {}): Program {
     const r = this.tryCompile(text, options);
     if (!r.ok) throw new RisorError(r.diagnostics);
     return r.program;
@@ -570,4 +575,128 @@ export function printSignature(sig: SigNode, opaqueNames: ReadonlySet<string>): 
     out += " where " + [...sig.bounds].sort((a, b) => compareText(a.name, b.name)).map((b) => `${b.name}: ${b.bound}`).join(", ");
   }
   return out;
+}
+
+// ---- Package F2: parsed programs, templates and analysis -------------------------------
+
+/** A parsed program (03 3.2): needs no environment, and may be checked, compiled and run in any. */
+export class ParsedProgram {
+  readonly source: Source;
+  readonly program: import("../syntax/ast.ts").Program;
+  constructor(source: Source, program: import("../syntax/ast.ts").Program) {
+    this.source = source;
+    this.program = program;
+  }
+  /** The text the spans point into: the whole program or template text (ruling BD13). */
+  get text(): string {
+    return this.source.slice(0, this.source.length);
+  }
+  /** The analysis of this program (f02 3). */
+  analyze(): AnalysisReport {
+    return reportOf(analyze(this.program, null), this.source);
+  }
+}
+
+function parseInput(text: string | ParsedProgram): ReturnType<typeof parse> {
+  if (typeof text === "string") return parse(text);
+  return { ok: true, program: text.program, source: text.source };
+}
+
+/** Parse a program. Throws RisorError of phase `parse`. */
+export function parseProgramText(text: string): ParsedProgram {
+  const p = parse(text);
+  if (!p.ok) throw new RisorError(p.diagnostics);
+  return new ParsedProgram(p.source, p.program);
+}
+
+/** A parsed template (f02 2). */
+export class Template {
+  readonly source: Source;
+  private readonly data: ParsedTemplateData;
+  constructor(data: ParsedTemplateData) {
+    this.data = data;
+    this.source = data.source;
+  }
+  /** Exactly one part, with no text before or after it. */
+  get single(): boolean {
+    return this.data.single;
+  }
+  /** The segments: text runs and parts, in order (f02 2.4). */
+  get segments(): Segment[] {
+    return this.data.segments;
+  }
+  /** The program of the template in a mode (f02 2.5). */
+  program(mode: TemplateMode): ParsedProgram {
+    return new ParsedProgram(this.source, templateProgram(this.data, mode));
+  }
+  /** The program of one part alone, with spans in the whole text. */
+  part(index: number): ParsedProgram {
+    const s = this.data.segments.filter((x) => x.kind === "part")[index] as { expr: import("../syntax/ast.ts").Expr } | undefined;
+    if (s === undefined) throw new RangeError("no such part");
+    return new ParsedProgram(this.source, { kind: "Program", consts: [], result: s.expr, span: { start: s.expr.span.start, end: s.expr.span.end } });
+  }
+  /** The analysis of the template in a mode (f02 3.1 item 6). */
+  analyze(mode: TemplateMode): AnalysisReport {
+    return reportOf(analyze(templateProgram(this.data, mode), this.data.segments), this.source);
+  }
+}
+
+/** Template parse (f02 2.1). Throws RisorError of phase `parse`. */
+export function parseTemplate(text: string): Template {
+  const r = parseTemplateText(text);
+  if (!r.ok) throw new RisorError(r.diagnostics);
+  return new Template(r.template);
+}
+
+/** A call the analysis reports (f02 3.6). Each argument is a parsed program of its own, or null for a lambda. */
+export interface AnalysisCall {
+  name: string;
+  namespace: string | null;
+  span: Span;
+  args: { span: Span; program: ParsedProgram | null }[];
+  lambda: boolean;
+}
+
+/** The report of an analysis (f02 3.3), in this binding's types. Spans are code-point offsets. */
+export interface AnalysisReport {
+  names: string[];
+  refs: { name: string; path: string[]; span: Span }[];
+  calls: AnalysisCall[];
+  literal: { value: unknown } | false;
+  segments: ({ text: string; span: Span } | { part: Span; span: Span })[] | null;
+}
+
+function reportOf(r: Report, source: Source): AnalysisReport {
+  return {
+    names: r.names,
+    refs: r.refs.map((x) => ({ name: x.name, path: x.path.map((p) => p.key), span: x.span })),
+    calls: r.calls.map((c) => ({
+      name: c.name,
+      namespace: c.namespace,
+      span: c.span,
+      args: c.args.map((a) => ({
+        span: a.span,
+        program: a.kind === "Lambda" ? null : new ParsedProgram(source, { kind: "Program", consts: [], result: a, span: { start: a.span.start, end: a.span.end } }),
+      })),
+      lambda: c.lambda,
+    })),
+    literal: r.literal === null ? false : r.literal,
+    segments: r.segments === null ? null : r.segments.map((g) => (g.kind === "text" ? { text: g.value, span: g.span } : { part: g.expr.span, span: g.span })),
+  };
+}
+
+/** The JSON form of a report (f02 3.3, 4.3, 4.8): spans as [line, column, line, column], fields in order. */
+export function reportJSON(r: AnalysisReport, source: Source): string {
+  const sp = (s: Span) => JSON.stringify(source.lineSpan(s));
+  const lit = r.literal === false ? "false" : `{"value":${toJSON(r.literal.value)}}`;
+  const parts = [
+    `"names":[${r.names.map(jsonString).join(",")}]`,
+    `"refs":[${r.refs.map((x) => `{"name":${jsonString(x.name)},"path":[${x.path.map(jsonString).join(",")}],"span":${sp(x.span)}}`).join(",")}]`,
+    `"calls":[${r.calls
+      .map((c) => `{"name":${jsonString(c.name)},"namespace":${c.namespace === null ? "null" : jsonString(c.namespace)},"span":${sp(c.span)},"args":[${c.args.map((a) => sp(a.span)).join(",")}],"lambda":${c.lambda}}`)
+      .join(",")}]`,
+    `"literal":${lit}`,
+    `"segments":${r.segments === null ? "null" : `[${r.segments.map((g) => ("text" in g ? `{"text":${jsonString(g.text)},"span":${sp(g.span)}}` : `{"part":${sp(g.part)},"span":${sp(g.span)}}`)).join(",")}]`}`,
+  ];
+  return `{${parts.join(",")}}`;
 }

@@ -16,11 +16,15 @@ import { parseType } from "../types/typetext.ts";
 import { plainEqual, truthy } from "../value/value.ts";
 import { typeEqual } from "../types/type.ts";
 import type { SchemaOption } from "../types/schema.ts";
+import { ParsedProgram, Template, reportJSON } from "../host/api.ts";
+import type { AnalysisReport } from "../host/api.ts";
+import { parseTemplateText, templateProgram } from "../syntax/template.ts";
+import { parse } from "../syntax/parser.ts";
 import type { Classifier } from "../value/value.ts";
 import { loadCaseFile, validateCaseFile } from "./casefile.ts";
 import type { Case, CaseFile, ExpectDiagnostic, Stub } from "./casefile.ts";
 import { JsonError, isObject, readJson } from "./json.ts";
-import type { Json } from "./json.ts";
+import type { Json, JsonObject } from "./json.ts";
 
 export type VerdictKind = "pass" | "fail" | "skip" | "invalid";
 
@@ -129,6 +133,8 @@ export function runCase(c: Case, file: string, opts: RunnerOptions = {}): Verdic
   const v = (verdict: VerdictKind, extra: Partial<Verdict> = {}): Verdict => ({ file, name: c.name, verdict, ...extra });
   if (c.skip !== undefined) return v("skip", { reason: c.skip });
   const ex = c.expect;
+  // f02 4.2: an analysis case is Read, Parse, Analyze, once.
+  if (ex.kind === "result" && ex.analysis !== undefined) return analysisCase(c, v);
   const checker = opts.checker !== false;
   if (!checker) {
     // 03 3.10.8 item 5: a runner with no type checker.
@@ -202,8 +208,14 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
     if (!checker && c.returns !== undefined && c.returns !== "condition" && !parseType(c.returns).ok) {
       throw new RisorError([{ phase: "declare", code: "bad-type", message: "the expected result is not a type" }]);
     }
-    // Steps 3 and 4: parse, then the check (or the static rules alone).
-    compiled = env.tryCompile(c.source, { check: checker, expected: checker ? c.returns : undefined });
+    // Steps 3 and 4: parse (a template in its mode, f02 4.1), then the check (or the static rules alone).
+    let input: string | ParsedProgram = c.source;
+    if (c.template !== undefined) {
+      const t = parseTemplateText(c.source);
+      if (!t.ok) return done({ kind: "failure", phase: "parse", diagnostics: t.diagnostics, source: t.source });
+      input = new ParsedProgram(t.template.source, templateProgram(t.template, c.template));
+    }
+    compiled = env.tryCompile(input, { check: checker, expected: checker ? c.returns : undefined });
   } catch (x) {
     if (!(x instanceof RisorError)) throw x;
     return done({ kind: "failure", phase: "declare", diagnostics: [...x.diagnostics] });
@@ -223,6 +235,36 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
       ? { kind: "result", ran: true, value: o.value, usage: o.usage, ...typeInfo }
       : { kind: "failure", phase: "run", diagnostics: [o.diagnostic], source: compiled.program.source, usage: o.usage, ...typeInfo },
   );
+}
+
+/** The report of the analysis of a case's text, or its parse failure (f02 3, 4.2). */
+export function analysisOf(c: Case): { ok: true; report: AnalysisReport; source: Source } | { ok: false; diagnostics: Diagnostic[]; source: Source } {
+  if (c.template !== undefined) {
+    const t = parseTemplateText(c.source);
+    if (!t.ok) return t;
+    return { ok: true, report: new Template(t.template).analyze(c.template), source: t.template.source };
+  }
+  const p = parse(c.source);
+  if (!p.ok) return p;
+  return { ok: true, report: new ParsedProgram(p.source, p.program).analyze(), source: p.source };
+}
+
+function analysisCase(c: Case, v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
+  const ex = c.expect as { analysis: JsonObject };
+  const a = analysisOf(c);
+  if (!a.ok) {
+    return v("fail", { differences: [{ field: "outcome", expected: "a result", found: describeFailure({ kind: "failure", phase: "parse", diagnostics: a.diagnostics, source: a.source }) }] });
+  }
+  const found = JSON.parse(reportJSON(a.report, a.source)) as Record<string, unknown>;
+  let same = true;
+  for (const [k, want] of Object.entries(ex.analysis)) {
+    if (k === "literal") {
+      const lit = a.report.literal;
+      if (want === false || lit === false) same &&= want === false && lit === false;
+      else same &&= plainEqual(lit.value, hostValue((want as JsonObject).value), CLASSIFIER);
+    } else same &&= JSON.stringify(found[k]) === JSON.stringify(want);
+  }
+  return same ? v("pass") : v("fail", { differences: [{ field: "analysis", expected: ex.analysis, found }] });
 }
 
 function finish(c: Case, o: Outcome, unmatched: string[], v: (verdict: VerdictKind, extra?: Partial<Verdict>) => Verdict): Verdict {
@@ -407,6 +449,7 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
   }
   // f01 7.3 item 1: every case of suite/host-types/ is run checked, once.
   const checkOnly = opts.checkOnly ?? ["core-check", "host-types"].includes(basename(dirname(path)));
+  // f02 4.7: suite/templates/ runs as suite/core-run/ does; an analysis case runs once.
   return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly });
 }
 
