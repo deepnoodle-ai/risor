@@ -633,6 +633,42 @@ func (p *Program) Measure(ctx context.Context, vars Vars) (any, Usage, error) {
 // Expr returns the parsed program.
 func (p *Program) Expr() *Expr { return p.x }
 
+// RunEntry checks, compiles, and runs x as a REPL entry (package F12 5 item 6):
+// the first len(heldSlots) top-level const lines use their previously evaluated
+// slot values without re-evaluating or re-charging them, and on success all
+// top-level const lines' bound slot values are returned for the next entry.
+func (e *Env) RunEntry(ctx context.Context, x *Expr, vars Vars, heldSlots [][]any) (any, [][]any, error) {
+	c := e.cached()
+	if len(c.missing) > 0 {
+		return nil, nil, &Error{Diagnostics: c.missing}
+	}
+	cfg := new(eval.Config)
+	*cfg = c.cfg
+	res, cr, err := e.analyze(x, c.names, c.varNames, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cr != nil && !e.untyped {
+		cfg.GoTypes = c.goTypes
+	}
+	cfg.HeldConsts = len(heldSlots)
+	cfg.HeldSlots = heldSlots
+	cfg.CaptureConsts = true
+	p, err := eval.Compile(x.tree, x.file, res, cfg)
+	if err != nil {
+		return nil, nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
+	}
+	if vars == nil {
+		vars = Map(nil)
+	}
+	v, _, nextSlots, d := p.RunCaptured(ctx, vars)
+	if d != nil {
+		checkedClass(d, dynamicSpans(x, cr), hostSpans(x, cr), valueSpans(x, cr))
+		return nil, nil, &Error{Diagnostics: []Diagnostic{*d}}
+	}
+	return v, nextSlots, nil
+}
+
 // TypedLayer turns the typed layer on or off (package F11). It is on by
 // default: when a program is checked, a field read on a variable declared
 // from a Go type with TypeOf, and on the structs of its lists, reads the
