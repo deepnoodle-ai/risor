@@ -1115,13 +1115,16 @@
       39
      ],
      "message": "line one\nline two",
+     "data": {
+      "sku": "a"
+     },
      "trace": []
     }
    ],
    "rendered": {
     "line": "error[failed] 1:1-1:39: line one\\nline two\n",
     "detail": "error[failed] 1:1-1:39: line one\\nline two\n    fail(\"line one\\nline two\", {sku: \"a\"})\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
-    "json": "{\"class\":\"value\",\"code\":\"failed\",\"data\":null,\"message\":\"line one\\nline two\",\"phase\":\"run\",\"span\":[1,1,1,39],\"trace\":[]}\n"
+    "json": "{\"class\":\"value\",\"code\":\"failed\",\"data\":{\"sku\":\"a\"},\"message\":\"line one\\nline two\",\"phase\":\"run\",\"span\":[1,1,1,39],\"trace\":[]}\n"
    }
   }
  },

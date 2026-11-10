@@ -1,3 +1,6 @@
 [
+  {"name": "a star after . after a projection", "source": "xs[*].*", "expect": {"phase": "parse", "diagnostics": [{"code": "unexpected-token", "span": [1, 7, 1, 8]}]}},
+  {"name": "a star after an if", "source": "if (c) { xs } else { xs }[*]", "expect": {"phase": "parse", "diagnostics": [{"code": "unexpected-token", "span": [1, 26, 1, 27]}]}},
+  {"name": "a star after a try", "source": "try { xs } catch { xs }?.[*]", "expect": {"phase": "parse", "diagnostics": [{"code": "unexpected-token", "span": [1, 24, 1, 27]}]}},
   {"name": "a lexical error inside the brackets comes first", "source": "xs[* #]", "expect": {"phase": "parse", "diagnostics": [{"code": "unexpected-character", "span": [1, 6, 1, 7]}]}}
 ]

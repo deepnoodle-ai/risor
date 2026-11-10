@@ -1615,9 +1615,9 @@
               "code": "bad-type-text",
               "span": [
                 1,
-                3,
+                12,
                 1,
-                4
+                13
               ],
               "message": "a cannot stand here in a record type"
             }

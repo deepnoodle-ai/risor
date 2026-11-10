@@ -1168,10 +1168,13 @@ These are added to the schema of `03-host.md` 3.10.11: `trace` in
    `03-host.md` 3.10.8 item 5 says. A case of phase `parse` is run once: it
    never reaches the check. A case that states a `check` message, `type` or
    `sites`, or a `check` code that is not static, is run once, checked.
-2. **Static diagnostics and their messages.** A `check` message of a static code
-   is the same whether the program is checked or compiled with the static rules
-   alone, so a case that states one is still run both ways when its codes are
-   all static.
+2. **Every case of `messages-check.json` is run once, checked**, whatever its
+   codes: it is the catalog of the check phase, and some of its codes are static
+   codes that the type rules report at a `MethodCall`, where the static rules
+   alone report nothing. A case of `suite/errors/` that states `check` messages
+   and only static codes is run both ways: a static message is the same in both.
+   `messages-parse.json` needs no such rule: a `parse` case never reaches the
+   check.
 3. A render case is run once: it has no program.
 4. **Earlier cases.** A runner of an implementation that offers F8 does not run
    the files named `until-f08-` (9); every other runner runs them.
@@ -1194,7 +1197,7 @@ them.
 
 ## 9. Earlier cases whose outcome this package changes
 
-1. 317 earlier cases pin, for a text that this package gives a targeted code,
+1. 320 earlier cases pin, for a text that this package gives a targeted code,
    the general code that Core reports: `unexpected-token`,
    `unexpected-character` or `reserved-word`, at the span this chapter keeps. By
    `03-host.md` 3.11 items 4 to 6 they are moved, unchanged, out of the 14 files
@@ -1208,12 +1211,12 @@ them.
 | `suite/conversion/` | `until-f08-conversion-syntax.json` (29), `until-f08-conversion-examples.json` (2) | 31 |
 | `suite/strings/` | `until-f08-strings-core-texts.json` (11), `until-f08-strings-raw.json` (9), `until-f08-strings-errors.json` (4), `until-f08-strings-examples.json` (2) | 26 |
 | `suite/templates/` | `until-f08-errors.json` (2), `until-f08-templates-strings.json` (1) | 3 |
-| `suite/queries/` | `until-f08-queries-syntax.json` (1) | 1 |
+| `suite/queries/` | `until-f08-queries-syntax.json` (4) | 4 |
 
 2. A runner of an implementation that offers F8 does not run these files. Every
    other runner runs them as before, so an implementation that has not reached
    F8 keeps every case that pins what it does.
-3. `suite/errors/errors-core-texts.json` holds each of the 317 texts, with the
+3. `suite/errors/errors-core-texts.json` holds each of the 320 texts, with the
    same source text and the same other fields, and the outcome of this chapter:
    the targeted code, the same span, and the message. Its cases are named after
    the file and the case they stand for: `core-run/parse-errors: rule 11: no
