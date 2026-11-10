@@ -1,0 +1,1390 @@
+{
+ "cases": [
+  {
+   "name": "null is a value",
+   "source": "null",
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "true is a value",
+   "source": "true",
+   "expect": {
+    "value": true,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "false is a value",
+   "source": "false",
+   "expect": {
+    "value": false,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null equals null",
+   "source": "null == null",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null != null is false",
+   "source": "null != null",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "true equals true",
+   "source": "true == true",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "true does not equal false",
+   "source": "true == false",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "!= on two bools costs what == costs",
+   "source": "true != false",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "false is not null",
+   "source": "x == null",
+   "env": "{x: any}",
+   "vars": {
+    "x": false
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null is not false",
+   "source": "x == y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": false
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "true is not the number 1",
+   "source": "x == y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": true,
+    "y": 1
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null renders as the empty string",
+   "source": "`${null}`",
+   "expect": {
+    "value": "",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "bools render as their words",
+   "source": "`${true},${false}`",
+   "expect": {
+    "value": "true,false",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a host null field reads as null",
+   "source": "m.a",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": null
+    }
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a bool cannot be added",
+   "source": "x + 1",
+   "env": "{x: any}",
+   "vars": {
+    "x": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to bool and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two bools cannot be added",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": true,
+    "y": false
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to bool and bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a bool cannot be negated with -",
+   "source": "-x",
+   "env": "{x: any}",
+   "vars": {
+    "x": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ],
+      "message": "cannot apply - to bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "bools are not ordered",
+   "source": "x < y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": true,
+    "y": false
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply < to bool and bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null plus a number is null-operand",
+   "source": "x + 1",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of + is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a number plus null is null-operand",
+   "source": "1 + x",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of + is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null cannot be ordered",
+   "source": "x < 1",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of < is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null cannot be negated",
+   "source": "-x",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ],
+      "message": "an operand of - is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a method call on null",
+   "source": "x.nosuch(1 / d)",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": null,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       16
+      ],
+      "message": "cannot call method nosuch on null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: + with null on the left, a list on the right",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of + is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: + with a list on the left, null on the right",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of + is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: + with null on both sides",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of + is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: - with null on the left, a list on the right",
+   "source": "x - y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of - is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: - with a list on the left, null on the right",
+   "source": "x - y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of - is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: - with null on both sides",
+   "source": "x - y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of - is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: * with null on the left, a list on the right",
+   "source": "x * y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of * is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: * with a list on the left, null on the right",
+   "source": "x * y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of * is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: * with null on both sides",
+   "source": "x * y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of * is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: / with null on the left, a list on the right",
+   "source": "x / y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of / is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: / with a list on the left, null on the right",
+   "source": "x / y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of / is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: / with null on both sides",
+   "source": "x / y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of / is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: % with null on the left, a list on the right",
+   "source": "x % y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of % is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: % with a list on the left, null on the right",
+   "source": "x % y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of % is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: % with null on both sides",
+   "source": "x % y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of % is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: ** with null on the left, a list on the right",
+   "source": "x ** y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of ** is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: ** with a list on the left, null on the right",
+   "source": "x ** y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of ** is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: ** with null on both sides",
+   "source": "x ** y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of ** is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: < with null on the left, a list on the right",
+   "source": "x < y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of < is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: < with a list on the left, null on the right",
+   "source": "x < y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of < is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: < with null on both sides",
+   "source": "x < y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of < is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: <= with null on the left, a list on the right",
+   "source": "x <= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of <= is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: <= with a list on the left, null on the right",
+   "source": "x <= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of <= is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: <= with null on both sides",
+   "source": "x <= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of <= is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: > with null on the left, a list on the right",
+   "source": "x > y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of > is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: > with a list on the left, null on the right",
+   "source": "x > y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of > is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: > with null on both sides",
+   "source": "x > y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of > is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: >= with null on the left, a list on the right",
+   "source": "x >= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of >= is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: >= with a list on the left, null on the right",
+   "source": "x >= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of >= is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "Y2: >= with null on both sides",
+   "source": "x >= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of >= is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: null in a list is a search, not a failure",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: a list in null is null-operand",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: null in null is null-operand",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: null in a number is wrong-kind",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": 5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply in to null and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: null not in a list is a search, not a failure",
+   "source": "x not in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: a list not in null is null-operand",
+   "source": "x not in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "message": "an operand of not in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: null not in null is null-operand",
+   "source": "x not in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "message": "an operand of not in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "AE: null not in a number is wrong-kind",
+   "source": "x not in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": 5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "message": "cannot apply not in to null and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

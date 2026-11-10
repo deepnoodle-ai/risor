@@ -71,7 +71,7 @@ Types are in `05-types.md`.
 | `a ?? b` | `a`. If `a` is not null, the value is `a` and `b` is not evaluated. Otherwise `b`, which is the value |
 | `c ? a : b` | `c`. Then `a` if `c` is truthy, else `b`. The other branch is not evaluated |
 | `if` | Each test in order, up to the first truthy one. Then the branch of that test, or the `else` branch if no test is truthy. No later test and no other branch is evaluated |
-| `match` | The subject, once. Then each arm in order: the subject is compared with `==` to each literal of the arm, and the first arm with an equal literal, or the arm `_`, is taken. Then the result of the arm taken. No other result is evaluated. If no arm is taken, the failure `no-match` |
+| `match` | The subject, once. Then each arm in order: the subject is compared with `==` to each literal of the arm, left to right, and the arm stops at its first equal literal. The first arm with an equal literal, or the arm `_`, is taken. Then the result of the arm taken. No other result is evaluated. If no arm is taken, the failure `no-match` |
 | `try` | The body. If it gives a value, that is the value, and the handler is not evaluated. If it fails with a code that `catch` catches (12.2), the error value is charged (12.4), the name is bound, and the handler is evaluated. Its value is the value of the `try` |
 | Chain | The primary, then each step left to right (2.3) |
 | Call by name, `f(a, b)` | The arguments left to right, then the call (11) |
@@ -91,9 +91,9 @@ Types are in `05-types.md`.
    - For a plain `.name`, `[e]` or `.m(...)` step, a null receiver fails with
      `null-operand`, and a receiver of a kind the step does not accept fails
      with `wrong-kind`.
-   - For a method call step whose method was not resolved when the program was
-     compiled, the method is found from the receiver's kind and the name. Then
-     the **shape tests** below are made, in this order, before any argument is
+   - For every method call step, the method is selected at run time from the
+     receiver's kind and the name, whatever the checker inferred. Then the
+     **shape tests** below are made, in this order, before any argument is
      evaluated and before the call's charge. The first that fails raises
      `wrong-kind` at the `MethodCall`, and nothing is charged for the call.
 
@@ -145,21 +145,29 @@ Types are in `05-types.md`.
 1. **Kind tests come before the charge.** An operation first tests that its
    operands are of kinds it accepts. A failure with the code `null-operand` or
    `wrong-kind` is raised there, and the operation charges nothing. Item 4 is
-   the one exception.
+   the one exception. For an operator with two operands that rejects null, both
+   operands are evaluated first. Then, if the left operand is null, or else the
+   right one is, the failure is `null-operand`. Only then are the kinds tested,
+   and a pair that does not go together is `wrong-kind`. Each of `"a" * null`,
+   `null < [1]` and `[1] + null` fails with `null-operand`. This holds for every
+   binary operator of `01-language.md` 14.5 that rejects null.
 2. **Other failures come after the charge.** The operation charges, then does
    its work, and the work raises `divide-by-zero`, `number-range`,
    `index-range`, `missing-field` or `no-match`. What was charged stays charged.
 3. A walk charges as it goes (5.5). A failure met inside a walk keeps what the
    walk charged before it.
-4. **A failed element test is paid for.** A library entry with no callback may
+4. **A failed element test is paid for.** A list method with no callback may
    scan the elements of its receiver with a test before its own charges, as
-   `04-library.md` names for each entry. When such a test fails at an element,
-   the entry charges 1 step for each element it tested, the failing one
-   included, and then raises the failure. If that charge passes the step budget,
-   the failure is `steps-exceeded`. A scan that passes charges nothing of its
-   own. A failed test of a callback's result, or of the keys a callback gave,
-   charges nothing more: each of those values was paid for with the two steps of
-   its element (5.6).
+   `04-library.md` names for each entry: the list methods `min` and `max`,
+   `sort`, `unique`, `sum`, `flat`, `join` and `toMap`. When such a test fails
+   at an element, the call charges its 1 step, then 1 step for each element
+   tested, the failing one included, and then raises the failure. So `[1, "a",
+   2].sort()` charges 3 steps (W39). The functions `min` and `max` test their
+   arguments as any function does, before the call's step and for nothing. If
+   that charge passes the step budget, the failure is `steps-exceeded`. A scan
+   that passes charges nothing of its own. A failed test of a callback's result,
+   or of the keys a callback gave, charges nothing more: each of those values
+   was paid for with the two steps of its element (5.6).
 5. A library entry raises its other failures as `04-library.md` says. A null
    argument of an entry is `wrong-kind`, not `null-operand`. A host function
    raises its failure when it returns one (`03-host.md`).
@@ -189,7 +197,7 @@ Types are in `05-types.md`.
 | `a / b` | The IEEE quotient | The same |
 | `a % b` | `a − b × trunc(a / b)`, computed exactly. The sign is the sign of `a`. A zero result is zero | The same |
 | `a ** b`, `b` whole and >= 0 | Start with 1. For each bit of `b` from the highest: square, then multiply by `a` if the bit is set. Each square and product follows the first row, so the result is exact or `number-range` | The same steps with IEEE multiplication. If the result is not finite, `number-range` |
-| `a ** b`, `b` whole and < 0 | `1 / p`, where `p` is `a ** -b` by the steps above with IEEE multiplication only. `p` infinite gives zero. `p` zero with `a` not zero fails with `number-range`. `a` zero fails with `divide-by-zero` | The same |
+| `a ** b`, `b` whole and < 0 | `1 / p`, where `p` is `a ** -b` by the steps above with IEEE multiplication only. `p` infinite gives zero. `p` zero with `a` not zero fails with `number-range`. `a` zero fails with `divide-by-zero`. Otherwise a `1 / p` that is not finite fails with `number-range`: `0.5 ** -1024` does | The same |
 | `a ** b`, `b` not whole | `wrong-kind` | The same |
 | `==`, `!=`, `<`, `<=`, `>`, `>=` | Comparison of the two values | The same |
 
@@ -207,10 +215,20 @@ Types are in `05-types.md`.
 
 ### 3.3 Host numbers
 
-An integer outside the whole range, a NaN or an infinity in host data cannot
-enter the language. Reading one fails with the code `number-range` and the class
-`environment`. The read charges its step first (2.5). `catch` catches the
-failure.
+1. An integer outside the whole range, a NaN or an infinity in host data cannot
+   enter the language. Reading one fails with the code `number-range` and the
+   class `environment`, at the span of the node that read it. `catch` catches
+   the failure.
+2. A host number is read when an operation yields it as a value: a variable
+   read, a field or index read, a pattern binding, an element handed to a
+   callback, an element that a library entry or a walk tests, compares, adds or
+   renders, an argument passed to a host function, and each number of the run's
+   result when the result is handed over.
+3. An operation that copies or measures a container without looking at its
+   elements does not read them: `len`, a spread, `slice`, `reverse`.
+4. The reading operation charges what it charges before it yields the value (2.5
+   item 2). A variable read charges nothing.
+5. A host negative zero reads as zero.
 
 ### 3.4 Rounding
 
@@ -274,8 +292,8 @@ one rounding, and must not compute in a wider format.
 | Call of a `const`-bound lambda by name | 1, plus what the body charges | After the arguments (11.2) |
 | Call of a library function or method | 1, plus the entry's formula and what the lambdas it calls charge (5.6) | After the receiver and the arguments, and their tests |
 | Call of `fail(message, data?)` | 1, as any library call. Nothing for the message or the data | After the arguments |
-| Call of a host function, or of a method that an opaque type declares | 1, plus what the function charges (5.8) | After the receiver and the arguments, and their tests, before the function runs |
-| `match` | 1 for each arm tested, in order, up to and including the arm taken. An arm with several literals counts 1. When no arm is taken, 1 for every arm | Each arm's step before its comparison |
+| Call of a host function, or of a method that an opaque type declares | 1, plus what the function charges (5.8) | After the receiver and the arguments, before the function runs |
+| `match` | 1 for each arm tested, in order, up to and including the arm taken. An arm with several literals counts 1. When no arm is taken, 1 for every arm. In addition, each literal compared that is a string, with a subject that is a string, charges the size of their longest common prefix, as `==` on two strings does. Literals of an arm are compared left to right, and the arm stops at the first equal one | Each arm's step before its comparisons. Each literal's prefix charge at its comparison |
 | Field read by a map pattern | 1 + size of the field's key, for each field, whether the key is present or not | At the field's turn, before its default |
 | Element read by a list pattern | 1 for each element of the pattern, `_` included, whether the position is present or not | At the element's turn, before its default |
 | Element copied into the rest of a list pattern | 1 for each | After the elements |
@@ -307,11 +325,13 @@ one rounding, and must not compute in a wider format.
    (8.4). It enters one level for the pair.
 3. The comparison of two maps visits the left map's entries in key order.
 4. **Searching text.** A search for a string `x` in a string `s`, as `x in s`
-   makes, does work of at most a constant times `w(s) + w(x)`, where `w` is
-   weight (4). The charge stays as the table gives it. An implementation may use
-   its platform's search function only where that bound holds for it. Where it
-   does not, it may still use it when the weight of `x` is under 64, and
-   otherwise uses a search of its own that meets the bound.
+   makes, does work of at most a constant times `1 + w(s)`, where `w` is weight
+   (4). A search for text longer than the text searched is answered from the two
+   lengths, before anything else is done with `x`. This binds every search, in
+   the language and in the library. The charge stays as the table gives it. An
+   implementation may use its platform's search function only where that bound
+   holds for it. Where it does not, it may still use it when the weight of `x`
+   is under 64, and otherwise uses a search of its own that meets the bound.
 5. **The key rule.** Wherever the language probes or builds a map by a key, it
    charges the size of the key in steps, because hashing or comparing a key
    reads its text: a read by `.name` or `[k]`, `x in m`, an entry of a map
@@ -349,7 +369,9 @@ one rounding, and must not compute in a wider format.
    | A map of `n` entries | `n + L(n) × (n + s)`, where `s` is the size of the map's keys taken together |
 
 5. An opaque value met by the walk fails with `wrong-kind`. What the walk
-   charged before stays charged, and the template's own step is not charged.
+   charged before stays charged, and the template's own step is not charged. So
+   `` `${[1, x]}` `` with `x` opaque charges 2 steps on entering the list, then
+   fails.
 6. The same walk and the same charges apply wherever the language renders a list
    or a map as text. Library entries that render, such as `string`, charge as
    `04-library.md` says.
@@ -492,6 +514,8 @@ one rounding, and must not compute in a wider format.
 | W35 | `const {a, ...rest} = m; rest`, with `m` a map with the key `a` and two keys 40 × `a` and 40 × `b` | 4: the field `a` 1 + 0. The rest copies 2 entries, 2, plus their keys taken together, weight 80 and size 1 | 5: the rest 1 + 2 × 2 |
 | W36 | `m == n`, with `m` and `n` maps of two entries each, both with the keys 40 × `a` and 40 × `b` and the values 1 and 2 | 5: 2 entries at 1, plus the left map's keys taken together, size 1, plus 2 comparisons of two numbers at 1 | 0 |
 | W37 | `xs.map(1)`, and `try { xs.map(1) } catch (err) { err.code }`, with `xs` `[1, 2]` and declared `any` | `xs.map(1)`: 0. Shape test 3 fails with `wrong-kind` before the argument is evaluated, and the call is not charged. The run fails with usage 0 steps. In the `try`: 2, the message `argument 1 of method map must be a function` has weight 43 and size 0, so 1 + 0, and `.code` 1 | `xs.map(1)`: 0. In the `try`: 10, the error value 9 + (1 + 0) |
+| W38 | `match s { "b" => 1, "a…a" \| "a…a" => 2, _ => 3 }`, where the second arm's literals are 70 × `a` and 100 × `a`, with `s` 100 × `a` | 4: the first arm 1, and `"b"` has no common prefix with `s`, 0. The second arm 1. Its first literal has a common prefix of weight 70 and size 1, and is not equal, 1. Its second literal has a common prefix of weight 100 and size 1, and is equal, 1. So 1 + 0 + 1 + 1 + 1 | 0 |
+| W39 | `[1, "a", 2].sort()` | 3: the call 1, then the ordered test fails at `"a"`, the second element tested, 2. The failure is `wrong-kind` | 4: the list 1 + 3, built before the call |
 
 ## 8. Limits
 
@@ -548,21 +572,25 @@ one rounding, and must not compute in a wider format.
 3. For a call that a library entry makes of a lambda, the call that is measured
    is the library call. Each call of the lambda adds that measure while it is in
    progress. A library call that calls no lambda adds nothing.
-4. A walk adds 1 for each list or map it has entered and not left. A rendering
+4. A call is in progress from its depth test (item 7) to its end. The arguments
+   of a call by name are evaluated before the call's step and its test, so the
+   call is not in progress while they run. In `inc(inc(x))` the outer `inc` is
+   not in progress while the inner one runs.
+5. A walk adds 1 for each list or map it has entered and not left. A rendering
    walk enters every list and map it renders. A comparison enters a pair of
    lists of the same length, or of maps of the same size, as one level.
-5. A projection does not exist in Core. A `try` adds nothing of its own: a call
+6. A projection does not exist in Core. A `try` adds nothing of its own: a call
    in its body or handler is deeper by the level of the braces.
-6. The test is made at these points, and `depth-exceeded` is raised when the
+7. The test is made at these points, and `depth-exceeded` is raised when the
    count would be more than the depth limit:
    - for a call by name, after the call's step and before the parameters are
      bound;
    - for a call a library entry makes of a lambda, after the two steps of the
      element (5.6) and before the parameters are bound;
    - for a walk, on entering each list or map, before the walk charges for it.
-7. A failure that `catch` catches returns the depth count to its value when the
+8. A failure that `catch` catches returns the depth count to its value when the
    `try` began.
-8. Within these rules the count depends only on the text and on the values
+9. Within these rules the count depends only on the text and on the values
    walked, so a run reaches the limit at the same call or the same level in
    every implementation.
 
@@ -573,6 +601,7 @@ In this table `f` is a `const`-bound lambda.
 | `xs.map(x => ys.filter(y => f(y)))` | 3 | 3: each call is at nesting depth 0 within its body |
 | `xs.map(x => [(f(x))])` | 2 | 4: the call of the lambda by `map` is 1. `f` stands inside `map(`, `[` and `(`, 3 levels, less the 1 open at the lambda's first token `x`, so 1 + 2 = 3 |
 | `try { xs.map(x => f(x)) } catch { 0 }` | 2 | 3: `xs` stands inside the braces of the body, so `map` is 1 + 1 = 2. `f` is 1 + 0 |
+| `inc(inc(x))`, with `inc` a `const`-bound lambda, at the inner `inc` | 1: the outer `inc` is not in progress while its argument runs | 2: the inner `inc` stands inside the outer's `(`, 1 level, so 1 + 1. When it returns, the outer `inc` is tested at 1 + 0 = 1 |
 | ``xs.map(x => `${v}`)``, with `v` `[[1]]` | 1, and a walk, at the inner list | 3: `map` is 1, and the walk has entered the outer list and the inner list, 2 |
 
 ### 8.5 What the limits guarantee
@@ -647,6 +676,7 @@ reference evaluation:
 | Replace a scan by a lookup | The lookup charges what the scan would have charged. `x in [constants]` charges what the scan of 5.3 charges |
 | Build a constant list or map once | Its units are charged at each evaluation (6.2) |
 | Bind each call to its callee when compiling, keep each binding in one fixed place, and create nothing for a lambda | 11.1 |
+| Resolve a method when compiling | The run still tests the receiver's kind and makes the shape tests of 2.3, so the method selected and every failure are those of the reference |
 | Make no depth test at a call | The largest count the program's calls can reach is within the depth limit (11.1) |
 
 ### 10.3 Not allowed

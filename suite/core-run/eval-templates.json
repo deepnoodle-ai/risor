@@ -1,0 +1,691 @@
+{
+ "cases": [
+  {
+   "name": "a template joins text and a value",
+   "source": "`a${x}b`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "a1b",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a string part is unchanged",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": "say \"hi\""
+   },
+   "expect": {
+    "value": "say \"hi\"",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a null part is empty",
+   "source": "`[${x}]`",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "value": "[]",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "bool parts",
+   "source": "`${x}${y}`",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": true,
+    "y": false
+   },
+   "expect": {
+    "value": "truefalse",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 100 renders as 100",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 100
+   },
+   "expect": {
+    "value": "100",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 1e+21 renders as 1e+21",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1e+21
+   },
+   "expect": {
+    "value": "1e+21",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 123456789012345680000 renders as 123456789012345680000",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 123456789012345680000
+   },
+   "expect": {
+    "value": "123456789012345680000",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 0.000001 renders as 0.000001",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1e-06
+   },
+   "expect": {
+    "value": "0.000001",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 1e-7 renders as 1e-7",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1e-07
+   },
+   "expect": {
+    "value": "1e-7",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 1.5e-7 renders as 1.5e-7",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1.5e-07
+   },
+   "expect": {
+    "value": "1.5e-7",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number -1.5 renders as -1.5",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": -1.5
+   },
+   "expect": {
+    "value": "-1.5",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 123456.789 renders as 123456.789",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 123456.789
+   },
+   "expect": {
+    "value": "123456.789",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 5e-324 renders as 5e-324",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 5e-324
+   },
+   "expect": {
+    "value": "5e-324",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 1.7976931348623157e+308 renders as 1.7976931348623157e+308",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1.7976931348623157e+308
+   },
+   "expect": {
+    "value": "1.7976931348623157e+308",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 4.35 renders as 4.35",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 4.35
+   },
+   "expect": {
+    "value": "4.35",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 0.5 renders as 0.5",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 0.5
+   },
+   "expect": {
+    "value": "0.5",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 100000000000000000000 renders as 100000000000000000000",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1e+20
+   },
+   "expect": {
+    "value": "100000000000000000000",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 9007199254740991 renders as 9007199254740991",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 9007199254740991
+   },
+   "expect": {
+    "value": "9007199254740991",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 0.0000015 renders as 0.0000015",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1.5e-06
+   },
+   "expect": {
+    "value": "0.0000015",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the number 0.30000000000000004 renders as 0.30000000000000004",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 0.30000000000000004
+   },
+   "expect": {
+    "value": "0.30000000000000004",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a computed sum renders every digit",
+   "source": "`${0.1 + 0.2}`",
+   "expect": {
+    "value": "0.30000000000000004",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "minus zero renders as 0",
+   "source": "`${-0}`",
+   "expect": {
+    "value": "0",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "01 example 12",
+   "source": "`${1e21} ${0.000001} ${1e-7}`",
+   "expect": {
+    "value": "1e+21 0.000001 1e-7",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a host list renders as compact JSON",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     "a",
+     null,
+     true
+    ]
+   },
+   "expect": {
+    "value": "[1,\"a\",null,true]",
+    "steps": 5,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an empty list renders as []",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": []
+   },
+   "expect": {
+    "value": "[]",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a nested list is walked at every level",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     [
+      1
+     ],
+     []
+    ]
+   },
+   "expect": {
+    "value": "[[1],[]]",
+    "steps": 4,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a list literal in a template",
+   "source": "`${[1, 2]}`",
+   "expect": {
+    "value": "[1,2]",
+    "steps": 3,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "an empty map renders as {}",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {}
+   },
+   "expect": {
+    "value": "{}",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map of one entry",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": "{\"a\":1}",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map of three entries in key order",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "c": 3,
+     "a": 1,
+     "b": 2
+    }
+   },
+   "expect": {
+    "value": "{\"a\":1,\"b\":2,\"c\":3}",
+    "steps": 10,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map of four entries",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "d": 4,
+     "c": 3,
+     "b": 2,
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": "{\"a\":1,\"b\":2,\"c\":3,\"d\":4}",
+    "steps": 13,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map of five entries",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "e": 5,
+     "d": 4,
+     "c": 3,
+     "b": 2,
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": "{\"a\":1,\"b\":2,\"c\":3,\"d\":4,\"e\":5}",
+    "steps": 21,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map inside a list",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     {
+      "a": 1
+     }
+    ]
+   },
+   "expect": {
+    "value": "[{\"a\":1}]",
+    "steps": 3,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map with a null value",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": null
+    }
+   },
+   "expect": {
+    "value": "{\"a\":null}",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "map keys are in code point order",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "b": 1,
+     "B": 2,
+     "a": 3
+    }
+   },
+   "expect": {
+    "value": "{\"B\":2,\"a\":3,\"b\":1}",
+    "steps": 10,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "key order is by code point, not UTF-16 unit",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "｡": 1,
+     "😀": 2
+    }
+   },
+   "expect": {
+    "value": "{\"｡\":1,\"😀\":2}",
+    "steps": 5,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "long keys add to the walk of a map",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2
+    }
+   },
+   "expect": {
+    "value": "{\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":1,\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\":2}",
+    "steps": 7,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a quote in a list element is escaped",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     "say \"hi\""
+    ]
+   },
+   "expect": {
+    "value": "[\"say \\\"hi\\\"\"]",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a backslash in a list element is escaped",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     "a\\b"
+    ]
+   },
+   "expect": {
+    "value": "[\"a\\\\b\"]",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "control characters with short escapes",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     "\n\t\r\b\f"
+    ]
+   },
+   "expect": {
+    "value": "[\"\\n\\t\\r\\b\\f\"]",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "other control characters use \\u00 and lower case",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     "\u0001\u001f"
+    ]
+   },
+   "expect": {
+    "value": "[\"\\u0001\\u001f\"]",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "slash, angle bracket, DEL and U+2028 are not escaped",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     "/<& "
+    ]
+   },
+   "expect": {
+    "value": "[\"/<& \"]",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "non-ASCII text is not escaped",
+   "source": "`${xs}`",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     "é😀"
+    ]
+   },
+   "expect": {
+    "value": "[\"é😀\"]",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map key is escaped",
+   "source": "`${m}`",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a\"b": 1
+    }
+   },
+   "expect": {
+    "value": "{\"a\\\"b\":1}",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a string part of weight 64",
+   "source": "`${x}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "text parts count toward the size",
+   "source": "`xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx${1}`",
+   "expect": {
+    "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a template inside a template",
+   "source": "`a${`b${x}`}`",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": "ab1",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "01 example 44",
+   "source": "`${[1, \"a\"]}-${null}-${{b: 1, a: true}}`",
+   "expect": {
+    "value": "[1,\"a\"]--{\"a\":true,\"b\":1}",
+    "steps": 7,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "a failing part keeps what the walk charged",
+   "source": "`${xs}${1 / d}`",
+   "env": "{xs: any, d: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       9,
+       1,
+       14
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 3,
+    "allocated": 0
+   }
+  }
+ ]
+}

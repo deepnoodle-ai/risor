@@ -1,0 +1,505 @@
+{
+ "cases": [
+  {
+   "name": "?. on null is null",
+   "source": "a?.b",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. on a map reads the field",
+   "source": "a?.b",
+   "env": "{a: any}",
+   "vars": {
+    "a": {
+     "b": 1
+    }
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. on a missing field is null",
+   "source": "a?.b",
+   "env": "{a: any}",
+   "vars": {
+    "a": {}
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. skips the rest of the chain",
+   "source": "a?.b.c.d",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "two ?. steps on maps read both",
+   "source": "a?.b?.c",
+   "env": "{a: any}",
+   "vars": {
+    "a": {
+     "b": {
+      "c": 2
+     }
+    }
+   },
+   "expect": {
+    "value": 2,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a plain step after ?. finds a missing field null",
+   "source": "a?.b.c",
+   "env": "{a: any}",
+   "vars": {
+    "a": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot read field c of null"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "parentheses end a chain",
+   "source": "(a?.b).c",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "message": "cannot read field c of null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] on null is null",
+   "source": "a?.[0]",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] on a list",
+   "source": "a?.[0]",
+   "env": "{a: any}",
+   "vars": {
+    "a": [
+     5
+    ]
+   },
+   "expect": {
+    "value": 5,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] on the empty list",
+   "source": "a?.[0]",
+   "env": "{a: any}",
+   "vars": {
+    "a": []
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] on null does not evaluate the index",
+   "source": "a?.[1 / d]",
+   "env": "{a: any, d: any}",
+   "vars": {
+    "a": null,
+    "d": 0
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. on null does not evaluate a later index",
+   "source": "a?.b[1 / d]",
+   "env": "{a: any, d: any}",
+   "vars": {
+    "a": null,
+    "d": 0
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.m() on null is null",
+   "source": "a?.trim()",
+   "env": "{a: string | null}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.m() on null does not evaluate the arguments",
+   "source": "a?.nosuch(1 / d)",
+   "env": "{a: any, d: any}",
+   "vars": {
+    "a": null,
+    "d": 0
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a chain ends at an operator",
+   "source": "a?.b + 1",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "message": "an operand of + is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "prefix - applies to the whole chain",
+   "source": "-a?.b",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of - is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? after a chain",
+   "source": "a?.b ?? \"d\"",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "value": "d",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. after a plain step",
+   "source": "a.b?.c",
+   "env": "{a: any}",
+   "vars": {
+    "a": {
+     "b": null
+    }
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a plain first step on null fails",
+   "source": "a.b?.c",
+   "env": "{a: any}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ],
+      "message": "cannot read field b of null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "01 example 26",
+   "source": "null?.a.b.c",
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "01 7.4: a null event",
+   "source": "input.event?.pull_request.head.sha",
+   "env": "{input: any}",
+   "vars": {
+    "input": {
+     "event": null
+    }
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "01 7.4: an event with no pull_request",
+   "source": "input.event?.pull_request.head.sha",
+   "env": "{input: any}",
+   "vars": {
+    "input": {
+     "event": {}
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       31
+      ],
+      "message": "cannot read field head of null"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. on a number is wrong-kind",
+   "source": "x?.a",
+   "env": "{x: any}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "cannot read field a of a value of kind number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. on a string is wrong-kind",
+   "source": "x?.a",
+   "env": "{x: any}",
+   "vars": {
+    "x": "s"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "cannot read field a of a value of kind string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] on a bool is wrong-kind",
+   "source": "x?.[0]",
+   "env": "{x: any}",
+   "vars": {
+    "x": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot index a value of kind bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] with a null index is null-operand",
+   "source": "xs?.[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1
+    ],
+    "i": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ],
+      "message": "a key or an index is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] past the end of a long string",
+   "source": "s?.[200]",
+   "env": "{s: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": null,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] with a long missing key",
+   "source": "m?.[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {},
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+   },
+   "expect": {
+    "value": null,
+    "steps": 3,
+    "allocated": 0
+   }
+  }
+ ]
+}

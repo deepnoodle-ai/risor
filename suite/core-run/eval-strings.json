@@ -1,0 +1,798 @@
+{
+ "cases": [
+  {
+   "name": "+ joins two strings",
+   "source": "\"ab\" + \"cd\"",
+   "expect": {
+    "value": "abcd",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "+ of two empty strings",
+   "source": "\"\" + \"\"",
+   "expect": {
+    "value": "",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "+ twice creates two strings",
+   "source": "\"a\" + \"b\" + \"c\"",
+   "expect": {
+    "value": "abc",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a joined string of weight 80",
+   "source": "s + t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a joined string of weight 64",
+   "source": "s + t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a joined string of weight 63",
+   "source": "s + t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an emoji counts twice in a joined string",
+   "source": "s + t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+    "t": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   },
+   "expect": {
+    "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a long string plus one letter",
+   "source": "s + \"!\"",
+   "env": "{s: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "escaped emoji count twice",
+   "source": "\"\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\\u{1F600}\" + \"\"",
+   "expect": {
+    "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+    "steps": 2,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "a string and a number do not join",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to string and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a number and a string do not join",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": "a"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to number and string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string and a list do not join",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to string and list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string and a bool do not join",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to string and bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string and null do not join",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of + is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "index 0 of a string",
+   "source": "\"abc\"[0]",
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the last index of a string",
+   "source": "\"abc\"[2]",
+   "expect": {
+    "value": "c",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an index counts code points",
+   "source": "\"héllo\"[1]",
+   "expect": {
+    "value": "é",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an emoji is one position",
+   "source": "\"a😀b\"[1]",
+   "expect": {
+    "value": "😀",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the position after an emoji",
+   "source": "\"a😀b\"[2]",
+   "expect": {
+    "value": "b",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an index of 1.0 is whole",
+   "source": "\"abc\"[1.0]",
+   "expect": {
+    "value": "b",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a string of weight 64 costs 2 to index",
+   "source": "s[0]",
+   "env": "{s: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": "a",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a string of weight 63 costs 1 to index",
+   "source": "s[62]",
+   "env": "{s: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an index into 32 emoji reads weight 64",
+   "source": "e[31]",
+   "env": "{e: any}",
+   "vars": {
+    "e": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   },
+   "expect": {
+    "value": "😀",
+    "steps": 2,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "an index at the length is out of range",
+   "source": "\"abc\"[3]",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "message": "index 3 is outside the string of length 3"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the length counts an emoji once",
+   "source": "\"😀\"[1]",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "index 1 is outside the string of length 1"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "any index of the empty string is out of range",
+   "source": "\"\"[0]",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "index 0 is outside the string of length 0"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a negative index is out of range",
+   "source": "s[i]",
+   "env": "{s: any, i: any}",
+   "vars": {
+    "s": "abc",
+    "i": -1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "index -1 is outside the string of length 3"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "out of range on a long string still costs its size",
+   "source": "s[200]",
+   "env": "{s: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "index 200 is outside the string of length 128"
+     }
+    ],
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "out of range in 32 emoji",
+   "source": "e[32]",
+   "env": "{e: any}",
+   "vars": {
+    "e": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "index 32 is outside the string of length 32"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string index that is a fraction",
+   "source": "s[i]",
+   "env": "{s: any, i: any}",
+   "vars": {
+    "s": "abc",
+    "i": 1.5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "expected a whole number, found 1.5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string index that is a string",
+   "source": "s[i]",
+   "env": "{s: any, i: any}",
+   "vars": {
+    "s": "abc",
+    "i": "a"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "expected a whole number, found \"a\""
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] out of range on a string is null",
+   "source": "s?.[5]",
+   "env": "{s: any}",
+   "vars": {
+    "s": "abc"
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] in range on a string",
+   "source": "s?.[0]",
+   "env": "{s: any}",
+   "vars": {
+    "s": "abc"
+   },
+   "expect": {
+    "value": "a",
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "\\n is a line feed",
+   "source": "\"a\\nb\"",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\t is a tab",
+   "source": "\"\\t\"",
+   "expect": {
+    "value": "\t",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\r is a carriage return",
+   "source": "\"\\r\"",
+   "expect": {
+    "value": "\r",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\b is a backspace",
+   "source": "\"\\b\"",
+   "expect": {
+    "value": "\b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\f is a form feed",
+   "source": "\"\\f\"",
+   "expect": {
+    "value": "\f",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\\\ is a backslash",
+   "source": "\"\\\\\"",
+   "expect": {
+    "value": "\\",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\/ is a slash",
+   "source": "\"\\/\"",
+   "expect": {
+    "value": "/",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\\" is a double quote",
+   "source": "\"\\\"\"",
+   "expect": {
+    "value": "\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\' is a single quote",
+   "source": "'\\''",
+   "expect": {
+    "value": "'",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a double quote stands in single quotes",
+   "source": "'\"'",
+   "expect": {
+    "value": "\"",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a single quote stands in double quotes",
+   "source": "\"'\"",
+   "expect": {
+    "value": "'",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\u with four digits",
+   "source": "\"\\u0041\"",
+   "expect": {
+    "value": "A",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\u with lower-case digits",
+   "source": "\"\\u00e9\"",
+   "expect": {
+    "value": "é",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\u{ } with one digit",
+   "source": "\"\\u{41}\"",
+   "expect": {
+    "value": "A",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\u{ } names an emoji",
+   "source": "\"\\u{1F600}\"",
+   "expect": {
+    "value": "😀",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a surrogate pair of \\u escapes is one code point",
+   "source": "\"\\uD83D\\uDE00\"",
+   "expect": {
+    "value": "😀",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\u{10FFFF} is the last code point",
+   "source": "\"\\u{10FFFF}\"",
+   "expect": {
+    "value": "􏿿",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\` in a template",
+   "source": "`\\``",
+   "expect": {
+    "value": "`",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\$ in a template",
+   "source": "`\\$`",
+   "expect": {
+    "value": "$",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\${ in a template is text",
+   "source": "`\\${x}`",
+   "expect": {
+    "value": "${x}",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a $ not followed by { is text",
+   "source": "`a$b`",
+   "expect": {
+    "value": "a$b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw CR LF in a template reads as LF",
+   "source": "`a\r\nb`",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw CR in a template reads as LF",
+   "source": "`a\rb`",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "\\r in a template is still CR",
+   "source": "`a\\rb`",
+   "expect": {
+    "value": "a\rb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a raw line feed in a template",
+   "source": "`a\nb`",
+   "expect": {
+    "value": "a\nb",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a // inside a string is not a comment",
+   "source": "\"a//b\"",
+   "expect": {
+    "value": "a//b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a pair of escapes has weight 2",
+   "source": "\"\\uD83D\\uDE00\" + s",
+   "env": "{s: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": "😀aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "steps": 2,
+    "allocated": 2
+   }
+  }
+ ]
+}

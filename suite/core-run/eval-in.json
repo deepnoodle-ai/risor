@@ -1,0 +1,712 @@
+{
+ "cases": [
+  {
+   "name": "in a list: found last",
+   "source": "3 in [1, 2, 3]",
+   "expect": {
+    "value": true,
+    "steps": 3,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "in a list: not found",
+   "source": "4 in [1, 2, 3]",
+   "expect": {
+    "value": false,
+    "steps": 3,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "in a list: found first",
+   "source": "1 in [1, 2, 3]",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "in the empty list",
+   "source": "x in ys",
+   "env": "{x: any, ys: any}",
+   "vars": {
+    "x": 1,
+    "ys": []
+   },
+   "expect": {
+    "value": false,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null in a list",
+   "source": "null in [1, null]",
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a list in a list of lists",
+   "source": "[1] in [[1]]",
+   "expect": {
+    "value": true,
+    "steps": 3,
+    "allocated": 6
+   }
+  },
+  {
+   "name": "lists of different lengths add nothing",
+   "source": "[1] in [[1, 2]]",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 7
+   }
+  },
+  {
+   "name": "a map in a list of maps",
+   "source": "{a: 1} in [{a: 1}]",
+   "expect": {
+    "value": true,
+    "steps": 3,
+    "allocated": 8
+   }
+  },
+  {
+   "name": "a map with another key in a list of maps",
+   "source": "{a: 1} in [{b: 1}]",
+   "expect": {
+    "value": false,
+    "steps": 2,
+    "allocated": 8
+   }
+  },
+  {
+   "name": "in does not convert kinds",
+   "source": "x in ys",
+   "env": "{x: any, ys: any}",
+   "vars": {
+    "x": 1,
+    "ys": [
+     true,
+     "1",
+     [
+      1
+     ],
+     {}
+    ]
+   },
+   "expect": {
+    "value": false,
+    "steps": 4,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "in a host list",
+   "source": "x in xs",
+   "env": "{x: any, xs: any}",
+   "vars": {
+    "x": 2,
+    "xs": [
+     1,
+     2,
+     3
+    ]
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "not in a host list",
+   "source": "x not in xs",
+   "env": "{x: any, xs: any}",
+   "vars": {
+    "x": 4,
+    "xs": [
+     1,
+     2,
+     3
+    ]
+   },
+   "expect": {
+    "value": true,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a long string in a list of a different string",
+   "source": "s in [t]",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "strings with a long common prefix in a list",
+   "source": "s in xs",
+   "env": "{s: any, xs: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "xs": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+   },
+   "expect": {
+    "value": true,
+    "steps": 4,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a long string and a number add nothing",
+   "source": "x in ys",
+   "env": "{x: any, ys: any}",
+   "vars": {
+    "x": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ys": [
+     100
+    ]
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "not in on a list of lists charges what in charges",
+   "source": "[1, 2] not in [[1, 3], [1, 2]]",
+   "expect": {
+    "value": false,
+    "steps": 10,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "the empty string is in every string",
+   "source": "\"\" in \"abc\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a substring",
+   "source": "\"bc\" in \"abc\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "not a substring",
+   "source": "\"abd\" in \"abc\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string is in itself",
+   "source": "\"abc\" in \"abc\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a longer string is not in a shorter one",
+   "source": "\"abcd\" in \"abc\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a letter is not in the empty string",
+   "source": "\"a\" in \"\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty string is in the empty string",
+   "source": "\"\" in \"\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an emoji in a string",
+   "source": "\"😀\" in \"a😀b\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "in on strings does not normalize",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "é",
+    "y": "é"
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "in on strings costs the size of the right operand",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a right operand of weight 63",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a right operand of weight 128",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "b",
+    "y": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": false,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a long left operand does not change the charge",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "y": "a"
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "not in on strings",
+   "source": "\"b\" not in \"abc\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "01 example 22",
+   "source": "\"x\" in {x: null}",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a key not in a map",
+   "source": "\"y\" in {x: 1}",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a long key in a map",
+   "source": "k in m",
+   "env": "{k: any, m: any}",
+   "vars": {
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+    "m": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a long key not in a map",
+   "source": "k in m",
+   "env": "{k: any, m: any}",
+   "vars": {
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+    "m": {}
+   },
+   "expect": {
+    "value": false,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty key",
+   "source": "\"\" in m",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "": 1
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "not in on a map",
+   "source": "\"a\" not in m",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null is in a list that holds null",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": [
+     null
+    ]
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "in on a number",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": 5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply in to number and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a number in a string",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": "abc"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply in to number and string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a number in a map",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply in to number and map"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list in a string",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": "a"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply in to list and string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "in on a bool",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply in to string and bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "not in on a number in a string",
+   "source": "x not in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": "a"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "message": "cannot apply not in to number and string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "in null",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null in a string",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": "abc"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null in a map",
+   "source": "x in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "not in null",
+   "source": "x not in y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "message": "an operand of not in is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

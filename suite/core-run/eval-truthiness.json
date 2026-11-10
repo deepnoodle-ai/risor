@@ -1,0 +1,758 @@
+{
+ "cases": [
+  {
+   "name": "! of null is true",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of false is true",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": false
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of zero is true",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of the empty string is true",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": ""
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of the empty list is true",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": []
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of the empty map is true",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": {}
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of true is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": true
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of one is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a negative number is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": -1
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a fraction is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": 0.5
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of the smallest number above zero is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": 5e-324
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a space is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": " "
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of the string 0 is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": "0"
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of the string false is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": "false"
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a list holding null is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": [
+     null
+    ]
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a list holding zero is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": [
+     0
+    ]
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a list holding an empty list is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": [
+     []
+    ]
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a map whose value is null is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": {
+     "a": null
+    }
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! of a map with an empty key is false",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": {
+     "": 0
+    }
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! on a long string still costs 1",
+   "source": "!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "!! gives a bool",
+   "source": "!!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": "a"
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "!! of zero is false",
+   "source": "!!x",
+   "env": "{x: any}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "value": false,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "! binds tighter than ==",
+   "source": "!x == false",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& gives a falsy left operand",
+   "source": "x && y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 0,
+    "y": "b"
+   },
+   "expect": {
+    "value": 0,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& gives an empty list on the left",
+   "source": "x && y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [],
+    "y": 1
+   },
+   "expect": {
+    "value": [],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& gives the right operand when the left is truthy",
+   "source": "x && y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": "b"
+   },
+   "expect": {
+    "value": "b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& does not turn its result into a bool",
+   "source": "x && y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": 0
+   },
+   "expect": {
+    "value": 0,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "|| gives a truthy left operand",
+   "source": "x || y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": "b"
+   },
+   "expect": {
+    "value": "a",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "|| gives the right operand when the left is falsy",
+   "source": "x || y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 0,
+    "y": "b"
+   },
+   "expect": {
+    "value": "b",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "|| gives a falsy right operand as it is",
+   "source": "x || y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": false
+   },
+   "expect": {
+    "value": false,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "|| of two empty values gives the right one",
+   "source": "x || y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": {},
+    "y": []
+   },
+   "expect": {
+    "value": [],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? gives the right operand for null",
+   "source": "x ?? y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": 5
+   },
+   "expect": {
+    "value": 5,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? keeps zero",
+   "source": "x ?? y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 0,
+    "y": 5
+   },
+   "expect": {
+    "value": 0,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? keeps false",
+   "source": "x ?? y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": false,
+    "y": true
+   },
+   "expect": {
+    "value": false,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? keeps the empty string",
+   "source": "x ?? y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "",
+    "y": "d"
+   },
+   "expect": {
+    "value": "",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? keeps an empty list",
+   "source": "x ?? y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [],
+    "y": 1
+   },
+   "expect": {
+    "value": [],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? of two nulls is null",
+   "source": "x ?? y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& does not evaluate its right operand after a falsy left",
+   "source": "x && 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": false,
+    "d": 0
+   },
+   "expect": {
+    "value": false,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "|| does not evaluate its right operand after a truthy left",
+   "source": "x || 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": 1,
+    "d": 0
+   },
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? does not evaluate its right operand after a value",
+   "source": "x ?? 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": 0,
+    "d": 0
+   },
+   "expect": {
+    "value": 0,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& evaluates its right operand after a truthy left",
+   "source": "x && 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": true,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       6,
+       1,
+       11
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? evaluates its right operand after null",
+   "source": "x ?? 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": null,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       6,
+       1,
+       11
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? does not catch a failure of its left operand",
+   "source": "1 / d ?? 0",
+   "env": "{d: any}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "|| chains give the last operand when all are falsy",
+   "source": "x || y || z",
+   "env": "{x: any, y: any, z: any}",
+   "vars": {
+    "x": 0,
+    "y": "",
+    "z": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& chains give the last operand when all are truthy",
+   "source": "x && y && z",
+   "env": "{x: any, y: any, z: any}",
+   "vars": {
+    "x": 1,
+    "y": 2,
+    "z": 3
+   },
+   "expect": {
+    "value": 3,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "&& binds tighter than ||",
+   "source": "x || y && z",
+   "env": "{x: any, y: any, z: any}",
+   "vars": {
+    "x": 0,
+    "y": 1,
+    "z": 2
+   },
+   "expect": {
+    "value": 2,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "|| skips a whole && on its right",
+   "source": "x || y && 1 / d",
+   "env": "{x: any, y: any, d: any}",
+   "vars": {
+    "x": 5,
+    "y": 1,
+    "d": 0
+   },
+   "expect": {
+    "value": 5,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?? chains give the first value that is not null",
+   "source": "x ?? y ?? z",
+   "env": "{x: any, y: any, z: any}",
+   "vars": {
+    "x": null,
+    "y": null,
+    "z": 3
+   },
+   "expect": {
+    "value": 3,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "? : takes the else branch for an empty list",
+   "source": "x ? \"t\" : \"f\"",
+   "env": "{x: any}",
+   "vars": {
+    "x": []
+   },
+   "expect": {
+    "value": "f",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "? : takes the then branch for [0]",
+   "source": "x ? \"t\" : \"f\"",
+   "env": "{x: any}",
+   "vars": {
+    "x": [
+     0
+    ]
+   },
+   "expect": {
+    "value": "t",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "? : takes the then branch for the string 0",
+   "source": "x ? \"t\" : \"f\"",
+   "env": "{x: any}",
+   "vars": {
+    "x": "0"
+   },
+   "expect": {
+    "value": "t",
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "? : does not evaluate the branch not taken",
+   "source": "x ? 1 : 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": 1,
+    "d": 0
+   },
+   "expect": {
+    "value": 1,
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

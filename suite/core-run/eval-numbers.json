@@ -1,0 +1,1768 @@
+{
+ "cases": [
+  {
+   "name": "a decimal literal",
+   "source": "42",
+   "expect": {
+    "value": 42,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "zero",
+   "source": "0",
+   "expect": {
+    "value": 0,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fraction literal",
+   "source": "1.5",
+   "expect": {
+    "value": 1.5,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "underscores between digits are dropped",
+   "source": "1_000_000",
+   "expect": {
+    "value": 1000000,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a hex literal",
+   "source": "0x1F",
+   "expect": {
+    "value": 31,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a hex literal with an underscore",
+   "source": "0xff_ff",
+   "expect": {
+    "value": 65535,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "hex digits of either case",
+   "source": "0xAbC",
+   "expect": {
+    "value": 2748,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an exponent",
+   "source": "1.5e3",
+   "expect": {
+    "value": 1500,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an upper-case exponent",
+   "source": "1E3",
+   "expect": {
+    "value": 1000,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a negative exponent",
+   "source": "2.5e-3",
+   "expect": {
+    "value": 0.0025,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an exponent with a plus sign",
+   "source": "1e+2",
+   "expect": {
+    "value": 100,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1e20 is a valid literal",
+   "source": "1e20",
+   "expect": {
+    "value": 1e+20,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the largest whole literal",
+   "source": "9007199254740991",
+   "expect": {
+    "value": 9007199254740991,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the largest whole hex literal",
+   "source": "0x1FFFFFFFFFFFFF",
+   "expect": {
+    "value": 9007199254740991,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a decimal past the whole range rounds to nearest",
+   "source": "9007199254740993.0",
+   "expect": {
+    "value": 9007199254740992,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a literal too small to represent is zero",
+   "source": "1e-400",
+   "expect": {
+    "value": 0,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the largest finite literal",
+   "source": "1.7976931348623157e308",
+   "expect": {
+    "value": 1.7976931348623157e+308,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the smallest literal above zero",
+   "source": "5e-324",
+   "expect": {
+    "value": 5e-324,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "3.0 is the same value as 3",
+   "source": "3.0",
+   "expect": {
+    "value": 3,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1 + 2",
+   "source": "1 + 2",
+   "expect": {
+    "value": 3,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "5 - 8 is negative",
+   "source": "5 - 8",
+   "expect": {
+    "value": -3,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "6 * 7",
+   "source": "6 * 7",
+   "expect": {
+    "value": 42,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "7 / 2 is 3.5",
+   "source": "7 / 2",
+   "expect": {
+    "value": 3.5,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "6 / 3 is whole",
+   "source": "6 / 3",
+   "expect": {
+    "value": 2,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1 / 3 is the nearest binary64",
+   "source": "1 / 3",
+   "expect": {
+    "value": 0.3333333333333333,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a negative quotient",
+   "source": "-7 / 2",
+   "expect": {
+    "value": -3.5,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "0.1 + 0.2 is not 0.3",
+   "source": "0.1 + 0.2",
+   "expect": {
+    "value": 0.30000000000000004,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "0.1 + 0.2 == 0.3 is false",
+   "source": "0.1 + 0.2 == 0.3",
+   "expect": {
+    "value": false,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1.5 + 1.5 is 3",
+   "source": "1.5 + 1.5",
+   "expect": {
+    "value": 3,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "0.1 * 3 rounds once",
+   "source": "0.1 * 3",
+   "expect": {
+    "value": 0.30000000000000004,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "each operator rounds once",
+   "source": "0.1 * 3 - 0.3",
+   "expect": {
+    "value": 5.551115123125783e-17,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "7 % 3",
+   "source": "7 % 3",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% has the sign of the left operand",
+   "source": "-7 % 3",
+   "expect": {
+    "value": -1,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% with a negative right operand",
+   "source": "7 % -3",
+   "expect": {
+    "value": 1,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% with two negative operands",
+   "source": "-7 % -3",
+   "expect": {
+    "value": -1,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% of fractions",
+   "source": "5.5 % 2",
+   "expect": {
+    "value": 1.5,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% of a negative fraction",
+   "source": "-5.5 % 2",
+   "expect": {
+    "value": -1.5,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% is exact on a fraction",
+   "source": "5.3 % 2",
+   "expect": {
+    "value": 1.2999999999999998,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% with no remainder is zero",
+   "source": "6 % 3",
+   "expect": {
+    "value": 0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "-6 % 3 is zero",
+   "source": "-6 % 3",
+   "expect": {
+    "value": 0,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "-1 % 1 is zero",
+   "source": "-1 % 1",
+   "expect": {
+    "value": 0,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "-0 is zero",
+   "source": "-0",
+   "expect": {
+    "value": 0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "0 * -1 is zero",
+   "source": "0 * -1 == 0",
+   "expect": {
+    "value": true,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unary minus",
+   "source": "-x",
+   "env": "{x: any}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": -5,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "-- is two minus signs",
+   "source": "--5",
+   "expect": {
+    "value": 5,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "- - with a space",
+   "source": "- -5",
+   "expect": {
+    "value": 5,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "negating a fraction",
+   "source": "-x",
+   "env": "{x: any}",
+   "vars": {
+    "x": 0.5
+   },
+   "expect": {
+    "value": -0.5,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "parentheses group before *",
+   "source": "(1 + 2) * 3",
+   "expect": {
+    "value": 9,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "- is left-associative",
+   "source": "10 - 4 - 3",
+   "expect": {
+    "value": 3,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "* and % are left-associative",
+   "source": "2 * 3 % 4",
+   "expect": {
+    "value": 2,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "/ is left-associative",
+   "source": "100 / 10 / 5",
+   "expect": {
+    "value": 2,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "2 ** 10",
+   "source": "2 ** 10",
+   "expect": {
+    "value": 1024,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a ** 0 is 1",
+   "source": "2 ** 0",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "0 ** 0 is 1",
+   "source": "0 ** 0",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a negative base to an odd power",
+   "source": "(-2) ** 3",
+   "expect": {
+    "value": -8,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a negative base to an even power",
+   "source": "(-2) ** 2",
+   "expect": {
+    "value": 4,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fractional base",
+   "source": "1.5 ** 2",
+   "expect": {
+    "value": 2.25,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fractional base cubed",
+   "source": "2.5 ** 3",
+   "expect": {
+    "value": 15.625,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "** is right-associative",
+   "source": "2 ** 3 ** 2",
+   "expect": {
+    "value": 512,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "- applied to a parenthesized power",
+   "source": "-(2 ** 2)",
+   "expect": {
+    "value": -4,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "2 ** 52 is whole",
+   "source": "2 ** 52",
+   "expect": {
+    "value": 4503599627370496,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "3 ** 33 is exact",
+   "source": "3 ** 33",
+   "expect": {
+    "value": 5559060566555523,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "10 ** 15 is exact",
+   "source": "10 ** 15",
+   "expect": {
+    "value": 1000000000000000,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fraction to a large power underflows to zero",
+   "source": "0.5 ** 2000",
+   "expect": {
+    "value": 0.0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "0.5 ** 0 is 1",
+   "source": "0.5 ** 0",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "adding zero to the largest whole number",
+   "source": "9007199254740991 + 0",
+   "expect": {
+    "value": 9007199254740991,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "negating the largest whole number",
+   "source": "9007199254740991 * -1",
+   "expect": {
+    "value": -9007199254740991,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fractional operand uses IEEE rounding, ties to even",
+   "source": "9007199254740990 + 0.5",
+   "expect": {
+    "value": 9007199254740990.0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fractional operand may give a number past the whole range",
+   "source": "9007199254740991 + 1.5",
+   "expect": {
+    "value": 9007199254740992.0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a number past the whole range adds by IEEE",
+   "source": "1e20 + 1",
+   "expect": {
+    "value": 1e+20,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1e16 + 1 rounds to 1e16",
+   "source": "1e16 + 1",
+   "expect": {
+    "value": 1e+16,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1e20 * 10",
+   "source": "1e20 * 10",
+   "expect": {
+    "value": 1e+21,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a quotient too small to represent is zero",
+   "source": "5e-324 / 2",
+   "expect": {
+    "value": 0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a product too small to represent is zero",
+   "source": "1e-300 * 1e-300",
+   "expect": {
+    "value": 0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the smallest number times one half is zero",
+   "source": "5e-324 * 0.5",
+   "expect": {
+    "value": 0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "whole + past the range",
+   "source": "9007199254740991 + 1",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ],
+      "message": "the result of + is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "whole - past the range",
+   "source": "-9007199254740991 - 1",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       22
+      ],
+      "message": "the result of - is out of range"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "whole * past the range",
+   "source": "4503599627370496 * 2",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ],
+      "message": "the result of * is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "2 ** 53 is past the whole range",
+   "source": "2 ** 53",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ],
+      "message": "the result of ** is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "10 ** 16 is past the whole range",
+   "source": "10 ** 16",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "message": "the result of ** is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "3 ** 34 is past the whole range",
+   "source": "3 ** 34",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ],
+      "message": "the result of ** is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "fractional + to infinity",
+   "source": "1.7976931348623157e308 + 1.7976931348623157e308",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       48
+      ],
+      "message": "the result of + is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "fractional * to infinity",
+   "source": "1e308 * 10",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       11
+      ],
+      "message": "the result of * is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "fractional * to negative infinity",
+   "source": "-1e308 * 10",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "message": "the result of * is out of range"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "fractional - to infinity",
+   "source": "1e308 - -1e308",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       15
+      ],
+      "message": "the result of - is out of range"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "/ to infinity",
+   "source": "1e308 / 0.1",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "message": "the result of / is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fractional power to infinity",
+   "source": "1.5 ** 2000",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "message": "the result of ** is out of range"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "/ by zero",
+   "source": "1 / d",
+   "env": "{d: any}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "0 / 0 is divide-by-zero",
+   "source": "0 / d",
+   "env": "{d: any}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% by zero",
+   "source": "7 % d",
+   "env": "{d: any}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "the divisor of % is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a fraction / zero",
+   "source": "1.5 / d",
+   "env": "{d: any}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% of a fraction by zero",
+   "source": "x % d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": 2.5,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "the divisor of % is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 2 ** -1 is 0.5",
+   "source": "2 ** -1",
+   "expect": {
+    "value": 0.5,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 4 ** -2 is 1 / 16",
+   "source": "4 ** -2",
+   "expect": {
+    "value": 0.0625,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 10 ** -2 is 0.01",
+   "source": "10 ** -2",
+   "expect": {
+    "value": 0.01,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 10 ** -16 uses IEEE products, not the whole range",
+   "source": "10 ** -16",
+   "expect": {
+    "value": 1e-16,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: a negative base to -1",
+   "source": "(-2) ** -1",
+   "expect": {
+    "value": -0.5,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: a negative base to -2",
+   "source": "(-2) ** -2",
+   "expect": {
+    "value": 0.25,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: a fractional base to a negative power",
+   "source": "0.5 ** -2",
+   "expect": {
+    "value": 4.0,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 2 ** -1023 is a subnormal number",
+   "source": "2 ** -1023",
+   "expect": {
+    "value": 1.1125369292536007e-308,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: p infinite gives zero, 2 ** -1024",
+   "source": "2 ** -1024",
+   "expect": {
+    "value": 0.0,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: p infinite gives zero, even where 2 ** -1074 is representable",
+   "source": "2 ** -1074",
+   "expect": {
+    "value": 0.0,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 2 ** -2000 is zero",
+   "source": "2 ** -2000",
+   "expect": {
+    "value": 0.0,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 10 ** -400 is zero",
+   "source": "10 ** -400",
+   "expect": {
+    "value": 0.0,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: p zero with a not zero is number-range",
+   "source": "0.1 ** -400",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       12
+      ],
+      "message": "the result of ** is out of range"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 1 / p infinite is number-range",
+   "source": "0.5 ** -1024",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "number-range",
+      "span": [
+       1,
+       1,
+       1,
+       13
+      ],
+      "message": "the result of ** is out of range"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: 0.5 ** -1023 is finite",
+   "source": "0.5 ** -1023",
+   "expect": {
+    "value": 8.98846567431158e+307,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: zero to a negative power is divide-by-zero",
+   "source": "0 ** -1",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ],
+      "message": "zero cannot be raised to a negative power"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "A9: zero from a variable to a negative power",
+   "source": "x ** -2",
+   "env": "{x: any}",
+   "vars": {
+    "x": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ],
+      "message": "zero cannot be raised to a negative power"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an exponent that is not whole is wrong-kind",
+   "source": "2 ** y",
+   "env": "{y: any}",
+   "vars": {
+    "y": 0.5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "expected a whole number, found 0.5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an exponent past the whole range is not whole",
+   "source": "1 ** y",
+   "env": "{y: any}",
+   "vars": {
+    "y": 1e+20
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "expected a whole number, found 100000000000000000000"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an exponent that is a string",
+   "source": "2 ** y",
+   "env": "{y: any}",
+   "vars": {
+    "y": "2"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply ** to number and string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "- on a string and a number",
+   "source": "x - y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply - to string and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "* on a list and a number",
+   "source": "x * y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": 2
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply * to list and number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "/ on a number and a map",
+   "source": "x / y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply / to number and map"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% on a number and a bool",
+   "source": "x % y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply % to number and bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "+ does not join lists",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": [
+     2
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to list and list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "+ on a number and a string",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": "a"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to number and string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "+ on two maps",
+   "source": "x + y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": {},
+    "y": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply + to map and map"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "unary - on a list",
+   "source": "-x",
+   "env": "{x: any}",
+   "vars": {
+    "x": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       3
+      ],
+      "message": "cannot apply - to list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "* with a null right operand",
+   "source": "x * y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 2,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of * is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "/ with a null left operand",
+   "source": "x / y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": 2
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of / is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "% with a null operand",
+   "source": "x % y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 5,
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of % is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "** with a null base",
+   "source": "x ** y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": 2
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of ** is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "- with a null operand",
+   "source": "x - y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of - is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "operands are evaluated before the kind test",
+   "source": "x + 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": null,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       5,
+       1,
+       10
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a failure keeps the steps charged before it",
+   "source": "x * 2 + 1 / d",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": 3,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       9,
+       1,
+       14
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a number has no method of that name",
+   "source": "x.nosuch(1 / d)",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": 5,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       16
+      ],
+      "message": "a value of kind number has no method nosuch"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}

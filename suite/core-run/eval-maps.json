@@ -1,0 +1,1238 @@
+{
+ "cases": [
+  {
+   "name": "the empty map",
+   "source": "{}",
+   "expect": {
+    "value": {},
+    "steps": 0,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a map of two entries",
+   "source": "{a: 1, b: 2}",
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": 2
+    },
+    "steps": 0,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "a quoted key",
+   "source": "{\"a-b\": 1}",
+   "expect": {
+    "value": {
+     "a-b": 1
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "reserved words as keys",
+   "source": "{if: 1, for: 2}",
+   "expect": {
+    "value": {
+     "if": 1,
+     "for": 2
+    },
+    "steps": 0,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "a trailing comma",
+   "source": "{a: 1,}",
+   "expect": {
+    "value": {
+     "a": 1
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "the empty key",
+   "source": "{\"\": 1}",
+   "expect": {
+    "value": {
+     "": 1
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "shorthand entries",
+   "source": "{a, b}",
+   "env": "{a: any, b: any}",
+   "vars": {
+    "a": 1,
+    "b": "x"
+   },
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": "x"
+    },
+    "steps": 0,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "a computed key",
+   "source": "{[k]: 1}",
+   "env": "{k: any}",
+   "vars": {
+    "k": "x"
+   },
+   "expect": {
+    "value": {
+     "x": 1
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a computed key replaces an earlier entry",
+   "source": "{a: 1, [k]: 2}",
+   "env": "{k: any}",
+   "vars": {
+    "k": "a"
+   },
+   "expect": {
+    "value": {
+     "a": 2
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "two computed keys that are equal",
+   "source": "{[k]: 1, [j]: 2}",
+   "env": "{k: any, j: any}",
+   "vars": {
+    "k": "z",
+    "j": "z"
+   },
+   "expect": {
+    "value": {
+     "z": 2
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a computed key from an expression",
+   "source": "{[k + \"y\"]: 1}",
+   "env": "{k: any}",
+   "vars": {
+    "k": "x"
+   },
+   "expect": {
+    "value": {
+     "xy": 1
+    },
+    "steps": 1,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "a computed key in parentheses",
+   "source": "{[(\"c\")]: 4}",
+   "expect": {
+    "value": {
+     "c": 4
+    },
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a spread of a host map",
+   "source": "{...m}",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": {
+     "a": 1
+    },
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "an entry after a spread replaces",
+   "source": "{...m, b: 3}",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1,
+     "b": 2
+    }
+   },
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": 3
+    },
+    "steps": 2,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "a spread after an entry replaces",
+   "source": "{b: 3, ...m}",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1,
+     "b": 2
+    }
+   },
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": 2
+    },
+    "steps": 2,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "a spread of the empty map",
+   "source": "{...{}}",
+   "expect": {
+    "value": {},
+    "steps": 0,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "two spreads",
+   "source": "{...m, ...n}",
+   "env": "{m: any, n: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "n": {
+     "a": 2,
+     "b": 3
+    }
+   },
+   "expect": {
+    "value": {
+     "a": 2,
+     "b": 3
+    },
+    "steps": 3,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "01 example 42",
+   "source": "{...{a: 1, b: 2}, b: 3, [(\"c\")]: 4}",
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": 3,
+     "c": 4
+    },
+    "steps": 2,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "a map spread of null",
+   "source": "{...x}",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "cannot spread null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map spread of a list",
+   "source": "{...x}",
+   "env": "{x: any}",
+   "vars": {
+    "x": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "only a map can be spread into a map, found list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map spread of a string",
+   "source": "{...x}",
+   "env": "{x: any}",
+   "vars": {
+    "x": "s"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "only a map can be spread into a map, found string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map spread of a number",
+   "source": "{...x}",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "only a map can be spread into a map, found number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a field read",
+   "source": "m.a",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a read by a string key",
+   "source": "m[\"a\"]",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a read by a key from a variable",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": "a"
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a field of a map literal",
+   "source": "{a: 1}.a",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "01 example 51",
+   "source": "{if: 1}.if",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a reserved word after the dot",
+   "source": "m.catch",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "catch": 2
+    }
+   },
+   "expect": {
+    "value": 2,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a dot never names a method",
+   "source": "{keys: 1}.keys",
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "two field reads",
+   "source": "m.a.b",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": {
+      "b": 2
+     }
+    }
+   },
+   "expect": {
+    "value": 2,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a field whose value is null",
+   "source": "m.a",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": null
+    }
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a missing field",
+   "source": "m.b",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ],
+      "message": "the map has no field b"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a missing key",
+   "source": "m[\"b\"]",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "the map has no key \"b\""
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a missing key from a variable",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {},
+    "k": "b"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "the map has no key \"b\""
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a missing key is written in JSON form",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {},
+    "k": "say \"hi\""
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "the map has no key \"say \\\"hi\\\"\""
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a long missing key is cut in the message",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {},
+    "k": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "the map has no key \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx..."
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a missing field of 64 letters is not cut",
+   "source": "m.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "env": "{m: any}",
+   "vars": {
+    "m": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       67
+      ],
+      "message": "the map has no field aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a missing field of 70 letters is cut",
+   "source": "m.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "env": "{m: any}",
+   "vars": {
+    "m": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       73
+      ],
+      "message": "the map has no field aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..."
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?. on a missing field is null",
+   "source": "m?.b",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] on a missing key is null",
+   "source": "m?.[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {},
+    "k": "b"
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a field of a number",
+   "source": "x.a",
+   "env": "{x: any}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ],
+      "message": "cannot read field a of a value of kind number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a field of a string",
+   "source": "x.a",
+   "env": "{x: any}",
+   "vars": {
+    "x": "s"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ],
+      "message": "cannot read field a of a value of kind string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a field of a bool",
+   "source": "x.a",
+   "env": "{x: any}",
+   "vars": {
+    "x": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ],
+      "message": "cannot read field a of a value of kind bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a field of null",
+   "source": "x.a",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       4
+      ],
+      "message": "cannot read field a of null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map key that is a number",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "a map key must be a string, found 1"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map key that is a bool",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "a map key must be a string, found true"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map key that is a list",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "a map key must be a string, found list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map key that is a map",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "a map key must be a string, found map"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map key that is a fraction",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": 1.5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "a map key must be a string, found 1.5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a map key that is null",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "a key or an index is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] still fails on a key that is not a string",
+   "source": "m?.[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "a": 1
+    },
+    "k": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "a map key must be a string, found 1"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a computed key that is a number",
+   "source": "{[k]: 1}",
+   "env": "{k: any}",
+   "vars": {
+    "k": 5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ],
+      "message": "a map key must be a string, found 5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a computed key that is null",
+   "source": "{[k]: 1}",
+   "env": "{k: any}",
+   "vars": {
+    "k": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       2,
+       1,
+       8
+      ],
+      "message": "a key or an index is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a computed key is tested before its value is evaluated",
+   "source": "{[k]: 1 / d}",
+   "env": "{k: any, d: any}",
+   "vars": {
+    "k": 5,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       12
+      ],
+      "message": "a map key must be a string, found 5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the value of a computed entry is evaluated after its key",
+   "source": "{[k]: 1 / d}",
+   "env": "{k: any, d: any}",
+   "vars": {
+    "k": "a",
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       7,
+       1,
+       12
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a key of weight 128 costs 2 more",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+    },
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+   },
+   "expect": {
+    "value": 1,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a long missing key still costs its size",
+   "source": "m[k]",
+   "env": "{m: any, k: any}",
+   "vars": {
+    "m": {},
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "missing-field",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "the map has no key \"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk..."
+     }
+    ],
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a word key of 64 letters",
+   "source": "{aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: 1}",
+   "expect": {
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1
+    },
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a string key of weight 130",
+   "source": "{\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\": 1}",
+   "expect": {
+    "value": {
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": 1
+    },
+    "steps": 2,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a shorthand entry with a long name",
+   "source": "{bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}",
+   "env": "{bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb: any}",
+   "vars": {
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 1
+   },
+   "expect": {
+    "value": {
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 1
+    },
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "two long computed keys",
+   "source": "{[k]: 1, [j]: 2}",
+   "env": "{k: any, j: any}",
+   "vars": {
+    "k": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "j": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+   },
+   "expect": {
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2
+    },
+    "steps": 2,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "an entry that replaces still charges its key",
+   "source": "{[k]: 1, [k]: 2}",
+   "env": "{k: any}",
+   "vars": {
+    "k": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 2
+    },
+    "steps": 2,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "spread keys are charged taken together",
+   "source": "{...m}",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2,
+     "cccccccccc": 3
+    }
+   },
+   "expect": {
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2,
+     "cccccccccc": 3
+    },
+    "steps": 4,
+    "allocated": 7
+   }
+  },
+  {
+   "name": "a long field of a map value",
+   "source": "m.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "env": "{m: any}",
+   "vars": {
+    "m": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 5
+    }
+   },
+   "expect": {
+    "value": 5,
+    "steps": 2,
+    "allocated": 0
+   }
+  }
+ ]
+}

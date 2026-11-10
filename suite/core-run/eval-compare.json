@@ -1,0 +1,504 @@
+{
+ "cases": [
+  {
+   "name": "1 < 2",
+   "source": "1 < 2",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "2 < 1 is false",
+   "source": "2 < 1",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1 <= 1",
+   "source": "1 <= 1",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "2 <= 1 is false",
+   "source": "2 <= 1",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "2 > 1",
+   "source": "2 > 1",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1 >= 1",
+   "source": "1 >= 1",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1 >= 2 is false",
+   "source": "1 >= 2",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a negative number is below zero",
+   "source": "-1 < 0",
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "fractions compare by value",
+   "source": "0.1 < 0.2",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a whole number and a fraction",
+   "source": "1 < 1.5",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "1.0 and 1 are one value",
+   "source": "1.0 >= 1",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the smallest number is above zero",
+   "source": "5e-324 > 0",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "-0.0 is not below zero",
+   "source": "-0.0 < 0",
+   "expect": {
+    "value": false,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the largest numbers compare",
+   "source": "1e308 < 1.7976931348623157e308",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "strings: a < b",
+   "source": "\"a\" < \"b\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "strings: b < a is false",
+   "source": "\"b\" < \"a\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string is not below itself",
+   "source": "\"a\" < \"a\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a string is <= itself",
+   "source": "\"a\" <= \"a\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a proper prefix is smaller",
+   "source": "\"ab\" > \"a\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the empty string is smallest",
+   "source": "\"\" < \"a\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "upper case is below lower case by code point",
+   "source": "\"B\" < \"a\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "lower case is not below upper case",
+   "source": "\"a\" < \"B\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an accented letter is above z",
+   "source": "\"é\" > \"z\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "order is by code point, not UTF-16 unit",
+   "source": "\"\\u{1F600}\" > \"\\uFF61\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the first difference decides",
+   "source": "\"abc\" < \"abd\"",
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": ">= on strings",
+   "source": "\"abc\" >= \"abd\"",
+   "expect": {
+    "value": false,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a long common prefix costs its size",
+   "source": "s < t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "> on long strings costs the same",
+   "source": "s > t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"
+   },
+   "expect": {
+    "value": false,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a common prefix of weight 63 has size 0",
+   "source": "s < t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaax",
+    "t": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaay"
+   },
+   "expect": {
+    "value": true,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a common prefix of weight 64 has size 1",
+   "source": "s < t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaax",
+    "t": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaay"
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a common prefix of 40 emoji has weight 80",
+   "source": "s < t",
+   "env": "{s: any, t: any}",
+   "vars": {
+    "s": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀a",
+    "t": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀b"
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a comparison gives a bool",
+   "source": "(1 < 2) == true",
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a number and a string are not ordered",
+   "source": "x < y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": 1,
+    "y": "a"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply < to number and string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "bools are not ordered by <=",
+   "source": "x <= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": true,
+    "y": false
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply <= to bool and bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "lists are not ordered",
+   "source": "x > y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1
+    ],
+    "y": [
+     2
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "cannot apply > to list and list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "maps are not ordered",
+   "source": "x >= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": {},
+    "y": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "cannot apply >= to map and map"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null cannot be compared with <",
+   "source": "x < y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": null,
+    "y": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "an operand of < is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "null cannot be compared with >=",
+   "source": "x >= y",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": "a",
+    "y": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "an operand of >= is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "comparisons do not chain",
+   "source": "a < b < c",
+   "env": "{a: any, b: any, c: any}",
+   "vars": {
+    "a": 1,
+    "b": 2,
+    "c": 3
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ],
+      "message": "cannot apply < to bool and number"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  }
+ ]
+}

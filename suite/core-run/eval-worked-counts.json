@@ -1,0 +1,703 @@
+{
+ "cases": [
+  {
+   "name": "W1",
+   "source": "1 + 2 * 3",
+   "expect": {
+    "value": 7,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W2",
+   "source": "const xs = [1, 2, 3]; [...xs, 4]",
+   "expect": {
+    "value": [
+     1,
+     2,
+     3,
+     4
+    ],
+    "steps": 3,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "W3",
+   "source": "const m = {a: 1, b: 2}; {...m, b: 3, c: 4}",
+   "expect": {
+    "value": {
+     "a": 1,
+     "b": 3,
+     "c": 4
+    },
+    "steps": 2,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "W4",
+   "source": "`n=${n}, xs=${xs}`",
+   "env": "{n: int, xs: int[]}",
+   "vars": {
+    "n": 5,
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": "n=5, xs=[1,2]",
+    "steps": 3,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "W5",
+   "source": "`${m}`",
+   "env": "{m: map<int>}",
+   "vars": {
+    "m": {
+     "b": 1,
+     "a": 2
+    }
+   },
+   "expect": {
+    "value": "{\"a\":2,\"b\":1}",
+    "steps": 5,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "W6",
+   "source": "[s + t, s == u, s < t]",
+   "env": "{s: string, t: string, u: string}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "u": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac"
+   },
+   "expect": {
+    "value": [
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     false,
+     true
+    ],
+    "steps": 6,
+    "allocated": 7
+   }
+  },
+  {
+   "name": "W7",
+   "source": "[e + \"!\", e[0]]",
+   "env": "{e: string}",
+   "vars": {
+    "e": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   },
+   "expect": {
+    "value": [
+     "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀!",
+     "😀"
+    ],
+    "steps": 4,
+    "allocated": 6
+   }
+  },
+  {
+   "name": "W8",
+   "source": "if (x > 10) { \"big\" } else if (x > 0) { \"small\" } else { \"neg\" }",
+   "env": "{x: int}",
+   "vars": {
+    "x": 5
+   },
+   "expect": {
+    "value": "small",
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W9",
+   "source": "[user.name || \"anon\", user?.nick ?? \"none\"]",
+   "env": "{user: {name: string, nick?: string}}",
+   "vars": {
+    "user": {
+     "name": ""
+    }
+   },
+   "expect": {
+    "value": [
+     "anon",
+     "none"
+    ],
+    "steps": 2,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "W10, kind idea",
+   "source": "match kind { \"bug\" => 1, \"feature\" | \"idea\" => 2, _ => 3 }",
+   "env": "{kind: string}",
+   "vars": {
+    "kind": "idea"
+   },
+   "expect": {
+    "value": 2,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W10, kind x",
+   "source": "match kind { \"bug\" => 1, \"feature\" | \"idea\" => 2, _ => 3 }",
+   "env": "{kind: string}",
+   "vars": {
+    "kind": "x"
+   },
+   "expect": {
+    "value": 3,
+    "steps": 3,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W11, a null",
+   "source": "a?.b.c",
+   "env": "{a: {b: {c: int}} | null}",
+   "vars": {
+    "a": null
+   },
+   "expect": {
+    "value": null,
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W11, a a map",
+   "source": "a?.b.c",
+   "env": "{a: {b: {c: int}} | null}",
+   "vars": {
+    "a": {
+     "b": {
+      "c": 1
+     }
+    }
+   },
+   "expect": {
+    "value": 1,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W12",
+   "source": "a?.b?.c.d",
+   "env": "{a: {b: {c: {d: int}} | null}}",
+   "vars": {
+    "a": {
+     "b": null
+    }
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W13",
+   "source": "xs.map(x => x * 2)",
+   "env": "{xs: int[]}",
+   "vars": {
+    "xs": [
+     1,
+     2,
+     3
+    ]
+   },
+   "expect": {
+    "value": [
+     2,
+     4,
+     6
+    ],
+    "steps": 11,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "W14",
+   "source": "const sq = x => x * x; sq(3) + sq(4)",
+   "expect": {
+    "value": 25,
+    "steps": 6,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W15",
+   "source": "const {a, b = 10, ...rest} = m; [a, b, rest]",
+   "env": "{m: {a: int, b?: int, c: int, d: int}}",
+   "vars": {
+    "m": {
+     "a": 1,
+     "c": 2,
+     "d": 3
+    }
+   },
+   "expect": {
+    "value": [
+     1,
+     10,
+     {
+      "c": 2,
+      "d": 3
+     }
+    ],
+    "steps": 4,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "W16",
+   "source": "ps.map(({x, y = 0}) => x + y)",
+   "env": "{ps: {x: int, y?: int}[]}",
+   "vars": {
+    "ps": [
+     {
+      "x": 1
+     },
+     {
+      "x": 2,
+      "y": 3
+     }
+    ]
+   },
+   "expect": {
+    "value": [
+     1,
+     5
+    ],
+    "steps": 12,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "W17",
+   "source": "[[1, 2, 3] == [1, 2, 4], \"b\" in [\"a\", \"b\", \"c\"]]",
+   "expect": {
+    "value": [
+     false,
+     true
+    ],
+    "steps": 8,
+    "allocated": 15
+   }
+  },
+  {
+   "name": "W18",
+   "source": "{a: 1, b: 2} == {b: 2, a: 1}",
+   "expect": {
+    "value": true,
+    "steps": 4,
+    "allocated": 10
+   }
+  },
+  {
+   "name": "W19",
+   "source": "try { 1 / d } catch (err) { err.code }",
+   "env": "{d: int}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "value": "divide-by-zero",
+    "steps": 3,
+    "allocated": 10
+   }
+  },
+  {
+   "name": "W20",
+   "source": "try { fail(\"no stock\", {sku}) } catch (err) { err.data.sku }",
+   "env": "{sku: string}",
+   "vars": {
+    "sku": "a"
+   },
+   "expect": {
+    "value": "a",
+    "steps": 3,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "W21",
+   "source": "try { xs[5] } catch { -1 }",
+   "env": "{xs: int[]}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": -1,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W22",
+   "source": "try { \"n=\" + n } catch (err) { err.code }",
+   "env": "{n: any}",
+   "vars": {
+    "n": 5
+   },
+   "expect": {
+    "value": "wrong-kind",
+    "steps": 2,
+    "allocated": 10
+   }
+  },
+  {
+   "name": "W23",
+   "source": "xs.map(x => [x])",
+   "env": "{xs: int[]}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": [
+     [
+      1
+     ],
+     [
+      2
+     ]
+    ],
+    "steps": 6,
+    "allocated": 7
+   }
+  },
+  {
+   "name": "W24",
+   "source": "h(x) + 1",
+   "env": "{x: int}",
+   "functions": {
+    "h": {
+     "type": "(x: int) => int",
+     "calls": [
+      {
+       "result": 10,
+       "charge": 3,
+       "allocate": 2
+      }
+     ]
+    }
+   },
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "value": 11,
+    "steps": 5,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "W25",
+   "source": "[\"ab\" in s, !xs]",
+   "env": "{s: string, xs: int[]}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "xs": []
+   },
+   "expect": {
+    "value": [
+     false,
+     true
+    ],
+    "steps": 5,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "W26",
+   "source": "s in [t, s]",
+   "env": "{s: string, t: string}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"
+   },
+   "expect": {
+    "value": true,
+    "steps": 4,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "W27",
+   "source": "[1, 2] in [[1, 3], [1, 2]]",
+   "expect": {
+    "value": true,
+    "steps": 10,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "W28",
+   "source": "[s[3], s?.[200]]",
+   "env": "{s: string}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": [
+     "a",
+     null
+    ],
+    "steps": 6,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "W29",
+   "source": "m[k]",
+   "env": "{k: string, m: any}",
+   "vars": {
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+    "m": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+    }
+   },
+   "expect": {
+    "value": 1,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W30",
+   "source": "m.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "env": "{m: {aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: int}}",
+   "vars": {
+    "m": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1
+    }
+   },
+   "expect": {
+    "value": 1,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W31",
+   "source": "k in m",
+   "env": "{k: string, m: map<int>}",
+   "vars": {
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+    "m": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W32",
+   "source": "{[k]: 1, b: 2}",
+   "env": "{k: string}",
+   "vars": {
+    "k": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+   },
+   "expect": {
+    "value": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1,
+     "b": 2
+    },
+    "steps": 1,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "W33",
+   "source": "{...m}",
+   "env": "{m: map<int>}",
+   "vars": {
+    "m": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2
+    }
+   },
+   "expect": {
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2
+    },
+    "steps": 3,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "W34",
+   "source": "const {\"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\": v} = m; v",
+   "env": "{m: {\"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\": int}}",
+   "vars": {
+    "m": {
+     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 7
+    }
+   },
+   "expect": {
+    "value": 7,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W35",
+   "source": "const {a, ...rest} = m; rest",
+   "env": "{m: {a: int, ...int}}",
+   "vars": {
+    "m": {
+     "a": 1,
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 2,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 3
+    }
+   },
+   "expect": {
+    "value": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 2,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 3
+    },
+    "steps": 4,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "W36",
+   "source": "m == n",
+   "env": "{m: map<int>, n: map<int>}",
+   "vars": {
+    "m": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2
+    },
+    "n": {
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1,
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2
+    }
+   },
+   "expect": {
+    "value": true,
+    "steps": 5,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W37, the call",
+   "source": "xs.map(1)",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ],
+      "message": "argument 1 of method map must be a function"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "W37, in a try",
+   "source": "try { xs.map(1) } catch (err) { err.code }",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": "wrong-kind",
+    "steps": 2,
+    "allocated": 10
+   }
+  },
+  {
+   "name": "02 12.4, catch with no name",
+   "source": "try { 1 / d } catch { 0 }",
+   "env": "{d: int}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "value": 0,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "02 12.4, catch with a name",
+   "source": "try { 1 / d } catch (err) { 0 }",
+   "env": "{d: int}",
+   "vars": {
+    "d": 0
+   },
+   "expect": {
+    "value": 0,
+    "steps": 2,
+    "allocated": 10
+   }
+  },
+  {
+   "name": "02 12.4, fail with data",
+   "source": "try { fail(\"no stock\", {sku}) } catch (err) { err.data }",
+   "env": "{sku: string}",
+   "vars": {
+    "sku": "a"
+   },
+   "expect": {
+    "value": {
+     "sku": "a"
+    },
+    "steps": 2,
+    "allocated": 12
+   }
+  },
+  {
+   "name": "W38",
+   "source": "match s { \"b\" => 1, \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" | \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" => 2, _ => 3 }",
+   "env": "{s: string}",
+   "vars": {
+    "s": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "expect": {
+    "value": 2,
+    "steps": 4,
+    "allocated": 0
+   }
+  }
+ ]
+}

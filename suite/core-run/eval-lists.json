@@ -1,0 +1,1042 @@
+{
+ "cases": [
+  {
+   "name": "the empty list",
+   "source": "[]",
+   "expect": {
+    "value": [],
+    "steps": 0,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "a list of three numbers",
+   "source": "[1, 2, 3]",
+   "expect": {
+    "value": [
+     1,
+     2,
+     3
+    ],
+    "steps": 0,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "a trailing comma",
+   "source": "[1, 2, 3,]",
+   "expect": {
+    "value": [
+     1,
+     2,
+     3
+    ],
+    "steps": 0,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "a list holding null",
+   "source": "[null]",
+   "expect": {
+    "value": [
+     null
+    ],
+    "steps": 0,
+    "allocated": 2
+   }
+  },
+  {
+   "name": "nested lists are charged each",
+   "source": "[[1], []]",
+   "expect": {
+    "value": [
+     [
+      1
+     ],
+     []
+    ],
+    "steps": 0,
+    "allocated": 6
+   }
+  },
+  {
+   "name": "a list of every kind",
+   "source": "[1, \"a\", true, null, [], {}]",
+   "expect": {
+    "value": [
+     1,
+     "a",
+     true,
+     null,
+     [],
+     {}
+    ],
+    "steps": 0,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "host values in a list are not charged",
+   "source": "[x, y]",
+   "env": "{x: any, y: any}",
+   "vars": {
+    "x": [
+     1,
+     2
+    ],
+    "y": {
+     "a": 1
+    }
+   },
+   "expect": {
+    "value": [
+     [
+      1,
+      2
+     ],
+     {
+      "a": 1
+     }
+    ],
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a spread of a host list",
+   "source": "[...xs]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": [
+     1,
+     2
+    ],
+    "steps": 2,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "a spread of an empty list",
+   "source": "[...[], 1]",
+   "expect": {
+    "value": [
+     1
+    ],
+    "steps": 0,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "two spreads",
+   "source": "[...[1, 2], ...[3]]",
+   "expect": {
+    "value": [
+     1,
+     2,
+     3
+    ],
+    "steps": 3,
+    "allocated": 9
+   }
+  },
+  {
+   "name": "a spread between items",
+   "source": "[0, ...xs, 3]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "steps": 2,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "one list spread twice",
+   "source": "[...xs, ...xs]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": [
+     1,
+     2,
+     1,
+     2
+    ],
+    "steps": 4,
+    "allocated": 5
+   }
+  },
+  {
+   "name": "a spread copies elements, not their contents",
+   "source": "[...[[1]]]",
+   "expect": {
+    "value": [
+     [
+      1
+     ]
+    ],
+    "steps": 1,
+    "allocated": 6
+   }
+  },
+  {
+   "name": "a spread of null",
+   "source": "[...x]",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "cannot spread null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a spread of a string in a list",
+   "source": "[...x]",
+   "env": "{x: any}",
+   "vars": {
+    "x": "ab"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "only a list can be spread into a list, found string"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a spread of a map in a list",
+   "source": "[...x]",
+   "env": "{x: any}",
+   "vars": {
+    "x": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "only a list can be spread into a list, found map"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a spread of a number in a list",
+   "source": "[...x]",
+   "env": "{x: any}",
+   "vars": {
+    "x": 1
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "only a list can be spread into a list, found number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a spread of a bool in a list",
+   "source": "[...x]",
+   "env": "{x: any}",
+   "vars": {
+    "x": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "only a list can be spread into a list, found bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a failed spread keeps the steps of earlier items",
+   "source": "[1 + 1, ...x]",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       9,
+       1,
+       13
+      ],
+      "message": "cannot spread null"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "list items are evaluated left to right: spread first",
+   "source": "[...x, 1 / d]",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": null,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       2,
+       1,
+       6
+      ],
+      "message": "cannot spread null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "list items are evaluated left to right: division first",
+   "source": "[1 / d, ...x]",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": null,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       2,
+       1,
+       7
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an index into a list literal",
+   "source": "[10, 20, 30][1]",
+   "expect": {
+    "value": 20,
+    "steps": 1,
+    "allocated": 4
+   }
+  },
+  {
+   "name": "an index into a host list",
+   "source": "xs[0]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": 1,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an index of 1.0 is whole",
+   "source": "xs[1.0]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": 2,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an element that is null",
+   "source": "[null, 1][0]",
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "an index into a nested list",
+   "source": "xs[1][0]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     [
+      1
+     ],
+     [
+      2,
+      3
+     ]
+    ]
+   },
+   "expect": {
+    "value": 2,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an index at the length",
+   "source": "xs[2]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "index 2 is outside the list of length 2"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a negative index",
+   "source": "xs[-1]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       7
+      ],
+      "message": "index -1 is outside the list of length 2"
+     }
+    ],
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "an index into the empty list",
+   "source": "[][0]",
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "index 0 is outside the list of length 0"
+     }
+    ],
+    "steps": 1,
+    "allocated": 1
+   }
+  },
+  {
+   "name": "the largest whole index",
+   "source": "xs[9007199254740991]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "index-range",
+      "span": [
+       1,
+       1,
+       1,
+       21
+      ],
+      "message": "index 9007199254740991 is outside the list of length 2"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list index that is a fraction",
+   "source": "xs[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": 1.5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "expected a whole number, found 1.5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list index that is past the whole range",
+   "source": "xs[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": 1e+20
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "expected a whole number, found 100000000000000000000"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list index that is a string",
+   "source": "xs[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": "0"
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "expected a whole number, found \"0\""
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list index that is a bool",
+   "source": "xs[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "expected a whole number, found true"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list index that is a list",
+   "source": "xs[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": [
+     0
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "expected a whole number, found list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list index that is a map",
+   "source": "xs[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": {}
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "expected a whole number, found map"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list index that is null",
+   "source": "xs[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       6
+      ],
+      "message": "a key or an index is null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "indexing a bool",
+   "source": "x[0]",
+   "env": "{x: any}",
+   "vars": {
+    "x": true
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "cannot index a value of kind bool"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "indexing null",
+   "source": "x[0]",
+   "env": "{x: any}",
+   "vars": {
+    "x": null
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "cannot index null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the receiver is tested before the index is evaluated",
+   "source": "x[1 / d]",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": 5,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "message": "cannot index a value of kind number"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a null receiver is found before the index is evaluated",
+   "source": "x[1 / d]",
+   "env": "{x: any, d: any}",
+   "vars": {
+    "x": null,
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "null-operand",
+      "span": [
+       1,
+       1,
+       1,
+       9
+      ],
+      "message": "cannot index null"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "the index is evaluated after the receiver is tested",
+   "source": "xs[1 / d]",
+   "env": "{xs: any, d: any}",
+   "vars": {
+    "xs": [
+     1
+    ],
+    "d": 0
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "divide-by-zero",
+      "span": [
+       1,
+       4,
+       1,
+       9
+      ],
+      "message": "the divisor of / is zero"
+     }
+    ],
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] past the end is null",
+   "source": "xs?.[5]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "?.[ ] below zero is null",
+   "source": "xs?.[-1]",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ]
+   },
+   "expect": {
+    "value": null,
+    "steps": 2,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "01 example 31",
+   "source": "[1, 2]?.[2]",
+   "expect": {
+    "value": null,
+    "steps": 1,
+    "allocated": 3
+   }
+  },
+  {
+   "name": "?.[ ] still fails on an index that is not whole",
+   "source": "xs?.[i]",
+   "env": "{xs: any, i: any}",
+   "vars": {
+    "xs": [
+     1,
+     2
+    ],
+    "i": 1.5
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       8
+      ],
+      "message": "expected a whole number, found 1.5"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list has no fields",
+   "source": "xs.a",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       5
+      ],
+      "message": "cannot read field a of a value of kind list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  },
+  {
+   "name": "a list has no length field",
+   "source": "xs.length",
+   "env": "{xs: any}",
+   "vars": {
+    "xs": [
+     1
+    ]
+   },
+   "expect": {
+    "phase": "run",
+    "diagnostics": [
+     {
+      "code": "wrong-kind",
+      "span": [
+       1,
+       1,
+       1,
+       10
+      ],
+      "message": "cannot read field length of a value of kind list"
+     }
+    ],
+    "steps": 0,
+    "allocated": 0
+   }
+  }
+ ]
+}
