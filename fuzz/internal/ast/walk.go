@@ -135,6 +135,8 @@ func CloneExpr(e Expr) Expr {
 		return &Paren{X: CloneExpr(e.X)}
 	case *As:
 		return &As{Form: e.Form, X: CloneExpr(e.X), Type: e.Type}
+	case *Star:
+		return &Star{X: CloneExpr(e.X), Opt: e.Opt}
 	case *Raw:
 		c := *e
 		return &c
@@ -310,6 +312,8 @@ func (s *sites) expr(ep *Expr) {
 		s.expr(&e.X)
 	case *As:
 		s.expr(&e.X)
+	case *Star:
+		s.expr(&e.X)
 	}
 }
 
@@ -371,6 +375,8 @@ func Children(e Expr) []Expr {
 	case *Paren:
 		add(e.X)
 	case *As:
+		add(e.X)
+	case *Star:
 		add(e.X)
 	}
 	return out

@@ -35,12 +35,12 @@ func TestKnown(t *testing.T) {
 			`{"name":"a","phase":"parse","diagnostics":[{"code":"unexpected-token","span":[1,4,1,4]}]}`,
 			`{"name":"a","phase":"parse","diagnostics":[{"code":"unexpected-token","span":[1,3,1,4]}]}`,
 			`{"name":"a","phase":"parse","diagnostics":[{"code":"unexpected-token","span":[1,3,1,4]}]}`,
-		}, "package-form"},
+		}, ""}, // every implementation offers F7: compared exactly
 		{"[].sortBy(() => 0, 0)", []string{
 			`{"name":"a","phase":"check","diagnostics":[{"code":"arg-mismatch","span":[1,20,1,21]}]}`,
 			`{"name":"a","phase":"check","diagnostics":[{"code":"arity","span":[1,1,1,22]}]}`,
 			`{"name":"a","phase":"check","diagnostics":[{"code":"arity","span":[1,1,1,22]}]}`,
-		}, "package-sortBy"},
+		}, ""},
 		{"1 + x", []string{
 			`{"name":"a","phase":"check","diagnostics":[{"code":"kind","span":[1,5,1,6]}]}`,
 			`{"name":"a","phase":"check","diagnostics":[{"code":"undefined-name","span":[1,5,1,6]}]}`,

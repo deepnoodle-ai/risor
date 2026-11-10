@@ -191,6 +191,14 @@ type As struct {
 	Type string
 }
 
+// Star is the projection step x[*] or x?.[*] of package F7
+// (f07-queries.md 2.1). Reads after it are Member and Index nodes whose X is
+// the Star.
+type Star struct {
+	X   Expr
+	Opt bool
+}
+
 // Paren is a pair of parentheses the printer would not need.
 type Paren struct{ X Expr }
 
@@ -219,6 +227,7 @@ func (*MethodCall) isExpr() {}
 func (*Lambda) isExpr()     {}
 func (*Paren) isExpr()      {}
 func (*As) isExpr()         {}
+func (*Star) isExpr()       {}
 func (*Raw) isExpr()        {}
 
 // Pattern is a pattern of a const line or a parameter.

@@ -149,7 +149,7 @@ func (g *Gen) libCallFor(e *LibEntry, want *Ty, d int) ast.Expr {
 	}
 	var call ast.Expr
 	if recv == nil {
-		call = &ast.Call{Name: e.Name, Args: args}
+		call = &ast.Call{NS: e.Group, Name: e.Local(), Args: args}
 	} else {
 		call = &ast.MethodCall{X: recv, Name: e.Name, Args: args, Opt: g.loose && r.IntN(10) == 0}
 	}
@@ -181,6 +181,15 @@ func (g *Gen) argFor(e *LibEntry, p *LibParam, b map[string]*Ty, d int) ast.Expr
 	text := p.Type
 	if p.Rest {
 		text = strings.TrimSuffix(strings.TrimSpace(text), "[]")
+	}
+	if lits := litSet(text); lits != nil && (!g.loose || r.IntN(5) > 0) {
+		// A parameter of literal strings: the direction of sortBy (F7).
+		return &ast.Str{Val: pick(r, lits), Quote: '"'}
+	}
+	if e.Group != "" && !g.loose && r.IntN(4) > 0 {
+		if pool := groupArgs[e.Name]; pool != nil {
+			return g.str(pick(r, pool))
+		}
 	}
 	if strings.TrimSpace(text) == "int" && !g.loose {
 		switch e.Name {
@@ -286,4 +295,73 @@ func (g *Gen) callback(fn *LibFunc, b map[string]*Ty, d int) ast.Expr {
 		}
 	}
 	return lam
+}
+
+// litSet gives the strings of type text that is a literal set, or nil.
+func litSet(text string) []string {
+	var out []string
+	for _, a := range splitTop(text, '|') {
+		a = strings.TrimSpace(a)
+		if len(a) < 2 || a[0] != '"' || a[len(a)-1] != '"' {
+			return nil
+		}
+		out = append(out, a[1:len(a)-1])
+	}
+	return out
+}
+
+// groupArgs are text arguments that the entries of the groups of F6 take:
+// JSON text, times, durations, base64 text. Some are valid, some are not.
+var groupArgs = map[string][]string{
+	"json.parse":    {`[1, 2.5, "a"]`, `{"b": [1, -0], "a": null}`, " 42\n", `"x"`, `{"a":1,"a":2}`, "1e400", "[1,]", `"\ud800"`, "", "nul", `{"k": {"k": {"k": []}}}`},
+	"time.parse":    {"1970-01-01T00:00:00Z", "2024-02-29T12:30:45Z", "2024-02-29T12:30:45.5+01:00", "2023-02-29T00:00:00Z", "yesterday", "9999-12-31T23:59:59.999Z"},
+	"time.duration": {"90s", "1h30m", "30m1h", "1.5h", "-2s", "0s", "1d", ""},
+	"base64.decode": {"YQ==", "YQ", "YWI=", "", "!!!", "8J+YgA=="},
+	"base64.encode": {"", "a", "ab", "😀", "héllo"},
+}
+
+// projection makes a projection of package F7 (f07-queries.md 2): xs[*],
+// xs[*].f on a list of records, or xs?.[*].
+func (g *Gen) projection(t *Ty, d int) ast.Expr {
+	r := g.r
+	el := tyAny
+	if t.K == KList && t.Elem != nil {
+		el = t.Elem
+	}
+	if el.K == KAny {
+		el = g.randTy(1)
+	}
+	if r.IntN(2) == 0 {
+		// A field of each element: a list of records with that field.
+		name := pick(r, fieldNames[:10])
+		if isWord(name) {
+			recs := g.expr(listOf(recordOf([]TField{{Name: name, T: el}}), -1), d)
+			return &ast.Member{X: &ast.Star{X: recs, Opt: g.loose && r.IntN(4) == 0}, Name: name}
+		}
+	}
+	return &ast.Star{X: g.expr(listOf(el, -1), d), Opt: g.loose && r.IntN(4) == 0}
+}
+
+// turnOnGroups turns on one or two opt-in groups of F6 with the case field
+// groups, and adds their functions to those a program may call.
+func (g *Gen) turnOnGroups(c *Case) {
+	r := g.r
+	all := []string{"json", "time", "math", "base64"}
+	g.groupsOn = map[string]bool{}
+	for _, i := range r.Perm(4)[:1+r.IntN(2)] {
+		c.Groups = append(c.Groups, all[i])
+		g.groupsOn[all[i]] = true
+	}
+	if g.loose && r.IntN(8) == 0 {
+		c.Groups = append(c.Groups, pick(r, []string{"core", "JSON", "", "math.sqrt"})) // bad-name
+	}
+	if g.loose && r.IntN(10) == 0 {
+		// A variable named like a group that is on: name-clash (2.2).
+		c.Vars = append(c.Vars, Var{Name: c.Groups[0], Type: "any", Missing: true})
+	}
+	for _, e := range g.lib.Groups {
+		if g.groupsOn[e.Group] && !e.Const && !g.opts.Exclude[e.Name] {
+			g.funcs = append(g.funcs, e)
+		}
+	}
 }

@@ -456,6 +456,13 @@ func (w *printer) expr(e Expr, need int) {
 		}
 		w.s(" => ")
 		w.expr(e.Body, LevelExpr)
+	case *Star:
+		w.expr(e.X, LevelPrimary)
+		if e.Opt {
+			w.s("?.[*]")
+		} else {
+			w.s("[*]")
+		}
 	case *As:
 		// f04-conversion.md 2.5: the left operand may not be a ! expression
 		// written without parentheses.

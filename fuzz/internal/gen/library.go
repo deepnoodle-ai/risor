@@ -17,6 +17,23 @@ type LibEntry struct {
 	Result    string
 	Where     map[string]string // type variable to bound: ordered, number
 	Calls     []string          // names of the callback parameters
+	// Group is the opt-in group of an entry of package F6 (json, time, math,
+	// base64); "" for an entry of the Core library or of F7.
+	Group string
+	// Const is set for a constant of a group, such as math.pi; Type is then
+	// its type.
+	Const bool
+	Type  string
+	// Package is "F6" or "F7" for an entry those packages add, "" for Core.
+	Package string
+}
+
+// Local gives an entry's name without its group: parse for json.parse.
+func (e *LibEntry) Local() string {
+	if i := strings.IndexByte(e.Name, '.'); i >= 0 && e.Group != "" {
+		return e.Name[i+1:]
+	}
+	return e.Name
 }
 
 // LibParam is one parameter of a library entry.
@@ -60,6 +77,11 @@ type Library struct {
 	Entries   []*LibEntry
 	Functions []*LibEntry
 	Methods   []*LibEntry
+	// Groups holds the entries of package F6, from library-groups.json, and
+	// Queries the methods of package F7, from library-queries.json. A
+	// query that extends a Core entry (sortBy) replaces it in Methods.
+	Groups  []*LibEntry
+	Queries []*LibEntry
 }
 
 type rawEntry struct {
@@ -67,6 +89,9 @@ type rawEntry struct {
 	Signature string   `json:"signature"`
 	Receiver  string   `json:"receiver"`
 	Calls     []string `json:"calls"`
+	Group     string   `json:"group"`
+	Type      string   `json:"type"`
+	Extends   any      `json:"extends"`
 }
 
 // FindLibrary looks for suite/library.json from dir upward.
@@ -99,6 +124,7 @@ func LoadLibrary(path string) (*Library, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	lib := &Library{}
+	defer lib.loadPackages(filepath.Dir(path))
 	for _, r := range raw {
 		e, err := parseEntry(r)
 		if err != nil {
@@ -112,6 +138,57 @@ func LoadLibrary(path string) (*Library, error) {
 		}
 	}
 	return lib, nil
+}
+
+// loadPackages reads the records of packages F6 and F7 that stand beside
+// library.json, when they exist (suite/README.md). The correctly rounded
+// functions of F13 are in a file of their own and are not read.
+func (lib *Library) loadPackages(dir string) {
+	var groups, queries []rawEntry
+	if data, err := os.ReadFile(filepath.Join(dir, "library-groups.json")); err == nil {
+		_ = json.Unmarshal(data, &groups)
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "library-queries.json")); err == nil {
+		_ = json.Unmarshal(data, &queries)
+	}
+	for _, r := range groups {
+		if r.Signature == "" {
+			lib.Groups = append(lib.Groups, &LibEntry{Name: r.Name, Group: r.Group, Const: true, Type: r.Type, Package: "F6"})
+			continue
+		}
+		e, err := parseEntry(r)
+		if err != nil {
+			continue
+		}
+		e.Group, e.Package = r.Group, "F6"
+		lib.Groups = append(lib.Groups, e)
+	}
+	for _, r := range queries {
+		e, err := parseEntry(r)
+		if err != nil {
+			continue
+		}
+		e.Package = "F7"
+		lib.Queries = append(lib.Queries, e)
+	}
+}
+
+// WithQueries gives the methods with those of F7: sortBy with a direction
+// in place of Core's, and the six methods F7 adds.
+func (lib *Library) WithQueries() []*LibEntry {
+	var out []*LibEntry
+	for _, m := range lib.Methods {
+		replaced := false
+		for _, q := range lib.Queries {
+			if q.Name == m.Name && q.Receiver == m.Receiver {
+				replaced = true
+			}
+		}
+		if !replaced {
+			out = append(out, m)
+		}
+	}
+	return append(out, lib.Queries...)
 }
 
 func parseEntry(r rawEntry) (*LibEntry, error) {

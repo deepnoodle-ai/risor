@@ -83,6 +83,20 @@ It also writes the forms of packages F4 and F5
   `!` operand, a word that is no type, a key twice, an unclosed type, records
   with no tag. `-nof4` leaves both packages out.
 
+And the forms of packages F6 and F7 (`spec/packages/f06-groups.md`,
+`spec/packages/f07-queries.md`), from their records in
+`suite/library-groups.json` and `suite/library-queries.json`:
+
+- the groups `json`, `time`, `math` and `base64`, turned on by the case field
+  `groups` in about one case in three: calls of their functions with valid and
+  invalid text, and the constants `math.pi` and `math.e`. The correctly rounded
+  functions of F13 are not generated. Loose cases call a group that is off, name
+  a group that does not exist, and declare a variable named like a group that is
+  on;
+- the projection `xs[*]`, `xs[*].f` and `xs?.[*]`;
+- the six methods `minBy`, `maxBy`, `uniqueBy`, `indexBy`, `countBy` and
+  `mapValues`, and `sortBy` with a direction.
+
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
 `try`, `catch` and `fail`, nested templates, list and map literals with spreads
@@ -122,6 +136,7 @@ The status is 1 when there was any finding, else 0.
 | `-sound` | The soundness mode (below). `-cases` is then programs a round |
 | `-nof3` | Leave out the string forms of package F3 |
 | `-nof4` | Leave out the forms of packages F4 and F5 |
+| `-nof6`, `-nof7` | Leave out the opt-in groups of F6, or the projection and methods of F7 |
 | `-known=false` | Report the known differences (packages offered) as findings too |
 | `-exclude a,b` | Library entries not to call |
 | `-cmd name=command` | The `outcome` command of an implementation. The file is added at the end |
@@ -145,11 +160,10 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 `outcome` command cannot turn a package off. A package gives some texts that
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
-Every implementation offers F1 to F5, and Go offers more. `cmd/fuzz/known.go`
-lists the three forms of package F7 and F8 that only Go reads: a targeted parse
-code where the others give a Core code, a text that holds the projection `[*`,
-and `sortBy` with a direction. The texts of F4 and F5 are compared exactly.
-`-known=false` reports them as findings too.
+Every implementation offers F1 to F7, and some offer more. `cmd/fuzz/known.go`
+lists the one form of package F8 that not every implementation reads: a targeted
+parse code where the others give a Core code. The forms of F4 to F7 are compared
+exactly. `-known=false` reports them as findings too.
 
 If a build fails and a program built before exists, the fuzzer says so and runs
 the old program.

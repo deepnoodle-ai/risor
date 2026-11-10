@@ -32,7 +32,11 @@ func GenerateSound(lib *Library, opts Options, seed uint64, round, index int) *S
 			g.funcs = append(g.funcs, e)
 		}
 	}
-	for _, e := range lib.Methods {
+	methods := lib.Methods
+	if !opts.NoF7 {
+		methods = lib.WithQueries()
+	}
+	for _, e := range methods {
 		if !opts.Exclude[e.Name] {
 			g.meths = append(g.meths, e)
 		}
@@ -51,6 +55,9 @@ func GenerateSound(lib *Library, opts Options, seed uint64, round, index int) *S
 	g.declared, g.valueTy = map[string]*types.Type{}, map[string]*types.Type{}
 	if !opts.NoF4 && r.IntN(4) == 0 {
 		g.namedTypes(base)
+	}
+	if !opts.NoF6 && r.IntN(4) == 0 {
+		g.turnOnGroups(base)
 	}
 	n := 1 + r.IntN(4)
 	var decls []*types.Type

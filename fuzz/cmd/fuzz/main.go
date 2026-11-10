@@ -72,6 +72,8 @@ func run() int {
 		useKnown   = flag.Bool("known", true, "count the known differences apart (see known.go)")
 		noF3       = flag.Bool("nof3", false, "leave out the string forms of package F3")
 		noF4       = flag.Bool("nof4", false, "leave out the forms of packages F4 and F5")
+		noF6       = flag.Bool("nof6", false, "leave out the opt-in groups of package F6")
+		noF7       = flag.Bool("nof7", false, "leave out the projection and the methods of package F7")
 		soundMode  = flag.Bool("sound", false, "the soundness mode: test the promise of 05-types.md 18.4 (-cases is programs a round)")
 		only       = flag.String("case", "", "R:I: make and run only case I of round R (with -seed and the mode weights)")
 		verbose    = flag.Bool("v", false, "print each round, and the outcomes by code")
@@ -101,7 +103,7 @@ func run() int {
 		seed: *seed, cases: *cases, rounds: *rounds, timeout: *timeout,
 		out: *out, shrink: !*noShrink, maxPerKind: *maxPerKind, lib: lib,
 		verbose: *verbose, libNames: map[string]bool{}, useKnown: *useKnown,
-		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, NoCheckShare: *noCheck, NoF3: *noF3, NoF4: *noF4, Exclude: map[string]bool{}},
+		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, NoCheckShare: *noCheck, NoF3: *noF3, NoF4: *noF4, NoF6: *noF6, NoF7: *noF7, Exclude: map[string]bool{}},
 	}
 	for _, e := range lib.Entries {
 		cfg.libNames[e.Name] = true

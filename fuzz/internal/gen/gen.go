@@ -21,6 +21,9 @@ type Options struct {
 	NoCheckShare int
 	// NoRemoved leaves out the case field removed.
 	NoRemoved bool
+	// NoF6 leaves out the opt-in groups of package F6; NoF7 the
+	// projection and the methods of package F7.
+	NoF6, NoF7 bool
 	// NoF4 leaves out the forms of packages F4 and F5.
 	NoF4 bool
 	// NoF3 leaves out the string forms of package F3.
@@ -76,8 +79,9 @@ type Gen struct {
 	valueTy  map[string]*types.Type // the type of each variable's value
 	unions   []unionVar
 	named    map[string]*types.Type // the named types of the case
-	funcs   []*LibEntry
-	meths   []*LibEntry
+	groupsOn map[string]bool        // the opt-in groups the case turns on (F6)
+	funcs    []*LibEntry
+	meths    []*LibEntry
 }
 
 // Seed gives the generator's random source for one case of one round.
@@ -94,7 +98,11 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 			g.funcs = append(g.funcs, e)
 		}
 	}
-	for _, e := range lib.Methods {
+	methods := lib.Methods
+	if !opts.NoF7 {
+		methods = lib.WithQueries()
+	}
+	for _, e := range methods {
 		if !opts.Exclude[e.Name] {
 			g.meths = append(g.meths, e)
 		}
@@ -182,6 +190,9 @@ func (g *Gen) env(c *Case) {
 	}
 	if !g.opts.NoF4 && r.IntN(4) == 0 {
 		g.namedTypes(c)
+	}
+	if !g.opts.NoF6 && r.IntN(3) == 0 {
+		g.turnOnGroups(c)
 	}
 	g.frames = [][]bind{nil}
 	nv := r.IntN(5)
@@ -633,6 +644,9 @@ func (g *Gen) forms(t *Ty) []wform {
 	if !g.opts.NoF4 {
 		fs = append(fs, wform{6, g.convForm})
 	}
+	if !g.opts.NoF7 && (t.K == KList || t.K == KAny) {
+		fs = append(fs, wform{3, g.projection})
+	}
 	return fs
 }
 
@@ -699,6 +713,10 @@ func (g *Gen) leaf(t *Ty) ast.Expr {
 			}
 		}
 	case KNum:
+		if g.groupsOn["math"] && r.IntN(6) == 0 {
+			// A constant of the group math (f06-groups.md 2.4 item 2).
+			return &ast.Member{X: &ast.Ident{Name: "math"}, Name: pick(r, []string{"pi", "e"})}
+		}
 		return g.num(pick(r, numLits).text)
 	case KStr:
 		return g.str(pick(r, strValues))
@@ -1324,6 +1342,11 @@ func (g *Gen) opqCall(t *Ty, d int) ast.Expr {
 // looseOddity makes a node that breaks a static rule or a kind rule.
 func (g *Gen) looseOddity(t *Ty, d int) ast.Expr {
 	r := g.r
+	if !g.opts.NoF6 && r.IntN(12) == 0 {
+		// An entry of a group that may be off: undefined-name on the group's
+		// name when it is (f06-groups.md 2.3).
+		return &ast.Call{NS: pick(r, []string{"json", "time", "math", "base64"}), Name: pick(r, []string{"parse", "sqrt", "encode", "pi"}), Args: []ast.Expr{g.leaf(tyStr)}}
+	}
 	if !g.opts.NoF3 && r.IntN(10) == 0 {
 		// A text block where only a String may stand: a map key.
 		return &ast.Raw{Text: "{" + ast.StrText(&ast.Str{Val: "k", Block: 1, Indent: g.indent()}) + ": 1}"}

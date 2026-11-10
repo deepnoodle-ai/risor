@@ -79,6 +79,9 @@ func Candidates(c *gen.Case) []*gen.Case {
 	if c.Limits != nil {
 		add(func(k *gen.Case) bool { k.Limits = nil; return true })
 	}
+	if len(c.Groups) > 0 {
+		add(func(k *gen.Case) bool { k.Groups = nil; return true })
+	}
 	if c.Returns != "" {
 		add(func(k *gen.Case) bool { k.Returns = ""; return true })
 	}

@@ -76,6 +76,9 @@ type Case struct {
 	// Types are named types of package F4 (f04-conversion.md 9.1), in the
 	// order declared.
 	Types []NamedType
+	// Groups are the opt-in groups of package F6 the case turns on
+	// (f06-groups.md 2.1).
+	Groups []string
 	// Returns is the expected result, as type text (03-host.md 3.10.3).
 	Returns string
 	// Removed names library entries the environment removes (03-host.md
@@ -116,6 +119,7 @@ func (c *Case) Clone() *Case {
 	d.Opaque = append([]string(nil), c.Opaque...)
 	d.Removed = append([]string(nil), c.Removed...)
 	d.Types = append([]NamedType(nil), c.Types...)
+	d.Groups = append([]string(nil), c.Groups...)
 	d.Methods = append([]Stub(nil), c.Methods...)
 	d.Functions = append([]Stub(nil), c.Functions...)
 	if c.Limits != nil {
@@ -291,6 +295,13 @@ func (c *Case) JSON() []byte {
 	}
 	if c.Returns != "" {
 		o.field("returns", jsonValue(c.Returns))
+	}
+	if len(c.Groups) > 0 {
+		names := make([]any, len(c.Groups))
+		for i, n := range c.Groups {
+			names[i] = n
+		}
+		o.field("groups", jsonValue(names))
 	}
 	if len(c.Opaque) > 0 {
 		names := make([]any, len(c.Opaque))
