@@ -3,6 +3,7 @@
 
 use crate::diag::{code, Phase};
 use crate::json::{self, Json};
+use crate::schema::SchemaOptions;
 use crate::types::text::{parse_type, Type};
 use std::path::{Path, PathBuf};
 
@@ -49,6 +50,9 @@ pub struct ExpectResult {
     pub truthy: Option<bool>,
     pub steps: Option<u64>,
     pub allocated: Option<u64>,
+    /// F1: the description of the case's environment (`f01-host-types.md`
+    /// 7.2).
+    pub description: Option<Json>,
 }
 
 impl ExpectResult {
@@ -93,6 +97,8 @@ pub struct Case {
     pub source: String,
     pub version: Option<String>,
     pub env: Option<String>,
+    /// F1: variables declared by schema, with their options (7.1).
+    pub schemas: Vec<(String, Json, SchemaOptions)>,
     pub opaque: Vec<String>,
     /// `Type.method` and its stub (3.10.4 item 2).
     pub methods: Vec<(String, Stub)>,
@@ -117,7 +123,8 @@ pub struct CaseFile {
     pub cases: Vec<Case>,
 }
 
-const HEADER_FIELDS: [&str; 14] = [
+const HEADER_FIELDS: [&str; 15] = [
+    "schemas",
     "check",
     "cases",
     "source",
@@ -134,7 +141,8 @@ const HEADER_FIELDS: [&str; 14] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 16] = [
+const CASE_FIELDS: [&str; 17] = [
+    "schemas",
     "check",
     "name",
     "source",
@@ -287,8 +295,22 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
     };
     let env = get("env").and_then(|v| v.as_str()).map(String::from);
     let vars = get("vars").and_then(|v| v.as_obj()).map(|m| m.to_vec());
+    let mut schemas = Vec::new();
+    if let Some(m) = get("schemas").and_then(|v| v.as_obj()) {
+        for (name, decl) in m {
+            let schema = decl.get("schema").cloned().unwrap_or(Json::Null);
+            let names: Vec<&str> = decl
+                .get("options")
+                .and_then(|o| o.as_arr())
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                .unwrap_or_default();
+            let opts = SchemaOptions::from_names(&names)?;
+            schemas.push((name.clone(), schema, opts));
+        }
+    }
     if let Some(vars) = &vars {
-        check_vars(env.as_deref(), vars)?;
+        let names: Vec<&str> = schemas.iter().map(|(n, _, _)| n.as_str()).collect();
+        check_vars(env.as_deref(), &names, vars)?;
     }
     let mut functions = Vec::new();
     if let Some(m) = get("functions").and_then(|v| v.as_obj()) {
@@ -378,6 +400,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         source,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
         env,
+        schemas,
         opaque,
         methods,
         functions,
@@ -395,9 +418,10 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
     })
 }
 
-/// 3.10.10 item 9: every key of `vars` is a field of `env`. When `env` does
-/// not parse as a record, the case fails at its declare step instead.
-fn check_vars(env: Option<&str>, vars: &[(String, Json)]) -> V<()> {
+/// 3.10.10 item 9, as F1 7.1 item 5 reads it: every key of `vars` is a
+/// field of `env` or a key of `schemas`. When `env` does not parse as a
+/// record, the case fails at its declare step instead.
+fn check_vars(env: Option<&str>, schemas: &[&str], vars: &[(String, Json)]) -> V<()> {
     let fields: Option<Vec<String>> = match env {
         None => Some(Vec::new()),
         Some(text) => match parse_type(text) {
@@ -407,8 +431,10 @@ fn check_vars(env: Option<&str>, vars: &[(String, Json)]) -> V<()> {
     };
     if let Some(fields) = fields {
         for (k, _) in vars {
-            if !fields.contains(k) {
-                return Err(format!("the key {k:?} of vars is not a field of env"));
+            if !fields.contains(k) && !schemas.contains(&k.as_str()) {
+                return Err(format!(
+                    "the key {k:?} of vars is neither a field of env nor a key of schemas"
+                ));
             }
         }
     }
@@ -542,6 +568,7 @@ fn read_expect(v: &Json) -> V<Expect> {
                 }
             }
             "steps" | "allocated" => check_count(x).map_err(|e| format!("expect.{k}: {e}"))?,
+            "description" => check_description(x)?,
             _ => return Err(format!("expect is a result and has the field {k:?}")),
         }
     }
@@ -566,7 +593,67 @@ fn read_expect(v: &Json) -> V<Expect> {
         },
         steps: count("steps"),
         allocated: count("allocated"),
+        description: v.get("description").cloned(),
     }))
+}
+
+/// F1 7.5: `expect.description` is an object with exactly the seven keys of
+/// a description.
+fn check_description(x: &Json) -> V<()> {
+    const KEYS: [&str; 7] = [
+        "version",
+        "variables",
+        "functions",
+        "opaque",
+        "removed",
+        "reject",
+        "limits",
+    ];
+    let m = x.as_obj().ok_or("expect.description is not an object")?;
+    for (k, _) in m {
+        if !KEYS.contains(&k.as_str()) {
+            return Err(format!("expect.description has the field {k:?}"));
+        }
+    }
+    for k in KEYS {
+        if x.get(k).is_none() {
+            return Err(format!("expect.description has no field {k:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// F1 7.1: the form of `schemas`.
+fn check_schemas(v: &Json) -> V<()> {
+    let m = v.as_obj().ok_or("schemas is not an object")?;
+    for (name, decl) in m {
+        let d = decl
+            .as_obj()
+            .ok_or_else(|| format!("schemas.{name} is not an object"))?;
+        for (k, x) in d {
+            match k.as_str() {
+                "schema" => {}
+                "options" => {
+                    let a = x
+                        .as_arr()
+                        .ok_or_else(|| format!("schemas.{name}.options is not an array"))?;
+                    let names: Vec<&str> = a.iter().filter_map(|o| o.as_str()).collect();
+                    if names.len() != a.len() {
+                        return Err(format!(
+                            "schemas.{name}.options holds a value that is not a string"
+                        ));
+                    }
+                    SchemaOptions::from_names(&names)
+                        .map_err(|e| format!("schemas.{name}.options: {e}"))?;
+                }
+                _ => return Err(format!("schemas.{name} has the field {k:?}")),
+            }
+        }
+        if decl.get("schema").is_none() {
+            return Err(format!("schemas.{name} has no schema"));
+        }
+    }
+    Ok(())
 }
 
 fn read_diag(d: &Json) -> V<ExpectDiag> {
@@ -755,6 +842,7 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             _ => Err("precondition is not a boolean".into()),
         },
         "expect" => Ok(()),
+        "schemas" => check_schemas(v),
         _ => Err(format!("unknown field {k:?}")),
     }
 }

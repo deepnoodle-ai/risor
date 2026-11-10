@@ -5,7 +5,10 @@ use crate::check::ty::{from_text, Ty};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::eval::Call;
 use crate::host::{Data, HostError};
+use crate::hosttype::{opaque_names, type_of, HostType};
+use crate::json::Json;
 use crate::library;
+use crate::schema::{ty_schema, SchemaOptions};
 use crate::syntax::token::is_reserved;
 use crate::types::text::{parse_sig, parse_type, Rest, Sig, Type};
 use crate::value::Value;
@@ -136,10 +139,20 @@ pub fn is_name(s: &str) -> bool {
 
 const RESERVED_NAMESPACES: [&str; 4] = ["json", "time", "math", "base64"];
 
+/// A variable declared alone: in type text, or by a JSON Schema (F1).
+#[derive(Clone)]
+enum VarDecl {
+    Text(String),
+    Schema(Json, SchemaOptions),
+    /// A type derived from a host type (F1 6), or why it could not be.
+    Host(Result<Ty, String>),
+}
+
 #[derive(Default)]
 pub struct EnvBuilder {
     version: Option<String>,
     vars: Option<String>,
+    one_vars: Vec<(String, VarDecl)>,
     functions: Vec<(String, String, Option<HostImpl>)>,
     opaque: Vec<String>,
     methods: Vec<(String, String, Option<HostImpl>)>,
@@ -156,6 +169,33 @@ impl EnvBuilder {
     /// The variables, as one record type: `{input: {...}, limit: int}`.
     pub fn vars(mut self, record: &str) -> Self {
         self.vars = Some(record.to_string());
+        self
+    }
+
+    /// One variable and its type text, read on its own as declared type
+    /// text (`05-types.md` 19.5), not inside the record of `vars`: its type
+    /// may be 64 deep.
+    pub fn var(mut self, name: &str, ty: &str) -> Self {
+        self.one_vars
+            .push((name.to_string(), VarDecl::Text(ty.to_string())));
+        self
+    }
+
+    /// A variable declared by a JSON Schema, with the options given (F1,
+    /// `f01-host-types.md` 2). Its type is M(S); the schema is not kept. An
+    /// error in the schema is the `declare` error `bad-type`.
+    pub fn var_schema(mut self, name: &str, schema: &Json, opts: SchemaOptions) -> Self {
+        self.one_vars
+            .push((name.to_string(), VarDecl::Schema(schema.clone(), opts)));
+        self
+    }
+
+    /// A variable whose type is derived from the host type `T` (F1 6). A
+    /// type that cannot be derived, or that names an opaque type the
+    /// environment does not declare, is the `declare` error `bad-type`.
+    pub fn var_host<T: HostType + ?Sized>(mut self, name: &str) -> Self {
+        let t = type_of::<T>().map_err(|e| e.0);
+        self.one_vars.push((name.to_string(), VarDecl::Host(t)));
         self
     }
 
@@ -277,6 +317,47 @@ impl EnvBuilder {
                 Ok(_) => bad(code::BAD_TYPE, "the variables are not a record type".into()),
                 Err(e) => bad(code::BAD_TYPE, format!("variables: {e}")),
             }
+        }
+        for (name, decl) in &self.one_vars {
+            if !is_name(name) {
+                bad(code::BAD_NAME, format!("{name:?} cannot name a variable"));
+            } else if vars.contains(name) {
+                bad(
+                    code::NAME_CLASH,
+                    format!("the variable {name} is declared twice"),
+                );
+            }
+            let ty = match decl {
+                VarDecl::Text(text) => match parse_type(text) {
+                    Ok(t) => from_text(&t, &opaque, None)
+                        .map_err(|e| format!("the variable {name}: {e}")),
+                    Err(e) => Err(format!("the variable {name}: {e}")),
+                },
+                VarDecl::Schema(schema, opts) => {
+                    ty_schema(schema, *opts).map_err(|e| format!("the variable {name}: {e}"))
+                }
+                VarDecl::Host(t) => match t {
+                    Ok(t) => {
+                        let mut names = std::collections::BTreeSet::new();
+                        opaque_names(t, &mut names, &mut Default::default());
+                        match names.iter().find(|n| !opaque.contains(n)) {
+                            Some(n) => Err(format!(
+                                "the variable {name}: {n} is not a declared opaque type"
+                            )),
+                            None => Ok(t.clone()),
+                        }
+                    }
+                    Err(e) => Err(format!("the variable {name}: {e}")),
+                },
+            };
+            match ty {
+                Ok(t) => var_types.push(t),
+                Err(e) => {
+                    bad(code::BAD_TYPE, e);
+                    var_types.push(Ty::any());
+                }
+            }
+            vars.push(name.clone());
         }
         let mut methods = Vec::new();
         for (key, text, imp) in self.methods {

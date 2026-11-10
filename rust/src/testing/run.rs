@@ -4,7 +4,9 @@
 //! gives `skip` to a case that needs the checker (3.10.8 item 5) or a
 //! library entry this build does not run yet.
 
-use super::case::{load, opaque_of, Answer, Case, Expect, ExpectDiag, ExpectFailure, Stub};
+use super::case::{
+    load, opaque_of, Answer, Case, Expect, ExpectDiag, ExpectFailure, ExpectResult, Stub,
+};
 use crate::compile::{compile_unchecked as compile, Program, Res};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::{check_expected, Env, HostImpl, Limits};
@@ -144,7 +146,11 @@ pub fn run_file(path: &Path) -> FileReport {
 /// Run every case of a file: as a runner with a checker does (`checked`),
 /// or as one with none.
 pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
-    let core_check = path.components().any(|c| c.as_os_str() == "core-check");
+    // `suite/core-check/` and F1's `suite/host-types/` (7.3 item 1) run
+    // each case checked, once.
+    let core_check = path
+        .components()
+        .any(|c| c.as_os_str() == "core-check" || c.as_os_str() == "host-types");
     match load(path) {
         Ok(file) => FileReport {
             path: path.to_path_buf(),
@@ -274,6 +280,9 @@ fn build_env(
     if let Some(e) = &case.env {
         b = b.vars(e);
     }
+    for (name, schema, opts) in &case.schemas {
+        b = b.var_schema(name, schema, *opts);
+    }
     for o in &case.opaque {
         b = b.opaque(o);
     }
@@ -317,6 +326,14 @@ fn build_env(
         }
     }
     Err(errs)
+}
+
+/// The environment a case declares (3.10.5 step 2), with its stubs as the
+/// implementations of its functions and methods.
+pub fn case_env(case: &Case) -> Result<Env, Error> {
+    let mut interner = Interner::default();
+    let unmatched = Arc::new(AtomicBool::new(false));
+    build_env(case, &mut interner, &unmatched)
 }
 
 /// The library entries the program may call that this build does not run.
@@ -394,6 +411,7 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
             }
             let order = [
                 "outcome",
+                "description",
                 "type",
                 "sites",
                 "value",
@@ -447,6 +465,22 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
         Ok(e) => e,
         Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, all_class),
     };
+    // F1 7.2: the description is taken once the environment is built.
+    let mut diffs = Vec::new();
+    if let Expect::Result(ExpectResult {
+        description: Some(want),
+        ..
+    }) = &case.expect
+    {
+        let got = env.describe();
+        if !crate::json::same_data(want, &got) {
+            diffs.push(Difference {
+                name: "description",
+                expected: crate::json::to_text(want),
+                found: crate::json::to_text(&got),
+            });
+        }
+    }
     let parsed = match parse(&case.source) {
         Ok(p) => p,
         Err(e) => {
@@ -461,7 +495,6 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
         }
     };
     // Step 4: the check, or the static rules alone.
-    let mut diffs = Vec::new();
     let mut sites = None;
     if checked {
         let exp = match crate::check::expected(&env, case.returns.as_deref()) {
@@ -869,6 +902,11 @@ pub fn outcome_line(case: &Case) -> String {
             return out;
         }
     };
+    // F1 7.4: the description, when the case has `schemas`.
+    if !case.schemas.is_empty() {
+        out.push_str(",\"description\":");
+        out.push_str(&env.description_text());
+    }
     // The full checker at step 4 (S4): its result type and sites are
     // written after the name when the program checks.
     let program = match parse(&case.source) {

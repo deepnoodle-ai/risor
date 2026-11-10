@@ -244,6 +244,7 @@ impl<'a> Checker<'a> {
             error_ty: Ty::rec(Rec {
                 fields,
                 rest: Ty::never(),
+                closable: false,
             }),
             dropping: 0,
         }
@@ -683,6 +684,7 @@ impl<'a> Checker<'a> {
         let mut rec = Rec {
             fields: BTreeMap::new(),
             rest: Ty::never(),
+            closable: false,
         };
         for &e in entries {
             match self.kind(e) {

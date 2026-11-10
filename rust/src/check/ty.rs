@@ -8,6 +8,7 @@
 
 use crate::types::text::{self, Rest};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Num {
@@ -32,6 +33,20 @@ pub struct Field {
 pub struct Rec {
     pub fields: BTreeMap<String, Field>,
     pub rest: Ty,
+    /// The mark *closable* of F1 (`f01-host-types.md` 4.1). Only the mapping
+    /// of a schema under the option `closed` sets it, and Close drops it, so
+    /// every type outside that mapping has it `false`.
+    pub closable: bool,
+}
+
+impl Rec {
+    pub fn new(fields: BTreeMap<String, Field>, rest: Ty) -> Rec {
+        Rec {
+            fields,
+            rest,
+            closable: false,
+        }
+    }
 }
 
 /// A type. With `any` set, the other slots are empty. With every slot empty
@@ -43,8 +58,8 @@ pub struct Ty {
     pub boolean: bool,
     pub num: Option<Num>,
     pub str: Option<Strs>,
-    pub list: Option<Box<Ty>>,
-    pub map: Option<Box<Rec>>,
+    pub list: Option<Arc<Ty>>,
+    pub map: Option<Arc<Rec>>,
     pub opaque: BTreeSet<String>,
 }
 
@@ -102,13 +117,13 @@ impl Ty {
     }
     pub fn list(e: Ty) -> Ty {
         Ty {
-            list: Some(Box::new(e)),
+            list: Some(Arc::new(e)),
             ..Ty::default()
         }
     }
     pub fn rec(r: Rec) -> Ty {
         Ty {
-            map: Some(Box::new(r)),
+            map: Some(Arc::new(r)),
             ..Ty::default()
         }
     }
@@ -117,6 +132,7 @@ impl Ty {
         Ty::rec(Rec {
             fields: BTreeMap::new(),
             rest: t,
+            closable: false,
         })
     }
     /// `{}`: the empty map only.
@@ -214,11 +230,11 @@ pub fn join(a: &Ty, b: &Ty) -> Ty {
             (x, y) => x.clone().or(y.clone()),
         },
         list: match (&a.list, &b.list) {
-            (Some(x), Some(y)) => Some(Box::new(join(x, y))),
+            (Some(x), Some(y)) => Some(Arc::new(join(x, y))),
             (x, y) => x.clone().or(y.clone()),
         },
         map: match (&a.map, &b.map) {
-            (Some(x), Some(y)) => Some(Box::new(join_rec(x, y))),
+            (Some(x), Some(y)) => Some(Arc::new(join_rec(x, y))),
             (x, y) => x.clone().or(y.clone()),
         },
         opaque: a.opaque.union(&b.opaque).cloned().collect(),
@@ -254,6 +270,7 @@ fn join_rec(a: &Rec, b: &Rec) -> Rec {
     Rec {
         fields,
         rest: join(&a.rest, &b.rest),
+        closable: a.closable && b.closable,
     }
 }
 
@@ -348,6 +365,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
                 })
                 .collect(),
             rest: Ty::any(),
+            closable: false,
         };
     };
     let mut fields = BTreeMap::new();
@@ -382,6 +400,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
     Rec {
         fields,
         rest: join(&r.rest, &m.rest),
+        closable: false,
     }
 }
 
@@ -430,15 +449,16 @@ pub fn falsy(t: &Ty) -> Ty {
             Some(Strs::Lits(l)) if l.contains("") => Some(Strs::Lits([String::new()].into())),
             _ => None,
         },
-        list: t.list.as_ref().map(|_| Box::new(Ty::never())),
+        list: t.list.as_ref().map(|_| Arc::new(Ty::never())),
         map: t
             .map
             .as_ref()
             .filter(|r| r.fields.values().all(|f| f.optional))
             .map(|_| {
-                Box::new(Rec {
+                Arc::new(Rec {
                     fields: BTreeMap::new(),
                     rest: Ty::never(),
+                    closable: false,
                 })
             }),
         opaque: BTreeSet::new(),
@@ -578,7 +598,13 @@ pub fn print(t: &Ty) -> String {
     if let Some(r) = &t.map {
         ps.push(print_rec(r));
     }
-    ps.extend(t.opaque.iter().cloned());
+    // A type variable of a signature being printed is held as an opaque name
+    // that starts with VAR_MARK, so it sorts after every opaque name.
+    ps.extend(
+        t.opaque
+            .iter()
+            .map(|o| o.strip_prefix(VAR_MARK).unwrap_or(o).to_string()),
+    );
     if t.null {
         ps.push("null".into());
     }
@@ -613,6 +639,20 @@ fn print_rec(r: &Rec) -> String {
 }
 
 // ---- type text to types ------------------------------------------------------
+
+/// The mark of a type variable held as an opaque name, for printing a
+/// signature (`f01-host-types.md` 5.2): no opaque name holds it, and it sorts
+/// after every character an opaque name may have.
+pub const VAR_MARK: char = '\u{10FFFF}';
+
+/// The type of a signature's type text, for printing: each type variable
+/// stands as itself, after the opaque names and before `null`.
+pub fn sig_type(t: &text::Type, opaque: &[String]) -> Ty {
+    let sol: Solutions = ('A'..='Z')
+        .map(|c| (c, Ty::opaque(&format!("{VAR_MARK}{c}"))))
+        .collect();
+    substitute(t, opaque, &sol)
+}
 
 /// The solutions of a signature's type variables, while a call is solved.
 pub type Solutions = HashMap<char, Ty>;
@@ -672,7 +712,7 @@ fn convert(t: &text::Type, opaque: &[String], vars: Option<&Solutions>) -> Resul
                 Rest::Any => Ty::any(),
                 Rest::Typed(t) => convert(t, opaque, vars)?,
             };
-            Ty::rec(Rec { fields, rest })
+            Ty::rec(Rec::new(fields, rest))
         }
         text::Type::Name(n) => {
             if !opaque.iter().any(|o| o == n) {

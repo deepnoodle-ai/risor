@@ -187,3 +187,12 @@ fn strings_package() {
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
 }
+
+/// Package F1, host types: every case of `suite/host-types/` runs checked,
+/// once (`f01-host-types.md` 7.3).
+#[test]
+fn host_types_package() {
+    let total = run(&suite_dir().join("host-types"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}

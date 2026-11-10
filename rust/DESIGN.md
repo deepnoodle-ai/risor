@@ -43,6 +43,10 @@ specification, not here. This file records the crate's own choices.
 | `src/library.rs` | S2 | The records of `suite/library.json`: names, receivers, signatures |
 | `src/messages.rs` | S2 | The catalog of `suite/messages.json` and the building of a message |
 | `src/bin/outcome.rs` | S2 | The outcome command of rulings round 10 AJ |
+| `src/schema.rs` | F1 | The type of a JSON Schema (`f01-host-types.md` 3, 4): Pick, Meet, the mark *closable*, Close |
+| `src/describe.rs` | F1 | Descriptions of types, signatures and environments; an environment from a description (5) |
+| `src/hosttype.rs` | F1 | `HostType`, `TypeCx`, `Opaque<T>`: types from host types, and `Host` for the standard types (6.3) |
+| `derive/` | F1 | The crate `risor-derive`: `#[derive(Host)]` for a struct, no dependency |
 
 The data files of `suite/` (`messages.json`, `library.json`, `casemap.json`) are compiled into
 the crate with `include_str!` and read once, at first use. Nothing in them is
@@ -250,3 +254,32 @@ A call handle is valid only until its host function returns, and holds by
 construction here: `Call` borrows the run's meter mutably for the duration of
 one call, and a host implementation is a `'static` closure that receives
 `&mut Call<'_>`, so it cannot keep the handle past its return.
+
+## Package F1, host types
+
+- **Shared types.** A type's element and record slots are `Arc`, not `Box`,
+  so a type is cheap to clone and parts are shared. The mapping of a schema
+  maps each `$ref` target once, by its place in the document, and reuses the
+  type (3.10 item 5). Close, the depth of a type and the walk of its opaque
+  names visit each shared part once, keyed by its address. A unit test maps
+  a doubling chain of 30 definitions, which as a tree has 2^30 nodes.
+- **The mark.** `Rec` has a field `closable`. Only the mapping sets it, under
+  `closed`; Join keeps it when both records have it; Close drops it. Every
+  other type has it `false`, so the checker's equality is unchanged.
+- **Walk level.** The mapping stops at a schema 65 levels below the root,
+  since the root is then deeper than 64. This bounds the recursion before a
+  depth is known. Literal values are cut at the same level.
+- **Signatures printed.** A type variable is held, for printing only, as an
+  opaque name that starts with U+10FFFF: it sorts after every opaque name and
+  is printed without the mark.
+- **Descriptions.** `Env::describe` gives a `Json` with sorted keys;
+  `json::to_text` gives the text of 5.3 item 5. `Env::from_description`
+  returns `DescriptionError::Form` for a description of the wrong form (the
+  binding's own error) and `DescriptionError::Declare` for `declare` errors.
+  This build has no removed library entries, so `removed` is always `[]`, and
+  a description that names one is a form error.
+- **Host types.** `HostType` gives the type; `Host` and `HostMap` present the
+  value in place, and the two agree. The derive lives in `derive/` so that
+  this crate keeps no dependency; it is a workspace member, built only with
+  `-p risor-derive` or `--workspace`.
+

@@ -1,0 +1,18 @@
+[package]
+name = "risor-derive"
+version = "0.1.0"
+edition = "2021"
+description = "The derive of Risor v3's host types (package F1, 6.3), with no dependency"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+proc-macro = true
+path = "src/lib.rs"
+
+# No dependency: the macro reads the token stream itself. The tests use the
+# main crate, whose traits the generated code implements.
+[dependencies]
+
+[dev-dependencies]
+risor = { path = ".." }

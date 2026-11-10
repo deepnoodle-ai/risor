@@ -104,6 +104,71 @@ impl fmt::Display for Json {
     }
 }
 
+/// The JSON form of `01-language.md` 12: no white space, the keys of every
+/// object in code point order, strings escaped, numbers in their rendering.
+pub fn to_text(v: &Json) -> String {
+    let mut out = String::new();
+    write_text(v, &mut out);
+    out
+}
+
+fn write_text(v: &Json, out: &mut String) {
+    match v {
+        Json::Null => out.push_str("null"),
+        Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Json::Num(n) => out.push_str(&crate::number::to_text(*n)),
+        Json::Str(s) => write_str(s, out),
+        Json::Arr(a) => {
+            out.push('[');
+            for (i, x) in a.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_text(x, out);
+            }
+            out.push(']');
+        }
+        Json::Obj(m) => {
+            let mut keys: Vec<&(String, Json)> = m.iter().collect();
+            keys.sort_by(|a, b| a.0.cmp(&b.0));
+            out.push('{');
+            for (i, (k, x)) in keys.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_str(k, out);
+                out.push(':');
+                write_text(x, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+fn write_str(s: &str, out: &mut String) {
+    out.push('"');
+    for c in s.chars() {
+        crate::messages::push_json_char(out, c);
+    }
+    out.push('"');
+}
+
+/// Equality as JSON data: objects with the same keys and equal values in
+/// any key order, arrays element by element, numbers by value.
+pub fn same_data(a: &Json, b: &Json) -> bool {
+    match (a, b) {
+        (Json::Obj(x), Json::Obj(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(k, v)| b.get(k).is_some_and(|w| same_data(v, w)))
+        }
+        (Json::Arr(x), Json::Arr(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(v, w)| same_data(v, w))
+        }
+        _ => a == b,
+    }
+}
+
 /// JSON nested deeper than this is refused (`03-host.md` 3.10.1 item 4,
 /// ruling AA6). The top value is level 1.
 pub const MAX_DEPTH: usize = 1024;

@@ -133,31 +133,19 @@ impl Host for Data {
     }
 }
 
-impl HostList for Vec<Data> {
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-    fn get(&self, index: usize) -> Option<View<'_>> {
-        self.as_slice().get(index).map(Host::view)
-    }
-}
-
-impl HostMap for BTreeMap<String, Data> {
-    fn len(&self) -> usize {
-        BTreeMap::len(self)
-    }
-    fn get(&self, key: &str) -> Option<View<'_>> {
-        BTreeMap::get(self, key).map(Host::view)
-    }
-    fn keys(&self) -> Vec<&str> {
-        BTreeMap::keys(self).map(String::as_str).collect()
-    }
-}
-
-/// Variables from a map of names to data.
+/// Variables from a map of names to data. (It is not generic, so that an
+/// empty `BTreeMap::new()` needs no annotation; a map of other host values
+/// is a `HashMap`.)
 impl Vars for BTreeMap<String, Data> {
     fn get(&self, name: &str) -> Option<View<'_>> {
         BTreeMap::get(self, name).map(Host::view)
+    }
+}
+
+/// Variables from a map of names to host values.
+impl<T: Host> Vars for std::collections::HashMap<String, T> {
+    fn get(&self, name: &str) -> Option<View<'_>> {
+        std::collections::HashMap::get(self, name).map(Host::view)
     }
 }
 

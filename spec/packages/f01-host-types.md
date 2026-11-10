@@ -628,33 +628,58 @@ first that applies gives the type.
    takes part in deciding which field a name means, but it is not presented
    and is not in the record.
 
-### 6.3 Rust (binding rules, provisional)
+### 6.3 Rust (binding rules)
 
-The Rust binding derives a type with `#[derive(risor::Host)]`, at build time.
-The crate has no library dependency, so these rules name no other crate. This
-section is provisional: the Rust binding fixes its details when it builds the
-derive.
+The binding derives a type with the trait `risor::HostType` and presents a value
+with `risor::Host` (and `HostList`, `HostMap`), read in place. The two are
+implemented together, so a value always conforms to its derived type as
+presented (6.1). `#[derive(risor::Host)]` implements both for a struct; the
+derive is the crate `risor-derive`, which the library re-exports under its
+feature `derive`. Every row is tried at build time: a type no row covers does not
+implement the traits, and the host's build fails.
 
-| Rust | Type |
-| --- | --- |
-| A type registered as opaque | Its opaque name |
-| `bool`, `String`, `&str` | `bool`, `string` |
-| Every integer type | `int` |
-| `f32`, `f64` | `float` |
-| `Vec<T>`, `[T]`, `[T; N]` | `T[]` |
-| `HashMap<String, T>`, `BTreeMap<String, T>` | `map<T>` |
-| `Option<T>` | `T \| null` |
-| The crate's own owned value type | `any` |
-| A struct with the derive | An exact record of the fields it presents, by the rules below |
-| A Rust `enum`, and anything else | An error of the host's build: the trait is not implemented |
+| Rust | Type | Presented as |
+| --- | --- | --- |
+| `Opaque<T>`, where `T: OpaqueType` (a host type registered as opaque, whose `NAME` is the opaque name) | `T::NAME` | The opaque value. One `Opaque` is one allocation, so every read presents the same host value (3.4.6) |
+| `bool` | `bool` | Itself |
+| `String`, `str`, `Cow<str>` | `string` | Itself |
+| Every integer type, `i128`, `u128`, `isize` and `usize` among them | `int` | Itself. Outside ±(2^53 − 1) it cannot enter, and the run fails where it reads it |
+| `f32`, `f64` | `float` | Itself |
+| `Vec<T>`, `[T; N]`, `VecDeque<T>`; `&[T]` | `T[]` | A list |
+| `HashMap<String, T>`, `BTreeMap<String, T>` | `map<T>` | A map |
+| `Option<T>` | Join(type of `T`, `null`) | `None` as null |
+| `&T`, `Box<T>`, `Rc<T>`, `Arc<T>` | The type of `T` | As `T` |
+| `risor::Data`, the crate's own owned value type | `any` | Itself |
+| A struct with named fields and `#[derive(Host)]` | An exact record of the fields it presents, by the rules below | A map of those fields |
+| A Rust `enum`, a `union`, a tuple struct, a unit struct | The derive fails the build with a message | — |
+| Anything else (`char`, a tuple, a function) | The trait is not implemented: the host's build fails | — |
 
-1. Fields are named and marked with `#[risor(...)]` only.
-2. `#[risor(rename = "k")]` presents the field under the key `k`. Without it,
-   the key is the field's Rust name.
-3. `#[risor(skip)]`: the field is not presented and is not in the record.
-4. `#[risor(absent_if_none)]` on a field of type `Option<T>`: an optional
-   field `f?: T`, presented as absent when it is `None`. Every other field is
-   required.
+1. Fields are named and marked with `#[risor(...)]` only. Several marks may
+   share one attribute (`#[risor(rename = "k", absent_if_none)]`). Any other
+   content is a build error. Other attributes (`#[serde(...)]`, doc comments)
+   are ignored.
+2. `#[risor(rename = "k")]` presents the field under the key `k`, a string
+   literal, raw or not, with its escapes read. Without it, the key is the
+   field's Rust name, with `r#` dropped (`r#type` is `type`).
+3. `#[risor(skip)]`: the field is not presented and is not in the record. Its
+   type needs no trait.
+4. `#[risor(absent_if_none)]` on a field of type `Option<T>`: an optional field
+   `f?: T`, presented as absent when it is `None`. On any other type the build
+   fails (the trait `OptionLike` is not implemented). Every other field is
+   required, and an `Option<T>` field without the mark is `f: T | null`, present
+   and null when `None`.
+5. Two presented fields under one key fail the build.
+6. A generic struct is derived with each type parameter bounded by `HostType +
+   Host`; lifetimes, const parameters and a `where` clause are kept.
+7. A struct that contains itself, directly or through others (`next:
+   Option<Box<Node>>`), compiles, and deriving its type is `bad-type` ("contains
+   itself") when an environment declares it. Rust cannot reject it at build time
+   without a dependency.
+8. A derived type deeper than 64 is `bad-type`. A type that names an opaque type
+   the environment does not declare is `bad-type`.
+9. A host declares a variable of a derived type with
+   `EnvBuilder::var_host::<T>(name)`. `risor::type_of::<T>()` gives the type,
+   and `describe_host_type::<T>()` its description (5.1).
 
 ### 6.4 TypeScript (binding rules)
 

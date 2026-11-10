@@ -107,19 +107,20 @@ jobs:
           rustup default stable
           rustup component add clippy
 
+      # The workspace is the library and its derive crate, rust/derive.
       - name: Build
-        run: cargo build --all-targets
+        run: cargo build --workspace --all-targets
 
       - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       # The limits must hold in the build that uses the most stack, so the
       # suite runs unoptimized and optimized.
       - name: Test, unoptimized
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Test, optimized
-        run: cargo test --release
+        run: cargo test --workspace --release
 
   fuzz:
     runs-on: ubuntu-latest
