@@ -50,11 +50,10 @@ func jsonStringify(r *run, c *libCall) any {
 	var b renderer
 	b.r, b.span, b.opaque = r, c.span, "json"
 	b.json(c.args[0])
-	s := b.String()
-	f.walkSteps, f.resultW = r.steps-before, value.Weight(s)
+	f.walkSteps, f.resultW = r.steps-before, b.resultWeight()
 	r.libSteps(c, f, f.walkSteps)
 	r.libUnits(c, f)
-	return s
+	return b.finish(func(out *strings.Builder) { writeJSON(r, out, c.span, c.args[0]) })
 }
 
 // jsonPass is the pass of 6.2.4 over a JSON text: it creates no value.

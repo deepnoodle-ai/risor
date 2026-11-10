@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -384,4 +385,76 @@ func TestCompileOnceRunMany(t *testing.T) {
 	n, ok := risor.AsInt(3.0)
 	assert.True(t, ok)
 	assert.Equal(t, n, int64(3))
+}
+
+func TestPreAllocationChargingBeforeGrowth(t *testing.T) {
+	const count = 200_000
+	xs := make([]int, count)
+	m := make(map[string]int, count)
+	for i := 0; i < count; i++ {
+		xs[i] = i
+		m[fmt.Sprintf("k%d", i)] = i
+	}
+	bigStr := strings.Repeat("a\"\\\n", count)
+
+	env, err := risor.NewEnv(
+		risor.Declare("{xs: int[], m: map<int>, s: string}"),
+		risor.Groups("json"),
+		risor.Limits{Steps: risor.NoLimit, Alloc: 5},
+	)
+	assert.NoError(t, err)
+	vars := risor.Map{"xs": xs, "m": m, "s": bigStr}
+
+	// Each expression would build multiple megabytes if allocated before
+	// charging units; under Alloc: 5 it must fail with allocation-exceeded
+	// and negligible heap allocation.
+	for _, src := range []string{
+		"[...xs]",
+		"{...m}",
+		"`${s}${s}`",
+		"string([s])",
+		"json.stringify(s)",
+	} {
+		p := compile(t, env, src)
+		// Warm up once, then measure heap bytes allocated per failed run.
+		_, _ = p.Run(context.Background(), vars)
+		var m0, m1 runtime.MemStats
+		runtime.ReadMemStats(&m0)
+		d := runErr(t, env, src, vars)
+		runtime.ReadMemStats(&m1)
+		assert.Equal(t, d.Code, "allocation-exceeded", src)
+		// Only [...xs], `${s}${s}` and json.stringify(s) avoid host map reflection;
+		// even across all 5 cases, heap allocated is far below copying the data.
+		if src == "[...xs]" || src == "`${s}${s}`" || src == "string([s])" || src == "json.stringify(s)" {
+			assert.True(t, m1.TotalAlloc-m0.TotalAlloc < 64*1024, "%s allocated %d bytes", src, m1.TotalAlloc-m0.TotalAlloc)
+		}
+	}
+
+	// Error precedence: an error in a later item or entry still precedes
+	// allocation-exceeded, and steps-exceeded precedes allocation-exceeded.
+	assert.Equal(t, runErr(t, env, "[...xs, 1 / 0]", vars).Code, "divide-by-zero")
+	assert.Equal(t, runErr(t, env, "{...m, [null]: 1}", vars).Code, "null-operand")
+	assert.Equal(t, runErr(t, env, "`${s}${1 / 0}`", vars).Code, "divide-by-zero")
+
+	bothEnv, err := risor.NewEnv(
+		risor.Declare("{s: string}"),
+		risor.Limits{Steps: 2, Alloc: 2},
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, runErr(t, bothEnv, "`${s}`", vars).Code, "steps-exceeded")
+
+	// Large strings past the counting threshold still render identically when within budget.
+	okEnv, err := risor.NewEnv(
+		risor.Declare("{s: string}"),
+		risor.Groups("json"),
+		risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit},
+	)
+	assert.NoError(t, err)
+	short := strings.Repeat("x\"\\\t\x01é😀", 300)
+	v := risor.Map{"s": short}
+	assert.Equal(t, run(t, okEnv, "`<${s}>`", v), any("<"+short+">"))
+	wantJSON, err := risor.JSONText(short)
+	assert.NoError(t, err)
+	assert.Equal(t, run(t, okEnv, "json.stringify(s)", v), any(wantJSON))
+	assert.Equal(t, run(t, okEnv, "string([s])", v), any("["+wantJSON+"]"))
 }

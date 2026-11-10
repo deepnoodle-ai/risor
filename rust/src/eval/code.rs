@@ -425,17 +425,59 @@ fn node(
                 })
                 .collect();
             mk(move |r| {
-                let mut out = r.take_scratch();
+                let mut rbuf = super::RenderBuf::new(r.take_scratch());
+                let mut vals: Vec<Value<'_>> = Vec::with_capacity(parts.len());
                 for p in parts.iter() {
                     match p {
-                        Part::Text(t) => out.push_str(t),
+                        Part::Text(t) => rbuf.push_str(t),
                         Part::Expr(e) => {
                             let v = e(r)?;
-                            r.render(&v, &mut out, true, span)?;
+                            r.render_walk(&v, &mut rbuf, true, span)?;
+                            vals.push(v);
                         }
                     }
                 }
-                r.template_done(out)
+                let sz = rbuf.weight() / 64;
+                let res = r.charge(1 + sz).and_then(|()| r.alloc(1 + sz));
+                if let Err(err) = res {
+                    for v in vals {
+                        release(v);
+                    }
+                    r.scratch = rbuf.buf;
+                    return Err(err);
+                }
+                if !rbuf.counting {
+                    for v in vals {
+                        release(v);
+                    }
+                    let out = rbuf.buf;
+                    let v = Value::Str(Str::Rc(std::rc::Rc::from(out.as_str())));
+                    r.scratch = out;
+                    return Ok(v);
+                }
+                let mut out = String::with_capacity(rbuf.bytes);
+                let mut vi = 0;
+                for p in parts.iter() {
+                    match p {
+                        Part::Text(t) => out.push_str(t),
+                        Part::Expr(_) => {
+                            let res = r.write_rendered(&vals[vi], &mut out, true, span);
+                            vi += 1;
+                            if let Err(err) = res {
+                                for v in vals {
+                                    release(v);
+                                }
+                                r.scratch = rbuf.buf;
+                                return Err(err);
+                            }
+                        }
+                    }
+                }
+                for v in vals {
+                    release(v);
+                }
+                r.scratch = rbuf.buf;
+                Ok(Value::str(out))
             })
         }
         // A call of a library function whose arguments are all values.

@@ -644,24 +644,45 @@ impl<'h> Run<'h> {
     // ---- literals -------------------------------------------------------
 
     fn template(&mut self, span: Span, parts: &'h [TemplatePart]) -> R<'h, Value<'h>> {
-        // The text is built in the run's scratch buffer, then copied once
-        // into the string.
-        let mut out = self.take_scratch();
+        let mut rbuf = RenderBuf::new(self.take_scratch());
+        let mut vals: Vec<Value<'h>> = Vec::with_capacity(parts.len());
         for p in parts {
             match p {
-                TemplatePart::Text(t) => out.push_str(t),
+                TemplatePart::Text(t) => rbuf.push_str(t),
                 TemplatePart::Expr(e) => {
                     let v = self.eval(*e)?;
-                    self.render(&v, &mut out, true, span)?;
+                    self.render_walk(&v, &mut rbuf, true, span)?;
+                    vals.push(v);
                 }
             }
         }
-        self.template_done(out)
+        let sz = rbuf.weight() / 64;
+        self.charge(1 + sz)?;
+        self.alloc(1 + sz)?;
+        if !rbuf.counting {
+            let out = rbuf.buf;
+            let v = Value::Str(Str::Rc(Rc::from(out.as_str())));
+            self.scratch = out;
+            return Ok(v);
+        }
+        let mut out = String::with_capacity(rbuf.bytes);
+        let mut vi = 0;
+        for p in parts {
+            match p {
+                TemplatePart::Text(t) => out.push_str(t),
+                TemplatePart::Expr(_) => {
+                    self.write_rendered(&vals[vi], &mut out, true, span)?;
+                    vi += 1;
+                }
+            }
+        }
+        self.scratch = rbuf.buf;
+        Ok(Value::str(out))
     }
 
     /// The run's buffer for building text, empty: the thread's at its first
     /// use in a run.
-    fn take_scratch(&mut self) -> String {
+    pub(super) fn take_scratch(&mut self) -> String {
         let mut out = std::mem::take(&mut self.scratch);
         if out.capacity() == 0 {
             out = SCRATCH.with(|c| c.take());
@@ -670,19 +691,91 @@ impl<'h> Run<'h> {
         out
     }
 
-    /// The end of a template: the charge, then the string; the buffer goes
-    /// back to the run.
-    fn template_done(&mut self, out: String) -> R<'h, Value<'h>> {
-        let sz = size(&out);
-        self.charge(1 + sz)?;
-        self.alloc(1 + sz)?;
-        let v = Value::Str(Str::Rc(Rc::from(out.as_str())));
-        self.scratch = out;
-        Ok(v)
+    /// The rendering of a value, and its walk (`02-evaluation.md` 5.5), into
+    /// a bounded [`RenderBuf`].
+    pub(super) fn render_walk(
+        &mut self,
+        v: &Value<'h>,
+        out: &mut RenderBuf,
+        top: bool,
+        span: Span,
+    ) -> R<'h, ()> {
+        match v {
+            Value::Str(s) => {
+                if top {
+                    out.push_str(s.as_str());
+                } else {
+                    out.push_byte(b'"');
+                    out.push_escaped(s.as_str());
+                    out.push_byte(b'"');
+                }
+            }
+            Value::Num(n) => {
+                let mut s = String::with_capacity(24);
+                number::push_text(&mut s, *n);
+                out.push_ascii(&s);
+            }
+            Value::Bool(b) => out.push_ascii(if *b { "true" } else { "false" }),
+            Value::Null => {
+                if !top {
+                    out.push_ascii("null");
+                }
+            }
+            Value::BadNum => return Err(self.host_number(Some(span))),
+            Value::Opaque(_) => {
+                let t = if self.json_mode { "json" } else { "text" };
+                return Err(fail("wrong-kind", t, span, Vec::new()));
+            }
+            Value::List(_) | Value::HList(_) => {
+                self.depth_test(1, span)?;
+                let n = v.len().unwrap_or(0);
+                self.charge(n as u64)?;
+                self.m.depth += 1;
+                out.push_byte(b'[');
+                for i in 0..n {
+                    if i > 0 {
+                        out.push_byte(b',');
+                    }
+                    let e = self.read(v.elem(i), span)?;
+                    self.render_walk(&e, out, false, span)?;
+                }
+                out.push_byte(b']');
+                self.m.depth -= 1;
+            }
+            Value::Map(_) | Value::HMap(_) => {
+                self.depth_test(1, span)?;
+                let es = v.entries();
+                let n = es.len() as u64;
+                let s: u64 = es.iter().map(|(k, _)| weight(k.as_str())).sum::<u64>() / 64;
+                self.charge(n + log2_ceil(n) * (n + s))?;
+                self.m.depth += 1;
+                out.push_byte(b'{');
+                for (i, (k, x)) in es.into_iter().enumerate() {
+                    if i > 0 {
+                        out.push_byte(b',');
+                    }
+                    out.push_byte(b'"');
+                    out.push_escaped(k.as_str());
+                    out.push_ascii("\":");
+                    let x = self.read(x, span)?;
+                    self.render_walk(&x, out, false, span)?;
+                }
+                out.push_byte(b'}');
+                self.m.depth -= 1;
+            }
+        }
+        Ok(())
     }
 
-    /// The rendering of a value, and its walk (`02-evaluation.md` 5.5).
-    fn render(&mut self, v: &Value<'h>, out: &mut String, top: bool, span: Span) -> R<'h, ()> {
+    /// Write a rendered value after `render_walk` already validated and
+    /// charged the walk.
+    pub(super) fn write_rendered(
+        &self,
+        v: &Value<'h>,
+        out: &mut String,
+        top: bool,
+        span: Span,
+    ) -> R<'h, ()> {
         match v {
             Value::Str(s) => {
                 if top {
@@ -702,34 +795,20 @@ impl<'h> Run<'h> {
                     out.push_str("null");
                 }
             }
-            Value::BadNum => return Err(self.host_number(Some(span))),
-            Value::Opaque(_) => {
-                let t = if self.json_mode { "json" } else { "text" };
-                return Err(fail("wrong-kind", t, span, Vec::new()));
-            }
             Value::List(_) | Value::HList(_) => {
-                self.depth_test(1, span)?;
                 let n = v.len().unwrap_or(0);
-                self.charge(n as u64)?;
-                self.m.depth += 1;
                 out.push('[');
                 for i in 0..n {
                     if i > 0 {
                         out.push(',');
                     }
                     let e = self.read(v.elem(i), span)?;
-                    self.render(&e, out, false, span)?;
+                    self.write_rendered(&e, out, false, span)?;
                 }
                 out.push(']');
-                self.m.depth -= 1;
             }
             Value::Map(_) | Value::HMap(_) => {
-                self.depth_test(1, span)?;
                 let es = v.entries();
-                let n = es.len() as u64;
-                let s: u64 = es.iter().map(|(k, _)| weight(k.as_str())).sum::<u64>() / 64;
-                self.charge(n + log2_ceil(n) * (n + s))?;
-                self.m.depth += 1;
                 out.push('{');
                 for (i, (k, x)) in es.into_iter().enumerate() {
                     if i > 0 {
@@ -741,17 +820,22 @@ impl<'h> Run<'h> {
                     }
                     out.push_str("\":");
                     let x = self.read(x, span)?;
-                    self.render(&x, out, false, span)?;
+                    self.write_rendered(&x, out, false, span)?;
                 }
                 out.push('}');
-                self.m.depth -= 1;
             }
+            _ => {}
         }
         Ok(())
     }
 
     fn list(&mut self, items: &'h [NodeId]) -> R<'h, Value<'h>> {
-        let mut out = Vec::with_capacity(items.len());
+        enum Item<'h> {
+            Single(Value<'h>),
+            Spread(Value<'h>, usize),
+        }
+        let mut evaled = Vec::with_capacity(items.len());
+        let mut total = 0usize;
         for &item in items {
             if let NodeKind::Spread { value } = self.ast.kind(item) {
                 let span = self.ast.span(item);
@@ -770,17 +854,32 @@ impl<'h> Run<'h> {
                 }
                 let n = v.len().unwrap_or(0);
                 self.charge(n as u64)?;
-                out.extend((0..n).map(|i| v.elem(i)));
+                total += n;
+                evaled.push(Item::Spread(v, n));
             } else {
-                out.push(self.eval(item)?);
+                evaled.push(Item::Single(self.eval(item)?));
+                total += 1;
             }
         }
-        self.alloc(1 + out.len() as u64)?;
+        self.alloc(1 + total as u64)?;
+        let mut out = Vec::with_capacity(total);
+        for it in evaled {
+            match it {
+                Item::Single(v) => out.push(v),
+                Item::Spread(v, n) => out.extend((0..n).map(|i| v.elem(i))),
+            }
+        }
         Ok(Value::list(out))
     }
 
     fn map(&mut self, entries: &'h [NodeId]) -> R<'h, Value<'h>> {
-        let mut es: Vec<(Str<'h>, Value<'h>)> = Vec::with_capacity(entries.len());
+        enum Entry<'h> {
+            Single(Str<'h>, Value<'h>),
+            Spread(Value<'h>),
+        }
+        let mut evaled = Vec::with_capacity(entries.len());
+        let mut max_spread = 0usize;
+        let mut total_hint = 0usize;
         for &e in entries {
             let span = self.ast.span(e);
             match self.ast.kind(e) {
@@ -798,10 +897,18 @@ impl<'h> Run<'h> {
                             ))
                         }
                     }
-                    let copied = v.entries();
-                    let s: u64 = copied.iter().map(|(k, _)| weight(k.as_str())).sum::<u64>() / 64;
-                    self.charge(copied.len() as u64 + s)?;
-                    es.extend(copied);
+                    let mut keys = 0usize;
+                    let mut w = 0u64;
+                    v.for_each_key(|k| {
+                        keys += 1;
+                        w += weight(k);
+                    });
+                    self.charge(keys as u64 + w / 64)?;
+                    if keys > max_spread {
+                        max_spread = keys;
+                    }
+                    total_hint += keys;
+                    evaled.push(Entry::Spread(v));
                 }
                 NodeKind::Entry { key, value, .. } => {
                     let k = match key {
@@ -826,9 +933,22 @@ impl<'h> Run<'h> {
                     };
                     let v = self.eval(*value)?;
                     self.charge(size(k.as_str()))?;
-                    es.push((k, v));
+                    total_hint += 1;
+                    evaled.push(Entry::Single(k, v));
                 }
                 _ => return Err(self.internal(span)),
+            }
+        }
+        if let Some(limit) = self.m.limits.allocation {
+            if 1 + 2 * max_spread as u64 > limit.saturating_sub(self.m.units) {
+                self.alloc(1 + 2 * max_spread as u64)?;
+            }
+        }
+        let mut es: Vec<(Str<'h>, Value<'h>)> = Vec::with_capacity(total_hint);
+        for en in evaled {
+            match en {
+                Entry::Single(k, v) => es.push((k, v)),
+                Entry::Spread(v) => es.extend(v.entries()),
             }
         }
         let m = MapVal::from_written(es);
@@ -2231,6 +2351,114 @@ impl<'h> Run<'h> {
                 self.eval(handler)
             }
             Err(f) => Err(f),
+        }
+    }
+}
+
+/// A bounded buffer for rendering text (`string`, `json.stringify`, and
+/// templates). Below `RENDER_SMALL` bytes it writes into `buf` in one pass;
+/// past `RENDER_SMALL`, `buf` is cleared and only exact weight and UTF-8
+/// byte length are counted so steps and allocation units are charged before
+/// allocating the full string.
+const RENDER_SMALL: usize = 1024;
+
+pub(crate) struct RenderBuf {
+    pub(crate) buf: String,
+    pub(crate) counting: bool,
+    pub(crate) weight: u64,
+    pub(crate) bytes: usize,
+}
+
+impl RenderBuf {
+    pub(crate) fn new(buf: String) -> Self {
+        Self {
+            buf,
+            counting: false,
+            weight: 0,
+            bytes: 0,
+        }
+    }
+
+    fn switch_to_counting(&mut self) {
+        self.weight = weight(&self.buf);
+        self.bytes = self.buf.len();
+        self.buf.clear();
+        self.counting = true;
+    }
+
+    pub(crate) fn push_str(&mut self, s: &str) {
+        if !self.counting && self.buf.len() + s.len() <= RENDER_SMALL {
+            self.buf.push_str(s);
+            return;
+        }
+        if !self.counting {
+            self.switch_to_counting();
+        }
+        self.weight += weight(s);
+        self.bytes += s.len();
+    }
+
+    pub(crate) fn push_ascii(&mut self, s: &str) {
+        if !self.counting && self.buf.len() + s.len() <= RENDER_SMALL {
+            self.buf.push_str(s);
+            return;
+        }
+        if !self.counting {
+            self.switch_to_counting();
+        }
+        self.weight += s.len() as u64;
+        self.bytes += s.len();
+    }
+
+    pub(crate) fn push_byte(&mut self, b: u8) {
+        if !self.counting && self.buf.len() < RENDER_SMALL {
+            self.buf.push(b as char);
+            return;
+        }
+        if !self.counting {
+            self.switch_to_counting();
+        }
+        self.weight += 1;
+        self.bytes += 1;
+    }
+
+    pub(crate) fn push_escaped(&mut self, s: &str) {
+        if !self.counting && self.buf.len() + s.len() <= RENDER_SMALL {
+            let mut extra = 0usize;
+            for b in s.bytes() {
+                match b {
+                    b'"' | b'\\' | 0x08 | 0x0c | b'\n' | b'\r' | b'\t' => extra += 1,
+                    0..=0x1f => extra += 5,
+                    _ => {}
+                }
+            }
+            if self.buf.len() + s.len() + extra <= RENDER_SMALL {
+                for c in s.chars() {
+                    push_json_char(&mut self.buf, c);
+                }
+                return;
+            }
+        }
+        if !self.counting {
+            self.switch_to_counting();
+        }
+        let mut extra = 0usize;
+        for b in s.bytes() {
+            match b {
+                b'"' | b'\\' | 0x08 | 0x0c | b'\n' | b'\r' | b'\t' => extra += 1,
+                0..=0x1f => extra += 5,
+                _ => {}
+            }
+        }
+        self.weight += weight(s) + extra as u64;
+        self.bytes += s.len() + extra;
+    }
+
+    pub(crate) fn weight(&self) -> u64 {
+        if self.counting {
+            self.weight
+        } else {
+            weight(&self.buf)
         }
     }
 }
