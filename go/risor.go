@@ -121,3 +121,12 @@ func WalkCalls(x *Expr, fn func(name string, method bool)) {
 		return true
 	})
 }
+
+// Origin says where a source text sits in a larger document: a name, and
+// the line, column and indent of its first code point (03-host.md 3.7).
+// A reader of case file sources returns one beside the text (package F9
+// 7.2); spans stay positions in the text itself.
+type Origin struct {
+	Name                 string
+	Line, Column, Indent int
+}

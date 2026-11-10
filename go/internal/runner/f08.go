@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	risor "github.com/deepnoodle-ai/risor/v3"
@@ -37,36 +38,44 @@ func formatTrace(t []diag.TraceEntry) string {
 	return "trace [" + strings.Join(parts, ", ") + "]"
 }
 
-// renderDiffs compares the forms given with those of ds (7.3, 7.4); the
-// differences are named line, detail and json, in that order.
-func renderDiffs(want *casefile.Renderings, ds []diag.Diagnostic, source string, hasSource bool, prefix string) []Diff {
-	var diffs []Diff
+// renderForms gives the forms of ds that want names.
+func renderForms(want *casefile.Renderings, ds []diag.Diagnostic, source string, hasSource bool) (line, detail, js string) {
 	if want.Line != nil {
-		if got := risor.RenderLine(ds); got != *want.Line {
-			diffs = append(diffs, Diff{prefix + "line", *want.Line, got})
-		}
+		line = risor.RenderLine(ds)
 	}
 	if want.Detail != nil {
-		var got string
 		if hasSource {
-			got = risor.RenderDetail(ds, source)
+			detail = risor.RenderDetail(ds, source)
 		} else {
-			got = risor.RenderDetail(ds)
-		}
-		if got != *want.Detail {
-			diffs = append(diffs, Diff{prefix + "detail", *want.Detail, got})
+			detail = risor.RenderDetail(ds)
 		}
 	}
 	if want.JSON != nil {
-		if got := risor.RenderJSON(ds); got != *want.JSON {
-			diffs = append(diffs, Diff{prefix + "json", *want.JSON, got})
-		}
+		js = risor.RenderJSON(ds)
+	}
+	return
+}
+
+// renderDiffs compares the forms given with those of ds (7.4); the
+// differences are named line, detail and json, in that order.
+func renderDiffs(want *casefile.Renderings, ds []diag.Diagnostic, source string, hasSource bool) []Diff {
+	line, detail, js := renderForms(want, ds, source, hasSource)
+	var diffs []Diff
+	if want.Line != nil && line != *want.Line {
+		diffs = append(diffs, Diff{"line", value.QuoteJSON(*want.Line), value.QuoteJSON(line)})
+	}
+	if want.Detail != nil && detail != *want.Detail {
+		diffs = append(diffs, Diff{"detail", value.QuoteJSON(*want.Detail), value.QuoteJSON(detail)})
+	}
+	if want.JSON != nil && js != *want.JSON {
+		diffs = append(diffs, Diff{"json", value.QuoteJSON(*want.JSON), value.QuoteJSON(js)})
 	}
 	return diffs
 }
 
 // renderedDiffs compares the field rendered of a failure (7.3): for phase
-// parse the first diagnostic only, else the whole list.
+// parse the first diagnostic only, else the whole list. It is one
+// difference, rendered.
 func renderedDiffs(c *casefile.Case, err *risor.Error) []Diff {
 	e := c.Expect
 	if e.Rendered == nil {
@@ -76,7 +85,23 @@ func renderedDiffs(c *casefile.Case, err *risor.Error) []Diff {
 	if err.Phase() == diag.PhaseParse && len(ds) > 1 {
 		ds = ds[:1]
 	}
-	return renderDiffs(e.Rendered, ds, c.Source, true, "rendered ")
+	w := e.Rendered
+	line, detail, js := renderForms(w, ds, c.Source, true)
+	got := map[string]any{}
+	same := true
+	if w.Line != nil {
+		got["line"], same = line, same && line == *w.Line
+	}
+	if w.Detail != nil {
+		got["detail"], same = detail, same && detail == *w.Detail
+	}
+	if w.JSON != nil {
+		got["json"], same = js, same && js == *w.JSON
+	}
+	if same {
+		return nil
+	}
+	return []Diff{{"rendered", jsonForm(rawField(c, "rendered")), jsonForm(got)}}
 }
 
 // runRender runs a render case (7.4).
@@ -86,7 +111,7 @@ func runRender(c *casefile.Case) Result {
 	if has {
 		src = *r.Source
 	}
-	return finish(renderDiffs(c.Expect.Render, r.Diagnostics, src, has, ""), &stubState{})
+	return finish(renderDiffs(c.Expect.Render, r.Diagnostics, src, has), &stubState{})
 }
 
 // conformAllDiffs runs ConformAll for a conform case with max (7.5): the
@@ -95,9 +120,9 @@ func runRender(c *casefile.Case) Result {
 func conformAllDiffs(c *casefile.Case, o conformOutcome, fs []risor.Diagnostic) (agree, list *Diff) {
 	switch {
 	case (len(fs) == 0) != o.conforms:
-		agree = &Diff{"conforms", "ConformAll agrees with the function", fmt.Sprintf("%d failures where conforms is %v", len(fs), o.conforms)}
+		agree = &Diff{"conforms", strconv.FormatBool(o.conforms), value.QuoteJSON(fmt.Sprintf("%d failures from ConformAll", len(fs)))}
 	case len(fs) > 0 && (!value.Equal(fs[0].Path, o.path) || fs[0].Message != o.message):
-		agree = &Diff{"conforms", "ConformAll's first failure is the function's", fmtValue(fs[0].Path) + " " + fs[0].Message}
+		agree = &Diff{"conforms", jsonForm(o.path), jsonForm(fs[0].Path)}
 	}
 	want := c.Expect.Conform.Failures
 	if want == nil {
@@ -110,26 +135,11 @@ func conformAllDiffs(c *casefile.Case, o conformOutcome, fs []risor.Diagnostic) 
 		}
 	}
 	if !ok {
-		list = &Diff{"failures", formatFailures(want), formatGotFailures(fs)}
+		got := make([]any, len(fs))
+		for i, f := range fs {
+			got[i] = map[string]any{"path": f.Path, "message": f.Message}
+		}
+		list = &Diff{"failures", jsonForm(rawField(c, "failures")), jsonForm(got)}
 	}
 	return agree, list
-}
-
-func formatFailures(fs []casefile.Failure) string {
-	parts := make([]string, len(fs))
-	for i, f := range fs {
-		parts[i] = fmtValue(f.Path)
-		if f.Message != nil {
-			parts[i] += fmt.Sprintf(" %q", *f.Message)
-		}
-	}
-	return "[" + strings.Join(parts, "; ") + "]"
-}
-
-func formatGotFailures(fs []risor.Diagnostic) string {
-	parts := make([]string, len(fs))
-	for i, f := range fs {
-		parts[i] = fmtValue(f.Path) + fmt.Sprintf(" %q", f.Message)
-	}
-	return "[" + strings.Join(parts, "; ") + "]"
 }

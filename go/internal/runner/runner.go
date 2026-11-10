@@ -9,12 +9,12 @@ package runner
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	risor "github.com/deepnoodle-ai/risor/v3"
@@ -38,7 +38,9 @@ const (
 	Invalid Verdict = "invalid"
 )
 
-// Diff is one difference of a failed case.
+// Diff is one difference of a failed case. Expected and Found are E and F
+// of package F9 6.2, each in its JSON form. For functions, Expected is the
+// stub's name and Found the arguments of the first call no row matched.
 type Diff struct {
 	Name     string // outcome, type, sites, value, truthy, diagnostics, steps, allocated, functions
 	Expected string
@@ -53,6 +55,24 @@ type Result struct {
 	// Reason says why a case was skipped or why its file is invalid.
 	Reason string
 	Diffs  []Diff
+	// Fixture and Message are the facts of a case whose fixture failed
+	// (package F9 2.4); Fixture is nil otherwise.
+	Fixture []any
+	Message string
+	// Updated is set for a case update mode writes, and NewExpect is the
+	// JSON form it writes (F9 4).
+	Updated   bool
+	NewExpect string
+	// FileInvalid is set for the one result of an invalid file.
+	FileInvalid bool
+}
+
+// Status is the verdict, or updated (F9 4.3).
+func (r Result) Status() string {
+	if r.Updated {
+		return "updated"
+	}
+	return string(r.Verdict)
 }
 
 // String formats the result for people, with its differences.
@@ -110,7 +130,7 @@ func CheckOnlyFile(path string) bool { return strings.HasSuffix(filepath.Base(pa
 // Offered is the one list of the follow-on packages this implementation
 // offers (03-host.md 3.11 item 2: F3, F1, F2, F4, F5, F6, F7, ... in that
 // order, each with all before it).
-var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true}
+var Offered = map[string]bool{"F1": true, "F2": true, "F3": true, "F4": true, "F5": true, "F6": true, "F7": true, "F8": true, "F9": true}
 
 // Skipped returns whether a case file is one a runner of this
 // implementation does not run: its name begins until-fNN- and package NN is
@@ -183,8 +203,18 @@ func FormatCounts(m map[Verdict]int) string {
 func skip(reason string) Result { return Result{Verdict: Skip, Reason: reason} }
 
 // RunCase runs one valid case (3.10.5).
-func RunCase(c *casefile.Case) Result {
-	r := runCase(c)
+func RunCase(c *casefile.Case) Result { return RunCaseWith(defaultCtx, c) }
+
+// RunCaseWith runs one valid case with a context: in update mode it gives
+// the case its update status (package F9 4.3).
+func RunCaseWith(ctx *Ctx, c *casefile.Case) Result {
+	cr := &caseRun{ctx: ctx, c: c}
+	var r Result
+	if ctx.Update {
+		r = cr.update()
+	} else {
+		r = runCase(cr)
+	}
 	r.Case = c.Name
 	return r
 }
@@ -200,6 +230,7 @@ var checkedClass = map[string]bool{"null-operand": true, "wrong-kind": true,
 // stubState records whether a call of a stub matched no row (3.10.4).
 type stubState struct {
 	unmatched []string
+	firstArgs []any // the arguments of the first call that no row matched
 	checked   bool
 }
 
@@ -232,16 +263,21 @@ func (st *stubState) native(name string, s *casefile.Stub) risor.Native {
 			}
 			return row.Result, nil
 		}
+		if len(st.unmatched) == 0 {
+			st.firstArgs = append([]any{}, args...)
+		}
 		st.unmatched = append(st.unmatched, name)
 		return nil, fmt.Errorf("no row of the stub %s matches the call", name)
 	}
 }
 
 // buildEnv builds the case's environment as a child of the base (3.10.9).
-func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
-	base, err := risor.NewEnv()
-	if err != nil {
-		return nil, err
+func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, error) {
+	if base == nil {
+		var err error
+		if base, err = risor.NewEnv(); err != nil {
+			return nil, err
+		}
 	}
 	var decls []risor.Decl
 	if c.Version != "" {
@@ -288,7 +324,7 @@ func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
 	for _, k := range names {
 		typ, m, _ := strings.Cut(k, ".")
 		s := c.Methods[k]
-		decls = append(decls, risor.AddMethod(typ, m, risor.Function{Type: *s.Type, Impl: st.native(k, s)}))
+		decls = append(decls, risor.AddMethod(typ, m, risor.Function{Type: stubType(base, k, s), Impl: st.native(k, s)}))
 	}
 	names = names[:0]
 	for k := range c.Functions {
@@ -297,7 +333,7 @@ func buildEnv(c *casefile.Case, st *stubState) (*risor.Env, error) {
 	sort.Strings(names)
 	for _, k := range names {
 		s := c.Functions[k]
-		decls = append(decls, risor.Function{Name: k, Type: *s.Type, Impl: st.native(k, s)})
+		decls = append(decls, risor.Function{Name: k, Type: stubType(base, k, s), Impl: st.native(k, s)})
 	}
 	if c.HasReject {
 		decls = append(decls, risor.RejectClasses(c.Reject...))
@@ -378,15 +414,19 @@ func missingEntries(x *risor.Expr, c *casefile.Case) []string {
 	return out
 }
 
-func runCase(c *casefile.Case) Result {
+func runCase(cr *caseRun) Result {
+	c := cr.c
 	if c.Skip != nil {
 		return skip(*c.Skip)
+	}
+	if c.Expect.Runner != nil { // F9 3
+		return runRunner(cr.ctx, c)
 	}
 	if c.Expect.Analysis != nil {
 		return runAnalysis(c)
 	}
 	if c.Conform != nil {
-		return runConform(c)
+		return runConform(cr)
 	}
 	if c.Render != nil { // F8 7.8 item 3
 		return runRender(c)
@@ -394,10 +434,10 @@ func runCase(c *casefile.Case) Result {
 	// Ruling AP1: a case with "check": false is compiled with the static
 	// rules alone, and its class is compared for every code.
 	if c.Check != nil && !*c.Check {
-		return runMode(c, false, true)
+		return cr.runMode(false, true)
 	}
 	// Ruling AP2: checked, then with the static rules alone; one verdict.
-	r := runMode(c, true, true)
+	r := cr.runMode(true, true)
 	if r.Verdict != Pass || CheckedOnly {
 		return r
 	}
@@ -414,13 +454,7 @@ func runCase(c *casefile.Case) Result {
 			}
 		}
 	}
-	u := runMode(c, false, false)
-	if u.Verdict != Pass {
-		for i := range u.Diffs {
-			u.Diffs[i].Name += " (unchecked)"
-		}
-	}
-	return u
+	return cr.runMode(false, false)
 }
 
 // CheckedOnly makes RunCase run each case with the checker only, as the
@@ -429,16 +463,29 @@ var CheckedOnly bool
 
 // runMode runs a case with the checker, or with the static rules alone.
 // allClasses compares class for every code.
-func runMode(c *casefile.Case, checked, allClasses bool) Result {
+func (cr *caseRun) runMode(checked, allClasses bool) Result {
+	c := cr.c
 	e := c.Expect
 	st := &stubState{checked: allClasses}
-	env, err := buildEnv(c, st)
-	if err != nil {
-		return compareFailure(c, err.(*risor.Error), nil, st)
+	o := &runOutcome{checked: checked}
+	if cr.first == nil {
+		cr.first = o
 	}
+	fail := func(err error, u *risor.Usage) Result {
+		o.err = err.(*risor.Error)
+		if u != nil {
+			o.usage = *u
+		}
+		return compareFailure(c, o.err, u, st, o)
+	}
+	env, err := buildEnv(cr.ctx.Base, c, st)
+	if err != nil {
+		return fail(err, nil)
+	}
+	o.env = env
 	x, err := parseCase(c)
 	if err != nil {
-		return compareFailure(c, err.(*risor.Error), nil, st)
+		return fail(err, nil)
 	}
 	var opts []risor.CheckOption
 	if !checked {
@@ -451,26 +498,34 @@ func runMode(c *casefile.Case, checked, allClasses bool) Result {
 			opts = append(opts, risor.Expect(*c.Returns))
 		}
 	}
-	var cr *risor.CheckResult
 	if checked {
-		cr, err = env.Check(x, opts...)
+		o.cr, err = env.Check(x, opts...)
 		if err != nil {
-			return compareFailure(c, err.(*risor.Error), nil, st)
+			return fail(err, nil)
 		}
 	}
 	prog, err := env.Compile(x, opts...)
 	if err != nil {
-		return compareFailure(c, err.(*risor.Error), nil, st)
+		return fail(err, nil)
 	}
-	needRun := c.Vars != nil || e.HasValue || e.JSON != nil || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
+	needRun := cr.forceRun || c.Vars != nil || e.HasValue || e.JSON != nil || e.Truthy != nil || e.Steps != nil || e.Allocated != nil || e.Phase == "run"
 	if !needRun {
-		return compareResult(c, env, cr, nil, false, nil, st)
+		return compareResult(c, env, nil, false, nil, st, o)
 	}
-	v, usage, err := prog.Measure(context.Background(), risor.Map(c.Vars))
+	// F9 2.2: the fixtures are tested once, before the first run that
+	// reaches this step.
+	if !cr.tested && (c.Precondition == nil || *c.Precondition) {
+		cr.tested = true
+		if path, msg, bad := fixtures(env, c); bad {
+			return Result{Verdict: Invalid, Fixture: path, Message: msg, Reason: "fixture " + renderPath(path) + ": " + msg}
+		}
+	}
+	v, usage, err := prog.Measure(cr.ctx.context(), cr.vars())
 	if err != nil {
-		return compareFailure(c, err.(*risor.Error), &usage, st)
+		return fail(err, &usage)
 	}
-	return compareResult(c, env, cr, v, true, &usage, st)
+	o.v, o.ran, o.usage = v, true, usage
+	return compareResult(c, env, v, true, &usage, st, o)
 }
 
 func fmtValue(v any) string {
@@ -478,16 +533,16 @@ func fmtValue(v any) string {
 	return value.Debug(v)
 }
 
-func countDiff(name string, want *int64, got int64) *Diff {
+func countDiff(name string, want *int64, got int64, raw any) *Diff {
 	if want == nil || *want == got {
 		return nil
 	}
-	return &Diff{name, fmt.Sprint(*want), fmt.Sprint(got)}
+	return &Diff{name, jsonForm(raw), strconv.FormatInt(got, 10)}
 }
 
 func finish(diffs []Diff, st *stubState) Result {
 	if len(st.unmatched) > 0 {
-		diffs = append(diffs, Diff{"functions", "a row for every call", "no row matched a call of " + strings.Join(st.unmatched, ", ")})
+		diffs = append(diffs, Diff{"functions", st.unmatched[0], jsonForm(st.firstArgs)})
 	}
 	if len(diffs) > 0 {
 		return Result{Verdict: Fail, Diffs: diffs}
@@ -495,10 +550,25 @@ func finish(diffs []Diff, st *stubState) Result {
 	return Result{Verdict: Pass}
 }
 
-func compareResult(c *casefile.Case, env *risor.Env, cr *risor.CheckResult, v any, ran bool, u *risor.Usage, st *stubState) Result {
+// rawField is a field of the case's expect as the file gives it.
+func rawField(c *casefile.Case, name string) any {
+	m, _ := c.ExpectRaw.(map[string]any)
+	return m[name]
+}
+
+// expectedOutcome is E of the difference outcome (F9 6.2).
+func expectedOutcome(c *casefile.Case) string {
+	if c.NoExpect {
+		return "nothing"
+	}
+	return jsonForm(c.ExpectRaw)
+}
+
+func compareResult(c *casefile.Case, env *risor.Env, v any, ran bool, u *risor.Usage, st *stubState, o *runOutcome) Result {
 	e := c.Expect
+	cr := o.cr
 	if e.IsFailure() {
-		return finish([]Diff{{"outcome", "a failure of phase " + e.Phase, "a result " + fmtValue(v)}}, st)
+		return finish([]Diff{{"outcome", expectedOutcome(c), jsonForm(o.whole())}}, st)
 	}
 	var diffs []Diff
 	if e.HasDescription {
@@ -509,30 +579,29 @@ func compareResult(c *casefile.Case, env *risor.Env, cr *risor.CheckResult, v an
 			got, err = casefile.DecodeJSON(text)
 		}
 		if err != nil || !value.Equal(got, e.Description) {
-			want, _ := json.Marshal(e.Description)
-			diffs = append(diffs, Diff{"description", string(want), string(text)})
+			diffs = append(diffs, Diff{"description", jsonForm(rawField(c, "description")), jsonForm(got)})
 		}
 	}
 	if e.Type != nil {
-		found := "no type"
+		found := "null"
 		if cr != nil {
-			found = cr.Type
+			found = value.QuoteJSON(cr.Type)
 		}
 		if cr == nil || !sameType(*e.Type, cr.Type, c.Opaque) {
-			diffs = append(diffs, Diff{"type", *e.Type, found})
+			diffs = append(diffs, Diff{"type", jsonForm(rawField(c, "type")), found})
 		}
 	}
 	if e.HasSites {
-		want, got := formatSites(e.Sites), "[]"
+		var got []risor.Site
 		if cr != nil {
-			got = formatGot(cr.Sites)
+			got = cr.Sites
 		}
-		if want != got {
-			diffs = append(diffs, Diff{"sites", want, got})
+		if !sameSites(e.Sites, got) {
+			diffs = append(diffs, Diff{"sites", jsonForm(rawField(c, "sites")), jsonForm(sitesData(got))})
 		}
 	}
 	if e.HasValue && !value.Equal(v, e.Value) {
-		diffs = append(diffs, Diff{"value", fmtValue(e.Value), fmtValue(v)})
+		diffs = append(diffs, Diff{"value", jsonForm(rawField(c, "value")), jsonForm(v)})
 	}
 	if e.JSON != nil { // F6 11.2: after value
 		got, err := risor.JSONText(v)
@@ -540,43 +609,39 @@ func compareResult(c *casefile.Case, env *risor.Env, cr *risor.CheckResult, v an
 			got = "a failure: " + err.Error()
 		}
 		if got != *e.JSON {
-			diffs = append(diffs, Diff{"json", *e.JSON, got})
+			diffs = append(diffs, Diff{"json", value.QuoteJSON(*e.JSON), value.QuoteJSON(got)})
 		}
 	}
 	if e.Truthy != nil && *e.Truthy != value.Truthy(v) {
-		diffs = append(diffs, Diff{"truthy", fmt.Sprint(*e.Truthy), fmt.Sprint(value.Truthy(v))})
+		diffs = append(diffs, Diff{"truthy", strconv.FormatBool(*e.Truthy), strconv.FormatBool(value.Truthy(v))})
 	}
 	if u != nil {
-		if d := countDiff("steps", e.Steps, u.Steps); d != nil {
+		if d := countDiff("steps", e.Steps, u.Steps, rawField(c, "steps")); d != nil {
 			diffs = append(diffs, *d)
 		}
-		if d := countDiff("allocated", e.Allocated, u.Alloc); d != nil {
+		if d := countDiff("allocated", e.Allocated, u.Alloc, rawField(c, "allocated")); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
 	return finish(diffs, st)
 }
 
-func compareFailure(c *casefile.Case, err *risor.Error, u *risor.Usage, st *stubState) Result {
+func compareFailure(c *casefile.Case, err *risor.Error, u *risor.Usage, st *stubState, o *runOutcome) Result {
 	e := c.Expect
 	ph := string(err.Phase())
 	if !e.IsFailure() || e.Phase != ph {
-		want := "a result"
-		if e.IsFailure() {
-			want = "a failure of phase " + e.Phase
-		}
-		return finish([]Diff{{"outcome", want, "a failure of phase " + ph + ": " + err.Error()}}, st)
+		return finish([]Diff{{"outcome", expectedOutcome(c), jsonForm(o.whole())}}, st)
 	}
 	var diffs []Diff
-	if d := compareDiagnostics(e, err.Diagnostics, st.checked); d != nil {
+	if d := compareDiagnostics(c, err.Diagnostics, st.checked); d != nil {
 		diffs = append(diffs, *d)
 	}
 	diffs = append(diffs, renderedDiffs(c, err)...)
 	if u != nil && ph == "run" && !diag.LimitCodes[err.Diagnostics[0].Code] {
-		if d := countDiff("steps", e.Steps, u.Steps); d != nil {
+		if d := countDiff("steps", e.Steps, u.Steps, rawField(c, "steps")); d != nil {
 			diffs = append(diffs, *d)
 		}
-		if d := countDiff("allocated", e.Allocated, u.Alloc); d != nil {
+		if d := countDiff("allocated", e.Allocated, u.Alloc, rawField(c, "allocated")); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
@@ -666,8 +731,9 @@ func diagMatches(want *casefile.ExpDiag, got risor.Diagnostic, checked bool) boo
 	return true
 }
 
-func compareDiagnostics(e *casefile.Expect, got []risor.Diagnostic, checked bool) *Diff {
-	d := &Diff{Name: "diagnostics", Expected: formatExp(e.Diagnostics), Found: formatDiags(got)}
+func compareDiagnostics(c *casefile.Case, got []risor.Diagnostic, checked bool) *Diff {
+	e := c.Expect
+	d := &Diff{Name: "diagnostics", Expected: jsonForm(rawField(c, "diagnostics")), Found: jsonForm(diagsData(got, expectedColumns(c), e.Phase))}
 	switch e.Phase {
 	case "parse": // compared with the start of what the parser reported
 		if len(got) < len(e.Diagnostics) {
@@ -800,7 +866,7 @@ func parseCase(c *casefile.Case) (*risor.Expr, error) {
 func runAnalysis(c *casefile.Case) Result {
 	x, err := parseCase(c)
 	if err != nil {
-		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", "an analysis", "a failure of phase parse: " + err.Error()}}}
+		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", jsonForm(c.ExpectRaw), jsonForm(failureData(err.(*risor.Error)))}}}
 	}
 	text := AnalysisJSON(x.Analyze())
 	got, err := casefile.DecodeJSON([]byte(text))
@@ -815,8 +881,7 @@ func runAnalysis(c *casefile.Case) Result {
 	sort.Strings(keys)
 	for _, k := range keys {
 		if !value.Equal(gm[k], c.Expect.Analysis[k]) {
-			want, _ := json.Marshal(c.Expect.Analysis)
-			return Result{Verdict: Fail, Diffs: []Diff{{"analysis", string(want), text}}}
+			return Result{Verdict: Fail, Diffs: []Diff{{"analysis", jsonForm(rawField(c, "analysis")), jsonForm(got)}}}
 		}
 	}
 	return Result{Verdict: Pass}
@@ -927,9 +992,9 @@ type conformOutcome struct {
 
 // doConform runs a conform case by F4 9.3: declare, resolve, the function,
 // and the runs of v as T and v is T with the static rules alone.
-func doConform(c *casefile.Case) conformOutcome {
+func doConform(base *risor.Env, c *casefile.Case) conformOutcome {
 	var o conformOutcome
-	env, err := buildEnv(c, &stubState{})
+	env, err := buildEnv(base, c, &stubState{})
 	if err != nil {
 		o.declare = err.(*risor.Error)
 		return o
@@ -1002,28 +1067,30 @@ func doConform(c *casefile.Case) conformOutcome {
 }
 
 // runConform runs and compares a conform case (F4 9.2, 9.3).
-func runConform(c *casefile.Case) Result {
-	o := doConform(c)
+func runConform(cr *caseRun) Result {
+	c := cr.c
+	o := doConform(cr.ctx.Base, c)
+	cr.conf = &o
 	e := c.Expect
 	if o.declare != nil {
-		return compareFailure(c, o.declare, nil, &stubState{})
+		return compareFailure(c, o.declare, nil, &stubState{}, &runOutcome{err: o.declare})
 	}
-	if e.IsFailure() {
-		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", "a failure of phase " + e.Phase, "a conform result"}}}
+	if e.IsFailure() || c.NoExpect {
+		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", expectedOutcome(c), jsonForm(o.whole())}}}
 	}
 	r := e.Conform
 	var diffs []Diff
 	if !o.agree {
-		diffs = append(diffs, Diff{"conforms", "the three ways agree", o.why})
+		diffs = append(diffs, Diff{"conforms", jsonForm(rawField(c, "conforms")), value.QuoteJSON(o.why)})
 	}
 	if r.Conforms != o.conforms {
-		diffs = append(diffs, Diff{"conforms", fmt.Sprint(r.Conforms), fmt.Sprint(o.conforms)})
+		diffs = append(diffs, Diff{"conforms", strconv.FormatBool(r.Conforms), strconv.FormatBool(o.conforms)})
 	}
 	if r.HasPath && !value.Equal(r.Path, o.path) {
-		diffs = append(diffs, Diff{"path", fmtValue(r.Path), fmtValue(o.path)})
+		diffs = append(diffs, Diff{"path", jsonForm(rawField(c, "path")), jsonForm(o.path)})
 	}
 	if r.Message != nil && *r.Message != o.message {
-		diffs = append(diffs, Diff{"message", *r.Message, o.message})
+		diffs = append(diffs, Diff{"message", value.QuoteJSON(*r.Message), value.QuoteJSON(o.message)})
 	}
 	var list *Diff
 	if c.Conform.Max != nil { // F8 7.5
@@ -1033,7 +1100,7 @@ func runConform(c *casefile.Case) Result {
 			diffs = append([]Diff{*agree}, diffs...)
 		}
 	}
-	if d := countDiff("steps", r.Steps, o.steps); d != nil {
+	if d := countDiff("steps", r.Steps, o.steps, rawField(c, "steps")); d != nil {
 		diffs = append(diffs, *d)
 	}
 	if list != nil {

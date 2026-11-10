@@ -39,6 +39,9 @@ func Outcome(c *casefile.Case) string {
 	if c.Conform != nil {
 		return conformLine(c)
 	}
+	if c.Expect != nil && c.Expect.Runner != nil { // F9 9.4
+		return runnerLine(c)
+	}
 	if c.Render != nil { // F8 8: name, then the three forms
 		r := c.Render
 		detail := risor.RenderDetail(r.Diagnostics)
@@ -123,7 +126,7 @@ func outcome(c *casefile.Case) string {
 		b.WriteByte('}')
 		return b.String()
 	}
-	env, err := buildEnv(c, st)
+	env, err := buildEnv(nil, c, st)
 	if err != nil {
 		return fail(err, nil)
 	}
@@ -214,7 +217,7 @@ func writeJSON(b *strings.Builder, v any) {
 func conformLine(c *casefile.Case) string {
 	var b strings.Builder
 	b.WriteString(`{"name":` + value.QuoteJSON(c.Name))
-	o := doConform(c)
+	o := doConform(nil, c)
 	if o.declare != nil {
 		ds := append([]risor.Diagnostic(nil), o.declare.Diagnostics...)
 		sort.Slice(ds, func(i, j int) bool { return ds[i].Code < ds[j].Code })
@@ -246,6 +249,25 @@ func conformLine(c *casefile.Case) string {
 			b.WriteString(`,"message":` + value.QuoteJSON(f.Message) + `}`)
 		}
 		b.WriteByte(']')
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+// runnerLine is the outcome line of a runner case (F9 9.4): name, then
+// invalid or verdicts, then report, then text with update.
+func runnerLine(c *casefile.Case) string {
+	var b strings.Builder
+	b.WriteString(`{"name":` + value.QuoteJSON(c.Name))
+	lf, rs, err := innerRun(defaultCtx, c)
+	if err != nil {
+		b.WriteString(`,"invalid":true}`)
+		return b.String()
+	}
+	b.WriteString(`,"verdicts":` + verdictsForm(rs))
+	b.WriteString(`,"report":` + value.QuoteJSON(Report(rs)))
+	if c.Update {
+		b.WriteString(`,"text":` + value.QuoteJSON(RunnerText(lf, rs)))
 	}
 	b.WriteByte('}')
 	return b.String()

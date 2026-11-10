@@ -1,2 +1,3 @@
-# Test binaries that "go test -c" writes.
+# Test binaries that "go test -c" writes, and built commands.
 *.test
+/bin/

@@ -62,7 +62,19 @@ type Case struct {
 	// Render is the field render of a render case (package F8 7.4), or
 	// nil.
 	Render *Render
-	Expect *Expect
+	// Runner is the inner file of a runner case as data, RunnerText as
+	// text (package F9 3.1); Update and Program are its flags. Dir is the
+	// directory of the file that holds the case.
+	Runner     any
+	RunnerText *string
+	Update     bool
+	Program    bool
+	Dir        string
+	// NoExpect is set for a case with no expect, read for update mode (F9
+	// 4.2). ExpectRaw is the expect as the file gives it, for the report.
+	NoExpect  bool
+	ExpectRaw any
+	Expect    *Expect
 }
 
 // NamedType is one entry of the field types (F4 9.1).
@@ -156,6 +168,8 @@ type Expect struct {
 	Rendered *Renderings
 	// Render is the expect of a render case (F8 7.4), or nil.
 	Render *Renderings
+	// Runner is the expect of a runner case (F9 3.3), or nil.
+	Runner *RunnerExpect
 }
 
 // IsFailure reports whether the expect is a failure.
@@ -242,6 +256,7 @@ func FromValue(raw any, path string) (*File, error) {
 type validator struct {
 	// noExpect accepts a case with no expect (the outcome command).
 	noExpect bool
+	opts     Options
 	path     string
 	dir      string
 	names    []string
@@ -255,7 +270,7 @@ var (
 	headerFields = set("cases", "source", "file", "version", "env", "opaque", "methods",
 		"functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups")
 	caseFields = set("name", "source", "file", "version", "env", "opaque", "methods",
-		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render")
+		"functions", "reject", "returns", "vars", "limits", "skip", "expect", "precondition", "check", "schemas", "template", "removed", "types", "conform", "groups", "render", "runner", "update", "program")
 	resultFields = set("type", "sites", "value", "truthy", "steps", "allocated", "description", "analysis", "json")
 	// F2 4.2, 4.3.
 	analysisFields = set("names", "refs", "calls", "literal", "segments")
@@ -353,6 +368,9 @@ func (v *validator) file(raw any) (*File, error) {
 		if err := v.checkFields(m, caseFields, where); err != nil {
 			return nil, err
 		}
+		if err := v.checkRunnerFlags(m, where); err != nil { // F9 9.2
+			return nil, err
+		}
 		name, ok := m["name"].(string)
 		if !ok {
 			return nil, v.invalid("%s has no name", where)
@@ -370,11 +388,15 @@ func (v *validator) file(raw any) (*File, error) {
 				return nil, v.invalid("%s: skip is not a string", where)
 			}
 		}
+		noExp := false
 		if _, ok := m["expect"]; !ok {
 			if !v.noExpect {
 				return nil, v.invalid("%s has no expect", where)
 			}
-			m["expect"] = map[string]any{}
+			if _, isRunner := m["runner"]; !isRunner {
+				m["expect"] = map[string]any{}
+				noExp = true
+			}
 		}
 		merged := map[string]any{}
 		for k, val := range header {
@@ -384,7 +406,8 @@ func (v *validator) file(raw any) (*File, error) {
 		_, hasFile := m["file"]
 		_, hasConform := m["conform"]
 		_, hasRender := m["render"]
-		if hasSource || hasFile || hasConform || hasRender { // F4 9.2 item 1, F8 7.4 item 1
+		_, hasRunner := m["runner"]
+		if hasSource || hasFile || hasConform || hasRender || hasRunner { // F4 9.2 item 1, F8 7.4 item 1, F9 3.1 item 4
 			delete(merged, "source")
 			delete(merged, "file")
 			delete(merged, "conform")
@@ -395,6 +418,10 @@ func (v *validator) file(raw any) (*File, error) {
 		cs, err := v.build(merged, where)
 		if err != nil {
 			return nil, err
+		}
+		cs.NoExpect = noExp
+		if noExp {
+			cs.ExpectRaw = nil
 		}
 		f.Cases = append(f.Cases, cs)
 	}
@@ -630,8 +657,7 @@ func (v *validator) stub(s any, where string) error {
 }
 
 func optString(m map[string]any, k string) *string {
-	if x, ok := m[k]; ok {
-		s := x.(string)
+	if s, ok := m[k].(string); ok {
 		return &s
 	}
 	return nil
@@ -639,9 +665,17 @@ func optString(m map[string]any, k string) *string {
 
 // build makes a Case from the merged fields, whose JSON types are checked.
 func (v *validator) build(m map[string]any, where string) (*Case, error) {
-	c := &Case{Name: m["name"].(string)}
+	c := &Case{Name: m["name"].(string), ExpectRaw: m["expect"], Dir: v.dir}
 	src, hasSource := m["source"]
 	file, hasFile := m["file"]
+	if _, ok := m["runner"]; ok {
+		_, hasConform := m["conform"]
+		_, hasRender := m["render"]
+		if hasSource || hasFile || hasConform || hasRender {
+			return nil, v.invalid("%s must have exactly one of source, file, conform, render and runner", where)
+		}
+		return v.buildRunner(c, m, where)
+	}
 	if _, ok := m["render"]; ok {
 		_, hasConform := m["conform"]
 		if hasSource || hasFile || hasConform {
@@ -662,11 +696,11 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 		c.Source = src.(string)
 	} else {
 		c.File = file.(string)
-		data, err := os.ReadFile(filepath.Join(v.dir, filepath.FromSlash(c.File)))
+		data, err := v.readFile(c.File)
 		if err != nil {
 			return nil, v.invalid("%s: the file %q cannot be read", where, c.File)
 		}
-		c.Source = string(data)
+		c.Source = data
 	}
 	if s := optString(m, "version"); s != nil {
 		c.Version = *s
@@ -773,7 +807,7 @@ func (v *validator) build(m map[string]any, where string) (*Case, error) {
 				fields[k] = true
 			}
 			for k := range c.Vars {
-				if !fields[k] {
+				if !fields[k] && (v.opts.BaseVar == nil || !v.opts.BaseVar(k)) {
 					return nil, v.invalid("%s: vars has %q, which env does not declare", where, k)
 				}
 			}
@@ -850,7 +884,7 @@ func (v *validator) buildStub(s any, where, name string, opaque []string) (*Stub
 	}
 	// 3.10.10 item 11: the base environment of the suite declares no host
 	// function and no method, so a stub needs its type.
-	if st.Type == nil {
+	if st.Type == nil && (v.opts.BaseFunc == nil || !v.opts.BaseFunc(name)) {
 		return nil, v.invalid("%s: the stub %q has no type", where, name)
 	}
 	return st, nil
@@ -1377,6 +1411,10 @@ func (v *validator) buildConform(c *Case, m, cf map[string]any, where string) (*
 			return nil, v.invalid("%s: a conform case expects a conform result or a declare failure", where)
 		}
 		c.Expect = e
+		return c, nil
+	}
+	if len(em) == 0 && v.noExpect { // F9 4.2: no expect, in update mode
+		c.Expect = &Expect{Conform: &ConformResult{}}
 		return c, nil
 	}
 	if err := v.checkFields(em, conformResultFields, where+": expect"); err != nil {

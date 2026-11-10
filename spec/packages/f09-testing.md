@@ -28,7 +28,7 @@ numbers without a file are of this chapter.
 
 | Term | Meaning |
 | --- | --- |
-| **Program case** | A case with `source`, `file` or, with F2, `template` |
+| **Program case** | A case with `source` or `file`, which with F2 may be a template's text (`template` gives its mode) |
 | **Fixture** | A value a case gives the run: a value of `vars`, and the `result` or `error` of a row of a stub (2.1) |
 | **Outcome** | What a case gave: a result or a failure, as `03-host.md` 3.10.6 names their fields |
 | **Verdict** | `pass`, `fail`, `skip` or `invalid` (`03-host.md` 3.10.8) |
@@ -188,8 +188,10 @@ update writes.
    `update`, `program`, `skip` and `expect`.
 2. `runner`, `update` and `program` may not stand in a header.
 3. `update: true` and `program: true` each need `runner` to be a string.
-4. `source`, `file`, `template`, `conform`, `render` and `runner` count as one
-   field for the header rule (`03-host.md` 3.10.2 item 4).
+4. `source`, `file`, `conform`, `render` and `runner` count as one field for
+   the header rule (`03-host.md` 3.10.2 item 4). `template` is not among them:
+   it is the mode of a text that stands in `source` or `file`, and a header may
+   give it for every case.
 
 ### 3.2 How a runner case is run
 
