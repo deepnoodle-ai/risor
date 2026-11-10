@@ -1,0 +1,6 @@
+utf8 loop                        21.8 ns  |  326.3 ns  |  5491.1 ns  |  5710.8 ns
+code points loop                 19.8 ns  |  247.2 ns  |  4104.7 ns  |  4245.7 ns
+TextEncoder.encodeInto           19.6 ns  |  23.5 ns  |  84.5 ns  |  1269.1 ns
+Buffer.byteLength (Node only)    10.5 ns  |  14.7 ns  |  80.4 ns  |  80.3 ns
+length (weight)                  3.5 ns  |  3.5 ns  |  3.4 ns  |  3.5 ns
+columns: 16 ASCII  |  256 ASCII  |  4,096 ASCII  |  4,096, one third non-ASCII

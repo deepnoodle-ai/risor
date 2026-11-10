@@ -20,6 +20,11 @@ This is a spike. Nothing here is used by Risor, and nothing here is an API.
 - `bench/` — agreement tests and benchmarks against the Risor VM and against
   [expr](https://github.com/deepnoodle-ai/expr).
 - `results/` — the raw benchmark output and the script that summarizes it.
+- `design/` — the design of a Risor v3 language that followed from this result.
+  Start with `design/00-overview.md`. It is a proposal: no specification and
+  no implementation exists yet.
+- `lab/` — small Go measurements that the design documents cite, such as the
+  cost of counting steps and allocations, and of value representations.
 
 The semantics differ from Risor v2 on purpose:
 

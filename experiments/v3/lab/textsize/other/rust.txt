@@ -1,0 +1,8 @@
+len (UTF-8 bytes)            0.7 ns  |  0.7 ns  |  0.7 ns  |  0.7 ns
+chars().count()              2.7 ns  |  7.6 ns  |  117.1 ns  |  116.3 ns
+encode_utf16().count()       6.2 ns  |  93.1 ns  |  1441.9 ns  |  1441.1 ns
+weight, byte loop            4.2 ns  |  56.6 ns  |  903.5 ns  |  888.9 ns
+weight, chars + leads        4.4 ns  |  37.1 ns  |  565.3 ns  |  566.0 ns
+weight, ASCII test first     1.4 ns  |  2.1 ns  |  20.7 ns  |  565.8 ns
+size by the rule of A.5      0.7 ns  |  2.7 ns  |  20.5 ns  |  568.0 ns
+columns: 16 B ASCII  |  256 B ASCII  |  4,096 B ASCII  |  4,096 B, one third non-ASCII
