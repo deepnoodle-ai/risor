@@ -132,3 +132,29 @@ differ. Each is now fixed by a rule and a case.
 | R49 | **Null first.** A binary operator that rejects null tests both operands for null before it tests their kinds. `"a" * null` is `null-operand`, not `wrong-kind`. |
 | R50 | A case file can hold an opaque value: `{"$opaque": {"type": "Token", "id": 1}}`. Two are the same host value when type and id are equal. Without this, opaque types were in Core and no case could test them. |
 | R51 | A message names an operator by its canonical text (`not in`), and every parameter of a message is cut at 64 code points, names included. |
+
+## 9. Rounds 8 and 9: the Rust front end and an independent review
+
+Three front ends, written apart, agree on every syntax case. An independent
+reviewer then read the five chapters: it recomputed every worked count and
+example and found none wrong, and reported 28 places where two readers could
+differ. The rulings that change or add a rule:
+
+| # | Ruling |
+| --- | --- |
+| R52 | The limit of 64 on type text is on its depth: a `[]` suffix counts 1, and a bracketed form counts 1 over its deepest content. |
+| R53 | A case file nests JSON at most 1,024 deep. |
+| R54 | A binding documents the stack it needs, tests at that stack, and never overflows it within the limits. |
+| R55 | **The run always selects a method by the receiver's kind** and always makes the shape test. Resolving a method when compiling is an optimization that is never observable. So a checked and an unchecked run cannot differ. |
+| R56 | Every element of a list pattern needs its position, `_` included, and the checker records the site on `_`. |
+| R57 | The failed-scan charge (R4, R27) is for list methods. The functions `min(a, b)` and `max(a, b)` test their arguments for nothing, as every function does. |
+| R58 | A library call tests its receiver, then its arguments left to right, kind before whole number. For an `ordered` bound every kind failure uses one template. |
+| R59 | Core does not test the arguments of a host function at run time, beyond their count. |
+| R60 | A call gives every parameter up to the last one with no default: with `(a = 1, b) => b`, `f(5)` is `arity`. |
+| R61 | A search is done in work of a constant times `1 + w(s)`: a needle longer than the text is answered from the lengths. Tightens R25. |
+| R62 | A namespace is called only with a plain `.`: `geo?.f()` is `not-a-value`. |
+| R63 | **A variable may be named like a library function** (`type`, `max`, `keys`) and shadows it. A host function named like one is still `name-clash`. |
+| R64 | A host number is read when an operation yields it as a value; copying or measuring a container does not read its elements. |
+| R65 | Ill-formed UTF-8 from a host gives one U+FFFD for each maximal subpart, as Unicode recommends, not one for each byte. |
+| R66 | A case that expects a `parse` or a `declare` failure states exactly one diagnostic. |
+| R67 | The record of an environment has no optional field and no rest. An `env` key written twice is `name-clash`. |

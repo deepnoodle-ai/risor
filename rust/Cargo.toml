@@ -1,0 +1,17 @@
+[package]
+name = "risor"
+version = "0.1.0"
+edition = "2021"
+description = "Risor v3: an embedded expression language, written from its specification"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+# The library has no dependencies, and neither do the tests: the case-file
+# runner reads JSON with the crate's own strict reader (`src/json.rs`), which
+# also reports a repeated key, as `03-host.md` 3.10.10 requires.
+[dependencies]
+
+[dev-dependencies]
