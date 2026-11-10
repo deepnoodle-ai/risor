@@ -662,6 +662,31 @@ func (c *checker) covered(prog *syntax.Program) map[syntax.Span]bool {
 					out[f.Span] = true
 				}
 			}
+		case *syntax.Each:
+			// The receiver of a step of a projection is the chain up to the
+			// step before it, at that step's span, or x for the first star
+			// (f07-queries.md 2.4 item 2, 5.3 item 2).
+			var recv syntax.Span
+			if n.X != nil {
+				recv = n.X.Span()
+				if c.dynSites[recv] {
+					out[n.StarSpan] = true
+				}
+			}
+			recv = n.StarSpan
+			for _, rd := range n.Reads {
+				if nx, ok := rd.(*syntax.Each); ok {
+					if c.dynSites[recv] {
+						out[nx.StarSpan] = true
+					}
+					break
+				}
+				if c.dynSites[recv] {
+					out[rd.Span()] = true
+				}
+				recv = rd.Span()
+			}
+			kids = syntax.Children(n)
 		case *syntax.Lambda, *syntax.Block, *syntax.Program, *syntax.Try, *syntax.Match, *syntax.Cond:
 			return true
 		default:

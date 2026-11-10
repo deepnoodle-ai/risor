@@ -824,7 +824,7 @@ func (c *checker) project(e *syntax.Each, cur *types.Type, rs syntax.Span, fs fa
 				failed = true
 				continue
 			}
-			before := el
+			before, nd := el, len(c.diags)
 			switch rd := rd.(type) {
 			case *syntax.Member:
 				el = c.readKey(el, rd.Name, rd.NameSpan, recvSpan, optional, false)
@@ -836,7 +836,9 @@ func (c *checker) project(e *syntax.Each, cur *types.Type, rs syntax.Span, fs fa
 					el = c.index(rd, el, idx, recvSpan, optional)
 				}
 			}
-			if el.IsNever() && !before.IsNever() {
+			// Only a diagnostic that leaves never sets failed (f07-queries.md
+			// 5.1): a field whose type is never gives never[] (5.2 item 2).
+			if el.IsNever() && !before.IsNever() && len(c.diags) > nd {
 				failed = true
 			}
 			c.ty[rd] = el
