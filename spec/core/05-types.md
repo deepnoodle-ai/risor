@@ -1049,9 +1049,9 @@ field `narrows`. In Core these are the list methods `filter` and `find`.
 A lambda has no type. Each use of a const-bound lambda is checked on its own,
 because only a use gives the parameter types. A **use** is a call by name, or
 the name given as a lambda argument: at an `Fn` parameter, or to a method on an
-`any` receiver (13.3). A read of the name as
-a value is not a use: it is `not-a-value` (22.4), and it does not count as a
-reference for the row "No use" below.
+`any` receiver (13.3). A read of the name as a value is not a use: it is
+`not-a-value` (22.4), and it does not count as a reference for the row "No use"
+below.
 
 | Use | Rule |
 | --- | --- |
@@ -1203,7 +1203,7 @@ the type rules only.
 | `arity` | Too few or too many arguments, or a lambda with too many parameters (22.5; at a `MethodCall`, 13.5) | The whole call; or the lambda argument: the `Lambda`, or the `Ident` that names a const-bound lambda | | `never` for the call; the lambda is not checked |
 | `arg-mismatch` | An argument that does not fit its parameter; a plain argument at an `Fn`; a lambda body that does not fit R with its `Var`s solved (13.5 step 3, 3a); a bound that does not hold (13.2, 13.5) | For a plain argument, each place of failure (15.1); else the lambda's body, or the whole call | | The signature's result type (13.5, step 6) |
 | `cannot-infer` | A `Var` still unbound in the Q of a parameter that the lambda declares (13.5) | The lambda | | The lambda is not checked. |
-| `check-limit` | A limit of 20 is passed | The use of a const-bound lambda; the node whose type is too deep | | `never` |
+| `check-limit` | A limit of 20 is passed | The use of a const-bound lambda; the node whose type is too deep (20.4); for a type over the size limit, the node of the table of 20.7: the expression, the call, or for a name bound by a pattern with a default, the value bound | | `never` |
 | `duplicate-case` | A `match` literal equal to an earlier one (22.8) | The later literal | | The literal is ignored. |
 | `unreachable-arm` | An arm after `_` (22.8) | The arm | | The arm is checked and joined. |
 | `non-exhaustive` | A `match` without `_` that does not cover its subject (11.2) | The whole `Match` | | The Join of the arms |
@@ -1294,16 +1294,22 @@ them; a library entry fails only with `value`, `range`, `kind`, `field` or
 | `value` | A call of a library entry marked `!`; a method call on a receiver of type `any` when some library method of that name is marked `!` (13.3) | The call |
 | `host` | A call of a host function or method marked `!`; a method call on a receiver of type `any` when a method of that name of some declared opaque type is marked `!` (13.3) | The call |
 
-A run failure is **at a site** when the site is on the failing node, or on a
-node that is the failing node's operand, receiver, index, computed key or
-argument. A failure of a library entry's test of a callback's result, or of a
-key or a value a callback gave, is at a site when the site is on the body of a
-lambda that is an argument of the failing call, or that such an argument names
-(a const-bound lambda). A failure of a pattern is at a site when the site is on
-the value bound (12.3), or on the key of the field or the name of the element
-that failed. A rendering failure (an opaque value met while rendering) is at a
-site when the site is on the rendered expression (7.3). The class of a failure
-(18.5) uses this definition.
+A run failure is **at a site** of class `index`, `divide`, `value` or `host`
+only when the site is on the failing node itself. The wider reach below is for
+`dynamic` sites only. So in `geo.distance(string(rate("x")), "b")`, with `rate`
+marked `!` and `geo.distance` not, an error from `geo.distance` is not at the
+`host` site of `rate("x")`: its class is `environment` (18.5).
+
+A run failure is **at a `dynamic` site** when the site is on the failing node,
+or on a node that is the failing node's operand, receiver, index, computed key
+or argument. A failure of a library entry's test of a callback's result, or of a
+key or a value a callback gave, is at a `dynamic` site when the site is on the
+body of a lambda that is an argument of the failing call, or that such an
+argument names (a const-bound lambda). A failure of a pattern is at a `dynamic`
+site when the site is on the value bound (12.3), or on the key of the field or
+the name of the element that failed. A rendering failure (an opaque value met
+while rendering) is at a `dynamic` site when the site is on the rendered
+expression (7.3). The class of a failure (18.5) uses this definition.
 
 | An `any` value | Is a `dynamic` site when it is |
 | --- | --- |
@@ -1338,7 +1344,7 @@ checked. A program compiled with no check has no sites.
 | `missing-variable` | `environment` | `environment` |
 | `function-panic` | `host` | `host` |
 | `internal-error` | none | none |
-| `function-error` | `host` at a `host` site; `environment` anywhere else: a function or method not marked `!` returned an error | `host` |
+| `function-error` | `host` at a `host` site on the failing call itself (18.3); `environment` anywhere else: a function or method not marked `!` returned an error | `host` |
 | `number-range` | `range` from arithmetic or a library entry; `environment` for a host number that cannot enter the language | The same |
 | `not-conforming` | `value` at a `value` site; `environment` elsewhere. No Core form raises it (follow-on F4). | `value` |
 | `invalid-argument`, `failed` | `value` | `value` |
@@ -1433,6 +1439,7 @@ beyond the grammar:
 | A `Name` that is not a declared opaque type (3.5) | `bad-type` | `bad-signature` |
 | A rest parameter whose type is not a list (3.6) | | `bad-signature` |
 | A type deeper than 64 (2.5) | `bad-type` | `bad-signature` |
+| A type whose size (20.7) is over 100,000 | `bad-type` | `bad-signature` |
 
 A type deeper than 64 by 2.5 cannot occur in Core: the depth of type text (20.5)
 is never less than the depth of the type it writes, and type text deeper than 64
@@ -1531,6 +1538,64 @@ if` chain, the arms of a `match` and the `const` lines of a block. Along an
 Join of the branches so far. Recursion over types (Join, Fits, Merge, bind,
 printing, the type text parser and the conformance walk) goes no deeper than the
 deeper of its types, so 64 bounds it.
+
+### 20.7 Type size
+
+A type is held with shared parts, so a short program can make a type whose
+expansion doubles at each line. Its size is bounded.
+
+| Type | Size |
+| --- | --- |
+| `any`, `never`, `null`, `bool`, `int`, `float`, `string`, an opaque type's name, a type variable | 1 |
+| A literal set | 1 for each string in it |
+| `T[]` | 1 plus the size of T |
+| A record | 1, plus the size of each field's type, plus the size of its rest. A rest of `never` counts 0. |
+| A type with several alternatives | The sum of the sizes of its alternatives |
+
+The size is that of the type written out by structure, with no sharing. A
+field's mark (required or optional) does not count. **The limit is 100,000.**
+The specification fixes it, and a host cannot change it.
+
+**Where it is tested.** A type is tested when it becomes the type of one of
+these nodes or names. A type over the limit is `check-limit` on the node in the
+last column, and the node has type `never` afterwards, as for the other limits
+of 20.
+
+| Construct | The type tested | `check-limit` on |
+| --- | --- | --- |
+| A list literal, its spreads included (7.4, 7.7) | The list's type | The `List` |
+| A map literal, its spreads and computed keys included (7.5, 7.7) | The record it builds | The `Map` |
+| `c ? a : b`, and an `if` chain (11.1) | The Join of the branches | The `Cond`. An `else if` is a `Cond` of its own (`01-language.md` 4.2), whose type is the Join of the branches from it on, so the innermost `Cond` whose type passes the limit is the one reported |
+| `match` (11.2) | The Join of the arms | The `Match` |
+| `try` (14) | The Join of the body and the handler | The `Try` |
+| `a ?? b`, `a && b`, `a \|\| b` (8.2) | The node's type | The `Binary` |
+| A call of a library entry or a host function or method (13.5) | Each solution of a type variable, as step 2, step 3 or the seed rule makes it; then the result type | The `Call` or the `MethodCall`. The test of a solution is made when the solution is made; when it fails, the call is not checked further and has type `never` |
+| A name bound by a pattern with a default (12.4) | Join(nonnull(T), D) | The value bound (12.3): the `const` value expression, or the parameter's pattern |
+
+No other construct makes a type larger than its parts: a read gives a part of
+its receiver's type; a narrowed type (10.4) and the `...rest` of a pattern
+(12.2) are no larger than the type before; the other operators give `bool`, a
+number type or `string`; a `Block` and a call of a const-bound lambda have the
+type of an expression that was tested where it stands; a name bound by `const`
+to a value, and a parameter bound to an argument, take a type that was tested.
+
+| Matter | Rule |
+| --- | --- |
+| Innermost only | An expression built from one that failed sees `never`, so only the innermost expression over the limit is reported. |
+| Constant work | An implementation keeps the size with each type as it builds it, saturating above the limit, so each test is constant work and nothing is expanded to find a size. No operation of the checker may take work that grows with the expansion of a type past the limit: an operation whose result would pass the limit stops, and the test above reports it. |
+| Declarations | A declared type over the limit is `bad-type` or `bad-signature`, by where its text stands (19.5). In Core's type text, which has no sharing, the size of a type is at most the count of its tokens. |
+| Without a type checker | Not tested: the static rules (22) have no types. |
+
+The doubling chain `const a0 = {l: 1, r: 1};` and, for each k from 1, `const ak
+= {l: a(k−1), r: a(k−1)};` gives sizes s0 = 3 and s(k) = 2 × s(k−1) + 1, so s(k)
+= 2^(k+2) − 1:
+
+| Line | k | s(k) | |
+| --- | --- | --- | --- |
+| 15 | 14 | 65,535 | Under the limit |
+| 16 | 15 | 131,071 | Over: `check-limit` on the map literal of line 16 |
+
+Worked examples 130 to 134 (21.15) show it.
 
 ## 21. Worked examples
 
@@ -1759,6 +1824,23 @@ The host function returns an error in each run. A case states it as a stub with
 | --- | --- | --- | --- |
 | 128 | `rate(input.role)` | `float`; site `host` 1:1-1:17: `rate` is marked `!` | `function-error` 1:1-1:17, class `host` |
 | 129 | `geo.distance("a", "b")` | `float`; no site: `geo.distance` is not marked `!` | `function-error` 1:1-1:23, class `environment`: the precondition failed (18.4). Without a check, class `host`. |
+| 135 | `geo.distance(string(rate("x")), "b")`, `geo.distance` returning an error and `rate` a value | `float`; site `host` 1:21-1:30, on `rate("x")` only | `function-error` 1:1-1:37, class `environment`: the `host` site is on an argument, not on the failing call (18.3). |
+
+### 21.15 Type size
+
+In these programs each `const` line stands on a line of its own. **A(n)** is the
+n + 1 lines `const a0 = {l: 1, r: 1};` to `const an = {l: a(n−1), r: a(n−1)};`,
+which are lines 1 to n + 1, with s(k) = 2^(k+2) − 1 (20.7). **B(n)** is the same
+with the keys `x` and `y` and the names `b0` to `bn`, standing after A(14) on
+lines 16 to n + 16. Spans are written `line:column`.
+
+| # | Program | Result |
+| --- | --- | --- |
+| 130 | A(14), then `0` on line 16 | `int`. `a14` has size 65,535. |
+| 131 | A(15), then `0` on line 17 | `check-limit` 16:13-16:29, on `{l: a14, r: a14}`: size 131,071. |
+| 132 | A(16), then `a16.l` on line 18 | `check-limit` 16:13-16:29 only: `a15` has type `never`, so `a16` is `{l: never, r: never}`, of size 3. |
+| 133 | A(14), B(14), then `gate.failed > 0 ? a14 : b14` on line 31 | `check-limit` 31:1-31:28, on the `Cond`. The Join is `{l?: …, r?: …, x?: …, y?: …}` with four fields of size s(13) = 32,767: 1 + 4 × 32,767 = 131,069. |
+| 134 | A(14), B(14), then `const m = gate.failed > 0 ? a14 : null; m != null ? [m, b14] : []` on line 31 | `check-limit` 31:53-31:61, on the list `[m, b14]`, reached through `m` narrowed to the type of `a14`: its element type has size 131,069. `m` itself has size 65,536 and is not reported. |
 
 ## 22. The static rules alone
 
