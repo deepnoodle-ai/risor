@@ -745,19 +745,34 @@ function callEntry(r: Run, entry: Entry, receiver: unknown, args: unknown[], spa
 /** A call of a host function or of a method of an opaque type (02 11.4, 03 3.5). */
 function callHost(r: Run, host: HostImpl, args: unknown[], name: string, span: Span): unknown {
   r.charge(1);
+  // The handle is valid until the function returns (03 3.5.2 item 6, ruling
+  // AR1). After that, charge and allocate throw a host-side Error and charge
+  // nothing, and the signal reads as cancelled.
+  let open = true;
+  const late = () => new Error("the call handle was used after its host function returned");
   const handle: CallHandle = {
-    signal: r.signal,
-    charge: (n) => r.charge(n),
-    allocate: (n) => r.alloc(n),
+    get signal() {
+      return open ? r.signal : AbortSignal.abort();
+    },
+    charge: (n) => {
+      if (!open) throw late();
+      r.charge(n);
+    },
+    allocate: (n) => {
+      if (!open) throw late();
+      r.alloc(n);
+    },
   };
   let out: unknown;
   try {
     out = host.call(handle, args);
   } catch (x) {
+    open = false;
     if (x instanceof RunFailure) throw x;
     if (x instanceof Error) throw new RunFailure("function-error", span, null, {}, { text: x.message, cause: x });
     throw new RunFailure("function-panic", span, "default", { name });
   }
+  open = false;
   r.checkTime();
   if (out instanceof Promise) throw new RunFailure("function-error", span, null, {}, { text: "a host function returned a Promise" });
   return r.read(out, span);

@@ -202,3 +202,17 @@ describe("ruling AM4: bad-limit", () => {
     assert.equal(declareCode({ steps: null, allocation: null, depth: 1000, timeoutMs: null }), "ok");
   });
 });
+
+describe("ruling AR1: a call handle used after its function returned", () => {
+  test("charge and allocate throw, charge nothing, and the signal reads as cancelled", () => {
+    let kept: import("../src/host/api.ts").CallHandle | undefined;
+    const env = createEnv({ functions: { keep: { type: "() => int", call: (h) => ((kept = h), h.charge(2), 1) } } });
+    const o = env.compile("keep() + 1").execute();
+    assert.ok(o.ok);
+    assert.deepEqual(o.usage, { steps: 4, allocated: 0 });
+    assert.throws(() => kept!.charge(5), (e: unknown) => e instanceof Error && !(e instanceof RisorError));
+    assert.throws(() => kept!.allocate(5));
+    assert.equal(kept!.signal?.aborted, true);
+    assert.deepEqual(o.usage, { steps: 4, allocated: 0 });
+  });
+});
