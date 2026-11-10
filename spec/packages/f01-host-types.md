@@ -343,7 +343,7 @@ F5 only adds.
 | `kind` of `"a" \| null` and of `"b"` | Not a literal set alone: the Join |
 | `{a: int, ...}` and `{b: string, ...}` | No common key: the Join, `{a?: any, b?: any, ...}` |
 
-### 3.10 Depth
+### 3.10 Depth and size
 
 1. The **depth** of a schema is 0 when it walks no subschema, and otherwise 1
    more than the greatest depth of the subschemas it walks. The schema a
@@ -365,6 +365,26 @@ F5 only adds.
    `env` reaches only 63, since the braces of the record count one level of
    text depth (`05-types.md` 20.5). Each type text of a description is read
    alone (5.4), so a description holds a type of depth 64.
+7. **Size.** The size of a type is the count of its nodes written out with
+   no sharing, and its limit is 100,000 (`05-types.md` 20.7). A `$ref` shares
+   its target, so a short schema can give a type far over the limit.
+8. The size of M(S) is tested for every schema S the mapping walks, the root
+   included, and so is the literal type of each value of `enum` and `const`
+   and of each `default` that 4.3 reads. A type over the limit is `bad-type`.
+   This holds also for a part that Pick would then drop, and for a branch
+   whose type a Join would absorb.
+   Nothing else is tested: a Join or Meet made on the way to M(S) may pass
+   the limit while M(S) does not, and that is no error. `anyOf` of two
+   definitions whose Join is over the limit is `bad-type`; with a third
+   branch `{}` it is `any`.
+9. M(S) is tested as the mapping gives it, before the Close of 4.1. Close
+   never makes a type larger.
+10. An implementation keeps the size with each type as it builds it, as
+   `05-types.md` 20.7 says, so that no step of the mapping does work that
+   grows with a type past the limit.
+11. The mapping's work on an `enum`, a `const` or a `default` is at most n
+   log n in the number of values it holds, so a large one is answered
+   quickly whether it passes the limit or not.
 
 | Schema | Depth | Result |
 | --- | --- | --- |
@@ -394,6 +414,7 @@ is read (3.1 item 1).
 | `$id` below the root; `$dynamicRef`; `$recursiveRef` | 3.7 |
 | Records of `anyOf` or `oneOf` that have a tag, until F5 | 3.9 |
 | A schema deeper than 64, or a type deeper than 64 | 3.10 |
+| A type of size over 100,000, for any walked schema or literal value | 3.10 |
 
 ### 3.12 Keywords
 
@@ -548,6 +569,11 @@ The description of an environment is a JSON object with exactly these keys.
    white space, the keys of every object in code point order, each string
    escaped as that section says, and each number in its rendering. Two
    implementations give the same text for one environment.
+6. **A description is bounded.** Every type in it has size at most 100,000
+   (3.10, `05-types.md` 20.7), and the printed text of a type of size n is
+   at most n times a constant plus the length of the keys and strings its
+   nodes carry. So the text of a description grows with the declarations of
+   its environment and with the limit, never exponentially.
 
 This environment, with `order` declared by the schema of 2.3's second row and
 a function `rate`:
@@ -591,7 +617,7 @@ meets these.
 | Null | `\| null` exactly when the binding may present null for the value. |
 | Opaque | A host type the host registered as opaque gives that opaque type's name. It is never guessed. |
 | Unsupported | A host type that no rule of the binding covers is an error when the type is derived: the `declare` error `bad-type`, or an error of the host's own build where the binding derives at build time. |
-| Limits | A derived type deeper than 64 (`05-types.md` 2.5) is `bad-type`. A host type that contains itself, directly or through others, is `bad-type`: a type cannot refer to itself. |
+| Limits | A derived type deeper than 64 (`05-types.md` 2.5), or of size over 100,000 (`05-types.md` 20.7), is `bad-type`; each host type's derived type is tested, not only the outermost. A host type that contains itself, directly or through others, is `bad-type`: a type cannot refer to itself. |
 | No union | No binding derives a tagged union in this package. |
 | Description | A derived type is described by its printed text (5.1), like any other. |
 
