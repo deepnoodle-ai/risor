@@ -8,8 +8,11 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 	"unsafe"
@@ -49,13 +52,67 @@ type Vars interface {
 // opaque type. For a method, args[0] is the receiver.
 type HostFunc func(c *Call, args []any) (any, error)
 
-// Call is the call handle a host function receives (03-host.md 3.5.2).
+// Call is the call handle a host function receives (03-host.md 3.5.2). It
+// is valid until the function returns (item 6, ruling AR1). A later use,
+// from any goroutine, charges nothing and changes no run: Charge and
+// Allocate return ErrCallEnded and Context gives a cancelled context.
+//
+// Each call has its own handle. Its state is changed atomically: a use moves
+// it from active to busy and back, and the end of the call moves it from
+// active to ended, so a use either completes before the run goes on or sees
+// the end. The run state behind the handle is touched only while busy.
 type Call struct {
-	r *run
+	r     *run
+	state atomic.Int32
+}
+
+const (
+	callActive int32 = iota
+	callBusy
+	callEnded
+)
+
+// ErrCallEnded is returned by Charge and Allocate of a call handle used
+// after its function returned.
+var ErrCallEnded = errors.New("the call handle is used after its function returned")
+
+var endedCtx = func() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}()
+
+// enter makes the handle busy, or reports that the call has ended.
+func (c *Call) enter() bool {
+	for {
+		if c.state.CompareAndSwap(callActive, callBusy) {
+			return true
+		}
+		if c.state.Load() == callEnded {
+			return false
+		}
+		runtime.Gosched() // another goroutine of the host is using it
+	}
+}
+
+func (c *Call) leave() { c.state.Store(callActive) }
+
+// end marks the call ended; it waits for a use in progress.
+func (c *Call) end() {
+	for !c.state.CompareAndSwap(callActive, callEnded) {
+		runtime.Gosched()
+	}
 }
 
 // Context returns the run's context, which carries its cancellation.
-func (c *Call) Context() context.Context { return c.r.ctx }
+func (c *Call) Context() context.Context {
+	if !c.enter() {
+		return endedCtx
+	}
+	ctx := c.r.ctx
+	c.leave()
+	return ctx
+}
 
 // LimitError is returned by Charge and Allocate when the budget cannot cover
 // the charge. The run then ends with the limit failure.
@@ -65,6 +122,10 @@ func (e *LimitError) Error() string { return e.Code }
 
 // Charge charges steps to the run.
 func (c *Call) Charge(steps int64) error {
+	if !c.enter() {
+		return ErrCallEnded
+	}
+	defer c.leave()
 	if steps <= 0 {
 		return nil
 	}
@@ -77,6 +138,10 @@ func (c *Call) Charge(steps int64) error {
 
 // Allocate charges allocation units to the run.
 func (c *Call) Allocate(units int64) error {
+	if !c.enter() {
+		return ErrCallEnded
+	}
+	defer c.leave()
 	if units <= 0 {
 		return nil
 	}
@@ -308,7 +373,11 @@ func (r *run) readMore(v any, sp syntax.Span) any {
 		return v
 	case string:
 		if len(x) <= 64 {
-			if utf8.ValidString(x) {
+			var or byte
+			for i := 0; i < len(x); i++ {
+				or |= x[i]
+			}
+			if or < 0x80 || utf8.ValidString(x) {
 				return v
 			}
 			return value.ReplaceInvalid(x)

@@ -420,8 +420,15 @@ func Weight(s string) int64 {
 	return w
 }
 
-// Size returns the size of a string: its weight divided by 64.
-func Size(s string) int64 { return Weight(s) / 64 }
+// Size returns the size of a string: its weight divided by 64. A weight is
+// at most the length in bytes, so a string of fewer than 64 bytes has size
+// 0.
+func Size(s string) int64 {
+	if len(s) < 64 {
+		return 0
+	}
+	return Weight(s) / 64
+}
 
 // CommonPrefix returns the longest common prefix of two strings, by code
 // point.

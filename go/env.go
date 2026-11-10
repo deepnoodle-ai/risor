@@ -28,6 +28,11 @@ const ZeroLimit = -2
 // error, return it: the run then ends with the limit failure.
 type Call = eval.Call
 
+// ErrCallEnded is returned by Charge and Allocate of a call handle used after
+// its function returned (03-host.md 3.5.2 item 6). Such a use charges nothing
+// and changes no run; Context then gives a cancelled context.
+var ErrCallEnded = eval.ErrCallEnded
+
 // Native is the implementation of a host function. For a method of an
 // opaque type, args[0] is the receiver. An error it returns fails the run
 // with function-error; a panic fails it with function-panic.

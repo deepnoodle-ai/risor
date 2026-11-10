@@ -191,9 +191,11 @@ library are built on rules that might not hold in three languages.
   merged into `main`. The Go module path becomes
   `github.com/deepnoodle-ai/risor/v3`.
 
-CI runs for a branch only if `.github/workflows/ci.yml` names it, and it does
-not name `v3` yet. Until it does, run `make test` and `make format` yourself
-before you open a pull request.
+`.github/workflows/v3.yml` runs the three implementations and the fuzzer's own
+tests on every push and pull request to `v3` that touches `go/`, `ts/`,
+`rust/`, `fuzz/` or `suite/`. `.github/workflows/ci.yml` tests v2's code and
+names only `main`: for a change to v2's code on this branch, run `make test`
+and `make format` yourself.
 
 
 ## Rules that differ between v2 and v3

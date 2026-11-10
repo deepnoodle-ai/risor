@@ -1,0 +1,149 @@
+name: v3
+
+# The three implementations of Risor v3, each run against the conformance
+# suite in suite/. The Go code outside go/ and fuzz/ is v2's and is tested by
+# ci.yml on main.
+
+on:
+  push:
+    branches: [v3]
+    paths:
+      - "go/**"
+      - "ts/**"
+      - "rust/**"
+      - "fuzz/**"
+      - "suite/**"
+      - ".github/workflows/v3.yml"
+  pull_request:
+    branches: [v3]
+    paths:
+      - "go/**"
+      - "ts/**"
+      - "rust/**"
+      - "fuzz/**"
+      - "suite/**"
+      - ".github/workflows/v3.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: "off"
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: go/go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test, with the conformance suite
+        run: go test -count=1 ./...
+
+      - name: Test with the race detector
+        run: go test -count=1 -race ./...
+
+  typescript:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Conformance suite
+        run: npm run suite
+
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup component add clippy
+
+      - name: Build
+        run: cargo build --all-targets
+
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+      # The limits must hold in the build that uses the most stack, so the
+      # suite runs unoptimized and optimized.
+      - name: Test, unoptimized
+        run: cargo test
+
+      - name: Test, optimized
+        run: cargo test --release
+
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: "off"
+    defaults:
+      run:
+        working-directory: fuzz
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -count=1 ./...

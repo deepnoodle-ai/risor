@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/risor/v3/internal/library"
+	"github.com/deepnoodle-ai/risor/v3/internal/syntax"
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
@@ -40,4 +41,39 @@ func TestQuickFormulaMatchesTree(t *testing.T) {
 		}
 	}
 	assert.True(t, quick > 40)
+}
+
+// add and mul on whole numbers give what exact integer arithmetic gives, and
+// fail exactly when it is out of range.
+func TestWholeArithmeticExact(t *testing.T) {
+	const max = 9007199254740991
+	vals := []int64{0, 1, -1, 2, 3, 1023, 1024, 94906265, 94906266, 1 << 26, 1<<26 + 1,
+		max / 2, max/2 + 1, max - 1, max, -max, -(max - 1), 1 << 52, 3 << 51}
+	r := &run{}
+	try := func(f func() any) (v any, failed bool) {
+		defer func() {
+			if x := recover(); x != nil {
+				failed = true
+			}
+		}()
+		return f(), false
+	}
+	for _, a := range vals {
+		for _, b := range vals {
+			s := a + b
+			v, failed := try(func() any { return r.add(float64(a), float64(b), "+", syntax.Span{}) })
+			if s > max || s < -max {
+				assert.True(t, failed)
+			} else {
+				assert.False(t, failed)
+				assert.Equal(t, v, any(float64(s)))
+			}
+			p, ok := mulWhole(a, b)
+			v, failed = try(func() any { return r.mul(float64(a), float64(b), "*", syntax.Span{}) })
+			assert.Equal(t, failed, !ok)
+			if ok {
+				assert.Equal(t, v, any(float64(p)))
+			}
+		}
+	}
 }

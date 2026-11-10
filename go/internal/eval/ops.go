@@ -93,7 +93,10 @@ func binFnFor(op string) binFn {
 				}
 			} else if sa, ok := a.(string); ok {
 				if sb, ok := b.(string); ok {
-					sz := (value.Weight(sa) + value.Weight(sb)) / 64
+					var sz int64
+					if len(sa)+len(sb) >= 64 {
+						sz = (value.Weight(sa) + value.Weight(sb)) / 64
+					}
 					r.step(1 + sz)
 					r.unit(1 + sz)
 					return sa + sb
@@ -504,26 +507,32 @@ func compare(op string, c int) bool {
 
 // add is a + b by the table of 02-evaluation.md 3.2: exact on whole
 // numbers, IEEE otherwise.
+//
+// For whole a and b the IEEE sum is the exact sum whenever the exact sum is
+// at most 2^53 - 1 in magnitude, and is at least 2^53 in magnitude when the
+// exact sum is: so the test on the IEEE sum is the test on the exact one.
 func (r *run) add(a, b float64, op string, sp syntax.Span) any {
+	s := a + b
 	if whole(a) && whole(b) {
-		s := int64(a) + int64(b)
 		if s > value.MaxWhole || s < -value.MaxWhole {
 			r.rangeFail(op, sp)
 		}
-		return numBox(float64(s))
+		return numBox(s)
 	}
-	return numBox(r.finite(a+b, op, sp))
+	return numBox(r.finite(s, op, sp))
 }
 
+// mul is a * b. As for add, the IEEE product of whole numbers is exact when
+// the exact product is whole, and over 2^53 - 1 in magnitude when it is not.
 func (r *run) mul(a, b float64, op string, sp syntax.Span) any {
+	p := a * b
 	if whole(a) && whole(b) {
-		p, ok := mulWhole(int64(a), int64(b))
-		if !ok {
+		if p > value.MaxWhole || p < -value.MaxWhole {
 			r.rangeFail(op, sp)
 		}
-		return numBox(float64(p))
+		return numBox(p)
 	}
-	return numBox(r.finite(a*b, op, sp))
+	return numBox(r.finite(p, op, sp))
 }
 
 // mulWhole multiplies two whole numbers exactly and reports whether the

@@ -445,7 +445,7 @@ func (r *run) opaqueMethod(s *stepCode, v any) any {
 	}
 	args := r.evalArgs(s.args)
 	r.step(1)
-	return r.hostCall(m.Impl, append([]any{v}, args...), s.span, s.name)
+	return r.hostCall(m.Impl, new(Call), append([]any{v}, args...), s.span, s.name)
 }
 
 // call compiles a call by name, or a call of a namespace.
@@ -473,9 +473,9 @@ func (c *compiler) call(n syntax.Node, argNodes []syntax.Node) code {
 		f := callee.Host
 		name := f.FullName()
 		return func(r *run) any {
-			vals := r.evalArgs(args)
+			c, vals := r.hostFrame(args)
 			r.step(1)
-			return r.hostCall(r.prog.cfg.Hosts[f.Index], vals, sp, name)
+			return r.hostCall(r.prog.cfg.Hosts[f.Index], c, vals, sp, name)
 		}
 	case static.Lib:
 		e := callee.Lib
@@ -523,16 +523,44 @@ func lenCall(e *library.Entry, info *entryInfo, x code, sp syntax.Span) code {
 		}
 		r.step(1)
 		if s, ok := v.(string); ok {
-			r.step(value.Weight(s) / 64)
+			r.step(value.Size(s))
 			return numBox(float64(utf8.RuneCountInString(s)))
 		}
 		return numBox(float64(value.Len(v)))
 	}
 }
 
+// hostFrame evaluates a host call's arguments and makes its call handle.
+// With two arguments or fewer the handle and the arguments are one
+// allocation. The host may keep the slice; nothing reuses it.
+func (r *run) hostFrame(as []argCode) (*Call, []any) {
+	switch len(as) {
+	case 0:
+		return new(Call), []any{}
+	case 1:
+		fr := new(struct {
+			c Call
+			a [1]any
+		})
+		fr.a[0] = r.argValue(&as[0])
+		return &fr.c, fr.a[:]
+	case 2:
+		fr := new(struct {
+			c Call
+			a [2]any
+		})
+		fr.a[0] = r.argValue(&as[0])
+		fr.a[1] = r.argValue(&as[1])
+		return &fr.c, fr.a[:]
+	}
+	return new(Call), r.evalArgs(as)
+}
+
 // hostCall calls a host function (03-host.md 3.5).
-func (r *run) hostCall(f HostFunc, args []any, sp syntax.Span, name string) any {
-	res, err, crashed := r.safeCall(f, args)
+func (r *run) hostCall(f HostFunc, c *Call, args []any, sp syntax.Span, name string) any {
+	c.r = r
+	res, err, crashed := r.safeCall(f, c, args)
+	c.end()
 	if p := r.pending; p != nil {
 		r.pending = nil
 		r.raise(p)
@@ -549,7 +577,7 @@ func (r *run) hostCall(f HostFunc, args []any, sp syntax.Span, name string) any 
 	return r.read(res, sp)
 }
 
-func (r *run) safeCall(f HostFunc, args []any) (res any, err error, crashed any) {
+func (r *run) safeCall(f HostFunc, c *Call, args []any) (res any, err error, crashed any) {
 	defer func() {
 		if x := recover(); x != nil {
 			crashed = x
@@ -558,6 +586,6 @@ func (r *run) safeCall(f HostFunc, args []any) (res any, err error, crashed any)
 	if f == nil {
 		return nil, nil, "no implementation"
 	}
-	res, err = f(&Call{r: r}, args)
+	res, err = f(c, args)
 	return res, err, nil
 }

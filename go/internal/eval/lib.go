@@ -208,13 +208,13 @@ func (q *quickFormula) eval(c *libCall, f *fenv) int64 {
 		return q.c0
 	case qSzRecv:
 		if s, ok := c.recv.(string); ok {
-			return value.Weight(s) / 64
+			return value.Size(s)
 		}
 		return 0
 	case qSzArg:
 		if q.arg < len(c.args) {
 			if s, ok := c.args[q.arg].(string); ok {
-				return value.Weight(s) / 64
+				return value.Size(s)
 			}
 		}
 		return 0
@@ -855,7 +855,9 @@ var implemented = map[string]libFunc{
 	// 5.4 Lists.
 	"list.filter": func(r *run, c *libCall) any {
 		lam, n := c.args[0].(*lambdaCode), c.n()
-		out := []any{}
+		// A first capacity of at most 8, a constant, saves the first growths
+		// without a size taken from the data.
+		out := make([]any, 0, min(n, 8))
 		for i := 0; i < n; i++ {
 			e := c.elem(r, i)
 			if value.Truthy(r.callback(c, lam, e, i)) {

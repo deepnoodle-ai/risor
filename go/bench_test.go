@@ -216,3 +216,46 @@ func TestConcurrentRuns(t *testing.T) {
 		}
 	}
 }
+
+// BenchmarkHost is calls of host functions: one that returns its argument,
+// and one that also charges a step and a unit through its call handle.
+func BenchmarkHost(b *testing.B) {
+	env, err := risor.NewEnv(
+		risor.Declare("{n: float}"),
+		risor.Function{Name: "id", Type: "(x: float) => float", Impl: func(c *risor.Call, args []any) (any, error) {
+			return args[0], nil
+		}},
+		risor.Function{Name: "costly", Type: "(x: float) => float", Impl: func(c *risor.Call, args []any) (any, error) {
+			if err := c.Charge(1); err != nil {
+				return nil, err
+			}
+			if err := c.Allocate(1); err != nil {
+				return nil, err
+			}
+			return args[0], nil
+		}},
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	data := risor.Map{"n": 5.0}
+	ctx := context.Background()
+	for _, c := range []benchCase{{"id", `id(n) + id(2)`}, {"charge", `costly(n) + costly(2)`}} {
+		x, err := risor.Parse(c.src)
+		if err != nil {
+			b.Fatal(err)
+		}
+		p, err := env.Compile(x)
+		if err != nil {
+			b.Fatal(c.name, err)
+		}
+		b.Run(c.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := p.Run(ctx, data); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
