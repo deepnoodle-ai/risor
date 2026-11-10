@@ -22,7 +22,7 @@ type Impl struct {
 	Env   []string // added to the environment of both commands
 }
 
-// Defaults gives the three implementations of ruling AJ, under the
+// Defaults gives the three implementations of suite/README.md, under the
 // repository root. Go and Rust are built once into bin, and the built
 // program is run for each file.
 func Defaults(root, bin string) map[string]*Impl {

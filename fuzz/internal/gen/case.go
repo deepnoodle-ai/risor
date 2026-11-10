@@ -65,6 +65,12 @@ type Case struct {
 	Methods   []Stub
 	Functions []Stub
 	Limits    *Limits
+	// NoCheck writes "check": false: the case is compiled with the static
+	// rules alone (03-host.md 3.10.3).
+	NoCheck bool
+	// Broken writes "precondition": false: a variable's value does not
+	// conform to its declared type, on purpose.
+	Broken bool
 }
 
 // Text gives the program text: the printed tree, or the mangled source.
@@ -232,7 +238,7 @@ func formatNumber(f float64) string {
 }
 
 // JSON writes the case as an object of a case file. It has no expect: the
-// outcome command ignores expect (ruling AJ).
+// outcome command ignores expect (suite/README.md).
 func (c *Case) JSON() []byte {
 	var o obj
 	o.field("name", jsonValue(c.Name))
@@ -264,6 +270,12 @@ func (c *Case) JSON() []byte {
 		}
 	}
 	o.field("vars", vars.done())
+	if c.NoCheck {
+		o.field("check", []byte("false"))
+	}
+	if c.Broken {
+		o.field("precondition", []byte("false"))
+	}
 	if l := c.Limits; l != nil && (l.Steps != nil || l.Allocation != nil || l.Depth != nil) {
 		var lo obj
 		if l.Steps != nil {

@@ -16,6 +16,10 @@ type Options struct {
 	// LimitShare is the share of cases, in percent, that get a small limit.
 	// A negative value means none.
 	LimitShare int
+	// NoCheckShare is the share of cases, in percent, with "check": false.
+	NoCheckShare int
+	// NoF3 leaves out the string forms of package F3.
+	NoF3 bool
 	// Exclude names library entries not to call, by name.
 	Exclude map[string]bool
 }
@@ -60,6 +64,7 @@ type Gen struct {
 	hosts   []hostFn
 	ns      string
 	tryBody int
+	sound   bool // the soundness mode: use the variables more, divide by them
 	funcs   []*LibEntry
 	meths   []*LibEntry
 }
@@ -104,6 +109,7 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 		c.Source = g.mangle(ast.Print(c.Prog))
 		c.Prog = nil
 	}
+	c.NoCheck = r.IntN(100) < opts.NoCheckShare
 	share := opts.LimitShare
 	if share == 0 {
 		share = 25
@@ -120,7 +126,7 @@ func (g *Gen) limits() *Limits {
 	l := &Limits{}
 	v := func(n int) *int { x := n; return &x }
 	// At most one of the step limit and the unit limit is small, so that a
-	// finding points at one count (ruling AK).
+	// finding points at one count.
 	switch g.r.IntN(4) {
 	case 0:
 		l.Steps = v(g.r.IntN(60))
@@ -171,13 +177,14 @@ func (g *Gen) env(c *Case) {
 		default:
 			val = g.hostValue(2)
 		}
-		v := Var{Name: name, Value: val, Type: typeText(val, r.IntN(5) == 0)}
+		decl, exact := g.declType(c, val)
+		v := Var{Name: name, Value: val, Type: decl}
 		if g.loose && r.IntN(15) == 0 {
 			v.Missing = true
 		}
 		c.Vars = append(c.Vars, v)
 		t := tyOfValue(val)
-		if v.Missing {
+		if v.Missing || !exact {
 			t = tyAny
 		}
 		g.bindName(name, t)
@@ -332,6 +339,12 @@ func (g *Gen) randTy(depth int) *Ty {
 // program makes the tree of a program.
 func (g *Gen) program() *ast.Program {
 	p := &ast.Program{}
+	if g.sound {
+		// Smaller programs, so that a site and its failure stand out.
+		p.Consts = g.consts(g.r.IntN(3), 2)
+		p.Result = g.expr(g.randTy(2), 3)
+		return p
+	}
 	p.Consts = g.consts(g.r.IntN(5), 3)
 	p.Result = g.expr(g.randTy(2), 4)
 	p.Semi = g.r.IntN(5) == 0
@@ -431,6 +444,7 @@ func (g *Gen) mapPatConst(d int) *ast.Const {
 		} else {
 			fl.Key = f.Name
 			fl.KeyStr = !isWord(f.Name) || r.IntN(4) == 0
+			fl.Raw = fl.KeyStr && !g.opts.NoF3 && r.IntN(4) == 0
 		}
 		if fl.Key == "" && fl.Name != f.Name {
 			fl.Key = f.Name
@@ -441,7 +455,7 @@ func (g *Gen) mapPatConst(d int) *ast.Const {
 		pat.Fields = append(pat.Fields, fl)
 		binds = append(binds, bind{name: fl.Name, t: f.T})
 	}
-	if r.IntN(3) == 0 {
+	if g.loose && r.IntN(3) == 0 {
 		// A key that is absent, with a default; or, when loose, none.
 		fl := ast.Field{Key: "zz", Name: g.fresh("k")}
 		if !g.loose || r.IntN(2) == 0 {
@@ -559,6 +573,12 @@ func (g *Gen) forms(t *Ty) []wform {
 	if len(g.hosts) > 0 {
 		fs = append(fs, wform{2, g.hostCall})
 	}
+	if g.sound {
+		// Sites inside a try body are dropped (18.3): fewer of them, and
+		// more reads of the variables.
+		fs[6].w = 0
+		fs[1].w = 6
+	}
 	if len(g.methods) > 0 {
 		fs = append(fs, wform{2, g.opqCall})
 	}
@@ -604,13 +624,31 @@ func (g *Gen) str(s string) ast.Expr {
 	if g.r.IntN(5) == 0 {
 		esc = 1 + g.r.IntN(2)
 	}
-	return &ast.Str{Val: s, Quote: q, Esc: esc}
+	e := &ast.Str{Val: s, Quote: q, Esc: esc}
+	if !g.opts.NoF3 {
+		// Package F3: a raw string, a text block, a raw text block. The
+		// printer falls back to a one-line string when the form cannot hold
+		// the value.
+		switch x := g.r.IntN(100); {
+		case x < 12:
+			e.Raw, e.Quote = true, pick(g.r, []byte{'"', '\''})
+		case x < 20:
+			e.Block, e.Indent = 1, g.indent()
+		case x < 24:
+			e.Block, e.Indent = 2, g.indent()
+		}
+	}
+	return e
+}
+
+func (g *Gen) indent() string {
+	return pick(g.r, []string{"", "  ", "    ", "\t", " \t"})
 }
 
 // leaf makes a literal or a variable of type t.
 func (g *Gen) leaf(t *Ty) ast.Expr {
 	r := g.r
-	if r.IntN(3) == 0 {
+	if r.IntN(3) == 0 || g.sound && r.IntN(3) > 0 {
 		if e := g.varRead(t, 0); e != nil {
 			return e
 		}
@@ -671,11 +709,17 @@ func (g *Gen) leaf(t *Ty) ast.Expr {
 // entry writes a map entry with the key k in one of its forms.
 func (g *Gen) entry(k string, v ast.Expr) ast.Entry {
 	r := g.r
-	switch x := r.IntN(10); {
+	x := r.IntN(10)
+	if !g.loose && x >= 8 {
+		// A computed key gives the map the type map<T>, and a read of it
+		// would be maybe-absent.
+		x = r.IntN(8)
+	}
+	switch {
 	case x < 5 && isWord(k):
 		return ast.Entry{Kind: ast.EntryWord, Key: k, X: v}
 	case x < 8:
-		return ast.Entry{Kind: ast.EntryString, Key: k, X: v}
+		return ast.Entry{Kind: ast.EntryString, Key: k, X: v, Raw: !g.opts.NoF3 && r.IntN(4) == 0}
 	default:
 		var kx ast.Expr = g.str(k)
 		if r.IntN(2) == 0 {
@@ -716,7 +760,7 @@ func (g *Gen) varRead(t *Ty, d int) ast.Expr {
 }
 
 func (g *Gen) cond(t *Ty, d int) ast.Expr {
-	return &ast.Cond{Test: g.expr(g.randTy(1), d), Then: g.expr(t, d), Else: g.expr(t, d)}
+	return &ast.Cond{Test: g.test(d), Then: g.expr(t, d), Else: g.expr(t, d)}
 }
 
 func (g *Gen) branch(t *Ty, d int, nconst int) *ast.Branch {
@@ -731,7 +775,7 @@ func (g *Gen) ifExpr(t *Ty, d int) ast.Expr {
 	n := 1 + g.r.IntN(3)
 	e := &ast.If{}
 	for range n {
-		e.Tests = append(e.Tests, g.expr(g.randTy(1), d))
+		e.Tests = append(e.Tests, g.test(d))
 		e.Then = append(e.Then, g.branch(t, d, g.r.IntN(2)*g.r.IntN(2)))
 	}
 	e.Else = g.branch(t, d, g.r.IntN(2)*g.r.IntN(2))
@@ -750,7 +794,11 @@ func (g *Gen) matchExpr(t *Ty, d int) ast.Expr {
 	r := g.r
 	m := &ast.Match{}
 	var lits []ast.Expr
-	switch r.IntN(4) {
+	x := r.IntN(5)
+	if x == 4 && !g.loose {
+		x = 0
+	}
+	switch x {
 	case 0, 1:
 		m.Subject = g.expr(tyInt, d)
 		for _, n := range r.Perm(8)[:1+r.IntN(4)] {
@@ -758,9 +806,28 @@ func (g *Gen) matchExpr(t *Ty, d int) ast.Expr {
 		}
 	case 2:
 		m.Subject = g.expr(tyStr, d)
-		for _, i := range r.Perm(len(strValues))[:1+r.IntN(4)] {
-			lits = append(lits, &ast.Str{Val: strValues[i], Quote: pick(r, []byte{'"', '\''})})
+		if !g.loose {
+			// A literal subject has a literal set as its type, and every
+			// other literal would be never-equal.
+			m.Subject = &ast.Call{Name: "string", Args: []ast.Expr{m.Subject}}
 		}
+		for _, i := range r.Perm(len(strValues))[:1+r.IntN(4)] {
+			lit := &ast.Str{Val: strValues[i], Quote: pick(r, []byte{'"', '\''})}
+			if !g.opts.NoF3 && r.IntN(4) == 0 {
+				lit.Raw = true // a raw string is a literal of a match arm
+			}
+			if g.loose && !g.opts.NoF3 && r.IntN(15) == 0 {
+				lit.Block, lit.Indent = 1, g.indent() // a text block is not
+			}
+			lits = append(lits, lit)
+		}
+	case 3:
+		if !g.loose {
+			m.Subject = g.expr(tyBool, d)
+			lits = []ast.Expr{&ast.Bool{V: true}, &ast.Bool{V: false}}[:1+r.IntN(2)]
+			break
+		}
+		fallthrough
 	default:
 		m.Subject = g.expr(g.randTy(0), d)
 		lits = []ast.Expr{&ast.Bool{V: true}, &ast.Null{}, &ast.Bool{V: false}, g.matchNum(0), &ast.Str{Val: "", Quote: '"'}}
@@ -822,7 +889,13 @@ func (g *Gen) tryExpr(t *Ty, d int) ast.Expr {
 // risky makes an expression that is likely to fail with a code catch catches.
 func (g *Gen) risky(t *Ty, d int) ast.Expr {
 	r := g.r
-	switch r.IntN(9) {
+	x := r.IntN(9)
+	if !g.loose && (x == 3 || x >= 5 && x <= 7) {
+		// Each of these is a check diagnostic, so a typed program writes a
+		// failure the checker cannot see instead.
+		x = 0
+	}
+	switch x {
 	case 0:
 		args := []ast.Expr{g.str(pick(r, strValues))}
 		if r.IntN(2) == 0 {
@@ -830,12 +903,26 @@ func (g *Gen) risky(t *Ty, d int) ast.Expr {
 		}
 		return &ast.Call{Name: "fail", Args: args}
 	case 1:
-		return &ast.Binary{Op: pick(r, []string{"/", "%"}), X: g.expr(tyNum, d), Y: g.num("0")}
+		if !t.isNum() && !g.loose {
+			return g.expr(t, d)
+		}
+		var zero ast.Expr = g.num("0")
+		if !g.loose {
+			zero = &ast.Call{Name: "len", Args: []ast.Expr{g.str("")}}
+		}
+		return &ast.Binary{Op: pick(r, []string{"/", "%"}), X: g.expr(tyNum, d), Y: zero}
 	case 2:
-		return &ast.Index{X: g.expr(listOf(g.randTy(0), -1), d), I: g.num("99")}
+		et := t
+		if g.loose || t.K == KAny {
+			et = g.randTy(0)
+		}
+		return &ast.Index{X: g.expr(listOf(et, -1), d), I: g.num("99")}
 	case 3:
 		return &ast.Member{X: g.expr(recordOf([]TField{{Name: "a", T: t}}), d), Name: "zz"}
 	case 4:
+		if !t.isNum() && !g.loose {
+			return g.expr(t, d)
+		}
 		return &ast.Binary{Op: "+", X: g.num("9007199254740991"), Y: g.expr(tyInt, d)}
 	case 5:
 		return &ast.Match{Subject: g.expr(tyInt, d), Arms: []ast.Arm{{Lits: []ast.Expr{g.num("99")}, Result: g.expr(t, d)}}}
@@ -889,7 +976,11 @@ func (g *Gen) coal(t *Ty, d int) ast.Expr {
 	case 0:
 		left = &ast.Null{}
 	case 1:
-		left = &ast.Member{X: g.expr(recordOf([]TField{{Name: "a", T: t}}), d), Name: pick(g.r, []string{"a", "zz"}), Opt: true}
+		name := "a"
+		if g.loose {
+			name = pick(g.r, []string{"a", "zz"})
+		}
+		left = &ast.Member{X: g.expr(recordOf([]TField{{Name: "a", T: t}}), d), Name: name, Opt: true}
 	case 2:
 		left = &ast.MethodCall{X: g.expr(listOf(t, -1), d), Name: pick(g.r, []string{"first", "last"})}
 	default:
@@ -899,6 +990,12 @@ func (g *Gen) coal(t *Ty, d int) ast.Expr {
 }
 
 func (g *Gen) logic(t *Ty, d int) ast.Expr {
+	if !g.loose {
+		if t.K != KBool {
+			return nil
+		}
+		return &ast.Binary{Op: pick(g.r, []string{"&&", "||"}), X: g.test(d), Y: g.test(d)}
+	}
 	return &ast.Binary{Op: pick(g.r, []string{"&&", "||"}), X: g.expr(t, d), Y: g.expr(t, d)}
 }
 
@@ -935,6 +1032,11 @@ func (g *Gen) arith(t *Ty, d int) ast.Expr {
 }
 
 func (g *Gen) nonZero(whole bool) ast.Expr {
+	if g.sound && g.r.IntN(2) == 0 {
+		if e := g.varRead(tyInt, 0); e != nil {
+			return e // may be zero: a divide site
+		}
+	}
 	if whole || g.r.IntN(2) == 0 {
 		return g.smallInt(1, 9)
 	}
@@ -950,6 +1052,9 @@ func (g *Gen) concat(t *Ty, d int) ast.Expr {
 func (g *Gen) template(t *Ty, d int) ast.Expr {
 	r := g.r
 	tp := &ast.Template{}
+	if !g.opts.NoF3 && r.IntN(6) == 0 {
+		tp.Block, tp.Indent = true, g.indent()
+	}
 	n := 1 + r.IntN(3)
 	for i := 0; i < n; i++ {
 		if r.IntN(2) == 0 {
@@ -977,6 +1082,14 @@ func (g *Gen) compare(t *Ty, d int) ast.Expr {
 
 func (g *Gen) equal(t *Ty, d int) ast.Expr {
 	ot := g.randTy(2)
+	if !g.loose {
+		ot = pick(g.r, []*Ty{tyInt, tyNum, tyStr, tyBool})
+		if ot.K == KStr {
+			// Two string literals have literal sets as types; one call of
+			// string keeps them from being never-equal.
+			return &ast.Binary{Op: pick(g.r, []string{"==", "!="}), X: &ast.Call{Name: "string", Args: []ast.Expr{g.expr(ot, d)}}, Y: g.expr(ot, d)}
+		}
+	}
 	if g.opaque != "" && g.r.IntN(4) == 0 {
 		ot = &Ty{K: KOpq, Opq: g.opaque, Len: -1}
 	}
@@ -988,16 +1101,19 @@ func (g *Gen) inExpr(t *Ty, d int) ast.Expr {
 	switch g.r.IntN(3) {
 	case 0:
 		et := g.randTy(1)
-		return &ast.Binary{Op: op, X: g.expr(et, d), Y: g.expr(listOf(et, -1), d)}
+		if !g.loose {
+			et = pick(g.r, []*Ty{tyInt, tyStr})
+		}
+		return &ast.Binary{Op: op, X: g.nonLiteral(g.expr(et, d)), Y: g.expr(listOf(et, -1), d)}
 	case 1:
-		return &ast.Binary{Op: op, X: g.expr(tyStr, d), Y: g.expr(tyStr, d)}
+		return &ast.Binary{Op: op, X: g.expr(tyStr, d), Y: g.nonLiteral(g.expr(tyStr, d))}
 	default:
 		return &ast.Binary{Op: op, X: g.str(pick(g.r, fieldNames)), Y: g.expr(mapAny(), d)}
 	}
 }
 
 func (g *Gen) not(t *Ty, d int) ast.Expr {
-	return &ast.Unary{Op: "!", X: g.expr(g.randTy(1), d)}
+	return &ast.Unary{Op: "!", X: g.test(d)}
 }
 
 func (g *Gen) listLit(t *Ty, d int) ast.Expr {
@@ -1067,8 +1183,8 @@ func (g *Gen) member(t *Ty, d int) ast.Expr {
 
 // read writes a read of the key k of x, as .k, ?.k, [k] or ?.[k].
 func (g *Gen) read(x ast.Expr, k string) ast.Expr {
-	opt := g.r.IntN(4) == 0
-	if isWord(k) && g.r.IntN(3) > 0 {
+	opt := g.loose && g.r.IntN(4) == 0
+	if isWord(k) && (!g.loose || g.r.IntN(3) > 0) {
 		return &ast.Member{X: x, Name: k, Opt: opt}
 	}
 	return &ast.Index{X: x, I: g.str(k), Opt: opt}
@@ -1082,8 +1198,11 @@ func (g *Gen) index(t *Ty, d int) ast.Expr {
 		return &ast.Index{X: g.str(s), I: g.smallInt(0, n-1)}
 	}
 	for _, b := range g.visible() {
+		if g.sound && b.lam == nil && b.t.K == KList && b.t.Len < 0 && b.t.Elem != nil && fits(b.t.Elem, t) && r.IntN(2) == 0 {
+			return &ast.Index{X: &ast.Ident{Name: b.name}, I: g.smallInt(0, 2)} // an index site
+		}
 		if b.lam == nil && b.t.K == KList && b.t.Len > 0 && b.t.Elem != nil && fits(b.t.Elem, t) {
-			return &ast.Index{X: &ast.Ident{Name: b.name}, I: g.smallInt(0, b.t.Len-1), Opt: r.IntN(4) == 0}
+			return &ast.Index{X: &ast.Ident{Name: b.name}, I: g.smallInt(0, b.t.Len-1), Opt: g.loose && r.IntN(4) == 0}
 		}
 	}
 	n := 1 + r.IntN(3)
@@ -1095,7 +1214,7 @@ func (g *Gen) index(t *Ty, d int) ast.Expr {
 	if g.loose && r.IntN(3) == 0 {
 		i = g.expr(g.randTy(0), d)
 	}
-	return &ast.Index{X: l, I: i, Opt: r.IntN(5) == 0}
+	return &ast.Index{X: l, I: i, Opt: g.loose && r.IntN(5) == 0}
 }
 
 func (g *Gen) hostCall(t *Ty, d int) ast.Expr {
@@ -1123,8 +1242,8 @@ func (g *Gen) hostCall(t *Ty, d int) ast.Expr {
 		if len(h.params) > 0 {
 			pt = h.params[min(i, len(h.params)-1)]
 		}
-		if i == 0 && h.name == "lookup" && r.IntN(2) == 0 {
-			c.Args = append(c.Args, g.str(pick(r, []string{"a", "b", "c"})))
+		if i == 0 && (h.name == "lookup" || h.name == "fetch") && r.IntN(2) == 0 {
+			c.Args = append(c.Args, g.str(pick(r, []string{"a", "b", "c", ""})))
 			continue
 		}
 		c.Args = append(c.Args, g.expr(pt, d))
@@ -1152,7 +1271,7 @@ func (g *Gen) opqCall(t *Ty, d int) ast.Expr {
 	if recv == nil {
 		return nil
 	}
-	c := &ast.MethodCall{X: recv, Name: m.name, Opt: r.IntN(5) == 0}
+	c := &ast.MethodCall{X: recv, Name: m.name, Opt: g.loose && r.IntN(5) == 0}
 	for _, p := range m.params {
 		if p.K == KInt && r.IntN(2) == 0 {
 			c.Args = append(c.Args, g.num("1"))
@@ -1166,6 +1285,10 @@ func (g *Gen) opqCall(t *Ty, d int) ast.Expr {
 // looseOddity makes a node that breaks a static rule or a kind rule.
 func (g *Gen) looseOddity(t *Ty, d int) ast.Expr {
 	r := g.r
+	if !g.opts.NoF3 && r.IntN(10) == 0 {
+		// A text block where only a String may stand: a map key.
+		return &ast.Raw{Text: "{" + ast.StrText(&ast.Str{Val: "k", Block: 1, Indent: g.indent()}) + ": 1}"}
+	}
 	switch r.IntN(7) {
 	case 0:
 		return &ast.Call{Name: pick(r, []string{"nope", "print", "Len"}), Args: []ast.Expr{g.expr(t, d)}}
@@ -1194,3 +1317,42 @@ func (g *Gen) looseOddity(t *Ty, d int) ast.Expr {
 
 // pickEntry picks a library entry.
 func (g *Gen) pickEntry(xs []*LibEntry) *LibEntry { return xs[g.r.IntN(len(xs))] }
+
+// test makes the test of a condition. A typed program writes a test whose
+// type can go both ways, so that the checker reports no always-truthy or
+// always-falsy: a comparison, a bool, or a value that may be empty.
+func (g *Gen) test(d int) ast.Expr {
+	r := g.r
+	if g.loose {
+		return g.expr(g.randTy(1), d)
+	}
+	switch r.IntN(6) {
+	case 0, 1:
+		return g.compare(tyBool, d)
+	case 2:
+		return g.equal(tyBool, d)
+	case 3:
+		if e := g.varRead(tyBool, 0); e != nil {
+			return e
+		}
+		return g.compare(tyBool, d)
+	case 4:
+		return &ast.Binary{Op: pick(r, []string{">", "=="}), X: &ast.Call{Name: "len", Args: []ast.Expr{g.expr(pick(r, []*Ty{tyStr, listOf(tyInt, -1)}), d)}}, Y: g.smallInt(0, 3)}
+	default:
+		return g.inExpr(tyBool, d)
+	}
+}
+
+// nonLiteral wraps a string literal in a call of string, in a typed program,
+// so that its type is string and not a literal set that could be
+// never-equal to another.
+func (g *Gen) nonLiteral(e ast.Expr) ast.Expr {
+	if g.loose {
+		return e
+	}
+	switch e.(type) {
+	case *ast.Str, *ast.Template:
+		return &ast.Call{Name: "string", Args: []ast.Expr{e}}
+	}
+	return e
+}

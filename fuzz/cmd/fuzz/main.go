@@ -1,6 +1,6 @@
 // Command fuzz is the differential fuzzer of Risor v3. It generates case
 // files, runs each in every implementation through its outcome command
-// (ruling AJ), and reports every difference. See ../../README.md.
+// (suite/README.md), and reports every difference. See ../../README.md.
 package main
 
 import (
@@ -39,6 +39,8 @@ type config struct {
 	libNames   map[string]bool
 	tmp        string
 	verbose    bool
+	useKnown   bool
+	lacks      bool // the probe found an entry that an implementation lacks
 	onlyRound  int
 	onlyIndex  int
 }
@@ -57,6 +59,7 @@ func run() int {
 		loose      = flag.Int("loose", 3, "weight of the loose mode")
 		mangled    = flag.Int("mangled", 2, "weight of the mangled mode")
 		limitShare = flag.Int("limits", 25, "percent of cases with a small limit; -1 for none")
+		noCheck    = flag.Int("nocheck", 20, "percent of cases with \"check\": false")
 		timeout    = flag.Duration("timeout", 60*time.Second, "timeout of one command on one file")
 		out        = flag.String("out", "findings", "directory for findings")
 		root       = flag.String("root", "", "repository root (found from the working directory)")
@@ -66,6 +69,9 @@ func run() int {
 		noProbe    = flag.Bool("noprobe", false, "do not probe which library entries each implementation has")
 		maxPerKind = flag.Int("max", 3, "findings written for each distinct difference")
 		exclude    = flag.String("exclude", "", "library entries not to call, by name, comma separated")
+		useKnown   = flag.Bool("known", true, "count the known differences of the checkers apart (see known.go)")
+		noF3       = flag.Bool("nof3", false, "leave out the string forms of package F3")
+		soundMode  = flag.Bool("sound", false, "the soundness mode: test the promise of 05-types.md 18.4 (-cases is programs a round)")
 		only       = flag.String("case", "", "R:I: make and run only case I of round R (with -seed and the mode weights)")
 		verbose    = flag.Bool("v", false, "print each round, and the outcomes by code")
 		noBuild    = flag.Bool("nobuild", false, "do not build; run the programs built before")
@@ -93,8 +99,8 @@ func run() int {
 	cfg := &config{
 		seed: *seed, cases: *cases, rounds: *rounds, timeout: *timeout,
 		out: *out, shrink: !*noShrink, maxPerKind: *maxPerKind, lib: lib,
-		verbose: *verbose, libNames: map[string]bool{},
-		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, Exclude: map[string]bool{}},
+		verbose: *verbose, libNames: map[string]bool{}, useKnown: *useKnown,
+		opts: gen.Options{Typed: *typed, Loose: *loose, Mangled: *mangled, LimitShare: *limitShare, NoCheckShare: *noCheck, NoF3: *noF3, Exclude: map[string]bool{}},
 	}
 	for _, e := range lib.Entries {
 		cfg.libNames[e.Name] = true
@@ -168,6 +174,9 @@ func run() int {
 	}
 	if !*noProbe {
 		probe(cfg, libPath)
+	}
+	if *soundMode {
+		return soundness(cfg)
 	}
 	return fuzz(cfg)
 }
@@ -309,8 +318,49 @@ func failKind(f string) string {
 	return "status"
 }
 
-// kindKey names a difference for grouping: what each implementation gave.
+// kindKey names a difference for grouping. When every implementation
+// failed the check, the key names, for each implementation, the codes of
+// the diagnostics that no other implementation gave: that is closer to a
+// cause than the counts. Otherwise it names what each implementation gave.
 func kindKey(cfg *config, rs []res, sig string) string {
+	allCheck := true
+	for _, r := range rs {
+		if r.line == nil || r.line.Phase != "check" {
+			allCheck = false
+		}
+	}
+	if allCheck {
+		var parts []string
+		for i, r := range rs {
+			var codes []string
+			seen := map[string]bool{}
+			for _, d := range r.line.Diags {
+				alone := true
+				for j, o := range rs {
+					if j == i {
+						continue
+					}
+					for _, e := range o.line.Diags {
+						if outcome.Equal(d["code"], e["code"]) && outcome.Equal(d["span"], e["span"]) {
+							alone = false
+						}
+					}
+				}
+				c, _ := d["code"].(string)
+				if alone && !seen[c] {
+					seen[c] = true
+					codes = append(codes, c)
+				}
+			}
+			if len(codes) > 0 {
+				sort.Strings(codes)
+				parts = append(parts, cfg.impls[i].Name+" alone: "+strings.Join(codes, ","))
+			}
+		}
+		if len(parts) > 0 {
+			return "check | " + strings.Join(parts, "; ")
+		}
+	}
 	var parts []string
 	for i, r := range rs {
 		k := "fail:" + failKind(r.fail)
@@ -353,6 +403,7 @@ func fuzz(cfg *config) int {
 	var order []string
 	missingCount := map[string]int{}
 	codes := map[string]int{}
+	knownCount := map[string]int{}
 	findings := 0
 	total := 0
 	if err := os.MkdirAll(cfg.out, 0o755); err != nil {
@@ -379,16 +430,22 @@ func fuzz(cfg *config) int {
 				}
 				st.add(c.Mode, cfg.impls[k].Name, kind)
 				if k == 0 && rs[k].line != nil {
-					codes[rs[k].line.Kind()]++
+					codes[string(c.Mode)+" "+rs[k].line.Kind()]++
 				}
 			}
 			sig := signature(cfg, rs)
 			if sig == "" {
 				continue
 			}
-			if n := missing(cfg, c, rs); n != "" {
+			if n := missing(cfg, c, rs); cfg.lacks && n != "" {
 				missingCount[n]++
 				continue
+			}
+			if cfg.useKnown {
+				if k := known(c, rs); k != "" {
+					knownCount[k]++
+					continue
+				}
 			}
 			key := kindKey(cfg, rs, sig)
 			groups[key]++
@@ -452,6 +509,17 @@ func fuzz(cfg *config) int {
 		fmt.Println("differences from a library entry one implementation lacks (not findings):")
 		for _, n := range names {
 			fmt.Printf("  %-12s %d\n", n, missingCount[n])
+		}
+	}
+	if len(knownCount) > 0 {
+		var ks []string
+		for k := range knownCount {
+			ks = append(ks, k)
+		}
+		sort.Strings(ks)
+		fmt.Println("known differences of the checkers (not findings):")
+		for _, k := range ks {
+			fmt.Printf("  %6d  %s\n", knownCount[k], k)
 		}
 	}
 	if len(order) > 0 {
@@ -647,6 +715,9 @@ func probe(cfg *config, libPath string) {
 				if ran[j] && per[j][k] != name {
 					agree = false
 				}
+			}
+			if !agree {
+				cfg.lacks = true
 			}
 			if !agree && !cfg.opts.Exclude[name] {
 				cfg.opts.Exclude[name] = true

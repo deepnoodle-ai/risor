@@ -15,10 +15,18 @@ type Num struct{ Text string }
 // Str is a one-line string, or a template with no interpolation when Quote
 // is a backtick. Esc chooses how code points outside ASCII are written: 0 as
 // they are, 1 as \u{X}, 2 as \uXXXX (with surrogate pairs).
+//
+// Package F3 adds two forms: Raw writes r"..." or r'...' (with Quote), and
+// Block writes a text block (1) or a raw text block (2) whose closing line
+// is Indent. A form that cannot hold the value is written as a one-line
+// string instead.
 type Str struct {
-	Val   string
-	Quote byte
-	Esc   int
+	Val    string
+	Quote  byte
+	Esc    int
+	Raw    bool
+	Block  int
+	Indent string
 }
 
 // Part is one part of a template: text when X is nil, else an interpolation.
@@ -28,7 +36,13 @@ type Part struct {
 }
 
 // Template is a template with at least one interpolation.
-type Template struct{ Parts []Part }
+// Block writes it as a text block of package F3, with the closing line
+// Indent.
+type Template struct {
+	Parts  []Part
+	Block  bool
+	Indent string
+}
 
 // Bool is true or false.
 type Bool struct{ V bool }
@@ -64,6 +78,7 @@ const (
 type Entry struct {
 	Kind EntryKind
 	Key  string // the word, the string's value, or the shorthand name
+	Raw  bool   // a string key written as a raw string, when it can be
 	KeyX Expr   // the computed key
 	X    Expr   // the value, or the spread operand
 }
@@ -208,6 +223,7 @@ type NamePat struct{ Name string }
 type Field struct {
 	Key     string
 	KeyStr  bool
+	Raw     bool // a string key written as a raw string, when it can be
 	Name    string
 	Default Expr
 }

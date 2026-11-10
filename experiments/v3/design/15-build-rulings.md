@@ -287,3 +287,40 @@ A.8.
 Each implementation has an `outcome` command that the fuzzers and the package
 lanes use to compare the three. `suite/README.md` is the home of its line
 format.
+
+## 13. Round 13: the fuzzers, with three checkers
+
+The differential fuzzer ran 65,000 cases, and then 40,000 more with the
+string forms of F3. Wherever all three checkers accepted a program, the
+values, counts, run diagnostics, types and sites agreed. A new soundness
+fuzzer (`fuzz/`, `-sound`) made 24,000 programs against random declared types,
+ran each checked program on five sets of conforming values, and judged the
+promise of `05-types.md` 18.4 from the outcome alone.
+
+### 13.1 Where the promise broke in all three
+
+These were faults of the chapter: 1,441 hand-written cases and three
+implementations shared them.
+
+| # | Ruling |
+| --- | --- |
+| R121 | **A plain index read on an `any` receiver records an `index` site** as well as the `dynamic` site. Before, `x[2]` on an `any` value could fail `index-range` at no `index` site, so a host that rejected `index` sites could still meet that failure. |
+| R122 | **A method call on an `any` receiver records a `value` site** when some library method of that name is marked `!`, and a `host` site when a declared opaque type's method of that name is. |
+| R123 | A failure of a library entry's test of what a callback gave is at a site when the site is on the lambda's body. Before, `[0].flatMap(() => x)` with `x` an `any` failed with the class `environment`, which blames the host. The same for a computed key and the site on its key. |
+| R124 | **The mark `!` is a promise, like a declared type.** A host function not marked `!` returns no error. If it does, the failure's class in a checked program is `environment`. Before, it was `host` at a call with no `host` site. |
+
+### 13.2 Where the three checkers differed
+
+| # | Ruling |
+| --- | --- |
+| R125 | `never-equal` in a `match` has the conditions of `==`: none when the subject is exactly `null`. A literal listed twice is `duplicate-case` only. |
+| R126 | A const-bound lambda whose name is only read as a value has no use: its body is checked once with `any` parameters. A named lambda passed to a method on an `any` receiver is a use, and is checked there. |
+| R127 | A pattern's defaults are always checked, whatever the value bound. |
+| R128 | `cannot-infer` is about the parameters a lambda declares, not every parameter the callback could take. |
+| R129 | Whether a `(` opens a parameter list is decided before what is inside it is parsed. |
+
+### 13.3 A gap in Core
+
+| # | Ruling |
+| --- | --- |
+| R130 | **Removed library entries had no test.** Core let an environment remove an entry, and the case format could not say so. An entry is named `len`, `string.repeat`, `list.map` or `map.keys`. A removed entry is absent in every compile, checked or not; removing a name that is no entry is `bad-name`; a child cannot bring an entry back. The case format gains the field `removed`. |

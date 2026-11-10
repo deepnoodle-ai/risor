@@ -314,3 +314,28 @@ func (p *miniParser) chain() (Expr, error) {
 	}
 	return x, nil
 }
+
+func TestPrintSpans(t *testing.T) {
+	p := &Program{
+		Consts: []*Const{{Pat: &MapPat{Fields: []Field{{Key: "a", Name: "x"}}}, Value: id("m")}},
+		Result: bin("+", &Member{X: id("x"), Name: "f"}, &Index{X: id("xs"), I: n("0")}),
+	}
+	src, nodes := PrintSpans(p)
+	if src != "const {a: x} = m; x.f + xs[0]" || src != Print(p) {
+		t.Fatalf("got %q", src)
+	}
+	want := map[string]string{
+		"Binary": "[1 19 1 30] [[1 19 1 22] [1 25 1 30]]",
+		"Index":  "[1 25 1 30] [[1 25 1 27] [1 28 1 29]]",
+		"Field":  "[1 8 1 12] [[1 8 1 9] [1 16 1 17]]",
+		"MapPat": "[1 7 1 13] [[1 16 1 17]]",
+		"Member": "[1 19 1 22] [[1 19 1 20]]",
+	}
+	for _, ns := range nodes {
+		if w, ok := want[ns.Kind]; ok {
+			if got := fmt.Sprint(ns.Span, " ", ns.Children); got != w {
+				t.Errorf("%s: got %s, want %s", ns.Kind, got, w)
+			}
+		}
+	}
+}

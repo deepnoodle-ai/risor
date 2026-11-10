@@ -3,6 +3,8 @@ package gen
 import (
 	"sort"
 	"strings"
+
+	"github.com/deepnoodle-ai/risor/fuzz/internal/types"
 )
 
 // Kind is the rough kind the generator tracks for an expression.
@@ -310,4 +312,117 @@ func sortedKeys(m map[string]any) []string {
 	}
 	sort.Strings(ks)
 	return ks
+}
+
+// declType chooses the declared type of a variable for its value: most
+// often the value's own type, sometimes any, sometimes a wider type, and
+// sometimes a type the value does not conform to (then the case says
+// "precondition": false).
+//
+// It reports whether a program may use the variable as its value's own type:
+// true for the value's type and for any, false for the others.
+func (g *Gen) declType(c *Case, v any) (string, bool) {
+	t := types.OfValue(v)
+	if typeDepth(v) > 40 {
+		return "any", true
+	}
+	switch x := g.r.IntN(100); {
+	case x < 55:
+		return t.String(), true
+	case x < 72:
+		return "any", true
+	case x < 90:
+		return g.widen(t).String(), false
+	default:
+		c.Broken = true
+		return g.wrong(t).String(), false
+	}
+}
+
+func typeDepth(v any) int {
+	switch v := v.(type) {
+	case []any:
+		d := 0
+		for _, x := range v {
+			d = max(d, typeDepth(x))
+		}
+		return d + 1
+	case map[string]any:
+		d := 0
+		for _, x := range v {
+			d = max(d, typeDepth(x))
+		}
+		return d + 1
+	}
+	return 0
+}
+
+// widen gives a type that every value of t conforms to.
+func (g *Gen) widen(t *types.Type) *types.Type {
+	if t.Any {
+		return t
+	}
+	w := t.Copy()
+	switch g.r.IntN(6) {
+	case 0:
+		w.Null = true
+	case 1:
+		if w.Num == 1 {
+			w.Num = 2
+		} else {
+			w.Null = true
+		}
+	case 2:
+		if w.List != nil {
+			if g.r.IntN(2) == 0 {
+				w.List = types.Any
+			} else {
+				w.List = g.widen(w.List)
+			}
+		} else {
+			w.Str, w.Null = true, true
+		}
+	case 3:
+		if w.Rec != nil {
+			r := *w.Rec
+			r.Fields = append([]types.Field(nil), r.Fields...)
+			if len(r.Fields) > 0 && g.r.IntN(2) == 0 {
+				i := g.r.IntN(len(r.Fields))
+				r.Fields[i].Opt = true
+			} else {
+				r.Rest = types.Any
+			}
+			w.Rec = &r
+		} else {
+			w.Bool = true
+		}
+	case 4:
+		if w.Rec != nil {
+			r := *w.Rec
+			r.Fields = append([]types.Field(nil), r.Fields...)
+			r.Fields = append(r.Fields, types.Field{Key: "zz", Opt: true, T: types.Prim("int")})
+			w.Rec = &r
+		} else {
+			w.Null = true
+		}
+	default:
+		return types.Any
+	}
+	return w
+}
+
+// wrong gives a type that the value of type t does not conform to.
+func (g *Gen) wrong(t *types.Type) *types.Type {
+	switch {
+	case t.Rec != nil && g.r.IntN(2) == 0:
+		r := *t.Rec
+		r.Fields = append(append([]types.Field(nil), r.Fields...), types.Field{Key: "zz", T: types.Prim("int")})
+		w := t.Copy()
+		w.Rec = &r
+		return w
+	case t.Num != 0 || t.Null:
+		return types.Prim("string")
+	default:
+		return types.Prim("int")
+	}
 }

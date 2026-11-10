@@ -1,5 +1,5 @@
 // Package outcome reads the lines of an implementation's outcome command
-// (ruling AJ of round 10) and compares them.
+// (suite/README.md) and compares them.
 package outcome
 
 import (
@@ -13,13 +13,21 @@ import (
 // Line is one line of an outcome command.
 type Line struct {
 	Name     string
+	Type     string // the type the check gave; "" when absent
+	HasType  bool
+	Sites    []any // the sites the check gave, each {"class", "span"}
+	HasSites bool
 	Phase    string // "" when the run gave a value
 	Value    any
 	HasValue bool
 	Diags    []map[string]any
-	Steps    any // nil when absent
-	Units    any
-	Raw      string
+	// Description (package F1) and Analysis (package F2), when the
+	// implementation writes them; Has* is false when it does not.
+	Description, Analysis       any
+	HasDescription, HasAnalysis bool
+	Steps                       any // nil when absent
+	Units                       any
+	Raw                         string
 }
 
 // Parse reads one line.
@@ -46,6 +54,18 @@ func Parse(raw string) (*Line, error) {
 	if _, ok := m["name"]; !ok {
 		return nil, fmt.Errorf("no name")
 	}
+	if v, ok := m["type"]; ok {
+		l.HasType = true
+		if err := json.Unmarshal(v, &l.Type); err != nil {
+			return nil, fmt.Errorf("type: %w", err)
+		}
+	}
+	if v, ok := m["sites"]; ok {
+		l.HasSites = true
+		if err := json.Unmarshal(v, &l.Sites); err != nil {
+			return nil, fmt.Errorf("sites: %w", err)
+		}
+	}
 	var phase *string
 	if err := get("phase", &phase); err != nil {
 		return nil, fmt.Errorf("phase: %w", err)
@@ -64,6 +84,18 @@ func Parse(raw string) (*Line, error) {
 	}
 	if err := get("diagnostics", &l.Diags); err != nil {
 		return nil, fmt.Errorf("diagnostics: %w", err)
+	}
+	if v, ok := m["description"]; ok {
+		l.HasDescription = true
+		if err := json.Unmarshal(v, &l.Description); err != nil {
+			return nil, fmt.Errorf("description: %w", err)
+		}
+	}
+	if v, ok := m["analysis"]; ok {
+		l.HasAnalysis = true
+		if err := json.Unmarshal(v, &l.Analysis); err != nil {
+			return nil, fmt.Errorf("analysis: %w", err)
+		}
 	}
 	if err := get("steps", &l.Steps); err != nil {
 		return nil, err
@@ -122,14 +154,25 @@ func (l *Line) Kind() string {
 	return l.Phase + ":" + l.Code()
 }
 
-// Diff compares two lines as ruling AJ item 6 says: equal apart from the
+// Diff compares two lines as suite/README.md says: equal apart from the
 // spelling of a number. For a run failure of class limit the span and the
-// usage are not fixed (03-host.md 3.6.1 item 4, 3.6.3 item 3; ruling AK3),
+// usage are not fixed (03-host.md 3.6.1 item 4, 3.6.3 item 3; suite/README.md),
 // so only the code, class and message are compared. It gives "" when the
 // lines agree, else the name of the first field that differs.
 func Diff(a, b *Line) string {
 	if a.Name != b.Name {
 		return "name"
+	}
+	// description and analysis belong to packages an implementation may not
+	// offer: each is compared only when both lines have it.
+	if a.HasDescription && b.HasDescription && !Equal(a.Description, b.Description) {
+		return "description"
+	}
+	if a.HasType != b.HasType || a.Type != b.Type {
+		return "type"
+	}
+	if a.HasSites != b.HasSites || !Equal(a.Sites, b.Sites) {
+		return "sites"
 	}
 	if a.Phase != b.Phase {
 		return "phase"
@@ -167,6 +210,9 @@ func Diff(a, b *Line) string {
 		if !Equal(a.Units, b.Units) {
 			return "units"
 		}
+	}
+	if a.HasAnalysis && b.HasAnalysis && !Equal(a.Analysis, b.Analysis) {
+		return "analysis"
 	}
 	return ""
 }

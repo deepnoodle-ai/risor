@@ -18,6 +18,20 @@ var oddTokens = []string{
 	"\u00a0", "\ufeff", "é", "𝄞", "\u0000", "\u007f", "\u0085", "\u2028", "\r",
 }
 
+// f3Broken are broken forms of package F3's literals: text on the opening
+// line, text on the closing line, bad indentation, a missing close, a raw
+// string cut short or holding a line end, the block token in raw form, a line
+// continuation in a block, and text blocks where a String must stand.
+var f3Broken = []string{
+	`"""abc"""`, "\"\"\"\n  a\"\"\"", "\"\"\"\n  a\n b\n  \"\"\"",
+	"\"\"\"\n\ta\n  \"\"\"", "\"\"\"\n  a", "r\"\"\"\n  a", `r"abc`,
+	"r\"a\nb\"", "r'''x'''", "\"\"\"\n  a\\\n  b\n  \"\"\"",
+	"\"\"\"\n  a ${1} \"\"\"", "\"\"\"\n  ${\"\"\"\n    b\n    \"\"\"}\n  \"\"\"",
+	"{\"\"\"\n  k\n  \"\"\": 1}", "match 1 { \"\"\"\n  a\n  \"\"\" => 0, _ => 1 }",
+	`r"\"`, `r"a"b"`, `R"a"`, "r `a`", `""""`, `r""""`, "\"\"\" \n  a\n  \"\"\"",
+	"\"\"\"\r\n  a\r\n  \"\"\"", "\"\"\"\r  a\r  \"\"\"", "\"\"\"\n\u00a0 a\n  \"\"\"",
+}
+
 // oddChars are code points a mangled program may gain in place of another.
 var oddChars = []string{
 	"\ufeff", "\u00a0", "\u0000", "\u0001", "\u007f", "\u0085", "\u2028",
@@ -87,7 +101,19 @@ func (g *Gen) mangleOnce(src string) string {
 		return pick(r, oddTokens)
 	}
 	i := r.IntN(len(ts))
-	switch r.IntN(12) {
+	switch r.IntN(15) {
+	case 12: // a broken form of F3 in place of a token
+		ts[i] = " " + pick(r, f3Broken) + " "
+	case 13: // every line end written CR LF, or CR alone
+		return strings.ReplaceAll(src, "\n", pick(r, []string{"\r\n", "\r"}))
+	case 14: // a text block or raw string cut short at its end
+		if j := strings.LastIndex(src, `"""`); j >= 0 {
+			return src[:j]
+		}
+		if j := strings.LastIndex(src, `r"`); j >= 0 {
+			return src[:j+2] + "abc"
+		}
+		ts[i] = pick(r, f3Broken)
 	case 0: // delete a token
 		ts = append(ts[:i:i], ts[i+1:]...)
 	case 1: // double a token

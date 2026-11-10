@@ -151,7 +151,7 @@ func (g *Gen) libCallFor(e *LibEntry, want *Ty, d int) ast.Expr {
 	if recv == nil {
 		call = &ast.Call{Name: e.Name, Args: args}
 	} else {
-		call = &ast.MethodCall{X: recv, Name: e.Name, Args: args, Opt: r.IntN(10) == 0}
+		call = &ast.MethodCall{X: recv, Name: e.Name, Args: args, Opt: g.loose && r.IntN(10) == 0}
 	}
 	if nullable && !g.loose && want.K != KAny && want.K != KNull {
 		call = &ast.Binary{Op: "??", X: call, Y: g.leaf(want)}
@@ -212,7 +212,7 @@ func (g *Gen) callback(fn *LibFunc, b map[string]*Ty, d int) ast.Expr {
 	r := g.r
 	resTy := func() *Ty {
 		if fn.Result == "unknown" {
-			if r.IntN(3) > 0 {
+			if r.IntN(3) > 0 || !g.loose {
 				return tyBool
 			}
 			return g.randTy(1)
