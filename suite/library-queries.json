@@ -78,7 +78,7 @@
       {"name": "minBy a field", "source": "xs.minBy(p => p.a)", "env": "{xs: {a: int, n: string}[]}", "vars": {"xs": [{"n": "b", "a": 2}, {"n": "a", "a": 1}, {"n": "c", "a": 1}]}, "expect": {"value": {"a": 1, "n": "a"}, "steps": 11, "allocated": 0}},
       {"name": "minBy of an empty list", "source": "xs.minBy(x => x)", "env": "{xs: int[]}", "vars": {"xs": []}, "expect": {"value": null, "steps": 2, "allocated": 0}},
       {"name": "minBy with a null key on any data", "source": "xs.minBy(x => x)", "env": "{xs: any}", "vars": {"xs": [1, null]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 17], "class": "dynamic", "message": "minBy needs all numbers or all strings, found null"}], "steps": 6, "allocated": 0}},
-      {"name": "minBy takes the first of equal keys", "source": "[{n: \"x\", a: 1}, {n: \"y\", a: 1.0}].minBy(p => p.a).n", "expect": {"value": "x"}}
+      {"name": "minBy takes the first of equal keys", "source": "[{n: \"x\", a: 1}, {n: \"y\", a: 1.0}].minBy(p => p.a)?.n", "expect": {"value": "x"}}
     ]
   },
   {
@@ -111,7 +111,7 @@
     ],
     "cases": [
       {"name": "maxBy a field", "source": "xs.maxBy(p => p.a)", "env": "{xs: {a: int, n: string}[]}", "vars": {"xs": [{"n": "b", "a": 2}, {"n": "a", "a": 1}, {"n": "c", "a": 1}]}, "expect": {"value": {"a": 2, "n": "b"}, "steps": 11, "allocated": 0}},
-      {"name": "maxBy takes the first of equal keys", "source": "[{n: \"x\", a: 2}, {n: \"y\", a: 2}].maxBy(p => p.a).n", "expect": {"value": "x"}},
+      {"name": "maxBy takes the first of equal keys", "source": "[{n: \"x\", a: 2}, {n: \"y\", a: 2}].maxBy(p => p.a)?.n", "expect": {"value": "x"}},
       {"name": "maxBy of an empty list", "source": "xs.maxBy(x => x)", "env": "{xs: int[]}", "vars": {"xs": []}, "expect": {"value": null, "steps": 2, "allocated": 0}},
       {"name": "maxBy with mixed keys on any data", "source": "xs.maxBy(x => x)", "env": "{xs: any}", "vars": {"xs": [1, "a"]}, "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "span": [1, 1, 1, 17], "class": "dynamic", "message": "maxBy needs all numbers or all strings, found string"}], "steps": 6, "allocated": 0}}
     ]

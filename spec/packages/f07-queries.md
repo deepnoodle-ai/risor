@@ -625,7 +625,7 @@ template's parameters are `name`, the entry's name, and `found`, the argument.
 | Program | Data | Result |
 | --- | --- | --- |
 | `xs.maxBy(p => p.a)` | as for `minBy` | `{a: 2, n: "b"}`; 11 steps, 0 units |
-| `[{n: "x", a: 2}, {n: "y", a: 2}].maxBy(p => p.a).n` | | `"x"` |
+| `[{n: "x", a: 2}, {n: "y", a: 2}].maxBy(p => p.a)?.n` | | `"x"` |
 
 ### 6.6 `uniqueBy`
 
