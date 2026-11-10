@@ -484,3 +484,17 @@ costs the same as with expr; loading one took 1.9 times as long.
 | R184 | F14 as written: 176 cases in `suite/facts/`. `p is null` and a `match` arm of `null` alone also give the fact. Declaration errors are `bad-name`. An environment with no host fact is unchanged; one that gains a host fact may get the reports a narrower type gives (a constant condition, `never-equal`), as one whose declared type loses its null does. `report?.verdict ?? approve.verdict` does not narrow in 3.0: a sound rule for it exists and can be added later. |
 | R185 | The re-port on the new Go API: the engine's type model (546 lines) is deleted, and its load takes 0.99 times expr's, from 1.95. **A type constructor of the Go binding returns a type and no error:** a result past the limits is an invalid type that every declaration refuses with `bad-type`. |
 | R186 | **The first host, at the end.** With host facts declared for converging steps the engine's tests pass, 486 with one skip (a `match` on a numeric enum, R181). Its load takes 1.12 times expr's and a run 1.08 times; two thirds of the load is the engine's own code. Of 1,500 generated workflow definitions expr loads 747 and Risor 567. The gap is one rule: `len(x)` and `x.filter(...)` where `x` may be null, which expr answered with 0 and an empty list and Risor reports as `maybe-null` (about 170 definitions); the rest are constant conditions, a class a host may choose not to reject. The rule stays: null is not an empty list, and the author writes `len(x ?? [])`. Nothing in Risor gave a wrong result or crashed in any pass of the port. |
+
+## 16. Round 15: the fuzzers on the packages
+
+The fuzzers were extended to the forms of F4 to F7 once all three
+implementations offered them. Each finding was a difference between two
+implementations that no suite case pinned. None broke the checker's promise.
+R189 records the first two. All three implementations offer F8 at the end of
+this round, and Go offers every package.
+
+| # | Ruling |
+| --- | --- |
+| R190 | **The edges of the step `[*]`.** The receiver of a first star in parentheses has the span of its node, without the parentheses, for `kind`, `maybe-null` and a `dynamic` site; a later step's receiver includes them. A read after a star whose receiver carries a `dynamic` site fails with class `dynamic`. A projection of a field of type `never` is `never[]`, a list, and a method call on it is checked. 47 cases. |
+| R191 | **Which targeted parse code wins.** Where one diagnostic meets rows in more than one section of the errors chapter, the first row in order wins. Two exceptions, on which all three implementations already agreed and which give the better message: a token after a complete `if` or `try` is tried after every row of 2.7, and a token after a program type is tried before `a?[i]`. A condition on what the parser is reading means the innermost open production. 59 cases, one for each pair of rows that can both apply. |
+| R192 | **`=` after a map key is a wrong separator, not a block.** A lambda body `{ a = 1 }` reads like a statement and is `block-without-const`. `{ "a" = 1 }` and `{ [k] = 1 }` do not: they are `unexpected-token`, inside a lambda body or not. So that the message helps, `unexpected-token` gains a second template, "a map key is followed by :, found …", and no new code. |
