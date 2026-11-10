@@ -604,3 +604,85 @@ fn an_outcome_line_leaves_out_a_limits_span() {
         "{line}"
     );
 }
+
+#[test]
+fn precharge_allocation_before_building_containers_and_strings() {
+    let xs = numbers(100_000);
+    let m = Data::Map(
+        (0..20_000)
+            .map(|i| (format!("k{i}"), Data::Int(i)))
+            .collect(),
+    );
+    let s = Data::Str("a\"\\\n\x01é😀".repeat(20_000));
+    let v = vars(&[("xs", xs), ("m", m), ("s", s)]);
+
+    let env = Env::builder()
+        .vars("{xs: float[], m: map<int>, s: string}")
+        .group("json")
+        .limits(Limits {
+            steps: None,
+            allocation: Some(5),
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+
+    for src in [
+        "[...xs]",
+        "{...m}",
+        "`${s}${s}`",
+        "string([s])",
+        "json.stringify(s)",
+    ] {
+        let p = program(&env, src);
+        assert_eq!(outcome(&p, &v), Err("allocation-exceeded".into()), "{src}");
+    }
+
+    // Later evaluation failures and step limits keep precedence.
+    for (src, want) in [
+        ("[...xs, 1 / 0]", "divide-by-zero"),
+        ("{...m, [null]: 1}", "null-operand"),
+        ("`${s}${1 / 0}`", "divide-by-zero"),
+    ] {
+        let p = program(&env, src);
+        assert_eq!(outcome(&p, &v), Err(want.into()), "{src}");
+    }
+
+    let both = Env::builder()
+        .vars("{s: string}")
+        .limits(Limits {
+            steps: Some(2),
+            allocation: Some(2),
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    assert_eq!(
+        outcome(&program(&both, "`${s}`"), &v),
+        Err("steps-exceeded".into())
+    );
+
+    // Long strings past RENDER_SMALL render identically when within budget.
+    let ok_env = Env::builder()
+        .vars("{s: string}")
+        .group("json")
+        .limits(Limits {
+            steps: None,
+            allocation: None,
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    let sample = "x\"\\\t\x01é😀".repeat(300);
+    let sv = vars(&[("s", Data::Str(sample.clone()))]);
+    let p_tmpl = program(&ok_env, "`<${s}>`");
+    let got_tmpl = p_tmpl.run(&sv).result.unwrap();
+    assert_eq!(got_tmpl.as_str(), Some(format!("<{sample}>").as_str()));
+    let want_json = risor::eval::to_json(&Value::from_data(&Data::Str(sample))).unwrap();
+    let p_json = program(&ok_env, "json.stringify(s)");
+    let got_json = p_json.run(&sv).result.unwrap();
+    assert_eq!(got_json.as_str(), Some(want_json.as_str()));
+    let p_str = program(&ok_env, "string([s])");
+    let got_str = p_str.run(&sv).result.unwrap();
+    assert_eq!(got_str.as_str(), Some(format!("[{want_json}]").as_str()));
+}

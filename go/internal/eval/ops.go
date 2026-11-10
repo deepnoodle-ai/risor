@@ -878,14 +878,189 @@ func L(n int64) int64 {
 }
 
 // renderer builds the rendering of values (01-language.md 12) and charges
-// the rendering walk (02-evaluation.md 5.5).
+// the rendering walk (02-evaluation.md 5.5). When the result stays within
+// renderSmall bytes, one pass writes it into b; past renderSmall, b is
+// discarded and the walk finishes in counting mode (measuring exact weight
+// and byte length without growing a buffer) so steps and allocation units
+// are charged before the full string is allocated.
+const renderSmall = 1024
+
 type renderer struct {
-	strings.Builder
-	r    *run
-	span syntax.Span
+	b        strings.Builder
+	counting bool
+	weight   int64
+	bytes    int
+	r        *run
+	span     syntax.Span
 	// opaque is the template of wrong-kind for an opaque value: text, or
 	// json for json.stringify (package F6 6.1).
 	opaque string
+}
+
+func (b *renderer) addString(s string) {
+	if !b.counting && b.b.Len()+len(s) <= renderSmall {
+		b.b.WriteString(s)
+		return
+	}
+	if !b.counting {
+		cur := b.b.String()
+		b.weight = value.Weight(cur)
+		b.bytes = len(cur)
+		b.b = strings.Builder{}
+		b.counting = true
+	}
+	b.weight += value.Weight(s)
+	b.bytes += len(s)
+}
+
+func (b *renderer) addASCII(s string) {
+	if !b.counting && b.b.Len()+len(s) <= renderSmall {
+		b.b.WriteString(s)
+		return
+	}
+	if !b.counting {
+		cur := b.b.String()
+		b.weight = value.Weight(cur)
+		b.bytes = len(cur)
+		b.b = strings.Builder{}
+		b.counting = true
+	}
+	b.weight += int64(len(s))
+	b.bytes += len(s)
+}
+
+func (b *renderer) addByte(c byte) {
+	if !b.counting && b.b.Len()+1 <= renderSmall {
+		b.b.WriteByte(c)
+		return
+	}
+	if !b.counting {
+		cur := b.b.String()
+		b.weight = value.Weight(cur)
+		b.bytes = len(cur)
+		b.b = strings.Builder{}
+		b.counting = true
+	}
+	b.weight++
+	b.bytes++
+}
+
+func (b *renderer) addEscaped(s string) {
+	if !b.counting && b.b.Len()+len(s) <= renderSmall {
+		var tmp strings.Builder
+		value.WriteEscaped(&tmp, s)
+		if b.b.Len()+tmp.Len() <= renderSmall {
+			b.b.WriteString(tmp.String())
+			return
+		}
+		b.addString(tmp.String())
+		return
+	}
+	if !b.counting {
+		cur := b.b.String()
+		b.weight = value.Weight(cur)
+		b.bytes = len(cur)
+		b.b = strings.Builder{}
+		b.counting = true
+	}
+	ew, eb := escapedMeasure(s)
+	b.weight += ew
+	b.bytes += eb
+}
+
+func escapedMeasure(s string) (weight int64, bytes int) {
+	weight = value.Weight(s)
+	bytes = len(s)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '"', '\\', '\b', '\f', '\n', '\r', '\t':
+			weight++
+			bytes++
+		default:
+			if c < 0x20 {
+				weight += 5
+				bytes += 5
+			}
+		}
+	}
+	return weight, bytes
+}
+
+func (b *renderer) resultWeight() int64 {
+	if b.counting {
+		return b.weight
+	}
+	return value.Weight(b.b.String())
+}
+
+// buildFrom writes the full string after units have been charged when the
+// first pass switched into counting mode.
+func (b *renderer) finish(emit func(*strings.Builder)) string {
+	if !b.counting {
+		return b.b.String()
+	}
+	var out strings.Builder
+	out.Grow(b.bytes)
+	emit(&out)
+	return out.String()
+}
+
+// writeTop writes v into out with no charges (used only in pass 2 after
+// pass 1 already validated and charged the walk).
+func writeTop(r *run, out *strings.Builder, sp syntax.Span, v any) {
+	switch x := v.(type) {
+	case nil:
+	case string:
+		out.WriteString(x)
+	case float64:
+		out.WriteString(value.FormatNumber(x))
+	case bool:
+		if x {
+			out.WriteString("true")
+		} else {
+			out.WriteString("false")
+		}
+	default:
+		writeJSON(r, out, sp, v)
+	}
+}
+
+func writeJSON(r *run, out *strings.Builder, sp syntax.Span, v any) {
+	switch value.KindOf(v) {
+	case value.Null:
+		out.WriteString("null")
+	case value.String:
+		out.WriteByte('"')
+		value.WriteEscaped(out, v.(string))
+		out.WriteByte('"')
+	case value.Number, value.Bool:
+		writeTop(r, out, sp, v)
+	case value.List:
+		n := value.Len(v)
+		out.WriteByte('[')
+		for i := 0; i < n; i++ {
+			if i > 0 {
+				out.WriteByte(',')
+			}
+			writeJSON(r, out, sp, r.read(value.At(v, i), sp))
+		}
+		out.WriteByte(']')
+	case value.Map:
+		keys := value.Keys(v)
+		out.WriteByte('{')
+		for i, k := range keys {
+			if i > 0 {
+				out.WriteByte(',')
+			}
+			out.WriteByte('"')
+			value.WriteEscaped(out, k)
+			out.WriteString(`":`)
+			x, _ := value.Get(v, k)
+			writeJSON(r, out, sp, r.read(x, sp))
+		}
+		out.WriteByte('}')
+	}
 }
 
 // top renders a value as a template part or the argument of string.
@@ -893,14 +1068,14 @@ func (b *renderer) top(v any) {
 	switch x := v.(type) {
 	case nil:
 	case string:
-		b.WriteString(x)
+		b.addString(x)
 	case float64:
-		b.WriteString(value.FormatNumber(x))
+		b.addASCII(value.FormatNumber(x))
 	case bool:
 		if x {
-			b.WriteString("true")
+			b.addASCII("true")
 		} else {
-			b.WriteString("false")
+			b.addASCII("false")
 		}
 	default:
 		b.json(v)
@@ -910,11 +1085,11 @@ func (b *renderer) top(v any) {
 func (b *renderer) json(v any) {
 	switch value.KindOf(v) {
 	case value.Null:
-		b.WriteString("null")
+		b.addASCII("null")
 	case value.String:
-		b.WriteByte('"')
-		value.WriteEscaped(&b.Builder, v.(string))
-		b.WriteByte('"')
+		b.addByte('"')
+		b.addEscaped(v.(string))
+		b.addByte('"')
 	case value.Number, value.Bool:
 		b.top(v)
 	case value.List:
@@ -922,14 +1097,14 @@ func (b *renderer) json(v any) {
 		r.enterWalk()
 		n := value.Len(v)
 		r.step(int64(n))
-		b.WriteByte('[')
+		b.addByte('[')
 		for i := 0; i < n; i++ {
 			if i > 0 {
-				b.WriteByte(',')
+				b.addByte(',')
 			}
 			b.json(r.read(value.At(v, i), b.span))
 		}
-		b.WriteByte(']')
+		b.addByte(']')
 		r.walk--
 	case value.Map:
 		r := b.r
@@ -941,18 +1116,18 @@ func (b *renderer) json(v any) {
 			w += value.Weight(k)
 		}
 		r.step(n + L(n)*(n+w/64))
-		b.WriteByte('{')
+		b.addByte('{')
 		for i, k := range keys {
 			if i > 0 {
-				b.WriteByte(',')
+				b.addByte(',')
 			}
-			b.WriteByte('"')
-			value.WriteEscaped(&b.Builder, k)
-			b.WriteString(`":`)
+			b.addByte('"')
+			b.addEscaped(k)
+			b.addASCII(`":`)
 			x, _ := value.Get(v, k)
 			b.json(r.read(x, b.span))
 		}
-		b.WriteByte('}')
+		b.addByte('}')
 		r.walk--
 	default:
 		t := b.opaque

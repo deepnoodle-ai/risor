@@ -369,6 +369,24 @@ impl<'h> Value<'h> {
         }
     }
 
+    /// Visit each key of a map in any order, without sorting or cloning
+    /// values.
+    pub fn for_each_key(&self, mut f: impl FnMut(&str)) {
+        match self {
+            Value::Map(m) => {
+                for (k, _) in &m.0 {
+                    f(k.as_str());
+                }
+            }
+            Value::HMap(m) => {
+                for k in m.keys() {
+                    f(k);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// The keys of a map in key order.
     pub fn keys(&self) -> Vec<Str<'h>> {
         match self {
