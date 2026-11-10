@@ -101,8 +101,13 @@ func (l *lexer) run() *Error {
 				return nil
 			}
 			if n := len(l.interps); n > 0 {
-				start := l.interps[n-1].tmplStart
-				return l.errf(diag.CodeUnterminatedString, start, len(l.src), "the template has no closing backtick")
+				// The innermost literal still open names the message (F8
+				// 3.4): a text block, or a template.
+				top := l.interps[n-1]
+				if top.blk != nil {
+					return l.errf(diag.CodeUnterminatedString, top.tmplStart, len(l.src), "the text block has no closing delimiter")
+				}
+				return l.errf(diag.CodeUnterminatedString, top.tmplStart, len(l.src), "the template has no closing backtick")
 			}
 			l.emit(Token{Kind: EOF, Start: l.pos, End: l.pos})
 			return nil

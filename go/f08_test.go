@@ -206,3 +206,62 @@ func TestAssignmentAfterAnEntryKey(t *testing.T) {
 		}
 	}
 }
+
+func TestFuzzRoundSevenParse(t *testing.T) {
+	for _, c := range []struct{ src, code, span, msg string }{
+		// The start of a map entry is not where an operand must begin
+		// (f08-errors.md 2.2): no C8, C9 or E20 there.
+		{`{n"`, "unexpected-token", "[1, 2, 1, 3]", ""},
+		{"{<", "unexpected-token", "[1, 2, 1, 3]", ""},
+		{"try{\"\"}catch{{r`", "unexpected-token", "[1, 15, 1, 16]", ""},
+		{`n"x"`, "string-prefix", "[1, 1, 1, 2]", ""},
+		{`{a: n"x"}`, "string-prefix", "[1, 5, 1, 6]", ""},
+		{"<int>x", "angle-cast", "[1, 1, 1, 2]", ""},
+		// E7 needs a complete operand of an Expr: a match literal is not
+		// one, a pattern's default is.
+		{"match 0{1=", "unexpected-token", "[1, 10, 1, 11]", ""},
+		{"match 0{_=", "unexpected-token", "[1, 10, 1, 11]", ""},
+		{"const[_=t=", "assignment", "[1, 10, 1, 11]", ""},
+		{"const {a = t = 1} = x; a", "assignment", "[1, 14, 1, 15]", ""},
+		{"const [...r = 1] = x; r", "unexpected-token", "[1, 13, 1, 14]", ""},
+		// The end of input inside a computed key: the key is the innermost
+		// production, so E23 does not apply (2.1 item 7).
+		{"y(()=>{[", "unexpected-token", "[1, 9, 1, 9]", ""},
+		{"y(()=>{[1] 2", "block-without-const", "[1, 7, 1, 8]", ""},
+		// The innermost literal still open names the message (3.4).
+		{"\"\"\"\r${", "unterminated-string", "[1, 1, 1, 7]", "the text block has no closing delimiter"},
+		{"\"\"\"\n${", "unterminated-string", "[1, 1, 2, 3]", "the text block has no closing delimiter"},
+		{"`a${", "unterminated-string", "[1, 1, 1, 5]", "the template has no closing backtick"},
+	} {
+		_, err := risor.Parse(c.src)
+		var e *risor.Error
+		assert.True(t, errors.As(err, &e), c.src)
+		assert.Equal(t, e.Diagnostics[0].Code, c.code, c.src)
+		assert.Equal(t, e.Diagnostics[0].Span.String(), c.span, c.src)
+		if c.msg != "" {
+			assert.Equal(t, e.Diagnostics[0].Message, c.msg, c.src)
+		}
+	}
+}
+
+func TestIndexReadIsNoPath(t *testing.T) {
+	// A fact applies to a path only (05-types.md 10.4): a string index on a
+	// value that is not a path takes no fact, whatever slot a fact names.
+	env, err := risor.NewEnv()
+	assert.NoError(t, err)
+	x, _ := risor.Parse(`const m = a; m is int[] ? 0 : {"a-b": []}?.["a-b"].filter()`)
+	_, err = env.Check(x)
+	var e *risor.Error
+	assert.True(t, errors.As(err, &e))
+	codes := []string{}
+	for _, d := range e.Diagnostics {
+		codes = append(codes, d.Code)
+	}
+	assert.Equal(t, codes, []string{"undefined-name", "arity"})
+	typed, err := risor.NewEnv(risor.Declare("{x: int | string}"))
+	assert.NoError(t, err)
+	x, _ = risor.Parse(`const m = x; m is int ? 0 : {"a": 1}["a"]`)
+	r, err := typed.Check(x)
+	assert.NoError(t, err)
+	assert.Equal(t, r.Type, "int")
+}

@@ -74,6 +74,7 @@ const (
 	fMapPat                     // a map pattern
 	fPattern                    // any pattern
 	fMatchCase                  // the start of a match case
+	fDefault                    // the default of a pattern, an Expr
 )
 
 // Marks on tokens.
@@ -84,6 +85,7 @@ const (
 	mBranchEnd                     // the last token of an if or a try
 	mLambdaArrow                   // the => of a lambda
 	mSwitchCall                    // the ) of a Call named switch
+	mDefaultEnd                    // the last token of a pattern's default
 )
 
 func (p *parser) mark1(i int, m uint8) {
@@ -362,6 +364,16 @@ func (p *parser) lambda(allow bool) *Lambda {
 	return &Lambda{base: p.base(m), Params: params, Body: body}
 }
 
+// patDefault reads the default of a pattern: an Expr inside the pattern,
+// so the rows of F8 that read an Expr apply in it (E7).
+func (p *parser) patDefault() Node {
+	p.push(frame{kind: fDefault})
+	defer p.pop()
+	d := p.expr()
+	p.mark1(p.i-1, mDefaultEnd)
+	return d
+}
+
 func (p *parser) pattern() Pattern {
 	p.push(frame{kind: fPattern})
 	defer p.pop()
@@ -434,7 +446,7 @@ func (p *parser) mapPat() *MapPat {
 			}
 			if p.tok.Kind == Assign {
 				p.next()
-				f.Default = p.expr()
+				f.Default = p.patDefault()
 			}
 			f.Span = Span{fs, p.prevEnd}
 			mp.Fields = append(mp.Fields, f)
@@ -480,7 +492,7 @@ func (p *parser) listPat() *ListPat {
 			}
 			if p.tok.Kind == Assign {
 				p.next()
-				e.Default = p.expr()
+				e.Default = p.patDefault()
 			}
 			e.Span = Span{es, p.prevEnd}
 			lp.Elems = append(lp.Elems, e)
@@ -1148,7 +1160,9 @@ func (p *parser) mapLit() Node {
 				v := p.expr()
 				entries = append(entries, &Entry{base: p.base(em), KeyForm: KeyComputed, KeyExpr: k, Value: v})
 			default:
-				p.rule = "operand"
+				// The start of an entry is not where an operand must begin
+				// (F8 2.2): no row of C8, C9 or E20 applies here.
+				p.rule = "entry"
 				p.unexpected()
 			}
 			if p.tok.Kind == Comma {
@@ -1200,6 +1214,10 @@ func (p *parser) match() Node {
 				}
 				break
 			}
+		}
+		if p.tok.Kind != Arrow {
+			// After a Lit or _, not an Expr: no complete operand (F8 E7).
+			p.rule = "arm"
 		}
 		p.expect(Arrow)
 		arm.Result = p.expr()

@@ -135,6 +135,35 @@ func (p *parser) entryKey(k int) bool {
 	return depth == 0
 }
 
+// inExpr reports whether the innermost of the patterns and their defaults
+// open at the failure is a default: an Expr, not a pattern (F8 2.1 item 7).
+func (p *parser) inExpr() bool {
+	f := p.innermost(fPattern, fMapPat, fDefault)
+	return f == nil || f.kind == fDefault
+}
+
+// keyOpen reports whether a computed key of the map's entry is open at
+// token j: the innermost production is then the key, not the map (F8 2.1
+// item 7).
+func (p *parser) keyOpen(f *frame, j int) bool {
+	if f.entry >= len(p.toks) || f.entry >= j || p.toks[f.entry].Kind != LBrack {
+		return false
+	}
+	depth := 0
+	for i := f.entry; i < j; i++ {
+		switch p.toks[i].Kind {
+		case LBrack, OptLBrack:
+			depth++
+		case RBrack:
+			depth--
+			if depth == 0 {
+				return false
+			}
+		}
+	}
+	return depth > 0
+}
+
 // lambdaMap reports whether a map's { is the token after the => of a lambda.
 func (p *parser) lambdaMap(f *frame) bool {
 	return f != nil && f.kind == fMap && f.open > 0 && p.marked(f.open-1, mLambdaArrow)
@@ -267,7 +296,7 @@ func (p *parser) targetToken(e *Error) *Error {
 		return set("if-form", "call")
 	case e.Rule == "E6":
 		return set("try-form", "")
-	case t.Kind == Assign && j > 0 && operandEnd(prev) && p.innermost(fPattern, fMapPat) == nil && !p.entryKey(j-1):
+	case t.Kind == Assign && j > 0 && operandEnd(prev) && e.Rule != "arm" && (p.inExpr() || p.marked(j-1, mDefaultEnd)) && !p.entryKey(j-1):
 		return set("assignment", "assign")
 	case e.Rule == "E8":
 		return set("slice-syntax", "")
@@ -348,7 +377,7 @@ func (p *parser) targetToken(e *Error) *Error {
 	}
 	// E23, but not for a = directly after a string key or a computed key,
 	// which is a map literal with the wrong separator.
-	if f := p.innermost(fMap); p.lambdaMap(f) && !f.sep && !(t.Kind == Assign && p.entryKey(j-1) && prev.Kind != Word) {
+	if f := p.innermost(fMap); p.lambdaMap(f) && !f.sep && !(t.Kind == Assign && p.entryKey(j-1) && prev.Kind != Word) && !p.keyOpen(f, j) {
 		setSpan(p.toks[f.open].Start, p.toks[f.open].End)
 		return set("block-without-const", "")
 	}

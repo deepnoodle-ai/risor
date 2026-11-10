@@ -101,7 +101,9 @@ loop:
 					p.keys = append(p.keys, str.Value)
 				}
 				cur = c.readKey(cur, str.Value, s.Index.Span(), rs, optional, isPath && fs.covers(p))
-				cur = fs.apply(cur, p)
+				if isPath { // a fact applies to a path only (10.4)
+					cur = fs.apply(cur, p)
+				}
 			} else {
 				isPath = false
 				cur = c.index(s, cur, idx, rs, optional)
