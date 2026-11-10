@@ -1368,3 +1368,8 @@ above. A package's chapter is the home of its rules: this table only points.
    `until-fNN-` file, with the package's outcome. An `until-fNN-` file is
    deleted when every implementation offers package `NN`.
 6. No other case is removed or changed by a package.
+7. In a package's directory, a file whose name ends `-check.json` holds the
+   cases that need the type rules, as `suite/core-check/` does for Core:
+   each is run once, checked. A case that expects a code which is static
+   elsewhere, such as `arity` on a method call, stands there. Every other
+   file of the directory is run as `suite/core-run/` is (3.10.8).
