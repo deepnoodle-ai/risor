@@ -147,7 +147,8 @@
       },
       {
        "label": "mapValues",
-       "kind": "method"
+       "kind": "method",
+       "detail": "(f: (value: T, key: string) => U) => map<U>"
       },
       {
        "label": "values",
@@ -260,7 +261,8 @@
       },
       {
        "label": "mapValues",
-       "kind": "method"
+       "kind": "method",
+       "detail": "(f: (value: T, key: string) => U) => map<U>"
       },
       {
        "label": "values",
@@ -630,6 +632,78 @@
       4
      ],
      "items": []
+    }
+   }
+  },
+  {
+   "name": "list methods show their record signatures",
+   "complete": "user.tags.fi‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      11,
+      1,
+      13
+     ],
+     "items": [
+      {
+       "label": "filter",
+       "kind": "method",
+       "detail": "(f: (item: T, index: int) => unknown) => T[]"
+      },
+      {
+       "label": "find",
+       "kind": "method",
+       "detail": "(f: (item: T, index: int) => unknown) => T | null"
+      },
+      {
+       "label": "first",
+       "kind": "method",
+       "detail": "() => T | null"
+      },
+      {
+       "label": "flat",
+       "kind": "method",
+       "detail": "() => U[]"
+      },
+      {
+       "label": "flatMap",
+       "kind": "method",
+       "detail": "(f: (item: T, index: int) => U[]) => U[]"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "map and its neighbours",
+   "complete": "items.ma‸",
+   "expect": {
+    "completion": {
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "items": [
+      {
+       "label": "map",
+       "kind": "method",
+       "detail": "(f: (item: T, index: int) => U) => U[]"
+      },
+      {
+       "label": "max",
+       "kind": "method",
+       "detail": "() => T | null where T: ordered"
+      },
+      {
+       "label": "maxBy",
+       "kind": "method",
+       "detail": "(f: (item: T, index: int) => K) => T | null where K: ordered"
+      }
+     ]
     }
    }
   }

@@ -758,7 +758,8 @@
      },
      {
       "label": "mapValues",
-      "kind": "method"
+      "kind": "method",
+      "detail": "(f: (value: T, key: string) => U) => map<U>"
      },
      {
       "label": "values",
@@ -815,7 +816,8 @@
      },
      {
       "label": "mapValues",
-      "kind": "method"
+      "kind": "method",
+      "detail": "(f: (value: T, key: string) => U) => map<U>"
      },
      {
       "label": "values",

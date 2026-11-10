@@ -42,6 +42,7 @@ numbers without a file are of this chapter.
 | **Product** | A part of the package that one implementation builds and tests with its own tests. The suite does not test it |
 | **Printed type** | A type printed by `05-types.md` 3.9 |
 | **Printed signature** | A signature printed by F1 5.2 |
+| **Record signature** | The `signature` text of a library entry's record (`suite/library.json` and the other record files), verbatim. A library entry's signature is always shown this way, never printed again |
 
 ### 1.2 What is specified for every implementation, and what is a product
 
@@ -71,10 +72,10 @@ numbers without a file are of this chapter.
    6 bind the implementation that ships the CLI, the REPL or the editor
    grammar.
 2. Packages are offered in the order of `03-host.md` 3.11 item 2: F3, F1, F2,
-   F4, F5, F6, F7, F8, F9, F10, F11, F13, F12. F12 is the last. So an
+   F4, F5, F6, F7, F8, F9, F10, F11, F13, F14, F12. F12 is the last. So an
    implementation that offers F12 offers every form of F3, F4 and F7, the
    templates of F2, the groups of F6 with every function of F13, the renderings
-   of F8, the report of F9 and the commands of F10. The formatter prints every
+   of F8, the report of F9, the commands of F10 and the host facts of F14. The formatter prints every
    one of those forms, assist lists every library entry, and the cases of
    `suite/tools/` use them.
 
@@ -759,7 +760,7 @@ When the hole is a string literal, the candidates are string values, kind
 | `variable` | Its declared type, printed |
 | `field` | The printed Join of its field types over the record alternatives that list it |
 | `key` | 3.9 item 2 |
-| `function`, `method` | Its printed signature. A method's is printed without its receiver |
+| `function`, `method` | For a library entry, its record signature. For a host function, or a method of an opaque type, its printed signature, without the receiver for a method |
 | `constant` | Its type, printed |
 | `lambda`, `namespace`, `literal`, `type` | null |
 
@@ -777,10 +778,10 @@ When the hole is a string literal, the candidates are string values, kind
 | An `Ident` of a value bound in the program | `name` | The printed type of the `Ident` (narrowed by the facts in force, `05-types.md` 5.3) | null | null | The span of the name where it is bound |
 | An `Ident` of an environment variable | `variable` | The same | null | null | null |
 | A name a `const`, a pattern, a parameter or `catch` binds | `name` | The printed type it is bound to | null | null | Its own span |
-| The name of a `Call` of a library function, or of a function of a group | `function` | The printed type of the `Call` | Its printed signature | The `doc` of its record | null |
+| The name of a `Call` of a library function, or of a function of a group | `function` | The printed type of the `Call` | Its record signature | The `doc` of its record | null |
 | The name of a `Call` of a host function | `function` | The same | Its printed signature | The doc its declaration carries in the binding, or null | null |
 | The name of a `Call` of a const-bound lambda | `lambda` | The printed type of the `Call` | null | null | The span of its name in its `const` line |
-| The word of a `MethodCall` | `method` | The printed type of the `MethodCall` | The printed signature of the method the check resolved, without its receiver, or null | The `doc` of its record, or null | null |
+| The word of a `MethodCall` | `method` | The printed type of the `MethodCall` | The method the check resolved: a library method's record signature, an opaque type's method's printed signature without its receiver; or null | The `doc` of its record, or null | null |
 | The word of a `Member` | `field` | The printed type of the `Member` | null | null | null |
 | The `Ident` of a namespace | `namespace` | null | null | null | null |
 | A constant of a group (F6) | `constant` | Its printed type | null | The `doc` of its record | null |
@@ -827,13 +828,15 @@ ENV stands for the flags of 4.3.
    `check` failure every diagnostic, in order; a `run` failure its one
    diagnostic; a failure of step 4 of a load (F10 5.2) each of its diagnostics,
    in order.
-4. **Colour.** `--color auto`, the default, colours the text written to a
-   stream only when that stream is a terminal. `--color always` colours and
-   `--color never` does not. Colour is ANSI SGR sequences, `ESC [` … `m`, put
+4. **Colour.** `--color auto`, the default, writes no colour when standard
+   output is not a terminal, when the stream written is not a terminal, or when
+   the process variable `NO_COLOR` is set and not empty; otherwise it colours.
+   `--color always` colours and `--color never` does not; both ignore
+   `NO_COLOR`. Under `--format json` nothing is ever coloured. Colour is ANSI SGR sequences, `ESC [` … `m`, put
    into the text: removing every such sequence gives the text this chapter fixes,
-   byte for byte. Which parts are coloured is not specified. Nothing is coloured
-   in a pipe or a file under `auto`. No process variable is read for colour
-   (F10 9.4 item 1).
+   byte for byte. Which parts are coloured is not specified. Colour is part of
+   no value, so reading `NO_COLOR` does not break F10 9.4 item 1, which is about
+   what a program's value may depend on.
 5. **Byte for byte.** For the same arguments, files and standard input, with
    colour off, the bytes written to standard output and standard error and the
    exit status are those this chapter, F8, F9 and F10 give, except what item 6
@@ -957,15 +960,20 @@ around values are its own.
 3. **Cumulative `const` lines.** The session holds the `const` lines of the
    entries that succeeded, in order. An entry's **program** is the held lines,
    then the entry's own `const` lines, then its expression, or `null` when it
-   has none. Its value is the value of that program, checked and run by
-   `03-host.md` in the session's environment.
+   has none, where the lines of each entry form a scope of their own inside the
+   scope of the entries before it (`01-language.md` 5 item 5). Its value is the
+   value of that program, checked and run by `03-host.md` in the session's
+   environment.
 4. When the program fails, in any phase, the REPL shows its diagnostics, and the
    session holds nothing of the entry. When it succeeds, the entry's `const`
    lines are held, and the value is shown. An entry with no expression shows no
    value.
-5. A name the held lines bind cannot be bound again: the program is
-   `duplicate-name` (`05-types.md` 5.1). The REPL may offer a command that
-   forgets the held lines.
+5. **A name bound again shadows.** A `const` line of a later entry that binds
+   a held name makes a new binding, which the lines and expressions after it
+   see. A value or a const-bound lambda already held keeps the binding it was
+   made with: nothing held changes meaning. Two bindings of one name within one
+   entry are `duplicate-name` (`05-types.md` 5.1), as in any program. The REPL
+   may offer a command that forgets the held lines.
 6. Since a program is pure, the REPL may keep the values of the held lines and
    evaluate only an entry's own text. The value shown must be the value of the
    entry's program. The usage it shows, if any, is its own.
