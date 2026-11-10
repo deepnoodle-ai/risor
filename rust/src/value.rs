@@ -573,3 +573,14 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod layout {
+    // The sizes rust/DESIGN.md's memory bound is derived from (`02-evaluation.md` 8.5 item 2).
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn value_and_str_are_24_bytes() {
+        assert_eq!(std::mem::size_of::<super::Value<'static>>(), 24);
+        assert_eq!(std::mem::size_of::<super::Str<'static>>(), 24);
+    }
+}
