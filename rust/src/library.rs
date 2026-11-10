@@ -112,6 +112,29 @@ pub fn method(kind: Kind, name: &str) -> Option<usize> {
         .position(|r| r.receiver == Some(kind) && r.name == name)
 }
 
+/// The name of an entry as an environment removes it (`03-host.md` 3.3.1,
+/// `04-library.md` 1.1): `len`, `string.repeat`, `list.map`, `map.keys`.
+pub fn entry_name(idx: usize) -> String {
+    let r = &records()[idx];
+    match r.receiver {
+        None => r.name.clone(),
+        Some(k) => format!("{}.{}", kind_word(k), r.name),
+    }
+}
+
+fn kind_word(k: Kind) -> &'static str {
+    match k {
+        Kind::String => "string",
+        Kind::List => "list",
+        _ => "map",
+    }
+}
+
+/// The entry an environment's removed name names, if any.
+pub fn entry_of(name: &str) -> Option<usize> {
+    (0..records().len()).find(|&i| entry_name(i) == name)
+}
+
 /// Whether some kind has a library method of this name.
 pub fn is_method_name(name: &str) -> bool {
     records()

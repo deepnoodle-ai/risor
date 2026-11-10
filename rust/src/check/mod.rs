@@ -245,6 +245,7 @@ impl<'a> Checker<'a> {
                 fields,
                 rest: Ty::never(),
                 closable: false,
+                size: Default::default(),
             }),
             dropping: 0,
         }
@@ -534,7 +535,10 @@ impl<'a> Checker<'a> {
                     Ty::never()
                 }
             },
-            NodeKind::Match { subject, arms } => self.match_(id, *subject, arms),
+            NodeKind::Match { subject, arms } => {
+                let t = self.match_(id, *subject, arms);
+                self.size_check(span, t)
+            }
             NodeKind::Try { body, handler, .. } => {
                 let n = self.sites.len();
                 self.dropping += 1;
@@ -545,7 +549,8 @@ impl<'a> Checker<'a> {
                     self.slots[s as usize] = self.error_ty.clone();
                 }
                 let h = self.synth(*handler);
-                join(&b, &h)
+                let t = join(&b, &h);
+                self.size_check(span, t)
             }
             NodeKind::Spread { value } => self.synth(*value),
             _ => {
@@ -642,10 +647,24 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The limits on a type that a node makes (20.5 and 20.7): its size,
+    /// tested first and in constant work, then its depth.
     fn depth_check(&mut self, id: NodeId, t: Ty) -> Ty {
+        let s = self.span(id);
+        let t = self.size_check(s, t);
         if t.depth() > 64 {
             let s = self.span(id);
             self.diag("check-limit", s);
+            return Ty::never();
+        }
+        t
+    }
+
+    /// The type size limit (20.7, ruling CG3): a type over it is
+    /// `check-limit` at `span`, and `never` afterwards.
+    fn size_check(&mut self, span: Span, t: Ty) -> Ty {
+        if t.too_big() {
+            self.diag("check-limit", span);
             return Ty::never();
         }
         t
@@ -685,6 +704,7 @@ impl<'a> Checker<'a> {
             fields: BTreeMap::new(),
             rest: Ty::never(),
             closable: false,
+            size: Default::default(),
         };
         for &e in entries {
             match self.kind(e) {
@@ -801,6 +821,11 @@ impl<'a> Checker<'a> {
                     self.arith(*op, b, x, cur, y, bt)
                 }
             };
+            // 20.7: `??`, `&&` and `||` join their operands.
+            if matches!(op, BinaryOp::And | BinaryOp::Or | BinaryOp::Coalesce) {
+                let bs = self.span(b);
+                cur = self.size_check(bs, cur);
+            }
             self.types[b.index()] = cur.clone();
         }
         cur
@@ -1006,16 +1031,21 @@ impl<'a> Checker<'a> {
             n = *else_;
         }
         let et = self.synth(n);
-        acc = join(&acc, &et);
+        let _ = acc;
         self.facts.truncate(k);
         let mut below = et;
         for (c, bt) in chain.into_iter().rev() {
-            below = join(&bt, &below);
+            // Ruling CG10: in place, so a long chain of literals is n log n.
+            join_into(&mut below, &bt);
+            // 20.7: each `Cond` is tested; the innermost over the limit is
+            // reported, and the ones around it see `never`.
+            let cs = self.span(c);
+            below = self.size_check(cs, below);
             self.types[c.index()] = below.clone();
         }
         // The type of each `Cond` of the chain is the Join from it down; the
         // outer one is what the walk returns.
-        acc
+        below
     }
 
     fn lit_ty(l: &Lit) -> Ty {
@@ -1039,7 +1069,8 @@ impl<'a> Checker<'a> {
         let k = self.facts.len();
         let mut acc = Ty::never();
         let mut default = false;
-        let mut lits: Vec<&Lit> = Vec::new();
+        let mut lits: std::collections::HashSet<crate::compile::LitKey> =
+            std::collections::HashSet::new();
         for &a in arms {
             let NodeKind::Arm { literals, result } = self.kind(a) else {
                 continue;
@@ -1049,19 +1080,25 @@ impl<'a> Checker<'a> {
                 None => default = true,
                 Some(ls) => {
                     for l in ls {
+                        // Ruling CA4: a literal equal to an earlier one is
+                        // `duplicate-case` only, and ignored here.
+                        if !lits.insert(crate::compile::lit_key(&l.lit)) {
+                            continue;
+                        }
+                        // Ruling CA1: the conditions of `==` (8.2).
                         if !matches!(l.lit, Lit::Null)
                             && !s.is_never()
+                            && !s.is_exactly_null()
                             && !overlap(&Self::lit_ty(&l.lit), &s)
                         {
                             self.diag("never-equal", l.span);
                         }
                         has_null |= matches!(l.lit, Lit::Null);
-                        lits.push(&l.lit);
                     }
                 }
             }
             let rt = self.synth(*result);
-            acc = join(&acc, &rt);
+            join_into(&mut acc, &rt);
             if has_null {
                 if let Some(p) = &p {
                     self.facts.push(p.clone());
@@ -1072,11 +1109,11 @@ impl<'a> Checker<'a> {
         if !default && !s.is_never() {
             let covered = finite_values(&s).is_some_and(|vals| {
                 vals.iter().all(|v| {
-                    lits.iter().any(|l| match (v, l) {
-                        (FiniteValue::Null, Lit::Null) => true,
-                        (FiniteValue::Bool(a), Lit::Bool(b)) => a == b,
-                        (FiniteValue::Str(a), Lit::Str(b)) => a == b,
-                        _ => false,
+                    use crate::compile::LitKey;
+                    lits.contains(&match v {
+                        FiniteValue::Null => LitKey::Null,
+                        FiniteValue::Bool(b) => LitKey::Bool(*b),
+                        FiniteValue::Str(s) => LitKey::Str(s.clone()),
                     })
                 })
             });
@@ -1137,6 +1174,12 @@ impl<'a> Checker<'a> {
                         self.diag("kind", bound);
                     }
                     self.set_names(pat, &Ty::never());
+                    // Ruling CA3: a default is always checked.
+                    for f in fields {
+                        if let Some(d) = f.default {
+                            self.synth(d);
+                        }
+                    }
                     return;
                 }
                 let rec = v.map.as_ref().unwrap().as_ref().clone();
@@ -1158,7 +1201,9 @@ impl<'a> Checker<'a> {
                                 None => rec.rest.clone().with_null(),
                             };
                             let dt = self.synth(d);
-                            join(&read.nonnull(), &dt)
+                            // 20.7: on the value bound.
+                            let t = join(&read.nonnull(), &dt);
+                            self.size_check(bound, t)
                         }
                         None => match rec.fields.get(&f.key) {
                             Some(fl) if !fl.optional => fl.ty.clone(),
@@ -1230,6 +1275,12 @@ impl<'a> Checker<'a> {
                         self.diag("kind", bound);
                     }
                     self.set_names(pat, &Ty::never());
+                    // Ruling CA3: a default is always checked.
+                    for e in elems {
+                        if let Some(d) = e.default {
+                            self.synth(d);
+                        }
+                    }
                     return;
                 }
                 let e = v.list.as_ref().unwrap().as_ref().clone();
@@ -1237,7 +1288,8 @@ impl<'a> Checker<'a> {
                     let t = match el.default {
                         Some(d) => {
                             let dt = self.synth(d);
-                            join(&e.nonnull(), &dt)
+                            let t = join(&e.nonnull(), &dt);
+                            self.size_check(bound, t)
                         }
                         None => {
                             let s = self.span(el.pat);
@@ -1337,8 +1389,42 @@ impl<'a> Checker<'a> {
                 match self.kind(s) {
                     NodeKind::Index { index, .. } => {
                         self.synth(*index);
+                        // Ruling CB1 (9.3): a plain index step on an `any`
+                        // receiver is an `index` site too.
+                        // A rejected `dynamic` site makes the receiver
+                        // `never`, which records nothing more.
+                        if !optional && !rejected {
+                            let ss = self.span(s);
+                            self.site("index", ss);
+                        }
                     }
-                    NodeKind::MethodCall { args, .. } => self.any_args(args),
+                    NodeKind::MethodCall { args, name, .. } => {
+                        self.any_args(args);
+                        // Ruling CB2 (13.3): the call may fail as a library
+                        // method marked `!` (not a removed one, CD5) or an
+                        // opaque type's method marked `!` would.
+                        if !rejected {
+                            let ss = self.span(s);
+                            let lib = library::records().iter().enumerate().any(|(i, r)| {
+                                r.receiver.is_some()
+                                    && r.name == name.name
+                                    && r.sig.fails
+                                    && !self.env.data().removed.contains(&i)
+                            });
+                            if lib {
+                                self.site("value", ss);
+                            }
+                            let host = self
+                                .env
+                                .data()
+                                .methods
+                                .iter()
+                                .any(|m| m.name == name.name && m.sig.fails);
+                            if host {
+                                self.site("host", ss);
+                            }
+                        }
+                    }
                     _ => {}
                 }
                 if rejected {
@@ -1540,7 +1626,7 @@ impl<'a> Checker<'a> {
             None
         };
         if let Some(k) = kind {
-            if let Some(i) = library::method(k, name) {
+            if let Some(i) = self.env.lib_method(k, name) {
                 let rec = &library::records()[i];
                 return self.call(Callee::Lib(rec), Some((x, cur)), args, s, true);
             }
@@ -1634,6 +1720,12 @@ impl<'a> Checker<'a> {
                 (ParamType::Fn(f), Some((l, named))) => lambdas.push((a, l, named, f.clone())),
             }
         }
+        // 20.7: each solution is tested when it is made; over the limit, the
+        // call is not checked further.
+        if sol.values().any(|t| t.too_big()) {
+            self.diag("check-limit", cs);
+            return Ty::never();
+        }
         // 3. Lambda arguments.
         let mut narrowed: Option<Ty> = None;
         for (a, l, named, f) in lambdas {
@@ -1648,8 +1740,10 @@ impl<'a> Checker<'a> {
                 }
                 continue;
             }
+            // Ruling CA5: only the parameters the lambda declares.
             if f.params
                 .iter()
+                .take(lparams.len())
                 .any(|(_, q)| vars(q).iter().any(|v| !sol.contains_key(v)))
             {
                 self.diag("cannot-infer", as_);
@@ -1718,6 +1812,10 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+        }
+        if sol.values().any(|t| t.too_big()) {
+            self.diag("check-limit", cs);
+            return Ty::never();
         }
         // 4. Bounds.
         for (v, bound) in &sig.bounds {
@@ -1838,7 +1936,9 @@ impl<'a> Checker<'a> {
                 let t = match default {
                     Some(d) => {
                         let dt = self.synth(*d);
-                        join(&a.nonnull(), &dt)
+                        let t = join(&a.nonnull(), &dt);
+                        let ps = self.span(*pattern);
+                        self.size_check(ps, t)
                     }
                     None => a,
                 };
@@ -1882,7 +1982,9 @@ impl<'a> Checker<'a> {
                 let t = match (ats.get(i), default) {
                     (Some(a), Some(d)) => {
                         let dt = self.synth(*d);
-                        join(&a.nonnull(), &dt)
+                        let t = join(&a.nonnull(), &dt);
+                        let ps = self.span(*pattern);
+                        self.size_check(ps, t)
                     }
                     (None, Some(d)) => self.synth(*d),
                     (Some(a), None) => a.clone(),

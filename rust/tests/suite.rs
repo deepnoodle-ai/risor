@@ -37,6 +37,12 @@ fn run_names(target: &Path, checked: bool) -> (Counts, Vec<String>) {
     let files = if target.is_file() {
         vec![target.to_path_buf()]
     } else {
+        for f in risor::testing::skipped_files(target) {
+            println!(
+                "not run (an until- file of a package offered): {}",
+                f.display()
+            );
+        }
         case_files(target)
     };
     let mut total = Counts::default();
@@ -195,4 +201,43 @@ fn host_types_package() {
     let total = run(&suite_dir().join("host-types"), true);
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F2: templates, run as `core-run` is (`f02-templates-analysis.md`
+/// 4.7).
+#[test]
+fn templates_package() {
+    let total = run(&suite_dir().join("templates"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F2: analysis cases, each run once.
+#[test]
+fn analysis_package() {
+    let total = run(&suite_dir().join("analysis"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Ruling BA8: an `until-fNN-` file of a package this build offers is not
+/// run; every other file is.
+#[test]
+fn until_files_of_offered_packages_are_not_run() {
+    use risor::testing::skipped_by_package;
+    use std::path::Path;
+    for (name, skip) in [
+        ("until-f01-x.json", true),
+        ("until-f02-errors.json", true),
+        ("until-f03-strings.json", true),
+        ("until-f04-as-is.json", false),
+        ("until-f08-parse-errors.json", false),
+        ("until-f13-math.json", false),
+        ("until-fx-a.json", false),
+        ("until-f02.json", false),
+        ("check-until-f02-a.json", false),
+    ] {
+        assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
+    }
+    assert_eq!(risor::PACKAGES.len(), 3);
 }

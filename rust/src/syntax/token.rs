@@ -96,6 +96,8 @@ pub enum StrForm {
     RawSingle,
     /// `r"""`, a raw text block (F3)
     RawTriple,
+    /// `${{`: the `String` node of a host template with no part (F2 2.5)
+    Host,
 }
 
 impl StrForm {
@@ -108,6 +110,7 @@ impl StrForm {
             StrForm::RawDouble => "r\"",
             StrForm::RawSingle => "r'",
             StrForm::RawTriple => "r\"\"\"",
+            StrForm::Host => "${{",
         }
     }
 

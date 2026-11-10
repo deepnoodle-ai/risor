@@ -118,7 +118,10 @@ impl Env {
             ("variables".into(), obj(variables)),
             ("functions".into(), obj(functions)),
             ("opaque".into(), obj(opaque)),
-            ("removed".into(), Json::Arr(Vec::new())),
+            (
+                "removed".into(),
+                Json::Arr(self.removed_names().into_iter().map(Json::Str).collect()),
+            ),
             (
                 "reject".into(),
                 Json::Arr(reject.into_iter().map(Json::Str).collect()),
@@ -212,11 +215,8 @@ impl Env {
                 b = b.method_impl(&format!("{t}.{m}"), &text, None);
             }
         }
-        let removed = list_of(get("removed")?, "removed")?;
-        if let Some(r) = removed.first() {
-            return Err(form(&format!(
-                "removed names {r:?}: this build does not offer removing a library entry"
-            )));
+        for r in list_of(get("removed")?, "removed")? {
+            b = b.remove(&r);
         }
         let reject = list_of(get("reject")?, "reject")?;
         let reject: Vec<&str> = reject.iter().map(String::as_str).collect();

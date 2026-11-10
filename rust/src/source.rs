@@ -79,6 +79,19 @@ impl Source {
         Source { chars, line_starts }
     }
 
+    /// The text with nothing removed: a U+FEFF at the start is a code point
+    /// of it, as in a template (F2 2.1 item 2).
+    pub fn raw(text: &str) -> Source {
+        let chars: Vec<char> = text.chars().collect();
+        let mut line_starts = vec![0u32];
+        for (i, &c) in chars.iter().enumerate() {
+            if c == '\n' {
+                line_starts.push(i as u32 + 1);
+            }
+        }
+        Source { chars, line_starts }
+    }
+
     pub fn chars(&self) -> &[char] {
         &self.chars
     }

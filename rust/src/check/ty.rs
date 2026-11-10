@@ -37,6 +37,56 @@ pub struct Rec {
     /// of a schema under the option `closed` sets it, and Close drops it, so
     /// every type outside that mapping has it `false`.
     pub closable: bool,
+    /// The size of the record (`05-types.md` 20.7), worked out once.
+    pub size: SizeCache,
+}
+
+/// The type size limit (`05-types.md` 20.7, ruling CG2).
+pub const SIZE_LIMIT: u64 = 100_000;
+
+/// A record's size, kept with it once asked for (ruling CG5). A clone starts
+/// empty, since a cloned record may then be changed; equality ignores it.
+#[derive(Default)]
+pub struct SizeCache(std::sync::OnceLock<u64>);
+
+impl Clone for SizeCache {
+    fn clone(&self) -> Self {
+        SizeCache::default()
+    }
+}
+
+impl PartialEq for SizeCache {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for SizeCache {}
+
+impl std::fmt::Debug for SizeCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("_")
+    }
+}
+
+impl Rec {
+    /// The size of the record: 1, plus each field's type, plus the rest (a
+    /// rest of `never` counts 0). Saturates just above the limit.
+    pub fn size(&self) -> u64 {
+        *self.size.0.get_or_init(|| {
+            let mut n: u64 = 1;
+            for f in self.fields.values() {
+                n = n.saturating_add(f.ty.size());
+                if n > SIZE_LIMIT {
+                    return SIZE_LIMIT + 1;
+                }
+            }
+            if !self.rest.is_never() {
+                n = n.saturating_add(self.rest.size());
+            }
+            n.min(SIZE_LIMIT + 1)
+        })
+    }
 }
 
 impl Rec {
@@ -45,6 +95,7 @@ impl Rec {
             fields,
             rest,
             closable: false,
+            size: SizeCache::default(),
         }
     }
 }
@@ -133,6 +184,7 @@ impl Ty {
             fields: BTreeMap::new(),
             rest: t,
             closable: false,
+            size: Default::default(),
         })
     }
     /// `{}`: the empty map only.
@@ -148,6 +200,35 @@ impl Ty {
 
     pub fn is_never(&self) -> bool {
         *self == Ty::default()
+    }
+
+    /// The size of the type (`05-types.md` 20.7), saturating just above the
+    /// limit. A record's size is kept with it, so this is constant work for
+    /// each level of list nesting.
+    pub fn size(&self) -> u64 {
+        if self.any {
+            return 1;
+        }
+        let mut n: u64 = self.null as u64 + self.boolean as u64 + self.num.is_some() as u64;
+        n += match &self.str {
+            Some(Strs::All) => 1,
+            Some(Strs::Lits(l)) => l.len() as u64,
+            None => 0,
+        };
+        n += self.opaque.len() as u64;
+        if let Some(e) = &self.list {
+            n = n.saturating_add(1 + e.size());
+        }
+        if let Some(r) = &self.map {
+            n = n.saturating_add(r.size());
+        }
+        // `never` is 1 when it stands alone.
+        n.clamp(1, SIZE_LIMIT + 1)
+    }
+
+    /// Whether the type is over the size limit.
+    pub fn too_big(&self) -> bool {
+        self.size() > SIZE_LIMIT
     }
 
     /// The number of kinds that have an alternative.
@@ -271,12 +352,51 @@ fn join_rec(a: &Rec, b: &Rec) -> Rec {
         fields,
         rest: join(&a.rest, &b.rest),
         closable: a.closable && b.closable,
+        size: Default::default(),
     }
 }
 
-/// The Join of several types.
+/// The Join of several types. Literal sets are merged in place, so joining
+/// n literals is n log n work (ruling CG10), not n squared.
 pub fn join_all<'a>(ts: impl Iterator<Item = &'a Ty>) -> Ty {
-    ts.fold(Ty::never(), |acc, t| join(&acc, t))
+    let mut acc = Ty::never();
+    for t in ts {
+        join_into(&mut acc, t);
+    }
+    acc
+}
+
+/// `acc = Join(acc, t)`, with the literal set of `acc` extended in place
+/// (ruling CG10): the work is in the size of `t`, not of `acc`.
+pub fn join_into(acc: &mut Ty, t: &Ty) {
+    if acc.any {
+        return;
+    }
+    if t.any {
+        *acc = Ty::any();
+        return;
+    }
+    acc.null |= t.null;
+    acc.boolean |= t.boolean;
+    acc.num = match (acc.num, t.num) {
+        (Some(x), Some(y)) => Some(x.max(y)),
+        (x, y) => x.or(y),
+    };
+    match (&mut acc.str, &t.str) {
+        (Some(Strs::Lits(a)), Some(Strs::Lits(b))) => a.extend(b.iter().cloned()),
+        (Some(a), Some(_)) => *a = Strs::All,
+        (a @ None, b) => *a = b.clone(),
+        (Some(_), None) => {}
+    }
+    acc.list = match (&acc.list, &t.list) {
+        (Some(x), Some(y)) => Some(Arc::new(join(x, y))),
+        (x, y) => x.clone().or(y.clone()),
+    };
+    acc.map = match (&acc.map, &t.map) {
+        (Some(x), Some(y)) => Some(Arc::new(join_rec(x, y))),
+        (x, y) => x.clone().or(y.clone()),
+    };
+    acc.opaque.extend(t.opaque.iter().cloned());
 }
 
 /// Fits(S, T) (4.2). `Some(uses_any)` when S fits T.
@@ -366,6 +486,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
                 .collect(),
             rest: Ty::any(),
             closable: false,
+            size: Default::default(),
         };
     };
     let mut fields = BTreeMap::new();
@@ -401,6 +522,7 @@ pub fn merge(r: &Rec, m: Option<&Rec>) -> Rec {
         fields,
         rest: join(&r.rest, &m.rest),
         closable: false,
+        size: Default::default(),
     }
 }
 
@@ -459,6 +581,7 @@ pub fn falsy(t: &Ty) -> Ty {
                     fields: BTreeMap::new(),
                     rest: Ty::never(),
                     closable: false,
+                    size: Default::default(),
                 })
             }),
         opaque: BTreeSet::new(),
@@ -667,6 +790,9 @@ pub fn from_text(
     vars: Option<&Solutions>,
 ) -> Result<Ty, String> {
     let ty = convert(t, opaque, vars)?;
+    if ty.too_big() {
+        return Err(format!("the type is larger than {SIZE_LIMIT}"));
+    }
     if ty.depth() > 64 {
         return Err("the type is deeper than 64".into());
     }
@@ -732,7 +858,7 @@ fn convert(t: &text::Type, opaque: &[String], vars: Option<&Solutions>) -> Resul
                 if acc.map.is_some() && t.map.is_some() {
                     return Err("two records in one type".into());
                 }
-                acc = join(&acc, &t);
+                join_into(&mut acc, &t);
             }
             acc
         }

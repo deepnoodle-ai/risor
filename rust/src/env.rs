@@ -68,6 +68,9 @@ pub struct EnvData {
     pub methods: Vec<HostMethod>,
     pub limits: Limits,
     pub reject: Vec<String>,
+    /// The removed library entries (`03-host.md` 3.3.1 item 6), as indices
+    /// of `library::records()`, in order and each once.
+    pub removed: Vec<usize>,
 }
 
 /// A built environment. It does not change, and is cheap to clone and safe
@@ -115,6 +118,41 @@ impl Env {
     pub fn var(&self, name: &str) -> Option<usize> {
         self.data.vars.iter().position(|v| v == name)
     }
+
+    /// The library function of a name that the environment has: not
+    /// removed.
+    pub fn lib_function(&self, name: &str) -> Option<usize> {
+        library::function(name).filter(|i| !self.data.removed.contains(i))
+    }
+
+    /// The library method of a kind and a name that the environment has.
+    pub fn lib_method(&self, kind: crate::value::Kind, name: &str) -> Option<usize> {
+        library::method(kind, name).filter(|i| !self.data.removed.contains(i))
+    }
+
+    /// The names of the removed entries, as 3.3.1 writes them, in code point
+    /// order.
+    pub fn removed_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .data
+            .removed
+            .iter()
+            .map(|&i| library::entry_name(i))
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// A child environment (`03-host.md` 3.3.2): its declarations are added
+    /// to this one's, and a name it declares replaces this one's, in the
+    /// child only. It may remove further entries and cannot bring one back.
+    /// Its rejected classes and limits, when given, apply in it only.
+    pub fn child(&self) -> EnvBuilder {
+        EnvBuilder {
+            parent: Some(self.clone()),
+            ..EnvBuilder::default()
+        }
+    }
 }
 
 /// The six check classes (`05-types.md` 17).
@@ -157,10 +195,21 @@ pub struct EnvBuilder {
     opaque: Vec<String>,
     methods: Vec<(String, String, Option<HostImpl>)>,
     reject: Option<Vec<String>>,
-    limits: Limits,
+    limits: Option<Limits>,
+    removed: Vec<String>,
+    parent: Option<Env>,
 }
 
 impl EnvBuilder {
+    /// A library entry the environment does not have (`03-host.md` 3.3.1):
+    /// a function by its name, `len`; a method by its receiver's kind, a dot
+    /// and its name, `string.repeat`, `list.map`, `map.keys`. A name that is
+    /// no entry is the `declare` error `bad-name`.
+    pub fn remove(mut self, entry: &str) -> Self {
+        self.removed.push(entry.to_string());
+        self
+    }
+
     pub fn version(mut self, v: &str) -> Self {
         self.version = Some(v.to_string());
         self
@@ -242,7 +291,7 @@ impl EnvBuilder {
     }
 
     pub fn limits(mut self, l: Limits) -> Self {
-        self.limits = l;
+        self.limits = Some(l);
         self
     }
 
@@ -258,7 +307,27 @@ impl EnvBuilder {
                 );
             }
         }
-        let mut opaque: Vec<String> = Vec::new();
+        let parent = self.parent.as_ref().map(|p| p.data.clone());
+        let mut removed: Vec<usize> = parent
+            .as_ref()
+            .map(|p| p.removed.clone())
+            .unwrap_or_default();
+        for name in &self.removed {
+            match library::entry_of(name) {
+                Some(i) => removed.push(i),
+                None => bad(
+                    code::BAD_NAME,
+                    format!("{name:?} names no entry of the library"),
+                ),
+            }
+        }
+        removed.sort_unstable();
+        removed.dedup();
+        let mut opaque: Vec<String> = parent
+            .as_ref()
+            .map(|p| p.opaque.clone())
+            .unwrap_or_default();
+        let inherited_opaque = opaque.len();
         for name in &self.opaque {
             let b = name.as_bytes();
             let ok = b.len() >= 2
@@ -271,13 +340,16 @@ impl EnvBuilder {
                     code::BAD_NAME,
                     format!("{name:?} cannot name an opaque type"),
                 );
-            } else if opaque.contains(name) {
+            } else if opaque[inherited_opaque..].contains(name) {
                 bad(
                     code::NAME_CLASH,
                     format!("the opaque type {name} is declared twice"),
                 );
             }
-            opaque.push(name.clone());
+            // A child's opaque type of a parent's name replaces it.
+            if !opaque[..inherited_opaque].contains(name) {
+                opaque.push(name.clone());
+            }
         }
         let mut vars: Vec<String> = Vec::new();
         let mut var_types = Vec::new();
@@ -402,7 +474,9 @@ impl EnvBuilder {
                     );
                 }
             }
-            if ns.is_none() && library::function(base).is_some() {
+            // A removed function is not one the environment has (3.3.1
+            // item 6).
+            if ns.is_none() && library::function(base).is_some_and(|i| !removed.contains(&i)) {
                 bad(
                     code::NAME_CLASH,
                     format!("{name} is a function of the library"),
@@ -445,6 +519,77 @@ impl EnvBuilder {
                 });
             }
         }
+        let limits = self
+            .limits
+            .or(parent.as_ref().map(|p| p.limits))
+            .unwrap_or_default();
+        // Ruling AM4. Steps and units are unsigned, so only the depth can
+        // be out of range.
+        if !(1..=1000).contains(&limits.depth) {
+            bad(
+                code::BAD_LIMIT,
+                format!("the depth limit {} is outside 1 to 1,000", limits.depth),
+            );
+        }
+        let reject = match self.reject {
+            Some(classes) => {
+                for c in &classes {
+                    if !CHECK_CLASSES.contains(&c.as_str()) {
+                        bad(code::BAD_CLASS, format!("{c:?} is not a check class"));
+                    }
+                }
+                classes
+            }
+            None => match &parent {
+                Some(p) => p.reject.clone(),
+                None => vec!["constant-condition".to_string()],
+            },
+        };
+        // A child's declarations replace its parent's of the same name
+        // (3.3.2): the parent's others are kept.
+        if let Some(p) = &parent {
+            let taken =
+                |n: &str| vars.iter().any(|v| v == n) || functions.iter().any(|f| f.name == n);
+            let mut pv: Vec<String> = Vec::new();
+            let mut pt = Vec::new();
+            for (n, t) in p.vars.iter().zip(&p.var_types) {
+                if !taken(n) {
+                    pv.push(n.clone());
+                    pt.push(t.clone());
+                }
+            }
+            let pf: Vec<HostFn> = p
+                .functions
+                .iter()
+                .filter(|f| !taken(&f.name))
+                .cloned()
+                .collect();
+            pv.append(&mut vars);
+            pt.append(&mut var_types);
+            vars = pv;
+            var_types = pt;
+            let mut pf = pf;
+            pf.append(&mut functions);
+            functions = pf;
+            let mut pm: Vec<HostMethod> = p
+                .methods
+                .iter()
+                // Ruling CH4: a child's opaque type replaces the parent's
+                // whole, methods included; a child's method alone adds or
+                // replaces that one method.
+                .filter(|m| {
+                    !self.opaque.contains(&m.type_name)
+                        && !methods
+                            .iter()
+                            .any(|c: &HostMethod| c.type_name == m.type_name && c.name == m.name)
+                })
+                .cloned()
+                .collect();
+            pm.append(&mut methods);
+            methods = pm;
+        }
+        // Ruling CH2: the clash rules apply to the whole environment, after
+        // a child's replacements.
         for f in &functions {
             if let Some(n) = &f.namespace {
                 if vars.contains(n) {
@@ -464,28 +609,6 @@ impl EnvBuilder {
                 }
             }
         }
-        // Ruling AM4. Steps and units are unsigned, so only the depth can
-        // be out of range.
-        if !(1..=1000).contains(&self.limits.depth) {
-            bad(
-                code::BAD_LIMIT,
-                format!(
-                    "the depth limit {} is outside 1 to 1,000",
-                    self.limits.depth
-                ),
-            );
-        }
-        let reject = match self.reject {
-            Some(classes) => {
-                for c in &classes {
-                    if !CHECK_CLASSES.contains(&c.as_str()) {
-                        bad(code::BAD_CLASS, format!("{c:?} is not a check class"));
-                    }
-                }
-                classes
-            }
-            None => vec!["constant-condition".to_string()],
-        };
         if !errs.is_empty() {
             return Err(Error {
                 phase: Phase::Declare,
@@ -499,8 +622,9 @@ impl EnvBuilder {
                 functions,
                 opaque,
                 methods,
-                limits: self.limits,
+                limits,
                 reject,
+                removed,
             }),
         })
     }

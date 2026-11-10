@@ -174,8 +174,42 @@ pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
     }
 }
 
-/// Every `.json` file under a directory, in order of path.
+/// Whether the runner does not run a file (`03-host.md` 3.11 item 4, ruling
+/// BA8): its name begins `until-fNN-` and this build offers package NN.
+pub fn skipped_by_package(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let Some(rest) = name.strip_prefix("until-f") else {
+        return false;
+    };
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() || !rest[digits.len()..].starts_with('-') {
+        return false;
+    }
+    digits
+        .parse::<u32>()
+        .is_ok_and(|n| crate::PACKAGES.contains(&n))
+}
+
+/// The case files under a directory that the runner does not run, by BA8.
+pub fn skipped_files(dir: &Path) -> Vec<PathBuf> {
+    all_json(dir)
+        .into_iter()
+        .filter(|p| skipped_by_package(p))
+        .collect()
+}
+
+/// Every `.json` file under a directory that the runner runs, in order of
+/// path: an `until-fNN-` file of a package this build offers is left out.
 pub fn case_files(dir: &Path) -> Vec<PathBuf> {
+    all_json(dir)
+        .into_iter()
+        .filter(|p| !skipped_by_package(p))
+        .collect()
+}
+
+fn all_json(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -286,6 +320,9 @@ fn build_env(
     for o in &case.opaque {
         b = b.opaque(o);
     }
+    for r in &case.removed {
+        b = b.remove(r);
+    }
     for (key, stub) in &case.methods {
         let imp = stub_impl(stub, interner, unmatched.clone());
         b = b.method_impl(key, stub.ty.as_deref().unwrap_or_default(), Some(imp));
@@ -379,6 +416,13 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
     if let Some(why) = &case.skip {
         return Verdict::Skip(why.clone());
     }
+    if let Expect::Result(ExpectResult {
+        analysis: Some(want),
+        ..
+    }) = &case.expect
+    {
+        return run_analysis_case(case, want);
+    }
     if !case.check {
         return run_case_with(case, false, true);
     }
@@ -411,6 +455,7 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
             }
             let order = [
                 "outcome",
+                "analysis",
                 "description",
                 "type",
                 "sites",
@@ -430,6 +475,13 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
 /// Run one case as a runner with no type checker does (3.10.8 item 6): the
 /// static rules alone at step 4, and `skip` for what needs the checker.
 pub fn run_case_unchecked(case: &Case) -> Verdict {
+    if let Expect::Result(ExpectResult {
+        analysis: Some(want),
+        ..
+    }) = &case.expect
+    {
+        return run_analysis_case(case, want);
+    }
     if !case.check {
         return run_case_with(case, false, true);
     }
@@ -481,7 +533,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
             });
         }
     }
-    let parsed = match parse(&case.source) {
+    let parsed = match parse_case(case) {
         Ok(p) => p,
         Err(e) => {
             return judge_failure(
@@ -740,18 +792,20 @@ fn show_expected(d: &ExpectDiag) -> String {
     s
 }
 
-/// The codes whose class depends on the check (`03-host.md` 3.7.6).
-const CHECKED_CLASS: [&str; 5] = [
+/// The codes whose class depends on the check (`03-host.md` 3.7.6; ruling
+/// CE2 adds `function-error`).
+const CHECKED_CLASS: [&str; 6] = [
     "null-operand",
     "wrong-kind",
     "missing-field",
     "no-match",
     "not-conforming",
+    "function-error",
 ];
 
 /// Whether one expected diagnostic matches one actual (3.10.6, 3.10.7).
-/// `class` is compared but for the five codes whose class depends on a
-/// check this runner does not make (rulings round 10 AM1).
+/// `class` is compared but for the six codes whose class depends on a
+/// check this runner does not make (rulings round 10 AM1, CE2).
 fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
     if e.code != a.code {
         return false;
@@ -852,7 +906,104 @@ fn compare_failure(
 
 /// One line of the outcome command (round 10 AJ): what a case found, with
 /// its `expect` ignored.
+/// The case's program (3.10.5 step 3): its text parsed as a program, or,
+/// with F2's `template`, as a template taken in its mode.
+fn parse_case(case: &Case) -> Result<crate::syntax::Parsed, Error> {
+    match case.template {
+        Some(mode) => crate::template::parse_template(&case.source).map(|t| t.program(mode)),
+        None => parse(&case.source),
+    }
+}
+
+/// The analysis report of the case's text as JSON text (F2 3), when it
+/// parses.
+fn analysis_text(case: &Case) -> Option<String> {
+    match case.template {
+        Some(mode) => {
+            let t = crate::template::parse_template(&case.source).ok()?;
+            Some(crate::analysis::analyze_template(&t, mode).to_json(t.source()))
+        }
+        None => {
+            let p = parse(&case.source).ok()?;
+            Some(crate::analysis::analyze(&p).to_json(&p.source))
+        }
+    }
+}
+
+/// An analysis case (F2 4.2): Read, Parse, Analyze, once.
+fn run_analysis_case(case: &Case, want: &Json) -> Verdict {
+    let Some(text) = analysis_text(case) else {
+        let e = parse_case(case).err();
+        return Verdict::Fail(vec![Difference {
+            name: "outcome",
+            expected: "a report".into(),
+            found: match e {
+                Some(e) => format!("a failure of phase parse: {}", show_all(&e.diagnostics)),
+                None => "no report".into(),
+            },
+        }]);
+    };
+    let got = crate::json::parse(&text).expect("a report is JSON");
+    let mut bad = Vec::new();
+    if let Some(m) = want.as_obj() {
+        for (k, v) in m {
+            if !got.get(k).is_some_and(|g| crate::json::same_data(v, g)) {
+                bad.push(k.clone());
+            }
+        }
+    }
+    if bad.is_empty() {
+        Verdict::Pass
+    } else {
+        Verdict::Fail(vec![Difference {
+            name: "analysis",
+            expected: crate::json::to_text(want),
+            found: format!("{text} (differs in {})", bad.join(", ")),
+        }])
+    }
+}
+
+/// One line of the outcome command, with F2's `analysis` last for every case
+/// whose text parses (4.8).
 pub fn outcome_line(case: &Case) -> String {
+    if let Expect::Result(ExpectResult {
+        analysis: Some(_), ..
+    }) = &case.expect
+    {
+        let mut out = String::from("{\"name\":");
+        out.push_str(&json_text(&case.name));
+        match parse_case(case) {
+            Ok(_) => out.push_str(",\"phase\":null"),
+            Err(e) => {
+                out.push_str(",\"phase\":\"parse\",\"diagnostics\":[");
+                if let Some(d) = e.diagnostics.first() {
+                    let [a, b, c, f] = d.span.map(|s| s.0).unwrap_or([0; 4]);
+                    out.push_str(&format!(
+                        "{{\"code\":\"{}\",\"span\":[{a},{b},{c},{f}]}}",
+                        d.code
+                    ));
+                }
+                out.push(']');
+            }
+        }
+        if let Some(a) = analysis_text(case) {
+            out.push_str(",\"analysis\":");
+            out.push_str(&a);
+        }
+        out.push('}');
+        return out;
+    }
+    let mut out = outcome_core(case);
+    if let Some(a) = analysis_text(case) {
+        out.pop();
+        out.push_str(",\"analysis\":");
+        out.push_str(&a);
+        out.push('}');
+    }
+    out
+}
+
+fn outcome_core(case: &Case) -> String {
     let mut out = String::from("{\"name\":");
     out.push_str(&json_text(&case.name));
     let mut interner = Interner::default();
@@ -909,7 +1060,7 @@ pub fn outcome_line(case: &Case) -> String {
     }
     // The full checker at step 4 (S4): its result type and sites are
     // written after the name when the program checks.
-    let program = match parse(&case.source) {
+    let program = match parse_case(case) {
         Err(e) => Err((Phase::Parse, e.diagnostics)),
         // Ruling AP3: a case with `"check": false` is compiled without.
         Ok(p) if !case.check => compile(&env, p).map_err(|e| (e.phase, e.diagnostics)),

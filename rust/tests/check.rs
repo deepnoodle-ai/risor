@@ -265,3 +265,86 @@ fn checker_limits() {
         assert!(r.ty.is_some(), "{}", &src[..40]);
     }
 }
+
+/// Ruling CG5: the doubling chain of the probe returns at once. Each test
+/// of a type's size is constant work, and nothing past the limit is built.
+#[test]
+fn the_doubling_chain_is_constant_work() {
+    let mut lines = vec!["const a0 = {l: 1, r: 1};".to_string()];
+    for k in 1..=40 {
+        lines.push(format!("const a{k} = {{l: a{}, r: a{}}};", k - 1, k - 1));
+    }
+    lines.push("[a40, a39].len()".into());
+    let src = lines.join("\n");
+    let start = std::time::Instant::now();
+    let p = risor::parse(&src).unwrap();
+    let r = risor::check(&risor::Env::default(), &p, &risor::Expected::Nothing);
+    assert!(start.elapsed().as_secs() < 2);
+    let lines: Vec<u32> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "check-limit")
+        .map(|d| d.span.unwrap().0[0])
+        .collect();
+    // Over at line 16; `a15` is then `never`, and the chain grows again
+    // from size 3 until line 32.
+    assert_eq!(lines, [16, 32]);
+}
+
+/// Ruling CG10: building a type is at most n log n in the number of values
+/// joined. Four times the values must take well under sixteen times as long,
+/// which a quadratic join would. Each measure is the best of three.
+#[test]
+fn large_literal_sets_are_n_log_n() {
+    fn best(f: &dyn Fn()) -> f64 {
+        (0..3)
+            .map(|_| {
+                let t = std::time::Instant::now();
+                f();
+                t.elapsed().as_secs_f64()
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+    let schema = |n: usize| {
+        let vals: Vec<String> = (0..n).map(|i| format!("\"v{i}\"")).collect();
+        risor::json::parse(&format!("{{\"enum\": [{}]}}", vals.join(","))).unwrap()
+    };
+    let matchp = |n: usize| {
+        let arms: Vec<String> = (0..n).map(|i| format!("\"v{i}\" => \"r{i}\"")).collect();
+        risor::parse(&format!("match s {{ {}, _ => \"z\" }}", arms.join(", "))).unwrap()
+    };
+    let text = |n: usize| {
+        let alts: Vec<String> = (0..n).map(|i| format!("\"v{i}\"")).collect();
+        format!("{{s: {}}}", alts.join(" | "))
+    };
+    let (a, b) = (8_000, 32_000);
+    let (sa, sb) = (schema(a), schema(b));
+    let ratio_schema = best(&|| {
+        let _ = risor::ty_schema(&sb, risor::SchemaOptions::default());
+    }) / best(&|| {
+        let _ = risor::ty_schema(&sa, risor::SchemaOptions::default());
+    });
+    let env = risor::Env::builder().vars("{s: string}").build().unwrap();
+    let (ma, mb) = (matchp(a), matchp(b));
+    let ratio_match = best(&|| {
+        risor::check(&env, &mb, &risor::Expected::Nothing);
+    }) / best(&|| {
+        risor::check(&env, &ma, &risor::Expected::Nothing);
+    });
+    let (ta, tb) = (text(a), text(b));
+    let ratio_text = best(&|| {
+        let _ = risor::Env::builder().vars(&tb).build();
+    }) / best(&|| {
+        let _ = risor::Env::builder().vars(&ta).build();
+    });
+    for (what, r) in [
+        ("schema", ratio_schema),
+        ("match", ratio_match),
+        ("type text", ratio_text),
+    ] {
+        assert!(
+            r < 9.0,
+            "{what}: four times the values took {r:.1} times as long"
+        );
+    }
+}

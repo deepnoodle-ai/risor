@@ -53,6 +53,9 @@ pub struct ExpectResult {
     /// F1: the description of the case's environment (`f01-host-types.md`
     /// 7.2).
     pub description: Option<Json>,
+    /// F2: the expected analysis (`f02-templates-analysis.md` 4.2). A case
+    /// that states it states nothing else.
+    pub analysis: Option<Json>,
 }
 
 impl ExpectResult {
@@ -95,6 +98,8 @@ pub struct Case {
     pub name: String,
     /// The program text, from `source` or read from `file`.
     pub source: String,
+    /// F2: the text is a template, taken in this mode (4.1).
+    pub template: Option<crate::template::Mode>,
     pub version: Option<String>,
     pub env: Option<String>,
     /// F1: variables declared by schema, with their options (7.1).
@@ -104,6 +109,8 @@ pub struct Case {
     pub methods: Vec<(String, Stub)>,
     pub functions: Vec<(String, Stub)>,
     pub reject: Option<Vec<String>>,
+    /// The removed library entries (`03-host.md` 3.10.3, ruling CD4).
+    pub removed: Vec<String>,
     pub returns: Option<String>,
     /// `None` when the case gives no `vars`.
     pub vars: Option<Vec<(String, Json)>>,
@@ -123,7 +130,9 @@ pub struct CaseFile {
     pub cases: Vec<Case>,
 }
 
-const HEADER_FIELDS: [&str; 15] = [
+const HEADER_FIELDS: [&str; 17] = [
+    "template",
+    "removed",
     "schemas",
     "check",
     "cases",
@@ -141,7 +150,9 @@ const HEADER_FIELDS: [&str; 15] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 17] = [
+const CASE_FIELDS: [&str; 19] = [
+    "template",
+    "removed",
     "schemas",
     "check",
     "name",
@@ -395,8 +406,31 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             return Err("a case with \"check\": false states what needs the type checker".into());
         }
     }
+    // F2 4.2 item 3: an analysis case declares no environment.
+    if matches!(&expect, Expect::Result(r) if r.analysis.is_some()) {
+        for k in [
+            "env",
+            "opaque",
+            "methods",
+            "functions",
+            "reject",
+            "returns",
+            "vars",
+            "limits",
+            "check",
+            "precondition",
+            "version",
+        ] {
+            if get(k).is_some() {
+                return Err(format!("an analysis case has the field {k:?}"));
+            }
+        }
+    }
     Ok(Case {
         name,
+        template: get("template")
+            .and_then(|v| v.as_str())
+            .and_then(crate::template::Mode::from_name),
         source,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
         env,
@@ -405,6 +439,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         methods,
         functions,
         reject: get("reject").map(|v| strings(Some(v))),
+        removed: strings(get("removed")),
         returns: get("returns").and_then(|v| v.as_str()).map(String::from),
         vars,
         limits,
@@ -569,6 +604,12 @@ fn read_expect(v: &Json) -> V<Expect> {
             }
             "steps" | "allocated" => check_count(x).map_err(|e| format!("expect.{k}: {e}"))?,
             "description" => check_description(x)?,
+            "analysis" => {
+                if obj.len() != 1 {
+                    return Err("expect has analysis and another field".into());
+                }
+                check_analysis(x)?;
+            }
             _ => return Err(format!("expect is a result and has the field {k:?}")),
         }
     }
@@ -594,7 +635,100 @@ fn read_expect(v: &Json) -> V<Expect> {
         steps: count("steps"),
         allocated: count("allocated"),
         description: v.get("description").cloned(),
+        analysis: v.get("analysis").cloned(),
     }))
+}
+
+/// F2 4.3 and 4.5 item 4: the form of an expected `analysis`.
+fn check_analysis(x: &Json) -> V<()> {
+    let m = x.as_obj().ok_or("expect.analysis is not an object")?;
+    let span = |v: &Json| check_span(v);
+    let exact = |o: &Json, keys: &[&str], what: &str| -> V<()> {
+        let om = o
+            .as_obj()
+            .ok_or_else(|| format!("an element of {what} is not an object"))?;
+        if om.len() != keys.len() || !keys.iter().all(|k| o.get(k).is_some()) {
+            return Err(format!(
+                "an element of {what} does not have exactly {keys:?}"
+            ));
+        }
+        Ok(())
+    };
+    for (k, v) in m {
+        match k.as_str() {
+            "names" => {
+                let a = v.as_arr().ok_or("analysis.names is not an array")?;
+                if !a.iter().all(|n| n.as_str().is_some()) {
+                    return Err("analysis.names holds a value that is not a string".into());
+                }
+            }
+            "refs" => {
+                let a = v.as_arr().ok_or("analysis.refs is not an array")?;
+                for r in a {
+                    exact(r, &["name", "path", "span"], "refs")?;
+                    r.get("name")
+                        .and_then(|n| n.as_str())
+                        .ok_or("a reference's name is not a string")?;
+                    let p = r
+                        .get("path")
+                        .and_then(|p| p.as_arr())
+                        .ok_or("a reference's path is not an array")?;
+                    if !p.iter().all(|s| s.as_str().is_some()) {
+                        return Err("a path holds a key that is not a string".into());
+                    }
+                    span(r.get("span").unwrap_or(&Json::Null))?;
+                }
+            }
+            "calls" => {
+                let a = v.as_arr().ok_or("analysis.calls is not an array")?;
+                for c in a {
+                    exact(c, &["name", "namespace", "span", "args", "lambda"], "calls")?;
+                    c.get("name")
+                        .and_then(|n| n.as_str())
+                        .ok_or("a call's name is not a string")?;
+                    if !matches!(c.get("namespace"), Some(Json::Str(_) | Json::Null)) {
+                        return Err("a call's namespace is neither a string nor null".into());
+                    }
+                    span(c.get("span").unwrap_or(&Json::Null))?;
+                    for s in c
+                        .get("args")
+                        .and_then(|a| a.as_arr())
+                        .ok_or("a call's args is not an array")?
+                    {
+                        span(s)?;
+                    }
+                    if !matches!(c.get("lambda"), Some(Json::Bool(_))) {
+                        return Err("a call's lambda is not a boolean".into());
+                    }
+                }
+            }
+            "literal" => match v {
+                Json::Bool(false) => {}
+                Json::Obj(o) if o.len() == 1 && o[0].0 == "value" => {}
+                _ => return Err("analysis.literal is neither false nor {\"value\": v}".into()),
+            },
+            "segments" => match v {
+                Json::Null => {}
+                Json::Arr(a) => {
+                    for g in a {
+                        if g.get("text").is_some() {
+                            exact(g, &["text", "span"], "segments")?;
+                            g.get("text")
+                                .and_then(|t| t.as_str())
+                                .ok_or("a text segment's text is not a string")?;
+                        } else {
+                            exact(g, &["part", "span"], "segments")?;
+                            span(g.get("part").unwrap_or(&Json::Null))?;
+                        }
+                        span(g.get("span").unwrap_or(&Json::Null))?;
+                    }
+                }
+                _ => return Err("analysis.segments is neither null nor an array".into()),
+            },
+            _ => return Err(format!("analysis has the field {k:?}")),
+        }
+    }
+    Ok(())
 }
 
 /// F1 7.5: `expect.description` is an object with exactly the seven keys of
@@ -798,7 +932,7 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             Some(s) if is_version(s) => Ok(()),
             _ => Err("version is not major.minor".into()),
         },
-        "opaque" | "reject" => strings(k),
+        "opaque" | "reject" | "removed" => strings(k),
         "methods" => {
             let m = v.as_obj().ok_or("methods is not an object")?;
             for (mk, mv) in m {
@@ -843,6 +977,10 @@ fn check_field(k: &str, v: &Json) -> V<()> {
         },
         "expect" => Ok(()),
         "schemas" => check_schemas(v),
+        "template" => match v.as_str() {
+            Some("string" | "value") => Ok(()),
+            _ => Err("template is neither \"string\" nor \"value\"".into()),
+        },
         _ => Err(format!("unknown field {k:?}")),
     }
 }

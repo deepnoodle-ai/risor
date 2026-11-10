@@ -232,7 +232,7 @@ impl Resolver<'_> {
     }
 
     fn is_function_name(&self, name: &str) -> bool {
-        library::function(name).is_some()
+        self.env.lib_function(name).is_some()
             || self
                 .env
                 .function(name)
@@ -586,7 +586,7 @@ impl Resolver<'_> {
                         .filter(|&i| self.env.data().functions[i].namespace.is_none())
                     {
                         Callee::Host(i)
-                    } else if let Some(i) = library::function(name) {
+                    } else if let Some(i) = self.env.lib_function(name) {
                         Callee::Lib(i)
                     } else {
                         self.diag(code::STATIC[1], name_span);
@@ -669,7 +669,7 @@ impl Resolver<'_> {
     }
 
     fn arms(&mut self, arms: &[NodeId]) {
-        let mut seen: Vec<Lit> = Vec::new();
+        let mut seen: HashSet<LitKey> = HashSet::new();
         let mut after_default = false;
         for &a in arms {
             let NodeKind::Arm { literals, result } = self.kind(a).clone() else {
@@ -683,10 +683,9 @@ impl Resolver<'_> {
                 None => after_default = true,
                 Some(lits) => {
                     for l in lits {
-                        if seen.iter().any(|s| lit_eq(s, &l.lit)) {
+                        if !seen.insert(lit_key(&l.lit)) {
                             self.diag(code::STATIC[9], l.span); // duplicate-case
                         }
-                        seen.push(l.lit);
                     }
                 }
             }
@@ -695,13 +694,27 @@ impl Resolver<'_> {
     }
 }
 
-fn lit_eq(a: &Lit, b: &Lit) -> bool {
-    match (a, b) {
-        (Lit::Number(x), Lit::Number(y)) => x == y,
-        (Lit::Str(x), Lit::Str(y)) => x == y,
-        (Lit::Bool(x), Lit::Bool(y)) => x == y,
-        (Lit::Null, Lit::Null) => true,
-        _ => false,
+/// A literal of a `match` arm as a key equal by `==` (`01-language.md` 6.7):
+/// `1` and `1.0` are one key, and so are `0` and `-0`. A set of keys finds a
+/// literal listed twice in n log n work (ruling CG10).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum LitKey {
+    Num(u64),
+    Str(String),
+    Bool(bool),
+    Null,
+}
+
+pub(crate) fn lit_key(l: &Lit) -> LitKey {
+    match l {
+        Lit::Number(x) => LitKey::Num(if *x == 0.0 {
+            0.0f64.to_bits()
+        } else {
+            x.to_bits()
+        }),
+        Lit::Str(s) => LitKey::Str(s.clone()),
+        Lit::Bool(b) => LitKey::Bool(*b),
+        Lit::Null => LitKey::Null,
     }
 }
 

@@ -63,10 +63,25 @@ pub fn ty_schema(schema: &Json, opts: SchemaOptions) -> Result<Ty, String> {
     };
     let (t, _) = m.map(schema, 0)?;
     let t = if opts.closed { close(&t) } else { t };
+    // `05-types.md` 20.7, ruling CG4: a `$ref` shares, so the type written
+    // out can pass the size limit though the schema is small.
+    if t.too_big() {
+        return Err(format!(
+            "the type the schema gives is larger than {}",
+            crate::check::ty::SIZE_LIMIT
+        ));
+    }
     if type_depth(&t, &mut HashMap::new()) > MAX_DEPTH {
         return Err("the type the schema gives is deeper than 64".into());
     }
     Ok(t)
+}
+
+/// As [`ty_schema`], from the schema's JSON text, read with the crate's own
+/// strict reader (ruling BB27). Text that is not JSON is an error too.
+pub fn ty_schema_text(text: &str, opts: SchemaOptions) -> Result<Ty, String> {
+    let schema = crate::json::parse(text).map_err(|e| format!("the schema is not JSON: {e}"))?;
+    ty_schema(&schema, opts)
 }
 
 struct Mapper<'a> {
@@ -138,6 +153,14 @@ impl<'a> Mapper<'a> {
         let (t, d) = r?;
         if d > MAX_DEPTH {
             return self.err("the schema is deeper than 64");
+        }
+        // Ruling CG8: every walked subschema's type is tested, so no
+        // operation of the mapping meets a type over the limit.
+        if t.too_big() {
+            return self.err(format!(
+                "its type is larger than {}",
+                crate::check::ty::SIZE_LIMIT
+            ));
         }
         Ok((t, d))
     }
@@ -248,6 +271,11 @@ impl<'a> Mapper<'a> {
                     .is_none_or(|ns| ns.iter().any(|n| allows(n, v)))
                 {
                     match literal(v, 0) {
+                        // Ruling CG8: each value's literal type is tested.
+                        Some(t) if t.too_big() => {
+                            return self
+                                .err("a value of enum or const has a type over the size limit")
+                        }
                         Some(t) => ts.push(t),
                         None => return self.err("a value of enum or const is deeper than 64"),
                     }
@@ -452,6 +480,7 @@ impl<'a> Mapper<'a> {
                 fields,
                 rest,
                 closable,
+                size: Default::default(),
             },
             depth,
         ))
@@ -620,6 +649,7 @@ pub fn meet(a: &Rec, b: &Rec) -> Rec {
         fields,
         rest: pick(&[a.rest.clone(), b.rest.clone()]),
         closable: a.closable && b.closable,
+        size: Default::default(),
     }
 }
 
@@ -877,6 +907,7 @@ mod tests {
                 fields,
                 rest: Ty::any(),
                 closable,
+                size: Default::default(),
             }
         };
         let both = meet(&open(true, "a"), &open(true, "b"));
@@ -895,6 +926,7 @@ mod tests {
             .into(),
             rest: Ty::any(),
             closable: true,
+            size: Default::default(),
         }));
         assert_eq!(print(&close(&nested)), "{p: {a?: int, b?: int}}[]");
     }
@@ -922,10 +954,29 @@ mod tests {
                 closed,
                 ..SchemaOptions::default()
             };
-            let t = ty_schema(&j, opts).unwrap();
-            assert_eq!(type_depth(&t, &mut HashMap::new()), n);
+            // Ruling CG4: written out, the type has 2^31 nodes, over the
+            // size limit, so it is `bad-type`, found without expanding it.
+            let e = ty_schema(&j, opts).err().unwrap();
+            assert!(e.contains("larger than"), "{e}");
         }
         assert!(start.elapsed().as_secs() < 5);
+        // Under the limit, sharing is kept: 14 levels give 2^15 - 1 nodes.
+        let mut defs = Vec::new();
+        for i in 0..14 {
+            defs.push(format!(
+                "\"d{i}\": {{\"type\": \"object\", \"properties\": {{\"a\": {{\"$ref\": \"#/$defs/d{j}\"}}, \"b\": {{\"$ref\": \"#/$defs/d{j}\"}}}}}}",
+                j = i + 1
+            ));
+        }
+        defs.push("\"d14\": {\"type\": \"integer\"}".to_string());
+        let schema = format!(
+            "{{\"$defs\": {{{}}}, \"$ref\": \"#/$defs/d0\"}}",
+            defs.join(", ")
+        );
+        let t = ty_schema(&parse(&schema).unwrap(), SchemaOptions::default()).unwrap();
+        assert_eq!(type_depth(&t, &mut HashMap::new()), 14);
+        // Each record: 1 + a + b + its open rest `any` (1).
+        assert!(t.size() < crate::check::ty::SIZE_LIMIT);
     }
 
     #[test]
@@ -984,6 +1035,43 @@ mod tests {
                 assert_eq!(got, *want, "{s}");
             }
         }
+    }
+
+    /// Ruling CG8: a part over the size limit that a Pick would drop is
+    /// still `bad-type`.
+    #[test]
+    fn every_walked_type_is_tested_for_size() {
+        let mut defs = Vec::new();
+        for i in 0..20 {
+            defs.push(format!(
+                "\"d{i}\": {{\"type\": \"object\", \"properties\": {{\"a\": {{\"$ref\": \"#/$defs/d{j}\"}}, \"b\": {{\"$ref\": \"#/$defs/d{j}\"}}}}, \"additionalProperties\": false}}",
+                j = i + 1
+            ));
+        }
+        defs.push("\"d20\": {\"type\": \"integer\"}".to_string());
+        let defs = defs.join(", ");
+        let picked = format!(
+            "{{\"$defs\": {{{defs}}}, \"allOf\": [{{\"type\": \"string\"}}, {{\"$ref\": \"#/$defs/d0\"}}]}}"
+        );
+        assert!(
+            map(&picked, &[]).contains("larger than"),
+            "{}",
+            map(&picked, &[])
+        );
+        // The same schema without the big part maps.
+        let small = format!("{{\"$defs\": {{{defs}}}, \"allOf\": [{{\"type\": \"string\"}}]}}");
+        assert_eq!(map(&small, &[]), "string");
+    }
+
+    #[test]
+    fn a_schema_from_text() {
+        let t = ty_schema_text(
+            r#"{"type": "array", "items": {"type": "integer"}}"#,
+            SchemaOptions::default(),
+        );
+        assert_eq!(t.map(|t| print(&t)), Ok("int[]".to_string()));
+        assert!(ty_schema_text("{\"type\": ", SchemaOptions::default()).is_err());
+        assert!(ty_schema_text(r#"{"a": 1, "a": 2}"#, SchemaOptions::default()).is_err());
     }
 
     #[test]

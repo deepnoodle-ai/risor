@@ -40,6 +40,31 @@ pub fn parse(text: &str) -> Result<Parsed, Error> {
     Ok(Parsed { source, ast })
 }
 
+/// Parse the parts of a template (F2 2.2, 2.3). `toks` holds each part's
+/// tokens followed by its end: an `Eof` token with the span of the closing
+/// delimiter, or the lone closing brace and then an `Eof`. `parts` gives, for
+/// each part, the index of its first token and the span of its `${{`, which
+/// opens one level. Returns the arena with each part's expression.
+pub(crate) fn parse_parts(
+    src: &Source,
+    toks: &[Token],
+    parts: &[(usize, Span)],
+) -> Result<(Ast, Vec<NodeId>), Diagnostic> {
+    let mut p = Parser::new(src, toks);
+    let mut ids = Vec::new();
+    for &(start, open) in parts {
+        p.pos = start;
+        p.open(open).map_err(|d| *d)?;
+        let e = p.expr().map_err(|d| *d)?;
+        if !matches!(p.peek().tok, Tok::Eof) {
+            return Err(*p.unexpected(p.peek()));
+        }
+        p.close();
+        ids.push(e);
+    }
+    Ok((p.ast, ids))
+}
+
 /// The error is boxed: a large `Err` makes every `?` cost stack in a build
 /// with no optimization, and the parser recurses once for each level.
 type R<T> = Result<T, Box<Diagnostic>>;
@@ -57,6 +82,8 @@ struct Parser<'a> {
     /// For each opener (`(`, `[`, `?.[`, `{`), the index of its matching
     /// closer by the count of 3.2 rule 6.
     partner: Vec<Option<u32>>,
+    /// For each template head, the index of its tail.
+    tmpl_end: Vec<Option<u32>>,
     /// The levels open when each token was read.
     tok_level: Vec<u16>,
     /// The greatest level opened since it was last reset.
@@ -65,14 +92,37 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(src: &'a Source, t: &'a [Token]) -> Parser<'a> {
+        // 3.2 rule 6: a template with all of its interpolations is one
+        // token for the count outside it. Inside, each interpolation counts
+        // its own openers and closers.
         let mut partner = vec![None; t.len()];
-        let mut stack = Vec::new();
+        let mut tmpl_end = vec![None; t.len()];
+        let mut stacks: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut heads: Vec<usize> = Vec::new();
         for (i, tok) in t.iter().enumerate() {
             match tok.tok {
-                Tok::Punct(P::LParen | P::LBracket | P::QDotBracket | P::LBrace) => stack.push(i),
+                Tok::Punct(P::LParen | P::LBracket | P::QDotBracket | P::LBrace) => {
+                    stacks.last_mut().expect("a stack").push(i)
+                }
                 Tok::Punct(P::RParen | P::RBracket | P::RBrace) => {
-                    if let Some(o) = stack.pop() {
+                    if let Some(o) = stacks.last_mut().expect("a stack").pop() {
                         partner[o] = Some(i as u32);
+                    }
+                }
+                Tok::TmplHead(_) => {
+                    stacks.push(Vec::new());
+                    heads.push(i);
+                }
+                Tok::TmplMiddle(_) => stacks.last_mut().expect("a stack").clear(),
+                // The end of a template's part (F2): each part counts alone.
+                Tok::Eof => {
+                    stacks = vec![Vec::new()];
+                    heads.clear();
+                }
+                Tok::TmplTail(_) if stacks.len() > 1 => {
+                    stacks.pop();
+                    if let Some(h) = heads.pop() {
+                        tmpl_end[h] = Some(i as u32);
                     }
                 }
                 _ => {}
@@ -85,6 +135,7 @@ impl<'a> Parser<'a> {
             level: 0,
             ast: Ast::default(),
             partner,
+            tmpl_end,
             tok_level: vec![0; t.len()],
             max_level: 0,
         }
@@ -1108,6 +1159,13 @@ impl<'a> Parser<'a> {
             }
             Tok::Punct(P::LBrace) => self.map_pat(),
             Tok::Punct(P::LBracket) => self.list_pat(),
+            // 3.5 rule 3: a template where a pattern must stand is one
+            // token, and its interpolations are not reached.
+            Tok::TmplHead(_) if t.code.is_none() => {
+                let end =
+                    self.tmpl_end[self.pos].map_or(t.span, |e| t.span.to(self.t[e as usize].span));
+                Err(self.unexpected_at(end))
+            }
             _ => Err(self.unexpected(t)),
         }
     }

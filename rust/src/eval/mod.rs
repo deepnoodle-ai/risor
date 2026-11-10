@@ -1217,7 +1217,7 @@ impl<'h> Run<'h> {
             return self.invoke_host(imp, &vals, &label, span);
         }
         let idx = match kind {
-            Kind::String | Kind::List | Kind::Map => crate::library::method(kind, &name.name),
+            Kind::String | Kind::List | Kind::Map => self.p.env.lib_method(kind, &name.name),
             _ => None,
         };
         let Some(idx) = idx else {
@@ -1635,6 +1635,13 @@ impl Program {
             return f.class();
         };
         let at = |class: &str| f.span.is_some_and(|s| self.at_site(sites, class, s));
+        // Ruling CH1: a site of class `index`, `divide`, `value` or `host`
+        // is on the node that can fail; a failure is at it only when it is
+        // on the failing node itself.
+        let on = |class: &str| {
+            f.span
+                .is_some_and(|s| sites.iter().any(|x| x.class == class && x.span == s))
+        };
         match f.code {
             "null-operand" | "wrong-kind" | "missing-field" => Some(if at("dynamic") {
                 "dynamic"
@@ -1642,14 +1649,17 @@ impl Program {
                 "environment"
             }),
             "no-match" => Some("environment"),
-            "not-conforming" => Some(if at("value") { "value" } else { "environment" }),
+            // Ruling CE2: the mark `!` is a promise. Away from a `host` site
+            // a function or method not marked `!` broke it.
+            "function-error" => Some(if on("host") { "host" } else { "environment" }),
+            "not-conforming" => Some(if on("value") { "value" } else { "environment" }),
             _ => f.class(),
         }
     }
 
     /// Whether a failure at a node's span is at a site of a class: the site is
     /// on the failing node, or on its operand, receiver, index or argument
-    /// (`05-types.md` 18.3).
+    /// (`05-types.md` 18.3). Ruling CH1: this reach is for `dynamic` sites.
     fn at_site(&self, sites: &[crate::check::Site], class: &str, span: Span) -> bool {
         let ast = &self.parsed.ast;
         let mut spans = vec![span];
@@ -1667,8 +1677,12 @@ impl Program {
                 NodeKind::MethodCall { x, args, .. } => {
                     kids.push(*x);
                     kids.extend(args.iter().copied());
+                    kids.extend(self.lambda_bodies(args));
                 }
-                NodeKind::Call { args, .. } => kids.extend(args.iter().copied()),
+                NodeKind::Call { args, .. } => {
+                    kids.extend(args.iter().copied());
+                    kids.extend(self.lambda_bodies(args));
+                }
                 NodeKind::Spread { value } => kids.push(*value),
                 NodeKind::Entry { key, value, .. } => {
                     if let EntryKey::Computed(k) = key {
@@ -1723,6 +1737,24 @@ impl Program {
         sites
             .iter()
             .any(|s| s.class == class && spans.contains(&s.span))
+    }
+
+    /// Ruling CB3: the body of each lambda that is an argument, or that an
+    /// argument names, for a failure of a callback's result, key or value.
+    fn lambda_bodies(&self, args: &[NodeId]) -> Vec<NodeId> {
+        let ast = &self.parsed.ast;
+        let mut out = Vec::new();
+        for &a in args {
+            let l = match (&ast.nodes[a.index()].kind, &self.res[a.index()]) {
+                (NodeKind::Lambda { .. }, _) => a,
+                (_, Res::LambdaRef(l)) => *l,
+                _ => continue,
+            };
+            if let NodeKind::Lambda { body, .. } = &ast.nodes[l.index()].kind {
+                out.push(*body);
+            }
+        }
+        out
     }
 
     /// The diagnostic of a run failure, with its class by the program's

@@ -52,6 +52,45 @@ struct Lexer<'a> {
     /// The index in `out` of the head of each open template.
     heads: Vec<usize>,
     blocks: Vec<Block>,
+    /// Package F2: the part of a template being read, if any.
+    part: Option<PartState>,
+}
+
+/// A part of a template (F2 2.2): the offset of the `$` of its `${{`, the
+/// `{` tokens open in it, and its closing brace once met.
+struct PartState {
+    dollar: usize,
+    depth: u32,
+    end: Option<usize>,
+}
+
+/// Divide the tokens of a template's part (F2 2.2), from `from`, just after
+/// its `${{` at `dollar`. Returns the tokens, with no `Eof`, and the offset
+/// of the closing brace. The end of the text before the closing brace is
+/// `unterminated-string` from the `$` to the end; a literal or comment of the
+/// part that is itself unterminated is met first.
+pub fn lex_part(
+    src: &Source,
+    from: usize,
+    dollar: usize,
+) -> Result<(Vec<Token>, usize), Diagnostic> {
+    let mut lx = Lexer {
+        src,
+        s: src.chars(),
+        i: from,
+        out: Vec::new(),
+        stack: Vec::new(),
+        heads: Vec::new(),
+        blocks: Vec::new(),
+        part: Some(PartState {
+            dollar,
+            depth: 0,
+            end: None,
+        }),
+    };
+    lx.run()?;
+    let end = lx.part.and_then(|p| p.end).unwrap_or(src.len());
+    Ok((lx.out, end))
 }
 
 /// Divide a text into tokens. The last token is `Tok::Eof`.
@@ -64,6 +103,7 @@ pub fn lex(src: &Source) -> Result<Vec<Token>, Diagnostic> {
         stack: Vec::new(),
         heads: Vec::new(),
         blocks: Vec::new(),
+        part: None,
     };
     lx.run()?;
     Ok(lx.out)
@@ -129,10 +169,21 @@ impl<'a> Lexer<'a> {
                         "the template has no closing backtick",
                     ));
                 }
+                if let Some(p) = &self.part {
+                    return Err(self.err(
+                        code::UNTERMINATED_STRING,
+                        p.dollar,
+                        n,
+                        "the part has no closing }}",
+                    ));
+                }
                 self.push(Tok::Eof, n, n);
                 return Ok(());
             }
             self.token()?;
+            if self.part.as_ref().is_some_and(|p| p.end.is_some()) {
+                return Ok(());
+            }
         }
     }
 
@@ -198,6 +249,8 @@ impl<'a> Lexer<'a> {
             '{' => {
                 if let Some(top) = self.stack.last_mut() {
                     top.depth += 1;
+                } else if let Some(p) = &mut self.part {
+                    p.depth += 1;
                 }
                 self.punct(P::LBrace, 1)
             }
@@ -207,6 +260,15 @@ impl<'a> Lexer<'a> {
                         return self.template_continue();
                     }
                     top.depth -= 1;
+                } else if let Some(p) = &mut self.part {
+                    // F2 2.2 item 3: the first `}` no `{` of the part
+                    // matched is its closing brace.
+                    if p.depth == 0 {
+                        p.end = Some(i);
+                        self.i = i + 1;
+                        return Ok(());
+                    }
+                    p.depth -= 1;
                 }
                 self.punct(P::RBrace, 1)
             }

@@ -71,7 +71,16 @@ impl TypeCx {
 
     /// The type of `T`.
     pub fn of<T: HostType + ?Sized>(&mut self) -> Result<Ty, TypeError> {
-        T::host_type(self)
+        let t = T::host_type(self)?;
+        // Ruling CG8: each host type's derived type is tested.
+        if t.too_big() {
+            return Err(TypeError(format!(
+                "the type of {} is larger than {}",
+                std::any::type_name::<T>(),
+                crate::check::ty::SIZE_LIMIT
+            )));
+        }
+        Ok(t)
     }
 
     /// The exact record of the struct `S`, whose fields `fields` adds. The
@@ -130,6 +139,15 @@ impl RecordType {
 /// The type of `T`, at most 64 deep (6.1, row Limits).
 pub fn type_of<T: HostType + ?Sized>() -> Result<Ty, TypeError> {
     let t = TypeCx::new().of::<T>()?;
+    // `05-types.md` 20.7: a struct used many times is shared, so its type
+    // written out can pass the size limit.
+    if t.too_big() {
+        return Err(TypeError(format!(
+            "the type of {} is larger than {}",
+            std::any::type_name::<T>(),
+            crate::check::ty::SIZE_LIMIT
+        )));
+    }
     if depth(&t, &mut HashMap::new()) > MAX_DEPTH {
         return Err(TypeError(format!(
             "the type of {} is deeper than {MAX_DEPTH}",

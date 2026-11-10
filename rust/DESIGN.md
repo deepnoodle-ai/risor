@@ -283,3 +283,43 @@ one call, and a host implementation is a `'static` closure that receives
   this crate keeps no dependency; it is a workspace member, built only with
   `-p risor-derive` or `--workspace`.
 
+## Round 13
+
+- **Removed entries.** `EnvData::removed` holds record indices. Every lookup
+  of a library entry by a compile, a check or a run goes through
+  `Env::lib_function` and `Env::lib_method`, which skip them; the `value`
+  site of a method on an `any` receiver (ruling CB2) skips them too.
+- **Child environments** (`03-host.md` 3.3.2): `Env::child()` gives a builder
+  whose declarations replace the parent's of the same name; removed entries
+  accumulate; rejected classes and limits are the parent's unless given.
+- **The parameter list** (ruling CF2): the table of matching closers treats a
+  template with its interpolations as one token; each interpolation matches
+  its own openers. A template where a pattern must stand is
+  `unexpected-token` over the whole template.
+- **Type size** (`05-types.md` 20.7, ruling CG): `Rec` keeps its size in a
+  `SizeCache` (a `OnceLock`, emptied by a clone and ignored by equality), so
+  `Ty::size` is constant work for each level of list nesting and saturates
+  just above 100,000. The checker tests it at the nodes 20.7 lists
+  (`size_check`, and inside `depth_check` before the depth); a declared type,
+  a schema's type and a host type over it are `bad-type`.
+
+## Package F2, templates and analysis
+
+- **Template parse** (`src/template.rs`): the text is read left to right;
+  each part is lexed by the Core lexer from after `${{` (`lex_part`), which
+  counts the part's `{` tokens and stops at the closing brace. Every part is
+  lexed before any is parsed, so a lexical error anywhere comes first. The
+  parts' tokens are joined, each ended by an `Eof` with the span of `}}` (or
+  the lone `}`, then an `Eof`), and `parse_parts` parses each as one `Expr`
+  with the `${{` opening a level. The matching table of 3.2 rule 6 restarts
+  at each part's end. `Template::program(mode)` adds the `Template` or
+  `String` node and the `Program` node to a copy of the arena.
+- **Analysis** (`src/analysis.rs`): one walk with an explicit task stack and
+  a stack of scopes, so neither a long chain nor a long operator chain uses
+  host stack. A chain is walked from its last step down to its primary; the
+  path runs from the primary outward and stops at a parenthesis, a method
+  call or an index that is not a `String` node.
+- **The runner**: `PACKAGES` in `lib.rs` is the one list of packages offered;
+  `testing::skipped_by_package` leaves out the `until-fNN-` files of those
+  packages (ruling BA8).
+
