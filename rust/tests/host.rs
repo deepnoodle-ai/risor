@@ -4,7 +4,10 @@
 //! enter (round 5 T7), the depth test on empty containers (round 10 AH2), and
 //! the stack the deepest programs need (round 8 AA7).
 
-use risor::{compile, parse, Data, Env, Limits, NoVars, OpaqueRef, Program, RunOptions, Value};
+use risor::{
+    compile_unchecked as compile, parse, Data, Env, Limits, NoVars, OpaqueRef, Program, RunOptions,
+    Value,
+};
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -405,4 +408,109 @@ fn programs_and_environments_are_send_and_sync() {
     fn check<T: Send + Sync>() {}
     check::<Env>();
     check::<Program>();
+}
+
+fn deep(n: usize) -> Data {
+    let mut d = Data::List(vec![Data::Float(1.0)]);
+    for _ in 1..n {
+        d = Data::List(vec![d]);
+    }
+    d
+}
+
+/// Ruling AN2: handing the result over is not a walk, so host data nested
+/// past the depth limit is the value, and the binding's own conversion of
+/// it to JSON (the outcome command's) neither fails nor overflows.
+#[test]
+fn a_deep_result_is_handed_over() {
+    let env = Env::builder().vars("{a: any}").build().unwrap();
+    let p = program(&env, "a");
+    let v = vars(&[("a", deep(1000))]);
+    let out = p.run(&v);
+    assert!(out.result.is_ok());
+    assert_eq!(out.usage.steps, 0);
+    // The outcome command's path, on the same data.
+    let doc = risor::json::parse(
+        r#"[{"name": "deep", "env": "{a: any}", "source": "a", "vars": {"a": 0}}]"#,
+    )
+    .unwrap();
+    let mut cases = risor::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let mut j = String::from("1");
+    for _ in 0..1000 {
+        j = format!("[{j}]");
+    }
+    cases[0].vars = Some(vec![("a".into(), risor::json::parse(&j).unwrap())]);
+    let line = risor::testing::outcome_line(&cases[0]);
+    assert!(
+        line.contains("\"phase\":null"),
+        "{}",
+        &line[..80.min(line.len())]
+    );
+    assert!(line.contains(&"[".repeat(1000)));
+}
+
+/// Ruling AN2: no message a run builds leaves a template's hole unfilled.
+/// `messages::build` asserts it in a test build; these are the limit
+/// messages, which carry the limit.
+#[test]
+fn limit_messages_carry_their_limit() {
+    let none = BTreeMap::new();
+    for (limits, src, want) in [
+        (
+            Limits {
+                steps: Some(2),
+                ..Limits::default()
+            },
+            "1 + 1 + 1 + 1",
+            "the run needed more than its limit of 2 steps",
+        ),
+        (
+            Limits {
+                allocation: Some(2),
+                ..Limits::default()
+            },
+            "[1, 2, 3]",
+            "the run needed more than its limit of 2 allocation units",
+        ),
+        (
+            Limits {
+                depth: 1,
+                ..Limits::default()
+            },
+            "`${[[1]]}`",
+            "calls and nested values went deeper than the depth limit of 1",
+        ),
+    ] {
+        let env = Env::builder().limits(limits).build().unwrap();
+        let p = program(&env, src);
+        let f = p.run(&none).result.err().unwrap();
+        assert_eq!(f.message(), want);
+        assert!(!f.message().contains('{'));
+    }
+}
+
+/// Ruling AP7: compile checks by default; compiling without a check is an
+/// explicit option, and gives the run's classes of the column "not checked".
+#[test]
+fn compile_checks_by_default() {
+    let env = Env::builder()
+        .vars("{x: any, n: int | null}")
+        .build()
+        .unwrap();
+    let e = risor::compile(&env, parse("n + 1").unwrap()).err().unwrap();
+    assert_eq!(e.first().code, "maybe-null");
+    assert!(risor::compile_unchecked(&env, parse("n + 1").unwrap()).is_ok());
+    // The same failure has the checked class at a `dynamic` site, and the
+    // unchecked class without a check.
+    let v = vars(&[("x", Data::Float(1.0)), ("n", Data::Null)]);
+    let p = risor::compile(&env, parse("x.a").unwrap()).unwrap();
+    let f = p.run(&v).result.err().unwrap();
+    assert_eq!(p.class_of(&f), Some("dynamic"));
+    let p = risor::compile(&env, parse("match x { 2 => 1 }").unwrap()).err();
+    assert!(p.is_some(), "an `any` subject needs `_`");
+    let p = risor::compile_unchecked(&env, parse("match x { 2 => 1 }").unwrap()).unwrap();
+    let f = p.run(&v).result.err().unwrap();
+    assert_eq!(p.class_of(&f), Some("dynamic"));
+    let r = risor::check(&env, &parse("x").unwrap(), &risor::Expected::Nothing);
+    assert_eq!(risor::check::ty::print(r.ty.as_ref().unwrap()), "any");
 }

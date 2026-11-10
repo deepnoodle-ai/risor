@@ -104,6 +104,9 @@ pub struct Case {
     pub limits: Limits,
     pub skip: Option<String>,
     pub precondition: Option<bool>,
+    /// `false`: the program is one the type rules reject on purpose; it is
+    /// run with the static rules alone (rulings round 11 AP1).
+    pub check: bool,
     pub expect: Expect,
 }
 
@@ -114,7 +117,8 @@ pub struct CaseFile {
     pub cases: Vec<Case>,
 }
 
-const HEADER_FIELDS: [&str; 13] = [
+const HEADER_FIELDS: [&str; 14] = [
+    "check",
     "cases",
     "source",
     "file",
@@ -130,7 +134,8 @@ const HEADER_FIELDS: [&str; 13] = [
     "precondition",
 ];
 
-const CASE_FIELDS: [&str; 15] = [
+const CASE_FIELDS: [&str; 16] = [
+    "check",
     "name",
     "source",
     "file",
@@ -352,6 +357,22 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
             check_opaque(v, "expect.value")?;
         }
     }
+    let check = !matches!(get("check"), Some(Json::Bool(false)));
+    // 3.10.10 item 17: an unchecked case states nothing that needs the check.
+    if !check {
+        let bad = match &expect {
+            Expect::Result(r) => r.ty.is_some() || r.sites.is_some(),
+            Expect::Failure(f) => {
+                f.phase == Phase::Check
+                    && f.diagnostics
+                        .iter()
+                        .any(|d| !code::STATIC.contains(&d.code.as_str()))
+            }
+        };
+        if bad {
+            return Err("a case with \"check\": false states what needs the type checker".into());
+        }
+    }
     Ok(Case {
         name,
         source,
@@ -365,6 +386,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         vars,
         limits,
         skip: own("skip").and_then(|v| v.as_str()).map(String::from),
+        check,
         precondition: match get("precondition") {
             Some(Json::Bool(b)) => Some(*b),
             _ => None,
@@ -728,7 +750,7 @@ fn check_field(k: &str, v: &Json) -> V<()> {
             }
             Ok(())
         }
-        "precondition" => match v {
+        "precondition" | "check" => match v {
             Json::Bool(_) => Ok(()),
             _ => Err("precondition is not a boolean".into()),
         },

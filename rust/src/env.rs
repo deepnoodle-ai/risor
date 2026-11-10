@@ -1,6 +1,7 @@
 //! The environment (`03-host.md` 3.3): declarations, and the errors of
 //! phase `declare`.
 
+use crate::check::ty::{from_text, Ty};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::eval::Call;
 use crate::host::{Data, HostError};
@@ -57,6 +58,8 @@ impl Default for Limits {
 
 pub struct EnvData {
     pub vars: Vec<String>,
+    /// The type of each variable, as the checker reads it.
+    pub var_types: Vec<crate::check::ty::Ty>,
     pub functions: Vec<HostFn>,
     pub opaque: Vec<String>,
     pub methods: Vec<HostMethod>,
@@ -215,7 +218,29 @@ impl EnvBuilder {
                 );
             }
         }
+        let mut opaque: Vec<String> = Vec::new();
+        for name in &self.opaque {
+            let b = name.as_bytes();
+            let ok = b.len() >= 2
+                && b[0].is_ascii_uppercase()
+                && b[1..]
+                    .iter()
+                    .all(|c| c.is_ascii_alphanumeric() || *c == b'_');
+            if !ok {
+                bad(
+                    code::BAD_NAME,
+                    format!("{name:?} cannot name an opaque type"),
+                );
+            } else if opaque.contains(name) {
+                bad(
+                    code::NAME_CLASH,
+                    format!("the opaque type {name} is declared twice"),
+                );
+            }
+            opaque.push(name.clone());
+        }
         let mut vars: Vec<String> = Vec::new();
+        let mut var_types = Vec::new();
         if let Some(text) = &self.vars {
             match parse_type(text) {
                 // Ruling AG4: parentheses do not make a record.
@@ -238,6 +263,14 @@ impl EnvBuilder {
                                 format!("the variable {} is declared twice", f.key),
                             );
                         }
+                        // 19.5, the rules beyond the grammar.
+                        match from_text(&f.ty, &opaque, None) {
+                            Ok(t) => var_types.push(t),
+                            Err(e) => {
+                                bad(code::BAD_TYPE, format!("the variable {}: {e}", f.key));
+                                var_types.push(Ty::any());
+                            }
+                        }
                         vars.push(f.key);
                     }
                 }
@@ -245,35 +278,21 @@ impl EnvBuilder {
                 Err(e) => bad(code::BAD_TYPE, format!("variables: {e}")),
             }
         }
-        let mut opaque: Vec<String> = Vec::new();
-        for name in &self.opaque {
-            let b = name.as_bytes();
-            let ok = b.len() >= 2
-                && b[0].is_ascii_uppercase()
-                && b[1..]
-                    .iter()
-                    .all(|c| c.is_ascii_alphanumeric() || *c == b'_');
-            if !ok {
-                bad(
-                    code::BAD_NAME,
-                    format!("{name:?} cannot name an opaque type"),
-                );
-            } else if opaque.contains(name) {
-                bad(
-                    code::NAME_CLASH,
-                    format!("the opaque type {name} is declared twice"),
-                );
-            }
-            opaque.push(name.clone());
-        }
         let mut methods = Vec::new();
         for (key, text, imp) in self.methods {
             let (t, m) = key.split_once('.').unwrap_or((&key, ""));
+            if !opaque.iter().any(|o| o == t) {
+                bad(
+                    code::BAD_SIGNATURE,
+                    format!("the receiver of {key} is not a declared opaque type"),
+                );
+            }
             match parse_sig(&text) {
                 Ok(s) if s.has_fn_param() => bad(
                     code::BAD_SIGNATURE,
                     format!("the method {key} takes a function"),
                 ),
+                Ok(sig) if !sig_types(&sig, &opaque, &mut bad) => {}
                 Ok(sig) => methods.push(HostMethod {
                     type_name: t.to_string(),
                     name: m.to_string(),
@@ -328,7 +347,8 @@ impl EnvBuilder {
                     );
                     None
                 }
-                Ok(s) => Some(s),
+                Ok(s) if sig_types(&s, &opaque, &mut bad) => Some(s),
+                Ok(_) => None,
                 Err(e) => {
                     bad(code::BAD_SIGNATURE, format!("the function {name}: {e}"));
                     None
@@ -394,6 +414,7 @@ impl EnvBuilder {
         Ok(Env {
             data: Arc::new(EnvData {
                 vars,
+                var_types,
                 functions,
                 opaque,
                 methods,
@@ -402,6 +423,46 @@ impl EnvBuilder {
             }),
         })
     }
+}
+
+/// The rules of 19.5 beyond the grammar, for a signature: every type names
+/// declared opaque types only and is at most 64 deep (`bad-type`), and a rest
+/// parameter is a list (`bad-signature`). Returns whether it holds.
+fn sig_types(sig: &Sig, opaque: &[String], bad: &mut impl FnMut(&'static str, String)) -> bool {
+    use crate::types::text::ParamType;
+    let none = crate::check::ty::Solutions::new();
+    let mut ok = true;
+    let check = |t: &Type, ok: &mut bool, bad: &mut dyn FnMut(&'static str, String)| {
+        // Ruling AO4: every error in a signature is `bad-signature`.
+        if let Err(e) = from_text(t, opaque, Some(&none)) {
+            bad(code::BAD_SIGNATURE, e);
+            *ok = false;
+        }
+    };
+    for p in &sig.params {
+        match &p.ty {
+            ParamType::Type(t) => {
+                check(t, &mut ok, bad);
+                if p.rest && !matches!(t, Type::List(_)) {
+                    bad(
+                        code::BAD_SIGNATURE,
+                        format!("the rest parameter {} is not a list", p.name),
+                    );
+                    ok = false;
+                }
+            }
+            ParamType::Fn(f) => {
+                for (_, t) in &f.params {
+                    check(t, &mut ok, bad);
+                }
+                if let Some(r) = &f.result {
+                    check(r, &mut ok, bad);
+                }
+            }
+        }
+    }
+    check(&sig.result, &mut ok, bad);
+    ok
 }
 
 /// The expected result of a check or a compile (`03-host.md` 3.2.3): its

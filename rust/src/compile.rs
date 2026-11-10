@@ -57,6 +57,9 @@ pub struct Program {
     /// body that holds it (8.4).
     pub measure: Vec<u16>,
     pub slots: usize,
+    /// For a program compiled with a check: its sites, which decide the
+    /// class of a run failure (`05-types.md` 18.5).
+    pub sites: Option<Vec<crate::check::Site>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -66,9 +69,17 @@ enum Bind {
     Lambda(NodeId),
 }
 
-/// Compile a parsed program against an environment, with the static rules
-/// and no type rules.
+/// Compile a parsed program against an environment, with a check: the
+/// default (`03-host.md` 3.2.1; rulings round 11 AP7). It fails exactly when
+/// the check reports a diagnostic. `compile_unchecked` is the explicit
+/// option without the type rules, and `check::check` the check alone.
 pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
+    crate::check::compile_checked(env, parsed, &crate::check::Expected::Nothing).map(|(p, _)| p)
+}
+
+/// Compile with the static rules and no type rules (`03-host.md` 3.2.1
+/// item 4). A run reports classes by the column "not checked".
+pub fn compile_unchecked(env: &Env, parsed: Parsed) -> Result<Program, Error> {
     let missing: Vec<Diagnostic> = env
         .data()
         .functions
@@ -96,6 +107,35 @@ pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
             diagnostics: missing,
         });
     }
+    let r = resolve(env, &parsed);
+    if !r.diags.is_empty() {
+        return Err(Error {
+            phase: Phase::Check,
+            diagnostics: r.diags,
+        });
+    }
+    Ok(Program {
+        env: env.clone(),
+        parsed,
+        res: r.res,
+        measure: r.measure,
+        slots: r.slots,
+        sites: None,
+    })
+}
+
+/// What resolution found: each node's resolution, each call's depth
+/// measure, the number of slots, and the static diagnostics in the order of
+/// 22.10.
+pub struct Resolution {
+    pub res: Vec<Res>,
+    pub measure: Vec<u16>,
+    pub slots: usize,
+    pub diags: Vec<Diagnostic>,
+}
+
+/// Resolve every name of a program, and apply the static rules.
+pub fn resolve(env: &Env, parsed: &Parsed) -> Resolution {
     let n = parsed.ast.nodes.len();
     let mut vars = HashMap::new();
     for (i, v) in env.data().vars.iter().enumerate() {
@@ -103,7 +143,7 @@ pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
     }
     let mut r = Resolver {
         env,
-        p: &parsed,
+        p: parsed,
         scopes: vec![vars, HashMap::new()],
         res: vec![Res::None; n],
         measure: vec![0; n],
@@ -118,27 +158,25 @@ pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
         }
         r.walk(*result);
     }
-    if !r.diags.is_empty() {
-        let mut d = std::mem::take(&mut r.diags);
-        d.sort_by(|a, b| {
-            let ka = a.range.unwrap_or_default();
-            let kb = b.range.unwrap_or_default();
-            (ka.start, ka.end, a.code).cmp(&(kb.start, kb.end, b.code))
-        });
-        d.dedup_by(|a, b| a.code == b.code && a.range == b.range);
-        return Err(Error {
-            phase: Phase::Check,
-            diagnostics: d,
-        });
+    let mut d = std::mem::take(&mut r.diags);
+    sort_diagnostics(&mut d);
+    Resolution {
+        res: r.res,
+        measure: r.measure,
+        slots: r.slots as usize,
+        diags: d,
     }
-    let (res, measure, slots) = (r.res, r.measure, r.slots as usize);
-    Ok(Program {
-        env: env.clone(),
-        parsed,
-        res,
-        measure,
-        slots,
-    })
+}
+
+/// Order a list of `check` diagnostics by start, end, then code, with
+/// duplicates removed (22.10, 6.1).
+pub fn sort_diagnostics(d: &mut Vec<Diagnostic>) {
+    d.sort_by(|a, b| {
+        let ka = a.range.unwrap_or_default();
+        let kb = b.range.unwrap_or_default();
+        (ka.start, ka.end, a.code).cmp(&(kb.start, kb.end, b.code))
+    });
+    d.dedup_by(|a, b| a.code == b.code && a.range == b.range);
 }
 
 struct Resolver<'a> {

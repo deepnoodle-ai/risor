@@ -58,11 +58,8 @@ const EXAMPLE: &str = r#"{
 fn the_example_of_3_10_12() {
     let v = verdicts(EXAMPLE).unwrap();
     assert_eq!(v.len(), 5);
-    assert!(matches!(v[0], Verdict::Skip(_)));
-    assert_eq!(v[1], Verdict::Pass);
-    assert!(matches!(v[2], Verdict::Skip(_)));
-    assert!(matches!(v[3], Verdict::Skip(_)));
-    assert_eq!(v[4], Verdict::Pass);
+    // With the checker every case of the example is judged.
+    assert_eq!(v, vec![Verdict::Pass; 5]);
 }
 
 #[test]
@@ -188,4 +185,30 @@ fn invalid_files() {
     invalid(
         r#"[{"name": "a", "source": "1", "expect": {"sites": [{"class": "range", "span": [1, 1, 1, 2]}]}}]"#,
     );
+}
+
+/// Ruling AP1: the case field `check`, and the files it makes invalid.
+#[test]
+fn the_check_field() {
+    let v = verdicts(
+        r#"[{"name": "a", "check": false, "env": "{a: any}", "vars": {"a": 1},
+             "source": "a < 2 < 3",
+             "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind", "class": "dynamic"}]}}]"#,
+    )
+    .unwrap();
+    assert_eq!(v, vec![Verdict::Pass]);
+    // Checked, the same program is a check failure.
+    let v = verdicts(
+        r#"[{"name": "a", "env": "{a: any}", "vars": {"a": 1}, "source": "a < 2 < 3",
+             "expect": {"phase": "run", "diagnostics": [{"code": "wrong-kind"}]}}]"#,
+    )
+    .unwrap();
+    assert!(matches!(&v[0], Verdict::Fail(d) if d[0].name == "outcome"));
+    invalid(r#"[{"name": "a", "check": false, "source": "1", "expect": {"type": "int"}}]"#);
+    invalid(r#"[{"name": "a", "check": false, "source": "1", "expect": {"sites": []}}]"#);
+    invalid(
+        r#"[{"name": "a", "check": false, "source": "1", "expect": {"phase": "check", "diagnostics": [{"code": "kind"}]}}]"#,
+    );
+    invalid(r#"[{"name": "a", "check": "no", "source": "1", "expect": {}}]"#);
+    assert!(verdicts(r#"{"check": false, "cases": [{"name": "a", "source": "1", "expect": {"phase": "check", "diagnostics": [{"code": "duplicate-key"}]}}]}"#).is_ok());
 }

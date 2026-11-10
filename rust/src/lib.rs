@@ -17,6 +17,7 @@
 #![forbid(unsafe_code)]
 
 pub mod casemap;
+pub mod check;
 pub mod compile;
 pub mod diag;
 pub mod env;
@@ -32,7 +33,8 @@ pub mod testing;
 pub mod types;
 pub mod value;
 
-pub use compile::{compile, Program};
+pub use check::{check, CheckResult, Expected};
+pub use compile::{compile, compile_unchecked, Program};
 pub use diag::{Diagnostic, Error, Phase};
 pub use env::{Env, EnvBuilder, Limits};
 pub use eval::{Call, Fail, Outcome, RunOptions, Usage};

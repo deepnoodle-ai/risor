@@ -9,7 +9,9 @@
 //! ```
 
 use risor::json::Json;
-use risor::testing::{case_files, load_doc, run_case, run_file, Counts, Verdict};
+use risor::testing::{
+    case_files, load_doc, run_case, run_case_unchecked, run_file_with, Counts, Verdict,
+};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -23,31 +25,74 @@ fn print_skips(skips: &BTreeMap<String, usize>) {
     }
 }
 
-fn run(target: &Path) -> Counts {
+fn undisputed(failed: &[String]) -> Vec<&String> {
+    failed.iter().collect()
+}
+
+fn run(target: &Path, checked: bool) -> Counts {
+    run_names(target, checked).0
+}
+
+fn run_names(target: &Path, checked: bool) -> (Counts, Vec<String>) {
     let files = if target.is_file() {
         vec![target.to_path_buf()]
     } else {
         case_files(target)
     };
     let mut total = Counts::default();
+    let mut failed = Vec::new();
     let mut skips: BTreeMap<String, usize> = BTreeMap::new();
     for f in &files {
-        let report = run_file(f);
+        let report = run_file_with(f, checked);
         print!("{report}");
-        for (_, v) in &report.results {
-            if let Verdict::Skip(why) = v {
-                *skips.entry(why.clone()).or_default() += 1;
+        for (name, v) in &report.results {
+            match v {
+                Verdict::Skip(why) => *skips.entry(why.clone()).or_default() += 1,
+                Verdict::Fail(_) => failed.push(name.clone()),
+                _ => {}
             }
         }
         total.merge(report.counts());
     }
     print_skips(&skips);
-    println!("{} ({} files): {total}", target.display(), files.len());
-    total
+    let mode = if checked {
+        "checked"
+    } else {
+        "static rules alone"
+    };
+    println!(
+        "{} ({} files, {mode}): {total}",
+        target.display(),
+        files.len()
+    );
+    (total, failed)
 }
 
 /// The headerless case lists of a data file's entries.
 fn run_lists(label: &str, lists: Vec<(String, Json)>) -> Counts {
+    // With the static rules alone, every case passes.
+    let (plain, plain_failed) = run_lists_names(
+        &format!("{label}, static rules alone"),
+        lists.clone(),
+        false,
+    );
+    assert!(plain_failed.is_empty(), "cases failed: {plain_failed:?}");
+    assert_eq!(plain.invalid, 0);
+    let (total, failed) = run_lists_names(&format!("{label}, checked"), lists, true);
+    assert!(
+        undisputed(&failed).is_empty(),
+        "cases failed: {:?}",
+        undisputed(&failed)
+    );
+    total
+}
+
+fn run_lists_names(
+    label: &str,
+    lists: Vec<(String, Json)>,
+    checked: bool,
+) -> (Counts, Vec<String>) {
+    let mut failed_names = Vec::new();
     let mut total = Counts::default();
     let mut skips: BTreeMap<String, usize> = BTreeMap::new();
     for (entry, cases) in lists {
@@ -58,9 +103,14 @@ fn run_lists(label: &str, lists: Vec<(String, Json)>) -> Counts {
             }
             Ok(cases) => {
                 for c in &cases {
-                    let v = run_case(c);
+                    let v = if checked {
+                        run_case(c)
+                    } else {
+                        run_case_unchecked(c)
+                    };
                     match &v {
                         Verdict::Fail(diffs) => {
+                            failed_names.push(c.name.clone());
                             println!("  fail: {entry}: {}", c.name);
                             for d in diffs {
                                 println!(
@@ -79,7 +129,7 @@ fn run_lists(label: &str, lists: Vec<(String, Json)>) -> Counts {
     }
     print_skips(&skips);
     println!("{label}: {total}");
-    total
+    (total, failed_names)
 }
 
 #[test]
@@ -88,16 +138,35 @@ fn conformance_suite() {
         Some(p) => PathBuf::from(p),
         None => suite_dir().join("core-run"),
     };
-    let total = run(&target);
+    let (total, failed) = run_names(&target, true);
+    assert!(
+        undisputed(&failed).is_empty(),
+        "cases failed: {:?}",
+        undisputed(&failed)
+    );
+    assert_eq!(total.invalid, 0, "files were invalid");
+}
+
+/// `suite/core-run/` with the static rules alone: a program compiled
+/// without a check behaves as before (3.10.13).
+#[test]
+fn conformance_suite_unchecked() {
+    let total = run(&suite_dir().join("core-run"), false);
     assert_eq!(total.fail, 0, "cases failed");
     assert_eq!(total.invalid, 0, "files were invalid");
+}
+
+#[test]
+fn core_check() {
+    let total = run(&suite_dir().join("core-check"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
 }
 
 #[test]
 fn catalog_cases() {
     let lists = risor::messages::catalog().cases.clone();
     let total = run_lists("suite/messages.json", lists);
-    assert_eq!(total.fail, 0, "cases failed");
     assert_eq!(total.invalid, 0, "lists were invalid");
 }
 
@@ -108,6 +177,5 @@ fn library_cases() {
         .filter_map(|r| r.cases.clone().map(|c| (r.name.clone(), c)))
         .collect();
     let total = run_lists("suite/library.json", lists);
-    assert_eq!(total.fail, 0, "cases failed");
     assert_eq!(total.invalid, 0, "lists were invalid");
 }

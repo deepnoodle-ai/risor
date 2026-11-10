@@ -5,7 +5,7 @@
 //! The entries themselves run in `eval::lib`.
 
 use crate::json::{self, Json};
-use crate::types::text::{parse_sig, ParamType, Sig};
+use crate::types::text::{parse_sig, parse_type_vars, ParamType, Sig, Type};
 use crate::value::Kind;
 use std::sync::OnceLock;
 
@@ -17,6 +17,14 @@ pub struct Record {
     /// The kind of the receiver of a method; `None` for a function.
     pub receiver: Option<Kind>,
     pub sig: Sig,
+    /// The receiver as type text, for a method.
+    pub recv: Option<Type>,
+    /// The entry narrows through its callback (`05-types.md` 13.8).
+    pub narrows: bool,
+    /// The argument positions that are tested positions (`05-types.md` 10.1).
+    pub tested: Vec<usize>,
+    /// The parameters whose argument is rendered (ruling AO2).
+    pub renders: Vec<String>,
     /// The record's formulas, as written.
     pub steps: String,
     pub units: String,
@@ -57,6 +65,30 @@ pub fn records() -> &'static [Record] {
                     name: s("name").to_string(),
                     receiver,
                     sig: parse_sig(s("signature")).expect("library signatures parse"),
+                    recv: e
+                        .get("receiver")
+                        .and_then(|r| r.as_str())
+                        .map(|r| parse_type_vars(r).expect("library receivers parse")),
+                    narrows: e.get("narrows").is_some(),
+                    renders: e
+                        .get("renders")
+                        .and_then(|t| t.as_arr())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|n| n.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    tested: e
+                        .get("tested")
+                        .and_then(|t| t.as_arr())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|n| n.as_f64())
+                                .map(|n| n as usize)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                     steps: s("steps").to_string(),
                     units: s("units").to_string(),
                     cases: e.get("cases").cloned(),

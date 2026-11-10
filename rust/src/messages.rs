@@ -122,6 +122,14 @@ pub fn build(code: &str, template: &str, params: &[(&str, String)]) -> String {
         }
     }
     out.push_str(rest);
+    // Ruling AN2: every hole of a template is filled. A hole left open is a
+    // fault at the place that built the message.
+    debug_assert!(
+        !e.params
+            .iter()
+            .any(|(n, _)| out.contains(&format!("{{{n}}}"))),
+        "message of {code} ({template}) left a parameter unfilled: {out}"
+    );
     out
 }
 

@@ -38,6 +38,8 @@ specification, not here. This file records the crate's own choices.
 | `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
 | `src/eval/lib.rs` | S3 | The 53 library entries, their argument tests from the records' signatures, and the table of formulas a test holds equal to `library.json` |
 | `src/casemap.rs` | S3 | The case table, from `suite/casemap.json` |
+| `src/check/ty.rs` | S4 | Types (`05-types.md` 2): Join, Fits, Merge, Truthy, Falsy, the helpers of 4.5, printing (3.9), and reading type text |
+| `src/check/mod.rs` | S4 | The checker: the type rules of sections 5 to 18 over the resolution that `compile::resolve` gives, sites, classes, the expected result, and `compile_checked` |
 | `src/library.rs` | S2 | The records of `suite/library.json`: names, receivers, signatures |
 | `src/messages.rs` | S2 | The catalog of `suite/messages.json` and the building of a message |
 | `src/bin/outcome.rs` | S2 | The outcome command of rulings round 10 AJ |
@@ -203,3 +205,28 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
 | `unique`, `groupBy`, `toMap` | Hash sets and maps over the values or keys | Expected work linear in `n` and the keys' weights; building the result map sorts its keys (the AL1 exception) |
 | Case mapping | `suite/casemap.json`, never `char::to_uppercase` | The table is Unicode 16.0.0 whatever the platform's version |
 | `fixed` | Its own exact decimal rounding of the double | Rust's `{:.N}` formatting rounds a tie half to even (from memory), where `fixed` rounds it away from zero |
+
+## The checker (S4)
+
+- `compile::resolve` applies the static rules and gives every binding a slot.
+  The checker keeps a type for each slot, so scope needs no structure of its
+  own: two bindings of one name are two slots, and a fact never reaches a
+  shadowing binding (10.4).
+- A fact is a path (a slot or a variable, then field keys). The facts in
+  force are a list that grows and shrinks with the walk.
+- A use of a `const`-bound lambda checks its body again with the use's
+  parameter types, under the facts where the lambda was written. The limits
+  of 20.2 and 20.3 follow rulings AO9 and AO10: the parser records the
+  greatest level open inside each lambda.
+- Signatures stay type text. Solving a call (13.5) binds and substitutes type
+  variables in that text; `ty::substitute` gives the type with no depth test,
+  and the checker tests depth where 20.4 says.
+- The run of a checked program gives a failure of `null-operand`,
+  `wrong-kind` or `missing-field` the class `dynamic` when a `dynamic` site is
+  on the failing node or on its operand, receiver, index or argument (18.3),
+  by comparing spans (AP6).
+- `compile` checks by default; `compile_unchecked` is the explicit option, and
+  `check::check` the check alone (rulings round 11 AP7).
+- Stack: the checker's recursion follows the source nesting and the nested
+  uses of lambdas, both bounded at 100. Measured at the worst: 256 KiB
+  optimized, 768 KiB unoptimized, within the figures for running above.

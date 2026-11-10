@@ -3,7 +3,7 @@
 //! AC16), and the work bound of the searches, the sort and the join on large
 //! inputs (`02-evaluation.md` 8.5).
 
-use risor::{compile, parse, Data, Env, Limits, Program};
+use risor::{compile_unchecked as compile, parse, Data, Env, Limits, Program};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 

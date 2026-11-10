@@ -5,7 +5,7 @@
 //! library entry this build does not run yet.
 
 use super::case::{load, opaque_of, Answer, Case, Expect, ExpectDiag, ExpectFailure, Stub};
-use crate::compile::{compile, Program, Res};
+use crate::compile::{compile_unchecked as compile, Program, Res};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::{check_expected, Env, HostImpl, Limits};
 use crate::eval::Call;
@@ -138,13 +138,27 @@ impl fmt::Display for FileReport {
 /// Run every case of a file. A file that is not valid gives one result,
 /// `invalid`, named after the file, standing for all its cases.
 pub fn run_file(path: &Path) -> FileReport {
+    run_file_with(path, true)
+}
+
+/// Run every case of a file: as a runner with a checker does (`checked`),
+/// or as one with none.
+pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
+    let core_check = path.components().any(|c| c.as_os_str() == "core-check");
     match load(path) {
         Ok(file) => FileReport {
             path: path.to_path_buf(),
             results: file
                 .cases
                 .iter()
-                .map(|c| (c.name.clone(), run_case(c)))
+                .map(|c| {
+                    let v = if checked {
+                        run_case_in(c, core_check)
+                    } else {
+                        run_case_unchecked(c)
+                    };
+                    (c.name.clone(), v)
+                })
                 .collect(),
         },
         Err(why) => FileReport {
@@ -334,12 +348,84 @@ fn missing_entries(p: &Program) -> Vec<String> {
     out
 }
 
-/// Run one case (3.10.5).
+/// Run one case (3.10.5) as a runner with a type checker does (3.10.8 item
+/// 5, rulings round 11 AP2): a case with `"check": false` once with the
+/// static rules alone; a case of `suite/core-check/`, or one that needs the
+/// checker, once checked; every other case twice, checked and with the
+/// static rules alone, and it passes only when both runs pass.
 pub fn run_case(case: &Case) -> Verdict {
+    run_case_in(case, false)
+}
+
+/// As `run_case`, for a case of `suite/core-check/` when `core_check`.
+pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
+    if let Some(why) = &case.skip {
+        return Verdict::Skip(why.clone());
+    }
+    if !case.check {
+        return run_case_with(case, false, true);
+    }
+    let needs_checker = match &case.expect {
+        Expect::Result(r) => r.ty.is_some() || r.sites.is_some(),
+        Expect::Failure(f) => {
+            f.phase == Phase::Check
+                && f.diagnostics
+                    .iter()
+                    .any(|d| !code::STATIC.contains(&d.code.as_str()))
+        }
+    };
+    let checked = run_case_with(case, true, true);
+    if core_check || needs_checker {
+        return checked;
+    }
+    let plain = run_case_with(case, false, false);
+    match (checked, plain) {
+        (Verdict::Pass, Verdict::Pass) => Verdict::Pass,
+        (a, b) => {
+            let mut diffs: Vec<Difference> = Vec::new();
+            for v in [a, b] {
+                if let Verdict::Fail(ds) = v {
+                    for d in ds {
+                        if !diffs.iter().any(|x| x.name == d.name) {
+                            diffs.push(d);
+                        }
+                    }
+                }
+            }
+            let order = [
+                "outcome",
+                "type",
+                "sites",
+                "value",
+                "truthy",
+                "diagnostics",
+                "steps",
+                "allocated",
+                "functions",
+            ];
+            diffs.sort_by_key(|d| order.iter().position(|n| *n == d.name));
+            Verdict::Fail(diffs)
+        }
+    }
+}
+
+/// Run one case as a runner with no type checker does (3.10.8 item 6): the
+/// static rules alone at step 4, and `skip` for what needs the checker.
+pub fn run_case_unchecked(case: &Case) -> Verdict {
+    if !case.check {
+        return run_case_with(case, false, true);
+    }
+    run_case_with(case, false, false)
+}
+
+/// `all_class`: compare `class` for every code, as a checked run and a case
+/// with `"check": false` do (3.10.7 item 8).
+fn run_case_with(case: &Case, checked: bool, all_class: bool) -> Verdict {
     if let Some(why) = &case.skip {
         return Verdict::Skip(why.clone());
     }
     match &case.expect {
+        _ if checked || !case.check => {}
         Expect::Result(r) if r.ty.is_some() || r.sites.is_some() => {
             return Verdict::Skip("states type or sites: needs the type checker".into())
         }
@@ -359,16 +445,80 @@ pub fn run_case(case: &Case) -> Verdict {
     let unmatched = Arc::new(AtomicBool::new(false));
     let env = match build_env(case, &mut interner, &unmatched) {
         Ok(e) => e,
-        Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched),
+        Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, all_class),
     };
     let parsed = match parse(&case.source) {
         Ok(p) => p,
-        Err(e) => return judge_failure(case, Phase::Parse, &e.diagnostics, None, &unmatched),
+        Err(e) => {
+            return judge_failure(
+                case,
+                Phase::Parse,
+                &e.diagnostics,
+                None,
+                &unmatched,
+                all_class,
+            )
+        }
     };
-    let program = match compile(&env, parsed) {
+    // Step 4: the check, or the static rules alone.
+    let mut diffs = Vec::new();
+    let mut sites = None;
+    if checked {
+        let exp = match crate::check::expected(&env, case.returns.as_deref()) {
+            Ok(x) => x,
+            Err(d) => {
+                return judge_failure(case, Phase::Declare, &[d], None, &unmatched, all_class)
+            }
+        };
+        let r = crate::check::check(&env, &parsed, &exp);
+        if !r.diagnostics.is_empty() {
+            return judge_failure(
+                case,
+                Phase::Check,
+                &r.diagnostics,
+                None,
+                &unmatched,
+                all_class,
+            );
+        }
+        if let Expect::Result(want) = &case.expect {
+            let got = r.ty.clone().unwrap_or_default();
+            if let Some(t) = &want.ty {
+                let wt = crate::types::text::parse_type(t)
+                    .ok()
+                    .and_then(|x| crate::check::ty::from_text(&x, &env.data().opaque, None).ok());
+                if wt.as_ref() != Some(&got) {
+                    diffs.push(Difference {
+                        name: "type",
+                        expected: t.clone(),
+                        found: crate::check::ty::print(&got),
+                    });
+                }
+            }
+            if let Some(ws) = &want.sites {
+                let gs: Vec<(String, [u32; 4])> = r
+                    .sites
+                    .iter()
+                    .map(|s| (s.class.to_string(), parsed.source.line_span(s.span).0))
+                    .collect();
+                let ws: Vec<(String, [u32; 4])> =
+                    ws.iter().map(|s| (s.class.clone(), s.span)).collect();
+                if gs != ws {
+                    diffs.push(Difference {
+                        name: "sites",
+                        expected: format!("{ws:?}"),
+                        found: format!("{gs:?}"),
+                    });
+                }
+            }
+        }
+        sites = Some(r.sites);
+    }
+    let mut program = match compile(&env, parsed) {
         Ok(p) => p,
-        Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched),
+        Err(e) => return judge_failure(case, e.phase, &e.diagnostics, None, &unmatched, all_class),
     };
+    program.sites = sites;
     let missing = missing_entries(&program);
     if !missing.is_empty() {
         return Verdict::Skip(format!("needs library entry {}", missing.join(", ")));
@@ -380,7 +530,7 @@ pub fn run_case(case: &Case) -> Verdict {
         };
     if !needs_run {
         return match &case.expect {
-            Expect::Result(_) => Verdict::Pass,
+            Expect::Result(_) => verdict(diffs),
             Expect::Failure(f) => Verdict::Fail(vec![Difference {
                 name: "outcome",
                 expected: format!("a failure of phase {}", f.phase),
@@ -398,17 +548,17 @@ pub fn run_case(case: &Case) -> Verdict {
     let usage = out.usage;
     match out.result {
         Err(f) => {
-            let d = f.diagnostic(&program.parsed.source);
+            let d = program.diagnostic(&f);
             judge_failure(
                 case,
                 Phase::Run,
                 &[d],
                 Some((usage.steps, usage.allocated)),
                 &unmatched,
+                all_class,
             )
         }
         Ok(v) => {
-            let mut diffs = Vec::new();
             match &case.expect {
                 Expect::Failure(f) => diffs.push(Difference {
                     name: "outcome",
@@ -499,6 +649,7 @@ fn judge_failure(
     diags: &[Diagnostic],
     usage: Option<(u64, u64)>,
     unmatched: &AtomicBool,
+    checked: bool,
 ) -> Verdict {
     let mut diffs = match &case.expect {
         Expect::Result(_) => vec![Difference {
@@ -507,7 +658,7 @@ fn judge_failure(
             found: format!("a failure of phase {phase}: {}", show_all(diags)),
         }],
         Expect::Failure(f) => {
-            let mut d = compare_failure(f, phase, diags);
+            let mut d = compare_failure(f, phase, diags, checked);
             if d.is_empty() {
                 if let Some(u) = usage {
                     count_diffs(&mut d, f.steps, f.allocated, u);
@@ -568,12 +719,12 @@ const CHECKED_CLASS: [&str; 5] = [
 /// Whether one expected diagnostic matches one actual (3.10.6, 3.10.7).
 /// `class` is compared but for the five codes whose class depends on a
 /// check this runner does not make (rulings round 10 AM1).
-fn diag_matches(e: &ExpectDiag, a: &Diagnostic) -> bool {
+fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
     if e.code != a.code {
         return false;
     }
     if let Some(c) = &e.class {
-        if !CHECKED_CLASS.contains(&a.code) && a.class != Some(c.as_str()) {
+        if (checked || !CHECKED_CLASS.contains(&a.code)) && a.class != Some(c.as_str()) {
             return false;
         }
     }
@@ -604,7 +755,12 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic) -> bool {
     e.path.is_none()
 }
 
-fn compare_failure(f: &ExpectFailure, phase: Phase, diags: &[Diagnostic]) -> Vec<Difference> {
+fn compare_failure(
+    f: &ExpectFailure,
+    phase: Phase,
+    diags: &[Diagnostic],
+    checked: bool,
+) -> Vec<Difference> {
     if f.phase != phase {
         return vec![Difference {
             name: "outcome",
@@ -619,14 +775,16 @@ fn compare_failure(f: &ExpectFailure, phase: Phase, diags: &[Diagnostic]) -> Vec
                 && f.diagnostics
                     .iter()
                     .zip(diags)
-                    .all(|(e, a)| diag_matches(e, a))
+                    .all(|(e, a)| diag_matches(e, a, checked))
         }
         // Without regard to order (item 6).
         Phase::Declare => {
             let mut used = vec![false; diags.len()];
             f.diagnostics.len() == diags.len()
                 && f.diagnostics.iter().all(|e| {
-                    match (0..diags.len()).find(|&i| !used[i] && diag_matches(e, &diags[i])) {
+                    match (0..diags.len())
+                        .find(|&i| !used[i] && diag_matches(e, &diags[i], checked))
+                    {
                         Some(i) => {
                             used[i] = true;
                             true
@@ -640,7 +798,7 @@ fn compare_failure(f: &ExpectFailure, phase: Phase, diags: &[Diagnostic]) -> Vec
                 && f.diagnostics
                     .iter()
                     .zip(diags)
-                    .all(|(e, a)| diag_matches(e, a))
+                    .all(|(e, a)| diag_matches(e, a, checked))
         }
     };
     if ok {
@@ -711,9 +869,36 @@ pub fn outcome_line(case: &Case) -> String {
             return out;
         }
     };
+    // The full checker at step 4 (S4): its result type and sites are
+    // written after the name when the program checks.
     let program = match parse(&case.source) {
         Err(e) => Err((Phase::Parse, e.diagnostics)),
-        Ok(p) => compile(&env, p).map_err(|e| (e.phase, e.diagnostics)),
+        // Ruling AP3: a case with `"check": false` is compiled without.
+        Ok(p) if !case.check => compile(&env, p).map_err(|e| (e.phase, e.diagnostics)),
+        Ok(p) => match crate::check::expected(&env, case.returns.as_deref()) {
+            Err(d) => Err((Phase::Declare, vec![d])),
+            Ok(exp) => match crate::check::compile_checked(&env, p, &exp) {
+                Err(e) => Err((e.phase, e.diagnostics)),
+                Ok((prog, r)) => {
+                    let ty = crate::check::ty::print(r.ty.as_ref().unwrap_or(&Default::default()));
+                    out.push_str(",\"type\":");
+                    out.push_str(&json_text(&ty));
+                    out.push_str(",\"sites\":[");
+                    for (i, s) in r.sites.iter().enumerate() {
+                        let [a, b, c, d] = prog.parsed.source.line_span(s.span).0;
+                        if i > 0 {
+                            out.push(',');
+                        }
+                        out.push_str(&format!(
+                            "{{\"class\":\"{}\",\"span\":[{a},{b},{c},{d}]}}",
+                            s.class
+                        ));
+                    }
+                    out.push(']');
+                    Ok(prog)
+                }
+            },
+        },
     };
     let program = match program {
         Ok(p) => p,
@@ -730,7 +915,7 @@ pub fn outcome_line(case: &Case) -> String {
         .map(|(k, v)| (k.clone(), interner.data(v)))
         .collect();
     let run = program.run(&vars);
-    let mut result = run.result.map_err(|f| f.diagnostic(&program.parsed.source));
+    let mut result = run.result.map_err(|f| program.diagnostic(&f));
     let mut text = String::new();
     if let Ok(v) = &result {
         if let Err(code) = value_json(v, &mut text, 0) {
@@ -780,47 +965,61 @@ fn json_text(s: &str) -> String {
 }
 
 /// A result as JSON, with an opaque value written as a case file writes it.
-fn value_json(v: &Value<'_>, out: &mut String, depth: u32) -> Result<(), &'static str> {
-    match v {
-        Value::Null => out.push_str("null"),
-        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        Value::Num(n) => out.push_str(&crate::number::to_text(*n)),
-        Value::BadNum => return Err("number-range"),
-        Value::Str(s) => out.push_str(&json_text(s.as_str())),
-        Value::Opaque(o) => {
-            let id = o.value.downcast_ref::<u64>().copied().unwrap_or(0);
-            out.push_str(&format!(
-                "{{\"$opaque\":{{\"type\":{},\"id\":{id}}}}}",
-                json_text(&o.type_name)
-            ));
-        }
-        Value::List(_) | Value::HList(_) => {
-            if depth >= 200 {
-                return Err("depth-exceeded");
-            }
-            out.push('[');
-            for i in 0..v.len().unwrap_or(0) {
-                if i > 0 {
-                    out.push(',');
-                }
-                value_json(&v.elem(i), out, depth + 1)?;
-            }
-            out.push(']');
-        }
-        Value::Map(_) | Value::HMap(_) => {
-            if depth >= 200 {
-                return Err("depth-exceeded");
-            }
-            out.push('{');
-            for (i, (k, x)) in v.entries().iter().enumerate() {
-                if i > 0 {
-                    out.push(',');
-                }
-                out.push_str(&json_text(k.as_str()));
+/// This conversion is the binding's, outside the run (rulings round 10 AH1,
+/// round 11 AN2): it walks with an explicit stack, so data of any depth
+/// neither fails nor overflows the host stack. Only a host number that cannot
+/// enter fails it, with `number-range`.
+fn value_json(v: &Value<'_>, out: &mut String, _depth: u32) -> Result<(), &'static str> {
+    enum Item<'v> {
+        Val(Value<'v>),
+        Text(&'static str),
+        Key(String),
+    }
+    let mut stack = vec![Item::Val(v.clone())];
+    while let Some(item) = stack.pop() {
+        match item {
+            Item::Text(t) => out.push_str(t),
+            Item::Key(k) => {
+                out.push_str(&json_text(&k));
                 out.push(':');
-                value_json(x, out, depth + 1)?;
             }
-            out.push('}');
+            Item::Val(v) => match &v {
+                Value::Null => out.push_str("null"),
+                Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+                Value::Num(n) => out.push_str(&crate::number::to_text(*n)),
+                Value::BadNum => return Err("number-range"),
+                Value::Str(s) => out.push_str(&json_text(s.as_str())),
+                Value::Opaque(o) => {
+                    let id = o.value.downcast_ref::<u64>().copied().unwrap_or(0);
+                    out.push_str(&format!(
+                        "{{\"$opaque\":{{\"type\":{},\"id\":{id}}}}}",
+                        json_text(&o.type_name)
+                    ));
+                }
+                Value::List(_) | Value::HList(_) => {
+                    out.push('[');
+                    stack.push(Item::Text("]"));
+                    let n = v.len().unwrap_or(0);
+                    for i in (0..n).rev() {
+                        stack.push(Item::Val(v.elem(i)));
+                        if i > 0 {
+                            stack.push(Item::Text(","));
+                        }
+                    }
+                }
+                Value::Map(_) | Value::HMap(_) => {
+                    out.push('{');
+                    stack.push(Item::Text("}"));
+                    let es = v.entries();
+                    for (i, (k, x)) in es.into_iter().enumerate().rev() {
+                        stack.push(Item::Val(x));
+                        stack.push(Item::Key(k.as_str().to_string()));
+                        if i > 0 {
+                            stack.push(Item::Text(","));
+                        }
+                    }
+                }
+            },
         }
     }
     Ok(())

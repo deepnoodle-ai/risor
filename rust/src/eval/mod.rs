@@ -1626,3 +1626,110 @@ impl<'h> Value<'h> {
         self.to_data()
     }
 }
+
+impl Program {
+    /// The class of a run failure (`03-host.md` 3.7.6, `05-types.md` 18.5):
+    /// by the checked column when the program was compiled with a check.
+    pub fn class_of(&self, f: &Fail<'_>) -> Option<&'static str> {
+        let Some(sites) = &self.sites else {
+            return f.class();
+        };
+        let at = |class: &str| f.span.is_some_and(|s| self.at_site(sites, class, s));
+        match f.code {
+            "null-operand" | "wrong-kind" | "missing-field" => Some(if at("dynamic") {
+                "dynamic"
+            } else {
+                "environment"
+            }),
+            "no-match" => Some("environment"),
+            "not-conforming" => Some(if at("value") { "value" } else { "environment" }),
+            _ => f.class(),
+        }
+    }
+
+    /// Whether a failure at a node's span is at a site of a class: the site is
+    /// on the failing node, or on its operand, receiver, index or argument
+    /// (`05-types.md` 18.3).
+    fn at_site(&self, sites: &[crate::check::Site], class: &str, span: Span) -> bool {
+        let ast = &self.parsed.ast;
+        let mut spans = vec![span];
+        for (i, n) in ast.nodes.iter().enumerate() {
+            if n.span != span {
+                continue;
+            }
+            let mut kids: Vec<NodeId> = Vec::new();
+            match &n.kind {
+                NodeKind::Unary { x, .. }
+                | NodeKind::Member { x, .. }
+                | NodeKind::OptChain { x } => kids.push(*x),
+                NodeKind::Binary { x, y, .. } => kids.extend([*x, *y]),
+                NodeKind::Index { x, index, .. } => kids.extend([*x, *index]),
+                NodeKind::MethodCall { x, args, .. } => {
+                    kids.push(*x);
+                    kids.extend(args.iter().copied());
+                }
+                NodeKind::Call { args, .. } => kids.extend(args.iter().copied()),
+                NodeKind::Spread { value } => kids.push(*value),
+                NodeKind::Entry { key, value, .. } => {
+                    if let EntryKey::Computed(k) = key {
+                        kids.push(*k);
+                    }
+                    kids.push(*value);
+                }
+                NodeKind::Template { parts } => kids.extend(parts.iter().filter_map(|p| match p {
+                    TemplatePart::Expr(e) => Some(*e),
+                    _ => None,
+                })),
+                NodeKind::Match { subject, .. } => kids.push(*subject),
+                NodeKind::MapPat { .. } | NodeKind::ListPat { .. } => {
+                    // The value bound by a `const` is the pattern's operand.
+                    for c in &ast.nodes {
+                        if let NodeKind::Const { pattern, value } = &c.kind {
+                            if pattern.index() == i {
+                                kids.push(*value);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            spans.extend(kids.iter().map(|k| ast.span(*k)));
+        }
+        // Ruling AO6 (c): a field or an element of a pattern that fails is at
+        // a site on its key or name, or on the value the pattern binds.
+        for (i, n) in ast.nodes.iter().enumerate() {
+            let hit = match &n.kind {
+                NodeKind::MapPat { fields, .. } => {
+                    fields.iter().find(|f| f.span == span).map(|f| f.key_span)
+                }
+                NodeKind::ListPat { elems, .. } => elems
+                    .iter()
+                    .find(|e| e.span == span)
+                    .map(|e| ast.span(e.pat)),
+                _ => None,
+            };
+            if let Some(k) = hit {
+                spans.push(k);
+                spans.push(n.span);
+                for c in &ast.nodes {
+                    if let NodeKind::Const { pattern, value } = &c.kind {
+                        if pattern.index() == i {
+                            spans.push(ast.span(*value));
+                        }
+                    }
+                }
+            }
+        }
+        sites
+            .iter()
+            .any(|s| s.class == class && spans.contains(&s.span))
+    }
+
+    /// The diagnostic of a run failure, with its class by the program's
+    /// check.
+    pub fn diagnostic(&self, f: &Fail<'_>) -> Diagnostic {
+        let mut d = f.diagnostic(&self.parsed.source);
+        d.class = self.class_of(f);
+        d
+    }
+}

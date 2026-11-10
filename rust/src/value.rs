@@ -419,6 +419,22 @@ pub fn eq_data(v: &Value<'_>, d: &Data) -> bool {
 
 impl fmt::Debug for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Deep values are shown cut, so that showing one never overflows the
+        // stack.
+        thread_local!(static DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
+        let d = DEPTH.with(|c| c.get());
+        if d > 64 {
+            return f.write_str("...");
+        }
+        DEPTH.with(|c| c.set(d + 1));
+        let r = self.fmt_inner(f);
+        DEPTH.with(|c| c.set(d));
+        r
+    }
+}
+
+impl Value<'_> {
+    fn fmt_inner(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Null => f.write_str("null"),
             Value::Bool(b) => write!(f, "{b}"),

@@ -160,6 +160,15 @@ pub fn parse_type(text: &str) -> R<Type> {
     Ok(t)
 }
 
+/// Parse a `Recv` or a type of a signature: a `Type` in which type
+/// variables may stand.
+pub fn parse_type_vars(text: &str) -> R<Type> {
+    let mut p = TypeParser::new(text, true)?;
+    let t = p.ty()?;
+    p.end()?;
+    Ok(t)
+}
+
 /// Parse a `Sig`, and apply the order rules of 3.6 that 19.5 makes errors of
 /// every implementation.
 pub fn parse_sig(text: &str) -> R<Sig> {

@@ -59,6 +59,8 @@ struct Parser<'a> {
     partner: Vec<Option<u32>>,
     /// The levels open when each token was read.
     tok_level: Vec<u16>,
+    /// The greatest level opened since it was last reset.
+    max_level: u32,
 }
 
 impl<'a> Parser<'a> {
@@ -84,6 +86,7 @@ impl<'a> Parser<'a> {
             ast: Ast::default(),
             partner,
             tok_level: vec![0; t.len()],
+            max_level: 0,
         }
     }
 
@@ -189,6 +192,7 @@ impl<'a> Parser<'a> {
             ));
         }
         self.level += 1;
+        self.max_level = self.max_level.max(self.level);
         Ok(())
     }
 
@@ -996,6 +1000,15 @@ impl<'a> Parser<'a> {
     /// A lambda. `in_const` is `Some(pattern is a Name)` for the value of a
     /// `const` line, and `None` for an argument.
     fn lambda(&mut self, in_const: Option<bool>) -> R<NodeId> {
+        let outer_max = std::mem::replace(&mut self.max_level, self.level);
+        let id = self.lambda_inner(in_const)?;
+        let inner = self.max_level;
+        self.ast.lambda_levels.insert(id.0, inner as u16);
+        self.max_level = outer_max.max(inner);
+        Ok(id)
+    }
+
+    fn lambda_inner(&mut self, in_const: Option<bool>) -> R<NodeId> {
         let start = self.peek().span;
         let mut params = Vec::new();
         if let Some(w) = self.peek().word() {
