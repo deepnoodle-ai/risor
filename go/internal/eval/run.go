@@ -475,10 +475,11 @@ func (f *failure) diagnostic(file *syntax.File, whole syntax.Span) diag.Diagnost
 	if f.hasSpan {
 		sp := file.Span(f.span.Start, f.span.End)
 		d.Span = &sp
-	} else if diag.LimitCodes[f.code] {
+	} else if diag.LimitCodes[f.code] && file != nil {
 		// A limit diagnostic has a span whose value is not specified
 		// (03-host.md 3.7.1). A charge has no node at hand, so the span is
-		// the whole program's: the run passed its limit as a whole.
+		// the whole program's: the run passed its limit as a whole. The
+		// text walks have no program and no span (3.2.4).
 		sp := file.Span(whole.Start, whole.End)
 		d.Span = &sp
 	}

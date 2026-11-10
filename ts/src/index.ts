@@ -26,6 +26,20 @@
 // V8 stack of 600 KB; test/deep.test.ts runs them with 700 KB. Node's default
 // is 984 KB, so no option is needed. A stack overflow, should a host run with
 // less, is reported as `internal-error`, never thrown to the host.
+//
+// MEMORY (02 8.5 item 2). On 64-bit V8 (pointer-compressed JS values), the heap
+// memory a run creates as values of the language is bounded by 256 bytes per
+// allocation unit charged plus 16 bytes per step charged. The bound is derived
+// from V8's object layouts, not measured:
+//   - string (1 + floor(w/64) units): a SeqString header (16 bytes) plus at
+//     most 2 bytes per UTF-16 code unit (128 bytes per 64 weight units);
+//   - list (1 + n units): a JSArray header (16 bytes) plus a FixedArray backing
+//     store (8 bytes header + 4 to 8 bytes per element, up to 2x slack);
+//   - map (1 + 2n units): an RMap, a JS Map, whose OrderedHashMap takes about
+//     40 bytes per entry across its hash table and entries, so at most about
+//     20 bytes per unit, with up to 2x slack after growth;
+//   - step: at most one 16-byte HeapNumber when a numeric result does not fit a
+//     Smi.
 
 export { parse, parseProgram, MAX_LEVELS } from "./syntax/parser.ts";
 export type { ParseResult } from "./syntax/parser.ts";

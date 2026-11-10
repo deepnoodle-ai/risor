@@ -114,6 +114,21 @@ enum Value<'h> {
 - **Walks** (`==`, rendering, the JSON text) count nesting against the depth
   limit (`02-evaluation.md`), so their recursion is bounded by it; if the
   measured stack at depth 1,000 is too large, they move to an explicit stack.
+- **Memory (`02-evaluation.md` 8.5 item 2).** On 64-bit targets (`Value<'h>` is
+  24 bytes, `Str<'h>` is 24 bytes), the heap memory a run creates as values of
+  the language is at most 208 bytes per allocation unit charged plus 0 bytes per
+  step charged. The bound is derived from the layouts below, not measured; the
+  test `value::layout` pins the two sizes:
+  - string (`1 + floor(w/64)` units): `Rc<str>` carries 16 bytes of reference
+    counts plus at most `3 * 64 = 192` UTF-8 bytes per 64 weight units (each
+    4-byte scalar value has weight 2);
+  - list (`1 + n` units): `Rc<ListVal>` is 16 bytes of counts, 24 bytes of `Vec`
+    header, and `24 * n` bytes of `Value` slots, or up to twice that where the
+    `Vec` grew by pushes;
+  - map (`1 + 2n` units): `Rc<MapVal>` is 16 bytes of counts, 24 bytes of `Vec`
+    header, and `48 * n` bytes of `(Str, Value)` entries (24 bytes per unit);
+  - step: `Value::Num(f64)` is stored inline without heap boxing, so uncharged
+    arithmetic and library steps allocate 0 value bytes on the heap.
 
 ### Host data, read in place
 

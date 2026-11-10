@@ -18,6 +18,19 @@
 // 512 KiB of goroutine stack. TestStackNeeds runs the deepest programs with
 // the stack capped at 1 MiB. Go grows a goroutine's stack as needed, so a
 // host needs no setting for this.
+//
+// # Memory
+//
+// On 64-bit platforms, the heap memory a run creates as values of the
+// language is at most 256 bytes per allocation unit charged plus 16 bytes per
+// step charged (02-evaluation.md 8.5 item 2). The most bytes per unit come
+// from a string just under a unit's 64 weight in three-byte characters: 189
+// bytes, rounded to Go's 192-byte size class, and a 16-byte string header
+// boxed in an interface. A number a step makes is boxed in 8 bytes. This is
+// measured, not derived: TestMemoryConstants runs the worst shapes (such
+// strings, empty and one-entry maps, empty lists, boxed numbers) on Go 1.26,
+// whose maps are Swiss tables, and checks each run's bytes against these
+// constants.
 package risor
 
 import (

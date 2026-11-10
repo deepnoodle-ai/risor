@@ -68,17 +68,14 @@ func (e *Env) groupList() []string {
 
 // JSONText is the JSON text of a value a run returned (03-host.md 3.2.4):
 // the JSON form of 01-language.md 12, keys in code point order. It fails
-// with an *Error of phase run, wrong-kind on an opaque value or
-// depth-exceeded past the default depth limit, with no span. For the same
-// value it gives the text json.stringify gives.
+// with an *Error of phase run, wrong-kind on an opaque value, number-range
+// on a host number that cannot enter the language, or depth-exceeded past
+// the default depth limit, with no span. For the same value it gives the
+// text json.stringify gives.
 func JSONText(v any) (string, error) {
-	text, code, msg, ok := eval.JSONText(v)
-	if ok {
-		return text, nil
+	text, d := eval.JSONText(v)
+	if d != nil {
+		return "", &Error{Diagnostics: []Diagnostic{*d}}
 	}
-	class := "dynamic"
-	if code == "depth-exceeded" {
-		class = "limit"
-	}
-	return "", &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: code, Class: class, Message: msg}}}
+	return text, nil
 }
