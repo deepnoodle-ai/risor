@@ -256,6 +256,18 @@ describe("03 3.5.2 item 3: a charge the budget cannot cover ends the run", () =>
   });
 });
 
+describe("03 3.7.1: a limit diagnostic has a span, whose value is not specified", () => {
+  test("for each way a run passes a limit", () => {
+    const env = createEnv({ limits: { steps: 5, allocation: 3 }, functions: { alloc: { type: "() => int", call: (h) => (h.allocate(100), 0) } } });
+    for (const src of ["range(100).map(x => x * 2).sum()", "[1, 2, 3, 4]", "alloc()"]) {
+      const o = env.compile(src, { check: false }).execute();
+      assert.ok(!o.ok, src);
+      assert.equal(o.diagnostic.class, "limit", src);
+      assert.ok(o.diagnostic.span !== undefined, src);
+    }
+  });
+});
+
 // Child environments (03 3.3.2, 3.3.4): the case format cannot
 // state a parent and a child.
 describe("child environments", () => {

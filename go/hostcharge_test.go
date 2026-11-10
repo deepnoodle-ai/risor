@@ -97,3 +97,25 @@ func TestHostChargeAfterFailure(t *testing.T) {
 	}
 	assert.Equal(t, u, risor.Usage{Steps: 1, Alloc: 0})
 }
+
+// A limit diagnostic has a span; its value is not specified (03-host.md
+// 3.7.1).
+func TestLimitDiagnosticHasSpan(t *testing.T) {
+	env, err := risor.NewEnv(
+		risor.Limits{Steps: 5, Alloc: 3},
+		risor.Function{Name: "alloc", Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {
+			return 0.0, c.Allocate(100)
+		}},
+	)
+	assert.NoError(t, err)
+	for _, src := range []string{
+		"range(100).map(x => x * 2).sum()",
+		"[1, 2, 3, 4]",
+		"alloc()",
+	} {
+		d, _ := measure(t, env, src)
+		assert.True(t, d != nil, src)
+		assert.Equal(t, d.Class, "limit", src)
+		assert.True(t, d.Span != nil, src)
+	}
+}

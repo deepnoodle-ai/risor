@@ -169,6 +169,34 @@ fn a_large_host_charge_does_not_wrap() {
     assert_eq!((out.usage.steps, out.usage.allocated), (u64::MAX, u64::MAX));
 }
 
+#[test]
+fn a_limit_diagnostic_has_a_span() {
+    // `03-host.md` 3.7.1: present, and its value not specified.
+    let env = Env::builder()
+        .function("alloc", "() => int", |call, _| {
+            let _ = call.allocate(100);
+            Ok(Data::Float(0.0))
+        })
+        .limits(Limits {
+            steps: Some(5),
+            allocation: Some(3),
+            ..Limits::default()
+        })
+        .build()
+        .unwrap();
+    for src in [
+        "range(100).map(x => x * 2).sum()",
+        "[1, 2, 3, 4]",
+        "alloc()",
+    ] {
+        let p = program(&env, src);
+        let f = p.run(&NoVars).result.err().unwrap();
+        let d = p.diagnostic(&f);
+        assert_eq!(d.class, Some("limit"), "{src}");
+        assert!(d.span.is_some(), "{src}");
+    }
+}
+
 fn opaque_env() -> Env {
     Env::builder()
         .vars("{t: Token, u: Token}")

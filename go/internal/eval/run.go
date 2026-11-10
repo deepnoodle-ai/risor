@@ -468,10 +468,17 @@ func (r *run) protect(c code) (v any, f *failure) {
 }
 
 // Diagnostic turns a failure into a run diagnostic.
-func (f *failure) diagnostic(file *syntax.File) diag.Diagnostic {
+// whole is the span of the whole program, for a failure that has none.
+func (f *failure) diagnostic(file *syntax.File, whole syntax.Span) diag.Diagnostic {
 	d := diag.Diagnostic{Phase: diag.PhaseRun, Code: f.code, Class: f.class(), Message: f.message()}
 	if f.hasSpan {
 		sp := file.Span(f.span.Start, f.span.End)
+		d.Span = &sp
+	} else if diag.LimitCodes[f.code] {
+		// A limit diagnostic has a span whose value is not specified
+		// (03-host.md 3.7.1). A charge has no node at hand, so the span is
+		// the whole program's: the run passed its limit as a whole.
+		sp := file.Span(whole.Start, whole.End)
 		d.Span = &sp
 	}
 	if f.code == "failed" {

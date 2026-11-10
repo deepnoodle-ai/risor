@@ -45,6 +45,7 @@ type Config struct {
 type Program struct {
 	cfg    *Config
 	file   *syntax.File
+	whole  syntax.Span // the program's span: a limit diagnostic's (run.go)
 	root   code
 	nslots int
 	nvars  int // the variables the program reads, numbered densely
@@ -119,7 +120,7 @@ func Compile(prog *syntax.Program, file *syntax.File, res *static.Result, cfg *C
 		}
 	}()
 	root := c.block(prog.Consts, prog.Result)
-	return &Program{cfg: cfg, file: file, root: root, nslots: res.NSlots, nvars: len(c.vars), TypedPlans: c.plans}, nil
+	return &Program{cfg: cfg, file: file, whole: prog.Span(), root: root, nslots: res.NSlots, nvars: len(c.vars), TypedPlans: c.plans}, nil
 }
 
 // Run runs the program. It returns the value or one run diagnostic, and the
@@ -141,7 +142,7 @@ func (p *Program) Run(ctx context.Context, vars Vars) (result any, usage Usage, 
 	}
 	p.putRun(r)
 	if f != nil {
-		dd := f.diagnostic(p.file)
+		dd := f.diagnostic(p.file, p.whole)
 		dd.Trace = trace
 		return nil, usage, &dd
 	}

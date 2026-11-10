@@ -2562,6 +2562,14 @@ impl Program {
     /// check.
     pub fn diagnostic(&self, f: &Fail<'_>) -> Diagnostic {
         let mut d = f.diagnostic(&self.parsed.source);
+        // A limit diagnostic has a span whose value is not specified
+        // (`03-host.md` 3.7.1). A charge has no node at hand: the span is
+        // the whole program's.
+        if d.span.is_none() && crate::diag::code::LIMIT.contains(&f.code) {
+            let s = self.parsed.ast.node(self.parsed.ast.root).span;
+            d.range = Some(s);
+            d.span = Some(self.parsed.source.line_span(s));
+        }
         d.class = self.class_of(f);
         d
     }

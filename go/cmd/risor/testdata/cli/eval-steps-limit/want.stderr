@@ -1,1 +1,3 @@
-error[steps-exceeded]: the run needed more than its limit of 5 steps
+error[steps-exceeded] 1:1-1:33: the run needed more than its limit of 5 steps
+    range(100).map(x => x * 2).sum()
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
