@@ -244,8 +244,11 @@ Which of these an implementation with no type checker reports is 3.3.1, item
 4. A host number is **read** when an operation yields it as a value: a
    variable read, a field or index read, a pattern binding, an element handed
    to a callback, an element that a library entry or a walk tests, compares,
-   adds or renders, an argument passed to a host function, and each number of
-   the run's result when the result is handed to the host.
+   adds or renders, and an argument passed to a host function. Handing the
+   result to the host is not a read: the run makes no walk of its result. A
+   binding's own conversion of a result (to JSON, to a host number) is
+   outside the run; where it meets a number that cannot enter, it reports its
+   own error with the code `number-range`.
 5. An operation that copies or measures a container without looking at its
    elements does not read them: `len`, a spread, `slice`, `reverse` and
    `concat` among them.

@@ -158,3 +158,16 @@ differ. The rulings that change or add a rule:
 | R65 | Ill-formed UTF-8 from a host gives one U+FFFD for each maximal subpart, as Unicode recommends, not one for each byte. |
 | R66 | A case that expects a `parse` or a `declare` failure states exactly one diagnostic. |
 | R67 | The record of an environment has no optional field and no rest. An `env` key written twice is `name-clash`. |
+
+## 10. Round 10: questions from the first evaluators
+
+The TypeScript evaluator was the first to run the whole Core suite: 2,744 of
+2,744 runnable cases, with one case found wrong (an expected value written
+with a five-digit JSON escape) and fixed.
+
+| # | Ruling |
+| --- | --- |
+| R68 | **Handing the result to the host is not a read** (changes R64). The run makes no walk of its result, because that walk would be work with no charge. A number inside host data that a program passes through untouched goes back as the host supplied it. A binding's own conversion of a result reports a number that cannot enter as its own error. |
+| R69 | An empty list or map is entered by a walk like any other, and an empty pair by `==`: the depth test is made for it. There is no special case for an empty container. |
+| R70 | In TypeScript a thrown `Error` of any class is `function-error`, which `catch` catches; any other thrown value is `function-panic`. JavaScript's own functions throw `TypeError` for failures a caller expects, so no class can mark a bug. |
+| R71 | In TypeScript a plain object and a `Map` are maps. A property that holds `undefined` is absent and an `undefined` in an array is null, as in JSON. |

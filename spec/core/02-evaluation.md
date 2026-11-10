@@ -222,8 +222,10 @@ Types are in `05-types.md`.
 2. A host number is read when an operation yields it as a value: a variable
    read, a field or index read, a pattern binding, an element handed to a
    callback, an element that a library entry or a walk tests, compares, adds or
-   renders, an argument passed to a host function, and each number of the run's
-   result when the result is handed over.
+   renders, and an argument passed to a host function. Handing the result to
+   the host is not a read: the run makes no walk of its result, and a number
+   inside host data that the program passed through untouched goes back as the
+   host supplied it.
 3. An operation that copies or measures a container without looking at its
    elements does not read them: `len`, a spread, `slice`, `reverse`.
 4. The reading operation charges what it charges before it yields the value (2.5
@@ -578,7 +580,9 @@ one rounding, and must not compute in a wider format.
    not in progress while the inner one runs.
 5. A walk adds 1 for each list or map it has entered and not left. A rendering
    walk enters every list and map it renders. A comparison enters a pair of
-   lists of the same length, or of maps of the same size, as one level.
+   lists of the same length, or of maps of the same size, as one level. An
+   empty list or map, and an empty pair, is entered like any other, and the
+   test of item 7 is made for it.
 6. A projection does not exist in Core. A `try` adds nothing of its own: a call
    in its body or handler is deeper by the level of the braces.
 7. The test is made at these points, and `depth-exceeded` is raised when the
