@@ -42,7 +42,7 @@ specification, not here. This file records the crate's own choices.
 | `src/check/mod.rs` | S4 | The checker: the type rules of sections 5 to 18 over the resolution that `compile::resolve` gives, sites, classes, the expected result, and `compile_checked` |
 | `src/library.rs` | S2 | The records of `suite/library.json`: names, receivers, signatures |
 | `src/messages.rs` | S2 | The catalog of `suite/messages.json` and the building of a message |
-| `src/bin/outcome.rs` | S2 | The outcome command of rulings round 10 AJ |
+| `src/bin/outcome.rs` | S2 | The outcome command of `suite/README.md` |
 | `src/schema.rs` | F1 | The type of a JSON Schema (`f01-host-types.md` 3, 4): Pick, Meet, the mark *closable*, Close |
 | `src/describe.rs` | F1 | Descriptions of types, signatures and environments; an environment from a description (5) |
 | `src/hosttype.rs` | F1 | `HostType`, `TypeCx`, `Opaque<T>`: types from host types, and `Host` for the standard types (6.3) |
@@ -134,7 +134,7 @@ trait Vars     { fn get(&self, name: &str) -> Option<View<'_>>; }
   host-supplied is charged to the allocation budget.
 - A value is read when the program reads it. A host integer outside
   ±(2^53 − 1), a NaN or an infinity fails there with `number-range`, class
-  `environment` (3.4.4, ruling T7). A host float enters whenever it is finite.
+  `environment` (3.4.4). A host float enters whenever it is finite.
 - A host map's keys are sorted when their order can be seen. Empty or not is
   `len() == 0`, bounded work (3.4.3 item 1).
 - Opaque identity is the address of the lent value (`std::ptr::addr_eq`).
@@ -174,7 +174,7 @@ lines, `match` arms) is evaluated by a loop over its spine, so the evaluator's
 recursion is bounded by the source nesting times the call depth, which the
 depth limit bounds.
 
-## Stack (ruling AA7)
+## Stack
 
 Measured with a thread of a given stack, release build, on the deepest forms
 the limits allow:
@@ -202,11 +202,11 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
 
 | Work | How | Why it meets the bound |
 | --- | --- | --- |
-| Searches (`in`, `split`, `replaceAll`, `startsWith`, `endsWith`, `removePrefix`, `removeSuffix`) | The standard library's `str` searches. A needle longer than the text is answered from the lengths first (AC11) | The standard library searches a `&str` pattern with the Two-Way algorithm, which is linear (inference from its documentation; `tests/library.rs` times a pattern that a naive search takes quadratic time on) |
+| Searches (`in`, `split`, `replaceAll`, `startsWith`, `endsWith`, `removePrefix`, `removeSuffix`) | The standard library's `str` searches. A needle longer than the text is answered from the lengths first | The standard library searches a `&str` pattern with the Two-Way algorithm, which is linear (inference from its documentation; `tests/library.rs` times a pattern that a naive search takes quadratic time on) |
 | `sort`, `sortBy` | The standard library's stable `sort_by` | At most a constant times `n log n` comparisons; a comparison of two strings reads their common prefix, which the charge's `sz` term pays for |
 | `join`, `repeat`, `padStart`, `padEnd`, `replaceAll` | The result's weight is found from the arguments, charged, then the text is built once | Building is linear in the result |
 | String arguments | Read in place, never copied before the charge; `padStart` reads only the part of `fill` it uses | An argument the charge does not count is not walked |
-| `unique`, `groupBy`, `toMap` | Hash sets and maps over the values or keys | Expected work linear in `n` and the keys' weights; building the result map sorts its keys (the AL1 exception) |
+| `unique`, `groupBy`, `toMap` | Hash sets and maps over the values or keys | Expected work linear in `n` and the keys' weights; building the result map sorts its keys (the `n log n` exception of `02-evaluation.md` 8.5) |
 | Case mapping | `suite/casemap.json`, never `char::to_uppercase` | The table is Unicode 16.0.0 whatever the platform's version |
 | `fixed` | Its own exact decimal rounding of the double | Rust's `{:.N}` formatting rounds a tie half to even (from memory), where `fixed` rounds it away from zero |
 
@@ -220,7 +220,7 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
   force are a list that grows and shrinks with the walk.
 - A use of a `const`-bound lambda checks its body again with the use's
   parameter types, under the facts where the lambda was written. The limits
-  of 20.2 and 20.3 follow rulings AO9 and AO10: the parser records the
+  of 20.2 and 20.3: the parser records the
   greatest level open inside each lambda.
 - Signatures stay type text. Solving a call (13.5) binds and substitutes type
   variables in that text; `ty::substitute` gives the type with no depth test,
@@ -228,9 +228,9 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
 - The run of a checked program gives a failure of `null-operand`,
   `wrong-kind` or `missing-field` the class `dynamic` when a `dynamic` site is
   on the failing node or on its operand, receiver, index or argument (18.3),
-  by comparing spans (AP6).
+  by comparing spans.
 - `compile` checks by default; `compile_unchecked` is the explicit option, and
-  `check::check` the check alone (rulings round 11 AP7).
+  `check::check` the check alone (`03-host.md` 3.2.1).
 - Stack: the checker's recursion follows the source nesting and the nested
   uses of lambdas, both bounded at 100. Measured at the worst: 256 KiB
   optimized, 768 KiB unoptimized, within the figures for running above.
@@ -248,7 +248,7 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
 - A raw string or a block with no interpolation is a `String` node: its value
   is fixed at parse time and costs nothing at run time.
 
-## Call handles (ruling AR1)
+## Call handles
 
 A call handle is valid only until its host function returns, and holds by
 construction here: `Call` borrows the run's meter mutably for the duration of
@@ -288,15 +288,15 @@ one call, and a host implementation is a `'static` closure that receives
 - **Removed entries.** `EnvData::removed` holds record indices. Every lookup
   of a library entry by a compile, a check or a run goes through
   `Env::lib_function` and `Env::lib_method`, which skip them; the `value`
-  site of a method on an `any` receiver (ruling CB2) skips them too.
+  site of a method on an `any` receiver (`05-types.md` 13.3) skips them too.
 - **Child environments** (`03-host.md` 3.3.2): `Env::child()` gives a builder
   whose declarations replace the parent's of the same name; removed entries
   accumulate; rejected classes and limits are the parent's unless given.
-- **The parameter list** (ruling CF2): the table of matching closers treats a
+- **The parameter list** (`01-language.md` 3.2 rule 6): the table of matching closers treats a
   template with its interpolations as one token; each interpolation matches
   its own openers. A template where a pattern must stand is
   `unexpected-token` over the whole template.
-- **Type size** (`05-types.md` 20.7, ruling CG): `Rec` keeps its size in a
+- **Type size** (`05-types.md` 20.7): `Rec` keeps its size in a
   `SizeCache` (a `OnceLock`, emptied by a clone and ignored by equality), so
   `Ty::size` is constant work for each level of list nesting and saturates
   just above 100,000. The checker tests it at the nodes 20.7 lists
@@ -321,7 +321,7 @@ one call, and a host implementation is a `'static` closure that receives
   call or an index that is not a `String` node.
 - **The runner**: `PACKAGES` in `lib.rs` is the one list of packages offered;
   `testing::skipped_by_package` leaves out the `until-fNN-` files of those
-  packages (ruling BA8).
+  packages (`03-host.md` 3.11 item 4).
 
 ## Package F4, checked conversion
 
@@ -341,4 +341,23 @@ one call, and a host implementation is a `'static` closure that receives
 - **Facts of `is`** (`check/mod.rs`): a fact is a path with a kind,
   `NonNull`, `Is(T)` or `IsNot(T)`; `||` joins one `Is` fact per side about
   one path into one.
+
+## Package F5, tagged unions
+
+- **Representation** (`check/ty.rs`): `Ty::map` still holds one record; for
+  a union it holds flat(U), so every read, Merge, spread and pattern sees
+  the record `f05-unions.md` 4.3 names with no change. `Ty::variants` holds
+  the union's variants, in the order of printing. Size, printing, Join,
+  Fits, Truthy, disjoint and without read the variants; `union_of_alts`
+  forms a union from the records of one `Type`, in type text, program types
+  and schema branches alike.
+- **Facts** (`check/mod.rs`): a test of a field gives facts of the kinds of
+  `f04-conversion.md` 6.4, marked as from a field, when the receiver's map
+  alternative is a union or a field fact narrowed it there; `match` on a
+  field gives them arm by arm; `||` unites.
+- **The walk** (`conform.rs`) reads the tag first, then tests the variant it
+  selects without the tag.
+- **Schemas** (`schema.rs`): branches whose records form a union give it;
+  Pick meets a record with a union variant by variant; Close closes each
+  variant.
 

@@ -1,4 +1,4 @@
-//! Removed library entries (`03-host.md` 3.3.1 item 6, rulings CD1 to CD6)
+//! Removed library entries (`03-host.md` 3.3.1 item 6)
 //! and child environments (3.3.2).
 
 use risor::{check, parse, Env, Limits};
@@ -134,7 +134,7 @@ fn a_child_declaration_replaces_across_kinds() {
     assert!(check_codes(&child, "f").is_empty());
 }
 
-/// Ruling CH2: the clash rules apply to the child's whole environment.
+/// `03-host.md` 3.3.2: the clash rules apply to the child's whole environment.
 #[test]
 fn a_child_clashes_with_what_it_inherits() {
     let parent = Env::builder()
@@ -186,7 +186,7 @@ fn a_child_limits_are_its_own_when_given() {
     );
 }
 
-/// Ruling CH1: a `host` site counts only on the failing call itself.
+/// `05-types.md` 18.3: a `host` site counts only on the failing call itself.
 #[test]
 fn a_host_site_on_an_argument_is_not_the_outer_calls() {
     let env = Env::builder()
@@ -214,7 +214,7 @@ fn a_host_site_on_an_argument_is_not_the_outer_calls() {
     assert_eq!(p.diagnostic(&f).class, Some("host"));
 }
 
-/// Ruling CH3: a child replaces only in the same space of names. A child
+/// `03-host.md` 3.3.2 and 3.3.4 item 1: a child replaces only in the same space of names. A child
 /// variable `Time` leaves an inherited opaque type `Time` and its methods.
 #[test]
 fn a_child_variable_does_not_replace_an_opaque_type() {
@@ -231,7 +231,7 @@ fn a_child_variable_does_not_replace_an_opaque_type() {
     assert!(check_codes(&child, "t.format(\"x\")").is_empty());
 }
 
-/// Ruling CH4: a child's opaque type replaces the parent's whole; a child's
+/// `03-host.md` 3.3.2: a child's opaque type replaces the parent's whole; a child's
 /// method alone adds or replaces one method.
 #[test]
 fn a_child_opaque_type_replaces_the_parents_whole() {

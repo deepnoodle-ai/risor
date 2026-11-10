@@ -635,7 +635,7 @@ impl<'a> Lexer<'a> {
         let ts = self.stack.pop().map(|t| t.tmpl_start).unwrap_or(start);
         let (text, end, interp) = self.template_text(start + 1, ts)?;
         self.i = end;
-        // Ruling V1: a template where no token may stand is reported with
+        // `01-language.md` 3.5: a template where no token may stand is reported with
         // the span of the whole template, and a `}` that closes an
         // interpolation too early with the span of that `}`.
         if interp {

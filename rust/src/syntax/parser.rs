@@ -221,7 +221,7 @@ impl<'a> Parser<'a> {
             return self.diag(c, span, c.to_string());
         }
         let mut span = tok.diag;
-        // Ruling P7: where the token that cannot follow is the operator
+        // `01-language.md` 14.3: where the token that cannot follow is the operator
         // `not in`, the span runs from `not` to the end of `in`.
         if tok.is_word("not") && std::ptr::eq(tok, self.peek()) && self.peek_n(1).is_word("in") {
             span = span.to(self.peek_n(1).span);
@@ -814,7 +814,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `Unary`. `first` is the outermost prefix operator already read, which
-    /// is the span of a 3.4 rule 1 error (ruling P6).
+    /// is the span of a 3.4 rule 1 error (`01-language.md` 3.4 rule 1).
     fn prefixed(&mut self, first: Option<Span>) -> R<NodeId> {
         let t = self.peek();
         let op = match t.tok {
@@ -1267,7 +1267,7 @@ impl<'a> Parser<'a> {
             Tok::Word(w) if w == "true" => Lit::Bool(true),
             Tok::Word(w) if w == "false" => Lit::Bool(false),
             Tok::Word(w) if w == "null" => Lit::Null,
-            // Ruling T3.
+            // `01-language.md` 14.2: a reserved word is `reserved-word`.
             Tok::Word(w) if is_reserved(w) => return Err(self.reserved(t)),
             _ => return Err(self.unexpected(t)),
         };

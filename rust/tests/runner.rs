@@ -187,7 +187,7 @@ fn invalid_files() {
     );
 }
 
-/// Ruling AP1: the case field `check`, and the files it makes invalid.
+/// `03-host.md` 3.10.3: the case field `check`, and the files it makes invalid.
 #[test]
 fn the_check_field() {
     let v = verdicts(

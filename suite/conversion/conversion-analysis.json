@@ -1,0 +1,628 @@
+{
+ "cases": [
+  {
+   "name": "a variable read only as the subject of as",
+   "source": "x as int",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        2
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a path as the subject",
+   "source": "order.total as int",
+   "expect": {
+    "analysis": {
+     "names": [
+      "order"
+     ],
+     "refs": [
+      {
+       "name": "order",
+       "path": [
+        "total"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        12
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a subject that is a call of a host function",
+   "source": "rate(code) as float",
+   "expect": {
+    "analysis": {
+     "names": [
+      "code"
+     ],
+     "refs": [
+      {
+       "name": "code",
+       "path": [],
+       "span": [
+        1,
+        6,
+        1,
+        10
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "rate",
+       "namespace": null,
+       "span": [
+        1,
+        1,
+        1,
+        11
+       ],
+       "args": [
+        [
+         1,
+         6,
+         1,
+         10
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a subject that is a call of a const-bound lambda",
+   "source": "const f = v => v.n; f(item) as int",
+   "expect": {
+    "analysis": {
+     "names": [
+      "item"
+     ],
+     "refs": [
+      {
+       "name": "item",
+       "path": [],
+       "span": [
+        1,
+        23,
+        1,
+        27
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "is in a condition whose branches read other variables",
+   "source": "if (body is {id: string}) { a } else { b }",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b",
+      "body"
+     ],
+     "refs": [
+      {
+       "name": "body",
+       "path": [],
+       "span": [
+        1,
+        5,
+        1,
+        9
+       ]
+      },
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        29,
+        1,
+        30
+       ]
+      },
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        1,
+        40,
+        1,
+        41
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "as in a lambda body",
+   "source": "xs.map(e => (e as int) + y)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs",
+      "y"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      },
+      {
+       "name": "y",
+       "path": [],
+       "span": [
+        1,
+        26,
+        1,
+        27
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        1,
+        1,
+        28
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         27
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a call inside a lambda body, under as",
+   "source": "xs.map(e => lookup(e) as int)",
+   "expect": {
+    "analysis": {
+     "names": [
+      "xs"
+     ],
+     "refs": [
+      {
+       "name": "xs",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "xs.map",
+       "namespace": "xs",
+       "span": [
+        1,
+        1,
+        1,
+        30
+       ],
+       "args": [
+        [
+         1,
+         8,
+         1,
+         29
+        ]
+       ],
+       "lambda": false
+      },
+      {
+       "name": "lookup",
+       "namespace": null,
+       "span": [
+        1,
+        13,
+        1,
+        22
+       ],
+       "args": [
+        [
+         1,
+         20,
+         1,
+         21
+        ]
+       ],
+       "lambda": true
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "as in a template interpolation",
+   "source": "`${n as int}`",
+   "expect": {
+    "analysis": {
+     "names": [
+      "n"
+     ],
+     "refs": [
+      {
+       "name": "n",
+       "path": [],
+       "span": [
+        1,
+        4,
+        1,
+        5
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "as in a part of a host template",
+   "source": "a ${{ n as int }} b",
+   "template": "string",
+   "expect": {
+    "analysis": {
+     "names": [
+      "n"
+     ],
+     "refs": [
+      {
+       "name": "n",
+       "path": [],
+       "span": [
+        1,
+        7,
+        1,
+        8
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": [
+      {
+       "text": "a ",
+       "span": [
+        1,
+        1,
+        1,
+        3
+       ]
+      },
+      {
+       "part": [
+        1,
+        7,
+        1,
+        15
+       ],
+       "span": [
+        1,
+        3,
+        1,
+        18
+       ]
+      },
+      {
+       "text": " b",
+       "span": [
+        1,
+        18,
+        1,
+        20
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "a named type whose name is a variable's name",
+   "source": "Order as Order",
+   "expect": {
+    "analysis": {
+     "names": [
+      "Order"
+     ],
+     "refs": [
+      {
+       "name": "Order",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        6
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "record keys of a program type that are variable names",
+   "source": "blob as {order: int, total: string}",
+   "expect": {
+    "analysis": {
+     "names": [
+      "blob"
+     ],
+     "refs": [
+      {
+       "name": "blob",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        5
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "as under try",
+   "source": "try { x as int } catch (err) { err.path }",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        7,
+        1,
+        8
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "is on a path, with reads in its branches",
+   "source": "x.a is Order[] ? x.b : y",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x",
+      "y"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [
+        "a"
+       ],
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "name": "x",
+       "path": [
+        "b"
+       ],
+       "span": [
+        1,
+        18,
+        1,
+        21
+       ]
+      },
+      {
+       "name": "y",
+       "path": [],
+       "span": [
+        1,
+        24,
+        1,
+        25
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a parenthesis ends the path of a subject",
+   "source": "(x as {a: int}).a",
+   "expect": {
+    "analysis": {
+     "names": [
+      "x"
+     ],
+     "refs": [
+      {
+       "name": "x",
+       "path": [],
+       "span": [
+        1,
+        2,
+        1,
+        3
+       ]
+      }
+     ],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a subject that is a call in a namespace",
+   "source": "geo.distance(a, b) as float",
+   "expect": {
+    "analysis": {
+     "names": [
+      "a",
+      "b",
+      "geo"
+     ],
+     "refs": [
+      {
+       "name": "geo",
+       "path": [],
+       "span": [
+        1,
+        1,
+        1,
+        4
+       ]
+      },
+      {
+       "name": "a",
+       "path": [],
+       "span": [
+        1,
+        14,
+        1,
+        15
+       ]
+      },
+      {
+       "name": "b",
+       "path": [],
+       "span": [
+        1,
+        17,
+        1,
+        18
+       ]
+      }
+     ],
+     "calls": [
+      {
+       "name": "geo.distance",
+       "namespace": "geo",
+       "span": [
+        1,
+        1,
+        1,
+        19
+       ],
+       "args": [
+        [
+         1,
+         14,
+         1,
+         15
+        ],
+        [
+         1,
+         17,
+         1,
+         18
+        ]
+       ],
+       "lambda": false
+      }
+     ],
+     "literal": false,
+     "segments": null
+    }
+   }
+  },
+  {
+   "name": "a test of a literal is not a literal",
+   "source": "1 as int",
+   "expect": {
+    "analysis": {
+     "names": [],
+     "refs": [],
+     "calls": [],
+     "literal": false,
+     "segments": null
+    }
+   }
+  }
+ ]
+}

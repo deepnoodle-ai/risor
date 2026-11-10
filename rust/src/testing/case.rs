@@ -1,5 +1,5 @@
 //! Case files: reading and validation (`03-host.md` 3.10.1 to 3.10.4,
-//! 3.10.10 and 3.10.11, with ruling A4 for `precondition`).
+//! 3.10.10 and 3.10.11).
 
 use crate::diag::{code, Phase};
 use crate::json::{self, Json};
@@ -139,7 +139,7 @@ pub struct Case {
     pub methods: Vec<(String, Stub)>,
     pub functions: Vec<(String, Stub)>,
     pub reject: Option<Vec<String>>,
-    /// The removed library entries (`03-host.md` 3.10.3, ruling CD4).
+    /// The removed library entries (`03-host.md` 3.10.3).
     pub removed: Vec<String>,
     pub returns: Option<String>,
     /// `None` when the case gives no `vars`.
@@ -148,7 +148,7 @@ pub struct Case {
     pub skip: Option<String>,
     pub precondition: Option<bool>,
     /// `false`: the program is one the type rules reject on purpose; it is
-    /// run with the static rules alone (rulings round 11 AP1).
+    /// run with the static rules alone (`03-host.md` 3.10.3).
     pub check: bool,
     pub expect: Expect,
 }
@@ -241,14 +241,17 @@ pub fn load_doc(doc: &Json, dir: &Path) -> V<Vec<Case>> {
     load_doc_with(doc, dir, false)
 }
 
-/// As `load_doc`, but a case may have no `expect` (round 10 AJ): such a case
+/// As `load_doc`, but a case may have no `expect` (`suite/README.md` item 1): such a case
 /// expects an empty result.
 pub fn load_doc_lax(doc: &Json, dir: &Path) -> V<Vec<Case>> {
     load_doc_with(doc, dir, true)
 }
 
 fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
-    let conversion = dir.file_name().is_some_and(|d| d == "conversion");
+    // F4 6.1 item 4 and F5 11.2 item 3: two more static codes there.
+    let conversion = dir
+        .file_name()
+        .is_some_and(|d| d == "conversion" || d == "unions");
     let (header, cases): (&[(String, Json)], &[Json]) = match doc {
         Json::Arr(a) => (&[], a),
         Json::Obj(m) => {
@@ -639,7 +642,7 @@ fn read_expect(v: &Json) -> V<Expect> {
         for d in diags {
             diagnostics.push(read_diag(d)?);
         }
-        // Rulings AC19 and AG5.
+        // `03-host.md` 3.10.10.
         if matches!(phase, Phase::Parse | Phase::Declare) && diagnostics.len() != 1 {
             return Err(format!(
                 "a failure of phase {phase} states exactly one diagnostic"
@@ -652,7 +655,7 @@ fn read_expect(v: &Json) -> V<Expect> {
                 if phase != Phase::Run {
                     return Err(format!("expect.{k} in a failure of phase {phase}"));
                 }
-                // Ruling A5.
+                // `03-host.md` 3.10.10.
                 if diagnostics
                     .iter()
                     .any(|d| code::LIMIT.contains(&d.code.as_str()))

@@ -175,7 +175,7 @@ pub fn run_file_with(path: &Path, checked: bool) -> FileReport {
     }
 }
 
-/// `03-host.md` 3.11 item 7 (ruling BA11): in a package's directory, a file
+/// `03-host.md` 3.11 item 7: in a package's directory, a file
 /// whose name ends `-check.json` is run as `suite/core-check/` is: each case
 /// once, checked.
 pub fn check_only_file(path: &Path) -> bool {
@@ -190,8 +190,8 @@ pub fn check_only_file(path: &Path) -> bool {
             .is_some_and(|n| n.ends_with("-check.json"))
 }
 
-/// Whether the runner does not run a file (`03-host.md` 3.11 item 4, ruling
-/// BA8): its name begins `until-fNN-` and this build offers package NN.
+/// Whether the runner does not run a file (`03-host.md` 3.11 item 4):
+/// its name begins `until-fNN-` and this build offers package NN.
 pub fn skipped_by_package(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
@@ -208,7 +208,7 @@ pub fn skipped_by_package(path: &Path) -> bool {
         .is_ok_and(|n| crate::PACKAGES.contains(&n))
 }
 
-/// The case files under a directory that the runner does not run, by BA8.
+/// The case files under a directory that the runner does not run, by `03-host.md` 3.11 item 4.
 pub fn skipped_files(dir: &Path) -> Vec<PathBuf> {
     all_json(dir)
         .into_iter()
@@ -265,7 +265,7 @@ impl Interner {
         match v {
             Json::Null => Data::Null,
             Json::Bool(b) => Data::Bool(*b),
-            // Ruling T7: a JSON number is a floating value.
+            // `03-host.md` 3.10.3 item 5: a JSON number is a floating value.
             Json::Num(n) => Data::Float(*n),
             Json::Str(s) => Data::Str(s.clone()),
             Json::Arr(a) => Data::List(a.iter().map(|x| self.data(x)).collect()),
@@ -374,6 +374,12 @@ fn build_env(
                 if let Err(d) = check_expected(r) {
                     return Err(Error::one(d));
                 }
+                // The expected result's type is resolved when the
+                // environment is, in either mode: this build has the checker
+                // (`03-host.md` 3.3.1 item 2).
+                if let Err(d) = crate::check::expected(&env, Some(r)) {
+                    return Err(Error::one(d));
+                }
             }
             return Ok(env);
         }
@@ -425,7 +431,7 @@ fn missing_entries(p: &Program) -> Vec<String> {
 }
 
 /// Run one case (3.10.5) as a runner with a type checker does (3.10.8 item
-/// 5, rulings round 11 AP2): a case with `"check": false` once with the
+/// 5): a case with `"check": false` once with the
 /// static rules alone; a case of `suite/core-check/`, or one that needs the
 /// checker, once checked; every other case twice, checked and with the
 /// static rules alone, and it passes only when both runs pass.
@@ -460,6 +466,11 @@ pub fn run_case_in(case: &Case, core_check: bool) -> Verdict {
                     .any(|d| !super::case::is_static(&d.code, case.conversion))
         }
     };
+    // F5 11.2 item 2: a case with `schemas`, or that states `description`,
+    // runs once, checked.
+    let needs_checker = needs_checker
+        || !case.schemas.is_empty()
+        || matches!(&case.expect, Expect::Result(r) if r.description.is_some());
     let checked = run_case_with(case, true, true);
     if core_check || needs_checker {
         return checked;
@@ -817,8 +828,8 @@ fn show_expected(d: &ExpectDiag) -> String {
     s
 }
 
-/// The codes whose class depends on the check (`03-host.md` 3.7.6; ruling
-/// CE2 adds `function-error`).
+/// The codes whose class depends on the check (`03-host.md` 3.7.6), six of
+/// them with `function-error`.
 const CHECKED_CLASS: [&str; 6] = [
     "null-operand",
     "wrong-kind",
@@ -830,7 +841,7 @@ const CHECKED_CLASS: [&str; 6] = [
 
 /// Whether one expected diagnostic matches one actual (3.10.6, 3.10.7).
 /// `class` is compared but for the six codes whose class depends on a
-/// check this runner does not make (rulings round 10 AM1, CE2).
+/// check this runner does not make (`03-host.md` 3.10.7 item 8).
 fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
     if e.code != a.code {
         return false;
@@ -935,7 +946,7 @@ fn compare_failure(
     }
 }
 
-/// One line of the outcome command (round 10 AJ): what a case found, with
+/// One line of the outcome command (`suite/README.md`): what a case found, with
 /// its `expect` ignored.
 /// The case's program (3.10.5 step 3): its text parsed as a program, or,
 /// with F2's `template`, as a template taken in its mode.
@@ -1297,7 +1308,7 @@ fn outcome_core(case: &Case) -> String {
     // written after the name when the program checks.
     let program = match parse_case(case) {
         Err(e) => Err((Phase::Parse, e.diagnostics)),
-        // Ruling AP3: a case with `"check": false` is compiled without.
+        // `suite/README.md` item 3: a case with `"check": false` is compiled without.
         Ok(p) if !case.check => compile(&env, p).map_err(|e| (e.phase, e.diagnostics)),
         Ok(p) => match crate::check::expected(&env, case.returns.as_deref()) {
             Err(d) => Err((Phase::Declare, vec![d])),
@@ -1353,7 +1364,7 @@ fn outcome_core(case: &Case) -> String {
             result = Err(d);
         }
     }
-    // Ruling AK3: a failure of class `limit` has no span and no usage.
+    // `suite/README.md` item 2: a failure of class `limit` has no span and no usage.
     let limit = match result {
         Ok(_) => {
             out.push_str(",\"phase\":null,\"value\":");
@@ -1389,8 +1400,8 @@ fn json_text(s: &str) -> String {
 }
 
 /// A result as JSON, with an opaque value written as a case file writes it.
-/// This conversion is the binding's, outside the run (rulings round 10 AH1,
-/// round 11 AN2): it walks with an explicit stack, so data of any depth
+/// This conversion is the binding's, outside the run (`02-evaluation.md` 8.4:
+/// handing a result over is not a read): it walks with an explicit stack, so data of any depth
 /// neither fails nor overflows the host stack. Only a host number that cannot
 /// enter fails it, with `number-range`.
 fn value_json(v: &Value<'_>, out: &mut String, _depth: u32) -> Result<(), &'static str> {

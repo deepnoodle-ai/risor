@@ -1,5 +1,5 @@
 //! With the feature `derive`, `#[derive(risor::Host)]` works with one
-//! dependency (ruling BB26).
+//! dependency.
 #![cfg(feature = "derive")]
 
 #[derive(risor::Host)]

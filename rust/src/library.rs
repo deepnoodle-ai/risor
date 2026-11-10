@@ -23,7 +23,7 @@ pub struct Record {
     pub narrows: bool,
     /// The argument positions that are tested positions (`05-types.md` 10.1).
     pub tested: Vec<usize>,
-    /// The parameters whose argument is rendered (ruling AO2).
+    /// The parameters whose argument is rendered (`05-types.md` 7.3).
     pub renders: Vec<String>,
     /// The record's formulas, as written.
     pub steps: String,

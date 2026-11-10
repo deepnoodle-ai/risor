@@ -66,7 +66,7 @@ pub struct Source {
 
 impl Source {
     /// A U+FEFF at the start is removed and not counted: the code point after
-    /// it is line 1, column 1 (ruling P1).
+    /// it is line 1, column 1.
     pub fn new(text: &str) -> Source {
         let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
         let chars: Vec<char> = text.chars().collect();

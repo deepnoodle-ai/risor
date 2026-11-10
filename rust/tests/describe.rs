@@ -193,7 +193,7 @@ fn errors_of_a_description() {
         ["name-clash"]
     );
     assert_eq!(declare_codes(&with("reject", r#"["nope"]"#)), ["bad-class"]);
-    // BB24: a negative or fractional limit is `bad-limit`.
+    // `f01-host-types.md` 5.4 item 2: a negative or fractional limit is `bad-limit`.
     for l in [
         r#"{"steps":-1,"allocation":1,"depth":1}"#,
         r#"{"steps":1,"allocation":1.5,"depth":1}"#,

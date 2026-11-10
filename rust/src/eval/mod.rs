@@ -224,7 +224,7 @@ impl Program {
                 stop: None,
             },
         };
-        // Ruling AH1: handing the result over is not a read, so the run
+        // `02-evaluation.md` 8.4: handing the result over is not a read, so the run
         // makes no walk of it.
         let result = run.eval(self.parsed.ast.root);
         Outcome {
@@ -964,7 +964,7 @@ impl<'h> Run<'h> {
                 if let Value::Str(ys) = y {
                     let ys = ys.as_str();
                     self.charge(1 + size(ys))?;
-                    // Ruling AC11: a needle longer than the text is answered
+                    // A needle longer than the text is answered
                     // from the lengths. `str::contains` is linear.
                     Ok(xs.len() <= ys.len() && ys.contains(xs))
                 } else {
@@ -1215,7 +1215,7 @@ impl<'h> Run<'h> {
     }
 
     /// A method call: the method by the receiver's kind, the shape test,
-    /// the arguments, then the entry (`04-library.md` 2.2, ruling AC1).
+    /// the arguments, then the entry (`04-library.md` 2.2).
     fn method(
         &mut self,
         s: NodeId,
@@ -1706,7 +1706,7 @@ impl Program {
             return f.class();
         };
         let at = |class: &str| f.span.is_some_and(|s| self.at_site(sites, class, s));
-        // Ruling CH1: a site of class `index`, `divide`, `value` or `host`
+        // `05-types.md` 18.3: a site of class `index`, `divide`, `value` or `host`
         // is on the node that can fail; a failure is at it only when it is
         // on the failing node itself.
         let on = |class: &str| {
@@ -1720,7 +1720,7 @@ impl Program {
                 "environment"
             }),
             "no-match" => Some("environment"),
-            // Ruling CE2: the mark `!` is a promise. Away from a `host` site
+            // `05-types.md` 18.4, 18.5: the mark `!` is a promise. Away from a `host` site
             // a function or method not marked `!` broke it.
             "function-error" => Some(if on("host") { "host" } else { "environment" }),
             "not-conforming" => Some(if on("value") { "value" } else { "environment" }),
@@ -1730,7 +1730,7 @@ impl Program {
 
     /// Whether a failure at a node's span is at a site of a class: the site is
     /// on the failing node, or on its operand, receiver, index or argument
-    /// (`05-types.md` 18.3). Ruling CH1: this reach is for `dynamic` sites.
+    /// (`05-types.md` 18.3). This reach is for `dynamic` sites.
     fn at_site(&self, sites: &[crate::check::Site], class: &str, span: Span) -> bool {
         let ast = &self.parsed.ast;
         let mut spans = vec![span];
@@ -1780,7 +1780,7 @@ impl Program {
             }
             spans.extend(kids.iter().map(|k| ast.span(*k)));
         }
-        // Ruling AO6 (c): a field or an element of a pattern that fails is at
+        // `05-types.md` 18.3: a field or an element of a pattern that fails is at
         // a site on its key or name, or on the value the pattern binds.
         for (i, n) in ast.nodes.iter().enumerate() {
             let hit = match &n.kind {
@@ -1810,7 +1810,7 @@ impl Program {
             .any(|s| s.class == class && spans.contains(&s.span))
     }
 
-    /// Ruling CB3: the body of each lambda that is an argument, or that an
+    /// `05-types.md` 18.3: the body of each lambda that is an argument, or that an
     /// argument names, for a failure of a callback's result, key or value.
     fn lambda_bodies(&self, args: &[NodeId]) -> Vec<NodeId> {
         let ast = &self.parsed.ast;

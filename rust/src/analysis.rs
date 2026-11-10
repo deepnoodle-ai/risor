@@ -268,6 +268,10 @@ impl<'p> Walker<'p> {
                 out.push(Task::Visit(*value, lam));
             }
             NodeKind::Spread { value } => out.push(Task::Visit(*value, lam)),
+            // F4 1.4: the subject of `x as T` and `x is T` is walked as any
+            // operand; the program type names nothing, and a path stops at
+            // the `As` node.
+            NodeKind::As { x, .. } => out.push(Task::Visit(*x, lam)),
             NodeKind::Unary { x, .. } => out.push(Task::Visit(*x, lam)),
             NodeKind::Binary { x, y, .. } => {
                 // A long operator chain is a spine: its left operands are

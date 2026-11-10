@@ -72,7 +72,7 @@ impl TypeCx {
     /// The type of `T`.
     pub fn of<T: HostType + ?Sized>(&mut self) -> Result<Ty, TypeError> {
         let t = T::host_type(self)?;
-        // Ruling CG8: each host type's derived type is tested.
+        // `05-types.md` 20.7: each host type's derived type is tested.
         if t.too_big() {
             return Err(TypeError(format!(
                 "the type of {} is larger than {}",

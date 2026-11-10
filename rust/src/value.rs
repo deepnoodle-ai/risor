@@ -4,7 +4,7 @@
 //! held by reference (`HList`, `HMap`, lent strings) and read in place. A
 //! host number that cannot enter the language is held as [`Value::BadNum`]
 //! inside a container until something reads it, which then fails with
-//! `number-range` (`03-host.md` 3.4.4, ruling AC16).
+//! `number-range` (`03-host.md` 3.4.4).
 
 use crate::host::{Data, HostList, HostMap, OpaqueRef, View};
 use std::cmp::Ordering;

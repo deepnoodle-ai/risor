@@ -2,7 +2,7 @@
 //!
 //! Every implementation parses the type text of its environment, with or
 //! without a type checker, to learn the names of the variables and the counts
-//! of each function's parameters (ruling A2, `05-types.md` 19.5). This module
+//! of each function's parameters (`05-types.md` 19.5). This module
 //! is the grammar only. The rules beyond it (a key written twice, two record
 //! alternatives, an undeclared name, a rest that is not a list, the depth of a
 //! type) belong to the checker.
@@ -195,7 +195,7 @@ struct TypeParser {
     pos: usize,
     vars: bool,
     depth: u32,
-    /// The depth (ruling AA3) of the construct parsed last.
+    /// The depth (`05-types.md` 20.5) of the construct parsed last.
     d: u32,
 }
 
@@ -292,7 +292,7 @@ impl TypeParser {
         Ok(())
     }
 
-    /// Ruling AA3: a `[]` suffix has depth 1 more than what it follows, a
+    /// `05-types.md` 20.5: a `[]` suffix has depth 1 more than what it follows, a
     /// bracketed form 1 more than the deepest of its contents, any other text
     /// 0. Text deeper than 64 is refused.
     fn deeper(&mut self, inner: u32) -> R<()> {

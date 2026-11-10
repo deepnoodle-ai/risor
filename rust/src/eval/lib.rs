@@ -3,7 +3,7 @@
 //! Every call goes through the same steps (4.4): the argument tests of 2.6,
 //! taken from the entry's signature in `suite/library.json` (the receiver
 //! first, then each argument left to right, a kind before a whole number:
-//! ruling AC6); the call's step; then the entry's own order. Every failure an
+//! `04-library.md` 2.2); the call's step; then the entry's own order. Every failure an
 //! entry raises has the span of the whole call (2.6 item 6). Each entry does
 //! work of at most a constant times what it charges: the searches are the
 //! platform's linear ones (`str::find`, `str::split`, which are two-way
@@ -309,8 +309,8 @@ impl<'h> Run<'h> {
     }
 
     /// The tests of 2.6 against the record's signature: kinds, and whole
-    /// numbers for `int`, each argument left to right (ruling AC6). For a
-    /// parameter bound `ordered` every failure of kind is `unordered` (AC5).
+    /// numbers for `int`, each argument left to right (`04-library.md` 2.2). For a
+    /// parameter bound `ordered` every failure of kind is `unordered` (`04-library.md` 2.2).
     fn arg_tests(&self, rec: &Record, args: &[Arg<'h>], span: Span) -> R<'h, ()> {
         let sig = &rec.sig;
         let mut ordered_first: Option<Kind> = None;
@@ -573,7 +573,7 @@ impl<'h> Run<'h> {
             }
             "split" => {
                 let sep = text(&a0);
-                // Ruling AC11: a separator longer than the text is answered
+                // A separator longer than the text is answered
                 // from the lengths.
                 let p = if sep.is_empty() {
                     s.chars().count()

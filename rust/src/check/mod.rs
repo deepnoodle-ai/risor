@@ -18,7 +18,7 @@ use crate::source::{Source, Span};
 use crate::syntax::ast::{Ast, BinaryOp, CondForm, EntryKey, Lit, NodeId, NodeKind, UnaryOp};
 use crate::syntax::Parsed;
 use crate::types::text::{self, Bound, ParamType, Sig};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ty::*;
 
 /// A place where a checked program can still fail on a value (18.3).
@@ -143,10 +143,10 @@ struct Path {
 #[derive(Clone, Debug, PartialEq)]
 enum FactKind {
     NonNull,
-    /// {p: T}
-    Is(Ty),
+    /// {p: T}. `true` when a test of a field gave it (F5 5.2, 5.3).
+    Is(Ty, bool),
     /// {p: not T}
-    IsNot(Ty),
+    IsNot(Ty, bool),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -170,6 +170,9 @@ struct Checker<'a> {
     diags: Vec<Diagnostic>,
     sites: Vec<Site>,
     types: Vec<Ty>,
+    /// F5 5.2 item 3: the nodes whose type a fact of a test of a field
+    /// narrowed where they stand.
+    field_narrowed: std::collections::HashSet<u32>,
     lambda_facts: HashMap<u32, Vec<Path>>,
     uses: HashMap<u32, usize>,
     body_checks: usize,
@@ -249,6 +252,7 @@ impl<'a> Checker<'a> {
             diags: Vec::new(),
             sites: Vec::new(),
             types: vec![Ty::never(); parsed.ast.nodes.len()],
+            field_narrowed: std::collections::HashSet::new(),
             lambda_facts: HashMap::new(),
             uses,
             body_checks: 0,
@@ -357,14 +361,14 @@ impl<'a> Checker<'a> {
             }
             t = match &f.kind {
                 FactKind::NonNull => t,
-                FactKind::Is(c) => {
+                FactKind::Is(c, _) => {
                     if fits(&t, c) == Some(false) {
                         t
                     } else {
                         c.clone()
                     }
                 }
-                FactKind::IsNot(c) => without(&t, c),
+                FactKind::IsNot(c, _) => without(&t, c),
             };
         }
         t
@@ -398,8 +402,8 @@ impl<'a> Checker<'a> {
                     keys: p.keys.clone(),
                     kind: k,
                 };
-                let mut tf = vec![fact(FactKind::Is(t.clone()))];
-                let mut ff = vec![fact(FactKind::IsNot(t.clone()))];
+                let mut tf = vec![fact(FactKind::Is(t.clone(), false))];
+                let mut ff = vec![fact(FactKind::IsNot(t.clone(), false))];
                 if !t.null && !t.any {
                     tf.push(fact(FactKind::NonNull));
                 }
@@ -408,6 +412,25 @@ impl<'a> Checker<'a> {
                 }
                 (tf, ff)
             }
+            // F5 5.2: a test of a field, `q == L` or `q in [L1, ...]`.
+            NodeKind::Binary {
+                op: op @ (BinaryOp::Eq | BinaryOp::Ne),
+                x,
+                y,
+            } if self.field_test_of(*x, *y).is_some() => {
+                let (q, set) = self.field_test_of(*x, *y).expect("a field test");
+                self.field_facts(q, &set, *op == BinaryOp::Eq)
+            }
+            NodeKind::Binary {
+                op: op @ (BinaryOp::In | BinaryOp::NotIn),
+                x,
+                y,
+            } => match self.in_list(*y) {
+                Some(set) if self.field_step(*x).is_some() => {
+                    self.field_facts(*x, &set, *op == BinaryOp::In)
+                }
+                _ => (vec![], vec![]),
+            },
             NodeKind::Binary {
                 op: op @ (BinaryOp::Eq | BinaryOp::Ne),
                 x,
@@ -440,6 +463,9 @@ impl<'a> Checker<'a> {
                     n = *x;
                 }
                 operands.push(n);
+                // Source order: the facts of one path apply in the order of
+                // their tests.
+                operands.reverse();
                 let all: Vec<(Vec<Path>, Vec<Path>)> =
                     operands.iter().map(|&o| self.facts_of(o)).collect();
                 let union = |v: Vec<Vec<Path>>| {
@@ -469,21 +495,24 @@ impl<'a> Checker<'a> {
                     let mut joined: Vec<Path> = Vec::new();
                     if let Some(first) = ts.first() {
                         for f in first {
-                            let FactKind::Is(_) = f.kind else { continue };
+                            let FactKind::Is(_, field) = f.kind else {
+                                continue;
+                            };
                             let mut acc: Option<Ty> = Some(Ty::never());
                             for side in &ts {
                                 let mine: Vec<&Path> = side
                                     .iter()
                                     .filter(|g| {
-                                        matches!(g.kind, FactKind::Is(_))
+                                        matches!(g.kind, FactKind::Is(..))
                                             && g.root == f.root
                                             && g.keys == f.keys
                                     })
                                     .collect();
                                 match (mine.as_slice(), acc.as_mut()) {
                                     ([g], Some(a)) => {
-                                        if let FactKind::Is(t) = &g.kind {
-                                            join_into(a, t);
+                                        if let FactKind::Is(t, _) = &g.kind {
+                                            // F5 5.4: Unite, not Join.
+                                            *a = unite(a, t);
                                         }
                                     }
                                     _ => acc = None,
@@ -493,14 +522,14 @@ impl<'a> Checker<'a> {
                                 joined.push(Path {
                                     root: f.root.clone(),
                                     keys: f.keys.clone(),
-                                    kind: FactKind::Is(t),
+                                    kind: FactKind::Is(t, field),
                                 });
                             }
                         }
                     }
                     let mut t: Vec<Path> = inter(ts)
                         .into_iter()
-                        .filter(|p| !matches!(p.kind, FactKind::Is(_)))
+                        .filter(|p| !matches!(p.kind, FactKind::Is(..)))
                         .collect();
                     for j in joined {
                         if !t.contains(&j) {
@@ -512,6 +541,122 @@ impl<'a> Checker<'a> {
             }
             _ => (vec![], vec![]),
         }
+    }
+
+    /// F5 5.2 item 1: `q == L` or `L == q`, with q a path of at least one
+    /// step and L a `String` node: q and {L}.
+    fn field_test_of(&self, x: NodeId, y: NodeId) -> Option<(NodeId, BTreeSet<String>)> {
+        let lit = |n: NodeId| match self.kind(n) {
+            NodeKind::String { value, .. } => Some(value.clone()),
+            _ => None,
+        };
+        if let (Some(l), Some(_)) = (lit(y), self.field_step(x)) {
+            return Some((x, [l].into()));
+        }
+        if let (Some(l), Some(_)) = (lit(x), self.field_step(y)) {
+            return Some((y, [l].into()));
+        }
+        None
+    }
+
+    /// The strings of the right side of `in`: a `List` of one or more `String`
+    /// nodes with no spread (F5 5.2 item 1).
+    fn in_list(&self, y: NodeId) -> Option<BTreeSet<String>> {
+        let NodeKind::List { items } = self.kind(y) else {
+            return None;
+        };
+        if items.is_empty() {
+            return None;
+        }
+        items
+            .iter()
+            .map(|&i| match self.kind(i) {
+                NodeKind::String { value, .. } => Some(value.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The receiver p, its path, and the key f of a path q with at least one
+    /// step whose last names a key.
+    fn field_step(&self, q: NodeId) -> Option<(NodeId, Path, String)> {
+        let mut n = q;
+        if let NodeKind::OptChain { x } = self.kind(n) {
+            n = *x;
+        }
+        let (x, f) = match self.kind(n) {
+            NodeKind::Member { x, name, .. } => (*x, name.clone()),
+            NodeKind::Index { x, index, .. } => match self.kind(*index) {
+                NodeKind::String { value, .. } => (*x, value.clone()),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        let p = self.path_of(x)?;
+        Some((x, p, f))
+    }
+
+    /// F5 5.2: the facts of a test of a field q against the strings S, when
+    /// p's map alternative is a union, or a record a field fact narrowed.
+    /// `eq` is `==` or `in`; `!=` and `not in` swap the sides.
+    fn field_facts(&self, q: NodeId, set: &BTreeSet<String>, eq: bool) -> (Vec<Path>, Vec<Path>) {
+        let Some((x, _, _)) = self.field_step(q) else {
+            return (vec![], vec![]);
+        };
+        let t = self.types[x.index()].clone();
+        self.field_facts_on(q, &t, set, eq)
+    }
+
+    fn field_facts_on(
+        &self,
+        q: NodeId,
+        t: &Ty,
+        set: &BTreeSet<String>,
+        eq: bool,
+    ) -> (Vec<Path>, Vec<Path>) {
+        let Some((_, p, f)) = self.field_step(q) else {
+            return (vec![], vec![]);
+        };
+        let t = t.clone();
+        let narrowed = self.has_field_fact(&p)
+            || self
+                .field_step(q)
+                .is_some_and(|(x, _, _)| self.field_narrowed.contains(&x.0));
+        if t.map.is_none() || (t.variants.is_none() && !narrowed) {
+            return (vec![], vec![]);
+        }
+        let fact = |k: FactKind| Path {
+            root: p.root.clone(),
+            keys: p.keys.clone(),
+            kind: k,
+        };
+        let h = hit(&t, &f, set);
+        let a = all_of(&t, &f, set);
+        let mut held = Vec::new();
+        if !h.is_empty() {
+            held.push(fact(FactKind::Is(variants_ty(h), true)));
+            held.push(fact(FactKind::NonNull));
+        }
+        let mut failed = Vec::new();
+        if !a.is_empty() {
+            failed.push(fact(FactKind::IsNot(variants_ty(a), true)));
+        }
+        if eq {
+            (held, failed)
+        } else {
+            (failed, held)
+        }
+    }
+
+    /// F5 5.3: the facts of an arm of a `match` on a field q, with the map
+    /// alternative of p as the facts in force leave it.
+    fn match_facts(&self, q: NodeId, set: &BTreeSet<String>) -> (Vec<Path>, Vec<Path>) {
+        let Some((x, p, _)) = self.field_step(q) else {
+            return (vec![], vec![]);
+        };
+        let saved = self.types[x.index()].clone();
+        let now = self.type_facts(&p, saved);
+        self.field_facts_on(q, &now, set, true)
     }
 
     /// A tested position (10.1, 10.2).
@@ -760,10 +905,23 @@ impl<'a> Checker<'a> {
             kind: FactKind::NonNull,
         };
         let t = if self.covered(&p) { t.nonnull() } else { t };
+        if self.has_field_fact(&p) {
+            self.field_narrowed.insert(id.0);
+        }
         self.type_facts(&p, t)
     }
 
-    /// A rendered expression (ruling AO2): has-opaque is `kind`, has-any a
+    /// Whether a fact of a test of a field about exactly this path is in
+    /// force (F5 5.2 item 3).
+    fn has_field_fact(&self, p: &Path) -> bool {
+        self.facts.iter().any(|g| {
+            g.root == p.root
+                && g.keys == p.keys
+                && matches!(g.kind, FactKind::Is(_, true) | FactKind::IsNot(_, true))
+        })
+    }
+
+    /// A rendered expression (7.3): has-opaque is `kind`, has-any a
     /// `dynamic` site; null is accepted.
     fn rendered(&mut self, e: NodeId, t: &Ty) {
         let s = self.span(e);
@@ -810,7 +968,7 @@ impl<'a> Checker<'a> {
         t
     }
 
-    /// The type size limit (20.7, ruling CG3): a type over it is
+    /// The type size limit (20.7): a type over it is
     /// `check-limit` at `span`, and `never` afterwards.
     fn size_check(&mut self, span: Span, t: Ty) -> Ty {
         if t.too_big() {
@@ -951,7 +1109,7 @@ impl<'a> Checker<'a> {
                 }
                 BinaryOp::Eq | BinaryOp::Ne => {
                     let bt = self.synth(y);
-                    // Ruling AO5: not when a side is `never`.
+                    // 8.2: not when a side is `never`.
                     if !overlap(&cur, &bt)
                         && !cur.is_never()
                         && !bt.is_never()
@@ -1186,7 +1344,7 @@ impl<'a> Checker<'a> {
         self.facts.truncate(k);
         let mut below = et;
         for (c, bt) in chain.into_iter().rev() {
-            // Ruling CG10: in place, so a long chain of literals is n log n.
+            // 20.7: in place, so a long chain of literals is n log n.
             join_into(&mut below, &bt);
             // 20.7: each `Cond` is tested; the innermost over the limit is
             // reported, and the ones around it see `never`.
@@ -1227,16 +1385,28 @@ impl<'a> Checker<'a> {
                 continue;
             };
             let mut has_null = false;
+            // F5 5.3: the strings of this arm, and whether every literal of
+            // it is a string.
+            let mut strs: BTreeSet<String> = BTreeSet::new();
+            let mut all_strings = literals.is_some();
             match literals {
                 None => default = true,
                 Some(ls) => {
                     for l in ls {
-                        // Ruling CA4: a literal equal to an earlier one is
+                        match &l.lit {
+                            Lit::Str(x) => {
+                                if !lits.contains(&crate::compile::lit_key(&l.lit)) {
+                                    strs.insert(x.clone());
+                                }
+                            }
+                            _ => all_strings = false,
+                        }
+                        // 11.2: a literal equal to an earlier one is
                         // `duplicate-case` only, and ignored here.
                         if !lits.insert(crate::compile::lit_key(&l.lit)) {
                             continue;
                         }
-                        // Ruling CA1: the conditions of `==` (8.2).
+                        // 11.2: the conditions of `==` (8.2).
                         if !matches!(l.lit, Lit::Null)
                             && !s.is_never()
                             && !s.is_exactly_null()
@@ -1248,8 +1418,20 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            let arm_start = self.facts.len();
+            let (held, failed) = if strs.is_empty() {
+                (vec![], vec![])
+            } else {
+                self.match_facts(subject, &strs)
+            };
+            if all_strings {
+                self.facts.extend(held);
+            }
             let rt = self.synth(*result);
+            self.facts.truncate(arm_start);
             join_into(&mut acc, &rt);
+            // Every later arm, `_` included, under {p: not all(Mi, f, S)}.
+            self.facts.extend(failed);
             if has_null {
                 if let Some(p) = &p {
                     self.facts.push(p.clone());
@@ -1325,7 +1507,7 @@ impl<'a> Checker<'a> {
                         self.diag("kind", bound);
                     }
                     self.set_names(pat, &Ty::never());
-                    // Ruling CA3: a default is always checked.
+                    // 12.2: a default is always checked.
                     for f in fields {
                         if let Some(d) = f.default {
                             self.synth(d);
@@ -1363,7 +1545,7 @@ impl<'a> Checker<'a> {
                                 fl.ty.clone()
                             }
                             None if rec.rest.any => {
-                                // Ruling AO6 (a): the site is on the key.
+                                // 18.3: the site is on the key.
                                 if self.dyn_site(f.key_span) {
                                     Ty::never()
                                 } else {
@@ -1413,7 +1595,7 @@ impl<'a> Checker<'a> {
                                 self.synth(d);
                             }
                             None => {
-                                // Ruling AO6 (b).
+                                // 18.3.
                                 let s = self.span(e.pat);
                                 self.site("index", s);
                             }
@@ -1426,7 +1608,7 @@ impl<'a> Checker<'a> {
                         self.diag("kind", bound);
                     }
                     self.set_names(pat, &Ty::never());
-                    // Ruling CA3: a default is always checked.
+                    // 12.2: a default is always checked.
                     for e in elems {
                         if let Some(d) = e.default {
                             self.synth(d);
@@ -1540,7 +1722,7 @@ impl<'a> Checker<'a> {
                 match self.kind(s) {
                     NodeKind::Index { index, .. } => {
                         self.synth(*index);
-                        // Ruling CB1 (9.3): a plain index step on an `any`
+                        // 9.3: a plain index step on an `any`
                         // receiver is an `index` site too.
                         // A rejected `dynamic` site makes the receiver
                         // `never`, which records nothing more.
@@ -1551,8 +1733,8 @@ impl<'a> Checker<'a> {
                     }
                     NodeKind::MethodCall { args, name, .. } => {
                         self.any_args(args);
-                        // Ruling CB2 (13.3): the call may fail as a library
-                        // method marked `!` (not a removed one, CD5) or an
+                        // 13.3: the call may fail as a library
+                        // method marked `!` (not a removed one, `03-host.md` 3.3.1) or an
                         // opaque type's method marked `!` would.
                         if !rejected {
                             let ss = self.span(s);
@@ -1615,6 +1797,9 @@ impl<'a> Checker<'a> {
                 cur = cur.nonnull();
             }
             if let Some(p) = &path {
+                if self.has_field_fact(p) {
+                    self.field_narrowed.insert(s.0);
+                }
                 cur = self.type_facts(p, cur);
             }
             self.types[s.index()] = cur.clone();
@@ -1651,7 +1836,7 @@ impl<'a> Checker<'a> {
                 }
             }
             None if rec.rest.any => {
-                // Ruling AO13: under a fact the read cannot fail.
+                // 10.4: under a fact the read cannot fail.
                 if !optional && !present && self.dyn_site(rs) {
                     return Ty::never();
                 }
@@ -1686,7 +1871,7 @@ impl<'a> Checker<'a> {
                     .chain(std::iter::once(&rec.rest)),
             );
             let any_rest = rec.rest.any;
-            // Ruling AO11: one mistake, one diagnostic.
+            // One mistake, one diagnostic.
             if self.operand(index, it, &Ty::string()).is_none() {
                 return Ty::never();
             }
@@ -1894,7 +2079,7 @@ impl<'a> Checker<'a> {
                 }
                 continue;
             }
-            // Ruling CA5: only the parameters the lambda declares.
+            // 13.5 step 3: only the parameters the lambda declares.
             if f.params
                 .iter()
                 .take(lparams.len())
@@ -1926,7 +2111,7 @@ impl<'a> Checker<'a> {
                 }
                 Some(r) => {
                     let rv = vars(r);
-                    // 3a, with ruling AO3: also when B fits A0 only by a fit
+                    // 3a: also when B fits A0 only by a fit
                     // that used any.
                     let seed = rv.iter().find(|x| {
                         f.params.iter().any(|(_, q)| vars(q).contains(x))
@@ -1953,7 +2138,7 @@ impl<'a> Checker<'a> {
                             _ => {}
                         }
                     } else {
-                        // Ruling AO1: the body is always fitted, after bind.
+                        // 13.5: the body is always fitted, after bind.
                         bind(r, &b, &mut sol);
                         let rt = substitute(r, self.opaque(), &sol);
                         match fits(&b, &rt) {
@@ -2039,14 +2224,14 @@ impl<'a> Checker<'a> {
             }
             elem = match &f.kind {
                 FactKind::NonNull => elem,
-                FactKind::Is(c) => {
+                FactKind::Is(c, _) => {
                     if fits(&elem, c) == Some(false) {
                         elem
                     } else {
                         c.clone()
                     }
                 }
-                FactKind::IsNot(c) => without(&elem, c),
+                FactKind::IsNot(c, _) => without(&elem, c),
             };
         }
         elem
@@ -2062,9 +2247,9 @@ impl<'a> Checker<'a> {
     fn begin_use(&mut self, l: NodeId, at: NodeId) -> Option<(Vec<Path>, i32)> {
         let lvl = self.ast.node(l).level as i32;
         let exp = self.expanded(at);
-        // Ruling AO10: E(U) + 1 + d(L) > 100, where d(L) is the greatest
+        // 20.2: E(U) + 1 + d(L) > 100, where d(L) is the greatest
         // level open inside L less n(L). A use that is not checked is not
-        // counted (AO9).
+        // counted (20.3).
         let d = self.ast.lambda_levels.get(&l.0).map_or(lvl, |m| *m as i32) - lvl;
         if exp + 1 + d > 100 {
             let s = self.span(at);
@@ -2250,7 +2435,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A map with no computed key: spreads are followed (15.1, ruling CI3).
+    /// A map with no computed key: spreads are followed (15.1).
     fn plain_map(&self, entries: &[NodeId]) -> bool {
         entries.iter().all(|&e| {
             matches!(
@@ -2339,6 +2524,73 @@ impl<'a> Checker<'a> {
                 }
                 Ent::Nothing => None,
             }
+        };
+        // F5 6: against a union, the variant is chosen by the contributors of
+        // its tag; the map is then fitted to that variant.
+        let chosen: Rec;
+        let r: &Rec = if t.variants.is_some() {
+            let tag = t.tag().unwrap_or_default();
+            let g: Vec<Option<(Ty, bool)>> = ents.iter().map(|en| gives(en, Some(&tag))).collect();
+            let Some(start) = g
+                .iter()
+                .rposition(|x| x.as_ref().is_some_and(|(_, sure)| *sure))
+            else {
+                let es = self.span(e);
+                self.report(es, et, t, mode);
+                return;
+            };
+            let mut joined = Ty::never();
+            let mut contributors = Vec::new();
+            for (i, x) in g.iter().enumerate().skip(start) {
+                if let Some((ty, _)) = x {
+                    join_into(&mut joined, ty);
+                    contributors.push(i);
+                }
+            }
+            let var = match (&joined.str, joined.kinds()) {
+                (Some(Strs::Lits(l)), 1) => t.variants().into_iter().find(|v| {
+                    matches!(v.fields.get(&tag).and_then(|f| f.ty.str.as_ref()), Some(Strs::Lits(vs)) if l.is_subset(vs))
+                }),
+                _ => None,
+            };
+            match var {
+                Some(v) => {
+                    chosen = v.clone();
+                    &chosen
+                }
+                None => {
+                    for i in contributors {
+                        match &ents[i] {
+                            Ent::Written {
+                                key_span, value, ..
+                            } => {
+                                let vs = if matches!(
+                                    self.kind(entries[i]),
+                                    NodeKind::Entry {
+                                        shorthand: true,
+                                        ..
+                                    }
+                                ) {
+                                    *key_span
+                                } else {
+                                    self.span(*value)
+                                };
+                                let vt = self.types[value.index()].clone();
+                                self.report(vs, &vt, t, mode);
+                            }
+                            Ent::Spread { operand, .. } => {
+                                let vs = self.span(*operand);
+                                let vt = self.types[operand.index()].clone();
+                                self.report(vs, &vt, t, mode);
+                            }
+                            Ent::Nothing => {}
+                        }
+                    }
+                    return;
+                }
+            }
+        } else {
+            r
         };
         let mut keys: Vec<String> = r.fields.keys().cloned().collect();
         for en in &ents {

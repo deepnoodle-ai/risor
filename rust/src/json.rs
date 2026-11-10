@@ -169,8 +169,7 @@ pub fn same_data(a: &Json, b: &Json) -> bool {
     }
 }
 
-/// JSON nested deeper than this is refused (`03-host.md` 3.10.1 item 4,
-/// ruling AA6). The top value is level 1.
+/// JSON nested deeper than this is refused (`03-host.md` 3.10.1 item 4). The top value is level 1.
 pub const MAX_DEPTH: usize = 1024;
 
 pub fn parse(text: &str) -> Result<Json, String> {

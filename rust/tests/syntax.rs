@@ -470,40 +470,39 @@ fn other_grammar() {
 }
 
 #[test]
-fn rulings_of_rounds_4_and_5() {
-    // P1: a leading U+FEFF is removed and not counted.
+fn first_diagnostics_and_spans() {
+    // A leading U+FEFF is removed and not counted.
     check("\u{feff})", UT, l1(1, 2));
     check("\u{feff}\u{feff}", "unexpected-character", l1(1, 2));
-    // P3: a `\` before the end of input.
+    // A `\` before the end of input.
     check("\"ab\\", "unterminated-string", l1(1, 5));
     check("`ab\\", "unterminated-string", l1(1, 5));
-    // P4: the innermost literal is met.
+    // The innermost literal is met.
     check("`${\"abc", "unterminated-string", l1(4, 8));
-    // P5: the level of `match` closes before its `{` opens.
+    // The level of `match` closes before its `{` opens.
     ok(&format!(
         "{}match x {{ _ => 1 }}{}",
         "(".repeat(99),
         ")".repeat(99)
     ));
-    // P6: the outermost prefix operator.
+    // The outermost prefix operator.
     check("- -2 ** 2", UT, l1(1, 2));
     check("--2 ** 2", UT, l1(1, 2));
     check("!-2 ** 2", UT, l1(1, 2));
     check("!!a in b", UT, l1(1, 2));
-    // P7: `not in` that cannot follow.
+    // `not in` that cannot follow.
     check("a ?? b not in c", UT, l1(8, 14));
     check("a ?? b not\n  in c", UT, [1, 8, 2, 5]);
-    // P9, P15.
+    // A lambda where none may stand; a number after `.`.
     check("[x => x]", UT, l1(4, 6));
     check("x.0", "bad-number", l1(2, 4));
-    // T2: before a text block, the text block's row.
     // With F3, the text block's row: `text-block-open` at the same span.
     check("r \"\"\"a\"\"\"", "text-block-open", l1(3, 6));
     check("x.r \"a\"", UT, l1(3, 4));
-    // T3: a reserved word where a case needs a literal.
+    // A reserved word where a case needs a literal.
     check("match x { nil => 1 }", RW, l1(11, 14));
     check("match x { 1 | for => 1 }", RW, l1(15, 18));
-    // V1: a template where no token may stand; a `}` that closes too early.
+    // A template where no token may stand; a `}` that closes too early.
     check("1 `a${b}c`", UT, l1(3, 11));
     check("`${}`", UT, l1(4, 5));
     check("`${a}${}`", UT, l1(8, 9));

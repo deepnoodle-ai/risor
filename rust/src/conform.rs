@@ -181,17 +181,65 @@ impl<M: WalkMeter> Walk<'_, M> {
                 }
                 Ok(None)
             }
-            Value::Map(_) | Value::HMap(_) if t.map.is_some() => self.record(v, t),
+            Value::Map(_) | Value::HMap(_) if t.variants.is_some() => self.union(v, t),
+            Value::Map(_) | Value::HMap(_) if t.map.is_some() => {
+                let r = t.map.as_deref().expect("a map alternative");
+                self.record(v, r, None)
+            }
             _ => Ok(Some(wrong(&self.path, t, v))),
         }
     }
 
-    /// 4.3.
-    fn record(&mut self, v: &Value<'_>, t: &Ty) -> Result<Option<Failure>, &'static str> {
-        let r = t.map.as_deref().expect("a map alternative");
-        let mut present = 0usize;
+    /// F5 7.2: a map against a tagged union. The tag is read first, then the
+    /// variant its value selects is tested by 4.3, the tag passed over.
+    fn union(&mut self, v: &Value<'_>, t: &Ty) -> Result<Option<Failure>, &'static str> {
+        let flat = t.map.as_deref().expect("a map alternative");
+        let tag = t.tag().unwrap_or_default();
+        self.m.charge(1 + size(&tag))?;
+        let Some(x) = v.field(&tag) else {
+            let mut path = self.path.clone();
+            path.push(PathStep::Key(tag.clone()));
+            return Ok(Some(Failure {
+                path,
+                template: "missing",
+                params: vec![("key", json_string(&tag))],
+            }));
+        };
+        let tag_ty = flat
+            .fields
+            .get(&tag)
+            .map(|f| f.ty.clone())
+            .unwrap_or_default();
+        self.path.push(PathStep::Key(tag.clone()));
+        let r = self.test(&x, &tag_ty, true)?;
+        self.path.pop();
+        if r.is_some() {
+            return Ok(r);
+        }
+        let s = x.as_str().unwrap_or_default();
+        let vs = t.variants.as_deref().expect("variants");
+        let Some(var) = vs.iter().find(|r| {
+            matches!(r.fields.get(&tag).and_then(|f| f.ty.str.as_ref()), Some(Strs::Lits(l)) if l.contains(s))
+        }) else {
+            return Ok(Some(wrong(&self.path, &tag_ty, &x)));
+        };
+        self.record(v, var, Some(&tag))
+    }
+
+    /// 4.3. `skip`: a union's tag, already looked up and tested (F5 7.2
+    /// step 3).
+    fn record(
+        &mut self,
+        v: &Value<'_>,
+        r: &crate::check::ty::Rec,
+        skip: Option<&str>,
+    ) -> Result<Option<Failure>, &'static str> {
+        let mut present = usize::from(skip.is_some());
         // 1. Declared fields, in code point order of their keys.
         for (k, f) in &r.fields {
+            if skip == Some(k.as_str()) {
+                continue;
+            }
             self.m.charge(1 + size(k))?;
             match v.field(k) {
                 None => {

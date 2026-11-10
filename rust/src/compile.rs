@@ -9,7 +9,7 @@
 //! What opens no level is walked by a loop, so the walk's recursion is
 //! bounded by the source nesting.
 
-use crate::check::ty::{join_into, Ty, TypeNames};
+use crate::check::ty::{Ty, TypeNames};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library;
@@ -74,7 +74,7 @@ enum Bind {
 }
 
 /// Compile a parsed program against an environment, with a check: the
-/// default (`03-host.md` 3.2.1; rulings round 11 AP7). It fails exactly when
+/// default (`03-host.md` 3.2.1). It fails exactly when
 /// the check reports a diagnostic. `compile_unchecked` is the explicit
 /// option without the type rules, and `check::check` the check alone.
 pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
@@ -270,16 +270,16 @@ impl Resolver<'_> {
             }
             alts.push(t);
         }
-        if alts.iter().filter(|t| t.map.is_some()).count() >= 2 {
-            self.diag("untagged-union", pt.span);
-            *bad = true;
-            return Ty::never();
+        // F5 3.1, 3.2: two or more records form a tagged union, or are
+        // `untagged-union` on this `PType`.
+        match crate::check::ty::union_of_alts(&alts) {
+            Some(t) => t,
+            None => {
+                self.diag("untagged-union", pt.span);
+                *bad = true;
+                Ty::never()
+            }
         }
-        let mut acc = Ty::never();
-        for t in &alts {
-            join_into(&mut acc, t);
-        }
-        acc
     }
 
     fn resolve_pprim(&mut self, p: &PPrim, bad: &mut bool) -> Ty {
@@ -702,7 +702,7 @@ impl Resolver<'_> {
                 let NodeKind::Lambda { params, .. } = self.kind(*l) else {
                     unreachable!()
                 };
-                // Ruling AC10: up to the last parameter with no default.
+                // Up to the last parameter with no default.
                 let required = params
                     .iter()
                     .rposition(|p| matches!(self.kind(*p), NodeKind::Param { default: None, .. }))
@@ -797,7 +797,7 @@ impl Resolver<'_> {
 
 /// A literal of a `match` arm as a key equal by `==` (`01-language.md` 6.7):
 /// `1` and `1.0` are one key, and so are `0` and `-0`. A set of keys finds a
-/// literal listed twice in n log n work (ruling CG10).
+/// literal listed twice in n log n work (`05-types.md` 20.7).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LitKey {
     Num(u64),

@@ -1,6 +1,5 @@
-//! The library entries: what the data files cannot hold (brief, S3 item 6).
-//! Host numbers that cannot enter where an entry reads an element (round 9
-//! AC16), and the work bound of the searches, the sort and the join on large
+//! The library entries: what the data files cannot hold. Host
+//! numbers that cannot enter where an entry reads an element, and the work bound of the searches, the sort and the join on large
 //! inputs (`02-evaluation.md` 8.5).
 
 use risor::{compile_unchecked as compile, parse, Data, Env, Limits, Program};

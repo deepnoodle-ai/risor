@@ -76,6 +76,7 @@ version `3.0` every form of this chapter exists.
 | `05-types.md` 10.4, 10.5 | Gain the facts of `is` (6.4) |
 | `05-types.md` 18.3 | An `as` is a `value` site (6.6) |
 | `05-types.md` 22 | Gains the static rules of 6.1 |
+| F2 3.2, 3.5 and 3.6, the analysis | The analysis walks the subject of an `As` node as it walks any operand. The program type names nothing: a type name in it is not a read, even when a variable has that name, and a key of a record in it is not a path. A subject's path stops at the `As` node, which ends the chain |
 
 ## 2. Syntax
 
@@ -921,10 +922,12 @@ and expects an answer.
    fields (`03-host.md` 3.10.10).
 3. The cases that declare a named type by schema, and those that expect a
    description, are in `suite/conversion/conversion-schema-types.json`.
-4. The file `suite/conversion/until-f05-tagged-unions.json` holds cases whose
+4. The analysis cases of F2 4.2 for programs that hold a test are in
+   `suite/conversion/conversion-analysis.json`, run as F2 4.7 runs them.
+5. The file `suite/conversion/until-f05-tagged-unions.json` holds cases whose
    types are records that form a tagged union. F5 removes it (`03-host.md`
    3.11 item 4).
-5. The description of 8 is compared by the result field `description` of F1
+6. The description of 8 is compared by the result field `description` of F1
    7.2.
 
 ### 9.5 The `outcome` command

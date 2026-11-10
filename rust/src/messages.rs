@@ -122,7 +122,7 @@ pub fn build(code: &str, template: &str, params: &[(&str, String)]) -> String {
         }
     }
     out.push_str(rest);
-    // Ruling AN2: every hole of a template is filled. A hole left open is a
+    // `03-host.md` 3.8: every hole of a template is filled. A hole left open is a
     // fault at the place that built the message.
     debug_assert!(
         !e.params

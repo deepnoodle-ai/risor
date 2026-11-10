@@ -1,8 +1,7 @@
-//! The host API, and what no data case can raise (brief, S2 item 9; round 6
-//! W3): the deadline, cancellation, a host function that crashes, opaque
+//! The host API, and what no data case can raise: the deadline, cancellation, a host function that crashes, opaque
 //! values in every place `03-host.md` 3.4.6 names, host numbers that cannot
-//! enter (round 5 T7), the depth test on empty containers (round 10 AH2), and
-//! the stack the deepest programs need (round 8 AA7).
+//! enter (`03-host.md` 3.4.4), the depth test on empty containers
+//! (`02-evaluation.md` 8.4), and the stack the deepest programs need.
 
 use risor::{
     compile_unchecked as compile, parse, Data, Env, Limits, NoVars, OpaqueRef, Program, RunOptions,
@@ -102,7 +101,7 @@ fn a_host_function_charges_through_its_handle() {
         })
         .build()
         .unwrap();
-    // W24: the call 1, h's 3, `+` 1; units 2.
+    // The call 1, h's 3, `+` 1; units 2.
     let p = program(&env, "h(1) + 1");
     let out = p.run(&NoVars);
     assert_eq!(format!("{:?}", out.result.unwrap()), "3");
@@ -240,7 +239,7 @@ fn host_numbers_that_cannot_enter() {
     assert_eq!(run("xs[0]"), Ok("1".into()));
     assert_eq!(run("xs[1]"), Err("number-range"));
     assert_eq!(run("m.a"), Err("number-range"));
-    // Measuring or copying a list reads no element (ruling AC16).
+    // Measuring or copying a list reads no element (`02-evaluation.md` 8.5).
     assert_eq!(run("len(xs)"), Ok("2".into()));
     assert_eq!(run("len([...xs])"), Ok("2".into()));
     // Comparing and rendering read it.
@@ -248,7 +247,7 @@ fn host_numbers_that_cannot_enter() {
     assert_eq!(run("`${xs}`"), Err("number-range"));
     assert_eq!(run("xs.map(x => 0)"), Err("number-range"));
     assert_eq!(run("{ const [a, b] = xs; a }"), Err("number-range"));
-    // Handing the result over is not a read (ruling AH1).
+    // Handing the result over is not a read (`02-evaluation.md` 8.4).
     assert!(run("xs").is_ok());
     // A host float enters whenever it is finite.
     assert_eq!(run("f"), Ok("100000000000000000000".into()));
@@ -292,7 +291,7 @@ fn nested(depth: usize) -> Data {
     d
 }
 
-/// The deepest programs the limits allow (ruling AA7): a walk at depth
+/// The deepest programs the limits allow: a walk at depth
 /// 1,000, calls in progress, and the nesting limit, run on a thread with the
 /// stack `DESIGN.md` states for this build.
 #[test]
@@ -376,7 +375,7 @@ fn flat_programs_run() {
     );
 }
 
-/// A depth limit outside 1 to 1,000 is `bad-limit` (rulings round 10 AM4).
+/// A depth limit outside 1 to 1,000 is `bad-limit` (`03-host.md` 3.3.4).
 #[test]
 fn a_depth_limit_out_of_range_is_bad_limit() {
     for depth in [0, 1001] {
@@ -418,7 +417,7 @@ fn deep(n: usize) -> Data {
     d
 }
 
-/// Ruling AN2: handing the result over is not a walk, so host data nested
+/// Handing the result over is not a walk, so host data nested
 /// past the depth limit is the value, and the binding's own conversion of
 /// it to JSON (the outcome command's) neither fails nor overflows.
 #[test]
@@ -449,7 +448,7 @@ fn a_deep_result_is_handed_over() {
     assert!(line.contains(&"[".repeat(1000)));
 }
 
-/// Ruling AN2: no message a run builds leaves a template's hole unfilled.
+/// `03-host.md` 3.8: no message a run builds leaves a template's hole unfilled.
 /// `messages::build` asserts it in a test build; these are the limit
 /// messages, which carry the limit.
 #[test]
@@ -489,7 +488,7 @@ fn limit_messages_carry_their_limit() {
     }
 }
 
-/// Ruling AP7: compile checks by default; compiling without a check is an
+/// `03-host.md` 3.2.1: compile checks by default; compiling without a check is an
 /// explicit option, and gives the run's classes of the column "not checked".
 #[test]
 fn compile_checks_by_default() {

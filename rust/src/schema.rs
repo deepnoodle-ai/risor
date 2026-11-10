@@ -7,7 +7,7 @@
 //! element and record slots are reference-counted, so two `$ref`s to one
 //! definition at each of k levels make k types, not 2^k (3.10 item 5).
 
-use crate::check::ty::{fits, join, join_all, Field, Rec, Strs, Ty};
+use crate::check::ty::{fits, join, join_all, Field, Rec, Ty};
 use crate::json::Json;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -69,7 +69,7 @@ pub fn ty_schema(schema: &Json, opts: SchemaOptions) -> Result<Ty, String> {
         ..Closer::default()
     }
     .ty(&t);
-    // `05-types.md` 20.7, ruling CG4: a `$ref` shares, so the type written
+    // `05-types.md` 20.7: a `$ref` shares, so the type written
     // out can pass the size limit though the schema is small.
     if t.too_big() {
         return Err(format!(
@@ -84,7 +84,7 @@ pub fn ty_schema(schema: &Json, opts: SchemaOptions) -> Result<Ty, String> {
 }
 
 /// As [`ty_schema`], from the schema's JSON text, read with the crate's own
-/// strict reader (ruling BB27). Text that is not JSON is an error too.
+/// strict reader. Text that is not JSON is an error too.
 pub fn ty_schema_text(text: &str, opts: SchemaOptions) -> Result<Ty, String> {
     let schema = crate::json::parse(text).map_err(|e| format!("the schema is not JSON: {e}"))?;
     ty_schema(&schema, opts)
@@ -160,7 +160,7 @@ impl<'a> Mapper<'a> {
         if d > MAX_DEPTH {
             return self.err("the schema is deeper than 64");
         }
-        // Ruling CG8: every walked subschema's type is tested, so no
+        // `05-types.md` 20.7: every walked subschema's type is tested, so no
         // operation of the mapping meets a type over the limit.
         if t.too_big() {
             return self.err(format!(
@@ -231,12 +231,7 @@ impl<'a> Mapper<'a> {
             let part = if key == "allOf" {
                 pick(&ts)
             } else {
-                if has_tag(&ts) {
-                    return self.err(format!(
-                        "the records of the branches of {key} have a tag: a tagged union needs F5"
-                    ));
-                }
-                join_all(ts.iter())
+                branches_part(&ts)
             };
             parts.push(part);
         }
@@ -277,7 +272,7 @@ impl<'a> Mapper<'a> {
                     .is_none_or(|ns| ns.iter().any(|n| allows(n, v)))
                 {
                     match literal(v, 0) {
-                        // Ruling CG8: each value's literal type is tested.
+                        // `05-types.md` 20.7: each value's literal type is tested.
                         Some(t) if t.too_big() => {
                             return self
                                 .err("a value of enum or const has a type over the size limit")
@@ -450,7 +445,7 @@ impl<'a> Mapper<'a> {
                     let Some(lit) = literal(dv, 0) else {
                         return self.err("a default is deeper than 64");
                     };
-                    // Ruling CG9: a default's literal type is tested.
+                    // `05-types.md` 20.7: a default's literal type is tested.
                     if lit.too_big() {
                         return self.err("a default has a type over the size limit");
                     }
@@ -627,13 +622,16 @@ pub fn pick(ts: &[Ty]) -> Ty {
     if left.len() == 1 {
         return left[0].clone();
     }
-    let recs: Option<Vec<&Rec>> = left.iter().map(|t| record_only(t)).collect();
-    if let Some(recs) = recs {
-        let mut acc = recs[0].clone();
-        for r in &recs[1..] {
-            acc = meet(&acc, r);
+    // Step 2, with F5 8.3: records and unions meet, folded from the left;
+    // a meet that fails sends the whole list to step 3.
+    if left.iter().all(|t| record_only(t).is_some()) {
+        let mut acc: Option<Ty> = Some(left[0].clone());
+        for t in &left[1..] {
+            acc = acc.and_then(|a| meet_ty(&a, t));
         }
-        return Ty::rec(acc);
+        if let Some(t) = acc {
+            return t;
+        }
     }
     for (i, t) in left.iter().enumerate() {
         let all = left
@@ -645,6 +643,54 @@ pub fn pick(ts: &[Ty]) -> Ty {
         }
     }
     left[0].clone()
+}
+
+/// The part of an `anyOf` or `oneOf` (F5 8.1): the records of the branches,
+/// when they form a tagged union, are that union, beside the Join of the
+/// other alternatives; otherwise the Join of the branches.
+fn branches_part(ts: &[Ty]) -> Ty {
+    let recs: Vec<Rec> = ts
+        .iter()
+        .flat_map(|t| t.variants().into_iter().cloned())
+        .collect();
+    if recs.len() >= 2 {
+        if let Some(u) = Ty::of_variants(recs) {
+            let mut acc = Ty::never();
+            for t in ts {
+                let mut rest = t.clone();
+                rest.map = None;
+                rest.variants = None;
+                acc = join(&acc, &rest);
+            }
+            if acc.any {
+                return acc;
+            }
+            acc.map = u.map;
+            acc.variants = u.variants;
+            return acc;
+        }
+    }
+    join_all(ts.iter())
+}
+
+/// The meet of two types that are each a record or a union (F5 8.3): two
+/// records by Meet; a record and a union by the meet with each variant, when
+/// those form a tagged union; `None` when the meet fails.
+fn meet_ty(a: &Ty, b: &Ty) -> Option<Ty> {
+    match (&a.variants, &b.variants) {
+        (None, None) => Some(Ty::rec(meet(a.map.as_deref()?, b.map.as_deref()?))),
+        (Some(_), Some(_)) => None,
+        (None, Some(vs)) => {
+            let r = a.map.as_deref()?;
+            Ty::of_variants(vs.iter().map(|v| meet(r, v)).collect())
+                .filter(|t| t.variants.is_some())
+        }
+        (Some(vs), None) => {
+            let r = b.map.as_deref()?;
+            Ty::of_variants(vs.iter().map(|v| meet(v, r)).collect())
+                .filter(|t| t.variants.is_some())
+        }
+    }
 }
 
 /// Meet(A, B) of two records (3.6 item 3, 8).
@@ -694,36 +740,6 @@ pub fn meet(a: &Rec, b: &Rec) -> Rec {
     }
 }
 
-/// Whether two or more records of the branches of one `anyOf` or `oneOf`
-/// have a tag (3.9).
-fn has_tag(branches: &[Ty]) -> bool {
-    let recs: Vec<&Rec> = branches.iter().filter_map(|t| t.record()).collect();
-    if recs.len() < 2 {
-        return false;
-    }
-    'keys: for k in recs[0].fields.keys() {
-        let mut seen: BTreeSet<&String> = BTreeSet::new();
-        for r in &recs {
-            let Some(f) = r.fields.get(k) else {
-                continue 'keys;
-            };
-            if f.optional || f.ty.any || f.ty.kinds() != 1 {
-                continue 'keys;
-            }
-            let Some(Strs::Lits(set)) = &f.ty.str else {
-                continue 'keys;
-            };
-            for s in set {
-                if !seen.insert(s) {
-                    continue 'keys;
-                }
-            }
-        }
-        return true;
-    }
-    false
-}
-
 /// Close(T) (4.1 item 3): the rest of every closable record of T is
 /// `never`, at every depth. Shared parts are closed once.
 pub fn close(t: &Ty) -> Ty {
@@ -742,6 +758,30 @@ struct Closer {
 }
 
 impl Closer {
+    /// A record closed and with its fills dropped. Not memoized itself: a
+    /// variant is held in a list, not behind its own `Arc`.
+    fn rec(&mut self, r: &Rec) -> Rec {
+        let fields = r
+            .fields
+            .iter()
+            .map(|(k, f)| {
+                (
+                    k.clone(),
+                    Field {
+                        ty: self.ty(&f.ty),
+                        optional: f.optional,
+                    },
+                )
+            })
+            .collect();
+        let rest = if self.close && r.closable {
+            Ty::never()
+        } else {
+            self.ty(&r.rest)
+        };
+        Rec::new(fields, rest)
+    }
+
     fn ty(&mut self, t: &Ty) -> Ty {
         let mut out = t.clone();
         if let Some(e) = &t.list {
@@ -761,30 +801,20 @@ impl Closer {
             let c = match self.recs.get(&key) {
                 Some(c) => c.clone(),
                 None => {
-                    let fields = r
-                        .fields
-                        .iter()
-                        .map(|(k, f)| {
-                            (
-                                k.clone(),
-                                Field {
-                                    ty: self.ty(&f.ty),
-                                    optional: f.optional,
-                                },
-                            )
-                        })
-                        .collect();
-                    let rest = if self.close && r.closable {
-                        Ty::never()
-                    } else {
-                        self.ty(&r.rest)
-                    };
-                    let c = Arc::new(Rec::new(fields, rest));
+                    let c = Arc::new(self.rec(r));
                     self.recs.insert(key, c.clone());
                     c
                 }
             };
             out.map = Some(c);
+        }
+        // F5 8.2: Close closes each variant of a union; flat is made again.
+        if let Some(vs) = &t.variants {
+            let closed: Vec<Rec> = vs.iter().map(|v| self.rec(v)).collect();
+            let u = Ty::of_variants(closed.clone())
+                .unwrap_or_else(|| Ty::never().with_variants(closed));
+            out.map = u.map;
+            out.variants = u.variants;
         }
         out
     }
@@ -1002,7 +1032,7 @@ mod tests {
                 closed,
                 ..SchemaOptions::default()
             };
-            // Ruling CG4: written out, the type has 2^31 nodes, over the
+            // `05-types.md` 20.7: written out, the type has 2^31 nodes, over the
             // size limit, so it is `bad-type`, found without expanding it.
             let e = ty_schema(&j, opts).err().unwrap();
             assert!(e.contains("larger than"), "{e}");
@@ -1067,7 +1097,7 @@ mod tests {
             (
                 r#"{"anyOf": [{"type": "object", "properties": {"kind": {"const": "circle"}}, "required": ["kind"]}, {"type": "object", "properties": {"kind": {"const": "rect"}}, "required": ["kind"]}]}"#,
                 &[],
-                "error",
+                "{kind: \"circle\", ...} | {kind: \"rect\", ...}",
             ),
             (
                 r#"{"type": "object", "properties": {"a": false}}"#,
@@ -1085,7 +1115,7 @@ mod tests {
         }
     }
 
-    /// Ruling CG8: a part over the size limit that a Pick would drop is
+    /// `05-types.md` 20.7: a part over the size limit that a Pick would drop is
     /// still `bad-type`.
     #[test]
     fn every_walked_type_is_tested_for_size() {
@@ -1111,7 +1141,7 @@ mod tests {
         assert_eq!(map(&small, &[]), "string");
     }
 
-    /// F1 4.4: fills are kept apart through meets and joins (BB28, BB29).
+    /// F1 4.4: fills are kept apart through meets and joins.
     #[test]
     fn fills_are_kept_apart() {
         let cases: &[(&str, &[&str], &str)] = &[

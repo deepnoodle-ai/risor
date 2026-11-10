@@ -444,7 +444,7 @@ impl EnvBuilder {
         let mut var_types = Vec::new();
         if let Some(text) = &self.vars {
             match parse_type(text) {
-                // Ruling AG4: parentheses do not make a record.
+                // `03-host.md` 3.3.4: parentheses do not make a record.
                 Ok(Type::Record(r)) if text.trim_start().starts_with('{') => {
                     if r.rest != Rest::Exact || r.fields.iter().any(|f| f.optional) {
                         bad(
@@ -613,7 +613,7 @@ impl EnvBuilder {
             .limits
             .or(parent.as_ref().map(|p| p.limits))
             .unwrap_or_default();
-        // Ruling AM4. Steps and units are unsigned, so only the depth can
+        // `03-host.md` 3.3.4, `bad-limit`. Steps and units are unsigned, so only the depth can
         // be out of range.
         if !(1..=1000).contains(&limits.depth) {
             bad(
@@ -664,7 +664,7 @@ impl EnvBuilder {
             let mut pm: Vec<HostMethod> = p
                 .methods
                 .iter()
-                // Ruling CH4: a child's opaque type replaces the parent's
+                // `03-host.md` 3.3.2: a child's opaque type replaces the parent's
                 // whole, methods included; a child's method alone adds or
                 // replaces that one method.
                 .filter(|m| {
@@ -678,7 +678,7 @@ impl EnvBuilder {
             pm.append(&mut methods);
             methods = pm;
         }
-        // Ruling CH2: the clash rules apply to the whole environment, after
+        // `03-host.md` 3.3.2: the clash rules apply to the whole environment, after
         // a child's replacements.
         for f in &functions {
             if let Some(n) = &f.namespace {
@@ -729,7 +729,7 @@ fn sig_types(sig: &Sig, opaque: &Names, bad: &mut impl FnMut(&'static str, Strin
     let none = crate::check::ty::Solutions::new();
     let mut ok = true;
     let check = |t: &Type, ok: &mut bool, bad: &mut dyn FnMut(&'static str, String)| {
-        // Ruling AO4: every error in a signature is `bad-signature`.
+        // `03-host.md` 3.3.4: every error in a signature is `bad-signature`.
         if let Err(e) = from_text(t, opaque, Some(&none)) {
             bad(code::BAD_SIGNATURE, e);
             *ok = false;

@@ -1,5 +1,5 @@
-//! Types (`05-types.md`). In S1 this is the parser of type text. The type
-//! representation and the checker come later (milestone M8).
+//! Types (`05-types.md`): the parser of type text. The type representation
+//! and the checker are in `check`.
 
 pub mod text;
 

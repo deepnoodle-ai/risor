@@ -242,7 +242,7 @@ impl Env {
         let reject = list_of(get("reject")?, "reject")?;
         let reject: Vec<&str> = reject.iter().map(String::as_str).collect();
         b = b.reject(&reject);
-        // Limits (BB24): a negative or fractional number is `bad-limit`; a
+        // Limits (`f01-host-types.md` 5.4 item 2): a negative or fractional number is `bad-limit`; a
         // value of another JSON kind, or a missing key, is a form error.
         let l = get("limits")?;
         let lo = l.as_obj().ok_or_else(|| form("limits is not an object"))?;

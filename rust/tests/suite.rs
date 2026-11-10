@@ -220,7 +220,7 @@ fn analysis_package() {
     assert_eq!(total.fail, 0, "cases failed");
 }
 
-/// Ruling BA8: an `until-fNN-` file of a package this build offers is not
+/// `03-host.md` 3.11 item 4: an `until-fNN-` file of a package this build offers is not
 /// run; every other file is.
 #[test]
 fn until_files_of_offered_packages_are_not_run() {
@@ -239,10 +239,10 @@ fn until_files_of_offered_packages_are_not_run() {
     ] {
         assert_eq!(skipped_by_package(Path::new(name)), skip, "{name}");
     }
-    assert_eq!(risor::PACKAGES.len(), 4);
+    assert_eq!(risor::PACKAGES.len(), 5);
 }
 
-/// Ruling BA11: a package directory's `-check.json` file runs checked only.
+/// `03-host.md` 3.11 item 7: a package directory's `-check.json` file runs checked only.
 #[test]
 fn check_files_of_package_directories() {
     use risor::testing::check_only_file;
@@ -263,6 +263,14 @@ fn check_files_of_package_directories() {
 #[test]
 fn conversion_package() {
     let total = run(&suite_dir().join("conversion"), true);
+    assert_eq!(total.invalid, 0, "files were invalid");
+    assert_eq!(total.fail, 0, "cases failed");
+}
+
+/// Package F5: tagged unions (`f05-unions.md` 11.2).
+#[test]
+fn unions_package() {
+    let total = run(&suite_dir().join("unions"), true);
     assert_eq!(total.invalid, 0, "files were invalid");
     assert_eq!(total.fail, 0, "cases failed");
 }

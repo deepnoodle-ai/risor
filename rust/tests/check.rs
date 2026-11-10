@@ -204,7 +204,7 @@ fn section_21() {
     );
 }
 
-/// Ruling AN3: with the checker, an undeclared type name and a key written
+/// `05-types.md` 19.5: with the checker, an undeclared type name and a key written
 /// twice deeper in a type are `bad-type` at the declare step.
 #[test]
 fn checker_declare_errors() {
@@ -266,7 +266,7 @@ fn checker_limits() {
     }
 }
 
-/// Ruling CG5: the doubling chain of the probe returns at once. Each test
+/// `05-types.md` 20.7: the doubling chain of the probe returns at once. Each test
 /// of a type's size is constant work, and nothing past the limit is built.
 #[test]
 fn the_doubling_chain_is_constant_work() {
@@ -291,7 +291,7 @@ fn the_doubling_chain_is_constant_work() {
     assert_eq!(lines, [16, 32]);
 }
 
-/// Ruling CG10: building a type is at most n log n in the number of values
+/// `05-types.md` 20.7: building a type is at most n log n in the number of values
 /// joined. Four times the values must take well under sixteen times as long,
 /// which a quadratic join would. Each measure is the best of three.
 #[test]

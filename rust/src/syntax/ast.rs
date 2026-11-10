@@ -424,7 +424,7 @@ pub struct Ast {
     pub nodes: Vec<Node>,
     pub root: NodeId,
     /// For each `Lambda`, the greatest number of levels open at once inside
-    /// its text, parameter list included (`05-types.md` 20.2, ruling AO10).
+    /// its text, parameter list included (`05-types.md` 20.2).
     pub lambda_levels: std::collections::HashMap<u32, u16>,
 }
 

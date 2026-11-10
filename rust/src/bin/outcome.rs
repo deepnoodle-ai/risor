@@ -1,4 +1,4 @@
-//! The outcome command (rulings round 10 AJ), for the differential fuzzer:
+//! The outcome command (`suite/README.md`), for the differential fuzzer:
 //! one line of JSON for each case of a case file, its `expect` ignored.
 //!
 //! ```text
