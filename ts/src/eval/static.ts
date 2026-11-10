@@ -57,6 +57,8 @@ export interface Resolution {
   catchSlots: Map<A.Try, number>;
   /** Each const-bound lambda, by id. */
   lambdas: A.Lambda[];
+  /** Each Ident that names a const-bound lambda as an argument (a use, 05 13.9). */
+  lambdaArgs: Set<A.Ident>;
   slotCount: number;
 }
 
@@ -99,7 +101,7 @@ export function staticRules(program: A.Program, env: StaticEnv): StaticResult {
 
 class Walker {
   readonly diags: Diagnostic[] = [];
-  readonly res: Resolution = { refs: new Map(), targets: new Map(), slots: new Map(), catchSlots: new Map(), lambdas: [], slotCount: 0 };
+  readonly res: Resolution = { refs: new Map(), targets: new Map(), slots: new Map(), catchSlots: new Map(), lambdas: [], lambdaArgs: new Set(), slotCount: 0 };
   private readonly scopes: Map<string, Binding>[] = [];
   private readonly env: StaticEnv;
 
@@ -230,7 +232,8 @@ class Walker {
       else if (b.k === "var") this.res.refs.set(id, { k: "var", name: b.name });
       else {
         this.res.refs.set(id, { k: "lambda", id: b.id });
-        if (!asLambdaArg) this.diag("not-a-value", id.span);
+        if (asLambdaArg) this.res.lambdaArgs.add(id);
+        else this.diag("not-a-value", id.span);
       }
       return;
     }

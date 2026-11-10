@@ -14,7 +14,7 @@ import type { SigNode, TypeNode } from "./typetext.ts";
 import {
   ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, alternatives, depth, falsyPart, finiteValues, fits, fromNode, hasNull,
   hasOpaque, isAny, isNever, join, joinAll, kindCount, lit, listOf, merge, nonnull, overlap, record, recordValues,
-  truthyPart, withNull, mapOf, opaque, hasAny,
+  truthyPart, withNull, mapOf, opaque, hasAny, typeSize, SIZE_LIMIT, TypeAcc,
 } from "./type.ts";
 import type { Alts, Fit, Rec, Type } from "./type.ts";
 import { CATALOG } from "../generated/messages.ts";
@@ -61,6 +61,8 @@ export interface CheckResult {
   diagnostics: Diagnostic[];
   /** Spans of nodes at a `dynamic` site, for the class of a run failure (18.3). */
   dynamicSpans: Set<string>;
+  /** Spans of the nodes that hold a `host` site (18.3, 18.5: `function-error`). */
+  hostSpans: Set<string>;
 }
 
 export type Expected = { kind: "none" } | { kind: "type"; type: Type } | { kind: "condition" };
@@ -120,18 +122,24 @@ export function check(program: A.Program, res: Resolution, env: CheckEnv, expect
   const siteSeen = new Set<string>();
   const sites: Site[] = [];
   const dynamicSpans = new Set<string>();
+  const hostSpans = new Set<string>();
   for (const s of c.sites) {
     if (s.class === "dynamic") {
       dynamicSpans.add(spanKey(s.span));
       for (const o of s.owners) dynamicSpans.add(spanKey(o));
     }
+    if (s.class === "host") hostSpans.add(spanKey(s.span));
     const k = `${s.class}:${s.span.start}:${s.span.end}`;
     if (siteSeen.has(k)) continue;
     siteSeen.add(k);
     sites.push({ class: s.class, span: s.span });
   }
   sites.sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end || cmp(a.class, b.class));
-  return { type: t, sites, diagnostics: diags, dynamicSpans };
+  // A callback's result is at a `dynamic` site on the lambda's body (18.3, ruling CB3).
+  const extra: string[] = [];
+  for (const { body, call } of c.callbacks) if (dynamicSpans.has(spanKey(body))) extra.push(spanKey(call));
+  for (const k of extra) dynamicSpans.add(k);
+  return { type: t, sites, diagnostics: diags, dynamicSpans, hostSpans };
 }
 
 function cmp(a: string, b: string): number {
@@ -152,6 +160,8 @@ type LambdaArg = { lambda: A.Lambda; id: number | null; span: Span };
 class Checker {
   readonly diags: DiagRec[] = [];
   readonly sites: SiteRec[] = [];
+  /** Each lambda body checked as an argument of a call, with the call's span (18.3, ruling CB3). */
+  readonly callbacks: { body: Span; call: Span }[] = [];
   private readonly res: Resolution;
   private readonly env: CheckEnv;
   private readonly slotTypes: Type[] = [];
@@ -169,7 +179,8 @@ class Checker {
   constructor(res: Resolution, env: CheckEnv) {
     this.res = res;
     this.env = env;
-    for (const r of res.refs.values()) if (r.k === "lambda") this.used.add(r.id);
+    // A read of the name as a value is not a use (13.9, ruling CA2).
+    for (const [id, r] of res.refs) if (r.k === "lambda" && res.lambdaArgs.has(id)) this.used.add(r.id);
     for (const t of res.targets.values()) if (t.k === "lambda") this.used.add(t.id);
   }
 
@@ -336,6 +347,13 @@ class Checker {
     }
   }
 
+  /** A pattern with nothing to read: every name is `never`, and each default is still checked (12.2, ruling CA3). */
+  private failedPattern(p: A.Pattern, f: Facts): void {
+    this.neverNames(p);
+    if (p.kind === "MapPat") for (const fl of p.fields) if (fl.default !== null) this.synth(fl.default, f);
+    if (p.kind === "ListPat") for (const e of p.elems) if (e.default !== null) this.synth(e.default, f);
+  }
+
   private bindPattern(p: A.Pattern, v: Type, valueSpan: Span, f: Facts): void {
     if (p.kind === "NamePat") {
       this.setSlot(p, v);
@@ -348,7 +366,7 @@ class Checker {
     const owners = [p.span, ...(p.kind === "MapPat" ? p.fields.map((x) => x.span) : p.elems.map((x) => x.span))];
     if (isAny(v)) {
       if (this.site("dynamic", valueSpan, ...owners)) {
-        this.neverNames(p);
+        this.failedPattern(p, f);
         return;
       }
       // Every name is `any`; defaults are still checked.
@@ -371,16 +389,13 @@ class Checker {
       return;
     }
     if (isNever(v)) {
-      // Nothing to read: every name is `never`; defaults are checked.
-      if (p.kind === "MapPat") for (const fl of p.fields) if (fl.default !== null) this.synth(fl.default, f);
-      if (p.kind === "ListPat") for (const e of p.elems) if (e.default !== null) this.synth(e.default, f);
-      this.neverNames(p);
+      this.failedPattern(p, f);
       return;
     }
     if (p.kind === "MapPat") {
       if (kindCount(v) !== 1 || !v.map) {
         this.diag("kind", valueSpan);
-        this.neverNames(p);
+        this.failedPattern(p, f);
         return;
       }
       const r = v.map;
@@ -389,7 +404,7 @@ class Checker {
         if (fl.default !== null) {
           const read = this.readKey(r, fl.key, true, fl.keySpan, fl.keySpan, false, [p.span, fl.span]);
           const d = this.synth(fl.default, f);
-          t = join(nonnull(read), d);
+          t = this.sizeLimit(join(nonnull(read), d), valueSpan);
         } else {
           // Ruling AO6 (a): the dynamic site of an unlisted key is on the key in the pattern.
           t = this.readKey(r, fl.key, false, fl.keySpan, fl.keySpan, false, [p.span, fl.span]);
@@ -405,14 +420,14 @@ class Checker {
     }
     if (kindCount(v) !== 1 || !v.list) {
       this.diag("kind", valueSpan);
-      this.neverNames(p);
+      this.failedPattern(p, f);
       return;
     }
     const elem = v.list;
     for (const e of p.elems) {
       if (e.default !== null) {
         const d = this.synth(e.default, f);
-        this.setSlot(e.pat, join(nonnull(elem), d));
+        this.setSlot(e.pat, this.sizeLimit(join(nonnull(elem), d), valueSpan));
       } else {
         this.site("index", e.pat.span);
         this.setSlot(e.pat, elem);
@@ -489,6 +504,16 @@ class Checker {
     else if (hasAny(t)) this.site("dynamic", e.span, ...owners);
   }
 
+  /** The size limit (05 20.7): `check-limit` on the node, which then has type never. */
+  private sizeLimit(t: Type, span: Span): Type {
+    return typeSize(t) > SIZE_LIMIT ? this.sizeFail(span) : t;
+  }
+
+  private sizeFail(span: Span): Type {
+    this.diag("check-limit", span);
+    return NEVER;
+  }
+
   private depthLimit(t: Type, span: Span): Type {
     if (depth(t, 70) > 64) {
       this.diag("check-limit", span);
@@ -498,10 +523,12 @@ class Checker {
   }
 
   private list(e: A.List, f: Facts): Type {
-    let j: Type = NEVER;
+    // The item types are joined once, at the end (ruling CG10).
+    const acc = new TypeAcc();
+    const add = (t: Type) => acc.add(t);
     for (const it of e.items) {
       if (it.kind !== "Spread") {
-        j = join(j, this.synth(it, f));
+        add(this.synth(it, f));
         continue;
       }
       let t = this.synth(it.value, f);
@@ -510,13 +537,14 @@ class Checker {
         t = nonnull(t);
       }
       if (isAny(t)) {
-        if (!this.site("dynamic", it.value.span, it.span)) j = join(j, ANY);
+        if (!this.site("dynamic", it.value.span, it.span)) add(ANY);
       } else if (isNever(t)) {
         // nothing
-      } else if (kindCount(t) === 1 && t.list) j = join(j, t.list);
+      } else if (kindCount(t) === 1 && t.list) add(t.list);
       else this.diag("kind", it.value.span);
     }
-    return this.depthLimit(listOf(j), e.span);
+    if (acc.size() + 1 > SIZE_LIMIT) return this.sizeFail(e.span);
+    return this.depthLimit(listOf(acc.type()), e.span);
   }
 
   private map(e: A.MapLit, f: Facts): Type {
@@ -555,7 +583,7 @@ class Checker {
       fields.set(key, { type: v, optional: false });
       r = { fields, rest: r.rest };
     }
-    return this.depthLimit({ map: r }, e.span);
+    return this.sizeLimit(this.depthLimit({ map: r }, e.span), e.span);
   }
 
   private unary(e: A.Unary, f: Facts): Type {
@@ -601,15 +629,15 @@ class Checker {
       case "&&": {
         this.tested(a, n.x.span);
         const b = this.synth(n.y, this.withFacts(f, this.facts(n.x).t));
-        return join(falsyPart(a), b);
+        return this.sizeLimit(join(falsyPart(a), b), n.span);
       }
       case "||": {
         this.tested(a, n.x.span);
         const b = this.synth(n.y, this.withFacts(f, this.facts(n.x).f));
-        return join(truthyPart(a), b);
+        return this.sizeLimit(join(truthyPart(a), b), n.span);
       }
       case "??":
-        return join(nonnull(a), this.synth(n.y, f));
+        return this.sizeLimit(join(nonnull(a), this.synth(n.y, f)), n.span);
       case "==":
       case "!=": {
         const b = this.synth(n.y, f);
@@ -739,18 +767,31 @@ class Checker {
   // ---- choice (11) ----------------------------------------------------------------
 
   private cond(e: A.Cond, f: Facts): Type {
-    let t: Type = NEVER;
+    const conds: A.Cond[] = [];
+    const thens: Type[] = [];
     let c: A.Expr = e;
     let facts = f;
     while (c.kind === "Cond") {
+      conds.push(c);
       const tt = this.synth(c.test, facts);
       this.tested(tt, c.test.span);
       const fc = this.facts(c.test);
-      t = join(t, this.synth(c.then, this.withFacts(facts, fc.t)));
+      thens.push(this.synth(c.then, this.withFacts(facts, fc.t)));
       facts = this.withFacts(facts, fc.f);
       c = c.else;
     }
-    return join(t, this.synth(c, facts));
+    // Each Cond's type is the Join of the branches from it on: tested from the
+    // innermost outward (05 20.7), with one accumulating Join (ruling CG10).
+    let acc = new TypeAcc();
+    acc.add(this.synth(c, facts));
+    for (let k = conds.length - 1; k >= 0; k--) {
+      acc.add(thens[k]);
+      if (acc.size() > SIZE_LIMIT) {
+        this.diag("check-limit", conds[k].span);
+        acc = new TypeAcc();
+      }
+    }
+    return acc.type();
   }
 
   private litType(l: A.Literal): Type {
@@ -770,25 +811,30 @@ class Checker {
     const s = this.synth(e.subject, f);
     const path = this.pathOf(e.subject);
     let facts = f;
-    let t: Type = NEVER;
+    const acc = new TypeAcc();
     let hasDefault = false;
-    const covered: (string | boolean | null | number)[] = [];
+    const covered = new Set<string | boolean | null | number>();
     for (const arm of e.arms) {
       let listsNull = false;
       for (const l of arm.literals) {
+        const v = l.kind === "Null" ? null : l.value;
         if (l.kind === "Null") listsNull = true;
-        else if (!isNever(s) && !overlap(this.litType(l), s)) this.diag("never-equal", l.span);
-        covered.push(l.kind === "Null" ? null : l.value);
+        // Ruling CA4: a literal equal to an earlier one is duplicate-case only.
+        if (covered.has(v)) continue;
+        covered.add(v);
+        // Ruling CA1: the conditions of `==` (8.2).
+        if (l.kind !== "Null" && !isNever(s) && !isExactlyNull(s) && !overlap(this.litType(l), s)) this.diag("never-equal", l.span);
       }
       if (arm.isDefault) hasDefault = true;
-      t = join(t, this.synth(arm.result, facts));
+      acc.add(this.synth(arm.result, facts));
       if (listsNull && path !== null) facts = this.withFacts(facts, [path]);
     }
     if (!hasDefault && !isNever(s)) {
       const values = finiteValues(s);
-      if (values === null || values.some((v) => !covered.includes(v))) this.diag("non-exhaustive", e.span);
+      if (values === null || values.some((v) => !covered.has(v))) this.diag("non-exhaustive", e.span);
     }
-    return t;
+    if (acc.size() > SIZE_LIMIT) return this.sizeFail(e.span);
+    return acc.type();
   }
 
   private tryExpr(e: A.Try, f: Facts): Type {
@@ -797,7 +843,7 @@ class Checker {
     this.drop--;
     const slot = this.res.catchSlots.get(e);
     if (slot !== undefined) this.slotTypes[slot] = ERROR_TYPE;
-    return join(b, this.synth(e.handler, f));
+    return this.sizeLimit(join(b, this.synth(e.handler, f)), e.span);
   }
 
   // ---- chains (9) -------------------------------------------------------------------
@@ -851,7 +897,10 @@ class Checker {
     if (s.kind === "Index") {
       if (isAny(cur)) {
         this.synth(s.index, f);
-        return this.site("dynamic", recvSpan, s.span) ? NEVER : ANY;
+        if (this.site("dynamic", recvSpan, s.span)) return NEVER;
+        // A plain index on an `any` receiver also records an `index` site (9.3, ruling CB1).
+        if (!optional) this.site("index", s.span);
+        return ANY;
       }
       if (isNever(cur)) {
         this.synth(s.index, f);
@@ -972,6 +1021,9 @@ class Checker {
         if (la === null) this.synth(a as A.Expr, f);
         else this.lambdaInPlace(la, la.lambda.params.map(() => ANY), f, s.level);
       }
+      // A method of that name marked `!` somewhere: a `value` or `host` site on the call (13.3, ruling CB2).
+      if ([...this.env.libraryMethods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("value", s.span);
+      if ([...this.env.methods.values()].some((m) => m.get(s.name)?.sig.canFail === true)) this.site("host", s.span);
       return ANY;
     }
     if (isNever(cur)) {
@@ -1019,7 +1071,13 @@ class Checker {
       return p.type as TypeNode;
     };
     const sol = new Map<string, Type>();
-    const gain = (v: string, t: Type) => sol.set(v, sol.has(v) ? join(sol.get(v)!, t) : t);
+    // A solution over the size limit stops the call (05 20.7): check-limit on it.
+    let over = false;
+    const gain = (v: string, t: Type) => {
+      const x = sol.has(v) ? join(sol.get(v)!, t) : t;
+      if (typeSize(x) > SIZE_LIMIT) over = true;
+      sol.set(v, x);
+    };
     // 2. Plain arguments, argument zero first.
     if (sig.recv !== null && recvType !== null) this.bind(sig.recv, recvType, gain);
     const argTypes: (Type | null)[] = [];
@@ -1043,8 +1101,10 @@ class Checker {
       if (sig.tested.includes(i)) this.tested(t, a.span);
       if (sig.renders.includes(i)) this.rendered(a as A.Expr, t, [span]);
     });
+    if (over) return this.sizeFail(span);
     // 3. Lambda arguments.
     for (const { i, la } of lambdas) {
+      if (this.drop === 0) this.callbacks.push({ body: sp(la.lambda.body.span), call: sp(span) });
       const fn = paramAt(i).type as Extract<SigNode["params"][number]["type"], { t: "fn" }>;
       if (la.lambda.params.length > fn.params.length) {
         if (isMethod) this.diag("arity", la.span);
@@ -1074,11 +1134,13 @@ class Checker {
       if (seed !== undefined) {
         this.rollback(m);
         sol.set(seed, join(before.get(seed)!, b.type));
+        if (typeSize(sol.get(seed)!) > SIZE_LIMIT) return this.sizeFail(span);
         b = this.lambdaUse(la, qs.map(inst), f, level, true);
         if (b === null) continue;
         // No bind on the second check (ruling AO3 (a)).
       } else {
         this.bind(r, b.type, gain);
+        if (over) return this.sizeFail(span);
       }
       // The body always fits R, every Var by its solution (ruling AO1).
       this.fitSimple(b.type, inst(r), la.lambda.body.span, "arg-mismatch");
@@ -1113,7 +1175,7 @@ class Checker {
       const n = this.narrowedType(nw.la, nw.elem);
       result = sig.name === "find" ? withNull(n) : listOf(n);
     }
-    return this.depthLimit(result, span);
+    return this.sizeLimit(this.depthLimit(result, span), span);
   }
 
   private narrowed: { la: LambdaArg; elem: Type } | null = null;
@@ -1189,25 +1251,8 @@ class Checker {
       }
       return;
     }
-    if (e.kind === "Map" && want.map && e.entries.every((en) => en.kind === "Entry" && en.key.kind !== "expr")) {
-      const r = want.map;
-      const keys = new Map<string, A.Entry>();
-      for (const en of e.entries as A.Entry[]) {
-        const key = en.key.kind === "word" ? en.key.text : (en.key as { value: string }).value;
-        keys.set(key, en);
-      }
-      let missing = false;
-      for (const [k, fl] of r.fields) if (!fl.optional && !keys.has(k)) missing = true;
-      if (missing) this.diag(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place);
-      for (const [k, en] of keys) {
-        const fl = r.fields.get(k);
-        if (fl === undefined && isNever(r.rest)) {
-          const ks = (en.key as { span: Span }).span;
-          this.diag(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", ks);
-          continue;
-        }
-        this.fitForm(en.value, fl !== undefined ? fl.type : r.rest, code, en.shorthand ? (en.key as { span: Span }).span : undefined, owners);
-      }
+    if (e.kind === "Map" && want.map && e.entries.every((en) => en.kind === "Spread" || en.key.kind !== "expr")) {
+      this.fitMap(e, t, want, want.map, code, place, owners);
       return;
     }
     if (e.kind === "Cond") {
@@ -1228,6 +1273,69 @@ class Checker {
       return;
     }
     this.diag(code(t, want), place);
+  }
+
+  /** A map literal with no computed key against a record (15.1, "A map literal against a record"). */
+  private fitMap(e: A.MapLit, t: Type, want: Type, r: Rec, code: (place: Type, want: Type) => string, place: Span, owners: Span[]): void {
+    type Item = { written: A.Entry; key: string } | { spread: A.Spread; m: Rec | "any" | null };
+    const items: Item[] = e.entries.map((en): Item => {
+      if (en.kind === "Entry") return { written: en, key: en.key.kind === "word" ? en.key.text : (en.key as { value: string }).value };
+      const m = nonnull(this.types.get(en.value) ?? NEVER);
+      if (isAny(m)) return { spread: en, m: "any" };
+      if (!isNever(m) && kindCount(m) === 1 && m.map) return { spread: en, m: m.map };
+      return { spread: en, m: null };
+    });
+    // What an entry gives for a key (null: the other key).
+    const gives = (it: Item, k: string | null): { sure: boolean; type: Type } | null => {
+      if ("written" in it) return k !== null && it.key === k ? { sure: true, type: this.types.get(it.written.value) ?? NEVER } : null;
+      if (it.m === null) return null;
+      if (it.m === "any") return { sure: false, type: ANY };
+      const fl = k === null ? undefined : it.m.fields.get(k);
+      if (fl !== undefined) return { sure: !fl.optional, type: fl.type };
+      return isNever(it.m.rest) ? null : { sure: false, type: it.m.rest };
+    };
+    const keys = new Set<string>(r.fields.keys());
+    for (const it of items) {
+      if ("written" in it) keys.add(it.key);
+      else if (it.m !== null && it.m !== "any") for (const k of it.m.fields.keys()) keys.add(k);
+    }
+    // Each required field of R is surely given by some entry: else the whole of e, once.
+    let missing = false;
+    for (const [k, fl] of r.fields) if (!fl.optional && !items.some((it) => gives(it, k)?.sure === true)) missing = true;
+    if (missing) this.diag(code(t, want) === "maybe-null" ? "arg-mismatch" : code(t, want), place);
+    const reported = new Set<A.Spread>();
+    for (const k of [...keys, null]) {
+      const gs = items.map((it) => gives(it, k));
+      let first = 0;
+      for (let i = gs.length - 1; i >= 0; i--) {
+        if (gs[i]?.sure === true) {
+          first = i;
+          break;
+        }
+      }
+      const fl = k === null ? undefined : r.fields.get(k);
+      const rt = fl !== undefined ? fl.type : r.rest;
+      for (let i = first; i < items.length; i++) {
+        const g = gs[i];
+        if (g === null) continue;
+        const it = items[i];
+        if ("written" in it) {
+          const en = it.written;
+          if (fl === undefined && isNever(r.rest)) {
+            this.diag(code(NEVER, NEVER) === "result-mismatch" ? "result-mismatch" : "arg-mismatch", (en.key as { span: Span }).span);
+            continue;
+          }
+          this.fitForm(en.value, rt, code, en.shorthand ? (en.key as { span: Span }).span : undefined, owners);
+          continue;
+        }
+        if (reported.has(it.spread)) continue;
+        const fit = fits(g.type, rt);
+        if (fit === 0) {
+          reported.add(it.spread);
+          this.diag(code(g.type, rt), it.spread.value.span);
+        } else if (fit === 2 && it.m !== "any") this.site("dynamic", it.spread.value.span, ...owners);
+      }
+    }
   }
 
   // ---- lambdas (13.2, 13.9) ------------------------------------------------------------
@@ -1271,7 +1379,7 @@ class Checker {
       let t: Type;
       if (p.default !== null) {
         const d = this.synth(p.default, f);
-        t = a.given ? join(nonnull(a.type), d) : d;
+        t = a.given ? this.sizeLimit(join(nonnull(a.type), d), p.pattern.span) : d;
       } else t = a.type;
       this.bindPattern(p.pattern, t, p.pattern.span, f);
     });

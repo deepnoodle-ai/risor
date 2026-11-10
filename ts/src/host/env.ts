@@ -12,6 +12,7 @@ import type { SigNode, TypeNode } from "../types/typetext.ts";
 import { ANY, depth, fromNode, TypeError as TypeRuleError } from "../types/type.ts";
 import type { Type } from "../types/type.ts";
 import { SchemaError, typeOfSchema } from "../types/schema.ts";
+import { FUNCTIONS, METHODS } from "../library/registry.ts";
 import type { SchemaOption } from "../types/schema.ts";
 
 /** The newest version of the specification this implementation offers. */
@@ -56,6 +57,8 @@ export interface Declarations {
   schemas?: Record<string, { schema: unknown; options?: SchemaOption[] }>;
   /** Library entries the environment does not have (03 3.3.1). */
   removed?: string[];
+  /** Variables a child environment keeps from its parent, with their types (03 3.3.2). */
+  inherited?: ReadonlyMap<string, { node: TypeNode; type: Type | undefined }>;
   opaque?: string[];
   methods?: Record<string, string>;
   functions?: Record<string, string>; // name -> signature
@@ -130,10 +133,27 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     else env.version = d.version;
   }
 
+  // A removed entry is named `len` or `string.repeat` (03 3.3.1, ruling CD1); any other name is `bad-name` (CD3).
+  for (const name of d.removed ?? []) {
+    const dot = name.indexOf(".");
+    const ok = dot < 0 ? FUNCTIONS.has(name) : METHODS.get(name.slice(0, dot))?.has(name.slice(dot + 1)) === true;
+    if (!ok) errs.push(diag("bad-name", `${name} is no entry of the library`));
+  }
+
   for (const name of d.opaque ?? []) {
     if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) errs.push(diag("bad-name", `${name} is not an opaque type name`));
     else if (env.opaque.has(name)) errs.push(diag("name-clash", `the opaque type ${name} is declared twice`));
     else env.opaque.add(name);
+  }
+
+  // A child's inherited variables: their types were given when the parent was built.
+  const inheritedVars = new Set<string>();
+  for (const [name, v] of d.inherited ?? []) {
+    env.variables.set(name, v.node);
+    if (v.type !== undefined) {
+      env.variableTypes.set(name, v.type);
+      inheritedVars.add(name);
+    }
   }
 
   if (d.env !== undefined) {
@@ -173,7 +193,7 @@ export function declare(d: Declarations, library: ReadonlySet<string>): DeclareR
     if (variableName(name)) env.variables.set(name, t.node);
   }
   // f01 2: a variable declared by schema; its type is mapped now, the schema not kept.
-  const schemaVars = new Set<string>();
+  const schemaVars = inheritedVars;
   for (const [name, decl] of Object.entries(d.schemas ?? {})) {
     if (!variableName(name)) continue;
     env.variables.set(name, { t: "word", word: "any" });

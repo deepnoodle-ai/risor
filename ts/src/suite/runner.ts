@@ -202,7 +202,7 @@ export function executeCase(c: Case, run: boolean, checker = true): Execution {
   let compiled: ReturnType<Env["tryCompile"]>;
   try {
     env = createEnv({
-      version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [],
+      version: c.version, vars: c.env, opaque, functions, reject: c.reject, limits: c.limits, opaqueNames: c.opaque ?? [], removed: c.removed,
       schemas: c.schemas as Record<string, { schema: unknown; options?: SchemaOption[] }> | undefined,
     });
     if (!checker && c.returns !== undefined && c.returns !== "condition" && !parseType(c.returns).ok) {
@@ -363,7 +363,7 @@ let RUN_CHECKED = true;
 /** The environment of the case being judged, to read its expected `type`. */
 let CURRENT_ENV: Env | null = null;
 
-const CHECK_DEPENDENT: ReadonlySet<string> = new Set(["null-operand", "wrong-kind", "missing-field", "no-match", "not-conforming"]);
+const CHECK_DEPENDENT: ReadonlySet<string> = new Set(["null-operand", "wrong-kind", "missing-field", "no-match", "not-conforming", "function-error"]);
 
 interface FoundDiag {
   class?: string;
@@ -447,8 +447,14 @@ export function runFile(path: string, opts: RunnerOptions): Verdict[] {
     }
     return out;
   }
+  // Ruling BA8 (03 3.11): a file `until-fNN-` is not run when this implementation offers package NN.
+  const until = /^until-f(\d\d)-/.exec(basename(path));
+  if (until !== null && OFFERED_PACKAGES.has(Number(until[1]))) return [];
   // f01 7.3 item 1: every case of suite/host-types/ is run checked, once.
-  const checkOnly = opts.checkOnly ?? ["core-check", "host-types"].includes(basename(dirname(path)));
+  // Ruling BA11: in a package directory, a file ending `-check.json` is run checked, once.
+  const dir = basename(dirname(path));
+  const packageDir = basename(dirname(dirname(path))) === "suite" && dir !== "core-run" && dir !== "core-check";
+  const checkOnly = opts.checkOnly ?? (["core-check", "host-types"].includes(dir) || (packageDir && basename(path).endsWith("-check.json")));
   // f02 4.7: suite/templates/ runs as suite/core-run/ does; an analysis case runs once.
   return verdictsOf(loadCaseFile(path), file, { ...opts, checkOnly });
 }
@@ -460,6 +466,9 @@ function verdictsOf(cf: CaseFile, file: string, opts: RunnerOptions): Verdict[] 
   }
   return cf.cases.map((c) => runCase(c, file, opts));
 }
+
+/** The packages this implementation offers: F1, F2, F3. */
+export const OFFERED_PACKAGES: ReadonlySet<number> = new Set([1, 2, 3]);
 
 /** Every `.json` file under a directory, in sorted order. */
 export function caseFiles(dir: string): string[] {

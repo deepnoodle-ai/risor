@@ -66,6 +66,8 @@ export interface Case {
   vars?: JsonObject;
   limits?: { steps?: number; allocation?: number; depth?: number };
   precondition?: boolean;
+  /** Ruling CD4: library entries the environment removes (`len`, `string.repeat`). */
+  removed?: string[];
   /** Ruling AP1: false compiles the case with the static rules alone. */
   check?: boolean;
   /** Package F2: the text is a template, in this mode (f02 4.1). */
@@ -90,7 +92,7 @@ const STATIC_CODE_SET = new Set([
 const LIMIT_CODES = new Set(["steps-exceeded", "allocation-exceeded", "deadline-exceeded", "depth-exceeded", "cancelled"]);
 
 /** The fields a header and a case share (03 3.10.3). `precondition` is ruling A4. */
-const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template"];
+const SHARED = ["source", "file", "version", "env", "opaque", "methods", "functions", "reject", "returns", "vars", "limits", "precondition", "check", "schemas", "template", "removed"];
 const HEADER_FIELDS = new Set(["cases", ...SHARED]);
 const CASE_FIELDS = new Set(["name", ...SHARED, "skip", "expect"]);
 
@@ -210,6 +212,7 @@ function checkShared(o: JsonObject, where: string): void {
   }
   if ("precondition" in o && typeof o.precondition !== "boolean") fail(`${where}: precondition is not a boolean`);
   if ("check" in o && typeof o.check !== "boolean") fail(`${where}: check is not a boolean`);
+  if ("removed" in o && !(Array.isArray(o.removed) && o.removed.every((x) => typeof x === "string"))) fail(`${where}: removed is not a list of strings`);
   if ("template" in o && o.template !== "string" && o.template !== "value") fail(`${where}: template is not "string" or "value"`);
   if ("schemas" in o) {
     // f01 7.1: the invalid-file rules of `schemas`.
@@ -324,6 +327,7 @@ function buildCase(header: JsonObject, raw: JsonObject, dir: string, opts: ReadO
   if ("vars" in merged) c.vars = merged.vars as JsonObject;
   if ("limits" in merged) c.limits = { ...(merged.limits as object) };
   if ("precondition" in merged) c.precondition = merged.precondition as boolean;
+  if ("removed" in merged) c.removed = merged.removed as string[];
   if ("schemas" in merged) c.schemas = merged.schemas as Record<string, { schema: Json; options?: string[] }>;
   if ("template" in merged) c.template = merged.template as "string" | "value";
   // f02 4.2 item 3, 4.5 item 3: an analysis case has none of these fields.

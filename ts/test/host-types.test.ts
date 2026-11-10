@@ -95,15 +95,19 @@ describe("f01 3.6 and 4.1: Pick, Meet, Close", () => {
 });
 
 describe("f01 3.10 item 5: a shared $ref target is mapped once", () => {
-  test("a doubling chain of 30 levels maps fast", () => {
-    const defs: Record<string, unknown> = { d0: { type: "integer" } };
-    for (let i = 1; i <= 30; i++) {
-      defs[`d${i}`] = { type: "object", properties: { a: { $ref: `#/$defs/d${i - 1}` }, b: { $ref: `#/$defs/d${i - 1}` } } };
-    }
+  test("a doubling chain maps fast: under the size limit, and over it (05 20.7)", () => {
+    const chain = (n: number) => {
+      const defs: Record<string, unknown> = { d0: { type: "integer" } };
+      for (let i = 1; i <= n; i++) {
+        defs[`d${i}`] = { type: "object", properties: { a: { $ref: `#/$defs/d${i - 1}` }, b: { $ref: `#/$defs/d${i - 1}` } } };
+      }
+      return { $defs: defs, $ref: `#/$defs/d${n}` };
+    };
     const t0 = performance.now();
-    const env = createEnv({ schemas: { v: { schema: { $defs: defs, $ref: "#/$defs/d30" } } } });
-    assert.ok(performance.now() - t0 < 1000);
+    const env = createEnv({ schemas: { v: { schema: chain(14) } } });
     assert.ok(env.check("1").ok);
+    assert.equal(declareCode(() => createEnv({ schemas: { v: { schema: chain(30) } } })), "bad-type");
+    assert.ok(performance.now() - t0 < 1000);
   });
   test("typeFromSchema, and its bad-type", () => {
     assert.equal(typeFromSchema({ type: "object", properties: { a: { type: "string" } } }, ["closed"]), "{a?: string}");

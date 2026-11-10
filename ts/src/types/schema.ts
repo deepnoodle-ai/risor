@@ -5,7 +5,7 @@
 // of a `$ref` target is mapped once and shared, never copied (3.10 item 5).
 
 import {
-  ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, fits, isAny, isNever, join, lit, listOf, nonnull, record,
+  ANY, BOOL, FLOAT, INT, NEVER, NULL, STRING, SIZE_LIMIT, TypeAcc, fits, isAny, isNever, join, lit, listOf, nonnull, record, typeSize,
 } from "./type.ts";
 import type { Alts, Field, Rec, Type } from "./type.ts";
 
@@ -41,9 +41,9 @@ export function literalType(v: unknown, depth = 0): Type {
   if (typeof v === "number") return Number.isSafeInteger(v) ? INT : FLOAT;
   if (typeof v === "string") return lit(v);
   if (Array.isArray(v)) {
-    let e: Type = NEVER;
-    for (const x of v) e = join(e, literalType(x, depth + 1));
-    return listOf(e);
+    const acc = new TypeAcc();
+    for (const x of v) acc.add(literalType(x, depth + 1));
+    return listOf(acc.type());
   }
   if (isObj(v)) {
     return record(Object.keys(v).map((k) => [k, { type: literalType(v[k], depth + 1), optional: false }]));
@@ -77,10 +77,15 @@ export function meet(a: Rec, b: Rec): Rec {
   for (const k of keys) {
     const fa = a.fields.get(k);
     const fb = b.fields.get(k);
-    fields.set(k, {
-      type: pick([fa !== undefined ? fa.type : a.rest, fb !== undefined ? fb.type : b.rest]),
-      optional: !((fa !== undefined && !fa.optional) || (fb !== undefined && !fb.optional)),
-    });
+    // f01 3.6 item 3, 4.4: the base from the two bases, the fill from each side that fills the key.
+    const base = pick([fa !== undefined ? (fa.base ?? fa.type) : a.rest, fb !== undefined ? (fb.base ?? fb.type) : b.rest]);
+    const fills = [fa?.fill, fb?.fill].filter((x): x is Type => x !== undefined);
+    const required = (fa !== undefined && !fa.optional) || (fb !== undefined && !fb.optional);
+    if (fills.length === 0) fields.set(k, { type: base, optional: !required });
+    else {
+      const fill = fills.length === 1 ? fills[0] : join(fills[0], fills[1]);
+      fields.set(k, { type: join(base, fill), optional: false, base, fill });
+    }
   }
   const out: Rec = { fields, rest: pick([a.rest, b.rest]) };
   if (a.closable && b.closable) out.closable = true;
@@ -155,8 +160,14 @@ class Mapper {
     return t;
   }
 
-  /** M(S), at `level` levels below the root. */
+  /** M(S), at `level` levels below the root. Its size is tested (f01 3.10 item 8). */
   private map(s: unknown, isRoot: boolean, level: number): Mapped {
+    const m = this.map0(s, isRoot, level);
+    if (typeSize(m.type) > SIZE_LIMIT) fail("the type is larger than 100,000");
+    return m;
+  }
+
+  private map0(s: unknown, isRoot: boolean, level: number): Mapped {
     if (level > MAX_DEPTH) fail("the schema is deeper than 64");
     if (s === true) return { type: ANY, depth: 0 };
     if (s === false) return { type: NEVER, depth: 0 };
@@ -250,9 +261,15 @@ class Mapper {
         if (!Array.isArray(s.enum)) fail("enum is an array");
         values = s.enum;
       }
-      let t: Type = NEVER;
-      for (const v of values) if (names === null || names.some((n) => allows(n, v))) t = join(t, literalType(v));
-      return t;
+      // One accumulating Join: n log n (ruling CG10). Each literal type is tested (3.10 item 8).
+      const acc = new TypeAcc();
+      for (const v of values) {
+        if (names !== null && !names.some((n) => allows(n, v))) continue;
+        const lt = literalType(v);
+        if (typeSize(lt) > SIZE_LIMIT) fail("a literal type larger than 100,000");
+        acc.add(lt);
+      }
+      return acc.type();
     }
     let t: Type = NEVER;
     for (const n of names!) t = join(t, this.named(n, s, sub));
@@ -320,18 +337,17 @@ class Mapper {
       if (!isObj(props) || !Object.values(props).every(isSchema)) fail("properties is an object of schemas");
       for (const k of Object.keys(props)) {
         const ps = props[k];
-        let t = sub(ps);
-        let optional = !required.has(k);
-        if (optional) {
+        const t = sub(ps);
+        let fill: Type | undefined;
+        if (!required.has(k)) {
           if (this.opts.has("defaults-applied") && isObj(ps) && has(ps, "default")) {
-            t = join(t, literalType(ps.default));
-            optional = false;
-          } else if (this.opts.has("absent-is-null")) {
-            t = join(t, NULL);
-            optional = false;
-          }
+            fill = literalType(ps.default);
+            if (typeSize(fill) > SIZE_LIMIT) fail("the literal type of a default larger than 100,000");
+          } else if (this.opts.has("absent-is-null")) fill = NULL;
         }
-        fields.set(k, { type: t, optional });
+        // f01 4.4: a filled field is required, with base t and its fill kept apart.
+        if (fill === undefined) fields.set(k, { type: t, optional: !required.has(k) });
+        else fields.set(k, { type: join(t, fill), optional: false, base: t, fill });
       }
     }
     for (const k of required) if (!fields.has(k)) fields.set(k, { type: rest, optional: false });

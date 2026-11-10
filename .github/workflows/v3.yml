@@ -65,11 +65,7 @@ jobs:
 
   typescript:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
-    # Temporary: the suite holds the cases of round 13 (the fuzzers'
-    # findings), which this implementation has not caught up with yet. Remove
-    # this line when it has.
-    continue-on-error: true
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: ts

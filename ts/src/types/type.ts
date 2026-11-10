@@ -6,8 +6,12 @@ import type { TypeNode } from "./typetext.ts";
 import { compareText, jsonString } from "../value/value.ts";
 
 export interface Field {
+  /** The field's type: Join(base, fill) when it carries a fill. */
   type: Type;
   optional: boolean;
+  /** Package F1 (f01 4.4): a fill kept apart from the base until the meets are done. */
+  fill?: Type;
+  base?: Type;
 }
 
 /** A record (2.2). `rest` is NEVER for an exact record, ANY for an open one. */
@@ -99,6 +103,21 @@ export function kindCount(t: Alts): number {
 
 // ---- Join (4.1) -----------------------------------------------------------------
 
+/** A key in both records of a Join; a fill is kept apart (f01 4.4 item 3). */
+function joinField(fa: Field, fb: Field): Field {
+  const type = join(fa.type, fb.type);
+  if (fa.fill === undefined && fb.fill === undefined) return { type, optional: fa.optional || fb.optional };
+  const fill = fa.fill === undefined ? fb.fill! : fb.fill === undefined ? fa.fill : join(fa.fill, fb.fill);
+  return { type, optional: false, base: join(fa.base ?? fa.type, fb.base ?? fb.type), fill };
+}
+
+/** A key in one record of a Join only: its base joined with the other's rest; it keeps its fill. */
+function oneSide(f: Field, rest: Type): Field {
+  const type = isNever(rest) ? f.type : join(f.type, rest);
+  if (f.fill === undefined) return { type, optional: true };
+  return { type, optional: false, base: isNever(rest) ? f.base! : join(f.base!, rest), fill: f.fill };
+}
+
 function joinStr(a: "string" | ReadonlySet<string> | undefined, b: "string" | ReadonlySet<string> | undefined): "string" | ReadonlySet<string> | undefined {
   if (a === undefined) return b;
   if (b === undefined) return a;
@@ -110,21 +129,39 @@ function joinRec(a: Rec, b: Rec): Rec {
   const fields = new Map<string, Field>();
   for (const [k, fa] of a.fields) {
     const fb = b.fields.get(k);
-    if (fb !== undefined) fields.set(k, { type: join(fa.type, fb.type), optional: fa.optional || fb.optional });
-    else fields.set(k, { type: isNever(b.rest) ? fa.type : join(fa.type, b.rest), optional: true });
+    if (fb !== undefined) fields.set(k, joinField(fa, fb));
+    else fields.set(k, oneSide(fa, b.rest));
   }
   for (const [k, fb] of b.fields) {
     if (a.fields.has(k)) continue;
-    fields.set(k, { type: isNever(a.rest) ? fb.type : join(fb.type, a.rest), optional: true });
+    fields.set(k, oneSide(fb, a.rest));
   }
   const out: Rec = { fields, rest: join(a.rest, b.rest) };
-  // f01 3.6 item 8: a Join of two records is closable when both are.
-  if (a.closable && b.closable) out.closable = true;
+  // f01 3.6 item 8: a Join of two records is closable when one is closable and the other closable or exact.
+  if ((a.closable && (b.closable || isNever(b.rest))) || (b.closable && isNever(a.rest))) out.closable = true;
   return out;
 }
 
+const joinMemo = new WeakMap<object, WeakMap<object, Type>>();
+
 export function join(a: Type, b: Type): Type {
   if (isAny(a) || isAny(b)) return ANY;
+  if (a === b) return a;
+  // A type is held with shared parts: the Join of two is kept, so joining
+  // two records that share parts does no work twice (05 20.7, ruling CG5).
+  if ((a.list || a.map) && (b.list || b.map)) {
+    let m = joinMemo.get(a);
+    const hit = m?.get(b);
+    if (hit !== undefined) return hit;
+    const out = join0(a, b);
+    if (m === undefined) joinMemo.set(a, (m = new WeakMap()));
+    m.set(b, out);
+    return out;
+  }
+  return join0(a, b);
+}
+
+function join0(a: Alts, b: Alts): Type {
   const out: { -readonly [K in keyof Alts]: Alts[K] } = {};
   if (a.null || b.null) out.null = true;
   if (a.bool || b.bool) out.bool = true;
@@ -139,10 +176,98 @@ export function join(a: Type, b: Type): Type {
   return out;
 }
 
+/** The Join of many types; literal sets are merged in one pass (ruling CG10). */
 export function joinAll(ts: Type[]): Type {
-  let t: Type = NEVER;
-  for (const x of ts) t = join(t, x);
-  return t;
+  const acc = new TypeAcc();
+  for (const x of ts) acc.add(x);
+  return acc.type();
+}
+
+/**
+ * An accumulating Join (ruling CG10): the literal sets go into one mutable
+ * set, so joining n types is at most n log n, and the size of the Join so far
+ * is known at any time without building it.
+ */
+export class TypeAcc {
+  private other: Alts = NEVER;
+  private readonly lits = new Set<string>();
+  private str = false;
+  private anyType = false;
+
+  add(t: Type): void {
+    if (isAny(t)) {
+      this.anyType = true;
+      return;
+    }
+    if (this.anyType) return;
+    if (t.str !== undefined) {
+      if (t.str === "string") this.str = true;
+      else if (!this.str) for (const x of t.str) this.lits.add(x);
+    }
+    if (t.null || t.bool || t.num || t.list || t.map || (t.opaque && t.opaque.size > 0)) {
+      const { str: _, ...rest } = t;
+      this.other = join(this.other, rest) as Alts;
+    }
+  }
+
+  size(): number {
+    if (this.anyType) return 1;
+    const sum = altSum(this.other) + (this.str ? 1 : this.lits.size);
+    return sum === 0 ? 1 : Math.min(sum, SIZE_LIMIT + 1);
+  }
+
+  type(): Type {
+    if (this.anyType) return ANY;
+    if (!this.str && this.lits.size === 0) return this.other;
+    return { ...this.other, str: this.str ? "string" : new Set(this.lits) };
+  }
+}
+
+// ---- Size (05 20.7, ruling CG) -------------------------------------------------------
+
+/** The limit on the size of a type (05 20.7). */
+export const SIZE_LIMIT = 100_000;
+const sizeMemo = new WeakMap<object, number>();
+
+function sat(n: number): number {
+  return n > SIZE_LIMIT ? SIZE_LIMIT + 1 : n;
+}
+
+/** The sum of the sizes of a type's alternatives. */
+function altSum(t: Alts): number {
+  const m = sizeMemo.get(t);
+  if (m !== undefined) return m;
+  let n = 0;
+  if (t.null) n++;
+  if (t.bool) n++;
+  if (t.num) n++;
+  if (t.str) n += t.str === "string" ? 1 : t.str.size;
+  if (t.opaque) n += t.opaque.size;
+  if (t.list) n = sat(n + 1 + typeSize(t.list));
+  if (t.map) n = sat(n + recSize(t.map));
+  n = sat(n);
+  sizeMemo.set(t, n);
+  return n;
+}
+
+function recSize(r: Rec): number {
+  const m = sizeMemo.get(r);
+  if (m !== undefined) return m;
+  let n = 1 + (isNever(r.rest) ? 0 : typeSize(r.rest));
+  for (const f of r.fields.values()) {
+    n = sat(n + typeSize(f.type));
+    if (n > SIZE_LIMIT) break;
+  }
+  n = sat(n);
+  sizeMemo.set(r, n);
+  return n;
+}
+
+/** The size of a type (05 20.7), saturating at SIZE_LIMIT + 1. Shared parts are counted once each time they stand, never expanded. */
+export function typeSize(t: Type): number {
+  if (isAny(t)) return 1;
+  const n = altSum(t);
+  return n === 0 ? 1 : n;
 }
 
 // ---- Fits (4.2) -----------------------------------------------------------------
@@ -155,9 +280,25 @@ function both(a: Fit, b: Fit): Fit {
   return a === 2 || b === 2 ? 2 : 1;
 }
 
+const fitsMemo = new WeakMap<object, WeakMap<object, Fit>>();
+
 export function fits(s: Type, t: Type): Fit {
   if (isAny(t)) return 1;
   if (isAny(s)) return 2;
+  if (s === t && !hasAny(s)) return 1;
+  if ((s.list || s.map) && (t.list || t.map)) {
+    let m = fitsMemo.get(s);
+    const hit = m?.get(t);
+    if (hit !== undefined) return hit;
+    const out = fits0(s, t);
+    if (m === undefined) fitsMemo.set(s, (m = new WeakMap()));
+    m.set(t, out);
+    return out;
+  }
+  return fits0(s, t);
+}
+
+function fits0(s: Alts, t: Alts): Fit {
   if (isNever(s)) return 1;
   let r: Fit = 1;
   if (s.null && !t.null) return 0;
@@ -298,8 +439,19 @@ export function overlap(a: Type, b: Type): boolean {
   return false;
 }
 
+const opaqueMemo = new WeakMap<object, boolean>();
+const anyMemo = new WeakMap<object, boolean>();
+
 export function hasOpaque(t: Type, depth = 0): boolean {
   if (isAny(t) || depth > 200) return false;
+  const m = opaqueMemo.get(t);
+  if (m !== undefined) return m;
+  const out = hasOpaque0(t, depth);
+  opaqueMemo.set(t, out);
+  return out;
+}
+
+function hasOpaque0(t: Alts, depth: number): boolean {
   if (t.opaque && t.opaque.size > 0) return true;
   if (t.list && hasOpaque(t.list, depth + 1)) return true;
   if (t.map) {
@@ -313,6 +465,14 @@ export function hasOpaque(t: Type, depth = 0): boolean {
 export function hasAny(t: Type, depth = 0): boolean {
   if (isAny(t)) return true;
   if (depth > 200) return false;
+  const m = anyMemo.get(t);
+  if (m !== undefined) return m;
+  const out = hasAny0(t, depth);
+  anyMemo.set(t, out);
+  return out;
+}
+
+function hasAny0(t: Alts, depth: number): boolean {
   if (t.list && hasAny(t.list, depth + 1)) return true;
   if (t.map) {
     for (const f of t.map.fields.values()) if (hasAny(f.type, depth + 1)) return true;
@@ -333,13 +493,23 @@ export function finiteValues(t: Type): (string | boolean | null)[] | null {
 }
 
 /** The depth of a type (2.5). */
+const depthMemo = new WeakMap<object, number>();
+
 export function depth(t: Type, limit = 1000): number {
   if (isAny(t) || limit <= 0) return 0;
+  const m = depthMemo.get(t);
+  if (m !== undefined) return m;
+  const out = depth0(t, limit);
+  depthMemo.set(t, out);
+  return out;
+}
+
+function depth0(t: Alts, limit: number): number {
   let d = 0;
-  if (t.list) d = Math.max(d, 1 + depth(t.list, limit - 1));
+  if (t.list) d = Math.max(d, 1 + depth(t.list, limit));
   if (t.map) {
-    let m = depth(t.map.rest, limit - 1);
-    for (const f of t.map.fields.values()) m = Math.max(m, depth(f.type, limit - 1));
+    let m = depth(t.map.rest, limit);
+    for (const f of t.map.fields.values()) m = Math.max(m, depth(f.type, limit));
     d = Math.max(d, 1 + m);
   }
   return d;
@@ -490,15 +660,15 @@ export function fromNode(n: TypeNode, ctx: FromContext): Type {
     case "list":
       return listOf(fromNode(n.elem, ctx));
     case "union": {
-      let t: Type = NEVER;
+      const acc = new TypeAcc();
       let records = 0;
       for (const a of n.alts) {
         const x = fromNode(a, ctx);
         if (a.t !== "var" && !isAny(x) && x.map) records++;
-        t = join(t, x);
+        acc.add(x);
       }
       if (records > 1) throw new TypeError("two record alternatives in one type");
-      return t;
+      return acc.type();
     }
   }
 }

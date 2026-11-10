@@ -37,7 +37,7 @@ import type { ParsedTemplateData, Segment, TemplateMode } from "../syntax/templa
 import type { Span } from "../syntax/source.ts";
 import type { SigNode, TypeNode } from "../types/typetext.ts";
 import type { Type } from "../types/type.ts";
-import { parseType as parseTypeText, parseReceiver } from "../types/typetext.ts";
+import { parseType as parseTypeText, parseReceiver, parseEnvRecord } from "../types/typetext.ts";
 import { METHODS } from "../library/registry.ts";
 import type { Declarations, Environment } from "./env.ts";
 
@@ -87,6 +87,19 @@ export interface EnvOptions {
   variables?: Record<string, string>;
   /** Library entries the environment does not have (03 3.3.1). */
   removed?: string[];
+  /** Internal: the variables a child keeps from its parent (03 3.3.2). */
+  inherited?: Declarations["inherited"];
+}
+
+/** An opaque type in a child environment: with no `test`, it adds methods to an inherited type (03 3.3.2, ruling CH4). */
+export interface ChildOpaqueType {
+  test?(value: unknown): boolean;
+  methods?: Record<string, HostFunction>;
+}
+
+/** The declarations of a child environment (03 3.3.2). */
+export interface ChildOptions extends Omit<EnvOptions, "opaque" | "inherited"> {
+  opaque?: Record<string, ChildOpaqueType>;
 }
 
 export interface Usage {
@@ -178,6 +191,7 @@ export function createEnv(options: EnvOptions = {}): Env {
     schemas: options.schemas,
     variableTexts: options.variables,
     removed: options.removed,
+    inherited: options.inherited,
     limits: {
       ...(limits.steps !== undefined ? { steps: limits.steps } : {}),
       ...(limits.allocation !== undefined ? { allocation: limits.allocation } : {}),
@@ -324,8 +338,11 @@ export class Env {
   readonly classifier: Classifier;
   readonly timeoutMs: number | null;
 
+  private readonly options: EnvOptions;
+
   constructor(environment: Environment, options: EnvOptions, timeoutMs: number | null) {
     this.environment = environment;
+    this.options = options;
     this.timeoutMs = timeoutMs;
     const fns = new Map<string, HostImpl>();
     for (const [k, f] of Object.entries(options.functions ?? {})) fns.set(k, hostImpl(f));
@@ -336,7 +353,7 @@ export class Env {
       methods.set(t, new Map(Object.entries(o.methods ?? {}).map(([m, f]) => [m, hostImpl(f)])));
     }
     this.classifier = new Classifier(tests);
-    this.compileEnv = { functions: fns, methods };
+    this.compileEnv = { functions: fns, methods, removed: environment.removed };
     const hostCounts = new Map<string, Counts>();
     for (const [k, f] of fns) hostCounts.set(k, f.counts);
     this.staticEnv = {
@@ -361,7 +378,7 @@ export class Env {
       libraryMethods:
         environment.removed.size === 0
           ? LIBRARY_METHODS
-          : new Map([...LIBRARY_METHODS].map(([kind, m]) => [kind, new Map([...m].filter(([k]) => !environment.removed.has(k)))])),
+          : new Map([...LIBRARY_METHODS].map(([kind, m]) => [kind, new Map([...m].filter(([k]) => !environment.removed.has(`${kind}.${k}`)))])),
       methods: methodSigs,
       reject: environment.reject,
     };
@@ -425,6 +442,58 @@ export class Env {
     return { ok: true, type: printType(c.type), sites: c.sites, source: p.source };
   }
 
+  /**
+   * A child environment (03 3.3.2). A child's declaration replaces the parent's
+   * declaration of the same name in the same space: variables and host
+   * functions are one space, opaque types another (rulings CH2, CH3). An opaque
+   * type the child declares (with `test`) replaces the parent's whole; one given
+   * with methods only adds or replaces those methods (CH4). The clash rules
+   * apply to the child as it stands. Rejected classes and limits are the
+   * parent's unless given; removed entries add up. Throws RisorError of phase
+   * `declare`.
+   */
+  child(options: ChildOptions = {}): Env {
+    const p = this.options;
+    const pe = this.environment;
+    const valueNames = new Set<string>([...Object.keys(options.variables ?? {}), ...Object.keys(options.schemas ?? {}), ...Object.keys(options.functions ?? {})]);
+    if (options.vars !== undefined) {
+      const t = parseEnvRecord(options.vars);
+      if (t.ok && t.node.t === "record") for (const f of t.node.fields) valueNames.add(f.key);
+    }
+    const inherited = new Map<string, { node: TypeNode; type: Type | undefined }>();
+    for (const [n, node] of pe.variables) if (!valueNames.has(n)) inherited.set(n, { node, type: pe.variableTypes.get(n) });
+    const functions: Record<string, HostFunction> = {};
+    for (const [k, f] of Object.entries(p.functions ?? {})) if (!valueNames.has(k)) functions[k] = f;
+    Object.assign(functions, options.functions ?? {});
+    // Opaque types: the parent's, less those the child declares.
+    const childTypes = new Set(options.opaqueNames ?? Object.entries(options.opaque ?? {}).filter(([, o]) => o.test !== undefined).map(([k]) => k));
+    const opaqueNames = [...pe.opaque].filter((t) => !childTypes.has(t));
+    const opaque: Record<string, OpaqueType> = {};
+    for (const t of opaqueNames) opaque[t] = { test: p.opaque?.[t]?.test ?? (() => false), methods: { ...(p.opaque?.[t]?.methods ?? {}) } };
+    for (const [t, o] of Object.entries(options.opaque ?? {})) {
+      if (childTypes.has(t)) opaque[t] = { test: o.test ?? (() => false), methods: { ...(o.methods ?? {}) } };
+      else if (opaque[t] !== undefined) Object.assign(opaque[t].methods!, o.methods ?? {});
+      // A method of a type neither declares: declare reports it (bad-signature).
+      else opaque[t] = { test: () => false, methods: { ...(o.methods ?? {}) } };
+    }
+    for (const t of childTypes) if (!opaqueNames.includes(t)) opaqueNames.push(t);
+    const env = createEnv({
+      version: options.version ?? p.version,
+      vars: options.vars,
+      variables: options.variables,
+      schemas: options.schemas,
+      inherited,
+      functions,
+      opaque,
+      opaqueNames,
+      reject: options.reject ?? (p.reject !== undefined ? p.reject : [...pe.reject]),
+      limits: options.limits ?? p.limits,
+      removed: [...pe.removed, ...(options.removed ?? [])],
+    });
+    env.noImplementation = this.noImplementation;
+    return env;
+  }
+
   /** Parse, apply the static rules and compile. Problems are data. */
   tryCompile(text: string | ParsedProgram, options: CompileOptions = {}): CompileResult {
     if (this.noImplementation && (this.environment.functions.size > 0 || this.environment.methods.size > 0)) {
@@ -436,17 +505,19 @@ export class Env {
     if (!p.ok) return { ok: false, diagnostics: p.diagnostics, source: p.source };
     const s = staticRules(p.program, this.staticEnv);
     let dynamicSpans: Set<string> | null = null;
+    let hostSpans: Set<string> | null = null;
     let type: string | null = null;
     let sites: Site[] = [];
     if (checked) {
       const c = check(p.program, s.resolution, this.checkEnv, exp, s.diagnostics);
       if (c.diagnostics.length > 0) return { ok: false, diagnostics: c.diagnostics, source: p.source };
       dynamicSpans = c.dynamicSpans;
+      hostSpans = c.hostSpans;
       type = printType(c.type);
       sites = c.sites;
     } else if (s.diagnostics.length > 0) return { ok: false, diagnostics: s.diagnostics, source: p.source };
     const c = compileProgram(p.program, s.resolution, this.compileEnv);
-    const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans);
+    const prog = new Program(this, p.source, c.run, s.resolution.slotCount, c.missing, dynamicSpans, hostSpans);
     prog.type = type;
     prog.sites = sites;
     return { ok: true, program: prog };
@@ -494,9 +565,11 @@ export class Program {
   sites: Site[] = [];
   /** Spans at a `dynamic` site, for the class of a failure in a checked program; null when not checked. */
   private readonly dynamicSpans: Set<string> | null;
+  private readonly hostSpans: Set<string> | null;
 
-  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null) {
+  constructor(env: Env, source: Source, code: (r: Run) => unknown, slotCount: number, missing: Set<string>, dynamicSpans: Set<string> | null = null, hostSpans: Set<string> | null = null) {
     this.dynamicSpans = dynamicSpans;
+    this.hostSpans = hostSpans ?? (dynamicSpans === null ? null : new Set());
     this.env = env;
     this.source = source;
     this.code = code;
@@ -550,6 +623,8 @@ export class Program {
       if (f.code === "null-operand" || f.code === "wrong-kind" || f.code === "missing-field") {
         cls = f.span !== undefined && this.dynamicSpans.has(spanKey(f.span)) ? "dynamic" : "environment";
       } else if (f.code === "no-match" || f.code === "not-conforming") cls = "environment";
+      // The mark `!` is a promise: an error is `host` only at a `host` site on the failing call (05 18.5, rulings CE2, CH1).
+      else if (f.code === "function-error") cls = f.span !== undefined && this.hostSpans!.has(spanKey(f.span)) ? "host" : "environment";
     }
     if (cls !== undefined) d.class = cls;
     if (f.code === "failed") d.data = f.data;

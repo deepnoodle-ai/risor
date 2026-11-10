@@ -216,3 +216,70 @@ describe("ruling AR1: a call handle used after its function returned", () => {
     assert.deepEqual(o.usage, { steps: 4, allocated: 0 });
   });
 });
+
+// Child environments (03 3.3.2, rulings CH2 to CH4): the case format cannot
+// state a parent and a child.
+describe("child environments", () => {
+  const geo = { "geo.distance": { type: "(a: string, b: string) => float", call: () => 1.5 } };
+
+  test("a child variable replaces a parent function, and a function a variable", () => {
+    const parent = createEnv({ vars: "{n: int}", functions: { f: { type: "() => int", call: () => 1 } } });
+    const child = parent.child({ vars: "{f: string}", functions: { n: { type: "() => int", call: () => 7 } } });
+    assert.equal(child.compile("`${f}${n()}`").run({ f: "x" }), "x7");
+    // The parent is unchanged.
+    assert.equal(parent.compile("f() + n").run({ n: 2 }), 3);
+  });
+
+  test("a clash with something inherited is name-clash", () => {
+    const parent = createEnv({ functions: geo });
+    assert.equal(code(() => parent.child({ vars: "{geo: int}" })), "name-clash");
+  });
+
+  test("a child variable named like an inherited opaque type does not clash", () => {
+    const parent = createEnv({ opaque, vars: "{t: Time}" });
+    const child = parent.child({ vars: "{Time: int}" });
+    assert.equal(child.compile("Time + 1").run({ Time: 1 }), 2);
+    assert.equal(child.compile("t.add(1)").run({ t: new Time(1) }) instanceof Time, true);
+  });
+
+  test("an opaque type the child declares replaces the parent's whole", () => {
+    const parent = createEnv({ opaque, vars: "{t: Time}" });
+    const child = parent.child({
+      opaque: { Time: { test: (v: unknown) => v instanceof Time, methods: { ms: { type: "() => int", call: (_h: unknown, t: unknown) => (t as Time).ms } } } },
+    });
+    assert.equal(child.compile("t.ms()").run({ t: new Time(5) }), 5);
+    assert.equal(code(() => child.compile("t.add(1)")), "no-method");
+  });
+
+  test("a child that gives only a method adds it to the inherited type", () => {
+    const parent = createEnv({ opaque, vars: "{t: Time}" });
+    const child = parent.child({ opaque: { Time: { methods: { ms: { type: "() => int", call: (_h: unknown, t: unknown) => (t as Time).ms } } } } });
+    assert.equal(child.compile("t.add(2).ms()").run({ t: new Time(5) }), 7);
+    assert.equal(code(() => parent.compile("t.ms()")), "no-method");
+  });
+
+  test("removals add up, and a child cannot bring an entry back", () => {
+    const parent = createEnv({ removed: ["len"] });
+    const child = parent.child({ removed: ["len", "string.repeat"] });
+    assert.equal(code(() => child.compile("len([])")), "undefined-function");
+    assert.equal(code(() => child.compile('"a".repeat(2)')), "no-method");
+    assert.equal(code(() => parent.child({}).compile("len([])")), "undefined-function");
+    assert.equal(code(() => parent.child({ removed: ["lenn"] })), "bad-name");
+  });
+
+  test("rejected classes and limits are inherited unless given", () => {
+    const parent = createEnv({ vars: "{xs: int[]}", reject: ["index"], limits: { steps: 1 } });
+    assert.equal(code(() => parent.child({}).compile("xs[0]")), "may-fail");
+    assert.equal(parent.child({ reject: [] }).compile("xs[0]").run({ xs: [4] }), 4);
+    assert.equal(code(() => parent.child({ reject: [] }).compile("xs.map(x => x + 1)").run({ xs: [1, 2, 3] })), "steps-exceeded");
+    assert.deepEqual(parent.child({ reject: [], limits: { steps: null } }).compile("xs.map(x => x + 1)").run({ xs: [1, 2, 3] }), [2, 3, 4]);
+  });
+
+  test("a child keeps a variable declared by schema", () => {
+    const parent = createEnv({ schemas: { cfg: { schema: { type: "object", properties: { port: { type: "integer" } }, required: ["port"] } } } });
+    const child = parent.child({ vars: "{n: int}" });
+    const r = child.check("cfg.port + n");
+    assert.ok(r.ok);
+    assert.equal(r.type, "int");
+  });
+});

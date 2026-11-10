@@ -43,6 +43,8 @@ export interface CompileEnv {
   functions: ReadonlyMap<string, HostImpl>;
   /** Methods of opaque types: type name, then method name. */
   methods: ReadonlyMap<string, ReadonlyMap<string, HostImpl>>;
+  /** Library entries the environment does not have: `len`, `string.repeat` (03 3.3.1). */
+  removed?: ReadonlySet<string>;
 }
 
 interface LambdaCode {
@@ -643,8 +645,14 @@ class Compiler {
     const shapes = s.args.map((a) => this.lambdaArg(a));
     const args = this.args(s.args, this.measure(s.level));
     const env = this.env;
+    // A removed method is absent at run time too (ruling CD2).
+    const removed = this.env.removed;
+    const gone = (kind: string) => removed !== undefined && removed.has(`${kind}.${name}`);
+    const goneString = gone("string");
+    const goneList = gone("list");
+    const goneMap = gone("map");
     for (const kind of ["string", "list", "map"]) {
-      const e = libraryMethod(kind as "string", name);
+      const e = gone(kind) ? undefined : libraryMethod(kind as "string", name);
       if (e !== undefined && e.impl === null) this.missing.add(`${kind}.${name}`);
     }
     return (r, v) => {
@@ -663,7 +671,7 @@ class Compiler {
         if (host === undefined) throw new RunFailure("wrong-kind", span, "method", { kind: k, name });
         counts = host.counts;
       } else {
-        entry = libraryMethod(k, name);
+        entry = (k === "string" ? goneString : k === "list" ? goneList : k === "map" ? goneMap : false) ? undefined : libraryMethod(k, name);
         if (entry === undefined) throw new RunFailure("wrong-kind", span, "method", { kind: k, name });
         counts = entry.counts;
       }
