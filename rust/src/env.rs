@@ -718,7 +718,7 @@ impl EnvBuilder {
             .unwrap_or_default();
         // `03-host.md` 3.3.4, `bad-limit`: a step or allocation limit must be a whole number
         // (`02-evaluation.md` 3.1 item 2, at most 2^53 - 1), and the depth from 1 to 1,000.
-        const MAX_WHOLE: u64 = 9_007_199_254_740_991;
+        const MAX_WHOLE: u64 = crate::value::MAX_WHOLE as u64;
         if limits.steps.is_some_and(|n| n > MAX_WHOLE) {
             bad(
                 code::BAD_LIMIT,

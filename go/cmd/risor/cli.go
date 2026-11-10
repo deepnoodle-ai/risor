@@ -33,11 +33,12 @@ func cmdErrorf(format string, args ...any) error {
 	return &cmdError{fmt.Sprintf(format, args...)}
 }
 
-// wholeNumber reads a whole number (at most 2^53 - 1) of at least min.
+// wholeNumber reads a whole number (02-evaluation.md 3.1 item 2) of at
+// least min.
 func wholeNumber(name, v string, min int64) (int64, error) {
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n < min || n > value.MaxWhole {
-		return 0, cmdErrorf("%s takes a whole number of %d or more, not %q", name, min, v)
+		return 0, cmdErrorf("%s takes a whole number from %d to %d, not %q", name, min, value.MaxWhole, v)
 	}
 	return n, nil
 }

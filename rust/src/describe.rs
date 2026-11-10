@@ -305,7 +305,7 @@ impl Env {
                 None => Err(form(&format!("limits.{k} is missing"))),
                 Some(Json::Null) if nullable => Ok(None),
                 Some(Json::Num(n)) => {
-                    let ok = n.fract() == 0.0 && *n >= 0.0 && *n <= 9_007_199_254_740_991.0;
+                    let ok = *n >= 0.0 && crate::value::is_whole(*n);
                     if !ok {
                         bad.push(Diagnostic::bare(
                             Phase::Declare,
