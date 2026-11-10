@@ -38,7 +38,7 @@ func cmdErrorf(format string, args ...any) error {
 func wholeNumber(name, v string, min int64) (int64, error) {
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n < min || n > value.MaxWhole {
-		return 0, cmdErrorf("%s takes a whole number from %d to %d, not %q", name, min, value.MaxWhole, v)
+		return 0, cmdErrorf("%s takes a whole number from %d to %d, not %q", name, min, int64(value.MaxWhole), v)
 	}
 	return n, nil
 }

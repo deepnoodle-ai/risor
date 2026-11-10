@@ -1,1 +1,3 @@
-error[allocation-exceeded]: the run needed more than its limit of 5 allocation units
+error[allocation-exceeded] 1:1-1:11: the run needed more than its limit of 5 allocation units
+    range(100)
+    ^^^^^^^^^^

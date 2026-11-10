@@ -883,6 +883,11 @@ var implemented = map[string]libFunc{
 			// The count may not fit an int where an int has 32 bits.
 			return ""
 		}
+		if float64(int(n)) != n {
+			// A 32-bit build cannot hold the result. Fail as a fault of the
+			// implementation rather than repeat a truncated count.
+			panic("string.repeat: the count does not fit an int")
+		}
 		return strings.Repeat(s, int(n))
 	},
 	"string.padStart": func(r *run, c *libCall) any { return r.pad(c, true) },

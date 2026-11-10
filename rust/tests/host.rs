@@ -589,3 +589,18 @@ fn compile_checks_by_default() {
     let r = risor::check(&env, &parse("x").unwrap(), &risor::Expected::Nothing);
     assert_eq!(risor::check::ty::print(r.ty.as_ref().unwrap()), "any");
 }
+
+/// R73: the outcome line of a limit failure writes no span, as Go's and
+/// TypeScript's do, though the diagnostic carries one (`03-host.md` 3.7.1).
+#[test]
+fn an_outcome_line_leaves_out_a_limits_span() {
+    let doc =
+        risor::json::parse(r#"[{"name": "steps", "source": "range(10)", "limits": {"steps": 1}}]"#)
+            .unwrap();
+    let cases = risor::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let line = risor::testing::outcome_line(&cases[0]);
+    assert!(
+        line.contains(r#""code":"steps-exceeded","span":null"#),
+        "{line}"
+    );
+}

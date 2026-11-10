@@ -2093,7 +2093,8 @@ fn outcome_core(case: &Case) -> String {
             out.push_str(&format!("{{\"code\":\"{}\"", d.code));
             if phase != Phase::Declare {
                 out.push_str(",\"span\":");
-                match d.span {
+                // R73: a limit's span is not specified, so the line leaves it out.
+                match d.span.filter(|_| !code::LIMIT.contains(&d.code)) {
                     Some(s) => {
                         let [a, b, c, e] = s.0;
                         out.push_str(&format!("[{a},{b},{c},{e}]"));
