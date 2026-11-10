@@ -611,7 +611,11 @@ In this table `f` is a `const`-bound lambda.
 ### 8.5 What the limits guarantee
 
 1. The work the language does in a run is at most a constant times the steps
-   charged.
+   charged, with one stated exception: putting the keys of a map of `n`
+   entries in order may take a constant times `n` × log2(`n`) comparisons of
+   keys. This covers building a map and every place where the order of a host
+   map's keys shows. No other operation has a logarithmic factor that its
+   charge does not carry.
 2. The memory a run creates as values of the language is at most a constant
    times the units charged plus a smaller constant times the steps. Each
    implementation publishes its constants.

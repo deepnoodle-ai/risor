@@ -1,0 +1,683 @@
+//! Compile: name resolution and the static rules (`05-types.md` 22).
+//!
+//! One walk over the tree resolves every name and every call, gives every
+//! binding a fixed slot (`02-evaluation.md` 11.1: no lambda is entered while
+//! an earlier call of it is in progress, so each binding may have one fixed
+//! place for the whole run), computes the depth measure of each call (8.4),
+//! and reports the static diagnostics.
+//!
+//! What opens no level is walked by a loop, so the walk's recursion is
+//! bounded by the source nesting.
+
+use crate::diag::{code, Diagnostic, Error, Phase};
+use crate::env::Env;
+use crate::library;
+use crate::source::Span;
+use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind};
+use crate::syntax::Parsed;
+use std::collections::{HashMap, HashSet};
+
+/// What compile found for a node.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Res {
+    #[default]
+    None,
+    /// An `Ident` that reads a slot.
+    Slot(u32),
+    /// An `Ident` that reads a variable of the environment.
+    Var(u32),
+    /// An `Ident` that is a lambda argument: the name of a `const`-bound
+    /// lambda.
+    LambdaRef(NodeId),
+    /// A call of a `const`-bound lambda.
+    CallLambda(NodeId),
+    /// A call of a library function.
+    CallLib(u32),
+    /// A call of a host function, by name or by namespace.
+    CallHost(u32),
+    /// A `NamePat` that binds a slot.
+    Bind(u32),
+    /// The slots of a map pattern's fields and rest, or a list pattern's
+    /// rest.
+    PatSlots {
+        fields: Vec<Option<u32>>,
+        rest: Option<u32>,
+    },
+    /// The slot of a `catch (name)`.
+    Catch(Option<u32>),
+}
+
+/// A compiled program. It does not change, and is safe to share between
+/// threads and to run many times.
+pub struct Program {
+    pub parsed: Parsed,
+    pub env: Env,
+    pub res: Vec<Res>,
+    /// For each `Call` and `MethodCall`: 1 plus its nesting depth within the
+    /// body that holds it (8.4).
+    pub measure: Vec<u16>,
+    pub slots: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Bind {
+    Slot(u32),
+    Var(u32),
+    Lambda(NodeId),
+}
+
+/// Compile a parsed program against an environment, with the static rules
+/// and no type rules.
+pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
+    let missing: Vec<Diagnostic> = env
+        .data()
+        .functions
+        .iter()
+        .filter(|f| f.imp.is_none())
+        .map(|f| f.name.clone())
+        .chain(
+            env.data()
+                .methods
+                .iter()
+                .filter(|m| m.imp.is_none())
+                .map(|m| format!("{}.{}", m.type_name, m.name)),
+        )
+        .map(|n| {
+            Diagnostic::bare(
+                Phase::Declare,
+                code::NO_IMPLEMENTATION,
+                format!("{n} has no implementation"),
+            )
+        })
+        .collect();
+    if !missing.is_empty() {
+        return Err(Error {
+            phase: Phase::Declare,
+            diagnostics: missing,
+        });
+    }
+    let n = parsed.ast.nodes.len();
+    let mut vars = HashMap::new();
+    for (i, v) in env.data().vars.iter().enumerate() {
+        vars.insert(v.clone(), Bind::Var(i as u32));
+    }
+    let mut r = Resolver {
+        env,
+        p: &parsed,
+        scopes: vec![vars, HashMap::new()],
+        res: vec![Res::None; n],
+        measure: vec![0; n],
+        diags: Vec::new(),
+        slots: 0,
+        lambda_levels: Vec::new(),
+    };
+    let root = parsed.ast.root;
+    if let NodeKind::Program { consts, result } = parsed.ast.kind(root) {
+        for &c in consts {
+            r.const_line(c);
+        }
+        r.walk(*result);
+    }
+    if !r.diags.is_empty() {
+        let mut d = std::mem::take(&mut r.diags);
+        d.sort_by(|a, b| {
+            let ka = a.range.unwrap_or_default();
+            let kb = b.range.unwrap_or_default();
+            (ka.start, ka.end, a.code).cmp(&(kb.start, kb.end, b.code))
+        });
+        d.dedup_by(|a, b| a.code == b.code && a.range == b.range);
+        return Err(Error {
+            phase: Phase::Check,
+            diagnostics: d,
+        });
+    }
+    let (res, measure, slots) = (r.res, r.measure, r.slots as usize);
+    Ok(Program {
+        env: env.clone(),
+        parsed,
+        res,
+        measure,
+        slots,
+    })
+}
+
+struct Resolver<'a> {
+    env: &'a Env,
+    p: &'a Parsed,
+    scopes: Vec<HashMap<String, Bind>>,
+    res: Vec<Res>,
+    measure: Vec<u16>,
+    diags: Vec<Diagnostic>,
+    slots: u32,
+    lambda_levels: Vec<u16>,
+}
+
+/// The counts of a callee (22.3): required, at most, and for each argument
+/// whether its parameter is a callback of `n` parameters.
+struct Counts {
+    required: usize,
+    at_most: Option<usize>,
+    fn_params: Vec<Option<usize>>,
+    rest_fn: Option<Option<usize>>,
+}
+
+impl Counts {
+    fn param(&self, i: usize) -> Option<Option<usize>> {
+        self.fn_params.get(i).copied().or(self.rest_fn)
+    }
+}
+
+enum Callee {
+    Unknown,
+    Lambda(NodeId),
+    Lib(usize),
+    Host(usize),
+}
+
+impl Resolver<'_> {
+    fn kind(&self, id: NodeId) -> &NodeKind {
+        self.p.ast.kind(id)
+    }
+
+    fn span(&self, id: NodeId) -> Span {
+        self.p.ast.span(id)
+    }
+
+    fn diag(&mut self, c: &'static str, span: Span) {
+        let msg = format!("{c}: {}", self.p.source.slice(span));
+        self.diags
+            .push(Diagnostic::at(Phase::Check, c, &self.p.source, span, msg));
+    }
+
+    fn lookup(&self, name: &str) -> Option<Bind> {
+        self.scopes.iter().rev().find_map(|s| s.get(name).copied())
+    }
+
+    fn is_function_name(&self, name: &str) -> bool {
+        library::function(name).is_some()
+            || self
+                .env
+                .function(name)
+                .is_some_and(|i| self.env.data().functions[i].namespace.is_none())
+    }
+
+    fn set_measure(&mut self, id: NodeId) {
+        let level = self.p.ast.node(id).level;
+        let base = self.lambda_levels.last().copied().unwrap_or(0);
+        self.measure[id.index()] = 1 + level.saturating_sub(base);
+    }
+
+    /// Bind a name in the innermost scope (22.7).
+    fn bind(&mut self, name: &str, span: Span, b: Option<Bind>) -> Option<u32> {
+        if name == "_" {
+            return None;
+        }
+        if self.env.is_namespace(name) {
+            self.diag(code::STATIC[6], span); // shadows-namespace
+            return None;
+        }
+        let scope = self.scopes.len() - 1;
+        if self.scopes[scope].contains_key(name) {
+            self.diag(code::STATIC[5], span); // duplicate-name
+        }
+        let (bind, slot) = match b {
+            Some(b) => (b, None),
+            None => {
+                let s = self.slots;
+                self.slots += 1;
+                (Bind::Slot(s), Some(s))
+            }
+        };
+        self.scopes[scope].insert(name.to_string(), bind);
+        slot
+    }
+
+    fn const_line(&mut self, id: NodeId) {
+        let NodeKind::Const { pattern, value } = self.kind(id).clone() else {
+            return;
+        };
+        if let (NodeKind::Lambda { .. }, NodeKind::NamePat { name: Some(n) }) =
+            (self.kind(value), self.kind(pattern))
+        {
+            let n = n.clone();
+            self.walk(value);
+            let span = self.span(pattern);
+            self.bind(&n, span, Some(Bind::Lambda(value)));
+            return;
+        }
+        self.walk(value);
+        self.pattern(pattern);
+    }
+
+    fn pattern(&mut self, id: NodeId) {
+        match self.kind(id).clone() {
+            NodeKind::NamePat { name: Some(n) } => {
+                let span = self.span(id);
+                if let Some(s) = self.bind(&n, span, None) {
+                    self.res[id.index()] = Res::Bind(s);
+                }
+            }
+            NodeKind::MapPat { fields, rest } => {
+                let mut slots = Vec::new();
+                for f in &fields {
+                    if let Some(d) = f.default {
+                        self.walk(d);
+                    }
+                    slots.push(self.bind(&f.name.name, f.name.span, None));
+                }
+                let rest = rest.and_then(|r| self.bind(&r.name, r.span, None));
+                self.res[id.index()] = Res::PatSlots {
+                    fields: slots,
+                    rest,
+                };
+            }
+            NodeKind::ListPat { elems, rest } => {
+                for e in &elems {
+                    if let Some(d) = e.default {
+                        self.walk(d);
+                    }
+                    self.pattern(e.pat);
+                }
+                let rest = rest.and_then(|r| self.bind(&r.name, r.span, None));
+                self.res[id.index()] = Res::PatSlots {
+                    fields: Vec::new(),
+                    rest,
+                };
+            }
+            _ => {}
+        }
+    }
+
+    /// Walk the nodes of a scope: `const` lines, then a result.
+    fn scope_body(&mut self, consts: &[NodeId], result: NodeId) {
+        for &c in consts {
+            self.const_line(c);
+        }
+        self.walk(result);
+    }
+
+    fn walk(&mut self, mut id: NodeId) {
+        loop {
+            match self.kind(id).clone() {
+                NodeKind::Program { consts, result } | NodeKind::Block { consts, result } => {
+                    self.scopes.push(HashMap::new());
+                    self.scope_body(&consts, result);
+                    self.scopes.pop();
+                    return;
+                }
+                NodeKind::Ident { name } => {
+                    self.ident(id, &name);
+                    return;
+                }
+                NodeKind::Template { parts } => {
+                    for p in parts {
+                        if let crate::syntax::ast::TemplatePart::Expr(e) = p {
+                            self.walk(e);
+                        }
+                    }
+                    return;
+                }
+                NodeKind::List { items } => {
+                    for i in items {
+                        self.walk(i);
+                    }
+                    return;
+                }
+                NodeKind::Map { entries } => {
+                    self.map(&entries);
+                    return;
+                }
+                NodeKind::Entry { key, value, .. } => {
+                    if let EntryKey::Computed(k) = key {
+                        self.walk(k);
+                    }
+                    id = value;
+                }
+                NodeKind::Spread { value } => id = value,
+                NodeKind::Unary { x, .. } => id = x,
+                NodeKind::Binary { .. } => {
+                    let mut rights = Vec::new();
+                    let mut n = id;
+                    while let NodeKind::Binary { x, y, .. } = self.kind(n) {
+                        rights.push(*y);
+                        n = *x;
+                    }
+                    self.walk(n);
+                    for y in rights.into_iter().rev() {
+                        self.walk(y);
+                    }
+                    return;
+                }
+                NodeKind::Cond {
+                    test, then, else_, ..
+                } => {
+                    self.walk(test);
+                    self.walk(then);
+                    id = else_;
+                }
+                NodeKind::OptChain { x } => id = x,
+                NodeKind::Member { .. } | NodeKind::Index { .. } | NodeKind::MethodCall { .. } => {
+                    self.chain(id);
+                    return;
+                }
+                NodeKind::Call { name, args, .. } => {
+                    let span = self.span(id);
+                    self.call(id, None, &name.name, name.span, &args, span);
+                    return;
+                }
+                NodeKind::Lambda { params, body } => {
+                    self.lambda_levels.push(self.p.ast.node(id).level);
+                    self.scopes.push(HashMap::new());
+                    for p in params {
+                        if let NodeKind::Param { pattern, default } = self.kind(p).clone() {
+                            if let Some(d) = default {
+                                self.walk(d);
+                            }
+                            self.pattern(pattern);
+                        }
+                    }
+                    self.walk(body);
+                    self.scopes.pop();
+                    self.lambda_levels.pop();
+                    return;
+                }
+                NodeKind::Match { subject, arms } => {
+                    self.walk(subject);
+                    self.arms(&arms);
+                    return;
+                }
+                NodeKind::Try {
+                    body,
+                    name,
+                    handler,
+                } => {
+                    self.walk(body);
+                    self.scopes.push(HashMap::new());
+                    let slot = name.and_then(|n| self.bind(&n.name, n.span, None));
+                    self.res[id.index()] = Res::Catch(slot);
+                    match self.kind(handler).clone() {
+                        NodeKind::Block { consts, result } => self.scope_body(&consts, result),
+                        _ => self.walk(handler),
+                    }
+                    self.scopes.pop();
+                    return;
+                }
+                _ => return,
+            }
+        }
+    }
+
+    fn ident(&mut self, id: NodeId, name: &str) {
+        let span = self.span(id);
+        match self.lookup(name) {
+            Some(Bind::Slot(s)) => self.res[id.index()] = Res::Slot(s),
+            Some(Bind::Var(v)) => self.res[id.index()] = Res::Var(v),
+            Some(Bind::Lambda(_)) => self.diag(code::STATIC[2], span), // not-a-value
+            None => {
+                if self.env.is_namespace(name) || self.is_function_name(name) {
+                    self.diag(code::STATIC[2], span);
+                } else {
+                    self.diag(code::STATIC[0], span); // undefined-name
+                }
+            }
+        }
+    }
+
+    /// The steps of a chain, walked by a loop.
+    fn chain(&mut self, top: NodeId) {
+        let mut steps = Vec::new();
+        let mut n = top;
+        loop {
+            match self.kind(n) {
+                NodeKind::Member { x, .. } | NodeKind::Index { x, .. } => {
+                    steps.push(n);
+                    n = *x;
+                }
+                NodeKind::MethodCall { x, optional, .. } => {
+                    if !*optional && self.namespace_receiver(*x) {
+                        break;
+                    }
+                    steps.push(n);
+                    n = *x;
+                }
+                NodeKind::OptChain { x } => n = *x,
+                _ => break,
+            }
+        }
+        // `n` is the primary, or a call of a namespace.
+        match self.kind(n).clone() {
+            NodeKind::MethodCall { x, name, args, .. }
+                if matches!(
+                    self.kind(n),
+                    NodeKind::MethodCall {
+                        optional: false,
+                        ..
+                    }
+                ) && self.namespace_receiver(x) =>
+            {
+                let NodeKind::Ident { name: ns } = self.kind(x).clone() else {
+                    unreachable!()
+                };
+                let span = self.span(n);
+                let ns_span = self.span(x);
+                self.call(n, Some((ns, ns_span)), &name.name, name.span, &args, span);
+            }
+            _ => self.walk(n),
+        }
+        for s in steps.into_iter().rev() {
+            match self.kind(s).clone() {
+                NodeKind::Index { index, .. } => self.walk(index),
+                NodeKind::MethodCall { args, .. } => {
+                    self.set_measure(s);
+                    self.args(&args);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Whether a receiver is an `Ident` that names a namespace (5.4).
+    fn namespace_receiver(&self, x: NodeId) -> bool {
+        match self.kind(x) {
+            NodeKind::Ident { name } => self.lookup(name).is_none() && self.env.is_namespace(name),
+            _ => false,
+        }
+    }
+
+    /// The lambda of a lambda argument: a `Lambda` node, or the name of a
+    /// `const`-bound lambda.
+    fn lambda_arg(&self, a: NodeId) -> Option<NodeId> {
+        match self.kind(a) {
+            NodeKind::Lambda { .. } => Some(a),
+            NodeKind::Ident { name } => match self.lookup(name) {
+                Some(Bind::Lambda(l)) => Some(l),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn lambda_params(&self, l: NodeId) -> usize {
+        match self.kind(l) {
+            NodeKind::Lambda { params, .. } => params.len(),
+            _ => 0,
+        }
+    }
+
+    /// Walk the arguments of a call (22.5, last paragraph).
+    fn args(&mut self, args: &[NodeId]) {
+        for &a in args {
+            match self.kind(a) {
+                NodeKind::Ident { .. } => match self.lambda_arg(a) {
+                    Some(l) => self.res[a.index()] = Res::LambdaRef(l),
+                    None => self.walk(a),
+                },
+                _ => self.walk(a),
+            }
+        }
+    }
+
+    fn call(
+        &mut self,
+        id: NodeId,
+        ns: Option<(String, Span)>,
+        name: &str,
+        name_span: Span,
+        args: &[NodeId],
+        call_span: Span,
+    ) {
+        self.set_measure(id);
+        let callee = match &ns {
+            Some((n, s)) => match self.env.function(&format!("{n}.{name}")) {
+                Some(i) => Callee::Host(i),
+                None => {
+                    self.diag(code::STATIC[1], s.to(name_span)); // undefined-function
+                    Callee::Unknown
+                }
+            },
+            None => match self.lookup(name) {
+                Some(Bind::Lambda(l)) => Callee::Lambda(l),
+                Some(_) => {
+                    self.diag(code::STATIC[3], name_span); // call-of-parameter
+                    Callee::Unknown
+                }
+                None => {
+                    if let Some(i) = self
+                        .env
+                        .function(name)
+                        .filter(|&i| self.env.data().functions[i].namespace.is_none())
+                    {
+                        Callee::Host(i)
+                    } else if let Some(i) = library::function(name) {
+                        Callee::Lib(i)
+                    } else {
+                        self.diag(code::STATIC[1], name_span);
+                        Callee::Unknown
+                    }
+                }
+            },
+        };
+        let counts = match &callee {
+            Callee::Unknown => None,
+            Callee::Lambda(l) => {
+                let NodeKind::Lambda { params, .. } = self.kind(*l) else {
+                    unreachable!()
+                };
+                // Ruling AC10: up to the last parameter with no default.
+                let required = params
+                    .iter()
+                    .rposition(|p| matches!(self.kind(*p), NodeKind::Param { default: None, .. }))
+                    .map_or(0, |i| i + 1);
+                Some(Counts {
+                    required,
+                    at_most: Some(params.len()),
+                    fn_params: vec![None; params.len()],
+                    rest_fn: None,
+                })
+            }
+            Callee::Lib(i) => Some(sig_counts(&library::records()[*i].sig)),
+            Callee::Host(i) => Some(sig_counts(&self.env.data().functions[*i].sig)),
+        };
+        if let Some(c) = counts {
+            let n = args.len();
+            if n < c.required || c.at_most.is_some_and(|m| n > m) {
+                self.diag(code::STATIC[8], call_span); // arity
+            } else {
+                for (i, &a) in args.iter().enumerate() {
+                    let Some(l) = self.lambda_arg(a) else {
+                        continue;
+                    };
+                    let span = self.span(a);
+                    match &callee {
+                        Callee::Lambda(_) => self.diag(code::STATIC[4], span), // lambda-to-lambda
+                        _ => match c.param(i).flatten() {
+                            None => self.diag(code::STATIC[2], span),
+                            Some(k) => {
+                                if self.lambda_params(l) > k {
+                                    self.diag(code::STATIC[8], span);
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+        }
+        self.res[id.index()] = match callee {
+            Callee::Unknown => Res::None,
+            Callee::Lambda(l) => Res::CallLambda(l),
+            Callee::Lib(i) => Res::CallLib(i as u32),
+            Callee::Host(i) => Res::CallHost(i as u32),
+        };
+        self.args(args);
+    }
+
+    fn map(&mut self, entries: &[NodeId]) {
+        let mut seen = HashSet::new();
+        for &e in entries {
+            if let NodeKind::Entry { key, key_span, .. } = self.kind(e).clone() {
+                let k = match key {
+                    EntryKey::Word(w) => Some(w),
+                    EntryKey::Str(s) => Some(s),
+                    EntryKey::Computed(_) => None,
+                };
+                if let Some(k) = k {
+                    if !seen.insert(k) {
+                        self.diag(code::STATIC[7], key_span); // duplicate-key
+                    }
+                }
+            }
+            self.walk(e);
+        }
+    }
+
+    fn arms(&mut self, arms: &[NodeId]) {
+        let mut seen: Vec<Lit> = Vec::new();
+        let mut after_default = false;
+        for &a in arms {
+            let NodeKind::Arm { literals, result } = self.kind(a).clone() else {
+                continue;
+            };
+            if after_default {
+                let span = self.span(a);
+                self.diag(code::STATIC[10], span); // unreachable-arm
+            }
+            match literals {
+                None => after_default = true,
+                Some(lits) => {
+                    for l in lits {
+                        if seen.iter().any(|s| lit_eq(s, &l.lit)) {
+                            self.diag(code::STATIC[9], l.span); // duplicate-case
+                        }
+                        seen.push(l.lit);
+                    }
+                }
+            }
+            self.walk(result);
+        }
+    }
+}
+
+fn lit_eq(a: &Lit, b: &Lit) -> bool {
+    match (a, b) {
+        (Lit::Number(x), Lit::Number(y)) => x == y,
+        (Lit::Str(x), Lit::Str(y)) => x == y,
+        (Lit::Bool(x), Lit::Bool(y)) => x == y,
+        (Lit::Null, Lit::Null) => true,
+        _ => false,
+    }
+}
+
+fn sig_counts(sig: &crate::types::text::Sig) -> Counts {
+    use crate::types::text::ParamType;
+    let fnp = |p: &crate::types::text::Param| match &p.ty {
+        ParamType::Fn(f) => Some(f.params.len()),
+        _ => None,
+    };
+    let rest_fn = sig.params.last().filter(|p| p.rest).map(fnp);
+    Counts {
+        required: sig.required(),
+        at_most: sig.at_most(),
+        fn_params: sig.params.iter().map(fnp).collect(),
+        rest_fn,
+    }
+}

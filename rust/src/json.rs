@@ -104,9 +104,9 @@ impl fmt::Display for Json {
     }
 }
 
-/// Nesting deeper than this is refused, so that reading never overflows the
-/// stack.
-pub const MAX_DEPTH: usize = 512;
+/// JSON nested deeper than this is refused (`03-host.md` 3.10.1 item 4,
+/// ruling AA6). The top value is level 1.
+pub const MAX_DEPTH: usize = 1024;
 
 pub fn parse(text: &str) -> Result<Json, String> {
     let mut r = Reader {
@@ -115,7 +115,7 @@ pub fn parse(text: &str) -> Result<Json, String> {
         text,
     };
     r.ws();
-    let v = r.value(0)?;
+    let v = r.value(1)?;
     r.ws();
     if r.i != r.s.len() {
         return Err(r.err("text after the JSON value"));

@@ -30,16 +30,21 @@ specification, not here. This file records the crate's own choices.
 | `src/types/text.rs` | S1 | The parser of type text: `Type`, `Sig`, `Method`, with the counts of `05-types.md` 22.3 |
 | `src/json.rs` | S1 | The strict JSON reader |
 | `src/testing/` | S1 | The case-file runner: `case.rs` reads and validates, `run.rs` runs and compares |
-| `src/value/` | S2 | `Value`, strings, lists, maps; equality, order, truthiness; rendering and number to text |
-| `src/host.rs` | S2 | The `Host` trait and `View`: host data read in place; opaque values |
-| `src/env.rs` | S2 | The environment: declarations, `declare` errors, child environments, limits |
-| `src/compile/` | S2 | Name resolution (scopes to slots), the static rules (`05-types.md` 22), the compiled program |
-| `src/eval/` | S2 | The evaluator, the meter (steps, units, deadline, cancellation, depth), run diagnostics, the error value |
-| `src/messages.rs` | S2 | The catalog, from `suite/messages.json` |
-| `src/library/` | S3 | The 53 entries, their records from `suite/library.json`, case mapping from `suite/casemap.json` |
+| `src/value.rs` | S2 | `Value`, `Str`, lists and maps behind `Rc`, weight and size, truthiness |
+| `src/number.rs` | S2 | Arithmetic of 6.2, number to text and text to number |
+| `src/host.rs` | S2 | `Host`, `View`, `HostList`, `HostMap`, `Vars`, `Data`, `OpaqueRef` |
+| `src/env.rs` | S2 | `Env`, `EnvBuilder`, `Limits`, host functions and methods, the `declare` errors |
+| `src/compile.rs` | S2 | Name resolution to fixed slots, the depth measure of each call, the static rules |
+| `src/eval/mod.rs` | S2 | The evaluator, the meter, the call handle, failures and the error value |
+| `src/eval/lib.rs` | S2, S3 | The library entries: `len`, `string`, `type`, `bool`, `fail`, `map`, `filter` in S2 |
+| `src/library.rs` | S2 | The records of `suite/library.json`: names, receivers, signatures |
+| `src/messages.rs` | S2 | The catalog of `suite/messages.json` and the building of a message |
+| `src/bin/outcome.rs` | S2 | The outcome command of rulings round 10 AJ |
 
-The data files of `suite/` are read into the crate with `include_str!` at
-build time, so a host needs no file at run time.
+The data files of `suite/` (`messages.json`, `library.json`) are compiled into
+the crate with `include_str!` and read once, at first use. Nothing in them is
+retyped, and the table cannot fall out of date: a change to a file is a change
+to the build.
 
 ## The syntax tree
 
@@ -161,3 +166,27 @@ operators, the steps of a chain, the `else` of `? :` and of `if`, `const`
 lines, `match` arms) is evaluated by a loop over its spine, so the evaluator's
 recursion is bounded by the source nesting times the call depth, which the
 depth limit bounds.
+
+## Stack (ruling AA7)
+
+Measured with a thread of a given stack, release build, on the deepest forms
+the limits allow:
+
+| Work | Optimized | Unoptimized |
+| --- | --- | --- |
+| Parse at the nesting limit (`{a: {a: ...}}`, 100 levels) | 256 KiB | 768 KiB |
+| Run at depth limit 200 (walks, and calls whose bodies nest 98 levels) | 512 KiB | 1 MiB |
+| Run at depth limit 1,000 | 2 MiB | 4 MiB |
+
+A host that runs at depth 1,000 on a thread of its own gives it at least
+3 MiB (optimized). The main thread's default (8 MiB on common platforms) is
+enough. `tests/host.rs` runs the deepest cases on a thread of 3 MiB
+(optimized) or 6 MiB (unoptimized).
+
+## Known departures from the work bound
+
+`02-evaluation.md` 8.5 item 1 asks for work at most a constant times the
+steps. Two places are within a factor of `log n`, not a constant: a map
+literal sorts its entries once when it is built, and a host map's keys are
+sorted each time their order shows (a walk, a spread, `==`). Both are charged
+`n` steps or more, so a program pays for each, but the sort is `n log n`.

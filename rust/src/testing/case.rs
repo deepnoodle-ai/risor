@@ -94,7 +94,8 @@ pub struct Case {
     pub version: Option<String>,
     pub env: Option<String>,
     pub opaque: Vec<String>,
-    pub methods: Vec<(String, String)>,
+    /// `Type.method` and its stub (3.10.4 item 2).
+    pub methods: Vec<(String, Stub)>,
     pub functions: Vec<(String, Stub)>,
     pub reject: Option<Vec<String>>,
     pub returns: Option<String>,
@@ -179,6 +180,16 @@ pub fn load(path: &Path) -> V<CaseFile> {
 /// Read the cases of a parsed document: an object with `cases`, or an array
 /// of cases with no header (3.10.1). `dir` resolves `file`.
 pub fn load_doc(doc: &Json, dir: &Path) -> V<Vec<Case>> {
+    load_doc_with(doc, dir, false)
+}
+
+/// As `load_doc`, but a case may have no `expect` (round 10 AJ): such a case
+/// expects an empty result.
+pub fn load_doc_lax(doc: &Json, dir: &Path) -> V<Vec<Case>> {
+    load_doc_with(doc, dir, true)
+}
+
+fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
     let (header, cases): (&[(String, Json)], &[Json]) = match doc {
         Json::Arr(a) => (&[], a),
         Json::Obj(m) => {
@@ -214,7 +225,7 @@ pub fn load_doc(doc: &Json, dir: &Path) -> V<Vec<Case>> {
             }
             check_field(k, v).map_err(|e| format!("case {i}: {e}"))?;
         }
-        let case = merge(header, obj, dir).map_err(|e| format!("case {i}: {e}"))?;
+        let case = merge(header, obj, dir, lax).map_err(|e| format!("case {i}: {e}"))?;
         if out.iter().any(|o: &Case| o.name == case.name) {
             return Err(format!("the name {:?} is used twice", case.name));
         }
@@ -224,7 +235,7 @@ pub fn load_doc(doc: &Json, dir: &Path) -> V<Vec<Case>> {
 }
 
 /// Lay a case over the header (3.10.2) and read its fields.
-fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path) -> V<Case> {
+fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bool) -> V<Case> {
     let own = |k: &str| case.iter().find(|(n, _)| n == k).map(|(_, v)| v);
     let hdr = |k: &str| header.iter().find(|(n, _)| n == k).map(|(_, v)| v);
     let get = |k: &str| own(k).or_else(|| hdr(k));
@@ -234,7 +245,11 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path) -> V<Ca
         .as_str()
         .unwrap_or_default()
         .to_string();
-    let expect = read_expect(own("expect").ok_or("the case has no expect")?)?;
+    let expect = match own("expect") {
+        Some(e) => read_expect(e)?,
+        None if lax => Expect::Result(ExpectResult::default()),
+        None => return Err("the case has no expect".into()),
+    };
 
     // `source` and `file` count as one field.
     let (source, file) = if own("source").is_some() || own("file").is_some() {
@@ -284,6 +299,18 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path) -> V<Ca
             functions.push((fname.clone(), stub));
         }
     }
+    let mut methods = Vec::new();
+    if let Some(m) = get("methods").and_then(|v| v.as_obj()) {
+        for (key, stub) in m {
+            let stub = read_stub(stub);
+            if stub.ty.is_none() {
+                return Err(format!(
+                    "the method stub {key:?} has no type, and the base environment does not declare it"
+                ));
+            }
+            methods.push((key.clone(), stub));
+        }
+    }
     let limits = get("limits")
         .map(|l| Limits {
             steps: l
@@ -300,20 +327,38 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path) -> V<Ca
                 .map(|v| v as u64),
         })
         .unwrap_or_default();
+    // 3.10.10 item 14: every `$opaque` object names a declared type.
+    let opaque = strings(get("opaque"));
+    let check_opaque = |v: &Json, what: &str| -> V<()> {
+        check_opaque_values(v, &opaque).map_err(|e| format!("{what}: {e}"))
+    };
+    if let Some(vars) = &vars {
+        for (k, v) in vars {
+            check_opaque(v, &format!("vars.{k}"))?;
+        }
+    }
+    for (n, stub) in functions.iter().chain(methods.iter()) {
+        for r in &stub.calls {
+            for a in r.args.iter().flatten() {
+                check_opaque(a, n)?;
+            }
+            if let Answer::Result(v) = &r.answer {
+                check_opaque(v, n)?;
+            }
+        }
+    }
+    if let Expect::Result(r) = &expect {
+        if let Some(v) = &r.value {
+            check_opaque(v, "expect.value")?;
+        }
+    }
     Ok(Case {
         name,
         source,
         version: get("version").and_then(|v| v.as_str()).map(String::from),
         env,
-        opaque: strings(get("opaque")),
-        methods: get("methods")
-            .and_then(|v| v.as_obj())
-            .map(|m| {
-                m.iter()
-                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
-                    .collect()
-            })
-            .unwrap_or_default(),
+        opaque,
+        methods,
         functions,
         reject: get("reject").map(|v| strings(Some(v))),
         returns: get("returns").and_then(|v| v.as_str()).map(String::from),
@@ -411,6 +456,12 @@ fn read_expect(v: &Json) -> V<Expect> {
         let mut diagnostics = Vec::new();
         for d in diags {
             diagnostics.push(read_diag(d)?);
+        }
+        // Rulings AC19 and AG5.
+        if matches!(phase, Phase::Parse | Phase::Declare) && diagnostics.len() != 1 {
+            return Err(format!(
+                "a failure of phase {phase} states exactly one diagnostic"
+            ));
         }
         for k in ["steps", "allocated"] {
             if has(k) {
@@ -645,9 +696,7 @@ fn check_field(k: &str, v: &Json) -> V<()> {
                 if !is_method_key(mk) {
                     return Err(format!("the method key {mk:?} is not Type.method"));
                 }
-                if mv.as_str().is_none() {
-                    return Err(format!("the method {mk:?} is not a string"));
-                }
+                check_stub(mv).map_err(|e| format!("the method {mk:?}: {e}"))?;
             }
             Ok(())
         }
@@ -731,4 +780,47 @@ fn check_row(r: &Json) -> V<()> {
         (true, false) | (false, true) => Ok(()),
         _ => Err("a row needs exactly one of result and error".into()),
     }
+}
+
+/// 3.10.3 items 7 and 9: a JSON object with the key `$opaque` is exactly
+/// `{"$opaque": {"type": T, "id": n}}`, with `T` a declared opaque type.
+fn check_opaque_values(v: &Json, declared: &[String]) -> V<()> {
+    match v {
+        Json::Arr(a) => a.iter().try_for_each(|x| check_opaque_values(x, declared)),
+        Json::Obj(m) => {
+            if m.iter().any(|(k, _)| k == "$opaque") {
+                let ok = m.len() == 1
+                    && match &m[0].1 {
+                        Json::Obj(inner) => {
+                            inner.len() == 2
+                                && inner.iter().all(|(k, x)| match k.as_str() {
+                                    "type" => {
+                                        x.as_str().is_some_and(|t| declared.iter().any(|d| d == t))
+                                    }
+                                    "id" => x.as_integer().is_some_and(|n| n >= 0.0),
+                                    _ => false,
+                                })
+                        }
+                        _ => false,
+                    };
+                if ok {
+                    Ok(())
+                } else {
+                    Err("an $opaque object that is not of the form of 3.10.3 item 7".into())
+                }
+            } else {
+                m.iter()
+                    .try_for_each(|(_, x)| check_opaque_values(x, declared))
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
+/// The `$opaque` object of a JSON value, if it is one: its type and id.
+pub fn opaque_of(v: &Json) -> Option<(&str, u64)> {
+    let inner = v.as_obj().filter(|m| m.len() == 1 && m[0].0 == "$opaque")?;
+    let t = inner[0].1.get("type")?.as_str()?;
+    let id = inner[0].1.get("id")?.as_integer()?;
+    Some((t, id as u64))
 }

@@ -57,6 +57,8 @@ struct Parser<'a> {
     /// For each opener (`(`, `[`, `?.[`, `{`), the index of its matching
     /// closer by the count of 3.2 rule 6.
     partner: Vec<Option<u32>>,
+    /// The levels open when each token was read.
+    tok_level: Vec<u16>,
 }
 
 impl<'a> Parser<'a> {
@@ -81,6 +83,7 @@ impl<'a> Parser<'a> {
             level: 0,
             ast: Ast::default(),
             partner,
+            tok_level: vec![0; t.len()],
         }
     }
 
@@ -104,6 +107,7 @@ impl<'a> Parser<'a> {
 
     fn bump(&mut self) -> &'a Token {
         let tok = &self.t[self.pos];
+        self.tok_level[self.pos] = self.level as u16;
         if self.pos + 1 < self.t.len() {
             self.pos += 1;
         }
@@ -195,7 +199,9 @@ impl<'a> Parser<'a> {
     // ---- nodes --------------------------------------------------------
 
     fn node(&mut self, kind: NodeKind, span: Span) -> NodeId {
-        self.ast.push(kind, span)
+        let i = self.t.partition_point(|t| t.span.start < span.start);
+        let level = self.tok_level.get(i).copied().unwrap_or(0);
+        self.ast.push(kind, span, level)
     }
 
     fn outer(&self, id: NodeId) -> Span {
@@ -823,6 +829,7 @@ impl<'a> Parser<'a> {
                 Ok(self.node(
                     NodeKind::Entry {
                         key: EntryKey::Word(w.clone()),
+                        key_span: t.span,
                         value,
                         shorthand: false,
                     },
@@ -841,6 +848,7 @@ impl<'a> Parser<'a> {
                 Ok(self.node(
                     NodeKind::Entry {
                         key: EntryKey::Word(w.clone()),
+                        key_span: t.span,
                         value,
                         shorthand: true,
                     },
@@ -855,6 +863,7 @@ impl<'a> Parser<'a> {
                 Ok(self.node(
                     NodeKind::Entry {
                         key: EntryKey::Str(s.clone()),
+                        key_span: t.span,
                         value,
                         shorthand: false,
                     },
@@ -865,7 +874,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 self.open(t.span)?;
                 let k = self.expr()?;
-                self.expect(P::RBracket)?;
+                let rb = self.expect(P::RBracket)?;
                 self.close();
                 self.expect(P::Colon)?;
                 let value = self.expr()?;
@@ -873,6 +882,7 @@ impl<'a> Parser<'a> {
                 Ok(self.node(
                     NodeKind::Entry {
                         key: EntryKey::Computed(k),
+                        key_span: t.span.to(rb.span),
                         value,
                         shorthand: false,
                     },

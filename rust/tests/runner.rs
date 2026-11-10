@@ -59,7 +59,7 @@ fn the_example_of_3_10_12() {
     let v = verdicts(EXAMPLE).unwrap();
     assert_eq!(v.len(), 5);
     assert!(matches!(v[0], Verdict::Skip(_)));
-    assert!(matches!(v[1], Verdict::Skip(_)));
+    assert_eq!(v[1], Verdict::Pass);
     assert!(matches!(v[2], Verdict::Skip(_)));
     assert!(matches!(v[3], Verdict::Skip(_)));
     assert_eq!(v[4], Verdict::Pass);
@@ -85,7 +85,7 @@ fn parse_verdicts() {
     assert!(matches!(&v[2], Verdict::Fail(d) if d[0].name == "outcome"));
     assert!(matches!(&v[3], Verdict::Fail(d) if d[0].name == "outcome"));
     assert_eq!(v[4], Verdict::Pass);
-    assert!(matches!(v[5], Verdict::Skip(_)));
+    assert_eq!(v[5], Verdict::Pass);
     assert!(matches!(v[6], Verdict::Skip(_)));
     assert!(matches!(&v[7], Verdict::Fail(d) if d[0].name == "outcome"));
 }

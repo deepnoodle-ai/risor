@@ -90,6 +90,8 @@ pub struct Diagnostic {
     pub range: Option<Span>,
     pub span: Option<LineSpan>,
     pub message: String,
+    /// For `failed`: the second argument of `fail`, or null.
+    pub data: Option<Box<crate::host::Data>>,
 }
 
 impl Diagnostic {
@@ -108,6 +110,7 @@ impl Diagnostic {
             range: Some(range),
             span: Some(src.line_span(range)),
             message: message.into(),
+            data: None,
         }
     }
 
@@ -120,6 +123,7 @@ impl Diagnostic {
             range: None,
             span: None,
             message: message.into(),
+            data: None,
         }
     }
 }

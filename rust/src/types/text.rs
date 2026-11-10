@@ -186,6 +186,8 @@ struct TypeParser {
     pos: usize,
     vars: bool,
     depth: u32,
+    /// The depth (ruling AA3) of the construct parsed last.
+    d: u32,
 }
 
 fn fail<T>(message: impl Into<String>) -> R<T> {
@@ -213,6 +215,7 @@ impl TypeParser {
             pos: 0,
             vars,
             depth: 0,
+            d: 0,
         })
     }
 
@@ -280,17 +283,31 @@ impl TypeParser {
         Ok(())
     }
 
+    /// Ruling AA3: a `[]` suffix has depth 1 more than what it follows, a
+    /// bracketed form 1 more than the deepest of its contents, any other text
+    /// 0. Text deeper than 64 is refused.
+    fn deeper(&mut self, inner: u32) -> R<()> {
+        if inner + 1 > MAX_BRACKETS {
+            return fail("type text is deeper than 64");
+        }
+        self.d = inner + 1;
+        Ok(())
+    }
+
     /// `Type = Alt { "|" Alt }`
     fn ty(&mut self) -> R<Type> {
         let first = self.alt()?;
         if !self.at(P::Pipe) {
             return Ok(first);
         }
+        let mut max = self.d;
         let mut alts = vec![first];
         while self.at(P::Pipe) {
             self.bump();
             alts.push(self.alt()?);
+            max = max.max(self.d);
         }
+        self.d = max;
         Ok(Type::Union(alts))
     }
 
@@ -300,6 +317,7 @@ impl TypeParser {
         while self.at(P::LBracket) {
             self.open(P::LBracket)?;
             self.close(P::RBracket)?;
+            self.deeper(self.d)?;
             t = Type::List(Box::new(t));
         }
         Ok(t)
@@ -321,6 +339,7 @@ impl TypeParser {
                         self.open(P::Lt)?;
                         let t = self.ty()?;
                         self.close(P::Gt)?;
+                        self.deeper(self.d)?;
                         return Ok(Type::MapOf(Box::new(t)));
                     }
                     w if w.len() == 1 && w.as_bytes()[0].is_ascii_uppercase() => {
@@ -335,10 +354,12 @@ impl TypeParser {
                     w => return fail(format!("{w} is not a type")),
                 };
                 self.bump();
+                self.d = 0;
                 Ok(t)
             }
             Tok::Str(s, StrForm::Double | StrForm::Single) => {
                 self.bump();
+                self.d = 0;
                 Ok(Type::Lit(s))
             }
             Tok::Punct(P::LBrace) => self.record(),
@@ -346,6 +367,7 @@ impl TypeParser {
                 self.open(P::LParen)?;
                 let t = self.ty()?;
                 self.close(P::RParen)?;
+                self.deeper(self.d)?;
                 Ok(t)
             }
             _ => fail("expected a type"),
@@ -356,6 +378,7 @@ impl TypeParser {
         self.open(P::LBrace)?;
         let mut fields = Vec::new();
         let mut rest = Rest::Exact;
+        let mut max = 0;
         loop {
             if self.at(P::RBrace) {
                 break;
@@ -365,7 +388,9 @@ impl TypeParser {
                 rest = if self.at(P::Comma) || self.at(P::RBrace) {
                     Rest::Any
                 } else {
-                    Rest::Typed(Box::new(self.ty()?))
+                    let t = self.ty()?;
+                    max = max.max(self.d);
+                    Rest::Typed(Box::new(t))
                 };
                 if self.at(P::Comma) {
                     self.bump();
@@ -384,6 +409,7 @@ impl TypeParser {
             }
             self.expect(P::Colon)?;
             let ty = self.ty()?;
+            max = max.max(self.d);
             fields.push(Field { key, optional, ty });
             if self.at(P::Comma) {
                 self.bump();
@@ -392,15 +418,18 @@ impl TypeParser {
             }
         }
         self.close(P::RBrace)?;
+        self.deeper(max)?;
         Ok(Type::Record(Record { fields, rest }))
     }
 
     fn sig(&mut self) -> R<Sig> {
         self.open(P::LParen)?;
         let mut params = Vec::new();
+        let mut max = 0;
         if !self.at(P::RParen) {
             loop {
                 params.push(self.param()?);
+                max = max.max(self.d);
                 if self.at(P::Comma) {
                     self.bump();
                 } else {
@@ -409,6 +438,7 @@ impl TypeParser {
             }
         }
         self.close(P::RParen)?;
+        self.deeper(max)?;
         self.expect(P::Arrow)?;
         let result = self.ty()?;
         let fails = self.at(P::Bang);
@@ -490,11 +520,13 @@ impl TypeParser {
     fn fn_type(&mut self) -> R<FnType> {
         self.open(P::LParen)?;
         let mut params = Vec::new();
+        let mut max = 0;
         if !self.at(P::RParen) {
             loop {
                 let name = self.word()?;
                 self.expect(P::Colon)?;
                 params.push((name, self.ty()?));
+                max = max.max(self.d);
                 if self.at(P::Comma) {
                     self.bump();
                 } else {
@@ -503,6 +535,8 @@ impl TypeParser {
             }
         }
         self.close(P::RParen)?;
+        self.deeper(max)?;
+        let bracket = self.d;
         self.expect(P::Arrow)?;
         let result = if self.at_word("unknown") {
             self.bump();
@@ -510,6 +544,7 @@ impl TypeParser {
         } else {
             Some(self.ty()?)
         };
+        self.d = bracket.max(self.d);
         Ok(FnType { params, result })
     }
 }
@@ -596,6 +631,10 @@ mod tests {
 
     #[test]
     fn bracket_limit() {
+        assert!(parse_type(&format!("int{}", "[]".repeat(64))).is_ok());
+        assert!(parse_type(&format!("int{}", "[]".repeat(65))).is_err());
+        assert!(parse_type(&format!("({}int[]{})", "(".repeat(62), ")".repeat(62))).is_ok());
+        assert!(parse_type(&format!("(({}int[]{}))", "(".repeat(62), ")".repeat(62))).is_err());
         let ok = format!("{}int{}", "(".repeat(64), ")".repeat(64));
         assert!(parse_type(&ok).is_ok());
         let deep = format!("{}int{}", "(".repeat(65), ")".repeat(65));

@@ -177,6 +177,8 @@ pub enum NodeKind {
     /// 12
     Entry {
         key: EntryKey,
+        /// The span of the key: the word, the string, or the `[` ... `]`.
+        key_span: Span,
         value: NodeId,
         shorthand: bool,
     },
@@ -344,6 +346,9 @@ pub struct Node {
     /// to `span` when there are none. A node that holds this one starts or
     /// ends at `outer` (4.3 rule 1).
     pub outer: Span,
+    /// The levels open at the node's first token (`01-language.md` 13.2
+    /// rule 5): its nesting depth.
+    pub level: u16,
 }
 
 impl Node {
@@ -373,12 +378,13 @@ impl Ast {
         self.nodes[id.index()].span
     }
 
-    pub(crate) fn push(&mut self, kind: NodeKind, span: Span) -> NodeId {
+    pub(crate) fn push(&mut self, kind: NodeKind, span: Span, level: u16) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
         self.nodes.push(Node {
             kind,
             span,
             outer: span,
+            level,
         });
         id
     }

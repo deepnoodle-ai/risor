@@ -16,13 +16,26 @@
 
 #![forbid(unsafe_code)]
 
+pub mod compile;
 pub mod diag;
+pub mod env;
+pub mod eval;
+pub mod host;
 pub mod json;
+pub mod library;
+pub mod messages;
+pub mod number;
 pub mod source;
 pub mod syntax;
 pub mod testing;
 pub mod types;
+pub mod value;
 
+pub use compile::{compile, Program};
 pub use diag::{Diagnostic, Error, Phase};
+pub use env::{Env, EnvBuilder, Limits};
+pub use eval::{Call, Fail, Outcome, RunOptions, Usage};
+pub use host::{Data, Host, HostError, HostList, HostMap, NoVars, OpaqueRef, Vars, View};
 pub use source::{LineSpan, Source, Span};
 pub use syntax::{parse, Parsed};
+pub use value::Value;
