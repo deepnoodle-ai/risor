@@ -7,8 +7,18 @@
 //! the two ends round apart, P doubles and the evaluation is made again (the
 //! method of Ziv). The exact cases, where the true value is a double or the
 //! midpoint of two, are found first: there no precision decides.
+//!
+//! That exact path costs microseconds. Each entry first tries the fast phase
+//! of `fast.rs`: double-double arithmetic with a proven error bound, which
+//! decides nearly every call in well under a microsecond and declines the
+//! rest, which come here. The exact path is also the oracle of its tests.
 
 use std::cmp::Ordering;
+
+mod fast;
+#[cfg(test)]
+mod gen;
+mod tables;
 
 // ---- big integers ---------------------------------------------------------
 
@@ -897,17 +907,17 @@ pub fn eval(name: &str, args: &[f64]) -> f64 {
     let x = args.first().copied().unwrap_or(0.0);
     let y = args.get(1).copied().unwrap_or(0.0);
     let r = match name {
-        "math.exp" => exp(x),
-        "math.log" => log(x),
-        "math.log10" => log10(x),
-        "math.sin" => trig(x, 0),
-        "math.cos" => trig(x, 1),
-        "math.tan" => trig(x, 2),
-        "math.asin" => asin(x),
-        "math.acos" => acos(x),
-        "math.atan" => atan2(x, 1.0),
-        "math.atan2" => atan2(x, y),
-        "math.pow" => pow(x, y),
+        "math.exp" => fast::exp(x).unwrap_or_else(|| exp(x)),
+        "math.log" => fast::log(x).unwrap_or_else(|| log(x)),
+        "math.log10" => fast::log10(x).unwrap_or_else(|| log10(x)),
+        "math.sin" => fast::trig(x, 0).unwrap_or_else(|| trig(x, 0)),
+        "math.cos" => fast::trig(x, 1).unwrap_or_else(|| trig(x, 1)),
+        "math.tan" => fast::trig(x, 2).unwrap_or_else(|| trig(x, 2)),
+        "math.asin" => fast::asin(x).unwrap_or_else(|| asin(x)),
+        "math.acos" => fast::acos(x).unwrap_or_else(|| acos(x)),
+        "math.atan" => fast::atan2(x, 1.0).unwrap_or_else(|| atan2(x, 1.0)),
+        "math.atan2" => fast::atan2(x, y).unwrap_or_else(|| atan2(x, y)),
+        "math.pow" => fast::pow(x, y).unwrap_or_else(|| pow(x, y)),
         _ => f64::NAN,
     };
     if r == 0.0 {
