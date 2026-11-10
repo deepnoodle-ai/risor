@@ -66,7 +66,7 @@ fn a_parameter_takes_the_first_check() {
         .enumerate()
         .filter(|(_, n)| matches!(&n.kind, NodeKind::Ident { name } if name == "x"))
         .map(|(i, _)| risor::syntax::ast::NodeId(i as u32))
-        .last()
+        .next_back()
         .unwrap();
     let pr = risor::check::check_probe(&env(), &p, &Expected::Nothing, Some(id));
     let Res::Slot(s) = pr.res[id.index()] else {
