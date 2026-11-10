@@ -21,17 +21,16 @@
 //
 // # Memory
 //
-// On 64-bit platforms, the heap memory a run creates as values of the language
-// is bounded by 320 bytes per allocation unit charged plus 8 bytes per step
-// charged (02-evaluation.md 8.5 item 2):
-//   - string (1 + floor(w/64) units): a 16-byte string header plus at most
-//     3 * 64 = 192 UTF-8 bytes per 64 weight units (256 bytes after Go
-//     size-class rounding);
-//   - list (1 + n units): a 24-byte []any header plus 16 bytes per element;
-//   - map (1 + 2n units): a 48-byte hmap header plus Go map[string]any buckets
-//     (272 bytes per 8-entry bucket, at most two buckets per 6.5 entries);
-//   - step: at most one 8-byte float64 interface box for an uncharged numeric
-//     result outside the small-integer cache.
+// On 64-bit platforms, the heap memory a run creates as values of the
+// language is at most 256 bytes per allocation unit charged plus 16 bytes per
+// step charged (02-evaluation.md 8.5 item 2). The most bytes per unit come
+// from a string just under a unit's 64 weight in three-byte characters: 189
+// bytes, rounded to Go's 192-byte size class, and a 16-byte string header
+// boxed in an interface. A number a step makes is boxed in 8 bytes. This is
+// measured, not derived: TestMemoryConstants runs the worst shapes (such
+// strings, empty and one-entry maps, empty lists, boxed numbers) on Go 1.26,
+// whose maps are Swiss tables, and checks each run's bytes against these
+// constants.
 package risor
 
 import (
