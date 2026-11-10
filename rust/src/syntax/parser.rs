@@ -190,6 +190,9 @@ enum Rule {
     Prefix,
     /// `bad-type-text`, with its template.
     BadType(&'static str),
+    /// Where the `:` after a string key or a computed key is needed, in a
+    /// map literal or a map pattern (the template `key`).
+    Key,
 }
 
 /// A mapped diagnostic: its code, its template, its span, and its
@@ -1550,7 +1553,7 @@ impl<'a> Parser<'a> {
             }
             Tok::Str(s, f) if f.is_line() => {
                 self.bump();
-                self.expect(P::Colon)?;
+                self.key_colon()?;
                 let value = self.expr()?;
                 let span = t.span.to(self.outer(value));
                 Ok(self.node(
@@ -1569,7 +1572,7 @@ impl<'a> Parser<'a> {
                 let k = self.expr()?;
                 let rb = self.expect(P::RBracket)?;
                 self.close();
-                self.expect(P::Colon)?;
+                self.key_colon()?;
                 let value = self.expr()?;
                 let span = t.span.to(self.outer(value));
                 Ok(self.node(
@@ -1846,7 +1849,7 @@ impl<'a> Parser<'a> {
             }
             Tok::Str(s, f) if f.is_line() => {
                 self.bump();
-                self.expect(P::Colon)?;
+                self.key_colon()?;
                 (s.clone(), self.name()?)
             }
             _ => return Err(self.unexpected(t)),
@@ -1913,6 +1916,16 @@ impl<'a> Parser<'a> {
         let rb = self.expect(P::RBracket)?;
         self.close();
         Ok(self.node(NodeKind::ListPat { elems, rest }, lb.span.to(rb.span)))
+    }
+
+    /// The `:` after a string key or a computed key.
+    fn key_colon(&mut self) -> R<()> {
+        if self.at_punct(P::Colon) {
+            self.bump();
+            return Ok(());
+        }
+        let e = self.unexpected(self.peek());
+        Err(self.tag(e, Rule::Key))
     }
 
     /// 14.2 rule 1: a reserved word followed by `=>`, where an argument or
@@ -2234,7 +2247,9 @@ impl<'a> Parser<'a> {
         if let Some(r) = self.unquoted_key(ti, enclosing) {
             return r;
         }
-        if let Some(o) = enclosing.filter(|&o| self.lambda_map(o)) {
+        // E23, but not for a `=` where the `:` after a key is needed.
+        let key_eq = e.rule == Rule::Key && t.is_punct(P::Assign);
+        if let Some(o) = enclosing.filter(|&o| self.lambda_map(o) && !key_eq) {
             let mut depth = 0i32;
             let mut plain = true;
             for k in o + 1..ti {
@@ -2277,6 +2292,9 @@ impl<'a> Parser<'a> {
         }
         if t.is_punct(P::Bang) && ti == self.expr_end && next.is_some_and(|n| n.is_word("is")) {
             return at("negated-is", "default");
+        }
+        if e.rule == Rule::Key {
+            return at(e.code, "key");
         }
         at(e.code, "default")
     }

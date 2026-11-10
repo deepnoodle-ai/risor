@@ -1,0 +1,363 @@
+[
+ {
+  "name": "map keys: f(x => { [k] = 1 })",
+  "source": "f(x => { [k] = 1 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "a map key is followed by :, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: { \"a\" = 1 }",
+  "source": "{ \"a\" = 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a map key is followed by :, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: { [k] = 1 }",
+  "source": "{ [k] = 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a map key is followed by :, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: 1 + { \"a\" = 1 }",
+  "source": "1 + { \"a\" = 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "a map key is followed by :, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: 1 + { [k] = 1 }",
+  "source": "1 + { [k] = 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "a map key is followed by :, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: {\"a\" 1}",
+  "source": "{\"a\" 1}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a map key is followed by :, found 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: {\"a\"}",
+  "source": "{\"a\"}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "a map key is followed by :, found }"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: {\"a\"",
+  "source": "{\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      5,
+      1,
+      5
+     ],
+     "message": "a map key is followed by :, found end of input"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: const {\"a\" = 1} = m; 1",
+  "source": "const {\"a\" = 1} = m; 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      12,
+      1,
+      13
+     ],
+     "message": "a map key is followed by :, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: f(x => { a: 1, \"b\" = 2 })",
+  "source": "f(x => { a: 1, \"b\" = 2 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      20,
+      1,
+      21
+     ],
+     "message": "a map key is followed by :, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: f(x => { \"a\" 1 })",
+  "source": "f(x => { \"a\" 1 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "block-without-const",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: { a = 1 }",
+  "source": "{ a = 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "unexpected ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: 1 + { a = 1 }",
+  "source": "1 + { a = 1 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      9,
+      1,
+      10
+     ],
+     "message": "unexpected ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: f(x => { a = 1 })",
+  "source": "f(x => { a = 1 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "block-without-const",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: f(x => { a: 1, b = 2 })",
+  "source": "f(x => { a: 1, b = 2 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      18,
+      1,
+      19
+     ],
+     "message": "unexpected ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: f(x => { a, b = 1 })",
+  "source": "f(x => { a, b = 1 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      15,
+      1,
+      16
+     ],
+     "message": "unexpected ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: {a: b = 1}",
+  "source": "{a: b = 1}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: {...a = 1}",
+  "source": "{...a = 1}",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "map keys: f(x => { a: b = 1 })",
+  "source": "f(x => { a: b = 1 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      15,
+      1,
+      16
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ }
+]

@@ -180,6 +180,15 @@ func (p *parser) reservedWord(t Token) {
 	p.fail(diag.CodeReservedWord, t.Start, t.End, "`"+t.Text+"` is a reserved word")
 }
 
+// keyColon reads the : after a string key or a computed key. Any other
+// token there is unexpected-token with the template key (F8 3.4).
+func (p *parser) keyColon() {
+	if p.tok.Kind != Colon {
+		p.tmpl = "key"
+	}
+	p.expect(Colon)
+}
+
 func (p *parser) expect(k TokenKind) Token {
 	if p.tok.Kind != k {
 		p.unexpected()
@@ -417,7 +426,7 @@ func (p *parser) mapPat() *MapPat {
 			case p.tok.Kind == TokString && p.tok.Form != '`' && !p.tok.Block:
 				f.KeyForm, f.Key, f.KeySpan = KeyString, p.tok.Str, Span{p.tok.Start, p.tok.End}
 				p.next()
-				p.expect(Colon)
+				p.keyColon()
 				nt := p.requireName()
 				f.Name, f.NameSpan = nt.Text, Span{nt.Start, nt.End}
 			default:
@@ -1125,7 +1134,7 @@ func (p *parser) mapLit() Node {
 					Value: &Ident{base: b, Name: nt.Text}, Shorthand: true})
 			case t.Kind == TokString && t.Form != '`' && !t.Block:
 				p.next()
-				p.expect(Colon)
+				p.keyColon()
 				fr().sep = true
 				v := p.expr()
 				entries = append(entries, &Entry{base: p.base(em), KeyForm: KeyString, Key: t.Str, KeySpan: Span{t.Start, t.End}, Value: v})
@@ -1134,7 +1143,7 @@ func (p *parser) mapLit() Node {
 				k := p.expr()
 				p.expect(RBrack)
 				p.exit()
-				p.expect(Colon)
+				p.keyColon()
 				fr().sep = true
 				v := p.expr()
 				entries = append(entries, &Entry{base: p.base(em), KeyForm: KeyComputed, KeyExpr: k, Value: v})

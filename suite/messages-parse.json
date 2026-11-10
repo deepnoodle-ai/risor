@@ -7,9 +7,33 @@
       "token": "token"
     },
     "templates": {
+      "key": "a map key is followed by :, found {token}",
       "default": "unexpected {token}"
     },
+    "when": {
+      "key": "The token stands where the : after a string key or a computed key [e] is needed, in a map literal or a map pattern. token is that token, or end of input",
+      "default": "Every other place. token is the token at the span, or end of input"
+    },
     "cases": [
+      {
+        "name": "map keys: f(x => { \"a\" = 1 })",
+        "source": "f(x => { \"a\" = 1 })",
+        "expect": {
+          "phase": "parse",
+          "diagnostics": [
+            {
+              "code": "unexpected-token",
+              "span": [
+                1,
+                14,
+                1,
+                15
+              ],
+              "message": "a map key is followed by :, found ="
+            }
+          ]
+        }
+      },
       {
         "name": "unexpected-token: a token",
         "source": "1 )",

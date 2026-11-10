@@ -177,23 +177,32 @@ func TestCheckMessages(t *testing.T) {
 
 func TestAssignmentAfterAnEntryKey(t *testing.T) {
 	// A shorthand entry and a key are not operands (f08-errors.md 1.1), so
-	// a = after one is not an assignment (E7, note 1): in a lambda's map
-	// body the block row E23 holds, elsewhere the Core code stands.
-	for _, c := range []struct{ src, code, span string }{
-		{"[1].map(x => { a = 1 })", "block-without-const", "[1, 14, 1, 15]"},
-		{`f(x => { "a" = 1 })`, "block-without-const", "[1, 8, 1, 9]"},
-		{"f(x => { [k] = 1 })", "block-without-const", "[1, 8, 1, 9]"},
-		{"f(x => { a: 1, b = 2 })", "unexpected-token", "[1, 18, 1, 19]"},
-		{"{a = 1}", "unexpected-token", "[1, 4, 1, 5]"},
+	// a = after one is not an assignment (E7, note 1). After a shorthand
+	// entry in a lambda's map body the block row E23 holds. After a string
+	// key or a computed key the = stands where the : should: a map with the
+	// wrong separator, unexpected-token with the template key (3.4).
+	key := "a map key is followed by :, found ="
+	for _, c := range []struct{ src, code, span, msg string }{
+		{"[1].map(x => { a = 1 })", "block-without-const", "[1, 14, 1, 15]", ""},
+		{`f(x => { "a" = 1 })`, "unexpected-token", "[1, 14, 1, 15]", key},
+		{"f(x => { [k] = 1 })", "unexpected-token", "[1, 14, 1, 15]", key},
+		{`{"a" = 1}`, "unexpected-token", "[1, 6, 1, 7]", key},
+		{`const {"a" = 1} = m; 1`, "unexpected-token", "[1, 12, 1, 13]", key},
+		{`{"a" 1}`, "unexpected-token", "[1, 6, 1, 7]", "a map key is followed by :, found 1"},
+		{"f(x => { a: 1, b = 2 })", "unexpected-token", "[1, 18, 1, 19]", "unexpected ="},
+		{"{a = 1}", "unexpected-token", "[1, 4, 1, 5]", "unexpected ="},
 		// A value or a spread's operand is an operand.
-		{"f(x => { a: b = 1 })", "assignment", "[1, 15, 1, 16]"},
-		{"f(x => { ...a = 1 })", "assignment", "[1, 15, 1, 16]"},
-		{"f(a = 1)", "assignment", "[1, 5, 1, 6]"},
+		{"f(x => { a: b = 1 })", "assignment", "[1, 15, 1, 16]", ""},
+		{"f(x => { ...a = 1 })", "assignment", "[1, 15, 1, 16]", ""},
+		{"f(a = 1)", "assignment", "[1, 5, 1, 6]", ""},
 	} {
 		_, err := risor.Parse(c.src)
 		var e *risor.Error
 		assert.True(t, errors.As(err, &e), c.src)
 		assert.Equal(t, e.Diagnostics[0].Code, c.code, c.src)
 		assert.Equal(t, e.Diagnostics[0].Span.String(), c.span, c.src)
+		if c.msg != "" {
+			assert.Equal(t, e.Diagnostics[0].Message, c.msg, c.src)
+		}
 	}
 }

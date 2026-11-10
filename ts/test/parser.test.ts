@@ -200,6 +200,12 @@ describe("01 14.3: every row", () => {
     err("try { e }", "missing-catch", [1, 10, 1, 10]);
     err("try { e } 1", "missing-catch", [1, 11, 1, 12]);
   });
+  test("a = after a string or computed key is unexpected-token, not E23 (f08 2.7)", () => {
+    err('f(x => { "a" = 1 })', "unexpected-token", [1, 14, 1, 15]);
+    err("f(x => { [k] = 1 })", "unexpected-token", [1, 14, 1, 15]);
+    err('{ "a" = 1 }', "unexpected-token", [1, 7, 1, 8]);
+    err("f(x => { a = 1 })", "block-without-const", [1, 8, 1, 9]);
+  });
   test("an earlier row wins over a row the parser meets at a fixed place (f08 2.1 item 2)", () => {
     // C5 before D13, D11 and D15: a token that no rule accepts.
     err("try{m}|>", "pipe-operator", [1, 7, 1, 9]);

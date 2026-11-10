@@ -280,6 +280,7 @@ export const CATALOG: CatalogEntry[] = [
       "token": "token"
     },
     "templates": {
+      "key": "a map key is followed by :, found {token}",
       "default": "unexpected {token}"
     }
   },

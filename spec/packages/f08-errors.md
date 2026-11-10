@@ -99,10 +99,10 @@ F8 is part of version `3.0`. It adds no version number. Each entry of 3.1 has
    diagnostic at a token of the last row of 2.3 is mapped by the rows of 2.5
    only; where none of them holds it stays `unexpected-token` (2.5 item 2). So
    `try{m}|>` is `pipe-operator` (C5), `if (c) { 1 } f"x"` stays
-   `unexpected-token`, `try { 1 } | 2` is `missing-catch` (D13 before E10),
-   `try finally` is `finally-clause` (E3 before E6), `try { 1 } catch { 2 }
-   satisfies T` is `satisfies-operator` (E13, then D4), and `c ?[1] as int +
-   2` is `needs-parentheses` at the `+` (E24, then E21).
+   `unexpected-token`, `try { 1 } | 2` is `missing-catch` (D13 before E10), `try
+   finally` is `finally-clause` (E3 before E6), `try { 1 } catch { 2 } satisfies
+   T` is `satisfies-operator` (E13, then D4), and `c ?[1] as int + 2` is
+   `needs-parentheses` at the `+` (E24, then E21).
 7. **The innermost production.** A condition on the production the parser is
    reading names the innermost production open at the failing token. So `x[(a:
    b)]` is E9, not E8, and the `,` of `if (x[1, 2])` is not E5.
@@ -253,7 +253,7 @@ item 2 keeps. They are tried in this order.
 | E20 | t is `<` where an operand must begin | `angle-cast` |
 | E21 | t stands where the `:` of a conditional should stand, and the `?` of that conditional is directly followed by `[` | `optional-index`, at the span of 2.8 |
 | E22 | t is `-` in a map literal or a map pattern, in an entry or a field that begins with a word w; w is followed by one or more pairs of `-` and a word or a number token, each token directly after the one before it, and the token after them is `:` | `unquoted-key`, at the span of 2.8 |
-| E23 | t stands in a map literal whose `{` is the token after the `=>` of a lambda, and no `:`, `,` or `...` stands before t at the level of that map | `block-without-const`, at the span of 2.8 |
+| E23 | t stands in a map literal whose `{` is the token after the `=>` of a lambda, and no `:`, `,` or `...` stands before t at the level of that map; but not when t is `=` directly after a string key or a computed key `[e]` | `block-without-const`, at the span of 2.8 |
 | E24 | The token before t is the last token of a program type, and t is `+`, `-`, `*`, `/`, `%`, `**`, `.`, `?.`, `?.[`, `[`, `(` or `{` (F4 2.4) | `needs-parentheses`, `after-type` |
 | E25 | t is `!`, a complete operand has been read, and the token after t is the word `is` | `negated-is` |
 
@@ -261,7 +261,13 @@ item 2 keeps. They are tried in this order.
    where an operand must begin, as in `2 > = 1`, or in a pattern, as in `const
    [...r = 1] = x;`, stays `unexpected-token`. A shorthand entry of a map
    literal is an entry, not an `Expr`, so E7 does not hold after it: `x => { a =
-   1 }` is E23.
+   1 }` is E23. Neither does a key: after a string key or a computed key a `=`
+   stands where `:` should, and the text is a map literal with the wrong
+   separator, inside a lambda body or not. E23 does not take it, so `x => { "a"
+   = 1 }`, `x => { [k] = 1 }` and `{ "a" = 1 }` are each `unexpected-token` with
+   the template `key` (3.4). After a value or a spread, `=` follows a complete
+   operand: `{a: b = 1}` and `{...a = 1}` are E7. After a shorthand entry
+   outside a lambda body, as `1 + { a = 1 }`, no row holds.
 2. E9: `(x: int) => x` at the top of a program, where `(` cannot begin a lambda,
    is the third case; `[1].map((x: int) => x)` is the second; `const n: int = 1;
    n` is the first.
@@ -474,7 +480,8 @@ one template, its name is `default`.
 
 | Code | Template | Text | Chosen when |
 | --- | --- | --- | --- |
-| `unexpected-token` | `default` | `unexpected {token}` |  |
+| `unexpected-token` | `key` | `a map key is followed by :, found {token}` | The token stands where the : after a string key or a computed key [e] is needed, in a map literal or a map pattern. token is that token, or end of input |
+|  | `default` | `unexpected {token}` | Every other place. token is the token at the span, or end of input |
 | `unexpected-character` | `default` | `unexpected character {char}` |  |
 | `unterminated-string` | `string` | `the string is not closed on its line` | A one-line string or a raw string has a line end or the end of input before its closing quote |
 |  | `template` | `the template has no closing backtick` | The end of input comes inside a template, the innermost literal still open |
@@ -605,6 +612,11 @@ expected, by the token found: a number token, `true`, `false` or `-`, `value`;
 `number`, `boolean`, `undefined`, `void`, `nil` or `object`, the template of
 that word; one upper-case letter, `letter`; any other lower-case word, a
 reserved word or `_`, `lower`; any other token or the end of input, `expected`.
+
+**`unexpected-token`.** `key` where the failing token stands where the `:` after
+a string key or a computed key `[e]` is needed, in a map literal or a map
+pattern: `{"a" = 1}`, `{[k] 1}`, `const {"a" = 1} = m;`. `default` everywhere
+else.
 
 **`unterminated-string`.** The literal is the innermost that is still open, the
 one whose span the diagnostic has (`01-language.md` 2.11 item 2).

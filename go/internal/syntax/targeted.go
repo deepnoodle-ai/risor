@@ -346,7 +346,9 @@ func (p *parser) targetToken(e *Error) *Error {
 			}
 		}
 	}
-	if f := p.innermost(fMap); p.lambdaMap(f) && !f.sep {
+	// E23, but not for a = directly after a string key or a computed key,
+	// which is a map literal with the wrong separator.
+	if f := p.innermost(fMap); p.lambdaMap(f) && !f.sep && !(t.Kind == Assign && p.entryKey(j-1) && prev.Kind != Word) {
 		setSpan(p.toks[f.open].Start, p.toks[f.open].End)
 		return set("block-without-const", "")
 	}

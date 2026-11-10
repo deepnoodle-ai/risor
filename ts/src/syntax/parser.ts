@@ -136,6 +136,20 @@ class Parser {
     return this.advance();
   }
 
+  /** The token where the `:` after a string key or a computed key is needed, when it is not `:` (f08 3.4 template `key`). */
+  private keyColon: Token | null = null;
+
+  /** The `:` after a string key or a computed key, in a map literal or a map pattern. */
+  private expectKeyColon(): void {
+    if (!this.isP(this.cur, ":")) this.keyColon = this.cur;
+    this.expect(":");
+  }
+
+  /** The template of `unexpected-token` at a token (f08 3.4). */
+  private unexpectedTemplate(t: Token): string {
+    return t === this.keyColon ? "key" : "default";
+  }
+
   // ---- diagnostics --------------------------------------------------------
 
   /** A parse diagnostic, with its message from the catalog (f08 3.4). */
@@ -178,13 +192,13 @@ class Parser {
     if (t.kind === "word" && t.text === "not" && this.toks[this.i] === t && this.isW(this.peek(1), "in")) {
       // 01 3.5: an operator `not in` that cannot follow spans both words.
       if (t === this.afterBranch) this.fail("needs-parentheses", { start: t.start, end: this.peek(1).end }, "after-branch", { token: "not in" });
-      this.fail("unexpected-token", { start: t.start, end: this.peek(1).end }, "default", { token: "not in" });
+      this.fail("unexpected-token", { start: t.start, end: this.peek(1).end }, this.unexpectedTemplate(t), { token: "not in" });
     }
     this.otherRows(t, operandStart);
     // f08 2.6 D4: an operator, a `?` or a step after the last branch of an if or the handler of a try.
     // It is tried after every row of 2.7 (f08 2.1 item 6).
     if (t === this.afterBranch && (CONTINUES.has(t.text) && t.kind === "punct" || this.isW(t, "in") || this.isW(t, "as") || this.isW(t, "is"))) this.fail("needs-parentheses", t, "after-branch");
-    this.fail("unexpected-token", t);
+    this.fail("unexpected-token", t, this.unexpectedTemplate(t));
   }
 
   /**
@@ -226,7 +240,7 @@ class Parser {
         this.fail("string-prefix", span, "prefix");
       }
     }
-    this.fail("unexpected-token", span);
+    this.fail("unexpected-token", span, this.unexpectedTemplate(t));
   }
 
   /** f08 2.7: the rows E3 to E25 that need only the failing token and the parser's state, those below `below`. */
@@ -296,8 +310,8 @@ class Parser {
         }
       }
     }
-    // E23: a lambda body in braces read as a map.
-    if (top?.kind === "map" && top.arrow === true && top.sep !== true) this.fail("block-without-const", top.at);
+    // E23: a lambda body in braces read as a map; not a `=` where the `:` after a string or computed key is needed.
+    if (top?.kind === "map" && top.arrow === true && top.sep !== true && !(this.isP(t, "=") && t === this.keyColon)) this.fail("block-without-const", top.at);
     // E24: after a program type.
     if (t === this.afterType && (this.isP(t, "+") || this.isP(t, "-") || this.isP(t, "*") || this.isP(t, "/") || this.isP(t, "%") || this.isP(t, "**") || this.isP(t, ".") || this.isP(t, "?.") || this.isP(t, "?.[") || this.isP(t, "[") || this.isP(t, "(") || this.isP(t, "{"))) {
       this.fail("needs-parentheses", t, "after-type");
@@ -1142,7 +1156,7 @@ class Parser {
         });
       } else if (t.kind === "string") {
         this.advance();
-        this.expect(":");
+        this.expectKeyColon();
         label.sep = true;
         const value = this.expr();
         entries.push({
@@ -1155,7 +1169,7 @@ class Parser {
         const k = this.expr();
         this.expect("]");
         this.close();
-        this.expect(":");
+        this.expectKeyColon();
         label.sep = true;
         const value = this.expr();
         entries.push({
@@ -1381,7 +1395,7 @@ class Parser {
         n = this.nameToken();
       } else if (t.kind === "string") {
         this.advance();
-        this.expect(":");
+        this.expectKeyColon();
         key = t.str!;
         n = this.nameToken();
       } else if (t.kind === "word") {
