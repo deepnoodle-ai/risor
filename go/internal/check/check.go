@@ -366,19 +366,39 @@ type checker struct {
 	dynSites   map[syntax.Span]bool
 	hostSites  map[syntax.Span]bool
 	valueSites map[syntax.Span]bool
+	// firstTy and firstSlots are the types of the first check that reached
+	// each node and bound each slot, for the assist stage (F12 3.12: a
+	// lambda checked more than once takes the first check). They are nil,
+	// and cost nothing, in an ordinary check.
+	firstTy    map[syntax.Node]*types.Type
+	firstSlots []*types.Type
+}
+
+// setTy records the type of node n in the check under way, and, when the
+// assist stage asked, the first type it was given.
+func (c *checker) setTy(n syntax.Node, t *types.Type) {
+	c.ty[n] = t
+	if c.firstTy != nil {
+		if _, ok := c.firstTy[n]; !ok {
+			c.firstTy[n] = t
+		}
+	}
 }
 
 // Check runs the type rules on a program whose names res resolved.
 func Check(prog *syntax.Program, res *static.Result, env *Env, exp Expect) *Result {
 	var c checker
-	t := c.run(prog, res, env, exp)
+	t := c.run(prog, res, env, exp, false)
 	return c.result(prog, t)
 }
 
 // run is the one path of a check, for Check and CheckTypes: it applies
 // the rules, leaves what it recorded in c, and gives the program's type.
 // The caller owns c, so that an ordinary check keeps it off the heap.
-func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Expect) *types.Type {
+//
+// With first, it also records the types of the first check of each node
+// and slot (firstTy, firstSlots).
+func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Expect, first bool) *types.Type {
 	*c = checker{
 		env: env, res: res,
 		slots:    make([]*types.Type, res.NSlots),
@@ -389,6 +409,10 @@ func (c *checker) run(prog *syntax.Program, res *static.Result, env *Env, exp Ex
 	}
 	for i := range c.slots {
 		c.slots[i] = types.Never
+	}
+	if first {
+		c.firstTy = map[syntax.Node]*types.Type{}
+		c.firstSlots = make([]*types.Type, res.NSlots)
 	}
 	c.findUses(prog)
 	var fs facts
@@ -534,6 +558,10 @@ func (c *checker) nullable(sp syntax.Span, t *types.Type) *types.Type {
 func (c *checker) setSlot(key any, t *types.Type) {
 	if s, ok := c.res.Slots[key]; ok && s >= 0 {
 		c.slots[s] = t
+		if c.firstSlots != nil && c.firstSlots[s] == nil {
+			c.firstSlots[s] = t
+		}
+
 	}
 }
 

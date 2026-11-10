@@ -10,7 +10,7 @@ import (
 // synth checks a node and gives its type (1.1).
 func (c *checker) synth(n syntax.Node, fs facts) *types.Type {
 	t := c.synth0(n, fs)
-	c.ty[n] = t
+	c.setTy(n, t)
 	return t
 }
 
@@ -270,7 +270,7 @@ func (c *checker) list(n *syntax.List, fs facts) *types.Type {
 	for _, it := range n.Items {
 		if s, ok := it.(*syntax.Spread); ok {
 			t := c.synth(s.Value, fs)
-			c.ty[s] = t
+			c.setTy(s, t)
 			sp := s.Value.Span()
 			t = c.nullable(sp, t)
 			switch {
@@ -302,16 +302,16 @@ func (c *checker) mapLit(n *syntax.Map, fs facts) *types.Type {
 				kt = c.nullable(ksp, kt)
 				c.mustFitM(ksp, kt, types.String, "kind", "key", "")
 				v := c.synth(e.Value, fs)
-				c.ty[e] = v
+				c.setTy(e, v)
 				rec = types.Merge(rec, types.MapOf(v))
 				continue
 			}
 			v := c.synth(e.Value, fs)
-			c.ty[e] = v
+			c.setTy(e, v)
 			rec = types.SetField(rec, e.Key, v)
 		case *syntax.Spread:
 			t := c.synth(e.Value, fs)
-			c.ty[e] = t
+			c.setTy(e, t)
 			sp := e.Value.Span()
 			t = c.nullable(sp, t)
 			switch {
@@ -377,7 +377,7 @@ func (c *checker) binary(n *syntax.Binary, fs facts) *types.Type {
 	t := c.synth(x, fs)
 	for i := len(spine) - 1; i >= 0; i-- {
 		t = c.binop(spine[i], t, fs)
-		c.ty[spine[i]] = t
+		c.setTy(spine[i], t)
 	}
 	return t
 }
@@ -557,7 +557,7 @@ func (c *checker) cond(n *syntax.Cond, fs facts) *types.Type {
 	all := types.JoinAll(append(thens, last))
 	if types.Size(all) <= types.MaxSize && types.Depth(all) <= types.MaxDepth {
 		for _, cn := range chain {
-			c.ty[cn] = all
+			c.setTy(cn, all)
 		}
 		return all
 	}
@@ -566,7 +566,7 @@ func (c *checker) cond(n *syntax.Cond, fs facts) *types.Type {
 		// Both parts were tested where they became types, so this Join
 		// works on types within the limit.
 		t = c.depthLimit(chain[i], types.Join(thens[i], t))
-		c.ty[chain[i]] = t
+		c.setTy(chain[i], t)
 	}
 	return t
 }

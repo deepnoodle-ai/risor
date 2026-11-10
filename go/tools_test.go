@@ -152,14 +152,42 @@ func TestFormatSmall(t *testing.T) {
 	}
 }
 
-func TestHoverCallAfterComment(t *testing.T) {
+func TestHoverCutTakesOnlyTheNextParen(t *testing.T) {
 	env, err := risor.NewEnv(risor.Declare("{xs: string[]}"))
 	assert.NoError(t, err)
-	// The text does not lex (#), and a comment stands between the word and
-	// its (: the word is still a method call (F12 3.2 item 3).
-	for _, text := range []string{"xs.first /* c */ ( #", "xs.first // c\n( #", "xs.first\t( #"} {
+	// Hover's cut takes a ( only when it is the very next character (F12
+	// 3.2 item 3), whether the text lexes or not (#).
+	for _, text := range []string{"xs.first(", "xs.first( #"} {
 		h := env.Hover(text, risor.Pos{Line: 1, Column: 5})
 		assert.NotNil(t, h, text)
 		assert.Equal(t, h.Kind, "method", text)
+	}
+	// White space or a comment between: the ( is not in the cut, and the
+	// word is read as a field.
+	for _, text := range []string{"xs.first (", "xs.first /* c */ (", "xs.first /* c */ ( #", "xs.first // c\n( #", "xs.first\t( #"} {
+		h := env.Hover(text, risor.Pos{Line: 1, Column: 5})
+		assert.NotNil(t, h, text)
+		assert.Equal(t, h.Kind, "field", text)
+	}
+}
+
+func TestHoverParameterTakesTheFirstCheck(t *testing.T) {
+	// A const lambda is checked at each use; a parameter's detail is that
+	// of the first check that reaches the position (F12 3.12).
+	env, err := risor.NewEnv(risor.Declare("{}"))
+	assert.NoError(t, err)
+	for _, c := range []struct {
+		text string
+		col  int
+		want string
+	}{
+		{`const f = x => x + x; [f(1), f("a")]`, 11, "int"},
+		{`const f = x => x + x; [f(1), f("a")]`, 16, "int"},
+		{`const f = x => x + x; [f("a"), f(1)]`, 16, `"a"`},
+	} {
+		h := env.Hover(c.text, risor.Pos{Line: 1, Column: c.col})
+		assert.NotNil(t, h, c.text)
+		assert.NotNil(t, h.Type, c.text)
+		assert.Equal(t, *h.Type, c.want, c.text)
 	}
 }

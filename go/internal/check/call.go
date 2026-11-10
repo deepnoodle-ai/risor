@@ -115,7 +115,7 @@ loop:
 			isPath = false
 			cur = c.project(s, cur, rs, fs)
 		}
-		c.ty[s] = cur
+		c.setTy(s, cur)
 		recv = s
 	}
 	if skipped {
@@ -843,7 +843,7 @@ func (c *checker) project(e *syntax.Each, cur *types.Type, rs syntax.Span, fs fa
 			if el.IsNever() && !before.IsNever() && len(c.diags) > nd {
 				failed = true
 			}
-			c.ty[rd] = el
+			c.setTy(rd, el)
 			recvSpan = rd.Span()
 		}
 		if next == nil {

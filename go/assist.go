@@ -1074,7 +1074,9 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *HoverInfo) 
 			prog = p
 		} else {
 			cut := we
-			if k+1 < len(toks) && toks[k+1].Kind == syntax.LParen {
+			// The ( that directly follows the word, with nothing between
+			// (F12 3.2 item 3).
+			if k+1 < len(toks) && toks[k+1].Kind == syntax.LParen && toks[k+1].Start == we {
 				cut = toks[k+1].End
 			}
 			prog = a.repairAt(cut)
@@ -1094,11 +1096,10 @@ func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *HoverInfo) 
 			return nil
 		}
 		cut := we
-		// The ( that follows the word, as the token after it: white space
-		// and comments may stand between (F12 3.2 item 3), as in the
-		// branch above that reads the tokens.
-		if j := skipBlank(a.src, we); j < len(a.src) && a.src[j] == '(' {
-			cut = j + 1
+		// The ( that directly follows the word, with no white space or
+		// comment between (F12 3.2 item 3).
+		if we < len(a.src) && a.src[we] == '(' {
+			cut = we + 1
 		}
 		toks, _, lerr := syntax.CutLex(a.src[:cut])
 		if lerr != nil {
@@ -1335,32 +1336,4 @@ func (a *assist) methodSig(r *types.Type, name string) (*string, *string) {
 		}
 	}
 	return nil, nil
-}
-
-// skipBlank passes over white space and comments from i, and gives the
-// index of the next code point; at an unterminated block comment it gives
-// the end of the text.
-func skipBlank(src []rune, i int) int {
-	for i < len(src) {
-		switch {
-		case src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r':
-			i++
-		case src[i] == '/' && i+1 < len(src) && src[i+1] == '/':
-			for i < len(src) && src[i] != '\n' {
-				i++
-			}
-		case src[i] == '/' && i+1 < len(src) && src[i+1] == '*':
-			j := i + 2
-			for j+1 < len(src) && !(src[j] == '*' && src[j+1] == '/') {
-				j++
-			}
-			if j+1 >= len(src) {
-				return len(src)
-			}
-			i = j + 2
-		default:
-			return i
-		}
-	}
-	return i
 }

@@ -3,7 +3,10 @@ package runner
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/deepnoodle-ai/risor/v3/internal/casefile"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -50,4 +53,25 @@ func TestVerdicts(t *testing.T) {
 	rs = RunFile(path)
 	assert.Equal(t, len(rs), 2)
 	assert.Equal(t, rs[0].Verdict, Invalid)
+}
+
+func TestOutcomeDescriptionWithEmptyFacts(t *testing.T) {
+	// F14 10.4: a case with facts, even an empty list, in the case or in
+	// the header, writes description after name; a case without does not.
+	path := filepath.Join(t.TempDir(), "facts.json")
+	assert.NoError(t, os.WriteFile(path, []byte(`[
+		{"name": "empty", "env": "{a: int}", "facts": [], "source": "1"},
+		{"name": "none", "env": "{a: int}", "source": "1"}
+	]`), 0o644))
+	f, err := casefile.LoadNoExpect(path)
+	assert.NoError(t, err)
+	assert.True(t, strings.HasPrefix(Outcome(f.Cases[0]), `{"name":"empty","description":`), Outcome(f.Cases[0]))
+	assert.False(t, strings.Contains(Outcome(f.Cases[1]), `"description"`), Outcome(f.Cases[1]))
+	head := filepath.Join(t.TempDir(), "head.json")
+	assert.NoError(t, os.WriteFile(head, []byte(`{"facts": [], "cases": [
+		{"name": "from the header", "env": "{a: int}", "source": "1"}
+	]}`), 0o644))
+	f, err = casefile.LoadNoExpect(head)
+	assert.NoError(t, err)
+	assert.True(t, strings.HasPrefix(Outcome(f.Cases[0]), `{"name":"from the header","description":`), Outcome(f.Cases[0]))
 }
