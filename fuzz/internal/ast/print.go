@@ -54,6 +54,8 @@ func Level(e Expr) int {
 		return BinaryLevel(e.Op)
 	case *Unary:
 		return LevelUnary
+	case *As:
+		return LevelRel // f04-conversion.md 2.4
 	}
 	return LevelPrimary
 }
@@ -454,6 +456,15 @@ func (w *printer) expr(e Expr, need int) {
 		}
 		w.s(" => ")
 		w.expr(e.Body, LevelExpr)
+	case *As:
+		// f04-conversion.md 2.5: the left operand may not be a ! expression
+		// written without parentheses.
+		if u, ok := e.X.(*Unary); ok && u.Op == "!" {
+			w.paren(e.X)
+		} else {
+			w.expr(e.X, LevelRel)
+		}
+		w.s(" " + e.Form + " " + e.Type)
 	case *Paren:
 		w.paren(e.X)
 	case *Raw:

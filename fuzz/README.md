@@ -64,6 +64,25 @@ text on the opening or closing line, bad indentation, a missing close, `r'''`, a
 raw string cut short, and line ends written CR or CR LF. `-nof3` leaves the
 package out.
 
+It also writes the forms of packages F4 and F5
+(`spec/packages/f04-conversion.md`, `spec/packages/f05-unions.md`):
+
+- `x as T` and `x is T`, with program types: the primitive types, literal sets,
+  lists, exact and open records, `map<T>`, nullable types, tagged unions of
+  records and unions with no tag, and named types;
+- named types declared by the case field `types` (a union `Shape`, a record
+  `Item`, a list `Items`), and, in loose cases, declarations that fail;
+- variables whose declared type is a tagged union, nullable at times, with a
+  value that conforms;
+- tests of a tag with `==`, `!=`, `in`, `not in` and `match` that narrow a union
+  and read a field of the variant; `v is T ? e : d`, where `e` uses `v` as `T`,
+  and two tests of `is` joined by `||`;
+- a map literal against a union, as the expected result (`returns`) and as the
+  subject of `as`;
+- in the mangled mode, their broken forms: an operator after a program type, a
+  `!` operand, a word that is no type, a key twice, an unclosed type, records
+  with no tag. `-nof4` leaves both packages out.
+
 The generator reaches all of Core: every operator and precedence level, `const`
 lines with patterns and defaults, lambdas and calls, `if`, `match`, blocks,
 `try`, `catch` and `fail`, nested templates, list and map literals with spreads
@@ -102,6 +121,7 @@ The status is 1 when there was any finding, else 0.
 | `-nocheck P` | The percent of cases with `"check": false`, 20 by default; -1 for none |
 | `-sound` | The soundness mode (below). `-cases` is then programs a round |
 | `-nof3` | Leave out the string forms of package F3 |
+| `-nof4` | Leave out the forms of packages F4 and F5 |
 | `-known=false` | Report the known differences (packages offered) as findings too |
 | `-exclude a,b` | Library entries not to call |
 | `-cmd name=command` | The `outcome` command of an implementation. The file is added at the end |
@@ -125,9 +145,11 @@ The implementations may offer different packages (`03-host.md` 3.11), and the
 `outcome` command cannot turn a package off. A package gives some texts that
 Core rejects a meaning, or a targeted parse code of its own. A difference that
 comes only from that is counted apart, by name, so that anything new stands out.
-`cmd/fuzz/known.go` lists the two forms: a targeted parse code where the others
-give a Core code, and a text that holds `as`, `is` or `[*]`. `-known=false`
-reports them as findings too.
+Every implementation offers F1 to F5, and Go offers more. `cmd/fuzz/known.go`
+lists the three forms of package F7 and F8 that only Go reads: a targeted parse
+code where the others give a Core code, a text that holds the projection `[*`,
+and `sortBy` with a direction. The texts of F4 and F5 are compared exactly.
+`-known=false` reports them as findings too.
 
 If a build fails and a program built before exists, the fuzzer says so and runs
 the old program.
@@ -140,9 +162,10 @@ GOWORK=off go run ./cmd/fuzz -sound -seed 1 -cases 300 -rounds 40
 
 Each program has an environment of declared types, made at random: the primitive
 types, literal sets, `| null`, lists, records with optional fields, open
-records, `map<T>`, `any` at the top and at depth, and an opaque type. For each
-program there are five value sets, each of which conforms to the declared types
-(18.1). They favour the edges: null where the type allows it, optional keys
+records, `map<T>`, `any` at the top and at depth, tagged unions (F5), named
+types (F4), and an opaque type. For each program there are five value sets, each
+of which conforms to the declared types (18.1, and for a union `f05-unions.md`
+7.1). They favour the edges: null where the type allows it, optional keys
 absent, the empty list, map and string, zero, `false`, the ends of the whole
 range, extra keys on an open record. Host functions and methods are stubbed,
 with results that conform to their result types; those that can fail are marked
@@ -150,19 +173,22 @@ with results that conform to their result types; those that can fail are marked
 
 Half of the programs are careful: they use a value only as its type allows. The
 other half are careless: they use an `any` value, a nullable value, an optional
-field or one of several kinds as if it were known. The checker decides which
-programs check clean. A clean program is run on each value set, and the fuzzer
-decides from the outcome line alone whether the promise holds:
+field, one of several kinds or one variant of a union as if it were known. Both
+write `x as T` (a `value` site), `x is T ? e : d` (a fact that narrows), and
+tests of a union's tag (facts that narrow to variants). The checker decides
+which programs check clean. A clean program is run on each value set, and the
+fuzzer decides from the outcome line alone whether the promise holds:
 
 | Outcome | Holds when |
 | --- | --- |
 | `null-operand`, `wrong-kind`, `missing-field` | At a `dynamic` site (promise 1) |
 | `index-range`, `divide-by-zero` | At an `index` or a `divide` site (promise 2) |
 | `invalid-argument`, `failed` | At a `value` site (promise 2) |
+| `not-conforming` (a failed `as`) | At the `value` site of that `as` (promise 2) |
 | `function-error` | At a `host` site (promise 2) |
 | `number-range`, a limit, `function-panic` | Always (promise 3) |
 | Any other run code | Never: the values conform, so nothing else can fail |
-| A value | It conforms to the reported `type` (promise 4) |
+| A value | It conforms to the reported `type` (promise 4); for a union, by its tag first |
 
 "At a site" is 18.3: a site of that class on the failing node, or on its
 operand, receiver, index or argument; for a pattern, on its key or name or on

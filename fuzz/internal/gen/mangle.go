@@ -32,6 +32,18 @@ var f3Broken = []string{
 	"\"\"\"\r\n  a\r\n  \"\"\"", "\"\"\"\r  a\r  \"\"\"", "\"\"\"\n\u00a0 a\n  \"\"\"",
 }
 
+// f4Broken are forms of packages F4 and F5 that do not parse or do not
+// check: an operator after a program type, a ! operand, a word that is no
+// type, a key twice, an unclosed type, records with no tag, a name the
+// environment does not declare (f04-conversion.md 2.4 to 2.6, 6.1).
+var f4Broken = []string{
+	"x as int + 1", "!x is int", "x is 3", "x as number", "x is not int",
+	"x as const", "x is {a: int, a: int}", "x as map<int", "x is (int",
+	"x as T", "x is Foo", "x as {a: int} | {b: string}", "x as int ?? 1",
+	"a ?? b as int", "x as int.f", "x as int[0]", "x is", "x as int[][]",
+	`x is {kind: "a"} | {kind: "a"}`, "x as `t`", "x is string?", "x as never",
+}
+
 // oddChars are code points a mangled program may gain in place of another.
 var oddChars = []string{
 	"\ufeff", "\u00a0", "\u0000", "\u0001", "\u007f", "\u0085", "\u2028",
@@ -102,8 +114,8 @@ func (g *Gen) mangleOnce(src string) string {
 	}
 	i := r.IntN(len(ts))
 	switch r.IntN(15) {
-	case 12: // a broken form of F3 in place of a token
-		ts[i] = " " + pick(r, f3Broken) + " "
+	case 12: // a broken form of F3, F4 or F5 in place of a token
+		ts[i] = " " + pick(r, append(append([]string(nil), f3Broken...), f4Broken...)) + " "
 	case 13: // every line end written CR LF, or CR alone
 		return strings.ReplaceAll(src, "\n", pick(r, []string{"\r\n", "\r"}))
 	case 14: // a text block or raw string cut short at its end

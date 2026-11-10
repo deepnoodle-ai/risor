@@ -48,6 +48,10 @@ func GenerateSound(lib *Library, opts Options, seed uint64, round, index int) *S
 		g.soundHosts(base)
 	}
 	g.frames = [][]bind{nil}
+	g.declared, g.valueTy = map[string]*types.Type{}, map[string]*types.Type{}
+	if !opts.NoF4 && r.IntN(4) == 0 {
+		g.namedTypes(base)
+	}
 	n := 1 + r.IntN(4)
 	var decls []*types.Type
 	var names []string
@@ -61,6 +65,10 @@ func GenerateSound(lib *Library, opts Options, seed uint64, round, index int) *S
 		t := g.declaredType(2)
 		decls = append(decls, t)
 		names = append(names, name)
+		g.declared[name] = t
+		if len(t.Union) > 0 {
+			g.unions = append(g.unions, unionVar{name: name, t: t})
+		}
 		g.bindName(name, g.tyForType(t, sp.Careful))
 	}
 	prog := g.program()
@@ -114,7 +122,11 @@ func (g *Gen) declaredType(depth int) *types.Type {
 			t = types.Prim("int")
 		}
 	case 8:
-		t = &types.Type{Num: 1, Str: true} // two kinds
+		if !g.opts.NoF4 && r.IntN(2) == 0 {
+			t = g.unionType() // a tagged union (f05-unions.md 2)
+		} else {
+			t = &types.Type{Num: 1, Str: true} // two kinds
+		}
 	case 9, 10:
 		t = types.ListOf(g.declaredType(depth - 1))
 	case 11:
@@ -166,7 +178,7 @@ func (g *Gen) valueFor(t *types.Type, depth int, edge bool) any {
 	if t.List != nil {
 		alts = append(alts, "list")
 	}
-	if t.Rec != nil {
+	if t.Rec != nil || len(t.Union) > 0 {
 		alts = append(alts, "rec")
 	}
 	if len(t.Opq) > 0 {
@@ -214,8 +226,12 @@ func (g *Gen) valueFor(t *types.Type, depth int, edge bool) any {
 		}
 		return out
 	case "rec":
+		rec := t.Rec
+		if len(t.Union) > 0 {
+			rec = pick(r, t.Union) // a union: one variant (f05-unions.md 7.1)
+		}
 		out := map[string]any{}
-		for _, f := range t.Rec.Fields {
+		for _, f := range rec.Fields {
 			if f.Opt && (edge || r.IntN(2) == 0) {
 				continue
 			}
@@ -227,13 +243,13 @@ func (g *Gen) valueFor(t *types.Type, depth int, edge bool) any {
 			}
 			out[f.Key] = g.valueFor(f.T, depth-1, edge)
 		}
-		if t.Rec.Rest != nil && !t.Rec.Rest.IsNever() && (r.IntN(2) == 0 || len(t.Rec.Fields) == 0 && !edge) {
+		if rec.Rest != nil && !rec.Rest.IsNever() && (r.IntN(2) == 0 || len(rec.Fields) == 0 && !edge) {
 			for range 1 + r.IntN(2) {
 				k := pick(r, []string{"zz", "extra", "n", "a-b", ""})
-				if t.Rec.Fields != nil && hasField(t.Rec, k) {
+				if rec.Fields != nil && hasField(rec, k) {
 					continue
 				}
-				out[k] = g.valueFor(t.Rec.Rest, depth-1, edge)
+				out[k] = g.valueFor(rec.Rest, depth-1, edge)
 			}
 		}
 		return out
@@ -281,6 +297,19 @@ func (g *Gen) tyForType(t *types.Type, careful bool) *Ty {
 			el = tyAny
 		}
 		kinds = append(kinds, listOf(el, -1))
+	}
+	if len(t.Union) > 0 {
+		// A careless program reads one variant's fields with no test of the
+		// tag; the checker reports maybe-absent there.
+		v := pick(g.r, t.Union)
+		var fs []TField
+		for _, f := range v.Fields {
+			fs = append(fs, TField{Name: f.Key, T: g.tyForType(f.T, careful)})
+		}
+		kinds = append(kinds, recordOf(fs))
+		if careful {
+			kinds = append(kinds, tyAny) // with a union, careful reads go by a tag test
+		}
 	}
 	if t.Rec != nil {
 		if len(t.Rec.Fields) == 0 {

@@ -23,7 +23,12 @@ type Type struct {
 	Lits []string // a literal set, sorted; used when Str is false
 	List *Type    // the element type, when a list is an alternative
 	Rec  *Record  // the record, when a map is an alternative
-	Opq  []string // opaque names, sorted
+	// Union holds the variants when the map alternative is a tagged union of
+	// package F5 (f05-unions.md 2): two or more records with a tag. Rec is
+	// then nil, and Tag is the tag's key.
+	Union []*Record
+	Tag   string
+	Opq   []string // opaque names, sorted
 }
 
 // Record is a record: its fields, sorted by key, and its rest (nil is
@@ -70,7 +75,7 @@ func ListOf(t *Type) *Type { return &Type{List: t} }
 
 // IsNever says whether t is the empty set.
 func (t *Type) IsNever() bool {
-	return !t.Any && !t.Null && !t.Bool && t.Num == 0 && !t.Str && len(t.Lits) == 0 && t.List == nil && t.Rec == nil && len(t.Opq) == 0
+	return !t.Any && !t.Null && !t.Bool && t.Num == 0 && !t.Str && len(t.Lits) == 0 && t.List == nil && t.Rec == nil && len(t.Union) == 0 && len(t.Opq) == 0
 }
 
 // Copy makes a shallow copy of t.
@@ -100,6 +105,17 @@ func Join(a, b *Type) *Type {
 		c.List = Join(a.List, b.List)
 	}
 	switch {
+	case len(a.Union) > 0 || len(b.Union) > 0:
+		// A Join never makes a union (f05-unions.md 4.1): the records join.
+		var all []*Record
+		for _, x := range []*Type{a, b} {
+			all = append(all, x.records()...)
+		}
+		r := all[0]
+		for _, x := range all[1:] {
+			r = joinRec(r, x)
+		}
+		c.Rec, c.Union, c.Tag = r, nil, ""
 	case a.Rec == nil:
 		c.Rec = b.Rec
 	case b.Rec != nil:
@@ -107,6 +123,76 @@ func Join(a, b *Type) *Type {
 	}
 	c.Opq = union(a.Opq, b.Opq)
 	return c
+}
+
+// records gives the records of t's map alternative: the record, or the
+// variants of a union.
+func (t *Type) records() []*Record {
+	if t.Rec != nil {
+		return []*Record{t.Rec}
+	}
+	return t.Union
+}
+
+// FindTag gives the tag of two or more records (f05-unions.md 2.1): the
+// least key that each requires with a literal set and nothing else, no
+// string in two of the sets. It reports false when they have none.
+func FindTag(rs []*Record) (string, bool) {
+	if len(rs) < 2 {
+		return "", false
+	}
+	var keys []string
+	for _, f := range rs[0].Fields {
+		keys = append(keys, f.Key)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		seen := map[string]bool{}
+		ok := true
+		for _, r := range rs {
+			f := r.field(k)
+			if f == nil || f.Opt || !isLitSet(f.T) {
+				ok = false
+				break
+			}
+			for _, l := range f.T.Lits {
+				if seen[l] {
+					ok = false
+				}
+				seen[l] = true
+			}
+		}
+		if ok {
+			return k, true
+		}
+	}
+	return "", false
+}
+
+func isLitSet(t *Type) bool {
+	return len(t.Lits) > 0 && !t.Any && !t.Null && !t.Bool && t.Num == 0 && !t.Str && t.List == nil && t.Rec == nil && len(t.Union) == 0 && len(t.Opq) == 0
+}
+
+// MakeUnion makes a type whose map alternative is the union of rs, or
+// reports false when they form none.
+func MakeUnion(rs []*Record) (*Type, bool) {
+	tag, ok := FindTag(rs)
+	if !ok {
+		return nil, false
+	}
+	return &Type{Union: rs, Tag: tag}, true
+}
+
+// variantOf gives the variant of a union whose tag set holds s.
+func (t *Type) variantOf(s string) *Record {
+	for _, r := range t.Union {
+		for _, l := range r.field(t.Tag).T.Lits {
+			if l == s {
+				return r
+			}
+		}
+	}
+	return nil
 }
 
 func union(a, b []string) []string {
@@ -273,10 +359,26 @@ func Conforms(v any, t *Type) bool {
 			}
 			return false
 		}
-		if t.Rec == nil {
+		rec := t.Rec
+		if len(t.Union) > 0 {
+			// f05-unions.md 7.1: the tag first, then that variant.
+			tv, ok := v[t.Tag].(string)
+			if !ok {
+				return false
+			}
+			rec = t.variantOf(tv)
+		}
+		if rec == nil {
 			return false
 		}
-		for _, f := range t.Rec.Fields {
+		return conformsRecord(v, rec)
+	}
+	return false
+}
+
+func conformsRecord(v map[string]any, rec *Record) bool {
+	{
+		for _, f := range rec.Fields {
 			x, ok := v[f.Key]
 			if !ok {
 				if !f.Opt {
@@ -289,16 +391,15 @@ func Conforms(v any, t *Type) bool {
 			}
 		}
 		for k, x := range v {
-			if t.Rec.field(k) != nil {
+			if rec.field(k) != nil {
 				continue
 			}
-			if t.Rec.Rest == nil || !Conforms(x, t.Rec.Rest) {
+			if rec.Rest == nil || !Conforms(x, rec.Rest) {
 				return false
 			}
 		}
 		return true
 	}
-	return false
 }
 
 // String prints a type as 05-types.md 3.9 says.
@@ -335,6 +436,19 @@ func (t *Type) String() string {
 	}
 	if t.Rec != nil {
 		alts = append(alts, t.Rec.String())
+	}
+	if len(t.Union) > 0 {
+		// f05-unions.md 2.4: by the least string of each variant's tag set.
+		vs := append([]*Record(nil), t.Union...)
+		least := func(r *Record) string {
+			ls := append([]string(nil), r.field(t.Tag).T.Lits...)
+			sort.Strings(ls)
+			return ls[0]
+		}
+		sort.Slice(vs, func(i, j int) bool { return least(vs[i]) < least(vs[j]) })
+		for _, r := range vs {
+			alts = append(alts, r.String())
+		}
 	}
 	alts = append(alts, t.Opq...)
 	if t.Null {
@@ -513,17 +627,37 @@ func (p *parser) str() (string, error) {
 	return out, nil
 }
 
+// typ reads a Type: its alternatives join, and its records form a tagged
+// union or are an error (f05-unions.md 3.1).
 func (p *parser) typ() (*Type, error) {
-	t, err := p.alt()
-	if err != nil {
-		return nil, err
-	}
-	for p.eat("|") {
+	t := Never
+	var recs []*Record
+	for {
 		u, err := p.alt()
 		if err != nil {
 			return nil, err
 		}
+		recs = append(recs, u.records()...)
+		u = u.Copy()
+		u.Rec, u.Union, u.Tag = nil, nil, ""
 		t = Join(t, u)
+		if !p.eat("|") {
+			break
+		}
+	}
+	switch {
+	case t.Any:
+		return Any, nil
+	case len(recs) == 1:
+		t = t.Copy()
+		t.Rec = recs[0]
+	case len(recs) > 1:
+		tag, ok := FindTag(recs)
+		if !ok {
+			return nil, fmt.Errorf("records that form no tagged union")
+		}
+		t = t.Copy()
+		t.Union, t.Tag = recs, tag
 	}
 	return t, nil
 }

@@ -183,6 +183,14 @@ type Lambda struct {
 	Body   Expr
 }
 
+// As is x as T or x is T of package F4 (f04-conversion.md 2.7). Type is the
+// program type, as text.
+type As struct {
+	Form string // "as" or "is"
+	X    Expr
+	Type string
+}
+
 // Paren is a pair of parentheses the printer would not need.
 type Paren struct{ X Expr }
 
@@ -210,6 +218,7 @@ func (*Index) isExpr()      {}
 func (*MethodCall) isExpr() {}
 func (*Lambda) isExpr()     {}
 func (*Paren) isExpr()      {}
+func (*As) isExpr()         {}
 func (*Raw) isExpr()        {}
 
 // Pattern is a pattern of a const line or a parameter.

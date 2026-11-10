@@ -32,6 +32,8 @@ var siteClass = map[string]string{
 	"invalid-argument": "value",
 	"failed":           "value",
 	"function-error":   "host",
+	// f04-conversion.md 6.6: a failed as is at its value site.
+	"not-conforming": "value",
 }
 
 var anywhere = map[string]bool{

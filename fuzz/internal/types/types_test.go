@@ -71,3 +71,38 @@ func TestOfValue(t *testing.T) {
 		t.Error("a value does not conform to its own type")
 	}
 }
+
+func TestUnions(t *testing.T) {
+	for _, c := range []struct{ in, out string }{
+		{`{kind: "rect", w: float, h: float} | {kind: "circle", r: float} | null`, `{kind: "circle", r: float} | {h: float, kind: "rect", w: float} | null`},
+		{`{a: "x", b: "q"} | {a: "y", b: "p"}`, `{a: "x", b: "q"} | {a: "y", b: "p"}`},
+		{`({kind: "a"} | {kind: "b"})[]`, `({kind: "a"} | {kind: "b"})[]`},
+		{`({kind: "a"} | {kind: "b"}) | {kind: "c"}`, `{kind: "a"} | {kind: "b"} | {kind: "c"}`},
+		{`{s: {kind: "a"} | {kind: "b", ...}}`, `{s: {kind: "a"} | {kind: "b", ...}}`},
+	} {
+		ty, err := Parse(c.in)
+		if err != nil {
+			t.Fatalf("%s: %v", c.in, err)
+		}
+		if ty.String() != c.out {
+			t.Errorf("%s printed as %s", c.in, ty)
+		}
+	}
+	for _, bad := range []string{`{a: int} | {b: string}`, `{kind: "a" | "b"} | {kind: "b"}`, `{kind: "a"} | {kind?: "b"}`, `{kind: "a"} | map<int>`} {
+		if _, err := Parse(bad); err == nil {
+			t.Errorf("%s: no error", bad)
+		}
+	}
+	shape, _ := Parse(`{kind: "circle", r: float} | {kind: "rect", h: float, w: float}`)
+	for val, want := range map[string]bool{
+		`{"kind": "rect", "w": 2, "h": 3}`: true, `{"kind": "rect", "w": 2}`: false,
+		`{"kind": "oval", "r": 1}`: false, `{"r": 1}`: false, `{"kind": "circle", "r": 1, "note": "x"}`: false,
+		`"circle"`: false, `{"kind": "circle", "r": 1}`: true,
+	} {
+		var v any
+		_ = json.Unmarshal([]byte(val), &v)
+		if Conforms(v, shape) != want {
+			t.Errorf("%s: want %v", val, want)
+		}
+	}
+}

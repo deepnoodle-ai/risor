@@ -28,6 +28,7 @@ func soundness(cfg *config) int {
 		runs                                   map[string]int
 		sites                                  map[string]int
 		undecided                              int
+		withAs, withIs, withUnion              int // clean programs with an as, an is, a union variable
 	}
 	st := make([]stat, len(cfg.impls))
 	for i := range st {
@@ -65,6 +66,16 @@ func soundness(cfg *config) int {
 				}
 				if v := sound.Judge(first.line, nodes); v.Clean {
 					st[k].clean++
+					src := p.Cases[0].Text()
+					if strings.Contains(src, " as ") {
+						st[k].withAs++
+					}
+					if strings.Contains(src, " is ") {
+						st[k].withIs++
+					}
+					if strings.Contains(p.Cases[0].VarTypes(), `"`) {
+						st[k].withUnion++
+					}
 					if p.Careful {
 						st[k].carefulClean++
 					}
@@ -150,6 +161,7 @@ func soundness(cfg *config) int {
 		s := st[k]
 		fmt.Printf("  %s: %d programs, %d checked clean (%d of %d careful, %d of %d careless), %d undecided runs\n",
 			im.Name, s.programs, s.clean, s.carefulClean, s.careful, s.clean-s.carefulClean, s.programs-s.careful, s.undecided)
+		fmt.Printf("    clean programs with an as %d, with an is %d, with a literal set or union in a declared type %d\n", s.withAs, s.withIs, s.withUnion)
 		fmt.Printf("    sites in clean programs: %s\n", counts(s.sites))
 		fmt.Printf("    runs of clean programs: %s\n", counts(s.runs))
 	}

@@ -48,6 +48,11 @@ type Stub struct {
 	Rows []Row
 }
 
+// NamedType is one entry of the case field types.
+type NamedType struct {
+	Name, Type string
+}
+
 // Limits are the limits of a case; a zero pointer field is not given.
 type Limits struct {
 	Steps, Allocation, Depth *int
@@ -68,6 +73,11 @@ type Case struct {
 	// NoCheck writes "check": false: the case is compiled with the static
 	// rules alone (03-host.md 3.10.3).
 	NoCheck bool
+	// Types are named types of package F4 (f04-conversion.md 9.1), in the
+	// order declared.
+	Types []NamedType
+	// Returns is the expected result, as type text (03-host.md 3.10.3).
+	Returns string
 	// Removed names library entries the environment removes (03-host.md
 	// 3.3.1 item 6), as the case field removed writes them.
 	Removed []string
@@ -84,6 +94,15 @@ func (c *Case) Text() string {
 	return c.Source
 }
 
+// VarTypes gives the declared types of the variables, joined.
+func (c *Case) VarTypes() string {
+	var parts []string
+	for _, v := range c.Vars {
+		parts = append(parts, v.Type)
+	}
+	return strings.Join(parts, "; ")
+}
+
 // Clone copies a case deeply enough for the reducer to change it.
 func (c *Case) Clone() *Case {
 	d := *c
@@ -96,6 +115,7 @@ func (c *Case) Clone() *Case {
 	}
 	d.Opaque = append([]string(nil), c.Opaque...)
 	d.Removed = append([]string(nil), c.Removed...)
+	d.Types = append([]NamedType(nil), c.Types...)
 	d.Methods = append([]Stub(nil), c.Methods...)
 	d.Functions = append([]Stub(nil), c.Functions...)
 	if c.Limits != nil {
@@ -253,6 +273,24 @@ func (c *Case) JSON() []byte {
 			parts[i] = typeKey(v.Name) + ": " + v.Type
 		}
 		o.field("env", jsonValue("{"+strings.Join(parts, ", ")+"}"))
+	}
+	if len(c.Types) > 0 {
+		var b bytes.Buffer
+		b.WriteByte('[')
+		for i, t := range c.Types {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			var to obj
+			to.field("name", jsonValue(t.Name))
+			to.field("type", jsonValue(t.Type))
+			b.Write(to.done())
+		}
+		b.WriteByte(']')
+		o.field("types", b.Bytes())
+	}
+	if c.Returns != "" {
+		o.field("returns", jsonValue(c.Returns))
 	}
 	if len(c.Opaque) > 0 {
 		names := make([]any, len(c.Opaque))

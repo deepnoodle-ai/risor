@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/fuzz/internal/ast"
+	"github.com/deepnoodle-ai/risor/fuzz/internal/types"
 )
 
 // Options steer the generator.
@@ -20,6 +21,8 @@ type Options struct {
 	NoCheckShare int
 	// NoRemoved leaves out the case field removed.
 	NoRemoved bool
+	// NoF4 leaves out the forms of packages F4 and F5.
+	NoF4 bool
 	// NoF3 leaves out the string forms of package F3.
 	NoF3 bool
 	// Exclude names library entries not to call, by name.
@@ -67,6 +70,12 @@ type Gen struct {
 	ns      string
 	tryBody int
 	sound   bool // the soundness mode: use the variables more, divide by them
+
+	// Packages F4 and F5.
+	declared map[string]*types.Type // the declared type of each variable
+	valueTy  map[string]*types.Type // the type of each variable's value
+	unions   []unionVar
+	named    map[string]*types.Type // the named types of the case
 	funcs   []*LibEntry
 	meths   []*LibEntry
 }
@@ -105,8 +114,15 @@ func Generate(lib *Library, opts Options, seed uint64, round, index int) *Case {
 	}
 	c := &Case{Name: fmt.Sprintf("r%d-c%d", round, index), Mode: mode}
 	g.loose = mode == Loose || mode == Mangled && r.IntN(2) == 0
+	g.declared, g.valueTy = map[string]*types.Type{}, map[string]*types.Type{}
 	g.env(c)
 	c.Prog = g.program()
+	if !opts.NoF4 && mode == Typed && g.named["Shape"] != nil && r.IntN(6) == 0 {
+		// A map literal against a union, by the expected result
+		// (f05-unions.md 6).
+		c.Returns = "Shape"
+		c.Prog.Result = g.unionLiteral(g.named["Shape"], 2)
+	}
 	if mode == Mangled {
 		c.Source = g.mangle(ast.Print(c.Prog))
 		c.Prog = nil
@@ -164,6 +180,9 @@ func (g *Gen) env(c *Case) {
 	if !g.opts.NoRemoved && r.IntN(12) == 0 {
 		g.removeEntries(c)
 	}
+	if !g.opts.NoF4 && r.IntN(4) == 0 {
+		g.namedTypes(c)
+	}
 	g.frames = [][]bind{nil}
 	nv := r.IntN(5)
 	used := map[string]bool{}
@@ -184,6 +203,10 @@ func (g *Gen) env(c *Case) {
 		}
 		decl, exact := g.declType(c, val)
 		v := Var{Name: name, Value: val, Type: decl}
+		if dt, err := types.Parse(decl); err == nil {
+			g.declared[name] = dt
+		}
+		g.valueTy[name] = types.OfValue(val)
 		if g.loose && r.IntN(15) == 0 {
 			v.Missing = true
 		}
@@ -193,6 +216,9 @@ func (g *Gen) env(c *Case) {
 			t = tyAny
 		}
 		g.bindName(name, t)
+	}
+	if !g.opts.NoF4 && r.IntN(3) == 0 {
+		g.addUnionVar(c)
 	}
 	if g.loose && r.IntN(12) == 0 {
 		// A declaration error: a bad name, a bad type text, a clash.
@@ -604,6 +630,9 @@ func (g *Gen) forms(t *Ty) []wform {
 	if g.loose {
 		fs = append(fs, wform{1, g.looseOddity})
 	}
+	if !g.opts.NoF4 {
+		fs = append(fs, wform{6, g.convForm})
+	}
 	return fs
 }
 
@@ -894,6 +923,11 @@ func (g *Gen) tryExpr(t *Ty, d int) ast.Expr {
 // risky makes an expression that is likely to fail with a code catch catches.
 func (g *Gen) risky(t *Ty, d int) ast.Expr {
 	r := g.r
+	if !g.opts.NoF4 && r.IntN(5) == 0 {
+		if e := g.asExpr(t, d); e != nil {
+			return e
+		}
+	}
 	x := r.IntN(9)
 	if !g.loose && (x == 3 || x >= 5 && x <= 7) {
 		// Each of these is a check diagnostic, so a typed program writes a

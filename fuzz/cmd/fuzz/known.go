@@ -23,8 +23,7 @@ import (
 //	               at the same span or at an earlier token the package
 //	               looks at
 //	package-form   those without the package agree on a parse failure, and
-//	               the text holds a form a later package gives a meaning:
-//	               as, is, or the projection [* (F4, F7)
+//	               the text holds the projection [* (F7)
 //	package-sortBy those without F7 report arity on a call of sortBy, which
 //	               F7 gives a second parameter, the direction
 //
@@ -34,18 +33,22 @@ import (
 // reduce) were fixed in all three implementations and are no longer listed.
 var knownNames = []string{"package-parse", "package-form", "package-sortBy"}
 
-// coreParseCodes are the parse codes of Core (01-language.md 14.2).
+// coreParseCodes are the parse codes every implementation reports: those of
+// Core (01-language.md 14.2), with bad-type-text, which F4 reports
+// (f04-conversion.md 2.6). The texts with as and is that F4 reads are
+// compared exactly, now that every implementation offers F4 and F5.
 var coreParseCodes = map[string]bool{
 	"unexpected-token": true, "unexpected-character": true,
 	"unterminated-string": true, "unterminated-comment": true,
 	"bad-escape": true, "line-continuation": true, "bad-number": true,
 	"literal-range": true, "nesting-exceeded": true, "text-block-open": true,
 	"text-block-close": true, "text-block-indent": true, "reserved-word": true,
+	"bad-type-text": true,
 }
 
-// laterForm finds a form that Core rejects and a later package reads: as and
-// is (F4), the projection [*] (F7).
-var laterForm = regexp.MustCompile(`\b(as|is)\b|\[\s*\*`)
+// laterForm finds a form that only a later package reads: the projection
+// [*] (F7).
+var laterForm = regexp.MustCompile(`\[\s*\*`)
 
 // sortByDirection finds a call of sortBy with a second argument, the
 // direction that F7 adds; in Core it is arity.
