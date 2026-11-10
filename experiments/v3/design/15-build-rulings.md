@@ -204,6 +204,7 @@ that the checker ends.
 | R92 | In a checked program the nesting of calls never passes 100, so the default depth limit of 200 is met only by a walk of data. |
 | R93 | A method call fits its receiver with the type the chain gives it at that step, so with null removed after `?.`: `report?.keys()` reports nothing for the receiver. |
 | R94 | When a const-bound lambda is passed by name, `xs.map(f)`, the use is the name: the `arity` diagnostic is on it, and the limit of R88 counts its nesting. |
+| R95 | A call handle is valid until its host function returns. A later use charges nothing and changes no run. The Go evaluator reuses run state between runs of one program, so without this rule a handle kept by mistake could charge another run. |
 
 The Go checker, the first of the three, passed all 1,441 cases of
 `suite/core-check/` (hand-derived before any checker existed) once rulings R81

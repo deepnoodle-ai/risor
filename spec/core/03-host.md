@@ -334,6 +334,10 @@ with `depth-exceeded`. No walk over host data loops for ever.
    (`02-evaluation.md`).
 5. A host function is never called at compile time, and its result is never
    cached, even when every argument is a literal.
+6. The call handle is valid until the function returns. A use of it after
+   that charges nothing and changes no run: `charge` and `allocate` refuse,
+   and the cancellation signal reads as cancelled. A binding in which the
+   handle cannot outlive the call meets this rule by construction.
 
 ### 3.5.3 What a host function returns
 
