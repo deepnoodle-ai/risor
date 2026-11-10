@@ -1048,7 +1048,8 @@ field `narrows`. In Core these are the list methods `filter` and `find`.
 
 A lambda has no type. Each use of a const-bound lambda is checked on its own,
 because only a use gives the parameter types. A **use** is a call by name, or
-the name given as a lambda argument at an `Fn` parameter. A read of the name as
+the name given as a lambda argument: at an `Fn` parameter, or to a method on an
+`any` receiver (13.3). A read of the name as
 a value is not a use: it is `not-a-value` (22.4), and it does not count as a
 reference for the row "No use" below.
 
@@ -1056,6 +1057,7 @@ reference for the row "No use" below.
 | --- | --- |
 | A call `f(a1, ..., an)` | It must give at least the required count of 22.3 and no more arguments than parameters (`arity`, a static rule, 22.5; the call has type `never`, and each plain argument is synthesized). Each plain argument is synthesized where the call stands. A lambda argument is `lambda-to-lambda` (13.2), and its parameter has type `never`. Each parameter's pattern is bound to its argument's type, with defaults by 12.4. The body is then checked in the scope, and under the facts, where the lambda was written. The call's type is the body's type. |
 | f as a lambda argument at an `Fn` | Checked as if the lambda were written there, by 13.5 step 3, in the scope and under the facts where the lambda was written. |
+| f as an argument of a method on an `any` receiver | Checked as if the lambda were written there, by 13.3: every parameter is bound to `any` and the body is synthesized, in the scope and under the facts where the lambda was written. Its sites are kept. So in ``const f = () => ``.l; m.r(f)`` with `m` of type `any`, the body is checked and `.l` on a string is `kind`. |
 | No use | A const-bound lambda whose name no `Call` and no argument in its scope refers to (a read of the name as a value does not count) is checked once, where it is written, with every parameter bound to `any`. The sites of that check are dropped. Its diagnostics stand. |
 | Static diagnostics in the body | Reported once, where the text stands, by 22, whether the lambda has no use, one use or many. A check of the body by the type rules reports none. |
 | Limits | Each use counts against the limits of 20.2 and 20.3. Passing either is `check-limit` on the use, which then has type `never`. |
