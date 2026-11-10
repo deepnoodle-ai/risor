@@ -36,7 +36,7 @@ chapter.
 | **Core diagnostic** | The first `parse` diagnostic of a text, with its code and span, as Core and the packages before F8 give it (`01-language.md` 14.1, F3 6.2, F4 2.6) |
 | **Failing token** | The token at which the Core diagnostic is reported, or the end of input |
 | **Targeted code** | A `parse` code of 2.11 that is not one of Core's 14 |
-| **Operand word** | A word read as a `Name` where a `Primary` stands, not followed by `(`: not after `.` or `?.`, not a key, not a pattern |
+| **Operand word** | A word read as a `Name` where a `Primary` stands, not followed by `(`: not after `.` or `?.`, not a key, not a shorthand entry of a map literal, not a pattern |
 | **Directly**, of code points | With no code point between |
 | **The token before, the token after** | The previous or the next token. White space and comments may stand between |
 | **Catalog** | `suite/messages.json` (the `run` phase, Core) and the two files of 3.1 |
@@ -92,6 +92,20 @@ F8 is part of version `3.0`. It adds no version number. Each entry of 3.1 has
    the parser is reading at the failing token. That production is fixed by the
    grammar of `01-language.md` 3.1 and the choices of 3.2, so it is the same in
    every implementation.
+6. **Precedence.** One Core diagnostic may meet the conditions of rows in more
+   than one section: a `|` where 3.4 rule 12 needs `catch` meets D13 and E10.
+   Then the first row in the order of 2.3 to 2.7 holds, with two exceptions: D4
+   is tried after every row of 2.7, and E24 is tried before E21. A Core
+   diagnostic at a token of the last row of 2.3 is mapped by the rows of 2.5
+   only; where none of them holds it stays `unexpected-token` (2.5 item 2). So
+   `try{m}|>` is `pipe-operator` (C5), `if (c) { 1 } f"x"` stays
+   `unexpected-token`, `try { 1 } | 2` is `missing-catch` (D13 before E10),
+   `try finally` is `finally-clause` (E3 before E6), `try { 1 } catch { 2 }
+   satisfies T` is `satisfies-operator` (E13, then D4), and `c ?[1] as int +
+   2` is `needs-parentheses` at the `+` (E24, then E21).
+7. **The innermost production.** A condition on the production the parser is
+   reading names the innermost production open at the failing token. So `x[(a:
+   b)]` is E9, not E8, and the `,` of `if (x[1, 2])` is not E5.
 
 ### 2.2 Terms of the conditions
 
@@ -245,7 +259,9 @@ item 2 keeps. They are tried in this order.
 
 1. E7: `x = 1`, `f(a = 1)` and `const a = 1 = 2; a` are `assignment`. A `=`
    where an operand must begin, as in `2 > = 1`, or in a pattern, as in `const
-   [...r = 1] = x;`, stays `unexpected-token`.
+   [...r = 1] = x;`, stays `unexpected-token`. A shorthand entry of a map
+   literal is an entry, not an `Expr`, so E7 does not hold after it: `x => { a =
+   1 }` is E23.
 2. E9: `(x: int) => x` at the top of a program, where `(` cannot begin a lambda,
    is the third case; `[1].map((x: int) => x)` is the second; `const n: int = 1;
    n` is the first.

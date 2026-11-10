@@ -174,3 +174,26 @@ func TestCheckMessages(t *testing.T) {
 	assert.Equal(t, msgs, []string{`{id: string, qty: int} has no field "nmae"`, "n may be null; its type is int | null"})
 	assert.Equal(t, risor.RenderLine(e.Diagnostics[:1]), "error[no-field] 1:3-1:7: {id: string, qty: int} has no field \"nmae\"\n")
 }
+
+func TestAssignmentAfterAnEntryKey(t *testing.T) {
+	// A shorthand entry and a key are not operands (f08-errors.md 1.1), so
+	// a = after one is not an assignment (E7, note 1): in a lambda's map
+	// body the block row E23 holds, elsewhere the Core code stands.
+	for _, c := range []struct{ src, code, span string }{
+		{"[1].map(x => { a = 1 })", "block-without-const", "[1, 14, 1, 15]"},
+		{`f(x => { "a" = 1 })`, "block-without-const", "[1, 8, 1, 9]"},
+		{"f(x => { [k] = 1 })", "block-without-const", "[1, 8, 1, 9]"},
+		{"f(x => { a: 1, b = 2 })", "unexpected-token", "[1, 18, 1, 19]"},
+		{"{a = 1}", "unexpected-token", "[1, 4, 1, 5]"},
+		// A value or a spread's operand is an operand.
+		{"f(x => { a: b = 1 })", "assignment", "[1, 15, 1, 16]"},
+		{"f(x => { ...a = 1 })", "assignment", "[1, 15, 1, 16]"},
+		{"f(a = 1)", "assignment", "[1, 5, 1, 6]"},
+	} {
+		_, err := risor.Parse(c.src)
+		var e *risor.Error
+		assert.True(t, errors.As(err, &e), c.src)
+		assert.Equal(t, e.Diagnostics[0].Code, c.code, c.src)
+		assert.Equal(t, e.Diagnostics[0].Span.String(), c.span, c.src)
+	}
+}

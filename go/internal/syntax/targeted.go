@@ -100,6 +100,41 @@ func (p *parser) innermost(kinds ...uint8) *frame {
 	return nil
 }
 
+// entryKey reports whether the tokens of the entry being read in the
+// innermost open map literal end at token k as a key or a shorthand entry:
+// a word, a string, or a computed key [e]. Neither is an operand, so a =
+// after one is not an assignment (f08-errors.md 1.1, operand word; 2.7, E7
+// note 1; 2.1 item 7).
+func (p *parser) entryKey(k int) bool {
+	if len(p.lastCtx) == 0 {
+		return false
+	}
+	f := &p.lastCtx[len(p.lastCtx)-1]
+	if f.kind != fMap || f.entry > k {
+		return false
+	}
+	first := p.toks[f.entry]
+	if f.entry == k {
+		return first.Kind == Word || first.Kind == TokString
+	}
+	if first.Kind != LBrack || p.toks[k].Kind != RBrack {
+		return false
+	}
+	depth := 0
+	for i := f.entry; i <= k; i++ {
+		switch p.toks[i].Kind {
+		case LBrack, OptLBrack:
+			depth++
+		case RBrack:
+			depth--
+			if depth == 0 && i < k {
+				return false
+			}
+		}
+	}
+	return depth == 0
+}
+
 // lambdaMap reports whether a map's { is the token after the => of a lambda.
 func (p *parser) lambdaMap(f *frame) bool {
 	return f != nil && f.kind == fMap && f.open > 0 && p.marked(f.open-1, mLambdaArrow)
@@ -232,7 +267,7 @@ func (p *parser) targetToken(e *Error) *Error {
 		return set("if-form", "call")
 	case e.Rule == "E6":
 		return set("try-form", "")
-	case t.Kind == Assign && j > 0 && operandEnd(prev) && p.innermost(fPattern, fMapPat) == nil:
+	case t.Kind == Assign && j > 0 && operandEnd(prev) && p.innermost(fPattern, fMapPat) == nil && !p.entryKey(j-1):
 		return set("assignment", "assign")
 	case e.Rule == "E8":
 		return set("slice-syntax", "")

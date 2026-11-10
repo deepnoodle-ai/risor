@@ -1,0 +1,1123 @@
+[
+ {
+  "name": "C5 before D13: try{m}|>",
+  "source": "try{m}|>",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "pipe-operator",
+     "span": [
+      1,
+      7,
+      1,
+      9
+     ],
+     "message": "|> is not an operator; write f(x), or call a method"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C1 before D11: if (c) { 1 } === 2",
+  "source": "if (c) { 1 } === 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      14,
+      1,
+      17
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C3 before D4: if (c) { 1 } else { 2 } += 1",
+  "source": "if (c) { 1 } else { 2 } += 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      25,
+      1,
+      27
+     ],
+     "message": "+= does not exist: a binding cannot be changed; bind a new name with const"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C4 before D15: try { 1 } catch (++) { 2 }",
+  "source": "try { 1 } catch (++) { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      18,
+      1,
+      20
+     ],
+     "message": "++ does not exist: a binding cannot be changed; write x + 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C6 before D13: try { 1 } '''a'''",
+  "source": "try { 1 } '''a'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      11,
+      1,
+      14
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a token of the last row of 2.3 is mapped by 2.5 only, and C9 does not hold: if (c) { 1 } f\"x\"",
+  "source": "if (c) { 1 } f\"x\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "unexpected f"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C1 before E4: if === 1",
+  "source": "if === 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      4,
+      1,
+      7
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C5 before E6: try |> f",
+  "source": "try |> f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "pipe-operator",
+     "span": [
+      1,
+      5,
+      1,
+      7
+     ],
+     "message": "|> is not an operator; write f(x), or call a method"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C1 before E15: switch === 1",
+  "source": "switch === 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      8,
+      1,
+      11
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C4 before E16: typeof ++x",
+  "source": "typeof ++x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "++ does not exist: a binding cannot be changed; write x + 1"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C1 before E21: c?[1] === 2",
+  "source": "c?[1] === 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      7,
+      1,
+      10
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C1 before E23: [1].map(x => { a === b })",
+  "source": "[1].map(x => { a === b })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "strict-equality",
+     "span": [
+      1,
+      18,
+      1,
+      21
+     ],
+     "message": "=== is not an operator; write ==, which converts nothing"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C7 before C9: r'''a'''",
+  "source": "r'''a'''",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "text-block-quote",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a text block is written with three double quotes, not '''"
+    }
+   ]
+  }
+ },
+ {
+  "name": "A1 before A2: #\"a\"",
+  "source": "#\"a\"",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a raw string has no # guards; write the text in another form, or interpolate what a raw string cannot hold"
+    }
+   ]
+  }
+ },
+ {
+  "name": "A3 before A4: $'a'",
+  "source": "$'a'",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "string-prefix",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "$ is not a string prefix; only a lower-case r directly before the quote makes a raw string"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D3 before E1: a ?? b as const",
+  "source": "a ?? b as const",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      8,
+      1,
+      10
+     ],
+     "message": "put one side of as in parentheses: ?? does not mix with ||, &&, ==, !=, <, <=, >, >=, in, not in, as or is without them"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D16 before E1: !x as const",
+  "source": "!x as const",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      1,
+      1,
+      2
+     ],
+     "message": "a prefix ! cannot stand before as; write !(x as T), or put the ! and its operand in parentheses"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E7 before D4: if (c) { 1 } else { 2 } = 3",
+  "source": "if (c) { 1 } else { 2 } = 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      25,
+      1,
+      26
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "E10 before D4: try { 1 } catch { 2 } | 3",
+  "source": "try { 1 } catch { 2 } | 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      23,
+      1,
+      24
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E13 before D4: if (c) { 1 } else { 2 } satisfies T",
+  "source": "if (c) { 1 } else { 2 } satisfies T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "satisfies-operator",
+     "span": [
+      1,
+      25,
+      1,
+      34
+     ],
+     "message": "satisfies is not an operator; x as T tests a value when the program runs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E25 before D4: if (c) { 1 } else { 2 } !is T",
+  "source": "if (c) { 1 } else { 2 } !is T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "negated-is",
+     "span": [
+      1,
+      25,
+      1,
+      26
+     ],
+     "message": "is has no negated form; write !(x is T)"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D11 before E7: if (c) { 1 } = 2",
+  "source": "if (c) { 1 } = 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "an if needs an else branch, found ="
+    }
+   ]
+  }
+ },
+ {
+  "name": "D11 before E13: if (c) { 1 } satisfies T",
+  "source": "if (c) { 1 } satisfies T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-else",
+     "span": [
+      1,
+      14,
+      1,
+      23
+     ],
+     "message": "an if needs an else branch, found satisfies"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D13 before E10: try { 1 } | 2",
+  "source": "try { 1 } | 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "missing-catch",
+     "span": [
+      1,
+      11,
+      1,
+      12
+     ],
+     "message": "a try needs a catch, found |"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D14 before E10: try { 1 } catch | 2",
+  "source": "try { 1 } catch | 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-form",
+     "span": [
+      1,
+      17,
+      1,
+      18
+     ],
+     "message": "the body of a try and its handler are written in braces, found |"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D14 before E3: try { 1 } catch finally { 2 }",
+  "source": "try { 1 } catch finally { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-form",
+     "span": [
+      1,
+      17,
+      1,
+      24
+     ],
+     "message": "the body of a try and its handler are written in braces, found finally"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D15 before E10: try { 1 } catch (e | f) { 2 }",
+  "source": "try { 1 } catch (e | f) { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "catch-name",
+     "span": [
+      1,
+      20,
+      1,
+      21
+     ],
+     "message": "the parentheses after catch hold one name, found |; leave them out when the error is not used"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E3 before E6: try finally",
+  "source": "try finally",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "finally-clause",
+     "span": [
+      1,
+      5,
+      1,
+      12
+     ],
+     "message": "there is no finally: nothing in a program has an effect to undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E3 before E4: if finally",
+  "source": "if finally",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "finally-clause",
+     "span": [
+      1,
+      4,
+      1,
+      11
+     ],
+     "message": "there is no finally: nothing in a program has an effect to undo"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E4 before E10: if (c) | 1",
+  "source": "if (c) | 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "if-form",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "the test of an if is written in parentheses and each branch in braces, found |"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E4 before E13: if (c) satisfies T",
+  "source": "if (c) satisfies T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "if-form",
+     "span": [
+      1,
+      8,
+      1,
+      17
+     ],
+     "message": "the test of an if is written in parentheses and each branch in braces, found satisfies"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E6 before E10: try | 1",
+  "source": "try | 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-form",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "the body of a try and its handler are written in braces, found |"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E6 before E13: try satisfies T",
+  "source": "try satisfies T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "try-form",
+     "span": [
+      1,
+      5,
+      1,
+      14
+     ],
+     "message": "the body of a try and its handler are written in braces, found satisfies"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E7 before E15: switch = 1",
+  "source": "switch = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "E7 before E16: typeof = 1",
+  "source": "typeof = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "E7 before E17: type = 1",
+  "source": "type = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      6,
+      1,
+      7
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "E7 before E18: export = 1",
+  "source": "export = 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "E7 before E21: c?[1] = 2",
+  "source": "c?[1] = 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "assignment",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "a binding cannot be reassigned; bind a new name with const, or compare with =="
+    }
+   ]
+  }
+ },
+ {
+  "name": "E9 at the innermost production, not E8: x[(a: b)]",
+  "source": "x[(a: b)]",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-annotation",
+     "span": [
+      1,
+      5,
+      1,
+      6
+     ],
+     "message": "types are inferred; remove the annotation"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E5 at the innermost production does not hold: if (x[1, 2]) { 1 } else { 2 }",
+  "source": "if (x[1, 2]) { 1 } else { 2 }",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unexpected-token",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "unexpected ,"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E9 before E16: (typeof: 1)",
+  "source": "(typeof: 1)",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "type-annotation",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "types are inferred; remove the annotation"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E10 before E15: switch | 1",
+  "source": "switch | 1",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E10 before E16: typeof | x",
+  "source": "typeof | x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      8,
+      1,
+      9
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E10 before E21: c?[1] | 2",
+  "source": "c?[1] | 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      7,
+      1,
+      8
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E10 before E23: [1].map(x => { a | b })",
+  "source": "[1].map(x => { a | b })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "bitwise-operator",
+     "span": [
+      1,
+      18,
+      1,
+      19
+     ],
+     "message": "| is not an operator here; write || for a logical or"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E13 before E15: switch satisfies T",
+  "source": "switch satisfies T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "satisfies-operator",
+     "span": [
+      1,
+      8,
+      1,
+      17
+     ],
+     "message": "satisfies is not an operator; x as T tests a value when the program runs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E14 before E16: typeof instanceof T",
+  "source": "typeof instanceof T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "instanceof-operator",
+     "span": [
+      1,
+      8,
+      1,
+      18
+     ],
+     "message": "instanceof is not an operator; write x is T"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E13 before E21: c?[1] satisfies T",
+  "source": "c?[1] satisfies T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "satisfies-operator",
+     "span": [
+      1,
+      7,
+      1,
+      16
+     ],
+     "message": "satisfies is not an operator; x as T tests a value when the program runs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E13 before E23: [1].map(x => { a satisfies T })",
+  "source": "[1].map(x => { a satisfies T })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "satisfies-operator",
+     "span": [
+      1,
+      18,
+      1,
+      27
+     ],
+     "message": "satisfies is not an operator; x as T tests a value when the program runs"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E15 before E21: c?[1] + switch x",
+  "source": "c?[1] + switch x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "switch-statement",
+     "span": [
+      1,
+      9,
+      1,
+      15
+     ],
+     "message": "there is no switch or case; write a match"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E16 before E21: c?[1] + typeof x",
+  "source": "c?[1] + typeof x",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "typeof-operator",
+     "span": [
+      1,
+      9,
+      1,
+      15
+     ],
+     "message": "typeof is not an operator; write type(x) for the kind, or x is T for a test"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E24 before E21: c ?[1] as int + 2",
+  "source": "c ?[1] as int + 2",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      15,
+      1,
+      16
+     ],
+     "message": "put the as or is test in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "D4 when no row of 2.7 holds: if (c) { 1 } else { 2 } + 3",
+  "source": "if (c) { 1 } else { 2 } + 3",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "needs-parentheses",
+     "span": [
+      1,
+      25,
+      1,
+      26
+     ],
+     "message": "an if or a try is a whole expression; put it in parentheses before +"
+    }
+   ]
+  }
+ },
+ {
+  "name": "C5 before D4: try { 1 } catch { 2 } |> f",
+  "source": "try { 1 } catch { 2 } |> f",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "pipe-operator",
+     "span": [
+      1,
+      23,
+      1,
+      25
+     ],
+     "message": "|> is not an operator; write f(x), or call a method"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E21 before E25: c?[1] !is T",
+  "source": "c?[1] !is T",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "optional-index",
+     "span": [
+      1,
+      2,
+      1,
+      3
+     ],
+     "message": "an optional index is written ?.[ with a dot"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E22 before E23: [1].map(x => {a-b: x})",
+  "source": "[1].map(x => {a-b: x})",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "unquoted-key",
+     "span": [
+      1,
+      15,
+      1,
+      18
+     ],
+     "message": "a key that is not a word is quoted: write \"a-b\""
+    }
+   ]
+  }
+ },
+ {
+  "name": "E23 before E25: [1].map(x => { a !is T })",
+  "source": "[1].map(x => { a !is T })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "block-without-const",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "E7 does not hold in a map entry, so E23: [1].map(x => { a = 1 })",
+  "source": "[1].map(x => { a = 1 })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "block-without-const",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a shorthand entry is not an operand word, so E23: [1].map(x => { typeof x })",
+  "source": "[1].map(x => { typeof x })",
+  "expect": {
+   "phase": "parse",
+   "diagnostics": [
+    {
+     "code": "block-without-const",
+     "span": [
+      1,
+      14,
+      1,
+      15
+     ],
+     "message": "a lambda body in braces is a map; write the expression without braces, or start a block with a const line"
+    }
+   ]
+  }
+ }
+]
