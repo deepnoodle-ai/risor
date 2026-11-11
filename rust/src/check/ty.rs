@@ -332,10 +332,6 @@ impl Ty {
             fills: Default::default(),
         })
     }
-    /// `{}`: the empty map only.
-    pub fn empty_map() -> Ty {
-        Ty::map_of(Ty::never())
-    }
     pub fn opaque(n: &str) -> Ty {
         Ty {
             opaque: [n.to_string()].into(),
@@ -414,10 +410,6 @@ impl Ty {
         let mut t = self.clone();
         t.null = false;
         t
-    }
-
-    pub fn has_null(&self) -> bool {
-        self.null
     }
 
     /// The record of a type whose map slot holds one.

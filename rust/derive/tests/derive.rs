@@ -1,12 +1,14 @@
 //! The derive of F1 6.3: the type of a struct, and the presentation of its
 //! values, which must agree.
 
-use risor::{describe_host_type, Data, Env, HostMap, HostType, Opaque, OpaqueType, View};
+use risor::{type_of, Data, Env, HostMap, HostType, Opaque, OpaqueType, View};
 use risor_derive::Host;
 use std::collections::{BTreeMap, HashMap};
 
 fn text<T: HostType + ?Sized>() -> String {
-    describe_host_type::<T>().unwrap_or_else(|e| format!("error: {e}"))
+    type_of::<T>()
+        .map(|t| t.to_string())
+        .unwrap_or_else(|e| format!("error: {e}"))
 }
 
 #[derive(Host)]
@@ -92,35 +94,35 @@ fn a_value_is_presented_as_its_type_says() {
 #[test]
 fn a_derived_variable_checks_and_runs() {
     let env = Env::builder().var_host::<Order>("order").build().unwrap();
-    assert_eq!(
-        env.describe()
-            .get("variables")
-            .unwrap()
-            .get("order")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        text::<Order>()
-    );
+    let Data::Map(d) = env.describe() else {
+        panic!("a description is a map")
+    };
+    let Some(Data::Map(vars)) = d.get("variables") else {
+        panic!("variables")
+    };
+    assert_eq!(vars.get("order"), Some(&Data::Str(text::<Order>())));
     let src = r#"`${order["customer-name"]}: ${len(order.lines)} ${order?.note ?? "none"} ${order.type}`"#;
-    let p = risor::compile(&env, risor::parse(src).unwrap()).unwrap();
+    let p = env
+        .compile(&risor::parse(src).unwrap(), Default::default())
+        .unwrap();
     let mut vars: HashMap<String, Order> = HashMap::new();
     vars.insert("order".into(), order(None));
-    let out = p.run(&vars);
     assert_eq!(
-        format!("{:?}", out.result.unwrap()),
+        format!("{:?}", p.run(&vars).unwrap()),
         format!(
             "{:?}",
             risor::Value::from_data(&Data::Str("Ada: 1 none web".into()))
         )
     );
     // The record is exact: a key it does not list is `no-field`.
-    let e = risor::compile(&env, risor::parse("order.secret").unwrap())
+    let e = env
+        .compile(&risor::parse("order.secret").unwrap(), Default::default())
         .err()
         .unwrap();
     assert_eq!(e.diagnostics[0].code, "no-field");
     // `note` is optional.
-    let e = risor::compile(&env, risor::parse("order.note").unwrap())
+    let e = env
+        .compile(&risor::parse("order.note").unwrap(), Default::default())
         .err()
         .unwrap();
     assert_eq!(e.diagnostics[0].code, "maybe-absent");
@@ -148,7 +150,12 @@ fn an_opaque_field_names_its_registered_type() {
         .var_host::<Event>("e")
         .build()
         .unwrap();
-    let p = risor::compile(&env, risor::parse("e.at == e.later").unwrap()).unwrap();
+    let p = env
+        .compile(
+            &risor::parse("e.at == e.later").unwrap(),
+            Default::default(),
+        )
+        .unwrap();
     let t = Opaque::new(Time(5));
     assert_eq!(t.get().0, 5);
     let ev = Event {
@@ -157,8 +164,8 @@ fn an_opaque_field_names_its_registered_type() {
     };
     let mut vars = HashMap::new();
     vars.insert("e".to_string(), ev);
-    let out = p.run(&vars).result.unwrap();
-    assert!(out.truthy(), "one Opaque is one host value");
+    let out = p.run(&vars).unwrap();
+    assert!(risor::truthy(&out), "one Opaque is one host value");
 }
 
 #[derive(Host)]
@@ -252,6 +259,6 @@ fn the_round_trip_of_a_derived_environment() {
         .var_host::<Event>("event")
         .build()
         .unwrap();
-    let e2 = Env::from_description(&env.describe()).unwrap();
+    let e2 = Env::from_description(&env.description_text()).unwrap();
     assert_eq!(e2.description_text(), env.description_text());
 }

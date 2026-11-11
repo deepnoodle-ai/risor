@@ -14,9 +14,8 @@
 //! one JSON line for each program: impl, program, compile_ns, run_ns, steps,
 //! allocated.
 
-use risor::json::Json;
-use risor::value::eq_data;
-use risor::{compile, parse, Data, Env, Limits};
+use risor::__private::{eq_data, parse_json, Json};
+use risor::{parse, CompileOptions, Data, Env, Limits};
 use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::path::Path;
@@ -72,10 +71,10 @@ fn main() {
     files.sort();
     for path in files {
         let text = std::fs::read_to_string(&path).unwrap();
-        let f = risor::json::parse(&text).unwrap();
+        let f = parse_json(&text).unwrap();
         let limits = f.get("limits").unwrap();
         let env = Env::builder()
-            .vars(f.get("env").unwrap().as_str().unwrap())
+            .var_record(f.get("env").unwrap().as_str().unwrap())
             .limits(Limits {
                 steps: Some(limits.get("steps").unwrap().as_f64().unwrap() as u64),
                 allocation: Some(limits.get("allocation").unwrap().as_f64().unwrap() as u64),
@@ -95,18 +94,18 @@ fn main() {
             }
             let src = c.get("source").unwrap().as_str().unwrap();
             let expect = c.get("expect").unwrap();
-            let build =
-                || compile(&env, parse(src).unwrap()).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let build = || {
+                env.compile(&parse(src).unwrap(), CompileOptions::default())
+                    .unwrap_or_else(|e| panic!("{name}: {e}"))
+            };
             let p = build();
-            let out = p.run(&vars);
-            let value = out
-                .result
-                .unwrap_or_else(|e| panic!("{name}: {}", e.message()));
+            let (result, usage) = p.measure(&vars);
+            let value = result.unwrap_or_else(|e| panic!("{name}: {e}"));
             assert!(
                 eq_data(&value, &data(expect.get("value").unwrap())),
                 "{name}: value differs from expect: {value:?}"
             );
-            let (steps, allocated) = (out.usage.steps, out.usage.allocated);
+            let (steps, allocated) = (usage.steps, usage.allocated);
             assert_eq!(
                 (steps as f64, allocated as f64),
                 (
@@ -119,8 +118,7 @@ fn main() {
                 black_box(build());
             });
             let run_ns = median(|| {
-                let out = p.run(&vars);
-                black_box(out.result.is_ok());
+                black_box(p.run(&vars).is_ok());
             });
             println!(
                 "{{\"impl\":\"rust\",\"program\":\"{name}\",\"compile_ns\":{compile_ns},\"run_ns\":{run_ns},\"steps\":{steps},\"allocated\":{allocated}}}"

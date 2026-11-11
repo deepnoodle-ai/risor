@@ -19,28 +19,46 @@ use crate::source::{Source, Span};
 /// At most this many levels may be open at once (13.2).
 pub const MAX_LEVELS: u32 = 100;
 
-/// A parsed program.
+/// A parsed program (`05-host-api.md` E.4). It checks, compiles and runs
+/// against an environment: [`Env::check`](crate::Env::check) and
+/// [`Env::compile`](crate::Env::compile).
 #[derive(Clone, Debug)]
-pub struct Parsed {
-    pub source: Source,
-    pub ast: Ast,
+pub struct Expr {
+    pub(crate) source: Source,
+    pub(crate) ast: Ast,
+}
+
+impl Expr {
+    /// The text of the program, as parsed: a U+FEFF at the start is not part
+    /// of it.
+    pub fn text(&self) -> String {
+        self.source.chars().iter().collect()
+    }
+
+    /// The analysis of the program (F2 3.1): the names it reads, the paths
+    /// it reads through them and the calls it makes. It needs no
+    /// environment and never fails.
+    pub fn analyze(&self) -> crate::analysis::Analysis {
+        crate::analysis::analyze(self)
+    }
 }
 
 /// Parse the text of a program. A failure has phase `parse` and one
 /// diagnostic: the first, with the targeted code of `f08-errors.md` 2 where
 /// one applies.
-pub fn parse(text: &str) -> Result<Parsed, Error> {
+pub fn parse(text: &str) -> Result<Expr, Error> {
     parse_with(text, false)
 }
 
 /// Parse as `parse` does, but give the Core diagnostic: the first diagnostic
 /// as an implementation without package F8 finds it (`f08-errors.md` 2.1
 /// item 1), with its message.
-pub fn parse_core(text: &str) -> Result<Parsed, Error> {
+#[cfg(test)]
+pub fn parse_core(text: &str) -> Result<Expr, Error> {
     parse_with(text, true)
 }
 
-fn parse_with(text: &str, core: bool) -> Result<Parsed, Error> {
+fn parse_with(text: &str, core: bool) -> Result<Expr, Error> {
     let source = Source::new(text);
     let ast = {
         let toks = lex(&source).map_err(|d| {
@@ -70,7 +88,7 @@ fn parse_with(text: &str, core: bool) -> Result<Parsed, Error> {
         p.ast.root = root;
         p.ast
     };
-    Ok(Parsed { source, ast })
+    Ok(Expr { source, ast })
 }
 
 /// The `parse` codes of Core and of F3 and F4 (`01-language.md` 14.2).

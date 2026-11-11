@@ -233,11 +233,11 @@ pub struct Outcome<'h> {
 
 impl Program {
     /// Run the program with variables lent for the run.
-    pub fn run<'h>(&'h self, vars: &'h dyn Vars) -> Outcome<'h> {
-        self.run_with(vars, RunOptions::default())
+    pub(crate) fn outcome<'h>(&'h self, vars: &'h dyn Vars) -> Outcome<'h> {
+        self.outcome_with(vars, RunOptions::default())
     }
 
-    pub fn run_with<'h>(&'h self, vars: &'h dyn Vars, opts: RunOptions) -> Outcome<'h> {
+    pub(crate) fn outcome_with<'h>(&'h self, vars: &'h dyn Vars, opts: RunOptions) -> Outcome<'h> {
         let limits = self.env.data().limits;
         let nvars = self.vars_read;
         let n = self.slots + nvars;

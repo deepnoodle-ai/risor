@@ -3,8 +3,8 @@
 //! nesting of section 13. These are Core's diagnostics, before the mapping
 //! of package F8 (`f08-errors.md` 2.1 item 1).
 
-use risor::syntax::ast::{BinaryOp, CondForm, EntryKey, Lit, NodeKind, UnaryOp};
-use risor::syntax::{parse, parse_core, Parsed};
+use crate::syntax::ast::{BinaryOp, CondForm, EntryKey, Lit, NodeKind, UnaryOp};
+use crate::syntax::{parse, parse_core, Expr};
 
 /// The code and span of the Core diagnostic.
 fn err(src: &str) -> (&'static str, [u32; 4]) {
@@ -17,7 +17,7 @@ fn err(src: &str) -> (&'static str, [u32; 4]) {
     }
 }
 
-fn ok(src: &str) -> Parsed {
+fn ok(src: &str) -> Expr {
     match parse(src) {
         Ok(p) => p,
         Err(e) => panic!("{src:?} should parse: {e}"),

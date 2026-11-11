@@ -35,9 +35,11 @@ impl WalkMeter for Free {
 }
 
 /// Counts steps and nothing else, for tests.
+#[cfg(test)]
 #[derive(Default)]
 pub struct Count(pub u64);
 
+#[cfg(test)]
 impl WalkMeter for Count {
     fn charge(&mut self, n: u64) -> Result<(), &'static str> {
         self.0 += n;
@@ -301,53 +303,6 @@ impl<M: WalkMeter> Walk<'_, M> {
             }
         }
         Ok(first)
-    }
-}
-
-/// A type resolved by an environment, for the conformance function (7).
-#[derive(Clone, Debug)]
-pub struct ProgramType {
-    pub ty: Ty,
-}
-
-impl ProgramType {
-    /// The conformance function (7.1): `Ok(())` when the value conforms,
-    /// else the diagnostic of the first failure. It is not a run: no limit,
-    /// no usage.
-    pub fn conform(&self, value: &crate::host::Data) -> Result<(), Diagnostic> {
-        let v = Value::from_data(value);
-        self.conform_value(&v)
-    }
-
-    /// The same on a run's value, or a host value read in place.
-    pub fn conform_value(&self, v: &Value<'_>) -> Result<(), Diagnostic> {
-        match test(v, &self.ty, &mut Free) {
-            Ok(None) => Ok(()),
-            Ok(Some(f)) => Err(f.diagnostic()),
-            Err(_) => Ok(()),
-        }
-    }
-
-    /// `ConformAll` (`f08-errors.md` 6): every failure of the value, up to
-    /// `max`, in the order of 6.2. A maximum less than 1 is read as 1. The
-    /// list is empty exactly when the value conforms, and its first entry is
-    /// the diagnostic of `conform`. It is not a run and charges nothing.
-    pub fn conform_all(&self, value: &crate::host::Data, max: usize) -> Vec<Diagnostic> {
-        let v = Value::from_data(value);
-        self.conform_all_value(&v, max)
-    }
-
-    /// The same on a run's value, or a host value read in place.
-    pub fn conform_all_value(&self, v: &Value<'_>, max: usize) -> Vec<Diagnostic> {
-        all(v, &self.ty, max.max(1))
-            .iter()
-            .map(Failure::diagnostic)
-            .collect()
-    }
-
-    /// The type, printed by structure (`05-types.md` 3.9).
-    pub fn print(&self) -> String {
-        print(&self.ty)
     }
 }
 

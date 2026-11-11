@@ -1,8 +1,8 @@
 //! Package F12: the laws of the formatter (`f12-tools.md` 2.2) over every
 //! program of the suite (7.6 item 3).
 
-use risor::format::{canon, format};
-use risor::json::Json;
+use crate::format::{canon, format};
+use crate::json::Json;
 use std::path::{Path, PathBuf};
 
 fn sources(dir: &Path, out: &mut Vec<String>) {
@@ -18,7 +18,7 @@ fn sources(dir: &Path, out: &mut Vec<String>) {
             let Ok(text) = std::fs::read_to_string(&p) else {
                 continue;
             };
-            let Ok(doc) = risor::json::parse(&text) else {
+            let Ok(doc) = crate::json::parse(&text) else {
                 continue;
             };
             collect(&doc, out);
@@ -58,7 +58,7 @@ fn the_laws_hold_over_the_suite() {
     let mut checked = 0;
     let mut bad = Vec::new();
     for s in &srcs {
-        let Ok(a) = risor::parse(s) else {
+        let Ok(a) = crate::parse(s) else {
             continue;
         };
         // Deep nesting is left to the limits' own tests.
@@ -67,7 +67,7 @@ fn the_laws_hold_over_the_suite() {
         }
         let f = format(s).expect("a text that parses formats");
         checked += 1;
-        match risor::parse(&f) {
+        match crate::parse(&f) {
             Err(e) => bad.push(format!("{s:?}: formatted {f:?} does not parse: {e:?}")),
             Ok(b) => {
                 if canon(&a.ast, a.ast.root, a.source.chars())

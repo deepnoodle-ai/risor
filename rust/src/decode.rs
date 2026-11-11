@@ -79,6 +79,7 @@ pub fn decode<T: Decode + HostType>(v: &Value<'_>, max: usize) -> Result<T, Vec<
         d.class = Some("value");
         vec![d]
     })?;
+    let ty = ty.into_ty();
     let all = crate::conform::all(v, &ty, max.max(1));
     if !all.is_empty() {
         return Err(all.iter().map(|f| f.diagnostic()).collect());

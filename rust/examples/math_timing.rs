@@ -5,7 +5,7 @@
 //! batches of calls over them. It prints the median time of one call, in
 //! nanoseconds, of 15 batches that each take at least 10 ms.
 
-use risor::math;
+use risor::__private::math_eval;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -43,7 +43,7 @@ fn median(args: &[Vec<f64>], name: &str) -> f64 {
     let run = |n: usize| {
         let t = Instant::now();
         for i in 0..n {
-            black_box(math::eval(name, black_box(&args[i % args.len()])));
+            black_box(math_eval(name, black_box(&args[i % args.len()])));
         }
         t.elapsed()
     };

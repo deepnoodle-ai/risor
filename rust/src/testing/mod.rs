@@ -8,7 +8,8 @@ pub mod tools;
 pub mod update;
 
 pub use case::{
-    from_text, load, load_doc, load_doc_lax, load_file, Case, CaseFile, Expect, FileError,
+    from_text, load, load_doc, load_doc_lax, load_file, load_file_lax, Case, CaseFile, Expect,
+    FileError,
 };
 pub use helper::Report;
 pub use run::{

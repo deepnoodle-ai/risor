@@ -7,5 +7,6 @@ pub(crate) mod message;
 pub mod parser;
 pub mod token;
 
-pub use ast::{Ast, Node, NodeId, NodeKind};
-pub use parser::{parse, parse_core, Parsed, MAX_LEVELS};
+#[cfg(test)]
+pub(crate) use parser::parse_core;
+pub use parser::{parse, Expr};

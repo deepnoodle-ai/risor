@@ -15,7 +15,7 @@ use crate::env::Env;
 use crate::library;
 use crate::source::Span;
 use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
-use crate::syntax::Parsed;
+use crate::syntax::Expr;
 use std::collections::{HashMap, HashSet};
 
 /// What compile found for a node.
@@ -56,16 +56,18 @@ pub enum Res {
 /// A compiled program. It does not change, and is safe to share between
 /// threads and to run many times.
 pub struct Program {
-    pub parsed: Parsed,
-    pub env: Env,
-    pub res: Vec<Res>,
+    pub(crate) parsed: Expr,
+    pub(crate) env: Env,
+    pub(crate) res: Vec<Res>,
     /// For each `Call` and `MethodCall`: 1 plus its nesting depth within the
     /// body that holds it (8.4).
-    pub measure: Vec<u16>,
-    pub slots: usize,
+    pub(crate) measure: Vec<u16>,
+    pub(crate) slots: usize,
     /// For a program compiled with a check: its sites, which decide the
     /// class of a run failure (`05-types.md` 18.5).
-    pub sites: Option<Vec<crate::check::Site>>,
+    pub(crate) sites: Option<Vec<crate::check::Site>>,
+    /// For a program compiled with a check: its type.
+    pub(crate) ty: Option<Ty>,
     /// The compiled form of the hot node kinds (`eval/code.rs`).
     pub(crate) code: Vec<Option<crate::eval::code::Code>>,
     /// The slots of each lambda's parameters, when all are plain names.
@@ -84,17 +86,9 @@ enum Bind {
     Lambda(NodeId),
 }
 
-/// Compile a parsed program against an environment, with a check: the
-/// default (`03-host.md` 3.2.1). It fails exactly when
-/// the check reports a diagnostic. `compile_unchecked` is the explicit
-/// option without the type rules, and `check::check` the check alone.
-pub fn compile(env: &Env, parsed: Parsed) -> Result<Program, Error> {
-    crate::check::compile_checked(env, parsed, &crate::check::Expected::Nothing).map(|(p, _)| p)
-}
-
 /// Compile with the static rules and no type rules (`03-host.md` 3.2.1
 /// item 4). A run reports classes by the column "not checked".
-pub fn compile_unchecked(env: &Env, parsed: Parsed) -> Result<Program, Error> {
+pub(crate) fn compile_unchecked(env: &Env, parsed: Expr) -> Result<Program, Error> {
     let missing: Vec<Diagnostic> = env
         .data()
         .functions
@@ -156,6 +150,7 @@ pub fn compile_unchecked(env: &Env, parsed: Parsed) -> Result<Program, Error> {
         measure: r.measure,
         slots: r.slots,
         sites: None,
+        ty: None,
     })
 }
 
@@ -170,7 +165,7 @@ pub struct Resolution {
 }
 
 /// Resolve every name of a program, and apply the static rules.
-pub fn resolve(env: &Env, parsed: &Parsed) -> Resolution {
+pub fn resolve(env: &Env, parsed: &Expr) -> Resolution {
     let n = parsed.ast.nodes.len();
     let mut vars = HashMap::new();
     for (i, v) in env.data().vars.iter().enumerate() {
@@ -216,7 +211,7 @@ pub fn sort_diagnostics(d: &mut Vec<Diagnostic>) {
 
 struct Resolver<'a> {
     env: &'a Env,
-    p: &'a Parsed,
+    p: &'a Expr,
     scopes: Vec<HashMap<String, Bind>>,
     res: Vec<Res>,
     measure: Vec<u16>,

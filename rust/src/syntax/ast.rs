@@ -25,15 +25,6 @@ pub enum UnaryOp {
     Neg,
 }
 
-impl UnaryOp {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            UnaryOp::Not => "!",
-            UnaryOp::Neg => "-",
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     Or,
@@ -258,6 +249,7 @@ pub enum NodeKind {
     },
     /// Kind 30. The parser stops at its first diagnostic and never builds a tree
     /// that holds `Bad`; the kind exists so that the numbering is whole.
+    #[allow(dead_code)]
     Bad,
     /// Kind 31, package F4: `x as T` and `x is T`. `ty` is the program type,
     /// as written; the compile resolves it.

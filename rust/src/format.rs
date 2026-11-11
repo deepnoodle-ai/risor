@@ -2197,7 +2197,7 @@ pub fn format_template(text: &str) -> Result<String, Error> {
                 let line_comment = cms
                     .iter()
                     .any(|c| ch.get(c.start as usize + 1) == Some(&'/'));
-                let Some(p) = t.part_program(i) else {
+                let Some(p) = t.part(i) else {
                     out.push_str(&as_is);
                     continue;
                 };
@@ -2458,7 +2458,7 @@ pub fn template_canon(t: &crate::template::Template) -> String {
         match seg {
             Segment::Text { value, .. } => out.push_str(&format!("{value:?};")),
             Segment::Part { .. } => {
-                if let Some(p) = t.part_program(i) {
+                if let Some(p) = t.part(i) {
                     out.push_str(&canon(&p.ast, p.ast.root, p.source.chars()));
                 }
                 out.push(';');

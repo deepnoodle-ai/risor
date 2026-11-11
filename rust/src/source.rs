@@ -133,6 +133,21 @@ impl Source {
         }
     }
 
+    /// The offset of a position: the inverse of `pos`. A line past the last
+    /// is the end of the text, and a column past the end of its line is the
+    /// end of the line. Line and column 0 are read as 1.
+    pub fn offset(&self, pos: Pos) -> usize {
+        let line = pos.line.max(1) as usize - 1;
+        let Some(&start) = self.line_starts.get(line) else {
+            return self.chars.len();
+        };
+        let end = match self.line_starts.get(line + 1) {
+            Some(&next) => next - 1,
+            None => self.chars.len() as u32,
+        };
+        (start + pos.column.max(1) - 1).min(end) as usize
+    }
+
     pub fn line_span(&self, span: Span) -> LineSpan {
         let a = self.pos(span.start);
         let b = self.pos(span.end);

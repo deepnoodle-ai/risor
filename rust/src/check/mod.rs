@@ -15,8 +15,8 @@ use crate::diag::{Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library::{self, Record};
 use crate::source::{Source, Span};
-use crate::syntax::ast::{Ast, BinaryOp, CondForm, EntryKey, Lit, NodeId, NodeKind, UnaryOp};
-use crate::syntax::Parsed;
+use crate::syntax::ast::{Ast, BinaryOp, EntryKey, Lit, NodeId, NodeKind, UnaryOp};
+use crate::syntax::Expr;
 use crate::types::text::{self, Bound, ParamType, Sig};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ty::*;
@@ -30,7 +30,7 @@ pub struct Site {
 
 /// The expected result of a check (`03-host.md` 3.2.3).
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expected {
+pub enum Want {
     Nothing,
     Type(Ty),
     Condition,
@@ -39,22 +39,22 @@ pub enum Expected {
 /// What a check gives: the program's type and its sites when it checks, and
 /// its diagnostics, ordered by 6.1.
 #[derive(Clone, Debug)]
-pub struct CheckResult {
+pub struct Checked {
     pub ty: Option<Ty>,
     pub sites: Vec<Site>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
 /// Read the text of an expected result: `condition` or a type.
-pub fn expected(env: &Env, text: Option<&str>) -> Result<Expected, Diagnostic> {
+pub fn expected(env: &Env, text: Option<&str>) -> Result<Want, Diagnostic> {
     let bad = |m: String| Diagnostic::bare(Phase::Declare, crate::diag::code::BAD_TYPE, m);
     match text {
-        None => Ok(Expected::Nothing),
-        Some("condition") => Ok(Expected::Condition),
+        None => Ok(Want::Nothing),
+        Some("condition") => Ok(Want::Condition),
         Some(t) => {
             let parsed = text::parse_type(t).map_err(|e| bad(e.message))?;
             let ty = from_text(&parsed, &env.data().names, None).map_err(bad)?;
-            Ok(Expected::Type(ty))
+            Ok(Want::Type(ty))
         }
     }
 }
@@ -65,7 +65,7 @@ pub fn expected(env: &Env, text: Option<&str>) -> Result<Expected, Diagnostic> {
 pub fn expected_schema(
     schema: &crate::json::Json,
     opts: crate::schema::SchemaOptions,
-) -> Result<Expected, Diagnostic> {
+) -> Result<Want, Diagnostic> {
     let bad = |m: String| Diagnostic::bare(Phase::Declare, crate::diag::code::BAD_TYPE, m);
     if opts.absent_is_null || opts.defaults_applied {
         return Err(bad(
@@ -73,11 +73,11 @@ pub fn expected_schema(
         ));
     }
     let ty = crate::schema::ty_schema(schema, opts).map_err(bad)?;
-    Ok(Expected::Type(ty))
+    Ok(Want::Type(ty))
 }
 
 /// Check a program against an environment (`03-host.md` 3.2.1).
-pub fn check(env: &Env, parsed: &Parsed, expected: &Expected) -> CheckResult {
+pub fn check(env: &Env, parsed: &Expr, expected: &Want) -> Checked {
     let r = resolve(env, parsed);
     let mut c = Checker::new(env, parsed, &r.res);
     let t = c.program(expected);
@@ -103,13 +103,13 @@ pub fn check(env: &Env, parsed: &Parsed, expected: &Expected) -> CheckResult {
     sites.sort_by_key(|s| (s.span.start, s.span.end, s.class));
     sites.dedup();
     if diags.is_empty() {
-        CheckResult {
+        Checked {
             ty: Some(t),
             sites,
             diagnostics: diags,
         }
     } else {
-        CheckResult {
+        Checked {
             ty: None,
             sites: Vec::new(),
             diagnostics: diags,
@@ -131,12 +131,7 @@ pub struct Probe {
 
 /// Check a program for assist, recording the types of the slots where the
 /// node `probe` is checked.
-pub fn check_probe(
-    env: &Env,
-    parsed: &Parsed,
-    expected: &Expected,
-    probe: Option<NodeId>,
-) -> Probe {
+pub fn check_probe(env: &Env, parsed: &Expr, expected: &Want, probe: Option<NodeId>) -> Probe {
     let r = resolve(env, parsed);
     let mut c = Checker::new(env, parsed, &r.res);
     c.probe = probe;
@@ -153,9 +148,9 @@ pub fn check_probe(
 /// check reports a diagnostic (`03-host.md` 3.2.1 item 3).
 pub fn compile_checked(
     env: &Env,
-    parsed: Parsed,
-    expected: &Expected,
-) -> Result<(Program, CheckResult), Error> {
+    parsed: Expr,
+    expected: &Want,
+) -> Result<(Program, Checked), Error> {
     let result = check(env, &parsed, expected);
     if !result.diagnostics.is_empty() {
         return Err(Error {
@@ -165,6 +160,7 @@ pub fn compile_checked(
     }
     let mut p = crate::compile::compile_unchecked(env, parsed)?;
     p.sites = Some(result.sites.clone());
+    p.ty = result.ty.clone();
     Ok((p, result))
 }
 
@@ -238,7 +234,7 @@ fn whole(v: f64) -> bool {
 }
 
 impl<'a> Checker<'a> {
-    fn new(env: &'a Env, parsed: &'a Parsed, res: &'a [Res]) -> Checker<'a> {
+    fn new(env: &'a Env, parsed: &'a Expr, res: &'a [Res]) -> Checker<'a> {
         let mut uses = HashMap::new();
         let mut slots_n = 0;
         for r in res {
@@ -894,7 +890,7 @@ impl<'a> Checker<'a> {
 
     // ---- the walk ---------------------------------------------------------------
 
-    fn program(&mut self, expected: &Expected) -> Ty {
+    fn program(&mut self, expected: &Want) -> Ty {
         let NodeKind::Program { consts, result } = self.kind(self.ast.root) else {
             return Ty::never();
         };
@@ -903,9 +899,9 @@ impl<'a> Checker<'a> {
         }
         let t = self.synth(*result);
         match expected {
-            Expected::Nothing => {}
-            Expected::Type(e) => self.fit_form(*result, e, Fit::Result),
-            Expected::Condition => self.tested(*result, &t),
+            Want::Nothing => {}
+            Want::Type(e) => self.fit_form(*result, e, Fit::Result),
+            Want::Condition => self.tested(*result, &t),
         }
         t
     }
@@ -3349,13 +3345,5 @@ fn bind(p: &text::Type, a: &Ty, sol: &mut Solutions) {
             }
         }
         _ => {}
-    }
-}
-
-/// Which `Cond` form a node has, for callers that care.
-pub fn cond_form(ast: &Ast, id: NodeId) -> Option<CondForm> {
-    match ast.kind(id) {
-        NodeKind::Cond { form, .. } => Some(*form),
-        _ => None,
     }
 }

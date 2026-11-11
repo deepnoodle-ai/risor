@@ -1,21 +1,21 @@
 //! Removed library entries (`03-host.md` 3.3.1 item 6)
 //! and child environments (3.3.2).
 
-use risor::{check, parse, Env, Limits};
+use crate::{check, parse, Env, Limits};
 
 fn check_codes(env: &Env, src: &str) -> Vec<&'static str> {
     let p = parse(src).unwrap();
-    let r = check::check(env, &p, &check::Expected::Nothing);
+    let r = check::check(env, &p, &check::Want::Nothing);
     r.diagnostics.iter().map(|d| d.code).collect()
 }
 
 #[test]
 fn removed_entries_are_absent() {
     let env = Env::builder()
-        .vars("{s: string, xs: int[]}")
-        .remove("len")
-        .remove("string.repeat")
-        .remove("list.min")
+        .var_record("{s: string, xs: int[]}")
+        .without(&["len"])
+        .without(&["string.repeat"])
+        .without(&["list.min"])
         .build()
         .unwrap();
     assert_eq!(check_codes(&env, "len(s)"), ["undefined-function"]);
@@ -36,21 +36,25 @@ fn a_bad_removed_name_is_bad_name() {
         "list",
         "list.len",
     ] {
-        let e = Env::builder().remove(name).build().err().unwrap();
+        let e = Env::builder().without(&[name]).build().err().unwrap();
         assert_eq!(e.diagnostics[0].code, "bad-name", "{name}");
     }
-    assert!(Env::builder().remove("len").remove("len").build().is_ok());
+    assert!(Env::builder()
+        .without(&["len"])
+        .without(&["len"])
+        .build()
+        .is_ok());
 }
 
 #[test]
 fn a_host_function_may_take_a_removed_name() {
     assert!(Env::builder()
-        .declare_function("len", "(s: string) => int")
+        .function_decl("len", "(s: string) => int", None)
         .build()
         .is_err());
     let env = Env::builder()
-        .remove("len")
-        .declare_function("len", "(s: string) => int")
+        .without(&["len"])
+        .function_decl("len", "(s: string) => int", None)
         .build()
         .unwrap();
     assert!(check_codes(&env, "len(\"a\")").is_empty());
@@ -59,8 +63,8 @@ fn a_host_function_may_take_a_removed_name() {
 #[test]
 fn a_child_inherits_and_cannot_bring_back() {
     let parent = Env::builder()
-        .vars("{a: int, b: string}")
-        .remove("len")
+        .var_record("{a: int, b: string}")
+        .without(&["len"])
         .reject(&["constant-condition", "dynamic"])
         .limits(Limits {
             steps: Some(10),
@@ -69,10 +73,10 @@ fn a_child_inherits_and_cannot_bring_back() {
         .build()
         .unwrap();
     let child = parent
-        .child()
+        .with()
         .var("b", "bool")
-        .remove("len")
-        .remove("string.trim")
+        .without(&["len"])
+        .without(&["string.trim"])
         .build()
         .unwrap();
     // The parent is unchanged.
@@ -80,45 +84,45 @@ fn a_child_inherits_and_cannot_bring_back() {
     assert_eq!(child.removed_names(), ["len", "string.trim"]);
     assert_eq!(check_codes(&child, "len(\"a\")"), ["undefined-function"]);
     // The child's `b` replaces the parent's; `a` is kept.
-    let d = child.describe();
+    let d = child.description();
     assert_eq!(
-        risor::json::to_text(d.get("variables").unwrap()),
+        crate::json::to_text(d.get("variables").unwrap()),
         r#"{"a":"int","b":"bool"}"#
     );
     // Rejected classes and limits come from the parent unless the child
     // gives its own.
     assert_eq!(child.data().reject, ["constant-condition", "dynamic"]);
     assert_eq!(child.data().limits.steps, Some(10));
-    let own = parent.child().reject(&[]).build().unwrap();
+    let own = parent.with().reject(&[]).build().unwrap();
     assert!(own.data().reject.is_empty());
 }
 
 #[test]
 fn removed_entries_round_trip_through_a_description() {
     let env = Env::builder()
-        .remove("map.keys")
-        .remove("abs")
+        .without(&["map.keys"])
+        .without(&["abs"])
         .build()
         .unwrap();
-    let d = env.describe();
+    let d = env.description();
     assert_eq!(
-        risor::json::to_text(d.get("removed").unwrap()),
+        crate::json::to_text(d.get("removed").unwrap()),
         r#"["abs","map.keys"]"#
     );
-    let e2 = Env::from_description(&d).unwrap();
+    let e2 = Env::from_description(&env.description_text()).unwrap();
     assert_eq!(e2.description_text(), env.description_text());
     assert!(matches!(
-        Env::from_description_text(&env.description_text().replace("abs", "abz")),
-        Err(risor::DescriptionError::Declare(_))
+        Env::from_description(&env.description_text().replace("abs", "abz")),
+        Err(crate::DescriptionError::Declare(_))
     ));
 }
 
 #[test]
 fn a_child_declaration_replaces_across_kinds() {
-    let parent = Env::builder().vars("{a: int}").build().unwrap();
+    let parent = Env::builder().var_record("{a: int}").build().unwrap();
     let child = parent
-        .child()
-        .declare_function("a", "() => string")
+        .with()
+        .function_decl("a", "() => string", None)
         .build()
         .unwrap();
     assert!(child.data().vars.is_empty());
@@ -126,10 +130,10 @@ fn a_child_declaration_replaces_across_kinds() {
     assert!(check_codes(&child, "a()").is_empty());
     // And back: a child variable replaces a parent function.
     let parent = Env::builder()
-        .declare_function("f", "() => int")
+        .function_decl("f", "() => int", None)
         .build()
         .unwrap();
-    let child = parent.child().var("f", "bool").build().unwrap();
+    let child = parent.with().var("f", "bool").build().unwrap();
     assert!(child.data().functions.is_empty());
     assert!(check_codes(&child, "f").is_empty());
 }
@@ -138,22 +142,22 @@ fn a_child_declaration_replaces_across_kinds() {
 #[test]
 fn a_child_clashes_with_what_it_inherits() {
     let parent = Env::builder()
-        .declare_function("geo.distance", "(a: string) => float")
+        .function_decl("geo.distance", "(a: string) => float", None)
         .build()
         .unwrap();
-    let e = parent.child().var("geo", "int").build().err().unwrap();
+    let e = parent.with().var("geo", "int").build().err().unwrap();
     assert_eq!(e.diagnostics[0].code, "name-clash");
     let e = parent
-        .child()
-        .declare_function("geo", "() => int")
+        .with()
+        .function_decl("geo", "() => int", None)
         .build()
         .err()
         .unwrap();
     assert_eq!(e.diagnostics[0].code, "name-clash");
-    let parent = Env::builder().vars("{geo: int}").build().unwrap();
+    let parent = Env::builder().var_record("{geo: int}").build().unwrap();
     let e = parent
-        .child()
-        .declare_function("geo.x", "() => int")
+        .with()
+        .function_decl("geo.x", "() => int", None)
         .build()
         .err()
         .unwrap();
@@ -170,7 +174,7 @@ fn a_child_limits_are_its_own_when_given() {
         .build()
         .unwrap();
     let child = parent
-        .child()
+        .with()
         .limits(Limits {
             depth: 5,
             ..Limits::default()
@@ -181,7 +185,7 @@ fn a_child_limits_are_its_own_when_given() {
     assert_eq!(child.data().limits.steps, Some(1_000_000));
     assert_eq!(parent.data().limits.steps, Some(10));
     assert_eq!(
-        parent.child().build().unwrap().data().reject,
+        parent.with().build().unwrap().data().reject,
         ["constant-condition"]
     );
 }
@@ -191,26 +195,33 @@ fn a_child_limits_are_its_own_when_given() {
 fn a_host_site_on_an_argument_is_not_the_outer_calls() {
     let env = Env::builder()
         .function("rate", "(code: string) => string !", |_, _| {
-            Ok(risor::Data::Str("x".into()))
+            Ok(crate::Data::Str("x".into()))
         })
         .function("geo.distance", "(a: string, b: string) => float", |_, _| {
-            Err(risor::HostError("far".into()))
+            Err(crate::HostError("far".into()))
         })
         .build()
         .unwrap();
-    let p = risor::compile(&env, parse(r#"geo.distance(rate("x"), "b")"#).unwrap()).unwrap();
-    let f = p.run(&risor::NoVars).result.err().unwrap();
+    let p = env
+        .compile(
+            &parse(r#"geo.distance(rate("x"), "b")"#).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
+    let f = p.outcome(&crate::NoVars).result.err().unwrap();
     let d = p.diagnostic(&f);
     assert_eq!((d.code, d.class), ("function-error", Some("environment")));
     // The marked call itself is at its own `host` site.
     let env = Env::builder()
         .function("rate", "(code: string) => string !", |_, _| {
-            Err(risor::HostError("no".into()))
+            Err(crate::HostError("no".into()))
         })
         .build()
         .unwrap();
-    let p = risor::compile(&env, parse(r#"rate("x")"#).unwrap()).unwrap();
-    let f = p.run(&risor::NoVars).result.err().unwrap();
+    let p = env
+        .compile(&parse(r#"rate("x")"#).unwrap(), Default::default())
+        .unwrap();
+    let f = p.outcome(&crate::NoVars).result.err().unwrap();
     assert_eq!(p.diagnostic(&f).class, Some("host"));
 }
 
@@ -220,11 +231,11 @@ fn a_host_site_on_an_argument_is_not_the_outer_calls() {
 fn a_child_variable_does_not_replace_an_opaque_type() {
     let parent = Env::builder()
         .opaque("Time")
-        .method_impl("Time.format", "(layout: string) => string", None)
+        .method_decl("Time.format", "(layout: string) => string", None)
         .var("t", "Time")
         .build()
         .unwrap();
-    let child = parent.child().var("Time", "int").build().unwrap();
+    let child = parent.with().var("Time", "int").build().unwrap();
     assert_eq!(child.data().opaque, ["Time"]);
     assert_eq!(child.data().methods.len(), 1);
     assert!(check_codes(&child, "Time + 1").is_empty());
@@ -237,14 +248,14 @@ fn a_child_variable_does_not_replace_an_opaque_type() {
 fn a_child_opaque_type_replaces_the_parents_whole() {
     let parent = Env::builder()
         .opaque("Time")
-        .method_impl("Time.format", "(layout: string) => string", None)
-        .method_impl("Time.unix", "() => int", None)
+        .method_decl("Time.format", "(layout: string) => string", None)
+        .method_decl("Time.unix", "() => int", None)
         .build()
         .unwrap();
     let child = parent
-        .child()
+        .with()
         .opaque("Time")
-        .method_impl("Time.year", "() => int", None)
+        .method_decl("Time.year", "() => int", None)
         .build()
         .unwrap();
     let names: Vec<&str> = child
@@ -255,16 +266,16 @@ fn a_child_opaque_type_replaces_the_parents_whole() {
         .collect();
     assert_eq!(names, ["year"]);
     let child = parent
-        .child()
-        .method_impl("Time.unix", "() => float", None)
-        .method_impl("Time.year", "() => int", None)
+        .with()
+        .method_decl("Time.unix", "() => float", None)
+        .method_decl("Time.year", "() => int", None)
         .build()
         .unwrap();
     let mut got: Vec<String> = child
         .data()
         .methods
         .iter()
-        .map(|m| format!("{} {}", m.name, risor::print_sig(&m.sig, &[])))
+        .map(|m| format!("{} {}", m.name, crate::describe::print_sig(&m.sig, &[])))
         .collect();
     got.sort();
     assert_eq!(

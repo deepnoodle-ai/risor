@@ -1,10 +1,10 @@
 //! Package F1: descriptions of types and environments, and the round trip
 //! of `f01-host-types.md` 5.4.
 
-use risor::check::{self, ty::print};
-use risor::json::{self, Json};
-use risor::testing::{case_env, case_files, load_file};
-use risor::{parse, DescriptionError, Env, Limits, SchemaOptions};
+use crate::check::{self, ty::print};
+use crate::json;
+use crate::testing::{case_env, case_files, load_file};
+use crate::{parse, DescriptionError, Env, Limits, SchemaOptions};
 use std::path::PathBuf;
 
 fn suite_dir() -> PathBuf {
@@ -52,8 +52,7 @@ fn round_trip_over_the_suite() {
             let Ok(file) = load_file(&path) else { continue };
             for case in &file.cases {
                 let Ok(e1) = case_env(case) else { continue };
-                let d1 = e1.describe();
-                let e2 = Env::from_description(&d1)
+                let e2 = Env::from_description(&e1.description_text())
                     .unwrap_or_else(|e| panic!("{}: {}: {e}", path.display(), case.name));
                 assert_eq!(
                     e2.description_text(),
@@ -63,7 +62,7 @@ fn round_trip_over_the_suite() {
                     case.name
                 );
                 // The text form reads back to the same description.
-                let e3 = Env::from_description_text(&e1.description_text()).unwrap();
+                let e3 = Env::from_description(&e1.description_text()).unwrap();
                 assert_eq!(e3.description_text(), e1.description_text());
                 if case.check {
                     assert_eq!(
@@ -88,9 +87,9 @@ fn the_text_of_the_chapter_example() {
     )
     .unwrap();
     let env = Env::builder()
-        .var_schema("order", &schema, SchemaOptions::default())
+        .var_schema_json("order", &schema, SchemaOptions::default())
         .function("rate", "(code:string)=>float!", |_, _| {
-            Ok(risor::Data::Float(1.0))
+            Ok(crate::Data::Float(1.0))
         })
         .build()
         .unwrap();
@@ -111,12 +110,12 @@ fn limits_that_are_off_are_null() {
         })
         .build()
         .unwrap();
-    let d = env.describe();
+    let d = env.description();
     assert_eq!(
         json::to_text(d.get("limits").unwrap()),
         r#"{"allocation":null,"depth":7,"steps":null}"#
     );
-    let e2 = Env::from_description(&d).unwrap();
+    let e2 = Env::from_description(&env.description_text()).unwrap();
     assert_eq!(e2.data().limits.steps, None);
     assert_eq!(e2.data().limits.depth, 7);
     // The deadline is not described.
@@ -129,12 +128,12 @@ fn a_description_holds_a_type_of_depth_64() {
     let text = format!(
         r#"{{"version":"3.0","variables":{{"v":"{deep}"}},"functions":{{}},"opaque":{{}},"removed":[],"reject":[],"limits":{{"steps":null,"allocation":null,"depth":200}}}}"#
     );
-    let env = Env::from_description_text(&text).unwrap();
+    let env = Env::from_description(&text).unwrap();
     assert_eq!(check_text(&env, "v", None), format!("{deep} |  | "));
 }
 
 fn declare_codes(text: &str) -> Vec<&'static str> {
-    match Env::from_description_text(text) {
+    match Env::from_description(text) {
         Err(DescriptionError::Declare(e)) => {
             let mut c: Vec<&'static str> = e.diagnostics.iter().map(|d| d.code).collect();
             c.sort();
@@ -229,25 +228,25 @@ fn errors_of_a_description() {
     ] {
         assert!(
             matches!(
-                Env::from_description_text(&with(k, v)),
+                Env::from_description(&with(k, v)),
                 Err(DescriptionError::Form(_))
             ),
             "{k}: {v}"
         );
     }
     assert!(matches!(
-        Env::from_description_text(r#"{"version":"3.0"}"#),
+        Env::from_description(r#"{"version":"3.0"}"#),
         Err(DescriptionError::Form(_))
     ));
     assert!(matches!(
-        Env::from_description_text(&with("version", r#""3.0","extra":1"#)),
+        Env::from_description(&with("version", r#""3.0","extra":1"#)),
         Err(DescriptionError::Form(_))
     ));
 }
 
 #[test]
 fn a_function_from_a_description_has_no_implementation() {
-    let env = Env::from_description_text(&with(
+    let env = Env::from_description(&with(
         "functions",
         r#"{"rate":"(code: string) => float !"}"#,
     ))
@@ -258,7 +257,10 @@ fn a_function_from_a_description_has_no_implementation() {
         "float | host [1, 1, 1, 10] | "
     );
     // A compile fails with `no-implementation`.
-    let e = risor::compile(&env, parse("1").unwrap()).err().unwrap();
+    let e = env
+        .compile(&parse("1").unwrap(), Default::default())
+        .err()
+        .unwrap();
     assert_eq!(e.diagnostics[0].code, "no-implementation");
 }
 
@@ -269,25 +271,25 @@ fn a_schema_variable_reads_its_value_in_place() {
     )
     .unwrap();
     let env = Env::builder()
-        .var_schema("order", &schema, SchemaOptions::default())
+        .var_schema_json("order", &schema, SchemaOptions::default())
         .build()
         .unwrap();
-    let p = risor::compile(&env, parse("order.id + len(order?.tags ?? [])").unwrap()).unwrap();
+    let x = parse("order.id + len(order?.tags ?? [])").unwrap();
+    let p = env.compile(&x, Default::default()).unwrap();
     let mut m = std::collections::BTreeMap::new();
     let mut o = std::collections::BTreeMap::new();
-    o.insert("id".to_string(), risor::Data::Int(1));
-    m.insert("order".to_string(), risor::Data::Map(o));
-    let out = p.run(&m);
+    o.insert("id".to_string(), crate::Data::Int(1));
+    m.insert("order".to_string(), crate::Data::Map(o));
     assert_eq!(
-        format!("{:?}", out.result.unwrap()),
-        format!("{:?}", risor::Value::Num(1.0))
+        format!("{:?}", p.run(&m).unwrap()),
+        format!("{:?}", crate::Value::Num(1.0))
     );
 }
 
 #[test]
 fn a_bad_schema_is_bad_type() {
     let e = Env::builder()
-        .var_schema("v", &Json::Str("string".into()), SchemaOptions::default())
+        .var_schema("v", "\"string\"", SchemaOptions::default())
         .build()
         .err()
         .unwrap();

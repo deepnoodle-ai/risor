@@ -7,7 +7,6 @@
 //! `number-range` (`03-host.md` 3.4.4).
 
 use crate::host::{Data, HostList, HostMap, OpaqueRef, View};
-use std::cmp::Ordering;
 use std::fmt;
 use std::rc::Rc;
 
@@ -302,7 +301,7 @@ impl<'h> Value<'h> {
     }
 
     /// The truthiness test (`01-language.md` 6.5). It reads no element.
-    pub fn truthy(&self) -> bool {
+    pub(crate) fn truthy(&self) -> bool {
         match self {
             Value::Null => false,
             Value::Bool(b) => *b,
@@ -557,11 +556,6 @@ impl Value<'_> {
             Value::Opaque(o) => write!(f, "{o:?}"),
         }
     }
-}
-
-/// Code point order of two strings.
-pub fn cmp_str(a: &str, b: &str) -> Ordering {
-    a.cmp(b)
 }
 
 #[cfg(test)]

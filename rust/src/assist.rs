@@ -6,7 +6,7 @@
 //! the names in scope at the hole; its diagnostics are not kept.
 
 use crate::check::ty::{from_text, join, print, Strs, Ty};
-use crate::check::{check_probe, Expected, Probe};
+use crate::check::{check_probe, Probe, Want};
 use crate::compile::Res;
 use crate::describe::print_sig;
 use crate::env::Env;
@@ -16,7 +16,7 @@ use crate::syntax::ast::{Ast, EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
 use crate::syntax::lexer::{lex_cut, CUT_OPEN};
 use crate::syntax::parser::{parse_repair, HOLE};
 use crate::syntax::token::{StrForm, Tok, Token, P};
-use crate::syntax::Parsed;
+use crate::syntax::Expr;
 use crate::value::Kind;
 
 /// A candidate of a completion (3.12).
@@ -305,16 +305,11 @@ struct Tree<'a> {
     ast: &'a Ast,
     parent: Vec<Option<NodeId>>,
     probe: Probe,
-    expected: &'a Expected,
+    expected: &'a Want,
 }
 
 impl<'a> Tree<'a> {
-    fn new(
-        env: &'a Env,
-        parsed: &'a Parsed,
-        expected: &'a Expected,
-        probe: Option<NodeId>,
-    ) -> Tree<'a> {
+    fn new(env: &'a Env, parsed: &'a Expr, expected: &'a Want, probe: Option<NodeId>) -> Tree<'a> {
         let ast = &parsed.ast;
         let mut parent = vec![None; ast.nodes.len()];
         for (i, n) in ast.nodes.iter().enumerate() {
@@ -517,7 +512,7 @@ impl<'a> Tree<'a> {
     fn expected_of(&self, id: NodeId) -> Option<Ty> {
         let path = self.path(id);
         let mut e: Option<Ty> = match self.expected {
-            Expected::Type(t) => Some(t.clone()),
+            Want::Type(t) => Some(t.clone()),
             _ => None,
         };
         for w in path.windows(2) {
@@ -790,7 +785,7 @@ fn has_type_hole(t: &PType) -> bool {
 
 /// Completion at `offset`, a count of code points of `text` after a U+FEFF
 /// at its start (3.5).
-pub fn complete(env: &Env, text: &str, expected: &Expected, offset: usize) -> Completion {
+pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) -> Completion {
     let src = Source::new(text);
     let ch = src.chars();
     let at = Span::new(offset, offset);
@@ -838,7 +833,7 @@ pub fn complete(env: &Env, text: &str, expected: &Expected, offset: usize) -> Co
             let Some(ast) = repair(&cut_src, &toks, &post, offset) else {
                 return empty(sspan);
             };
-            let parsed = Parsed {
+            let parsed = Expr {
                 source: cut_src.clone(),
                 ast,
             };
@@ -870,7 +865,7 @@ pub fn complete(env: &Env, text: &str, expected: &Expected, offset: usize) -> Co
                     items: filter(fallback(&pre), &prefix),
                 };
             };
-            let parsed = Parsed {
+            let parsed = Expr {
                 source: cut_src.clone(),
                 ast,
             };
@@ -884,7 +879,7 @@ pub fn complete(env: &Env, text: &str, expected: &Expected, offset: usize) -> Co
 }
 
 /// The candidates where the hole is a word (3.5).
-fn word_hole(env: &Env, parsed: &Parsed, expected: &Expected) -> Vec<Candidate> {
+fn word_hole(env: &Env, parsed: &Expr, expected: &Want) -> Vec<Candidate> {
     let ast = &parsed.ast;
     let find = |f: &dyn Fn(&NodeKind) -> bool| {
         ast.nodes
@@ -994,13 +989,7 @@ fn keys(tree: &Tree<'_>, map: NodeId, hole_entry: NodeId) -> Option<Vec<Candidat
 
 /// The strings context (3.11), where the hole is the string literal at
 /// `span`.
-fn strings_at(
-    env: &Env,
-    parsed: &Parsed,
-    expected: &Expected,
-    span: Span,
-    q: char,
-) -> Vec<Candidate> {
+fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Span, q: char) -> Vec<Candidate> {
     let ast = &parsed.ast;
     let tree = Tree::new(env, parsed, expected, None);
     let lits = |t: &Ty, skip: &[String]| -> Vec<Candidate> {
@@ -1071,7 +1060,7 @@ fn strings_at(
 // ---- hover -----------------------------------------------------------------------
 
 /// Hover at `offset` (3.13).
-pub fn hover(env: &Env, text: &str, expected: &Expected, offset: usize) -> Option<Hover> {
+pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Option<Hover> {
     let src = Source::new(text);
     let ch = src.chars();
     if offset >= ch.len() || !is_word_char(ch[offset]) {
@@ -1105,7 +1094,7 @@ pub fn hover(env: &Env, text: &str, expected: &Expected, offset: usize) -> Optio
             };
             let cut_src = Source::raw(&ch[..cut].iter().collect::<String>());
             let ast = repair(&cut_src, &pre, &post, cut)?;
-            Parsed {
+            Expr {
                 source: cut_src,
                 ast,
             }

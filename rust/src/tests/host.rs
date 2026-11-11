@@ -3,10 +3,8 @@
 //! enter (`03-host.md` 3.4.4), the depth test on empty containers
 //! (`02-evaluation.md` 8.4), and the stack the deepest programs need.
 
-use risor::{
-    compile_unchecked as compile, parse, Data, Env, Limits, NoVars, OpaqueRef, Program, RunOptions,
-    Value,
-};
+use crate::compile::compile_unchecked as compile;
+use crate::{parse, Data, Env, Limits, NoVars, OpaqueRef, Program, RunOptions, Value};
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -25,7 +23,7 @@ fn vars(pairs: &[(&str, Data)]) -> BTreeMap<String, Data> {
 
 /// The code of a failed run, or the value's debug text.
 fn outcome(p: &Program, v: &BTreeMap<String, Data>) -> Result<String, String> {
-    let out = p.run(v);
+    let out = p.outcome(v);
     match out.result {
         Ok(v) => Ok(format!("{v:?}")),
         Err(f) => Err(f.code.to_string()),
@@ -39,7 +37,7 @@ fn numbers(n: usize) -> Data {
 #[test]
 fn deadline_exceeded() {
     let env = Env::builder()
-        .vars("{xs: float[]}")
+        .var_record("{xs: float[]}")
         .limits(Limits {
             deadline: Some(Duration::ZERO),
             ..Limits::default()
@@ -59,11 +57,11 @@ fn deadline_exceeded() {
 
 #[test]
 fn cancelled() {
-    let env = Env::builder().vars("{xs: float[]}").build().unwrap();
+    let env = Env::builder().var_record("{xs: float[]}").build().unwrap();
     let p = program(&env, "try { xs.map(x => x * 2) } catch { 0 }");
     let v = vars(&[("xs", numbers(5000))]);
     let flag = Arc::new(AtomicBool::new(true));
-    let out = p.run_with(&v, RunOptions { cancel: Some(flag) });
+    let out = p.outcome_with(&v, RunOptions { cancel: Some(flag) });
     assert_eq!(out.result.err().map(|f| f.code), Some("cancelled"));
 }
 
@@ -72,12 +70,12 @@ fn function_panic_is_not_caught() {
     let env = Env::builder()
         .function("boom", "() => int", |_, _| panic!("a host bug"))
         .function("err", "() => int", |_, _| {
-            Err(risor::HostError("no".into()))
+            Err(crate::HostError("no".into()))
         })
         .build()
         .unwrap();
     let p = program(&env, "try { boom() } catch { 0 }");
-    let out = p.run(&NoVars);
+    let out = p.outcome(&NoVars);
     let f = out.result.err().unwrap();
     assert_eq!(f.code, "function-panic");
     assert_eq!(f.message(), "host function boom crashed");
@@ -91,9 +89,9 @@ fn a_host_function_charges_through_its_handle() {
     let env = Env::builder()
         .function("h", "(x: float) => float", |call, args| {
             call.charge(3)
-                .map_err(|_| risor::HostError("stop".into()))?;
+                .map_err(|_| crate::HostError("stop".into()))?;
             call.allocate(2)
-                .map_err(|_| risor::HostError("stop".into()))?;
+                .map_err(|_| crate::HostError("stop".into()))?;
             match args[0] {
                 Value::Num(n) => Ok(Data::Float(n * 2.0)),
                 _ => Ok(Data::Null),
@@ -103,7 +101,7 @@ fn a_host_function_charges_through_its_handle() {
         .unwrap();
     // The call 1, h's 3, `+` 1; units 2.
     let p = program(&env, "h(1) + 1");
-    let out = p.run(&NoVars);
+    let out = p.outcome(&NoVars);
     assert_eq!(format!("{:?}", out.result.unwrap()), "3");
     assert_eq!((out.usage.steps, out.usage.allocated), (5, 2));
     let env = Env::builder()
@@ -137,14 +135,14 @@ fn a_large_host_charge_does_not_wrap() {
         .build()
         .unwrap();
     let p = program(&env, "alloc()");
-    let out = p.run(&NoVars);
+    let out = p.outcome(&NoVars);
     assert_eq!(
         out.result.err().map(|f| f.code),
         Some("allocation-exceeded")
     );
     assert_eq!(out.usage.allocated, 1);
     let p = program(&env, "charge()");
-    let out = p.run(&NoVars);
+    let out = p.outcome(&NoVars);
     assert_eq!(out.result.err().map(|f| f.code), Some("steps-exceeded"));
     assert_eq!(out.usage.steps, 2);
     // With no limit, the count stops at u64::MAX.
@@ -164,7 +162,7 @@ fn a_large_host_charge_does_not_wrap() {
         .build()
         .unwrap();
     let p = program(&env, "big()");
-    let out = p.run(&NoVars);
+    let out = p.outcome(&NoVars);
     assert!(out.result.is_ok());
     assert_eq!((out.usage.steps, out.usage.allocated), (u64::MAX, u64::MAX));
 }
@@ -190,7 +188,7 @@ fn a_limit_diagnostic_has_a_span() {
         "alloc()",
     ] {
         let p = program(&env, src);
-        let f = p.run(&NoVars).result.err().unwrap();
+        let f = p.outcome(&NoVars).result.err().unwrap();
         let d = p.diagnostic(&f);
         assert_eq!(d.class, Some("limit"), "{src}");
         assert!(d.span.is_some(), "{src}");
@@ -199,7 +197,7 @@ fn a_limit_diagnostic_has_a_span() {
 
 fn opaque_env() -> Env {
     Env::builder()
-        .vars("{t: Token, u: Token}")
+        .var_record("{t: Token, u: Token}")
         .opaque("Token")
         .function("same", "(a: Token, b: Token) => bool", |_, args| {
             Ok(Data::Bool(matches!((&args[0], &args[1]),
@@ -208,7 +206,7 @@ fn opaque_env() -> Env {
         .function("make", "() => Token", |_, _| {
             Ok(Data::Opaque(OpaqueRef::new("Token", 7u32)))
         })
-        .method_impl(
+        .method_decl(
             "Token.id",
             "() => int",
             Some(Arc::new(|_, args| match &args[0] {
@@ -278,7 +276,7 @@ fn opaque_values() {
 #[test]
 fn host_numbers_that_cannot_enter() {
     let env = Env::builder()
-        .vars("{n: int, xs: int[], m: map<int>, f: float}")
+        .var_record("{n: int, xs: int[], m: map<int>, f: float}")
         .function("big", "() => int", |_, _| Ok(Data::Int(1 << 60)))
         .function("bigs", "() => int[]", |_, _| {
             Ok(Data::List(vec![Data::Int(1), Data::Int(1 << 60)]))
@@ -295,7 +293,7 @@ fn host_numbers_that_cannot_enter() {
     ]);
     let run = |src: &str| {
         let p = program(&env, src);
-        let out = p.run(&v);
+        let out = p.outcome(&v);
         match out.result {
             Ok(v) => Ok(format!("{v:?}")),
             Err(f) => {
@@ -355,7 +353,7 @@ fn empty_containers_are_entered_at_the_depth_limit() {
     assert_eq!(run("[[]] == [[], []]"), Ok("false".into()));
     // An empty pair costs nothing.
     let p = program(&env, "[] == []");
-    let out = p.run(&none);
+    let out = p.outcome(&none);
     assert_eq!(out.usage.steps, 0);
 }
 
@@ -378,7 +376,7 @@ fn the_deepest_programs_run_within_the_stated_stack() {
         .stack_size(stack)
         .spawn(|| {
             let env = Env::builder()
-                .vars("{v: any, w: any}")
+                .var_record("{v: any, w: any}")
                 .limits(Limits {
                     depth: 1000,
                     ..Limits::default()
@@ -498,24 +496,24 @@ fn deep(n: usize) -> Data {
 /// it to JSON (the outcome command's) neither fails nor overflows.
 #[test]
 fn a_deep_result_is_handed_over() {
-    let env = Env::builder().vars("{a: any}").build().unwrap();
+    let env = Env::builder().var_record("{a: any}").build().unwrap();
     let p = program(&env, "a");
     let v = vars(&[("a", deep(1000))]);
-    let out = p.run(&v);
+    let out = p.outcome(&v);
     assert!(out.result.is_ok());
     assert_eq!(out.usage.steps, 0);
     // The outcome command's path, on the same data.
-    let doc = risor::json::parse(
+    let doc = crate::json::parse(
         r#"[{"name": "deep", "env": "{a: any}", "source": "a", "vars": {"a": 0}}]"#,
     )
     .unwrap();
-    let mut cases = risor::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let mut cases = crate::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
     let mut j = String::from("1");
     for _ in 0..1000 {
         j = format!("[{j}]");
     }
-    cases[0].vars = Some(vec![("a".into(), risor::json::parse(&j).unwrap())]);
-    let line = risor::testing::outcome_line(&cases[0]);
+    cases[0].vars = Some(vec![("a".into(), crate::json::parse(&j).unwrap())]);
+    let line = crate::testing::outcome_line(&cases[0]);
     assert!(
         line.contains("\"phase\":null"),
         "{}",
@@ -558,7 +556,7 @@ fn limit_messages_carry_their_limit() {
     ] {
         let env = Env::builder().limits(limits).build().unwrap();
         let p = program(&env, src);
-        let f = p.run(&none).result.err().unwrap();
+        let f = p.outcome(&none).result.err().unwrap();
         assert_eq!(f.message(), want);
         assert!(!f.message().contains('{'));
     }
@@ -569,25 +567,34 @@ fn limit_messages_carry_their_limit() {
 #[test]
 fn compile_checks_by_default() {
     let env = Env::builder()
-        .vars("{x: any, n: int | null}")
+        .var_record("{x: any, n: int | null}")
         .build()
         .unwrap();
-    let e = risor::compile(&env, parse("n + 1").unwrap()).err().unwrap();
+    let e = env
+        .compile(&parse("n + 1").unwrap(), Default::default())
+        .err()
+        .unwrap();
     assert_eq!(e.first().code, "maybe-null");
-    assert!(risor::compile_unchecked(&env, parse("n + 1").unwrap()).is_ok());
+    assert!(compile(&env, parse("n + 1").unwrap()).is_ok());
     // The same failure has the checked class at a `dynamic` site, and the
     // unchecked class without a check.
     let v = vars(&[("x", Data::Float(1.0)), ("n", Data::Null)]);
-    let p = risor::compile(&env, parse("x.a").unwrap()).unwrap();
-    let f = p.run(&v).result.err().unwrap();
+    let p = env
+        .compile(&parse("x.a").unwrap(), Default::default())
+        .unwrap();
+    let f = p.outcome(&v).result.err().unwrap();
     assert_eq!(p.class_of(&f), Some("dynamic"));
-    let p = risor::compile(&env, parse("match x { 2 => 1 }").unwrap()).err();
+    let p = env
+        .compile(&parse("match x { 2 => 1 }").unwrap(), Default::default())
+        .err();
     assert!(p.is_some(), "an `any` subject needs `_`");
-    let p = risor::compile_unchecked(&env, parse("match x { 2 => 1 }").unwrap()).unwrap();
-    let f = p.run(&v).result.err().unwrap();
+    let p = compile(&env, parse("match x { 2 => 1 }").unwrap()).unwrap();
+    let f = p.outcome(&v).result.err().unwrap();
     assert_eq!(p.class_of(&f), Some("dynamic"));
-    let r = risor::check(&env, &parse("x").unwrap(), &risor::Expected::Nothing);
-    assert_eq!(risor::check::ty::print(r.ty.as_ref().unwrap()), "any");
+    let r = env
+        .check(&parse("x").unwrap(), &crate::Expected::None)
+        .unwrap();
+    assert_eq!(r.ty.to_string(), "any");
 }
 
 /// R73: the outcome line of a limit failure writes no span, as Go's and
@@ -595,10 +602,10 @@ fn compile_checks_by_default() {
 #[test]
 fn an_outcome_line_leaves_out_a_limits_span() {
     let doc =
-        risor::json::parse(r#"[{"name": "steps", "source": "range(10)", "limits": {"steps": 1}}]"#)
+        crate::json::parse(r#"[{"name": "steps", "source": "range(10)", "limits": {"steps": 1}}]"#)
             .unwrap();
-    let cases = risor::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
-    let line = risor::testing::outcome_line(&cases[0]);
+    let cases = crate::testing::load_doc_lax(&doc, std::path::Path::new(".")).unwrap();
+    let line = crate::testing::outcome_line(&cases[0]);
     assert!(
         line.contains(r#""code":"steps-exceeded","span":null"#),
         "{line}"
@@ -617,8 +624,8 @@ fn precharge_allocation_before_building_containers_and_strings() {
     let v = vars(&[("xs", xs), ("m", m), ("s", s)]);
 
     let env = Env::builder()
-        .vars("{xs: float[], m: map<int>, s: string}")
-        .group("json")
+        .var_record("{xs: float[], m: map<int>, s: string}")
+        .groups(&["json"])
         .limits(Limits {
             steps: None,
             allocation: Some(5),
@@ -649,7 +656,7 @@ fn precharge_allocation_before_building_containers_and_strings() {
     }
 
     let both = Env::builder()
-        .vars("{s: string}")
+        .var_record("{s: string}")
         .limits(Limits {
             steps: Some(2),
             allocation: Some(2),
@@ -665,8 +672,8 @@ fn precharge_allocation_before_building_containers_and_strings() {
     // Text past the length the walk keeps (64 KiB) is rendered a second
     // time, after the charges, to the same string.
     let ok_env = Env::builder()
-        .vars("{s: string}")
-        .group("json")
+        .var_record("{s: string}")
+        .groups(&["json"])
         .limits(Limits {
             steps: None,
             allocation: None,
@@ -677,21 +684,21 @@ fn precharge_allocation_before_building_containers_and_strings() {
     let sample = "x\"\\\t\x01é😀".repeat(6000);
     let sv = vars(&[("s", Data::Str(sample.clone()))]);
     let p_tmpl = program(&ok_env, "`<${s}>`");
-    let got_tmpl = p_tmpl.run(&sv).result.unwrap();
+    let got_tmpl = p_tmpl.outcome(&sv).result.unwrap();
     assert_eq!(got_tmpl.as_str(), Some(format!("<{sample}>").as_str()));
-    let want_json = risor::eval::to_json(&Value::from_data(&Data::Str(sample))).unwrap();
+    let want_json = crate::eval::to_json(&Value::from_data(&Data::Str(sample))).unwrap();
     let p_json = program(&ok_env, "json.stringify(s)");
-    let got_json = p_json.run(&sv).result.unwrap();
+    let got_json = p_json.outcome(&sv).result.unwrap();
     assert_eq!(got_json.as_str(), Some(want_json.as_str()));
     let p_str = program(&ok_env, "string([s])");
-    let got_str = p_str.run(&sv).result.unwrap();
+    let got_str = p_str.outcome(&sv).result.unwrap();
     assert_eq!(got_str.as_str(), Some(format!("[{want_json}]").as_str()));
     let p_mixed = program(&ok_env, "string([s, 1.5, true, null, {a: s}])");
-    let got_mixed = p_mixed.run(&sv).result.unwrap();
+    let got_mixed = p_mixed.outcome(&sv).result.unwrap();
     let want_mixed = format!("[{want_json},1.5,true,null,{{\"a\":{want_json}}}]");
     assert_eq!(got_mixed.as_str(), Some(want_mixed.as_str()));
     let p_parts = program(&ok_env, "`<${s}${1}${[s]}>`");
-    let got_parts = p_parts.run(&sv).result.unwrap();
+    let got_parts = p_parts.outcome(&sv).result.unwrap();
     let want_parts = format!("<{}1[{want_json}]>", "x\"\\\t\x01é😀".repeat(6000));
     assert_eq!(got_parts.as_str(), Some(want_parts.as_str()));
 }

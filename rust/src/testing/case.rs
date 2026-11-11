@@ -192,7 +192,7 @@ pub struct Case {
     /// The program text, from `source` or read from `file`.
     pub source: String,
     /// F2: the text is a template, taken in this mode (4.1).
-    pub template: Option<crate::template::Mode>,
+    pub template: Option<crate::template::TemplateMode>,
     pub version: Option<String>,
     pub env: Option<String>,
     /// F1: variables declared by schema, with their options (7.1).
@@ -460,6 +460,14 @@ pub fn load_doc(doc: &Json, dir: &Path) -> V<Vec<Case>> {
 /// expects an empty result.
 pub fn load_doc_lax(doc: &Json, dir: &Path) -> V<Vec<Case>> {
     load_doc_with(doc, dir, true)
+}
+
+/// The cases of a case file read as `load_doc_lax` reads them, for the
+/// outcome command (`suite/README.md`).
+pub fn load_file_lax(path: &Path) -> V<Vec<Case>> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let doc = crate::json::parse(&text)?;
+    load_doc_lax(&doc, path.parent().unwrap_or(Path::new(".")))
 }
 
 fn load_doc_with(doc: &Json, dir: &Path, lax: bool) -> V<Vec<Case>> {
@@ -838,7 +846,7 @@ fn merge(header: &[(String, Json)], case: &[(String, Json)], dir: &Path, lax: bo
         name,
         template: get("template")
             .and_then(|v| v.as_str())
-            .and_then(crate::template::Mode::from_name),
+            .and_then(crate::template::TemplateMode::from_name),
         source,
         types,
         groups: strings(get("groups")),

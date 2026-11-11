@@ -1,7 +1,7 @@
 //! Package F5: tagged unions, through the binding surface.
 
-use risor::check::ty::{find_tag, print, Ty};
-use risor::{Data, Env};
+use crate::check::ty::{find_tag, print, Ty};
+use crate::{Data, Env};
 use std::collections::BTreeMap;
 
 const SHAPE: &str = "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w: float}";
@@ -9,13 +9,13 @@ const SHAPE: &str = "{kind: \"circle\", r: float} | {kind: \"rect\", h: float, w
 fn env() -> Env {
     Env::builder()
         .named_type("Shape", SHAPE)
-        .vars("{s: Shape, blob: any}")
+        .var_record("{s: Shape, blob: any}")
         .build()
         .unwrap()
 }
 
 fn shape_ty() -> Ty {
-    env().ty("Shape").unwrap().ty
+    env().ty("Shape").unwrap()
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn a_union_prints_by_its_variants_and_finds_its_tag() {
 
 #[test]
 fn the_walk_reads_the_tag_first() {
-    use risor::conform::{test, Count};
+    use crate::conform::{test, Count};
     let t = shape_ty();
     let rect = |w: f64, h: Option<f64>| {
         let mut m = BTreeMap::new();
@@ -48,7 +48,7 @@ fn the_walk_reads_the_tag_first() {
         if let Some(h) = h {
             m.insert("h".to_string(), Data::Float(h));
         }
-        risor::Value::from_data(&Data::Map(m))
+        crate::Value::from_data(&Data::Map(m))
     };
     let mut c = Count::default();
     assert!(test(&rect(2.0, Some(3.0)), &t, &mut c).unwrap().is_none());
@@ -63,31 +63,27 @@ fn the_walk_reads_the_tag_first() {
 #[test]
 fn a_test_of_the_tag_narrows() {
     let env = env();
-    let p = risor::parse("s.kind == \"circle\" ? s.r : s.w * s.h").unwrap();
-    let r = risor::check(&env, &p, &risor::Expected::Nothing);
-    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
-    assert_eq!(print(r.ty.as_ref().unwrap()), "float");
-    let p = risor::parse("s.r").unwrap();
-    let r = risor::check(&env, &p, &risor::Expected::Nothing);
-    assert_eq!(r.diagnostics[0].code, "maybe-absent");
+    let p = crate::parse("s.kind == \"circle\" ? s.r : s.w * s.h").unwrap();
+    let r = env.check(&p, &crate::Expected::None).unwrap();
+    assert_eq!(r.ty.to_string(), "float");
+    let p = crate::parse("s.r").unwrap();
+    let e = env.check(&p, &crate::Expected::None).unwrap_err();
+    assert_eq!(e.diagnostics[0].code, "maybe-absent");
 }
 
 #[test]
 fn a_schema_union_round_trips_through_a_description() {
-    let schema = risor::json::parse(
-        r#"{"oneOf": [{"type": "object", "properties": {"kind": {"const": "a"}}, "required": ["kind"]},
-                     {"type": "object", "properties": {"kind": {"const": "b"}}, "required": ["kind"]}]}"#,
-    )
-    .unwrap();
+    let schema = r#"{"oneOf": [{"type": "object", "properties": {"kind": {"const": "a"}}, "required": ["kind"]},
+                     {"type": "object", "properties": {"kind": {"const": "b"}}, "required": ["kind"]}]}"#;
     let env = Env::builder()
-        .var_schema("v", &schema, risor::SchemaOptions::default())
+        .var_schema("v", schema, crate::SchemaOptions::default())
         .build()
         .unwrap();
-    let d = env.describe();
+    let d = env.description();
     assert_eq!(
         d.get("variables").unwrap().get("v").unwrap().as_str(),
         Some("{kind: \"a\", ...} | {kind: \"b\", ...}")
     );
-    let e2 = Env::from_description(&d).unwrap();
+    let e2 = Env::from_description(&env.description_text()).unwrap();
     assert_eq!(e2.description_text(), env.description_text());
 }

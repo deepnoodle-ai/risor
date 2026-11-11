@@ -17,6 +17,29 @@ specification, not here. This file records the crate's own choices.
   (`01-language.md` 13), the 64 brackets of type text (`05-types.md` 20.5),
   and, from S2, the depth limit. What opens no level is walked by a loop.
 
+## The public surface
+
+The crate root exports the surface of `05-host-api.md` Part E (ruling R200)
+and nothing else. Every module is private; `lib.rs` re-exports the names,
+grouped by the sections E.3 to E.8.
+
+| Where | Holds |
+| --- | --- |
+| `src/api.rs` | `Expected`, `CheckResult`, `CompileOptions`; `Env::check`, `compile`, `complete`, `hover`; `Program::run`, `run_with`, `measure`, `measure_with`, `check_result`; `truthy`, `json_text` |
+| `src/typ.rs` | The structural type API of R179: `Type`, `TypeKind`, `FieldType`, the constructors, `join`, `type_from_schema`, `conform`, `conform_all` |
+| `src/config.rs` | `load_value`, `load::<T>`, `LoadOptions`, `LoadError` |
+| `lib.rs` `__private` | Hidden: what `risor-derive` and the examples reach that is not part of the surface |
+| `src/testing/` | The case-file runner, the one public module (E.2 item 2) |
+
+- A `Type` wraps the checker's own type, so a type the host builds is the type
+  the checker reads. A constructor never fails: a construction with no type
+  gives an invalid type, which `err` reports and a declaration refuses with
+  `bad-type`.
+- A run gives `Result<Value, Error>` with one `run` diagnostic; inside the
+  crate, `Program::outcome` keeps the raw failure, which the runner reads.
+- Tests that reach internals are unit tests under `src/tests/`; the
+  integration tests in `tests/` use the root alone.
+
 ## Layout
 
 | Path | Stage | Holds |
@@ -274,8 +297,10 @@ sorted each time their order shows (a walk, a spread, `==`). Both are charged
   `wrong-kind` or `missing-field` the class `dynamic` when a `dynamic` site is
   on the failing node or on its operand, receiver, index or argument (18.3),
   by comparing spans.
-- `compile` checks by default; `compile_unchecked` is the explicit option, and
-  `check::check` the check alone (`03-host.md` 3.2.1).
+- `Env::compile` checks by default; `CompileOptions { check: false, .. }` is
+  the explicit option, and `Env::check` the check alone (`03-host.md`
+  3.2.1). Inside the crate they are `check::compile_checked`,
+  `compile::compile_unchecked` and `check::check`.
 - Stack: the checker's recursion follows the source nesting and the nested
   uses of lambdas, both bounded at 100. Measured at the worst: 256 KiB
   optimized, 768 KiB unoptimized, within the figures for running above.

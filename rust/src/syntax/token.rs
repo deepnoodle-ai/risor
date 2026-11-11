@@ -101,19 +101,6 @@ pub enum StrForm {
 }
 
 impl StrForm {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            StrForm::Double => "\"",
-            StrForm::Single => "'",
-            StrForm::Backtick => "`",
-            StrForm::TripleDouble => "\"\"\"",
-            StrForm::RawDouble => "r\"",
-            StrForm::RawSingle => "r'",
-            StrForm::RawTriple => "r\"\"\"",
-            StrForm::Host => "${{",
-        }
-    }
-
     /// A `String` token of the grammar (`01-language.md` 3.1; F3 5.1): a
     /// one-line string or a raw string, which may stand as a key and a
     /// literal.

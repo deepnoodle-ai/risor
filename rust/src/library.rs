@@ -29,6 +29,7 @@ pub struct Constant {
     pub name: String,
     pub group: String,
     pub value: f64,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub cases: Option<Json>,
     /// F12: the record's type text and `doc`.
     pub ty: String,
@@ -61,9 +62,12 @@ pub struct Record {
     /// record's own.
     pub ext_cases: Option<Json>,
     /// The record's formulas, as written.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub steps: String,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub units: String,
     /// The cases of the record, as written.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub cases: Option<Json>,
 }
 
@@ -263,13 +267,6 @@ fn kind_word(k: Kind) -> &'static str {
 /// The entry an environment's removed name names, if any.
 pub fn entry_of(name: &str) -> Option<usize> {
     (0..records().len() + constants().len()).find(|&i| entry_name(i) == name)
-}
-
-/// Whether some kind has a library method of this name.
-pub fn is_method_name(name: &str) -> bool {
-    records()
-        .iter()
-        .any(|r| r.receiver.is_some() && r.name == name)
 }
 
 /// The entries this build runs: all 53. A runner names any other in a

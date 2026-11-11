@@ -38,7 +38,7 @@
 //! }
 //!
 //! assert_eq!(
-//!     risor::describe_host_type::<Order>().unwrap(),
+//!     risor::type_of::<Order>().unwrap().to_string(),
 //!     "{\"customer-name\": string, id: int, note?: string}"
 //! );
 //! ```
@@ -88,8 +88,8 @@
 //! ```compile_fail
 //! struct NoDefault;
 //! impl risor::HostType for NoDefault {
-//!     fn host_type(_: &mut risor::TypeCx) -> Result<risor::check::ty::Ty, risor::TypeError> {
-//!         Ok(risor::check::ty::Ty::int())
+//!     fn host_type(_: &mut risor::TypeCx) -> Result<risor::Type, risor::TypeError> {
+//!         Ok(risor::Type::INT)
 //!     }
 //! }
 //! #[derive(risor_derive::Host)]
@@ -592,7 +592,7 @@ impl{g_decl} ::risor::Decode for {name}{g_args} {where_decode} {{
         v: &::risor::Value<'_>,
         cx: &mut ::risor::DecodeCx,
     ) -> ::core::option::Option<Self> {{
-        if v.kind() != ::risor::value::Kind::Map {{
+        if v.kind() != ::risor::__private::Kind::Map {{
             cx.fail("the value is not a map");
             return ::core::option::Option::None;
         }}
@@ -627,7 +627,7 @@ impl{g_decl} ::risor::Decode for {name}{g_args} {where_decode} {{
 impl{g_decl} ::risor::HostType for {name}{g_args} {where_text} {{
     fn host_type(
         cx: &mut ::risor::TypeCx,
-    ) -> ::core::result::Result<::risor::check::ty::Ty, ::risor::TypeError> {{
+    ) -> ::core::result::Result<::risor::Type, ::risor::TypeError> {{
         cx.record::<Self>(|cx, r| {{
             #[allow(unused_variables)]
             let (cx, r) = (cx, r);

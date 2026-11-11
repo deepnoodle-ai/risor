@@ -19,6 +19,7 @@ pub struct Entry {
     pub templates: Vec<(String, String)>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub struct Catalog {
     pub entries: Vec<Entry>,
     /// The cases of each entry, as written.

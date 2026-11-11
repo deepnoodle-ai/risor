@@ -3,7 +3,7 @@
 //! A template is a host text with `${{ }}` parts. [`parse_template`] reads
 //! it whole first, every part's tokens included (2.3 item 3), then parses the
 //! parts in order. The program of each mode (2.5) is an ordinary
-//! [`Parsed`], which checks, compiles and runs as any program does.
+//! [`Expr`], which checks, compiles and runs as any program does.
 
 use crate::diag::Error;
 use crate::source::{Source, Span};
@@ -11,22 +11,22 @@ use crate::syntax::ast::{Ast, NodeId, NodeKind, TemplatePart};
 use crate::syntax::lexer::lex_part;
 use crate::syntax::parser::parse_parts;
 use crate::syntax::token::{StrForm, Tok, Token, P};
-use crate::syntax::Parsed;
+use crate::syntax::Expr;
 
 /// How a host takes the program of a template (2.5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mode {
+pub enum TemplateMode {
     /// The value is always a string.
     String,
     /// A single template gives its expression's value as it is.
     Value,
 }
 
-impl Mode {
-    pub fn from_name(s: &str) -> Option<Mode> {
+impl TemplateMode {
+    pub(crate) fn from_name(s: &str) -> Option<TemplateMode> {
         match s {
-            "string" => Some(Mode::String),
-            "value" => Some(Mode::Value),
+            "string" => Some(TemplateMode::String),
+            "value" => Some(TemplateMode::Value),
             _ => None,
         }
     }
@@ -154,7 +154,7 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
 
 impl Template {
     /// The template text.
-    pub fn source(&self) -> &Source {
+    pub(crate) fn source(&self) -> &Source {
         &self.source
     }
 
@@ -168,14 +168,10 @@ impl Template {
         self.segments.len() == 1 && matches!(self.segments[0], Segment::Part { .. })
     }
 
-    /// The number of parts.
-    pub fn parts(&self) -> usize {
-        self.parts.len()
-    }
-
-    /// A part as a program of its own: its expression alone, with spans in
-    /// the whole text. Each part is an expression of its own (2.5 item 6).
-    pub fn part_program(&self, i: usize) -> Option<Parsed> {
+    /// Part `i` as a program of its own: its expression alone, with spans
+    /// in the whole text. Each part is an expression of its own (2.5 item
+    /// 6). `None` past the last part; [`Template::segments`] counts them.
+    pub fn part(&self, i: usize) -> Option<Expr> {
         let e = *self.parts.get(i)?;
         let mut ast = self.ast.clone();
         let span = ast.span(e);
@@ -188,17 +184,23 @@ impl Template {
             0,
         );
         ast.root = root;
-        Some(Parsed {
+        Some(Expr {
             source: self.source.clone(),
             ast,
         })
     }
 
+    /// The analysis of the template's program in a mode, with its segments
+    /// (F2 3.1 item 6).
+    pub fn analyze(&self, mode: TemplateMode) -> crate::analysis::Analysis {
+        crate::analysis::analyze_template(self, mode)
+    }
+
     /// The program of the template in a mode (2.5).
-    pub fn program(&self, mode: Mode) -> Parsed {
+    pub fn program(&self, mode: TemplateMode) -> Expr {
         let mut ast = self.ast.clone();
         let whole = Span::new(0, self.source.len());
-        let (result, span) = if mode == Mode::Value && self.is_single() {
+        let (result, span) = if mode == TemplateMode::Value && self.is_single() {
             (self.parts[0], ast.span(self.parts[0]))
         } else if self.parts.is_empty() {
             let value = self
@@ -243,7 +245,7 @@ impl Template {
             0,
         );
         ast.root = root;
-        Parsed {
+        Expr {
             source: self.source.clone(),
             ast,
         }
