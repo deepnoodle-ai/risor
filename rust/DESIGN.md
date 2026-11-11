@@ -10,8 +10,9 @@ specification, not here. This file records the crate's own choices.
   which also refuses a repeated key (`03-host.md` 3.10.10).
 - No `unsafe` (`#![forbid(unsafe_code)]`).
 - Offsets are counted in code points. `Source` holds the text as `Vec<char>`;
-  every `Span` is two indexes into it. A diagnostic carries both the offsets
-  and the line and column of `03-host.md` 3.7.7.
+  every `Range` (crate-private) is two indexes into it. The public `Span` is
+  start and end as line and column (`03-host.md` 3.7.7, E.8); every span a
+  host sees is one, converted at the boundary.
 - **No input overflows the stack.** Recursion is allowed only where it is
   bounded by a number of the specification: the 100 levels of source nesting
   (`01-language.md` 13), the 64 brackets of type text (`05-types.md` 20.5),
@@ -44,7 +45,7 @@ grouped by the sections E.3 to E.8.
 
 | Path | Stage | Holds |
 | --- | --- | --- |
-| `src/source.rs` | S1 | `Source`, `Span`, `Pos`, `LineSpan` |
+| `src/source.rs` | S1 | `Source`, `Range`, `Pos`, `Span` |
 | `src/diag.rs` | S1 | `Diagnostic`, `Error`, `Phase`, the code names |
 | `src/syntax/token.rs` | S1 | Tokens, the 26 reserved words |
 | `src/syntax/lexer.rs` | S1 | The lexer. Templates nest through an explicit stack |

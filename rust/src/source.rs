@@ -3,55 +3,72 @@
 //! The specification counts in code points (`01-language.md` 6.4,
 //! `03-host.md` 3.7.7). Rust strings are UTF-8, so the lexer works on a
 //! `Vec<char>` and every offset in this crate is an index into it: a count of
-//! code points from the start of the text. A [`Span`] holds two such offsets.
+//! code points from the start of the text. A [`Range`] holds two such offsets.
 //! A [`Pos`] is a line and a column, both from 1, as a diagnostic shows it.
 
 use std::fmt;
 
 /// A start and an end offset, in code points. The end is exclusive.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Span {
+pub struct Range {
     pub start: u32,
     pub end: u32,
 }
 
-impl Span {
-    pub fn new(start: usize, end: usize) -> Span {
-        Span {
+impl Range {
+    pub fn new(start: usize, end: usize) -> Range {
+        Range {
             start: start as u32,
             end: end as u32,
         }
     }
 
     /// The empty span at an offset.
-    pub fn at(offset: usize) -> Span {
-        Span::new(offset, offset)
+    pub fn at(offset: usize) -> Range {
+        Range::new(offset, offset)
     }
 
     /// The span from the start of `self` to the end of `other`.
-    pub fn to(self, other: Span) -> Span {
-        Span {
+    pub fn to(self, other: Range) -> Range {
+        Range {
             start: self.start,
             end: other.end,
         }
     }
 }
 
-/// A line and a column, both counted from 1 (`03-host.md` 3.7.7).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A line and a column, both counted from 1 (`03-host.md` 3.7.7). Positions
+/// order by line, then column.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pos {
     pub line: u32,
     pub column: u32,
 }
 
-/// A span as a diagnostic gives it: start line, start column, end line, end
-/// column. The end is exclusive.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LineSpan(pub [u32; 4]);
+/// A span of a text (`03-host.md` 3.7.7): its start and its exclusive end,
+/// each a line and a column. Every span a host sees is one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Span {
+    pub start: Pos,
+    pub end: Pos,
+}
 
-impl fmt::Display for LineSpan {
+impl Span {
+    /// The span as `[line, column, end line, end column]`.
+    pub(crate) fn arr(self) -> [u32; 4] {
+        [
+            self.start.line,
+            self.start.column,
+            self.end.line,
+            self.end.column,
+        ]
+    }
+}
+
+impl fmt::Display for Span {
+    /// `[line, column, end line, end column]`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let [a, b, c, d] = self.0;
+        let [a, b, c, d] = self.arr();
         write!(f, "[{a}, {b}, {c}, {d}]")
     }
 }
@@ -105,7 +122,7 @@ impl Source {
     }
 
     /// The text of a span.
-    pub fn slice(&self, span: Span) -> String {
+    pub fn slice(&self, span: Range) -> String {
         self.chars[span.start as usize..span.end as usize]
             .iter()
             .collect()
@@ -114,7 +131,7 @@ impl Source {
     /// The text of a span as a parameter of a message renders it: visible
     /// text, cut to 64 code points (`f08-errors.md` 3.2). Only the start of
     /// a long span is read.
-    pub fn param_text(&self, span: Span) -> String {
+    pub fn param_text(&self, span: Range) -> String {
         let start = span.start as usize;
         let end = (span.end as usize).min(start + 65);
         let head: String = self.chars[start..end].iter().collect();
@@ -148,10 +165,11 @@ impl Source {
         (start + pos.column.max(1) - 1).min(end) as usize
     }
 
-    pub fn line_span(&self, span: Span) -> LineSpan {
-        let a = self.pos(span.start);
-        let b = self.pos(span.end);
-        LineSpan([a.line, a.column, b.line, b.column])
+    pub fn line_span(&self, span: Range) -> Span {
+        Span {
+            start: self.pos(span.start),
+            end: self.pos(span.end),
+        }
     }
 }
 

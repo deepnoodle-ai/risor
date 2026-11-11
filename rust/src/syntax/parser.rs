@@ -14,7 +14,7 @@ use super::ast::*;
 use super::lexer::lex;
 use super::token::{is_name, is_reserved, StrForm, Tok, Token, P};
 use crate::diag::{code, Diagnostic, Error, Phase};
-use crate::source::{Source, Span};
+use crate::source::{Range, Source};
 
 /// At most this many levels may be open at once (13.2).
 pub const MAX_LEVELS: u32 = 100;
@@ -117,7 +117,7 @@ const CORE_CODES: [&str; 14] = [
 pub(crate) fn parse_parts(
     src: &Source,
     toks: &[Token],
-    parts: &[(usize, Span)],
+    parts: &[(usize, Range)],
 ) -> Result<(Ast, Vec<NodeId>), Diagnostic> {
     let mut p = Parser::new(src, toks);
     let mut ids = Vec::new();
@@ -183,7 +183,7 @@ type R<T> = Result<T, Box<PErr>>;
 /// builds its message.
 struct PErr {
     code: &'static str,
-    span: Span,
+    span: Range,
     rule: Rule,
 }
 
@@ -246,7 +246,7 @@ enum Rule {
 type Target = (
     &'static str,
     &'static str,
-    Span,
+    Range,
     Vec<(&'static str, String)>,
 );
 
@@ -411,7 +411,7 @@ impl<'a> Parser<'a> {
 
     #[cold]
     #[inline(never)]
-    fn perr(&self, code: &'static str, span: Span, rule: Rule) -> Box<PErr> {
+    fn perr(&self, code: &'static str, span: Range, rule: Rule) -> Box<PErr> {
         self.err_pos.set(self.pos);
         Box::new(PErr { code, span, rule })
     }
@@ -443,7 +443,7 @@ impl<'a> Parser<'a> {
     }
 
     #[cold]
-    fn unexpected_at(&self, span: Span) -> Box<PErr> {
+    fn unexpected_at(&self, span: Range) -> Box<PErr> {
         self.perr(code::UNEXPECTED_TOKEN, span, Rule::General)
     }
 
@@ -454,7 +454,7 @@ impl<'a> Parser<'a> {
 
     // ---- levels (13) ----------------------------------------------------
 
-    fn open(&mut self, span: Span) -> R<()> {
+    fn open(&mut self, span: Range) -> R<()> {
         if self.level >= MAX_LEVELS {
             return Err(self.perr(code::NESTING_EXCEEDED, span, Rule::Final));
         }
@@ -469,13 +469,13 @@ impl<'a> Parser<'a> {
 
     // ---- nodes --------------------------------------------------------
 
-    fn node(&mut self, kind: NodeKind, span: Span) -> NodeId {
+    fn node(&mut self, kind: NodeKind, span: Range) -> NodeId {
         let i = self.t.partition_point(|t| t.span.start < span.start);
         let level = self.tok_level.get(i).copied().unwrap_or(0);
         self.ast.push(kind, span, level)
     }
 
-    fn outer(&self, id: NodeId) -> Span {
+    fn outer(&self, id: NodeId) -> Range {
         self.ast.node(id).outer
     }
 
@@ -500,7 +500,7 @@ impl<'a> Parser<'a> {
         if !matches!(self.peek().tok, Tok::Eof) {
             return Err(self.unexpected(self.peek()));
         }
-        Ok(self.node(NodeKind::Program { consts, result }, Span::new(first, end)))
+        Ok(self.node(NodeKind::Program { consts, result }, Range::new(first, end)))
     }
 
     fn const_line(&mut self) -> R<NodeId> {
@@ -677,7 +677,7 @@ impl<'a> Parser<'a> {
                         then,
                         else_: acc,
                     },
-                    Span { start, end },
+                    Range { start, end },
                 );
             }
             return Ok(acc);
@@ -729,7 +729,7 @@ impl<'a> Parser<'a> {
                 name,
                 handler,
             },
-            Span {
+            Range {
                 start: kw.span.start,
                 end,
             },
@@ -970,7 +970,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn pprim(&mut self) -> R<(PPrim, Span)> {
+    fn pprim(&mut self) -> R<(PPrim, Range)> {
         let t = self.peek();
         let simple = |p: PPrim| Ok((p, t.span));
         match &t.tok {
@@ -1031,7 +1031,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `PRecord` (2.1, 2.6).
-    fn precord(&mut self) -> R<(PPrim, Span)> {
+    fn precord(&mut self) -> R<(PPrim, Range)> {
         let lb = self.bump();
         self.open(lb.span)?;
         let mut fields: Vec<PField> = Vec::new();
@@ -1093,12 +1093,12 @@ impl<'a> Parser<'a> {
 
     /// The span of the `!` when `id` is a `!` expression written without
     /// parentheses.
-    fn bare_not(&self, id: NodeId) -> Option<Span> {
+    fn bare_not(&self, id: NodeId) -> Option<Range> {
         let n = self.ast.node(id);
         match n.kind {
             NodeKind::Unary {
                 op: UnaryOp::Not, ..
-            } if !n.parenthesized() => Some(Span {
+            } if !n.parenthesized() => Some(Range {
                 start: n.span.start,
                 end: n.span.start + 1,
             }),
@@ -1112,7 +1112,7 @@ impl<'a> Parser<'a> {
 
     /// `Unary`. `first` is the outermost prefix operator already read, which
     /// is the span of a 3.4 rule 1 error (`01-language.md` 3.4 rule 1).
-    fn prefixed(&mut self, first: Option<Span>) -> R<NodeId> {
+    fn prefixed(&mut self, first: Option<Range>) -> R<NodeId> {
         let t = self.peek();
         let op = match t.tok {
             Tok::Punct(P::Bang) => UnaryOp::Not,
@@ -1129,7 +1129,7 @@ impl<'a> Parser<'a> {
 
     /// `Power = Chain [ "**" Unary ]`. `prefix` is the `-` or `!` that applies
     /// directly to it, if any (3.4 rule 1).
-    fn power(&mut self, prefix: Option<Span>) -> R<NodeId> {
+    fn power(&mut self, prefix: Option<Range>) -> R<NodeId> {
         let base = self.chain()?;
         if !self.at_punct(P::StarStar) {
             return Ok(base);
@@ -1171,7 +1171,7 @@ impl<'a> Parser<'a> {
                                 args,
                                 optional,
                             },
-                            Span { start, end },
+                            Range { start, end },
                         );
                     } else {
                         x = self.node(
@@ -1181,7 +1181,7 @@ impl<'a> Parser<'a> {
                                 name_span: nt.span,
                                 optional,
                             },
-                            Span {
+                            Range {
                                 start,
                                 end: nt.span.end,
                             },
@@ -1206,7 +1206,7 @@ impl<'a> Parser<'a> {
                     self.close();
                     x = self.node(
                         NodeKind::Index { x, index, optional },
-                        Span {
+                        Range {
                             start,
                             end: rb.span.end,
                         },
@@ -1217,7 +1217,7 @@ impl<'a> Parser<'a> {
             }
         }
         if optional_any {
-            let span = Span {
+            let span = Range {
                 start,
                 end: self.ast.span(x).end,
             };
@@ -1232,7 +1232,7 @@ impl<'a> Parser<'a> {
     fn projection(&mut self, recv: NodeId, start: u32) -> R<NodeId> {
         struct Level {
             optional: bool,
-            star: Span,
+            star: Range,
             reads: Vec<NodeId>,
             prev: Option<NodeId>,
         }
@@ -1256,7 +1256,7 @@ impl<'a> Parser<'a> {
                 }
                 let rb = self.bump();
                 end = rb.span.end;
-                let star = Span { start, end };
+                let star = Range { start, end };
                 levels.last_mut().expect("a level").star = star;
                 // The reads of this level.
                 loop {
@@ -1289,7 +1289,7 @@ impl<'a> Parser<'a> {
                                     name_span: nt.span,
                                     optional: p == P::QDot,
                                 },
-                                Span { start, end },
+                                Range { start, end },
                             );
                             let lv = levels.last_mut().expect("a level");
                             lv.reads.push(n);
@@ -1322,7 +1322,7 @@ impl<'a> Parser<'a> {
                                     index,
                                     optional: p == P::QDotBracket,
                                 },
-                                Span { start, end },
+                                Range { start, end },
                             );
                             let lv = levels.last_mut().expect("a level");
                             lv.reads.push(n);
@@ -1339,7 +1339,7 @@ impl<'a> Parser<'a> {
         result?;
         // Fold the levels from the innermost: a later star is the last read
         // of the level before it.
-        let span = Span { start, end };
+        let span = Range { start, end };
         let mut inner: Option<NodeId> = None;
         while let Some(mut lv) = levels.pop() {
             if let Some(i) = inner.take() {
@@ -1436,7 +1436,7 @@ impl<'a> Parser<'a> {
                                 name,
                                 args,
                             },
-                            Span {
+                            Range {
                                 start: nt.span.start,
                                 end,
                             },
@@ -1478,7 +1478,7 @@ impl<'a> Parser<'a> {
         if let Tok::TmplHead(s) = &head.tok {
             parts.push(TemplatePart::Text(s.clone()));
         }
-        let mut dollar = Span {
+        let mut dollar = Range {
             start: head.span.end - 2,
             end: head.span.end,
         };
@@ -1492,7 +1492,7 @@ impl<'a> Parser<'a> {
                     self.close();
                     parts.push(TemplatePart::Expr(e));
                     parts.push(TemplatePart::Text(s.clone()));
-                    dollar = Span {
+                    dollar = Range {
                         start: t.span.end - 2,
                         end: t.span.end,
                     };
@@ -1916,7 +1916,7 @@ impl<'a> Parser<'a> {
 
     /// An optional `= Expr`. Returns the default and the span the element ends
     /// with.
-    fn pat_default(&mut self, last: Span) -> R<(Option<NodeId>, Span)> {
+    fn pat_default(&mut self, last: Range) -> R<(Option<NodeId>, Range)> {
         if self.at_punct(P::Assign) {
             self.bump();
             let d = self.expr()?;
@@ -2086,7 +2086,7 @@ impl<'a> Parser<'a> {
         let prev = |k: usize| ti.checked_sub(k).map(|j| &self.t[j]);
         let next = self.t.get(ti + 1);
         let at = |c: &'static str, template: &'static str| (c, template, e.span, Vec::new());
-        let at_span = |c: &'static str, span: Span| {
+        let at_span = |c: &'static str, span: Range| {
             (c, "default", span, Vec::<(&'static str, String)>::new())
         };
         let src = self.src.chars();

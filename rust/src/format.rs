@@ -11,11 +11,11 @@
 //! builds the document that is laid out.
 
 use crate::diag::Error;
-use crate::source::{Source, Span};
+use crate::source::{Range, Source};
 use crate::syntax::ast::{Ast, BinaryOp, CondForm, EntryKey, NodeId, NodeKind, UnaryOp};
 use crate::syntax::lexer::{lex_comments, lex_part_comments};
 use crate::syntax::token::{StrForm, Tok, Token, P};
-use crate::template::{parse_template, Segment};
+use crate::template::{parse_template, Seg, Segment};
 
 const WIDTH: i64 = 80;
 
@@ -333,12 +333,12 @@ fn fits(
 /// A token of the formatter: a template or text block with its
 /// interpolations is one.
 struct FTok {
-    span: Span,
+    span: Range,
     tok: Tok,
 }
 
 struct Cmt {
-    span: Span,
+    span: Range,
     line: bool,
     /// Line ends in the blank space before and after it.
     before: u32,
@@ -365,7 +365,7 @@ fn line_ends(ch: &[char], a: usize, b: usize) -> u32 {
 }
 
 /// The text of a span with each line end written U+000A.
-fn norm(ch: &[char], span: Span) -> String {
+fn norm(ch: &[char], span: Range) -> String {
     let mut s = String::new();
     let (a, b) = (span.start as usize, (span.end as usize).min(ch.len()));
     let mut i = a;
@@ -393,7 +393,7 @@ enum Role {
 enum El {
     Node(NodeId),
     PatField(NodeId, usize),
-    PatRest(Span),
+    PatRest(Range),
     ListElem(NodeId, usize),
 }
 
@@ -417,7 +417,7 @@ struct B<'a> {
 }
 
 impl<'a> B<'a> {
-    fn new(ch: &'a [char], ast: &'a Ast, raw: &'a [Token], comments: &[Span]) -> B<'a> {
+    fn new(ch: &'a [char], ast: &'a Ast, raw: &'a [Token], comments: &[Range]) -> B<'a> {
         // Merge each template and text block with its interpolations.
         let mut t: Vec<FTok> = Vec::new();
         let mut i = 0;
@@ -442,7 +442,7 @@ impl<'a> B<'a> {
                     }
                     let j = j.min(raw.len() - 1);
                     t.push(FTok {
-                        span: Span {
+                        span: Range {
                             start: raw[i].span.start,
                             end: raw[j].span.end,
                         },
@@ -474,11 +474,11 @@ impl<'a> B<'a> {
             }
         }
         // Comments, less those inside a merged literal.
-        let inside = |s: &Span| {
+        let inside = |s: &Range| {
             t.iter()
                 .any(|x| x.span.start < s.start && s.end <= x.span.end)
         };
-        let cs: Vec<Span> = comments.iter().copied().filter(|c| !inside(c)).collect();
+        let cs: Vec<Range> = comments.iter().copied().filter(|c| !inside(c)).collect();
         // Items in order, for the blank space before and after each.
         let mut items: Vec<(u32, u32, bool, usize)> = t
             .iter()
@@ -755,7 +755,7 @@ impl<'a> B<'a> {
 
     // ---- elements (2.9, 2.12 item 5) ----
 
-    fn elem_begin(&mut self, outer: Span) -> Option<usize> {
+    fn elem_begin(&mut self, outer: Range) -> Option<usize> {
         if !self.pass2 {
             return None;
         }
@@ -764,7 +764,7 @@ impl<'a> B<'a> {
         Some(last)
     }
 
-    fn elem_end(&mut self, last: Option<usize>, outer: Span, not_first: bool) -> DocId {
+    fn elem_end(&mut self, last: Option<usize>, outer: Range, not_first: bool) -> DocId {
         if !self.pass2 {
             if not_first {
                 if let Some(k) = self.first_kept(outer.start) {
@@ -782,7 +782,7 @@ impl<'a> B<'a> {
         }
     }
 
-    fn blank_before(&self, outer: Span) -> bool {
+    fn blank_before(&self, outer: Range) -> bool {
         if !self.pass2 {
             return false;
         }
@@ -791,7 +791,7 @@ impl<'a> B<'a> {
         s < self.t.len() && self.nl_before[s] >= 2 && k.is_none_or(|k| self.lead[k].is_empty())
     }
 
-    fn outer(&self, id: NodeId) -> Span {
+    fn outer(&self, id: NodeId) -> Range {
         self.ast.node(id).outer
     }
 
@@ -799,31 +799,31 @@ impl<'a> B<'a> {
         &self.ast.nodes[id.index()].kind
     }
 
-    fn el_span(&self, e: &El) -> Span {
+    fn el_span(&self, e: &El) -> Range {
         match e {
             El::Node(id) => self.outer(*id),
             El::PatField(p, k) => match self.kind(*p) {
                 NodeKind::MapPat { fields, .. } => {
                     let f = &fields[*k];
                     let end = f.default.map(|d| self.outer(d).end).unwrap_or(f.span.end);
-                    Span {
+                    Range {
                         start: f.span.start,
                         end: end.max(f.span.end),
                     }
                 }
-                _ => Span::default(),
+                _ => Range::default(),
             },
             El::PatRest(s) => *s,
             El::ListElem(p, k) => match self.kind(*p) {
                 NodeKind::ListPat { elems, .. } => {
                     let e = &elems[*k];
                     let end = e.default.map(|d| self.outer(d).end).unwrap_or(e.span.end);
-                    Span {
+                    Range {
                         start: e.span.start,
                         end: end.max(e.span.end),
                     }
                 }
-                _ => Span::default(),
+                _ => Range::default(),
             },
         }
     }
@@ -1580,10 +1580,10 @@ impl<'a> B<'a> {
         self.group(gl)
     }
 
-    fn arm_span(&self, a: NodeId) -> Span {
+    fn arm_span(&self, a: NodeId) -> Range {
         let s = self.ast.span(a);
         match self.kind(a) {
-            NodeKind::Arm { result, .. } => Span {
+            NodeKind::Arm { result, .. } => Range {
                 start: s.start,
                 end: s.end.max(self.outer(*result).end),
             },
@@ -1632,7 +1632,7 @@ impl<'a> B<'a> {
                 let mut els: Vec<El> = (0..fields.len()).map(|k| El::PatField(id, k)).collect();
                 if let Some(r) = rest {
                     let dots = self.tb(r.span.start);
-                    els.push(El::PatRest(Span {
+                    els.push(El::PatRest(Range {
                         start: self.t[dots].span.start,
                         end: r.span.end,
                     }));
@@ -1645,7 +1645,7 @@ impl<'a> B<'a> {
                 let mut els: Vec<El> = (0..elems.len()).map(|k| El::ListElem(id, k)).collect();
                 if let Some(r) = rest {
                     let dots = self.tb(r.span.start);
-                    els.push(El::PatRest(Span {
+                    els.push(El::PatRest(Range {
                         start: self.t[dots].span.start,
                         end: r.span.end,
                     }));
@@ -1983,7 +1983,7 @@ impl<'a> B<'a> {
 
     // ---- program types (2.13) ----
 
-    fn ptype(&mut self, span: Span) -> DocId {
+    fn ptype(&mut self, span: Range) -> DocId {
         let mut v = Vec::new();
         let mut k = self.ti(span.start);
         let mut prev: Option<usize> = None;
@@ -2039,7 +2039,7 @@ impl<'a> B<'a> {
 
     // ---- text blocks (2.7 item 2) ----
 
-    fn text_block(&self, span: Span, exprs: &[NodeId]) -> TextBlock {
+    fn text_block(&self, span: Range, exprs: &[NodeId]) -> TextBlock {
         let ch = self.ch;
         let (a, b) = (span.start as usize, span.end as usize);
         let raw_form = ch.get(a) == Some(&'r');
@@ -2146,7 +2146,7 @@ fn run(
     ast: &Ast,
     root: NodeId,
     raw: &[Token],
-    comments: &[Span],
+    comments: &[Range],
     width: Option<i64>,
 ) -> String {
     let mut b = B::new(ch, ast, raw, comments);
@@ -2184,10 +2184,10 @@ pub fn format_template(text: &str) -> Result<String, Error> {
     let ch = src.chars();
     let mut out = String::new();
     let mut pi = 0;
-    for seg in t.segments() {
+    for seg in t.segs() {
         match seg {
-            Segment::Text { span, .. } => out.push_str(&src.slice(*span)),
-            Segment::Part { span, .. } => {
+            Seg::Text { span, .. } => out.push_str(&src.slice(*span)),
+            Seg::Part { span, .. } => {
                 let as_is = src.slice(*span);
                 let i = pi;
                 pi += 1;

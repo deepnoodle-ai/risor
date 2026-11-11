@@ -65,8 +65,7 @@ pub use env::{Env, EnvBuilder, LibraryNames, Limits};
 
 // E.4: programs.
 pub use analysis::{Analysis, CallSite, Ref, Step};
-pub use api::{CheckResult, CompileOptions, Expected};
-pub use check::Site;
+pub use api::{CheckResult, CompileOptions, Expected, Site};
 pub use compile::Program;
 pub use eval::{RunOptions, Usage};
 pub use host::{NoVars, Vars};
@@ -107,7 +106,7 @@ pub use assist::{Candidate, Completion, Hover};
 pub use diag::{Diagnostic, Error, PathStep, Phase, TraceEntry};
 pub use format::format;
 pub use render::{render_detail, render_json, render_line};
-pub use source::{LineSpan, Pos, Span};
+pub use source::{Pos, Span};
 
 /// What the derive of `risor-derive` and the crate's own examples reach
 /// that is not part of the surface. Not for hosts: it may change at any

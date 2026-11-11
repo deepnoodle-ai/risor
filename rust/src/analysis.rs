@@ -8,7 +8,7 @@
 
 use crate::host::Data;
 use crate::json::Json;
-use crate::source::{Source, Span};
+use crate::source::{Range, Span};
 use crate::syntax::ast::{EntryKey, NodeId, NodeKind, TemplatePart, UnaryOp};
 use crate::syntax::Expr;
 use crate::template::{Segment, Template, TemplateMode};
@@ -36,9 +36,9 @@ pub(crate) struct CallRef {
     /// The receiver's name for a call of the form `n.m(...)`; `None` for a
     /// `Call`.
     pub namespace: Option<String>,
-    pub span: Span,
+    pub span: Range,
     /// The span of each argument.
-    pub args: Vec<Span>,
+    pub args: Vec<Range>,
     /// The node of each argument, for [`CallSite::args`].
     pub(crate) arg_nodes: Vec<NodeId>,
     /// The call stands inside a `Lambda`: in its body or a default.
@@ -58,8 +58,6 @@ pub struct Analysis {
     pub literal: Option<Data>,
     /// A template's segments; `None` for a program.
     pub segments: Option<Vec<Segment>>,
-    /// The text analyzed, for the spans of [`Analysis::json`].
-    pub(crate) source: Source,
 }
 
 impl PartialEq for Analysis {
@@ -95,7 +93,6 @@ pub(crate) fn analyze(p: &Expr) -> Analysis {
         calls,
         literal: literal_of(p).map(|j| json_data(&j)),
         segments: None,
-        source: p.source.clone(),
     }
 }
 
@@ -162,9 +159,13 @@ fn call_site(program: &Expr, c: CallRef) -> CallSite {
     CallSite {
         name: c.name,
         namespace: c.namespace,
-        span: c.span,
+        span: program.source.line_span(c.span),
         args,
-        arg_spans: c.args,
+        arg_spans: c
+            .args
+            .iter()
+            .map(|a| program.source.line_span(*a))
+            .collect(),
         in_lambda: c.lambda,
     }
 }
@@ -198,7 +199,7 @@ impl<'p> Walker<'p> {
         self.p.ast.kind(id)
     }
 
-    fn span(&self, id: NodeId) -> Span {
+    fn span(&self, id: NodeId) -> Range {
         self.p.ast.span(id)
     }
 
@@ -284,7 +285,7 @@ impl<'p> Walker<'p> {
                     self.refs.push(Ref {
                         name: name.clone(),
                         path: Vec::new(),
-                        span: self.span(id),
+                        span: self.p.source.line_span(self.span(id)),
                     });
                 }
             }
@@ -452,7 +453,10 @@ impl<'p> Walker<'p> {
                 self.refs.push(Ref {
                     name: name.clone(),
                     path,
-                    span: Span::new(ast.span(primary).start as usize, end as usize),
+                    span: self
+                        .p
+                        .source
+                        .line_span(Range::new(ast.span(primary).start as usize, end as usize)),
                 });
                 // A method call on a free name has the form of a call of a
                 // namespace (3.6 item 3).
@@ -569,9 +573,8 @@ impl Analysis {
     /// The report as JSON text, in the field order of 3.3 and 4.3, with
     /// spans as `[line, column, end line, end column]`.
     pub fn json(&self) -> String {
-        let source = &self.source;
         let span = |s: Span| {
-            let [a, b, c, d] = source.line_span(s).0;
+            let [a, b, c, d] = s.arr();
             format!("[{a},{b},{c},{d}]")
         };
         let st = |s: &str| crate::json::to_text(&Json::Str(s.to_string()));

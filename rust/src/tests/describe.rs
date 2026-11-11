@@ -25,12 +25,12 @@ fn check_text(env: &Env, source: &str, returns: Option<&str>) -> String {
     let sites: Vec<String> = r
         .sites
         .iter()
-        .map(|s| format!("{} {:?}", s.class, parsed.source.line_span(s.span).0))
+        .map(|s| format!("{} {:?}", s.class, parsed.source.line_span(s.span).arr()))
         .collect();
     let diags: Vec<String> = r
         .diagnostics
         .iter()
-        .map(|d| format!("{} {:?} {}", d.code, d.span.map(|s| s.0), d.message))
+        .map(|d| format!("{} {:?} {}", d.code, d.span.map(|s| s.arr()), d.message))
         .collect();
     format!("{ty} | {} | {}", sites.join(", "), diags.join(", "))
 }

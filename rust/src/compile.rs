@@ -13,7 +13,7 @@ use crate::check::ty::{Ty, TypeNames};
 use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::library;
-use crate::source::Span;
+use crate::source::Range;
 use crate::syntax::ast::{EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
 use crate::syntax::Expr;
 use std::collections::{HashMap, HashSet};
@@ -247,26 +247,26 @@ impl Resolver<'_> {
         self.p.ast.kind(id)
     }
 
-    fn span(&self, id: NodeId) -> Span {
+    fn span(&self, id: NodeId) -> Range {
         self.p.ast.span(id)
     }
 
     /// A diagnostic, with its message from the catalog (`f08-errors.md` 3.5).
-    fn diag(&mut self, c: &'static str, span: Span, template: &str, params: &[(&str, String)]) {
+    fn diag(&mut self, c: &'static str, span: Range, template: &str, params: &[(&str, String)]) {
         let msg = crate::messages::build(c, template, params);
         self.diags
             .push(Diagnostic::at(Phase::Check, c, &self.p.source, span, msg));
     }
 
     /// The source text at a span, as visible text (`f08-errors.md` 3.2).
-    fn text(&self, span: Span) -> String {
+    fn text(&self, span: Range) -> String {
         self.p.source.param_text(span)
     }
 
     /// `arity` (`f08-errors.md` 3.5 item 5).
     fn arity(
         &mut self,
-        span: Span,
+        span: Range,
         name: &str,
         count: usize,
         required: usize,
@@ -402,7 +402,7 @@ impl Resolver<'_> {
     }
 
     /// Bind a name in the innermost scope (22.7).
-    fn bind(&mut self, name: &str, span: Span, b: Option<Bind>) -> Option<u32> {
+    fn bind(&mut self, name: &str, span: Range, b: Option<Bind>) -> Option<u32> {
         if name == "_" {
             return None;
         }
@@ -783,11 +783,11 @@ impl Resolver<'_> {
     fn call(
         &mut self,
         id: NodeId,
-        ns: Option<(String, Span)>,
+        ns: Option<(String, Range)>,
         name: &str,
-        name_span: Span,
+        name_span: Range,
         args: &[NodeId],
-        call_span: Span,
+        call_span: Range,
     ) {
         self.set_measure(id);
         let full = match &ns {
@@ -975,7 +975,7 @@ pub(crate) fn lit_key(l: &Lit) -> LitKey {
 }
 
 /// Every type name of a program type, with its span, in order.
-fn names_of(pt: &PType, f: &mut dyn FnMut(&str, Span)) {
+fn names_of(pt: &PType, f: &mut dyn FnMut(&str, Range)) {
     for a in &pt.alts {
         match &a.prim {
             PPrim::Name(n, s) => f(n, *s),

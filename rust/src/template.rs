@@ -6,7 +6,7 @@
 //! [`Expr`], which checks, compiles and runs as any program does.
 
 use crate::diag::Error;
-use crate::source::{Source, Span};
+use crate::source::{Range, Source, Span};
 use crate::syntax::ast::{Ast, NodeId, NodeKind, TemplatePart};
 use crate::syntax::lexer::lex_part;
 use crate::syntax::parser::parse_parts;
@@ -43,6 +43,13 @@ pub enum Segment {
     Part { expr: Span, span: Span },
 }
 
+/// A segment in code-point offsets, as the crate reads it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Seg {
+    Text { value: String, span: Range },
+    Part { expr: Range, span: Range },
+}
+
 /// A parsed template.
 #[derive(Clone, Debug)]
 pub struct Template {
@@ -50,6 +57,7 @@ pub struct Template {
     /// The parts' expressions; the program nodes are added for each mode.
     ast: Ast,
     parts: Vec<NodeId>,
+    segs: Vec<Seg>,
     segments: Vec<Segment>,
 }
 
@@ -59,18 +67,18 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
     let source = Source::raw(text);
     let s = source.chars();
     let n = s.len();
-    let mut segments: Vec<Segment> = Vec::new();
+    let mut segments: Vec<Seg> = Vec::new();
     let mut toks: Vec<Token> = Vec::new();
-    let mut part_starts: Vec<(usize, Span)> = Vec::new();
-    let mut part_spans: Vec<Span> = Vec::new();
+    let mut part_starts: Vec<(usize, Range)> = Vec::new();
+    let mut part_spans: Vec<Range> = Vec::new();
     let mut run = String::new();
     let mut run_start = 0usize;
     let mut i = 0usize;
-    let close_run = |run: &mut String, start: usize, end: usize, segs: &mut Vec<Segment>| {
+    let close_run = |run: &mut String, start: usize, end: usize, segs: &mut Vec<Seg>| {
         if end > start {
-            segs.push(Segment::Text {
+            segs.push(Seg::Text {
                 value: std::mem::take(run),
-                span: Span::new(start, end),
+                span: Range::new(start, end),
             });
         }
     };
@@ -88,11 +96,11 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
             close_run(&mut run, run_start, i, &mut segments);
             let dollar = i;
             let (mut ptoks, brace) = lex_part(&source, i + 3, dollar).map_err(Error::one)?;
-            part_starts.push((toks.len(), Span::new(dollar, dollar + 3)));
+            part_starts.push((toks.len(), Range::new(dollar, dollar + 3)));
             toks.append(&mut ptoks);
             let end = if s.get(brace + 1) == Some(&'}') {
                 // The closing delimiter `}}`.
-                let sp = Span::new(brace, brace + 2);
+                let sp = Range::new(brace, brace + 2);
                 toks.push(Token {
                     tok: Tok::Eof,
                     span: sp,
@@ -103,14 +111,14 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
             } else {
                 // A lone closing brace (2.2 item 5): `unexpected-token` where
                 // the parser reaches it.
-                let sp = Span::new(brace, brace + 1);
+                let sp = Range::new(brace, brace + 1);
                 toks.push(Token {
                     tok: Tok::Punct(P::RBrace),
                     span: sp,
                     diag: sp,
                     code: None,
                 });
-                let e = Span::at(brace + 1);
+                let e = Range::at(brace + 1);
                 toks.push(Token {
                     tok: Tok::Eof,
                     span: e,
@@ -119,10 +127,10 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
                 });
                 brace + 1
             };
-            part_spans.push(Span::new(dollar, end));
-            segments.push(Segment::Part {
-                expr: Span::at(0),
-                span: Span::new(dollar, end),
+            part_spans.push(Range::new(dollar, end));
+            segments.push(Seg::Part {
+                expr: Range::at(0),
+                span: Range::new(dollar, end),
             });
             i = end;
             run_start = i;
@@ -139,16 +147,30 @@ pub fn parse_template(text: &str) -> Result<Template, Error> {
     };
     let mut k = 0;
     for seg in &mut segments {
-        if let Segment::Part { expr, .. } = seg {
+        if let Seg::Part { expr, .. } = seg {
             *expr = ast.span(parts[k]);
             k += 1;
         }
     }
+    let public = segments
+        .iter()
+        .map(|s| match s {
+            Seg::Text { value, span } => Segment::Text {
+                value: value.clone(),
+                span: source.line_span(*span),
+            },
+            Seg::Part { expr, span } => Segment::Part {
+                expr: source.line_span(*expr),
+                span: source.line_span(*span),
+            },
+        })
+        .collect();
     Ok(Template {
         source,
         ast,
         parts,
-        segments,
+        segs: segments,
+        segments: public,
     })
 }
 
@@ -161,6 +183,11 @@ impl Template {
     /// The text runs and parts, in order (2.4).
     pub fn segments(&self) -> &[Segment] {
         &self.segments
+    }
+
+    /// The segments in code-point offsets.
+    pub(crate) fn segs(&self) -> &[Seg] {
+        &self.segs
     }
 
     /// Exactly one part, with no text run before or after it.
@@ -199,7 +226,7 @@ impl Template {
     /// The program of the template in a mode (2.5).
     pub fn program(&self, mode: TemplateMode) -> Expr {
         let mut ast = self.ast.clone();
-        let whole = Span::new(0, self.source.len());
+        let whole = Range::new(0, self.source.len());
         let (result, span) = if mode == TemplateMode::Value && self.is_single() {
             (self.parts[0], ast.span(self.parts[0]))
         } else if self.parts.is_empty() {

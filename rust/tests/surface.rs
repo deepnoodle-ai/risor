@@ -204,4 +204,36 @@ fn templates_and_tools() {
         )
         .unwrap();
     assert_eq!(h.ty.as_deref(), Some("string"));
+    assert_eq!(h.span.to_string(), "[2, 6, 2, 10]");
+    assert_eq!(c.span.start, Pos { line: 2, column: 6 });
+}
+
+#[test]
+fn every_span_is_lines_and_columns() {
+    let x = parse("1 +\n  f(a.b)").unwrap();
+    let a = x.analyze();
+    let at = |line, column| Pos { line, column };
+    assert_eq!(a.refs[0].span.start, at(2, 5));
+    assert_eq!(a.calls[0].span.end, at(2, 9));
+    assert_eq!(a.calls[0].arg_spans[0].to_string(), "[2, 5, 2, 8]");
+    let t = parse_template("a\n${{ x }}").unwrap();
+    match &t.segments()[1] {
+        risor::Segment::Part { expr, .. } => assert_eq!(expr.start, at(2, 5)),
+        s => panic!("{s:?}"),
+    }
+    let env = Env::builder().var("m", "map<int>").build().unwrap();
+    let r = env.check(&parse("\nm.k").unwrap(), &Expected::None);
+    assert_eq!(r.unwrap_err().first().span.unwrap().start.line, 2);
+    let env = Env::builder().var("xs", "int[]").build().unwrap();
+    let r = env
+        .check(&parse("\nxs[0]").unwrap(), &Expected::None)
+        .unwrap();
+    assert_eq!(r.sites[0].span.start, at(2, 1));
+}
+
+#[test]
+fn json_text_fails_with_an_error() {
+    let v = Value::from_data(&Data::Opaque(OpaqueRef::new("Time", 1u8)));
+    let e = json_text(&v).unwrap_err();
+    assert_eq!(e.first().code, "wrong-kind");
 }

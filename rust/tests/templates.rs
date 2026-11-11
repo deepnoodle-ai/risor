@@ -84,7 +84,7 @@ fn a_part_as_its_own_program() {
 fn a_template_parse_error_is_in_the_whole_text() {
     let e = parse_template("ab\n${{ }}").err().unwrap();
     assert_eq!(e.diagnostics[0].code, "unexpected-token");
-    assert_eq!(e.diagnostics[0].span.unwrap().0, [2, 5, 2, 7]);
+    assert_eq!(e.diagnostics[0].span.unwrap().to_string(), "[2, 5, 2, 7]");
 }
 
 #[test]

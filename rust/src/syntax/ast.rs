@@ -8,7 +8,7 @@
 //! `? :` and of `if`, `const` lines) is walked by a loop.
 
 use super::token::StrForm;
-use crate::source::Span;
+use crate::source::Range;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(pub u32);
@@ -110,25 +110,25 @@ pub enum Lit {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ArmLit {
     pub lit: Lit,
-    pub span: Span,
+    pub span: Range,
 }
 
 /// A name with its span, as a pattern's rest or a `catch` name holds it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpannedName {
     pub name: String,
-    pub span: Span,
+    pub span: Range,
 }
 
 /// A field of a `MapPat`: `{a}`, `{b: x}`, `{"a-b": x}`, `{c = 0}`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PatField {
     pub key: String,
-    pub key_span: Span,
+    pub key_span: Range,
     pub name: SpannedName,
     pub default: Option<NodeId>,
     /// From the key, or the name, to the end of the default, or the name.
-    pub span: Span,
+    pub span: Range,
 }
 
 /// An element of a `ListPat`.
@@ -137,7 +137,7 @@ pub struct PatElem {
     /// A `NamePat`.
     pub pat: NodeId,
     pub default: Option<NodeId>,
-    pub span: Span,
+    pub span: Range,
 }
 
 /// The 30 node kinds of Core (4.1). The comment on each gives its number.
@@ -169,7 +169,7 @@ pub enum NodeKind {
     Entry {
         key: EntryKey,
         /// The span of the key: the word, the string, or the `[` ... `]`.
-        key_span: Span,
+        key_span: Range,
         value: NodeId,
         shorthand: bool,
     },
@@ -190,7 +190,7 @@ pub enum NodeKind {
     Member {
         x: NodeId,
         name: String,
-        name_span: Span,
+        name_span: Range,
         optional: bool,
     },
     /// 18
@@ -265,7 +265,7 @@ pub enum NodeKind {
         x: Option<NodeId>,
         reads: Vec<NodeId>,
         optional: bool,
-        star: Span,
+        star: Range,
     },
     /// Not a node of the language: the element in hand, the `x` of the first
     /// read of a level of a projection.
@@ -284,7 +284,7 @@ pub enum AsForm {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PType {
     pub alts: Vec<PAlt>,
-    pub span: Span,
+    pub span: Range,
 }
 
 /// `PAlt = PPrim { "[" "]" }`.
@@ -292,7 +292,7 @@ pub struct PType {
 pub struct PAlt {
     pub prim: PPrim,
     pub suffixes: u32,
-    pub span: Span,
+    pub span: Range,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -312,7 +312,7 @@ pub enum PPrim {
         rest: Option<Option<Box<PType>>>,
     },
     /// A type name, with its span.
-    Name(String, Span),
+    Name(String, Range),
     Paren(Box<PType>),
 }
 
@@ -409,11 +409,11 @@ pub const KIND_NAMES: [&str; 33] = [
 pub struct Node {
     pub kind: NodeKind,
     /// The span of 4.3.
-    pub span: Span,
+    pub span: Range,
     /// The span with the parentheses written around the node, if any. Equal
     /// to `span` when there are none. A node that holds this one starts or
     /// ends at `outer` (4.3 rule 1).
-    pub outer: Span,
+    pub outer: Range,
     /// The levels open at the node's first token (`01-language.md` 13.2
     /// rule 5): its nesting depth.
     pub level: u16,
@@ -445,11 +445,11 @@ impl Ast {
         &self.nodes[id.index()].kind
     }
 
-    pub fn span(&self, id: NodeId) -> Span {
+    pub fn span(&self, id: NodeId) -> Range {
         self.nodes[id.index()].span
     }
 
-    pub(crate) fn push(&mut self, kind: NodeKind, span: Span, level: u16) -> NodeId {
+    pub(crate) fn push(&mut self, kind: NodeKind, span: Range, level: u16) -> NodeId {
         let id = NodeId(self.nodes.len() as u32);
         self.nodes.push(Node {
             kind,

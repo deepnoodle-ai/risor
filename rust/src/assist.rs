@@ -11,7 +11,7 @@ use crate::compile::Res;
 use crate::describe::print_sig;
 use crate::env::Env;
 use crate::library;
-use crate::source::{Source, Span};
+use crate::source::{Range, Source, Span};
 use crate::syntax::ast::{Ast, EntryKey, Lit, NodeId, NodeKind, PPrim, PType};
 use crate::syntax::lexer::{lex_cut, CUT_OPEN};
 use crate::syntax::parser::{parse_repair, HOLE};
@@ -46,6 +46,46 @@ pub struct Hover {
     pub declaration: Option<Span>,
 }
 
+impl RawCompletion {
+    pub(crate) fn public(self, src: &Source) -> Completion {
+        Completion {
+            span: src.line_span(self.span),
+            items: self.items,
+        }
+    }
+}
+
+impl RawHover {
+    pub(crate) fn public(self, src: &Source) -> Hover {
+        Hover {
+            kind: self.kind,
+            span: src.line_span(self.span),
+            ty: self.ty,
+            signature: self.signature,
+            doc: self.doc,
+            declaration: self.declaration.map(|d| src.line_span(d)),
+        }
+    }
+}
+
+/// A completion in code-point offsets.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RawCompletion {
+    pub span: Range,
+    pub items: Vec<Candidate>,
+}
+
+/// A hover record in code-point offsets.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RawHover {
+    pub kind: &'static str,
+    pub span: Range,
+    pub ty: Option<String>,
+    pub signature: Option<String>,
+    pub doc: Option<String>,
+    pub declaration: Option<Range>,
+}
+
 fn is_word_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
@@ -59,7 +99,7 @@ fn is_word(s: &str) -> bool {
 }
 
 fn mk(tok: Tok, at: usize) -> Token {
-    let span = Span::new(at, at);
+    let span = Range::new(at, at);
     Token {
         tok,
         span,
@@ -366,7 +406,7 @@ impl<'a> Tree<'a> {
     }
 
     /// The names a pattern binds, in order, with their slots and spans.
-    fn pattern_names(&self, pat: NodeId) -> Vec<(String, Option<u32>, Span)> {
+    fn pattern_names(&self, pat: NodeId) -> Vec<(String, Option<u32>, Range)> {
         let mut out = Vec::new();
         match self.kind(pat) {
             NodeKind::NamePat { name: Some(n) } if n != "_" => {
@@ -783,13 +823,13 @@ fn has_type_hole(t: &PType) -> bool {
     })
 }
 
-/// Completion at `offset`, a count of code points of `text` after a U+FEFF
+/// RawCompletion at `offset`, a count of code points of `text` after a U+FEFF
 /// at its start (3.5).
-pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) -> Completion {
+pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) -> RawCompletion {
     let src = Source::new(text);
     let ch = src.chars();
-    let at = Span::new(offset, offset);
-    let empty = |span: Span| Completion {
+    let at = Range::new(offset, offset);
+    let empty = |span: Range| RawCompletion {
         span,
         items: Vec::new(),
     };
@@ -803,7 +843,7 @@ pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) ->
     if p < offset && ch[p].is_ascii_digit() {
         return empty(at);
     }
-    let pspan = Span::new(p, offset);
+    let pspan = Range::new(p, offset);
     let prefix: String = ch[p..offset].iter().collect();
     let filter = |items: Vec<Candidate>, pre: &str| -> Vec<Candidate> {
         items
@@ -818,13 +858,13 @@ pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) ->
         Lexed::Fail => empty(pspan),
         Lexed::InString(s, q, pre, post) => {
             let value: String = ch[s + 1..offset].iter().collect();
-            let sspan = Span::new(s + 1, offset);
+            let sspan = Range::new(s + 1, offset);
             let form = if q == '"' {
                 StrForm::Double
             } else {
                 StrForm::Single
             };
-            let hole_span = Span::new(s, offset);
+            let hole_span = Range::new(s, offset);
             let mut toks = pre;
             let mut hole = mk(Tok::Str(value.clone(), form), s);
             hole.span = hole_span;
@@ -838,7 +878,7 @@ pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) ->
                 ast,
             };
             let items = strings_at(env, &parsed, expected, hole_span, q);
-            Completion {
+            RawCompletion {
                 span: sspan,
                 items: filter(items, &value),
             }
@@ -860,7 +900,7 @@ pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) ->
             hole.diag = pspan;
             toks.push(hole);
             let Some(ast) = repair(&cut_src, &toks, &post, offset) else {
-                return Completion {
+                return RawCompletion {
                     span: pspan,
                     items: filter(fallback(&pre), &prefix),
                 };
@@ -870,7 +910,7 @@ pub(crate) fn complete(env: &Env, text: &str, expected: &Want, offset: usize) ->
                 ast,
             };
             let items = word_hole(env, &parsed, expected);
-            Completion {
+            RawCompletion {
                 span: pspan,
                 items: filter(items, &prefix),
             }
@@ -989,7 +1029,7 @@ fn keys(tree: &Tree<'_>, map: NodeId, hole_entry: NodeId) -> Option<Vec<Candidat
 
 /// The strings context (3.11), where the hole is the string literal at
 /// `span`.
-fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Span, q: char) -> Vec<Candidate> {
+fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Range, q: char) -> Vec<Candidate> {
     let ast = &parsed.ast;
     let tree = Tree::new(env, parsed, expected, None);
     let lits = |t: &Ty, skip: &[String]| -> Vec<Candidate> {
@@ -1059,8 +1099,8 @@ fn strings_at(env: &Env, parsed: &Expr, expected: &Want, span: Span, q: char) ->
 
 // ---- hover -----------------------------------------------------------------------
 
-/// Hover at `offset` (3.13).
-pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Option<Hover> {
+/// RawHover at `offset` (3.13).
+pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Option<RawHover> {
     let src = Source::new(text);
     let ch = src.chars();
     if offset >= ch.len() || !is_word_char(ch[offset]) {
@@ -1081,10 +1121,10 @@ pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Op
     match lex_before(ch, we, false) {
         Lexed::Ok(t, _)
             if t.last()
-                .is_some_and(|l| l.span == Span::new(ws, we) && l.word().is_some()) => {}
+                .is_some_and(|l| l.span == Range::new(ws, we) && l.word().is_some()) => {}
         _ => return None,
     }
-    let wspan = Span::new(ws, we);
+    let wspan = Range::new(ws, we);
     let parsed = match crate::syntax::parse(text) {
         Ok(p) => p,
         Err(_) => {
@@ -1104,10 +1144,10 @@ pub(crate) fn hover(env: &Env, text: &str, expected: &Want, offset: usize) -> Op
     hover_in(&tree, wspan)
 }
 
-fn hover_in(tree: &Tree<'_>, w: Span) -> Option<Hover> {
+fn hover_in(tree: &Tree<'_>, w: Range) -> Option<RawHover> {
     let env = tree.env;
     let d = env.data();
-    let rec = |kind: &'static str, ty: Option<String>| Hover {
+    let rec = |kind: &'static str, ty: Option<String>| RawHover {
         kind,
         span: w,
         ty,
@@ -1121,7 +1161,7 @@ fn hover_in(tree: &Tree<'_>, w: Span) -> Option<Hover> {
             NodeKind::Ident { name } if n.span == w => {
                 let t = Some(print(&tree.ty(id)));
                 return match tree.res(id) {
-                    Res::Slot(s) => Some(Hover {
+                    Res::Slot(s) => Some(RawHover {
                         declaration: binding_site(tree, *s),
                         ..rec("name", t)
                     }),
@@ -1181,7 +1221,7 @@ fn hover_in(tree: &Tree<'_>, w: Span) -> Option<Hover> {
                     };
                     let full = format!("{ns}.{name}");
                     let c = library::constants().iter().find(|c| c.name == full);
-                    return Some(Hover {
+                    return Some(RawHover {
                         doc: c.and_then(|c| c.doc.clone()),
                         ..rec("constant", Some(print(&tree.ty(id))))
                     });
@@ -1191,7 +1231,7 @@ fn hover_in(tree: &Tree<'_>, w: Span) -> Option<Hover> {
             NodeKind::NamePat { .. } | NodeKind::MapPat { .. } | NodeKind::ListPat { .. } => {
                 for (_, s, sp) in tree.pattern_names(id) {
                     if sp == w {
-                        return Some(Hover {
+                        return Some(RawHover {
                             declaration: Some(w),
                             ..rec("name", s.map(|s| print(&tree.slot_ty(s, false))))
                         });
@@ -1203,7 +1243,7 @@ fn hover_in(tree: &Tree<'_>, w: Span) -> Option<Hover> {
                     Res::Catch(s) => *s,
                     _ => None,
                 };
-                return Some(Hover {
+                return Some(RawHover {
                     declaration: Some(w),
                     ..rec("name", s.map(|s| print(&tree.slot_ty(s, false))))
                 });
@@ -1214,7 +1254,7 @@ fn hover_in(tree: &Tree<'_>, w: Span) -> Option<Hover> {
     None
 }
 
-fn call_hover(tree: &Tree<'_>, id: NodeId, mut h: Hover) -> Option<Hover> {
+fn call_hover(tree: &Tree<'_>, id: NodeId, mut h: RawHover) -> Option<RawHover> {
     let d = tree.env.data();
     match tree.res(id) {
         Res::CallLib(i) => {
@@ -1238,7 +1278,7 @@ fn call_hover(tree: &Tree<'_>, id: NodeId, mut h: Hover) -> Option<Hover> {
 }
 
 /// The span of the name that binds a slot.
-fn binding_site(tree: &Tree<'_>, s: u32) -> Option<Span> {
+fn binding_site(tree: &Tree<'_>, s: u32) -> Option<Range> {
     for (i, n) in tree.ast.nodes.iter().enumerate() {
         let id = NodeId(i as u32);
         match &n.kind {

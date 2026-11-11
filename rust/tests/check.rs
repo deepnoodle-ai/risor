@@ -11,23 +11,9 @@ fn check(e: &Env, p: &Expr, x: &Expected) -> Vec<Diagnostic> {
     }
 }
 
-/// A span of code points as `[line, column, end line, end column]`.
-fn line_span(text: &str, s: Span) -> [u32; 4] {
-    let pos = |at: u32| {
-        let (mut line, mut col) = (1, 1);
-        for c in text.chars().take(at as usize) {
-            if c == '\n' {
-                line += 1;
-                col = 1;
-            } else {
-                col += 1;
-            }
-        }
-        (line, col)
-    };
-    let (a, b) = pos(s.start);
-    let (c, d) = pos(s.end);
-    [a, b, c, d]
+/// A span as `[line, column, end line, end column]`.
+fn arr(s: Span) -> [u32; 4] {
+    [s.start.line, s.start.column, s.end.line, s.end.column]
 }
 
 fn env(reject: &[&str]) -> Env {
@@ -81,14 +67,14 @@ fn run(src: &str, reject: &[&str], exp: Option<&str>) -> String {
         Ok(r) => {
             let mut out = r.ty.to_string();
             for s in &r.sites {
-                out.push_str(&format!("; {} {}", s.class, span(line_span(src, s.span))));
+                out.push_str(&format!("; {} {}", s.class, span(arr(s.span))));
             }
             out
         }
         Err(err) => err
             .diagnostics
             .iter()
-            .map(|d| format!("{} {}", d.code, span(d.span.unwrap().0)))
+            .map(|d| format!("{} {}", d.code, span(arr(d.span.unwrap()))))
             .collect::<Vec<_>>()
             .join("; "),
     }
@@ -305,7 +291,7 @@ fn the_doubling_chain_is_constant_work() {
     let lines: Vec<u32> = r
         .iter()
         .filter(|d| d.code == "check-limit")
-        .map(|d| d.span.unwrap().0[0])
+        .map(|d| d.span.unwrap().start.line)
         .collect();
     // Over at line 16; `a15` is then `never`, and the chain grows again
     // from size 3 until line 32.

@@ -1,6 +1,6 @@
 //! Tokens (`01-language.md` 2.3).
 
-use crate::source::Span;
+use crate::source::Range;
 
 /// Punctuation: brackets, separators and operators.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -136,14 +136,14 @@ pub enum Tok {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub tok: Tok,
-    pub span: Span,
+    pub span: Range,
     /// The span a diagnostic names for this token. It is `span`, but for the
     /// block token (its first three code points) and the prefixed literal (the
     /// word).
-    pub diag: Span,
+    pub diag: Range,
     /// A code the parser reports when it reaches this token, with its span:
     /// `text-block-open`, `text-block-close` or `text-block-indent` (F3 6).
-    pub code: Option<(&'static str, Span)>,
+    pub code: Option<(&'static str, Range)>,
 }
 
 impl Token {

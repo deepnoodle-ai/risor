@@ -286,7 +286,7 @@ pub fn diag_json(d: &Diagnostic, cols: &[&str]) -> Json {
             }
             "span" => {
                 if let (Some(s), false) = (d.span, limit) {
-                    m.push(("span".into(), span_json(s.0)));
+                    m.push(("span".into(), span_json(s.arr())));
                 }
             }
             "message" if d.phase != Phase::Declare => {
@@ -311,7 +311,7 @@ pub fn diag_json(d: &Diagnostic, cols: &[&str]) -> Json {
                     .iter()
                     .map(|e| {
                         Json::Obj(vec![
-                            ("span".into(), span_json(e.span.0)),
+                            ("span".into(), span_json(e.span.arr())),
                             ("name".into(), Json::Str(e.name.clone())),
                             (
                                 "index".into(),
@@ -1080,7 +1080,7 @@ fn run_case_with(case: &Case, checked: bool, all_class: bool, ctx: Ctx<'_>) -> V
                 let gs: Vec<(String, [u32; 4])> = r
                     .sites
                     .iter()
-                    .map(|s| (s.class.to_string(), parsed.source.line_span(s.span).0))
+                    .map(|s| (s.class.to_string(), parsed.source.line_span(s.span).arr()))
                     .collect();
                 let ws: Vec<(String, [u32; 4])> =
                     ws.iter().map(|s| (s.class.clone(), s.span)).collect();
@@ -1449,7 +1449,7 @@ fn show_span(s: Option<[u32; 4]>) -> String {
 }
 
 fn show_diag(d: &Diagnostic) -> String {
-    let mut s = format!("{} at {}", d.code, show_span(d.span.map(|s| s.0)));
+    let mut s = format!("{} at {}", d.code, show_span(d.span.map(|s| s.arr())));
     if d.phase != Phase::Declare {
         s.push_str(&format!(" {:?}", d.message));
         if let Some(x) = &d.data {
@@ -1483,7 +1483,7 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
         }
     }
     if let Some(s) = e.span {
-        if !code::LIMIT.contains(&a.code) && a.span.map(|x| x.0) != Some(s) {
+        if !code::LIMIT.contains(&a.code) && a.span.map(|x| x.arr()) != Some(s) {
             return false;
         }
     }
@@ -1502,7 +1502,7 @@ fn diag_matches(e: &ExpectDiag, a: &Diagnostic, checked: bool) -> bool {
             let got: Vec<([u32; 4], &str, Option<u64>)> = a
                 .trace()
                 .iter()
-                .map(|x| (x.span.0, x.name.as_str(), x.index.map(|i| i as u64)))
+                .map(|x| (x.span.arr(), x.name.as_str(), x.index.map(|i| i as u64)))
                 .collect();
             let want: Vec<([u32; 4], &str, Option<u64>)> =
                 t.iter().map(|(s, n, i)| (*s, n.as_str(), *i)).collect();
@@ -1924,7 +1924,7 @@ pub fn outcome_line(case: &Case) -> String {
             Err(e) => {
                 out.push_str(",\"phase\":\"parse\",\"diagnostics\":[");
                 if let Some(d) = e.diagnostics.first() {
-                    let [a, b, c, f] = d.span.map(|s| s.0).unwrap_or([0; 4]);
+                    let [a, b, c, f] = d.span.map(|s| s.arr()).unwrap_or([0; 4]);
                     out.push_str(&format!(
                         "{{\"code\":\"{}\",\"span\":[{a},{b},{c},{f}]}}",
                         d.code
@@ -2105,7 +2105,7 @@ fn outcome_core(case: &Case) -> String {
                 // R73: a limit's span is not specified, so the line leaves it out.
                 match d.span.filter(|_| !code::LIMIT.contains(&d.code)) {
                     Some(s) => {
-                        let [a, b, c, e] = s.0;
+                        let [a, b, c, e] = s.arr();
                         out.push_str(&format!("[{a},{b},{c},{e}]"));
                     }
                     None => out.push_str("null"),
@@ -2135,7 +2135,7 @@ fn outcome_core(case: &Case) -> String {
                     if i > 0 {
                         out.push(',');
                     }
-                    let [a, b, c, f] = e.span.0;
+                    let [a, b, c, f] = e.span.arr();
                     out.push_str(&format!("{{\"span\":[{a},{b},{c},{f}],\"name\":"));
                     out.push_str(&json_text(&e.name));
                     out.push_str(",\"index\":");
@@ -2181,7 +2181,7 @@ fn outcome_core(case: &Case) -> String {
                     out.push_str(&json_text(&ty));
                     out.push_str(",\"sites\":[");
                     for (i, s) in r.sites.iter().enumerate() {
-                        let [a, b, c, d] = prog.parsed.source.line_span(s.span).0;
+                        let [a, b, c, d] = prog.parsed.source.line_span(s.span).arr();
                         if i > 0 {
                             out.push(',');
                         }
@@ -2592,7 +2592,10 @@ pub(super) fn capture(case: &Case, force_run: bool) -> Captured {
                 .map(|s| {
                     Json::Obj(vec![
                         ("class".into(), Json::Str(s.class.to_string())),
-                        ("span".into(), span_json(parsed.source.line_span(s.span).0)),
+                        (
+                            "span".into(),
+                            span_json(parsed.source.line_span(s.span).arr()),
+                        ),
                     ])
                 })
                 .collect(),

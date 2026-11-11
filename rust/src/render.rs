@@ -26,13 +26,13 @@ impl<'a> View<'a> {
             code: d.code,
             class: d.class,
             message: &d.message,
-            span: d.span.map(|s| s.0),
+            span: d.span.map(|s| s.arr()),
             path: d.path.as_deref().map(|p| p.as_slice()),
             data: d.data.as_deref(),
             trace: d
                 .trace()
                 .iter()
-                .map(|e| (e.span.0, e.name.as_str(), e.index))
+                .map(|e| (e.span.arr(), e.name.as_str(), e.index))
                 .collect(),
         }
     }

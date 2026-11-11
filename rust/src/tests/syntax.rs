@@ -12,7 +12,7 @@ fn err(src: &str) -> (&'static str, [u32; 4]) {
         Ok(_) => panic!("expected a parse error for {src:?}"),
         Err(e) => {
             let d = e.first();
-            (d.code, d.span.expect("a parse diagnostic has a span").0)
+            (d.code, d.span.expect("a parse diagnostic has a span").arr())
         }
     }
 }
@@ -525,11 +525,14 @@ fn spans_of_nodes() {
         panic!()
     };
     assert_eq!(*op, BinaryOp::Mul);
-    assert_eq!(p.source.line_span(p.ast.span(*result)).0, l1(1, 12));
-    assert_eq!(p.source.line_span(p.ast.span(*x)).0, l1(2, 7));
+    assert_eq!(p.source.line_span(p.ast.span(*result)).arr(), l1(1, 12));
+    assert_eq!(p.source.line_span(p.ast.span(*x)).arr(), l1(2, 7));
 
     let p = ok("const a = 1;\n  a ;");
-    assert_eq!(p.source.line_span(p.ast.span(p.ast.root)).0, [1, 1, 2, 6]);
+    assert_eq!(
+        p.source.line_span(p.ast.span(p.ast.root)).arr(),
+        [1, 1, 2, 6]
+    );
 
     let p = ok("if (c) { a } else if (d) { b } else { e }");
     let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
@@ -539,15 +542,15 @@ fn spans_of_nodes() {
         panic!()
     };
     assert_eq!(*form, CondForm::If);
-    assert_eq!(p.source.line_span(p.ast.span(*result)).0, l1(1, 42));
-    assert_eq!(p.source.line_span(p.ast.span(*else_)).0, l1(19, 42));
+    assert_eq!(p.source.line_span(p.ast.span(*result)).arr(), l1(1, 42));
+    assert_eq!(p.source.line_span(p.ast.span(*else_)).arr(), l1(19, 42));
 
     let p = ok("a?.b.c");
     let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {
         panic!()
     };
     assert!(matches!(p.ast.kind(*result), NodeKind::OptChain { .. }));
-    assert_eq!(p.source.line_span(p.ast.span(*result)).0, l1(1, 7));
+    assert_eq!(p.source.line_span(p.ast.span(*result)).arr(), l1(1, 7));
 
     let p = ok("match x { -5 => 1 }");
     let n = p
@@ -564,7 +567,7 @@ fn spans_of_nodes() {
         panic!()
     };
     assert_eq!(lits[0].lit, Lit::Number(-5.0));
-    assert_eq!(p.source.line_span(n.span).0, l1(11, 18));
+    assert_eq!(p.source.line_span(n.span).arr(), l1(11, 18));
 
     let p = ok("{a, \"b\": 1}");
     let entries: Vec<_> = p
@@ -577,7 +580,7 @@ fn spans_of_nodes() {
         &entries[0].kind,
         NodeKind::Entry { key: EntryKey::Word(w), shorthand: true, .. } if w == "a"
     ));
-    assert_eq!(p.source.line_span(entries[1].span).0, l1(5, 11));
+    assert_eq!(p.source.line_span(entries[1].span).arr(), l1(5, 11));
 
     let p = ok("-x.y");
     let NodeKind::Program { result, .. } = p.ast.kind(p.ast.root) else {

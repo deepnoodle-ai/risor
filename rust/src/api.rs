@@ -4,14 +4,14 @@
 
 use crate::assist::{Completion, Hover};
 use crate::check::ty::Ty;
-use crate::check::{self, Site, Want};
+use crate::check::{self, Want};
 use crate::compile::Program;
 use crate::diag::{Diagnostic, Error, Phase};
 use crate::env::Env;
 use crate::eval::{RunOptions, Usage};
 use crate::host::Vars;
 use crate::schema::SchemaOptions;
-use crate::source::{Pos, Source};
+use crate::source::{Pos, Source, Span};
 use crate::syntax::Expr;
 use crate::typ::Type;
 use crate::value::Value;
@@ -99,6 +99,24 @@ impl Expected {
     }
 }
 
+/// A place where a checked program can still fail on a value (`05-types.md`
+/// 18.3), for a class the environment does not reject.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Site {
+    pub class: &'static str,
+    pub span: Span,
+}
+
+fn sites(src: &Source, sites: &[check::Site]) -> Vec<Site> {
+    sites
+        .iter()
+        .map(|s| Site {
+            class: s.class,
+            span: src.line_span(s.span),
+        })
+        .collect()
+}
+
 /// What a check gives (`03-host.md` 3.2.1): the program's type, and the
 /// places where it can still fail on a value, for the classes the
 /// environment does not reject.
@@ -142,7 +160,7 @@ impl Env {
         }
         Ok(CheckResult {
             ty: Type::from_ty(r.ty.expect("a program that checks has a type")),
-            sites: r.sites,
+            sites: sites(&x.source, &r.sites),
         })
     }
 
@@ -161,16 +179,16 @@ impl Env {
     /// the line.
     pub fn complete(&self, text: &str, pos: Pos, expected: &Expected) -> Completion {
         let want = expected.want(self).unwrap_or(Want::Nothing);
-        let offset = Source::new(text).offset(pos);
-        crate::assist::complete(self, text, &want, offset)
+        let src = Source::new(text);
+        crate::assist::complete(self, text, &want, src.offset(pos)).public(&src)
     }
 
     /// Hover at a position of a program's text (F12 3.13); `None` where
     /// there is nothing to say.
     pub fn hover(&self, text: &str, pos: Pos, expected: &Expected) -> Option<Hover> {
         let want = expected.want(self).unwrap_or(Want::Nothing);
-        let offset = Source::new(text).offset(pos);
-        crate::assist::hover(self, text, &want, offset)
+        let src = Source::new(text);
+        crate::assist::hover(self, text, &want, src.offset(pos)).map(|h| h.public(&src))
     }
 }
 
@@ -211,7 +229,7 @@ impl Program {
     pub fn check_result(&self) -> Option<CheckResult> {
         Some(CheckResult {
             ty: Type::from_ty(self.ty.clone()?),
-            sites: self.sites.clone()?,
+            sites: sites(&self.parsed.source, self.sites.as_ref()?),
         })
     }
 }
@@ -223,8 +241,17 @@ pub fn truthy(v: &Value<'_>) -> bool {
 }
 
 /// The JSON text of a value (`03-host.md` 3.2.4): keys in code point order,
-/// numbers in the rendering of `01-language.md`. It fails with the code
-/// `wrong-kind` on an opaque value and `depth-exceeded` past depth 200.
-pub fn json_text(v: &Value<'_>) -> Result<String, &'static str> {
-    crate::eval::to_json(v)
+/// numbers in the rendering of `01-language.md`. It fails with an error of
+/// phase `run` and one diagnostic: `wrong-kind` on an opaque value,
+/// `number-range` on a number that cannot enter, and `depth-exceeded` past
+/// depth 200.
+pub fn json_text(v: &Value<'_>) -> Result<String, Error> {
+    crate::eval::to_json(v).map_err(|code| {
+        let message = match code {
+            "wrong-kind" => "an opaque value has no JSON form",
+            "number-range" => "the number is out of range",
+            _ => "the value is deeper than 200",
+        };
+        Error::one(Diagnostic::bare(Phase::Run, code, message))
+    })
 }
