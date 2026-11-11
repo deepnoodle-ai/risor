@@ -6,15 +6,20 @@
   "type": "module",
   "workspaces": [
     "../ts",
-    "packages/*"
+    "packages/*",
+    "examples/*"
   ],
   "scripts": {
-    "build": "npm run build -w risor -w @risor/service -w @risor/codemirror -w @risor/react",
+    "build": "npm run build -w risor -w @risor/service -w @risor/codemirror -w @risor/react -w @risor/mantine --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test -w @risor/service -w @risor/codemirror -w @risor/react"
+    "test": "npm test -w @risor/service -w @risor/codemirror -w @risor/react -w @risor/mantine --if-present",
+    "e2e": "playwright test -c examples/react-vite/playwright.config.ts",
+    "size": "node scripts/size.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/node": "22.20.5",
+    "esbuild": "^0.28.2",
     "typescript": "5.9.3"
   }
 }

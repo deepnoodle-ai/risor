@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "module": "esnext", "moduleResolution": "bundler", "types": ["vite/client"] },
+  "include": ["src", "vite.config.ts"]
+}
