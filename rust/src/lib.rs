@@ -2,8 +2,9 @@
 //! conformance suite (`suite/`) alone.
 //!
 //! The crate has no dependencies and no `unsafe`. Its root exports the
-//! public surface of `05-host-api.md` Part E and nothing else; the
-//! case-file runner is [`testing`]. Its layout is in `DESIGN.md` beside
+//! public surface of `05-host-api.md` Part E (E.3 to E.8, with the options,
+//! field types and result records of E.2 item 5) and the conveniences of
+//! E.1 row 5, and nothing else; the case-file runner is [`testing`]. Its layout is in `DESIGN.md` beside
 //! `Cargo.toml`.
 //!
 //! ```
@@ -60,7 +61,6 @@ mod value;
 mod tests;
 
 // E.3: the environment.
-pub use describe::DescriptionError;
 pub use env::{Env, EnvBuilder, LibraryNames, Limits};
 
 // E.4: programs.

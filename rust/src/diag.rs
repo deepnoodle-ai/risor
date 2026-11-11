@@ -56,6 +56,10 @@ pub mod code {
     pub const BAD_CLASS: &str = "bad-class";
     pub const UNSUPPORTED_VERSION: &str = "unsupported-version";
     pub const NO_IMPLEMENTATION: &str = "no-implementation";
+    /// This binding's own error for a description that is not of the form
+    /// of `f01-host-types.md` 5.3 (5.4 item 2). It is no code of the
+    /// specification.
+    pub const BAD_DESCRIPTION: &str = "bad-description";
     /// A limit out of range (`03-host.md` 3.3.4).
     pub const BAD_LIMIT: &str = "bad-limit";
 

@@ -7,7 +7,6 @@ use crate::diag::{code, Diagnostic, Error, Phase};
 use crate::env::{Env, Limits};
 use crate::json::{self, Json};
 use crate::types::text::{Bound, ParamType, Sig};
-use std::fmt;
 
 /// A signature printed (5.2). `opaque` is the environment's opaque types.
 pub fn print_sig<N: crate::check::ty::TypeNames + ?Sized>(sig: &Sig, opaque: &N) -> String {
@@ -378,36 +377,31 @@ impl Env {
     /// only. Each type text is read on its own. Its functions and methods
     /// have no implementation, so a compile against it fails with
     /// `no-implementation` while it declares one; [`Env::with`] adds them.
-    pub fn from_description(text: &str) -> Result<Env, DescriptionError> {
-        let d = json::parse(text).map_err(DescriptionError::Form)?;
-        Env::from_description_json(&d)
+    ///
+    /// It fails with an error of phase `declare`: the errors of `03-host.md`
+    /// 3.3.4 for what the description declares, or, for text that is not a
+    /// description of the form of 5.3, one diagnostic of this binding's own
+    /// code `bad-description` (5.4 item 2).
+    pub fn from_description(text: &str) -> Result<Env, Error> {
+        let d = json::parse(text).map_err(DescriptionError::Form);
+        match d.and_then(|d| Env::from_description_json(&d)) {
+            Ok(env) => Ok(env),
+            Err(DescriptionError::Declare(e)) => Err(e),
+            Err(DescriptionError::Form(m)) => Err(Error::one(Diagnostic::bare(
+                Phase::Declare,
+                code::BAD_DESCRIPTION,
+                format!("not a description: {m}"),
+            ))),
+        }
     }
 }
 
 /// Why an environment could not be built from a description (5.4 item 2).
 #[derive(Debug)]
-pub enum DescriptionError {
+pub(crate) enum DescriptionError {
     /// The description is not a JSON object of the form of 5.3: the
     /// binding's own error.
     Form(String),
     /// What it declares has `declare` errors (`03-host.md` 3.3.4).
     Declare(Error),
 }
-
-impl fmt::Display for DescriptionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DescriptionError::Form(m) => write!(f, "not a description: {m}"),
-            DescriptionError::Declare(e) => {
-                let codes: Vec<String> = e
-                    .diagnostics
-                    .iter()
-                    .map(|d| format!("{}: {}", d.code, d.message))
-                    .collect();
-                write!(f, "declare errors: {}", codes.join("; "))
-            }
-        }
-    }
-}
-
-impl std::error::Error for DescriptionError {}
