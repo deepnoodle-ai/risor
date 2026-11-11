@@ -19,7 +19,14 @@
     "sandbox"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/library/core.ts",
+    "./src/library/groups.ts",
+    "./src/library/math.ts",
+    "./dist/library/core.js",
+    "./dist/library/groups.js",
+    "./dist/library/math.js"
+  ],
   "exports": {
     ".": {
       "risor-source": "./src/index.ts",
