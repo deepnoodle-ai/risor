@@ -174,8 +174,9 @@ Acceptance:
 - [ ] The description's step, allocation and depth limits apply to a run
       in the worker. The deadline is the preview's `timeoutMs` prop, since
       a description has none.
-- [ ] Numbers show the text Risor gave them: `1.0` stays `1.0`, an int
-      beyond 2^53 is exact.
+- [ ] The value shows as Risor's JSON gives it, with its type beside it.
+      Risor's JSON writes the float `3.0` as `3`, so the type is what shows
+      `float` (ran: `toJSON` in `ts/`, 2026-11-10).
 - [ ] With `run`, the preview shows what the callback returns, in the same
       view. The result's JSON shape is documented in the README. (A Go
       helper that makes it from a run is a follow-up.)

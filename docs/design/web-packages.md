@@ -59,7 +59,7 @@ risor  (ts/)                       no dependencies
 | Package | Holds | Why it is its own package |
 | --- | --- | --- |
 | `risor` | The language: `createEnv`, `compile`, `run`, `check`, `formatProgram`, `complete`, `hover`, `envFromDescription`, `env.describe()`. `risor/tokens`: colours, from the lexer only. | Usable in Node, Deno, Bun and servers, with no browser code. |
-| `@risor/service` | The **service**: one interface for check, complete, hover, format and run, with two implementations, in a web worker and on the main thread. The worker script. Position conversion. `describeSample`, which makes a description from sample JSON (the site's `typeOfJSON`, moved). A JSON-text tree that keeps number text, for result views. | Framework-free. A host on Svelte or plain DOM uses it with `@risor/codemirror` and needs nothing else. |
+| `@risor/service` | The **service**: one interface for check, complete, hover, format and run, with two implementations, in a web worker and on the main thread. The worker script. Position conversion. `describeSample`, which makes a description from sample JSON (the site's `typeOfJSON`, moved). A tree of Risor's JSON text, for result views. | Framework-free. A host on Svelte or plain DOM uses it with `@risor/codemirror` and needs nothing else. |
 | `@risor/codemirror` | One CodeMirror 6 extension, `risor(options)`: colours, lint (check), completion, hover, format command, Mod-Enter to run, single-line mode, a theme on CSS variables. | All editor behaviour in one place, shared by React, Vue and plain DOM. |
 | `@risor/react` | `RisorEditor`, `RisorResult`, `RisorDiagnostics`, `RisorProvider`; hooks `useRisorService`, `useRisorCheck`, `useRisorRun`. Unstyled except for one optional CSS file. | React is a peer; no styling framework. |
 | `@risor/mantine` | `RisorInput` (the editor in Mantine's input shell: label, description, error, required) and `RisorPreview`. | Mantine is the site's framework and a common one for customers; it must not leak into `@risor/react`. |
@@ -123,14 +123,17 @@ function describeSample(sample: Record<string, unknown>, options?: { groups?: st
   `Problem` carries `from`, `to` (UTF-16), and `line`, `column` (1-based,
   code points, as Risor prints them) for display.
 - **`RunResult` is JSON** with a documented shape: `{ ok: true, json, type,
-  usage }` or `{ ok: false, stage, problems, usage? }`, or `{ ok: false,
-  stopped: true }`. `json` is Risor's JSON text, so numbers keep their text.
-  A host's server can make the same shape, which is what the preview's `run`
-  callback returns (PRD UC-2).
+  usage, ms }` or `{ ok: false, stage, problems, usage?, ms? }`, where
+  `stage` is `declare`, `compile`, `run` or `stopped`. `json` is Risor's
+  JSON text of the value. A host's server can make the same shape, which is
+  what the preview's `run` callback returns (PRD UC-2).
+- **A released environment opens again on its next call.** React's
+  StrictMode releases in an effect's cleanup and then uses the same object;
+  the browser test found this.
 - **The worker client** sends each request with an id and keeps one timer
   per run: its `timeoutMs` plus a grace (default 1,500 ms, as the site uses
   today). On expiry it terminates the worker, resolves the run as
-  `{ ok: false, stopped: true }`, starts a new worker on the next request,
+  stopped (stage `stopped`), starts a new worker on the next request,
   and re-sends each live environment's description. Check, complete and
   hover have no deadline of their own; the checker is bounded by the source
   size.
@@ -161,12 +164,15 @@ function risor(options: {
   lintDelay?: number;                // default 300 ms
 }): Extension;
 
-function setRisorEnvironment(view: EditorView, d: Description | undefined, expected?: string): void;
 function validateRisor(view: EditorView): Promise<Problem[]>;  // checks the text now; skips the delay
 function formatRisor(view: EditorView): Promise<boolean>;      // a command
 const risorTheme: Extension;   // colours from --risor-* CSS variables, light and dark defaults
 ```
 
+- **Fixed options.** The extension's options are fixed when it is made. To
+  change the environment or the expected type, a host puts `risor(...)` in a
+  `Compartment` and reconfigures it; `RisorEditor` does this when its props
+  change.
 - **Colours.** A `ViewPlugin` calls `tokens(text)` from `risor/tokens` on
   the main thread and builds mark decorations. It is not a Lezer grammar,
   so the colours always match the lexer (PRD R-5). Lexing is linear, and
