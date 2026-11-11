@@ -14,6 +14,7 @@ import { EditorState, Facet, Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { EditorView, hoverTooltip, keymap, ViewPlugin } from "@codemirror/view";
 import { workerService } from "@risor/service";
+import { tokens } from "risor/tokens";
 import type { Description, Problem, RisorEnvironment, RisorService } from "@risor/service";
 import { colours, risorTheme } from "./colours.ts";
 
@@ -76,6 +77,16 @@ export class RisorSession {
 export const risorSession = Facet.define<RisorSession, RisorSession | null>({
   combine: (values) => values[values.length - 1] ?? null,
 });
+
+/**
+ * Whether a text is empty: white space and comments only. An empty text has
+ * no problems here; a field that must not be empty says so itself (for
+ * example RisorInput's `required`). An empty program is a parse error to
+ * Risor, but a red mark in a field the user has not touched is noise.
+ */
+export function isEmptyText(text: string): boolean {
+  return tokens(text).every((t) => t.class === "comment");
+}
 
 /** Problems as CodeMirror diagnostics, each within the document. */
 export function toDiagnostics(problems: Problem[], docLength: number): Diagnostic[] {
@@ -180,7 +191,7 @@ export async function validateRisor(view: EditorView): Promise<Problem[]> {
   const session = view.state.facet(risorSession);
   if (!session) return [];
   const text = view.state.doc.toString();
-  const problems = await session.environment.validate(text, { expected: session.options.expected });
+  const problems = isEmptyText(text) ? [] : await session.environment.validate(text, { expected: session.options.expected });
   if (view.state.doc.toString() === text) {
     session.last = problems;
     view.dispatch(setDiagnostics(view.state, toDiagnostics(problems, view.state.doc.length)));
@@ -221,6 +232,11 @@ export function risor(options: RisorOptions = {}): Extension {
   const lint = linter(
     async (view) => {
       const text = view.state.doc.toString();
+      if (isEmptyText(text)) {
+        session.last = [];
+        options.onDiagnostics?.([]);
+        return [];
+      }
       const problems = await session.environment.check(text, { expected: options.expected });
       if (problems === null) return toDiagnostics(session.last, view.state.doc.length);
       session.last = problems;

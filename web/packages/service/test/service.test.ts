@@ -141,15 +141,17 @@ describe("localService", () => {
     assert.equal(!r.ok && r.problems[0].code, "host-functions");
   });
 
-  test("a value that is not a description: a problem in every check, and the empty environment", async () => {
+  test("a value that is not a description: one console error, and the empty environment", async () => {
     const orig = console.error;
     const logged: unknown[] = [];
     console.error = (...a: unknown[]) => logged.push(a);
     try {
       const e = service.environment({ variables: { x: "int" } } as never);
-      const ps = (await e.check("1 + 1"))!;
-      assert.equal(ps[0].code, "bad-description");
+      assert.deepEqual(await e.check("1 + 1"), []);
+      const r = await e.run("1 + 1");
+      assert.ok(r.ok);
       assert.equal(logged.length, 1);
+      assert.match(String((logged[0] as unknown[])[0]), /not a description/);
     } finally {
       console.error = orig;
     }
@@ -265,5 +267,53 @@ describe("release", () => {
       assert.ok(r.ok);
       s.dispose();
     }
+  });
+});
+
+describe("a worker that fails and a disposed service", () => {
+  test("a worker that fails to load fails every pending call and logs one error", async () => {
+    class Broken extends FakeWorker {
+      override postMessage(m: Request): void {
+        this.received.push(m);
+        setTimeout(() => this.onerror?.(new Event("error")), 1);
+      }
+      onerror: ((e: Event) => void) | null = null;
+    }
+    let made = 0;
+    const orig = console.error;
+    const logged: unknown[] = [];
+    console.error = (...a: unknown[]) => logged.push(a);
+    try {
+      const s = workerService({ worker: () => (made++, new Broken()) });
+      const env = s.environment();
+      const [v, r] = await Promise.all([env.validate("1"), env.run("1")]);
+      assert.equal(v[0].code, "internal-error");
+      assert.match(v[0].message, /worker/);
+      assert.equal(!r.ok && r.stage, "run");
+      assert.equal(logged.length, 1);
+      // Later calls fail at once, and no new worker is made.
+      assert.equal((await env.check("1"))![0].code, "internal-error");
+      assert.equal(made, 1);
+    } finally {
+      console.error = orig;
+    }
+  });
+
+  test("dispose: runs resolve stopped and no new worker starts", async () => {
+    FakeWorker.hang = true;
+    let made = 0;
+    const s = workerService({ worker: () => (made++, new FakeWorker()) });
+    const env = s.environment();
+    const r1 = env.run("1");
+    const r2 = env.run("2");
+    const c1 = env.check("1");
+    const c2 = env.check("2");
+    s.dispose();
+    FakeWorker.hang = false;
+    const [a, b] = await Promise.all([r1, r2]);
+    assert.equal(!a.ok && a.stage, "stopped");
+    assert.equal(!b.ok && b.stage, "stopped");
+    await Promise.all([c1, c2]);
+    assert.equal(made, 1);
   });
 });

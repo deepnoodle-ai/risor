@@ -16,7 +16,7 @@ interface Held {
   runners: Map<number, Env>;
   /** A problem that stops every run, when the description declares a function. */
   noRun: Problem | null;
-  /** A problem of the description itself: it is not one, or it does not declare. */
+  /** A problem of the description itself: it is not one, or it does not declare. Logged, not shown. */
   bad: Problem | null;
 }
 
@@ -89,7 +89,10 @@ export class Engine {
   check(id: number, text: string, options: CheckOptions = {}): Problem[] {
     const h = this.get(id);
     const index = new TextIndex(text);
-    const out: Problem[] = h.bad ? [h.bad] : [];
+    // A bad description is the developer's problem, reported once on the
+    // console when the environment opened; the user's text is checked
+    // against the empty environment.
+    const out: Problem[] = [];
     try {
       const c = h.env.check(text, options.expected);
       if (!c.ok) out.push(...c.diagnostics.map((d) => toProblem(d, index)));
@@ -127,7 +130,6 @@ export class Engine {
   run(id: number, text: string, vars: Record<string, unknown> = {}, options: RunOptions = {}): RunResult {
     const h = this.get(id);
     if (h.noRun) return { ok: false, stage: "declare", problems: [h.noRun] };
-    if (h.bad) return { ok: false, stage: "declare", problems: [h.bad] };
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     let env = h.runners.get(timeoutMs);
     if (!env) {

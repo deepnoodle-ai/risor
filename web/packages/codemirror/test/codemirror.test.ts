@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { EditorState } from "@codemirror/state";
 import { describeSample, localService } from "@risor/service";
-import { colourDecorations, risor, risorCompletions, risorSession, singleLineFilter, toDiagnostics } from "../src/index.ts";
+import { colourDecorations, isEmptyText, risor, risorCompletions, risorSession, singleLineFilter, toDiagnostics } from "../src/index.ts";
 
 /** Each decorated range as `class:text`. */
 function marks(text: string): string[] {
@@ -67,5 +67,13 @@ describe("completion", () => {
     assert.ok(r?.options.some((o) => o.label === "order" && o.type === "variable"));
     const s2 = state("1 + ");
     assert.equal(await risorCompletions(new CompletionContext(s2, 4, false)), null);
+  });
+});
+
+describe("isEmptyText", () => {
+  test("white space and comments only", () => {
+    assert.equal(isEmptyText(""), true);
+    assert.equal(isEmptyText("  \n // a note\n /* b */"), true);
+    assert.equal(isEmptyText("x // a note"), false);
   });
 });

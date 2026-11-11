@@ -19,6 +19,8 @@ export interface WorkerLike {
   postMessage(message: Request): void;
   terminate(): void;
   onmessage: ((e: MessageEvent<Response>) => void) | null;
+  /** Called when the worker script fails to load or throws. */
+  onerror?: ((e: Event) => void) | null;
 }
 
 export interface WorkerServiceOptions {
@@ -52,6 +54,12 @@ const stopped = (timeoutMs: number): RunResult => ({
   problems: [{ phase: "service", code: "stopped", message: `The run did not end within ${timeoutMs} ms and was stopped.` }],
 });
 
+const failed = (message: string): RunResult => ({
+  ok: false,
+  stage: "run",
+  problems: [{ phase: "service", code: "internal-error", message }],
+});
+
 export function workerService(options: WorkerServiceOptions = {}): RisorService {
   return new WorkerService(options);
 }
@@ -66,7 +74,9 @@ class WorkerService implements RisorService {
   private readonly envs = new Map<number, Description | undefined>();
   private readonly gates = new Map<string, Gate>();
   private readonly runs: { pending: Pending; timeoutMs: number }[] = [];
-  private running: { id: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  private running: { id: number; timer: ReturnType<typeof setTimeout>; pending: Pending; timeoutMs: number } | null = null;
+  /** Why the service takes no more calls: it was disposed, or its worker failed to load. */
+  private closed: string | null = null;
   private disposed = false;
 
   constructor(options: WorkerServiceOptions) {
@@ -78,12 +88,21 @@ class WorkerService implements RisorService {
     if (this.worker) return this.worker;
     const w = this.make();
     w.onmessage = (e) => this.receive(e.data);
+    w.onerror = (e) => {
+      const detail = (e as ErrorEvent).message ? `: ${(e as ErrorEvent).message}` : "";
+      this.close(`the Risor worker failed${detail}. If your bundler cannot load a worker from a package, build @risor/service/worker yourself and pass workerService({ worker })`);
+      if (typeof console !== "undefined") console.error(`@risor/service: ${this.closed}`);
+    };
     this.worker = w;
     for (const [env, description] of this.envs) w.postMessage({ id: this.nextId++, op: "open", env, description });
     return w;
   }
 
   private post(p: Pending): number {
+    if (this.closed !== null) {
+      p.fail(this.closed);
+      return -1;
+    }
     const id = this.nextId++;
     this.inFlight.set(id, p);
     this.ensure().postMessage({ ...p.body, id } as Request);
@@ -100,7 +119,7 @@ class WorkerService implements RisorService {
 
   /** Send a call and resolve with its answer. */
   private call<T>(body: Body, onError: (message: string) => T): Promise<T> {
-    if (this.disposed) return Promise.resolve(onError("the service was disposed"));
+    if (this.closed !== null) return Promise.resolve(onError(this.closed));
     return new Promise<T>((resolve) => {
       this.post({ body, resolve: resolve as (r: unknown) => void, fail: (msg) => resolve(onError(msg)) });
     });
@@ -108,7 +127,7 @@ class WorkerService implements RisorService {
 
   /** A call through the gate of its environment and kind. */
   private gated<T>(key: string, body: Body, onError: (message: string) => T): Promise<T | null> {
-    if (this.disposed) return Promise.resolve(onError("the service was disposed"));
+    if (this.closed !== null) return Promise.resolve(onError(this.closed));
     let g = this.gates.get(key);
     if (!g) {
       g = { busy: false, waiting: null };
@@ -146,11 +165,12 @@ class WorkerService implements RisorService {
 
   private run(body: Body, timeoutMs: number): Promise<RunResult> {
     if (this.disposed) return Promise.resolve(stopped(timeoutMs));
+    if (this.closed !== null) return Promise.resolve(failed(this.closed));
     return new Promise<RunResult>((resolve) => {
       const pending: Pending = {
         body,
         resolve: (r) => resolve(r as RunResult),
-        fail: (msg) => resolve({ ok: false, stage: "run", problems: [{ phase: "service", code: "internal-error", message: msg }] }),
+        fail: (msg) => resolve(failed(msg)),
       };
       this.runs.push({ pending, timeoutMs });
       this.nextRun();
@@ -159,6 +179,10 @@ class WorkerService implements RisorService {
 
   private nextRun(): void {
     if (this.running || this.runs.length === 0) return;
+    if (this.closed !== null) {
+      for (const r of this.runs.splice(0)) r.pending.fail(this.closed);
+      return;
+    }
     const { pending, timeoutMs } = this.runs.shift()!;
     const done = (fn: () => void) => () => {
       if (this.running) clearTimeout(this.running.timer);
@@ -172,6 +196,7 @@ class WorkerService implements RisorService {
       fail: (msg) => done(() => pending.fail(msg))(),
     };
     const id = this.post(wrapped);
+    if (id < 0) return;
     const timer = setTimeout(() => {
       this.inFlight.delete(id);
       this.running = null;
@@ -179,7 +204,7 @@ class WorkerService implements RisorService {
       pending.resolve(stopped(timeoutMs));
       this.nextRun();
     }, timeoutMs + this.graceMs);
-    this.running = { id, timer };
+    this.running = { id, timer, pending, timeoutMs };
   }
 
   /** End the worker, and send every call still waiting to a new one. */
@@ -240,16 +265,39 @@ class WorkerService implements RisorService {
     return this.call<FormatResult>({ op: "format", text }, (message) => ({ ok: false, problems: [{ phase: "service", code: "internal-error", message }] }));
   }
 
-  dispose(): void {
-    this.disposed = true;
+  /**
+   * Take no more calls, end the worker, and settle every pending call: runs
+   * as stopped when disposed, other calls with the reason. Nothing starts a
+   * new worker afterwards: post() refuses once closed.
+   */
+  private close(reason: string): void {
+    if (this.closed !== null) return;
+    this.closed = reason;
     this.worker?.terminate();
     this.worker = null;
-    if (this.running) clearTimeout(this.running.timer);
+    const running = this.running;
     this.running = null;
-    for (const p of this.inFlight.values()) p.fail("the service was disposed");
+    if (running) {
+      clearTimeout(running.timer);
+      this.inFlight.delete(running.id);
+    }
+    const queued = this.runs.splice(0);
+    const inFlight = [...this.inFlight.values()];
     this.inFlight.clear();
-    for (const r of this.runs.splice(0)) r.pending.resolve(stopped(r.timeoutMs));
     for (const g of this.gates.values()) g.waiting?.replace();
     this.gates.clear();
+    if (this.disposed) {
+      if (running) running.pending.resolve(stopped(running.timeoutMs));
+      for (const r of queued) r.pending.resolve(stopped(r.timeoutMs));
+    } else {
+      if (running) running.pending.fail(reason);
+      for (const r of queued) r.pending.fail(reason);
+    }
+    for (const p of inFlight) p.fail(reason);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.close("the service was disposed");
   }
 }
