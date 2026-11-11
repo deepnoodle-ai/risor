@@ -491,7 +491,7 @@ own test framework. It is the runner the implementation runs the suite with.
 ### 7.2 Go (binding rules)
 
 ```go
-package risortest // github.com/deepnoodle-ai/risor/v3/risortest
+package risortest // github.com/deepnoodle-ai/risor/go/v3/risortest
 
 func Run(t *testing.T, base *risor.Env, path string, opts ...Option)
 func Load(path string, opts ...Option) (*File, error) // an error: invalid

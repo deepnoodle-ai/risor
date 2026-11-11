@@ -1196,7 +1196,7 @@ fixed order, and the first four are the stages and functions above.
 
 ## 3. Part B: the Go binding
 
-Import path `github.com/deepnoodle-ai/risor/v3`, package `risor`. Rules not
+Import path `github.com/deepnoodle-ai/risor/go/v3`, package `risor`. Rules not
 repeated here are Part A's.
 
 ### B.1 Parse and analysis
@@ -1863,7 +1863,7 @@ The helper of A.11 for Go. It is the harness that runs the conformance suite,
 made public (`11-6`).
 
 ```go
-package risortest // github.com/deepnoodle-ai/risor/v3/risortest
+package risortest // github.com/deepnoodle-ai/risor/go/v3/risortest
 
 // Run runs each case of the file at path as a subtest of t, named by the
 // case, in a child of base. A nil base is the default environment.

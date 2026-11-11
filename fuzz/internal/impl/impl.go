@@ -29,7 +29,7 @@ func Defaults(root, bin string) map[string]*Impl {
 	return map[string]*Impl{
 		"go": {
 			Name:  "go",
-			Dir:   root,
+			Dir:   filepath.Join(root, "go"),
 			Build: []string{"go", "build", "-o", filepath.Join(bin, "outcome-go"), "./cmd/outcome"},
 			Cmd:   []string{filepath.Join(bin, "outcome-go")},
 			Env:   []string{"GOWORK=off"},
