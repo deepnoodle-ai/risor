@@ -258,10 +258,10 @@ func TestIndexReadIsNoPath(t *testing.T) {
 		codes = append(codes, d.Code)
 	}
 	assert.Equal(t, codes, []string{"undefined-name", "arity"})
-	typed, err := risor.NewEnv(risor.Declare("{x: int | string}"))
+	typed, err := risor.NewEnv(risor.VarRecord("{x: int | string}"))
 	assert.NoError(t, err)
 	x, _ = risor.Parse(`const m = x; m is int ? 0 : {"a": 1}["a"]`)
 	r, err := typed.Check(x)
 	assert.NoError(t, err)
-	assert.Equal(t, r.Type, "int")
+	assert.Equal(t, r.Type.String(), "int")
 }

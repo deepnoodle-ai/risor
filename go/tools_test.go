@@ -78,7 +78,7 @@ func TestFormatCommentsEverywhere(t *testing.T) {
 // programs of the suite (F12 3.1: assist never fails). A completion's span
 // ends at its position, and a hover's span holds it.
 func TestAssistNeverFails(t *testing.T) {
-	env, err := risor.NewEnv(risor.Declare("{x: any, n: int, s: string, xs: int[], m: {a: int, b: string}}"), risor.Groups("math", "json"))
+	env, err := risor.NewEnv(risor.VarRecord("{x: any, n: int, s: string, xs: int[], m: {a: int, b: string}}"), risor.Groups("math", "json"))
 	assert.NoError(t, err)
 	texts := suiteTexts(t)
 	count := 0
@@ -112,7 +112,7 @@ func TestAssistNeverFails(t *testing.T) {
 }
 
 func TestAssistPositions(t *testing.T) {
-	env, err := risor.NewEnv(risor.Declare("{user: {name: string}}"))
+	env, err := risor.NewEnv(risor.VarRecord("{user: {name: string}}"))
 	assert.NoError(t, err)
 	// A position in no line of the text: an empty list and no hover.
 	c := env.Complete("user", risor.Pos{Line: 3, Column: 1})
@@ -153,7 +153,7 @@ func TestFormatSmall(t *testing.T) {
 }
 
 func TestHoverCutTakesOnlyTheNextParen(t *testing.T) {
-	env, err := risor.NewEnv(risor.Declare("{xs: string[]}"))
+	env, err := risor.NewEnv(risor.VarRecord("{xs: string[]}"))
 	assert.NoError(t, err)
 	// Hover's cut takes a ( only when it is the very next character (F12
 	// 3.2 item 3), whether the text lexes or not (#).
@@ -174,7 +174,7 @@ func TestHoverCutTakesOnlyTheNextParen(t *testing.T) {
 func TestHoverParameterTakesTheFirstCheck(t *testing.T) {
 	// A const lambda is checked at each use; a parameter's detail is that
 	// of the first check that reaches the position (F12 3.12).
-	env, err := risor.NewEnv(risor.Declare("{}"))
+	env, err := risor.NewEnv(risor.VarRecord("{}"))
 	assert.NoError(t, err)
 	for _, c := range []struct {
 		text string

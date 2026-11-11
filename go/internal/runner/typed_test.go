@@ -174,7 +174,7 @@ func runTyped(c *casefile.Case, vars map[string]any, types map[string]reflect.Ty
 	}
 	o.plans = bridge.TypedPlans(prog)
 	v, u, err := prog.Measure(context.Background(), risor.Map(vars))
-	o.steps, o.units = u.Steps, u.Alloc
+	o.steps, o.units = u.Steps, u.Allocated
 	if err != nil {
 		var e *risor.Error
 		if errors.As(err, &e) {

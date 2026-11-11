@@ -20,13 +20,13 @@ import (
 func TestNamedLambdaOnAnyReceiver(t *testing.T) {
 	// A const-bound lambda named as an argument of a method on an any
 	// receiver is a use: its body is checked there.
-	env, err := risor.NewEnv(risor.Declare("{m: any}"))
+	env, err := risor.NewEnv(risor.VarRecord("{m: any}"))
 	assert.NoError(t, err)
 	ds := checkErr(t, env, "const f4 = () => ``.l; m.r(f4)")
 	assert.Equal(t, ds[0].Code, "kind")
 	assert.Equal(t, ds[0].Span.Array(), [4]int{1, 18, 1, 20})
 	// Its sites are kept.
-	env, err = risor.NewEnv(risor.Declare("{m: any, b: any}"))
+	env, err = risor.NewEnv(risor.VarRecord("{m: any, b: any}"))
 	assert.NoError(t, err)
 	x, _ := risor.Parse("const f = () => b.x; m.r(f)")
 	r, err := env.Check(x)
@@ -37,7 +37,7 @@ func TestNamedLambdaOnAnyReceiver(t *testing.T) {
 
 func TestPatternOnDynamicValue(t *testing.T) {
 	// A pattern's failure is at a site when the site is on the value bound.
-	env, err := risor.NewEnv(risor.Declare("{items: any}"))
+	env, err := risor.NewEnv(risor.VarRecord("{items: any}"))
 	assert.NoError(t, err)
 	x, err := risor.Parse("const {a: k7} = {c: items}.values().find(() => false) ?? {}; false")
 	assert.NoError(t, err)
@@ -51,7 +51,7 @@ func TestPatternOnDynamicValue(t *testing.T) {
 }
 
 func TestRemovedEntries(t *testing.T) {
-	parent, err := risor.NewEnv(risor.Without("string.repeat", "len"), risor.Declare("{s: string}"))
+	parent, err := risor.NewEnv(risor.Without("string.repeat", "len"), risor.VarRecord("{s: string}"))
 	assert.NoError(t, err)
 	// A child keeps the parent's removals; removing again is no error.
 	child, err := parent.With(risor.Without("len", "list.map"))
@@ -64,7 +64,7 @@ func TestRemovedEntries(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, string(d), `"removed":["len","list.map","string.repeat"]`)
 	// The description builds the same removals.
-	decl, err := risor.Description(d)
+	decl, err := risor.FromDescription(d)
 	assert.NoError(t, err)
 	e2, err := risor.NewEnv(decl)
 	assert.NoError(t, err)
@@ -82,7 +82,7 @@ func TestRemovedEntries(t *testing.T) {
 func TestLambdaFactsWhereWritten(t *testing.T) {
 	// The body sees the facts where the lambda was written, not those at the
 	// call: a narrowing at the call does not reach it.
-	env, err := risor.NewEnv(risor.Declare("{m: any, o: {n: string} | null}"))
+	env, err := risor.NewEnv(risor.VarRecord("{m: any, o: {n: string} | null}"))
 	assert.NoError(t, err)
 	ds := checkErr(t, env, "const f = () => o.n; o ? m.r(f) : 0")
 	assert.Equal(t, ds[0].Code, "maybe-null")
@@ -131,7 +131,7 @@ func TestChildEnvironmentsReplace(t *testing.T) {
 		risor.Function{Name: "geo.distance", Type: "() => float", Impl: impl},
 		risor.OpaqueType{Name: "Time", Methods: map[string]risor.Function{"format": {Type: "(layout: string) => string", Impl: impl}}},
 		risor.Without("len"),
-		risor.RejectClasses("value"),
+		risor.Reject("value"),
 		risor.Limits{Steps: 500, Depth: 50},
 	)
 	assert.NoError(t, err)
@@ -159,7 +159,7 @@ func TestChildEnvironmentsReplace(t *testing.T) {
 	assert.Contains(t, d, `"removed":["len"]`)
 	// Removals add up and are not undone; a child's own limits and classes
 	// replace the parent's.
-	child2, err := child.With(risor.Without("abs"), risor.RejectClasses(), risor.Limits{Steps: 9})
+	child2, err := child.With(risor.Without("abs"), risor.Reject(), risor.Limits{Steps: 9})
 	assert.NoError(t, err)
 	d = describe(child2)
 	assert.Contains(t, d, `"removed":["abs","len"]`)
@@ -200,8 +200,8 @@ func TestOpaqueTypeInChild(t *testing.T) {
 	assert.Equal(t, opaque(child), `"opaque":{"Time":{"unix":"() => int"}}`)
 	// Only a method: added, or replacing the one of that name; the rest stay.
 	child, err = parent.With(
-		risor.AddMethod("Time", "year", risor.Function{Type: "() => float", Impl: impl}),
-		risor.AddMethod("Time", "unix", risor.Function{Type: "() => int", Impl: impl}),
+		risor.Method("Time", "year", risor.Function{Type: "() => float", Impl: impl}),
+		risor.Method("Time", "unix", risor.Function{Type: "() => int", Impl: impl}),
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, opaque(child), `"opaque":{"Time":{"format":"(layout: string) => string","unix":"() => int","year":"() => float"}}`)

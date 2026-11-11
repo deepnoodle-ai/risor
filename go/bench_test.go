@@ -110,7 +110,7 @@ func benchEnv(b *testing.B, data risor.Map) *risor.Env {
 		decl += k + ": any, "
 	}
 	decl += "}"
-	env, err := risor.NewEnv(risor.Declare(decl), risor.Limits{Steps: 100_000_000, Alloc: 100_000_000})
+	env, err := risor.NewEnv(risor.VarRecord(decl), risor.Limits{Steps: 100_000_000, Allocation: 100_000_000})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestConcurrentRuns(t *testing.T) {
 		decl += k + ": any, "
 	}
 	decl += "}"
-	env, err := risor.NewEnv(risor.Declare(decl), risor.Limits{Steps: 100_000_000, Alloc: 100_000_000})
+	env, err := risor.NewEnv(risor.VarRecord(decl), risor.Limits{Steps: 100_000_000, Allocation: 100_000_000})
 	assert.NoError(t, err)
 	ctx := context.Background()
 	for _, c := range append(append([]benchCase{}, workflowCases...), heavyCases...) {
@@ -221,7 +221,7 @@ func TestConcurrentRuns(t *testing.T) {
 // and one that also charges a step and a unit through its call handle.
 func BenchmarkHost(b *testing.B) {
 	env, err := risor.NewEnv(
-		risor.Declare("{n: float}"),
+		risor.VarRecord("{n: float}"),
 		risor.Function{Name: "id", Type: "(x: float) => float", Impl: func(c *risor.Call, args []any) (any, error) {
 			return args[0], nil
 		}},
@@ -267,7 +267,7 @@ func BenchmarkProjection(b *testing.B) {
 	for i := range xs {
 		xs[i] = map[string]any{"f": float64(i), "g": "x"}
 	}
-	env, err := risor.NewEnv(risor.Declare("{xs: {f: float, g: string}[]}"), risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit})
+	env, err := risor.NewEnv(risor.VarRecord("{xs: {f: float, g: string}[]}"), risor.Limits{Steps: risor.NoLimit, Allocation: risor.NoLimit})
 	if err != nil {
 		b.Fatal(err)
 	}

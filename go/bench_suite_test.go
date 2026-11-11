@@ -102,7 +102,7 @@ func BenchmarkSuite(b *testing.B) {
 		if err := json.Unmarshal(text, &f); err != nil {
 			b.Fatal(path, err)
 		}
-		env, err := risor.NewEnv(risor.Declare(f.Env), risor.Limits{Steps: f.Limits.Steps, Alloc: f.Limits.Allocation})
+		env, err := risor.NewEnv(risor.VarRecord(f.Env), risor.Limits{Steps: f.Limits.Steps, Allocation: f.Limits.Allocation})
 		if err != nil {
 			b.Fatal(path, err)
 		}
@@ -138,7 +138,7 @@ func BenchmarkSuite(b *testing.B) {
 				if !reflect.DeepEqual(gotValue, c.Expect.Value) {
 					b.Fatalf("value differs from expect: %.200s", got)
 				}
-				if use.Steps != c.Expect.Steps || use.Alloc != c.Expect.Allocated {
+				if use.Steps != c.Expect.Steps || use.Allocated != c.Expect.Allocated {
 					b.Fatalf("usage %+v, expect steps %d allocated %d", use, c.Expect.Steps, c.Expect.Allocated)
 				}
 				compileNs := suiteMedian(func() { compile() })
@@ -147,7 +147,7 @@ func BenchmarkSuite(b *testing.B) {
 						b.Fatal(err)
 					}
 				})
-				line, _ := json.Marshal(suiteBenchLine{"go", name, compileNs, runNs, use.Steps, use.Alloc})
+				line, _ := json.Marshal(suiteBenchLine{"go", name, compileNs, runNs, use.Steps, use.Allocated})
 				fmt.Println(string(line))
 				b.ReportAllocs()
 				for b.Loop() {

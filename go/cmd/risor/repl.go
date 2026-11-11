@@ -13,6 +13,7 @@ import (
 
 	risor "github.com/deepnoodle-ai/risor/go/v3"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/replrun"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -34,8 +35,8 @@ const replHelp = `Enter const lines and an expression. Commands:
 type session struct {
 	env      *risor.Env
 	vars     risor.Map
-	held     string     // the held const lines, as program text
-	heldVals risor.Held // the values of the held lines (F12 5 item 6)
+	held     string       // the held const lines, as program text
+	heldVals replrun.Held // the values of the held lines (F12 5 item 6)
 	color    bool
 	// internal maps each name shadow gave a held binding to the name its
 	// author wrote, so that no internal name reaches the user.
@@ -140,7 +141,7 @@ func (s *session) eval(entry string) result {
 	if err != nil {
 		return result{diags: s.render(err, entry, k)}
 	}
-	v, nextHeld, err := s.env.RunEntry(context.Background(), x, s.vars, s.heldVals)
+	v, nextHeld, err := replrun.RunEntry(context.Background(), s.env, x, s.vars, s.heldVals)
 	if err != nil {
 		return result{diags: s.render(err, entry, k)}
 	}
@@ -673,7 +674,7 @@ func repl(s *session, in lineReader, stdout, stderr io.Writer) int {
 				return 0
 			case ":reset":
 				s.held = ""
-				s.heldVals = risor.Held{}
+				s.heldVals = replrun.Held{}
 				continue
 			case ":help":
 				fmt.Fprint(stdout, replHelp)

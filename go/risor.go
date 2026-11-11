@@ -3,7 +3,7 @@
 // specification (spec/core in the repository) and its conformance suite.
 //
 // A host works in four stages (spec/core/03-host.md 3.2): Parse turns source
-// text into a Program; Check and Compile take a Program and an environment;
+// text into an Expr; Check and Compile take an Expr and an environment;
 // Run takes a compiled program and the values of its variables. Every stage
 // reports a failure as an *Error holding diagnostics of one phase.
 //
@@ -93,9 +93,6 @@ func Parse(source string) (*Expr, error) {
 	return &Expr{file: f, tree: tree}, nil
 }
 
-// Source returns the program's source text.
-func (x *Expr) Source() string { return string(x.file.Runes()) }
-
 // Truthy is the language's truthiness test (03-host.md 3.2.4). It takes any
 // value a run can return and cannot fail.
 func Truthy(v any) bool { return value.Truthy(v) }
@@ -121,34 +118,10 @@ func AsInt(v any) (int64, bool) {
 	return int64(f), true
 }
 
-// WalkCalls calls fn with the name of each call by name and each method call
-// of the program, for tools and tests. method is true for a method call.
-func WalkCalls(x *Expr, fn func(name string, method bool)) {
-	syntax.Walk(x.tree, func(n syntax.Node) bool {
-		switch n := n.(type) {
-		case *syntax.Call:
-			fn(n.Name, false)
-		case *syntax.MethodCall:
-			fn(n.Name, true)
-		}
-		return true
-	})
-}
-
-// Origin says where a source text sits in a larger document: a name, and
-// the line, column and indent of its first code point (03-host.md 3.7).
-// A reader of case file sources returns one beside the text (package F9
-// 7.2); spans stay positions in the text itself.
-type Origin struct {
-	Name                 string
-	Line, Column, Indent int
-}
-
 // Text is the program's own text: the source between the start and the
-// end of its span. For a whole program it is Source without the white
-// space and comments around it; for a program made of a part of a larger
-// text, such as a call argument (CallSite.Args) or a template's part, it
-// is that part alone, where Source is the whole text.
+// end of its span, without the white space and comments around it. For a
+// program made of a part of a larger text, such as a call argument
+// (CallSite.Args) or a template's part, it is that part alone.
 func (x *Expr) Text() string {
 	r := x.tree.Result
 	if r == nil {

@@ -157,7 +157,7 @@ func (p *Program) RunEntry(ctx context.Context, vars Vars) (result any, usage Us
 		r.deadline = time.Now().Add(t)
 	}
 	v, f := r.protectAll(p.root)
-	usage = Usage{Steps: r.steps, Alloc: r.units}
+	usage = Usage{Steps: r.steps, Allocated: r.units}
 	var trace []diag.TraceEntry
 	if f != nil {
 		trace = r.trace(p.file)

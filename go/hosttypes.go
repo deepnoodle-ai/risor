@@ -531,12 +531,12 @@ func sigText(s *types.Sig) string {
 	return out
 }
 
-// Description builds the declarations of a description (F1 5.4). The
+// FromDescription builds the declarations of a description (F1 5.4). The
 // environment it gives can check programs; a compile fails with
 // no-implementation while it declares a host function or a method. A
 // description that is not a JSON object of the form of 5.3 is an error of
 // this binding, not a diagnostic.
-func Description(data []byte) (Decl, error) {
+func FromDescription(data []byte) (Decl, error) {
 	raw, err := casefile.DecodeJSON(data)
 	if err != nil {
 		return nil, fmt.Errorf("risor: a description is not JSON: %w", err)
@@ -654,7 +654,7 @@ func Description(data []byte) (Decl, error) {
 	if !ok {
 		return bad("reject")
 	}
-	decls = append(decls, RejectClasses(reject...))
+	decls = append(decls, Reject(reject...))
 	lm, ok := d["limits"].(map[string]any)
 	if !ok || len(lm) != 3 {
 		return bad("limits")
@@ -690,7 +690,7 @@ func Description(data []byte) (Decl, error) {
 		case "steps":
 			lim.Steps = n
 		case "allocation":
-			lim.Alloc = n
+			lim.Allocation = n
 		case "depth":
 			if n == 0 {
 				n = -1 // out of range: bad-limit

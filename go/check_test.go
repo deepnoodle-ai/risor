@@ -21,12 +21,12 @@ func checkErr(t *testing.T, env *risor.Env, src string, opts ...risor.CheckOptio
 }
 
 func TestCheckAPI(t *testing.T) {
-	env, err := risor.NewEnv(risor.Declare("{gate: {failed: int, items: {name: string}[]}, blob: any}"))
+	env, err := risor.NewEnv(risor.VarRecord("{gate: {failed: int, items: {name: string}[]}, blob: any}"))
 	assert.NoError(t, err)
 	x, _ := risor.Parse("gate.items[0].name")
 	r, err := env.Check(x)
 	assert.NoError(t, err)
-	assert.Equal(t, r.Type, "string")
+	assert.Equal(t, r.Type.String(), "string")
 	assert.Equal(t, len(r.Sites), 1)
 	assert.Equal(t, r.Sites[0].Class, "index")
 	assert.Equal(t, r.Sites[0].Span.Array(), [4]int{1, 1, 1, 14})
@@ -43,7 +43,7 @@ func TestCheckAPI(t *testing.T) {
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "bad-type")
 	// Strict mode: dynamic rejected.
-	strict, _ := risor.NewEnv(risor.Declare("{blob: any}"), risor.RejectClasses("constant-condition", "dynamic"))
+	strict, _ := risor.NewEnv(risor.VarRecord("{blob: any}"), risor.Reject("constant-condition", "dynamic"))
 	ds = checkErr(t, strict, "blob.x")
 	assert.Equal(t, ds[0].Code, "unchecked")
 	assert.Equal(t, ds[0].Class, "dynamic")
@@ -53,9 +53,9 @@ func TestCheckAPI(t *testing.T) {
 // need the checker.
 func TestDeclareWithChecker(t *testing.T) {
 	for _, d := range []risor.Decl{
-		risor.Declare("{q: Foo}"),
-		risor.Declare("{q: {a: int, a: int}}"),
-		risor.Declare("{q: {a: int} | {b: int}}"),
+		risor.VarRecord("{q: Foo}"),
+		risor.VarRecord("{q: {a: int, a: int}}"),
+		risor.VarRecord("{q: {a: int} | {b: int}}"),
 	} {
 		_, err := risor.NewEnv(d)
 		var e *risor.Error
@@ -67,7 +67,7 @@ func TestDeclareWithChecker(t *testing.T) {
 	var e0 *risor.Error
 	assert.True(t, errors.As(err0, &e0))
 	assert.Equal(t, e0.Diagnostics[0].Code, "bad-signature")
-	_, err := risor.NewEnv(risor.Declare("{t: Time}"), risor.OpaqueType{Name: "Time"})
+	_, err := risor.NewEnv(risor.VarRecord("{t: Time}"), risor.OpaqueType{Name: "Time"})
 	assert.NoError(t, err)
 }
 
@@ -102,7 +102,7 @@ func TestCheckLimitTypeDepth(t *testing.T) {
 	x, _ := risor.Parse(strings.Repeat("[", 64) + "1" + strings.Repeat("]", 64))
 	r, err := env.Check(x)
 	assert.NoError(t, err)
-	assert.Equal(t, r.Type, "int"+strings.Repeat("[]", 64))
+	assert.Equal(t, r.Type.String(), "int"+strings.Repeat("[]", 64))
 	ds := checkErr(t, env, strings.Repeat("[", 65)+"1"+strings.Repeat("]", 65))
 	assert.Equal(t, ds[0].Code, "check-limit")
 	assert.Equal(t, ds[0].Span.Array(), [4]int{1, 1, 1, 132})
@@ -111,7 +111,7 @@ func TestCheckLimitTypeDepth(t *testing.T) {
 // The class of a run failure in a checked program (03-host.md 3.7.6), and
 // the same failure unchecked.
 func TestCheckedClass(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{x: {a: int}, y: any, s: \"a\" | \"b\"}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{x: {a: int}, y: any, s: \"a\" | \"b\"}"))
 	vars := risor.Map{"x": map[string]any{}, "y": map[string]any{}, "s": "c"}
 	for _, c := range []struct{ src, checked, unchecked string }{
 		{"x.a", "environment", "dynamic"},
@@ -131,14 +131,14 @@ func TestCheckedClass(t *testing.T) {
 			var e *risor.Error
 			assert.True(t, errors.As(err, &e), c.src)
 			assert.Equal(t, e.Diagnostics[0].Class, mode.class, c.src)
-			assert.Equal(t, u, risor.Usage{Steps: u.Steps, Alloc: u.Alloc})
+			assert.Equal(t, u, risor.Usage{Steps: u.Steps, Allocated: u.Allocated})
 		}
 	}
 }
 
 // What opens no level is checked by a loop (20.6): long flat programs check.
 func TestCheckFlatPrograms(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{c: bool, m: map<any>}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{c: bool, m: map<any>}"))
 	n := 100000
 	var consts strings.Builder
 	for i := 0; i < n; i++ {
@@ -157,7 +157,7 @@ func TestCheckFlatPrograms(t *testing.T) {
 		assert.NoError(t, err)
 		r, err := env.Check(x)
 		assert.NoError(t, err)
-		assert.Equal(t, r.Type, want)
+		assert.Equal(t, r.Type.String(), want)
 	}
 }
 

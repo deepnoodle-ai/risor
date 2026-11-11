@@ -256,7 +256,7 @@ func describe(t *testing.T, env *risor.Env) string {
 func TestDescriptionRoundTrip(t *testing.T) {
 	native := func(c *risor.Call, args []any) (any, error) { return 1.0, nil }
 	e1, err := risor.NewEnv(
-		risor.Declare(`{order: {id: int, note?: string, "a-b"?: int, ...}, t: Time | null}`),
+		risor.VarRecord(`{order: {id: int, note?: string, "a-b"?: int, ...}, t: Time | null}`),
 		risor.VarSchema("m", map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "number"}}),
 		risor.OpaqueType{Name: "Time", Methods: map[string]risor.Function{
 			"format": {Type: "(layout:string)=>string", Impl: native},
@@ -266,8 +266,8 @@ func TestDescriptionRoundTrip(t *testing.T) {
 		risor.Function{Name: "rate", Type: "(code: string, n?: int) => float !", Impl: native},
 		risor.Function{Name: "big", Type: "(a: T, b: T|null) => T where T: ordered", Impl: native},
 		risor.Without("string.toUpperCase", "abs"),
-		risor.RejectClasses("value", "dynamic"),
-		risor.Limits{Steps: risor.NoLimit, Alloc: risor.ZeroLimit, Depth: 50},
+		risor.Reject("value", "dynamic"),
+		risor.Limits{Steps: risor.NoLimit, Allocation: risor.ZeroLimit, Depth: 50},
 	)
 	assert.NoError(t, err)
 	d1 := describe(t, e1)
@@ -277,7 +277,7 @@ func TestDescriptionRoundTrip(t *testing.T) {
 		`"reject":["dynamic","value"],"removed":["abs","string.toUpperCase"],`+
 		`"variables":{"m":"map<float>","order":"{\"a-b\"?: int, id: int, note?: string, ...}","t":"Time | null"},"version":"3.0"}`)
 
-	decl, err := risor.Description([]byte(d1))
+	decl, err := risor.FromDescription([]byte(d1))
 	assert.NoError(t, err)
 	e2, err := risor.NewEnv(decl)
 	assert.NoError(t, err)
@@ -309,8 +309,8 @@ func TestDescriptionRoundTrip(t *testing.T) {
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "no-implementation")
 	// Without functions and methods, it compiles.
-	plain, _ := risor.NewEnv(risor.Declare("{a: int}"))
-	decl, err = risor.Description([]byte(describe(t, plain)))
+	plain, _ := risor.NewEnv(risor.VarRecord("{a: int}"))
+	decl, err = risor.FromDescription([]byte(describe(t, plain)))
 	assert.NoError(t, err)
 	e3, err := risor.NewEnv(decl)
 	assert.NoError(t, err)
@@ -320,7 +320,7 @@ func TestDescriptionRoundTrip(t *testing.T) {
 
 func TestDescriptionErrors(t *testing.T) {
 	base := `{"functions":{},"limits":{"allocation":1,"depth":200,"steps":1},"opaque":{},"reject":[],"removed":[],"variables":{},"version":"3.0"}`
-	_, err := risor.Description([]byte(base))
+	_, err := risor.FromDescription([]byte(base))
 	assert.NoError(t, err)
 	for _, bad := range []string{
 		`[]`, `{}`, `nope`,
@@ -329,7 +329,7 @@ func TestDescriptionErrors(t *testing.T) {
 		`{"functions":{},"limits":{"allocation":1,"depth":200,"steps":1},"opaque":{},"reject":[],"removed":[],"variables":{"a":1},"version":"3.0"}`,
 		`{"functions":{},"limits":{"allocation":1,"depth":200,"steps":1},"opaque":{},"reject":[],"removed":[],"variables":{},"version":"3.0","named":{}}`,
 	} {
-		_, err := risor.Description([]byte(bad))
+		_, err := risor.FromDescription([]byte(bad))
 		assert.NotNil(t, err, bad)
 	}
 	// Declaration errors are diagnostics.
@@ -341,7 +341,7 @@ func TestDescriptionErrors(t *testing.T) {
 		"unsupported-version": `{"functions":{},"limits":{"allocation":1,"depth":200,"steps":1},"opaque":{},"reject":[],"removed":[],"variables":{},"version":"9.0"}`,
 		"bad-name":            `{"functions":{},"limits":{"allocation":1,"depth":200,"steps":1},"opaque":{},"reject":[],"removed":[],"variables":{"if":"int"},"version":"3.0"}`,
 	} {
-		decl, err := risor.Description([]byte(text))
+		decl, err := risor.FromDescription([]byte(text))
 		assert.NoError(t, err, code)
 		_, err = risor.NewEnv(decl)
 		var e *risor.Error

@@ -44,7 +44,7 @@ const retries = input.options?.retries ?? 0;
 }`
 
 func BenchmarkCompileMid(b *testing.B) {
-	env, err := risor.NewEnv(risor.Declare(`{input: {role: "admin" | "member" | "owner", note?: string,
+	env, err := risor.NewEnv(risor.VarRecord(`{input: {role: "admin" | "member" | "owner", note?: string,
   tags: string[], options: {retries?: int} | null,
   items: {name: string, status: "fail" | "pass", owner: string | null, ms: float}[]}}`))
 	if err != nil {
@@ -66,7 +66,7 @@ func BenchmarkCompileMid(b *testing.B) {
 // misspelled field, so the compile fails with one check diagnostic and
 // builds its message (package F8 3.5).
 func BenchmarkCompileCheckFail(b *testing.B) {
-	env, err := risor.NewEnv(risor.Declare(`{input: {role: "admin" | "member" | "owner", note?: string,
+	env, err := risor.NewEnv(risor.VarRecord(`{input: {role: "admin" | "member" | "owner", note?: string,
   tags: string[], options: {retries?: int} | null,
   items: {name: string, status: "fail" | "pass", owner: string | null, ms: float}[]}}`))
 	if err != nil {

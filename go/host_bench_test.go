@@ -28,7 +28,7 @@ func hostParent(b *testing.B) *risor.Env {
 		decl += fmt.Sprintf("v%d: {name: string, n: int, tags: string[]}, ", i)
 	}
 	decl += "input: {name: string, count: int}, limit: int, flag: bool, env: map<string>}"
-	env, err := risor.NewEnv(risor.Declare(decl))
+	env, err := risor.NewEnv(risor.VarRecord(decl))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -100,9 +100,11 @@ func BenchmarkHostLoad(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			if _, _, err := c.CheckCompile(xs[i%len(xs)]); err != nil {
+			p, err := c.Compile(xs[i%len(xs)])
+			if err != nil {
 				b.Fatal(err)
 			}
+			_ = p.CheckResult()
 			i++
 		}
 	})

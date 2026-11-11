@@ -1,6 +1,8 @@
 package risor
 
 import (
+	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
@@ -79,27 +81,43 @@ func ParseTemplate(text string) (*Template, error) {
 // Segments returns the template's segments in the order of the text.
 func (t *Template) Segments() []Segment { return t.segments }
 
-// Expr returns the template's program in mode string: a program whose value
-// is a string. Check, compile and run it as any other.
-func (t *Template) Expr() *Expr { return t.str }
+// IsSingle reports whether the template is single: exactly one part, with
+// no text run before or after it (F2 1).
+func (t *Template) IsSingle() bool { return t.t.Single }
 
-// Single returns the expression of a template that is exactly one part, as
-// its program in mode value, or nil.
-func (t *Template) Single() *Expr {
-	if t.t.Single {
-		return t.val
+// Part returns the expression of the template's part i, counted from 0 over
+// the parts alone, as a program of its own with spans in the whole template
+// text. It is nil when the template has no part i.
+func (t *Template) Part(i int) *Expr {
+	if i < 0 {
+		return nil
+	}
+	for _, s := range t.segments {
+		if s.Expr == nil {
+			continue
+		}
+		if i == 0 {
+			return s.Expr
+		}
+		i--
 	}
 	return nil
 }
 
-// Program returns the template's program in a mode (F2 2.5). An unknown
-// mode is taken as ModeString.
+// Program returns the template's program in a mode (F2 2.5): in mode string
+// a program whose value is a string; in mode value, for a single template,
+// a program whose value is its part's value. Check, compile and run it as
+// any other. An unknown mode is taken as ModeString.
 func (t *Template) Program(mode TemplateMode) *Expr {
 	if mode == ModeValue {
 		return t.val
 	}
 	return t.str
 }
+
+// Analyze analyzes the template's program in a mode (F2 3): the report of
+// Expr.Analyze, with the template's segments.
+func (t *Template) Analyze(mode TemplateMode) *Analysis { return t.Program(mode).Analyze() }
 
 // Step is one step of a static path (F2 3.5): a key. Star is for the star
 // step of package F7, and is never set by this package.
@@ -191,32 +209,123 @@ func (x *Expr) Analyze() *Analysis {
 	return out
 }
 
-// Names returns the free names the program reads, sorted and unique.
-func (x *Expr) Names() []string { return x.Analyze().Names }
-
-// Refs returns the reads of free names, in source order.
-func (x *Expr) Refs() []Ref { return x.Analyze().Refs }
-
-// Calls returns the calls of the program in source order: all of them when
-// no name is given, else those whose Name is one of names.
-func (x *Expr) Calls(names ...string) []CallSite {
-	all := x.Analyze().Calls
-	if len(names) == 0 {
-		return all
+// JSON is the report in its JSON form (F2 3.3, 4.3, 4.8): the fields in the
+// order of 3.3, and those of each reference, call and segment in the order
+// of 4.3.
+func (a *Analysis) JSON() string {
+	var b strings.Builder
+	span := func(s Span) {
+		x := s.Array()
+		fmt.Fprintf(&b, "[%d,%d,%d,%d]", x[0], x[1], x[2], x[3])
 	}
-	want := map[string]bool{}
-	for _, n := range names {
-		want[n] = true
-	}
-	var out []CallSite
-	for _, c := range all {
-		if want[c.Name] {
-			out = append(out, c)
+	b.WriteString(`{"names":[`)
+	for i, n := range a.Names {
+		if i > 0 {
+			b.WriteByte(',')
 		}
+		b.WriteString(value.QuoteJSON(n))
 	}
-	return out
+	b.WriteString(`],"refs":[`)
+	for i, r := range a.Refs {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`{"name":` + value.QuoteJSON(r.Name) + `,"path":[`)
+		for j, st := range r.Path {
+			if j > 0 {
+				b.WriteByte(',')
+			}
+			if st.Star { // F7 9.3
+				b.WriteString(`{"star":true}`)
+				continue
+			}
+			b.WriteString(value.QuoteJSON(st.Key))
+		}
+		b.WriteString(`],"span":`)
+		span(r.Span)
+		b.WriteByte('}')
+	}
+	b.WriteString(`],"calls":[`)
+	for i, c := range a.Calls {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`{"name":` + value.QuoteJSON(c.Name) + `,"namespace":`)
+		if c.Namespace == "" {
+			b.WriteString("null")
+		} else {
+			b.WriteString(value.QuoteJSON(c.Namespace))
+		}
+		b.WriteString(`,"span":`)
+		span(c.Span)
+		b.WriteString(`,"args":[`)
+		for j, s := range c.ArgSpans {
+			if j > 0 {
+				b.WriteByte(',')
+			}
+			span(s)
+		}
+		fmt.Fprintf(&b, `],"lambda":%t}`, c.InLambda)
+	}
+	b.WriteString(`],"literal":`)
+	if a.IsLiteral {
+		b.WriteString(`{"value":`)
+		writeLiteralJSON(&b, a.Literal)
+		b.WriteByte('}')
+	} else {
+		b.WriteString("false")
+	}
+	b.WriteString(`,"segments":`)
+	if !a.Template {
+		b.WriteString("null")
+	} else {
+		b.WriteByte('[')
+		for i, sg := range a.Segments {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			if sg.Expr == nil {
+				b.WriteString(`{"text":` + value.QuoteJSON(sg.Text) + `,"span":`)
+			} else {
+				b.WriteString(`{"part":`)
+				span(sg.ExprSpan)
+				b.WriteString(`,"span":`)
+			}
+			span(sg.Span)
+			b.WriteByte('}')
+		}
+		b.WriteByte(']')
+	}
+	b.WriteByte('}')
+	return b.String()
 }
 
-// Literal returns the program's value when the whole program is a literal
-// expression (F2 3.7).
-func (x *Expr) Literal() (any, bool) { return syntax.Literal(x.tree) }
+// writeLiteralJSON writes a literal's value as JSON: a literal holds only
+// null, bool, number, string, list and map.
+func writeLiteralJSON(b *strings.Builder, v any) {
+	v, _ = value.Read(v)
+	switch value.KindOf(v) {
+	case value.List:
+		b.WriteByte('[')
+		for i := 0; i < value.Len(v); i++ {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			writeLiteralJSON(b, value.At(v, i))
+		}
+		b.WriteByte(']')
+	case value.Map:
+		b.WriteByte('{')
+		for i, k := range value.Keys(v) {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			x, _ := value.Get(v, k)
+			b.WriteString(value.QuoteJSON(k) + ":")
+			writeLiteralJSON(b, x)
+		}
+		b.WriteByte('}')
+	default:
+		b.WriteString(value.Debug(v))
+	}
+}

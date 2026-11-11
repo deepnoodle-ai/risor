@@ -44,8 +44,8 @@ type token struct{ id int }
 func (token) OpaqueType() string { return "Token" }
 
 func TestDeadlineAndCancel(t *testing.T) {
-	env, err := risor.NewEnv(risor.Declare("{xs: int[]}"),
-		risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit, Timeout: time.Millisecond})
+	env, err := risor.NewEnv(risor.VarRecord("{xs: int[]}"),
+		risor.Limits{Steps: risor.NoLimit, Allocation: risor.NoLimit, Deadline: time.Millisecond})
 	assert.NoError(t, err)
 	xs := make([]any, 3000)
 	for i := range xs {
@@ -56,7 +56,7 @@ func TestDeadlineAndCancel(t *testing.T) {
 	assert.Equal(t, d.Class, "limit")
 
 	// Cancellation, also inside a try, which does not catch it.
-	env2, _ := risor.NewEnv(risor.Declare("{xs: int[]}"), risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit})
+	env2, _ := risor.NewEnv(risor.VarRecord("{xs: int[]}"), risor.Limits{Steps: risor.NoLimit, Allocation: risor.NoLimit})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = compile(t, env2, "try { xs.map(x => x) } catch { 0 }").Run(ctx, risor.Map{"xs": xs})
@@ -103,12 +103,12 @@ func TestHostFunctions(t *testing.T) {
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "number-range")
 	assert.Equal(t, e.Diagnostics[0].Class, "environment")
-	assert.Equal(t, u, risor.Usage{Steps: 4, Alloc: 2})
+	assert.Equal(t, u, risor.Usage{Steps: 4, Allocated: 2})
 	assert.Equal(t, run(t, env, "geo.dist(1) + geo.dist(1, 2)", nil), any(3.0))
 }
 
 func TestHostNumbers(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{x: int, xs: int[], m: map<int>}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{x: int, xs: int[], m: map<int>}"))
 	big := int64(1) << 60
 	vars := risor.Map{"x": big, "xs": []int64{1, big}, "m": map[string]uint64{"a": 2, "b": uint64(big)}}
 	for _, src := range []string{"x", "x + 1", "xs[1]", "m.b", "xs.map(v => v)", "`${xs}`", "xs == xs"} {
@@ -132,7 +132,7 @@ func TestHostNumbers(t *testing.T) {
 
 func TestOpaqueValues(t *testing.T) {
 	env, err := risor.NewEnv(
-		risor.Declare("{t: Token, u: Token}"),
+		risor.VarRecord("{t: Token, u: Token}"),
 		risor.OpaqueType{Name: "Token", Methods: map[string]risor.Function{
 			"id": {Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {
 				return args[0].(token).id, nil
@@ -218,7 +218,7 @@ func TestEmptyContainersAtTheDepthLimit(t *testing.T) {
 }
 
 func TestInvalidText(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{s: string}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{s: string}"))
 	// E2 82 41: one U+FFFD for the maximal subpart E2 82, then A (03-host.md 3.4.5).
 	assert.Equal(t, run(t, env, "[len(s), s]", risor.Map{"s": "\xe2\x82A\xff"}), any([]any{3.0, "\ufffdA\ufffd"}))
 	assert.Equal(t, run(t, env, "s == \"\\uFFFD\"", risor.Map{"s": "\xf0\x9f\x98"}), any(true))
@@ -233,7 +233,7 @@ func TestInvalidText(t *testing.T) {
 // (01-language.md 13.2 rule 6).
 func TestFlatPrograms(t *testing.T) {
 	n := 100000
-	env, _ := risor.NewEnv(risor.Declare("{c: bool, m: map<any>}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{c: bool, m: map<any>}"))
 	var consts strings.Builder
 	for i := 0; i < n; i++ {
 		fmt.Fprintf(&consts, "const a%d = %d;\n", i, i)
@@ -273,7 +273,7 @@ func TestStackNeeds(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, depth := range []int{200, 1000} {
-		env, _ := risor.NewEnv(risor.Declare("{v: any, xs: int[]}"), risor.Limits{Depth: depth, Steps: risor.NoLimit, Alloc: risor.NoLimit})
+		env, _ := risor.NewEnv(risor.VarRecord("{v: any, xs: int[]}"), risor.Limits{Depth: depth, Steps: risor.NoLimit, Allocation: risor.NoLimit})
 		// A value nested to the depth limit, compared and rendered.
 		var v any = []any{}
 		for i := 1; i < depth; i++ {
@@ -301,7 +301,7 @@ func TestStackNeeds(t *testing.T) {
 // list or a map, so the deep pair under the first key meets the depth limit
 // before the long string under the last key passes the step limit.
 func TestMapEqualKeyOrder(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{m: any, n: any}"), risor.Limits{Depth: 5, Steps: 10})
+	env, _ := risor.NewEnv(risor.VarRecord("{m: any, n: any}"), risor.Limits{Depth: 5, Steps: 10})
 	deep := func() any {
 		var v any = []any{1}
 		for i := 0; i < 10; i++ {
@@ -319,7 +319,7 @@ func TestMapEqualKeyOrder(t *testing.T) {
 }
 
 func TestBadLimit(t *testing.T) {
-	for _, l := range []risor.Limits{{Depth: 1001}, {Depth: -1}, {Steps: -5}, {Alloc: -9}} {
+	for _, l := range []risor.Limits{{Depth: 1001}, {Depth: -1}, {Steps: -5}, {Allocation: -9}} {
 		_, err := risor.NewEnv(l)
 		var e *risor.Error
 		assert.True(t, errors.As(err, &e))
@@ -332,22 +332,22 @@ func TestDeclare(t *testing.T) {
 		decls []risor.Decl
 		code  string
 	}{
-		{[]risor.Decl{risor.Declare("int")}, "bad-type"},
-		{[]risor.Decl{risor.Declare("{a?: int}")}, "bad-type"},
-		{[]risor.Decl{risor.Declare("{a: int, ...}")}, "bad-type"},
-		{[]risor.Decl{risor.Declare("{a: int, a: int}")}, "name-clash"},
-		{[]risor.Decl{risor.Declare(`{"a-b": int}`)}, "bad-name"},
-		{[]risor.Decl{risor.Declare(`{if: int}`)}, "bad-name"},
+		{[]risor.Decl{risor.VarRecord("int")}, "bad-type"},
+		{[]risor.Decl{risor.VarRecord("{a?: int}")}, "bad-type"},
+		{[]risor.Decl{risor.VarRecord("{a: int, ...}")}, "bad-type"},
+		{[]risor.Decl{risor.VarRecord("{a: int, a: int}")}, "name-clash"},
+		{[]risor.Decl{risor.VarRecord(`{"a-b": int}`)}, "bad-name"},
+		{[]risor.Decl{risor.VarRecord(`{if: int}`)}, "bad-name"},
 		{[]risor.Decl{risor.Function{Name: "len", Type: "() => int"}}, "name-clash"},
 		{[]risor.Decl{risor.Function{Name: "json.f", Type: "() => int"}}, "reserved-namespace"},
 		{[]risor.Decl{risor.Function{Name: "a.b.c", Type: "() => int"}}, "bad-name"},
 		{[]risor.Decl{risor.Function{Name: "f", Type: "(f: (x: int) => int) => int"}}, "bad-signature"},
 		{[]risor.Decl{risor.Function{Name: "f", Type: "(a?: int, b: int) => int"}}, "bad-signature"},
 		{[]risor.Decl{risor.Function{Name: "geo", Type: "() => int"}, risor.Function{Name: "geo.d", Type: "() => int"}}, "name-clash"},
-		{[]risor.Decl{risor.Declare("{geo: int}"), risor.Function{Name: "geo.d", Type: "() => int"}}, "name-clash"},
+		{[]risor.Decl{risor.VarRecord("{geo: int}"), risor.Function{Name: "geo.d", Type: "() => int"}}, "name-clash"},
 		{[]risor.Decl{risor.OpaqueType{Name: "T"}}, "bad-name"},
 		{[]risor.Decl{risor.Version("4.0")}, "unsupported-version"},
-		{[]risor.Decl{risor.RejectClasses("nope")}, "bad-class"},
+		{[]risor.Decl{risor.Reject("nope")}, "bad-class"},
 	} {
 		_, err := risor.NewEnv(c.decls...)
 		var e *risor.Error
@@ -355,7 +355,7 @@ func TestDeclare(t *testing.T) {
 		assert.Equal(t, e.Diagnostics[0].Code, c.code)
 	}
 	// A variable may be named like a library function (03-host.md 3.3.4).
-	env, err := risor.NewEnv(risor.Declare("{type: string, max: int}"))
+	env, err := risor.NewEnv(risor.VarRecord("{type: string, max: int}"))
 	assert.NoError(t, err)
 	assert.Equal(t, run(t, env, "type + string(max)", risor.Map{"type": "a", "max": 1}), any("a1"))
 	// A function with no implementation fails the compile.
@@ -366,7 +366,7 @@ func TestDeclare(t *testing.T) {
 }
 
 func TestCompileOnceRunMany(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{n: int}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{n: int}"))
 	p := compile(t, env, "const sq = x => x * x; sq(n) + 1")
 	done := make(chan bool)
 	for i := 0; i < 8; i++ {
@@ -398,15 +398,15 @@ func TestPreAllocationChargingBeforeGrowth(t *testing.T) {
 	bigStr := strings.Repeat("a\"\\\n", count)
 
 	env, err := risor.NewEnv(
-		risor.Declare("{xs: int[], m: map<int>, s: string}"),
+		risor.VarRecord("{xs: int[], m: map<int>, s: string}"),
 		risor.Groups("json"),
-		risor.Limits{Steps: risor.NoLimit, Alloc: 5},
+		risor.Limits{Steps: risor.NoLimit, Allocation: 5},
 	)
 	assert.NoError(t, err)
 	vars := risor.Map{"xs": xs, "m": m, "s": bigStr}
 
 	// Each expression would build multiple megabytes if allocated before
-	// charging units; under Alloc: 5 it must fail with allocation-exceeded
+	// charging units; under Allocation: 5 it must fail with allocation-exceeded
 	// and negligible heap allocation.
 	for _, src := range []string{
 		"[...xs]",
@@ -437,8 +437,8 @@ func TestPreAllocationChargingBeforeGrowth(t *testing.T) {
 	assert.Equal(t, runErr(t, env, "`${s}${1 / 0}`", vars).Code, "divide-by-zero")
 
 	bothEnv, err := risor.NewEnv(
-		risor.Declare("{s: string}"),
-		risor.Limits{Steps: 2, Alloc: 2},
+		risor.VarRecord("{s: string}"),
+		risor.Limits{Steps: 2, Allocation: 2},
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, runErr(t, bothEnv, "`${s}`", vars).Code, "steps-exceeded")
@@ -446,9 +446,9 @@ func TestPreAllocationChargingBeforeGrowth(t *testing.T) {
 	// Text past the length the walk keeps (64 KiB) is rendered a second
 	// time, after the charges, to the same string.
 	okEnv, err := risor.NewEnv(
-		risor.Declare("{s: string}"),
+		risor.VarRecord("{s: string}"),
 		risor.Groups("json"),
-		risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit},
+		risor.Limits{Steps: risor.NoLimit, Allocation: risor.NoLimit},
 	)
 	assert.NoError(t, err)
 	short := strings.Repeat("x\"\\\t\x01é😀", 6000)
@@ -486,7 +486,7 @@ func TestMapSpreadsCountedBeforeBuilt(t *testing.T) {
 	src += "z: 1}"
 	// 100 spreads write 5,001 keys; the map has 141 entries.
 	limit := func(alloc int64) *risor.Env {
-		env, err := risor.NewEnv(risor.Declare(decl), risor.Limits{Steps: risor.NoLimit, Alloc: alloc})
+		env, err := risor.NewEnv(risor.VarRecord(decl), risor.Limits{Steps: risor.NoLimit, Allocation: alloc})
 		assert.NoError(t, err)
 		return env
 	}

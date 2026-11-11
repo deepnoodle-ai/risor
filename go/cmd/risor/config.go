@@ -206,7 +206,7 @@ func checkSteps(env *risor.Env, f *configFlags, schema any, source string) (stri
 	if cr == nil {
 		return "", errors.New("no check result")
 	}
-	return cr.Type, nil
+	return cr.Type.String(), nil
 }
 
 // rendering is the rendering of a value (01-language.md 12) under the

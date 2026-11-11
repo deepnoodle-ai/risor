@@ -77,7 +77,7 @@ func TestNamedTypeDecls(t *testing.T) {
 	ty, err := risor.TypeFromSchema([]byte(`{"type": "array", "items": {"type": "string"}}`))
 	assert.NoError(t, err)
 	env, err := risor.NewEnv(
-		risor.Declare("{x: any}"),
+		risor.VarRecord("{x: any}"),
 		risor.NamedTypeSchema("Id", map[string]any{"type": "integer"}),
 		risor.NamedTypeOf("Tags", ty),
 		risor.NamedType("Doc", "{id: Id, tags: Tags}"),
@@ -86,13 +86,13 @@ func TestNamedTypeDecls(t *testing.T) {
 	x, _ := risor.Parse("x as Doc")
 	r, err := env.Check(x)
 	assert.NoError(t, err)
-	assert.Equal(t, r.Type, "{id: int, tags: string[]}")
+	assert.Equal(t, r.Type.String(), "{id: int, tags: string[]}")
 	assert.Equal(t, r.Sites[0].Class, "value")
 	d, err := env.Describe()
 	assert.NoError(t, err)
 	assert.Contains(t, string(d), `"types":{"Doc":"{id: int, tags: string[]}","Id":"int","Tags":"string[]"}`)
 	// The description builds the same named types.
-	decl, err := risor.Description(d)
+	decl, err := risor.FromDescription(d)
 	assert.NoError(t, err)
 	e2, err := risor.NewEnv(decl)
 	assert.NoError(t, err)
@@ -122,7 +122,7 @@ func TestNamedTypeDecls(t *testing.T) {
 
 func TestNamedTypesInChild(t *testing.T) {
 	parent, err := risor.NewEnv(
-		risor.Declare("{x: any}"),
+		risor.VarRecord("{x: any}"),
 		risor.OpaqueType{Name: "Time"},
 		risor.NamedType("Id", "int"),
 		risor.NamedType("Ref", "{id: Id}"),
@@ -149,7 +149,7 @@ func TestNamedTypesInChild(t *testing.T) {
 func TestConversionWithoutCheck(t *testing.T) {
 	// A compile with the static rules alone resolves program types and runs
 	// the walk; an undefined name is still a static diagnostic.
-	env, _ := risor.NewEnv(risor.Declare("{x: any}"), risor.NamedType("Pt", "{x: int, y: int}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{x: any}"), risor.NamedType("Pt", "{x: int, y: int}"))
 	x, _ := risor.Parse("x is Pt")
 	p, err := env.Compile(x, risor.NoCheck)
 	assert.NoError(t, err)
@@ -166,7 +166,7 @@ func TestConversionWithoutCheck(t *testing.T) {
 func TestUntaggedUnionInnermost(t *testing.T) {
 	// A parenthesized part that is itself reported gives no record to the
 	// part around it (F4 6.1, confirmed).
-	env, _ := risor.NewEnv(risor.Declare("{x: any}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{x: any}"))
 	ds := checkErr(t, env, "x as ({a: int} | {b: int}) | {c: int}")
 	assert.Equal(t, len(ds), 1)
 	assert.Equal(t, ds[0].Code, "untagged-union")

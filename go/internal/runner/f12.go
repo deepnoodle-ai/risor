@@ -159,14 +159,14 @@ func lawRun(c *casefile.Case, text string) string {
 	v, u, err := p.Measure(context.Background(), risor.Map(c.Vars))
 	if err != nil {
 		fail(err)
-		fmt.Fprintf(&b, " steps %d units %d", u.Steps, u.Alloc)
+		fmt.Fprintf(&b, " steps %d units %d", u.Steps, u.Allocated)
 		return b.String()
 	}
 	typ := ""
 	if cr != nil {
-		typ = cr.Type
+		typ = cr.Type.String()
 	}
-	return fmt.Sprintf("value %s type %s steps %d units %d", jsonForm(v), typ, u.Steps, u.Alloc)
+	return fmt.Sprintf("value %s type %s steps %d units %d", jsonForm(v), typ, u.Steps, u.Allocated)
 }
 
 // toolsLine is the line of the outcome command for a case of package F12
@@ -256,7 +256,7 @@ func CompletionJSON(c risor.Completion) string {
 }
 
 // HoverJSON writes a hover in the form of 7.7.
-func HoverJSON(h *risor.HoverInfo) string {
+func HoverJSON(h *risor.Hover) string {
 	if h == nil {
 		return "null"
 	}

@@ -261,7 +261,7 @@ func loadErr(t *testing.T, err error) *risor.LoadError {
 }
 
 func TestLoad(t *testing.T) {
-	env, err := risor.NewEnv(risor.Declare(`{env: map<string>, raw: any}`))
+	env, err := risor.NewEnv(risor.VarRecord(`{env: map<string>, raw: any}`))
 	assert.NoError(t, err)
 	vars := risor.Map{"env": map[string]any{"PORT": "9000"}, "raw": map[string]any{"listen": 1.0, "hosts": []any{}}}
 	ctx := context.Background()
