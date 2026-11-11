@@ -8,11 +8,20 @@
 // 20.7, gives an invalid type, `err()` reports it, and every declaration
 // refuses it with `bad-type`. Its text form (`toString()`) is the type text of
 // 05-types.md 3.9.
+//
+// `Type<T>` carries T, the TypeScript type of its values (05 E.1 row 5, ruling
+// R202; src/host/infer.ts). T is in the types only: two types that differ only
+// in T are the same type. A `Type` is a Standard Schema (https://standardschema.dev):
+// its `~standard.validate` is the conformance function.
 
 import * as T from "../types/type.ts";
 import type { Alts, Rec } from "../types/type.ts";
-import { Classifier, DEFAULT_CLASSIFIER, compareText } from "../value/value.ts";
+import { conformAllWalk } from "../eval/conform.ts";
+import { messageOf, RunFailure } from "../eval/failure.ts";
+import { ABSENT, Classifier, DEFAULT_CLASSIFIER, compareText, mapGet, mapKeys, readHost } from "../value/value.ts";
 import { declareError, RisorError } from "./error.ts";
+import type { RecordOf } from "./infer.ts";
+import type { StandardSchemaV1 } from "./standard.ts";
 
 /**
  * The kind of a type of one alternative (05 E.7): `string` covers a literal
@@ -22,12 +31,38 @@ import { declareError, RisorError } from "./error.ts";
  */
 export type TypeKind = "never" | "any" | "null" | "bool" | "int" | "float" | "string" | "list" | "record" | "union" | "opaque" | "var" | "mixed" | "invalid";
 
-/** A field of a record type (05 E.7). */
-export interface FieldType {
-  key: string;
-  type: Type;
-  optional: boolean;
+/** A field of a record type (05 E.7). The parameters carry its key and TypeScript type to `Infer`. */
+export interface FieldType<K extends string = string, V = unknown, O extends boolean = boolean> {
+  key: K;
+  type: Type<V>;
+  optional: O;
 }
+
+/** The most failures `~standard.validate` reports. */
+const MAX_ISSUES = 100;
+
+/** A value that conforms, in its plain form: maps as plain objects, lists as Arrays. */
+function plainOf(v: unknown, cls: Classifier): unknown {
+  switch (cls.kind(v)) {
+    case "list":
+      return (v as unknown[]).map((x) => plainOf(x, cls));
+    case "map": {
+      const out: Record<string, unknown> = {};
+      for (const k of mapKeys(v as object)) {
+        const x = mapGet(v as object, k);
+        if (x !== ABSENT) out[k] = plainOf(x, cls);
+      }
+      return out;
+    }
+    case "opaque":
+      return v;
+    default:
+      return readHost(v);
+  }
+}
+
+/** The union of the TypeScript types of a list of types. */
+type TypesOf<U extends readonly Type<any>[]> = U[number] extends Type<infer V> ? V : never;
 
 // A type variable of a printed signature is held as an opaque name that
 // starts with U+FFFF (src/host/api.ts printSignature).
@@ -38,8 +73,12 @@ let unwrap: (t: Type) => T.Type;
 let classifierOf: (t: Type) => Classifier;
 let invalidOf: (message: string) => Type;
 
-/** A type (03; 05-types.md). Build one with the constructors of this module, `env.parseType` or `typeFromSchema`. */
-export class Type {
+/**
+ * A type (03; 05-types.md). Build one with the constructors of this module,
+ * `env.parseType` or `typeFromSchema`. T is the TypeScript type of its values
+ * (`Infer`), in the types only.
+ */
+export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
   // The type, or null for an invalid type.
   readonly #t: T.Type | null;
   readonly #err: string | null;
@@ -168,8 +207,8 @@ export class Type {
   }
 
   /** The type without null. */
-  nonNull(): Type {
-    return this.#t === null ? this : wrap(T.nonnull(this.#t), this.#cls);
+  nonNull(): Type<Exclude<T, null>> {
+    return (this.#t === null ? this : wrap(T.nonnull(this.#t), this.#cls)) as Type<Exclude<T, null>>;
   }
 
   /** Whether null is one of the alternatives. `any` is not nullable by this test. */
@@ -209,18 +248,47 @@ export class Type {
   err(): RisorError | undefined {
     return this.#err === null ? undefined : declareError("bad-type", this.#err);
   }
+
+  /**
+   * The Standard Schema properties (https://standardschema.dev). `validate` is
+   * the conformance function (f04 7, f08 6.1). A value that conforms is given
+   * back in its plain form, the form `Infer` names: a map as a plain object, a
+   * list as an Array, a number as a JavaScript number; an opaque value as it
+   * is. Else up to 100 issues, each a `not-conforming` message and its path.
+   * An invalid type gives one issue, its `bad-type` message.
+   */
+  get "~standard"(): StandardSchemaV1.Props<T, T> {
+    const t = this.#t;
+    const cls = this.#cls;
+    const err = this.#err;
+    return {
+      version: 1,
+      vendor: "risor",
+      validate(value: unknown): StandardSchemaV1.Result<T> {
+        if (t === null) return { issues: [{ message: declareError("bad-type", err!).message }] };
+        const fs = conformAllWalk(value, t, cls, MAX_ISSUES);
+        if (fs.length === 0) return { value: plainOf(value, cls) as T };
+        return {
+          issues: fs.map((f) => ({
+            message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls),
+            path: f.path,
+          })),
+        };
+      },
+    };
+  }
 }
 
 /** Internal: wrap a type of the checker; read one, throwing `bad-type` for an invalid type; its opaque tests. */
 export { wrap as typeOf, unwrap as innerType, classifierOf as typeClassifier };
 
-export const typeNever: Type = wrap(T.NEVER);
-export const typeAny: Type = wrap(T.ANY);
-export const typeNull: Type = wrap(T.NULL);
-export const typeBool: Type = wrap(T.BOOL);
-export const typeInt: Type = wrap(T.INT);
-export const typeFloat: Type = wrap(T.FLOAT);
-export const typeString: Type = wrap(T.STRING);
+export const typeNever: Type<never> = wrap(T.NEVER) as Type<never>;
+export const typeAny: Type<unknown> = wrap(T.ANY);
+export const typeNull: Type<null> = wrap(T.NULL) as Type<null>;
+export const typeBool: Type<boolean> = wrap(T.BOOL) as Type<boolean>;
+export const typeInt: Type<number> = wrap(T.INT) as Type<number>;
+export const typeFloat: Type<number> = wrap(T.FLOAT) as Type<number>;
+export const typeString: Type<string> = wrap(T.STRING) as Type<string>;
 
 /** The first invalid type, or null. */
 function firstInvalid(ts: Type[]): Type | null {
@@ -245,31 +313,31 @@ function build(parts: Type[], f: (ts: T.Type[]) => T.Type | string): Type {
 }
 
 /** A list type: `T[]`. */
-export function listType(elem: Type): Type {
-  return build([elem], ([e]) => T.listOf(e));
+export function listType<E>(elem: Type<E>): Type<E[]> {
+  return build([elem], ([e]) => T.listOf(e)) as Type<E[]>;
 }
 
 /** A map type: `map<T>`, a record with no fields and rest T. */
-export function mapType(value: Type): Type {
-  return build([value], ([v]) => T.mapOf(v));
+export function mapType<V>(value: Type<V>): Type<{ [key: string]: V }> {
+  return build([value], ([v]) => T.mapOf(v)) as Type<{ [key: string]: V }>;
 }
 
 /** The type or null: `T | null`. */
-export function nullable(t: Type): Type {
-  return build([t], ([x]) => T.withNull(x));
+export function nullable<V>(t: Type<V>): Type<V | null> {
+  return build([t], ([x]) => T.withNull(x)) as Type<V | null>;
 }
 
 /** The union of one or more string literals: `"a" | "b"`. No string is no type. */
-export function literalType(...values: string[]): Type {
-  if (values.length === 0) return invalidOf("a literal type has one or more strings");
-  return wrap(T.lit(...values));
+export function literalType<const S extends string[]>(...values: S): Type<S[number]> {
+  if (values.length === 0) return invalidOf("a literal type has one or more strings") as Type<never>;
+  return wrap(T.lit(...values)) as Type<S[number]>;
 }
 
 /**
  * A record type: its fields, and the type of its other keys, `typeNever` for
  * an exact record and `typeAny` for an open one. A key given twice is no type.
  */
-export function recordType(fields: FieldType[], rest: Type): Type {
+export function recordType<const F extends readonly FieldType<string, any, boolean>[], R = never>(fields: F, rest: Type<R>): Type<RecordOf<F, R>> {
   return build([...fields.map((f) => f.type), rest], (ts) => {
     const seen = new Set<string>();
     const out: [string, T.Field][] = [];
@@ -280,11 +348,11 @@ export function recordType(fields: FieldType[], rest: Type): Type {
       out.push([k, { type: ts[i], optional: fields[i].optional === true }]);
     }
     return T.record(out, ts[fields.length]);
-  });
+  }) as Type<RecordOf<F, R>>;
 }
 
 /** An exact record type: `recordType(fields, typeNever)`. */
-export function exactRecordType(...fields: FieldType[]): Type {
+export function exactRecordType<const F extends readonly FieldType<string, any, boolean>[]>(...fields: F): Type<RecordOf<F, never>> {
   return recordType(fields, typeNever);
 }
 
@@ -293,8 +361,8 @@ export function exactRecordType(...fields: FieldType[]): Type {
  * among them form a tagged union, and two or more records that form none are
  * no type.
  */
-export function unionType(...ts: Type[]): Type {
-  return build(ts, (xs) => {
+export function unionType<const U extends readonly Type<any>[]>(...ts: U): Type<TypesOf<U>> {
+  return build([...ts], (xs) => {
     const acc = new T.TypeAcc();
     const recs: Rec[] = [];
     for (const t of xs) {
@@ -309,15 +377,15 @@ export function unionType(...ts: Type[]): Type {
       acc.add(m);
     }
     return acc.type();
-  });
+  }) as Type<TypesOf<U>>;
 }
 
 /**
  * The tagged union of two or more records (package F5, f05 2.1). A type that
  * is not a record, or records with no tag, are no type.
  */
-export function taggedUnionType(...records: Type[]): Type {
-  return build(records, (xs) => {
+export function taggedUnionType<const U extends readonly Type<any>[]>(...records: U): Type<TypesOf<U>> {
+  return build([...records], (xs) => {
     const recs: Rec[] = [];
     for (let i = 0; i < xs.length; i++) {
       const k = records[i].kind();
@@ -328,18 +396,21 @@ export function taggedUnionType(...records: Type[]): Type {
     const m = T.mapAlt(recs);
     if (m === null || T.findTag(recs) === null) return "the records have no tag";
     return m;
-  });
+  }) as Type<TypesOf<U>>;
 }
 
-/** The opaque type of this name. An environment that does not declare it refuses it with `bad-type`. */
-export function opaqueTypeNamed(name: string): Type {
-  if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) return invalidOf(`${name} is not an opaque type name`);
-  return wrap(T.opaque(name));
+/**
+ * The opaque type of this name. An environment that does not declare it refuses
+ * it with `bad-type`. P is the TypeScript type of its values, for `Infer`.
+ */
+export function opaqueTypeNamed<P = unknown>(name: string): Type<P> {
+  if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) return invalidOf(`${name} is not an opaque type name`) as Type<P>;
+  return wrap(T.opaque(name)) as Type<P>;
 }
 
 /** The join of two types (05-types.md 4.1). */
-export function join(a: Type, b: Type): Type {
-  return build([a, b], ([x, y]) => T.join(x, y));
+export function join<A, B>(a: Type<A>, b: Type<B>): Type<A | B> {
+  return build([a, b], ([x, y]) => T.join(x, y)) as Type<A | B>;
 }
 
 /** Internal: the opaque type names a type mentions. */
