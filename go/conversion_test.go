@@ -215,3 +215,18 @@ func TestEmptyKey(t *testing.T) {
 	assert.Equal(t, e.Diagnostics[0].Path, []any{""})
 	assert.Equal(t, u.Steps, int64(2))
 }
+
+func TestConformInvalidType(t *testing.T) {
+	// On an invalid type, Conform and ConformAll give its bad-type
+	// diagnostic of phase declare (05-host-api.md E.7).
+	bad := risor.LiteralType()
+	assert.NotNil(t, bad.Err())
+	var e *risor.Error
+	assert.True(t, errors.As(risor.Conform("a", bad), &e))
+	assert.Equal(t, e.Diagnostics[0].Code, "bad-type")
+	assert.Equal(t, e.Diagnostics[0].Phase, risor.PhaseDeclare)
+	ds := risor.ConformAll("a", bad, 0)
+	assert.Equal(t, len(ds), 1)
+	assert.Equal(t, ds[0].Code, "bad-type")
+	assert.Equal(t, ds[0].Phase, risor.PhaseDeclare)
+}
