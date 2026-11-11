@@ -39,6 +39,11 @@ import {
   unionType,
 } from "../src/index.ts";
 
+/** A span from its four numbers. */
+function S(l1: number, c1: number, l2: number, c2: number) {
+  return { start: { line: l1, column: c1 }, end: { line: l2, column: c2 } };
+}
+
 function thrown(f: () => unknown): RisorError {
   try {
     f();
@@ -126,16 +131,16 @@ describe("E.4: programs", () => {
     assert.equal(x.analyze().json(), '{"names":["x"],"refs":[{"name":"x","path":[],"span":[1,1,1,2]}],"calls":[],"literal":false,"segments":null}');
     assert.equal(thrown(() => parse("1 +")).phase, "parse");
     const [call] = parse("g(x => f(x), 2)").analyze().calls.filter((c) => c.name === "g");
-    assert.deepEqual([call.args[0], call.args[1]?.text, call.argSpans, call.inLambda], [undefined, "g(x => f(x), 2)", [[1, 3, 1, 12], [1, 14, 1, 15]], false]);
+    assert.deepEqual([call.args[0], call.args[1]?.text, call.argSpans, call.inLambda], [undefined, "g(x => f(x), 2)", [S(1, 3, 1, 12), S(1, 14, 1, 15)], false]);
     assert.equal(parse("g(x => f(x))").analyze().calls.find((c) => c.name === "f")?.inLambda, true);
   });
   test("check gives a Type and the sites; a failure is thrown with line spans", () => {
     const c = env.check(parse("x / x"));
     assert.equal(c.type.toString(), "float");
-    assert.deepEqual(c.sites, [{ class: "divide", span: [1, 1, 1, 6] }]);
+    assert.deepEqual(c.sites, [{ class: "divide", span: S(1, 1, 1, 6) }]);
     const e = thrown(() => env.check(parse("y")));
     assert.equal(e.phase, "check");
-    assert.deepEqual(e.diagnostics[0].span, [1, 1, 1, 2]);
+    assert.deepEqual(e.diagnostics[0].span, S(1, 1, 1, 2));
   });
   test("the expected result: text, condition, a schema or a Type", () => {
     assert.equal(thrown(() => env.check(parse("x"), "string")).diagnostics[0].code, "result-mismatch");
@@ -161,10 +166,10 @@ describe("E.5: templates", () => {
     const t = parseTemplate("a ${{ 1 }} b ${{ 2 }}");
     assert.equal(t.isSingle, false);
     assert.deepEqual(t.segments, [
-      { kind: "text", value: "a ", span: [1, 1, 1, 3] },
-      { kind: "part", span: [1, 3, 1, 11] },
-      { kind: "text", value: " b ", span: [1, 11, 1, 14] },
-      { kind: "part", span: [1, 14, 1, 22] },
+      { kind: "text", value: "a ", span: S(1, 1, 1, 3) },
+      { kind: "part", span: S(1, 3, 1, 11) },
+      { kind: "text", value: " b ", span: S(1, 11, 1, 14) },
+      { kind: "part", span: S(1, 14, 1, 22) },
     ]);
     const env = createEnv({});
     assert.equal(env.compile(t.part(1)!).run(), 2);
@@ -262,6 +267,7 @@ describe("E.7: conformance and loads", () => {
 describe("E.8: diagnostics and tools", () => {
   test("renderLine, renderDetail and renderJSON take a failure's diagnostics", () => {
     const e = thrown(() => createEnv({}).compile(parse("1 / 0"), { check: false }).run());
+    assert.deepEqual(e.diagnostics[0].span, S(1, 1, 1, 6));
     assert.equal(renderLine(e.diagnostics), "error[divide-by-zero] 1:1-1:6: the divisor of / is zero\n");
     assert.equal(renderDetail(e.diagnostics, "1 / 0"), "error[divide-by-zero] 1:1-1:6: the divisor of / is zero\n    1 / 0\n    ^^^^^\n");
     assert.equal(renderJSON(e.diagnostics), '{"class":"divide","code":"divide-by-zero","message":"the divisor of / is zero","phase":"run","span":[1,1,1,6],"trace":[]}\n');
@@ -271,6 +277,8 @@ describe("E.8: diagnostics and tools", () => {
     assert.equal(thrown(() => format("1 +")).phase, "parse");
     const env = createEnv({ varRecord: "{user: {name: string}}" });
     assert.deepEqual(env.complete("user.n", { line: 1, column: 7 }).items.map((i) => i.label), ["name"]);
-    assert.equal(env.hover("user.name", { line: 1, column: 7 })?.type, "string");
+    const h = env.hover("user.name", { line: 1, column: 7 });
+    assert.deepEqual([h?.type, h?.span], ["string", S(1, 6, 1, 10)]);
+    assert.deepEqual(env.complete("user.n", { line: 1, column: 7 }).span, S(1, 6, 1, 7));
   });
 });

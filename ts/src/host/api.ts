@@ -47,7 +47,7 @@ import type { SigNode, TypeNode } from "../types/typetext.ts";
 import { parseType as parseTypeText, parseReceiver, parseEnvRecord } from "../types/typetext.ts";
 import { METHODS } from "../library/registry.ts";
 import type { Declarations, Environment, NamedTypeDecl } from "./env.ts";
-import { declareError, failure, publicDiagnostic, RisorError } from "./error.ts";
+import { declareError, failure, lineSpanOf, publicDiagnostic, renderForm, RisorError, spanFromLine, spanOf } from "./error.ts";
 import type { Diagnostic, Pos, Span, Usage } from "./error.ts";
 import { innerType, opaqueNamesIn, Type, typeClassifier, typeOf } from "./type.ts";
 import { formatProgram as formatProgramResult, formatTemplate as formatTemplateResult } from "../tools/format.ts";
@@ -62,10 +62,22 @@ export type { Diagnostic, Pos, Span, Usage, TemplateMode, SchemaOption };
 export type Call = CallHandle;
 
 /** A completion (package F12, f12 3.1): the span it replaces and the candidates. */
-export type Completion = CompletionResult;
+export interface Completion {
+  span: Span;
+  items: Candidate[];
+}
+
 /** A hover record (package F12, f12 3.13). */
-export type Hover = HoverResult;
-export type { Candidate } from "../tools/assist.ts";
+export interface Hover {
+  kind: string;
+  span: Span;
+  type: string | null;
+  signature: string | null;
+  doc: string | null;
+  declaration: Span | null;
+}
+import type { Candidate } from "../tools/assist.ts";
+export type { Candidate };
 
 export interface HostFunction {
   /** The signature in type text: "(s: string, n?: int) => string !". */
@@ -459,7 +471,7 @@ const GROUP_SIGS = new Map([...GROUP_FUNCTIONS].map(([k, e]) => [k, librarySig(e
 const LIBRARY_METHODS = new Map([...METHODS].map(([kind, m]) => [kind, new Map([...m].map(([k, e]) => [k, librarySig(e, "library")]))]));
 
 function sitesOf(sites: InnerSite[], source: Source): Site[] {
-  return sites.map((x) => ({ class: x.class, span: source.lineSpan(x.span) }));
+  return sites.map((x) => ({ class: x.class, span: spanOf(source, x.span) }));
 }
 
 /** The names of an environment's library (05 E.2 item 8). */
@@ -804,12 +816,15 @@ export class Env {
 
   /** Completion at a position of a text that need not parse (package F12, f12 3.1). */
   complete(text: string, pos: Pos, expected?: Expected): Completion {
-    return assistComplete(this, text, pos as Position, this.assistExpected(expected));
+    const c: CompletionResult = assistComplete(this, text, { line: pos.line, column: pos.column } as Position, this.assistExpected(expected));
+    return { span: spanFromLine(c.span), items: c.items };
   }
 
   /** The hover record at a position of a text that need not parse (package F12, f12 3.13), or null. */
   hover(text: string, pos: Pos, expected?: Expected): Hover | null {
-    return assistHover(this, text, pos as Position, this.assistExpected(expected));
+    const h: HoverResult | null = assistHover(this, text, { line: pos.line, column: pos.column } as Position, this.assistExpected(expected));
+    if (h === null) return null;
+    return { ...h, span: spanFromLine(h.span), declaration: h.declaration === null ? null : spanFromLine(h.declaration) };
   }
 
   /** The expected result as the assist stage reads it: type text or "condition". */
@@ -1187,7 +1202,7 @@ export class Template {
   }
   /** The segments: text runs and parts, in order (f02 2.4). */
   get segments(): Segment[] {
-    return this.data.segments.map((s) => (s.kind === "text" ? { kind: "text", value: s.value, span: this.source.lineSpan(s.span) } : { kind: "part", span: this.source.lineSpan(s.span) }));
+    return this.data.segments.map((s) => (s.kind === "text" ? { kind: "text", value: s.value, span: spanOf(this.source, s.span) } : { kind: "part", span: spanOf(this.source, s.span) }));
   }
   /** The program of the template in a mode (f02 2.5). */
   program(mode: TemplateMode): Expr {
@@ -1242,7 +1257,7 @@ export class Analysis {
 
   /** Internal. */
   constructor(r: Report, source: Source) {
-    const sp = (s: InnerSpan) => source.lineSpan(s);
+    const sp = (s: InnerSpan) => spanOf(source, s);
     this.names = r.names;
     this.refs = r.refs.map((x) => ({ name: x.name, path: x.path.map((p) => ("star" in p ? { star: true as const } : p.key)), span: sp(x.span) }));
     this.calls = r.calls.map((c) => ({
@@ -1259,7 +1274,7 @@ export class Analysis {
 
   /** The JSON form of the report (f02 3.3, 4.3, 4.8): spans as [line, column, line, column], fields in order. */
   json(): string {
-    const sp = (s: Span) => JSON.stringify(s);
+    const sp = (s: Span) => JSON.stringify(lineSpanOf(s));
     const lit = this.literal === false ? "false" : `{"value":${jsonText(this.literal.value)}}`;
     const parts = [
       `"names":[${this.names.map(jsonString).join(",")}]`,
@@ -1294,15 +1309,15 @@ export function formatTemplate(text: string): string {
 
 /** The one-line form (f08 5.2): one line for each diagnostic. */
 export function renderLine(ds: readonly Diagnostic[]): string {
-  return renderLineOf(ds);
+  return renderLineOf(ds.map(renderForm));
 }
 
 /** The detail form (f08 5.3): each line with an excerpt of the source and the calls in progress. */
 export function renderDetail(ds: readonly Diagnostic[], source: string | null): string {
-  return renderDetailOf(ds, source);
+  return renderDetailOf(ds.map(renderForm), source);
 }
 
 /** The JSON form (f08 5.5): one JSON object a line, keys in code point order. */
 export function renderJSON(ds: readonly Diagnostic[]): string {
-  return renderJSONOf(ds);
+  return renderJSONOf(ds.map(renderForm));
 }

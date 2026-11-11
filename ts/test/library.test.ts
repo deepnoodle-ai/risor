@@ -74,7 +74,7 @@ describe("03 3.4.4: an entry that reads an element reads a host number", () => {
       assert.fail("no failure");
     } catch (e) {
       assert.ok(e instanceof RisorError);
-      assert.deepEqual(e.diagnostics[0].span, [1, 5, 1, 14]);
+      assert.deepEqual(e.diagnostics[0].span, { start: { line: 1, column: 5 }, end: { line: 1, column: 14 } });
     }
   });
 });

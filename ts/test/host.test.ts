@@ -343,7 +343,7 @@ describe("the receiver of a first star is the node, without its parentheses (f07
   const diags = (src: string) => {
     const c = tryCheck(env, parse(src));
     assert.ok(!c.ok);
-    return c.diagnostics.map((d) => [d.code, d.span![1] - 1, d.span![3] - 1]);
+    return c.diagnostics.map((d) => [d.code, d.span!.start.column - 1, d.span!.end.column - 1]);
   };
   test("kind and maybe-null", () => {
     assert.deepEqual(diags("(0)[*]"), [["kind", 1, 2]]);
@@ -353,7 +353,7 @@ describe("the receiver of a first star is the node, without its parentheses (f07
   test("a dynamic site", () => {
     const c = tryCheck(env, parse('(lookup(""))[*]'));
     assert.ok(c.ok);
-    assert.deepEqual(c.sites.map((s) => [s.class, s.span[1] - 1, s.span[3] - 1]), [["dynamic", 1, 11]]);
+    assert.deepEqual(c.sites.map((s) => [s.class, s.span.start.column - 1, s.span.end.column - 1]), [["dynamic", 1, 11]]);
   });
 });
 

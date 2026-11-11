@@ -10,6 +10,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { buildEnv, childEnv, conform, conformAll, execute, Expr, HostError, jsonText, printSignature, RisorError, Template, tryCompile } from "../host/api.ts";
 import type { Analysis } from "../host/api.ts";
+import { lineSpanOf } from "../host/error.ts";
 import type { Env, Expected as Expectation, HostFunction, OpaqueType } from "../host/api.ts";
 import type { NamedType } from "../host/api.ts";
 import type { Diagnostic } from "../syntax/diagnostic.ts";
@@ -339,7 +340,7 @@ export function executeCase(c: Case, run: boolean, checker = true, testFixtures 
     return done({ kind: "failure", phase: compiled.diagnostics[0].phase, diagnostics: compiled.diagnostics, source: compiled.source });
   }
   const prog = compiled.program;
-  const typeInfo = { type: prog.checkResult?.type.toString() ?? null, sites: prog.checkResult?.sites ?? [] };
+  const typeInfo = { type: prog.checkResult?.type.toString() ?? null, sites: (prog.checkResult?.sites ?? []).map((x) => ({ class: x.class, span: lineSpanOf(x.span) })) };
   // Step 5: run.
   if (!run) return done({ kind: "result", ran: false, ...typeInfo });
   if (compiled.program.missing.size > 0) return { outcome: { kind: "result", ran: false }, unmatched, missing: [...compiled.program.missing].sort(), env };
