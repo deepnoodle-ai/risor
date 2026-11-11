@@ -2475,7 +2475,7 @@ A binding may differ from the others only in these five ways.
 | 2 | How an environment is declared | Option values: `NewEnv(decls...)` | One options object: `createEnv({...})` | A builder: `Env::builder()...build()` |
 | 3 | How a failure reaches the host | A returned `error` | A thrown `RisorError` | A returned `Result` |
 | 4 | How a run is cancelled | `context.Context` | `AbortSignal` | `RunOptions` |
-| 5 | Conveniences for the host language's own types and values | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11), `Type.IsZero` (Go's zero value) | none | `type_of::<T>()`, `#[derive(Host)]`, `var_host::<T>()`, `load::<T>()` |
+| 5 | Conveniences for the host language's own types and values | `TypeOf[T]`, `Load[T]`, `AsInt`, `AsFloat`, `TypedLayer` (F11), `Type.IsZero` (Go's zero value) | `Infer<X>`, the parameters of `Type<T>`, `Env<V>` and `Program<V>`, and `Type` as a Standard Schema (E.7, R202) | `type_of::<T>()`, `#[derive(Host)]`, `var_host::<T>()`, `load::<T>()` |
 
 Everything else is the same: the concepts, their names, which object a
 function belongs to, what it takes, and what it gives. A name in the tables
@@ -2686,6 +2686,20 @@ limit of `spec/core/05-types.md` 20.4 or 20.7, gives an invalid type, and `err` 
 it. The binding of `TypeKind` is per E.1: a Go `int` with `Kind*` constants, a
 TypeScript string union, a Rust `enum`. Go's `IsZero` reports Go's zero
 `Type`, a value the other bindings do not have (E.1 row 5).
+
+**The TypeScript type of a Risor type (R202).** TypeScript's types do not
+exist at run time, so the binding cannot derive a Risor type from a host type
+as Go's `TypeOf[T]` and Rust's derive do. It goes the other way: a Risor type
+gives the TypeScript type of its values, in the types only (E.1 row 5).
+
+| Part | Rule |
+| --- | --- |
+| `Infer<X, Names?>` | The TypeScript type of the values of X: a `Type<T>` gives T; type text is read by the TypeScript checker. A record is a plain object, a list an array, `int` and `float` are `number`, `any` is `unknown`, a literal set a union of literals, `f?: T` an optional property. An opaque name is the type in `Names`, else `unknown`. Text it cannot read is `unknown`, never a TypeScript error: the declaration reports it with `bad-type`. |
+| `Type<T>` | Each constructor carries T: `listType(typeInt)` is `Type<number[]>`; `recordType` and `exactRecordType` keep each field's key; `opaqueTypeNamed<P>` takes P. Two types that differ only in T are the same type. |
+| `createEnv`, `env.with` | The environment is `Env<V>`: V holds each variable declared by `vars`, `varRecord`, `varTypes` or `varSchemas` (`unknown`), every one optional, since a run fails with `missing-variable` only when it reads one. An opaque type is the type its `test` guards (`test: (v) => v instanceof Point`). With no variables declared, V is any variables. `Env` with no parameter is any environment. |
+| `env.compile` | Gives `Program<V>`. `run` and `measure` take an object of V's variables, in the form a host gives them: a `Map` may stand for a record and a `bigint` for a number. A `Map` or a function of variables is not checked. |
+| `env.parseType(text)` | Gives `Type<Infer<text, Names>>`, with the environment's opaque types as `Names`. |
+| A Standard Schema | A `Type` has the member `~standard` of Standard Schema version 1 (https://standardschema.dev), vendor `risor`. Its `validate` is `conformAll` with a maximum of 100: a conforming value is given back in the form `Infer` names, with maps as plain objects; a failure gives one issue for each diagnostic, its message and its path. |
 
 ### E.8 Diagnostics and tools
 

@@ -555,3 +555,15 @@ Rust, internals exported beside the host API.
 | # | Ruling |
 | --- | --- |
 | R201 | **The bindings are idiomatic and otherwise aligned.** A binding differs from the others only in the case of names, how an environment is declared, how a failure reaches the host, how a run is cancelled, and conveniences for the host's own types. Everything else is the same: the concepts, their names, where each belongs, what it takes and what it gives. Each root exports the aligned surface and nothing else. `05-host-api.md` Part E is the authority, and replaces Parts B to D where they disagree. |
+
+## 21. The TypeScript type of a Risor type
+
+A TypeScript host wrote each variable's type twice: as a TypeScript type for
+its own code, and as type text for Risor, with nothing to keep the two in
+step (#627). Go and Rust derive the Risor type from the host type. TypeScript
+cannot, because its types do not exist at run time.
+
+| # | Ruling |
+| --- | --- |
+| R202 | **TypeScript infers the host type from the Risor type.** `Infer<X>` gives the TypeScript type of a `Type<T>` or of type text, which the TypeScript checker reads. `createEnv` and `env.with` give `Env<V>`, and `env.compile` gives `Program<V>`, whose `run` takes V's variables. A `Type` is a Standard Schema (version 1), so the libraries that take one take a Risor type. These are conveniences of E.1 row 5 in `05-host-api.md`, with no new concept. All but one are in the types only; at run time a `Type` gains the member `~standard`. Type text stays the one way to write a type; ArkType shows that a type-level reader of such text is practical (`ran`: an 80-field record adds about 64,000 instantiations and no measurable check time, TypeScript 5.9.3). Part E, after E.7, has the rules. |
+
