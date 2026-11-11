@@ -47,11 +47,11 @@
 
 // E.3 The environment.
 export { createEnv, Env, descriptionText } from "./host/api.ts";
-export type { EnvOptions, WithOptions, ChildOpaqueType, NamedType, Limits, Description, HostFunction, OpaqueType } from "./host/api.ts";
+export type { EnvOptions, WithOptions, LibraryNames, ChildOpaqueType, NamedType, Limits, Description, HostFunction, OpaqueType } from "./host/api.ts";
 
 // E.4 Programs.
 export { parse, Expr, Analysis, Program } from "./host/api.ts";
-export type { AnalysisCall, Ref, Expected, CheckResult, Site, CompileOptions, Usage, Vars } from "./host/api.ts";
+export type { CallSite, Ref, Expected, CheckResult, Site, CompileOptions, Usage, Vars } from "./host/api.ts";
 
 // E.5 Templates.
 export { parseTemplate, Template, formatTemplate } from "./host/api.ts";

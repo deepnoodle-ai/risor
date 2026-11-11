@@ -462,6 +462,18 @@ function sitesOf(sites: InnerSite[], source: Source): Site[] {
   return sites.map((x) => ({ class: x.class, span: source.lineSpan(x.span) }));
 }
 
+/** The names of an environment's library (05 E.2 item 8). */
+export interface LibraryNames {
+  /** The functions called by name, as `len`. */
+  functions: string[];
+  /** The groups that are on. */
+  namespaces: string[];
+  /** The entries of the groups that are on, by full name, as `json.parse`. */
+  groupFunctions: string[];
+  /** The methods, by receiver kind. */
+  methods: { string: string[]; list: string[]; map: string[] };
+}
+
 export class Env {
   /** Internal: the declarations, as declared. */
   readonly environment: Environment;
@@ -683,15 +695,26 @@ export class Env {
     };
   }
 
-  /** The names of the library entries this environment has: functions, the entries and constants of groups that are on, and methods as `kind.name`; in code point order. */
-  libraryNames(): string[] {
+  /**
+   * The names of the library this environment has (05 E.2 item 8): the
+   * functions called by name, the namespaces of the groups that are on, their
+   * entries by full name, and the methods by receiver kind. Each list is
+   * sorted; removed entries are not in it.
+   */
+  libraryNames(): LibraryNames {
     const e = this.environment;
-    const out: string[] = [];
-    for (const k of FUNCTIONS.keys()) if (!e.removed.has(k)) out.push(k);
-    for (const [k, f] of GROUP_FUNCTIONS) if (e.groups.has(f.group) && !e.removed.has(k)) out.push(k);
-    for (const [k, c] of GROUP_CONSTANTS) if (e.groups.has(c.group) && !e.removed.has(k)) out.push(k);
-    for (const [kind, m] of METHODS) for (const k of m.keys()) if (!e.removed.has(`${kind}.${k}`)) out.push(`${kind}.${k}`);
-    return out.sort(compareText);
+    const sort = (xs: Iterable<string>) => [...xs].sort(compareText);
+    const methods: LibraryNames["methods"] = { string: [], list: [], map: [] };
+    for (const [kind, m] of METHODS) {
+      if (kind !== "string" && kind !== "list" && kind !== "map") continue;
+      methods[kind] = sort([...m.keys()].filter((k) => !e.removed.has(`${kind}.${k}`)));
+    }
+    return {
+      functions: sort([...FUNCTIONS.keys()].filter((k) => !e.removed.has(k))),
+      namespaces: sort(e.groups),
+      groupFunctions: sort([...GROUP_FUNCTIONS].filter(([k, f]) => e.groups.has(f.group) && !e.removed.has(k)).map(([k]) => k)),
+      methods,
+    };
   }
 
   /**
@@ -1178,13 +1201,17 @@ export function parseTemplate(text: string): Template {
   return new Template(r.template);
 }
 
-/** A call the analysis reports (f02 3.6). Each argument is a parsed program of its own, or null for a lambda. */
-export interface AnalysisCall {
+/** A call the analysis reports (f02 3.6; 05 E.2 item 7). */
+export interface CallSite {
   name: string;
   namespace: string | null;
   span: Span;
-  args: { span: Span; program: Expr | null }[];
-  lambda: boolean;
+  /** Each argument as a program of its own, or undefined for a lambda. */
+  args: (Expr | undefined)[];
+  /** The span of each argument, in order. A lambda argument's span is the lambda's. */
+  argSpans: Span[];
+  /** Whether the call is inside a lambda. */
+  inLambda: boolean;
 }
 
 /** A name the program reads, and the path it reads through it (f02 3.4). A path step is a key, or a star of package F7 (f07 9.3). */
@@ -1198,7 +1225,7 @@ export interface Ref {
 export class Analysis {
   readonly names: string[];
   readonly refs: Ref[];
-  readonly calls: AnalysisCall[];
+  readonly calls: CallSite[];
   readonly literal: { value: unknown } | false;
   readonly segments: ({ text: string; span: Span } | { part: Span; span: Span })[] | null;
 
@@ -1211,11 +1238,9 @@ export class Analysis {
       name: c.name,
       namespace: c.namespace,
       span: sp(c.span),
-      args: c.args.map((a) => ({
-        span: sp(a.span),
-        program: a.kind === "Lambda" ? null : new Expr(source, { kind: "Program", consts: [], result: a, span: { start: a.span.start, end: a.span.end } }),
-      })),
-      lambda: c.lambda,
+      args: c.args.map((a) => (a.kind === "Lambda" ? undefined : new Expr(source, { kind: "Program", consts: [], result: a, span: { start: a.span.start, end: a.span.end } }))),
+      argSpans: c.args.map((a) => sp(a.span)),
+      inLambda: c.lambda,
     }));
     this.literal = r.literal === null ? false : r.literal;
     this.segments = r.segments === null ? null : r.segments.map((g) => (g.kind === "text" ? { text: g.value, span: sp(g.span) } : { part: sp(g.expr.span), span: sp(g.span) }));
@@ -1229,7 +1254,7 @@ export class Analysis {
       `"names":[${this.names.map(jsonString).join(",")}]`,
       `"refs":[${this.refs.map((x) => `{"name":${jsonString(x.name)},"path":[${x.path.map((p) => (typeof p === "string" ? jsonString(p) : '{"star":true}')).join(",")}],"span":${sp(x.span)}}`).join(",")}]`,
       `"calls":[${this.calls
-        .map((c) => `{"name":${jsonString(c.name)},"namespace":${c.namespace === null ? "null" : jsonString(c.namespace)},"span":${sp(c.span)},"args":[${c.args.map((a) => sp(a.span)).join(",")}],"lambda":${c.lambda}}`)
+        .map((c) => `{"name":${jsonString(c.name)},"namespace":${c.namespace === null ? "null" : jsonString(c.namespace)},"span":${sp(c.span)},"args":[${c.argSpans.map(sp).join(",")}],"lambda":${c.inLambda}}`)
         .join(",")}]`,
       `"literal":${lit}`,
       `"segments":${this.segments === null ? "null" : `[${this.segments.map((g) => ("text" in g ? `{"text":${jsonString(g.text)},"span":${sp(g.span)}}` : `{"part":${sp(g.part)},"span":${sp(g.span)}}`)).join(",")}]`}`,

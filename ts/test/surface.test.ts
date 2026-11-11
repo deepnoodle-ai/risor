@@ -83,7 +83,7 @@ describe("E.3: the environment", () => {
   });
   test("without, someNotNull and deadlineMs", () => {
     const env = createEnv({ varRecord: "{r: int | null, s: int | null}", without: ["len"], someNotNull: [["r", "s"]], limits: { deadlineMs: 1000 } });
-    assert.equal(env.libraryNames().includes("len"), false);
+    assert.equal(env.libraryNames().functions.includes("len"), false);
     assert.equal(env.check(parse("r ?? s")).type.toString(), "int");
   });
   test("a varType naming an undeclared opaque type, or an invalid type, is bad-type", () => {
@@ -99,9 +99,13 @@ describe("E.3: the environment", () => {
     assert.equal(env.parseType("{a: int}[]").toString(), "{a: int}[]");
     assert.equal(thrown(() => env.parseType("Nope")).diagnostics[0].code, "bad-type");
     const names = env.libraryNames();
-    assert.ok(names.includes("len") && names.includes("list.filter"));
-    assert.ok(!names.includes("json.parse"));
-    assert.ok(createEnv({ groups: ["json"] }).libraryNames().includes("json.parse"));
+    assert.ok(names.functions.includes("len") && names.methods.list.includes("filter"));
+    assert.deepEqual([names.namespaces, names.groupFunctions], [[], []]);
+    assert.deepEqual(names.functions, [...names.functions].sort());
+    const json = createEnv({ groups: ["json"], without: ["list.filter"] }).libraryNames();
+    assert.deepEqual(json.namespaces, ["json"]);
+    assert.ok(json.groupFunctions.includes("json.parse"));
+    assert.ok(!json.methods.list.includes("filter"));
   });
 });
 
@@ -113,6 +117,9 @@ describe("E.4: programs", () => {
     assert.deepEqual(x.analyze().names, ["x"]);
     assert.equal(x.analyze().json(), '{"names":["x"],"refs":[{"name":"x","path":[],"span":[1,1,1,2]}],"calls":[],"literal":false,"segments":null}');
     assert.equal(thrown(() => parse("1 +")).phase, "parse");
+    const [call] = parse("g(x => f(x), 2)").analyze().calls.filter((c) => c.name === "g");
+    assert.deepEqual([call.args[0], call.args[1]?.text, call.argSpans, call.inLambda], [undefined, "g(x => f(x), 2)", [[1, 3, 1, 12], [1, 14, 1, 15]], false]);
+    assert.equal(parse("g(x => f(x))").analyze().calls.find((c) => c.name === "f")?.inLambda, true);
   });
   test("check gives a Type and the sites; a failure is thrown with line spans", () => {
     const c = env.check(parse("x / x"));

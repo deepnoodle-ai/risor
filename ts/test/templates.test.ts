@@ -51,16 +51,16 @@ describe("f02 3: analysis", () => {
     const r = parse("geo.distance(a, b) > limit && input.event[\"id\"]").analyze();
     assert.deepEqual(r.names, ["a", "b", "geo", "input", "limit"]);
     assert.deepEqual(r.refs.map((x) => [x.name, x.path]), [["geo", []], ["a", []], ["b", []], ["limit", []], ["input", ["event", "id"]]]);
-    assert.deepEqual(r.calls.map((c) => [c.name, c.namespace, c.lambda]), [["geo.distance", "geo", false]]);
+    assert.deepEqual(r.calls.map((c) => [c.name, c.namespace, c.inLambda]), [["geo.distance", "geo", false]]);
     assert.equal(r.literal, false);
     assert.equal(r.segments, null);
   });
   test("each argument of a call is a parsed program of its own; a lambda is not", () => {
     const r = parse("rate(order.total * 2, x => x)").analyze();
     const [arg, lam] = r.calls[0].args;
-    assert.equal(lam.program, null);
+    assert.equal(lam, undefined);
     const e2 = createEnv({ varRecord: "{order: {total: float}}" });
-    assert.equal(e2.compile(arg.program!).run({ order: { total: 1.5 } }), 3);
+    assert.equal(e2.compile(arg!).run({ order: { total: 1.5 } }), 3);
   });
   test("a template, in each mode", () => {
     const t = parseTemplate("${{ 5 }}");
