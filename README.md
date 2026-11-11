@@ -11,7 +11,8 @@ memory.**
 > **Risor v3 is an alpha and a request for comment.** The language, the
 > specification and the APIs will change before 3.0.
 > Looking for Risor v2? It is released and maintained on the
-> [`v2` branch](https://github.com/deepnoodle-ai/risor/tree/v2).
+> [`v2` branch](https://github.com/deepnoodle-ai/risor/tree/v2). Existing
+> imports of `github.com/deepnoodle-ai/risor/v2` keep working.
 
 Your application has data. Your users, your operators or an LLM want to
 write a little logic over it. Risor is the language for that logic. Your
@@ -115,6 +116,9 @@ like. The three APIs have the same concepts and the same names.
 go get github.com/deepnoodle-ai/risor/go/v3@latest
 ```
 
+The first alpha, `v3.0.0-alpha.1`, was published at
+`github.com/deepnoodle-ai/risor/v3`. Later releases use the path above.
+
 ```go
 env, err := risor.NewEnv(risor.Var("user", "{name: string, age: int}"))
 expr, err := risor.Parse(`user.age >= 18`)
@@ -138,7 +142,13 @@ prog.run({ user: { name: "Ada", age: 36 } });
 
 ### Rust
 
+```toml
+[dependencies]
+risor = { git = "https://github.com/deepnoodle-ai/risor", features = ["derive"] }
+```
+
 ```rust
+use std::collections::HashMap;
 use risor::{parse, CompileOptions, Env};
 
 #[derive(risor::Host)]
@@ -150,6 +160,10 @@ let vars = HashMap::from([("user".to_string(), User { name: "Ada".into(), age: 3
 let out = prog.run(&vars)?;
 // true
 ```
+
+`#[derive(risor::Host)]` lets a program read your structs in place. It needs
+the `derive` feature, which adds one dependency: the project's own
+`risor-derive` crate, which has none of its own.
 
 ### Setting limits
 
