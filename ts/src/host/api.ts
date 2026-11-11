@@ -50,7 +50,7 @@ import type { Declarations, Environment, NamedTypeDecl } from "./env.ts";
 import { declareError, failure, lineSpanOf, publicDiagnostic, renderForm, RisorError, spanFromLine, spanOf } from "./error.ts";
 import type { Diagnostic, Pos, Span, Usage } from "./error.ts";
 import { innerType, opaqueNamesIn, Type, typeClassifier, typeOf } from "./type.ts";
-import type { ChildNames, ChildVars, HostVars, Infer, VarsOf } from "./infer.ts";
+import type { ChildNames, ChildVars, HostVars, Infer, Marked, VarsOf } from "./infer.ts";
 
 /**
  * An opaque type whose test may guard its TypeScript type X (R202):
@@ -765,8 +765,8 @@ export class Env<V = any, N = any> {
    * A type from type text, read against this environment's opaque and named
    * types (05 19.5, f04 7.1 item 4). Throws RisorError `bad-type`.
    */
-  parseType<const S extends string>(text: S): Type<Infer<S, N>> {
-    return typeOf(this.declaredType(text), this.classifier) as Type<Infer<S, N>>;
+  parseType<const S extends string>(text: S): Type<Infer<S, Marked<N>>> {
+    return typeOf(this.declaredType(text), this.classifier) as Type<Infer<S, Marked<N>>>;
   }
 
   /** Internal: type text resolved as declared type text. Throws RisorError `bad-type`. */

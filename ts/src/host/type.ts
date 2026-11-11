@@ -20,7 +20,7 @@ import { CANNOT_ENTER, conformAllWalk } from "../eval/conform.ts";
 import { messageOf, RunFailure } from "../eval/failure.ts";
 import { ABSENT, BAD_NUMBER, Classifier, DEFAULT_CLASSIFIER, compareText, mapGet, mapKeys, readHost } from "../value/value.ts";
 import { declareError, RisorError } from "./error.ts";
-import type { RecordOf } from "./infer.ts";
+import type { OpaqueOf, RecordOf } from "./infer.ts";
 import type { StandardSchemaV1 } from "./standard.ts";
 
 /**
@@ -432,9 +432,9 @@ export function taggedUnionType<const U extends readonly Type<any>[]>(...records
  * The opaque type of this name. An environment that does not declare it refuses
  * it with `bad-type`. P is the TypeScript type of its values, for `Infer`.
  */
-export function opaqueTypeNamed<P = unknown>(name: string): Type<P> {
-  if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) return invalidOf(`${name} is not an opaque type name`) as Type<P>;
-  return wrap(T.opaque(name)) as Type<P>;
+export function opaqueTypeNamed<P = unknown>(name: string): Type<OpaqueOf<P>> {
+  if (!/^[A-Z][A-Za-z0-9_]+$/.test(name)) return invalidOf(`${name} is not an opaque type name`) as Type<OpaqueOf<P>>;
+  return wrap(T.opaque(name)) as Type<OpaqueOf<P>>;
 }
 
 /** The join of two types (05-types.md 4.1). */

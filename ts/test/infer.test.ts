@@ -104,7 +104,8 @@ expect<Equal<Infer<ReturnType<typeof mapType<number>>>, { [key: string]: number 
 expect<Equal<Infer<ReturnType<typeof nullable<string>>>, string | null>>();
 const u = unionType(typeInt, nullable(typeString));
 expect<Equal<Infer<typeof u>, number | string | null>>();
-expect<Equal<Infer<ReturnType<typeof opaqueTypeNamed<Point>>>, Point>>();
+expect<Same<Infer<ReturnType<typeof opaqueTypeNamed<Point>>>, Point>>();
+expect<Equal<Infer<ReturnType<typeof opaqueTypeNamed>>, unknown>>();
 expect<Equal<Infer<typeof user>, typeof user extends Type<infer V> ? V : never>>();
 void typeFloat;
 
@@ -138,7 +139,7 @@ describe("R202: an environment's variables type a run", () => {
 
   test("an opaque type is the type its test guards", () => {
     const t = env.parseType("{at: Point, tags: string[]}");
-    expect<Equal<Infer<typeof t>, { at: Point; tags: string[] }>>();
+    expect<Same<Infer<typeof t>, { at: Point; tags: string[] }>>();
     assert.equal(t.toString(), "{at: Point, tags: string[]}");
   });
 
@@ -167,15 +168,41 @@ describe("R202: an environment's variables type a run", () => {
     void (() => p.run({ box: { v: 1 } }));
   });
 
+  test("an opaque type from a Type keeps its mark", () => {
+    class Box {
+      readonly #v = 1;
+      get v(): number {
+        return this.#v;
+      }
+    }
+    const e = createEnv({
+      opaque: { Box: { test: (v) => v instanceof Box }, Point: { test: (v) => v instanceof Point } },
+      varTypes: {
+        box: opaqueTypeNamed<Box>("Box"),
+        rec: exactRecordType({ key: "at", type: opaqueTypeNamed<Point>("Point"), optional: false }),
+      },
+    });
+    const parsed = e.parseType("Box[]");
+    const f = e.with({ varTypes: { list: parsed } });
+    const p = f.compile(parse("box"), { check: false });
+    assert.ok(p.run({ box: new Box(), rec: { at: new Point(1) }, list: [new Box()] }) instanceof Box);
+    // @ts-expect-error a plain object is not a Box (varTypes, opaqueTypeNamed)
+    void (() => p.run({ box: { v: 1 } }));
+    // @ts-expect-error a Map is not a Point (a field of a record type)
+    void (() => p.run({ rec: { at: new Map([["x", 1]]) } }));
+    // @ts-expect-error a plain object is not a Box (env.parseType)
+    void (() => p.run({ list: [{ v: 1 }] }));
+  });
+
   test("a child's opaque test replaces the parent's", () => {
     class Point3 {
       readonly z: string = "";
     }
     const child = env.with({ opaque: { Point: { test: (v) => v instanceof Point3 } } });
     const t = child.parseType("Point");
-    expect<Equal<Infer<typeof t>, Point3>>();
+    expect<Same<Infer<typeof t>, Point3>>();
     const kept = env.with({ opaque: { Point: { methods: {} } } }).parseType("Point");
-    expect<Equal<Infer<typeof kept>, Point>>();
+    expect<Same<Infer<typeof kept>, Point>>();
   });
 
   test("a child adds and replaces variables", () => {

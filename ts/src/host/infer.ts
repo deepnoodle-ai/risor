@@ -258,9 +258,17 @@ export type VarsOf<M, R, T, S, N> = [keyof M | keyof T | keyof S | R] extends [n
 type RecordVars<T> = unknown extends T ? AnyVars : T extends object ? T : AnyVars;
 
 declare const opaqueMark: unique symbol;
-/** Marks an opaque type in a variable's type, so `HostInput` takes it as it is. */
+/**
+ * Marks an opaque type, so `HostInput` takes it as it is and not as a record.
+ * The mark is an optional property no value has, so a value of P is a value of
+ * `P & Opaque`. It travels with the type: through `opaqueTypeNamed`,
+ * `env.parseType` and type text in `vars` and `varRecord`.
+ */
 type Opaque = { readonly [opaqueMark]?: true };
-type Marked<N> = { [K in keyof N]: unknown extends N[K] ? unknown : N[K] & Opaque };
+/** Internal: P, marked as an opaque type; `unknown` stays `unknown`. */
+export type OpaqueOf<P> = unknown extends P ? unknown : P & Opaque;
+/** Internal: the opaque names of an environment, each marked. */
+export type Marked<N> = { [K in keyof N]: OpaqueOf<N[K]> };
 
 /** Internal: the opaque names of a child environment: a child's test replaces the parent's. */
 export type ChildNames<N, P> = Flat<{ [K in keyof N | keyof P]: K extends keyof P ? (unknown extends P[K] ? (K extends keyof N ? N[K] : unknown) : P[K]) : K extends keyof N ? N[K] : never }>;
