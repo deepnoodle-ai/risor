@@ -117,11 +117,11 @@ fn a_description_round_trips() {
     let bad = text.replace(r#"["approve","report"]"#, r#"["approve","nope"]"#);
     assert!(matches!(
         Env::from_description(&bad),
-        Err(e) if e.first().code != "bad-description"
+        Err(crate::DescriptionError::Declare(_))
     ));
     let bad = text.replace(r#"{"someNotNull":["approve","report"]}"#, r#"["approve"]"#);
     assert!(matches!(
         Env::from_description(&bad),
-        Err(e) if e.first().code == "bad-description"
+        Err(crate::DescriptionError::Form(_))
     ));
 }

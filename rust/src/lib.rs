@@ -61,6 +61,7 @@ mod value;
 mod tests;
 
 // E.3: the environment.
+pub use describe::DescriptionError;
 pub use env::{Env, EnvBuilder, LibraryNames, Limits};
 
 // E.4: programs.

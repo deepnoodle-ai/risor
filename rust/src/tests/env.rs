@@ -113,7 +113,7 @@ fn removed_entries_round_trip_through_a_description() {
     assert_eq!(e2.description_text(), env.description_text());
     assert!(matches!(
         Env::from_description(&env.description_text().replace("abs", "abz")),
-        Err(e) if e.first().code != "bad-description"
+        Err(crate::DescriptionError::Declare(_))
     ));
 }
 

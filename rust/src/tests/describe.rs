@@ -4,7 +4,7 @@
 use crate::check::{self, ty::print};
 use crate::json;
 use crate::testing::{case_env, case_files, load_file};
-use crate::{parse, Env, Limits, SchemaOptions};
+use crate::{parse, DescriptionError, Env, Limits, SchemaOptions};
 use std::path::PathBuf;
 
 fn suite_dir() -> PathBuf {
@@ -134,12 +134,12 @@ fn a_description_holds_a_type_of_depth_64() {
 
 fn declare_codes(text: &str) -> Vec<&'static str> {
     match Env::from_description(text) {
-        Err(e) if e.first().code == "bad-description" => panic!("form error: {e}"),
-        Err(e) => {
+        Err(DescriptionError::Declare(e)) => {
             let mut c: Vec<&'static str> = e.diagnostics.iter().map(|d| d.code).collect();
             c.sort();
             c
         }
+        Err(DescriptionError::Form(m)) => panic!("form error: {m}"),
         Ok(_) => Vec::new(),
     }
 }
@@ -229,18 +229,18 @@ fn errors_of_a_description() {
         assert!(
             matches!(
                 Env::from_description(&with(k, v)),
-                Err(e) if e.first().code == "bad-description"
+                Err(DescriptionError::Form(_))
             ),
             "{k}: {v}"
         );
     }
     assert!(matches!(
         Env::from_description(r#"{"version":"3.0"}"#),
-        Err(e) if e.first().code == "bad-description"
+        Err(DescriptionError::Form(_))
     ));
     assert!(matches!(
         Env::from_description(&with("version", r#""3.0","extra":1"#)),
-        Err(e) if e.first().code == "bad-description"
+        Err(DescriptionError::Form(_))
     ));
 }
 
