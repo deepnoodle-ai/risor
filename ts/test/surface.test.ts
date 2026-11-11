@@ -234,6 +234,11 @@ describe("E.7: conformance and loads", () => {
     assert.equal(conform(new Date(), env.parseType("Time")), null);
     assert.equal(conform(1, env.parseType("Time"))?.code, "not-conforming");
     assert.equal(conformAll({ a: "x", b: "y" }, env.parseType("{a: int, b: int}"), 5).length, 2);
+    assert.equal(conformAll({ a: "x", b: "y" }, env.parseType("{a: int, b: int}"), 0).length, 1);
+    assert.equal(conformAll({ a: "x", b: "y" }, env.parseType("{a: int, b: int}"), -3).length, 1);
+    const bad = literalType();
+    assert.deepEqual([conform(1, bad)?.phase, conform(1, bad)?.code], ["declare", "bad-type"]);
+    assert.deepEqual(conformAll(1, bad, 5).map((d) => [d.phase, d.code]), [["declare", "bad-type"]]);
   });
   test("loadValue with text, a schema or a Type, and LoadError", () => {
     assert.deepEqual(loadValue(env, "{port: 80}", { expected: "{port: int}" }), { port: 80 });

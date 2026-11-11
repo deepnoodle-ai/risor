@@ -1056,9 +1056,12 @@ function conformDiagnostic(f: { template: string; params: Record<string, unknown
  * The conformance function (package F4, f04 7): null when the value conforms
  * to the type, else the diagnostic, with no span. Not a run: nothing is
  * charged and no limit applies. An opaque value is told by the tests of the
- * environment the type was read in (`env.parseType`).
+ * environment the type was read in (`env.parseType`). On an invalid type, its
+ * `bad-type` diagnostic (phase `declare`).
  */
 export function conform(value: unknown, t: Type): Diagnostic | null {
+  const bad = t.err();
+  if (bad !== undefined) return bad.diagnostics[0];
   const cls = typeClassifier(t);
   const f = conformWalk(value, innerType(t), freeCtx(cls));
   return f === null ? null : conformDiagnostic(f as never, cls);
@@ -1066,11 +1069,16 @@ export function conform(value: unknown, t: Type): Diagnostic | null {
 
 /**
  * The conformance function that reports every failure, up to `max` (package
- * F8, f08 6.1). A maximum below 1 is read as 1. Nothing is charged.
+ * F8, f08 6.1). A maximum below 1 is read as 1. Nothing is charged. On an
+ * invalid type, its `bad-type` diagnostic (phase `declare`).
  */
 export function conformAll(value: unknown, t: Type, max: number): Diagnostic[] {
+  const bad = t.err();
+  if (bad !== undefined) return [bad.diagnostics[0]];
   const cls = typeClassifier(t);
-  return conformAllWalk(value, innerType(t), cls, Math.max(1, Math.floor(max))).map((f) => conformDiagnostic(f as never, cls));
+  // F8 6.1: a maximum below 1 (or not a number) is read as 1.
+  const n = max >= 1 ? Math.floor(max) : 1;
+  return conformAllWalk(value, innerType(t), cls, n).map((f) => conformDiagnostic(f as never, cls));
 }
 
 // ---- Loading a config file (package F10, f10 5) ----------------------------------------
@@ -1108,7 +1116,8 @@ export function tryLoad<T = unknown>(env: Env, text: string, options: LoadOption
   const o = execute(compiled.program, options.vars, { signal: options.signal });
   if (!o.ok) return { ok: false, step: 3, diagnostics: [o.diagnostic], usage: o.usage, source: compiled.program.source };
   // Step 4: conform, every failure up to the maximum.
-  const fs = conformAllWalk(o.value, type, env.classifier, Math.max(1, Math.floor(options.max ?? 1)));
+  const max = options.max ?? 1;
+  const fs = conformAllWalk(o.value, type, env.classifier, max >= 1 ? Math.floor(max) : 1);
   if (fs.length > 0) {
     const diagnostics = fs.map((f): InnerDiagnostic => ({ phase: "run", code: "not-conforming", class: "value", path: f.path, message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params), env.classifier) }));
     return { ok: false, step: 4, diagnostics, usage: o.usage };
