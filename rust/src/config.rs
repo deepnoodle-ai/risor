@@ -172,7 +172,7 @@ pub fn load<H: Decode + HostType>(
     let got = run_steps(env, text, ty.into_ty(), vars, max)?;
     let v = crate::value::Value::from_data(&got.value);
     // Step 5.
-    crate::decode::decode::<H>(&v, max).map_err(|d| fail(5, d, Some(got.usage)))
+    crate::decode::decode_max::<H>(&v, max).map_err(|d| fail(5, d, Some(got.usage)))
 }
 
 #[cfg(test)]

@@ -237,3 +237,28 @@ fn json_text_fails_with_an_error() {
     let e = json_text(&v).unwrap_err();
     assert_eq!(e.first().code, "wrong-kind");
 }
+
+#[test]
+fn decode_takes_no_maximum() {
+    let v = Value::from_data(&Data::List(vec![Data::Float(1.0), Data::Float(2.0)]));
+    assert_eq!(risor::decode::<Vec<u8>>(&v).unwrap(), [1, 2]);
+    let v = Value::from_data(&Data::Float(300.0));
+    let e = risor::decode::<u8>(&v).unwrap_err();
+    assert_eq!(e.first().code, "not-conforming");
+}
+
+#[test]
+fn unchecked_programs_and_invalid_types() {
+    let unchecked = CompileOptions {
+        check: false,
+        ..CompileOptions::default()
+    };
+    let p = Env::default()
+        .compile(&parse("1").unwrap(), unchecked)
+        .unwrap();
+    assert!(p.check_result().is_none());
+    let bad = literal_type(&[]);
+    let v = Value::from_data(&Data::Null);
+    assert_eq!(conform(&v, &bad).unwrap_err().code, "bad-type");
+    assert_eq!(conform_all(&v, &bad, 0)[0].code, "bad-type");
+}

@@ -20,7 +20,7 @@ specification, not here. This file records the crate's own choices.
 
 ## The public surface
 
-The crate root exports the surface of `05-host-api.md` Part E (ruling R200)
+The crate root exports the surface of `05-host-api.md` Part E (ruling R201)
 and nothing else. Every module is private; `lib.rs` re-exports the names,
 grouped by the sections E.3 to E.8.
 
