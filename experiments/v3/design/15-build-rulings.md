@@ -545,3 +545,13 @@ fail for it.
 | # | Ruling |
 | --- | --- |
 | R200 | **Each implementation in its own directory.** The Go implementation is the module in `go/`, path `github.com/deepnoodle-ai/risor/go/v3`, tagged `go/v3.x.y`; no bare `v3.*` tag is pushed again. `ts/` and `rust/` are unchanged. `v3.0.0-alpha.1`, tagged at the root path `github.com/deepnoodle-ai/risor/v3`, is the only release at that path; it is not retracted and gets no successor there. This replaces R199, and the layout answer of `14` section 7, question 6. |
+
+## 20. One public surface
+
+The three bindings had grown three public APIs: the same concepts under
+different names, the same step in different shapes, and, in TypeScript and
+Rust, internals exported beside the host API.
+
+| # | Ruling |
+| --- | --- |
+| R201 | **The bindings are idiomatic and otherwise aligned.** A binding differs from the others only in the case of names, how an environment is declared, how a failure reaches the host, how a run is cancelled, and conveniences for the host's own types. Everything else is the same: the concepts, their names, where each belongs, what it takes and what it gives. Each root exports the aligned surface and nothing else. `05-host-api.md` Part E is the authority, and replaces Parts B to D where they disagree. |

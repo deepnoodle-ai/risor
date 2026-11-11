@@ -185,7 +185,7 @@ Each binding declares a host fact the way it declares a variable.
 func SomeNotNull(names ...string) Decl
 
 env, err := risor.NewEnv(
-    risor.Declare("{report: {ok: bool} | null, approve: {ok: bool} | null}"),
+    risor.VarRecord("{report: {ok: bool} | null, approve: {ok: bool} | null}"),
     risor.SomeNotNull("report", "approve"))
 child, err := env.With(risor.SomeNotNull("approve"))
 ```
@@ -198,17 +198,16 @@ child, err := env.With(risor.SomeNotNull("approve"))
 ### 3.2 TypeScript
 
 ```ts
-export interface HostFact { someNotNull: string[] }
 export interface EnvOptions {
   // the fields of the binding, and:
-  facts?: HostFact[];
+  someNotNull?: string[][];
 }
 
 const env = createEnv({
-  vars: "{report: {ok: bool} | null, approve: {ok: bool} | null}",
-  facts: [{ someNotNull: ["report", "approve"] }],
+  varRecord: "{report: {ok: bool} | null, approve: {ok: bool} | null}",
+  someNotNull: [["report", "approve"]],
 });
-const child = env.with({ facts: [{ someNotNull: ["approve"] }] });
+const child = env.with({ someNotNull: [["approve"]] });
 ```
 
 1. `env.with(options)` adds the child's host facts to those it keeps (2.6).
@@ -219,7 +218,7 @@ const child = env.with({ facts: [{ someNotNull: ["approve"] }] });
 
 ```rust
 let env = Env::builder()
-    .declare("{report: {ok: bool} | null, approve: {ok: bool} | null}")?
+    .var_record("{report: {ok: bool} | null, approve: {ok: bool} | null}")
     .some_not_null(&["report", "approve"])
     .build()?;
 let child = env.with().some_not_null(&["approve"]).build()?;
