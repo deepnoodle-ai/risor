@@ -16,9 +16,9 @@
 
 import * as T from "../types/type.ts";
 import type { Alts, Rec } from "../types/type.ts";
-import { conformAllWalk } from "../eval/conform.ts";
+import { CANNOT_ENTER, conformAllWalk } from "../eval/conform.ts";
 import { messageOf, RunFailure } from "../eval/failure.ts";
-import { ABSENT, Classifier, DEFAULT_CLASSIFIER, compareText, mapGet, mapKeys, readHost } from "../value/value.ts";
+import { ABSENT, BAD_NUMBER, Classifier, DEFAULT_CLASSIFIER, compareText, mapGet, mapKeys, readHost } from "../value/value.ts";
 import { declareError, RisorError } from "./error.ts";
 import type { RecordOf } from "./infer.ts";
 import type { StandardSchemaV1 } from "./standard.ts";
@@ -41,24 +41,49 @@ export interface FieldType<K extends string = string, V = unknown, O extends boo
 /** The most failures `~standard.validate` reports. */
 const MAX_ISSUES = 100;
 
-/** A value that conforms, in its plain form: maps as plain objects, lists as Arrays. */
-function plainOf(v: unknown, cls: Classifier): unknown {
-  switch (cls.kind(v)) {
-    case "list":
-      return (v as unknown[]).map((x) => plainOf(x, cls));
-    case "map": {
-      const out: Record<string, unknown> = {};
-      for (const k of mapKeys(v as object)) {
-        const x = mapGet(v as object, k);
-        if (x !== ABSENT) out[k] = plainOf(x, cls);
-      }
-      return out;
-    }
-    case "opaque":
-      return v;
-    default:
-      return readHost(v);
+/** An issue of `~standard.validate`. */
+interface Issue {
+  message: string;
+  path?: (string | number)[];
+}
+
+/**
+ * A value that conforms, in its plain form: maps as plain objects, lists as
+ * Arrays. Below `any` the conformance walk does not look, so a number that
+ * cannot enter the language (NaN, an infinity, an unsafe bigint) and a list or
+ * map that holds itself are found here, each an issue at its path.
+ */
+function plainOf(v: unknown, cls: Classifier, path: (string | number)[], issues: Issue[], open: Set<object>): unknown {
+  if (issues.length >= MAX_ISSUES) return undefined;
+  const x = readHost(v);
+  if (x === BAD_NUMBER) {
+    const f = new RunFailure("not-conforming", undefined, "wrong", { expected: "any", found: CANNOT_ENTER } as never);
+    issues.push({ message: messageOf(f, cls), path: [...path] });
+    return undefined;
   }
+  const k = cls.kind(x);
+  if (k !== "list" && k !== "map") return x;
+  if (open.has(x as object)) {
+    issues.push({ message: "a list or map that holds itself has no plain form", path: [...path] });
+    return undefined;
+  }
+  open.add(x as object);
+  let out: unknown;
+  if (k === "list") {
+    out = (x as unknown[]).map((e, i) => plainOf(e, cls, [...path, i], issues, open));
+  } else {
+    const o: Record<string, unknown> = {};
+    for (const key of mapKeys(x as object)) {
+      const e = mapGet(x as object, key);
+      // defineProperty keeps a "__proto__" key as an own property.
+      if (e !== ABSENT) {
+        Object.defineProperty(o, key, { value: plainOf(e, cls, [...path, key], issues, open), enumerable: true, writable: true, configurable: true });
+      }
+    }
+    out = o;
+  }
+  open.delete(x as object);
+  return out;
 }
 
 /** The union of the TypeScript types of a list of types. */
@@ -267,7 +292,11 @@ export class Type<out T = unknown> implements StandardSchemaV1<T, T> {
       validate(value: unknown): StandardSchemaV1.Result<T> {
         if (t === null) return { issues: [{ message: declareError("bad-type", err!).message }] };
         const fs = conformAllWalk(value, t, cls, MAX_ISSUES);
-        if (fs.length === 0) return { value: plainOf(value, cls) as T };
+        if (fs.length === 0) {
+          const issues: Issue[] = [];
+          const plain = plainOf(value, cls, [], issues, new Set());
+          return issues.length === 0 ? { value: plain as T } : { issues };
+        }
         return {
           issues: fs.map((f) => ({
             message: messageOf(new RunFailure("not-conforming", undefined, f.template, f.params as never), cls),
