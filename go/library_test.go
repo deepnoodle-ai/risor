@@ -15,7 +15,7 @@ import (
 // (02-evaluation.md 3.3), with the span of the whole call; an entry that only
 // copies or measures the list does not read it.
 func TestEntriesReadHostNumbers(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{xs: any, es: any}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{xs: any, es: any}"))
 	big := int64(1) << 60
 	vars := risor.Map{"xs": []any{1, big}, "es": []any{map[string]any{"key": "a", "value": big}}}
 	for _, src := range []string{"xs.sum()", "xs.sort()", "xs.min()", "xs.unique()", "xs.map(x => 1)",
@@ -44,8 +44,8 @@ func timed(t *testing.T, env *risor.Env, src string, vars risor.Map) (time.Durat
 // inputs. Each case states a bound in nanoseconds for each step charged that
 // a quadratic algorithm would pass by far.
 func TestWorkIsBoundedByCharge(t *testing.T) {
-	env, _ := risor.NewEnv(risor.Declare("{s: string, t: string, xs: any, ys: any}"),
-		risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit})
+	env, _ := risor.NewEnv(risor.VarRecord("{s: string, t: string, xs: any, ys: any}"),
+		risor.Limits{Steps: risor.NoLimit, Allocation: risor.NoLimit})
 	n := 1 << 20
 	// A search whose pattern nearly matches everywhere: aaaa...ab in aaaa...a.
 	s := strings.Repeat("a", n)
@@ -89,7 +89,7 @@ func TestLibraryLimits(t *testing.T) {
 	var e *risor.Error
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "steps-exceeded")
-	env, _ = risor.NewEnv(risor.Limits{Alloc: 100, Steps: risor.NoLimit})
+	env, _ = risor.NewEnv(risor.Limits{Allocation: 100, Steps: risor.NoLimit})
 	_, err = compile(t, env, `"ab".repeat(1000000000000)`).Run(context.Background(), nil)
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, e.Diagnostics[0].Code, "allocation-exceeded")

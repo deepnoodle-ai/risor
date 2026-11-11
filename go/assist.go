@@ -36,10 +36,10 @@ type Candidate struct {
 	Insert      string
 }
 
-// HoverInfo is a hover record (F12 3.13). Kind is name, lambda, variable,
+// Hover is a hover record (F12 3.13). Kind is name, lambda, variable,
 // function, namespace, field, method or constant; a field is nil when the
 // record has none.
-type HoverInfo struct {
+type Hover struct {
 	Kind                 string
 	Span                 Span
 	Type, Signature, Doc *string
@@ -1040,7 +1040,7 @@ func stringContent(s string, quote rune) string {
 
 // Hover gives the hover record of the word at a position of a source text
 // (F12 3.13), or nil. opts may give the expected result.
-func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *HoverInfo) {
+func (e *Env) Hover(source string, pos Pos, opts ...CheckOption) (h *Hover) {
 	if !utf8.ValidString(source) {
 		source = value.ReplaceInvalid(source)
 	}
@@ -1133,10 +1133,10 @@ func (a *assist) repairAt(cut int) *syntax.Program {
 }
 
 // hover finds the word in the tree and gives its record (3.13 item 3).
-func (a *assist) hover(word syntax.Span) *HoverInfo {
+func (a *assist) hover(word syntax.Span) *Hover {
 	sp := a.span(word.Start, word.End)
-	rec := func(kind string) *HoverInfo { return &HoverInfo{Kind: kind, Span: sp} }
-	var out *HoverInfo
+	rec := func(kind string) *Hover { return &Hover{Kind: kind, Span: sp} }
+	var out *Hover
 	declOf := func(key any) *Span {
 		var s syntax.Span
 		switch k := key.(type) {
@@ -1173,13 +1173,13 @@ func (a *assist) hover(word syntax.Span) *HoverInfo {
 		})
 		return found
 	}
-	site := func(key any) *HoverInfo {
+	site := func(key any) *Hover {
 		h := rec("name")
 		h.Type = printed(a.slotType(key))
 		h.Declaration = declOf(key)
 		return h
 	}
-	callee := func(n syntax.Node) *HoverInfo {
+	callee := func(n syntax.Node) *Hover {
 		c := a.res.Calls[n]
 		if c == nil {
 			return nil

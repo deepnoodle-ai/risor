@@ -178,7 +178,7 @@ type Config struct {
 	MaxBody  int       `json:"max_body,omitempty"` // optional in the file
 	Backends []Backend `json:"backends"`
 }
-env, err := risor.NewEnv(risor.Declare(`{env: map<string>}`))
+env, err := risor.NewEnv(risor.VarRecord(`{env: map<string>}`))
 x, err := risor.Parse(src, risor.At(risor.Origin{Name: "app.risor"}))
 cfg := Config{MaxBody: 1 << 20} // the host's defaults
 err = risor.Load(ctx, env, x, risor.Map{"env": picked}, &cfg)

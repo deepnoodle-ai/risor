@@ -7,10 +7,12 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/eval"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/hooks"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/library"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/types"
@@ -21,7 +23,7 @@ import (
 // NoLimit turns off a step or allocation limit.
 const NoLimit = eval.NoLimit
 
-// ZeroLimit in Limits.Steps or Limits.Alloc sets a limit of zero, since a
+// ZeroLimit in Limits.Steps or Limits.Allocation sets a limit of zero, since a
 // zero field keeps the default.
 const ZeroLimit = -2
 
@@ -83,9 +85,9 @@ func Var(name, typeText string) Decl {
 	return declFunc(func(e *Env) { e.addVar(name, typeText) })
 }
 
-// Declare declares one variable for each field of a record type written in
+// VarRecord declares one variable for each field of a record type written in
 // type text, as a case file's env does: "{order: {total: float}, n: int}".
-func Declare(recordType string) Decl {
+func VarRecord(recordType string) Decl {
 	return declFunc(func(e *Env) { e.declare(recordType) })
 }
 
@@ -112,14 +114,15 @@ func (o OpaqueType) apply(e *Env) { e.addOpaque(o) }
 // the default: 1,000,000 steps, 1,000,000 units, no deadline, depth 200.
 // NoLimit turns the step or allocation limit off.
 type Limits struct {
-	Steps   int64
-	Alloc   int64
-	Timeout time.Duration
-	Depth   int
+	Steps      int64
+	Allocation int64
+	// Deadline is the time a run may take, from its start.
+	Deadline time.Duration
+	Depth    int
 }
 
 func (l Limits) apply(e *Env) {
-	if l.Steps < ZeroLimit || l.Steps > value.MaxWhole || l.Alloc < ZeroLimit || l.Alloc > value.MaxWhole || l.Timeout < 0 {
+	if l.Steps < ZeroLimit || l.Steps > value.MaxWhole || l.Allocation < ZeroLimit || l.Allocation > value.MaxWhole || l.Deadline < 0 {
 		e.errf(diag.CodeBadLimit, "a limit must be a whole number of 0 or more")
 		return
 	}
@@ -130,15 +133,15 @@ func (l Limits) apply(e *Env) {
 	default:
 		e.limits.Steps = l.Steps
 	}
-	switch l.Alloc {
+	switch l.Allocation {
 	case 0:
 	case ZeroLimit:
 		e.limits.Alloc = 0
 	default:
-		e.limits.Alloc = l.Alloc
+		e.limits.Alloc = l.Allocation
 	}
-	if l.Timeout != 0 {
-		e.limits.Timeout = l.Timeout
+	if l.Deadline != 0 {
+		e.limits.Timeout = l.Deadline
 	}
 	if l.Depth != 0 {
 		if l.Depth < 1 || l.Depth > 1000 {
@@ -165,8 +168,8 @@ func Without(names ...string) Decl {
 	})
 }
 
-// RejectClasses gives the whole set of rejected check classes.
-func RejectClasses(classes ...string) Decl {
+// Reject gives the whole set of rejected check classes.
+func Reject(classes ...string) Decl {
 	return declFunc(func(e *Env) {
 		for _, c := range classes {
 			if !checkClasses[c] {
@@ -478,9 +481,9 @@ func (e *Env) addOpaque(o OpaqueType) {
 	e.opaque[o.Name] = od
 }
 
-// AddMethod declares a method of an opaque type declared in the same
+// Method declares a method of an opaque type declared in the same
 // environment, as a case file's methods field does.
-func AddMethod(typeName, method string, f Function) Decl {
+func Method(typeName, method string, f Function) Decl {
 	return declFunc(func(e *Env) {
 		od, ok := e.opaque[typeName]
 		if !ok {
@@ -550,36 +553,29 @@ func (e *Env) checkClashes() {
 // with an *Error of phase check; an error of the options or of the
 // environment's declarations, of phase declare (a function with no
 // implementation is no-implementation). The returned program may be run by
-// many goroutines at once. CheckCompile also gives the check's result.
+// many goroutines at once; its CheckResult gives the check's result.
+//
+// A program compiled in a child environment keeps nothing of the child but
+// what it read: it runs against any variables (Vars) that hold the values it
+// reads, so a host may compile many programs in short-lived children and run
+// them later.
 func (e *Env) Compile(x *Expr, opts ...CheckOption) (*Program, error) {
-	p, _, err := e.compile(x, opts, false, nil)
-	return p, err
-}
-
-// CheckCompile checks a program and compiles it, in one pass of the static
-// and the type rules: it gives the program and the check's result, as
-// Check and Compile give them. The result is nil when the options compile
-// without the check (NoCheck). A program compiled in a child environment
-// keeps nothing of the child but what it read: it runs against any
-// variables (Vars) that hold the values it reads, so a host may compile
-// many programs in short-lived children and run them later.
-func (e *Env) CheckCompile(x *Expr, opts ...CheckOption) (*Program, *CheckResult, error) {
-	return e.compile(x, opts, true, nil)
+	return e.compile(x, opts, nil)
 }
 
 // compile compiles x. entry, when not nil, adjusts the run's configuration
 // for a REPL entry.
-func (e *Env) compile(x *Expr, opts []CheckOption, result bool, entry func(*eval.Config)) (*Program, *CheckResult, error) {
+func (e *Env) compile(x *Expr, opts []CheckOption, entry func(*eval.Config)) (*Program, error) {
 	c := e.cached()
 	if len(c.missing) > 0 {
-		return nil, nil, &Error{Diagnostics: c.missing}
+		return nil, &Error{Diagnostics: c.missing}
 	}
 	cfg := new(eval.Config)
 	*cfg = c.cfg
 	names, varNames := c.names, c.varNames
 	res, cr, err := e.analyze(x, names, varNames, opts)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if cr != nil && !e.untyped { // F11: only a checked program
 		cfg.GoTypes = c.goTypes
@@ -589,26 +585,38 @@ func (e *Env) compile(x *Expr, opts []CheckOption, result bool, entry func(*eval
 	}
 	p, err := eval.Compile(x.tree, x.file, res, cfg)
 	if err != nil {
-		return nil, nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
+		return nil, &Error{Diagnostics: []Diagnostic{{Phase: PhaseRun, Code: "internal-error", Message: err.Error()}}}
 	}
-	prog := &Program{p: p, x: x, dynamic: dynamicSpans(x, cr), host: hostSpans(x, cr), val: valueSpans(x, cr)}
-	if !result {
-		return prog, nil, nil
+	prog := &Program{p: p, dynamic: dynamicSpans(x, cr), host: hostSpans(x, cr), val: valueSpans(x, cr)}
+	if cr != nil {
+		prog.result = sync.OnceValue(func() *CheckResult { return checkResult(x, cr) })
 	}
-	return prog, checkResult(x, cr), nil
+	return prog, nil
 }
 
 // Program is a compiled program. It does not change, and several goroutines
 // may run it at once.
 type Program struct {
 	p *eval.Program
-	x *Expr
+	// result gives the check's result; nil for a program compiled with
+	// NoCheck. It is made on first use.
+	result func() *CheckResult
 	// dynamic is set for a checked program: the spans at a dynamic site.
 	dynamic map[[4]int]bool
 	// host is set for a checked program: the calls with a host site.
 	host map[[4]int]bool
 	// val is set for a checked program: the nodes with a value site.
 	val map[[4]int]bool
+}
+
+// CheckResult gives the result of the check the compile made, as Check
+// gives it: the result type and the sites. It is nil for a program compiled
+// with NoCheck.
+func (p *Program) CheckResult() *CheckResult {
+	if p.result == nil {
+		return nil
+	}
+	return p.result()
 }
 
 // Run runs the program with the values of its variables. vars may be nil
@@ -641,36 +649,34 @@ func (p *Program) fail(d *Diagnostic) error {
 	return &Error{Diagnostics: []Diagnostic{*d}}
 }
 
-// Expr returns the parsed program.
-func (p *Program) Expr() *Expr { return p.x }
+func init() {
+	hooks.RunEntry = runEntry
+	hooks.Tree = func(x any) *syntax.Program { return x.(*Expr).tree }
+}
 
-// Held is the values of the const lines a REPL session holds (package F12
-// 5 item 6). The zero Held holds no line.
-type Held struct{ vals [][]any }
-
-// Lines is the number of const lines held.
-func (h Held) Lines() int { return len(h.vals) }
-
-// RunEntry checks, compiles and runs x as an entry of a REPL session that
-// holds h (package F12 5 item 6). The first h.Lines() const lines of x must
-// be the held lines, unchanged: they take the values h keeps, and are not
-// run, so the usage is the entry's own. On success it gives the value and
-// the values of all of x's const lines, to hold for the next entry.
-func (e *Env) RunEntry(ctx context.Context, x *Expr, vars Vars, h Held) (any, Held, error) {
-	p, _, err := e.compile(x, nil, false, func(cfg *eval.Config) {
-		cfg.Entry, cfg.Held = true, h.vals
+// runEntry checks, compiles and runs x as an entry of a REPL session that
+// holds held (package F12 5 item 6), for internal/replrun through
+// internal/hooks. The first len(held) const lines of x must be the held
+// lines, unchanged: they take the values held keeps, and are not run, so the
+// usage is the entry's own.
+// On success it gives the value and the values of all of x's const lines,
+// to hold for the next entry.
+func runEntry(ctx context.Context, env, expr any, vars eval.Vars, held [][]any) (any, [][]any, error) {
+	e, x := env.(*Env), expr.(*Expr)
+	p, err := e.compile(x, nil, func(cfg *eval.Config) {
+		cfg.Entry, cfg.Held = true, held
 	})
 	if err != nil {
-		return nil, Held{}, err
+		return nil, nil, err
 	}
 	if vars == nil {
 		vars = Map(nil)
 	}
-	v, _, held, d := p.p.RunEntry(ctx, vars)
+	v, _, next, d := p.p.RunEntry(ctx, vars)
 	if d != nil {
-		return nil, Held{}, p.fail(d)
+		return nil, nil, p.fail(d)
 	}
-	return v, Held{held}, nil
+	return v, next, nil
 }
 
 // TypedLayer turns the typed layer on or off (package F11). It is on by

@@ -37,14 +37,17 @@ func TestExprText(t *testing.T) {
 	x, err := risor.Parse("  // note\n const a = 1;\n f(a + 1, `x${a}`, n => n) ")
 	assert.NoError(t, err)
 	assert.Equal(t, x.Text(), "const a = 1;\n f(a + 1, `x${a}`, n => n)")
-	cs := x.Calls("f")
+	cs := x.Analyze().Calls
 	assert.Equal(t, len(cs), 1)
+	assert.Equal(t, cs[0].Name, "f")
 	assert.Equal(t, cs[0].Args[0].Text(), "a + 1")
 	assert.Equal(t, cs[0].Args[1].Text(), "`x${a}`")
-	assert.Equal(t, cs[0].Args[0].Source(), x.Source())
 	tp, err := risor.ParseTemplate("Hello ${{ user.name }}!")
 	assert.NoError(t, err)
 	assert.Equal(t, tp.Segments()[1].Expr.Text(), "user.name")
+	assert.True(t, tp.Part(0) == tp.Segments()[1].Expr)
+	assert.True(t, tp.Part(1) == nil)
+	assert.True(t, tp.Part(-1) == nil)
 }
 
 func TestSchemaOfGoValues(t *testing.T) {
@@ -69,11 +72,11 @@ func TestSchemaOfGoValues(t *testing.T) {
 	x, _ := risor.Parse(`v.kind`)
 	cr, err := env.Check(x)
 	assert.NoError(t, err)
-	assert.Equal(t, cr.Type, `"a" | "b"`)
+	assert.Equal(t, cr.Type.String(), `"a" | "b"`)
 }
 
 func TestChildEnvironments(t *testing.T) {
-	parent, err := risor.NewEnv(risor.Declare("{a: int, t: Token}"), risor.OpaqueType{Name: "Token"},
+	parent, err := risor.NewEnv(risor.VarRecord("{a: int, t: Token}"), risor.OpaqueType{Name: "Token"},
 		risor.NamedType("Pair", "{x: int, y: int}"))
 	assert.NoError(t, err)
 	pair, _ := parent.ParseType("Pair")
@@ -83,20 +86,20 @@ func TestChildEnvironments(t *testing.T) {
 	x, _ := risor.Parse(`[a, p.x, b, t]`)
 	cr, err := child.Check(x)
 	assert.NoError(t, err)
-	assert.Equal(t, cr.Type, "(int | string | Token)[]")
+	assert.Equal(t, cr.Type.String(), "(int | string | Token)[]")
 	// A child that replaces a variable, and one that declares an opaque
 	// type and a named type, make their types again.
 	c2, err := parent.With(risor.Var("a", "string"))
 	assert.NoError(t, err)
 	x2, _ := risor.Parse(`a`)
 	cr2, _ := c2.Check(x2)
-	assert.Equal(t, cr2.Type, "string")
+	assert.Equal(t, cr2.Type.String(), "string")
 	c3, err := parent.With(risor.OpaqueType{Name: "Other"}, risor.NamedType("Pair", "{z: Other}"), risor.Var("q", "Pair"))
 	assert.NoError(t, err)
 	x3, _ := risor.Parse(`[q.z, t]`)
 	cr3, err := c3.Check(x3)
 	assert.NoError(t, err)
-	assert.Equal(t, cr3.Type, "(Other | Token)[]")
+	assert.Equal(t, cr3.Type.String(), "(Other | Token)[]")
 	// The parent is unchanged, and a child runs.
 	_, err = parent.Check(x)
 	assert.Error(t, err)

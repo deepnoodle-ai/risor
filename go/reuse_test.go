@@ -33,7 +33,7 @@ func TestReusedRunState(t *testing.T) {
 			}
 			var decls []risor.Decl
 			if c.Env != nil {
-				decls = append(decls, risor.Declare(*c.Env))
+				decls = append(decls, risor.VarRecord(*c.Env))
 			}
 			if l := c.Limits; l != nil {
 				lim := risor.Limits{}
@@ -44,9 +44,9 @@ func TestReusedRunState(t *testing.T) {
 					}
 				}
 				if l.Allocation != nil {
-					lim.Alloc = *l.Allocation
-					if lim.Alloc == 0 {
-						lim.Alloc = risor.ZeroLimit
+					lim.Allocation = *l.Allocation
+					if lim.Allocation == 0 {
+						lim.Allocation = risor.ZeroLimit
 					}
 				}
 				if l.Depth != nil {

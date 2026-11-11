@@ -21,7 +21,7 @@ func TestCallHandleAfterReturn(t *testing.T) {
 	gate := make(chan struct{})    // the second run waits here
 	entered := make(chan struct{}) // the second run has reached its host call
 	env, err := risor.NewEnv(
-		risor.Declare("{n: float}"),
+		risor.VarRecord("{n: float}"),
 		risor.Function{Name: "keep", Type: "(x: float) => float", Impl: func(c *risor.Call, args []any) (any, error) {
 			mu.Lock()
 			if kept == nil {

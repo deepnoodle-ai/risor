@@ -43,7 +43,7 @@ func TestHostChargeDoesNotWrap(t *testing.T) {
 	assert.Error(t, errs[1])
 	assert.Equal(t, errs[1].Error(), "allocation-exceeded")
 	assert.Equal(t, d.Code, "allocation-exceeded")
-	assert.Equal(t, u.Alloc, int64(1))
+	assert.Equal(t, u.Allocated, int64(1))
 
 	errs = nil
 	d, u = measure(t, env, "charge()")
@@ -56,7 +56,7 @@ func TestHostChargeDoesNotWrap(t *testing.T) {
 // With no limit, a count stops at math.MaxInt64 rather than wrap negative.
 func TestHostChargeNoLimitSaturates(t *testing.T) {
 	env, err := risor.NewEnv(
-		risor.Limits{Steps: risor.NoLimit, Alloc: risor.NoLimit},
+		risor.Limits{Steps: risor.NoLimit, Allocation: risor.NoLimit},
 		risor.Function{Name: "big", Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {
 			for range 3 {
 				if err := c.Charge(math.MaxInt64); err != nil {
@@ -72,7 +72,7 @@ func TestHostChargeNoLimitSaturates(t *testing.T) {
 	assert.NoError(t, err)
 	d, u := measure(t, env, "big()")
 	assert.Nil(t, d)
-	assert.Equal(t, u, risor.Usage{Steps: math.MaxInt64, Alloc: math.MaxInt64})
+	assert.Equal(t, u, risor.Usage{Steps: math.MaxInt64, Allocated: math.MaxInt64})
 }
 
 // After a charge that failed, the call handle charges nothing more and
@@ -81,7 +81,7 @@ func TestHostChargeNoLimitSaturates(t *testing.T) {
 func TestHostChargeAfterFailure(t *testing.T) {
 	var errs []error
 	env, err := risor.NewEnv(
-		risor.Limits{Steps: 100, Alloc: 10},
+		risor.Limits{Steps: 100, Allocation: 10},
 		risor.Function{Name: "greedy", Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {
 			// The host ignores each error and goes on.
 			errs = append(errs, c.Allocate(11), c.Charge(1000), c.Charge(1), c.Allocate(1))
@@ -95,14 +95,14 @@ func TestHostChargeAfterFailure(t *testing.T) {
 		assert.Error(t, e)
 		assert.Equal(t, e.Error(), "allocation-exceeded")
 	}
-	assert.Equal(t, u, risor.Usage{Steps: 1, Alloc: 0})
+	assert.Equal(t, u, risor.Usage{Steps: 1, Allocated: 0})
 }
 
 // A limit diagnostic has a span; its value is not specified (03-host.md
 // 3.7.1).
 func TestLimitDiagnosticHasSpan(t *testing.T) {
 	env, err := risor.NewEnv(
-		risor.Limits{Steps: 5, Alloc: 3},
+		risor.Limits{Steps: 5, Allocation: 3},
 		risor.Function{Name: "alloc", Type: "() => int", Impl: func(c *risor.Call, args []any) (any, error) {
 			return 0.0, c.Allocate(100)
 		}},

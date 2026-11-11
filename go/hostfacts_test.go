@@ -24,12 +24,12 @@ func checkType(t *testing.T, env *risor.Env, src string) (string, string) {
 		assert.True(t, errors.As(err, &e))
 		return "", e.Diagnostics[0].Code
 	}
-	return cr.Type, ""
+	return cr.Type.String(), ""
 }
 
 func TestSomeNotNull(t *testing.T) {
 	// A host fact may come before the variables it names.
-	env, err := risor.NewEnv(risor.SomeNotNull("a", "b"), risor.Declare(factsEnv))
+	env, err := risor.NewEnv(risor.SomeNotNull("a", "b"), risor.VarRecord(factsEnv))
 	assert.NoError(t, err)
 	ty, _ := checkType(t, env, `(a ?? b).v`)
 	assert.Equal(t, ty, "int")
@@ -39,7 +39,7 @@ func TestSomeNotNull(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, strings.HasPrefix(string(d), `{"facts":[{"someNotNull":["a","b"]}],`), string(d))
 	// The round trip of a description.
-	decl, err := risor.Description(d)
+	decl, err := risor.FromDescription(d)
 	assert.NoError(t, err)
 	env2, err := risor.NewEnv(decl)
 	assert.NoError(t, err)
@@ -50,21 +50,21 @@ func TestSomeNotNull(t *testing.T) {
 func TestSomeNotNullErrors(t *testing.T) {
 	for _, decl := range []risor.Decl{risor.SomeNotNull(), risor.SomeNotNull("a", "nope"), risor.SomeNotNull("a", "a"),
 		risor.SomeNotNull("len"), risor.SomeNotNull("")} {
-		_, err := risor.NewEnv(risor.Declare(factsEnv), decl)
+		_, err := risor.NewEnv(risor.VarRecord(factsEnv), decl)
 		var e *risor.Error
 		assert.True(t, errors.As(err, &e))
 		assert.Equal(t, e.Diagnostics[0].Code, "bad-name")
 		assert.Equal(t, e.Diagnostics[0].Phase, risor.PhaseDeclare)
 	}
 	// Each member that names nothing is one error.
-	_, err := risor.NewEnv(risor.Declare(factsEnv), risor.SomeNotNull("x", "a", "y"))
+	_, err := risor.NewEnv(risor.VarRecord(factsEnv), risor.SomeNotNull("x", "a", "y"))
 	var e *risor.Error
 	assert.True(t, errors.As(err, &e))
 	assert.Equal(t, len(e.Diagnostics), 2)
 }
 
 func TestSomeNotNullChildren(t *testing.T) {
-	parent, err := risor.NewEnv(risor.Declare(factsEnv), risor.SomeNotNull("a", "b"))
+	parent, err := risor.NewEnv(risor.VarRecord(factsEnv), risor.SomeNotNull("a", "b"))
 	assert.NoError(t, err)
 	// A child keeps the parent's host fact.
 	child, err := parent.With(risor.Var("d", "int"))
@@ -101,7 +101,7 @@ func TestSomeNotNullChildren(t *testing.T) {
 func TestSomeNotNullStaticCompile(t *testing.T) {
 	// A compile with the static rules alone builds the host facts and
 	// reports their errors at declare, and applies no rule of the checker.
-	env, err := risor.NewEnv(risor.Declare(factsEnv), risor.SomeNotNull("a", "b"))
+	env, err := risor.NewEnv(risor.VarRecord(factsEnv), risor.SomeNotNull("a", "b"))
 	assert.NoError(t, err)
 	x, _ := risor.Parse(`(a ?? b).v`)
 	_, err = env.Compile(x, risor.NoCheck)

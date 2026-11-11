@@ -73,7 +73,7 @@ func runBoth(t *testing.T, src string, data any, limits ...risor.Limits) (outcom
 			assert.Equal(t, bridge.TypedPlans(p), 0)
 		}
 		v, u, err := p.Measure(context.Background(), risor.Map{"n": data})
-		o := outcome{steps: u.Steps, units: u.Alloc}
+		o := outcome{steps: u.Steps, units: u.Allocated}
 		if err != nil {
 			var e *risor.Error
 			assert.True(t, errors.As(err, &e))

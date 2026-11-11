@@ -97,12 +97,12 @@ func (o *runOutcome) whole() any {
 	}
 	m := map[string]any{}
 	if o.cr != nil {
-		m["type"] = o.cr.Type
+		m["type"] = o.cr.Type.String()
 	}
 	if o.ran {
 		m["value"] = o.v
 		m["steps"] = float64(o.usage.Steps)
-		m["allocated"] = float64(o.usage.Alloc)
+		m["allocated"] = float64(o.usage.Allocated)
 	}
 	return m
 }

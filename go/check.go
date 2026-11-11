@@ -83,10 +83,9 @@ type Site struct {
 
 // CheckResult is what a check gives for a program that checks.
 type CheckResult struct {
-	// Type is the result type, printed by 05-types.md 3.9.
-	Type string
-	// ResultType is the result type itself, the checker's own.
-	ResultType Type
+	// Type is the result type, the checker's own. Its String method prints
+	// it by 05-types.md 3.9.
+	Type Type
 	// Sites are the places where the program can still fail on a value.
 	Sites []Site
 }
@@ -321,7 +320,7 @@ func checkResult(x *Expr, cr *check.Result) *CheckResult {
 	if cr == nil {
 		return nil
 	}
-	out := &CheckResult{Type: cr.Type.String(), ResultType: Type{t: cr.Type}}
+	out := &CheckResult{Type: Type{t: cr.Type}}
 	for _, s := range cr.Sites {
 		out.Sites = append(out.Sites, Site{Class: s.Class, Span: x.file.Span(s.Span.Start, s.Span.End)})
 	}

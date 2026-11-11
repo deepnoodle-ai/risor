@@ -129,7 +129,7 @@ func (cr *caseRun) update() Result {
 	case same:
 		m = map[string]any{}
 		if e.Type != nil && o.cr != nil {
-			m["type"] = o.cr.Type
+			m["type"] = o.cr.Type.String()
 		}
 		if e.HasSites && o.cr != nil {
 			m["sites"] = sitesData(o.cr.Sites)
@@ -144,7 +144,7 @@ func (cr *caseRun) update() Result {
 			m["steps"] = float64(o.usage.Steps)
 		}
 		if e.Allocated != nil {
-			m["allocated"] = float64(o.usage.Alloc)
+			m["allocated"] = float64(o.usage.Allocated)
 		}
 		if e.HasDescription && o.env != nil {
 			if text, err := o.env.Describe(); err == nil {
@@ -210,7 +210,7 @@ func failureNew(e *casefile.Expect, ds []diag.Diagnostic, phase string, u *risor
 			m["steps"] = float64(u.Steps)
 		}
 		if e.Allocated != nil {
-			m["allocated"] = float64(u.Alloc)
+			m["allocated"] = float64(u.Allocated)
 		}
 	}
 	return m

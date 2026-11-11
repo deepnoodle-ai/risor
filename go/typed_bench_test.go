@@ -128,7 +128,7 @@ var typedCases = []benchCase{
 }
 
 func benchTyped(b *testing.B, data risor.Map, decls []risor.Decl, opts ...risor.CheckOption) {
-	env, err := risor.NewEnv(append(decls, risor.Limits{Steps: 100_000_000, Alloc: 100_000_000})...)
+	env, err := risor.NewEnv(append(decls, risor.Limits{Steps: 100_000_000, Allocation: 100_000_000})...)
 	if err != nil {
 		b.Fatal(err)
 	}

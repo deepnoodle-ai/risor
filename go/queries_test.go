@@ -16,17 +16,17 @@ func TestProjectionAPI(t *testing.T) {
 	// The star step in the analysis of the Go API.
 	x, err := risor.Parse("orders[*].lines[*].qty.sum()")
 	assert.NoError(t, err)
-	refs := x.Refs()
+	refs := x.Analyze().Refs
 	assert.Equal(t, refs[0].Path, []risor.Step{{Star: true}, {Key: "lines"}, {Star: true}, {Key: "qty"}})
 	x, _ = risor.Parse(`orders["*"]`)
-	assert.Equal(t, x.Refs()[0].Path, []risor.Step{{Key: "*"}})
+	assert.Equal(t, x.Analyze().Refs[0].Path, []risor.Step{{Key: "*"}})
 
 	// A host list of structs, projected.
 	type line struct {
 		SKU string `json:"sku"`
 		Qty int    `json:"qty"`
 	}
-	env, err := risor.NewEnv(risor.Declare("{lines: {sku: string, qty: int}[]}"))
+	env, err := risor.NewEnv(risor.VarRecord("{lines: {sku: string, qty: int}[]}"))
 	assert.NoError(t, err)
 	assert.Equal(t, runIn(t, env, "lines[*].qty.sum()", risor.Map{"lines": []line{{"a", 2}, {"b", 3}}}), 5.0)
 }
@@ -34,7 +34,7 @@ func TestProjectionAPI(t *testing.T) {
 func TestHundredStars(t *testing.T) {
 	// 100 stars parse and run; the 101st star's [ is nesting-exceeded.
 	src := "x" + strings.Repeat("[*]", 100)
-	env, _ := risor.NewEnv(risor.Declare("{x: any}"))
+	env, _ := risor.NewEnv(risor.VarRecord("{x: any}"))
 	v := any(1.0)
 	for i := 0; i < 100; i++ {
 		v = []any{v}
@@ -62,11 +62,11 @@ func TestProjectionReadFailureClass(t *testing.T) {
 		{"{xs: any[]}", "xs[*].a.b", "[1, 1, 1, 10]"},
 		{"{xs: {a: any}[]}", "xs[*].a.b", "[1, 1, 1, 10]"},
 	} {
-		env, err := risor.NewEnv(risor.Declare(c.decl))
+		env, err := risor.NewEnv(risor.VarRecord(c.decl))
 		assert.NoError(t, err)
 		x, err := risor.Parse(c.src)
 		assert.NoError(t, err)
-		p, _, err := env.CheckCompile(x)
+		p, err := env.Compile(x)
 		assert.NoError(t, err)
 		v := []any{true}
 		if strings.Contains(c.src, ".a.") {

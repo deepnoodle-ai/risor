@@ -118,9 +118,9 @@ func TestBaseVarsAndSources(t *testing.T) {
 	// host's variables, and the source from the reader.
 	text := `[{"name": "a", "file": "prog.risor", "functions": {"lookup": {"calls": [{"args": ["A"], "result": 2}]}},
   "expect": {"value": 5}}]`
-	read := func(ref string) (string, risor.Origin, error) {
+	read := func(ref string) (string, risortest.Origin, error) {
 		assert.Equal(t, ref, "prog.risor")
-		return `lookup("A") * 2 + rate`, risor.Origin{Name: ref}, nil
+		return `lookup("A") * 2 + rate`, risortest.Origin{Name: ref}, nil
 	}
 	f, err := risortest.Parse([]byte(text), false, risortest.Base(base), risortest.Sources(read),
 		risortest.Vars(risor.Map{"rate": 1.0}))

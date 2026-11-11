@@ -79,7 +79,7 @@ func TestDescriptionLimitsAndCLIOverrides(t *testing.T) {
 	// Host Limits and Description enforce the 2^53 - 1 whole-number bound.
 	for _, lim := range []risor.Limits{
 		{Steps: 1 << 53},
-		{Alloc: 1 << 53},
+		{Allocation: 1 << 53},
 	} {
 		_, err := risor.NewEnv(lim)
 		var e *risor.Error
@@ -90,7 +90,7 @@ func TestDescriptionLimitsAndCLIOverrides(t *testing.T) {
 		`{"functions":{},"limits":{"allocation":1,"depth":200,"steps":9007199254740992},"opaque":{},"reject":[],"removed":[],"variables":{},"version":"3.0"}`,
 		`{"functions":{},"limits":{"allocation":9007199254740992,"depth":200,"steps":1},"opaque":{},"reject":[],"removed":[],"variables":{},"version":"3.0"}`,
 	} {
-		decl, err := risor.Description([]byte(text))
+		decl, err := risor.FromDescription([]byte(text))
 		assert.NoError(t, err)
 		_, err = risor.NewEnv(decl)
 		var e *risor.Error

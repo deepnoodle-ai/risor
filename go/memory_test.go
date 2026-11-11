@@ -23,7 +23,7 @@ const (
 // bytesPerStep per step charged. The race detector changes allocation, so
 // the test does not run under it.
 func TestMemoryConstants(t *testing.T) {
-	env, err := NewEnv(Limits{Steps: NoLimit, Alloc: NoLimit})
+	env, err := NewEnv(Limits{Steps: NoLimit, Allocation: NoLimit})
 	assert.NoError(t, err)
 	for _, src := range []string{
 		`range(10000).map(x => "€".repeat(63))`,
@@ -53,7 +53,7 @@ func TestMemoryConstants(t *testing.T) {
 		runtime.ReadMemStats(&after)
 		assert.NoError(t, err)
 		bytes := after.TotalAlloc - before.TotalAlloc
-		bound := uint64(bytesPerUnit*u.Alloc + bytesPerStep*u.Steps)
-		assert.True(t, bytes <= bound, "%s: %d bytes, bound %d (%d units, %d steps)", src, bytes, bound, u.Alloc, u.Steps)
+		bound := uint64(bytesPerUnit*u.Allocated + bytesPerStep*u.Steps)
+		assert.True(t, bytes <= bound, "%s: %d bytes, bound %d (%d units, %d steps)", src, bytes, bound, u.Allocated, u.Steps)
 	}
 }

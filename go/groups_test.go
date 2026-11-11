@@ -40,7 +40,7 @@ func TestGroupsDecl(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, string(d), `"groups":["base64","json","math"]`)
 	assert.Contains(t, string(d), `"removed":["json.parse","math.e"]`)
-	decl, err := risor.Description(d)
+	decl, err := risor.FromDescription(d)
 	assert.NoError(t, err)
 	e2, err := risor.NewEnv(decl)
 	assert.NoError(t, err)
@@ -93,7 +93,7 @@ func TestJSONText(t *testing.T) {
 func TestJSONParseDeepText(t *testing.T) {
 	// The pass keeps its own stack: a text far past the depth limit is
 	// not-json or depth-exceeded without using the host's stack.
-	env, _ := risor.NewEnv(risor.Groups("json"), risor.Declare("{s: string}"), risor.Limits{Steps: risor.NoLimit})
+	env, _ := risor.NewEnv(risor.Groups("json"), risor.VarRecord("{s: string}"), risor.Limits{Steps: risor.NoLimit})
 	x, _ := risor.Parse(`try { json.parse(s) } catch (e) { e.code }`)
 	p, err := env.Compile(x)
 	assert.NoError(t, err)

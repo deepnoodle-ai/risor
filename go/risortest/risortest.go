@@ -29,12 +29,21 @@ type Option func(*options)
 
 type options struct {
 	vars    risor.Vars
-	read    func(ref string) (string, risor.Origin, error)
+	read    func(ref string) (string, Origin, error)
 	base    *risor.Env
 	update  bool
 	filter  string
 	setUpd  bool
 	program bool
+}
+
+// Origin says where a source text sits in a larger document: a name, and
+// the line, column and indent of its first code point (03-host.md 3.7).
+// A reader of case file sources returns one beside the text (package F9
+// 7.2); spans stay positions in the text itself.
+type Origin struct {
+	Name                 string
+	Line, Column, Indent int
 }
 
 // Vars gives variables for the names a case does not supply. They are not
@@ -43,7 +52,7 @@ func Vars(v risor.Vars) Option { return func(o *options) { o.vars = v } }
 
 // Sources gives the reader of a case's file: it returns the text and its
 // origin. Spans are positions in the text it returns.
-func Sources(read func(ref string) (string, risor.Origin, error)) Option {
+func Sources(read func(ref string) (string, Origin, error)) Option {
 	return func(o *options) { o.read = read }
 }
 

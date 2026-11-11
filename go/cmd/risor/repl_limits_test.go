@@ -11,7 +11,7 @@ import (
 )
 
 func TestReplHeldConstsDoNotRechargeBudget(t *testing.T) {
-	env, err := risor.NewEnv(risor.Limits{Steps: 600, Alloc: 600})
+	env, err := risor.NewEnv(risor.Limits{Steps: 600, Allocation: 600})
 	assert.NoError(t, err)
 	s := &session{env: env, vars: risor.Map{}}
 

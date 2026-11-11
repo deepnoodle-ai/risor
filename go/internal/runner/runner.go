@@ -26,7 +26,9 @@ import (
 	"github.com/deepnoodle-ai/risor/go/v3/internal/casefile"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/diag"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/eval"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/hooks"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/library"
+	"github.com/deepnoodle-ai/risor/go/v3/internal/syntax"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/types"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/typetext"
 	"github.com/deepnoodle-ai/risor/go/v3/internal/value"
@@ -289,7 +291,7 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 		decls = append(decls, risor.Version(c.Version))
 	}
 	if c.Env != nil {
-		decls = append(decls, risor.Declare(*c.Env))
+		decls = append(decls, risor.VarRecord(*c.Env))
 	}
 	for _, f := range c.Facts { // F14 10.1
 		decls = append(decls, risor.SomeNotNull(f...))
@@ -332,7 +334,7 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 	for _, k := range names {
 		typ, m, _ := strings.Cut(k, ".")
 		s := c.Methods[k]
-		decls = append(decls, risor.AddMethod(typ, m, risor.Function{Type: stubType(base, k, s), Impl: st.native(k, s)}))
+		decls = append(decls, risor.Method(typ, m, risor.Function{Type: stubType(base, k, s), Impl: st.native(k, s)}))
 	}
 	names = names[:0]
 	for k := range c.Functions {
@@ -344,7 +346,7 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 		decls = append(decls, risor.Function{Name: k, Type: stubType(base, k, s), Impl: st.native(k, s)})
 	}
 	if c.HasReject {
-		decls = append(decls, risor.RejectClasses(c.Reject...))
+		decls = append(decls, risor.Reject(c.Reject...))
 	}
 	if len(c.Removed) > 0 {
 		decls = append(decls, risor.Without(c.Removed...))
@@ -358,9 +360,9 @@ func buildEnv(base *risor.Env, c *casefile.Case, st *stubState) (*risor.Env, err
 			}
 		}
 		if c.Limits.Allocation != nil {
-			l.Alloc = *c.Limits.Allocation
-			if l.Alloc == 0 {
-				l.Alloc = zeroLimit
+			l.Allocation = *c.Limits.Allocation
+			if l.Allocation == 0 {
+				l.Allocation = zeroLimit
 			}
 		}
 		if c.Limits.Depth != nil {
@@ -407,21 +409,23 @@ func missingEntries(x *risor.Expr, c *casefile.Case) []string {
 			out = append(out, n)
 		}
 	}
-	risor.WalkCalls(x, func(name string, method bool) {
-		if method {
+	syntax.Walk(hooks.Tree(x), func(n syntax.Node) bool {
+		switch n := n.(type) {
+		case *syntax.MethodCall:
 			for _, k := range []value.Kind{value.String, value.List, value.Map} {
-				if e, ok := library.Method(k, name); ok && !eval.Implemented(e) {
-					add(k.String() + "." + name)
+				if e, ok := library.Method(k, n.Name); ok && !eval.Implemented(e) {
+					add(k.String() + "." + n.Name)
 				}
 			}
-			return
+		case *syntax.Call:
+			if _, host := c.Functions[n.Name]; host {
+				break
+			}
+			if e, ok := library.Functions[n.Name]; ok && !eval.Implemented(e) {
+				add(n.Name)
+			}
 		}
-		if _, host := c.Functions[name]; host {
-			return
-		}
-		if e, ok := library.Functions[name]; ok && !eval.Implemented(e) {
-			add(name)
-		}
+		return true
 	})
 	sort.Strings(out)
 	return out
@@ -617,9 +621,9 @@ func compareResult(c *casefile.Case, env *risor.Env, v any, ran bool, u *risor.U
 	if e.Type != nil {
 		found := "null"
 		if cr != nil {
-			found = value.QuoteJSON(cr.Type)
+			found = value.QuoteJSON(cr.Type.String())
 		}
-		if cr == nil || !sameType(*e.Type, cr.Type, c.Opaque) {
+		if cr == nil || !sameType(*e.Type, cr.Type.String(), c.Opaque) {
 			diffs = append(diffs, Diff{"type", jsonForm(rawField(c, "type")), found})
 		}
 	}
@@ -651,7 +655,7 @@ func compareResult(c *casefile.Case, env *risor.Env, v any, ran bool, u *risor.U
 		if d := countDiff("steps", e.Steps, u.Steps, rawField(c, "steps")); d != nil {
 			diffs = append(diffs, *d)
 		}
-		if d := countDiff("allocated", e.Allocated, u.Alloc, rawField(c, "allocated")); d != nil {
+		if d := countDiff("allocated", e.Allocated, u.Allocated, rawField(c, "allocated")); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
@@ -673,7 +677,7 @@ func compareFailure(c *casefile.Case, err *risor.Error, u *risor.Usage, st *stub
 		if d := countDiff("steps", e.Steps, u.Steps, rawField(c, "steps")); d != nil {
 			diffs = append(diffs, *d)
 		}
-		if d := countDiff("allocated", e.Allocated, u.Alloc, rawField(c, "allocated")); d != nil {
+		if d := countDiff("allocated", e.Allocated, u.Allocated, rawField(c, "allocated")); d != nil {
 			diffs = append(diffs, *d)
 		}
 	}
@@ -903,7 +907,7 @@ func runAnalysis(c *casefile.Case) Result {
 	if err != nil {
 		return Result{Verdict: Fail, Diffs: []Diff{{"outcome", jsonForm(c.ExpectRaw), jsonForm(failureData(err.(*risor.Error)))}}}
 	}
-	text := AnalysisJSON(x.Analyze())
+	text := x.Analyze().JSON()
 	got, err := casefile.DecodeJSON([]byte(text))
 	if err != nil {
 		panic(err)
@@ -920,97 +924,6 @@ func runAnalysis(c *casefile.Case) Result {
 		}
 	}
 	return Result{Verdict: Pass}
-}
-
-// AnalysisJSON writes a report in its JSON form (F2 3.3, 4.3, 4.8): the
-// fields in the order of 3.3, and those of each reference, call and segment
-// in the order of 4.3.
-func AnalysisJSON(a *risor.Analysis) string {
-	var b strings.Builder
-	span := func(s risor.Span) {
-		x := s.Array()
-		fmt.Fprintf(&b, "[%d,%d,%d,%d]", x[0], x[1], x[2], x[3])
-	}
-	b.WriteString(`{"names":[`)
-	for i, n := range a.Names {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(value.QuoteJSON(n))
-	}
-	b.WriteString(`],"refs":[`)
-	for i, r := range a.Refs {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(`{"name":` + value.QuoteJSON(r.Name) + `,"path":[`)
-		for j, st := range r.Path {
-			if j > 0 {
-				b.WriteByte(',')
-			}
-			if st.Star { // F7 9.3
-				b.WriteString(`{"star":true}`)
-				continue
-			}
-			b.WriteString(value.QuoteJSON(st.Key))
-		}
-		b.WriteString(`],"span":`)
-		span(r.Span)
-		b.WriteByte('}')
-	}
-	b.WriteString(`],"calls":[`)
-	for i, c := range a.Calls {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(`{"name":` + value.QuoteJSON(c.Name) + `,"namespace":`)
-		if c.Namespace == "" {
-			b.WriteString("null")
-		} else {
-			b.WriteString(value.QuoteJSON(c.Namespace))
-		}
-		b.WriteString(`,"span":`)
-		span(c.Span)
-		b.WriteString(`,"args":[`)
-		for j, s := range c.ArgSpans {
-			if j > 0 {
-				b.WriteByte(',')
-			}
-			span(s)
-		}
-		fmt.Fprintf(&b, `],"lambda":%t}`, c.InLambda)
-	}
-	b.WriteString(`],"literal":`)
-	if a.IsLiteral {
-		b.WriteString(`{"value":`)
-		writeJSON(&b, a.Literal)
-		b.WriteByte('}')
-	} else {
-		b.WriteString("false")
-	}
-	b.WriteString(`,"segments":`)
-	if !a.Template {
-		b.WriteString("null")
-	} else {
-		b.WriteByte('[')
-		for i, sg := range a.Segments {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			if sg.Expr == nil {
-				b.WriteString(`{"text":` + value.QuoteJSON(sg.Text) + `,"span":`)
-			} else {
-				b.WriteString(`{"part":`)
-				span(sg.ExprSpan)
-				b.WriteString(`,"span":`)
-			}
-			span(sg.Span)
-			b.WriteByte('}')
-		}
-		b.WriteByte(']')
-	}
-	b.WriteByte('}')
-	return b.String()
 }
 
 // conformOutcome is what the three ways of F4 9.3 give for a conform case.

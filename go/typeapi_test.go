@@ -20,12 +20,13 @@ func Example_typeAPI() {
 	}, risor.TypeNever)
 	env, _ := risor.NewEnv(risor.VarType("step", output))
 	x, _ := risor.Parse(`step?.score ?? 0`)
-	_, res, err := env.CheckCompile(x)
+	p, err := env.Compile(x)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(output)
-	fmt.Println(res.ResultType, res.ResultType.Kind() == risor.KindInt)
+	res := p.CheckResult()
+	fmt.Println(res.Type, res.Type.Kind() == risor.KindInt)
 	// Output:
 	// {score?: int, status: "failed" | "ok"}
 	// int true
@@ -145,15 +146,15 @@ func TestCheckResultType(t *testing.T) {
 	x, _ := risor.Parse(`items[*].name`)
 	cr, err := env.Check(x)
 	assert.NoError(t, err)
-	assert.Equal(t, cr.ResultType.String(), cr.Type)
-	assert.True(t, cr.ResultType.Equal(risor.ListType(risor.TypeString)))
-	p, cr2, err := env.CheckCompile(x)
+	assert.Equal(t, cr.Type.String(), "string[]")
+	assert.True(t, cr.Type.Equal(risor.ListType(risor.TypeString)))
+	p, err := env.Compile(x)
 	assert.NoError(t, err)
-	assert.True(t, cr2.ResultType.Equal(cr.ResultType))
+	assert.True(t, p.CheckResult().Type.Equal(cr.Type))
 	v, err := p.Run(context.Background(), risor.Map{"items": []any{map[string]any{"name": "a"}}})
 	assert.NoError(t, err)
 	assert.Equal(t, v, any([]any{"a"}))
-	_, none, err := env.CheckCompile(x, risor.NoCheck)
+	unchecked, err := env.Compile(x, risor.NoCheck)
 	assert.NoError(t, err)
-	assert.True(t, none == nil)
+	assert.True(t, unchecked.CheckResult() == nil)
 }

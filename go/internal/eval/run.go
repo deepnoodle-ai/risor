@@ -40,8 +40,8 @@ var DefaultLimits = Limits{Steps: 1_000_000, Alloc: 1_000_000, Depth: 200}
 
 // Usage is what a run charged.
 type Usage struct {
-	Steps int64
-	Alloc int64
+	Steps     int64
+	Allocated int64
 }
 
 // Vars supplies the values of variables to a run.

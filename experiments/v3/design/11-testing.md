@@ -262,7 +262,7 @@ func (c *Case) Run(ctx context.Context, base *risor.Env) Verdict
 // A Verdict has Status (Pass, Fail, Invalid, Skip), Differs (each a Field,
 // what was wanted and what was got) and Actual, the expect of 2.8.
 func Vars(v risor.Vars) Option // variables a case does not give
-func Sources(read func(ref string) (string, risor.Origin, error)) Option
+func Sources(read func(ref string) (string, Origin, error)) Option
 ```
 
 ```ts

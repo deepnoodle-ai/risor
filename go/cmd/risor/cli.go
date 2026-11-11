@@ -265,9 +265,9 @@ func (f *envFlags) limits() []risor.Decl {
 		}
 	}
 	if f.alloc != nil {
-		l.Alloc = *f.alloc
-		if l.Alloc == 0 {
-			l.Alloc = risor.ZeroLimit
+		l.Allocation = *f.alloc
+		if l.Allocation == 0 {
+			l.Allocation = risor.ZeroLimit
 		}
 	}
 	if f.depth != nil {
@@ -299,7 +299,7 @@ func (f *envFlags) environment() (*risor.Env, risor.Map, error) {
 		if err != nil {
 			return nil, nil, cmdErrorf("%s cannot be read: %v", f.description, err)
 		}
-		d, err := risor.Description(data)
+		d, err := risor.FromDescription(data)
 		if err != nil {
 			return nil, nil, cmdErrorf("%s: %v", f.description, err)
 		}

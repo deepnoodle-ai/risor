@@ -36,7 +36,7 @@ func Outcome(c *casefile.Case) string {
 			fmt.Fprintf(&b, `,"phase":"parse","diagnostics":[{"code":%s,"span":[%d,%d,%d,%d],"message":%s}]}`, value.QuoteJSON(d.Code), a[0], a[1], a[2], a[3], value.QuoteJSON(d.Message))
 			return b.String()
 		}
-		b.WriteString(`,"phase":null,"analysis":` + AnalysisJSON(x.Analyze()) + "}")
+		b.WriteString(`,"phase":null,"analysis":` + x.Analyze().JSON() + "}")
 		return b.String()
 	}
 	if c.Conform != nil {
@@ -56,7 +56,7 @@ func Outcome(c *casefile.Case) string {
 	}
 	line := outcome(c)
 	if perr == nil {
-		line = line[:len(line)-1] + `,"analysis":` + AnalysisJSON(x.Analyze()) + "}"
+		line = line[:len(line)-1] + `,"analysis":` + x.Analyze().JSON() + "}"
 	}
 	return line
 }
@@ -127,7 +127,7 @@ func outcome(c *casefile.Case) string {
 		b.WriteByte(']')
 		// A limit failure has no fixed usage, so none is written.
 		if u != nil && !(ph == "run" && diag.LimitCodes[ds[0].Code]) {
-			fmt.Fprintf(&b, `,"steps":%d,"units":%d`, u.Steps, u.Alloc)
+			fmt.Fprintf(&b, `,"steps":%d,"units":%d`, u.Steps, u.Allocated)
 		}
 		b.WriteByte('}')
 		return b.String()
@@ -166,7 +166,7 @@ func outcome(c *casefile.Case) string {
 		if err != nil {
 			return fail(err, nil)
 		}
-		b.WriteString(`,"type":` + value.QuoteJSON(cr.Type) + `,"sites":[`)
+		b.WriteString(`,"type":` + value.QuoteJSON(cr.Type.String()) + `,"sites":[`)
 		for i, st := range cr.Sites {
 			if i > 0 {
 				b.WriteByte(',')
@@ -195,7 +195,7 @@ func outcome(c *casefile.Case) string {
 	}
 	b.WriteString(`,"phase":null,"value":`)
 	writeJSON(&b, v)
-	fmt.Fprintf(&b, `,"steps":%d,"units":%d}`, u.Steps, u.Alloc)
+	fmt.Fprintf(&b, `,"steps":%d,"units":%d}`, u.Steps, u.Allocated)
 	return b.String()
 }
 
