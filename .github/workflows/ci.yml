@@ -93,6 +93,10 @@ jobs:
       - name: Conformance suite
         run: npm run suite
 
+      # The package as npm would publish it: prepack builds dist/.
+      - name: Pack the npm package
+        run: npm pack --dry-run
+
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 15

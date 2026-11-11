@@ -1,14 +1,50 @@
 {
   "name": "risor",
   "version": "0.0.0",
-  "private": true,
-  "description": "Risor v3, the TypeScript implementation",
+  "description": "Risor, a small expression language that a host program embeds: the TypeScript implementation",
   "license": "Apache-2.0",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./testing": "./src/testing.ts"
+  "homepage": "https://risor.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepnoodle-ai/risor.git",
+    "directory": "ts"
   },
+  "bugs": "https://github.com/deepnoodle-ai/risor/issues",
+  "keywords": [
+    "risor",
+    "expression language",
+    "embedded language",
+    "rules",
+    "templates",
+    "sandbox"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "risor-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./tokens": {
+      "risor-source": "./src/tools/tokens.ts",
+      "types": "./dist/tools/tokens.d.ts",
+      "default": "./dist/tools/tokens.js"
+    },
+    "./testing": {
+      "risor-source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=22.18"
   },
@@ -17,7 +53,9 @@
     "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
     "suite": "node test/suite-report.ts",
     "generate": "node scripts/generate.ts",
-    "bench": "node scripts/bench.ts"
+    "bench": "node scripts/bench.ts",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "cp ../LICENSE LICENSE && npm run build"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
