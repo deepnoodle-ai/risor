@@ -2480,6 +2480,11 @@ below is the canonical name. Each binding writes it in its own case (row 1).
    integration test of the crate needs it.
 4. One concept has one way to reach it. An alias or a second spelling of the
    same step is removed.
+5. The options, field types, constants and result records of a concept listed
+   here are part of the surface with it, though a table does not name each
+   one: for example the load options, the steps of a load, `NoLimit`, a
+   `Site`, a `Ref`, a `Segment` and a trace entry. They take the same names
+   in all three bindings, cased per E.1 row 1.
 
 ### E.3 The environment
 
@@ -2559,6 +2564,9 @@ way with the implementation left out; it is not a second name.
 | Analyze | `analyze` | `t.Analyze(mode)` | `t.analyze(mode)` | `t.analyze(mode)` |
 | Format | `formatTemplate` | `FormatTemplate(text)` | `formatTemplate(text)` | `format_template(text)` |
 
+`part(i)` counts the parts only, from 0, not the segments. It gives the part's
+expression as a program, or absent when there is no part `i`.
+
 ### E.6 Host functions and values
 
 | Concept | Canonical name | Go | TypeScript | Rust |
@@ -2584,13 +2592,46 @@ way with the implementation left out; it is not a second name.
 | Decode a result into a host type | `decode` | `Decode(v, dst)` | `decode(v)` | `decode::<T>(&v, max)` |
 | A failed load | `LoadError` | `*LoadError` | `LoadError` | `LoadError` |
 
-The structural type API of R179 is offered by all three, with the names of the
-Go binding cased per E.1 row 1: the `Type` constants, `ListType`, `MapType`,
-`Nullable`, `LiteralType`, `RecordType`, `ExactRecordType`, `UnionType`,
-`TaggedUnionType`, `OpaqueTypeNamed`, `Join`, and the methods `kind`,
-`elem`, `fields`, `field`, `rest`, `alternatives`, `variants`, `literals`,
-`tag`, `nonNull`, `isNullable`, `isExact`, `opaqueName`, `fits`, `equal` and
-the text form.
+The structural type API of R179 is offered by all three. A `Type` is immutable
+and may be shared. "Absent" below is the binding's own form: Go a second
+`bool` result, TypeScript `undefined`, Rust `Option`.
+
+| Item | Takes | Gives |
+| --- | --- | --- |
+| Constants `TypeNever`, `TypeAny`, `TypeNull`, `TypeBool`, `TypeInt`, `TypeFloat`, `TypeString` | | a `Type` |
+| `FieldType` | | a record: `key` (string), `type` (`Type`), `optional` (bool) |
+| `listType` | an element `Type` | a `Type` |
+| `mapType` | a value `Type` | a `Type` |
+| `nullable` | a `Type` | the type or null |
+| `literalType` | one or more strings | the union of those string literals |
+| `recordType` | a list of `FieldType`, and a rest `Type`: `TypeNever` for an exact record, `TypeAny` for an open one | a `Type` |
+| `exactRecordType` | `FieldType` values | `recordType(fields, TypeNever)` |
+| `unionType` | `Type` values | their union |
+| `taggedUnionType` | record `Type` values | the tagged union of them |
+| `opaqueTypeNamed` | a name | the opaque type of that name |
+| `join` | two `Type` values | their join (`05-types.md`) |
+| `t.kind()` | | a `TypeKind` of a type of one alternative: never, any, null, bool, int, float, string (a literal set is a string), list, record (any map type), union (a tagged union), opaque, var (a type variable of a signature); mixed for two or more alternatives, so `T \| null` is mixed; invalid for an invalid type |
+| `t.elem()` | | the element type of a list, or absent |
+| `t.fields()` | | the fields of a record, in order |
+| `t.field(key)` | a key | that `FieldType`, or absent |
+| `t.rest()` | | the rest of its map alternative (`TypeNever` for an exact record, `TypeAny` for an open one), or absent |
+| `t.alternatives()` | | its alternatives, one of each kind: null, bool, the number, the string or literal set, the list, the map type, and each opaque type. `any` is its own one alternative; never and an invalid type have none |
+| `t.variants()` | | the variants of a tagged union |
+| `t.literals()` | | the strings of its literal set, sorted; empty when its string alternative is every string or it has none |
+| `t.tag()` | | the tag key of a tagged union, or absent |
+| `t.nonNull()` | | `t` without null |
+| `t.isNullable()`, `t.isExact()` | | bool |
+| `t.opaqueName()` | | the opaque name, or empty |
+| `t.fits(want)` | a `Type` | whether every value of `t` is a value of `want` |
+| `t.equal(u)` | a `Type` | whether the two are the same type |
+| text form | | the type text of `05-types.md` 3.9: Go `String()`, TypeScript `toString()`, Rust `Display` |
+| `t.err()` | | the `bad-type` failure of an invalid type, or absent |
+
+A constructor never fails. A construction that has no type, or passes a
+limit of `05-types.md` 20.4 or 20.7, gives an invalid type, and `err` reports
+it. The binding of `TypeKind` is per E.1: a Go `int` with `Kind*` constants, a
+TypeScript string union, a Rust `enum`. Go's `IsZero` is a Go convenience
+(E.1 row 5).
 
 ### E.8 Diagnostics and tools
 
