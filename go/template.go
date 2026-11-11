@@ -270,7 +270,9 @@ func (a *Analysis) JSON() string {
 	b.WriteString(`],"literal":`)
 	if a.IsLiteral {
 		b.WriteString(`{"value":`)
-		writeLiteralJSON(&b, a.Literal)
+		// A literal holds only null, bool, number, string, list and map, which
+		// value.Debug writes as JSON.
+		b.WriteString(value.Debug(a.Literal))
 		b.WriteByte('}')
 	} else {
 		b.WriteString("false")
@@ -298,34 +300,4 @@ func (a *Analysis) JSON() string {
 	}
 	b.WriteByte('}')
 	return b.String()
-}
-
-// writeLiteralJSON writes a literal's value as JSON: a literal holds only
-// null, bool, number, string, list and map.
-func writeLiteralJSON(b *strings.Builder, v any) {
-	v, _ = value.Read(v)
-	switch value.KindOf(v) {
-	case value.List:
-		b.WriteByte('[')
-		for i := 0; i < value.Len(v); i++ {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			writeLiteralJSON(b, value.At(v, i))
-		}
-		b.WriteByte(']')
-	case value.Map:
-		b.WriteByte('{')
-		for i, k := range value.Keys(v) {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			x, _ := value.Get(v, k)
-			b.WriteString(value.QuoteJSON(k) + ":")
-			writeLiteralJSON(b, x)
-		}
-		b.WriteByte('}')
-	default:
-		b.WriteString(value.Debug(v))
-	}
 }
