@@ -19,7 +19,8 @@
 // gives `unknown`, never an error: the environment refuses a text that is not
 // type text with `bad-type` when it is declared, so a host is told there.
 // Two places are wider or narrower than the checker's type:
-//   - a string with an escape is `string`, not the literal;
+//   - a string with an escape is `string`, not the literal, and one with an
+//     escaped quote is not read (`unknown`);
 //   - lists among the alternatives are joined one level deep:
 //     `int[] | string[]` is `(number | string)[]`, as 05-types.md 3.4 says,
 //     but `int[][] | string[][]` is `(number[] | string[])[]`.
@@ -68,7 +69,10 @@ type Word<S extends string, Acc extends string = ""> = S extends `${infer C}${in
     : [Acc, S]
   : [Acc, S];
 
-/** A string token's literal type; a string with an escape is `string`. */
+/**
+ * A string token's literal type; a string with an escape is `string`. A token
+ * with an escaped quote ends at that quote, so the text is not read.
+ */
 type Lit<B extends string> = B extends `${string}\\${string}` ? string : B;
 
 /** A string token at the start of S: its type and what follows. */
@@ -243,8 +247,8 @@ export type VarsOf<M, R, T, S, N> = [keyof M | keyof T | keyof S | R] extends [n
   ? AnyVars
   : Partial<
       Flat<
-        { [K in keyof M]: M[K] extends string ? InferText<M[K], N> : unknown } &
-          ([R] extends [never] ? {} : R extends string ? RecordVars<InferText<R, N>> : {}) &
+        { [K in keyof M]: M[K] extends string ? InferText<M[K], Marked<N>> : unknown } &
+          ([R] extends [never] ? {} : R extends string ? RecordVars<InferText<R, Marked<N>>> : {}) &
           { [K in keyof T]: Infer<T[K]> } &
           { [K in keyof S]: unknown }
       >
@@ -253,22 +257,43 @@ export type VarsOf<M, R, T, S, N> = [keyof M | keyof T | keyof S | R] extends [n
 /** The variables of a record type; any variables when it is not a record. */
 type RecordVars<T> = unknown extends T ? AnyVars : T extends object ? T : AnyVars;
 
-/** Internal: the variables of a child environment: the parent's, with the child's over them. */
+declare const opaqueMark: unique symbol;
+/** Marks an opaque type in a variable's type, so `HostInput` takes it as it is. */
+type Opaque = { readonly [opaqueMark]?: true };
+type Marked<N> = { [K in keyof N]: unknown extends N[K] ? unknown : N[K] & Opaque };
+
+/** Internal: the opaque names of a child environment: a child's test replaces the parent's. */
+export type ChildNames<N, P> = Flat<{ [K in keyof N | keyof P]: K extends keyof P ? (unknown extends P[K] ? (K extends keyof N ? N[K] : unknown) : P[K]) : K extends keyof N ? N[K] : never }>;
+
+/**
+ * Internal: the variables of a child environment: the parent's, with the
+ * child's over them. A record of an environment has no rest (03 3.3.4), so an
+ * index signature here is only `AnyVars`: no declarations.
+ */
 export type ChildVars<V, W> = string extends keyof W ? V : string extends keyof V ? W : Flat<Omit<V, keyof W> & W>;
 
 /**
  * Internal: what a host may give where a value of T is read: as T, with a
- * `Map` for a record and a `bigint` for a number (03 3.4.4).
+ * `Map` for a record and a `bigint` for a number (03 3.4.4). An opaque type
+ * is taken as it is. TypeScript compares classes by their members, so a plain
+ * object with every member of a class with no private members passes here and
+ * fails the opaque test when the program reads it.
  */
-export type HostInput<T> = T extends number
-  ? number | bigint
-  : T extends readonly (infer E)[]
-    ? readonly HostInput<E>[]
-    : T extends (...args: any[]) => unknown
-      ? T
-      : T extends object
-        ? { [K in keyof T]: HostInput<T[K]> } | ReadonlyMap<string, unknown>
-        : T;
+export type HostInput<T> = T extends Opaque & object
+  ? typeof opaqueMark extends keyof T
+    ? T
+    : HostObject<T>
+  : T extends number
+    ? number | bigint
+    : HostObject<T>;
+
+type HostObject<T> = T extends readonly (infer E)[]
+  ? readonly HostInput<E>[]
+  : T extends (...args: any[]) => unknown
+    ? T
+    : T extends object
+      ? { [K in keyof T]: HostInput<T[K]> } | ReadonlyMap<string, unknown>
+      : T;
 
 /** Internal: the variables a run takes, as a host gives them. */
 export type HostVars<V> = string extends keyof V ? V : { [K in keyof V]: HostInput<V[K]> };

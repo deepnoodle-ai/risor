@@ -142,6 +142,42 @@ describe("R202: an environment's variables type a run", () => {
     assert.equal(t.toString(), "{at: Point, tags: string[]}");
   });
 
+  test("an opaque variable takes the opaque value only", () => {
+    class Box {
+      readonly #v: number;
+      constructor(v: number) {
+        this.#v = v;
+      }
+      get v(): number {
+        return this.#v;
+      }
+    }
+    const e = createEnv({
+      vars: { at: "Point", box: "Box | null" },
+      opaque: { Point: { test: (v) => v instanceof Point }, Box: { test: (v) => v instanceof Box } },
+    });
+    const p = e.compile(parse("box"));
+    assert.equal(p.run({ at: new Point(1), box: null }), null);
+    assert.equal(p.run({ box: new Box(1) }) instanceof Box, true);
+    // @ts-expect-error a Map is not a Point
+    void (() => p.run({ at: new Map([["x", 1]]) }));
+    // @ts-expect-error a bigint field is not a Point
+    void (() => p.run({ at: { x: 1n } }));
+    // @ts-expect-error a plain object is not a class with a private member
+    void (() => p.run({ box: { v: 1 } }));
+  });
+
+  test("a child's opaque test replaces the parent's", () => {
+    class Point3 {
+      readonly z: string = "";
+    }
+    const child = env.with({ opaque: { Point: { test: (v) => v instanceof Point3 } } });
+    const t = child.parseType("Point");
+    expect<Equal<Infer<typeof t>, Point3>>();
+    const kept = env.with({ opaque: { Point: { methods: {} } } }).parseType("Point");
+    expect<Equal<Infer<typeof kept>, Point>>();
+  });
+
   test("a child adds and replaces variables", () => {
     const child = env.with({ vars: { n: "string", extra: "bool" } });
     child.compile(parse("n")).run({ n: "x", extra: true, user: { name: "A", age: 1, email: null } });
@@ -198,6 +234,35 @@ describe("R202: a Type is a Standard Schema", () => {
       [["age"], ["name"], ["tags", 1]],
     );
     for (const [, m] of got) assert.equal(typeof m, "string");
+  });
+
+  test("a number that cannot enter is an issue below any", () => {
+    for (const bad of [NaN, Infinity, 2n ** 60n]) {
+      const r = typeAny["~standard"].validate(bad);
+      assert.ok(!(r instanceof Promise) && r.issues?.length === 1 && r.issues[0].path?.length === 0);
+    }
+    const rec = exactRecordType({ key: "v", type: typeAny, optional: false });
+    const r = rec["~standard"].validate({ v: [1, NaN] });
+    assert.ok(!(r instanceof Promise) && r.issues !== undefined);
+    assert.deepEqual(r.issues.map((i) => i.path), [["v", 1]]);
+  });
+
+  test("a list that holds itself is an issue", () => {
+    const xs: unknown[] = [1];
+    xs.push(xs);
+    const r = listType(typeAny)["~standard"].validate(xs);
+    assert.ok(!(r instanceof Promise) && r.issues !== undefined);
+    assert.deepEqual(r.issues.map((i) => i.path), [[1]]);
+    // The same value twice, not inside itself, is no cycle.
+    const y = [1];
+    assert.deepEqual(typeAny["~standard"].validate([y, y]), { value: [[1], [1]] });
+  });
+
+  test("a __proto__ key is kept", () => {
+    const r = mapType(typeInt)["~standard"].validate(new Map([["__proto__", 1]]));
+    assert.ok(!(r instanceof Promise) && r.issues === undefined);
+    assert.ok(Object.hasOwn(r.value as object, "__proto__"));
+    assert.equal((r.value as Record<string, number>)["__proto__"], 1);
   });
 
   test("an invalid type gives one issue", () => {

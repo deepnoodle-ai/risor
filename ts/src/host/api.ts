@@ -50,7 +50,7 @@ import type { Declarations, Environment, NamedTypeDecl } from "./env.ts";
 import { declareError, failure, lineSpanOf, publicDiagnostic, renderForm, RisorError, spanFromLine, spanOf } from "./error.ts";
 import type { Diagnostic, Pos, Span, Usage } from "./error.ts";
 import { innerType, opaqueNamesIn, Type, typeClassifier, typeOf } from "./type.ts";
-import type { ChildVars, HostVars, Infer, VarsOf } from "./infer.ts";
+import type { ChildNames, ChildVars, HostVars, Infer, VarsOf } from "./infer.ts";
 
 /**
  * An opaque type whose test may guard its TypeScript type X (R202):
@@ -831,8 +831,8 @@ export class Env<V = any, N = any> {
     T extends Record<string, Type<any>> = {},
     S extends Record<string, { schema: unknown; options?: SchemaOption[] }> = {},
     P extends Record<string, unknown> = {},
-  >(options?: TypedOptions<WithOptions, M, R, T, S, { [K in keyof P]: GuardedChildOpaque<P[K]> }>): Env<ChildVars<V, VarsOf<M, R, T, S, N & P>>, N & P> {
-    return childEnv(this, (options ?? {}) as WithOptions) as Env<ChildVars<V, VarsOf<M, R, T, S, N & P>>, N & P>;
+  >(options?: TypedOptions<WithOptions, M, R, T, S, { [K in keyof P]: GuardedChildOpaque<P[K]> }>): Env<ChildVars<V, VarsOf<M, R, T, S, ChildNames<N, P>>>, ChildNames<N, P>> {
+    return childEnv(this, (options ?? {}) as WithOptions) as Env<ChildVars<V, VarsOf<M, R, T, S, ChildNames<N, P>>>, ChildNames<N, P>>;
   }
 
   /** Internal: the parent's declarations, as given. */
