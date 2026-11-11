@@ -2482,9 +2482,18 @@ below is the canonical name. Each binding writes it in its own case (row 1).
    same step is removed.
 5. The options, field types, constants and result records of a concept listed
    here are part of the surface with it, though a table does not name each
-   one: for example the load options, the steps of a load, `NoLimit`, a
-   `Site`, a `Ref`, a `Segment` and a trace entry. They take the same names
-   in all three bindings, cased per E.1 row 1.
+   one: for example the load options, the steps of a load, a `Site`, a
+   `Ref`, a `CallSite`, a `Segment` and a trace entry. They take the same
+   names in all three bindings, cased per E.1 row 1.
+6. A limit turned off is written in each binding's own form: Go `NoLimit`,
+   TypeScript `null`, Rust `None`.
+7. The record of a call in an analysis is a `CallSite`: `name`, `namespace`,
+   `span`, `args` (each argument as an `Expr`, or absent for a lambda),
+   `argSpans`, and `inLambda`.
+8. `libraryNames()` gives one record: `functions` (called by name),
+   `namespaces` (the groups that are on), `groupFunctions` (their entries by
+   full name, as `json.parse`), and `methods` (by receiver kind: `string`,
+   `list`, `map`). Each list is sorted. Removed entries are not in it.
 
 ### E.3 The environment
 
@@ -2626,6 +2635,16 @@ and may be shared. "Absent" below is the binding's own form: Go a second
 | `t.equal(u)` | a `Type` | whether the two are the same type |
 | text form | | the type text of `05-types.md` 3.9: Go `String()`, TypeScript `toString()`, Rust `Display` |
 | `t.err()` | | the `bad-type` failure of an invalid type, or absent |
+
+A reader of one kind (`elem`, `fields`, `field`, `rest`, `variants`, `tag`,
+`literals`) reads the matching alternative of a mixed type, so
+`({a: int} | null).fields()` gives `a`.
+
+`conform` takes no environment. How it knows that a host value is an opaque
+value of a type is the binding's matter (E.1 row 5): in Go the value names its
+type, in Rust an `OpaqueRef` carries its name, and in TypeScript the `test` of
+the environment the type came from decides. So in TypeScript a type made by
+`opaqueTypeNamed` alone admits no opaque value.
 
 A constructor never fails. A construction that has no type, or passes a
 limit of `05-types.md` 20.4 or 20.7, gives an invalid type, and `err` reports
